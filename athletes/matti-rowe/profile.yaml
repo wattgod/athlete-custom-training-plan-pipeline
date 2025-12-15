@@ -1,0 +1,248 @@
+# Athlete Profile: Matti Rowe
+# Test athlete profile for Athlete OS system
+
+# ============================================================================
+# SECTION 1: BASICS & GOALS
+# ============================================================================
+
+name: "Matti Rowe"
+email: "matti@gravelgod.com"
+athlete_id: "matti-rowe"  # Auto-generated from name
+
+primary_goal: specific_race  # Options: specific_race, general_fitness, base_building, return_from_injury
+
+target_race:
+  name: "Unbound Gravel 200"
+  race_id: "unbound_gravel_200"
+  date: "2025-06-07"  # YYYY-MM-DD format
+  distance_miles: 200
+  goal_type: compete  # Options: finish, compete, podium
+
+secondary_races: []  # Optional list of other races
+
+# ============================================================================
+# SECTION 2: CURRENT STATE
+# ============================================================================
+
+training_history:
+  years_cycling: "10+"  # Options: 0-2, 3-5, 6-10, 10+
+  years_structured: 8  # Years with structured training
+  strength_background: intermediate  # Options: none, beginner, intermediate, advanced
+  highest_weekly_hours: 18  # Peak training volume ever sustained
+  current_weekly_hours: 12  # What you're doing now
+
+fitness_markers:  # Optional - fill if known
+  ftp_watts: 280
+  ftp_date: "2024-11-15"  # YYYY-MM-DD
+  weight_kg: 75
+  w_kg: 3.73  # Auto-calculated: ftp_watts / weight_kg
+  resting_hr: 48
+  max_hr: 185
+
+recent_training:
+  last_12_weeks: consistent  # Options: consistent, sporadic, none
+  current_phase: base  # Options: off-season, base, build, race-season, recovery
+  coming_off_injury: false
+  days_since_last_ride: 1
+
+# ============================================================================
+# SECTION 3: AVAILABILITY & CONSTRAINTS
+# ============================================================================
+
+weekly_availability:
+  total_hours_available: 15  # Total hours for ALL training (cycling + strength)
+  cycling_hours_target: 12  # How much for cycling specifically
+  strength_sessions_max: 2  # Max strength sessions you'll actually do (1-3)
+
+preferred_days:
+  monday:
+    availability: available  # Options: available, limited, unavailable
+    time_slots: [am]  # Options: [am], [pm], [am, pm]
+    max_duration_min: 90  # Longest session possible this day
+    is_key_day_ok: true  # Can this be a hard/key day?
+  
+  tuesday:
+    availability: available
+    time_slots: [pm]
+    max_duration_min: 90
+    is_key_day_ok: true
+  
+  wednesday:
+    availability: limited
+    time_slots: [am]
+    max_duration_min: 60
+    is_key_day_ok: false  # Prefer easier day
+  
+  thursday:
+    availability: available
+    time_slots: [pm]
+    max_duration_min: 90
+    is_key_day_ok: true
+  
+  friday:
+    availability: limited
+    time_slots: [am]
+    max_duration_min: 45
+    is_key_day_ok: false
+  
+  saturday:
+    availability: available
+    time_slots: [am]
+    max_duration_min: 300  # Long ride day
+    is_key_day_ok: true
+  
+  sunday:
+    availability: available
+    time_slots: [am]
+    max_duration_min: 180
+    is_key_day_ok: false  # Recovery ride or rest
+
+schedule_constraints:
+  work_schedule: flexible  # Options: 9-5, shift_work, flexible, irregular
+  travel_frequency: occasional  # Options: none, occasional, frequent
+  family_commitments: "Weekend mornings sometimes limited"
+  seasonal_changes: "More outdoor time in spring/summer"
+
+# ============================================================================
+# SECTION 4: EQUIPMENT & ENVIRONMENT
+# ============================================================================
+
+cycling_equipment:
+  smart_trainer: true
+  power_meter_bike: true
+  hr_monitor: true
+  indoor_setup: dedicated_pain_cave  # Options: none, basic, dedicated_pain_cave
+
+strength_equipment:  # Check all that apply
+  - bodyweight
+  - dumbbells
+  - kettlebells
+  - resistance_bands
+  - pull_up_bar
+
+training_environment:
+  primary_location: home  # Options: home, gym, both
+  gym_type: home_gym  # Options: home_gym, commercial, crossfit_box, none
+  outdoor_riding_access: excellent  # Options: excellent, good, limited, poor
+  indoor_riding_tolerance: tolerate_it  # Options: love_it, tolerate_it, hate_it
+
+# ============================================================================
+# SECTION 5: HEALTH & LIMITATIONS
+# ============================================================================
+
+injury_history:
+  current_injuries:
+    - area: knee  # Options: knee, back, shoulder, hip, ankle, neck, wrist
+      side: left  # Options: left, right, both, n/a
+      severity: minor  # Options: minor, moderate, significant
+      affects_cycling: false
+      affects_strength: true
+      exercises_to_avoid: ["Jump Squat", "Box Jump"]  # List specific movements
+      notes: "Old ACL reconstruction, avoid high-impact jumping"
+  
+  past_injuries:
+    - area: knee
+      year: 2015
+      fully_resolved: false
+      notes: "ACL reconstruction, some limitations remain"
+
+movement_limitations:  # Optional
+  deep_squat: limited  # Options: full_rom, limited, significantly_limited, painful
+  hip_hinge: full_rom
+  overhead_reach: full_rom
+  single_leg_balance: limited
+  push_up_position: full_rom
+  notes: "Knee limits deep squat depth, otherwise good mobility"
+
+health_factors:
+  age: 38
+  sleep_quality: good  # Options: excellent, good, fair, poor
+  sleep_hours_avg: 7
+  stress_level: moderate  # Options: low, moderate, high, very_high
+  recovery_capacity: normal  # Options: fast, normal, slow (self-assessed)
+  medical_conditions: ""
+  medications: ""
+
+# ============================================================================
+# SECTION 6: TRAINING PREFERENCES
+# ============================================================================
+
+methodology_preferences:
+  # Rate interest 1-5 for each approach
+  polarized: 4  # 80% easy / 20% hard
+  pyramidal: 3  # More tempo/sweetspot
+  threshold_focused: 3  # Lots of FTP work
+  hiit_focused: 2  # Short, intense sessions
+  high_volume: 3  # Time-rich approach
+  time_crunched: 2  # Minimum effective dose
+  
+  preferred_approach: "Polarized training resonates most - 80/20 approach"
+  past_success_with: "Polarized training, consistent volume"
+  past_failure_with: "Too much threshold work, not enough recovery"
+
+workout_preferences:
+  longest_indoor_tolerable: 120  # Minutes on trainer
+  preferred_interval_style: mixed  # Options: short_sharp, sustained, mixed
+  music_or_entertainment: preferred  # Options: required, preferred, not_needed
+  group_rides_available: true
+  outdoor_interval_friendly: true
+
+strength_preferences:
+  experience_level: intermediate  # Options: none, beginner, intermediate, advanced
+  comfort_with_barbell: moderate  # Options: none, low, moderate, high
+  comfort_with_kettlebells: high  # Options: none, low, moderate, high
+  preferred_session_length: 45  # Options: 30, 45, 60 minutes
+  time_of_day: separate_day  # Options: before_cycling, after_cycling, separate_day
+
+coaching_style:
+  communication_frequency: weekly  # Options: daily, few_times_week, weekly
+  feedback_detail: moderate  # Options: minimal, moderate, comprehensive
+  accountability_need: moderate  # Options: low, moderate, high
+  autonomy_preference: general_guidance  # Options: tell_me_exactly, general_guidance, high_autonomy
+
+# ============================================================================
+# SECTION 7: PSYCHOGRAPHICS & MOTIVATION (Optional)
+# ============================================================================
+
+motivation:
+  primary_driver: competition  # Options: competition, health, social, adventure, achievement
+  what_excites_you: "Racing at my best, seeing fitness gains"
+  what_scares_you: "Showing up underprepared"
+  past_quit_reasons: "Burnout from too much intensity"
+  accountability_style: self  # Options: self, partner, coach, public
+
+mental_game:
+  race_anxiety: mild  # Options: none, mild, moderate, significant
+  training_consistency: good  # Options: excellent, good, inconsistent, poor
+  handles_failure: well  # Options: well, okay, poorly
+  perfectionist: false
+
+lifestyle:
+  occupation: "Coach / Business Owner"
+  active_job: false
+  commute_bikeable: false
+  family_support: fully_supportive  # Options: fully_supportive, neutral, challenging
+
+# ============================================================================
+# SECTION 8: ADMIN & PREFERENCES
+# ============================================================================
+
+platforms:
+  primary: trainingpeaks  # Options: trainingpeaks, intervals_icu, trainer_road, other
+  secondary: ""
+  calendar_integration: google  # Options: google, apple, outlook, none
+
+communication:
+  preferred_method: email  # Options: email, text, slack, whatsapp
+  timezone: "America/Denver"
+  best_time_to_reach: "Morning or evening"
+
+plan_start:
+  preferred_start: "2025-01-06"  # YYYY-MM-DD or "next_monday"
+  current_commitments: ""
+
+# ============================================================================
+# DERIVED VALUES (Auto-calculated - do not fill manually)
+# ============================================================================
+
+# These will be generated automatically by derive_classifications.py

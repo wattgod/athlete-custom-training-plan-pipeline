@@ -65,18 +65,26 @@ def build_weekly_structure(
         is_strength = day in strength_days
         
         # Assign AM workout
+        # Priority: Key sessions > Strength > Easy rides
         if "am" in time_slots:
-            if is_strength:
-                day_struct["am"] = "strength"
-                day_struct["notes"] = "Strength session"
-            elif is_key:
-                day_struct["am"] = "intervals"
-                day_struct["is_key_day"] = True
-                day_struct["notes"] = "Key session - intervals or threshold"
-            elif day == "saturday" and max_duration >= 180:
+            if day == "saturday" and max_duration >= 180 and is_key:
+                # Saturday long ride takes priority
                 day_struct["am"] = "long_ride"
                 day_struct["is_key_day"] = True
                 day_struct["notes"] = "Key session - long ride"
+            elif is_key and not is_strength:
+                # Key session (intervals) - but not if strength is scheduled
+                day_struct["am"] = "intervals"
+                day_struct["is_key_day"] = True
+                day_struct["notes"] = "Key session - intervals or threshold"
+            elif is_strength and not is_key:
+                # Strength session on non-key day
+                day_struct["am"] = "strength"
+                day_struct["notes"] = "Strength session"
+            elif is_strength and is_key:
+                # Strength on key day (AM strength, PM intervals/long ride)
+                day_struct["am"] = "strength"
+                day_struct["notes"] = "Strength AM"
             else:
                 day_struct["am"] = "easy_ride"
                 day_struct["notes"] = "Easy ride or recovery"
@@ -92,8 +100,18 @@ def build_weekly_structure(
                 else:
                     day_struct["pm"] = None
             elif day_struct["am"] == "strength":
-                # Can do easy ride PM after strength
-                if max_duration >= 60:
+                # After strength AM, can do intervals/long ride PM if it's a key day
+                if is_key:
+                    if day == "saturday" and max_duration >= 180:
+                        day_struct["pm"] = "long_ride"
+                        day_struct["is_key_day"] = True
+                        day_struct["notes"] = "Strength AM + Long ride PM"
+                    else:
+                        day_struct["pm"] = "intervals"
+                        day_struct["is_key_day"] = True
+                        day_struct["notes"] = "Strength AM + Intervals PM"
+                elif max_duration >= 60:
+                    # Easy ride PM after strength
                     day_struct["pm"] = "easy_ride"
                     day_struct["notes"] += " + Easy spin PM"
             elif is_key and not day_struct["is_key_day"]:

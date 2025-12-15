@@ -264,30 +264,28 @@ def identify_strength_days(profile: Dict, strength_frequency: int, key_days: Lis
     Identify best days for strength sessions.
     
     Criteria:
-    - Not within 48 hours before a key day
+    - Not within 48 hours before a key day (unless key day is long ride and strength is AM)
+    - Strength OK on same day as key session if: AM strength + PM intervals, or AM strength + PM long ride
     - availability == "available" or "limited"
     - Has AM time slot (preferred) or PM
     - max_duration_min >= 30
     """
     strength_days = []
     preferred_days = profile.get("preferred_days", {})
-    
-    # Days to avoid (day before key days)
-    avoid_days = set()
     day_order = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
     
+    # Days to avoid: day before key days (48h rule)
+    # Exception: If key day is Saturday (long ride) and has AM slot, strength can be AM same day
+    avoid_days = set()
     for key_day in key_days:
         key_idx = day_order.index(key_day)
-        # Day before
+        # Day before (48h rule)
         if key_idx > 0:
             avoid_days.add(day_order[key_idx - 1])
     
     # Find candidate days
     candidates = []
     for day, prefs in preferred_days.items():
-        if day in avoid_days:
-            continue
-        
         availability = prefs.get("availability", "unavailable")
         if availability == "unavailable":
             continue
@@ -300,15 +298,30 @@ def identify_strength_days(profile: Dict, strength_frequency: int, key_days: Lis
         if not time_slots:
             continue
         
+        # Check if this is a key day
+        is_key = day in key_days
+        
+        # If key day, strength can only be AM (before PM intervals/long ride)
+        if is_key:
+            if "am" not in time_slots:
+                continue  # Can't do strength on key day without AM slot
+            # Prefer non-key days, but allow key days if needed
+            priority = 1  # Lower priority for key days
+        else:
+            # Non-key day - check if it's avoided (day before key)
+            if day in avoid_days:
+                continue
+            priority = 0  # Higher priority for non-key days
+        
         # Prefer days with AM slots
         has_am = "am" in time_slots
-        candidates.append((day, has_am, max_duration))
+        candidates.append((day, priority, has_am, max_duration))
     
-    # Sort by: has AM slot, then max duration
-    candidates.sort(key=lambda x: (not x[1], -x[2]))
+    # Sort by: priority (non-key first), then has AM slot, then max duration
+    candidates.sort(key=lambda x: (x[1], not x[2], -x[3]))
     
     # Select top N
-    strength_days = [day for day, _, _ in candidates[:strength_frequency]]
+    strength_days = [day for day, _, _, _ in candidates[:strength_frequency]]
     
     return strength_days
 
