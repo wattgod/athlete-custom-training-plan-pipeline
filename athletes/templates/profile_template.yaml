@@ -1,0 +1,265 @@
+# Athlete Profile Template
+# Fill out this template with athlete information
+# See questionnaire_schema.yaml for field definitions and validation rules
+
+# ============================================================================
+# SECTION 1: BASICS & GOALS
+# ============================================================================
+
+name: ""  # Full name
+email: ""  # Email address
+athlete_id: ""  # Auto-generated from name (e.g., "john-doe")
+
+primary_goal:  # Options: specific_race, general_fitness, base_building, return_from_injury
+  # What's your main training objective?
+
+target_race:  # Only fill if primary_goal == "specific_race"
+  name: ""  # e.g., "Unbound Gravel 200"
+  race_id: ""  # Options: unbound_gravel_200, leadville_100, belgian_waffle_ride, etc.
+  date: ""  # YYYY-MM-DD format
+  distance_miles: 0
+  goal_type: ""  # Options: finish, compete, podium
+
+secondary_races: []  # Optional list of other races
+  # - name: ""
+  #   date: ""
+  #   priority: ""  # A, B, or C
+
+# ============================================================================
+# SECTION 2: CURRENT STATE
+# ============================================================================
+
+training_history:
+  years_cycling: ""  # Options: 0-2, 3-5, 6-10, 10+
+  years_structured: 0  # Years with structured training
+  strength_background: ""  # Options: none, beginner, intermediate, advanced
+  highest_weekly_hours: 0  # Peak training volume ever sustained
+  current_weekly_hours: 0  # What you're doing now
+
+fitness_markers:  # Optional - fill if known
+  ftp_watts: null
+  ftp_date: ""  # YYYY-MM-DD
+  weight_kg: null
+  w_kg: null  # Auto-calculated: ftp_watts / weight_kg
+  resting_hr: null
+  max_hr: null
+
+recent_training:
+  last_12_weeks: ""  # Options: consistent, sporadic, none
+  current_phase: ""  # Options: off-season, base, build, race-season, recovery
+  coming_off_injury: false
+  days_since_last_ride: null
+
+# ============================================================================
+# SECTION 3: AVAILABILITY & CONSTRAINTS
+# ============================================================================
+
+weekly_availability:
+  total_hours_available: 0  # Total hours for ALL training (cycling + strength)
+  cycling_hours_target: 0  # How much for cycling specifically
+  strength_sessions_max: 0  # Max strength sessions you'll actually do (1-3)
+
+preferred_days:
+  # Mark each day: available, limited, unavailable
+  # For available days, indicate AM/PM/both
+  monday:
+    availability: ""  # Options: available, limited, unavailable
+    time_slots: []  # Options: [am], [pm], [am, pm]
+    max_duration_min: 0  # Longest session possible this day
+    is_key_day_ok: false  # Can this be a hard/key day?
+  
+  tuesday:
+    availability: ""
+    time_slots: []
+    max_duration_min: 0
+    is_key_day_ok: false
+  
+  wednesday:
+    availability: ""
+    time_slots: []
+    max_duration_min: 0
+    is_key_day_ok: false
+  
+  thursday:
+    availability: ""
+    time_slots: []
+    max_duration_min: 0
+    is_key_day_ok: false
+  
+  friday:
+    availability: ""
+    time_slots: []
+    max_duration_min: 0
+    is_key_day_ok: false
+  
+  saturday:
+    availability: ""
+    time_slots: []
+    max_duration_min: 0
+    is_key_day_ok: false
+  
+  sunday:
+    availability: ""
+    time_slots: []
+    max_duration_min: 0
+    is_key_day_ok: false
+
+schedule_constraints:
+  work_schedule: ""  # Options: 9-5, shift_work, flexible, irregular
+  travel_frequency: ""  # Options: none, occasional, frequent
+  family_commitments: ""  # Description of recurring conflicts
+  seasonal_changes: ""  # Any periods with more/less availability
+
+# ============================================================================
+# SECTION 4: EQUIPMENT & ENVIRONMENT
+# ============================================================================
+
+cycling_equipment:
+  smart_trainer: false
+  power_meter_bike: false
+  hr_monitor: false
+  indoor_setup: ""  # Options: none, basic, dedicated_pain_cave
+
+strength_equipment: []  # Check all that apply
+  # Options: bodyweight, dumbbells, kettlebells, barbell, pull_up_bar,
+  #          resistance_bands, trx_suspension, bench, squat_rack,
+  #          cable_machine, gym_membership
+
+training_environment:
+  primary_location: ""  # Options: home, gym, both
+  gym_type: ""  # Options: home_gym, commercial, crossfit_box, none
+  outdoor_riding_access: ""  # Options: excellent, good, limited, poor
+  indoor_riding_tolerance: ""  # Options: love_it, tolerate_it, hate_it
+
+# ============================================================================
+# SECTION 5: HEALTH & LIMITATIONS
+# ============================================================================
+
+injury_history:
+  current_injuries: []
+    # - area: ""  # Options: knee, back, shoulder, hip, ankle, neck, wrist
+    #   side: ""  # Options: left, right, both, n/a
+    #   severity: ""  # Options: minor, moderate, significant
+    #   affects_cycling: false
+    #   affects_strength: false
+    #   exercises_to_avoid: []  # List specific movements
+    #   notes: ""
+  
+  past_injuries: []
+    # - area: ""
+    #   year: 0
+    #   fully_resolved: false
+    #   notes: ""
+
+movement_limitations:  # Optional
+  # Rate each: full_rom, limited, significantly_limited, painful
+  deep_squat: null
+  hip_hinge: null
+  overhead_reach: null
+  single_leg_balance: null
+  push_up_position: null
+  notes: ""
+
+health_factors:
+  age: 0
+  sleep_quality: ""  # Options: excellent, good, fair, poor
+  sleep_hours_avg: 0
+  stress_level: ""  # Options: low, moderate, high, very_high
+  recovery_capacity: ""  # Options: fast, normal, slow (self-assessed)
+  medical_conditions: ""  # List anything relevant
+  medications: ""  # Anything affecting training/recovery
+
+# ============================================================================
+# SECTION 6: TRAINING PREFERENCES
+# ============================================================================
+
+methodology_preferences:
+  # Rate interest 1-5 for each approach
+  polarized: null  # 80% easy / 20% hard
+  pyramidal: null  # More tempo/sweetspot
+  threshold_focused: null  # Lots of FTP work
+  hiit_focused: null  # Short, intense sessions
+  high_volume: null  # Time-rich approach
+  time_crunched: null  # Minimum effective dose
+  
+  preferred_approach: ""  # What resonates most?
+  past_success_with: ""  # What's worked before?
+  past_failure_with: ""  # What hasn't worked?
+
+workout_preferences:
+  longest_indoor_tolerable: 0  # Minutes on trainer
+  preferred_interval_style: ""  # Options: short_sharp, sustained, mixed
+  music_or_entertainment: ""  # Options: required, preferred, not_needed
+  group_rides_available: false
+  outdoor_interval_friendly: false
+
+strength_preferences:
+  experience_level: ""  # Options: none, beginner, intermediate, advanced
+  comfort_with_barbell: ""  # Options: none, low, moderate, high
+  comfort_with_kettlebells: ""  # Options: none, low, moderate, high
+  preferred_session_length: 0  # Options: 30, 45, 60 minutes
+  time_of_day: ""  # Options: before_cycling, after_cycling, separate_day
+
+coaching_style:
+  communication_frequency: ""  # Options: daily, few_times_week, weekly
+  feedback_detail: ""  # Options: minimal, moderate, comprehensive
+  accountability_need: ""  # Options: low, moderate, high
+  autonomy_preference: ""  # Options: tell_me_exactly, general_guidance, high_autonomy
+
+# ============================================================================
+# SECTION 7: PSYCHOGRAPHICS & MOTIVATION (Optional)
+# ============================================================================
+
+motivation:
+  primary_driver: ""  # Options: competition, health, social, adventure, achievement
+  what_excites_you: ""
+  what_scares_you: ""
+  past_quit_reasons: ""
+  accountability_style: ""  # Options: self, partner, coach, public
+
+mental_game:
+  race_anxiety: ""  # Options: none, mild, moderate, significant
+  training_consistency: ""  # Options: excellent, good, inconsistent, poor
+  handles_failure: ""  # Options: well, okay, poorly
+  perfectionist: false
+
+lifestyle:
+  occupation: ""
+  active_job: false
+  commute_bikeable: false
+  family_support: ""  # Options: fully_supportive, neutral, challenging
+
+# ============================================================================
+# SECTION 8: ADMIN & PREFERENCES
+# ============================================================================
+
+platforms:
+  primary: ""  # Options: trainingpeaks, intervals_icu, trainer_road, other
+  secondary: ""
+  calendar_integration: ""  # Options: google, apple, outlook, none
+
+communication:
+  preferred_method: ""  # Options: email, text, slack, whatsapp
+  timezone: ""
+  best_time_to_reach: ""
+
+plan_start:
+  preferred_start: ""  # YYYY-MM-DD or "next_monday"
+  current_commitments: ""  # Anything before start date?
+
+# ============================================================================
+# DERIVED VALUES (Auto-calculated - do not fill manually)
+# ============================================================================
+
+# These will be generated automatically by derive_classifications.py
+# derived:
+#   tier: ""
+#   plan_weeks: 0
+#   starting_phase: ""
+#   strength_frequency: 0
+#   equipment_tier: ""
+#   risk_factors: []
+#   exercise_exclusions: []
+#   key_day_candidates: []
+#   strength_day_candidates: []
+

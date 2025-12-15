@@ -1,0 +1,708 @@
+# Athlete Questionnaire Schema
+# Complete definition of all questions, validation rules, and options
+
+schema_version: "1.0"
+last_updated: "2024-12-15"
+
+sections:
+  - id: "basics_goals"
+    name: "Basics & Goals"
+    required: true
+    
+    fields:
+      - id: "name"
+        label: "Full Name"
+        type: "string"
+        required: true
+        validation:
+          min_length: 2
+          max_length: 100
+      
+      - id: "email"
+        label: "Email Address"
+        type: "email"
+        required: true
+        validation:
+          format: "email"
+      
+      - id: "athlete_id"
+        label: "Athlete ID"
+        type: "string"
+        required: false
+        auto_generated: true
+        pattern: "^[a-z0-9-]+$"
+        description: "Auto-generated from name (e.g., 'john-doe')"
+      
+      - id: "primary_goal"
+        label: "Primary Goal"
+        type: "enum"
+        required: true
+        options:
+          - "specific_race"
+          - "general_fitness"
+          - "base_building"
+          - "return_from_injury"
+        description: "What's your main training objective?"
+      
+      - id: "target_race"
+        label: "Target Race"
+        type: "object"
+        required: false
+        condition: "primary_goal == 'specific_race'"
+        fields:
+          - id: "name"
+            type: "string"
+            required: true
+            example: "Unbound Gravel 200"
+          
+          - id: "race_id"
+            type: "string"
+            required: true
+            options:
+              - "unbound_gravel_200"
+              - "unbound_gravel_100"
+              - "leadville_100"
+              - "belgian_waffle_ride"
+              - "mid_south"
+              - "sbt_grvl"
+              - "gravel_worlds"
+              - "crusher_in_the_tushar"
+              - "rebeccas_private_idaho"
+              - "other"
+            description: "Select from known races or 'other'"
+          
+          - id: "date"
+            type: "date"
+            required: true
+            format: "YYYY-MM-DD"
+            validation:
+              future_date: true
+          
+          - id: "distance_miles"
+            type: "number"
+            required: true
+            validation:
+              min: 1
+              max: 500
+          
+          - id: "goal_type"
+            type: "enum"
+            required: true
+            options:
+              - "finish"
+              - "compete"
+              - "podium"
+            description: "What's your goal for this race?"
+      
+      - id: "secondary_races"
+        label: "Secondary Races"
+        type: "array"
+        required: false
+        item_type: "object"
+        fields:
+          - id: "name"
+            type: "string"
+            required: true
+          - id: "date"
+            type: "date"
+            required: true
+          - id: "priority"
+            type: "enum"
+            required: true
+            options: ["A", "B", "C"]
+
+  - id: "current_state"
+    name: "Current State"
+    required: true
+    
+    fields:
+      - id: "training_history"
+        type: "object"
+        required: true
+        fields:
+          - id: "years_cycling"
+            type: "enum"
+            required: true
+            options: ["0-2", "3-5", "6-10", "10+"]
+          
+          - id: "years_structured"
+            type: "number"
+            required: true
+            validation:
+              min: 0
+              max: 50
+          
+          - id: "strength_background"
+            type: "enum"
+            required: true
+            options: ["none", "beginner", "intermediate", "advanced"]
+          
+          - id: "highest_weekly_hours"
+            type: "number"
+            required: true
+            validation:
+              min: 0
+              max: 40
+          
+          - id: "current_weekly_hours"
+            type: "number"
+            required: true
+            validation:
+              min: 0
+              max: 40
+      
+      - id: "fitness_markers"
+        type: "object"
+        required: false
+        fields:
+          - id: "ftp_watts"
+            type: "number"
+            validation:
+              min: 50
+              max: 600
+          
+          - id: "ftp_date"
+            type: "date"
+            format: "YYYY-MM-DD"
+          
+          - id: "weight_kg"
+            type: "number"
+            validation:
+              min: 40
+              max: 150
+          
+          - id: "w_kg"
+            type: "number"
+            computed: true
+            formula: "ftp_watts / weight_kg"
+          
+          - id: "resting_hr"
+            type: "number"
+            validation:
+              min: 30
+              max: 100
+          
+          - id: "max_hr"
+            type: "number"
+            validation:
+              min: 150
+              max: 220
+      
+      - id: "recent_training"
+        type: "object"
+        required: true
+        fields:
+          - id: "last_12_weeks"
+            type: "enum"
+            required: true
+            options: ["consistent", "sporadic", "none"]
+          
+          - id: "current_phase"
+            type: "enum"
+            required: true
+            options: ["off-season", "base", "build", "race-season", "recovery"]
+          
+          - id: "coming_off_injury"
+            type: "boolean"
+            required: true
+          
+          - id: "days_since_last_ride"
+            type: "number"
+            required: false
+            validation:
+              min: 0
+              max: 365
+
+  - id: "availability_constraints"
+    name: "Availability & Constraints"
+    required: true
+    
+    fields:
+      - id: "weekly_availability"
+        type: "object"
+        required: true
+        fields:
+          - id: "total_hours_available"
+            type: "number"
+            required: true
+            validation:
+              min: 0
+              max: 40
+              warning_threshold: 30
+              description: "Total hours for ALL training (cycling + strength)"
+          
+          - id: "cycling_hours_target"
+            type: "number"
+            required: true
+            validation:
+              min: 0
+              max: 40
+          
+          - id: "strength_sessions_max"
+            type: "number"
+            required: true
+            validation:
+              min: 0
+              max: 5
+      
+      - id: "preferred_days"
+        type: "object"
+        required: true
+        fields:
+          - id: "monday"
+            type: "day_preference"
+          - id: "tuesday"
+            type: "day_preference"
+          - id: "wednesday"
+            type: "day_preference"
+          - id: "thursday"
+            type: "day_preference"
+          - id: "friday"
+            type: "day_preference"
+          - id: "saturday"
+            type: "day_preference"
+          - id: "sunday"
+            type: "day_preference"
+      
+      - id: "schedule_constraints"
+        type: "object"
+        required: true
+        fields:
+          - id: "work_schedule"
+            type: "enum"
+            required: true
+            options: ["9-5", "shift_work", "flexible", "irregular"]
+          
+          - id: "travel_frequency"
+            type: "enum"
+            required: true
+            options: ["none", "occasional", "frequent"]
+          
+          - id: "family_commitments"
+            type: "string"
+            required: false
+          
+          - id: "seasonal_changes"
+            type: "string"
+            required: false
+
+  - id: "equipment_environment"
+    name: "Equipment & Environment"
+    required: true
+    
+    fields:
+      - id: "cycling_equipment"
+        type: "object"
+        required: true
+        fields:
+          - id: "smart_trainer"
+            type: "boolean"
+            required: true
+          - id: "power_meter_bike"
+            type: "boolean"
+            required: true
+          - id: "hr_monitor"
+            type: "boolean"
+            required: true
+          - id: "indoor_setup"
+            type: "enum"
+            required: true
+            options: ["none", "basic", "dedicated_pain_cave"]
+      
+      - id: "strength_equipment"
+        type: "array"
+        required: true
+        item_type: "enum"
+        options:
+          - "bodyweight"
+          - "dumbbells"
+          - "kettlebells"
+          - "barbell"
+          - "pull_up_bar"
+          - "resistance_bands"
+          - "trx_suspension"
+          - "bench"
+          - "squat_rack"
+          - "cable_machine"
+          - "gym_membership"
+      
+      - id: "training_environment"
+        type: "object"
+        required: true
+        fields:
+          - id: "primary_location"
+            type: "enum"
+            required: true
+            options: ["home", "gym", "both"]
+          
+          - id: "gym_type"
+            type: "enum"
+            required: true
+            options: ["home_gym", "commercial", "crossfit_box", "none"]
+          
+          - id: "outdoor_riding_access"
+            type: "enum"
+            required: true
+            options: ["excellent", "good", "limited", "poor"]
+          
+          - id: "indoor_riding_tolerance"
+            type: "enum"
+            required: true
+            options: ["love_it", "tolerate_it", "hate_it"]
+
+  - id: "health_limitations"
+    name: "Health & Limitations"
+    required: true
+    
+    fields:
+      - id: "injury_history"
+        type: "object"
+        required: true
+        fields:
+          - id: "current_injuries"
+            type: "array"
+            required: false
+            item_type: "object"
+            fields:
+              - id: "area"
+                type: "enum"
+                required: true
+                options: ["knee", "back", "shoulder", "hip", "ankle", "neck", "wrist"]
+              - id: "side"
+                type: "enum"
+                required: true
+                options: ["left", "right", "both", "n/a"]
+              - id: "severity"
+                type: "enum"
+                required: true
+                options: ["minor", "moderate", "significant"]
+              - id: "affects_cycling"
+                type: "boolean"
+                required: true
+              - id: "affects_strength"
+                type: "boolean"
+                required: true
+              - id: "exercises_to_avoid"
+                type: "array"
+                required: false
+                item_type: "string"
+              - id: "notes"
+                type: "string"
+                required: false
+          
+          - id: "past_injuries"
+            type: "array"
+            required: false
+            item_type: "object"
+            fields:
+              - id: "area"
+                type: "enum"
+                required: true
+              - id: "year"
+                type: "number"
+                required: true
+              - id: "fully_resolved"
+                type: "boolean"
+                required: true
+              - id: "notes"
+                type: "string"
+                required: false
+      
+      - id: "movement_limitations"
+        type: "object"
+        required: false
+        fields:
+          - id: "deep_squat"
+            type: "enum"
+            options: ["full_rom", "limited", "significantly_limited", "painful"]
+          - id: "hip_hinge"
+            type: "enum"
+            options: ["full_rom", "limited", "significantly_limited", "painful"]
+          - id: "overhead_reach"
+            type: "enum"
+            options: ["full_rom", "limited", "significantly_limited", "painful"]
+          - id: "single_leg_balance"
+            type: "enum"
+            options: ["full_rom", "limited", "significantly_limited", "painful"]
+          - id: "push_up_position"
+            type: "enum"
+            options: ["full_rom", "limited", "significantly_limited", "painful"]
+          - id: "notes"
+            type: "string"
+      
+      - id: "health_factors"
+        type: "object"
+        required: true
+        fields:
+          - id: "age"
+            type: "number"
+            required: true
+            validation:
+              min: 13
+              max: 100
+          - id: "sleep_quality"
+            type: "enum"
+            required: true
+            options: ["excellent", "good", "fair", "poor"]
+          - id: "sleep_hours_avg"
+            type: "number"
+            required: true
+            validation:
+              min: 4
+              max: 12
+          - id: "stress_level"
+            type: "enum"
+            required: true
+            options: ["low", "moderate", "high", "very_high"]
+          - id: "recovery_capacity"
+            type: "enum"
+            required: true
+            options: ["fast", "normal", "slow"]
+          - id: "medical_conditions"
+            type: "string"
+            required: false
+          - id: "medications"
+            type: "string"
+            required: false
+
+  - id: "training_preferences"
+    name: "Training Preferences"
+    required: true
+    
+    fields:
+      - id: "methodology_preferences"
+        type: "object"
+        required: true
+        fields:
+          - id: "polarized"
+            type: "number"
+            validation:
+              min: 1
+              max: 5
+          - id: "pyramidal"
+            type: "number"
+            validation:
+              min: 1
+              max: 5
+          - id: "threshold_focused"
+            type: "number"
+            validation:
+              min: 1
+              max: 5
+          - id: "hiit_focused"
+            type: "number"
+            validation:
+              min: 1
+              max: 5
+          - id: "high_volume"
+            type: "number"
+            validation:
+              min: 1
+              max: 5
+          - id: "time_crunched"
+            type: "number"
+            validation:
+              min: 1
+              max: 5
+          - id: "preferred_approach"
+            type: "string"
+            required: false
+          - id: "past_success_with"
+            type: "string"
+            required: false
+          - id: "past_failure_with"
+            type: "string"
+            required: false
+      
+      - id: "workout_preferences"
+        type: "object"
+        required: true
+        fields:
+          - id: "longest_indoor_tolerable"
+            type: "number"
+            required: true
+            validation:
+              min: 15
+              max: 300
+          - id: "preferred_interval_style"
+            type: "enum"
+            required: true
+            options: ["short_sharp", "sustained", "mixed"]
+          - id: "music_or_entertainment"
+            type: "enum"
+            required: true
+            options: ["required", "preferred", "not_needed"]
+          - id: "group_rides_available"
+            type: "boolean"
+            required: true
+          - id: "outdoor_interval_friendly"
+            type: "boolean"
+            required: true
+      
+      - id: "strength_preferences"
+        type: "object"
+        required: true
+        fields:
+          - id: "experience_level"
+            type: "enum"
+            required: true
+            options: ["none", "beginner", "intermediate", "advanced"]
+          - id: "comfort_with_barbell"
+            type: "enum"
+            required: true
+            options: ["none", "low", "moderate", "high"]
+          - id: "comfort_with_kettlebells"
+            type: "enum"
+            required: true
+            options: ["none", "low", "moderate", "high"]
+          - id: "preferred_session_length"
+            type: "number"
+            required: true
+            options: [30, 45, 60]
+          - id: "time_of_day"
+            type: "enum"
+            required: true
+            options: ["before_cycling", "after_cycling", "separate_day"]
+      
+      - id: "coaching_style"
+        type: "object"
+        required: true
+        fields:
+          - id: "communication_frequency"
+            type: "enum"
+            required: true
+            options: ["daily", "few_times_week", "weekly"]
+          - id: "feedback_detail"
+            type: "enum"
+            required: true
+            options: ["minimal", "moderate", "comprehensive"]
+          - id: "accountability_need"
+            type: "enum"
+            required: true
+            options: ["low", "moderate", "high"]
+          - id: "autonomy_preference"
+            type: "enum"
+            required: true
+            options: ["tell_me_exactly", "general_guidance", "high_autonomy"]
+
+  - id: "psychographics"
+    name: "Psychographics & Motivation"
+    required: false
+    
+    fields:
+      - id: "motivation"
+        type: "object"
+        fields:
+          - id: "primary_driver"
+            type: "enum"
+            options: ["competition", "health", "social", "adventure", "achievement"]
+          - id: "what_excites_you"
+            type: "string"
+          - id: "what_scares_you"
+            type: "string"
+          - id: "past_quit_reasons"
+            type: "string"
+          - id: "accountability_style"
+            type: "enum"
+            options: ["self", "partner", "coach", "public"]
+      
+      - id: "mental_game"
+        type: "object"
+        fields:
+          - id: "race_anxiety"
+            type: "enum"
+            options: ["none", "mild", "moderate", "significant"]
+          - id: "training_consistency"
+            type: "enum"
+            options: ["excellent", "good", "inconsistent", "poor"]
+          - id: "handles_failure"
+            type: "enum"
+            options: ["well", "okay", "poorly"]
+          - id: "perfectionist"
+            type: "boolean"
+      
+      - id: "lifestyle"
+        type: "object"
+        fields:
+          - id: "occupation"
+            type: "string"
+          - id: "active_job"
+            type: "boolean"
+          - id: "commute_bikeable"
+            type: "boolean"
+          - id: "family_support"
+            type: "enum"
+            options: ["fully_supportive", "neutral", "challenging"]
+
+  - id: "admin"
+    name: "Admin & Preferences"
+    required: true
+    
+    fields:
+      - id: "platforms"
+        type: "object"
+        required: true
+        fields:
+          - id: "primary"
+            type: "enum"
+            required: true
+            options: ["trainingpeaks", "intervals_icu", "trainer_road", "other"]
+          - id: "secondary"
+            type: "string"
+            required: false
+          - id: "calendar_integration"
+            type: "enum"
+            required: true
+            options: ["google", "apple", "outlook", "none"]
+      
+      - id: "communication"
+        type: "object"
+        required: true
+        fields:
+          - id: "preferred_method"
+            type: "enum"
+            required: true
+            options: ["email", "text", "slack", "whatsapp"]
+          - id: "timezone"
+            type: "string"
+            required: true
+          - id: "best_time_to_reach"
+            type: "string"
+            required: false
+      
+      - id: "plan_start"
+        type: "object"
+        required: true
+        fields:
+          - id: "preferred_start"
+            type: "string"
+            required: true
+            format: "YYYY-MM-DD or 'next_monday'"
+          - id: "current_commitments"
+            type: "string"
+            required: false
+
+# Custom types
+types:
+  day_preference:
+    fields:
+      - id: "availability"
+        type: "enum"
+        required: true
+        options: ["available", "limited", "unavailable"]
+      - id: "time_slots"
+        type: "array"
+        required: true
+        item_type: "enum"
+        options: ["am", "pm"]
+      - id: "max_duration_min"
+        type: "number"
+        required: true
+        validation:
+          min: 15
+          max: 480
+      - id: "is_key_day_ok"
+        type: "boolean"
+        required: true
+        description: "Can this day handle a hard/key session?"
+

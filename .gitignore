@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated plans (keep structure, ignore workout files)
+athletes/*/plans/*/workouts/*.zwo
+athletes/*/plans/*/calendar/*.json
+athletes/*/plans/*/calendar/*.md
+
+# Keep plan configs and guides
+!athletes/*/plans/*/plan_config.yaml
+!athletes/*/plans/*/guide.md
+
+# Metrics and notes (keep these)
+# athletes/*/metrics/
+# athletes/*/notes/
+
+# Temporary files
+*.tmp
+*.log
+
