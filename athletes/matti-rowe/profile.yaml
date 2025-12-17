@@ -14,7 +14,7 @@ primary_goal: specific_race  # Options: specific_race, general_fitness, base_bui
 target_race:
   name: "Unbound Gravel 200"
   race_id: "unbound_gravel_200"
-  date: "2025-06-07"  # YYYY-MM-DD format
+  date: "2026-06-07"  # YYYY-MM-DD format
   distance_miles: 200
   goal_type: compete  # Options: finish, compete, podium
 

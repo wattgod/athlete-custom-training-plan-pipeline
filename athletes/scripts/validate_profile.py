@@ -23,11 +23,14 @@ def validate_email(email: str) -> bool:
 
 
 def validate_date(date_str: str, future_only: bool = False) -> bool:
-    """Validate date format and optionally check if future."""
+    """Validate date format and optionally check if future (allows today)."""
     try:
-        date = datetime.strptime(date_str, "%Y-%m-%d")
-        if future_only and date <= datetime.now():
-            return False
+        date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        if future_only:
+            today = datetime.now().date()
+            # Allow today or future dates (>= instead of >)
+            if date < today:
+                return False
         return True
     except ValueError:
         return False
@@ -70,7 +73,16 @@ def validate_profile(profile: Dict) -> Tuple[bool, List[str], List[str]]:
             if not target_race.get("date"):
                 errors.append("Missing target_race.date")
             elif not validate_date(target_race["date"], future_only=True):
-                errors.append(f"Invalid or non-future date: {target_race['date']}")
+                # More helpful error message
+                try:
+                    race_date = datetime.strptime(target_race["date"], "%Y-%m-%d").date()
+                    today = datetime.now().date()
+                    if race_date < today:
+                        errors.append(f"Race date {target_race['date']} is in the past (today is {today})")
+                    else:
+                        errors.append(f"Invalid date format: {target_race['date']} (expected YYYY-MM-DD)")
+                except ValueError:
+                    errors.append(f"Invalid date format: {target_race['date']} (expected YYYY-MM-DD)")
             if not target_race.get("goal_type") in ["finish", "compete", "podium"]:
                 errors.append("Invalid target_race.goal_type")
     

@@ -124,9 +124,14 @@ def build_weekly_structure(
         
         # Special handling for Sunday (recovery day)
         if day == "sunday" and not is_key:
-            day_struct["am"] = "easy_ride_or_rest"
-            day_struct["pm"] = None
-            day_struct["notes"] = "Recovery day"
+            # But allow strength on Sunday if it's a strength day
+            if is_strength:
+                day_struct["am"] = "strength"
+                day_struct["notes"] = "Strength session"
+            else:
+                day_struct["am"] = "easy_ride_or_rest"
+                day_struct["pm"] = None
+                day_struct["notes"] = "Recovery day"
         
         structure["days"][day] = day_struct
     

@@ -104,15 +104,17 @@ def generate_athlete_plan(athlete_id: str) -> Dict:
     print(f"  Race Date: {race_date}")
     print()
     
-    # Note: UnifiedPlanGenerator doesn't yet support weekly_structure_override
-    # This is a placeholder for future enhancement
+    # Generate plan using unified generator with athlete-specific overrides
     result = generate_unified_plan(
         race_id=race_id,
         tier_id=derived["tier"],
         plan_weeks=derived["plan_weeks"],
         race_date=race_date,
         output_dir=str(output_dir),
-        race_data=race_data
+        race_data=race_data,
+        weekly_structure_override=weekly_structure,
+        exercise_exclusions=derived.get("exercise_exclusions", []),
+        equipment_available=profile.get("strength_equipment", [])
     )
     
     # Save athlete-specific plan config

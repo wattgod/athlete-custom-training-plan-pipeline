@@ -37,8 +37,8 @@ days:
     notes: Key session - long ride
     max_duration: 300
   sunday:
-    am: easy_ride_or_rest
+    am: strength
     pm: null
     is_key_day: false
-    notes: Recovery day
+    notes: Strength session
     max_duration: 180
