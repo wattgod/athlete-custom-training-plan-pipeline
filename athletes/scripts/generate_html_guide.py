@@ -2791,40 +2791,77 @@ document.addEventListener('DOMContentLoaded', function() {{
 '''
     
     def _generate_nutrition_section(self) -> str:
-        """Generate personalized nutrition targets based on athlete profile."""
-        weight_kg = self.profile.get('fitness_markers', {}).get('weight_kg', 70)
-        ftp = self.profile.get('fitness_markers', {}).get('ftp_watts', 200)
-        cycling_hours = self.profile.get('weekly_availability', {}).get('cycling_hours_target', 10)
-        age = self._calculate_age() or 35
-        sex = self.profile.get('sex', 'male')
+        """Generate personalized nutrition targets based on athlete questionnaire data."""
         
-        # Calculate daily needs based on nutrition_calculator.py formulas
-        # BMR using Mifflin-St Jeor
-        height_cm = 175  # Estimate if not available
+        # Pull from questionnaire data - multiple fallback sources
+        weight_kg = (
+            self.profile.get('weight_kg') or 
+            self.profile.get('fitness_markers', {}).get('weight_kg') or 
+            70
+        )
+        
+        height_cm = (
+            self.profile.get('height_cm') or 
+            self.profile.get('demographics', {}).get('height_cm') or
+            175
+        )
+        
+        ftp = (
+            self.profile.get('fitness_markers', {}).get('ftp_watts') or
+            self.profile.get('ftp_watts') or 
+            200
+        )
+        
+        cycling_hours = (
+            self.profile.get('weekly_availability', {}).get('cycling_hours_target') or
+            self.profile.get('training_history', {}).get('current_weekly_hours') or
+            10
+        )
+        
+        age = self._calculate_age() or self.profile.get('health_factors', {}).get('age') or 35
+        sex = self.profile.get('sex', 'male').lower()
+        
+        # Activity level from lifestyle questionnaire
+        active_job = self.profile.get('lifestyle', {}).get('active_job', False)
+        activity_level = 'moderately_active' if active_job else 'sedentary'
+        
+        # Weight goal affects calorie target
+        weight_goal = self.profile.get('lifestyle', {}).get('weight_goal', 'maintain')
+        
+        # Calculate BMR using Mifflin-St Jeor equation
         if sex == 'male':
             bmr = (10 * weight_kg) + (6.25 * height_cm) - (5 * age) + 5
         else:
             bmr = (10 * weight_kg) + (6.25 * height_cm) - (5 * age) - 161
         
-        # Average daily training hours
+        # Activity multiplier for non-training expenditure
+        activity_multipliers = {
+            'sedentary': 1.2,
+            'lightly_active': 1.375,
+            'moderately_active': 1.55,
+            'very_active': 1.725
+        }
+        base_tdee = bmr * activity_multipliers.get(activity_level, 1.2)
+        
+        # Average daily training expenditure
         avg_daily_hours = cycling_hours / 7
-        
-        # Intensity factor estimate (0.65-0.75 for typical training)
-        intensity_factor = 0.7
-        
-        # Cycling expenditure (simplified)
+        intensity_factor = 0.7  # Typical training IF
         avg_power = ftp * intensity_factor
-        cycling_kcal = (avg_power / 75) * 5 * avg_daily_hours * 60  # ~5 kcal per L O2
+        cycling_kcal = (avg_power / 75) * 5 * avg_daily_hours * 60
         
-        # Activity multiplier
-        daily_kcal = bmr * 1.4 + cycling_kcal  # Moderately active base
+        # Total daily expenditure
+        daily_kcal = base_tdee + cycling_kcal
         
-        # Standard endurance athlete macro split:
-        # Carbs: 5-7g/kg (higher for more training)
-        # Protein: 1.6-2.0g/kg
-        # Fat: remainder (typically 0.8-1.2g/kg)
+        # Adjust for weight goal
+        if weight_goal == 'lose_slow':
+            daily_kcal -= 300  # Modest deficit
+        elif weight_goal == 'lose_fast':
+            daily_kcal -= 500  # More aggressive (not recommended during hard training)
+        elif weight_goal == 'gain':
+            daily_kcal += 300  # Slight surplus
         
-        # CHO: 5-7g/kg based on training volume
+        # Standard endurance athlete macro split based on training volume
+        # CHO: 5-8g/kg based on training volume
         if cycling_hours <= 6:
             cho_per_kg = 4.5
         elif cycling_hours <= 10:
@@ -2836,13 +2873,21 @@ document.addEventListener('DOMContentLoaded', function() {{
         
         cho_grams = int(weight_kg * cho_per_kg)
         
-        # Protein: 1.6-2.0g/kg for endurance athletes
-        pro_grams = int(weight_kg * 1.8)
+        # Protein: Higher for weight loss, older athletes, or high volume
+        pro_per_kg = 1.8
+        if weight_goal in ['lose_slow', 'lose_fast']:
+            pro_per_kg = 2.0  # Higher protein preserves muscle during deficit
+        if age >= 50:
+            pro_per_kg = max(pro_per_kg, 2.0)  # Masters need more protein
         
-        # Fat: ~1g/kg as baseline
-        fat_grams = int(weight_kg * 1.0)
+        pro_grams = int(weight_kg * pro_per_kg)
         
-        # Calculate total
+        # Fat: Minimum 0.8g/kg, remainder of calories
+        min_fat = int(weight_kg * 0.8)
+        remaining_kcal = daily_kcal - (cho_grams * 4) - (pro_grams * 4)
+        fat_grams = max(min_fat, int(remaining_kcal / 9))
+        
+        # Recalculate total for accuracy
         total_kcal = int((cho_grams * 4) + (pro_grams * 4) + (fat_grams * 9))
         
         # Percentages
@@ -2856,14 +2901,40 @@ document.addEventListener('DOMContentLoaded', function() {{
         easy_day_kcal = int(total_kcal * 0.9)
         easy_day_cho = int(cho_grams * 0.8)
         
+        # Weight goal notes
+        weight_note = ""
+        if weight_goal == 'lose_slow':
+            weight_note = "Includes 300 kcal deficit for gradual weight loss."
+        elif weight_goal == 'lose_fast':
+            weight_note = "⚠️ 500 kcal deficit — monitor energy and recovery closely."
+        elif weight_goal == 'gain':
+            weight_note = "Includes 300 kcal surplus for muscle building."
+        
         return f'''
 <section id="nutrition">
     <h2>Your Nutrition Targets</h2>
     
-    <p>Based on your profile ({weight_kg}kg, {ftp}W FTP, ~{cycling_hours}hrs/week), here are your daily nutrition targets:</p>
+    <p>Calculated from your questionnaire data:</p>
+    
+    <div class="nutrition-calc" style="margin-bottom: 20px;">
+        <h3 style="margin-top: 0; font-size: 12px; color: #666;">Your Stats</h3>
+        <table style="margin: 0; font-size: 13px;">
+            <tbody>
+                <tr><td style="border: none; padding: 4px 16px 4px 0;"><strong>Weight:</strong></td><td style="border: none;">{weight_kg} kg</td></tr>
+                <tr><td style="border: none; padding: 4px 16px 4px 0;"><strong>Height:</strong></td><td style="border: none;">{height_cm} cm</td></tr>
+                <tr><td style="border: none; padding: 4px 16px 4px 0;"><strong>Age:</strong></td><td style="border: none;">{age} years</td></tr>
+                <tr><td style="border: none; padding: 4px 16px 4px 0;"><strong>Sex:</strong></td><td style="border: none;">{sex.title()}</td></tr>
+                <tr><td style="border: none; padding: 4px 16px 4px 0;"><strong>FTP:</strong></td><td style="border: none;">{ftp}W ({ftp/weight_kg:.2f} W/kg)</td></tr>
+                <tr><td style="border: none; padding: 4px 16px 4px 0;"><strong>Training Volume:</strong></td><td style="border: none;">~{cycling_hours} hrs/week</td></tr>
+                <tr><td style="border: none; padding: 4px 16px 4px 0;"><strong>Daily Activity:</strong></td><td style="border: none;">{activity_level.replace('_', ' ').title()}</td></tr>
+                <tr><td style="border: none; padding: 4px 16px 4px 0;"><strong>Weight Goal:</strong></td><td style="border: none;">{weight_goal.replace('_', ' ').title()}</td></tr>
+            </tbody>
+        </table>
+    </div>
     
     <div class="nutrition-calc">
-        <h3 style="margin-top: 0;">Average Training Day</h3>
+        <h3 style="margin-top: 0;">Daily Targets — Average Training Day</h3>
+        {f'<p style="font-size: 12px; color: #666; margin-bottom: 16px;">{weight_note}</p>' if weight_note else ''}
         <div class="nutrition-macros">
             <div class="macro-box">
                 <span class="macro-value">{total_kcal}</span>
@@ -2886,6 +2957,9 @@ document.addEventListener('DOMContentLoaded', function() {{
                 <div class="macro-label">Fat</div>
             </div>
         </div>
+        <p style="font-size: 11px; color: #999; margin-top: 12px; text-align: center;">
+            BMR: {int(bmr)} kcal | Base TDEE: {int(base_tdee)} kcal | Training: +{int(cycling_kcal)} kcal/day avg
+        </p>
     </div>
     
     <h3>Day-Type Adjustments</h3>

@@ -8,6 +8,10 @@
 name: "Matti Rowe"
 email: "matti@gravelgod.com"
 athlete_id: "matti-rowe"  # Auto-generated from name
+birthday: "1986-05-15"  # YYYY-MM-DD
+sex: male
+height_cm: 180
+weight_kg: 75
 
 primary_goal: specific_race  # Options: specific_race, general_fitness, base_building, return_from_injury
 
