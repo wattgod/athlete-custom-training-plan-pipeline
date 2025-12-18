@@ -55,11 +55,22 @@ def parse_weekly_volume(volume: str) -> tuple[int, int]:
 
 def convert_day_availability(form_data: Dict, day: str) -> Dict:
     """Convert day availability from form to profile format."""
-    available = form_data.get(f'{day}_available', False)
-    time = form_data.get(f'{day}_time', '')
-    duration = form_data.get(f'{day}_duration', '')
+    # Support multiple field naming conventions
+    # Old: monday_available, monday_time, monday_duration
+    # New: monday_availability, monday_time_slots, monday_max_duration, monday_is_key_day_ok
     
-    if not available:
+    # Check new format first
+    availability = form_data.get(f'{day}_availability', '')
+    time_slots_raw = form_data.get(f'{day}_time_slots', [])
+    max_duration = form_data.get(f'{day}_max_duration', '')
+    is_key_day_ok = form_data.get(f'{day}_is_key_day_ok', '')
+    
+    # Fall back to old format
+    if not availability:
+        available = form_data.get(f'{day}_available', False)
+        availability = 'available' if available else 'unavailable'
+    
+    if availability == 'unavailable':
         return {
             'availability': 'unavailable',
             'time_slots': [],
@@ -67,25 +78,43 @@ def convert_day_availability(form_data: Dict, day: str) -> Dict:
             'is_key_day_ok': False
         }
     
-    # Convert time to time_slots
+    # Parse time slots
     time_slots = []
-    if time in ['early_morning', 'morning']:
-        time_slots = ['am']
-    elif time in ['afternoon', 'evening']:
-        time_slots = ['pm']
-    elif time == 'flexible':
-        time_slots = ['am', 'pm']
+    if isinstance(time_slots_raw, list):
+        time_slots = time_slots_raw
+    elif isinstance(time_slots_raw, str) and time_slots_raw:
+        time_slots = [time_slots_raw]
     else:
-        time_slots = ['am']  # Default
+        # Fall back to old format
+        time = form_data.get(f'{day}_time', '')
+        if time in ['early_morning', 'morning', 'am']:
+            time_slots = ['am']
+        elif time in ['afternoon', 'evening', 'pm']:
+            time_slots = ['pm']
+        elif time == 'flexible':
+            time_slots = ['am', 'pm']
+        else:
+            time_slots = ['am']  # Default
     
-    # Convert duration
-    max_duration = int(duration) if duration else 60
+    # Parse duration
+    try:
+        max_duration_min = int(max_duration) if max_duration else int(form_data.get(f'{day}_duration', 60))
+    except (ValueError, TypeError):
+        max_duration_min = 60
+    
+    # Parse is_key_day_ok
+    if isinstance(is_key_day_ok, bool):
+        key_day_ok = is_key_day_ok
+    elif isinstance(is_key_day_ok, str):
+        key_day_ok = is_key_day_ok.lower() in ['true', 'yes', '1']
+    else:
+        key_day_ok = True  # Default to true if available
     
     return {
-        'availability': 'available',
+        'availability': availability if availability in ['available', 'limited'] else 'available',
         'time_slots': time_slots,
-        'max_duration_min': max_duration,
-        'is_key_day_ok': True  # Default to true if available
+        'max_duration_min': max_duration_min,
+        'is_key_day_ok': key_day_ok
     }
 
 
@@ -382,9 +411,14 @@ def create_profile_from_form(athlete_id: str, form_data: Dict) -> Dict:
         },
         
         'weekly_availability': {
-            'total_hours_available': max_hours + 2,  # Add buffer for strength
-            'cycling_hours_target': max_hours,
-            'strength_sessions_max': 2 if form_data.get('strength_interest') == 'eager' else 1 if form_data.get('strength_interest') == 'willing' else 0
+            'total_hours_available': int(form_data.get('weekly_hours', max_hours)) + 2 if form_data.get('weekly_hours') else max_hours + 2,
+            'cycling_hours_target': int(form_data.get('weekly_hours', max_hours)) if form_data.get('weekly_hours') else max_hours,
+            'strength_sessions_max': (
+                int(form_data.get('strength_sessions_max', 0)) if form_data.get('strength_sessions_max') 
+                else 2 if form_data.get('strength_interest') == 'eager' 
+                else 1 if form_data.get('strength_interest') == 'willing' 
+                else 0
+            )
         },
         
         'preferred_days': {
