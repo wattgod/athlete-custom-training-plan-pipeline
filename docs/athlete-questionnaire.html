@@ -403,14 +403,91 @@
 </head>
 <body>
     <h1>Gravel God Coaching Intake</h1>
-    <p class="intro">This comprehensive intake helps us create a personalized training plan matched to your goals, ability, and lifestyle constraints. This takes approximately 20-25 minutes to complete.</p>
+    <p class="intro">This comprehensive intake helps us create a personalized training plan matched to your goals, ability, and lifestyle constraints. Takes approximately 20-25 minutes.</p>
+    
+    <!-- Progress Bar -->
+    <div class="progress-container" style="margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 13px; font-weight: 600;">PROGRESS</span>
+            <span id="progressPercent" style="font-size: 13px; font-weight: 600;">0%</span>
+        </div>
+        <div style="height: 8px; background: #e0e0e0; border: 1px solid #000;">
+            <div id="progressBar" style="height: 100%; width: 0%; background: #000; transition: width 0.3s;"></div>
+        </div>
+    </div>
+
+    <!-- Section Navigation -->
+    <nav class="section-nav" style="margin-bottom: 32px; padding: 12px; background: #f5f5f5; border: 1px solid #000; font-size: 12px; line-height: 2;">
+        <a href="#section-0" style="color: #000;">Coaching</a> → 
+        <a href="#section-1" style="color: #000;">Contact</a> → 
+        <a href="#section-2" style="color: #000;">Racing</a> → 
+        <a href="#section-3" style="color: #000;">Fitness</a> → 
+        <a href="#section-4" style="color: #000;">Strengths</a> → 
+        <a href="#section-5" style="color: #000;">Availability</a> → 
+        <a href="#section-6" style="color: #000;">Equipment</a> → 
+        <a href="#section-7" style="color: #000;">Strength</a> → 
+        <a href="#section-8" style="color: #000;">Work</a> → 
+        <a href="#section-9" style="color: #000;">Health</a> → 
+        <a href="#section-10" style="color: #000;">Social</a> → 
+        <a href="#section-11" style="color: #000;">Coaching</a> → 
+        <a href="#section-12" style="color: #000;">Personal</a>
+    </nav>
     
     <form id="intakeForm" class="survey-form">
         <!-- Honeypot field for bot detection -->
         <input type="text" name="website" class="honeypot" tabindex="-1" autocomplete="off">
+
+        <!-- SECTION 0: COACHING PACKAGE -->
+        <div class="question-group" id="section-0">
+            <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 1.5rem; padding-bottom: 8px; border-bottom: 2px solid var(--gg-border); text-transform: uppercase; letter-spacing: 0.1em;">0. Coaching Package</h2>
+            
+            <div class="question-group">
+                <label class="question-label">
+                    Select Your Coaching Tier <span class="required">*</span>
+                    <span class="label-hint">Same coach. Same standards. Different involvement. <a href="https://gravelgodcycling.com/coaching/" target="_blank" style="color: #000;">Full details →</a></span>
+                </label>
+                
+                <div class="radio-group" style="gap: 16px;">
+                    <div class="radio-option" style="padding: 16px; border: 2px solid #000;">
+                        <input type="radio" id="tier_min" name="coaching_tier" value="min" required>
+                        <label for="tier_min" style="flex: 1;">
+                            <strong style="font-size: 16px;">MIN — $199/mo</strong><br>
+                            <span style="font-size: 13px; color: #666;">
+                                Weekly review • Light analysis • Quarterly calls<br>
+                                <em>For experienced athletes who execute without hand-holding</em>
+                            </span>
+                        </label>
+                    </div>
+                    <div class="radio-option" style="padding: 16px; border: 2px solid #000; background: #f0f0f0;">
+                        <input type="radio" id="tier_mid" name="coaching_tier" value="mid">
+                        <label for="tier_mid" style="flex: 1;">
+                            <strong style="font-size: 16px;">MID — $299/mo</strong> <span style="background: #000; color: #fff; padding: 2px 6px; font-size: 10px; margin-left: 8px;">POPULAR</span><br>
+                            <span style="font-size: 13px; color: #666;">
+                                Weekly review • Thorough analysis • Monthly calls<br>
+                                <em>For serious athletes who want clear feedback + weekly adjustments</em>
+                            </span>
+                        </label>
+                    </div>
+                    <div class="radio-option" style="padding: 16px; border: 2px solid #000;">
+                        <input type="radio" id="tier_max" name="coaching_tier" value="max">
+                        <label for="tier_max" style="flex: 1;">
+                            <strong style="font-size: 16px;">MAX — $1,200/mo</strong><br>
+                            <span style="font-size: 13px; color: #666;">
+                                Daily review • Extensive support • On-demand calls<br>
+                                <em>For athletes who want immediate feedback + high-touch support</em>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+                
+                <p class="question-help" style="margin-top: 16px; padding: 12px; background: #fff8e1; border: 1px solid #000;">
+                    <strong>Reality check:</strong> If you skip workouts, underfuel, or ignore feedback, no tier fixes that. I'll tell you within 24 hours if it's not a fit.
+                </p>
+            </div>
+        </div>
         
         <!-- SECTION 1: CONTACT & DEMOGRAPHICS -->
-        <div class="question-group">
+        <div class="question-group" id="section-1">
             <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 1.5rem; padding-bottom: 8px; border-bottom: 2px solid var(--gg-border); text-transform: uppercase; letter-spacing: 0.1em;">1. Contact & Demographics</h2>
                 <div class="question-group">
                     <label class="question-label" for="name">
@@ -472,7 +549,7 @@
         </div>
 
         <!-- SECTION 2: RACING GOALS -->
-        <div class="question-group">
+        <div class="question-group" id="section-2">
             <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 1.5rem; padding-bottom: 8px; border-bottom: 2px solid var(--gg-border); text-transform: uppercase; letter-spacing: 0.1em;">2. Racing Goals</h2>
             
             <div class="question-group">
@@ -511,9 +588,11 @@
                                 </div>
                                 <div>
                                     <label style="font-size: 12px; font-weight: 500;">Date <span class="required">*</span></label>
-                                    <input type="date" name="a_event_1_date" required>
+                                    <input type="date" name="a_event_1_date" id="a_event_1_date" required>
                                 </div>
                             </div>
+                            <!-- Race Date Warning -->
+                            <div id="race-date-warning" style="display: none; margin-bottom: 12px; padding: 10px; font-size: 13px; border: 2px solid #000;"></div>
                             <div class="form-row">
                                 <div>
                                     <label style="font-size: 12px; font-weight: 500;">Distance</label>
@@ -604,7 +683,7 @@
         </div>
 
         <!-- SECTION 3: CURRENT FITNESS -->
-        <div class="question-group">
+        <div class="question-group" id="section-3">
             <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 1.5rem; padding-bottom: 8px; border-bottom: 2px solid var(--gg-border); text-transform: uppercase; letter-spacing: 0.1em;">3. Current Fitness</h2>
             
             <div class="info-box">
@@ -633,6 +712,13 @@
                     </label>
                     <input type="number" id="resting_hr" name="resting_hr" placeholder="e.g., 52" min="30" max="100">
                 </div>
+            </div>
+
+            <!-- W/kg Calculator Display -->
+            <div id="wkg-display" style="display: none; margin-bottom: 1.5rem; padding: 12px 16px; background: #f0f8ff; border: 2px solid #000;">
+                <span style="font-size: 13px; font-weight: 600;">YOUR W/kg:</span>
+                <span id="wkg-value" style="font-size: 20px; font-weight: 700; margin-left: 12px;">--</span>
+                <span id="wkg-category" style="font-size: 13px; margin-left: 12px; color: #666;"></span>
             </div>
 
             <div class="form-row">
@@ -725,7 +811,7 @@
         </div>
 
         <!-- SECTION 6: EQUIPMENT & ENVIRONMENT -->
-        <div class="question-group">
+        <div class="question-group" id="section-6">
             <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 1.5rem; padding-bottom: 8px; border-bottom: 2px solid var(--gg-border); text-transform: uppercase; letter-spacing: 0.1em;">6. Equipment & Environment</h2>
             
             <div class="question-group">
@@ -864,7 +950,7 @@
         </div>
 
         <!-- SECTION 7: STRENGTH & MOBILITY -->
-        <div class="question-group">
+        <div class="question-group" id="section-7">
             <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 1.5rem; padding-bottom: 8px; border-bottom: 2px solid var(--gg-border); text-transform: uppercase; letter-spacing: 0.1em;">7. Strength & Mobility</h2>
             
             <div class="question-group">
@@ -959,7 +1045,7 @@
         </div>
 
         <!-- SECTION 5: WEEKLY AVAILABILITY -->
-        <div class="question-group">
+        <div class="question-group" id="section-5">
             <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 1.5rem; padding-bottom: 8px; border-bottom: 2px solid var(--gg-border); text-transform: uppercase; letter-spacing: 0.1em;">5. Weekly Availability</h2>
             
             <div class="info-box">
@@ -1293,7 +1379,7 @@
         </div>
 
         <!-- SECTION 12: PERSONAL CONTEXT -->
-        <div class="question-group">
+        <div class="question-group" id="section-12">
             <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 1.5rem; padding-bottom: 8px; border-bottom: 2px solid var(--gg-border); text-transform: uppercase; letter-spacing: 0.1em;">12. Personal Context</h2>
             
             <div class="info-box">
@@ -1445,6 +1531,122 @@
             }
         }
 
+        // Race Date Validation
+        function validateRaceDate() {
+            const dateInput = document.getElementById('a_event_1_date');
+            const warning = document.getElementById('race-date-warning');
+            
+            if (!dateInput || !dateInput.value) {
+                if (warning) warning.style.display = 'none';
+                return;
+            }
+            
+            const raceDate = new Date(dateInput.value);
+            const today = new Date();
+            const weeksOut = Math.floor((raceDate - today) / (7 * 24 * 60 * 60 * 1000));
+            
+            let message = '';
+            let bgColor = '';
+            
+            if (weeksOut < 0) {
+                message = '⚠️ This date is in the past';
+                bgColor = '#ffebee';
+            } else if (weeksOut < 8) {
+                message = `⚠️ ${weeksOut} weeks out — Very short timeline. Plan will be compressed, expectations adjusted.`;
+                bgColor = '#fff3e0';
+            } else if (weeksOut < 12) {
+                message = `⏱️ ${weeksOut} weeks out — Tight but workable. Some phase compression expected.`;
+                bgColor = '#fff8e1';
+            } else if (weeksOut < 16) {
+                message = `✓ ${weeksOut} weeks out — Good timeline for meaningful preparation.`;
+                bgColor = '#e8f5e9';
+            } else if (weeksOut < 24) {
+                message = `✓ ${weeksOut} weeks out — Solid timeline. Full periodization possible.`;
+                bgColor = '#e8f5e9';
+            } else if (weeksOut <= 52) {
+                message = `✓ ${weeksOut} weeks out — Excellent timeline for comprehensive preparation.`;
+                bgColor = '#e8f5e9';
+            } else {
+                message = `📅 ${weeksOut} weeks out — That's over a year away. We'll plan in phases.`;
+                bgColor = '#e3f2fd';
+            }
+            
+            if (warning) {
+                warning.textContent = message;
+                warning.style.display = 'block';
+                warning.style.background = bgColor;
+            }
+        }
+
+        // W/kg Calculator
+        function updateWkg() {
+            const ftpInput = document.getElementById('ftp');
+            const weightKgInput = document.getElementById('weight_kg');
+            const weightLbsInput = document.getElementById('weight_lbs');
+            const wkgDisplay = document.getElementById('wkg-display');
+            const wkgValue = document.getElementById('wkg-value');
+            const wkgCategory = document.getElementById('wkg-category');
+            
+            if (!ftpInput || !wkgDisplay || !wkgValue) return;
+            
+            const ftp = parseFloat(ftpInput.value);
+            let weightKg = parseFloat(weightKgInput?.value);
+            
+            // Convert from lbs if needed
+            if (!weightKg && weightLbsInput?.value) {
+                weightKg = parseFloat(weightLbsInput.value) * 0.453592;
+            }
+            
+            if (ftp && weightKg && ftp > 0 && weightKg > 0) {
+                const wkg = (ftp / weightKg).toFixed(2);
+                wkgValue.textContent = wkg;
+                wkgDisplay.style.display = 'block';
+                
+                // Add category
+                let category = '';
+                if (wkg < 2.5) category = 'Beginner';
+                else if (wkg < 3.0) category = 'Recreational';
+                else if (wkg < 3.5) category = 'Trained';
+                else if (wkg < 4.0) category = 'Competitive';
+                else if (wkg < 4.5) category = 'Very Strong';
+                else if (wkg < 5.0) category = 'Cat 1/2';
+                else if (wkg < 5.5) category = 'Elite Amateur';
+                else if (wkg < 6.0) category = 'Domestic Pro';
+                else category = 'World Tour';
+                
+                if (wkgCategory) wkgCategory.textContent = `(${category})`;
+            } else {
+                wkgDisplay.style.display = 'none';
+            }
+        }
+
+        // Progress Bar Update
+        function updateProgress() {
+            const form = document.getElementById('intakeForm');
+            const allInputs = form.querySelectorAll('input[required], select[required], textarea[required]');
+            let filled = 0;
+            
+            allInputs.forEach(input => {
+                if (input.type === 'radio') {
+                    const name = input.name;
+                    if (form.querySelector(`input[name="${name}"]:checked`)) {
+                        filled++;
+                    }
+                } else if (input.value.trim()) {
+                    filled++;
+                }
+            });
+            
+            // Count unique radio groups
+            const radioGroups = new Set();
+            form.querySelectorAll('input[type="radio"][required]').forEach(r => radioGroups.add(r.name));
+            const totalRequired = allInputs.length - form.querySelectorAll('input[type="radio"][required]').length + radioGroups.size;
+            
+            const percent = Math.round((filled / totalRequired) * 100);
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('progressPercent').textContent = percent + '%';
+        }
+
         // Conditional field logic
         function setupConditionals() {
             // Race goal fields
@@ -1586,6 +1788,56 @@
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             setupConditionals();
+            
+            // Race date validation
+            const raceDateInput = document.getElementById('a_event_1_date');
+            if (raceDateInput) {
+                raceDateInput.addEventListener('change', validateRaceDate);
+                validateRaceDate(); // Check on load if value exists
+            }
+            
+            // W/kg calculator
+            const ftpInput = document.getElementById('ftp');
+            const weightKgInput = document.getElementById('weight_kg');
+            const weightLbsInput = document.getElementById('weight_lbs');
+            
+            if (ftpInput) ftpInput.addEventListener('input', updateWkg);
+            if (weightKgInput) weightKgInput.addEventListener('input', updateWkg);
+            if (weightLbsInput) weightLbsInput.addEventListener('input', updateWkg);
+            
+            // Progress bar updates
+            document.querySelectorAll('input, select, textarea').forEach(el => {
+                el.addEventListener('change', updateProgress);
+                el.addEventListener('input', updateProgress);
+            });
+            updateProgress(); // Initial calculation
+            
+            // Auto-save every 30 seconds if form has changed
+            let lastFormState = '';
+            setInterval(() => {
+                const form = document.getElementById('intakeForm');
+                const currentState = new FormData(form).toString();
+                if (currentState !== lastFormState && lastFormState !== '') {
+                    // Silent auto-save (no alert)
+                    const formData = new FormData(form);
+                    const data = {};
+                    formData.forEach((value, key) => {
+                        if (data[key]) {
+                            if (Array.isArray(data[key])) {
+                                data[key].push(value);
+                            } else {
+                                data[key] = [data[key], value];
+                            }
+                        } else {
+                            data[key] = value;
+                        }
+                    });
+                    data._raceEventCounts = { a: aEventCount, b: bEventCount, c: cEventCount };
+                    localStorage.setItem('ggIntakeFormData', JSON.stringify(data));
+                    console.log('Auto-saved at', new Date().toLocaleTimeString());
+                }
+                lastFormState = currentState;
+            }, 30000);
             
             // Check for saved progress
             if (localStorage.getItem('ggIntakeFormData')) {
