@@ -76,7 +76,23 @@ def generate_athlete_plan(athlete_id: str) -> Dict:
     Returns generation result dict.
     """
     if not UNIFIED_AVAILABLE:
-        raise RuntimeError("Unified generator not available")
+        print("⚠️  Unified generator not available - creating placeholder plan")
+        # Create placeholder plan config
+        output_dir = Path(f"athletes/{athlete_id}/plans/current")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        placeholder = {
+            "status": "pending_generation",
+            "athlete_id": athlete_id,
+            "created": datetime.now().isoformat(),
+            "note": "Full plan generation requires unified generator from gravel-landing-page-project"
+        }
+        
+        with open(output_dir / "plan_config.yaml", 'w') as f:
+            yaml.dump(placeholder, f, default_flow_style=False)
+        
+        print(f"✅ Placeholder plan created at {output_dir}")
+        return {"status": "placeholder", "path": str(output_dir)}
     
     # Load data
     profile = load_profile(athlete_id)
