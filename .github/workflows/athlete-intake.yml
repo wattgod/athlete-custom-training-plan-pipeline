@@ -86,29 +86,19 @@ jobs:
             --input-file "athletes/${{ steps.payload.outputs.athlete_id }}/form_data.json"
       
       - name: Validate profile
-        run: |
-          cd athletes/scripts
-          python validate_profile.py "${{ steps.payload.outputs.athlete_id }}"
+        run: python athletes/scripts/validate_profile.py "${{ steps.payload.outputs.athlete_id }}"
       
       - name: Derive classifications
-        run: |
-          cd athletes/scripts
-          python derive_classifications.py "${{ steps.payload.outputs.athlete_id }}"
+        run: python athletes/scripts/derive_classifications.py "${{ steps.payload.outputs.athlete_id }}"
       
       - name: Build weekly structure
-        run: |
-          cd athletes/scripts
-          python build_weekly_structure.py "${{ steps.payload.outputs.athlete_id }}"
+        run: python athletes/scripts/build_weekly_structure.py "${{ steps.payload.outputs.athlete_id }}"
       
       - name: Generate athlete plan
-        run: |
-          cd athletes/scripts
-          python generate_athlete_plan.py "${{ steps.payload.outputs.athlete_id }}"
+        run: python athletes/scripts/generate_athlete_plan.py "${{ steps.payload.outputs.athlete_id }}"
       
       - name: Generate athlete guide
-        run: |
-          cd athletes/scripts
-          python generate_athlete_guide.py "${{ steps.payload.outputs.athlete_id }}"
+        run: python athletes/scripts/generate_athlete_guide.py "${{ steps.payload.outputs.athlete_id }}"
       
       - name: Commit generated plan
         run: |
