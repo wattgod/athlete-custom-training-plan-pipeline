@@ -43,11 +43,31 @@ jobs:
             # Save full payload to file (JSON escaping handled by jq)
             echo '${{ toJson(github.event.client_payload.data) }}' > /tmp/form_data.json
           else
+            # Manual trigger - use test data
             echo "email=${{ github.event.inputs.email }}" >> $GITHUB_OUTPUT
             echo "athlete_id=${{ github.event.inputs.athlete_id }}" >> $GITHUB_OUTPUT
             echo "coaching_tier=mid" >> $GITHUB_OUTPUT
             echo "name=Manual Test" >> $GITHUB_OUTPUT
-            echo '{}' > /tmp/form_data.json
+            echo "is_manual=true" >> $GITHUB_OUTPUT
+            
+            # Create minimal test form data
+            cat > /tmp/form_data.json << 'EOF'
+          {
+            "name": "Manual Test",
+            "email": "${{ github.event.inputs.email }}",
+            "coaching_tier": "mid",
+            "birthday": "1986-01-15",
+            "height_ft": "5",
+            "height_in": "10",
+            "weight_lbs": "165",
+            "sex": "male",
+            "has_race_goal": "yes",
+            "a_event_1_name": "Unbound 200",
+            "a_event_1_date": "2026-06-07",
+            "a_event_1_distance": "200",
+            "a_event_1_goal": "compete"
+          }
+          EOF
           fi
           
           echo "Form data saved to /tmp/form_data.json"
