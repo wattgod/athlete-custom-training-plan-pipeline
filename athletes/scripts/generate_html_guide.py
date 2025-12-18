@@ -613,7 +613,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid currentColor;
         }}
 
-        /* ATP TABLE */
+        /* ATP TABLE - IMPROVED READABILITY */
         .atp-container {{
             margin: 24px 0;
         }}
@@ -660,7 +660,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .atp-week-phase.base {{ background: #888; }}
         .atp-week-phase.build {{ background: #444; }}
         .atp-week-phase.peak {{ background: #000; }}
-        .atp-week-phase.taper {{ background: #aaa; }}
+        .atp-week-phase.taper {{ background: #aaa; color: #000; }}
 
         .atp-week-meta {{
             display: flex;
@@ -697,41 +697,73 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         .atp-day {{
-            border: 1px solid var(--gg-border);
-            padding: 8px;
-            font-size: 11px;
-            min-height: 80px;
+            border: 2px solid var(--gg-border);
+            padding: 10px;
+            font-size: 12px;
+            min-height: 90px;
+            background: #fff;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }}
+
+        .atp-day:hover {{
+            background: #f5f5f5;
+            transform: translateY(-2px);
+            box-shadow: 2px 2px 0 #000;
         }}
 
         .atp-day-name {{
-            font-weight: 600;
+            font-weight: 700;
             text-transform: uppercase;
-            font-size: 10px;
-            letter-spacing: 0.05em;
-            margin-bottom: 6px;
-            padding-bottom: 4px;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
             border-bottom: 1px solid #ddd;
+            color: #333;
         }}
 
         .atp-day.key-day {{
-            background: #f0f0f0;
+            background: #000;
+            color: #fff;
         }}
 
         .atp-day.key-day .atp-day-name {{
-            background: #000;
             color: #fff;
-            margin: -8px -8px 6px -8px;
-            padding: 4px 8px;
+            border-bottom-color: #444;
+        }}
+
+        .atp-day.key-day .atp-workout-item {{
+            color: #fff;
+        }}
+
+        .atp-day.strength-day {{
+            background: #f0f0f0;
+            border-style: dashed;
+        }}
+
+        .atp-day.strength-day .atp-day-name {{
+            color: #666;
         }}
 
         .atp-workout-item {{
-            margin: 4px 0;
-            font-size: 10px;
+            margin: 6px 0;
+            font-size: 11px;
+            font-weight: 500;
+            color: #333;
         }}
 
         .atp-workout-item.strength {{
             color: #666;
-            font-style: italic;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }}
+
+        .atp-workout-item.strength::before {{
+            content: '💪';
+            font-size: 12px;
         }}
 
         .atp-focus {{
@@ -747,7 +779,230 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             letter-spacing: 0.05em;
         }}
 
+        /* WORKOUT MODAL */
+        .workout-modal {{
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }}
+
+        .workout-modal.open {{
+            display: flex;
+        }}
+
+        .workout-modal-content {{
+            background: #fff;
+            border: 3px solid #000;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            padding: 24px;
+        }}
+
+        .workout-modal-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #000;
+        }}
+
+        .workout-modal-header h3 {{
+            margin: 0;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }}
+
+        .workout-modal-close {{
+            background: #000;
+            color: #fff;
+            border: none;
+            width: 32px;
+            height: 32px;
+            font-size: 18px;
+            cursor: pointer;
+            font-family: inherit;
+        }}
+
+        .workout-modal-close:hover {{
+            background: #333;
+        }}
+
+        .workout-detail {{
+            margin: 12px 0;
+        }}
+
+        .workout-detail-label {{
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #666;
+            margin-bottom: 4px;
+        }}
+
+        /* RACE ACCORDION */
+        .race-accordion {{
+            margin: 20px 0;
+        }}
+
+        .race-accordion-item {{
+            border: 2px solid var(--gg-border);
+            margin-bottom: -2px;
+        }}
+
+        .race-accordion-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            cursor: pointer;
+            background: #fff;
+            transition: background 0.15s;
+        }}
+
+        .race-accordion-header:hover {{
+            background: #f5f5f5;
+        }}
+
+        .race-accordion-title {{
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }}
+
+        .race-priority {{
+            width: 32px;
+            height: 32px;
+            border: 3px solid #000;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+        }}
+
+        .race-priority.a {{ background: #000; color: #fff; }}
+        .race-priority.b {{ background: #666; color: #fff; }}
+        .race-priority.c {{ background: #fff; color: #000; }}
+
+        .race-name {{
+            font-weight: 600;
+            font-size: 14px;
+        }}
+
+        .race-date {{
+            font-size: 12px;
+            color: #666;
+        }}
+
+        .race-accordion-toggle {{
+            font-size: 20px;
+            font-weight: 700;
+            transition: transform 0.2s;
+        }}
+
+        .race-accordion-item.open .race-accordion-toggle {{
+            transform: rotate(45deg);
+        }}
+
+        .race-accordion-content {{
+            display: none;
+            padding: 20px;
+            border-top: 1px solid var(--gg-border);
+            background: #f9f9f9;
+        }}
+
+        .race-accordion-item.open .race-accordion-content {{
+            display: block;
+        }}
+
+        .race-details-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+        }}
+
+        .race-detail {{
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 12px;
+        }}
+
+        .race-detail-label {{
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #666;
+            margin-bottom: 4px;
+        }}
+
+        .race-detail-value {{
+            font-size: 14px;
+            font-weight: 600;
+        }}
+
+        /* NUTRITION SECTION */
+        .nutrition-calc {{
+            border: 2px solid var(--gg-border);
+            padding: 20px;
+            margin: 20px 0;
+            background: var(--gg-soft);
+        }}
+
+        .nutrition-macros {{
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin: 16px 0;
+        }}
+
+        .macro-box {{
+            border: 2px solid var(--gg-border);
+            padding: 16px;
+            text-align: center;
+            background: #fff;
+        }}
+
+        .macro-value {{
+            font-size: 28px;
+            font-weight: 700;
+            display: block;
+        }}
+
+        .macro-unit {{
+            font-size: 12px;
+            color: #666;
+        }}
+
+        .macro-label {{
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #666;
+            margin-top: 4px;
+        }}
+
         @media (max-width: 768px) {{
+            .atp-workouts {{
+                grid-template-columns: repeat(2, 1fr);
+            }}
+            .nutrition-macros {{
+                grid-template-columns: repeat(2, 1fr);
+            }}
+        }}
+
+        @media (max-width: 480px) {{
             .atp-workouts {{
                 grid-template-columns: 1fr;
             }}
@@ -900,6 +1155,7 @@ class GuideGenerator:
         sections.append(self._generate_training_zones())
         sections.append(self._generate_workout_execution())
         sections.append(self._generate_strength_program())
+        sections.append(self._generate_nutrition_section())
         sections.append(self._generate_fueling_hydration())
         sections.append(self._generate_mental_training())
         sections.append(self._generate_race_tactics())
@@ -958,6 +1214,7 @@ class GuideGenerator:
             ("training-zones", "Training Zones"),
             ("workout-execution", "Workout Execution"),
             ("strength-program", "Your Strength Program"),
+            ("nutrition", "Your Nutrition Targets"),
             ("fueling", "Fueling & Hydration"),
             ("mental-training", "Mental Training"),
             ("race-tactics", f"Race Tactics for {self._get_race_name()}"),
@@ -1036,7 +1293,7 @@ class GuideGenerator:
 '''
     
     def _generate_race_timeline(self) -> str:
-        """Generate visual race timeline showing A/B/C events."""
+        """Generate accordion-style race calendar showing A/B/C events."""
         target_race = self.profile.get('target_race', {})
         a_events = self.profile.get('a_events', [])
         b_events = self.profile.get('b_events', [])
@@ -1047,18 +1304,21 @@ class GuideGenerator:
             a_events = [{
                 'name': target_race.get('name', 'A Race'),
                 'date': target_race.get('date', ''),
-                'distance': target_race.get('distance', ''),
-                'goal': target_race.get('goal_type', 'compete')
+                'distance': target_race.get('distance', target_race.get('distance_miles', '')),
+                'distance_unit': target_race.get('distance_unit', 'miles'),
+                'goal': target_race.get('goal_type', 'compete'),
+                'elevation': target_race.get('elevation', ''),
+                'notes': target_race.get('notes', '')
             }]
         
         # Build event list with dates
         all_events = []
         for e in a_events:
-            all_events.append({**e, 'priority': 'A', 'class': 'a-event'})
+            all_events.append({**e, 'priority': 'A', 'priority_class': 'a'})
         for e in b_events:
-            all_events.append({**e, 'priority': 'B', 'class': 'b-event'})
+            all_events.append({**e, 'priority': 'B', 'priority_class': 'b'})
         for e in c_events:
-            all_events.append({**e, 'priority': 'C', 'class': 'c-event'})
+            all_events.append({**e, 'priority': 'C', 'priority_class': 'c'})
         
         # Sort by date
         def parse_date(d):
@@ -1069,84 +1329,75 @@ class GuideGenerator:
         
         all_events.sort(key=parse_date)
         
-        # Calculate timeline positions
-        if all_events:
-            dates = [parse_date(e) for e in all_events]
-            min_date = min(dates)
-            max_date = max(dates)
-            total_days = (max_date - min_date).days or 1
-            
-            event_markers = []
-            for e in all_events:
-                d = parse_date(e)
-                position = ((d - min_date).days / total_days) * 90 + 5  # 5-95% range
-                event_markers.append(f'''
-                    <div class="timeline-event {e['class']}" style="left: {position}%;">
-                        <div class="marker">{e['priority']}</div>
-                        <div class="event-name">{e.get('name', 'Race')[:15]}</div>
-                        <div class="event-date">{e.get('date', '')}</div>
-                    </div>
-                ''')
-            
-            markers_html = "\n".join(event_markers)
-            start_label = min_date.strftime('%b %Y')
-            end_label = max_date.strftime('%b %Y')
-        else:
-            markers_html = '<p style="text-align: center; padding: 20px;">No race events defined</p>'
-            start_label = "Start"
-            end_label = "Race Day"
+        # Calculate weeks until race
+        today = datetime.now()
         
-        # Event details table
-        event_rows = []
-        for e in all_events:
-            goal_badge = f'<span style="background:#000;color:#fff;padding:2px 6px;font-size:10px;">{e.get("goal", "").upper()}</span>' if e.get('goal') else ''
-            event_rows.append(f'''
-                <tr>
-                    <td><strong>{e['priority']}</strong></td>
-                    <td>{e.get('name', 'TBD')}</td>
-                    <td>{e.get('date', 'TBD')}</td>
-                    <td>{e.get('distance', '')} {e.get('distance_unit', '')}</td>
-                    <td>{goal_badge}</td>
-                </tr>
+        # Build accordion items
+        accordion_items = []
+        for i, e in enumerate(all_events):
+            race_date = parse_date(e)
+            weeks_out = max(0, (race_date - today).days // 7)
+            
+            # Format date nicely
+            date_str = race_date.strftime('%B %d, %Y') if e.get('date') else 'TBD'
+            
+            # Goal description
+            goal_desc = {
+                'finish': 'Complete the distance',
+                'compete': 'Race competitively (top 50%)',
+                'podium': 'Podium finish (top 3 AG)',
+                'pr': 'Personal record'
+            }.get(e.get('goal', ''), e.get('goal', 'TBD'))
+            
+            open_class = 'open' if i == 0 else ''  # First one open by default
+            
+            accordion_items.append(f'''
+            <div class="race-accordion-item {open_class}">
+                <div class="race-accordion-header" onclick="this.parentElement.classList.toggle('open')">
+                    <div class="race-accordion-title">
+                        <div class="race-priority {e['priority_class']}">{e['priority']}</div>
+                        <div>
+                            <div class="race-name">{e.get('name', 'Race')}</div>
+                            <div class="race-date">{date_str} · {weeks_out} weeks out</div>
+                        </div>
+                    </div>
+                    <span class="race-accordion-toggle">+</span>
+                </div>
+                <div class="race-accordion-content">
+                    <div class="race-details-grid">
+                        <div class="race-detail">
+                            <div class="race-detail-label">Distance</div>
+                            <div class="race-detail-value">{e.get('distance', 'TBD')} {e.get('distance_unit', '')}</div>
+                        </div>
+                        <div class="race-detail">
+                            <div class="race-detail-label">Goal</div>
+                            <div class="race-detail-value">{goal_desc}</div>
+                        </div>
+                        <div class="race-detail">
+                            <div class="race-detail-label">Priority</div>
+                            <div class="race-detail-value">{e['priority']} Event — {'Peak form' if e['priority'] == 'A' else 'Important' if e['priority'] == 'B' else 'Training race'}</div>
+                        </div>
+                        <div class="race-detail">
+                            <div class="race-detail-label">Taper</div>
+                            <div class="race-detail-value">{'Full 2-week taper' if e['priority'] == 'A' else '1-week mini-taper' if e['priority'] == 'B' else 'None — train through'}</div>
+                        </div>
+                    </div>
+                    {f'<p style="margin-top: 12px; font-size: 13px; color: #666;"><strong>Notes:</strong> {e.get("notes", "")}</p>' if e.get('notes') else ''}
+                </div>
+            </div>
             ''')
         
-        events_table = "\n".join(event_rows) if event_rows else '<tr><td colspan="5">No events defined</td></tr>'
+        accordion_html = "\n".join(accordion_items) if accordion_items else '<p>No race events defined. Add your target races to personalize this section.</p>'
         
         return f'''
 <section id="race-timeline">
     <h2>2 · Your Race Calendar</h2>
     
-    <p>Your season at a glance. A events are your primary targets. B events are important but not peak priorities. C events are training races or for fun.</p>
+    <p>Click any race to expand details. A events are your primary targets — everything else serves these races.</p>
     
-    <div class="race-timeline">
-        <div class="timeline-labels">
-            <span>{start_label}</span>
-            <span>{end_label}</span>
-        </div>
-        <div class="timeline-track">
-{markers_html}
-        </div>
-        <div class="event-legend">
-            <span><div class="legend-dot a"></div> A Event (Peak)</span>
-            <span><div class="legend-dot b"></div> B Event (Important)</span>
-            <span><div class="legend-dot c"></div> C Event (Training)</span>
-        </div>
+    <div class="race-accordion">
+{accordion_html}
     </div>
-    
-    <table>
-        <thead>
-            <tr>
-                <th>Priority</th>
-                <th>Event</th>
-                <th>Date</th>
-                <th>Distance</th>
-                <th>Goal</th>
-            </tr>
-        </thead>
-        <tbody>
-{events_table}
-        </tbody>
-    </table>
     
     <div class="callout info">
         <h4>The Universal Race Framework</h4>
@@ -1697,7 +1948,7 @@ document.addEventListener('DOMContentLoaded', function() {{
 '''
     
     def _generate_atp_week_days(self, week: int, phase: str) -> str:
-        """Generate the day-by-day structure for an ATP week."""
+        """Generate the day-by-day structure for an ATP week with clickable days."""
         
         # Use weekly structure if available
         if self.weekly_structure:
@@ -1710,6 +1961,7 @@ document.addEventListener('DOMContentLoaded', function() {{
                 am = schedule.get('am')
                 pm = schedule.get('pm')
                 is_key = schedule.get('is_key_day', False)
+                is_strength = am == 'strength' or pm == 'strength'
                 
                 workouts = []
                 if am:
@@ -1720,12 +1972,16 @@ document.addEventListener('DOMContentLoaded', function() {{
                     workouts.append(f'<div class="atp-workout-item {workout_class}">{pm.replace("_", " ").title()} (PM)</div>')
                 
                 if not workouts:
-                    workouts.append('<div class="atp-workout-item">Rest</div>')
+                    workouts.append('<div class="atp-workout-item" style="color: #999;">Rest</div>')
                 
-                key_class = 'key-day' if is_key else ''
+                # Determine day class
+                day_class = 'key-day' if is_key else ('strength-day' if is_strength else '')
+                
+                # Create modal data
+                modal_data = f'data-week="{week}" data-day="{day_name}" data-phase="{phase}" data-am="{am or ""}" data-pm="{pm or ""}"'
                 
                 day_cells.append(f'''
-                    <div class="atp-day {key_class}">
+                    <div class="atp-day {day_class}" {modal_data} onclick="showWorkoutModal(this)">
                         <div class="atp-day-name">{day_name[:3].upper()}</div>
                         {"".join(workouts)}
                     </div>
@@ -1746,17 +2002,22 @@ document.addEventListener('DOMContentLoaded', function() {{
         }
         
         day_names = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
+        full_day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
         workouts = generic_days.get(phase, generic_days['Build'])
         key_days = [1, 3, 5] if phase in ['Build', 'Peak'] else [3, 5]
         
         day_cells = []
-        for i, (name, workout) in enumerate(zip(day_names, workouts)):
+        for i, (name, full_name, workout) in enumerate(zip(day_names, full_day_names, workouts)):
             is_key = i in key_days and workout not in ['Rest', 'Recovery', 'Easy Ride']
-            key_class = 'key-day' if is_key else ''
-            workout_class = 'strength' if 'Strength' in workout else ''
+            is_strength = 'Strength' in workout
+            
+            day_class = 'key-day' if is_key else ('strength-day' if is_strength else '')
+            workout_class = 'strength' if is_strength else ''
+            
+            modal_data = f'data-week="{week}" data-day="{full_name}" data-phase="{phase}" data-am="{workout}" data-pm=""'
             
             day_cells.append(f'''
-                <div class="atp-day {key_class}">
+                <div class="atp-day {day_class}" {modal_data} onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">{name}</div>
                     <div class="atp-workout-item {workout_class}">{workout}</div>
                 </div>
@@ -2529,11 +2790,361 @@ document.addEventListener('DOMContentLoaded', function() {{
 </section>
 '''
     
+    def _generate_nutrition_section(self) -> str:
+        """Generate personalized nutrition targets based on athlete profile."""
+        weight_kg = self.profile.get('fitness_markers', {}).get('weight_kg', 70)
+        ftp = self.profile.get('fitness_markers', {}).get('ftp_watts', 200)
+        cycling_hours = self.profile.get('weekly_availability', {}).get('cycling_hours_target', 10)
+        age = self._calculate_age() or 35
+        sex = self.profile.get('sex', 'male')
+        
+        # Calculate daily needs based on nutrition_calculator.py formulas
+        # BMR using Mifflin-St Jeor
+        height_cm = 175  # Estimate if not available
+        if sex == 'male':
+            bmr = (10 * weight_kg) + (6.25 * height_cm) - (5 * age) + 5
+        else:
+            bmr = (10 * weight_kg) + (6.25 * height_cm) - (5 * age) - 161
+        
+        # Average daily training hours
+        avg_daily_hours = cycling_hours / 7
+        
+        # Intensity factor estimate (0.65-0.75 for typical training)
+        intensity_factor = 0.7
+        
+        # Cycling expenditure (simplified)
+        avg_power = ftp * intensity_factor
+        cycling_kcal = (avg_power / 75) * 5 * avg_daily_hours * 60  # ~5 kcal per L O2
+        
+        # Activity multiplier
+        daily_kcal = bmr * 1.4 + cycling_kcal  # Moderately active base
+        
+        # Standard endurance athlete macro split:
+        # Carbs: 5-7g/kg (higher for more training)
+        # Protein: 1.6-2.0g/kg
+        # Fat: remainder (typically 0.8-1.2g/kg)
+        
+        # CHO: 5-7g/kg based on training volume
+        if cycling_hours <= 6:
+            cho_per_kg = 4.5
+        elif cycling_hours <= 10:
+            cho_per_kg = 5.5
+        elif cycling_hours <= 15:
+            cho_per_kg = 6.5
+        else:
+            cho_per_kg = 7.5
+        
+        cho_grams = int(weight_kg * cho_per_kg)
+        
+        # Protein: 1.6-2.0g/kg for endurance athletes
+        pro_grams = int(weight_kg * 1.8)
+        
+        # Fat: ~1g/kg as baseline
+        fat_grams = int(weight_kg * 1.0)
+        
+        # Calculate total
+        total_kcal = int((cho_grams * 4) + (pro_grams * 4) + (fat_grams * 9))
+        
+        # Percentages
+        cho_pct = int(cho_grams * 4 / total_kcal * 100)
+        pro_pct = int(pro_grams * 4 / total_kcal * 100)
+        fat_pct = int(fat_grams * 9 / total_kcal * 100)
+        
+        # Training day adjustments
+        hard_day_kcal = int(total_kcal * 1.15)
+        hard_day_cho = int(cho_grams * 1.2)
+        easy_day_kcal = int(total_kcal * 0.9)
+        easy_day_cho = int(cho_grams * 0.8)
+        
+        return f'''
+<section id="nutrition">
+    <h2>Your Nutrition Targets</h2>
+    
+    <p>Based on your profile ({weight_kg}kg, {ftp}W FTP, ~{cycling_hours}hrs/week), here are your daily nutrition targets:</p>
+    
+    <div class="nutrition-calc">
+        <h3 style="margin-top: 0;">Average Training Day</h3>
+        <div class="nutrition-macros">
+            <div class="macro-box">
+                <span class="macro-value">{total_kcal}</span>
+                <span class="macro-unit">kcal</span>
+                <div class="macro-label">Total Calories</div>
+            </div>
+            <div class="macro-box">
+                <span class="macro-value">{cho_grams}</span>
+                <span class="macro-unit">g ({cho_pct}%)</span>
+                <div class="macro-label">Carbs</div>
+            </div>
+            <div class="macro-box">
+                <span class="macro-value">{pro_grams}</span>
+                <span class="macro-unit">g ({pro_pct}%)</span>
+                <div class="macro-label">Protein</div>
+            </div>
+            <div class="macro-box">
+                <span class="macro-value">{fat_grams}</span>
+                <span class="macro-unit">g ({fat_pct}%)</span>
+                <div class="macro-label">Fat</div>
+            </div>
+        </div>
+    </div>
+    
+    <h3>Day-Type Adjustments</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Day Type</th>
+                <th>Calories</th>
+                <th>Carbs</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Hard / Key Session</strong></td>
+                <td>{hard_day_kcal} kcal</td>
+                <td>{hard_day_cho}g</td>
+                <td>Front-load carbs before and during session</td>
+            </tr>
+            <tr>
+                <td><strong>Average Training</strong></td>
+                <td>{total_kcal} kcal</td>
+                <td>{cho_grams}g</td>
+                <td>Steady intake throughout day</td>
+            </tr>
+            <tr>
+                <td><strong>Easy / Recovery</strong></td>
+                <td>{easy_day_kcal} kcal</td>
+                <td>{easy_day_cho}g</td>
+                <td>Slight reduction, maintain protein</td>
+            </tr>
+            <tr>
+                <td><strong>Rest Day</strong></td>
+                <td>{int(total_kcal * 0.8)} kcal</td>
+                <td>{int(cho_grams * 0.6)}g</td>
+                <td>Reduce carbs, maintain protein for recovery</td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <h3>During Training</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Session Type</th>
+                <th>Carbs/Hour</th>
+                <th>Timing</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>&lt;90 min easy</td>
+                <td>Optional (0-30g)</td>
+                <td>Water is fine</td>
+            </tr>
+            <tr>
+                <td>90 min - 2 hrs</td>
+                <td>30-60g</td>
+                <td>Start at 30 min</td>
+            </tr>
+            <tr>
+                <td>2-4 hrs</td>
+                <td>60-75g</td>
+                <td>Every 20 min</td>
+            </tr>
+            <tr>
+                <td>Race / 4+ hrs</td>
+                <td>80-100g</td>
+                <td>Every 15-20 min</td>
+            </tr>
+        </tbody>
+    </table>
+    
+    <div class="callout tip">
+        <h4>Fuel the Work</h4>
+        <p><strong>Common mistake:</strong> Eating less to lose weight during hard training blocks.</p>
+        <p><strong>Reality:</strong> Underfueling impairs adaptation, increases injury risk, and tanks performance. Eat for the work you're doing. Weight management happens in easy phases, not build phases.</p>
+    </div>
+</section>
+'''
+    
     def _generate_footer(self) -> str:
         first_name = self._get_first_name()
         plan_weeks = self.derived.get('plan_weeks', 12)
         
+        # Add workout modal
+        modal_html = '''
+<!-- Workout Detail Modal -->
+<div class="workout-modal" id="workoutModal" onclick="if(event.target === this) closeWorkoutModal()">
+    <div class="workout-modal-content">
+        <div class="workout-modal-header">
+            <h3 id="modalTitle">Workout Details</h3>
+            <button class="workout-modal-close" onclick="closeWorkoutModal()">×</button>
+        </div>
+        <div id="modalBody">
+            <!-- Populated by JavaScript -->
+        </div>
+    </div>
+</div>
+
+<script>
+// Workout descriptions by type
+const workoutDescriptions = {
+    'strength': {
+        title: 'Strength Session',
+        duration: '45-60 min',
+        description: 'Full-body strength workout targeting cycling-specific muscle groups.',
+        instructions: [
+            'Watch video demos before new exercises',
+            'Complete warm-up activation circuit first',
+            'Rest 60-120s between sets (longer for heavy sets)',
+            'Stop if form breaks down',
+            'Log weights for progressive overload tracking'
+        ],
+        file: 'Check your ZWO files for the specific workout'
+    },
+    'intervals': {
+        title: 'Interval Session',
+        duration: '60-90 min',
+        description: 'Structured intensity work targeting specific energy systems.',
+        instructions: [
+            '15-20 min warm-up before first interval',
+            'Hit target power, don\\'t exceed it',
+            'If you can\\'t complete reps, reduce target by 5%',
+            'Full recovery between sets',
+            'Easy spin cool-down'
+        ],
+        zones: 'Varies by phase — check specific workout'
+    },
+    'easy_ride': {
+        title: 'Easy / Recovery Ride',
+        duration: '45-90 min',
+        description: 'Truly easy spinning to promote recovery without adding fatigue.',
+        instructions: [
+            'Zone 1-2 only — this should feel embarrassingly easy',
+            'Conversation pace throughout',
+            'No Strava segments, no chasing groups',
+            'Purpose is recovery, not fitness',
+            'If HR drifts into Z3, slow down'
+        ],
+        zones: 'Z1-Z2 (<75% FTP)'
+    },
+    'long_ride': {
+        title: 'Long Endurance Ride',
+        duration: '2.5-5+ hours',
+        description: 'Building aerobic base and time-in-saddle.',
+        instructions: [
+            'Mostly Z2 with natural terrain variation',
+            'Practice race nutrition (target 60-80g carbs/hour)',
+            'Include some Z3 efforts if terrain demands',
+            'Build mental fortitude for long efforts',
+            'This is where endurance adaptations happen'
+        ],
+        zones: 'Z2 primary (65-75% FTP), Z3 ok on climbs'
+    },
+    'tempo': {
+        title: 'Tempo Ride',
+        duration: '60-90 min',
+        description: 'Sustained moderate effort building muscular endurance.',
+        instructions: [
+            'Main set at 76-87% FTP (Z3)',
+            'Should feel comfortably hard',
+            'Can talk in short sentences',
+            'Don\\'t let it creep into threshold',
+            'Good for building fatigue resistance'
+        ],
+        zones: 'Z3 (76-87% FTP)'
+    },
+    'rest': {
+        title: 'Rest Day',
+        duration: '0 min',
+        description: 'Complete rest — no training.',
+        instructions: [
+            'No cycling (not even "easy")',
+            'Light walking/stretching is fine',
+            'Focus on sleep and nutrition',
+            'This is where adaptation happens',
+            'Don\\'t feel guilty — rest IS training'
+        ]
+    }
+};
+
+function showWorkoutModal(element) {
+    const week = element.dataset.week;
+    const day = element.dataset.day;
+    const phase = element.dataset.phase;
+    const am = element.dataset.am;
+    const pm = element.dataset.pm;
+    
+    const modal = document.getElementById('workoutModal');
+    const title = document.getElementById('modalTitle');
+    const body = document.getElementById('modalBody');
+    
+    // Get workout info
+    const workoutType = (am || 'rest').toLowerCase().replace(/ /g, '_');
+    const workout = workoutDescriptions[workoutType] || workoutDescriptions['easy_ride'];
+    
+    title.textContent = `Week ${week} · ${day.charAt(0).toUpperCase() + day.slice(1)} · ${workout.title}`;
+    
+    let html = `
+        <div class="workout-detail">
+            <div class="workout-detail-label">Phase</div>
+            <div>${phase}</div>
+        </div>
+        <div class="workout-detail">
+            <div class="workout-detail-label">Duration</div>
+            <div>${workout.duration}</div>
+        </div>
+        <div class="workout-detail">
+            <div class="workout-detail-label">Description</div>
+            <div>${workout.description}</div>
+        </div>
+    `;
+    
+    if (workout.zones) {
+        html += `
+        <div class="workout-detail">
+            <div class="workout-detail-label">Target Zones</div>
+            <div>${workout.zones}</div>
+        </div>
+        `;
+    }
+    
+    html += `
+        <div class="workout-detail">
+            <div class="workout-detail-label">Execution Notes</div>
+            <ul style="margin: 8px 0 0 0; padding-left: 20px;">
+                ${workout.instructions.map(i => `<li>${i}</li>`).join('')}
+            </ul>
+        </div>
+    `;
+    
+    if (pm) {
+        html += `
+        <div class="workout-detail" style="margin-top: 16px; padding-top: 12px; border-top: 1px dashed #ddd;">
+            <div class="workout-detail-label">PM Session</div>
+            <div>${pm.replace(/_/g, ' ')}</div>
+        </div>
+        `;
+    }
+    
+    body.innerHTML = html;
+    modal.classList.add('open');
+}
+
+function closeWorkoutModal() {
+    document.getElementById('workoutModal').classList.remove('open');
+}
+
+// Close on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeWorkoutModal();
+});
+</script>
+'''
+        
         return f'''
+{modal_html}
+
 <footer class="guide-footer">
     <p>You have the plan.</p>
     <p>You understand how training works, how to execute the workouts, how to fuel and hydrate, how to manage your mental game, and how to approach race day.</p>
