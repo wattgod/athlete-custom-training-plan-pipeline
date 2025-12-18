@@ -1837,6 +1837,10 @@
             }
         });
 
+        // Webhook URL - UPDATE THIS after deploying Cloudflare Worker
+        const WEBHOOK_URL = 'https://athlete-intake.gravelgod.workers.dev';
+        // For local testing, use: 'http://localhost:8787'
+
         // Form submission
         document.getElementById('intakeForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1852,6 +1856,7 @@
             
             // Show loading
             submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
             loadingOverlay.style.display = 'flex';
             
             // Collect form data
@@ -1869,20 +1874,70 @@
                 }
             }
             
-            // Simulate API call (replace with actual endpoint)
-            console.log('Form Data:', data);
+            // Add race event counts for backend processing
+            data._raceEventCounts = {
+                a: aEventCount,
+                b: bEventCount,
+                c: cEventCount
+            };
             
-            // For demo, just wait 2 seconds
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            console.log('Submitting form data:', data);
             
-            // Clear saved progress on successful submit
-            localStorage.removeItem('ggIntakeFormData');
-            
-            // Hide loading and show success
-            loadingOverlay.style.display = 'none';
-            alert('Intake submitted successfully! Check your email for next steps.');
-            e.target.reset();
+            try {
+                const response = await fetch(WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    // Clear saved progress on successful submit
+                    localStorage.removeItem('ggIntakeFormData');
+                    
+                    // Hide loading and show success
+                    loadingOverlay.style.display = 'none';
+                    
+                    // Show success message
+                    showSuccessMessage(result.message || 'Intake received! Check your email within 24 hours.');
+                    e.target.reset();
+                } else {
+                    throw new Error(result.error || 'Submission failed');
+                }
+            } catch (error) {
+                console.error('Submission error:', error);
+                loadingOverlay.style.display = 'none';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit Intake →';
+                
+                alert(`Error: ${error.message}\n\nPlease try again. If the problem persists, email your intake to coach@gravelgodcycling.com`);
+            }
         });
+
+        // Success message display
+        function showSuccessMessage(message) {
+            const form = document.getElementById('intakeForm');
+            form.innerHTML = `
+                <div style="text-align: center; padding: 60px 20px;">
+                    <div style="font-size: 64px; margin-bottom: 24px;">✓</div>
+                    <h2 style="font-size: 24px; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.1em;">Intake Received</h2>
+                    <p style="font-size: 16px; color: #666; margin-bottom: 32px; max-width: 500px; margin-left: auto; margin-right: auto;">
+                        ${message}
+                    </p>
+                    <div style="padding: 20px; background: #f5f5f5; border: 1px solid #000; max-width: 400px; margin: 0 auto;">
+                        <p style="font-size: 14px; margin: 0;">
+                            <strong>What happens next:</strong><br>
+                            1. I review your intake (within 24 hours)<br>
+                            2. You receive your initial plan + calendar<br>
+                            3. We schedule a kickoff call (MID/MAX tiers)
+                        </p>
+                    </div>
+                </div>
+            `;
+        }
     </script>
 </body>
 </html>

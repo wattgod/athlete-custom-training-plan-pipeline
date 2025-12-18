@@ -574,15 +574,34 @@ def main():
     
     parser = argparse.ArgumentParser(description='Create profile from form data')
     parser.add_argument('--athlete-id', required=True, help='Athlete ID')
-    parser.add_argument('--data', required=True, help='Form data as JSON string')
+    parser.add_argument('--data', help='Form data as JSON string')
+    parser.add_argument('--input-file', help='Path to JSON file with form data')
     
     args = parser.parse_args()
     
-    # Parse data
-    try:
-        data = json.loads(args.data) if isinstance(args.data, str) else args.data
-    except json.JSONDecodeError:
-        print("Error: Invalid JSON data")
+    # Load data from file or string
+    data = None
+    
+    if args.input_file:
+        try:
+            with open(args.input_file, 'r') as f:
+                data = json.load(f)
+            print(f"Loaded form data from {args.input_file}")
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            print(f"Error reading input file: {e}")
+            sys.exit(1)
+    elif args.data:
+        try:
+            data = json.loads(args.data) if isinstance(args.data, str) else args.data
+        except json.JSONDecodeError:
+            print("Error: Invalid JSON data")
+            sys.exit(1)
+    else:
+        print("Error: Must provide either --data or --input-file")
+        sys.exit(1)
+    
+    if not data:
+        print("Error: No form data provided")
         sys.exit(1)
     
     # Generate athlete ID if not provided

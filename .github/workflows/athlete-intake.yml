@@ -15,98 +15,166 @@ on:
 jobs:
   generate-plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyyaml
+          pip install pyyaml python-dateutil
       
-      - name: Extract payload
+      - name: Extract and save payload
         id: payload
         run: |
           if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
             echo "email=${{ github.event.client_payload.email }}" >> $GITHUB_OUTPUT
             echo "athlete_id=${{ github.event.client_payload.athlete_id }}" >> $GITHUB_OUTPUT
-            echo "data=${{ github.event.client_payload.data }}" >> $GITHUB_OUTPUT
+            echo "coaching_tier=${{ github.event.client_payload.coaching_tier }}" >> $GITHUB_OUTPUT
+            echo "name=${{ github.event.client_payload.name }}" >> $GITHUB_OUTPUT
+            
+            # Save full payload to file (JSON escaping handled by jq)
+            echo '${{ toJson(github.event.client_payload.data) }}' > /tmp/form_data.json
           else
             echo "email=${{ github.event.inputs.email }}" >> $GITHUB_OUTPUT
             echo "athlete_id=${{ github.event.inputs.athlete_id }}" >> $GITHUB_OUTPUT
-            echo "data={}" >> $GITHUB_OUTPUT
+            echo "coaching_tier=mid" >> $GITHUB_OUTPUT
+            echo "name=Manual Test" >> $GITHUB_OUTPUT
+            echo '{}' > /tmp/form_data.json
           fi
+          
+          echo "Form data saved to /tmp/form_data.json"
+          cat /tmp/form_data.json | head -c 500
       
-      - name: Validate submission
+      - name: Create athlete directory
         run: |
-          python athletes/scripts/validate_submission.py \
-            --email "${{ steps.payload.outputs.email }}" \
-            --data "${{ steps.payload.outputs.data }}"
+          athlete_id="${{ steps.payload.outputs.athlete_id }}"
+          mkdir -p "athletes/${athlete_id}"
+          cp /tmp/form_data.json "athletes/${athlete_id}/form_data.json"
       
-      - name: Create athlete profile
+      - name: Create athlete profile from form
         run: |
           python athletes/scripts/create_profile_from_form.py \
             --athlete-id "${{ steps.payload.outputs.athlete_id }}" \
-            --data "${{ steps.payload.outputs.data }}"
+            --input-file "athletes/${{ steps.payload.outputs.athlete_id }}/form_data.json"
+      
+      - name: Validate profile
+        run: |
+          cd athletes/scripts
+          python validate_profile.py "${{ steps.payload.outputs.athlete_id }}"
+      
+      - name: Derive classifications
+        run: |
+          cd athletes/scripts
+          python derive_classifications.py "${{ steps.payload.outputs.athlete_id }}"
+      
+      - name: Build weekly structure
+        run: |
+          cd athletes/scripts
+          python build_weekly_structure.py "${{ steps.payload.outputs.athlete_id }}"
       
       - name: Generate athlete plan
         run: |
           cd athletes/scripts
-          athlete_id="${{ steps.payload.outputs.athlete_id }}"
-          
-          python validate_profile.py "$athlete_id" || exit 1
-          python derive_classifications.py "$athlete_id" || exit 1
-          python build_weekly_structure.py "$athlete_id" || exit 1
-          python generate_athlete_plan.py "$athlete_id" || exit 1
-          python generate_athlete_guide.py "$athlete_id" || exit 1
+          python generate_athlete_plan.py "${{ steps.payload.outputs.athlete_id }}"
+      
+      - name: Generate athlete guide
+        run: |
+          cd athletes/scripts
+          python generate_athlete_guide.py "${{ steps.payload.outputs.athlete_id }}"
       
       - name: Commit generated plan
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add athletes/${{ steps.payload.outputs.athlete_id }}/plans/
-          git commit -m "Add plan for ${{ steps.payload.outputs.athlete_id }}" || exit 0
-          git push || exit 0
+          
+          athlete_id="${{ steps.payload.outputs.athlete_id }}"
+          
+          git add "athletes/${athlete_id}/" || true
+          git diff --staged --quiet || git commit -m "Add intake for ${athlete_id}"
+          git push || echo "Nothing to push"
       
-      - name: Send email notification
+      - name: Send success email
         if: success()
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
           server_port: 465
+          secure: true
           username: ${{ secrets.EMAIL_USERNAME }}
           password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: Your Gravel God Training Plan is Ready
+          subject: "Welcome to Gravel God Coaching - ${{ steps.payload.outputs.name }}"
           to: ${{ steps.payload.outputs.email }}
-          from: Gravel God Cycling
+          from: Gravel God Cycling <${{ secrets.EMAIL_USERNAME }}>
           body: |
-            Your personalized training plan has been generated!
+            Hi ${{ steps.payload.outputs.name }},
             
-            Access your plan here:
-            https://github.com/${{ github.repository }}/tree/main/athletes/${{ steps.payload.outputs.athlete_id }}/plans
+            Your coaching intake has been received and your personalized training plan is being prepared.
             
-            If you have any questions, reply to this email.
+            SELECTED TIER: ${{ steps.payload.outputs.coaching_tier }}
+            
+            NEXT STEPS:
+            1. I'll review your intake within 24 hours
+            2. You'll receive an email with your initial plan and calendar access
+            3. We'll schedule a kickoff call (for MID/MAX tiers)
+            
+            If you have questions, reply to this email.
+            
+            Let's get after it.
+            
+            — Matti
+            Gravel God Cycling
       
-      - name: Notify on failure
+      - name: Send failure notification
         if: failure()
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
           server_port: 465
+          secure: true
           username: ${{ secrets.EMAIL_USERNAME }}
           password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: Training Plan Generation Failed
+          subject: "Issue with your Gravel God Coaching intake"
           to: ${{ steps.payload.outputs.email }}
-          from: Gravel God Cycling
+          from: Gravel God Cycling <${{ secrets.EMAIL_USERNAME }}>
           body: |
-            We encountered an issue generating your training plan.
+            Hi ${{ steps.payload.outputs.name }},
             
-            Please try submitting the form again, or contact support if the problem persists.
-
+            We encountered an issue processing your coaching intake.
+            
+            Please try submitting the form again at:
+            https://wattgod.github.io/athlete-profiles/athlete-questionnaire.html
+            
+            If the problem persists, reply to this email and we'll help manually.
+            
+            — Gravel God Cycling
+      
+      - name: Notify admin on failure
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "[ALERT] Athlete intake failed: ${{ steps.payload.outputs.athlete_id }}"
+          to: ${{ secrets.ADMIN_EMAIL }}
+          from: Gravel God System <${{ secrets.EMAIL_USERNAME }}>
+          body: |
+            Athlete intake failed:
+            
+            Athlete ID: ${{ steps.payload.outputs.athlete_id }}
+            Email: ${{ steps.payload.outputs.email }}
+            Name: ${{ steps.payload.outputs.name }}
+            Tier: ${{ steps.payload.outputs.coaching_tier }}
+            
+            Check the workflow run:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
