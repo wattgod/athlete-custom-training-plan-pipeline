@@ -182,7 +182,7 @@ def parse_race_list(race_list: str) -> List[Dict]:
 
 
 def parse_b_priority_events(b_events: str) -> List[Dict]:
-    """Parse B-priority events text."""
+    """Parse B-priority events text (legacy)."""
     if not b_events:
         return []
     
@@ -198,29 +198,112 @@ def parse_b_priority_events(b_events: str) -> List[Dict]:
     return events
 
 
+def parse_structured_race_events(form_data: Dict) -> Dict[str, List[Dict]]:
+    """
+    Parse structured A/B/C race events from form data.
+    Returns dict with 'a_events', 'b_events', 'c_events' lists.
+    
+    Form fields expected:
+    - a_event_1_name, a_event_1_date, a_event_1_distance, a_event_1_distance_unit, a_event_1_goal
+    - a_event_2_name, etc.
+    - b_event_1_name, etc.
+    - c_event_1_name, etc.
+    """
+    events = {
+        'a_events': [],
+        'b_events': [],
+        'c_events': []
+    }
+    
+    for priority in ['a', 'b', 'c']:
+        i = 1
+        while i <= 99:  # Safety limit
+            name_key = f'{priority}_event_{i}_name'
+            name = form_data.get(name_key, '').strip()
+            
+            if not name:
+                if priority == 'a' and i == 1:
+                    # First A event might be empty if no races
+                    i += 1
+                    continue
+                elif i == 1:
+                    # No events of this priority
+                    break
+                else:
+                    # Check if this is a gap or end of events
+                    # Look ahead a few to see if there are more
+                    found_more = False
+                    for j in range(i + 1, i + 4):
+                        if form_data.get(f'{priority}_event_{j}_name', '').strip():
+                            found_more = True
+                            break
+                    if not found_more:
+                        break
+                    i += 1
+                    continue
+            
+            # Parse distance
+            distance_value = form_data.get(f'{priority}_event_{i}_distance', '')
+            distance_unit = form_data.get(f'{priority}_event_{i}_distance_unit', 'miles')
+            distance_miles = 0
+            if distance_value:
+                try:
+                    distance = float(distance_value)
+                    if distance_unit == 'km':
+                        distance_miles = distance * 0.621371
+                    else:
+                        distance_miles = distance
+                except ValueError:
+                    pass
+            
+            event = {
+                'name': name,
+                'date': form_data.get(f'{priority}_event_{i}_date', ''),
+                'distance_miles': distance_miles,
+                'goal': form_data.get(f'{priority}_event_{i}_goal', ''),
+                'priority': priority.upper()
+            }
+            
+            events[f'{priority}_events'].append(event)
+            i += 1
+    
+    return events
+
+
 def create_profile_from_form(athlete_id: str, form_data: Dict) -> Dict:
     """Convert comprehensive form data to profile.yaml structure."""
     
     # Parse weekly volume
     min_hours, max_hours = parse_weekly_volume(form_data.get('weekly_volume', '0-2'))
     
-    # Parse race list
-    race_list_text = form_data.get('race_list', '')
-    primary_races = parse_race_list(race_list_text)
+    # Parse structured A/B/C race events (new format)
+    structured_events = parse_structured_race_events(form_data)
     
-    # Get primary race (first one or from race_name field)
+    # Also support legacy race list format
+    race_list_text = form_data.get('race_list', '')
+    legacy_races = parse_race_list(race_list_text)
+    
+    # Get primary race (from structured A events, or legacy, or race_name field)
     primary_race = None
-    if primary_races:
-        primary_race = primary_races[0]
+    a_events = structured_events['a_events']
+    b_events = structured_events['b_events']
+    c_events = structured_events['c_events']
+    
+    if a_events:
+        primary_race = a_events[0]
+    elif legacy_races:
+        primary_race = legacy_races[0]
     elif form_data.get('race_name'):
         primary_race = {
             'name': form_data.get('race_name', ''),
             'date': form_data.get('race_date', ''),
-            'distance_miles': int(form_data.get('race_distance', 0)) if form_data.get('race_distance_unit') == 'miles' else int(form_data.get('race_distance', 0)) * 0.621371 if form_data.get('race_distance') else 0
+            'distance_miles': int(form_data.get('race_distance', 0)) if form_data.get('race_distance_unit') == 'miles' else int(form_data.get('race_distance', 0)) * 0.621371 if form_data.get('race_distance') else 0,
+            'priority': 'A'
         }
     
-    # Parse B-priority events
-    b_events = parse_b_priority_events(form_data.get('b_priority_events', ''))
+    # Combine all secondary races (A events after first, B events, legacy B events)
+    legacy_b_events = parse_b_priority_events(form_data.get('b_priority_events', ''))
+    secondary_races = a_events[1:] + b_events + legacy_b_events + legacy_races[1:]
     
     # Calculate age from birthday (primary source)
     age = None
@@ -249,10 +332,14 @@ def create_profile_from_form(athlete_id: str, form_data: Dict) -> Dict:
             'race_id': 'unbound_gravel_200',  # Default, could be enhanced with race matching
             'date': primary_race.get('date', '') if primary_race else form_data.get('race_date', ''),
             'distance_miles': primary_race.get('distance_miles', 0) if primary_race else (int(form_data.get('race_distance', 0)) if form_data.get('race_distance_unit') == 'miles' else int(form_data.get('race_distance', 0)) * 0.621371 if form_data.get('race_distance') else 0),
-            'goal_type': 'compete'  # Default, could parse from success_looks_like
+            'goal_type': 'compete',  # Default, could parse from success_looks_like
+            'goal': primary_race.get('goal', '') if primary_race else ''
         } if (primary_race or form_data.get('race_name')) else None,
         
-        'secondary_races': b_events + primary_races[1:] if len(primary_races) > 1 else b_events,
+        'a_events': a_events,  # All A-priority races (including primary)
+        'b_events': b_events,  # B-priority races
+        'c_events': c_events,  # C-priority races (training/tune-up)
+        'secondary_races': secondary_races,  # Combined list for backwards compatibility
         
         'racing': {
             'has_goals': form_data.get('has_racing_goals') == 'yes',
