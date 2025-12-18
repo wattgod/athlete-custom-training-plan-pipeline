@@ -3,23 +3,49 @@
 Generate Athlete Plan
 
 Main entry point for generating personalized training plan from athlete profile.
+Integrates with unified_plan_generator from gravel-landing-page-project.
 """
 
 import yaml
 import sys
 import json
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional
 
-# Add unified generator path (assumes it's in parent repo)
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "gravel-landing-page-project" / "races"))
+# Find gravel-landing-page-project in multiple locations
+def find_generator_path():
+    """Find the unified generator in various possible locations."""
+    script_dir = Path(__file__).parent
+    
+    possible_paths = [
+        # GitHub Actions: sibling directory at workspace root
+        script_dir.parent.parent.parent / "gravel-landing-page-project" / "races",
+        # Local: sibling directory at home level
+        Path.home() / "gravel-landing-page-project" / "races",
+        # PYTHONPATH (set by GitHub Actions)
+        # This is handled by normal import
+    ]
+    
+    for path in possible_paths:
+        if path.exists() and (path / "unified_plan_generator.py").exists():
+            return path
+    
+    return None
 
+# Add generator path to sys.path
+generator_path = find_generator_path()
+if generator_path:
+    sys.path.insert(0, str(generator_path))
+    print(f"✅ Found unified generator at: {generator_path}")
+
+# Try to import unified generator
 try:
     from unified_plan_generator import UnifiedPlanGenerator, generate_unified_plan
     UNIFIED_AVAILABLE = True
-except ImportError:
-    print("⚠️  Unified generator not found. Install from gravel-landing-page-project/races")
+except ImportError as e:
+    print(f"⚠️  Unified generator not available: {e}")
     UNIFIED_AVAILABLE = False
 
 
@@ -54,11 +80,16 @@ def load_weekly_structure(athlete_id: str) -> Optional[Dict]:
 
 def get_race_data(race_id: str) -> Dict:
     """Load race data from unified system."""
-    race_path = Path(__file__).parent.parent.parent.parent / "gravel-landing-page-project" / "races" / f"{race_id}.json"
+    # Try multiple locations for race data
+    possible_paths = [
+        generator_path / f"{race_id}.json" if generator_path else None,
+        Path.home() / "gravel-landing-page-project" / "races" / f"{race_id}.json",
+    ]
     
-    if race_path.exists():
-        with open(race_path, 'r') as f:
-            return json.load(f)
+    for race_path in possible_paths:
+        if race_path and race_path.exists():
+            with open(race_path, 'r') as f:
+                return json.load(f)
     
     # Return default race data
     return {
@@ -112,12 +143,22 @@ def generate_athlete_plan(athlete_id: str) -> Dict:
     output_dir = Path(f"athletes/{athlete_id}/plans/{year}-{race_id}")
     output_dir.mkdir(parents=True, exist_ok=True)
     
+    # Also create current symlink/copy
+    current_dir = Path(f"athletes/{athlete_id}/plans/current")
+    current_dir.mkdir(parents=True, exist_ok=True)
+    
     # Generate plan using unified generator
-    print(f"Generating plan for {athlete_id}...")
+    print(f"\n{'='*50}")
+    print(f"Generating plan for {athlete_id}")
+    print(f"{'='*50}")
     print(f"  Tier: {derived['tier']}")
     print(f"  Plan Weeks: {derived['plan_weeks']}")
+    print(f"  Strength Frequency: {derived['strength_frequency']}x/week")
     print(f"  Race: {target_race.get('name', race_id)}")
     print(f"  Race Date: {race_date}")
+    print(f"  Equipment: {derived.get('equipment_tier', 'unknown')}")
+    if derived.get('exercise_exclusions'):
+        print(f"  Exercise Exclusions: {len(derived['exercise_exclusions'])} exercises")
     print()
     
     # Generate plan using unified generator with athlete-specific overrides
@@ -145,20 +186,24 @@ def generate_athlete_plan(athlete_id: str) -> Dict:
             "date": race_date
         },
         "strength_frequency": derived["strength_frequency"],
-        "exercise_exclusions": derived["exercise_exclusions"],
-        "equipment_tier": derived["equipment_tier"],
-        "key_days": derived["key_day_candidates"],
-        "strength_days": derived["strength_day_candidates"]
+        "exercise_exclusions": derived.get("exercise_exclusions", []),
+        "equipment_tier": derived.get("equipment_tier", "unknown"),
+        "key_days": derived.get("key_day_candidates", []),
+        "strength_days": derived.get("strength_day_candidates", [])
     }
     
-    config_path = output_dir / "plan_config.yaml"
-    with open(config_path, 'w') as f:
-        yaml.dump(plan_config, f, default_flow_style=False, sort_keys=False)
+    # Save to both output_dir and current_dir
+    for config_dir in [output_dir, current_dir]:
+        config_path = config_dir / "plan_config.yaml"
+        with open(config_path, 'w') as f:
+            yaml.dump(plan_config, f, default_flow_style=False, sort_keys=False)
     
+    print(f"\n{'='*50}")
     print(f"✅ Plan generated successfully!")
+    print(f"{'='*50}")
     print(f"   Output: {output_dir}")
-    print(f"   Cycling workouts: {result['files_generated']['cycling']}")
-    print(f"   Strength workouts: {result['files_generated']['strength']}")
+    print(f"   Cycling workouts: {result.get('files_generated', {}).get('cycling', 0)}")
+    print(f"   Strength workouts: {result.get('files_generated', {}).get('strength', 0)}")
     
     return result
 
@@ -185,4 +230,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

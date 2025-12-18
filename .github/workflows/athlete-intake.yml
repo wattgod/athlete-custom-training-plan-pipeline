@@ -15,11 +15,20 @@ on:
 jobs:
   generate-plan:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     
     steps:
-      - name: Checkout
+      - name: Checkout athlete-profiles
         uses: actions/checkout@v4
+        with:
+          path: athlete-profiles
+      
+      - name: Checkout gravel-landing-page-project
+        uses: actions/checkout@v4
+        with:
+          repository: wattgod/gravel-landing-page-project
+          token: ${{ secrets.GH_PAT }}
+          path: gravel-landing-page-project
       
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -29,7 +38,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyyaml python-dateutil
+          pip install pyyaml python-dateutil lxml openpyxl
       
       - name: Extract and save payload
         id: payload
@@ -68,9 +77,35 @@ jobs:
             "a_event_1_distance": "200",
             "a_event_1_goal": "compete",
             "years_cycling": "5",
-            "weekly_hours": "10",
-            "ftp": "250",
-            "strength_equipment": ["bodyweight", "dumbbells"]
+            "weekly_hours": "12",
+            "strength_sessions_max": "2",
+            "ftp": "280",
+            "weight_kg": "75",
+            "strength_equipment": ["bodyweight", "dumbbells", "kettlebells"],
+            "monday_availability": "available",
+            "monday_time_slots": ["am"],
+            "monday_max_duration": "90",
+            "tuesday_availability": "available",
+            "tuesday_time_slots": ["pm"],
+            "tuesday_max_duration": "90",
+            "tuesday_is_key_day_ok": "true",
+            "wednesday_availability": "limited",
+            "wednesday_time_slots": ["am"],
+            "wednesday_max_duration": "60",
+            "thursday_availability": "available",
+            "thursday_time_slots": ["pm"],
+            "thursday_max_duration": "90",
+            "thursday_is_key_day_ok": "true",
+            "friday_availability": "limited",
+            "friday_time_slots": ["am"],
+            "friday_max_duration": "45",
+            "saturday_availability": "available",
+            "saturday_time_slots": ["am"],
+            "saturday_max_duration": "300",
+            "saturday_is_key_day_ok": "true",
+            "sunday_availability": "available",
+            "sunday_time_slots": ["am"],
+            "sunday_max_duration": "180"
           }
           EOF
           fi
@@ -81,31 +116,51 @@ jobs:
       - name: Create athlete directory
         run: |
           athlete_id="${{ steps.payload.outputs.athlete_id }}"
-          mkdir -p "athletes/${athlete_id}"
-          cp /tmp/form_data.json "athletes/${athlete_id}/form_data.json"
+          mkdir -p "athlete-profiles/athletes/${athlete_id}"
+          cp /tmp/form_data.json "athlete-profiles/athletes/${athlete_id}/form_data.json"
       
       - name: Create athlete profile from form
+        working-directory: athlete-profiles
         run: |
           python athletes/scripts/create_profile_from_form.py \
             --athlete-id "${{ steps.payload.outputs.athlete_id }}" \
             --input-file "athletes/${{ steps.payload.outputs.athlete_id }}/form_data.json"
       
       - name: Validate profile
+        working-directory: athlete-profiles
         run: python athletes/scripts/validate_profile.py "${{ steps.payload.outputs.athlete_id }}"
       
       - name: Derive classifications
+        working-directory: athlete-profiles
         run: python athletes/scripts/derive_classifications.py "${{ steps.payload.outputs.athlete_id }}"
       
       - name: Build weekly structure
+        working-directory: athlete-profiles
         run: python athletes/scripts/build_weekly_structure.py "${{ steps.payload.outputs.athlete_id }}"
       
-      - name: Generate athlete plan
-        run: python athletes/scripts/generate_athlete_plan.py "${{ steps.payload.outputs.athlete_id }}"
+      - name: Generate unified plan with strength
+        env:
+          PYTHONPATH: ${{ github.workspace }}/gravel-landing-page-project/races
+        working-directory: athlete-profiles
+        run: |
+          echo "=== Generating unified plan with strength workouts ==="
+          python athletes/scripts/generate_athlete_plan.py "${{ steps.payload.outputs.athlete_id }}"
       
       - name: Generate athlete guide
+        working-directory: athlete-profiles
         run: python athletes/scripts/generate_athlete_guide.py "${{ steps.payload.outputs.athlete_id }}"
       
+      - name: List generated files
+        working-directory: athlete-profiles
+        run: |
+          echo "=== Generated files ==="
+          find "athletes/${{ steps.payload.outputs.athlete_id }}" -type f | head -50
+          echo ""
+          echo "=== Workout count ==="
+          find "athletes/${{ steps.payload.outputs.athlete_id }}" -name "*.zwo" | wc -l || echo "0 ZWO files"
+      
       - name: Commit generated plan
+        working-directory: athlete-profiles
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
