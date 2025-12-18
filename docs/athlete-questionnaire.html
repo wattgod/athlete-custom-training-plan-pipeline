@@ -418,7 +418,6 @@
 
     <!-- Section Navigation -->
     <nav class="section-nav" style="margin-bottom: 32px; padding: 12px; background: #f5f5f5; border: 1px solid #000; font-size: 12px; line-height: 2;">
-        <a href="#section-0" style="color: #000;">Coaching</a> → 
         <a href="#section-1" style="color: #000;">Contact</a> → 
         <a href="#section-2" style="color: #000;">Racing</a> → 
         <a href="#section-3" style="color: #000;">Fitness</a> → 
@@ -429,63 +428,15 @@
         <a href="#section-8" style="color: #000;">Work</a> → 
         <a href="#section-9" style="color: #000;">Health</a> → 
         <a href="#section-10" style="color: #000;">Social</a> → 
-        <a href="#section-11" style="color: #000;">Coaching</a> → 
-        <a href="#section-12" style="color: #000;">Personal</a>
+        <a href="#section-11" style="color: #000;">Context</a> → 
+        <a href="#section-12" style="color: #000;">Personal</a> → 
+        <a href="#section-coaching" style="color: #000; font-weight: 600;">Package ✓</a>
     </nav>
     
     <form id="intakeForm" class="survey-form">
         <!-- Honeypot field for bot detection -->
         <input type="text" name="website" class="honeypot" tabindex="-1" autocomplete="off">
 
-        <!-- SECTION 0: COACHING PACKAGE -->
-        <div class="question-group" id="section-0">
-            <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 1.5rem; padding-bottom: 8px; border-bottom: 2px solid var(--gg-border); text-transform: uppercase; letter-spacing: 0.1em;">0. Coaching Package</h2>
-            
-            <div class="question-group">
-                <label class="question-label">
-                    Select Your Coaching Tier <span class="required">*</span>
-                    <span class="label-hint">Same coach. Same standards. Different involvement. <a href="https://gravelgodcycling.com/coaching/" target="_blank" style="color: #000;">Full details →</a></span>
-                </label>
-                
-                <div class="radio-group" style="gap: 16px;">
-                    <div class="radio-option" style="padding: 16px; border: 2px solid #000;">
-                        <input type="radio" id="tier_min" name="coaching_tier" value="min" required>
-                        <label for="tier_min" style="flex: 1;">
-                            <strong style="font-size: 16px;">MIN — $199/mo</strong><br>
-                            <span style="font-size: 13px; color: #666;">
-                                Weekly review • Light analysis • Quarterly calls<br>
-                                <em>For experienced athletes who execute without hand-holding</em>
-                            </span>
-                        </label>
-                    </div>
-                    <div class="radio-option" style="padding: 16px; border: 2px solid #000; background: #f0f0f0;">
-                        <input type="radio" id="tier_mid" name="coaching_tier" value="mid">
-                        <label for="tier_mid" style="flex: 1;">
-                            <strong style="font-size: 16px;">MID — $299/mo</strong> <span style="background: #000; color: #fff; padding: 2px 6px; font-size: 10px; margin-left: 8px;">POPULAR</span><br>
-                            <span style="font-size: 13px; color: #666;">
-                                Weekly review • Thorough analysis • Monthly calls<br>
-                                <em>For serious athletes who want clear feedback + weekly adjustments</em>
-                            </span>
-                        </label>
-                    </div>
-                    <div class="radio-option" style="padding: 16px; border: 2px solid #000;">
-                        <input type="radio" id="tier_max" name="coaching_tier" value="max">
-                        <label for="tier_max" style="flex: 1;">
-                            <strong style="font-size: 16px;">MAX — $1,200/mo</strong><br>
-                            <span style="font-size: 13px; color: #666;">
-                                Daily review • Extensive support • On-demand calls<br>
-                                <em>For athletes who want immediate feedback + high-touch support</em>
-                            </span>
-                        </label>
-                    </div>
-                </div>
-                
-                <p class="question-help" style="margin-top: 16px; padding: 12px; background: #fff8e1; border: 1px solid #000;">
-                    <strong>Reality check:</strong> If you skip workouts, underfuel, or ignore feedback, no tier fixes that. I'll tell you within 24 hours if it's not a fit.
-                </p>
-            </div>
-        </div>
-        
         <!-- SECTION 1: CONTACT & DEMOGRAPHICS -->
         <div class="question-group" id="section-1">
             <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 1.5rem; padding-bottom: 8px; border-bottom: 2px solid var(--gg-border); text-transform: uppercase; letter-spacing: 0.1em;">1. Contact & Demographics</h2>
@@ -1405,6 +1356,45 @@
                     <span class="label-hint">Life circumstances, concerns, context we haven't asked about</span>
                 </label>
                 <textarea id="anything_else" name="anything_else" rows="3" placeholder="Tell us anything else that might be relevant"></textarea>
+            </div>
+        </div>
+        
+        <!-- FINAL SECTION: COACHING PACKAGE -->
+        <div class="question-group" id="section-coaching" style="margin-top: 3rem; padding-top: 2rem; border-top: 3px solid #000;">
+            <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.12em;">Almost Done — Choose Your Package</h2>
+            <p style="color: #666; margin-bottom: 1.5rem; font-size: 14px;">Same coach. Same standards. Different involvement. <a href="https://gravelgodcycling.com/coaching/" target="_blank" style="color: #000; text-decoration: underline;">Full details →</a></p>
+            
+            <div class="radio-group" style="gap: 16px;">
+                <div class="radio-option" style="padding: 16px; border: 2px solid #000;">
+                    <input type="radio" id="tier_min" name="coaching_tier" value="min" required>
+                    <label for="tier_min" style="flex: 1;">
+                        <strong style="font-size: 16px;">MIN — $199/mo</strong><br>
+                        <span style="font-size: 13px; color: #666;">
+                            Weekly review • Light analysis • Quarterly calls<br>
+                            <em>For experienced athletes who execute without hand-holding</em>
+                        </span>
+                    </label>
+                </div>
+                <div class="radio-option" style="padding: 16px; border: 2px solid #000; background: #f0f0f0;">
+                    <input type="radio" id="tier_mid" name="coaching_tier" value="mid">
+                    <label for="tier_mid" style="flex: 1;">
+                        <strong style="font-size: 16px;">MID — $299/mo</strong> <span style="background: #000; color: #fff; padding: 2px 6px; font-size: 10px; margin-left: 8px;">POPULAR</span><br>
+                        <span style="font-size: 13px; color: #666;">
+                            Weekly review • Thorough analysis • Monthly calls<br>
+                            <em>For serious athletes who want clear feedback + weekly adjustments</em>
+                        </span>
+                    </label>
+                </div>
+                <div class="radio-option" style="padding: 16px; border: 2px solid #000;">
+                    <input type="radio" id="tier_max" name="coaching_tier" value="max">
+                    <label for="tier_max" style="flex: 1;">
+                        <strong style="font-size: 16px;">MAX — $1,200/mo</strong><br>
+                        <span style="font-size: 13px; color: #666;">
+                            Daily review • Extensive support • On-demand calls<br>
+                            <em>For athletes who want immediate feedback + high-touch support</em>
+                        </span>
+                    </label>
+                </div>
             </div>
         </div>
         
