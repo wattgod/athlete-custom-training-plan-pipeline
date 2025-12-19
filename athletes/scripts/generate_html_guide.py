@@ -3501,43 +3501,82 @@ function parseZWOFile(event) {{
         const parser = new DOMParser();
         const xml = parser.parseFromString(text, 'text/xml');
         
-        // Extract workout data
-        const workout = xml.querySelector('workout');
-        const name = workout?.querySelector('name')?.textContent || 'Unknown Workout';
-        const description = workout?.querySelector('description')?.textContent || '';
+        // Extract workout data (name and description are siblings of workout, not children)
+        const root = xml.querySelector('workout_file');
+        const name = root?.querySelector('name')?.textContent || 'Unknown Workout';
+        const description = root?.querySelector('description')?.textContent || '';
+        const workout = root?.querySelector('workout');
         
-        // Parse duration from workout segments
-        let totalDuration = 0;
-        const segments = workout?.querySelectorAll('SteadyState, IntervalT, Ramp, FreeRide');
-        segments?.forEach(seg => {{
+        // Parse duration from workout segments (Duration is in SECONDS)
+        let totalDurationSeconds = 0;
+        let weightedPowerSum = 0;
+        let totalPowerTime = 0;
+        
+        // Get all segments including Warmup and Cooldown
+        const allSegments = workout?.querySelectorAll('Warmup, SteadyState, IntervalT, Ramp, FreeRide, Cooldown');
+        
+        allSegments?.forEach(seg => {{
             const duration = parseFloat(seg.getAttribute('Duration')) || 0;
-            totalDuration += duration;
+            totalDurationSeconds += duration;
+            
+            // Calculate weighted average power for this segment
+            let segmentPower = 0;
+            const power = seg.getAttribute('Power');
+            const powerLow = seg.getAttribute('PowerLow');
+            const powerHigh = seg.getAttribute('PowerHigh');
+            
+            if (power) {{
+                segmentPower = parseFloat(power);
+            }} else if (powerLow && powerHigh) {{
+                // Average of low and high for ramps
+                segmentPower = (parseFloat(powerLow) + parseFloat(powerHigh)) / 2;
+            }} else if (powerLow) {{
+                segmentPower = parseFloat(powerLow);
+            }} else if (powerHigh) {{
+                segmentPower = parseFloat(powerHigh);
+            }}
+            
+            if (segmentPower > 0) {{
+                weightedPowerSum += segmentPower * duration;
+                totalPowerTime += duration;
+            }}
         }});
         
-        const durationHours = totalDuration / 60;
-        const durationMin = Math.round(totalDuration);
+        // Convert to minutes and hours
+        const durationMin = Math.round(totalDurationSeconds / 60);
+        const durationHours = totalDurationSeconds / 3600;
         
-        // Estimate intensity from workout type
+        // Calculate average power (as fraction of FTP)
+        const avgPowerFraction = totalPowerTime > 0 ? weightedPowerSum / totalPowerTime : 0.7;
+        
+        // Determine intensity from calculated average power
         const ftp = parseInt(document.getElementById('ftpSlider')?.value || {ftp});
+        const avgPower = ftp * avgPowerFraction;
+        
         let intensity = 'moderate';
-        let avgPower = ftp * 0.7; // Default
         let carbsPerHour = 60;
         
-        if (name.toLowerCase().includes('vo2') || name.toLowerCase().includes('sprint')) {{
+        if (avgPowerFraction >= 1.05) {{
             intensity = 'high';
-            avgPower = ftp * 1.1;
             carbsPerHour = 80;
-        }} else if (name.toLowerCase().includes('threshold') || name.toLowerCase().includes('tempo')) {{
+        }} else if (avgPowerFraction >= 0.85) {{
             intensity = 'moderate-high';
-            avgPower = ftp * 0.9;
             carbsPerHour = 70;
-        }} else if (name.toLowerCase().includes('endurance') || name.toLowerCase().includes('z2')) {{
+        }} else if (avgPowerFraction <= 0.70) {{
             intensity = 'low';
-            avgPower = ftp * 0.65;
             carbsPerHour = 40;
         }}
         
-        // Calculate energy expenditure
+        // Also check workout name for clues
+        if (name.toLowerCase().includes('vo2') || name.toLowerCase().includes('sprint')) {{
+            intensity = 'high';
+            carbsPerHour = 80;
+        }} else if (name.toLowerCase().includes('endurance') || name.toLowerCase().includes('z2') || name.toLowerCase().includes('easy')) {{
+            intensity = 'low';
+            carbsPerHour = 40;
+        }}
+        
+        // Calculate energy expenditure (power in watts, duration in hours)
         const weight = parseInt(document.getElementById('weightSlider')?.value || {weight_kg});
         const cycling_kcal = (avgPower / 75) * 5 * durationHours * 60;
         
@@ -3563,31 +3602,46 @@ function parseZWOFile(event) {{
         let duringCarbs = 0;
         let duringTiming = 'Not needed';
         if (durationMin > 90 && intensity !== 'low') {{
+            // For workouts >90 min at moderate-high intensity
             duringCarbs = Math.round(carbsPerHour * durationHours);
             duringTiming = `Start at 30 min, then every 15-20 min`;
-        }} else if (durationMin > 90) {{
+        }} else if (durationMin > 90 && intensity === 'low') {{
+            // For long easy rides
             duringCarbs = Math.round(50 * durationHours);
             duringTiming = `Start at 60 min, then every 20-30 min`;
         }} else if (durationMin > 60 && intensity === 'high') {{
+            // For hard sessions 60-90 min
             duringCarbs = 30;
             duringTiming = `One gel mid-session`;
+        }} else if (durationMin <= 60) {{
+            // Short sessions don't need during-workout fueling
+            duringCarbs = 0;
+            duringTiming = `Pre-workout meal sufficient`;
         }}
         
         // Pre-workout
         const preCarbs = intensity === 'high' ? Math.round(weight * 1.5) : Math.round(weight * 1);
         const preTiming = intensity === 'high' ? '2-3 hours before' : 'Optional';
         
-        // Post-workout
-        const needsRecovery = durationMin >= 150 && intensity !== 'low';
+        // Post-workout recovery (only if long AND hard)
+        const needsRecovery = durationMin >= 90 && (intensity === 'high' || intensity === 'moderate-high');
         const postCarbs = needsRecovery ? Math.round(weight * 1.2) : 0;
         const postProtein = needsRecovery ? 25 : 0;
+        
+        // Format duration nicely
+        const hours = Math.floor(durationMin / 60);
+        const minutes = durationMin % 60;
+        let durationDisplay = `${{durationMin}} minutes`;
+        if (hours > 0) {{
+            durationDisplay = `${{hours}}h ${{minutes}}m (${{durationMin}} min)`;
+        }}
         
         // Display results
         document.getElementById('zwoResults').innerHTML = `
             <div class="zwo-workout-info">
                 <div class="zwo-workout-title">${{name}}</div>
-                <p><strong>Duration:</strong> ${{durationMin}} minutes (${{durationHours.toFixed(1)}} hours)</p>
-                <p><strong>Estimated Intensity:</strong> ${{intensity}}</p>
+                <p><strong>Duration:</strong> ${{durationDisplay}}</p>
+                <p><strong>Estimated Intensity:</strong> ${{intensity}} (avg power: ${{(avgPowerFraction * 100).toFixed(0)}}% FTP)</p>
                 <p><strong>Estimated Avg Power:</strong> ${{Math.round(avgPower)}}W (${{(avgPower/weight).toFixed(2)}} W/kg)</p>
             </div>
             
