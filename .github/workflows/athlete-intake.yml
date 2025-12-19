@@ -171,7 +171,7 @@ jobs:
           git diff --staged --quiet || git commit -m "Add intake for ${athlete_id}"
           git push || echo "Nothing to push"
       
-      - name: Send success email
+      - name: Send success email to athlete
         if: success()
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
@@ -202,6 +202,38 @@ jobs:
             
             — Matti
             Gravel God Cycling
+      
+      - name: Notify admin of new intake
+        if: success()
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "🎯 New Athlete Intake: ${{ steps.payload.outputs.name }}"
+          to: gravelgodcoaching@gmail.com
+          from: Gravel God System <${{ secrets.EMAIL_USERNAME }}>
+          body: |
+            NEW ATHLETE INTAKE RECEIVED
+            
+            Name: ${{ steps.payload.outputs.name }}
+            Email: ${{ steps.payload.outputs.email }}
+            Athlete ID: ${{ steps.payload.outputs.athlete_id }}
+            Coaching Tier: ${{ steps.payload.outputs.coaching_tier }}
+            
+            Plan Status: ✅ Generated successfully
+            
+            View profile:
+            https://github.com/${{ github.repository }}/tree/main/athletes/${{ steps.payload.outputs.athlete_id }}
+            
+            Workflow run:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            ---
+            Review the intake and reach out within 24 hours.
       
       - name: Send failure notification
         if: failure()

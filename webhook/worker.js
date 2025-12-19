@@ -53,7 +53,7 @@ export default {
       // Generate athlete ID from email
       const athleteId = generateAthleteId(data.email);
 
-      // Trigger GitHub Actions
+      // Trigger GitHub Actions (will send admin email when plan is generated)
       const githubResponse = await triggerGitHubAction(env.GITHUB_TOKEN, {
         athlete_id: athleteId,
         email: data.email,
