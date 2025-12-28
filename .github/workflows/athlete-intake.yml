@@ -191,10 +191,24 @@ jobs:
             
             SELECTED TIER: ${{ steps.payload.outputs.coaching_tier }}
             
-            NEXT STEPS:
-            1. I'll review your intake within 24 hours
-            2. You'll receive an email with your initial plan and calendar access
-            3. We'll schedule a kickoff call (for MID/MAX tiers)
+            NEXT STEPS - Please complete these 3 steps:
+            
+            1. CONNECT TO MY TRAININGPEAKS COACH ACCOUNT
+               Click here to attach your TrainingPeaks account:
+               https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU
+            
+            2. SUBSCRIBE TO YOUR COACHING PACKAGE
+               Based on your selected tier (${{ steps.payload.outputs.coaching_tier }}), subscribe to the matching package:
+               
+               • Gravel Min ($199/4 weeks) - https://checkout.trainingpeaks.com/product/8a7865f1-c387-43b0-8b03-9efb6a15ebd5
+               • Gravel Mid ($299/4 weeks) - https://checkout.trainingpeaks.com/product/9ea94d4d-2fea-4d40-af6a-7b9566391c3d
+               • Gravel Max ($1,200/4 weeks) - https://checkout.trainingpeaks.com/product/7623fdc6-859d-4676-9567-f196028053a5
+            
+            3. SCHEDULE OUR FIRST MEETING
+               Book your kickoff call here:
+               https://calendar.app.google/E282ZtBJAFBXYdYJ6
+            
+            I'll review your intake within 24 hours and your initial plan will be ready shortly after you complete these steps.
             
             If you have questions, reply to this email.
             
