@@ -1,0 +1,18 @@
+athlete_id: test-manual-1766894603
+generated_date: '2025-12-28 04:04:07'
+tier: compete
+plan_weeks: 23
+race:
+  id: unbound_gravel_200
+  name: Unbound 200
+  date: '2026-06-07'
+strength_frequency: 2
+exercise_exclusions: []
+equipment_tier: minimal
+key_days:
+- tuesday
+- thursday
+- saturday
+strength_days:
+- sunday
+- saturday
