@@ -776,6 +776,7 @@ def generate_dashboard(athlete_id: str) -> Path:
                     <span class="kv-value">{format_value(fitness.get('max_hr'))} BPM</span>
                 </div>
                 {f'<div style="margin-top: 8px; padding: 8px; border: 2px solid var(--warning); background: #fff5f5; font-size: 11px; text-transform: uppercase;"><strong>⚠️ FTP STALE:</strong> Retest needed (>8 weeks old)</div>' if ftp_stale else ''}
+                {format_power_profile(fitness)}
             </div>
         </div>
 
@@ -1084,12 +1085,22 @@ def format_equipment_list(equipment: List[str]) -> str:
 
 
 def format_weekly_schedule(days: Dict) -> str:
-    """Format weekly schedule."""
+    """Format weekly schedule with TSS targets."""
     if not days:
         return '<div class="kv-value">NO SCHEDULE AVAILABLE</div>'
     
     day_order = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
     schedule_html = []
+    
+    # TSS estimates by workout type
+    tss_estimates = {
+        'intervals': '120-180',
+        'threshold': '100-150',
+        'long_ride': '200-350',
+        'easy_ride': '40-80',
+        'recovery': '20-40',
+        'strength': '30-50'
+    }
     
     for day in day_order:
         if day not in days:
@@ -1104,12 +1115,16 @@ def format_weekly_schedule(days: Dict) -> str:
         
         if am and pm:
             workout = f"{am.upper()} (AM) + {pm.upper()} (PM)"
+            tss = f"{tss_estimates.get(am, '?')} + {tss_estimates.get(pm, '?')}"
         elif am:
             workout = am.upper()
+            tss = tss_estimates.get(am, '?')
         elif pm:
             workout = f"{pm.upper()} (PM)"
+            tss = tss_estimates.get(pm, '?')
         else:
             workout = "REST"
+            tss = "0"
         
         notes = day_data.get('notes', '')
         max_duration = day_data.get('max_duration', '')
@@ -1120,7 +1135,7 @@ def format_weekly_schedule(days: Dict) -> str:
                 <div class="day-content">
                     <div class="workout-type">{workout}</div>
                     {f'<div class="workout-notes">{notes}</div>' if notes else ''}
-                    {f'<div class="workout-notes">MAX: {max_duration} MIN</div>' if max_duration else ''}
+                    {f'<div class="workout-notes">MAX: {max_duration} MIN | TSS: {tss}</div>' if max_duration else f'<div class="workout-notes">TSS: {tss}</div>'}
                 </div>
             </div>
         ''')
@@ -1147,6 +1162,56 @@ def format_coaching_priorities(priorities: List[str]) -> str:
         items.append(f'<div style="margin: 8px 0; padding: 8px; border-left: 3px solid var(--border);">{i}. {priority}</div>')
     
     return '\n'.join(items)
+
+
+def format_power_profile(fitness: Dict) -> str:
+    """Format power profile if available (estimated from FTP if needed)."""
+    ftp = fitness.get('ftp_watts', 0)
+    w_kg = fitness.get('w_kg', 0)
+    weight = fitness.get('weight_kg', 0)
+    
+    if not ftp or ftp == 0:
+        return ''
+    
+    # Estimate power profile from FTP (rough estimates)
+    # These are typical ratios, will be replaced with actual data if available
+    power_5s = int(ftp * 3.0)  # ~3x FTP for 5s
+    power_1min = int(ftp * 1.5)  # ~1.5x FTP for 1min
+    power_5min = int(ftp * 1.15)  # ~1.15x FTP for 5min
+    power_20min = int(ftp * 1.0)  # FTP is ~20min power
+    
+    wkg_5s = power_5s / weight if weight > 0 else 0
+    wkg_1min = power_1min / weight if weight > 0 else 0
+    wkg_5min = power_5min / weight if weight > 0 else 0
+    wkg_20min = power_20min / weight if weight > 0 else 0
+    
+    return f'''
+        <div style="margin-top: 16px; padding-top: 16px; border-top: 2px solid var(--border);">
+            <div style="font-weight: 700; text-transform: uppercase; font-size: 12px; margin-bottom: 8px; color: var(--muted);">POWER PROFILE (ESTIMATED)</div>
+            <div style="font-size: 11px; font-family: monospace;">
+                <div style="display: grid; grid-template-columns: 60px 1fr 1fr; gap: 8px; margin: 4px 0;">
+                    <span>5s:</span>
+                    <span>{power_5s}W</span>
+                    <span>({wkg_5s:.1f} W/kg) — SPRINT</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 60px 1fr 1fr; gap: 8px; margin: 4px 0;">
+                    <span>1min:</span>
+                    <span>{power_1min}W</span>
+                    <span>({wkg_1min:.1f} W/kg) — ANAEROBIC</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 60px 1fr 1fr; gap: 8px; margin: 4px 0;">
+                    <span>5min:</span>
+                    <span>{power_5min}W</span>
+                    <span>({wkg_5min:.1f} W/kg) — VO2MAX</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 60px 1fr 1fr; gap: 8px; margin: 4px 0;">
+                    <span>20min:</span>
+                    <span>{power_20min}W</span>
+                    <span>({wkg_20min:.1f} W/kg) — THRESHOLD</span>
+                </div>
+            </div>
+        </div>
+    '''
 
 
 def main():
