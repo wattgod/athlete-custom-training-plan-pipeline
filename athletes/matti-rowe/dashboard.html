@@ -14,6 +14,8 @@
             --border: #000000;
             --muted: #666666;
             --soft: #f5f5f5;
+            --warning: #ff0000;
+            --success: #00ff00;
         }
 
         * {
@@ -29,7 +31,7 @@
             font-size: 14px;
             line-height: 1.6;
             padding: 24px;
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
         }
 
@@ -65,10 +67,92 @@
             background: var(--bg);
         }
 
+        /* PRIORITY GRID - Top section for critical info */
+        .priority-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        /* RACE COUNTDOWN - Most urgent */
+        .race-countdown {
+            border: 3px solid var(--border);
+            padding: 24px;
+            background: var(--soft);
+        }
+
+        .countdown-number {
+            font-size: 72px;
+            font-weight: 700;
+            line-height: 1;
+            margin: 16px 0;
+        }
+
+        .countdown-label {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--muted);
+        }
+
+        /* RISK FACTORS - Red flags */
+        .risk-factors {
+            border: 3px solid var(--border);
+            padding: 24px;
+            background: var(--soft);
+        }
+
+        .risk-high {
+            border-color: var(--warning);
+            background: #fff5f5;
+        }
+
+        .risk-moderate {
+            border-color: #ff8800;
+            background: #fff8f0;
+        }
+
+        .risk-low {
+            border-color: var(--success);
+            background: #f0fff0;
+        }
+
+        .risk-level {
+            font-size: 24px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 16px;
+        }
+
+        /* CAPACITY CHECK */
+        .capacity-check {
+            border: 3px solid var(--border);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .capacity-bar {
+            width: 100%;
+            height: 40px;
+            border: 2px solid var(--border);
+            background: var(--soft);
+            margin: 8px 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .capacity-fill {
+            height: 100%;
+            background: var(--fg);
+            transition: width 0.3s;
+        }
+
         /* GRID LAYOUT */
         .dashboard-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
             gap: 24px;
             margin-bottom: 32px;
         }
@@ -118,51 +202,6 @@
             text-align: right;
         }
 
-        /* TABLE STYLES */
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 16px;
-        }
-
-        .table th {
-            border: 2px solid var(--border);
-            padding: 12px;
-            text-align: left;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            font-size: 12px;
-            background: var(--soft);
-        }
-
-        .table td {
-            border: 2px solid var(--border);
-            padding: 12px;
-            border-top: none;
-        }
-
-        .table tr:first-child td {
-            border-top: 2px solid var(--border);
-        }
-
-        /* BADGES */
-        .badge {
-            display: inline-block;
-            border: 2px solid var(--border);
-            padding: 4px 10px;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            font-weight: 600;
-            margin: 2px;
-        }
-
-        .badge-key {
-            background: var(--fg);
-            color: var(--bg);
-        }
-
         /* FULL WIDTH CARDS */
         .card-full {
             grid-column: 1 / -1;
@@ -202,7 +241,47 @@
             color: var(--muted);
         }
 
+        /* BADGES */
+        .badge {
+            display: inline-block;
+            border: 2px solid var(--border);
+            padding: 4px 10px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-weight: 600;
+            margin: 2px;
+        }
+
+        .badge-key {
+            background: var(--fg);
+            color: var(--bg);
+        }
+
+        .badge-warning {
+            background: var(--warning);
+            color: var(--bg);
+            border-color: var(--warning);
+        }
+
+        /* STATUS INDICATORS */
+        .status-good {
+            color: #008800;
+        }
+
+        .status-warning {
+            color: #ff8800;
+        }
+
+        .status-danger {
+            color: var(--warning);
+        }
+
         @media (max-width: 768px) {
+            .priority-grid {
+                grid-template-columns: 1fr;
+            }
+            
             .dashboard-grid {
                 grid-template-columns: 1fr;
             }
@@ -220,22 +299,24 @@
             <span>ID: matti-rowe</span>
             <span>EMAIL: matti@gravelgod.com</span>
             <span>TIER: COMPETE</span>
-            <span>PLAN: 24 WEEKS</span>
         </div>
     </div>
 
-    <div class="dashboard-grid">
-        <!-- TARGET RACE -->
-        <div class="card">
-            <div class="card-header">TARGET RACE</div>
-            <div class="card-content">
+    <!-- PRIORITY SECTION: Race Countdown + Risk Factors -->
+    <div class="priority-grid">
+        <!-- RACE COUNTDOWN -->
+        <div class="race-countdown">
+            <div class="card-header">RACE COUNTDOWN</div>
+            <div class="countdown-number">162</div>
+            <div class="countdown-label">DAYS UNTIL RACE</div>
+            <div style="margin-top: 24px;">
                 <div class="kv-row">
                     <span class="kv-key">Race</span>
                     <span class="kv-value">Unbound Gravel 200</span>
                 </div>
                 <div class="kv-row">
                     <span class="kv-key">Date</span>
-                    <span class="kv-value">June 07, 2026</span>
+                    <span class="kv-value">Jun 07, 2026</span>
                 </div>
                 <div class="kv-row">
                     <span class="kv-key">Distance</span>
@@ -245,43 +326,90 @@
                     <span class="kv-key">Goal</span>
                     <span class="kv-value">COMPETE</span>
                 </div>
+                <div class="kv-row">
+                    <span class="kv-key">Plan Week</span>
+                    <span class="kv-value">1 / 24</span>
+                </div>
             </div>
         </div>
 
-        <!-- FITNESS MARKERS -->
+        <!-- RISK FACTORS -->
+        <div class="risk-factors risk-moderate">
+            <div class="card-header">RISK FACTORS</div>
+            <div class="risk-level">RISK: MODERATE</div>
+            
+            
+                <div style="margin: 12px 0; padding: 12px; border: 2px solid var(--border);">
+                    <div style="font-weight: 700; text-transform: uppercase;">CURRENT: KNEE (MINOR)</div>
+                    <div style="font-size: 12px; margin-top: 4px;">Affects: STRENGTH</div>
+                    <div style="font-size: 12px; margin-top: 4px; color: var(--muted);">Old ACL reconstruction, avoid high-impact jumping</div>
+                </div>
+            
+<div style="margin-top: 8px;"><span class="badge">MOVEMENT LIMITATIONS: DEEP SQUAT, SINGLE LEG BALANCE</span></div>
+        </div>
+    </div>
+
+    <!-- CAPACITY CHECK -->
+    <div class="capacity-check">
+        <div class="card-header">CAPACITY CHECK</div>
+        <div style="margin-top: 16px;">
+            <div class="kv-row">
+                <span class="kv-key">Hours Available</span>
+                <span class="kv-value">15 H/WEEK</span>
+            </div>
+            <div class="capacity-bar">
+                <div class="capacity-fill" style="width: 75.0%;"></div>
+            </div>
+            <div class="kv-row">
+                <span class="kv-key">Currently Doing</span>
+                <span class="kv-value">12 H/WEEK</span>
+            </div>
+            <div class="kv-row">
+                <span class="kv-key">Peak Ever Sustained</span>
+                <span class="kv-value">18 H/WEEK</span>
+            </div>
+            <div class="kv-row">
+                <span class="kv-key">Training Consistency</span>
+                <span class="kv-value status-good">CONSISTENT</span>
+            </div>
+            <div class="kv-row">
+                <span class="kv-key">Days Since Last Ride</span>
+                <span class="kv-value status-good">1</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- CURRENT FITNESS -->
         <div class="card">
-            <div class="card-header">FITNESS MARKERS</div>
+            <div class="card-header">CURRENT FITNESS</div>
             <div class="card-content">
                 <div class="kv-row">
                     <span class="kv-key">FTP</span>
                     <span class="kv-value">280 W</span>
                 </div>
                 <div class="kv-row">
+                    <span class="kv-key">W/KG</span>
+                    <span class="kv-value">3.73</span>
+                </div>
+                <div class="kv-row">
                     <span class="kv-key">FTP Date</span>
-                    <span class="kv-value">November 15, 2024</span>
+                    <span class="kv-value">Nov 15, 2024</span>
                 </div>
                 <div class="kv-row">
                     <span class="kv-key">Weight</span>
                     <span class="kv-value">75 KG</span>
                 </div>
                 <div class="kv-row">
-                    <span class="kv-key">W/KG</span>
-                    <span class="kv-value">3.73</span>
-                </div>
-                <div class="kv-row">
                     <span class="kv-key">Resting HR</span>
                     <span class="kv-value">48 BPM</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Max HR</span>
-                    <span class="kv-value">185 BPM</span>
                 </div>
             </div>
         </div>
 
-        <!-- TRAINING HISTORY -->
+        <!-- TRAINING EXPERIENCE -->
         <div class="card">
-            <div class="card-header">TRAINING HISTORY</div>
+            <div class="card-header">TRAINING EXPERIENCE</div>
             <div class="card-content">
                 <div class="kv-row">
                     <span class="kv-key">Years Cycling</span>
@@ -296,112 +424,49 @@
                     <span class="kv-value">INTERMEDIATE</span>
                 </div>
                 <div class="kv-row">
-                    <span class="kv-key">Peak Weekly Hours</span>
-                    <span class="kv-value">18 H</span>
+                    <span class="kv-key">Current Phase</span>
+                    <span class="kv-value">BASE</span>
                 </div>
                 <div class="kv-row">
-                    <span class="kv-key">Current Weekly Hours</span>
-                    <span class="kv-value">12 H</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- PLAN INFO -->
-        <div class="card">
-            <div class="card-header">CURRENT PLAN</div>
-            <div class="card-content">
-                <div class="kv-row">
-                    <span class="kv-key">Tier</span>
-                    <span class="kv-value">COMPETE</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Plan Weeks</span>
-                    <span class="kv-value">24</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Strength Frequency</span>
-                    <span class="kv-value">2X/WEEK</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Equipment Tier</span>
-                    <span class="kv-value">MODERATE</span>
+                    <span class="kv-key">Coming Off Injury</span>
+                    <span class="kv-value status-good">NO</span>
                 </div>
             </div>
         </div>
 
-        <!-- WEEKLY AVAILABILITY -->
+        <!-- KEY DAYS -->
         <div class="card">
-            <div class="card-header">WEEKLY AVAILABILITY</div>
+            <div class="card-header">KEY TRAINING DAYS</div>
             <div class="card-content">
-                <div class="kv-row">
-                    <span class="kv-key">Total Hours</span>
-                    <span class="kv-value">15 H</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Cycling Target</span>
-                    <span class="kv-value">12 H</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Strength Max</span>
-                    <span class="kv-value">2 SESSIONS</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- HEALTH FACTORS -->
-        <div class="card">
-            <div class="card-header">HEALTH FACTORS</div>
-            <div class="card-content">
-                <div class="kv-row">
-                    <span class="kv-key">Age</span>
-                    <span class="kv-value">38</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Sleep Quality</span>
-                    <span class="kv-value">GOOD</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Sleep Hours</span>
-                    <span class="kv-value">7 H</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Stress Level</span>
-                    <span class="kv-value">MODERATE</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Recovery Capacity</span>
-                    <span class="kv-value">NORMAL</span>
+                <div><span class="badge badge-key">MONDAY</span> <span class="badge badge-key">TUESDAY</span> <span class="badge badge-key">THURSDAY</span> <span class="badge badge-key">SATURDAY</span></div>
+                <div style="margin-top: 16px; font-size: 12px; color: var(--muted);">
+                    Days marked for high-intensity work
                 </div>
             </div>
         </div>
 
         <!-- EQUIPMENT -->
         <div class="card">
-            <div class="card-header">STRENGTH EQUIPMENT</div>
+            <div class="card-header">EQUIPMENT</div>
             <div class="card-content">
-                <div><span class="badge">BODYWEIGHT</span> <span class="badge">DUMBBELLS</span> <span class="badge">KETTLEBELLS</span> <span class="badge">RESISTANCE BANDS</span> <span class="badge">PULL UP BAR</span></div>
-            </div>
-        </div>
-
-        <!-- CYCLING EQUIPMENT -->
-        <div class="card">
-            <div class="card-header">CYCLING EQUIPMENT</div>
-            <div class="card-content">
-                <div class="kv-row">
-                    <span class="kv-key">Smart Trainer</span>
-                    <span class="kv-value">YES</span>
+                <div style="margin-bottom: 16px;">
+                    <div class="kv-key" style="margin-bottom: 8px;">STRENGTH</div>
+                    <div><span class="badge">BODYWEIGHT</span> <span class="badge">DUMBBELLS</span> <span class="badge">KETTLEBELLS</span> <span class="badge">RESISTANCE BANDS</span> <span class="badge">PULL UP BAR</span></div>
                 </div>
-                <div class="kv-row">
-                    <span class="kv-key">Power Meter</span>
-                    <span class="kv-value">YES</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">HR Monitor</span>
-                    <span class="kv-value">YES</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Indoor Setup</span>
-                    <span class="kv-value">DEDICATED_PAIN_CAVE</span>
+                <div>
+                    <div class="kv-key" style="margin-bottom: 8px;">CYCLING</div>
+                    <div class="kv-row">
+                        <span class="kv-key">Smart Trainer</span>
+                        <span class="kv-value">YES</span>
+                    </div>
+                    <div class="kv-row">
+                        <span class="kv-key">Power Meter</span>
+                        <span class="kv-value">YES</span>
+                    </div>
+                    <div class="kv-row">
+                        <span class="kv-key">HR Monitor</span>
+                        <span class="kv-value">YES</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -482,35 +547,10 @@
         
             </div>
         </div>
-
-        <!-- KEY DAYS & STRENGTH DAYS -->
-        <div class="card">
-            <div class="card-header">KEY DAYS</div>
-            <div class="card-content">
-                <div><span class="badge">MONDAY</span> <span class="badge">TUESDAY</span> <span class="badge">THURSDAY</span> <span class="badge">SATURDAY</span></div>
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-header">STRENGTH DAYS</div>
-            <div class="card-content">
-                <div><span class="badge">SUNDAY</span> <span class="badge">SATURDAY</span></div>
-            </div>
-        </div>
-
-        <!-- EXERCISE EXCLUSIONS -->
-        
-        <div class="card">
-            <div class="card-header">EXERCISE EXCLUSIONS</div>
-            <div class="card-content">
-                <div><span class="badge" style="text-decoration: line-through;">BOX JUMP</span> <span class="badge" style="text-decoration: line-through;">JUMP SQUAT</span></div>
-            </div>
-        </div>
-    
     </div>
 
     <div style="text-align: center; margin-top: 48px; padding-top: 24px; border-top: 3px solid var(--border); font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);">
-        GENERATED DECEMBER 27, 2025 AT 22:59
+        GENERATED DECEMBER 27, 2025 AT 23:22
     </div>
 </body>
 </html>

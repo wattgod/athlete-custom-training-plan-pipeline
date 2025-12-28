@@ -2,16 +2,43 @@
 """
 Generate Neo-Brutalist Athlete Dashboard
 
-Creates a comprehensive dashboard showing all relevant coaching information
-for an athlete in Neo-Brutalist style.
+Creates a coach-first dashboard prioritizing decision-critical information:
+1. Race countdown & goal (urgency)
+2. Risk factors (red flags)
+3. Capacity check (can they handle the plan?)
+4. Current status (are they training?)
+5. Constraints (what limits them?)
+6. Details (equipment, preferences, etc.)
 """
 
 import yaml
 import json
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date
 from typing import Dict, List, Optional
+
+
+def calculate_days_until(date_str: Optional[str]) -> Optional[int]:
+    """Calculate days until a date."""
+    if not date_str:
+        return None
+    try:
+        target = datetime.strptime(date_str, "%Y-%m-%d").date()
+        today = date.today()
+        return (target - today).days
+    except:
+        return None
+
+
+def calculate_current_week(race_date: Optional[str], plan_weeks: int) -> Optional[int]:
+    """Calculate current week in plan."""
+    days_until = calculate_days_until(race_date)
+    if days_until is None or plan_weeks == 0:
+        return None
+    weeks_until = days_until // 7
+    current_week = plan_weeks - weeks_until
+    return max(1, min(current_week, plan_weeks))
 
 
 def format_date(date_str: Optional[str]) -> str:
@@ -20,7 +47,7 @@ def format_date(date_str: Optional[str]) -> str:
         return "N/A"
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d")
-        return dt.strftime("%B %d, %Y")
+        return dt.strftime("%b %d, %Y")
     except:
         return date_str
 
@@ -38,9 +65,24 @@ def format_value(value, default="—") -> str:
     return str(value)
 
 
+def get_risk_level(injuries: List, health: Dict, limitations: Dict) -> str:
+    """Determine risk level for athlete."""
+    if injuries and any(i.get('severity') in ['moderate', 'significant'] for i in injuries):
+        return "HIGH"
+    if injuries:
+        return "MODERATE"
+    if health.get('stress_level') in ['high', 'very_high']:
+        return "MODERATE"
+    if health.get('sleep_quality') == 'poor':
+        return "MODERATE"
+    if limitations and any(v in ['limited', 'significantly_limited', 'painful'] for v in limitations.values() if isinstance(v, str)):
+        return "MODERATE"
+    return "LOW"
+
+
 def generate_dashboard(athlete_id: str) -> Path:
     """
-    Generate comprehensive Neo-Brutalist dashboard for athlete.
+    Generate coach-first Neo-Brutalist dashboard for athlete.
     """
     # Load data
     profile_path = Path(f"athletes/{athlete_id}/profile.yaml")
@@ -60,7 +102,6 @@ def generate_dashboard(athlete_id: str) -> Path:
         with open(weekly_structure_path, 'r') as f:
             weekly_structure = yaml.safe_load(f)
     
-    # Get current plan
     plan_config_path = Path(f"athletes/{athlete_id}/plans/current/plan_config.yaml")
     plan_config = {}
     if plan_config_path.exists():
@@ -72,11 +113,29 @@ def generate_dashboard(athlete_id: str) -> Path:
     target_race = profile.get("target_race", {})
     fitness = profile.get("fitness_markers", {})
     training_history = profile.get("training_history", {})
+    recent_training = profile.get("recent_training", {})
     weekly_availability = profile.get("weekly_availability", {})
     preferred_days = profile.get("preferred_days", {})
     health = profile.get("health_factors", {})
+    injuries = profile.get("injury_history", {})
     equipment = profile.get("strength_equipment", [])
     cycling_equipment = profile.get("cycling_equipment", {})
+    limitations = profile.get("movement_limitations", {})
+    
+    # Calculate critical metrics
+    race_date = target_race.get('date')
+    days_until = calculate_days_until(race_date)
+    plan_weeks = derived.get('plan_weeks', 0)
+    current_week = calculate_current_week(race_date, plan_weeks)
+    
+    # Risk assessment
+    current_injuries = injuries.get('current_injuries', [])
+    risk_level = get_risk_level(current_injuries, health, limitations)
+    
+    # Capacity check
+    hours_available = weekly_availability.get('total_hours_available', 0)
+    hours_current = training_history.get('current_weekly_hours', 0)
+    hours_peak = training_history.get('highest_weekly_hours', 0)
     
     # Generate HTML
     html = f'''<!DOCTYPE html>
@@ -95,6 +154,8 @@ def generate_dashboard(athlete_id: str) -> Path:
             --border: #000000;
             --muted: #666666;
             --soft: #f5f5f5;
+            --warning: #ff0000;
+            --success: #00ff00;
         }}
 
         * {{
@@ -110,7 +171,7 @@ def generate_dashboard(athlete_id: str) -> Path:
             font-size: 14px;
             line-height: 1.6;
             padding: 24px;
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
         }}
 
@@ -146,10 +207,92 @@ def generate_dashboard(athlete_id: str) -> Path:
             background: var(--bg);
         }}
 
+        /* PRIORITY GRID - Top section for critical info */
+        .priority-grid {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 32px;
+        }}
+
+        /* RACE COUNTDOWN - Most urgent */
+        .race-countdown {{
+            border: 3px solid var(--border);
+            padding: 24px;
+            background: var(--soft);
+        }}
+
+        .countdown-number {{
+            font-size: 72px;
+            font-weight: 700;
+            line-height: 1;
+            margin: 16px 0;
+        }}
+
+        .countdown-label {{
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--muted);
+        }}
+
+        /* RISK FACTORS - Red flags */
+        .risk-factors {{
+            border: 3px solid var(--border);
+            padding: 24px;
+            background: var(--soft);
+        }}
+
+        .risk-high {{
+            border-color: var(--warning);
+            background: #fff5f5;
+        }}
+
+        .risk-moderate {{
+            border-color: #ff8800;
+            background: #fff8f0;
+        }}
+
+        .risk-low {{
+            border-color: var(--success);
+            background: #f0fff0;
+        }}
+
+        .risk-level {{
+            font-size: 24px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 16px;
+        }}
+
+        /* CAPACITY CHECK */
+        .capacity-check {{
+            border: 3px solid var(--border);
+            padding: 24px;
+            margin-bottom: 24px;
+        }}
+
+        .capacity-bar {{
+            width: 100%;
+            height: 40px;
+            border: 2px solid var(--border);
+            background: var(--soft);
+            margin: 8px 0;
+            position: relative;
+            overflow: hidden;
+        }}
+
+        .capacity-fill {{
+            height: 100%;
+            background: var(--fg);
+            transition: width 0.3s;
+        }}
+
         /* GRID LAYOUT */
         .dashboard-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
             gap: 24px;
             margin-bottom: 32px;
         }}
@@ -199,51 +342,6 @@ def generate_dashboard(athlete_id: str) -> Path:
             text-align: right;
         }}
 
-        /* TABLE STYLES */
-        .table {{
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 16px;
-        }}
-
-        .table th {{
-            border: 2px solid var(--border);
-            padding: 12px;
-            text-align: left;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            font-size: 12px;
-            background: var(--soft);
-        }}
-
-        .table td {{
-            border: 2px solid var(--border);
-            padding: 12px;
-            border-top: none;
-        }}
-
-        .table tr:first-child td {{
-            border-top: 2px solid var(--border);
-        }}
-
-        /* BADGES */
-        .badge {{
-            display: inline-block;
-            border: 2px solid var(--border);
-            padding: 4px 10px;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            font-weight: 600;
-            margin: 2px;
-        }}
-
-        .badge-key {{
-            background: var(--fg);
-            color: var(--bg);
-        }}
-
         /* FULL WIDTH CARDS */
         .card-full {{
             grid-column: 1 / -1;
@@ -283,7 +381,47 @@ def generate_dashboard(athlete_id: str) -> Path:
             color: var(--muted);
         }}
 
+        /* BADGES */
+        .badge {{
+            display: inline-block;
+            border: 2px solid var(--border);
+            padding: 4px 10px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-weight: 600;
+            margin: 2px;
+        }}
+
+        .badge-key {{
+            background: var(--fg);
+            color: var(--bg);
+        }}
+
+        .badge-warning {{
+            background: var(--warning);
+            color: var(--bg);
+            border-color: var(--warning);
+        }}
+
+        /* STATUS INDICATORS */
+        .status-good {{
+            color: #008800;
+        }}
+
+        .status-warning {{
+            color: #ff8800;
+        }}
+
+        .status-danger {{
+            color: var(--warning);
+        }}
+
         @media (max-width: 768px) {{
+            .priority-grid {{
+                grid-template-columns: 1fr;
+            }}
+            
             .dashboard-grid {{
                 grid-template-columns: 1fr;
             }}
@@ -301,22 +439,24 @@ def generate_dashboard(athlete_id: str) -> Path:
             <span>ID: {athlete_id}</span>
             <span>EMAIL: {email}</span>
             <span>TIER: {derived.get('tier', 'N/A').upper()}</span>
-            <span>PLAN: {plan_config.get('plan_weeks', 'N/A')} WEEKS</span>
         </div>
     </div>
 
-    <div class="dashboard-grid">
-        <!-- TARGET RACE -->
-        <div class="card">
-            <div class="card-header">TARGET RACE</div>
-            <div class="card-content">
+    <!-- PRIORITY SECTION: Race Countdown + Risk Factors -->
+    <div class="priority-grid">
+        <!-- RACE COUNTDOWN -->
+        <div class="race-countdown">
+            <div class="card-header">RACE COUNTDOWN</div>
+            <div class="countdown-number">{days_until if days_until is not None else "—"}</div>
+            <div class="countdown-label">DAYS UNTIL RACE</div>
+            <div style="margin-top: 24px;">
                 <div class="kv-row">
                     <span class="kv-key">Race</span>
                     <span class="kv-value">{format_value(target_race.get('name'))}</span>
                 </div>
                 <div class="kv-row">
                     <span class="kv-key">Date</span>
-                    <span class="kv-value">{format_date(target_race.get('date'))}</span>
+                    <span class="kv-value">{format_date(race_date)}</span>
                 </div>
                 <div class="kv-row">
                     <span class="kv-key">Distance</span>
@@ -326,16 +466,64 @@ def generate_dashboard(athlete_id: str) -> Path:
                     <span class="kv-key">Goal</span>
                     <span class="kv-value">{format_value(target_race.get('goal_type')).upper()}</span>
                 </div>
+                <div class="kv-row">
+                    <span class="kv-key">Plan Week</span>
+                    <span class="kv-value">{current_week if current_week else "—"} / {plan_weeks}</span>
+                </div>
             </div>
         </div>
 
-        <!-- FITNESS MARKERS -->
+        <!-- RISK FACTORS -->
+        <div class="risk-factors risk-{risk_level.lower()}">
+            <div class="card-header">RISK FACTORS</div>
+            <div class="risk-level">RISK: {risk_level}</div>
+            
+            {format_risk_factors(current_injuries, health, limitations, injuries.get('past_injuries', []))}
+        </div>
+    </div>
+
+    <!-- CAPACITY CHECK -->
+    <div class="capacity-check">
+        <div class="card-header">CAPACITY CHECK</div>
+        <div style="margin-top: 16px;">
+            <div class="kv-row">
+                <span class="kv-key">Hours Available</span>
+                <span class="kv-value">{hours_available} H/WEEK</span>
+            </div>
+            <div class="capacity-bar">
+                <div class="capacity-fill" style="width: {min(100, (hours_available / max(20, 1)) * 100)}%;"></div>
+            </div>
+            <div class="kv-row">
+                <span class="kv-key">Currently Doing</span>
+                <span class="kv-value">{hours_current} H/WEEK</span>
+            </div>
+            <div class="kv-row">
+                <span class="kv-key">Peak Ever Sustained</span>
+                <span class="kv-value">{hours_peak} H/WEEK</span>
+            </div>
+            <div class="kv-row">
+                <span class="kv-key">Training Consistency</span>
+                <span class="kv-value {get_consistency_class(recent_training.get('last_12_weeks'))}">{format_value(recent_training.get('last_12_weeks')).upper()}</span>
+            </div>
+            <div class="kv-row">
+                <span class="kv-key">Days Since Last Ride</span>
+                <span class="kv-value {get_days_class(recent_training.get('days_since_last_ride'))}">{format_value(recent_training.get('days_since_last_ride'))}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- CURRENT FITNESS -->
         <div class="card">
-            <div class="card-header">FITNESS MARKERS</div>
+            <div class="card-header">CURRENT FITNESS</div>
             <div class="card-content">
                 <div class="kv-row">
                     <span class="kv-key">FTP</span>
                     <span class="kv-value">{format_value(fitness.get('ftp_watts'))} W</span>
+                </div>
+                <div class="kv-row">
+                    <span class="kv-key">W/KG</span>
+                    <span class="kv-value">{format_value(fitness.get('w_kg'))}</span>
                 </div>
                 <div class="kv-row">
                     <span class="kv-key">FTP Date</span>
@@ -346,23 +534,15 @@ def generate_dashboard(athlete_id: str) -> Path:
                     <span class="kv-value">{format_value(fitness.get('weight_kg'))} KG</span>
                 </div>
                 <div class="kv-row">
-                    <span class="kv-key">W/KG</span>
-                    <span class="kv-value">{format_value(fitness.get('w_kg'))}</span>
-                </div>
-                <div class="kv-row">
                     <span class="kv-key">Resting HR</span>
                     <span class="kv-value">{format_value(fitness.get('resting_hr'))} BPM</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Max HR</span>
-                    <span class="kv-value">{format_value(fitness.get('max_hr'))} BPM</span>
                 </div>
             </div>
         </div>
 
-        <!-- TRAINING HISTORY -->
+        <!-- TRAINING EXPERIENCE -->
         <div class="card">
-            <div class="card-header">TRAINING HISTORY</div>
+            <div class="card-header">TRAINING EXPERIENCE</div>
             <div class="card-content">
                 <div class="kv-row">
                     <span class="kv-key">Years Cycling</span>
@@ -377,112 +557,49 @@ def generate_dashboard(athlete_id: str) -> Path:
                     <span class="kv-value">{format_value(training_history.get('strength_background')).upper()}</span>
                 </div>
                 <div class="kv-row">
-                    <span class="kv-key">Peak Weekly Hours</span>
-                    <span class="kv-value">{format_value(training_history.get('highest_weekly_hours'))} H</span>
+                    <span class="kv-key">Current Phase</span>
+                    <span class="kv-value">{format_value(recent_training.get('current_phase')).upper()}</span>
                 </div>
                 <div class="kv-row">
-                    <span class="kv-key">Current Weekly Hours</span>
-                    <span class="kv-value">{format_value(training_history.get('current_weekly_hours'))} H</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- PLAN INFO -->
-        <div class="card">
-            <div class="card-header">CURRENT PLAN</div>
-            <div class="card-content">
-                <div class="kv-row">
-                    <span class="kv-key">Tier</span>
-                    <span class="kv-value">{format_value(derived.get('tier')).upper()}</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Plan Weeks</span>
-                    <span class="kv-value">{format_value(derived.get('plan_weeks'))}</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Strength Frequency</span>
-                    <span class="kv-value">{format_value(derived.get('strength_frequency'))}X/WEEK</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Equipment Tier</span>
-                    <span class="kv-value">{format_value(derived.get('equipment_tier')).upper()}</span>
+                    <span class="kv-key">Coming Off Injury</span>
+                    <span class="kv-value {get_yes_no_class(recent_training.get('coming_off_injury'))}">{format_value(recent_training.get('coming_off_injury'))}</span>
                 </div>
             </div>
         </div>
 
-        <!-- WEEKLY AVAILABILITY -->
+        <!-- KEY DAYS -->
         <div class="card">
-            <div class="card-header">WEEKLY AVAILABILITY</div>
+            <div class="card-header">KEY TRAINING DAYS</div>
             <div class="card-content">
-                <div class="kv-row">
-                    <span class="kv-key">Total Hours</span>
-                    <span class="kv-value">{format_value(weekly_availability.get('total_hours_available'))} H</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Cycling Target</span>
-                    <span class="kv-value">{format_value(weekly_availability.get('cycling_hours_target'))} H</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Strength Max</span>
-                    <span class="kv-value">{format_value(weekly_availability.get('strength_sessions_max'))} SESSIONS</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- HEALTH FACTORS -->
-        <div class="card">
-            <div class="card-header">HEALTH FACTORS</div>
-            <div class="card-content">
-                <div class="kv-row">
-                    <span class="kv-key">Age</span>
-                    <span class="kv-value">{format_value(health.get('age'))}</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Sleep Quality</span>
-                    <span class="kv-value">{format_value(health.get('sleep_quality')).upper()}</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Sleep Hours</span>
-                    <span class="kv-value">{format_value(health.get('sleep_hours_avg'))} H</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Stress Level</span>
-                    <span class="kv-value">{format_value(health.get('stress_level')).upper()}</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Recovery Capacity</span>
-                    <span class="kv-value">{format_value(health.get('recovery_capacity')).upper()}</span>
+                {format_day_list(derived.get('key_day_candidates', []))}
+                <div style="margin-top: 16px; font-size: 12px; color: var(--muted);">
+                    Days marked for high-intensity work
                 </div>
             </div>
         </div>
 
         <!-- EQUIPMENT -->
         <div class="card">
-            <div class="card-header">STRENGTH EQUIPMENT</div>
+            <div class="card-header">EQUIPMENT</div>
             <div class="card-content">
-                {format_equipment_list(equipment)}
-            </div>
-        </div>
-
-        <!-- CYCLING EQUIPMENT -->
-        <div class="card">
-            <div class="card-header">CYCLING EQUIPMENT</div>
-            <div class="card-content">
-                <div class="kv-row">
-                    <span class="kv-key">Smart Trainer</span>
-                    <span class="kv-value">{format_value(cycling_equipment.get('smart_trainer'))}</span>
+                <div style="margin-bottom: 16px;">
+                    <div class="kv-key" style="margin-bottom: 8px;">STRENGTH</div>
+                    {format_equipment_list(equipment)}
                 </div>
-                <div class="kv-row">
-                    <span class="kv-key">Power Meter</span>
-                    <span class="kv-value">{format_value(cycling_equipment.get('power_meter_bike'))}</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">HR Monitor</span>
-                    <span class="kv-value">{format_value(cycling_equipment.get('hr_monitor'))}</span>
-                </div>
-                <div class="kv-row">
-                    <span class="kv-key">Indoor Setup</span>
-                    <span class="kv-value">{format_value(cycling_equipment.get('indoor_setup')).upper()}</span>
+                <div>
+                    <div class="kv-key" style="margin-bottom: 8px;">CYCLING</div>
+                    <div class="kv-row">
+                        <span class="kv-key">Smart Trainer</span>
+                        <span class="kv-value">{format_value(cycling_equipment.get('smart_trainer'))}</span>
+                    </div>
+                    <div class="kv-row">
+                        <span class="kv-key">Power Meter</span>
+                        <span class="kv-value">{format_value(cycling_equipment.get('power_meter_bike'))}</span>
+                    </div>
+                    <div class="kv-row">
+                        <span class="kv-key">HR Monitor</span>
+                        <span class="kv-value">{format_value(cycling_equipment.get('hr_monitor'))}</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -494,24 +611,6 @@ def generate_dashboard(athlete_id: str) -> Path:
                 {format_weekly_schedule(weekly_structure.get('days', {}))}
             </div>
         </div>
-
-        <!-- KEY DAYS & STRENGTH DAYS -->
-        <div class="card">
-            <div class="card-header">KEY DAYS</div>
-            <div class="card-content">
-                {format_day_list(derived.get('key_day_candidates', []))}
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-header">STRENGTH DAYS</div>
-            <div class="card-content">
-                {format_day_list(derived.get('strength_day_candidates', []))}
-            </div>
-        </div>
-
-        <!-- EXERCISE EXCLUSIONS -->
-        {format_exclusions_card(derived.get('exercise_exclusions', []))}
     </div>
 
     <div style="text-align: center; margin-top: 48px; padding-top: 24px; border-top: 3px solid var(--border); font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);">
@@ -527,6 +626,81 @@ def generate_dashboard(athlete_id: str) -> Path:
         f.write(html)
     
     return dashboard_path
+
+
+def format_risk_factors(current_injuries: List, health: Dict, limitations: Dict, past_injuries: List) -> str:
+    """Format risk factors section."""
+    factors = []
+    
+    if current_injuries:
+        for injury in current_injuries:
+            area = injury.get('area', 'Unknown')
+            severity = injury.get('severity', 'Unknown')
+            affects_cycling = injury.get('affects_cycling', False)
+            affects_strength = injury.get('affects_strength', False)
+            notes = injury.get('notes', '')
+            
+            impact = []
+            if affects_cycling:
+                impact.append("CYCLING")
+            if affects_strength:
+                impact.append("STRENGTH")
+            
+            factors.append(f'''
+                <div style="margin: 12px 0; padding: 12px; border: 2px solid var(--border);">
+                    <div style="font-weight: 700; text-transform: uppercase;">CURRENT: {area.upper()} ({severity.upper()})</div>
+                    <div style="font-size: 12px; margin-top: 4px;">Affects: {', '.join(impact) if impact else 'NONE'}</div>
+                    {f'<div style="font-size: 12px; margin-top: 4px; color: var(--muted);">{notes}</div>' if notes else ''}
+                </div>
+            ''')
+    else:
+        factors.append('<div style="color: var(--muted);">NO CURRENT INJURIES</div>')
+    
+    if health.get('stress_level') in ['high', 'very_high']:
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge badge-warning">HIGH STRESS</span></div>')
+    
+    if health.get('sleep_quality') == 'poor':
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge badge-warning">POOR SLEEP</span></div>')
+    
+    if health.get('recovery_capacity') == 'slow':
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge">SLOW RECOVERY</span></div>')
+    
+    if limitations:
+        limited = [k for k, v in limitations.items() if isinstance(v, str) and v in ['limited', 'significantly_limited', 'painful']]
+        if limited:
+            factors.append(f'<div style="margin-top: 8px;"><span class="badge">MOVEMENT LIMITATIONS: {", ".join([l.replace("_", " ").upper() for l in limited[:3]])}</span></div>')
+    
+    return '\n'.join(factors)
+
+
+def get_consistency_class(consistency: Optional[str]) -> str:
+    """Get CSS class for training consistency."""
+    if consistency == 'consistent':
+        return 'status-good'
+    elif consistency == 'sporadic':
+        return 'status-warning'
+    elif consistency == 'none':
+        return 'status-danger'
+    return ''
+
+
+def get_days_class(days: Optional[int]) -> str:
+    """Get CSS class for days since last ride."""
+    if days is None:
+        return ''
+    if days <= 3:
+        return 'status-good'
+    elif days <= 7:
+        return 'status-warning'
+    else:
+        return 'status-danger'
+
+
+def get_yes_no_class(value: bool) -> str:
+    """Get CSS class for yes/no values."""
+    if value:
+        return 'status-warning'
+    return 'status-good'
 
 
 def format_equipment_list(equipment: List[str]) -> str:
@@ -590,24 +764,8 @@ def format_day_list(days: List[str]) -> str:
     if not days:
         return '<div class="kv-value">NONE</div>'
     
-    badges = [f'<span class="badge">{day.upper()}</span>' for day in days]
+    badges = [f'<span class="badge badge-key">{day.upper()}</span>' for day in days]
     return '<div>' + ' '.join(badges) + '</div>'
-
-
-def format_exclusions_card(exclusions: List[str]) -> str:
-    """Format exercise exclusions card."""
-    if not exclusions:
-        return ''
-    
-    items = [f'<span class="badge" style="text-decoration: line-through;">{ex.upper()}</span>' for ex in exclusions]
-    return f'''
-        <div class="card">
-            <div class="card-header">EXERCISE EXCLUSIONS</div>
-            <div class="card-content">
-                <div>{' '.join(items)}</div>
-            </div>
-        </div>
-    '''
 
 
 def main():
@@ -630,4 +788,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
