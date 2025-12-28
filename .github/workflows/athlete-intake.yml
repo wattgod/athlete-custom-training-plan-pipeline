@@ -231,8 +231,20 @@ jobs:
           git diff --staged --quiet || git commit -m "Add intake for ${athlete_id}"
           git push || echo "Nothing to push"
       
+      - name: Check email before sending
+        id: check_email
+        run: |
+          EMAIL="${{ steps.payload.outputs.email }}"
+          if [ -z "$EMAIL" ] || [ "$EMAIL" == "" ]; then
+            echo "⚠️ Email is empty, skipping email send"
+            echo "skip_email=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Email found: $EMAIL"
+            echo "skip_email=false" >> $GITHUB_OUTPUT
+          fi
+      
       - name: Send success email to athlete
-        if: success() && steps.payload.outputs.email != ''
+        if: success() && steps.check_email.outputs.skip_email == 'false'
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
@@ -278,7 +290,7 @@ jobs:
             Gravel God Cycling
       
       - name: Notify admin of new intake
-        if: success() && steps.payload.outputs.email != ''
+        if: success()
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
