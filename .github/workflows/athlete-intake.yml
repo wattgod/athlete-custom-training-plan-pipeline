@@ -249,11 +249,9 @@ jobs:
           git push || echo "Nothing to push"
       
       - name: Send success email to athlete
-        if: success() && steps.payload.outputs.has_email == 'true' && steps.payload.outputs.email != '' && steps.payload.outputs.email != 'null'
+        if: success() && steps.payload.outputs.has_email == 'true'
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
-        env:
-          ATHLETE_EMAIL: ${{ steps.payload.outputs.email }}
         with:
           server_address: smtp.gmail.com
           server_port: 465
@@ -261,7 +259,7 @@ jobs:
           username: ${{ secrets.EMAIL_USERNAME }}
           password: ${{ secrets.EMAIL_PASSWORD }}
           subject: "Welcome to Gravel God Coaching - ${{ steps.payload.outputs.name || 'Athlete' }}"
-          to: ${{ env.ATHLETE_EMAIL != '' && env.ATHLETE_EMAIL || steps.payload.outputs.email }}
+          to: ${{ steps.payload.outputs.email }}
           from: Gravel God Cycling <${{ secrets.EMAIL_USERNAME }}>
           body: |
             Hi ${{ steps.payload.outputs.name }},
