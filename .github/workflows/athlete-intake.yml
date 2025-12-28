@@ -46,6 +46,9 @@ jobs:
       - name: Extract and save payload
         id: payload
         run: |
+          # Initialize has_email to false by default
+          echo "has_email=false" >> $GITHUB_OUTPUT
+          
           if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
             echo "=== Full client_payload structure ==="
             echo '${{ toJson(github.event.client_payload) }}' | jq . || echo '${{ toJson(github.event.client_payload) }}'
@@ -246,7 +249,7 @@ jobs:
           git push || echo "Nothing to push"
       
       - name: Send success email to athlete
-        if: success() && steps.payload.outputs.has_email == 'true'
+        if: success() && steps.payload.outputs.has_email == 'true' && steps.payload.outputs.email != ''
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
@@ -324,7 +327,7 @@ jobs:
             Review the intake and reach out within 24 hours.
       
       - name: Send failure notification
-        if: failure() && steps.payload.outputs.has_email == 'true'
+        if: failure() && steps.payload.outputs.has_email == 'true' && steps.payload.outputs.email != ''
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
