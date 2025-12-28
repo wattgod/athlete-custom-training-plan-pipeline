@@ -72,16 +72,19 @@ jobs:
               fi
             fi
             
-            # Final validation - if still empty, use a default or fail
+            # Final validation - if still empty, set flag to skip emails
             if [ -z "$EMAIL" ] || [ "$EMAIL" == "null" ] || [ "$EMAIL" == "" ]; then
-              echo "❌ ERROR: Email is empty after all checks!"
+              echo "⚠️ WARNING: Email is empty after all checks!"
               echo "Available keys in client_payload:"
               echo '${{ toJson(github.event.client_payload) }}' | jq 'keys' || echo "Could not parse JSON"
               echo ""
               echo "Full payload for debugging:"
               echo '${{ toJson(github.event.client_payload) }}' | jq . || echo '${{ toJson(github.event.client_payload) }}'
-              # Don't exit - let it continue but skip email sending
+              # Set email to empty and flag to skip
               EMAIL=""
+              echo "has_email=false" >> $GITHUB_OUTPUT
+            else
+              echo "has_email=true" >> $GITHUB_OUTPUT
             fi
             
             echo "email=$EMAIL" >> $GITHUB_OUTPUT
@@ -237,7 +240,7 @@ jobs:
           git push || echo "Nothing to push"
       
       - name: Send success email to athlete
-        if: success() && steps.payload.outputs.email != '' && steps.payload.outputs.email != 'null' && steps.payload.outputs.email != 'undefined'
+        if: success() && steps.payload.outputs.has_email == 'true'
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
@@ -315,7 +318,7 @@ jobs:
             Review the intake and reach out within 24 hours.
       
       - name: Send failure notification
-        if: failure() && steps.payload.outputs.email != '' && steps.payload.outputs.email != 'null'
+        if: failure() && steps.payload.outputs.has_email == 'true'
         continue-on-error: true
         uses: dawidd6/action-send-mail@v3
         with:
