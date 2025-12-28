@@ -65,7 +65,7 @@ def format_value(value, default="—") -> str:
     return str(value)
 
 
-def get_risk_level(injuries: List, health: Dict, limitations: Dict) -> str:
+def get_risk_level(injuries: List, health: Dict, limitations: Dict, schedule: Dict, lifestyle: Dict, nutrition: Dict) -> str:
     """Determine risk level for athlete."""
     if injuries and any(i.get('severity') in ['moderate', 'significant'] for i in injuries):
         return "HIGH"
@@ -76,6 +76,12 @@ def get_risk_level(injuries: List, health: Dict, limitations: Dict) -> str:
     if health.get('sleep_quality') == 'poor':
         return "MODERATE"
     if limitations and any(v in ['limited', 'significantly_limited', 'painful'] for v in limitations.values() if isinstance(v, str)):
+        return "MODERATE"
+    if schedule.get('travel_frequency') == 'frequent':
+        return "MODERATE"
+    if lifestyle.get('alcohol_drinks_per_week', 0) > 10:
+        return "MODERATE"
+    if nutrition.get('fuels_during_rides') == 'rarely':
         return "MODERATE"
     return "LOW"
 
@@ -121,6 +127,13 @@ def generate_dashboard(athlete_id: str) -> Path:
     equipment = profile.get("strength_equipment", [])
     cycling_equipment = profile.get("cycling_equipment", {})
     limitations = profile.get("movement_limitations", {})
+    schedule_constraints = profile.get("schedule_constraints", {})
+    training_env = profile.get("training_environment", {})
+    lifestyle = profile.get("lifestyle", {})
+    nutrition = profile.get("nutrition", {})
+    workout_prefs = profile.get("workout_preferences", {})
+    exercise_exclusions = derived.get("exercise_exclusions", [])
+    equipment_tier = derived.get("equipment_tier", "")
     
     # Calculate critical metrics
     race_date = target_race.get('date')
@@ -128,9 +141,10 @@ def generate_dashboard(athlete_id: str) -> Path:
     plan_weeks = derived.get('plan_weeks', 0)
     current_week = calculate_current_week(race_date, plan_weeks)
     
-    # Risk assessment
+    # Risk assessment - enhanced to include all factors
     current_injuries = injuries.get('current_injuries', [])
-    risk_level = get_risk_level(current_injuries, health, limitations)
+    past_injuries = injuries.get('past_injuries', [])
+    risk_level = get_risk_level(current_injuries, health, limitations, schedule_constraints, lifestyle, nutrition)
     
     # Capacity check
     hours_available = weekly_availability.get('total_hours_available', 0)
@@ -478,7 +492,7 @@ def generate_dashboard(athlete_id: str) -> Path:
             <div class="card-header">RISK FACTORS</div>
             <div class="risk-level">RISK: {risk_level}</div>
             
-            {format_risk_factors(current_injuries, health, limitations, injuries.get('past_injuries', []))}
+            {format_risk_factors(current_injuries, health, limitations, past_injuries, exercise_exclusions, schedule_constraints, training_env, lifestyle, nutrition, equipment_tier, workout_prefs, profile)}
         </div>
     </div>
 
@@ -628,16 +642,20 @@ def generate_dashboard(athlete_id: str) -> Path:
     return dashboard_path
 
 
-def format_risk_factors(current_injuries: List, health: Dict, limitations: Dict, past_injuries: List) -> str:
-    """Format risk factors section."""
+def format_risk_factors(current_injuries: List, health: Dict, limitations: Dict, past_injuries: List, 
+                       exercise_exclusions: List, schedule: Dict, training_env: Dict, 
+                       lifestyle: Dict, nutrition: Dict, equipment_tier: str, workout_prefs: Dict, profile: Dict) -> str:
+    """Format comprehensive risk factors section showing all limitations and plan adaptations."""
     factors = []
     
+    # CURRENT INJURIES
     if current_injuries:
         for injury in current_injuries:
             area = injury.get('area', 'Unknown')
             severity = injury.get('severity', 'Unknown')
             affects_cycling = injury.get('affects_cycling', False)
             affects_strength = injury.get('affects_strength', False)
+            exercises_to_avoid = injury.get('exercises_to_avoid', [])
             notes = injury.get('notes', '')
             
             impact = []
@@ -650,25 +668,92 @@ def format_risk_factors(current_injuries: List, health: Dict, limitations: Dict,
                 <div style="margin: 12px 0; padding: 12px; border: 2px solid var(--border);">
                     <div style="font-weight: 700; text-transform: uppercase;">CURRENT: {area.upper()} ({severity.upper()})</div>
                     <div style="font-size: 12px; margin-top: 4px;">Affects: {', '.join(impact) if impact else 'NONE'}</div>
+                    {f'<div style="font-size: 12px; margin-top: 4px;"><strong>Exercises Excluded:</strong> {", ".join(exercises_to_avoid)}</div>' if exercises_to_avoid else ''}
                     {f'<div style="font-size: 12px; margin-top: 4px; color: var(--muted);">{notes}</div>' if notes else ''}
                 </div>
             ''')
     else:
         factors.append('<div style="color: var(--muted);">NO CURRENT INJURIES</div>')
     
-    if health.get('stress_level') in ['high', 'very_high']:
-        factors.append(f'<div style="margin-top: 8px;"><span class="badge badge-warning">HIGH STRESS</span></div>')
+    # PAST INJURIES NOT RESOLVED
+    unresolved = [i for i in past_injuries if not i.get('fully_resolved', True)]
+    if unresolved:
+        for injury in unresolved:
+            area = injury.get('area', 'Unknown')
+            year = injury.get('year', '')
+            notes = injury.get('notes', '')
+            factors.append(f'''
+                <div style="margin: 12px 0; padding: 12px; border: 2px solid var(--border); background: var(--soft);">
+                    <div style="font-weight: 700; text-transform: uppercase;">PAST: {area.upper()} ({year})</div>
+                    <div style="font-size: 11px; margin-top: 4px; color: var(--muted);">NOT FULLY RESOLVED</div>
+                    {f'<div style="font-size: 12px; margin-top: 4px; color: var(--muted);">{notes}</div>' if notes else ''}
+                </div>
+            ''')
     
-    if health.get('sleep_quality') == 'poor':
-        factors.append(f'<div style="margin-top: 8px;"><span class="badge badge-warning">POOR SLEEP</span></div>')
+    # EXERCISE EXCLUSIONS (How plan was adapted)
+    if exercise_exclusions:
+        factors.append(f'''
+            <div style="margin: 16px 0; padding: 12px; border: 2px solid var(--border); background: var(--soft);">
+                <div style="font-weight: 700; text-transform: uppercase; margin-bottom: 8px;">PLAN ADAPTATIONS</div>
+                <div style="font-size: 12px; margin-bottom: 4px;"><strong>Exercises Excluded:</strong></div>
+                <div style="margin-top: 4px;">{", ".join([f'<span class="badge" style="text-decoration: line-through;">{ex.upper()}</span>' for ex in exercise_exclusions])}</div>
+            </div>
+        ''')
     
-    if health.get('recovery_capacity') == 'slow':
-        factors.append(f'<div style="margin-top: 8px;"><span class="badge">SLOW RECOVERY</span></div>')
-    
+    # MOVEMENT LIMITATIONS
     if limitations:
         limited = [k for k, v in limitations.items() if isinstance(v, str) and v in ['limited', 'significantly_limited', 'painful']]
         if limited:
             factors.append(f'<div style="margin-top: 8px;"><span class="badge">MOVEMENT LIMITATIONS: {", ".join([l.replace("_", " ").upper() for l in limited[:3]])}</span></div>')
+        if limitations.get('notes'):
+            factors.append(f'<div style="font-size: 11px; margin-top: 4px; color: var(--muted);">{limitations.get("notes")}</div>')
+    
+    # HEALTH CONCERNS
+    if health.get('stress_level') in ['high', 'very_high']:
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge badge-warning">HIGH STRESS</span></div>')
+    
+    if health.get('sleep_quality') == 'poor':
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge badge-warning">POOR SLEEP ({health.get("sleep_hours_avg", "?")}H/NIGHT)</span></div>')
+    elif health.get('sleep_hours_avg', 0) < 7:
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge">LOW SLEEP ({health.get("sleep_hours_avg")}H/NIGHT)</span></div>')
+    
+    if health.get('recovery_capacity') == 'slow':
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge">SLOW RECOVERY</span></div>')
+    
+    # SCHEDULE CONSTRAINTS
+    if schedule.get('travel_frequency') in ['occasional', 'frequent']:
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge">TRAVEL: {schedule.get("travel_frequency").upper()}</span></div>')
+    
+    if schedule.get('family_commitments'):
+        factors.append(f'<div style="margin-top: 8px; font-size: 11px; color: var(--muted);">FAMILY: {schedule.get("family_commitments")}</div>')
+    
+    # LIFE FACTORS
+    if lifestyle.get('alcohol_drinks_per_week', 0) > 7:
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge">HIGH ALCOHOL ({lifestyle.get("alcohol_drinks_per_week")}/WEEK)</span></div>')
+    
+    if lifestyle.get('caffeine_mg_per_day', 0) > 400:
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge">HIGH CAFFEINE ({lifestyle.get("caffeine_mg_per_day")}MG/DAY)</span></div>')
+    
+    if lifestyle.get('family_support') == 'challenging':
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge badge-warning">FAMILY SUPPORT: CHALLENGING</span></div>')
+    
+    # NUTRITION CONCERNS
+    if nutrition.get('fuels_during_rides') == 'rarely':
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge badge-warning">INCONSISTENT FUELING</span></div>')
+    
+    # EQUIPMENT CONSTRAINTS
+    if equipment_tier and equipment_tier != 'high':
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge">EQUIPMENT TIER: {equipment_tier.upper()}</span></div>')
+    
+    # TRAINING ENVIRONMENT
+    if training_env.get('indoor_riding_tolerance') == 'hate_it':
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge">HATES INDOOR RIDING</span></div>')
+    elif training_env.get('indoor_riding_tolerance') == 'tolerate_it':
+        max_indoor = workout_prefs.get('longest_indoor_tolerable', '?')
+        factors.append(f'<div style="margin-top: 8px; font-size: 11px; color: var(--muted);">Tolerates indoor (max {max_indoor} min)</div>')
+    
+    if training_env.get('outdoor_riding_access') in ['limited', 'poor']:
+        factors.append(f'<div style="margin-top: 8px;"><span class="badge">LIMITED OUTDOOR ACCESS</span></div>')
     
     return '\n'.join(factors)
 
