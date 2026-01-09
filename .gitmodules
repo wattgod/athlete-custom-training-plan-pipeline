@@ -1,0 +1,3 @@
+[submodule "archetypes"]
+	path = archetypes
+	url = https://github.com/wattgod/nate-workout-archetypes.git
