@@ -39,6 +39,21 @@ def get_athlete_plan_dir(athlete_id: str, year: int, race_id: str) -> Path:
     """Get a specific plan directory for an athlete."""
     return get_athlete_plans_dir(athlete_id) / f"{year}-{race_id}"
 
+
+def load_athlete_yaml(athlete_id: str, filename: str) -> Optional[Dict]:
+    """
+    Load a YAML file from an athlete's directory.
+
+    Returns None if file doesn't exist. Raises on parse error.
+    """
+    import yaml
+    path = get_athlete_file(athlete_id, filename)
+    if not path.exists():
+        return None
+    with open(path, 'r') as f:
+        return yaml.safe_load(f)
+
+
 # === DAY MAPPINGS ===
 # Use these everywhere instead of defining locally
 

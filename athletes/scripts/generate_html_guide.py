@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
-from constants import DAY_ORDER, DAY_ORDER_FULL
+from constants import DAY_ORDER, DAY_ORDER_FULL, get_athlete_dir, get_athlete_current_plan_dir
 
 
 # =============================================================================
@@ -1146,7 +1146,7 @@ class GuideGenerator:
     
     def _load_data(self):
         """Load all athlete data files."""
-        base_path = Path(f"athletes/{self.athlete_id}")
+        base_path = get_athlete_dir(self.athlete_id)
         
         # Load profile
         with open(base_path / "profile.yaml", 'r') as f:
@@ -3945,7 +3945,7 @@ def generate_html_guide(athlete_id: str, output_path: Optional[Path] = None) -> 
     html = generator.generate()
     
     if output_path is None:
-        output_path = Path(f"athletes/{athlete_id}/plans/current/training_guide.html")
+        output_path = get_athlete_current_plan_dir(athlete_id) / "training_guide.html"
     
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
