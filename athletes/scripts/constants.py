@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""
+Single source of truth for constants used across the pipeline.
+
+All shared constants should be defined here to avoid duplication.
+"""
+
+from typing import Dict, List, Tuple
+
+# === DAY MAPPINGS ===
+# Use these everywhere instead of defining locally
+
+DAY_FULL_TO_ABBREV: Dict[str, str] = {
+    'monday': 'Mon',
+    'tuesday': 'Tue',
+    'wednesday': 'Wed',
+    'thursday': 'Thu',
+    'friday': 'Fri',
+    'saturday': 'Sat',
+    'sunday': 'Sun',
+}
+
+DAY_ABBREV_TO_FULL: Dict[str, str] = {v: k for k, v in DAY_FULL_TO_ABBREV.items()}
+
+DAY_ORDER: List[str] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+WEEKDAYS: List[str] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+WEEKEND: List[str] = ['Sat', 'Sun']
+
+
+# === WORKOUT TYPES ===
+
+KEY_WORKOUT_TYPES: List[str] = [
+    'FTP_Test',
+    'Intervals',
+    'VO2max',
+    'Race_Sim',
+    'Tempo',
+]
+
+LONG_RIDE_TYPES: List[str] = ['Long_Ride']
+
+EASY_WORKOUT_TYPES: List[str] = ['Recovery', 'Easy', 'Shakeout', 'Endurance']
+
+STRENGTH_WORKOUT_TYPES: List[str] = ['Strength']
+
+
+# === WORKOUT DURATIONS (minutes) ===
+# Approximate durations by workout type for validation
+
+WORKOUT_DURATIONS: Dict[str, int] = {
+    'Recovery': 30,
+    'Easy': 30,
+    'Shakeout': 20,
+    'Endurance': 60,
+    'Tempo': 60,
+    'Intervals': 75,
+    'VO2max': 60,
+    'Race_Sim': 75,
+    'FTP_Test': 62,
+    'Long_Ride': 120,
+    'Openers': 45,
+    'Strength': 30,
+}
+
+
+# === FTP TEST ===
+
+FTP_TEST_DURATION_MIN: int = 62  # Based on standard protocol
+
+
+# === TRAINING PHASES ===
+
+TRAINING_PHASES: List[str] = [
+    'base',
+    'build',
+    'peak',
+    'maintenance',
+    'taper',
+    'race',
+]
+
+# Phases where strength training is included
+STRENGTH_PHASES: List[str] = ['base', 'build', 'peak', 'maintenance']
+
+
+# === VALIDATION BOUNDS ===
+
+FTP_MIN_WATTS: int = 50
+FTP_MAX_WATTS: int = 500
+
+WEIGHT_MIN_KG: float = 40.0
+WEIGHT_MAX_KG: float = 150.0
+
+PLAN_WEEKS_MIN: int = 4
+PLAN_WEEKS_MAX: int = 52
+
+AGE_MIN: int = 16
+AGE_MAX: int = 100
+
+
+# === AVAILABILITY TYPES ===
+
+AVAILABILITY_TYPES: List[str] = ['available', 'limited', 'unavailable', 'rest']
+
+
+# === FILE PATTERNS ===
+
+ZWO_FILENAME_PATTERN: str = r'W(\d+)_(\w{3})_\w+\d+_(.+)\.zwo'
+
+
+# === PROFILE REQUIRED FIELDS ===
+
+REQUIRED_PROFILE_FIELDS: List[str] = [
+    'name',
+    'athlete_id',
+    'target_race.name',
+    'target_race.date',
+    'target_race.distance_miles',
+]
+
+RECOMMENDED_PROFILE_FIELDS: List[str] = [
+    'preferred_days',
+    'fitness_markers.ftp_watts',
+    'fitness_markers.weight_kg',
+    'weekly_availability.cycling_hours_target',
+    'schedule_constraints.preferred_long_day',
+]

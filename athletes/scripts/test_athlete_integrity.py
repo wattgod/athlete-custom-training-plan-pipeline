@@ -11,6 +11,24 @@ import yaml
 from datetime import datetime
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+
+# Try to import config for URL patterns
+try:
+    from config_loader import get_config
+    config = get_config()
+except ImportError:
+    config = None
+
+
+def get_guide_base_url() -> str:
+    """Get the base URL for guides from config or use default."""
+    if config:
+        base = config.get('hosting.github_pages_base', 'https://wattgod.github.io')
+        repo = config.get('hosting.guides_repo_name', 'gravel-god-guides')
+        return f"{base}/{repo}"
+    return "https://wattgod.github.io/gravel-god-guides"
+
 
 class IntegrityError:
     def __init__(self, level: str, message: str):
@@ -472,9 +490,10 @@ def validate_guide_deployment(athlete_id: str, guide_url: str = None) -> list:
 
     errors = []
 
-    # Default URL pattern
+    # Default URL pattern from config
     if guide_url is None:
-        guide_url = f"https://wattgod.github.io/gravel-god-guides/athletes/{athlete_id}/"
+        base_url = get_guide_base_url()
+        guide_url = f"{base_url}/athletes/{athlete_id}/"
 
     try:
         # Check URL is accessible
@@ -542,7 +561,8 @@ def run_integrity_check(athlete_id: str, check_deployment: bool = False) -> bool
         deployment_errors = validate_guide_deployment(athlete_id)
         errors.extend(deployment_errors)
         if not deployment_errors:
-            print(f"   ✓ Guide accessible at: https://wattgod.github.io/gravel-god-guides/athletes/{athlete_id}/")
+            base_url = get_guide_base_url()
+            print(f"   ✓ Guide accessible at: {base_url}/athletes/{athlete_id}/")
 
     # Categorize errors
     critical = [e for e in errors if e.level == "CRITICAL"]

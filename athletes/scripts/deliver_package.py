@@ -14,8 +14,18 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
+sys.path.insert(0, str(Path(__file__).parent))
+
+# Import config and logger
+from config_loader import get_config
+from logger import get_logger, header, step, detail, success, error, warning
+
 # Import integrity tests
 from test_athlete_integrity import run_integrity_check, load_yaml_safe
+
+# Get config and logger
+config = get_config()
+log = get_logger()
 
 
 def deliver_package(athlete_id: str) -> dict:
@@ -23,8 +33,12 @@ def deliver_package(athlete_id: str) -> dict:
 
     athletes_dir = Path(__file__).parent.parent
     athlete_dir = athletes_dir / athlete_id
-    delivery_dir = athletes_dir.parent / 'delivery' / 'guides'
-    downloads_dir = Path.home() / 'Downloads' / f'{athlete_id}-package'
+
+    # Use config for paths where possible
+    delivery_base = config.get_path('delivery_dir') or (athletes_dir.parent / 'delivery')
+    delivery_dir = delivery_base / 'guides'
+    downloads_base = config.get_path('downloads_dir') or Path.home() / 'Downloads'
+    downloads_dir = downloads_base / f'{athlete_id}-package'
 
     if not athlete_dir.exists():
         print(f"ERROR: Athlete directory not found: {athlete_dir}")
@@ -103,8 +117,8 @@ def deliver_package(athlete_id: str) -> dict:
         available = get_available_engines()
         if available:
             print(f"   Available engines: {', '.join(available)}")
-        success, message = generate_pdf(html_path, pdf_path)
-        if success:
+        pdf_success, message = generate_pdf(html_path, pdf_path)
+        if pdf_success:
             print(f"   ✓ {message}")
         else:
             print(f"   ⚠ {message}")
@@ -138,11 +152,15 @@ def deliver_package(athlete_id: str) -> dict:
     print(f"   • Workouts Folder: ~/Downloads/{athlete_id}-package/workouts/")
 
     print("\n🌐 FOR HOSTED URL:")
+    # Get base URL from config
+    github_pages_base = config.get('hosting.github_pages_base', 'https://wattgod.github.io')
+    guides_repo_name = config.get('hosting.guides_repo_name', 'gravel-god-guides')
+
     print(f"   1. Push delivery/guides/{athlete_id}.html to your hosting repo")
-    print(f"   2. URL will be: https://YOUR-DOMAIN/guides/{athlete_id}.html")
+    print(f"   2. URL will be: {github_pages_base}/{guides_repo_name}/athletes/{athlete_id}/")
     print(f"   ")
     print(f"   Or use GitHub Pages:")
-    print(f"   cd /Users/mattirowe/Documents/GravelGod/athlete-profiles/delivery")
+    print(f"   cd {delivery_base}")
     print(f"   git add . && git commit -m 'Add {athlete_name} guide' && git push")
 
     # === STEP 7: Email delivery (if enabled) ===
@@ -162,15 +180,15 @@ def deliver_package(athlete_id: str) -> dict:
                 user_input = input("   Send email now? [y/N]: ").strip().lower()
 
                 if user_input == 'y':
-                    guide_url = f"https://wattgod.github.io/gravel-god-guides/athletes/{athlete_id}/"
-                    success, msg = delivery.send_package(
+                    guide_url = f"{github_pages_base}/{guides_repo_name}/athletes/{athlete_id}/"
+                    send_success, msg = delivery.send_package(
                         to_email=athlete_email,
                         athlete_name=athlete_name,
                         guide_path=pdf_path if pdf_path.exists() else (downloads_dir / 'training_guide.html'),
                         workouts_dir=downloads_workouts,
                         guide_url=guide_url
                     )
-                    if success:
+                    if send_success:
                         print(f"   ✓ {msg}")
                         email_sent = True
                     else:
