@@ -2,7 +2,8 @@
 """
 Generate complete athlete training package:
 - Training guide (HTML)
-- ZWO workout files
+- ZWO workout files (with progression)
+- Strength workout files
 - Plan summary
 
 Usage: python3 generate_athlete_package.py <athlete_id>
@@ -17,8 +18,15 @@ from datetime import datetime
 # Add paths for imports
 GUIDES_DIR = Path(__file__).parent.parent.parent.parent / 'guides' / 'gravel-god-guides'
 sys.path.insert(0, str(GUIDES_DIR / 'generators'))
+sys.path.insert(0, str(Path(__file__).parent))
 
 from guide_generator import generate_guide
+from workout_library import (
+    WorkoutLibrary,
+    generate_progressive_interval_blocks,
+    generate_progressive_endurance_blocks,
+    generate_strength_zwo,
+)
 
 
 def load_yaml(path: Path) -> dict:
@@ -268,16 +276,13 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             blocks.append(f'        <SteadyState Duration="{tempo_duration * 60}" Power="0.85"/>')
 
         elif workout_type == 'Intervals':
-            # 3x10min @ threshold
-            interval_duration = 10 * 60
-            rest_duration = 5 * 60
-            blocks.append(f'        <IntervalsT Repeat="3" OnDuration="{interval_duration}" OnPower="0.95" OffDuration="{rest_duration}" OffPower="0.55"/>')
+            # Use progressive intervals from workout library
+            # week_num and phase passed via closure from outer scope
+            return None  # Signal to use progressive generator
 
         elif workout_type == 'VO2max':
-            # 5x3min @ 110%
-            interval_duration = 3 * 60
-            rest_duration = 3 * 60
-            blocks.append(f'        <IntervalsT Repeat="5" OnDuration="{interval_duration}" OnPower="1.10" OffDuration="{rest_duration}" OffPower="0.50"/>')
+            # Use progressive VO2max from workout library
+            return None  # Signal to use progressive generator
 
         elif workout_type == 'Openers':
             # 4x30sec hard
@@ -434,11 +439,34 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             workout_name = f"{workout_prefix}_{workout_type}"
             filename = f"{workout_name}.zwo"
 
+            # Calculate week within phase for progression
+            week_in_phase = 1
+            for w in weeks:
+                if w['week'] < week_num and w['phase'] == phase:
+                    week_in_phase += 1
+
             # Build description
             full_description = f"Week {week_num} ({phase.title()} Phase) - {day_abbrev}\n\n{description}"
 
-            # Generate blocks
-            blocks = create_workout_blocks(duration, power, workout_type)
+            # Generate blocks - use progressive generators for intervals
+            if workout_type in ('Intervals', 'VO2max'):
+                # Use progressive interval generator
+                blocks, progressive_name = generate_progressive_interval_blocks(
+                    phase, week_num, week_in_phase, duration
+                )
+                full_description = f"Week {week_num} ({phase.title()} Phase) - {day_abbrev}\n\n{progressive_name}: {description}"
+                workout_name = f"{workout_prefix}_{workout_type}_{progressive_name.replace(' ', '_')}"
+            elif workout_type == 'Endurance' and phase == 'base':
+                # Use varied endurance generator for base phase
+                blocks, endurance_name = generate_progressive_endurance_blocks(week_num, duration)
+                full_description = f"Week {week_num} ({phase.title()} Phase) - {day_abbrev}\n\n{endurance_name}: {description}"
+            else:
+                blocks = create_workout_blocks(duration, power, workout_type)
+
+            if blocks is None:
+                continue  # Skip if generator returned None
+
+            filename = f"{workout_name}.zwo"
 
             # Create ZWO content
             zwo_content = ZWO_TEMPLATE.format(
@@ -453,6 +481,42 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 f.write(zwo_content)
 
             generated_files.append(filepath)
+
+    # Generate strength workouts
+    strength_sessions = profile.get('strength', {}).get('sessions_per_week', 2)
+    if strength_sessions > 0:
+        strength_dir = zwo_dir
+        for week in weeks:
+            week_num = week['week']
+            phase = week['phase']
+
+            # Skip strength during taper and race weeks
+            if phase in ('taper', 'race'):
+                continue
+
+            for session in range(1, min(strength_sessions + 1, 3)):  # Max 2 sessions
+                strength_blocks, strength_name = generate_strength_zwo(week_num, session)
+
+                # Find an appropriate day for strength
+                # Prefer days that aren't key workout days
+                strength_day = 'Wed' if session == 1 else 'Thu'
+
+                workout_name = f"W{week_num:02d}_{strength_day}_Strength_{strength_name.replace(' ', '_')}"
+                filename = f"{workout_name}.zwo"
+
+                full_description = f"Week {week_num} Strength Session {session}\n\n{strength_name}"
+
+                zwo_content = ZWO_TEMPLATE.format(
+                    name=workout_name,
+                    description=full_description,
+                    blocks=strength_blocks
+                )
+
+                filepath = strength_dir / filename
+                with open(filepath, 'w') as f:
+                    f.write(zwo_content)
+
+                generated_files.append(filepath)
 
     return generated_files
 

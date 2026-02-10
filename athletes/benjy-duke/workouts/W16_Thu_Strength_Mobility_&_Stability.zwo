@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workout_file>
+    <author>Gravel God Training</author>
+    <name>W16_Thu_Strength_Mobility_&_Stability</name>
+    <description>Week 16 Strength Session 2
+
+Mobility & Stability</description>
+    <sportType>bike</sportType>
+    <workout>
+        <Warmup Duration="300" PowerLow="0.30" PowerHigh="0.40">
+            <textevent timeoffset="0" message="Warmup: Light spin while preparing for strength work"/>
+        </Warmup>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 1: Cat-Cow - 2x10"/>
+            <textevent timeoffset="100" message="Keep moving - Cat-Cow"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 2: World's Greatest Stretch - 2x5 each"/>
+            <textevent timeoffset="100" message="Keep moving - World's Greatest Stretch"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 3: 90-90 Hip Stretch - 2x30sec each"/>
+            <textevent timeoffset="100" message="Keep moving - 90-90 Hip Stretch"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 4: Thoracic Rotation - 2x10 each"/>
+            <textevent timeoffset="100" message="Keep moving - Thoracic Rotation"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 5: Ankle Circles - 2x10 each"/>
+            <textevent timeoffset="100" message="Keep moving - Ankle Circles"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 6: Pigeon Pose - 2x45sec each"/>
+            <textevent timeoffset="100" message="Keep moving - Pigeon Pose"/>
+        </SteadyState>
+        <Cooldown Duration="300" PowerLow="0.40" PowerHigh="0.30">
+            <textevent timeoffset="0" message="Cooldown: Light spin and stretch"/>
+        </Cooldown>
+    </workout>
+</workout_file>

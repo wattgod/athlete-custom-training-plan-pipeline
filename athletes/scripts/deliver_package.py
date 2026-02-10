@@ -96,33 +96,34 @@ def deliver_package(athlete_id: str) -> dict:
     # === STEP 5: Generate PDF ===
     print("\n5. Generating PDF...")
     pdf_path = downloads_dir / 'training_guide.pdf'
-    html_file_url = f"file://{downloads_dir / 'training_guide.html'}"
-
-    import subprocess
-    chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    html_path = downloads_dir / 'training_guide.html'
 
     try:
-        result = subprocess.run([
-            chrome_path,
-            "--headless",
-            "--disable-gpu",
-            f"--print-to-pdf={pdf_path}",
-            "--no-margins",
-            html_file_url
-        ], capture_output=True, text=True, timeout=60)
-
-        if pdf_path.exists():
-            pdf_size = pdf_path.stat().st_size
-            print(f"   ✓ PDF: ~/Downloads/{athlete_id}-package/training_guide.pdf ({pdf_size // 1024} KB)")
+        from pdf_generator import generate_pdf, get_available_engines
+        available = get_available_engines()
+        if available:
+            print(f"   Available engines: {', '.join(available)}")
+        success, message = generate_pdf(html_path, pdf_path)
+        if success:
+            print(f"   ✓ {message}")
         else:
-            print(f"   ⚠ PDF generation failed: {result.stderr}")
-    except FileNotFoundError:
-        print("   ⚠ Chrome not found - skipping PDF generation")
-        print("     Install Chrome or use: brew install --cask wkhtmltopdf")
-    except subprocess.TimeoutExpired:
-        print("   ⚠ PDF generation timed out")
-    except Exception as e:
-        print(f"   ⚠ PDF generation error: {e}")
+            print(f"   ⚠ {message}")
+    except ImportError:
+        # Fallback to direct Chrome if pdf_generator not available
+        import subprocess
+        chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        try:
+            result = subprocess.run([
+                chrome_path, "--headless", "--disable-gpu",
+                f"--print-to-pdf={pdf_path}", "--no-margins",
+                f"file://{html_path}"
+            ], capture_output=True, text=True, timeout=60)
+            if pdf_path.exists():
+                print(f"   ✓ PDF: {pdf_path.stat().st_size // 1024} KB")
+            else:
+                print(f"   ⚠ PDF generation failed")
+        except Exception as e:
+            print(f"   ⚠ PDF generation error: {e}")
 
     # === STEP 6: Generate delivery info ===
     print("\n" + "=" * 60)
@@ -144,7 +145,45 @@ def deliver_package(athlete_id: str) -> dict:
     print(f"   cd /Users/mattirowe/Documents/GravelGod/athlete-profiles/delivery")
     print(f"   git add . && git commit -m 'Add {athlete_name} guide' && git push")
 
-    print("\n✉️  EMAIL TEMPLATE:")
+    # === STEP 7: Email delivery (if enabled) ===
+    athlete_email = profile.get('email', '') if profile else ''
+    email_sent = False
+
+    if athlete_email:
+        print(f"\n✉️  EMAIL DELIVERY:")
+        print(f"   Athlete email: {athlete_email}")
+
+        try:
+            from email_delivery import EmailDelivery
+            delivery = EmailDelivery()
+
+            if delivery.provider != 'none':
+                print(f"   Provider: {delivery.provider}")
+                user_input = input("   Send email now? [y/N]: ").strip().lower()
+
+                if user_input == 'y':
+                    guide_url = f"https://wattgod.github.io/gravel-god-guides/athletes/{athlete_id}/"
+                    success, msg = delivery.send_package(
+                        to_email=athlete_email,
+                        athlete_name=athlete_name,
+                        guide_path=pdf_path if pdf_path.exists() else (downloads_dir / 'training_guide.html'),
+                        workouts_dir=downloads_workouts,
+                        guide_url=guide_url
+                    )
+                    if success:
+                        print(f"   ✓ {msg}")
+                        email_sent = True
+                    else:
+                        print(f"   ✗ {msg}")
+            else:
+                print("   Email delivery disabled (GG_EMAIL_PROVIDER=none)")
+                print("   To enable: export GG_EMAIL_PROVIDER=sendgrid (or smtp)")
+        except ImportError:
+            print("   Email module not available")
+    else:
+        print("\n⚠️  No email address in profile - skipping email delivery")
+
+    print("\n✉️  MANUAL EMAIL TEMPLATE:")
     print("-" * 40)
     print(f"""
 Hi {athlete_name.split()[0]},
@@ -173,13 +212,14 @@ Let me know if you have any questions!
         'downloads_path': str(downloads_dir),
         'hosted_guide_path': str(hosted_guide_path),
         'workout_count': workout_count,
+        'email_sent': email_sent,
         'delivered_at': datetime.now().isoformat()
     }
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print("Usage: python3 deliver_package.py <athlete_id>")
+    if len(sys.argv) < 2:
+        print("Usage: python3 deliver_package.py <athlete_id> [--send-email]")
         sys.exit(1)
 
     result = deliver_package(sys.argv[1])

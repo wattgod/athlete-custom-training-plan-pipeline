@@ -1,0 +1,129 @@
+# Gravel God Custom Training Plan Pipeline Configuration
+#
+# This file centralizes all paths and settings for the pipeline.
+# Override with environment variables prefixed with GG_ (e.g., GG_GUIDES_DIR)
+
+# === PATHS ===
+paths:
+  # Base directories (can be overridden by GG_GUIDES_DIR, GG_BRAND_DIR, etc.)
+  guides_repo: "${GG_GUIDES_DIR:-../guides/gravel-god-guides}"
+  brand_repo: "${GG_BRAND_DIR:-../gravel-god-brand}"
+  delivery_dir: "${GG_DELIVERY_DIR:-./delivery}"
+  downloads_dir: "${GG_DOWNLOADS_DIR:-~/Downloads}"
+
+  # Subdirectories within repos
+  templates: "templates"
+  generators: "generators"
+  race_data: "race_data"
+  brand_tokens: "brand/tokens.css"
+  brand_fonts: "brand/fonts"
+  styles: "styles"
+
+# === PDF GENERATION ===
+pdf:
+  # Engine priority: try each in order until one works
+  # Options: chrome, chromium, weasyprint, wkhtmltopdf
+  engines:
+    - chrome
+    - chromium
+    - weasyprint
+    - wkhtmltopdf
+
+  # Platform-specific Chrome paths
+  chrome_paths:
+    darwin: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+    linux: "/usr/bin/google-chrome"
+    win32: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+
+  # Chrome headless options
+  chrome_options:
+    - "--headless"
+    - "--disable-gpu"
+    - "--no-margins"
+    - "--no-sandbox"  # Required for CI/Docker
+
+  # Timeout in seconds
+  timeout: 60
+
+# === EMAIL DELIVERY ===
+email:
+  # Provider: sendgrid, mailgun, smtp, or none
+  provider: "${GG_EMAIL_PROVIDER:-none}"
+
+  # SendGrid settings
+  sendgrid:
+    api_key: "${SENDGRID_API_KEY:-}"
+    from_email: "coach@gravelgod.com"
+    from_name: "Gravel God Coaching"
+
+  # SMTP settings (fallback)
+  smtp:
+    host: "${SMTP_HOST:-smtp.gmail.com}"
+    port: "${SMTP_PORT:-587}"
+    username: "${SMTP_USER:-}"
+    password: "${SMTP_PASS:-}"
+    use_tls: true
+
+  # Email templates
+  templates:
+    delivery:
+      subject: "Your Custom Training Plan is Ready!"
+
+# === VALIDATION ===
+validation:
+  # Required fields in profile.yaml
+  required_profile_fields:
+    - name
+    - athlete_id
+    - target_race.name
+    - target_race.date
+    - target_race.distance_miles
+    - preferred_days
+
+  # FTP bounds (watts)
+  ftp_min: 50
+  ftp_max: 500
+
+  # Weight bounds (kg)
+  weight_min: 40
+  weight_max: 150
+
+  # Plan length bounds (weeks)
+  plan_weeks_min: 4
+  plan_weeks_max: 52
+
+# === WORKOUT GENERATION ===
+workouts:
+  # Workout variety settings
+  progression:
+    enabled: true
+    # Increase intensity every N weeks
+    intensity_step_weeks: 3
+    # Vary interval structures
+    interval_variety: true
+
+  # FTP test scheduling
+  ftp_tests:
+    week_1: true
+    pre_build: true
+    mid_plan: false  # Optional mid-plan retest
+
+  # Strength workout generation
+  strength:
+    enabled: true
+    sessions_per_week: 2
+    include_mobility: true
+
+# === HOSTING ===
+hosting:
+  # GitHub Pages base URL
+  github_pages_base: "https://wattgod.github.io"
+  guides_repo_name: "gravel-god-guides"
+
+  # URL pattern for athlete guides
+  guide_url_pattern: "${github_pages_base}/${guides_repo_name}/athletes/{athlete_id}/"
+
+# === LOGGING ===
+logging:
+  level: "${GG_LOG_LEVEL:-INFO}"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

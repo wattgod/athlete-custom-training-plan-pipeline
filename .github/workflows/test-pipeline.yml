@@ -1,0 +1,161 @@
+name: Test Pipeline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'athletes/scripts/**'
+      - 'config.yaml'
+      - 'requirements.txt'
+      - '.github/workflows/test-pipeline.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'athletes/scripts/**'
+      - 'config.yaml'
+      - 'requirements.txt'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout athlete-profiles
+        uses: actions/checkout@v4
+
+      - name: Checkout gravel-god-guides
+        uses: actions/checkout@v4
+        with:
+          repository: wattgod/gravel-god-guides
+          path: guides/gravel-god-guides
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml python-dateutil pytest pytest-cov
+          # Optional: weasyprint for PDF generation tests
+          pip install weasyprint || echo "WeasyPrint installation failed, skipping"
+
+      - name: Run plan dates tests
+        working-directory: athletes/scripts
+        run: |
+          python test_plan_dates.py
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: Run integrity tests on sample athlete
+        working-directory: athletes/scripts
+        run: |
+          # Test with benjy-duke if exists
+          if [ -d "../benjy-duke" ]; then
+            python test_athlete_integrity.py benjy-duke
+          else
+            echo "No test athlete found, skipping integrity tests"
+          fi
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: Validate config.yaml
+        run: |
+          python -c "
+          import yaml
+          from pathlib import Path
+
+          config_path = Path('config.yaml')
+          if config_path.exists():
+              with open(config_path) as f:
+                  config = yaml.safe_load(f)
+              print('✓ config.yaml is valid YAML')
+
+              # Check required sections
+              required = ['paths', 'pdf', 'validation', 'workouts']
+              for section in required:
+                  if section in config:
+                      print(f'  ✓ {section} section present')
+                  else:
+                      print(f'  ✗ {section} section MISSING')
+                      exit(1)
+          else:
+              print('⚠ config.yaml not found')
+          "
+
+      - name: Check PDF generators available
+        working-directory: athletes/scripts
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          try:
+              from pdf_generator import get_available_engines
+              engines = get_available_engines()
+              print(f'Available PDF engines: {engines}')
+              if not engines:
+                  print('⚠ No PDF engines available (Chrome, WeasyPrint, or wkhtmltopdf)')
+              else:
+                  print('✓ At least one PDF engine available')
+          except ImportError as e:
+              print(f'⚠ Could not import pdf_generator: {e}')
+          "
+
+      - name: Lint with flake8
+        run: |
+          pip install flake8
+          # Stop on syntax errors or undefined names
+          flake8 athletes/scripts/*.py --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Warnings only for style issues
+          flake8 athletes/scripts/*.py --count --exit-zero --max-complexity=15 --max-line-length=120 --statistics
+
+  validate-athletes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyyaml python-dateutil
+
+      - name: Validate all athlete profiles
+        working-directory: athletes/scripts
+        run: |
+          python -c "
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, '.')
+
+          from test_athlete_integrity import run_all_athletes
+
+          athletes_dir = Path('..').resolve()
+          athlete_dirs = [d for d in athletes_dir.iterdir()
+                         if d.is_dir() and (d / 'profile.yaml').exists()]
+
+          if not athlete_dirs:
+              print('No athlete profiles found to validate')
+              sys.exit(0)
+
+          print(f'Found {len(athlete_dirs)} athlete profiles')
+
+          # Run validation
+          success = run_all_athletes()
+          sys.exit(0 if success else 1)
+          "

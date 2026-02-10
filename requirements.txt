@@ -1,0 +1,29 @@
+# Gravel God Custom Training Plan Pipeline
+# Install: pip install -r requirements.txt
+
+# === Core Dependencies ===
+pyyaml>=6.0                 # YAML parsing for profile/config files
+python-dateutil>=2.8        # Date calculations for plan scheduling
+
+# === PDF Generation (optional - uses Chrome headless if available) ===
+weasyprint>=59.0            # Cross-platform PDF generation fallback
+# Note: weasyprint requires system dependencies:
+#   macOS: brew install pango
+#   Ubuntu: apt-get install libpango-1.0-0 libpangocairo-1.0-0
+
+# === Email Delivery (optional) ===
+sendgrid>=6.9               # SendGrid API for email delivery
+# Alternative: use SMTP (no extra dependencies)
+
+# === Testing ===
+pytest>=7.0                 # Test framework
+pytest-cov>=4.0             # Coverage reporting
+
+# === Development ===
+black>=23.0                 # Code formatting
+flake8>=6.0                 # Linting
+mypy>=1.0                   # Type checking
+
+# === Optional: Data Processing ===
+lxml>=4.9                   # XML parsing for ZWO files
+openpyxl>=3.1               # Excel export (if needed)

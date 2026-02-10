@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workout_file>
+    <author>Gravel God Training</author>
+    <name>W06_Wed_Strength_Cycling-Specific</name>
+    <description>Week 6 Strength Session 1
+
+Cycling-Specific</description>
+    <sportType>bike</sportType>
+    <workout>
+        <Warmup Duration="300" PowerLow="0.30" PowerHigh="0.40">
+            <textevent timeoffset="0" message="Warmup: Light spin while preparing for strength work"/>
+        </Warmup>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 1: Bulgarian Split Squat - 3x10 each"/>
+            <textevent timeoffset="100" message="Keep moving - Bulgarian Split Squat"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 2: Calf Raises - 3x15"/>
+            <textevent timeoffset="100" message="Keep moving - Calf Raises"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 3: Hip Hinge - 3x12"/>
+            <textevent timeoffset="100" message="Keep moving - Hip Hinge"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 4: Copenhagen Plank - 3x20sec each"/>
+            <textevent timeoffset="100" message="Keep moving - Copenhagen Plank"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 5: Superman Hold - 3x30sec"/>
+            <textevent timeoffset="100" message="Keep moving - Superman Hold"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 6: Foam Roll IT Band - 2x60sec each"/>
+            <textevent timeoffset="100" message="Keep moving - Foam Roll IT Band"/>
+        </SteadyState>
+        <Cooldown Duration="300" PowerLow="0.40" PowerHigh="0.30">
+            <textevent timeoffset="0" message="Cooldown: Light spin and stretch"/>
+        </Cooldown>
+    </workout>
+</workout_file>

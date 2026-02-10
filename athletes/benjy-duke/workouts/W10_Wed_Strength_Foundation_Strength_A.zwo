@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workout_file>
+    <author>Gravel God Training</author>
+    <name>W10_Wed_Strength_Foundation_Strength_A</name>
+    <description>Week 10 Strength Session 1
+
+Foundation Strength A</description>
+    <sportType>bike</sportType>
+    <workout>
+        <Warmup Duration="300" PowerLow="0.30" PowerHigh="0.40">
+            <textevent timeoffset="0" message="Warmup: Light spin while preparing for strength work"/>
+        </Warmup>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 1: Goblet Squat - 3x12"/>
+            <textevent timeoffset="100" message="Keep moving - Goblet Squat"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 2: Romanian Deadlift - 3x10"/>
+            <textevent timeoffset="100" message="Keep moving - Romanian Deadlift"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 3: Step Ups - 3x10 each"/>
+            <textevent timeoffset="100" message="Keep moving - Step Ups"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 4: Plank - 3x45sec"/>
+            <textevent timeoffset="100" message="Keep moving - Plank"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 5: Dead Bug - 3x10 each"/>
+            <textevent timeoffset="100" message="Keep moving - Dead Bug"/>
+        </SteadyState>
+        <SteadyState Duration="200" Power="0.35">
+            <textevent timeoffset="0" message="Exercise 6: Glute Bridge - 3x15"/>
+            <textevent timeoffset="100" message="Keep moving - Glute Bridge"/>
+        </SteadyState>
+        <Cooldown Duration="300" PowerLow="0.40" PowerHigh="0.30">
+            <textevent timeoffset="0" message="Cooldown: Light spin and stretch"/>
+        </Cooldown>
+    </workout>
+</workout_file>
