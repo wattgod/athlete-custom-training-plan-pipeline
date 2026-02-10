@@ -12,6 +12,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict
 
+sys.path.insert(0, str(Path(__file__).parent))
+from constants import get_athlete_file, get_athlete_current_plan_dir, get_athlete_plans_dir
+
 
 PHASE_DETAILS = {
     "Learn to Lift": {
@@ -101,8 +104,8 @@ def generate_athlete_guide(athlete_id: str, plan_dir: Path) -> Path:
     Generate comprehensive personalized training guide for athlete.
     """
     # Load data
-    profile_path = Path(f"athletes/{athlete_id}/profile.yaml")
-    derived_path = Path(f"athletes/{athlete_id}/derived.yaml")
+    profile_path = get_athlete_file(athlete_id, "profile.yaml")
+    derived_path = get_athlete_file(athlete_id, "derived.yaml")
     config_path = plan_dir / "plan_config.yaml"
     summary_path = plan_dir / "plan_summary.json"
     
@@ -160,7 +163,7 @@ def generate_athlete_guide(athlete_id: str, plan_dir: Path) -> Path:
     guide_lines.append("| Day | Workout | Notes |")
     guide_lines.append("|-----|---------|-------|")
     
-    weekly_structure_path = Path(f"athletes/{athlete_id}/weekly_structure.yaml")
+    weekly_structure_path = get_athlete_file(athlete_id, "weekly_structure.yaml")
     if weekly_structure_path.exists():
         with open(weekly_structure_path, 'r') as f:
             weekly_structure = yaml.safe_load(f)
@@ -410,7 +413,7 @@ def generate_athlete_guide(athlete_id: str, plan_dir: Path) -> Path:
         f.write("\n".join(guide_lines))
     
     # Also write to current/
-    current_dir = Path(f"athletes/{athlete_id}/plans/current")
+    current_dir = get_athlete_current_plan_dir(athlete_id)
     current_dir.mkdir(parents=True, exist_ok=True)
     current_guide = current_dir / "guide.md"
     with open(current_guide, 'w') as f:
@@ -431,7 +434,7 @@ def main():
         plan_dir = Path(sys.argv[2])
     else:
         # Find most recent plan
-        plans_dir = Path(f"athletes/{athlete_id}/plans")
+        plans_dir = get_athlete_plans_dir(athlete_id)
         if not plans_dir.exists():
             print(f"Error: No plans found for {athlete_id}")
             sys.exit(1)

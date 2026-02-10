@@ -13,7 +13,7 @@ from typing import Dict, Any, List
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parent))
-from constants import DAY_ORDER_FULL
+from constants import DAY_ORDER_FULL, get_athlete_dir
 
 
 def generate_athlete_id(name: str) -> str:
@@ -712,7 +712,7 @@ def main():
     profile = create_profile_from_form(args.athlete_id, data)
     
     # Create athlete directory
-    athlete_dir = Path(f'athletes/{args.athlete_id}')
+    athlete_dir = get_athlete_dir(args.athlete_id)
     athlete_dir.mkdir(parents=True, exist_ok=True)
     
     # Write profile.yaml

@@ -14,6 +14,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional
 
+sys.path.insert(0, str(Path(__file__).parent))
+from constants import get_athlete_file, get_athlete_current_plan_dir, get_athlete_plan_dir
+
 # Find gravel-landing-page-project in multiple locations
 def find_generator_path():
     """Find the unified generator in various possible locations."""
@@ -51,27 +54,27 @@ except ImportError as e:
 
 def load_profile(athlete_id: str) -> Dict:
     """Load athlete profile."""
-    profile_path = Path(f"athletes/{athlete_id}/profile.yaml")
+    profile_path = get_athlete_file(athlete_id, "profile.yaml")
     if not profile_path.exists():
         raise FileNotFoundError(f"Profile not found: {profile_path}")
-    
+
     with open(profile_path, 'r') as f:
         return yaml.safe_load(f)
 
 
 def load_derived(athlete_id: str) -> Dict:
     """Load derived values."""
-    derived_path = Path(f"athletes/{athlete_id}/derived.yaml")
+    derived_path = get_athlete_file(athlete_id, "derived.yaml")
     if not derived_path.exists():
         raise FileNotFoundError(f"Derived values not found. Run derive_classifications.py first.")
-    
+
     with open(derived_path, 'r') as f:
         return yaml.safe_load(f)
 
 
 def load_weekly_structure(athlete_id: str) -> Optional[Dict]:
     """Load custom weekly structure if exists."""
-    structure_path = Path(f"athletes/{athlete_id}/weekly_structure.yaml")
+    structure_path = get_athlete_file(athlete_id, "weekly_structure.yaml")
     if structure_path.exists():
         with open(structure_path, 'r') as f:
             return yaml.safe_load(f)
@@ -109,7 +112,7 @@ def generate_athlete_plan(athlete_id: str) -> Dict:
     if not UNIFIED_AVAILABLE:
         print("⚠️  Unified generator not available - creating placeholder plan")
         # Create placeholder plan config
-        output_dir = Path(f"athletes/{athlete_id}/plans/current")
+        output_dir = get_athlete_current_plan_dir(athlete_id)
         output_dir.mkdir(parents=True, exist_ok=True)
         
         placeholder = {
@@ -140,11 +143,11 @@ def generate_athlete_plan(athlete_id: str) -> Dict:
     
     # Create output directory
     year = datetime.now().year
-    output_dir = Path(f"athletes/{athlete_id}/plans/{year}-{race_id}")
+    output_dir = get_athlete_plan_dir(athlete_id, year, race_id)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Also create current symlink/copy
-    current_dir = Path(f"athletes/{athlete_id}/plans/current")
+    current_dir = get_athlete_current_plan_dir(athlete_id)
     current_dir.mkdir(parents=True, exist_ok=True)
     
     # Generate plan using unified generator

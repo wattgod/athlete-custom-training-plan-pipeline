@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, List
 
 sys.path.insert(0, str(Path(__file__).parent))
-from constants import DAY_ORDER_FULL
+from constants import DAY_ORDER_FULL, get_athlete_file
 
 
 def build_weekly_structure(
@@ -148,23 +148,23 @@ def main():
     athlete_id = sys.argv[1]
     
     # Load profile
-    profile_path = Path(f"athletes/{athlete_id}/profile.yaml")
+    profile_path = get_athlete_file(athlete_id, "profile.yaml")
     if not profile_path.exists():
         print(f"Error: Profile not found: {profile_path}")
         sys.exit(1)
-    
+
     with open(profile_path, 'r') as f:
         profile = yaml.safe_load(f)
-    
+
     # Load derived values
-    derived_path = Path(f"athletes/{athlete_id}/derived.yaml")
+    derived_path = get_athlete_file(athlete_id, "derived.yaml")
     if not derived_path.exists():
         print(f"Error: Derived values not found. Run derive_classifications.py first.")
         sys.exit(1)
-    
+
     with open(derived_path, 'r') as f:
         derived = yaml.safe_load(f)
-    
+
     # Build structure
     structure = build_weekly_structure(
         preferred_days=profile.get("preferred_days", {}),
@@ -172,9 +172,9 @@ def main():
         strength_days=derived.get("strength_day_candidates", []),
         tier=derived.get("tier", "finisher")
     )
-    
+
     # Save structure
-    structure_path = Path(f"athletes/{athlete_id}/weekly_structure.yaml")
+    structure_path = get_athlete_file(athlete_id, "weekly_structure.yaml")
     structure_path.parent.mkdir(parents=True, exist_ok=True)
     
     with open(structure_path, 'w') as f:
