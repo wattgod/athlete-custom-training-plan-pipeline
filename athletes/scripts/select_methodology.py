@@ -28,11 +28,15 @@ Methodologies Available:
 13. GOAT - Adaptive composite system (pyramidal + polarized + blocks)
 """
 
+import sys
 import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
+
+sys.path.insert(0, str(Path(__file__).parent))
+from constants import get_athlete_file
 
 
 @dataclass
@@ -572,8 +576,8 @@ def main():
     athlete_id = sys.argv[1]
 
     # Load profile and derived
-    profile_path = Path(f"athletes/{athlete_id}/profile.yaml")
-    derived_path = Path(f"athletes/{athlete_id}/derived.yaml")
+    profile_path = get_athlete_file(athlete_id, "profile.yaml")
+    derived_path = get_athlete_file(athlete_id, "derived.yaml")
 
     if not profile_path.exists():
         print(f"Error: Profile not found: {profile_path}")
@@ -591,7 +595,7 @@ def main():
     result = select_methodology(profile, derived)
 
     # Save result
-    methodology_path = Path(f"athletes/{athlete_id}/methodology.yaml")
+    methodology_path = get_athlete_file(athlete_id, "methodology.yaml")
     with open(methodology_path, 'w') as f:
         yaml.dump(result, f, default_flow_style=False, sort_keys=False)
 

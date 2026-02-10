@@ -19,6 +19,9 @@ import yaml
 from datetime import datetime, timedelta
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+from constants import DAY_ORDER, DAY_ORDER_DISPLAY, DAY_FULL_TO_ABBREV
+
 
 class PlanDateValidationError(Exception):
     """Raised when plan dates fail validation."""
@@ -183,10 +186,9 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
 
         # Generate day-by-day info for this week
         days = []
-        day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
         for day_offset in range(7):
             day_date = week_monday + timedelta(days=day_offset)
-            day_abbrev = day_names[day_offset]
+            day_abbrev = DAY_ORDER[day_offset]
             month = month_abbrev[day_date.month - 1]
             day_num = day_date.day
 
@@ -211,7 +213,7 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
 
     result = {
         'race_date': race_date_str,
-        'race_weekday': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][race_weekday],
+        'race_weekday': DAY_ORDER_DISPLAY[race_weekday],
         'plan_weeks': plan_weeks,
         'plan_start': week1_monday.strftime('%Y-%m-%d'),
         'plan_start_short': f"{month_abbrev[week1_monday.month - 1]}{week1_monday.day}",
@@ -221,10 +223,7 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         'weeks': week_dates,
         'workout_naming_convention': 'W{week:02d}_{day}_{month}{day}_{name}.zwo',
         'workout_example': f"W01_Mon_{month_abbrev[week1_monday.month - 1]}{week1_monday.day}_Endurance.zwo",
-        'day_abbreviations': {
-            'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed',
-            'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat', 'Sunday': 'Sun'
-        },
+        'day_abbreviations': DAY_FULL_TO_ABBREV,
         'month_abbreviations': {i+1: m for i, m in enumerate(month_abbrev)}
     }
 

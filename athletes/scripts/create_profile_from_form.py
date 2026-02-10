@@ -12,6 +12,9 @@ from datetime import datetime
 from typing import Dict, Any, List
 import yaml
 
+sys.path.insert(0, str(Path(__file__).parent))
+from constants import DAY_ORDER_FULL
+
 
 def generate_athlete_id(name: str) -> str:
     """Generate athlete ID from name."""
@@ -390,7 +393,7 @@ def create_profile_from_form(athlete_id: str, form_data: Dict) -> Dict:
         try:
             birth_date = datetime.strptime(form_data['birthday'], '%Y-%m-%d')
             age = (datetime.now() - birth_date).days // 365
-        except:
+        except ValueError:
             pass
     # Fallback to age field if birthday not provided (for backwards compatibility)
     if not age and form_data.get('age'):
@@ -480,7 +483,7 @@ def create_profile_from_form(athlete_id: str, form_data: Dict) -> Dict:
         
         'preferred_days': {
             day: convert_day_availability(form_data, day)
-            for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+            for day in DAY_ORDER_FULL
         },
         
         'schedule_constraints': {

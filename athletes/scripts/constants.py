@@ -5,7 +5,39 @@ Single source of truth for constants used across the pipeline.
 All shared constants should be defined here to avoid duplication.
 """
 
-from typing import Dict, List, Tuple
+from pathlib import Path
+from typing import Dict, List, Tuple, Optional
+
+
+# === ATHLETE PATH UTILITIES ===
+# Use these instead of constructing paths manually throughout the codebase
+
+ATHLETES_BASE_DIR: str = "athletes"
+
+
+def get_athlete_dir(athlete_id: str) -> Path:
+    """Get the base directory for an athlete."""
+    return Path(ATHLETES_BASE_DIR) / athlete_id
+
+
+def get_athlete_file(athlete_id: str, filename: str) -> Path:
+    """Get path to a file in athlete's directory (e.g., profile.yaml, derived.yaml)."""
+    return get_athlete_dir(athlete_id) / filename
+
+
+def get_athlete_plans_dir(athlete_id: str) -> Path:
+    """Get the plans directory for an athlete."""
+    return get_athlete_dir(athlete_id) / "plans"
+
+
+def get_athlete_current_plan_dir(athlete_id: str) -> Path:
+    """Get the current plan directory for an athlete."""
+    return get_athlete_plans_dir(athlete_id) / "current"
+
+
+def get_athlete_plan_dir(athlete_id: str, year: int, race_id: str) -> Path:
+    """Get a specific plan directory for an athlete."""
+    return get_athlete_plans_dir(athlete_id) / f"{year}-{race_id}"
 
 # === DAY MAPPINGS ===
 # Use these everywhere instead of defining locally
@@ -109,6 +141,11 @@ TIER_HOURS_AYAHUASCA_MAX: int = 5   # <= 5 hours/week
 TIER_HOURS_FINISHER_MAX: int = 10   # <= 10 hours/week
 TIER_HOURS_COMPETE_MAX: int = 16    # <= 16 hours/week
 # > 16 hours/week = podium tier
+
+
+# === RATE LIMITING ===
+RATE_LIMIT_MAX_PER_DAY: int = 5     # Maximum submissions per email per day
+RATE_LIMIT_CLEANUP_DAYS: int = 7    # Days before old rate limit entries are cleaned up
 
 # === WORKOUT PERCENTAGES ===
 # Used for calculating warmup duration, intensity distributions, etc.

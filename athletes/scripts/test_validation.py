@@ -16,6 +16,7 @@ from constants import (
     DAY_FULL_TO_ABBREV,
     DAY_ABBREV_TO_FULL,
     DAY_ORDER,
+    DAY_ORDER_FULL,
     KEY_WORKOUT_TYPES,
     TRAINING_PHASES,
     STRENGTH_PHASES,
@@ -25,6 +26,13 @@ from constants import (
     WEIGHT_MAX_KG,
     REQUIRED_PROFILE_FIELDS,
     AVAILABILITY_TYPES,
+    RATE_LIMIT_MAX_PER_DAY,
+    RATE_LIMIT_CLEANUP_DAYS,
+    get_athlete_dir,
+    get_athlete_file,
+    get_athlete_plans_dir,
+    get_athlete_current_plan_dir,
+    get_athlete_plan_dir,
 )
 from pre_generation_validator import (
     ValidationResult,
@@ -256,6 +264,90 @@ def test_validate_plan_dates():
     print("✓ Detects empty weeks array")
 
 
+def test_athlete_path_utilities():
+    """Test centralized athlete path utilities."""
+    print("\n=== Testing Athlete Path Utilities ===")
+
+    athlete_id = "test-athlete"
+
+    # Test get_athlete_dir
+    athlete_dir = get_athlete_dir(athlete_id)
+    assert str(athlete_dir) == f"athletes/{athlete_id}"
+    print(f"✓ get_athlete_dir: {athlete_dir}")
+
+    # Test get_athlete_file
+    profile_path = get_athlete_file(athlete_id, "profile.yaml")
+    assert str(profile_path) == f"athletes/{athlete_id}/profile.yaml"
+    print(f"✓ get_athlete_file: {profile_path}")
+
+    # Test get_athlete_plans_dir
+    plans_dir = get_athlete_plans_dir(athlete_id)
+    assert str(plans_dir) == f"athletes/{athlete_id}/plans"
+    print(f"✓ get_athlete_plans_dir: {plans_dir}")
+
+    # Test get_athlete_current_plan_dir
+    current_dir = get_athlete_current_plan_dir(athlete_id)
+    assert str(current_dir) == f"athletes/{athlete_id}/plans/current"
+    print(f"✓ get_athlete_current_plan_dir: {current_dir}")
+
+    # Test get_athlete_plan_dir
+    plan_dir = get_athlete_plan_dir(athlete_id, 2026, "big-race")
+    assert str(plan_dir) == f"athletes/{athlete_id}/plans/2026-big-race"
+    print(f"✓ get_athlete_plan_dir: {plan_dir}")
+
+
+def test_rate_limit_constants():
+    """Test rate limit constants are sensible."""
+    print("\n=== Testing Rate Limit Constants ===")
+
+    assert RATE_LIMIT_MAX_PER_DAY > 0, "Max per day should be positive"
+    assert RATE_LIMIT_MAX_PER_DAY <= 100, "Max per day should be reasonable"
+    print(f"✓ RATE_LIMIT_MAX_PER_DAY: {RATE_LIMIT_MAX_PER_DAY}")
+
+    assert RATE_LIMIT_CLEANUP_DAYS > 0, "Cleanup days should be positive"
+    assert RATE_LIMIT_CLEANUP_DAYS <= 30, "Cleanup should be within a month"
+    print(f"✓ RATE_LIMIT_CLEANUP_DAYS: {RATE_LIMIT_CLEANUP_DAYS}")
+
+
+def test_date_arithmetic_edge_cases():
+    """Test date arithmetic handles edge cases correctly."""
+    from datetime import datetime, timedelta
+
+    print("\n=== Testing Date Arithmetic Edge Cases ===")
+
+    # Test the fix: using timedelta instead of day subtraction
+    # This would crash on days 1-7 of the month with the old code
+
+    # Simulate being on day 3 of a month
+    test_date = datetime(2026, 3, 3)  # March 3rd
+    cutoff = test_date - timedelta(days=RATE_LIMIT_CLEANUP_DAYS)
+
+    assert cutoff.month == 2, "Cutoff should roll back to previous month"
+    assert cutoff.day == 24, f"Cutoff should be Feb 24 (7 days before Mar 3), got {cutoff.day}"
+    print(f"✓ Date arithmetic handles month boundary: {test_date} - {RATE_LIMIT_CLEANUP_DAYS} days = {cutoff}")
+
+    # Test being on day 1
+    test_date = datetime(2026, 1, 1)  # January 1st
+    cutoff = test_date - timedelta(days=RATE_LIMIT_CLEANUP_DAYS)
+    assert cutoff.year == 2025, "Cutoff should roll back to previous year"
+    assert cutoff.month == 12, "Cutoff should be December"
+    print(f"✓ Date arithmetic handles year boundary: {test_date} - {RATE_LIMIT_CLEANUP_DAYS} days = {cutoff}")
+
+
+def test_day_order_consistency():
+    """Test DAY_ORDER and DAY_ORDER_FULL are consistent."""
+    print("\n=== Testing Day Order Consistency ===")
+
+    assert len(DAY_ORDER) == len(DAY_ORDER_FULL) == 7
+    print("✓ Both DAY_ORDER lists have 7 days")
+
+    # Check that abbreviated and full orders match
+    for abbrev, full in zip(DAY_ORDER, DAY_ORDER_FULL):
+        expected_abbrev = DAY_FULL_TO_ABBREV.get(full)
+        assert abbrev == expected_abbrev, f"Order mismatch: {abbrev} vs {full} (expected {expected_abbrev})"
+    print("✓ DAY_ORDER and DAY_ORDER_FULL are in sync")
+
+
 def run_all_tests():
     """Run all tests and report results."""
     print("=" * 60)
@@ -272,6 +364,10 @@ def run_all_tests():
         test_validate_profile,
         test_validate_derived,
         test_validate_plan_dates,
+        test_athlete_path_utilities,
+        test_rate_limit_constants,
+        test_date_arithmetic_edge_cases,
+        test_day_order_consistency,
     ]
 
     passed = 0

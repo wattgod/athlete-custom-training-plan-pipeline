@@ -232,29 +232,33 @@ This email was sent automatically by the Gravel God Training System.
             message.add_attachment(attachment)
 
         # Create ZIP of workouts and attach
+        zip_path = None
         if workouts_dir.exists():
             import zipfile
             import tempfile
 
-            with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
-                zip_path = Path(tmp.name)
+            try:
+                with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
+                    zip_path = Path(tmp.name)
 
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                for zwo_file in workouts_dir.glob('*.zwo'):
-                    zf.write(zwo_file, zwo_file.name)
+                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for zwo_file in workouts_dir.glob('*.zwo'):
+                        zf.write(zwo_file, zwo_file.name)
 
-            with open(zip_path, 'rb') as f:
-                data = base64.b64encode(f.read()).decode()
+                with open(zip_path, 'rb') as f:
+                    data = base64.b64encode(f.read()).decode()
 
-            attachment = Attachment(
-                FileContent(data),
-                FileName('workouts.zip'),
-                FileType('application/zip'),
-                Disposition('attachment')
-            )
-            message.add_attachment(attachment)
-
-            zip_path.unlink()  # Clean up temp file
+                attachment = Attachment(
+                    FileContent(data),
+                    FileName('workouts.zip'),
+                    FileType('application/zip'),
+                    Disposition('attachment')
+                )
+                message.add_attachment(attachment)
+            finally:
+                # Always clean up temp file
+                if zip_path and zip_path.exists():
+                    zip_path.unlink()
 
         try:
             sg = sendgrid.SendGridAPIClient(api_key)
@@ -311,25 +315,29 @@ This email was sent automatically by the Gravel God Training System.
                 msg.attach(part)
 
         # Attach workouts ZIP
+        zip_path = None
         if workouts_dir.exists():
             import zipfile
             import tempfile
 
-            with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
-                zip_path = Path(tmp.name)
+            try:
+                with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
+                    zip_path = Path(tmp.name)
 
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                for zwo_file in workouts_dir.glob('*.zwo'):
-                    zf.write(zwo_file, zwo_file.name)
+                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for zwo_file in workouts_dir.glob('*.zwo'):
+                        zf.write(zwo_file, zwo_file.name)
 
-            with open(zip_path, 'rb') as f:
-                part = MIMEBase('application', 'zip')
-                part.set_payload(f.read())
-                encoders.encode_base64(part)
-                part.add_header('Content-Disposition', 'attachment; filename="workouts.zip"')
-                msg.attach(part)
-
-            zip_path.unlink()
+                with open(zip_path, 'rb') as f:
+                    part = MIMEBase('application', 'zip')
+                    part.set_payload(f.read())
+                    encoders.encode_base64(part)
+                    part.add_header('Content-Disposition', 'attachment; filename="workouts.zip"')
+                    msg.attach(part)
+            finally:
+                # Always clean up temp file
+                if zip_path and zip_path.exists():
+                    zip_path.unlink()
 
         try:
             with smtplib.SMTP(smtp_host, smtp_port) as server:
