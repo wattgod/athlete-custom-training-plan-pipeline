@@ -22,10 +22,15 @@ DAY_FULL_TO_ABBREV: Dict[str, str] = {
 
 DAY_ABBREV_TO_FULL: Dict[str, str] = {v: k for k, v in DAY_FULL_TO_ABBREV.items()}
 
+# Ordered lists of days
 DAY_ORDER: List[str] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+DAY_ORDER_FULL: List[str] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+DAY_ORDER_DISPLAY: List[str] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
 WEEKDAYS: List[str] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+WEEKDAYS_FULL: List[str] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
 WEEKEND: List[str] = ['Sat', 'Sun']
+WEEKEND_FULL: List[str] = ['saturday', 'sunday']
 
 
 # === WORKOUT TYPES ===
@@ -97,6 +102,18 @@ PLAN_WEEKS_MAX: int = 52
 
 AGE_MIN: int = 16
 AGE_MAX: int = 100
+
+# === TIER THRESHOLDS ===
+# Weekly cycling hours that determine tier classification
+TIER_HOURS_AYAHUASCA_MAX: int = 5   # <= 5 hours/week
+TIER_HOURS_FINISHER_MAX: int = 10   # <= 10 hours/week
+TIER_HOURS_COMPETE_MAX: int = 16    # <= 16 hours/week
+# > 16 hours/week = podium tier
+
+# === WORKOUT PERCENTAGES ===
+# Used for calculating warmup duration, intensity distributions, etc.
+WARMUP_DURATION_PERCENT: float = 0.10  # 10% of workout for warmup
+COOLDOWN_DURATION_MIN: int = 5  # Minimum 5 minutes cooldown
 
 
 # === AVAILABILITY TYPES ===

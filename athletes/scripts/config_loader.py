@@ -7,9 +7,26 @@ Loads settings from config.yaml with environment variable overrides.
 
 import os
 import re
+import threading
 import yaml
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
+
+
+# Allowlist of environment variables that can be substituted
+ALLOWED_ENV_VARS: Set[str] = {
+    'GG_GUIDES_DIR',
+    'GG_BRAND_DIR',
+    'GG_DELIVERY_DIR',
+    'GG_DOWNLOADS_DIR',
+    'GG_EMAIL_PROVIDER',
+    'GG_LOG_LEVEL',
+    'SENDGRID_API_KEY',
+    'SMTP_HOST',
+    'SMTP_PORT',
+    'SMTP_USER',
+    'SMTP_PASS',
+}
 
 
 class Config:
@@ -17,10 +34,14 @@ class Config:
 
     _instance = None
     _config = None
+    _lock = threading.Lock()  # Thread-safe singleton
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
+            with cls._lock:
+                # Double-check locking pattern
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self):
@@ -55,7 +76,11 @@ class Config:
         self._config = self._process_env_vars(raw_config)
 
     def _process_env_vars(self, obj: Any) -> Any:
-        """Recursively process environment variable substitutions."""
+        """
+        Recursively process environment variable substitutions.
+
+        SECURITY: Only allowlisted environment variables can be substituted.
+        """
         if isinstance(obj, str):
             # Pattern: ${VAR_NAME:-default_value} or ${VAR_NAME}
             pattern = r'\$\{([^}:]+)(?::-([^}]*))?\}'
@@ -63,6 +88,12 @@ class Config:
             def replace(match):
                 var_name = match.group(1)
                 default = match.group(2) or ''
+
+                # SECURITY: Only allow specific environment variables
+                if var_name not in ALLOWED_ENV_VARS:
+                    # Return default or empty string for non-allowlisted vars
+                    return default
+
                 return os.environ.get(var_name, default)
 
             return re.sub(pattern, replace, obj)
@@ -127,8 +158,12 @@ class Config:
 
         return value
 
-    def get_path(self, key: str) -> Path:
-        """Get a path configuration, resolving relative paths."""
+    def get_path(self, key: str) -> Optional[Path]:
+        """
+        Get a path configuration, resolving relative paths.
+
+        SECURITY: Validates that paths stay within allowed boundaries.
+        """
         raw_path = self.get(f'paths.{key}', '')
 
         if not raw_path:
@@ -139,11 +174,48 @@ class Config:
 
         # Make relative paths relative to athlete-profiles root
         path = Path(expanded)
+        base = Path(__file__).parent.parent.parent  # athlete-profiles/
+
         if not path.is_absolute():
-            base = Path(__file__).parent.parent.parent  # athlete-profiles/
             path = base / path
 
-        return path.resolve()
+        resolved = path.resolve()
+
+        # SECURITY: Validate path is within allowed boundaries
+        # Allow paths within:
+        # 1. The project root (athlete-profiles and siblings)
+        # 2. User's home directory
+        # 3. Standard system paths for binaries
+        project_root = base.parent.resolve()  # GravelGod/
+        home_dir = Path.home().resolve()
+        allowed_roots = [
+            project_root,
+            home_dir,
+            Path('/usr/bin'),
+            Path('/usr/local/bin'),
+            Path('/Applications'),
+        ]
+
+        is_allowed = any(
+            self._is_path_under(resolved, allowed_root)
+            for allowed_root in allowed_roots
+        )
+
+        if not is_allowed:
+            # Log warning but don't expose the attempted path
+            import sys
+            print(f"WARNING: Path for '{key}' is outside allowed directories", file=sys.stderr)
+            return None
+
+        return resolved
+
+    def _is_path_under(self, path: Path, root: Path) -> bool:
+        """Check if path is under root directory."""
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            return False
 
     def get_guides_dir(self) -> Path:
         """Get the gravel-god-guides directory."""

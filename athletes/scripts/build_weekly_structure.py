@@ -11,6 +11,9 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 
+sys.path.insert(0, str(Path(__file__).parent))
+from constants import DAY_ORDER_FULL
+
 
 def build_weekly_structure(
     preferred_days: Dict,
@@ -34,10 +37,8 @@ def build_weekly_structure(
         "description": f"Custom weekly structure for {tier} tier",
         "days": {}
     }
-    
-    day_order = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-    
-    for day in day_order:
+
+    for day in DAY_ORDER_FULL:
         prefs = preferred_days.get(day, {})
         availability = prefs.get("availability", "unavailable")
         time_slots = prefs.get("time_slots", [])

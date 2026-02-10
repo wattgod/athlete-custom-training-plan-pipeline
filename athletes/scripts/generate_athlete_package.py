@@ -28,6 +28,12 @@ from constants import (
 )
 from logger import get_logger, header, step, detail, success, error, warning
 from pre_generation_validator import validate_athlete_data
+from workout_templates import (
+    PHASE_WORKOUT_ROLES,
+    DEFAULT_WEEKLY_SCHEDULE,
+    get_phase_roles,
+    cap_duration,
+)
 
 # Get config and set up paths
 config = get_config()
@@ -102,57 +108,6 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         day_full = DAY_ABBREV_TO_FULL.get(day_abbrev, day_abbrev.lower())
         return preferred_days.get(day_full, {'availability': 'available'})
 
-    def build_custom_templates(phase: str, long_day: str = 'Sat') -> dict:
-        """Build phase templates respecting athlete availability."""
-        # Default templates - will be filtered by availability
-        templates = {
-            'base': {
-                'key_cardio': ('Endurance', 'Zone 2 aerobic development', 60, 0.65),
-                'long_ride': ('Long_Ride', 'Long Zone 2 endurance', 120, 0.60),
-                'easy': ('Recovery', 'Easy spin or rest', 30, 0.50),
-                'strength': ('Strength', 'Strength training session', 45, 0.0),
-            },
-            'build': {
-                'key_cardio': ('Intervals', 'Threshold intervals: 3x10min @ 95% FTP', 75, 0.75),
-                'long_ride': ('Long_Ride', 'Long ride with race-pace efforts', 150, 0.65),
-                'easy': ('Recovery', 'Easy spin', 45, 0.55),
-                'strength': ('Strength', 'Strength training session', 45, 0.0),
-            },
-            'peak': {
-                'key_cardio': ('VO2max', 'VO2max intervals: 5x3min @ 110% FTP', 60, 0.80),
-                'long_ride': ('Long_Ride', 'Long ride with race-pace blocks', 180, 0.65),
-                'easy': ('Recovery', 'Easy spin', 40, 0.55),
-                'strength': ('Strength', 'Strength training session', 45, 0.0),
-            },
-            'taper': {
-                'key_cardio': ('Openers', 'Short openers: 4x30sec @ 120% FTP', 45, 0.65),
-                'long_ride': ('Shakeout', 'Pre-race shakeout ride', 30, 0.55),
-                'easy': ('Easy', 'Easy spin', 30, 0.55),
-                'strength': ('Strength', 'Light strength maintenance', 30, 0.0),
-            },
-            'maintenance': {
-                'key_cardio': ('Tempo', 'Light tempo: 20min @ 80% FTP', 45, 0.65),
-                'long_ride': ('Endurance', 'Longer endurance ride', 90, 0.60),
-                'easy': ('Recovery', 'Optional easy spin', 30, 0.50),
-                'strength': ('Strength', 'Strength training session', 45, 0.0),
-            },
-            'race': {
-                'key_cardio': ('Openers', 'Race week openers', 30, 0.60),
-                'long_ride': ('RACE_DAY', 'RACE DAY - Execute your plan!', 0, 0),
-                'easy': ('Easy', 'Easy spin', 30, 0.50),
-                'strength': ('Rest', None, 0, 0),
-            },
-        }
-        return templates.get(phase, templates['base'])
-
-    def cap_duration(template: tuple, max_duration: int) -> tuple:
-        """Cap a workout template's duration to the athlete's max for that day."""
-        if not template or template[2] == 0:
-            return template
-        if max_duration > 0 and max_duration < template[2]:
-            return (template[0], template[1], max_duration, template[3])
-        return template
-
     def build_day_schedule(day_abbrev: str, phase: str, phase_templates: dict) -> tuple:
         """Determine workout type for a specific day based on availability."""
         avail = get_day_availability(day_abbrev)
@@ -188,68 +143,11 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     # Build custom workout templates per day based on athlete schedule
     def get_workout_for_day(day_abbrev: str, phase: str) -> tuple:
         """Get the appropriate workout for a day and phase."""
-        phase_templates = build_custom_templates(phase, long_day_abbrev)
+        # Use centralized templates from workout_templates.py
+        phase_templates = get_phase_roles(phase)
         return build_day_schedule(day_abbrev, phase, phase_templates)
 
-    # Fallback: Default templates for athletes without custom schedule
-    WORKOUT_TEMPLATES = {
-        'base': {
-            'Mon': ('Rest', None, 0, 0),
-            'Tue': ('Endurance', 'Zone 2 steady state', 60, 0.65),
-            'Wed': ('Endurance', 'Zone 2 with cadence drills', 60, 0.65),
-            'Thu': ('Rest', None, 0, 0),
-            'Fri': ('Endurance', 'Zone 2 aerobic development', 60, 0.65),
-            'Sat': ('Long_Ride', 'Long Zone 2 endurance', 120, 0.60),
-            'Sun': ('Recovery', 'Easy spin or rest', 30, 0.50),
-        },
-        'build': {
-            'Mon': ('Rest', None, 0, 0),
-            'Tue': ('Intervals', 'Threshold intervals: 3x10min @ 95% FTP', 75, 0.75),
-            'Wed': ('Endurance', 'Zone 2 recovery spin', 60, 0.60),
-            'Thu': ('Rest', None, 0, 0),
-            'Fri': ('Tempo', 'Tempo ride: 30min @ 85% FTP', 60, 0.70),
-            'Sat': ('Long_Ride', 'Long ride with race-pace efforts', 150, 0.65),
-            'Sun': ('Recovery', 'Easy spin', 45, 0.55),
-        },
-        'peak': {
-            'Mon': ('Rest', None, 0, 0),
-            'Tue': ('VO2max', 'VO2max intervals: 5x3min @ 110% FTP', 60, 0.80),
-            'Wed': ('Endurance', 'Easy spin, legs open', 45, 0.60),
-            'Thu': ('Rest', None, 0, 0),
-            'Fri': ('Race_Sim', 'Race simulation: sustained efforts', 75, 0.75),
-            'Sat': ('Long_Ride', 'Long ride with race-pace blocks', 180, 0.65),
-            'Sun': ('Recovery', 'Easy spin', 40, 0.55),
-        },
-        'taper': {
-            'Mon': ('Rest', None, 0, 0),
-            'Tue': ('Openers', 'Short openers: 4x30sec @ 120% FTP', 45, 0.65),
-            'Wed': ('Easy', 'Easy spin', 30, 0.55),
-            'Thu': ('Rest', None, 0, 0),
-            'Fri': ('Easy', 'Easy spin with a few accelerations', 45, 0.60),
-            'Sat': ('Shakeout', 'Pre-race shakeout ride', 30, 0.55),
-            'Sun': ('Rest', None, 0, 0),
-        },
-        'maintenance': {
-            'Mon': ('Rest', None, 0, 0),
-            'Tue': ('Tempo', 'Light tempo: 20min @ 80% FTP', 45, 0.65),
-            'Wed': ('Easy', 'Easy endurance spin', 45, 0.60),
-            'Thu': ('Rest', None, 0, 0),
-            'Fri': ('Endurance', 'Moderate endurance ride', 60, 0.60),
-            'Sat': ('Endurance', 'Longer endurance ride', 90, 0.60),
-            'Sun': ('Recovery', 'Optional easy spin', 30, 0.50),
-        },
-        'race': {
-            'Mon': ('Rest', None, 0, 0),
-            'Tue': ('Easy', 'Easy spin', 30, 0.50),
-            'Wed': ('Rest', None, 0, 0),
-            'Thu': ('Openers', 'Race week openers', 30, 0.60),
-            'Fri': ('Rest', None, 0, 0),
-            'Sat': ('Shakeout', 'Pre-race shakeout', 20, 0.55),
-            'Sun': ('RACE_DAY', 'RACE DAY - Execute your plan!', 0, 0),
-        },
-    }
-
-    # Use custom schedule if profile has preferred_days, otherwise use defaults
+    # Use custom schedule if profile has preferred_days, otherwise use centralized defaults
     use_custom_schedule = bool(preferred_days)
 
     # ZWO XML template
@@ -379,11 +277,11 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         week_num = week['week']
         phase = week['phase']
 
-        # Use custom schedule if available, otherwise use default templates
+        # Use custom schedule if available, otherwise use centralized default templates
         if use_custom_schedule:
             phase_workouts = None  # Will use get_workout_for_day instead
         else:
-            phase_workouts = WORKOUT_TEMPLATES.get(phase, WORKOUT_TEMPLATES['base'])
+            phase_workouts = DEFAULT_WEEKLY_SCHEDULE.get(phase, DEFAULT_WEEKLY_SCHEDULE['base'])
 
         for day_info in week.get('days', []):
             day_abbrev = day_info['day']
