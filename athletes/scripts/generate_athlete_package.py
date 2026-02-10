@@ -267,11 +267,20 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     ftp_test_prebuild_added = False
     first_build_week = None
 
-    # Find the first build week
+    # Pre-calculate week_in_phase for each week (PERFORMANCE: avoids O(n^2) loop)
+    week_in_phase_cache = {}
+    phase_counters = {}
     for week in weeks:
-        if week['phase'] == 'build' and first_build_week is None:
-            first_build_week = week['week']
-            break
+        week_num = week['week']
+        phase = week['phase']
+        if phase not in phase_counters:
+            phase_counters[phase] = 0
+        phase_counters[phase] += 1
+        week_in_phase_cache[week_num] = phase_counters[phase]
+
+        # Also find first build week while we're iterating
+        if phase == 'build' and first_build_week is None:
+            first_build_week = week_num
 
     for week in weeks:
         week_num = week['week']
@@ -352,11 +361,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             workout_name = f"{workout_prefix}_{workout_type}"
             filename = f"{workout_name}.zwo"
 
-            # Calculate week within phase for progression
-            week_in_phase = 1
-            for w in weeks:
-                if w['week'] < week_num and w['phase'] == phase:
-                    week_in_phase += 1
+            # Get week within phase from pre-calculated cache (PERFORMANCE)
+            week_in_phase = week_in_phase_cache.get(week_num, 1)
 
             # Build description
             full_description = f"Week {week_num} ({phase.title()} Phase) - {day_abbrev}\n\n{description}"
