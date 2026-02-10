@@ -253,6 +253,8 @@ def generate_dashboard(athlete_id: str) -> Path:
     derived_path = get_athlete_file(athlete_id, "derived.yaml")
     weekly_structure_path = get_athlete_file(athlete_id, "weekly_structure.yaml")
 
+    if not profile_path.exists():
+        raise FileNotFoundError(f"Profile not found: {profile_path}")
     with open(profile_path, 'r') as f:
         profile = yaml.safe_load(f)
 

@@ -269,8 +269,11 @@ This email was sent automatically by the Gravel God Training System.
             else:
                 return False, f"SendGrid returned status {response.status_code}"
 
+        except (OSError, IOError) as e:
+            return False, f"SendGrid network error: {str(e)}"
         except Exception as e:
-            return False, f"SendGrid error: {str(e)}"
+            # Catch SendGrid-specific errors and others
+            return False, f"SendGrid error ({type(e).__name__}): {str(e)}"
 
     def _send_via_smtp(
         self,
@@ -347,8 +350,12 @@ This email was sent automatically by the Gravel God Training System.
 
             return True, f"Email sent via SMTP ({smtp_host})"
 
-        except Exception as e:
+        except smtplib.SMTPAuthenticationError as e:
+            return False, f"SMTP authentication failed: {str(e)}"
+        except smtplib.SMTPException as e:
             return False, f"SMTP error: {str(e)}"
+        except (OSError, IOError) as e:
+            return False, f"SMTP network error: {str(e)}"
 
     def _save_to_file(
         self,
