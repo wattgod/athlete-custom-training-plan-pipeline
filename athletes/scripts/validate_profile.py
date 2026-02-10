@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Dict, List, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent))
-from constants import DAY_ORDER_FULL
+from constants import DAY_ORDER_FULL, get_athlete_file
 
 
 class ValidationError(Exception):
@@ -199,7 +199,7 @@ def main():
         sys.exit(1)
     
     athlete_id = sys.argv[1]
-    profile_path = Path(f"athletes/{athlete_id}/profile.yaml")
+    profile_path = get_athlete_file(athlete_id, "profile.yaml")
     
     if not profile_path.exists():
         print(f"Error: Profile not found: {profile_path}")

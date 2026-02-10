@@ -17,6 +17,7 @@ from constants import (
     TIER_HOURS_AYAHUASCA_MAX,
     TIER_HOURS_FINISHER_MAX,
     TIER_HOURS_COMPETE_MAX,
+    get_athlete_file,
 )
 
 
@@ -382,19 +383,19 @@ if __name__ == "__main__":
         sys.exit(1)
     
     athlete_id = sys.argv[1]
-    profile_path = Path(f"athletes/{athlete_id}/profile.yaml")
-    
+    profile_path = get_athlete_file(athlete_id, "profile.yaml")
+
     if not profile_path.exists():
         print(f"Error: Profile not found: {profile_path}")
         sys.exit(1)
-    
+
     with open(profile_path, 'r') as f:
         profile = yaml.safe_load(f)
-    
+
     derived = derive_all(profile)
-    
+
     # Save derived values
-    derived_path = Path(f"athletes/{athlete_id}/derived.yaml")
+    derived_path = get_athlete_file(athlete_id, "derived.yaml")
     derived_path.parent.mkdir(parents=True, exist_ok=True)
     
     with open(derived_path, 'w') as f:

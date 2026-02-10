@@ -7,12 +7,14 @@ Validates form data before creating athlete profile.
 import json
 import sys
 import re
-from datetime import datetime
+import fcntl
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List
 
 sys.path.insert(0, str(Path(__file__).parent))
-from constants import DAY_ORDER_FULL
+from constants import DAY_ORDER_FULL, RATE_LIMIT_MAX_PER_DAY, RATE_LIMIT_CLEANUP_DAYS
+from atomic_write import safe_write_json
 
 # Disposable email providers (common ones)
 DISPOSABLE_EMAIL_PROVIDERS = [
@@ -38,63 +40,78 @@ def is_disposable_email(email: str) -> bool:
     return domain in DISPOSABLE_EMAIL_PROVIDERS
 
 
-def check_rate_limit(email: str, max_per_day: int = 5) -> bool:
-    """Check if email has exceeded rate limit."""
+def check_rate_limit(email: str, max_per_day: int = RATE_LIMIT_MAX_PER_DAY) -> bool:
+    """Check if email has exceeded rate limit with file locking for consistent reads."""
     if not RATE_LIMIT_FILE.exists():
         return True  # No limit file, allow
-    
+
+    lock_file = RATE_LIMIT_FILE.parent / '.rate-limits.lock'
+
     try:
-        with open(RATE_LIMIT_FILE, 'r') as f:
-            rate_limits = json.load(f)
+        with open(lock_file, 'w') as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_SH)  # Shared lock for reads
+            try:
+                with open(RATE_LIMIT_FILE, 'r') as f:
+                    rate_limits = json.load(f)
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
     except (OSError, json.JSONDecodeError):
         return True  # Error reading, allow
-    
+
     today = datetime.now().strftime('%Y-%m-%d')
     email_key = email.lower()
-    
+
     if email_key not in rate_limits:
         return True  # New email, allow
-    
+
     submissions = rate_limits[email_key].get(today, [])
-    
+
     if len(submissions) >= max_per_day:
         return False  # Rate limit exceeded
-    
+
     return True  # Under limit
 
 
 def record_submission(email: str):
-    """Record submission for rate limiting."""
+    """Record submission for rate limiting with file locking to prevent race conditions."""
     RATE_LIMIT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    
-    if RATE_LIMIT_FILE.exists():
-        with open(RATE_LIMIT_FILE, 'r') as f:
-            rate_limits = json.load(f)
-    else:
-        rate_limits = {}
-    
-    today = datetime.now().strftime('%Y-%m-%d')
-    email_key = email.lower()
-    
-    if email_key not in rate_limits:
-        rate_limits[email_key] = {}
-    
-    if today not in rate_limits[email_key]:
-        rate_limits[email_key][today] = []
-    
-    rate_limits[email_key][today].append(datetime.now().isoformat())
-    
-    # Clean up old entries (older than 7 days)
-    cutoff_date = datetime.now().replace(day=datetime.now().day - 7)
-    for email_addr in list(rate_limits.keys()):
-        for date in list(rate_limits[email_addr].keys()):
-            if datetime.strptime(date, '%Y-%m-%d') < cutoff_date:
-                del rate_limits[email_addr][date]
-        if not rate_limits[email_addr]:
-            del rate_limits[email_addr]
-    
-    with open(RATE_LIMIT_FILE, 'w') as f:
-        json.dump(rate_limits, f, indent=2)
+
+    # Use file locking to prevent race conditions between concurrent submissions
+    lock_file = RATE_LIMIT_FILE.parent / '.rate-limits.lock'
+
+    with open(lock_file, 'w') as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            if RATE_LIMIT_FILE.exists():
+                with open(RATE_LIMIT_FILE, 'r') as f:
+                    rate_limits = json.load(f)
+            else:
+                rate_limits = {}
+
+            today = datetime.now().strftime('%Y-%m-%d')
+            email_key = email.lower()
+
+            if email_key not in rate_limits:
+                rate_limits[email_key] = {}
+
+            if today not in rate_limits[email_key]:
+                rate_limits[email_key][today] = []
+
+            rate_limits[email_key][today].append(datetime.now().isoformat())
+
+            # Clean up old entries
+            cutoff_date = datetime.now() - timedelta(days=RATE_LIMIT_CLEANUP_DAYS)
+            for email_addr in list(rate_limits.keys()):
+                for date in list(rate_limits[email_addr].keys()):
+                    if datetime.strptime(date, '%Y-%m-%d') < cutoff_date:
+                        del rate_limits[email_addr][date]
+                if not rate_limits[email_addr]:
+                    del rate_limits[email_addr]
+
+            # Use atomic write to prevent partial file corruption
+            safe_write_json(RATE_LIMIT_FILE, rate_limits)
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def validate_email(email: str) -> tuple[bool, str]:
@@ -181,7 +198,7 @@ def validate_submission(email: str, data_str: str) -> tuple[bool, List[str]]:
     
     # Check rate limit
     if not check_rate_limit(email):
-        errors.append("Rate limit exceeded. Maximum 5 submissions per day.")
+        errors.append(f"Rate limit exceeded. Maximum {RATE_LIMIT_MAX_PER_DAY} submissions per day.")
     
     # Validate required fields
     required_valid, required_errors = validate_required_fields(data)

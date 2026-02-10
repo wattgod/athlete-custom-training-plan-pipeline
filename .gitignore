@@ -39,4 +39,5 @@ athletes/*/plans/*/calendar/*.md
 
 # Rate limiting data
 .github/rate-limits.json
+.github/.rate-limits.lock
 

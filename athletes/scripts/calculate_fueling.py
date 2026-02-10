@@ -20,10 +20,14 @@ Based on sports nutrition research:
 - Gut training required to absorb high carb rates
 """
 
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import yaml
+
+sys.path.insert(0, str(Path(__file__).parent))
+from constants import get_athlete_file
 
 
 # =============================================================================
@@ -553,7 +557,7 @@ def main():
     athlete_id = sys.argv[1]
 
     # Load profile
-    profile_path = Path(f"athletes/{athlete_id}/profile.yaml")
+    profile_path = get_athlete_file(athlete_id, "profile.yaml")
 
     if not profile_path.exists():
         print(f"Error: Profile not found: {profile_path}")
@@ -563,7 +567,7 @@ def main():
         profile = yaml.safe_load(f)
 
     # Load derived for plan_weeks
-    derived_path = Path(f"athletes/{athlete_id}/derived.yaml")
+    derived_path = get_athlete_file(athlete_id, "derived.yaml")
     plan_weeks = 12
     if derived_path.exists():
         with open(derived_path, 'r') as f:
@@ -574,7 +578,7 @@ def main():
     fueling = generate_fueling_context(profile, plan_weeks=plan_weeks)
 
     # Save result
-    fueling_path = Path(f"athletes/{athlete_id}/fueling.yaml")
+    fueling_path = get_athlete_file(athlete_id, "fueling.yaml")
     with open(fueling_path, 'w') as f:
         yaml.dump(fueling, f, default_flow_style=False, sort_keys=False)
 
