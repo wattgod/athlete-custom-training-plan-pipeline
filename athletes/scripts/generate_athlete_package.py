@@ -15,10 +15,27 @@ import yaml
 from pathlib import Path
 from datetime import datetime
 
-# Add paths for imports
-GUIDES_DIR = Path(__file__).parent.parent.parent.parent / 'guides' / 'gravel-god-guides'
-sys.path.insert(0, str(GUIDES_DIR / 'generators'))
+# Add script path for local imports
 sys.path.insert(0, str(Path(__file__).parent))
+
+# Local imports - use centralized modules
+from config_loader import get_config
+from constants import (
+    DAY_FULL_TO_ABBREV,
+    DAY_ABBREV_TO_FULL,
+    FTP_TEST_DURATION_MIN,
+    STRENGTH_PHASES,
+)
+from logger import get_logger, header, step, detail, success, error, warning
+from pre_generation_validator import validate_athlete_data
+
+# Get config and set up paths
+config = get_config()
+GUIDES_DIR = config.get_guides_dir()
+
+# Add guides generator path if it exists
+if GUIDES_DIR and (GUIDES_DIR / 'generators').exists():
+    sys.path.insert(0, str(GUIDES_DIR / 'generators'))
 
 from guide_generator import generate_guide
 from workout_library import (
@@ -27,6 +44,9 @@ from workout_library import (
     generate_progressive_endurance_blocks,
     generate_strength_zwo,
 )
+
+# Get logger
+log = get_logger()
 
 
 def load_yaml(path: Path) -> dict:
@@ -73,17 +93,13 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     preferred_long_day = schedule_constraints.get('preferred_long_day', 'saturday')
     strength_only_days = schedule_constraints.get('strength_only_days', [])
 
-    # Convert day names to abbreviations
-    DAY_ABBREV = {
-        'monday': 'Mon', 'tuesday': 'Tue', 'wednesday': 'Wed',
-        'thursday': 'Thu', 'friday': 'Fri', 'saturday': 'Sat', 'sunday': 'Sun'
-    }
-    strength_only_abbrevs = [DAY_ABBREV.get(d.lower(), d) for d in strength_only_days]
-    long_day_abbrev = DAY_ABBREV.get(preferred_long_day.lower(), 'Sat')
+    # Use centralized day mappings from constants.py
+    strength_only_abbrevs = [DAY_FULL_TO_ABBREV.get(d.lower(), d) for d in strength_only_days]
+    long_day_abbrev = DAY_FULL_TO_ABBREV.get(preferred_long_day.lower(), 'Sat')
 
     def get_day_availability(day_abbrev: str) -> dict:
         """Get availability info for a day from profile."""
-        day_full = {v: k for k, v in DAY_ABBREV.items()}.get(day_abbrev, day_abbrev.lower())
+        day_full = DAY_ABBREV_TO_FULL.get(day_abbrev, day_abbrev.lower())
         return preferred_days.get(day_full, {'availability': 'available'})
 
     def build_custom_templates(phase: str, long_day: str = 'Sat') -> dict:
@@ -396,11 +412,10 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
             # FTP TEST INJECTION:
             # For custom schedules, find the best available key day for FTP tests
-            # FTP test requires ~62 minutes minimum
-            FTP_TEST_DURATION = 62
+            # FTP test duration comes from constants.py
 
             def is_day_available_for_ftp(day: str) -> bool:
-                """Check if a day has enough time for an FTP test (~62 min)."""
+                """Check if a day has enough time for an FTP test."""
                 if not use_custom_schedule:
                     return True
                 avail = get_day_availability(day)
@@ -408,9 +423,9 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                     return False
                 if not avail.get('is_key_day_ok', True):
                     return False
-                # Check duration - FTP test needs at least 62 minutes
+                # Check duration - FTP test needs at least FTP_TEST_DURATION_MIN
                 max_duration = avail.get('max_duration_min', 120)
-                return max_duration >= FTP_TEST_DURATION
+                return max_duration >= FTP_TEST_DURATION_MIN
 
             # Week 1 FTP test - prefer days with enough time (Sun > Sat > Thu)
             if week_num == 1 and not ftp_test_week1_added:
@@ -419,7 +434,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 if day_abbrev in ftp_day_candidates and is_day_available_for_ftp(day_abbrev):
                     workout_type = 'FTP_Test'
                     description = 'The Assessment - Functional Threshold. Establish your baseline FTP to set training zones.'
-                    duration = FTP_TEST_DURATION
+                    duration = FTP_TEST_DURATION_MIN
                     power = 0.82
                     ftp_test_week1_added = True
             # Pre-build FTP test
@@ -428,7 +443,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 if day_abbrev in ftp_day_candidates and is_day_available_for_ftp(day_abbrev):
                     workout_type = 'FTP_Test'
                     description = 'The Assessment - Functional Threshold. Retest before Build phase to update training zones.'
-                    duration = FTP_TEST_DURATION
+                    duration = FTP_TEST_DURATION_MIN
                     power = 0.82
                     ftp_test_prebuild_added = True
 
@@ -482,24 +497,71 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
             generated_files.append(filepath)
 
-    # Generate strength workouts
-    strength_sessions = profile.get('strength', {}).get('sessions_per_week', 2)
-    if strength_sessions > 0:
+    # Generate strength workouts - respect athlete availability
+    strength_sessions = profile.get('strength', {}).get('sessions_per_week', 2) if profile else 2
+    strength_enabled = config.get('workouts.strength.enabled', True)
+
+    if strength_sessions > 0 and strength_enabled:
         strength_dir = zwo_dir
+
+        # Find days suitable for strength workouts based on athlete schedule
+        # Prefer days marked as 'limited' or days that aren't key workout days
+        def get_strength_days() -> list:
+            """Find appropriate days for strength workouts based on athlete availability."""
+            if not use_custom_schedule:
+                return ['Wed', 'Thu']  # Default days
+
+            suitable_days = []
+            # Priority order: strength_only_days > limited availability > non-key days
+            for day_full, prefs in preferred_days.items():
+                if not isinstance(prefs, dict):
+                    continue
+                day_abbrev = DAY_FULL_TO_ABBREV.get(day_full.lower())
+                if not day_abbrev:
+                    continue
+
+                availability = prefs.get('availability', 'available')
+                is_key_ok = prefs.get('is_key_day_ok', True)
+                workout_type = prefs.get('workout_type', '')
+
+                # Skip rest/unavailable days
+                if availability in ('rest', 'unavailable'):
+                    continue
+
+                # Prefer strength-only days first
+                if workout_type == 'strength_only' or day_abbrev in strength_only_abbrevs:
+                    suitable_days.insert(0, day_abbrev)
+                # Then limited availability days (good for shorter strength sessions)
+                elif availability == 'limited' and not is_key_ok:
+                    suitable_days.append(day_abbrev)
+                # Then non-key days
+                elif not is_key_ok:
+                    suitable_days.append(day_abbrev)
+
+            # Return at least 2 days, filling with defaults if needed
+            if len(suitable_days) < 2:
+                defaults = ['Wed', 'Thu', 'Mon', 'Fri']
+                for d in defaults:
+                    if d not in suitable_days and len(suitable_days) < 2:
+                        suitable_days.append(d)
+
+            return suitable_days[:2]
+
+        strength_days = get_strength_days()
+
         for week in weeks:
             week_num = week['week']
             phase = week['phase']
 
-            # Skip strength during taper and race weeks
-            if phase in ('taper', 'race'):
+            # Skip strength during taper and race weeks (use STRENGTH_PHASES from constants)
+            if phase not in STRENGTH_PHASES:
                 continue
 
             for session in range(1, min(strength_sessions + 1, 3)):  # Max 2 sessions
                 strength_blocks, strength_name = generate_strength_zwo(week_num, session)
 
-                # Find an appropriate day for strength
-                # Prefer days that aren't key workout days
-                strength_day = 'Wed' if session == 1 else 'Thu'
+                # Use athlete-appropriate strength day
+                strength_day = strength_days[session - 1] if session <= len(strength_days) else strength_days[0]
 
                 workout_name = f"W{week_num:02d}_{strength_day}_Strength_{strength_name.replace(' ', '_')}"
                 filename = f"{workout_name}.zwo"
@@ -528,22 +590,36 @@ def generate_athlete_package(athlete_id: str) -> dict:
     athlete_dir = athletes_dir / athlete_id
 
     if not athlete_dir.exists():
-        print(f"ERROR: Athlete directory not found: {athlete_dir}")
+        error(f"Athlete directory not found: {athlete_dir}")
         return {'success': False, 'error': 'Athlete not found'}
 
-    print("=" * 60)
-    print(f"GENERATING TRAINING PACKAGE: {athlete_id}")
-    print("=" * 60)
+    header(f"GENERATING TRAINING PACKAGE: {athlete_id}")
+
+    # Step 0: Pre-generation validation
+    step(0, "Running pre-generation validation...")
+    validation_result = validate_athlete_data(athlete_dir)
+
+    if validation_result.warnings:
+        for warn in validation_result.warnings:
+            warning(warn)
+
+    if not validation_result.is_valid:
+        for err in validation_result.errors:
+            error(err)
+        error("Pre-generation validation failed - fix errors before generating")
+        return {'success': False, 'error': 'Validation failed', 'errors': validation_result.errors}
+
+    success("Validation passed")
 
     # Load all athlete data
-    print("\n1. Loading athlete data...")
+    step(1, "Loading athlete data...")
     profile = load_yaml(athlete_dir / 'profile.yaml')
     derived = load_yaml(athlete_dir / 'derived.yaml')
     methodology = load_yaml(athlete_dir / 'methodology.yaml')
     fueling = load_yaml(athlete_dir / 'fueling.yaml')
     plan_dates = load_yaml(athlete_dir / 'plan_dates.yaml')
 
-    # Validate required files
+    # Validate required files (already done by pre-generation, but double-check)
     missing = []
     if not profile: missing.append('profile.yaml')
     if not derived: missing.append('derived.yaml')
@@ -552,7 +628,7 @@ def generate_athlete_package(athlete_id: str) -> dict:
     if not plan_dates: missing.append('plan_dates.yaml')
 
     if missing:
-        print(f"ERROR: Missing required files: {missing}")
+        error(f"Missing required files: {missing}")
         return {'success': False, 'error': f'Missing files: {missing}'}
 
     athlete_name = profile.get('name', 'Athlete')
@@ -560,27 +636,31 @@ def generate_athlete_package(athlete_id: str) -> dict:
     race_date = plan_dates.get('race_date', '')
     plan_weeks = plan_dates.get('plan_weeks', 0)
 
-    print(f"   Athlete: {athlete_name}")
-    print(f"   Race: {race_name} ({race_date})")
-    print(f"   Plan: {plan_weeks} weeks")
-    print(f"   Methodology: {methodology.get('selected_methodology', 'Unknown')}")
+    detail(f"Athlete: {athlete_name}")
+    detail(f"Race: {race_name} ({race_date})")
+    detail(f"Plan: {plan_weeks} weeks")
+    detail(f"Methodology: {methodology.get('selected_methodology', 'Unknown')}")
 
     # Find race data file
-    print("\n2. Loading race data...")
+    step(2, "Loading race data...")
     race_id = profile.get('target_race', {}).get('race_id', '')
+
+    if not GUIDES_DIR:
+        error("Guides directory not configured. Check config.yaml paths.guides_repo")
+        return {'success': False, 'error': 'Guides directory not configured'}
+
     race_data_path = GUIDES_DIR / 'race_data' / f'{race_id}.json'
 
     if not race_data_path.exists():
         race_files = list((GUIDES_DIR / 'race_data').glob('*.json'))
-        print(f"   ERROR: Race data not found at {race_data_path}")
-        print(f"   Available race files: {[f.name for f in race_files]}")
-        print(f"\n   FATAL: Cannot generate plan without matching race data file.")
-        print(f"   Please create {race_id}.json in {GUIDES_DIR / 'race_data'}/")
-        print(f"   Or update profile.yaml race_id to match an existing file.")
-        sys.exit(1)
+        error(f"Race data not found at {race_data_path}")
+        detail(f"Available race files: {[f.name for f in race_files]}")
+        detail(f"Please create {race_id}.json in {GUIDES_DIR / 'race_data'}/")
+        detail(f"Or update profile.yaml race_id to match an existing file.")
+        return {'success': False, 'error': f'Race data file not found: {race_id}.json'}
 
     race_data = load_json(race_data_path)
-    print(f"   Loaded: {race_data_path.name}")
+    detail(f"Loaded: {race_data_path.name}")
 
     # Build athlete_data dict for guide generator
     athlete_data = {
@@ -592,7 +672,7 @@ def generate_athlete_package(athlete_id: str) -> dict:
     }
 
     # Generate training guide
-    print("\n3. Generating training guide...")
+    step(3, "Generating training guide...")
     guide_path = athlete_dir / 'training_guide.html'
 
     tier_name = derived.get('tier', 'FINISHER').upper()
@@ -607,12 +687,12 @@ def generate_athlete_package(athlete_id: str) -> dict:
     )
 
     # Generate ZWO workout files
-    print("\n4. Generating ZWO workout files...")
+    step(4, "Generating ZWO workout files...")
     zwo_files = generate_zwo_files(athlete_dir, plan_dates, methodology, derived, profile)
-    print(f"   Generated {len(zwo_files)} workout files")
+    detail(f"Generated {len(zwo_files)} workout files")
 
     # Generate plan summary
-    print("\n5. Generating plan summary...")
+    step(5, "Generating plan summary...")
     summary = {
         'athlete_id': athlete_id,
         'athlete_name': athlete_name,
@@ -647,24 +727,22 @@ def generate_athlete_package(athlete_id: str) -> dict:
     with open(summary_path, 'w') as f:
         yaml.dump(summary, f, default_flow_style=False, sort_keys=False)
 
-    print(f"   Saved: {summary_path}")
+    detail(f"Saved: {summary_path}")
 
     # Final summary
-    print("\n" + "=" * 60)
-    print("PACKAGE GENERATION COMPLETE")
-    print("=" * 60)
-    print(f"\n📁 Output directory: {athlete_dir}")
-    print(f"📄 Training guide: training_guide.html")
-    print(f"📂 Workouts: workouts/ ({len(zwo_files)} files)")
-    print(f"📋 Summary: plan_summary.yaml")
+    header("PACKAGE GENERATION COMPLETE")
+    log.info(f"Output directory: {athlete_dir}")
+    log.info(f"Training guide: training_guide.html")
+    log.info(f"Workouts: workouts/ ({len(zwo_files)} files)")
+    log.info(f"Summary: plan_summary.yaml")
 
     # List first few workouts
     if zwo_files:
-        print(f"\n📝 Sample workouts:")
+        log.subheader("Sample workouts")
         for f in sorted(zwo_files)[:5]:
-            print(f"   - {f.name}")
+            detail(f"- {f.name}")
         if len(zwo_files) > 5:
-            print(f"   ... and {len(zwo_files) - 5} more")
+            detail(f"... and {len(zwo_files) - 5} more")
 
     return {
         'success': True,
