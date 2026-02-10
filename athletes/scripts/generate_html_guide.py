@@ -1147,13 +1147,19 @@ class GuideGenerator:
     def _load_data(self):
         """Load all athlete data files."""
         base_path = get_athlete_dir(self.athlete_id)
-        
-        # Load profile
-        with open(base_path / "profile.yaml", 'r') as f:
+
+        # Load profile (required)
+        profile_path = base_path / "profile.yaml"
+        if not profile_path.exists():
+            raise FileNotFoundError(f"Profile not found: {profile_path}")
+        with open(profile_path, 'r') as f:
             self.profile = yaml.safe_load(f)
-        
-        # Load derived
-        with open(base_path / "derived.yaml", 'r') as f:
+
+        # Load derived (required)
+        derived_path = base_path / "derived.yaml"
+        if not derived_path.exists():
+            raise FileNotFoundError(f"Derived data not found: {derived_path}. Run derive_classifications.py first.")
+        with open(derived_path, 'r') as f:
             self.derived = yaml.safe_load(f)
         
         # Load weekly structure if exists
