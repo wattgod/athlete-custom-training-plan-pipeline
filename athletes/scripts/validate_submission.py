@@ -11,6 +11,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
+sys.path.insert(0, str(Path(__file__).parent))
+from constants import DAY_ORDER_FULL
+
 # Disposable email providers (common ones)
 DISPOSABLE_EMAIL_PROVIDERS = [
     '10minutemail.com',
@@ -43,7 +46,7 @@ def check_rate_limit(email: str, max_per_day: int = 5) -> bool:
     try:
         with open(RATE_LIMIT_FILE, 'r') as f:
             rate_limits = json.load(f)
-    except:
+    except (OSError, json.JSONDecodeError):
         return True  # Error reading, allow
     
     today = datetime.now().strftime('%Y-%m-%d')
@@ -142,10 +145,9 @@ def validate_required_fields(data: Dict) -> tuple[bool, List[str]]:
 
 def validate_schedule(data: Dict) -> tuple[bool, str]:
     """Validate at least 3 days available for training."""
-    days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
     available_days = 0
-    
-    for day in days:
+
+    for day in DAY_ORDER_FULL:
         if data.get(f'{day}_available'):
             available_days += 1
     

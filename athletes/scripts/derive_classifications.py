@@ -5,10 +5,14 @@ Derive Classifications from Athlete Profile
 Auto-calculates tier, phase, exclusions, and other derived values.
 """
 
+import sys
 import yaml
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
+
+sys.path.insert(0, str(Path(__file__).parent))
+from constants import DAY_ORDER_FULL
 
 
 def derive_tier(profile: Dict) -> str:
@@ -272,16 +276,15 @@ def identify_strength_days(profile: Dict, strength_frequency: int, key_days: Lis
     """
     strength_days = []
     preferred_days = profile.get("preferred_days", {})
-    day_order = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-    
+
     # Days to avoid: day before key days (48h rule)
     # Exception: If key day is Saturday (long ride) and has AM slot, strength can be AM same day
     avoid_days = set()
     for key_day in key_days:
-        key_idx = day_order.index(key_day)
+        key_idx = DAY_ORDER_FULL.index(key_day)
         # Day before (48h rule)
         if key_idx > 0:
-            avoid_days.add(day_order[key_idx - 1])
+            avoid_days.add(DAY_ORDER_FULL[key_idx - 1])
     
     # Find candidate days
     candidates = []
