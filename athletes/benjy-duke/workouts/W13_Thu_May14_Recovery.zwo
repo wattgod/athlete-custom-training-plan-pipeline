@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workout_file>
+    <author>Gravel God Training</author>
+    <name>W13_Thu_May14_Recovery</name>
+    <description>Week 13 (Build Phase) - Thu
+
+Easy spin</description>
+    <sportType>bike</sportType>
+    <workout>
+        <Warmup Duration="300" PowerLow="0.45" PowerHigh="0.65"/>
+        <SteadyState Duration="2100" Power="0.55"/>
+        <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+    </workout>
+</workout_file>

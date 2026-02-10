@@ -1,0 +1,35 @@
+selected_methodology: HIIT-Focused
+methodology_id: hiit_focused
+score: 80.0
+reasons:
+- Ideal hours match (5h in 4-6h sweet spot)
+- Flexible enough for variable schedule
+- Designed for time-crunched athletes
+warnings:
+- Requires intermediate experience (new to structured training)
+configuration:
+  methodology: HIIT-Focused
+  intensity_distribution:
+    z1_z2: 0.3
+    z3: 0.2
+    z4_z5: 0.5
+  strength_approach: crucial_max_power
+  key_workouts:
+  - vo2max_intervals
+  - tabata
+  - sprint_repeats
+  progression_style: increase_intensity_not_volume
+  testing_frequency: block_end
+alternatives:
+- name: Sweet Spot / Threshold
+  score: 60.0
+  key_reason: Beginner-friendly methodology
+- name: MAF / Low-HR (LT1)
+  score: 50.0
+  key_reason: Beginner-friendly methodology
+- name: Autoregulated (HRV-Based)
+  score: 45.0
+  key_reason: Flexible enough for variable schedule
+selection_date: '2026-02-09 13:00:49'
+confidence: high
+confidence_note: Strong match for athlete profile

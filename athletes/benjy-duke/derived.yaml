@@ -1,0 +1,44 @@
+athlete_id: benjy-duke
+generated_date: '2026-02-09'
+race_date: '2026-06-28'
+plan_start: '2026-02-16'
+plan_weeks: 19
+heavy_training_end: '2026-06-01'
+heavy_training_weeks: 17
+maintenance_weeks: 11
+tier: AYAHUASCA
+tier_rationale: 3-4 biking days per week, ~5 hours cycling. Time-crunched athlete
+  with family and work constraints. HIIT-focused approach to maximize limited time.
+ability_level: Intermediate
+ability_rationale: Mountain biking background (20+ years), running endurance experience
+  (marathon, first place age group half marathon), but new to structured cycling training
+  and bike racing. Strong general fitness base.
+training_readiness: ready_to_start
+readiness_notes: No current injuries. Back requires stretching routine management.
+  Good recovery capacity.
+constraints:
+- Limited to 3-4 cycling days per week
+- Family commitments - training early AM or after kids bedtime
+- June work schedule limits training - heavy training must end June 1
+- Back requires ongoing stretching/mobility work
+periodization_notes: Front-load training before June 1. Build base through April,
+  race-specific May, maintenance June-August. 17 weeks of heavy training, then 11
+  weeks maintenance.
+equipment_ready: true
+equipment_notes: Power meter, HR monitor, Wahoo ELEMNT Bolt, smart trainer - well
+  equipped
+training_partners:
+- Kyle
+- Burk
+training_partner_notes: Wants similar training plan as Kyle and Burk for group accountability
+race_demands:
+  distance_miles: 75
+  estimated_duration_hours: 4.5
+  terrain: Mountain gravel roads, significant climbing
+  key_demands:
+  - Sustained climbing power
+  - 4-5 hour endurance
+  - Gravel handling skills
+  - Fueling for medium-distance event
+plan_end: '2026-06-28'
+race_weekday: Sunday
