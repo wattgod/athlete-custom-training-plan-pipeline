@@ -12,26 +12,31 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
-from constants import DAY_ORDER_FULL
+from constants import (
+    DAY_ORDER_FULL,
+    TIER_HOURS_AYAHUASCA_MAX,
+    TIER_HOURS_FINISHER_MAX,
+    TIER_HOURS_COMPETE_MAX,
+)
 
 
 def derive_tier(profile: Dict) -> str:
     """
     Classify athlete into tier based on responses.
-    
+
     Primary factor: available cycling hours
     Modifiers: goal type, training history
     """
     hours = profile.get("weekly_availability", {}).get("cycling_hours_target", 0)
     goal = profile.get("target_race", {}).get("goal_type", "finish")
     history = profile.get("training_history", {}).get("years_structured", 0)
-    
-    # Primary factor: available hours
-    if hours <= 5:
+
+    # Primary factor: available hours (use centralized constants)
+    if hours <= TIER_HOURS_AYAHUASCA_MAX:
         base_tier = "ayahuasca"
-    elif hours <= 10:
+    elif hours <= TIER_HOURS_FINISHER_MAX:
         base_tier = "finisher"
-    elif hours <= 16:
+    elif hours <= TIER_HOURS_COMPETE_MAX:
         base_tier = "compete"
     else:
         base_tier = "podium"

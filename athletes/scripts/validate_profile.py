@@ -11,6 +11,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Tuple
 
+sys.path.insert(0, str(Path(__file__).parent))
+from constants import DAY_ORDER_FULL
+
 
 class ValidationError(Exception):
     """Custom exception for validation errors."""
@@ -125,7 +128,7 @@ def validate_profile(profile: Dict) -> Tuple[bool, List[str], List[str]]:
     
     # Validate preferred_days
     preferred_days = profile.get("preferred_days", {})
-    required_days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    required_days = DAY_ORDER_FULL
     for day in required_days:
         if day not in preferred_days:
             errors.append(f"Missing preferred_days.{day}")

@@ -18,6 +18,9 @@ from pathlib import Path
 from datetime import datetime, date
 from typing import Dict, List, Optional
 
+sys.path.insert(0, str(Path(__file__).parent))
+from constants import DAY_ORDER_FULL
+
 
 def calculate_days_until(date_str: Optional[str]) -> Optional[int]:
     """Calculate days until a date."""
@@ -27,7 +30,7 @@ def calculate_days_until(date_str: Optional[str]) -> Optional[int]:
         target = datetime.strptime(date_str, "%Y-%m-%d").date()
         today = date.today()
         return (target - today).days
-    except:
+    except ValueError:
         return None
 
 
@@ -48,7 +51,7 @@ def format_date(date_str: Optional[str]) -> str:
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         return dt.strftime("%b %d, %Y")
-    except:
+    except ValueError:
         return date_str
 
 
@@ -178,7 +181,7 @@ def calculate_ftp_age_weeks(ftp_date: Optional[str]) -> Optional[int]:
         today = date.today()
         days = (today - test_date).days
         return days // 7
-    except:
+    except ValueError:
         return None
 
 
@@ -1091,8 +1094,8 @@ def format_weekly_schedule(days: Dict) -> str:
     """Format weekly schedule with TSS targets."""
     if not days:
         return '<div class="kv-value">NO SCHEDULE AVAILABLE</div>'
-    
-    day_order = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+
+    day_order = DAY_ORDER_FULL
     schedule_html = []
     
     # TSS estimates by workout type

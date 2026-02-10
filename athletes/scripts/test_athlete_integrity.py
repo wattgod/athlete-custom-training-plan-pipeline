@@ -12,6 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+from constants import DAY_ABBREV_TO_FULL
 
 # Try to import config for URL patterns
 try:
@@ -68,10 +69,7 @@ def validate_workout_schedule_alignment(workouts_dir: Path, profile: dict, plan_
     preferred_off_days = schedule_constraints.get('preferred_off_days', [])
 
     # Map day abbreviations to full names for preference lookup
-    day_map = {
-        'Mon': 'monday', 'Tue': 'tuesday', 'Wed': 'wednesday',
-        'Thu': 'thursday', 'Fri': 'friday', 'Sat': 'saturday', 'Sun': 'sunday'
-    }
+    day_map = DAY_ABBREV_TO_FULL
 
     # Track FTP tests found
     ftp_tests_found = []

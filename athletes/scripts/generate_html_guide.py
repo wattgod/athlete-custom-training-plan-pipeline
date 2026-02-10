@@ -13,6 +13,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional
 
+sys.path.insert(0, str(Path(__file__).parent))
+from constants import DAY_ORDER, DAY_ORDER_FULL
+
 
 # =============================================================================
 # NEO-BRUTALIST HTML TEMPLATE
@@ -1231,7 +1234,7 @@ class GuideGenerator:
                 birth = datetime.strptime(birthday, "%Y-%m-%d")
                 today = datetime.now()
                 return today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
-            except:
+            except ValueError:
                 pass
         return None
     
@@ -1432,7 +1435,7 @@ class GuideGenerator:
         def parse_date(d):
             try:
                 return datetime.strptime(d.get('date', '2099-12-31'), '%Y-%m-%d')
-            except:
+            except ValueError:
                 return datetime(2099, 12, 31)
         
         all_events.sort(key=parse_date)
@@ -2109,8 +2112,8 @@ document.addEventListener('DOMContentLoaded', function() {{
             'Taper': ['Strength', 'Openers', 'Rest', 'Easy Ride', 'Rest', 'Race/Easy', 'Rest']
         }
         
-        day_names = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
-        full_day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        day_names = [d.upper() for d in DAY_ORDER]
+        full_day_names = DAY_ORDER_FULL
         workouts = generic_days.get(phase, generic_days['Build'])
         key_days = [1, 3, 5] if phase in ['Build', 'Peak'] else [3, 5]
         
@@ -2144,7 +2147,7 @@ document.addEventListener('DOMContentLoaded', function() {{
         days = self.weekly_structure.get('days', {})
         rows = []
         
-        for day_name in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
+        for day_name in DAY_ORDER_FULL:
             schedule = days.get(day_name, {})
             am = schedule.get('am') or '—'
             pm = schedule.get('pm') or '—'
