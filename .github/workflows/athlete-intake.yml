@@ -199,11 +199,23 @@ jobs:
       - name: Derive classifications
         working-directory: athlete-profiles
         run: python athletes/scripts/derive_classifications.py "${{ steps.payload.outputs.athlete_id }}"
-      
+
+      - name: Select training methodology
+        working-directory: athlete-profiles
+        run: |
+          echo "=== Selecting optimal training methodology ==="
+          python athletes/scripts/select_methodology.py "${{ steps.payload.outputs.athlete_id }}"
+
+      - name: Calculate fueling requirements
+        working-directory: athlete-profiles
+        run: |
+          echo "=== Calculating personalized fueling ==="
+          python athletes/scripts/calculate_fueling.py "${{ steps.payload.outputs.athlete_id }}"
+
       - name: Build weekly structure
         working-directory: athlete-profiles
         run: python athletes/scripts/build_weekly_structure.py "${{ steps.payload.outputs.athlete_id }}"
-      
+
       - name: Generate unified plan with strength
         env:
           PYTHONPATH: ${{ github.workspace }}/gravel-landing-page-project/races
@@ -217,8 +229,14 @@ jobs:
             echo "⚠️ Warning: gravel-landing-page-project not available, skipping plan generation"
             echo "This is expected if GH_PAT secret is not configured"
           fi
-      
-      - name: Generate athlete guide
+
+      - name: Generate custom training guide
+        working-directory: athlete-profiles
+        run: |
+          echo "=== Generating personalized HTML guide ==="
+          python athletes/scripts/generate_custom_guide.py "${{ steps.payload.outputs.athlete_id }}" || echo "⚠️ Custom guide generation not available"
+
+      - name: Generate athlete guide (legacy markdown)
         working-directory: athlete-profiles
         continue-on-error: true
         run: |

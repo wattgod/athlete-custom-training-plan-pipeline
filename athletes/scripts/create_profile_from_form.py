@@ -152,6 +152,56 @@ def convert_devices(form_data: Dict) -> list:
     return devices
 
 
+def convert_body_metrics(form_data: Dict) -> Dict[str, Any]:
+    """
+    Convert height/weight/sex from form to standardized format.
+
+    Returns dict with:
+        weight_kg: float or None
+        height_cm: int or None
+        sex: str ('male', 'female') or None
+    """
+    # Weight - prefer kg, convert from lbs if needed
+    weight_kg = None
+    if form_data.get('weight_kg'):
+        try:
+            weight_kg = float(form_data['weight_kg'])
+        except (ValueError, TypeError):
+            pass
+    elif form_data.get('weight_lbs'):
+        try:
+            weight_kg = round(float(form_data['weight_lbs']) * 0.453592, 1)
+        except (ValueError, TypeError):
+            pass
+
+    # Height - prefer cm, convert from ft/in if needed
+    height_cm = None
+    if form_data.get('height_cm'):
+        try:
+            height_cm = int(form_data['height_cm'])
+        except (ValueError, TypeError):
+            pass
+    elif form_data.get('height_ft'):
+        try:
+            feet = int(form_data.get('height_ft', 0) or 0)
+            inches = int(form_data.get('height_in', 0) or 0)
+            total_inches = feet * 12 + inches
+            height_cm = round(total_inches * 2.54)
+        except (ValueError, TypeError):
+            pass
+
+    # Sex
+    sex = form_data.get('sex', '').lower()
+    if sex not in ['male', 'female']:
+        sex = None
+
+    return {
+        'weight_kg': weight_kg,
+        'height_cm': height_cm,
+        'sex': sex
+    }
+
+
 def convert_health_conditions(form_data: Dict) -> list:
     """Convert health condition checkboxes to list."""
     conditions = form_data.get('health_conditions', [])
@@ -399,14 +449,16 @@ def create_profile_from_form(athlete_id: str, form_data: Dict) -> Dict:
             'weather_description': form_data.get('weather_description', '')
         },
         
-        'fitness_markers': {
-            'ftp_watts': int(form_data.get('current_ftp', 0)) if form_data.get('current_ftp') else None,
-            'ftp_date': datetime.now().strftime('%Y-%m-%d') if form_data.get('current_ftp') else None,
-            'weight_kg': None,
-            'w_kg': None,
-            'resting_hr': None,
-            'max_hr': None
-        },
+        'fitness_markers': (lambda body_metrics, ftp: {
+            'ftp_watts': int(ftp) if ftp else None,
+            'ftp_date': datetime.now().strftime('%Y-%m-%d') if ftp else None,
+            'weight_kg': body_metrics['weight_kg'],
+            'height_cm': body_metrics['height_cm'],
+            'sex': body_metrics['sex'],
+            'w_kg': round(int(ftp) / body_metrics['weight_kg'], 2) if ftp and body_metrics['weight_kg'] else None,
+            'resting_hr': int(form_data.get('resting_hr', 0)) if form_data.get('resting_hr') else None,
+            'max_hr': int(form_data.get('max_hr', 0)) if form_data.get('max_hr') else None
+        })(convert_body_metrics(form_data), form_data.get('current_ftp')),
         
         'recent_training': {
             'last_12_weeks': 'consistent',  # Default
