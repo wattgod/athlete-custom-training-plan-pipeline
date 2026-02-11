@@ -204,6 +204,15 @@ Documentation:
    - Protocol: Add heat stress 4-8 weeks before race via extra layers, sauna, or hot environment
    - Applied universally - not just for high altitude races
 
+### Bug #10: Training Guide Template Changed Unexpectedly (Feb 2026)
+1. **Problem:** Regenerating workouts also regenerated training_guide.html with wrong template
+2. The guide in main directory got overwritten with new "brand tokens" template
+3. Original guide used simple Sometype Mono styling; new one had brand color system
+4. **Fix:** Restored from `plans/current/training_guide.html` backup
+5. **Rule:** Training guide in `plans/current/` is the APPROVED version
+6. **Rule:** DO NOT regenerate training guide unless explicitly requested
+7. **Rule:** NO emojis, NO brand token CSS, keep simple monospace styling
+
 ## Prevention
 
 1. **ALWAYS run regression tests** before generating athlete packages
@@ -212,6 +221,7 @@ Documentation:
 4. **Check ALL workout generator files** - generate_athlete_package.py, workout_library.py, nate_workout_generator.py
 5. **Verify methodology is being used** - workouts should match methodology config (HIIT = VO2max/Anaerobic/Sprints)
 6. **No special characters in ANY description** - check all generators for • and other unicode
+7. **DO NOT regenerate training_guide.html** - only regenerate workouts unless guide changes are explicitly requested
 
 ---
 
