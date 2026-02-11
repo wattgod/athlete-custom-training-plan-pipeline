@@ -240,6 +240,40 @@ Documentation:
    - Risk Factors & Mitigations
 4. **Rule:** Generate plan_justification.md for EVERY athlete before delivery
 
+## Required Deliverables (Pipeline Checklist)
+
+Every athlete package MUST include these files before delivery:
+
+| File | Location | Purpose |
+|------|----------|---------|
+| `training_guide.pdf` | Package root | Brand-styled guide (Source Serif 4 + Sometype Mono) |
+| `plan_justification.md` | Athlete directory | Internal doc mapping questionnaire to plan decisions |
+| `workouts/*.zwo` | workouts/ folder | All workout files with dates in filename |
+| `profile.yaml` | Athlete directory | Athlete questionnaire data |
+| `methodology.yaml` | Athlete directory | Selected methodology with reasons |
+| `derived.yaml` | Athlete directory | Calculated values (tier, ability, constraints) |
+| `plan_dates.yaml` | Athlete directory | Week-by-week schedule with phases |
+
+### Delivery Package Structure
+```
+{athlete-id}-training-plan/
+  training_guide.pdf
+  plan_justification.md
+  workouts/
+    W01_Mon_Feb16_Rest.zwo
+    W01_Tue_Feb17_Anaerobic.zwo
+    W01_Tue_Feb17_Strength_Foundation_Strength_A.zwo
+    ... (all 150-200 workout files)
+```
+
+### Pre-Delivery Checklist
+- [ ] All ZWO files import successfully into TrainingPeaks
+- [ ] Strength workouts have dates in filename
+- [ ] No special characters in any filename or description
+- [ ] plan_justification.md explains all major plan decisions
+- [ ] Training guide is brand-styled PDF (not simple monospace)
+- [ ] Workouts match selected methodology (HIIT = VO2max/Anaerobic/Sprints)
+
 ## Prevention
 
 1. **ALWAYS run regression tests** before generating athlete packages
@@ -251,6 +285,7 @@ Documentation:
 7. **DO NOT regenerate training_guide.html** - only regenerate workouts unless guide changes are explicitly requested
 8. **ALL filenames must include date** - check strength workouts especially
 9. **ALWAYS create plan_justification.md** - document why the plan is built this way
+10. **RUN PRE-DELIVERY CHECKLIST** - verify all deliverables before sending to athlete
 
 ---
 
