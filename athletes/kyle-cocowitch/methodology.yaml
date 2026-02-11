@@ -1,5 +1,5 @@
-selected_methodology: Sweet Spot / Threshold
-methodology_id: sweet_spot_threshold
+selected_methodology: G SPOT / Threshold
+methodology_id: g_spot_threshold
 score: 85.0
 reasons:
 - Ideal hours match (7h in 7-10h sweet spot)
@@ -7,14 +7,14 @@ reasons:
 - Flexible enough for variable schedule
 warnings: []
 configuration:
-  methodology: Sweet Spot / Threshold
+  methodology: G SPOT / Threshold
   intensity_distribution:
     z1_z2: 0.5
     z3: 0.35
     z4_z5: 0.15
   strength_approach: optional_short_efficient
   key_workouts:
-  - sweet_spot_intervals
+  - g_spot_intervals
   - over_unders
   - tempo_blocks
   progression_style: increase_density

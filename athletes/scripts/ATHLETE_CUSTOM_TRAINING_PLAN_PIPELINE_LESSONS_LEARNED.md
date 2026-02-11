@@ -240,6 +240,12 @@ Documentation:
    - Risk Factors & Mitigations
 4. **Rule:** Generate plan_justification.md for EVERY athlete before delivery
 
+### Rule #13: It's G SPOT, Not Sweet Spot (Feb 2026)
+1. **Problem:** Methodology was labeled "Sweet Spot" in code and documentation
+2. **Correction:** The Gravel God brand term is **G SPOT**, not "Sweet Spot"
+3. **Fix:** Update all references in methodology.yaml, plan_justification.md, training guides
+4. **Rule:** ALWAYS use "G SPOT" - never "Sweet Spot" in athlete-facing materials
+
 ## Required Deliverables (Pipeline Checklist)
 
 Every athlete package MUST include these files before delivery:
