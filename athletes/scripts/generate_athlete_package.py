@@ -721,15 +721,17 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 continue
 
             for session in range(1, min(strength_sessions + 1, 3)):  # Max 2 sessions
-                strength_blocks, strength_name = generate_strength_zwo(week_num, session)
+                strength_blocks, strength_workout = generate_strength_zwo(week_num, session)
 
                 # Use athlete-appropriate strength day
                 strength_day = strength_days[session - 1] if session <= len(strength_days) else strength_days[0]
 
-                workout_name = f"W{week_num:02d}_{strength_day}_Strength_{strength_name.replace(' ', '_')}"
+                workout_name = f"W{week_num:02d}_{strength_day}_Strength_{strength_workout['name'].replace(' ', '_')}"
                 filename = f"{workout_name}.zwo"
 
-                full_description = f"Week {week_num} Strength Session {session}\n\n{strength_name}"
+                # Build description with exercises
+                exercises_text = '\n'.join([f"• {ex} - {reps}" for ex, reps in strength_workout['exercises']])
+                full_description = f"• FOCUS: {strength_workout['focus']}\n\n• EXERCISES:\n{exercises_text}\n\n• EXECUTION:\nComplete all sets with good form. Rest 60-90 sec between sets."
 
                 zwo_content = ZWO_TEMPLATE.format(
                     name=workout_name,

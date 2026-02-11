@@ -345,7 +345,7 @@ def generate_strength_zwo(week_num: int, session_num: int = 1, duration_min: int
 
     blocks.append('    <Cooldown Duration="300" PowerLow="0.40" PowerHigh="0.30"/>')
 
-    return '\n'.join(blocks) + '\n', workout['name']
+    return '\n'.join(blocks) + '\n', workout
 
 
 if __name__ == '__main__':
