@@ -186,6 +186,24 @@ Documentation:
 3. Fix: Updated ZWO_TEMPLATE to use 2-space indent, replaced • with -
 4. Rule: **Check ALL ZWO templates across ALL generators** - each needs correct indentation
 
+### Feature #9: Personalization and Rest Day Workouts (Feb 2026)
+1. **Problem:** Workouts lacked personal context - no athlete name, no countdown to race, no phase awareness
+2. **Problem:** Rest days had no workout files - athletes didn't see guidance for recovery
+3. **Solutions Implemented:**
+   - **Rest Day Workouts:** Created as 1-min bike workouts with recovery instructions (hydration, sleep, mobility)
+   - **Personal Header:** All workouts now include athlete first name, week X of Y, weeks to race countdown
+   - **Phase Context:** Each workout shows current phase (BASE, BUILD, PEAK, TAPER, RACE)
+   - **Progression Notes:** Shows progression level (1-6) with description of current training focus
+   - **Heat Acclimation:** For races >= 5000ft elevation, adds heat training reminders 4-8 weeks before race
+4. **Code Changes:**
+   - `generate_athlete_package.py`: Added `generate_rest_day_zwo()` function
+   - `generate_athlete_package.py`: Added personal header injection with athlete name, countdown, phase
+   - `generate_athlete_package.py`: Added heat acclimation protocol check based on `race_elevation_ft`
+5. **Note on Heat Acclimation:** Requires `race_elevation_ft` field in derived.yaml or a race database
+   - SBT GRVL: 6,732 ft (qualifies)
+   - BWR: 2,000 ft (does not qualify)
+   - Leadville: 10,152 ft (qualifies)
+
 ## Prevention
 
 1. **ALWAYS run regression tests** before generating athlete packages
