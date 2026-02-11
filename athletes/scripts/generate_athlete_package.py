@@ -418,36 +418,20 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             # "The Assessment - Functional Threshold" (1:00:00, 68 TSS, IF 0.82)
             # Based on Gravel God standard FTP test protocol
             # Structure: 12m progressive warmup, 5m @ 6/10, 5m easy, 5m blowout, 5m easy, 20m ALL OUT, 10m cooldown
+            # CRITICAL: No nested textevent in SteadyState - breaks TrainingPeaks import
             blocks = []  # Reset blocks, we handle warmup/cooldown ourselves
             # 12m progressive warmup (45% -> 70%)
             blocks.append('    <Warmup Duration="720" PowerLow="0.45" PowerHigh="0.70"/>')
             # 5m @ RPE 6/10 (~80% FTP)
-            blocks.append('    <SteadyState Duration="300" Power="0.80">')
-            blocks.append('      <textevent timeoffset="0" message="5 minutes at RPE 6/10 - moderate effort"/>')
-            blocks.append('    </SteadyState>')
+            blocks.append('    <SteadyState Duration="300" Power="0.80"/>')
             # 5m easy recovery (50%)
-            blocks.append('    <SteadyState Duration="300" Power="0.50">')
-            blocks.append('      <textevent timeoffset="0" message="5 minutes easy - recover before the blowout"/>')
-            blocks.append('    </SteadyState>')
+            blocks.append('    <SteadyState Duration="300" Power="0.50"/>')
             # 5m blowout @ RPE 8-10 (~105% FTP) - go hard, find your legs
-            blocks.append('    <SteadyState Duration="300" Power="1.05">')
-            blocks.append('      <textevent timeoffset="0" message="5 min BLOWOUT - go hard! Start firm, adjust up or down"/>')
-            blocks.append('      <textevent timeoffset="120" message="Find your rhythm - this clears the cobwebs before the test"/>')
-            blocks.append('    </SteadyState>')
+            blocks.append('    <SteadyState Duration="300" Power="1.05"/>')
             # 5m easy recovery (50%)
-            blocks.append('    <SteadyState Duration="300" Power="0.50">')
-            blocks.append('      <textevent timeoffset="0" message="5 minutes easy - full recovery before the 20-minute test"/>')
-            blocks.append('      <textevent timeoffset="240" message="Get ready. 20 minutes ALL OUT coming up."/>')
-            blocks.append('    </SteadyState>')
-            # 20m ALL OUT - FTP test (target ~100% but athlete should go by feel)
-            blocks.append('    <FreeRide Duration="1200">')
-            blocks.append('      <textevent timeoffset="0" message="20 MINUTES ALL OUT. Start conservatively at 8/10 RPE. 20 minutes is a LONG time."/>')
-            blocks.append('      <textevent timeoffset="120" message="Settle into your rhythm. Find a pace you can hold for the full 20 minutes."/>')
-            blocks.append('      <textevent timeoffset="300" message="5 minutes down. 15 to go. Stay steady, don\'t surge."/>')
-            blocks.append('      <textevent timeoffset="600" message="Halfway! You\'re doing great. Maintain your effort."/>')
-            blocks.append('      <textevent timeoffset="900" message="5 minutes left. Now you can start to push if you have anything left."/>')
-            blocks.append('      <textevent timeoffset="1080" message="Final 2 minutes! Give it everything you have left."/>')
-            blocks.append('    </FreeRide>')
+            blocks.append('    <SteadyState Duration="300" Power="0.50"/>')
+            # 20m ALL OUT - FTP test (use FreeRide for unstructured max effort)
+            blocks.append('    <FreeRide Duration="1200"/>')
             # 10m cooldown
             blocks.append('    <Cooldown Duration="600" PowerLow="0.55" PowerHigh="0.40"/>')
             return '\n'.join(blocks) + '\n'
@@ -513,16 +497,13 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         elif workout_type == 'Over_Unders':
             # Over-under intervals - great for building FTP and lactate tolerance
             # Alternating between 95% and 105% FTP
+            # CRITICAL: No nested textevent in SteadyState - use self-closing tags
             easy_start = int(main_duration * 0.1) * 60
             blocks.append(f'    <SteadyState Duration="{easy_start}" Power="0.62"/>')
             # 3 sets of 8 min (2min under @ 95%, 1min over @ 105%, repeat)
             for i in range(3):
-                blocks.append('    <SteadyState Duration="120" Power="0.95">')
-                blocks.append(f'      <textevent timeoffset="0" message="Under - 95% FTP, find your rhythm"/>')
-                blocks.append('    </SteadyState>')
-                blocks.append('    <SteadyState Duration="60" Power="1.05">')
-                blocks.append(f'      <textevent timeoffset="0" message="OVER - 105% FTP, push through!"/>')
-                blocks.append('    </SteadyState>')
+                blocks.append('    <SteadyState Duration="120" Power="0.95"/>')
+                blocks.append('    <SteadyState Duration="60" Power="1.05"/>')
                 blocks.append('    <SteadyState Duration="120" Power="0.95"/>')
                 blocks.append('    <SteadyState Duration="60" Power="1.05"/>')
                 if i < 2:  # Rest between sets

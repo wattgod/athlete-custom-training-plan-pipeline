@@ -215,13 +215,9 @@ def generate_progressive_interval_blocks(
     warmup_min = max(10, int(duration_min * 0.15))
     blocks.append(f'    <Warmup Duration="{warmup_min * 60}" PowerLow="0.45" PowerHigh="0.70"/>')
 
-    # Pre-interval activation
-    blocks.append('    <SteadyState Duration="180" Power="0.80">')
-    blocks.append('      <textevent timeoffset="0" message="3 minutes at tempo to activate legs"/>')
-    blocks.append('    </SteadyState>')
-    blocks.append('    <SteadyState Duration="120" Power="0.55">')
-    blocks.append('      <textevent timeoffset="0" message="Easy spin before intervals"/>')
-    blocks.append('    </SteadyState>')
+    # Pre-interval activation - NO nested textevent in SteadyState (breaks TrainingPeaks)
+    blocks.append('    <SteadyState Duration="180" Power="0.80"/>')
+    blocks.append('    <SteadyState Duration="120" Power="0.55"/>')
 
     # Main intervals
     blocks.append(f'    <IntervalsT Repeat="{workout["intervals"]}" '
@@ -255,11 +251,11 @@ def generate_progressive_endurance_blocks(
 
     main_duration = duration_min - warmup_min - 5
 
+    # CRITICAL: SteadyState with nested textevent BREAKS TrainingPeaks import
+    # Only IntervalsT can have nested textevent. SteadyState must be self-closing.
     if workout['structure'] == 'steady':
-        # Pure steady Z2
-        blocks.append(f'    <SteadyState Duration="{main_duration * 60}" Power="0.65">')
-        blocks.append(f'      <textevent timeoffset="0" message="{workout["description"]}"/>')
-        blocks.append('    </SteadyState>')
+        # Pure steady Z2 - self-closing tag only
+        blocks.append(f'    <SteadyState Duration="{main_duration * 60}" Power="0.65"/>')
 
     elif workout['structure'] == 'cadence':
         # Z2 with cadence drills every 10 minutes
@@ -269,9 +265,7 @@ def generate_progressive_endurance_blocks(
 
         for i in range(num_drills):
             blocks.append(f'    <SteadyState Duration="{z2_duration}" Power="0.65"/>')
-            blocks.append(f'    <SteadyState Duration="{drill_duration}" Power="0.60" Cadence="100">')
-            blocks.append(f'      <textevent timeoffset="0" message="High cadence drill #{i+1} - spin smooth!"/>')
-            blocks.append('    </SteadyState>')
+            blocks.append(f'    <SteadyState Duration="{drill_duration}" Power="0.60" Cadence="100"/>')
         blocks.append(f'    <SteadyState Duration="{z2_duration}" Power="0.65"/>')
 
     elif workout['structure'] == 'tempo_touch':
@@ -282,9 +276,7 @@ def generate_progressive_endurance_blocks(
 
         for i in range(num_surges):
             blocks.append(f'    <SteadyState Duration="{z2_between}" Power="0.65"/>')
-            blocks.append(f'    <SteadyState Duration="{surge_duration}" Power="0.82">')
-            blocks.append(f'      <textevent timeoffset="0" message="Tempo touch #{i+1} - controlled effort"/>')
-            blocks.append('    </SteadyState>')
+            blocks.append(f'    <SteadyState Duration="{surge_duration}" Power="0.82"/>')
         blocks.append(f'    <SteadyState Duration="{z2_between}" Power="0.65"/>')
 
     else:
@@ -331,30 +323,27 @@ def generate_strength_workout_text(week_num: int, session_num: int = 1) -> str:
 
 
 def generate_strength_zwo(week_num: int, session_num: int = 1, duration_min: int = 30) -> str:
-    """Generate a strength-focused ZWO file (very low power, prompts for exercises)."""
+    """Generate a strength-focused ZWO file (very low power, prompts for exercises).
+
+    CRITICAL: No nested textevent in SteadyState, Warmup, or Cooldown - breaks TrainingPeaks.
+    """
     workout = WorkoutLibrary.get_strength_workout(week_num, session_num)
 
     blocks = []
 
     # This is a "virtual" trainer workout that prompts for strength exercises
     # Very low power to keep legs moving while doing bodyweight exercises
+    # NO nested textevent - use self-closing tags only
 
-    blocks.append('    <Warmup Duration="300" PowerLow="0.30" PowerHigh="0.40">')
-    blocks.append('      <textevent timeoffset="0" message="Warmup: Light spin while preparing for strength work"/>')
-    blocks.append('    </Warmup>')
+    blocks.append('    <Warmup Duration="300" PowerLow="0.30" PowerHigh="0.40"/>')
 
-    # Each exercise gets a segment
+    # Each exercise gets a segment - self-closing SteadyState only
     exercise_duration = ((duration_min - 10) * 60) // len(workout['exercises'])
 
     for i, (exercise, reps) in enumerate(workout['exercises']):
-        blocks.append(f'    <SteadyState Duration="{exercise_duration}" Power="0.35">')
-        blocks.append(f'      <textevent timeoffset="0" message="Exercise {i+1}: {exercise} - {reps}"/>')
-        blocks.append(f'      <textevent timeoffset="{exercise_duration//2}" message="Keep moving - {exercise}"/>')
-        blocks.append('    </SteadyState>')
+        blocks.append(f'    <SteadyState Duration="{exercise_duration}" Power="0.35"/>')
 
-    blocks.append('    <Cooldown Duration="300" PowerLow="0.40" PowerHigh="0.30">')
-    blocks.append('      <textevent timeoffset="0" message="Cooldown: Light spin and stretch"/>')
-    blocks.append('    </Cooldown>')
+    blocks.append('    <Cooldown Duration="300" PowerLow="0.40" PowerHigh="0.30"/>')
 
     return '\n'.join(blocks) + '\n', workout['name']
 

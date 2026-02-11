@@ -13,8 +13,10 @@ THE RULES (learned the hard way):
 2. 2-space indent for metadata tags (author, name, description, sportType)
 3. 2-space indent for <workout> tag
 4. 4-space indent for workout blocks (Warmup, SteadyState, IntervalsT, Cooldown)
-5. 6-space indent for nested textevent elements
-6. NO 8-space indents anywhere - this BREAKS TrainingPeaks import
+5. NO 8-space indents anywhere - this BREAKS TrainingPeaks import
+6. NO nested textevent in SteadyState, Warmup, or Cooldown - BREAKS TrainingPeaks
+7. ONLY IntervalsT can have nested textevent elements
+8. All SteadyState, Warmup, Cooldown must be SELF-CLOSING (end with />)
 """
 
 import pytest
@@ -111,6 +113,30 @@ class TestZWOFormat:
         for pattern in bad_patterns:
             assert pattern not in content, \
                 f"FATAL: Found {pattern} in workout_library.py - this breaks TrainingPeaks import!"
+
+    def test_no_nested_textevent_in_steadystate(self):
+        """SteadyState must NOT have nested textevent - BREAKS TrainingPeaks.
+
+        Only IntervalsT can have nested textevent elements.
+        SteadyState, Warmup, Cooldown must be self-closing.
+        """
+        for script_name in ['generate_athlete_package.py', 'workout_library.py']:
+            script_path = Path(__file__).parent / script_name
+            content = script_path.read_text()
+
+            # Check for non-self-closing SteadyState followed by textevent
+            # Pattern: <SteadyState ...> (not ending with />) followed by textevent
+            lines = content.split('\n')
+            in_steadystate = False
+            for i, line in enumerate(lines):
+                if '<SteadyState' in line and '/>' not in line and '</SteadyState>' not in line:
+                    in_steadystate = True
+                    steadystate_line = i + 1
+                elif in_steadystate and '<textevent' in line:
+                    assert False, \
+                        f"FATAL: {script_name} line {steadystate_line}: SteadyState with nested textevent BREAKS TrainingPeaks!"
+                elif '</SteadyState>' in line:
+                    in_steadystate = False
 
     def test_4_space_indent_in_generate_athlete_package(self):
         """generate_athlete_package.py must use 4-space indent for workout blocks."""
