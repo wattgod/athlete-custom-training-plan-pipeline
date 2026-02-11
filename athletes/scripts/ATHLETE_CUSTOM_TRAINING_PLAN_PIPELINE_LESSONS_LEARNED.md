@@ -216,6 +216,30 @@ Documentation:
 5. **Rule:** NO emojis anywhere in the guide
 6. **Rule:** DO NOT auto-regenerate guide when regenerating workouts
 
+### Bug #11: Strength Workouts Missing Dates in Filename (Feb 2026)
+1. **Problem:** Strength workouts named `W01_Tue_Strength_...` instead of `W01_Tue_Feb17_Strength_...`
+2. Regular workouts had dates, strength workouts didn't - inconsistent naming
+3. **Root cause:** Strength generation loop didn't extract `date_short` from week's days list
+4. **Fix:** Added lookup to get date from `week.get('days', [])` matching the strength day
+5. **Rule:** ALL workout filenames must follow `W{week}_{day}_{date}_{type}.zwo` pattern
+
+### Feature #12: Plan Justification Document (Feb 2026)
+1. **Purpose:** Each athlete plan needs internal documentation that:
+   - Maps questionnaire responses to plan decisions
+   - Justifies methodology selection, workout choices, volume
+   - Anticipates athlete questions ("Why am I doing X?")
+   - Creates accountability/traceability for coaching decisions
+2. **File:** `plan_justification.md` in athlete directory
+3. **Sections:**
+   - Athlete Profile Summary (key metrics table)
+   - Questionnaire-to-Plan Mapping (input -> decision tables)
+   - Phase Structure Justification (why this periodization)
+   - Weekly Structure Justification (why these workout placements)
+   - Anticipated Questions (FAQ for athlete inquiries)
+   - Success Metrics (checkboxes for race readiness)
+   - Risk Factors & Mitigations
+4. **Rule:** Generate plan_justification.md for EVERY athlete before delivery
+
 ## Prevention
 
 1. **ALWAYS run regression tests** before generating athlete packages
@@ -225,6 +249,8 @@ Documentation:
 5. **Verify methodology is being used** - workouts should match methodology config (HIIT = VO2max/Anaerobic/Sprints)
 6. **No special characters in ANY description** - check all generators for • and other unicode
 7. **DO NOT regenerate training_guide.html** - only regenerate workouts unless guide changes are explicitly requested
+8. **ALL filenames must include date** - check strength workouts especially
+9. **ALWAYS create plan_justification.md** - document why the plan is built this way
 
 ---
 

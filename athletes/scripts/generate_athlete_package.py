@@ -912,7 +912,14 @@ Trust the process, {athlete_name}."""
                 # Use athlete-appropriate strength day
                 strength_day = strength_days[session - 1] if session <= len(strength_days) else strength_days[0]
 
-                workout_name = f"W{week_num:02d}_{strength_day}_Strength_{strength_workout['name'].replace(' ', '_')}"
+                # Get the date for this strength day from the week's days list
+                date_short = ""
+                for day_info in week.get('days', []):
+                    if day_info['day'] == strength_day:
+                        date_short = day_info['date_short']
+                        break
+
+                workout_name = f"W{week_num:02d}_{strength_day}_{date_short}_Strength_{strength_workout['name'].replace(' ', '_')}"
                 filename = f"{workout_name}.zwo"
 
                 # Build description with exercises and video links
