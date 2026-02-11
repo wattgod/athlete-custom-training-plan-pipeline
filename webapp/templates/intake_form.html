@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}New Athlete - Gravel God{% endblock %}
+
+{% block content %}
+<h2>New Athlete Intake</h2>
+
+<form method="POST" action="{{ url_for('new_athlete') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <!-- Basic Info -->
+    <div class="card">
+        <div class="card-header">Basic Information</div>
+
+        <div class="grid grid-2">
+            <div class="form-group">
+                <label for="name">Full Name *</label>
+                <input type="text" id="name" name="name" required value="{{ form_data.get('name', '') }}">
+            </div>
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" value="{{ form_data.get('email', '') }}">
+            </div>
+        </div>
+
+        <div class="grid grid-3">
+            <div class="form-group">
+                <label for="age">Age</label>
+                <input type="number" id="age" name="age" min="16" max="100" value="{{ form_data.get('age', '') }}">
+            </div>
+            <div class="form-group">
+                <label for="weight_kg">Weight (kg)</label>
+                <input type="number" id="weight_kg" name="weight_kg" step="0.1" min="40" max="150" value="{{ form_data.get('weight_kg', '') }}">
+            </div>
+            <div class="form-group">
+                <label for="ftp_watts">FTP (watts)</label>
+                <input type="number" id="ftp_watts" name="ftp_watts" min="50" max="500" value="{{ form_data.get('ftp_watts', '') }}">
+            </div>
+        </div>
+    </div>
+
+    <!-- Target Race -->
+    <div class="card" style="margin-top: 16px;">
+        <div class="card-header">Target Race</div>
+
+        <div class="grid grid-2">
+            <div class="form-group">
+                <label for="race_name">Race Name *</label>
+                <input type="text" id="race_name" name="race_name" required value="{{ form_data.get('race_name', '') }}">
+            </div>
+            <div class="form-group">
+                <label for="race_date">Race Date *</label>
+                <input type="date" id="race_date" name="race_date" required value="{{ form_data.get('race_date', '') }}">
+            </div>
+        </div>
+
+        <div class="grid grid-3">
+            <div class="form-group">
+                <label for="race_distance_miles">Distance (miles) *</label>
+                <input type="number" id="race_distance_miles" name="race_distance_miles" required min="10" max="500" value="{{ form_data.get('race_distance_miles', '') }}">
+            </div>
+            <div class="form-group">
+                <label for="race_elevation_ft">Elevation Gain (ft)</label>
+                <input type="number" id="race_elevation_ft" name="race_elevation_ft" min="0" max="50000" value="{{ form_data.get('race_elevation_ft', '') }}">
+            </div>
+            <div class="form-group">
+                <label for="race_terrain">Terrain</label>
+                <select id="race_terrain" name="race_terrain">
+                    <option value="">Select...</option>
+                    <option value="gravel" {{ 'selected' if form_data.get('race_terrain') == 'gravel' else '' }}>Gravel</option>
+                    <option value="mixed" {{ 'selected' if form_data.get('race_terrain') == 'mixed' else '' }}>Mixed</option>
+                    <option value="road" {{ 'selected' if form_data.get('race_terrain') == 'road' else '' }}>Road</option>
+                    <option value="mtb" {{ 'selected' if form_data.get('race_terrain') == 'mtb' else '' }}>MTB</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Weekly Availability -->
+    <div class="card" style="margin-top: 16px;">
+        <div class="card-header">Weekly Availability</div>
+
+        <div class="grid grid-2">
+            <div class="form-group">
+                <label for="cycling_hours_target">Weekly Cycling Hours</label>
+                <input type="number" id="cycling_hours_target" name="cycling_hours_target" min="3" max="30" value="{{ form_data.get('cycling_hours_target', '10') }}">
+            </div>
+            <div class="form-group">
+                <label for="strength_hours">Weekly Strength Hours</label>
+                <input type="number" id="strength_hours" name="strength_hours" min="0" max="10" step="0.5" value="{{ form_data.get('strength_hours', '2') }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="preferred_long_day">Preferred Long Ride Day</label>
+            <select id="preferred_long_day" name="preferred_long_day">
+                <option value="saturday" {{ 'selected' if form_data.get('preferred_long_day') == 'saturday' else '' }}>Saturday</option>
+                <option value="sunday" {{ 'selected' if form_data.get('preferred_long_day') == 'sunday' else '' }}>Sunday</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Preferred Training Days</label>
+            <div style="display: flex; flex-wrap: wrap; gap: 16px; margin-top: 8px;">
+                {% for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] %}
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; text-transform: none; font-weight: normal;">
+                    <input type="checkbox" name="preferred_days" value="{{ day }}"
+                        {{ 'checked' if day in form_data.getlist('preferred_days') or not form_data else '' }}>
+                    {{ day|capitalize }}
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Experience & Goals -->
+    <div class="card" style="margin-top: 16px;">
+        <div class="card-header">Experience & Goals</div>
+
+        <div class="grid grid-2">
+            <div class="form-group">
+                <label for="experience_level">Experience Level</label>
+                <select id="experience_level" name="experience_level">
+                    <option value="beginner" {{ 'selected' if form_data.get('experience_level') == 'beginner' else '' }}>Beginner (< 2 years)</option>
+                    <option value="intermediate" {{ 'selected' if form_data.get('experience_level') == 'intermediate' else '' }}>Intermediate (2-5 years)</option>
+                    <option value="advanced" {{ 'selected' if form_data.get('experience_level') == 'advanced' else '' }}>Advanced (5+ years)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="race_goal">Race Goal</label>
+                <select id="race_goal" name="race_goal">
+                    <option value="finish" {{ 'selected' if form_data.get('race_goal') == 'finish' else '' }}>Finish Strong</option>
+                    <option value="compete" {{ 'selected' if form_data.get('race_goal') == 'compete' else '' }}>Compete in Age Group</option>
+                    <option value="podium" {{ 'selected' if form_data.get('race_goal') == 'podium' else '' }}>Podium/Win</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="limiters">Known Limiters (optional)</label>
+            <textarea id="limiters" name="limiters" rows="3" placeholder="e.g., climbing, sustained power, nutrition, heat tolerance...">{{ form_data.get('limiters', '') }}</textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="notes">Additional Notes (optional)</label>
+            <textarea id="notes" name="notes" rows="3" placeholder="Any other relevant information...">{{ form_data.get('notes', '') }}</textarea>
+        </div>
+    </div>
+
+    <!-- Submit -->
+    <div style="margin-top: 24px; display: flex; gap: 12px;">
+        <button type="submit" class="btn">Create Athlete</button>
+        <a href="{{ url_for('index') }}" class="btn secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

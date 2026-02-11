@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Gravel God{% endblock %}
+
+{% block content %}
+<div style="max-width: 400px; margin: 0 auto;">
+    <h2>Login</h2>
+
+    <div class="card">
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required autofocus>
+            </div>
+
+            <button type="submit" class="btn">Login</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
