@@ -9,14 +9,16 @@ warnings: []
 configuration:
   methodology: G SPOT / Threshold
   intensity_distribution:
-    z1_z2: 0.5
-    z3: 0.35
-    z4_z5: 0.15
+    z1_z2: 0.45
+    z3: 0.30
+    z4_z5: 0.25
   strength_approach: optional_short_efficient
   key_workouts:
   - g_spot_intervals
   - over_unders
   - tempo_blocks
+  - vo2max_intervals
+  - threshold_efforts
   progression_style: increase_density
   testing_frequency: 4_6_weeks
 alternatives:

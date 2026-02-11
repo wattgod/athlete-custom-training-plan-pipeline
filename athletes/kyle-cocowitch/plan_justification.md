@@ -44,14 +44,16 @@
 | No strong methodology preference (all 3s) | G SPOT is balanced, beginner-friendly |
 
 **Intensity Distribution:**
-- Z1-Z2 (Easy): 50%
-- Z3 (Tempo/G SPOT): 35%
-- Z4-Z5 (Threshold+): 15%
+- Z1-Z2 (Easy): 45%
+- Z3 (Tempo/G SPOT): 30%
+- Z4-Z5 (Threshold/VO2max): 25%
 
 **Key Workouts:**
-- Sweet spot intervals (88-94% FTP)
+- G SPOT intervals (88-94% FTP)
 - Over-unders (threshold stress)
 - Tempo blocks (sustained power)
+- VO2max intervals (Z5+ efforts for top-end fitness)
+- Threshold efforts (race-pace preparation)
 
 ### Race-Specific Preparation
 
@@ -157,7 +159,7 @@ You stated: "Meniscus scope on 12/3/25 - recovering very well, no current limita
 | Weekly Hours | 7 hours | 5 hours |
 | Tier | FINISHER | AYAHUASCA |
 | Phase Structure | Full 19-week | Front-loaded (June constraint) |
-| Intensity Split | 50/35/15 | 30/20/50 |
+| Intensity Split | 45/30/25 | 30/20/50 |
 
 You have more time and fewer constraints, so your plan has more volume and moderate intensity. Benjy is time-crunched and needs maximal intensity per hour.
 

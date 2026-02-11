@@ -246,6 +246,18 @@ Documentation:
 3. **Fix:** Update all references in methodology.yaml, plan_justification.md, training guides
 4. **Rule:** ALWAYS use "G SPOT" - never "Sweet Spot" in athlete-facing materials
 
+### Rule #14: G SPOT Still Needs Z5+ High Intensity (Feb 2026)
+1. **Problem:** G SPOT methodology was set to only 15% Z4-Z5, missing top-end fitness
+2. **Correction:** Even G SPOT needs VO2max/threshold work for race readiness
+3. **Correct Distribution:** 45% Z1-Z2, 30% Z3, **25% Z4-Z5** (not 15%)
+4. **Key Workouts Must Include:**
+   - G SPOT intervals (88-94% FTP)
+   - Over-unders
+   - Tempo blocks
+   - **VO2max intervals** (Z5+ efforts)
+   - **Threshold efforts** (race-pace)
+5. **Rule:** ALL methodologies need some Z5+ work - no pure "just grind at threshold" plans
+
 ## Required Deliverables (Pipeline Checklist)
 
 Every athlete package MUST include these files before delivery:
