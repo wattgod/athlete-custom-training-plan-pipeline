@@ -1124,8 +1124,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         .atp-workout-item.strength::before {{
-            content: '💪';
-            font-size: 12px;
+            content: 'STR';
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
         }}
 
         .atp-focus {{
@@ -1500,7 +1502,8 @@ class GuideGenerator:
         self.weekly_structure = None
         self.plan_config = None
         self.plan_summary = None
-        
+        self.plan_dates = None
+
         self._load_data()
     
     def _load_data(self):
@@ -1526,7 +1529,15 @@ class GuideGenerator:
         if ws_path.exists():
             with open(ws_path, 'r') as f:
                 self.weekly_structure = yaml.safe_load(f)
-        
+
+        # Load plan_dates.yaml if exists (contains actual phase assignments)
+        plan_dates_path = base_path / "plan_dates.yaml"
+        if plan_dates_path.exists():
+            with open(plan_dates_path, 'r') as f:
+                self.plan_dates = yaml.safe_load(f)
+        else:
+            self.plan_dates = None
+
         # Load plan config if exists
         plans_dir = base_path / "plans"
         if plans_dir.exists():
@@ -1905,18 +1916,18 @@ class GuideGenerator:
                 'desc': 'Time-based goal for your A event'
             })
         
-        # Goal type
+        # Goal type - NO EMOJIS per brand guidelines
         goal_descriptions = {
-            'finish': ('🏁', 'Complete the Distance', 'Cross that finish line. Everything else is gravy.'),
-            'compete': ('🎯', 'Race Competitively', 'Finish in the top half of your age group. Proper racing.'),
-            'podium': ('🏆', 'Podium Finish', 'Top 3 in age group. Elite performance.'),
-            'pr': ('📈', 'Personal Record', 'Beat your previous best time or performance.')
+            'finish': ('01', 'Complete the Distance', 'Cross that finish line. Everything else is gravy.'),
+            'compete': ('02', 'Race Competitively', 'Finish in the top half of your age group. Proper racing.'),
+            'podium': ('03', 'Podium Finish', 'Top 3 in age group. Elite performance.'),
+            'pr': ('04', 'Personal Record', 'Beat your previous best time or performance.')
         }
-        
+
         if goal_type in goal_descriptions:
             icon, title, desc = goal_descriptions[goal_type]
             inferred_goals.append({'icon': icon, 'title': title, 'desc': desc})
-        
+
         # FTP goal
         ftp = self.profile.get('fitness_markers', {}).get('ftp_watts')
         weight = self.profile.get('fitness_markers', {}).get('weight_kg')
@@ -1924,22 +1935,22 @@ class GuideGenerator:
             current_wpkg = ftp / weight
             target_wpkg = current_wpkg * 1.1  # 10% improvement
             inferred_goals.append({
-                'icon': '⚡',
-                'title': f'Improve W/kg from {current_wpkg:.1f} → {target_wpkg:.1f}',
+                'icon': 'FTP',
+                'title': f'Improve W/kg from {current_wpkg:.1f} to {target_wpkg:.1f}',
                 'desc': 'Realistic fitness progression over the plan'
             })
-        
+
         # Strength goal
         strength_bg = self.profile.get('training_history', {}).get('strength_background', '')
         if strength_bg in ['none', 'beginner']:
             inferred_goals.append({
-                'icon': '💪',
+                'icon': 'STR',
                 'title': 'Build Strength Foundation',
                 'desc': 'Establish consistent strength habit and movement competency'
             })
         elif strength_bg == 'intermediate':
             inferred_goals.append({
-                'icon': '💪',
+                'icon': 'STR',
                 'title': 'Develop Cycling-Specific Power',
                 'desc': 'Convert gym strength into on-bike performance'
             })
@@ -2295,34 +2306,30 @@ class GuideGenerator:
     def _generate_atp_table(self) -> str:
         """Generate interactive Annual Training Plan table."""
         plan_weeks = self.derived.get('plan_weeks', 12)
-        
-        # Determine phases based on plan length
-        if plan_weeks >= 20:
-            phase_ranges = [
-                (1, 4, 'Base', 'base'),
-                (5, 12, 'Build', 'build'),
-                (13, 18, 'Peak', 'peak'),
-                (19, plan_weeks, 'Taper', 'taper')
-            ]
-        elif plan_weeks >= 12:
-            phase_ranges = [
-                (1, 3, 'Base', 'base'),
-                (4, 7, 'Build', 'build'),
-                (8, 10, 'Peak', 'peak'),
-                (11, plan_weeks, 'Taper', 'taper')
-            ]
-        else:
-            phase_ranges = [
-                (1, 2, 'Base', 'base'),
-                (3, 5, 'Build', 'build'),
-                (6, plan_weeks - 1, 'Peak', 'peak'),
-                (plan_weeks, plan_weeks, 'Taper', 'taper')
-            ]
-        
+
+        # Build phase lookup from actual plan_dates.yaml if available
+        week_phases = {}
+        if self.plan_dates and 'weeks' in self.plan_dates:
+            for week_data in self.plan_dates.get('weeks', []):
+                week_num = week_data.get('week')
+                phase = week_data.get('phase', 'base')
+                if week_num:
+                    week_phases[week_num] = phase
+
         def get_phase(week):
-            for start, end, name, cls in phase_ranges:
-                if start <= week <= end:
-                    return name, cls
+            """Get phase for a week - use actual data if available, otherwise estimate."""
+            if week in week_phases:
+                phase = week_phases[week]
+                # Normalize phase names for display
+                phase_display = {
+                    'base': ('Base', 'base'),
+                    'build': ('Build', 'build'),
+                    'peak': ('Peak', 'peak'),
+                    'taper': ('Taper', 'taper'),
+                    'race': ('Race', 'race'),
+                }.get(phase.lower(), ('Build', 'build'))
+                return phase_display
+            # Fallback calculation if no plan_dates
             return 'Build', 'build'
         
         # Week descriptions
@@ -2355,18 +2362,26 @@ class GuideGenerator:
             ]
         }
         
+        # Track phase progression for focus text cycling
+        phase_week_counters = {}
+
         # Build week rows
         week_rows = []
         for week in range(1, plan_weeks + 1):
             phase_name, phase_class = get_phase(week)
-            
+
+            # Track week number within each phase
+            if phase_name not in phase_week_counters:
+                phase_week_counters[phase_name] = 0
+            phase_week_num = phase_week_counters[phase_name]
+            phase_week_counters[phase_name] += 1
+
             # Get focus text
-            phase_week_num = week - [r[0] for r in phase_ranges if r[2] == phase_name][0]
             focuses = week_focuses.get(phase_name, [])
             focus_text = focuses[phase_week_num % len(focuses)] if focuses else 'Progressive training.'
-            
+
             # Determine if recovery week (every 4th week typically)
-            is_recovery = week % 4 == 0 and phase_name not in ['Taper']
+            is_recovery = week % 4 == 0 and phase_name not in ['Taper', 'Race']
             volume_label = 'Recovery' if is_recovery else ['Low', 'Medium', 'High', 'Peak'][min(3, (week % 4))]
             
             # Generate day structure
@@ -3764,7 +3779,7 @@ document.addEventListener('DOMContentLoaded', function() {{
     
     <div class="zwo-upload" id="zwoUpload" onclick="document.getElementById('zwoFileInput').click()">
         <input type="file" id="zwoFileInput" class="zwo-file-input" accept=".zwo" onchange="parseZWOFile(event)">
-        <p style="font-size: 16px; font-weight: 600; margin: 8px 0;">📄 Drop ZWO file here or click to browse</p>
+        <p style="font-size: 16px; font-weight: 600; margin: 8px 0;">Drop ZWO file here or click to browse</p>
         <p style="font-size: 12px; color: #666;">Supports .zwo files from TrainingPeaks or Zwift</p>
     </div>
     

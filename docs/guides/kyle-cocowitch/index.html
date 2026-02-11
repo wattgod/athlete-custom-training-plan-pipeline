@@ -1101,8 +1101,10 @@
         }
 
         .atp-workout-item.strength::before {
-            content: '💪';
-            font-size: 12px;
+            content: 'STR';
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
         }
 
         .atp-focus {
@@ -1601,7 +1603,7 @@
     
 
             <div class="goal-card">
-                <div class="goal-icon">🎯</div>
+                <div class="goal-icon">02</div>
                 <div class="goal-content">
                     <h4>Race Competitively</h4>
                     <p>Finish in the top half of your age group. Proper racing.</p>
@@ -1610,7 +1612,7 @@
             
 
             <div class="goal-card">
-                <div class="goal-icon">💪</div>
+                <div class="goal-icon">STR</div>
                 <div class="goal-content">
                     <h4>Develop Cycling-Specific Power</h4>
                     <p>Convert gym strength into on-bike performance</p>
@@ -1878,7 +1880,7 @@
                 <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
                     <div class="atp-week-title">
                         <span class="atp-week-num">Week 4</span>
-                        <span class="atp-week-phase build">Build</span>
+                        <span class="atp-week-phase base">Base</span>
                     </div>
                     <div class="atp-week-meta">
                         <span>Recovery</span>
@@ -1889,37 +1891,385 @@
 
                     <div class="atp-workouts">
 
-                <div class="atp-day strength-day" data-week="4" data-day="monday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="4" data-day="monday" data-phase="Base" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">MON</div>
-                    <div class="atp-workout-item strength">Strength</div>
+                    <div class="atp-workout-item ">Rest</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="4" data-day="tuesday" data-phase="Build" data-am="Intervals" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="4" data-day="tuesday" data-phase="Base" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">TUE</div>
-                    <div class="atp-workout-item ">Intervals</div>
-                </div>
-            
-                <div class="atp-day " data-week="4" data-day="wednesday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">WED</div>
                     <div class="atp-workout-item ">Easy Ride</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="4" data-day="thursday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">THU</div>
+                <div class="atp-day strength-day" data-week="4" data-day="wednesday" data-phase="Base" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">WED</div>
                     <div class="atp-workout-item strength">Strength</div>
                 </div>
             
-                <div class="atp-day " data-week="4" data-day="friday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">FRI</div>
-                    <div class="atp-workout-item ">Easy Ride</div>
+                <div class="atp-day key-day" data-week="4" data-day="thursday" data-phase="Base" data-am="Tempo" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">THU</div>
+                    <div class="atp-workout-item ">Tempo</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="4" data-day="saturday" data-phase="Build" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day strength-day" data-week="4" data-day="friday" data-phase="Base" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">FRI</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="4" data-day="saturday" data-phase="Base" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SAT</div>
                     <div class="atp-workout-item ">Long Ride</div>
                 </div>
             
-                <div class="atp-day " data-week="4" data-day="sunday" data-phase="Build" data-am="Recovery" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="4" data-day="sunday" data-phase="Base" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">SUN</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
+                </div>
+            
+                    </div>
+        
+                    <div class="atp-focus">
+                        <strong>Focus:</strong> Progressive volume increase. Each week slightly more than the last.
+                    </div>
+                </div>
+            </div>
+            
+            <div class="atp-week" data-week="5">
+                <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
+                    <div class="atp-week-title">
+                        <span class="atp-week-num">Week 5</span>
+                        <span class="atp-week-phase base">Base</span>
+                    </div>
+                    <div class="atp-week-meta">
+                        <span>Medium</span>
+                    </div>
+                    <span class="atp-week-toggle">+</span>
+                </div>
+                <div class="atp-week-content">
+
+                    <div class="atp-workouts">
+
+                <div class="atp-day " data-week="5" data-day="monday" data-phase="Base" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">MON</div>
+                    <div class="atp-workout-item ">Rest</div>
+                </div>
+            
+                <div class="atp-day " data-week="5" data-day="tuesday" data-phase="Base" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">TUE</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
+                </div>
+            
+                <div class="atp-day strength-day" data-week="5" data-day="wednesday" data-phase="Base" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">WED</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="5" data-day="thursday" data-phase="Base" data-am="Tempo" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">THU</div>
+                    <div class="atp-workout-item ">Tempo</div>
+                </div>
+            
+                <div class="atp-day strength-day" data-week="5" data-day="friday" data-phase="Base" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">FRI</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="5" data-day="saturday" data-phase="Base" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">SAT</div>
+                    <div class="atp-workout-item ">Long Ride</div>
+                </div>
+            
+                <div class="atp-day " data-week="5" data-day="sunday" data-phase="Base" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">SUN</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
+                </div>
+            
+                    </div>
+        
+                    <div class="atp-focus">
+                        <strong>Focus:</strong> Building aerobic foundation. Long Z2 rides establish mitochondrial density.
+                    </div>
+                </div>
+            </div>
+            
+            <div class="atp-week" data-week="6">
+                <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
+                    <div class="atp-week-title">
+                        <span class="atp-week-num">Week 6</span>
+                        <span class="atp-week-phase base">Base</span>
+                    </div>
+                    <div class="atp-week-meta">
+                        <span>High</span>
+                    </div>
+                    <span class="atp-week-toggle">+</span>
+                </div>
+                <div class="atp-week-content">
+
+                    <div class="atp-workouts">
+
+                <div class="atp-day " data-week="6" data-day="monday" data-phase="Base" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">MON</div>
+                    <div class="atp-workout-item ">Rest</div>
+                </div>
+            
+                <div class="atp-day " data-week="6" data-day="tuesday" data-phase="Base" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">TUE</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
+                </div>
+            
+                <div class="atp-day strength-day" data-week="6" data-day="wednesday" data-phase="Base" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">WED</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="6" data-day="thursday" data-phase="Base" data-am="Tempo" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">THU</div>
+                    <div class="atp-workout-item ">Tempo</div>
+                </div>
+            
+                <div class="atp-day strength-day" data-week="6" data-day="friday" data-phase="Base" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">FRI</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="6" data-day="saturday" data-phase="Base" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">SAT</div>
+                    <div class="atp-workout-item ">Long Ride</div>
+                </div>
+            
+                <div class="atp-day " data-week="6" data-day="sunday" data-phase="Base" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">SUN</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
+                </div>
+            
+                    </div>
+        
+                    <div class="atp-focus">
+                        <strong>Focus:</strong> Movement quality in strength. Learn the patterns before adding load.
+                    </div>
+                </div>
+            </div>
+            
+            <div class="atp-week" data-week="7">
+                <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
+                    <div class="atp-week-title">
+                        <span class="atp-week-num">Week 7</span>
+                        <span class="atp-week-phase base">Base</span>
+                    </div>
+                    <div class="atp-week-meta">
+                        <span>Peak</span>
+                    </div>
+                    <span class="atp-week-toggle">+</span>
+                </div>
+                <div class="atp-week-content">
+
+                    <div class="atp-workouts">
+
+                <div class="atp-day " data-week="7" data-day="monday" data-phase="Base" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">MON</div>
+                    <div class="atp-workout-item ">Rest</div>
+                </div>
+            
+                <div class="atp-day " data-week="7" data-day="tuesday" data-phase="Base" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">TUE</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
+                </div>
+            
+                <div class="atp-day strength-day" data-week="7" data-day="wednesday" data-phase="Base" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">WED</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="7" data-day="thursday" data-phase="Base" data-am="Tempo" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">THU</div>
+                    <div class="atp-workout-item ">Tempo</div>
+                </div>
+            
+                <div class="atp-day strength-day" data-week="7" data-day="friday" data-phase="Base" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">FRI</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="7" data-day="saturday" data-phase="Base" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">SAT</div>
+                    <div class="atp-workout-item ">Long Ride</div>
+                </div>
+            
+                <div class="atp-day " data-week="7" data-day="sunday" data-phase="Base" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">SUN</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
+                </div>
+            
+                    </div>
+        
+                    <div class="atp-focus">
+                        <strong>Focus:</strong> Establishing rhythm and consistency. Show up, do the work.
+                    </div>
+                </div>
+            </div>
+            
+            <div class="atp-week" data-week="8">
+                <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
+                    <div class="atp-week-title">
+                        <span class="atp-week-num">Week 8</span>
+                        <span class="atp-week-phase base">Base</span>
+                    </div>
+                    <div class="atp-week-meta">
+                        <span>Recovery</span>
+                    </div>
+                    <span class="atp-week-toggle">+</span>
+                </div>
+                <div class="atp-week-content">
+
+                    <div class="atp-workouts">
+
+                <div class="atp-day " data-week="8" data-day="monday" data-phase="Base" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">MON</div>
+                    <div class="atp-workout-item ">Rest</div>
+                </div>
+            
+                <div class="atp-day " data-week="8" data-day="tuesday" data-phase="Base" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">TUE</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
+                </div>
+            
+                <div class="atp-day strength-day" data-week="8" data-day="wednesday" data-phase="Base" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">WED</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="8" data-day="thursday" data-phase="Base" data-am="Tempo" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">THU</div>
+                    <div class="atp-workout-item ">Tempo</div>
+                </div>
+            
+                <div class="atp-day strength-day" data-week="8" data-day="friday" data-phase="Base" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">FRI</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="8" data-day="saturday" data-phase="Base" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">SAT</div>
+                    <div class="atp-workout-item ">Long Ride</div>
+                </div>
+            
+                <div class="atp-day " data-week="8" data-day="sunday" data-phase="Base" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">SUN</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
+                </div>
+            
+                    </div>
+        
+                    <div class="atp-focus">
+                        <strong>Focus:</strong> Progressive volume increase. Each week slightly more than the last.
+                    </div>
+                </div>
+            </div>
+            
+            <div class="atp-week" data-week="9">
+                <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
+                    <div class="atp-week-title">
+                        <span class="atp-week-num">Week 9</span>
+                        <span class="atp-week-phase base">Base</span>
+                    </div>
+                    <div class="atp-week-meta">
+                        <span>Medium</span>
+                    </div>
+                    <span class="atp-week-toggle">+</span>
+                </div>
+                <div class="atp-week-content">
+
+                    <div class="atp-workouts">
+
+                <div class="atp-day " data-week="9" data-day="monday" data-phase="Base" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">MON</div>
+                    <div class="atp-workout-item ">Rest</div>
+                </div>
+            
+                <div class="atp-day " data-week="9" data-day="tuesday" data-phase="Base" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">TUE</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
+                </div>
+            
+                <div class="atp-day strength-day" data-week="9" data-day="wednesday" data-phase="Base" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">WED</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="9" data-day="thursday" data-phase="Base" data-am="Tempo" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">THU</div>
+                    <div class="atp-workout-item ">Tempo</div>
+                </div>
+            
+                <div class="atp-day strength-day" data-week="9" data-day="friday" data-phase="Base" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">FRI</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="9" data-day="saturday" data-phase="Base" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">SAT</div>
+                    <div class="atp-workout-item ">Long Ride</div>
+                </div>
+            
+                <div class="atp-day " data-week="9" data-day="sunday" data-phase="Base" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">SUN</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
+                </div>
+            
+                    </div>
+        
+                    <div class="atp-focus">
+                        <strong>Focus:</strong> Building aerobic foundation. Long Z2 rides establish mitochondrial density.
+                    </div>
+                </div>
+            </div>
+            
+            <div class="atp-week" data-week="10">
+                <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
+                    <div class="atp-week-title">
+                        <span class="atp-week-num">Week 10</span>
+                        <span class="atp-week-phase build">Build</span>
+                    </div>
+                    <div class="atp-week-meta">
+                        <span>High</span>
+                    </div>
+                    <span class="atp-week-toggle">+</span>
+                </div>
+                <div class="atp-week-content">
+
+                    <div class="atp-workouts">
+
+                <div class="atp-day strength-day" data-week="10" data-day="monday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">MON</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="10" data-day="tuesday" data-phase="Build" data-am="Intervals" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">TUE</div>
+                    <div class="atp-workout-item ">Intervals</div>
+                </div>
+            
+                <div class="atp-day " data-week="10" data-day="wednesday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">WED</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="10" data-day="thursday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">THU</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day " data-week="10" data-day="friday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">FRI</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="10" data-day="saturday" data-phase="Build" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">SAT</div>
+                    <div class="atp-workout-item ">Long Ride</div>
+                </div>
+            
+                <div class="atp-day " data-week="10" data-day="sunday" data-phase="Build" data-am="Recovery" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SUN</div>
                     <div class="atp-workout-item ">Recovery</div>
                 </div>
@@ -1932,14 +2282,14 @@
                 </div>
             </div>
             
-            <div class="atp-week" data-week="5">
+            <div class="atp-week" data-week="11">
                 <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
                     <div class="atp-week-title">
-                        <span class="atp-week-num">Week 5</span>
+                        <span class="atp-week-num">Week 11</span>
                         <span class="atp-week-phase build">Build</span>
                     </div>
                     <div class="atp-week-meta">
-                        <span>Medium</span>
+                        <span>Peak</span>
                     </div>
                     <span class="atp-week-toggle">+</span>
                 </div>
@@ -1947,37 +2297,37 @@
 
                     <div class="atp-workouts">
 
-                <div class="atp-day strength-day" data-week="5" data-day="monday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day strength-day" data-week="11" data-day="monday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">MON</div>
                     <div class="atp-workout-item strength">Strength</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="5" data-day="tuesday" data-phase="Build" data-am="Intervals" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="11" data-day="tuesday" data-phase="Build" data-am="Intervals" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">TUE</div>
                     <div class="atp-workout-item ">Intervals</div>
                 </div>
             
-                <div class="atp-day " data-week="5" data-day="wednesday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="11" data-day="wednesday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">WED</div>
                     <div class="atp-workout-item ">Easy Ride</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="5" data-day="thursday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="11" data-day="thursday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">THU</div>
                     <div class="atp-workout-item strength">Strength</div>
                 </div>
             
-                <div class="atp-day " data-week="5" data-day="friday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="11" data-day="friday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">FRI</div>
                     <div class="atp-workout-item ">Easy Ride</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="5" data-day="saturday" data-phase="Build" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="11" data-day="saturday" data-phase="Build" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SAT</div>
                     <div class="atp-workout-item ">Long Ride</div>
                 </div>
             
-                <div class="atp-day " data-week="5" data-day="sunday" data-phase="Build" data-am="Recovery" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="11" data-day="sunday" data-phase="Build" data-am="Recovery" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SUN</div>
                     <div class="atp-workout-item ">Recovery</div>
                 </div>
@@ -1990,14 +2340,14 @@
                 </div>
             </div>
             
-            <div class="atp-week" data-week="6">
+            <div class="atp-week" data-week="12">
                 <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
                     <div class="atp-week-title">
-                        <span class="atp-week-num">Week 6</span>
+                        <span class="atp-week-num">Week 12</span>
                         <span class="atp-week-phase build">Build</span>
                     </div>
                     <div class="atp-week-meta">
-                        <span>High</span>
+                        <span>Recovery</span>
                     </div>
                     <span class="atp-week-toggle">+</span>
                 </div>
@@ -2005,37 +2355,37 @@
 
                     <div class="atp-workouts">
 
-                <div class="atp-day strength-day" data-week="6" data-day="monday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day strength-day" data-week="12" data-day="monday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">MON</div>
                     <div class="atp-workout-item strength">Strength</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="6" data-day="tuesday" data-phase="Build" data-am="Intervals" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="12" data-day="tuesday" data-phase="Build" data-am="Intervals" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">TUE</div>
                     <div class="atp-workout-item ">Intervals</div>
                 </div>
             
-                <div class="atp-day " data-week="6" data-day="wednesday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="12" data-day="wednesday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">WED</div>
                     <div class="atp-workout-item ">Easy Ride</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="6" data-day="thursday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="12" data-day="thursday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">THU</div>
                     <div class="atp-workout-item strength">Strength</div>
                 </div>
             
-                <div class="atp-day " data-week="6" data-day="friday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="12" data-day="friday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">FRI</div>
                     <div class="atp-workout-item ">Easy Ride</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="6" data-day="saturday" data-phase="Build" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="12" data-day="saturday" data-phase="Build" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SAT</div>
                     <div class="atp-workout-item ">Long Ride</div>
                 </div>
             
-                <div class="atp-day " data-week="6" data-day="sunday" data-phase="Build" data-am="Recovery" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="12" data-day="sunday" data-phase="Build" data-am="Recovery" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SUN</div>
                     <div class="atp-workout-item ">Recovery</div>
                 </div>
@@ -2048,14 +2398,14 @@
                 </div>
             </div>
             
-            <div class="atp-week" data-week="7">
+            <div class="atp-week" data-week="13">
                 <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
                     <div class="atp-week-title">
-                        <span class="atp-week-num">Week 7</span>
+                        <span class="atp-week-num">Week 13</span>
                         <span class="atp-week-phase build">Build</span>
                     </div>
                     <div class="atp-week-meta">
-                        <span>Peak</span>
+                        <span>Medium</span>
                     </div>
                     <span class="atp-week-toggle">+</span>
                 </div>
@@ -2063,37 +2413,37 @@
 
                     <div class="atp-workouts">
 
-                <div class="atp-day strength-day" data-week="7" data-day="monday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day strength-day" data-week="13" data-day="monday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">MON</div>
                     <div class="atp-workout-item strength">Strength</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="7" data-day="tuesday" data-phase="Build" data-am="Intervals" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="13" data-day="tuesday" data-phase="Build" data-am="Intervals" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">TUE</div>
                     <div class="atp-workout-item ">Intervals</div>
                 </div>
             
-                <div class="atp-day " data-week="7" data-day="wednesday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="13" data-day="wednesday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">WED</div>
                     <div class="atp-workout-item ">Easy Ride</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="7" data-day="thursday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="13" data-day="thursday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">THU</div>
                     <div class="atp-workout-item strength">Strength</div>
                 </div>
             
-                <div class="atp-day " data-week="7" data-day="friday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="13" data-day="friday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">FRI</div>
                     <div class="atp-workout-item ">Easy Ride</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="7" data-day="saturday" data-phase="Build" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="13" data-day="saturday" data-phase="Build" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SAT</div>
                     <div class="atp-workout-item ">Long Ride</div>
                 </div>
             
-                <div class="atp-day " data-week="7" data-day="sunday" data-phase="Build" data-am="Recovery" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="13" data-day="sunday" data-phase="Build" data-am="Recovery" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SUN</div>
                     <div class="atp-workout-item ">Recovery</div>
                 </div>
@@ -2106,14 +2456,14 @@
                 </div>
             </div>
             
-            <div class="atp-week" data-week="8">
+            <div class="atp-week" data-week="14">
                 <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
                     <div class="atp-week-title">
-                        <span class="atp-week-num">Week 8</span>
-                        <span class="atp-week-phase peak">Peak</span>
+                        <span class="atp-week-num">Week 14</span>
+                        <span class="atp-week-phase build">Build</span>
                     </div>
                     <div class="atp-week-meta">
-                        <span>Recovery</span>
+                        <span>High</span>
                     </div>
                     <span class="atp-week-toggle">+</span>
                 </div>
@@ -2121,37 +2471,95 @@
 
                     <div class="atp-workouts">
 
-                <div class="atp-day strength-day" data-week="8" data-day="monday" data-phase="Peak" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day strength-day" data-week="14" data-day="monday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">MON</div>
                     <div class="atp-workout-item strength">Strength</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="8" data-day="tuesday" data-phase="Peak" data-am="VO2 Intervals" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="14" data-day="tuesday" data-phase="Build" data-am="Intervals" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">TUE</div>
-                    <div class="atp-workout-item ">VO2 Intervals</div>
+                    <div class="atp-workout-item ">Intervals</div>
                 </div>
             
-                <div class="atp-day " data-week="8" data-day="wednesday" data-phase="Peak" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="14" data-day="wednesday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">WED</div>
                     <div class="atp-workout-item ">Easy Ride</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="8" data-day="thursday" data-phase="Peak" data-am="Race Pace" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="14" data-day="thursday" data-phase="Build" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">THU</div>
-                    <div class="atp-workout-item ">Race Pace</div>
+                    <div class="atp-workout-item strength">Strength</div>
                 </div>
             
-                <div class="atp-day " data-week="8" data-day="friday" data-phase="Peak" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="14" data-day="friday" data-phase="Build" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">FRI</div>
-                    <div class="atp-workout-item ">Rest</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="8" data-day="saturday" data-phase="Peak" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="14" data-day="saturday" data-phase="Build" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SAT</div>
                     <div class="atp-workout-item ">Long Ride</div>
                 </div>
             
-                <div class="atp-day " data-week="8" data-day="sunday" data-phase="Peak" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="14" data-day="sunday" data-phase="Build" data-am="Recovery" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">SUN</div>
+                    <div class="atp-workout-item ">Recovery</div>
+                </div>
+            
+                    </div>
+        
+                    <div class="atp-focus">
+                        <strong>Focus:</strong> Race simulation workouts. Practice execution under fatigue.
+                    </div>
+                </div>
+            </div>
+            
+            <div class="atp-week" data-week="15">
+                <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
+                    <div class="atp-week-title">
+                        <span class="atp-week-num">Week 15</span>
+                        <span class="atp-week-phase peak">Peak</span>
+                    </div>
+                    <div class="atp-week-meta">
+                        <span>Peak</span>
+                    </div>
+                    <span class="atp-week-toggle">+</span>
+                </div>
+                <div class="atp-week-content">
+
+                    <div class="atp-workouts">
+
+                <div class="atp-day strength-day" data-week="15" data-day="monday" data-phase="Peak" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">MON</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="15" data-day="tuesday" data-phase="Peak" data-am="VO2 Intervals" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">TUE</div>
+                    <div class="atp-workout-item ">VO2 Intervals</div>
+                </div>
+            
+                <div class="atp-day " data-week="15" data-day="wednesday" data-phase="Peak" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">WED</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="15" data-day="thursday" data-phase="Peak" data-am="Race Pace" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">THU</div>
+                    <div class="atp-workout-item ">Race Pace</div>
+                </div>
+            
+                <div class="atp-day " data-week="15" data-day="friday" data-phase="Peak" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">FRI</div>
+                    <div class="atp-workout-item ">Rest</div>
+                </div>
+            
+                <div class="atp-day key-day" data-week="15" data-day="saturday" data-phase="Peak" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">SAT</div>
+                    <div class="atp-workout-item ">Long Ride</div>
+                </div>
+            
+                <div class="atp-day " data-week="15" data-day="sunday" data-phase="Peak" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SUN</div>
                     <div class="atp-workout-item ">Easy Ride</div>
                 </div>
@@ -2164,14 +2572,14 @@
                 </div>
             </div>
             
-            <div class="atp-week" data-week="9">
+            <div class="atp-week" data-week="16">
                 <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
                     <div class="atp-week-title">
-                        <span class="atp-week-num">Week 9</span>
+                        <span class="atp-week-num">Week 16</span>
                         <span class="atp-week-phase peak">Peak</span>
                     </div>
                     <div class="atp-week-meta">
-                        <span>Medium</span>
+                        <span>Recovery</span>
                     </div>
                     <span class="atp-week-toggle">+</span>
                 </div>
@@ -2179,37 +2587,37 @@
 
                     <div class="atp-workouts">
 
-                <div class="atp-day strength-day" data-week="9" data-day="monday" data-phase="Peak" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day strength-day" data-week="16" data-day="monday" data-phase="Peak" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">MON</div>
                     <div class="atp-workout-item strength">Strength</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="9" data-day="tuesday" data-phase="Peak" data-am="VO2 Intervals" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="16" data-day="tuesday" data-phase="Peak" data-am="VO2 Intervals" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">TUE</div>
                     <div class="atp-workout-item ">VO2 Intervals</div>
                 </div>
             
-                <div class="atp-day " data-week="9" data-day="wednesday" data-phase="Peak" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="16" data-day="wednesday" data-phase="Peak" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">WED</div>
                     <div class="atp-workout-item ">Easy Ride</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="9" data-day="thursday" data-phase="Peak" data-am="Race Pace" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="16" data-day="thursday" data-phase="Peak" data-am="Race Pace" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">THU</div>
                     <div class="atp-workout-item ">Race Pace</div>
                 </div>
             
-                <div class="atp-day " data-week="9" data-day="friday" data-phase="Peak" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="16" data-day="friday" data-phase="Peak" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">FRI</div>
                     <div class="atp-workout-item ">Rest</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="9" data-day="saturday" data-phase="Peak" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="16" data-day="saturday" data-phase="Peak" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SAT</div>
                     <div class="atp-workout-item ">Long Ride</div>
                 </div>
             
-                <div class="atp-day " data-week="9" data-day="sunday" data-phase="Peak" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="16" data-day="sunday" data-phase="Peak" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SUN</div>
                     <div class="atp-workout-item ">Easy Ride</div>
                 </div>
@@ -2222,14 +2630,14 @@
                 </div>
             </div>
             
-            <div class="atp-week" data-week="10">
+            <div class="atp-week" data-week="17">
                 <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
                     <div class="atp-week-title">
-                        <span class="atp-week-num">Week 10</span>
+                        <span class="atp-week-num">Week 17</span>
                         <span class="atp-week-phase peak">Peak</span>
                     </div>
                     <div class="atp-week-meta">
-                        <span>High</span>
+                        <span>Medium</span>
                     </div>
                     <span class="atp-week-toggle">+</span>
                 </div>
@@ -2237,37 +2645,37 @@
 
                     <div class="atp-workouts">
 
-                <div class="atp-day strength-day" data-week="10" data-day="monday" data-phase="Peak" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day strength-day" data-week="17" data-day="monday" data-phase="Peak" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">MON</div>
                     <div class="atp-workout-item strength">Strength</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="10" data-day="tuesday" data-phase="Peak" data-am="VO2 Intervals" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="17" data-day="tuesday" data-phase="Peak" data-am="VO2 Intervals" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">TUE</div>
                     <div class="atp-workout-item ">VO2 Intervals</div>
                 </div>
             
-                <div class="atp-day " data-week="10" data-day="wednesday" data-phase="Peak" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="17" data-day="wednesday" data-phase="Peak" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">WED</div>
                     <div class="atp-workout-item ">Easy Ride</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="10" data-day="thursday" data-phase="Peak" data-am="Race Pace" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="17" data-day="thursday" data-phase="Peak" data-am="Race Pace" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">THU</div>
                     <div class="atp-workout-item ">Race Pace</div>
                 </div>
             
-                <div class="atp-day " data-week="10" data-day="friday" data-phase="Peak" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="17" data-day="friday" data-phase="Peak" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">FRI</div>
                     <div class="atp-workout-item ">Rest</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="10" data-day="saturday" data-phase="Peak" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="17" data-day="saturday" data-phase="Peak" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SAT</div>
                     <div class="atp-workout-item ">Long Ride</div>
                 </div>
             
-                <div class="atp-day " data-week="10" data-day="sunday" data-phase="Peak" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="17" data-day="sunday" data-phase="Peak" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SUN</div>
                     <div class="atp-workout-item ">Easy Ride</div>
                 </div>
@@ -2276,412 +2684,6 @@
         
                     <div class="atp-focus">
                         <strong>Focus:</strong> Strength shifts to power. Fast, explosive movements.
-                    </div>
-                </div>
-            </div>
-            
-            <div class="atp-week" data-week="11">
-                <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
-                    <div class="atp-week-title">
-                        <span class="atp-week-num">Week 11</span>
-                        <span class="atp-week-phase taper">Taper</span>
-                    </div>
-                    <div class="atp-week-meta">
-                        <span>Peak</span>
-                    </div>
-                    <span class="atp-week-toggle">+</span>
-                </div>
-                <div class="atp-week-content">
-
-                    <div class="atp-workouts">
-
-                <div class="atp-day strength-day" data-week="11" data-day="monday" data-phase="Taper" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">MON</div>
-                    <div class="atp-workout-item strength">Strength</div>
-                </div>
-            
-                <div class="atp-day " data-week="11" data-day="tuesday" data-phase="Taper" data-am="Openers" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">TUE</div>
-                    <div class="atp-workout-item ">Openers</div>
-                </div>
-            
-                <div class="atp-day " data-week="11" data-day="wednesday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">WED</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day " data-week="11" data-day="thursday" data-phase="Taper" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">THU</div>
-                    <div class="atp-workout-item ">Easy Ride</div>
-                </div>
-            
-                <div class="atp-day " data-week="11" data-day="friday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">FRI</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day key-day" data-week="11" data-day="saturday" data-phase="Taper" data-am="Race/Easy" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">SAT</div>
-                    <div class="atp-workout-item ">Race/Easy</div>
-                </div>
-            
-                <div class="atp-day " data-week="11" data-day="sunday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">SUN</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                    </div>
-        
-                    <div class="atp-focus">
-                        <strong>Focus:</strong> Volume drops significantly. Intensity stays sharp.
-                    </div>
-                </div>
-            </div>
-            
-            <div class="atp-week" data-week="12">
-                <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
-                    <div class="atp-week-title">
-                        <span class="atp-week-num">Week 12</span>
-                        <span class="atp-week-phase taper">Taper</span>
-                    </div>
-                    <div class="atp-week-meta">
-                        <span>Low</span>
-                    </div>
-                    <span class="atp-week-toggle">+</span>
-                </div>
-                <div class="atp-week-content">
-
-                    <div class="atp-workouts">
-
-                <div class="atp-day strength-day" data-week="12" data-day="monday" data-phase="Taper" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">MON</div>
-                    <div class="atp-workout-item strength">Strength</div>
-                </div>
-            
-                <div class="atp-day " data-week="12" data-day="tuesday" data-phase="Taper" data-am="Openers" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">TUE</div>
-                    <div class="atp-workout-item ">Openers</div>
-                </div>
-            
-                <div class="atp-day " data-week="12" data-day="wednesday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">WED</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day " data-week="12" data-day="thursday" data-phase="Taper" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">THU</div>
-                    <div class="atp-workout-item ">Easy Ride</div>
-                </div>
-            
-                <div class="atp-day " data-week="12" data-day="friday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">FRI</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day key-day" data-week="12" data-day="saturday" data-phase="Taper" data-am="Race/Easy" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">SAT</div>
-                    <div class="atp-workout-item ">Race/Easy</div>
-                </div>
-            
-                <div class="atp-day " data-week="12" data-day="sunday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">SUN</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                    </div>
-        
-                    <div class="atp-focus">
-                        <strong>Focus:</strong> Strength maintains, doesn't build. Don't lose adaptations.
-                    </div>
-                </div>
-            </div>
-            
-            <div class="atp-week" data-week="13">
-                <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
-                    <div class="atp-week-title">
-                        <span class="atp-week-num">Week 13</span>
-                        <span class="atp-week-phase taper">Taper</span>
-                    </div>
-                    <div class="atp-week-meta">
-                        <span>Medium</span>
-                    </div>
-                    <span class="atp-week-toggle">+</span>
-                </div>
-                <div class="atp-week-content">
-
-                    <div class="atp-workouts">
-
-                <div class="atp-day strength-day" data-week="13" data-day="monday" data-phase="Taper" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">MON</div>
-                    <div class="atp-workout-item strength">Strength</div>
-                </div>
-            
-                <div class="atp-day " data-week="13" data-day="tuesday" data-phase="Taper" data-am="Openers" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">TUE</div>
-                    <div class="atp-workout-item ">Openers</div>
-                </div>
-            
-                <div class="atp-day " data-week="13" data-day="wednesday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">WED</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day " data-week="13" data-day="thursday" data-phase="Taper" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">THU</div>
-                    <div class="atp-workout-item ">Easy Ride</div>
-                </div>
-            
-                <div class="atp-day " data-week="13" data-day="friday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">FRI</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day key-day" data-week="13" data-day="saturday" data-phase="Taper" data-am="Race/Easy" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">SAT</div>
-                    <div class="atp-workout-item ">Race/Easy</div>
-                </div>
-            
-                <div class="atp-day " data-week="13" data-day="sunday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">SUN</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                    </div>
-        
-                    <div class="atp-focus">
-                        <strong>Focus:</strong> Freshening up. The hay is in the barn.
-                    </div>
-                </div>
-            </div>
-            
-            <div class="atp-week" data-week="14">
-                <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
-                    <div class="atp-week-title">
-                        <span class="atp-week-num">Week 14</span>
-                        <span class="atp-week-phase taper">Taper</span>
-                    </div>
-                    <div class="atp-week-meta">
-                        <span>High</span>
-                    </div>
-                    <span class="atp-week-toggle">+</span>
-                </div>
-                <div class="atp-week-content">
-
-                    <div class="atp-workouts">
-
-                <div class="atp-day strength-day" data-week="14" data-day="monday" data-phase="Taper" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">MON</div>
-                    <div class="atp-workout-item strength">Strength</div>
-                </div>
-            
-                <div class="atp-day " data-week="14" data-day="tuesday" data-phase="Taper" data-am="Openers" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">TUE</div>
-                    <div class="atp-workout-item ">Openers</div>
-                </div>
-            
-                <div class="atp-day " data-week="14" data-day="wednesday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">WED</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day " data-week="14" data-day="thursday" data-phase="Taper" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">THU</div>
-                    <div class="atp-workout-item ">Easy Ride</div>
-                </div>
-            
-                <div class="atp-day " data-week="14" data-day="friday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">FRI</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day key-day" data-week="14" data-day="saturday" data-phase="Taper" data-am="Race/Easy" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">SAT</div>
-                    <div class="atp-workout-item ">Race/Easy</div>
-                </div>
-            
-                <div class="atp-day " data-week="14" data-day="sunday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">SUN</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                    </div>
-        
-                    <div class="atp-focus">
-                        <strong>Focus:</strong> Race week. Execute the plan.
-                    </div>
-                </div>
-            </div>
-            
-            <div class="atp-week" data-week="15">
-                <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
-                    <div class="atp-week-title">
-                        <span class="atp-week-num">Week 15</span>
-                        <span class="atp-week-phase taper">Taper</span>
-                    </div>
-                    <div class="atp-week-meta">
-                        <span>Peak</span>
-                    </div>
-                    <span class="atp-week-toggle">+</span>
-                </div>
-                <div class="atp-week-content">
-
-                    <div class="atp-workouts">
-
-                <div class="atp-day strength-day" data-week="15" data-day="monday" data-phase="Taper" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">MON</div>
-                    <div class="atp-workout-item strength">Strength</div>
-                </div>
-            
-                <div class="atp-day " data-week="15" data-day="tuesday" data-phase="Taper" data-am="Openers" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">TUE</div>
-                    <div class="atp-workout-item ">Openers</div>
-                </div>
-            
-                <div class="atp-day " data-week="15" data-day="wednesday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">WED</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day " data-week="15" data-day="thursday" data-phase="Taper" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">THU</div>
-                    <div class="atp-workout-item ">Easy Ride</div>
-                </div>
-            
-                <div class="atp-day " data-week="15" data-day="friday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">FRI</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day key-day" data-week="15" data-day="saturday" data-phase="Taper" data-am="Race/Easy" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">SAT</div>
-                    <div class="atp-workout-item ">Race/Easy</div>
-                </div>
-            
-                <div class="atp-day " data-week="15" data-day="sunday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">SUN</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                    </div>
-        
-                    <div class="atp-focus">
-                        <strong>Focus:</strong> Volume drops significantly. Intensity stays sharp.
-                    </div>
-                </div>
-            </div>
-            
-            <div class="atp-week" data-week="16">
-                <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
-                    <div class="atp-week-title">
-                        <span class="atp-week-num">Week 16</span>
-                        <span class="atp-week-phase taper">Taper</span>
-                    </div>
-                    <div class="atp-week-meta">
-                        <span>Low</span>
-                    </div>
-                    <span class="atp-week-toggle">+</span>
-                </div>
-                <div class="atp-week-content">
-
-                    <div class="atp-workouts">
-
-                <div class="atp-day strength-day" data-week="16" data-day="monday" data-phase="Taper" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">MON</div>
-                    <div class="atp-workout-item strength">Strength</div>
-                </div>
-            
-                <div class="atp-day " data-week="16" data-day="tuesday" data-phase="Taper" data-am="Openers" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">TUE</div>
-                    <div class="atp-workout-item ">Openers</div>
-                </div>
-            
-                <div class="atp-day " data-week="16" data-day="wednesday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">WED</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day " data-week="16" data-day="thursday" data-phase="Taper" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">THU</div>
-                    <div class="atp-workout-item ">Easy Ride</div>
-                </div>
-            
-                <div class="atp-day " data-week="16" data-day="friday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">FRI</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day key-day" data-week="16" data-day="saturday" data-phase="Taper" data-am="Race/Easy" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">SAT</div>
-                    <div class="atp-workout-item ">Race/Easy</div>
-                </div>
-            
-                <div class="atp-day " data-week="16" data-day="sunday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">SUN</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                    </div>
-        
-                    <div class="atp-focus">
-                        <strong>Focus:</strong> Strength maintains, doesn't build. Don't lose adaptations.
-                    </div>
-                </div>
-            </div>
-            
-            <div class="atp-week" data-week="17">
-                <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
-                    <div class="atp-week-title">
-                        <span class="atp-week-num">Week 17</span>
-                        <span class="atp-week-phase taper">Taper</span>
-                    </div>
-                    <div class="atp-week-meta">
-                        <span>Medium</span>
-                    </div>
-                    <span class="atp-week-toggle">+</span>
-                </div>
-                <div class="atp-week-content">
-
-                    <div class="atp-workouts">
-
-                <div class="atp-day strength-day" data-week="17" data-day="monday" data-phase="Taper" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">MON</div>
-                    <div class="atp-workout-item strength">Strength</div>
-                </div>
-            
-                <div class="atp-day " data-week="17" data-day="tuesday" data-phase="Taper" data-am="Openers" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">TUE</div>
-                    <div class="atp-workout-item ">Openers</div>
-                </div>
-            
-                <div class="atp-day " data-week="17" data-day="wednesday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">WED</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day " data-week="17" data-day="thursday" data-phase="Taper" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">THU</div>
-                    <div class="atp-workout-item ">Easy Ride</div>
-                </div>
-            
-                <div class="atp-day " data-week="17" data-day="friday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">FRI</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day key-day" data-week="17" data-day="saturday" data-phase="Taper" data-am="Race/Easy" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">SAT</div>
-                    <div class="atp-workout-item ">Race/Easy</div>
-                </div>
-            
-                <div class="atp-day " data-week="17" data-day="sunday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">SUN</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                    </div>
-        
-                    <div class="atp-focus">
-                        <strong>Focus:</strong> Freshening up. The hay is in the barn.
                     </div>
                 </div>
             </div>
@@ -2739,7 +2741,7 @@
                     </div>
         
                     <div class="atp-focus">
-                        <strong>Focus:</strong> Race week. Execute the plan.
+                        <strong>Focus:</strong> Volume drops significantly. Intensity stays sharp.
                     </div>
                 </div>
             </div>
@@ -2748,7 +2750,7 @@
                 <div class="atp-week-header" onclick="this.parentElement.classList.toggle('open')">
                     <div class="atp-week-title">
                         <span class="atp-week-num">Week 19</span>
-                        <span class="atp-week-phase taper">Taper</span>
+                        <span class="atp-week-phase race">Race</span>
                     </div>
                     <div class="atp-week-meta">
                         <span>Peak</span>
@@ -2759,45 +2761,45 @@
 
                     <div class="atp-workouts">
 
-                <div class="atp-day strength-day" data-week="19" data-day="monday" data-phase="Taper" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day strength-day" data-week="19" data-day="monday" data-phase="Race" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">MON</div>
                     <div class="atp-workout-item strength">Strength</div>
                 </div>
             
-                <div class="atp-day " data-week="19" data-day="tuesday" data-phase="Taper" data-am="Openers" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="19" data-day="tuesday" data-phase="Race" data-am="Intervals" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">TUE</div>
-                    <div class="atp-workout-item ">Openers</div>
+                    <div class="atp-workout-item ">Intervals</div>
                 </div>
             
-                <div class="atp-day " data-week="19" data-day="wednesday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="19" data-day="wednesday" data-phase="Race" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">WED</div>
-                    <div class="atp-workout-item ">Rest</div>
-                </div>
-            
-                <div class="atp-day " data-week="19" data-day="thursday" data-phase="Taper" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
-                    <div class="atp-day-name">THU</div>
                     <div class="atp-workout-item ">Easy Ride</div>
                 </div>
             
-                <div class="atp-day " data-week="19" data-day="friday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="19" data-day="thursday" data-phase="Race" data-am="Strength" data-pm="" onclick="showWorkoutModal(this)">
+                    <div class="atp-day-name">THU</div>
+                    <div class="atp-workout-item strength">Strength</div>
+                </div>
+            
+                <div class="atp-day " data-week="19" data-day="friday" data-phase="Race" data-am="Easy Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">FRI</div>
-                    <div class="atp-workout-item ">Rest</div>
+                    <div class="atp-workout-item ">Easy Ride</div>
                 </div>
             
-                <div class="atp-day key-day" data-week="19" data-day="saturday" data-phase="Taper" data-am="Race/Easy" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day key-day" data-week="19" data-day="saturday" data-phase="Race" data-am="Long Ride" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SAT</div>
-                    <div class="atp-workout-item ">Race/Easy</div>
+                    <div class="atp-workout-item ">Long Ride</div>
                 </div>
             
-                <div class="atp-day " data-week="19" data-day="sunday" data-phase="Taper" data-am="Rest" data-pm="" onclick="showWorkoutModal(this)">
+                <div class="atp-day " data-week="19" data-day="sunday" data-phase="Race" data-am="Recovery" data-pm="" onclick="showWorkoutModal(this)">
                     <div class="atp-day-name">SUN</div>
-                    <div class="atp-workout-item ">Rest</div>
+                    <div class="atp-workout-item ">Recovery</div>
                 </div>
             
                     </div>
         
                     <div class="atp-focus">
-                        <strong>Focus:</strong> Volume drops significantly. Intensity stays sharp.
+                        <strong>Focus:</strong> Progressive training.
                     </div>
                 </div>
             </div>
@@ -3516,7 +3518,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     <div class="zwo-upload" id="zwoUpload" onclick="document.getElementById('zwoFileInput').click()">
         <input type="file" id="zwoFileInput" class="zwo-file-input" accept=".zwo" onchange="parseZWOFile(event)">
-        <p style="font-size: 16px; font-weight: 600; margin: 8px 0;">📄 Drop ZWO file here or click to browse</p>
+        <p style="font-size: 16px; font-weight: 600; margin: 8px 0;">Drop ZWO file here or click to browse</p>
         <p style="font-size: 12px; color: #666;">Supports .zwo files from TrainingPeaks or Zwift</p>
     </div>
     
