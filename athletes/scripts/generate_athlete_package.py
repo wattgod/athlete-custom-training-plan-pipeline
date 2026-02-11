@@ -55,6 +55,109 @@ from workout_library import (
 log = get_logger()
 
 
+# Workout description templates per type (following v6.0 spec format)
+WORKOUT_DESCRIPTIONS = {
+    'Recovery': {
+        'structure': '{duration} min easy spin @ Z1 (50-55% FTP)',
+        'purpose': 'Active recovery. Blood flow without stress. Let your body adapt to previous training.',
+        'execution': 'Keep it easy. If in doubt, go easier. No heroics.',
+        'rpe': 'RPE 2-3 (very easy, conversational)',
+    },
+    'Easy': {
+        'structure': '{duration} min easy spin @ Z1-Z2 (55-65% FTP)',
+        'purpose': 'Recovery and aerobic maintenance. Easy means easy.',
+        'execution': 'Smooth pedaling, relaxed. Could hold a conversation easily.',
+        'rpe': 'RPE 2-3 (easy)',
+    },
+    'Endurance': {
+        'structure': '{duration} min @ Z2 (65-75% FTP)',
+        'purpose': 'Aerobic base building. This is where 80% of your training volume lives.',
+        'execution': 'Steady effort, smooth cadence 85-95 rpm. Nose-breathe if possible.',
+        'rpe': 'RPE 3-4 (moderate, sustainable for hours)',
+    },
+    'Tempo': {
+        'structure': '{duration} min with tempo blocks @ Z3 (76-87% FTP)',
+        'purpose': 'Muscular endurance. Building your ability to sustain moderate-hard efforts.',
+        'execution': 'Controlled effort. Breathing harder but rhythmic. Stay seated.',
+        'rpe': 'RPE 5-6 (comfortably hard)',
+    },
+    'Sweet_Spot': {
+        'structure': '{duration} min with sweet spot intervals @ 88-94% FTP',
+        'purpose': 'Maximum training stress with manageable recovery. The efficiency zone.',
+        'execution': 'Hard enough to create adaptation, easy enough to repeat. Cadence 85-95 rpm.',
+        'rpe': 'RPE 6-7 (hard but sustainable)',
+    },
+    'Threshold': {
+        'structure': '{duration} min with threshold intervals @ 95-100% FTP',
+        'purpose': 'FTP development. Training your body to sustain race-winning power.',
+        'execution': 'Right at your limit. Controlled suffering. Cadence 90-95 rpm.',
+        'rpe': 'RPE 7-8 (hard, requires focus)',
+    },
+    'VO2max': {
+        'structure': '{duration} min with VO2max intervals @ 110-120% FTP',
+        'purpose': 'Maximum aerobic power. Raising your ceiling so everything below feels easier.',
+        'execution': 'These hurt. Start at 110%, adjust based on feel. High cadence 95-105 rpm.',
+        'rpe': 'RPE 8-9 (very hard, labored breathing)',
+    },
+    'Anaerobic': {
+        'structure': '{duration} min with anaerobic intervals @ 121-150% FTP',
+        'purpose': 'Anaerobic capacity. Short, explosive power for attacks and surges.',
+        'execution': 'All-out efforts. Full recovery between. Quality over quantity.',
+        'rpe': 'RPE 9-10 (maximum effort)',
+    },
+    'Sprints': {
+        'structure': '{duration} min with sprint intervals @ maximal power',
+        'purpose': 'Neuromuscular power. Pure speed and explosive force.',
+        'execution': 'Maximum power from the gun. Out of saddle, full commitment.',
+        'rpe': 'RPE 10 (all-out)',
+    },
+    'FTP_Test': {
+        'structure': '60 min FTP test protocol: 15 min warmup, 5 min blowout, 5 min recovery, 20 min ALL OUT test, 15 min cooldown',
+        'purpose': 'Establish your training zones. The 20-minute effort sets everything.',
+        'execution': 'Start controlled, settle in, suffer through the middle, finish strong. Average power × 0.95 = FTP.',
+        'rpe': 'RPE 9/10 for the 20-minute test (very hard, barely sustainable)',
+    },
+    'Long_Ride': {
+        'structure': '{duration} min endurance ride with tempo blocks',
+        'purpose': 'Building aerobic endurance and time in saddle. Race-specific duration work.',
+        'execution': 'Mostly Z2 with some Z3 blocks. Practice fueling and hydration.',
+        'rpe': 'RPE 3-5 (easy to moderate)',
+    },
+    'Openers': {
+        'structure': '{duration} min with 4x30sec openers @ 120% FTP',
+        'purpose': 'Pre-race activation. Wake up the legs without creating fatigue.',
+        'execution': 'Short, sharp efforts. Full recovery between. Done when you feel snappy.',
+        'rpe': 'RPE 7-8 for efforts (short and controlled)',
+    },
+}
+
+
+def format_workout_description(workout_type: str, duration: int, phase: str, week_num: int, day_abbrev: str) -> str:
+    """
+    Format workout description following v6.0 spec with STRUCTURE, PURPOSE, EXECUTION, RPE sections.
+    """
+    template = WORKOUT_DESCRIPTIONS.get(workout_type, WORKOUT_DESCRIPTIONS['Endurance'])
+
+    structure = template['structure'].format(duration=duration)
+    purpose = template['purpose']
+    execution = template['execution']
+    rpe = template['rpe']
+
+    description = f"""• STRUCTURE:
+{structure}
+
+• PURPOSE:
+{purpose}
+
+• EXECUTION:
+{execution}
+
+• RPE:
+{rpe}"""
+
+    return description
+
+
 def load_yaml(path: Path) -> dict:
     """Load YAML file."""
     if not path.exists():
@@ -257,44 +360,45 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     # Use custom schedule if profile has preferred_days, otherwise use centralized defaults
     use_custom_schedule = bool(preferred_days)
 
-    # ZWO XML template
-    ZWO_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
+    # ZWO XML template - MUST match TrainingPeaks working format EXACTLY
+    # Reference: Drop_Down_1_Updated.zwo (confirmed working)
+    ZWO_TEMPLATE = """<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
-    <author>Gravel God Training</author>
-    <name>{name}</name>
-    <description>{description}</description>
-    <sportType>bike</sportType>
-    <workout>
-{blocks}    </workout>
+  <author>Gravel God Training</author>
+  <name>{name}</name>
+  <description>{description}</description>
+  <sportType>bike</sportType>
+  <workout>
+{blocks}  </workout>
 </workout_file>"""
 
     def create_workout_blocks(duration_min: int, avg_power: float, workout_type: str) -> str:
-        """Generate ZWO workout blocks."""
+        """Generate ZWO workout blocks with 4-space indent per v6.0 spec."""
         if duration_min == 0:
-            return "        <!-- Rest day -->\n"
+            return "    <FreeRide Duration=\"60\"/>\n"
 
         blocks = []
 
         # Warmup (10% of workout or min 5 min)
         warmup_min = max(5, int(duration_min * 0.1))
-        blocks.append(f'        <Warmup Duration="{warmup_min * 60}" PowerLow="0.45" PowerHigh="0.65"/>')
+        blocks.append(f'    <Warmup Duration="{warmup_min * 60}" PowerLow="0.50" PowerHigh="0.68"/>')
 
         main_duration = duration_min - warmup_min - 5  # Save 5 min for cooldown
 
         if workout_type in ['Recovery', 'Easy', 'Shakeout']:
             # Steady easy effort
-            blocks.append(f'        <SteadyState Duration="{main_duration * 60}" Power="{avg_power}"/>')
+            blocks.append(f'    <SteadyState Duration="{main_duration * 60}" Power="{avg_power}"/>')
 
         elif workout_type == 'Endurance':
             # Zone 2 steady
-            blocks.append(f'        <SteadyState Duration="{main_duration * 60}" Power="{avg_power}"/>')
+            blocks.append(f'    <SteadyState Duration="{main_duration * 60}" Power="{avg_power}"/>')
 
         elif workout_type == 'Tempo':
             # Warmup more, then tempo block
             tempo_duration = int(main_duration * 0.6)
             easy_duration = main_duration - tempo_duration
-            blocks.append(f'        <SteadyState Duration="{easy_duration * 60}" Power="0.60"/>')
-            blocks.append(f'        <SteadyState Duration="{tempo_duration * 60}" Power="0.85"/>')
+            blocks.append(f'    <SteadyState Duration="{easy_duration * 60}" Power="0.60"/>')
+            blocks.append(f'    <SteadyState Duration="{tempo_duration * 60}" Power="0.85"/>')
 
         elif workout_type == 'Intervals':
             # Use progressive intervals from workout library
@@ -307,8 +411,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
         elif workout_type == 'Openers':
             # 4x30sec hard
-            blocks.append(f'        <SteadyState Duration="{(main_duration - 4) * 60}" Power="0.60"/>')
-            blocks.append(f'        <IntervalsT Repeat="4" OnDuration="30" OnPower="1.20" OffDuration="60" OffPower="0.50"/>')
+            blocks.append(f'    <SteadyState Duration="{(main_duration - 4) * 60}" Power="0.60"/>')
+            blocks.append(f'    <IntervalsT Repeat="4" OnDuration="30" OnPower="1.20" OffDuration="60" OffPower="0.50"/>')
 
         elif workout_type == 'FTP_Test':
             # "The Assessment - Functional Threshold" (1:00:00, 68 TSS, IF 0.82)
@@ -316,119 +420,119 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             # Structure: 12m progressive warmup, 5m @ 6/10, 5m easy, 5m blowout, 5m easy, 20m ALL OUT, 10m cooldown
             blocks = []  # Reset blocks, we handle warmup/cooldown ourselves
             # 12m progressive warmup (45% -> 70%)
-            blocks.append('        <Warmup Duration="720" PowerLow="0.45" PowerHigh="0.70"/>')
+            blocks.append('    <Warmup Duration="720" PowerLow="0.45" PowerHigh="0.70"/>')
             # 5m @ RPE 6/10 (~80% FTP)
-            blocks.append('        <SteadyState Duration="300" Power="0.80">')
-            blocks.append('            <textevent timeoffset="0" message="5 minutes at RPE 6/10 - moderate effort"/>')
-            blocks.append('        </SteadyState>')
+            blocks.append('    <SteadyState Duration="300" Power="0.80">')
+            blocks.append('      <textevent timeoffset="0" message="5 minutes at RPE 6/10 - moderate effort"/>')
+            blocks.append('    </SteadyState>')
             # 5m easy recovery (50%)
-            blocks.append('        <SteadyState Duration="300" Power="0.50">')
-            blocks.append('            <textevent timeoffset="0" message="5 minutes easy - recover before the blowout"/>')
-            blocks.append('        </SteadyState>')
+            blocks.append('    <SteadyState Duration="300" Power="0.50">')
+            blocks.append('      <textevent timeoffset="0" message="5 minutes easy - recover before the blowout"/>')
+            blocks.append('    </SteadyState>')
             # 5m blowout @ RPE 8-10 (~105% FTP) - go hard, find your legs
-            blocks.append('        <SteadyState Duration="300" Power="1.05">')
-            blocks.append('            <textevent timeoffset="0" message="5 min BLOWOUT - go hard! Start firm, adjust up or down"/>')
-            blocks.append('            <textevent timeoffset="120" message="Find your rhythm - this clears the cobwebs before the test"/>')
-            blocks.append('        </SteadyState>')
+            blocks.append('    <SteadyState Duration="300" Power="1.05">')
+            blocks.append('      <textevent timeoffset="0" message="5 min BLOWOUT - go hard! Start firm, adjust up or down"/>')
+            blocks.append('      <textevent timeoffset="120" message="Find your rhythm - this clears the cobwebs before the test"/>')
+            blocks.append('    </SteadyState>')
             # 5m easy recovery (50%)
-            blocks.append('        <SteadyState Duration="300" Power="0.50">')
-            blocks.append('            <textevent timeoffset="0" message="5 minutes easy - full recovery before the 20-minute test"/>')
-            blocks.append('            <textevent timeoffset="240" message="Get ready. 20 minutes ALL OUT coming up."/>')
-            blocks.append('        </SteadyState>')
+            blocks.append('    <SteadyState Duration="300" Power="0.50">')
+            blocks.append('      <textevent timeoffset="0" message="5 minutes easy - full recovery before the 20-minute test"/>')
+            blocks.append('      <textevent timeoffset="240" message="Get ready. 20 minutes ALL OUT coming up."/>')
+            blocks.append('    </SteadyState>')
             # 20m ALL OUT - FTP test (target ~100% but athlete should go by feel)
-            blocks.append('        <FreeRide Duration="1200">')
-            blocks.append('            <textevent timeoffset="0" message="20 MINUTES ALL OUT. Start conservatively at 8/10 RPE. 20 minutes is a LONG time."/>')
-            blocks.append('            <textevent timeoffset="120" message="Settle into your rhythm. Find a pace you can hold for the full 20 minutes."/>')
-            blocks.append('            <textevent timeoffset="300" message="5 minutes down. 15 to go. Stay steady, don\'t surge."/>')
-            blocks.append('            <textevent timeoffset="600" message="Halfway! You\'re doing great. Maintain your effort."/>')
-            blocks.append('            <textevent timeoffset="900" message="5 minutes left. Now you can start to push if you have anything left."/>')
-            blocks.append('            <textevent timeoffset="1080" message="Final 2 minutes! Give it everything you have left."/>')
-            blocks.append('        </FreeRide>')
+            blocks.append('    <FreeRide Duration="1200">')
+            blocks.append('      <textevent timeoffset="0" message="20 MINUTES ALL OUT. Start conservatively at 8/10 RPE. 20 minutes is a LONG time."/>')
+            blocks.append('      <textevent timeoffset="120" message="Settle into your rhythm. Find a pace you can hold for the full 20 minutes."/>')
+            blocks.append('      <textevent timeoffset="300" message="5 minutes down. 15 to go. Stay steady, don\'t surge."/>')
+            blocks.append('      <textevent timeoffset="600" message="Halfway! You\'re doing great. Maintain your effort."/>')
+            blocks.append('      <textevent timeoffset="900" message="5 minutes left. Now you can start to push if you have anything left."/>')
+            blocks.append('      <textevent timeoffset="1080" message="Final 2 minutes! Give it everything you have left."/>')
+            blocks.append('    </FreeRide>')
             # 10m cooldown
-            blocks.append('        <Cooldown Duration="600" PowerLow="0.55" PowerHigh="0.40"/>')
+            blocks.append('    <Cooldown Duration="600" PowerLow="0.55" PowerHigh="0.40"/>')
             return '\n'.join(blocks) + '\n'
 
         elif workout_type == 'Long_Ride':
             # Long steady with some tempo blocks
             z2_duration = int(main_duration * 0.7) * 60
             tempo_duration = int(main_duration * 0.3) * 60
-            blocks.append(f'        <SteadyState Duration="{z2_duration}" Power="0.65"/>')
-            blocks.append(f'        <SteadyState Duration="{tempo_duration}" Power="0.80"/>')
+            blocks.append(f'    <SteadyState Duration="{z2_duration}" Power="0.65"/>')
+            blocks.append(f'    <SteadyState Duration="{tempo_duration}" Power="0.80"/>')
 
         elif workout_type == 'Race_Sim':
             # Race simulation with sustained efforts
-            blocks.append(f'        <SteadyState Duration="{int(main_duration * 0.3) * 60}" Power="0.65"/>')
-            blocks.append(f'        <IntervalsT Repeat="3" OnDuration="600" OnPower="0.90" OffDuration="300" OffPower="0.60"/>')
-            blocks.append(f'        <SteadyState Duration="{int(main_duration * 0.2) * 60}" Power="0.65"/>')
+            blocks.append(f'    <SteadyState Duration="{int(main_duration * 0.3) * 60}" Power="0.65"/>')
+            blocks.append(f'    <IntervalsT Repeat="3" OnDuration="600" OnPower="0.90" OffDuration="300" OffPower="0.60"/>')
+            blocks.append(f'    <SteadyState Duration="{int(main_duration * 0.2) * 60}" Power="0.65"/>')
 
         elif workout_type == 'Sweet_Spot':
             # Sweet spot intervals (88-94% FTP) - sustainable but challenging
             # 3x10min @ 88% FTP with 3min rest
             easy_start = int(main_duration * 0.15) * 60  # Easy warmup continuation
-            blocks.append(f'        <SteadyState Duration="{easy_start}" Power="0.62"/>')
-            blocks.append('        <IntervalsT Repeat="3" OnDuration="600" OnPower="0.88" OffDuration="180" OffPower="0.55">')
-            blocks.append('            <textevent timeoffset="0" message="Sweet spot interval - comfortably hard, sustainable effort"/>')
-            blocks.append('            <textevent timeoffset="300" message="Halfway through this block - stay smooth"/>')
-            blocks.append('        </IntervalsT>')
+            blocks.append(f'    <SteadyState Duration="{easy_start}" Power="0.62"/>')
+            blocks.append('    <IntervalsT Repeat="3" OnDuration="600" OnPower="0.88" OffDuration="180" OffPower="0.55">')
+            blocks.append('      <textevent timeoffset="0" message="Sweet spot interval - comfortably hard, sustainable effort"/>')
+            blocks.append('      <textevent timeoffset="300" message="Halfway through this block - stay smooth"/>')
+            blocks.append('    </IntervalsT>')
             easy_end = max(60, (main_duration - 15 - (3*10 + 2*3)) * 60)  # Remaining time
-            blocks.append(f'        <SteadyState Duration="{easy_end}" Power="0.60"/>')
+            blocks.append(f'    <SteadyState Duration="{easy_end}" Power="0.60"/>')
 
         elif workout_type == 'Threshold':
             # Threshold intervals (Z4: 95-105% FTP)
             # 2-3x10-15min @ 95-100% FTP with 5min rest
             easy_start = int(main_duration * 0.1) * 60
-            blocks.append(f'        <SteadyState Duration="{easy_start}" Power="0.62"/>')
-            blocks.append('        <IntervalsT Repeat="2" OnDuration="720" OnPower="0.97" OffDuration="300" OffPower="0.55">')
-            blocks.append('            <textevent timeoffset="0" message="Threshold interval - right at FTP, controlled suffering"/>')
-            blocks.append('            <textevent timeoffset="360" message="Halfway - maintain power, control breathing"/>')
-            blocks.append('            <textevent timeoffset="600" message="Final 2 minutes - hold steady!"/>')
-            blocks.append('        </IntervalsT>')
-            blocks.append(f'        <SteadyState Duration="{max(60, int(main_duration * 0.1) * 60)}" Power="0.58"/>')
+            blocks.append(f'    <SteadyState Duration="{easy_start}" Power="0.62"/>')
+            blocks.append('    <IntervalsT Repeat="2" OnDuration="720" OnPower="0.97" OffDuration="300" OffPower="0.55">')
+            blocks.append('      <textevent timeoffset="0" message="Threshold interval - right at FTP, controlled suffering"/>')
+            blocks.append('      <textevent timeoffset="360" message="Halfway - maintain power, control breathing"/>')
+            blocks.append('      <textevent timeoffset="600" message="Final 2 minutes - hold steady!"/>')
+            blocks.append('    </IntervalsT>')
+            blocks.append(f'    <SteadyState Duration="{max(60, int(main_duration * 0.1) * 60)}" Power="0.58"/>')
 
         elif workout_type == 'Anaerobic':
             # Anaerobic capacity intervals (Z6: 121-150% FTP)
             # 8x30sec @ 150% FTP with 2min rest - builds anaerobic capacity
             easy_start = int(main_duration * 0.15) * 60
-            blocks.append(f'        <SteadyState Duration="{easy_start}" Power="0.60"/>')
-            blocks.append('        <IntervalsT Repeat="8" OnDuration="30" OnPower="1.50" OffDuration="120" OffPower="0.45">')
-            blocks.append('            <textevent timeoffset="0" message="ANAEROBIC - 30 seconds ALL OUT! Maximum effort!"/>')
-            blocks.append('            <textevent timeoffset="15" message="Halfway - keep pushing!"/>')
-            blocks.append('        </IntervalsT>')
-            blocks.append(f'        <SteadyState Duration="{max(120, int(main_duration * 0.1) * 60)}" Power="0.55"/>')
+            blocks.append(f'    <SteadyState Duration="{easy_start}" Power="0.60"/>')
+            blocks.append('    <IntervalsT Repeat="8" OnDuration="30" OnPower="1.50" OffDuration="120" OffPower="0.45">')
+            blocks.append('      <textevent timeoffset="0" message="ANAEROBIC - 30 seconds ALL OUT! Maximum effort!"/>')
+            blocks.append('      <textevent timeoffset="15" message="Halfway - keep pushing!"/>')
+            blocks.append('    </IntervalsT>')
+            blocks.append(f'    <SteadyState Duration="{max(120, int(main_duration * 0.1) * 60)}" Power="0.55"/>')
 
         elif workout_type == 'Sprints':
             # Neuromuscular power (Z7: maximal sprints)
             # 6x10-15sec all-out with full recovery - pure power
             easy_start = int(main_duration * 0.2) * 60
-            blocks.append(f'        <SteadyState Duration="{easy_start}" Power="0.58"/>')
-            blocks.append('        <IntervalsT Repeat="6" OnDuration="12" OnPower="2.00" OffDuration="180" OffPower="0.40">')
-            blocks.append('            <textevent timeoffset="0" message="SPRINT! Maximum power - out of the saddle!"/>')
-            blocks.append('        </IntervalsT>')
-            blocks.append(f'        <SteadyState Duration="{max(120, int(main_duration * 0.1) * 60)}" Power="0.55"/>')
+            blocks.append(f'    <SteadyState Duration="{easy_start}" Power="0.58"/>')
+            blocks.append('    <IntervalsT Repeat="6" OnDuration="12" OnPower="2.00" OffDuration="180" OffPower="0.40">')
+            blocks.append('      <textevent timeoffset="0" message="SPRINT! Maximum power - out of the saddle!"/>')
+            blocks.append('    </IntervalsT>')
+            blocks.append(f'    <SteadyState Duration="{max(120, int(main_duration * 0.1) * 60)}" Power="0.55"/>')
 
         elif workout_type == 'Over_Unders':
             # Over-under intervals - great for building FTP and lactate tolerance
             # Alternating between 95% and 105% FTP
             easy_start = int(main_duration * 0.1) * 60
-            blocks.append(f'        <SteadyState Duration="{easy_start}" Power="0.62"/>')
+            blocks.append(f'    <SteadyState Duration="{easy_start}" Power="0.62"/>')
             # 3 sets of 8 min (2min under @ 95%, 1min over @ 105%, repeat)
             for i in range(3):
-                blocks.append('        <SteadyState Duration="120" Power="0.95">')
-                blocks.append(f'            <textevent timeoffset="0" message="Under - 95% FTP, find your rhythm"/>')
-                blocks.append('        </SteadyState>')
-                blocks.append('        <SteadyState Duration="60" Power="1.05">')
-                blocks.append(f'            <textevent timeoffset="0" message="OVER - 105% FTP, push through!"/>')
-                blocks.append('        </SteadyState>')
-                blocks.append('        <SteadyState Duration="120" Power="0.95"/>')
-                blocks.append('        <SteadyState Duration="60" Power="1.05"/>')
+                blocks.append('    <SteadyState Duration="120" Power="0.95">')
+                blocks.append(f'      <textevent timeoffset="0" message="Under - 95% FTP, find your rhythm"/>')
+                blocks.append('    </SteadyState>')
+                blocks.append('    <SteadyState Duration="60" Power="1.05">')
+                blocks.append(f'      <textevent timeoffset="0" message="OVER - 105% FTP, push through!"/>')
+                blocks.append('    </SteadyState>')
+                blocks.append('    <SteadyState Duration="120" Power="0.95"/>')
+                blocks.append('    <SteadyState Duration="60" Power="1.05"/>')
                 if i < 2:  # Rest between sets
-                    blocks.append('        <SteadyState Duration="240" Power="0.50"/>')
+                    blocks.append('    <SteadyState Duration="240" Power="0.50"/>')
 
         else:
-            blocks.append(f'        <SteadyState Duration="{main_duration * 60}" Power="{avg_power}"/>')
+            blocks.append(f'    <SteadyState Duration="{main_duration * 60}" Power="{avg_power}"/>')
 
         # Cooldown
-        blocks.append(f'        <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>')
+        blocks.append(f'    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>')
 
         return '\n'.join(blocks) + '\n'
 
@@ -534,8 +638,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             # Get week within phase from pre-calculated cache (PERFORMANCE)
             week_in_phase = week_in_phase_cache.get(week_num, 1)
 
-            # Build description
-            full_description = f"Week {week_num} ({phase.title()} Phase) - {day_abbrev}\n\n{description}"
+            # Build description using v6.0 format with STRUCTURE, PURPOSE, EXECUTION, RPE
+            full_description = format_workout_description(workout_type, duration, phase, week_num, day_abbrev)
 
             # Generate blocks - use progressive generators for intervals
             if workout_type in ('Intervals', 'VO2max'):
@@ -543,12 +647,16 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 blocks, progressive_name = generate_progressive_interval_blocks(
                     phase, week_num, week_in_phase, duration
                 )
-                full_description = f"Week {week_num} ({phase.title()} Phase) - {day_abbrev}\n\n{progressive_name}: {description}"
+                # Update description with progressive workout name
+                full_description = f"• STRUCTURE:\n{progressive_name} - {duration} min\n\n" + \
+                    full_description.split('\n\n', 1)[1] if '\n\n' in full_description else full_description
                 workout_name = f"{workout_prefix}_{workout_type}_{progressive_name.replace(' ', '_')}"
             elif workout_type == 'Endurance' and phase == 'base':
                 # Use varied endurance generator for base phase
                 blocks, endurance_name = generate_progressive_endurance_blocks(week_num, duration)
-                full_description = f"Week {week_num} ({phase.title()} Phase) - {day_abbrev}\n\n{endurance_name}: {description}"
+                # Update description with endurance variation name
+                full_description = f"• STRUCTURE:\n{endurance_name} - {duration} min\n\n" + \
+                    full_description.split('\n\n', 1)[1] if '\n\n' in full_description else full_description
             else:
                 blocks = create_workout_blocks(duration, power, workout_type)
 

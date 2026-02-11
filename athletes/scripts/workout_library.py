@@ -213,25 +213,25 @@ def generate_progressive_interval_blocks(
 
     # Warmup
     warmup_min = max(10, int(duration_min * 0.15))
-    blocks.append(f'        <Warmup Duration="{warmup_min * 60}" PowerLow="0.45" PowerHigh="0.70"/>')
+    blocks.append(f'    <Warmup Duration="{warmup_min * 60}" PowerLow="0.45" PowerHigh="0.70"/>')
 
     # Pre-interval activation
-    blocks.append('        <SteadyState Duration="180" Power="0.80">')
-    blocks.append('            <textevent timeoffset="0" message="3 minutes at tempo to activate legs"/>')
-    blocks.append('        </SteadyState>')
-    blocks.append('        <SteadyState Duration="120" Power="0.55">')
-    blocks.append('            <textevent timeoffset="0" message="Easy spin before intervals"/>')
-    blocks.append('        </SteadyState>')
+    blocks.append('    <SteadyState Duration="180" Power="0.80">')
+    blocks.append('      <textevent timeoffset="0" message="3 minutes at tempo to activate legs"/>')
+    blocks.append('    </SteadyState>')
+    blocks.append('    <SteadyState Duration="120" Power="0.55">')
+    blocks.append('      <textevent timeoffset="0" message="Easy spin before intervals"/>')
+    blocks.append('    </SteadyState>')
 
     # Main intervals
-    blocks.append(f'        <IntervalsT Repeat="{workout["intervals"]}" '
+    blocks.append(f'    <IntervalsT Repeat="{workout["intervals"]}" '
                   f'OnDuration="{workout["on_duration"]}" OnPower="{workout["on_power"]}" '
                   f'OffDuration="{workout["off_duration"]}" OffPower="{workout["off_power"]}">')
-    blocks.append(f'            <textevent timeoffset="0" message="{workout["name"]} - interval start"/>')
-    blocks.append('        </IntervalsT>')
+    blocks.append(f'      <textevent timeoffset="0" message="{workout["name"]} - interval start"/>')
+    blocks.append('    </IntervalsT>')
 
     # Cooldown
-    blocks.append('        <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>')
+    blocks.append('    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>')
 
     return '\n'.join(blocks) + '\n', workout['name']
 
@@ -251,15 +251,15 @@ def generate_progressive_endurance_blocks(
 
     # Warmup
     warmup_min = max(5, int(duration_min * 0.1))
-    blocks.append(f'        <Warmup Duration="{warmup_min * 60}" PowerLow="0.45" PowerHigh="0.65"/>')
+    blocks.append(f'    <Warmup Duration="{warmup_min * 60}" PowerLow="0.45" PowerHigh="0.65"/>')
 
     main_duration = duration_min - warmup_min - 5
 
     if workout['structure'] == 'steady':
         # Pure steady Z2
-        blocks.append(f'        <SteadyState Duration="{main_duration * 60}" Power="0.65">')
-        blocks.append(f'            <textevent timeoffset="0" message="{workout["description"]}"/>')
-        blocks.append('        </SteadyState>')
+        blocks.append(f'    <SteadyState Duration="{main_duration * 60}" Power="0.65">')
+        blocks.append(f'      <textevent timeoffset="0" message="{workout["description"]}"/>')
+        blocks.append('    </SteadyState>')
 
     elif workout['structure'] == 'cadence':
         # Z2 with cadence drills every 10 minutes
@@ -268,11 +268,11 @@ def generate_progressive_endurance_blocks(
         z2_duration = (main_duration * 60 - num_drills * drill_duration) // (num_drills + 1)
 
         for i in range(num_drills):
-            blocks.append(f'        <SteadyState Duration="{z2_duration}" Power="0.65"/>')
-            blocks.append(f'        <SteadyState Duration="{drill_duration}" Power="0.60" Cadence="100">')
-            blocks.append(f'            <textevent timeoffset="0" message="High cadence drill #{i+1} - spin smooth!"/>')
-            blocks.append('        </SteadyState>')
-        blocks.append(f'        <SteadyState Duration="{z2_duration}" Power="0.65"/>')
+            blocks.append(f'    <SteadyState Duration="{z2_duration}" Power="0.65"/>')
+            blocks.append(f'    <SteadyState Duration="{drill_duration}" Power="0.60" Cadence="100">')
+            blocks.append(f'      <textevent timeoffset="0" message="High cadence drill #{i+1} - spin smooth!"/>')
+            blocks.append('    </SteadyState>')
+        blocks.append(f'    <SteadyState Duration="{z2_duration}" Power="0.65"/>')
 
     elif workout['structure'] == 'tempo_touch':
         # Z2 with brief tempo surges
@@ -281,18 +281,18 @@ def generate_progressive_endurance_blocks(
         z2_between = (main_duration * 60 - num_surges * surge_duration) // (num_surges + 1)
 
         for i in range(num_surges):
-            blocks.append(f'        <SteadyState Duration="{z2_between}" Power="0.65"/>')
-            blocks.append(f'        <SteadyState Duration="{surge_duration}" Power="0.82">')
-            blocks.append(f'            <textevent timeoffset="0" message="Tempo touch #{i+1} - controlled effort"/>')
-            blocks.append('        </SteadyState>')
-        blocks.append(f'        <SteadyState Duration="{z2_between}" Power="0.65"/>')
+            blocks.append(f'    <SteadyState Duration="{z2_between}" Power="0.65"/>')
+            blocks.append(f'    <SteadyState Duration="{surge_duration}" Power="0.82">')
+            blocks.append(f'      <textevent timeoffset="0" message="Tempo touch #{i+1} - controlled effort"/>')
+            blocks.append('    </SteadyState>')
+        blocks.append(f'    <SteadyState Duration="{z2_between}" Power="0.65"/>')
 
     else:
         # Default steady state
-        blocks.append(f'        <SteadyState Duration="{main_duration * 60}" Power="0.65"/>')
+        blocks.append(f'    <SteadyState Duration="{main_duration * 60}" Power="0.65"/>')
 
     # Cooldown
-    blocks.append('        <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>')
+    blocks.append('    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>')
 
     return '\n'.join(blocks) + '\n', workout['name']
 
@@ -339,22 +339,22 @@ def generate_strength_zwo(week_num: int, session_num: int = 1, duration_min: int
     # This is a "virtual" trainer workout that prompts for strength exercises
     # Very low power to keep legs moving while doing bodyweight exercises
 
-    blocks.append('        <Warmup Duration="300" PowerLow="0.30" PowerHigh="0.40">')
-    blocks.append('            <textevent timeoffset="0" message="Warmup: Light spin while preparing for strength work"/>')
-    blocks.append('        </Warmup>')
+    blocks.append('    <Warmup Duration="300" PowerLow="0.30" PowerHigh="0.40">')
+    blocks.append('      <textevent timeoffset="0" message="Warmup: Light spin while preparing for strength work"/>')
+    blocks.append('    </Warmup>')
 
     # Each exercise gets a segment
     exercise_duration = ((duration_min - 10) * 60) // len(workout['exercises'])
 
     for i, (exercise, reps) in enumerate(workout['exercises']):
-        blocks.append(f'        <SteadyState Duration="{exercise_duration}" Power="0.35">')
-        blocks.append(f'            <textevent timeoffset="0" message="Exercise {i+1}: {exercise} - {reps}"/>')
-        blocks.append(f'            <textevent timeoffset="{exercise_duration//2}" message="Keep moving - {exercise}"/>')
-        blocks.append('        </SteadyState>')
+        blocks.append(f'    <SteadyState Duration="{exercise_duration}" Power="0.35">')
+        blocks.append(f'      <textevent timeoffset="0" message="Exercise {i+1}: {exercise} - {reps}"/>')
+        blocks.append(f'      <textevent timeoffset="{exercise_duration//2}" message="Keep moving - {exercise}"/>')
+        blocks.append('    </SteadyState>')
 
-    blocks.append('        <Cooldown Duration="300" PowerLow="0.40" PowerHigh="0.30">')
-    blocks.append('            <textevent timeoffset="0" message="Cooldown: Light spin and stretch"/>')
-    blocks.append('        </Cooldown>')
+    blocks.append('    <Cooldown Duration="300" PowerLow="0.40" PowerHigh="0.30">')
+    blocks.append('      <textevent timeoffset="0" message="Cooldown: Light spin and stretch"/>')
+    blocks.append('    </Cooldown>')
 
     return '\n'.join(blocks) + '\n', workout['name']
 
