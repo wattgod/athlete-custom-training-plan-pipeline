@@ -107,14 +107,19 @@ def generate_pdf_chrome(html_path: Path, pdf_path: Path, timeout: int = 60) -> T
     html_url = f"file://{html_path.absolute()}"
 
     try:
+        # Use print-to-pdf with proper settings
+        # Note: Do NOT use --no-margins as it overrides CSS @page margins
+        # The CSS @media print rules will control margins, page breaks, etc.
         result = subprocess.run([
             chrome,
-            "--headless",
+            "--headless=new",  # Use new headless mode (better rendering)
             "--disable-gpu",
             "--no-sandbox",  # Required for Docker/CI
             "--disable-software-rasterizer",
+            "--run-all-compositor-stages-before-draw",  # Better rendering
             f"--print-to-pdf={pdf_path}",
-            "--no-margins",
+            "--print-to-pdf-no-header",  # No default Chrome headers
+            # Let CSS control margins via @page rules
             html_url
         ], capture_output=True, text=True, timeout=timeout)
 

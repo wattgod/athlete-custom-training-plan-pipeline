@@ -108,14 +108,42 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         day_full = DAY_ABBREV_TO_FULL.get(day_abbrev, day_abbrev.lower())
         return preferred_days.get(day_full, {'availability': 'available'})
 
-    def build_day_schedule(day_abbrev: str, phase: str, phase_templates: dict) -> tuple:
-        """Determine workout type for a specific day based on availability."""
+    # Track workout distribution across the week for proper hard/easy alternation
+    # This ensures we don't stack hard days back-to-back and provides zone variety
+    week_workout_tracker = {'hard_days': [], 'current_week': 0, 'workout_count': 0}
+
+    def build_day_schedule(day_abbrev: str, phase: str, phase_templates: dict, week_num: int = 0) -> tuple:
+        """
+        Determine workout type for a specific day based on:
+        1. Time availability (duration cap)
+        2. Training phase (base/build/peak/taper)
+        3. Hard/easy distribution across the week
+        4. Zone variety (Z2-Z7) appropriate to phase
+
+        LIMITED availability means TIME constraints, NOT intensity constraints.
+        Athletes with 60 min can absolutely do VO2max, threshold, anaerobic work.
+
+        Zone reference:
+        - Z1: Recovery (<55% FTP)
+        - Z2: Endurance (55-75% FTP)
+        - Z3: Tempo (76-87% FTP)
+        - Z4: Threshold (88-105% FTP)
+        - Z5: VO2max (106-120% FTP)
+        - Z6: Anaerobic Capacity (121-150% FTP)
+        - Z7: Neuromuscular (maximal sprints)
+        """
         avail = get_day_availability(day_abbrev)
         availability = avail.get('availability', 'available')
         workout_type = avail.get('workout_type', '')
-        is_key_ok = avail.get('is_key_day_ok', True)
+        is_key_day = avail.get('is_key_day_ok', False)
         is_long_day = avail.get('is_long_day', False) or day_abbrev == long_day_abbrev
         max_duration = avail.get('max_duration_min', 120)
+
+        # Reset tracker for new week
+        if week_num != week_workout_tracker['current_week']:
+            week_workout_tracker['hard_days'] = []
+            week_workout_tracker['current_week'] = week_num
+            week_workout_tracker['workout_count'] = 0
 
         # Unavailable or rest days = Rest
         if availability in ('unavailable', 'rest'):
@@ -126,26 +154,105 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             template = phase_templates.get('strength', ('Strength', 'Strength training session', 45, 0.0))
             return cap_duration(template, max_duration)
 
-        # Long day
+        # Long day (Saturday/Sunday typically) - this is a KEY session
         if is_long_day and phase != 'race':
+            week_workout_tracker['hard_days'].append(day_abbrev)
             template = phase_templates.get('long_ride')
             return cap_duration(template, max_duration)
 
-        # Key days (available and key_day_ok)
-        if availability == 'available' and is_key_ok:
+        # Designated KEY days get the primary interval session
+        if is_key_day:
+            week_workout_tracker['hard_days'].append(day_abbrev)
             template = phase_templates.get('key_cardio')
             return cap_duration(template, max_duration)
 
-        # Limited availability = easy day
-        template = phase_templates.get('easy', ('Recovery', 'Easy spin', 30, 0.50))
+        # For LIMITED or AVAILABLE days without key_day flag:
+        # Distribute workouts with proper zone variety
+        day_order = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        day_idx = day_order.index(day_abbrev) if day_abbrev in day_order else 0
+        prev_day = day_order[day_idx - 1] if day_idx > 0 else None
+
+        # Check if previous day was hard
+        prev_was_hard = prev_day in week_workout_tracker['hard_days']
+
+        # Increment workout counter for variety
+        week_workout_tracker['workout_count'] += 1
+        workout_num = week_workout_tracker['workout_count']
+
+        # Determine workout based on phase, recovery needs, and variety
+        if prev_was_hard:
+            # Easy day after hard day - Z1/Z2
+            template = phase_templates.get('easy', ('Recovery', 'Easy spin', 30, 0.50))
+        else:
+            # Can do a harder workout - distribute zones based on phase
+            week_workout_tracker['hard_days'].append(day_abbrev)
+
+            if phase == 'base':
+                # Base phase: Mostly Z2, introduce Z3 (tempo)
+                # Pattern: Endurance, Tempo, Endurance, Tempo...
+                if workout_num % 3 == 0:
+                    template = phase_templates.get('tempo', ('Tempo', 'Tempo: 2x10min @ 85% FTP', 50, 0.72))
+                else:
+                    template = phase_templates.get('moderate', ('Endurance', 'Zone 2 steady state', 45, 0.65))
+
+            elif phase == 'build':
+                # Build phase: Z3/Z4 focus, introduce Z5
+                # Pattern: Sweet Spot, Threshold, VO2max, Tempo...
+                cycle = workout_num % 4
+                if cycle == 0:
+                    template = phase_templates.get('vo2max', ('VO2max', 'VO2max: 4x3min @ 110% FTP', 50, 0.80))
+                elif cycle == 1:
+                    template = phase_templates.get('key_cardio', ('Threshold', 'Threshold: 3x10min @ 95% FTP', 55, 0.78))
+                elif cycle == 2:
+                    template = phase_templates.get('moderate', ('Sweet_Spot', 'Sweet spot: 3x12min @ 88% FTP', 55, 0.75))
+                else:
+                    template = phase_templates.get('tempo', ('Tempo', 'Tempo: 2x15min @ 85% FTP', 50, 0.72))
+
+            elif phase == 'peak':
+                # Peak phase: Z5/Z6/Z7 emphasis - race-specific power
+                # Pattern: VO2max, Threshold, Anaerobic, VO2max...
+                cycle = workout_num % 4
+                if cycle == 0:
+                    template = phase_templates.get('vo2max', ('VO2max', 'VO2max: 5x3min @ 115% FTP', 50, 0.82))
+                elif cycle == 1:
+                    template = phase_templates.get('anaerobic', ('Anaerobic', 'Anaerobic: 8x30sec @ 150% FTP', 45, 0.70))
+                elif cycle == 2:
+                    template = phase_templates.get('moderate', ('Threshold', 'Threshold: 2x15min @ 100% FTP', 50, 0.78))
+                else:
+                    template = phase_templates.get('key_cardio', ('VO2max', 'VO2max: 4x4min @ 110% FTP', 55, 0.80))
+
+            elif phase == 'taper':
+                # Taper: Reduce volume, maintain intensity with openers
+                if workout_num % 2 == 0:
+                    template = phase_templates.get('vo2max', ('Openers', 'VO2 openers: 3x2min @ 110% FTP', 40, 0.65))
+                else:
+                    template = phase_templates.get('anaerobic', ('Sprints', 'Sprint openers: 4x15sec all-out', 35, 0.55))
+
+            elif phase == 'race':
+                # Race week: Minimal, just activation
+                template = phase_templates.get('easy', ('Easy', 'Easy spin', 30, 0.50))
+
+            elif phase == 'maintenance':
+                # Maintenance: Keep all systems ticking
+                cycle = workout_num % 3
+                if cycle == 0:
+                    template = phase_templates.get('vo2max', ('Threshold', 'Threshold touch: 2x8min @ 95% FTP', 45, 0.72))
+                elif cycle == 1:
+                    template = phase_templates.get('tempo', ('Tempo', 'Tempo: 2x12min @ 85% FTP', 45, 0.70))
+                else:
+                    template = phase_templates.get('moderate', ('Endurance', 'Zone 2 maintenance', 50, 0.62))
+            else:
+                # Default: moderate effort
+                template = phase_templates.get('moderate', ('Endurance', 'Zone 2', 45, 0.62))
+
         return cap_duration(template, max_duration)
 
     # Build custom workout templates per day based on athlete schedule
-    def get_workout_for_day(day_abbrev: str, phase: str) -> tuple:
+    def get_workout_for_day(day_abbrev: str, phase: str, week_num: int = 0) -> tuple:
         """Get the appropriate workout for a day and phase."""
         # Use centralized templates from workout_templates.py
         phase_templates = get_phase_roles(phase)
-        return build_day_schedule(day_abbrev, phase, phase_templates)
+        return build_day_schedule(day_abbrev, phase, phase_templates, week_num)
 
     # Use custom schedule if profile has preferred_days, otherwise use centralized defaults
     use_custom_schedule = bool(preferred_days)
@@ -254,6 +361,69 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             blocks.append(f'        <IntervalsT Repeat="3" OnDuration="600" OnPower="0.90" OffDuration="300" OffPower="0.60"/>')
             blocks.append(f'        <SteadyState Duration="{int(main_duration * 0.2) * 60}" Power="0.65"/>')
 
+        elif workout_type == 'Sweet_Spot':
+            # Sweet spot intervals (88-94% FTP) - sustainable but challenging
+            # 3x10min @ 88% FTP with 3min rest
+            easy_start = int(main_duration * 0.15) * 60  # Easy warmup continuation
+            blocks.append(f'        <SteadyState Duration="{easy_start}" Power="0.62"/>')
+            blocks.append('        <IntervalsT Repeat="3" OnDuration="600" OnPower="0.88" OffDuration="180" OffPower="0.55">')
+            blocks.append('            <textevent timeoffset="0" message="Sweet spot interval - comfortably hard, sustainable effort"/>')
+            blocks.append('            <textevent timeoffset="300" message="Halfway through this block - stay smooth"/>')
+            blocks.append('        </IntervalsT>')
+            easy_end = max(60, (main_duration - 15 - (3*10 + 2*3)) * 60)  # Remaining time
+            blocks.append(f'        <SteadyState Duration="{easy_end}" Power="0.60"/>')
+
+        elif workout_type == 'Threshold':
+            # Threshold intervals (Z4: 95-105% FTP)
+            # 2-3x10-15min @ 95-100% FTP with 5min rest
+            easy_start = int(main_duration * 0.1) * 60
+            blocks.append(f'        <SteadyState Duration="{easy_start}" Power="0.62"/>')
+            blocks.append('        <IntervalsT Repeat="2" OnDuration="720" OnPower="0.97" OffDuration="300" OffPower="0.55">')
+            blocks.append('            <textevent timeoffset="0" message="Threshold interval - right at FTP, controlled suffering"/>')
+            blocks.append('            <textevent timeoffset="360" message="Halfway - maintain power, control breathing"/>')
+            blocks.append('            <textevent timeoffset="600" message="Final 2 minutes - hold steady!"/>')
+            blocks.append('        </IntervalsT>')
+            blocks.append(f'        <SteadyState Duration="{max(60, int(main_duration * 0.1) * 60)}" Power="0.58"/>')
+
+        elif workout_type == 'Anaerobic':
+            # Anaerobic capacity intervals (Z6: 121-150% FTP)
+            # 8x30sec @ 150% FTP with 2min rest - builds anaerobic capacity
+            easy_start = int(main_duration * 0.15) * 60
+            blocks.append(f'        <SteadyState Duration="{easy_start}" Power="0.60"/>')
+            blocks.append('        <IntervalsT Repeat="8" OnDuration="30" OnPower="1.50" OffDuration="120" OffPower="0.45">')
+            blocks.append('            <textevent timeoffset="0" message="ANAEROBIC - 30 seconds ALL OUT! Maximum effort!"/>')
+            blocks.append('            <textevent timeoffset="15" message="Halfway - keep pushing!"/>')
+            blocks.append('        </IntervalsT>')
+            blocks.append(f'        <SteadyState Duration="{max(120, int(main_duration * 0.1) * 60)}" Power="0.55"/>')
+
+        elif workout_type == 'Sprints':
+            # Neuromuscular power (Z7: maximal sprints)
+            # 6x10-15sec all-out with full recovery - pure power
+            easy_start = int(main_duration * 0.2) * 60
+            blocks.append(f'        <SteadyState Duration="{easy_start}" Power="0.58"/>')
+            blocks.append('        <IntervalsT Repeat="6" OnDuration="12" OnPower="2.00" OffDuration="180" OffPower="0.40">')
+            blocks.append('            <textevent timeoffset="0" message="SPRINT! Maximum power - out of the saddle!"/>')
+            blocks.append('        </IntervalsT>')
+            blocks.append(f'        <SteadyState Duration="{max(120, int(main_duration * 0.1) * 60)}" Power="0.55"/>')
+
+        elif workout_type == 'Over_Unders':
+            # Over-under intervals - great for building FTP and lactate tolerance
+            # Alternating between 95% and 105% FTP
+            easy_start = int(main_duration * 0.1) * 60
+            blocks.append(f'        <SteadyState Duration="{easy_start}" Power="0.62"/>')
+            # 3 sets of 8 min (2min under @ 95%, 1min over @ 105%, repeat)
+            for i in range(3):
+                blocks.append('        <SteadyState Duration="120" Power="0.95">')
+                blocks.append(f'            <textevent timeoffset="0" message="Under - 95% FTP, find your rhythm"/>')
+                blocks.append('        </SteadyState>')
+                blocks.append('        <SteadyState Duration="60" Power="1.05">')
+                blocks.append(f'            <textevent timeoffset="0" message="OVER - 105% FTP, push through!"/>')
+                blocks.append('        </SteadyState>')
+                blocks.append('        <SteadyState Duration="120" Power="0.95"/>')
+                blocks.append('        <SteadyState Duration="60" Power="1.05"/>')
+                if i < 2:  # Rest between sets
+                    blocks.append('        <SteadyState Duration="240" Power="0.50"/>')
+
         else:
             blocks.append(f'        <SteadyState Duration="{main_duration * 60}" Power="{avg_power}"/>')
 
@@ -300,7 +470,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
             # Get workout template (custom or default)
             if use_custom_schedule:
-                workout_template = get_workout_for_day(day_abbrev, phase)
+                workout_template = get_workout_for_day(day_abbrev, phase, week_num)
             else:
                 workout_template = phase_workouts.get(day_abbrev)
 

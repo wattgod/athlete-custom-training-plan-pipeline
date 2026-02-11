@@ -388,14 +388,373 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         /* PRINT STYLES */
         @media print {{
-            body {{
-                font-size: 12px;
+            /* Page Setup */
+            @page {{
+                size: letter;
+                margin: 0.75in 0.875in;
             }}
+
+            @page :first {{
+                margin-top: 0;
+            }}
+
+            /* Force Colors to Print */
+            * {{
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color-adjust: exact !important;
+            }}
+
+            html {{
+                font-size: 11pt;
+            }}
+
+            body {{
+                padding: 0 !important;
+                margin: 0 !important;
+                font-size: 11pt;
+                line-height: 1.55;
+                max-width: 100%;
+            }}
+
+            /* === Cover Page / Header === */
+            .guide-header {{
+                page-break-after: always;
+                text-align: center;
+                padding: 2.5in 0 0 0 !important;
+                margin-bottom: 0;
+                border-bottom: none;
+                min-height: 8in;
+            }}
+
+            .guide-header h1 {{
+                font-size: 28pt !important;
+                font-weight: 700;
+                letter-spacing: 0.1em;
+                line-height: 1.15;
+                margin-bottom: 0.3in;
+            }}
+
+            .guide-subtitle {{
+                font-size: 12pt;
+                margin-bottom: 0.5in;
+            }}
+
+            .guide-meta {{
+                justify-content: center;
+                margin-top: 0.25in;
+            }}
+
+            .guide-meta span {{
+                font-size: 9pt;
+                padding: 4pt 10pt;
+                margin: 4pt;
+                border: 1.5pt solid #111;
+            }}
+
+            /* === Table of Contents === */
             .toc {{
                 page-break-after: always;
+                background: #f5f5f5 !important;
+                border: 2pt solid #111 !important;
+                padding: 18pt 24pt;
             }}
+
+            .toc h2 {{
+                font-size: 11pt;
+                border-bottom: 1pt solid #111;
+                padding-bottom: 8pt;
+                margin-bottom: 14pt;
+            }}
+
+            .toc ol {{
+                font-size: 10pt;
+            }}
+
+            .toc li {{
+                margin-bottom: 5pt;
+            }}
+
+            .toc a {{
+                text-decoration: none !important;
+            }}
+
+            /* === Sections === */
             section {{
                 page-break-inside: avoid;
+                margin-bottom: 24pt;
+            }}
+
+            h2 {{
+                font-size: 14pt !important;
+                border-bottom: 2pt solid #111;
+                padding-bottom: 6pt;
+                margin-bottom: 14pt;
+                page-break-after: avoid;
+            }}
+
+            h3 {{
+                font-size: 10pt !important;
+                margin-top: 16pt;
+                margin-bottom: 8pt;
+                page-break-after: avoid;
+            }}
+
+            h4 {{
+                font-size: 10pt !important;
+                margin-top: 12pt;
+                margin-bottom: 6pt;
+                page-break-after: avoid;
+            }}
+
+            p {{
+                font-size: 10pt;
+                margin-bottom: 8pt;
+                orphans: 3;
+                widows: 3;
+            }}
+
+            ul, ol {{
+                margin-bottom: 10pt;
+            }}
+
+            li {{
+                font-size: 10pt;
+                margin-bottom: 4pt;
+            }}
+
+            /* === Callout Boxes === */
+            .callout {{
+                background: #f5f5f5 !important;
+                border: 1.5pt solid #111 !important;
+                border-left-width: 5pt !important;
+                padding: 12pt 14pt;
+                margin: 14pt 0;
+                page-break-inside: avoid;
+            }}
+
+            .callout.alert {{
+                border-left-color: #000 !important;
+            }}
+
+            .callout.tip {{
+                border-left-color: #444 !important;
+            }}
+
+            /* === Data Cards and Stats === */
+            .data-card, .stat-box {{
+                background: #f5f5f5 !important;
+                border: 1.5pt solid #111 !important;
+                padding: 10pt;
+                page-break-inside: avoid;
+            }}
+
+            .quick-stats {{
+                display: flex !important;
+                flex-wrap: wrap;
+                gap: 8pt;
+            }}
+
+            .stat-box {{
+                flex: 1 1 calc(25% - 8pt);
+                min-width: 70pt;
+                text-align: center;
+            }}
+
+            .stat-box .value {{
+                font-size: 14pt !important;
+                font-weight: 700;
+            }}
+
+            .stat-box .label {{
+                font-size: 8pt;
+            }}
+
+            /* === Tables === */
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 12pt;
+                page-break-inside: avoid;
+                font-size: 9pt;
+            }}
+
+            thead {{
+                display: table-header-group;
+            }}
+
+            th {{
+                background: #111 !important;
+                color: #fff !important;
+                font-size: 8pt;
+                padding: 6pt 8pt;
+                text-align: left;
+                font-weight: 700;
+                letter-spacing: 0.05em;
+            }}
+
+            td {{
+                padding: 5pt 8pt;
+                border-bottom: 0.5pt solid #ccc;
+                font-size: 9pt;
+            }}
+
+            tr:nth-child(even) td {{
+                background: #f8f8f8 !important;
+            }}
+
+            /* === Timeline / Phases === */
+            .race-timeline {{
+                page-break-inside: avoid;
+                margin: 16pt 0;
+            }}
+
+            .timeline-track {{
+                height: 40pt;
+                border: 1.5pt solid #111 !important;
+            }}
+
+            .timeline-event .marker {{
+                border: 2pt solid #000;
+            }}
+
+            .timeline-event.a-event .marker {{
+                background: #000 !important;
+                color: #fff !important;
+            }}
+
+            .timeline-event.b-event .marker {{
+                background: #666 !important;
+                color: #fff !important;
+            }}
+
+            /* === ATP / Week Sections === */
+            .atp-section {{
+                page-break-inside: avoid;
+                margin-bottom: 16pt;
+            }}
+
+            .atp-week {{
+                page-break-inside: avoid;
+                border: 1.5pt solid #111 !important;
+                margin-bottom: 10pt;
+            }}
+
+            .atp-week-header {{
+                background: #111 !important;
+                color: #fff !important;
+                padding: 6pt 10pt;
+            }}
+
+            .atp-week-body {{
+                padding: 8pt 10pt;
+                background: #fff !important;
+            }}
+
+            .phase-indicator {{
+                font-size: 8pt;
+                padding: 2pt 6pt;
+                border: 1.5pt solid;
+            }}
+
+            .phase-indicator.base {{
+                border-color: #888 !important;
+                background: #f5f5f5 !important;
+            }}
+
+            .phase-indicator.build {{
+                border-color: #444 !important;
+                background: #e0e0e0 !important;
+            }}
+
+            .phase-indicator.peak {{
+                border-color: #111 !important;
+                background: #ccc !important;
+            }}
+
+            .phase-indicator.taper {{
+                border-color: #666 !important;
+                background: #f0f0f0 !important;
+            }}
+
+            .phase-indicator.race {{
+                background: #111 !important;
+                color: #fff !important;
+            }}
+
+            /* === Zone Tables === */
+            .zone-table {{
+                font-size: 9pt;
+            }}
+
+            .zone-table th, .zone-table td {{
+                padding: 4pt 6pt;
+            }}
+
+            /* === Nutrition / Fueling === */
+            .nutrition-section {{
+                page-break-inside: avoid;
+            }}
+
+            .nutrition-calc {{
+                background: #f5f5f5 !important;
+                border: 1.5pt solid #111 !important;
+                padding: 10pt;
+                margin-bottom: 12pt;
+            }}
+
+            /* === Equipment Section === */
+            .equipment-grid {{
+                display: flex !important;
+                flex-wrap: wrap;
+                gap: 8pt;
+            }}
+
+            .equipment-card {{
+                flex: 1 1 calc(50% - 8pt);
+                border: 1.5pt solid #111 !important;
+                padding: 10pt;
+                page-break-inside: avoid;
+            }}
+
+            /* === Footer === */
+            .guide-footer {{
+                page-break-before: always;
+                padding-top: 2in;
+                text-align: center;
+                border-top: none;
+            }}
+
+            /* === Links === */
+            a {{
+                color: #111 !important;
+                text-decoration: none !important;
+            }}
+
+            a[href^="http"]::after {{
+                content: none !important;
+            }}
+
+            /* === Utility Classes === */
+            .no-print, .screen-only {{
+                display: none !important;
+            }}
+
+            .print-only {{
+                display: block !important;
+            }}
+
+            .page-break {{
+                page-break-before: always;
+            }}
+
+            .keep-together {{
+                page-break-inside: avoid;
+            }}
+
+            /* Prevent orphaned headings */
+            h1, h2, h3, h4, h5, h6 {{
+                page-break-after: avoid;
             }}
         }}
 
