@@ -20,7 +20,7 @@ RPE 9/10 for the 20-minute test (very hard, barely sustainable)</description>
     <SteadyState Duration="300" Power="0.50"/>
     <SteadyState Duration="300" Power="1.05"/>
     <SteadyState Duration="300" Power="0.50"/>
-    <FreeRide Duration="1200"/>
+    <SteadyState Duration="1200" Power="1.00"/>
     <Cooldown Duration="600" PowerLow="0.55" PowerHigh="0.40"/>
   </workout>
 </workout_file>

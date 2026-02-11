@@ -159,6 +159,12 @@ Documentation:
 2. Removed all • characters from description templates in generate_athlete_package.py
 3. Rule: **Use plain ASCII only** - dashes (-) instead of bullets, standard quotes, no unicode symbols
 
+### Bug #6: FTP Test Using FreeRide Shows 0% Power (Feb 2026)
+1. FTP test 20-min block used `<FreeRide Duration="1200"/>` which displays as 0% in TrainingPeaks
+2. This makes the workout graph look wrong (flat line at 0%)
+3. Fix: Changed to `<SteadyState Duration="1200" Power="1.00"/>` (100% FTP)
+4. Rule: **Don't use FreeRide for structured efforts** - use SteadyState with target power
+
 ## Prevention
 
 1. **ALWAYS run regression tests** before generating athlete packages

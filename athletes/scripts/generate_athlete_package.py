@@ -431,8 +431,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             blocks.append('    <SteadyState Duration="300" Power="1.05"/>')
             # 5m easy recovery (50%)
             blocks.append('    <SteadyState Duration="300" Power="0.50"/>')
-            # 20m ALL OUT - FTP test (use FreeRide for unstructured max effort)
-            blocks.append('    <FreeRide Duration="1200"/>')
+            # 20m ALL OUT - FTP test @ 100% FTP (athlete should go max sustainable)
+            blocks.append('    <SteadyState Duration="1200" Power="1.00"/>')
             # 10m cooldown
             blocks.append('    <Cooldown Duration="600" PowerLow="0.55" PowerHigh="0.40"/>')
             return '\n'.join(blocks) + '\n'
