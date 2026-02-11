@@ -165,12 +165,35 @@ Documentation:
 3. Fix: Changed to `<SteadyState Duration="1200" Power="1.00"/>` (100% FTP)
 4. Rule: **Don't use FreeRide for structured efforts** - use SteadyState with target power
 
+### Bug #7: Methodology Not Being Used - All Workouts Were Endurance/Tempo (Feb 2026)
+1. HIIT-Focused methodology was selected but workouts generated were all Endurance/Tempo
+2. Root cause: `build_day_schedule()` only used phase (base/build/peak) for workout selection, ignoring methodology
+3. Nate workout generator with 246 unique workouts existed but wasn't integrated
+4. Fix:
+   - Added `METHODOLOGY_MAP` to map athlete methodology IDs to Nate generator names
+   - Rewrote workout selection to be methodology-aware (HIT, POLARIZED, PYRAMIDAL patterns)
+   - Integrated `generate_nate_zwo()` for key workout types (VO2max, Anaerobic, Sprints, Threshold)
+   - Now uses proper progression levels (1-6) based on week in plan
+5. Files added:
+   - `nate_workout_generator.py` - Full workout generator with 41 archetypes x 6 levels
+   - `nate_constants.py` - Power zones, durations, methodology defaults
+   - `new_archetypes.py` - Workout archetype definitions
+6. Rule: **Always use methodology config for workout selection** - check `methodology.yaml` for key_workouts and intensity_distribution
+
+### Bug #8: Nate Generator Wrong ZWO Template (Feb 2026)
+1. Nate generator's ZWO_TEMPLATE had `      <workout>` (6 spaces) instead of `  <workout>` (2 spaces)
+2. Also had bullet characters (•) in descriptions
+3. Fix: Updated ZWO_TEMPLATE to use 2-space indent, replaced • with -
+4. Rule: **Check ALL ZWO templates across ALL generators** - each needs correct indentation
+
 ## Prevention
 
 1. **ALWAYS run regression tests** before generating athlete packages
 2. **NEVER change indentation** in ZWO-generating code without testing actual import
 3. **Compare against working reference file** when in doubt
-4. **Check BOTH files** - generate_athlete_package.py AND workout_library.py
+4. **Check ALL workout generator files** - generate_athlete_package.py, workout_library.py, nate_workout_generator.py
+5. **Verify methodology is being used** - workouts should match methodology config (HIIT = VO2max/Anaerobic/Sprints)
+6. **No special characters in ANY description** - check all generators for • and other unicode
 
 ---
 

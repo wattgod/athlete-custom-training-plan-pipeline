@@ -1,19 +1,19 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
   <author>Gravel God Training</author>
-  <name>W15_Tue_May26_Anaerobic</name>
+  <name>W16_Tue_Jun2_Anaerobic</name>
   <description>WARM-UP:
 -15min building from Z1 to Z2
 
 MAIN SET:
--15min warmup Z2, 5x2min @ 120% FTP, 2.5min recovery between
+-15min warmup Z2, 4x2min @ 118% FTP, 3.5min recovery between
 
 COOL-DOWN:
 -10min easy spin Z1-Z2
 
 PROGRESSION:
--Level 5/6: Advanced - High training load, pushing limits
--Reduced recovery - simulates repeated attacks
+-Level 3/6: Development - Standard training load, building consistency
+-Increased intensity, reduced recovery - building tolerance
 
 PURPOSE:
 Lactate tolerance. 2-minute efforts at race-breaking intensity.
@@ -29,7 +29,7 @@ HYDRATION:
   <sportType>bike</sportType>
   <workout>
     <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75"/>
-    <IntervalsT Repeat="5" OnDuration="120" OnPower="1.20" CadenceLow="85" CadenceHigh="95" OffDuration="150" OffPower="0.50"/>
+    <IntervalsT Repeat="4" OnDuration="120" OnPower="1.18" CadenceLow="85" CadenceHigh="95" OffDuration="210" OffPower="0.50"/>
     <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
   </workout>
 </workout_file>

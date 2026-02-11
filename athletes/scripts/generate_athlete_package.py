@@ -51,9 +51,28 @@ from workout_library import (
     generate_strength_zwo,
 )
 from exercise_lookup import get_video_url
+from nate_workout_generator import (
+    generate_nate_zwo,
+    calculate_level_from_week,
+    TRAINING_METHODOLOGIES,
+)
 
 # Get logger
 log = get_logger()
+
+
+# Map athlete methodology IDs to Nate generator methodology names
+METHODOLOGY_MAP = {
+    'hiit_focused': 'HIT',
+    'polarized': 'POLARIZED',
+    'pyramidal': 'PYRAMIDAL',
+    'sweet_spot': 'G_SPOT',  # G-Spot replaces Sweet Spot
+    'threshold_focused': 'PYRAMIDAL',
+    'high_volume': 'PYRAMIDAL',
+    'time_crunched': 'HIT',
+    'maf_lt1': 'MAF_LT1',
+    'norwegian': 'NORWEGIAN',
+}
 
 
 # Workout description templates per type (following v6.0 spec format)
@@ -195,6 +214,11 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     key_workouts = methodology_config.get('key_workouts', [])
     intensity_dist = methodology_config.get('intensity_distribution', {})
 
+    # Map athlete methodology to Nate generator methodology
+    methodology_id = methodology.get('methodology_id', 'polarized')
+    nate_methodology = METHODOLOGY_MAP.get(methodology_id, 'POLARIZED')
+    total_weeks = plan_dates.get('plan_weeks', 12)
+
     weeks = plan_dates.get('weeks', [])
 
     # Build athlete-specific weekly structure from profile
@@ -291,63 +315,125 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             # Can do a harder workout - distribute zones based on phase
             week_workout_tracker['hard_days'].append(day_abbrev)
 
-            if phase == 'base':
-                # Base phase: Mostly Z2, introduce Z3 (tempo)
-                # Pattern: Endurance, Tempo, Endurance, Tempo...
-                if workout_num % 3 == 0:
-                    template = phase_templates.get('tempo', ('Tempo', 'Tempo: 2x10min @ 85% FTP', 50, 0.72))
+            # METHODOLOGY-AWARE WORKOUT SELECTION
+            # Use the methodology's preferred workout distribution
+            if nate_methodology == 'HIT':
+                # HIIT: VO2max, Anaerobic, Sprints dominate - even in base phase
+                # 4 quality sessions per week per methodology config
+                if phase in ('base', 'build'):
+                    cycle = workout_num % 4
+                    if cycle == 0:
+                        template = ('VO2max', 'VO2max: 5x3min @ 110-115% FTP', 50, 0.80)
+                    elif cycle == 1:
+                        template = ('Anaerobic', 'Anaerobic: 8x1min @ 130% FTP', 45, 0.75)
+                    elif cycle == 2:
+                        template = ('Sprints', 'Sprint repeats: 10x30sec all-out', 40, 0.70)
+                    else:
+                        template = ('Threshold', 'Threshold: 2x10min @ 100% FTP', 50, 0.78)
+                elif phase == 'peak':
+                    cycle = workout_num % 3
+                    if cycle == 0:
+                        template = ('VO2max', 'VO2max: 6x3min @ 115-120% FTP', 50, 0.82)
+                    elif cycle == 1:
+                        template = ('Anaerobic', 'Tabata: 8x20sec all-out', 35, 0.70)
+                    else:
+                        template = ('Sprints', 'Max sprints: 6x15sec', 35, 0.65)
+                elif phase == 'taper':
+                    template = ('Sprints', 'Openers: 4x15sec all-out', 30, 0.55)
+                elif phase == 'race':
+                    template = ('Easy', 'Easy activation', 25, 0.50)
+                elif phase == 'maintenance':
+                    cycle = workout_num % 3
+                    if cycle == 0:
+                        template = ('VO2max', 'VO2max touch: 4x3min @ 110% FTP', 45, 0.75)
+                    elif cycle == 1:
+                        template = ('Anaerobic', 'Anaerobic: 6x1min @ 125% FTP', 40, 0.70)
+                    else:
+                        template = ('Endurance', 'Easy endurance', 45, 0.62)
                 else:
-                    template = phase_templates.get('moderate', ('Endurance', 'Zone 2 steady state', 45, 0.65))
+                    template = ('Endurance', 'Zone 2', 45, 0.62)
 
-            elif phase == 'build':
-                # Build phase: Z3/Z4 focus, introduce Z5
-                # Pattern: Sweet Spot, Threshold, VO2max, Tempo...
-                cycle = workout_num % 4
-                if cycle == 0:
-                    template = phase_templates.get('vo2max', ('VO2max', 'VO2max: 4x3min @ 110% FTP', 50, 0.80))
-                elif cycle == 1:
-                    template = phase_templates.get('key_cardio', ('Threshold', 'Threshold: 3x10min @ 95% FTP', 55, 0.78))
-                elif cycle == 2:
-                    template = phase_templates.get('moderate', ('Sweet_Spot', 'Sweet spot: 3x12min @ 88% FTP', 55, 0.75))
+            elif nate_methodology == 'POLARIZED':
+                # Polarized: 80% easy, 20% very hard (Z5+), minimal Z3/Z4
+                if phase == 'base':
+                    cycle = workout_num % 5
+                    if cycle == 0:
+                        template = ('VO2max', 'VO2max: 4x4min @ 108-112% FTP', 55, 0.78)
+                    else:
+                        template = ('Endurance', 'Zone 2 steady', 50, 0.65)
+                elif phase == 'build':
+                    cycle = workout_num % 4
+                    if cycle == 0:
+                        template = ('VO2max', 'VO2max: 5x4min @ 110-115% FTP', 55, 0.80)
+                    elif cycle == 1:
+                        template = ('Anaerobic', 'Anaerobic: 6x1min @ 130% FTP', 45, 0.72)
+                    else:
+                        template = ('Endurance', 'Zone 2 steady', 50, 0.65)
+                elif phase == 'peak':
+                    cycle = workout_num % 3
+                    if cycle == 0:
+                        template = ('VO2max', 'VO2max: 6x3min @ 115-120% FTP', 50, 0.82)
+                    elif cycle == 1:
+                        template = ('Sprints', 'Neuromuscular: 8x20sec max', 40, 0.68)
+                    else:
+                        template = ('Endurance', 'Zone 2', 45, 0.62)
+                elif phase == 'taper':
+                    template = ('VO2max', 'Openers: 3x2min @ 110% FTP', 35, 0.60)
+                elif phase == 'race':
+                    template = ('Easy', 'Activation', 25, 0.50)
+                elif phase == 'maintenance':
+                    cycle = workout_num % 3
+                    if cycle == 0:
+                        template = ('VO2max', 'VO2max: 4x3min @ 110% FTP', 45, 0.75)
+                    else:
+                        template = ('Endurance', 'Zone 2 maintenance', 50, 0.62)
                 else:
-                    template = phase_templates.get('tempo', ('Tempo', 'Tempo: 2x15min @ 85% FTP', 50, 0.72))
+                    template = ('Endurance', 'Zone 2', 45, 0.62)
 
-            elif phase == 'peak':
-                # Peak phase: Z5/Z6/Z7 emphasis - race-specific power
-                # Pattern: VO2max, Threshold, Anaerobic, VO2max...
-                cycle = workout_num % 4
-                if cycle == 0:
-                    template = phase_templates.get('vo2max', ('VO2max', 'VO2max: 5x3min @ 115% FTP', 50, 0.82))
-                elif cycle == 1:
-                    template = phase_templates.get('anaerobic', ('Anaerobic', 'Anaerobic: 8x30sec @ 150% FTP', 45, 0.70))
-                elif cycle == 2:
-                    template = phase_templates.get('moderate', ('Threshold', 'Threshold: 2x15min @ 100% FTP', 50, 0.78))
-                else:
-                    template = phase_templates.get('key_cardio', ('VO2max', 'VO2max: 4x4min @ 110% FTP', 55, 0.80))
-
-            elif phase == 'taper':
-                # Taper: Reduce volume, maintain intensity with openers
-                if workout_num % 2 == 0:
-                    template = phase_templates.get('vo2max', ('Openers', 'VO2 openers: 3x2min @ 110% FTP', 40, 0.65))
-                else:
-                    template = phase_templates.get('anaerobic', ('Sprints', 'Sprint openers: 4x15sec all-out', 35, 0.55))
-
-            elif phase == 'race':
-                # Race week: Minimal, just activation
-                template = phase_templates.get('easy', ('Easy', 'Easy spin', 30, 0.50))
-
-            elif phase == 'maintenance':
-                # Maintenance: Keep all systems ticking
-                cycle = workout_num % 3
-                if cycle == 0:
-                    template = phase_templates.get('vo2max', ('Threshold', 'Threshold touch: 2x8min @ 95% FTP', 45, 0.72))
-                elif cycle == 1:
-                    template = phase_templates.get('tempo', ('Tempo', 'Tempo: 2x12min @ 85% FTP', 45, 0.70))
-                else:
-                    template = phase_templates.get('moderate', ('Endurance', 'Zone 2 maintenance', 50, 0.62))
             else:
-                # Default: moderate effort
-                template = phase_templates.get('moderate', ('Endurance', 'Zone 2', 45, 0.62))
+                # Default PYRAMIDAL/other: Traditional progression
+                if phase == 'base':
+                    if workout_num % 3 == 0:
+                        template = ('Tempo', 'Tempo: 2x10min @ 85% FTP', 50, 0.72)
+                    else:
+                        template = ('Endurance', 'Zone 2 steady state', 45, 0.65)
+                elif phase == 'build':
+                    cycle = workout_num % 4
+                    if cycle == 0:
+                        template = ('VO2max', 'VO2max: 4x3min @ 110% FTP', 50, 0.80)
+                    elif cycle == 1:
+                        template = ('Threshold', 'Threshold: 3x10min @ 95% FTP', 55, 0.78)
+                    elif cycle == 2:
+                        template = ('Sweet_Spot', 'Sweet spot: 3x12min @ 88% FTP', 55, 0.75)
+                    else:
+                        template = ('Tempo', 'Tempo: 2x15min @ 85% FTP', 50, 0.72)
+                elif phase == 'peak':
+                    cycle = workout_num % 4
+                    if cycle == 0:
+                        template = ('VO2max', 'VO2max: 5x3min @ 115% FTP', 50, 0.82)
+                    elif cycle == 1:
+                        template = ('Anaerobic', 'Anaerobic: 8x30sec @ 150% FTP', 45, 0.70)
+                    elif cycle == 2:
+                        template = ('Threshold', 'Threshold: 2x15min @ 100% FTP', 50, 0.78)
+                    else:
+                        template = ('VO2max', 'VO2max: 4x4min @ 110% FTP', 55, 0.80)
+                elif phase == 'taper':
+                    if workout_num % 2 == 0:
+                        template = ('Openers', 'VO2 openers: 3x2min @ 110% FTP', 40, 0.65)
+                    else:
+                        template = ('Sprints', 'Sprint openers: 4x15sec all-out', 35, 0.55)
+                elif phase == 'race':
+                    template = ('Easy', 'Easy spin', 30, 0.50)
+                elif phase == 'maintenance':
+                    cycle = workout_num % 3
+                    if cycle == 0:
+                        template = ('Threshold', 'Threshold touch: 2x8min @ 95% FTP', 45, 0.72)
+                    elif cycle == 1:
+                        template = ('Tempo', 'Tempo: 2x12min @ 85% FTP', 45, 0.70)
+                    else:
+                        template = ('Endurance', 'Zone 2 maintenance', 50, 0.62)
+                else:
+                    template = ('Endurance', 'Zone 2', 45, 0.62)
 
         return cap_duration(template, max_duration)
 
@@ -623,7 +709,40 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             # Build description using v6.0 format with STRUCTURE, PURPOSE, EXECUTION, RPE
             full_description = format_workout_description(workout_type, duration, phase, week_num, day_abbrev)
 
-            # Generate blocks - use progressive generators for intervals
+            # Generate blocks - use Nate generator for key workouts
+            # Calculate progression level based on week in plan
+            level = calculate_level_from_week(week_num, total_weeks)
+
+            # Map workout types to Nate generator types
+            nate_workout_types = {
+                'VO2max': 'vo2max',
+                'Anaerobic': 'anaerobic',
+                'Sprints': 'sprint',
+                'Threshold': 'threshold',
+            }
+
+            if workout_type in nate_workout_types:
+                # Use Nate generator for high-intensity workouts
+                nate_type = nate_workout_types[workout_type]
+                try:
+                    zwo_content = generate_nate_zwo(
+                        workout_type=nate_type,
+                        level=level,
+                        methodology=nate_methodology,
+                        workout_name=workout_name
+                    )
+                    if zwo_content:
+                        # Write directly - Nate generator produces complete ZWO
+                        filepath = zwo_dir / f"{workout_name}.zwo"
+                        with open(filepath, 'w') as f:
+                            f.write(zwo_content)
+                        generated_files.append(filepath)
+                        continue  # Skip the standard generation below
+                except Exception as e:
+                    # Fall back to standard generation if Nate generator fails
+                    log.warning(f"Nate generator failed for {workout_type}: {e}, using fallback")
+
+            # Fallback: use progressive generators or standard blocks
             if workout_type in ('Intervals', 'VO2max'):
                 # Use progressive interval generator
                 blocks, progressive_name = generate_progressive_interval_blocks(

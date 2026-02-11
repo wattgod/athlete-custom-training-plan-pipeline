@@ -1,19 +1,19 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
   <author>Gravel God Training</author>
-  <name>W10_Sun_Apr26_Threshold</name>
+  <name>W12_Thu_May7_Threshold</name>
   <description>WARM-UP:
 -20min building from Z1 to Z2
 
 MAIN SET:
--20min warmup Z2 with 2x1min openers, 1x40min @ 98-101% FTP, 10min cooldown
+-20min warmup Z2 with 2x1min openers, 1x30min @ 97-100% FTP, 10min cooldown
 
 COOL-DOWN:
 -10min easy spin Z1-Z2
 
 PROGRESSION:
--Level 5/6: Advanced - High training load, pushing limits
--Race-realistic duration - this is your FTP test effort
+-Level 3/6: Development - Standard training load, building consistency
+-Classic TT duration - steady, controlled power throughout
 
 PURPOSE:
 Threshold development. The power you can sustain for 20-60 minutes.
@@ -29,7 +29,7 @@ HYDRATION:
   <sportType>bike</sportType>
   <workout>
     <Warmup Duration="1200" PowerLow="0.50" PowerHigh="0.75"/>
-    <SteadyState Duration="2400" Power="1.00" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="1800" Power="0.98" CadenceLow="85" CadenceHigh="95"/>
     <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
   </workout>
 </workout_file>
