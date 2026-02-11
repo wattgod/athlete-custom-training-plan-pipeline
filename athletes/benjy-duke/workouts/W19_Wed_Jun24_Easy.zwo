@@ -1,14 +1,22 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
-    <author>Gravel God Training</author>
-    <name>W19_Wed_Jun24_Easy</name>
-    <description>Week 19 (Race Phase) - Wed
+  <author>Gravel God Training</author>
+  <name>W19_Wed_Jun24_Easy</name>
+  <description>STRUCTURE:
+30 min easy spin @ Z1-Z2 (55-65% FTP)
 
-Easy spin</description>
-    <sportType>bike</sportType>
-    <workout>
-        <Warmup Duration="300" PowerLow="0.45" PowerHigh="0.65"/>
-        <SteadyState Duration="1200" Power="0.5"/>
-        <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
-    </workout>
+PURPOSE:
+Recovery and aerobic maintenance. Easy means easy.
+
+EXECUTION:
+Smooth pedaling, relaxed. Could hold a conversation easily.
+
+RPE:
+RPE 2-3 (easy)</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.68"/>
+    <SteadyState Duration="1200" Power="0.5"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
 </workout_file>

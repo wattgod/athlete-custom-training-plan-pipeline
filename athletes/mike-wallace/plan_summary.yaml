@@ -1,0 +1,23 @@
+athlete_id: mike-wallace
+athlete_name: Mike Wallace
+generated_date: '2026-02-10T15:22:49.212566'
+race:
+  name: Gravel Century
+  date: '2026-08-15'
+  distance_miles: 100.0
+plan:
+  weeks: 26
+  start_date: '2026-02-16'
+  end_date: '2026-08-16'
+  methodology: Sweet Spot / Threshold
+  methodology_score: 90.0
+  tier: POLARIZED
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 69
+  total_carbs: 569
+  estimated_duration_hours: 8.3
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-profiles/athletes/mike-wallace/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-profiles/athletes/mike-wallace/workouts
+  workout_count: 129

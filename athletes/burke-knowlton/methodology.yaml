@@ -1,0 +1,43 @@
+selected_methodology: MAF / Low-HR (LT1)
+methodology_id: maf
+score: 75.0
+reasons:
+- Beginner to cycling - needs aerobic base building first
+- Recovery capacity reduced - conservative approach needed
+- GI issues improving but still managing - low stress training
+- Endurance background from running - MAF builds on this
+- No FTP data yet - heart rate based training appropriate
+warnings:
+- May feel too easy initially - trust the process
+- Progress is slow but sustainable
+configuration:
+  methodology: MAF
+  intensity_distribution:
+    z1_z2: 1.0
+    z3: 0.0
+    z4_z5: 0.0
+  strength_approach: functional_support
+  key_workouts:
+  - long_z2_endurance
+  - easy_aerobic
+  - recovery_ride
+  progression_style: volume_first_then_intensity
+  testing_frequency: monthly_maf_test
+  hr_cap: 146  # 180 - age (34)
+alternatives:
+- name: Sweet Spot / Threshold
+  score: 50.0
+  key_reason: After 8-12 weeks of MAF, could transition
+- name: HIIT-Focused
+  score: 40.0
+  key_reason: Too aggressive for beginner with recovery concerns
+- name: Time-Crunched
+  score: 45.0
+  key_reason: Could work but MAF safer for aerobic base
+selection_date: '2026-02-10'
+confidence: high
+confidence_note: MAF selected manually due to beginner status, recovery concerns, and
+  GI issues. Builds aerobic foundation safely before adding intensity.
+override_reason: Algorithm selected HIIT but warnings indicated mismatch. Beginner
+  cyclists benefit from aerobic base building. Recovery issues + GI problems require
+  conservative approach.

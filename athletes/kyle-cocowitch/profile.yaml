@@ -1,0 +1,254 @@
+name: Kyle Cocowitch
+email: ''
+phone: '9194027580'
+athlete_id: kyle-cocowitch
+birthday: '1997-06-10'
+age: 28
+primary_goal: specific_race
+target_race:
+  name: SBT GRVL 75
+  race_id: sbt_grvl_75
+  date: '2026-06-28'
+  distance_miles: 75.0
+  goal_type: compete
+  goal: compete
+  goal_description: "Having fun! But also feeling very strong, well fueled, good endurance. I would like this race to feel like a breeze because of all of the training I have put in. Less focused on time based goals."
+a_events:
+- name: SBT GRVL 75
+  date: '2026-06-28'
+  distance_miles: 75.0
+  goal: compete
+  priority: A
+b_events: []
+c_events: []
+secondary_races: []
+racing:
+  has_goals: true
+  race_list: 'SBT GRVL 75 (75 miles)'
+  success_metrics: 'Feeling strong, well fueled, good endurance. Race should feel like a breeze.'
+  obstacles: 'Time on bike outside (have done a lot of trainer miles), pedal and body efficiency'
+  training_goals: 'Increase FTP by 15%. With increased FTP, hope to find myself in zone 2 more, allowing for more training.'
+  goals_notes: 'SBT Gravel is just the start. Would like to continue to build into bigger race mileage.'
+training_history:
+  summary: "Ran Ironman 70.3 in May 2025 - in the 16 weeks leading up to this, did 9 workouts a week (3 bike, 3 run, 3 swim). Mileage peaked around 120 bike miles, 35 run miles, and 3 swim miles a week. Outside of Ironman 70.3, have run and biked for fun but not as much race training."
+  years_cycling: '3+'
+  years_structured: 2
+  strength_background: intermediate
+  highest_weekly_hours: 12
+  current_weekly_hours: 3
+  primary_sport_level: 4
+  primary_sport: 'Triathlon / Gravel Cycling'
+  secondary_sports: 'Running, Swimming'
+  strengths: 'Mental strength, decent endurance'
+  weaknesses: "Time on bike outside (have done a lot of trainer miles), pedal and body efficiency, knowing when to push and chill, still need lots of hours in the saddle"
+  races_last_year: 1
+  weather_limits: true
+  weather_description: 'Live in Denver but have trainer set up'
+fitness_markers:
+  ftp_watts: null
+  ftp_date: null
+  ftp_notes: 'Unknown - needs FTP test'
+  weight_kg: null
+  w_kg: null
+  resting_hr: null
+  max_hr: null
+recent_training:
+  last_12_weeks: minimal
+  current_phase: off_season
+  coming_off_injury: true
+  injury_notes: 'Meniscus scope on 12/3/25 - recovering very well, no current limitations now outside of unnecessary deep squatting'
+  days_since_last_ride: null
+weekly_availability:
+  total_hours_available: 10
+  cycling_hours_target: 7
+  strength_sessions_max: 2
+  notes: "5-10 hours/week available for training"
+preferred_days:
+  monday:
+    availability: available
+    time_slots:
+    - am
+    - pm
+    max_duration_min: 120
+    is_key_day_ok: true
+  tuesday:
+    availability: available
+    time_slots:
+    - am
+    - pm
+    max_duration_min: 120
+    is_key_day_ok: true
+  wednesday:
+    availability: available
+    time_slots:
+    - am
+    - pm
+    max_duration_min: 120
+    is_key_day_ok: true
+  thursday:
+    availability: available
+    time_slots:
+    - am
+    - pm
+    max_duration_min: 120
+    is_key_day_ok: true
+  friday:
+    availability: available
+    time_slots:
+    - am
+    - pm
+    max_duration_min: 120
+    is_key_day_ok: true
+  saturday:
+    availability: available
+    time_slots:
+    - am
+    - pm
+    max_duration_min: 300
+    is_key_day_ok: true
+  sunday:
+    availability: available
+    time_slots:
+    - am
+    - pm
+    max_duration_min: 300
+    is_key_day_ok: true
+schedule_constraints:
+  work_schedule: full_time
+  work_hours: 35
+  travel_frequency: none
+  family_commitments: 'Partner/Spouse'
+  seasonal_changes: ''
+  preferred_off_days:
+  - Sunday
+  preferred_long_day: 'Saturday'
+  wake_time: '6:30 AM'
+  available_until: '9:30 PM'
+cycling_equipment:
+  smart_trainer: true
+  power_meter_bike: true
+  hr_monitor: true
+  indoor_setup: smart_trainer
+  bike_computer: ''
+strength_equipment:
+- full_gym
+- dumbbells
+- barbells
+- leg_press
+- cable_machine
+training_environment:
+  primary_location: home
+  gym_type: full_gym
+  outdoor_riding_access: good
+  indoor_riding_tolerance: excellent
+injury_history:
+  current_injuries: []
+  past_injuries:
+  - location: 'Knee'
+    description: 'Meniscus scope on 12/3/25 - recovering very well, no current limitations now outside of unnecessary deep squatting'
+    year: 2025
+    status: recovered
+    management: 'Avoid unnecessary deep squatting'
+movement_limitations:
+  deep_squat: limited
+  single_leg_balance: null
+  push_up_position: null
+  hip_hinge: null
+  notes: 'Meniscus surgery - avoid deep squatting'
+health_factors:
+  age: 28
+  sleep_quality: excellent
+  sleep_hours_avg: 8
+  wake_time: '6:30 AM'
+  bed_time: '9:30 PM'
+  stress_level: low
+  recovery_capacity: high
+  medical_conditions: ''
+  medications: ''
+  health_notes: ''
+strength:
+  currently_training: true
+  routine: 'Focused on lower body - squats, leg extension, leg curl, some core work'
+  sessions_per_week: 2
+  mobility_rating: 4
+devices:
+  training_log: true
+  platforms:
+  - strava
+  devices:
+  - hr_monitor
+  - power_meter
+  - gps
+work:
+  employed: true
+  hours_per_week: 35
+  stress_level: low
+life_balance:
+  relationships: 'Partner/Spouse'
+  time_commitments: ''
+  time_management_challenge: false
+nutrition:
+  diet_styles: []
+  fluid_intake_rating: null
+  caffeine: ''
+  alcohol: ''
+  restrictions: ''
+  training_fuel: ''
+  post_workout: ''
+  notes: ''
+bike:
+  last_fit: ''
+  pain: false
+  pain_description: ''
+social:
+  group_rides_per_week: 0
+  group_ride_importance: null
+  training_partners: 'Benjy Duke, Burk'
+coaching:
+  previous_coach: false
+  experience: ''
+personal:
+  important_people: 'Partner/Spouse'
+  anything_else: "Not a ton - I just appreciate structure and guidance of a training plan. I'm not as scientific with my training understanding so I think a more intentional training plan would produce greater success and results."
+  life_affecting_training: ''
+methodology_preferences:
+  polarized: 3
+  pyramidal: 3
+  threshold_focused: 3
+  hiit_focused: 3
+  high_volume: 3
+  time_crunched: 3
+  preferred_approach: structured
+  past_success_with: 'Ironman 70.3 training - 9 workouts a week'
+  past_failure_with: ''
+workout_preferences:
+  longest_indoor_tolerable: 120
+  preferred_interval_style: mixed
+  music_or_entertainment: preferred
+  group_rides_available: false
+  outdoor_interval_friendly: true
+strength_preferences:
+  experience_level: intermediate
+  comfort_with_barbell: moderate
+  comfort_with_kettlebells: moderate
+  preferred_session_length: 45
+  time_of_day: separate_day
+coaching_style:
+  communication_frequency: weekly
+  feedback_detail: moderate
+  accountability_need: moderate
+  autonomy_preference: general_guidance
+  communication_style: flexible
+platforms:
+  primary: strava
+  secondary: ''
+  calendar_integration: ''
+communication:
+  preferred_method: ''
+  timezone: America/Denver
+  best_time_to_reach: ''
+plan_start:
+  preferred_start: '2026-02-10'
+  current_commitments: ''
+  end_heavy_training: ''
+  notes: ''

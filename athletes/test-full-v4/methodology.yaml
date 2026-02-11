@@ -1,0 +1,34 @@
+selected_methodology: Traditional (Pyramidal)
+methodology_id: traditional_pyramidal
+score: 75.0
+reasons:
+- Ideal hours match (12h in 12-20h sweet spot)
+- Excellent for ultra-distance events
+warnings:
+- Requires intermediate experience (new to structured training)
+configuration:
+  methodology: Traditional (Pyramidal)
+  intensity_distribution:
+    z1_z2: 0.75
+    z3: 0.15
+    z4_z5: 0.1
+  strength_approach: heavy_base_maintenance_build
+  key_workouts:
+  - long_z2
+  - tempo_progression
+  - threshold_intervals
+  progression_style: volume_then_intensity
+  testing_frequency: phase_end
+alternatives:
+- name: MAF / Low-HR (LT1)
+  score: 75.0
+  key_reason: Ideal hours match (12h in 10-15h sweet spot)
+- name: Reverse Periodization
+  score: 65.0
+  key_reason: Ideal hours match (12h in 8-12h sweet spot)
+- name: Polarized (80/20)
+  score: 60.0
+  key_reason: Ideal hours match (12h in 10-15h sweet spot)
+selection_date: '2026-02-09 11:20:47'
+confidence: high
+confidence_note: Strong match for athlete profile

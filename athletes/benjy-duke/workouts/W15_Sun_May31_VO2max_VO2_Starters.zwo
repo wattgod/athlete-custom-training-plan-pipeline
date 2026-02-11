@@ -1,22 +1,26 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
-    <author>Gravel God Training</author>
-    <name>W15_Sun_May31_VO2max_VO2_Starters</name>
-    <description>Week 15 (Peak Phase) - Sun
+  <author>Gravel God Training</author>
+  <name>W15_Sun_May31_VO2max_VO2_Starters</name>
+  <description>STRUCTURE:
+VO2 Starters - 55 min
 
-VO2 Starters: VO2max intervals: 5x3min @ 110% FTP</description>
-    <sportType>bike</sportType>
-    <workout>
-        <Warmup Duration="600" PowerLow="0.45" PowerHigh="0.70"/>
-        <SteadyState Duration="180" Power="0.80">
-            <textevent timeoffset="0" message="3 minutes at tempo to activate legs"/>
-        </SteadyState>
-        <SteadyState Duration="120" Power="0.55">
-            <textevent timeoffset="0" message="Easy spin before intervals"/>
-        </SteadyState>
-        <IntervalsT Repeat="4" OnDuration="180" OnPower="1.08" OffDuration="180" OffPower="0.5">
-            <textevent timeoffset="0" message="VO2 Starters - interval start"/>
-        </IntervalsT>
-        <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
-    </workout>
+PURPOSE:
+Maximum aerobic power. Raising your ceiling so everything below feels easier.
+
+EXECUTION:
+These hurt. Start at 110%, adjust based on feel. High cadence 95-105 rpm.
+
+RPE:
+RPE 8-9 (very hard, labored breathing)</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.45" PowerHigh="0.70"/>
+    <SteadyState Duration="180" Power="0.80"/>
+    <SteadyState Duration="120" Power="0.55"/>
+    <IntervalsT Repeat="4" OnDuration="180" OnPower="1.08" OffDuration="180" OffPower="0.5">
+      <textevent timeoffset="0" message="VO2 Starters - interval start"/>
+    </IntervalsT>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
 </workout_file>

@@ -148,6 +148,17 @@ Documentation:
 3. Fix: Return full workout dict, build description with exercises + video links
 4. Added: `exercise_lookup.py` integration for 404-exercise video library
 
+### Bug #4: Special Characters in Filenames (Feb 2026)
+1. Filenames like `W10_Wed_Strength_Mobility_&_Stability.zwo` failed to upload
+2. TrainingPeaks cannot handle `&` (ampersand) in filenames
+3. Fix: Changed "Mobility & Stability" to "Mobility and Stability" in workout_library.py
+4. Rule: **NO special characters in workout names/filenames** (no `&`, no `•`, no unicode)
+
+### Bug #5: Special Characters in Descriptions (Feb 2026)
+1. Bullet character (•) in workout descriptions may cause upload issues
+2. Removed all • characters from description templates in generate_athlete_package.py
+3. Rule: **Use plain ASCII only** - dashes (-) instead of bullets, standard quotes, no unicode symbols
+
 ## Prevention
 
 1. **ALWAYS run regression tests** before generating athlete packages

@@ -1,6 +1,6 @@
 athlete_id: benjy-duke
 athlete_name: Benjy Duke
-generated_date: '2026-02-10T16:03:39.660941'
+generated_date: '2026-02-10T23:16:14.376110'
 race:
   name: SBT GRVL 75
   date: '2026-06-28'
@@ -18,6 +18,6 @@ fueling:
   total_carbs: 432
   estimated_duration_hours: 5.4
 files:
-  guide: /Users/mattirowe/Documents/GravelGod/athlete-profiles/athletes/benjy-duke/training_guide.html
-  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-profiles/athletes/benjy-duke/workouts
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/benjy-duke/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/benjy-duke/workouts
   workout_count: 147

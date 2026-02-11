@@ -1,0 +1,45 @@
+athlete_id: kyle-cocowitch
+generated_date: '2026-02-10'
+race_date: '2026-06-28'
+plan_start: '2026-02-16'
+plan_weeks: 19
+heavy_training_end: ''
+heavy_training_weeks: 19
+maintenance_weeks: 0
+tier: FINISHER
+tier_rationale: 5-10 hours/week available. Ironman 70.3 background demonstrates capacity
+  for structured high-volume training. Young athlete (28) with good recovery, minimal
+  stress, and full schedule flexibility.
+ability_level: Intermediate
+ability_rationale: Completed Ironman 70.3 with 16 weeks structured training (9 workouts/week).
+  Strong mental fortitude. New to gravel-specific training but experienced with endurance
+  sports and structured training blocks.
+training_readiness: ready_to_start
+readiness_notes: Recent meniscus surgery (12/3/25) fully recovered. Avoid deep squatting
+  as precaution. Excellent sleep (8+ hours), low stress, high recovery capacity.
+constraints:
+- Recent meniscus surgery - avoid deep squatting exercises
+- Lots of trainer miles but needs outdoor time-in-saddle
+- Needs to develop pedal efficiency and pacing intuition
+periodization_notes: Full 19-week progression. No constraints on training end date.
+  Focus on building outdoor bike handling and pacing skills alongside fitness.
+equipment_ready: true
+equipment_notes: Power meter, HR monitor, GPS, smart trainer, full gym access - excellent
+  equipment setup
+training_partners:
+- Benjy Duke
+- Burk
+training_partner_notes: Wants to train with Benjy and Burk. Similar race goal (SBT
+  GRVL).
+race_demands:
+  distance_miles: 73
+  estimated_duration_hours: 4.5
+  terrain: Mountain gravel roads, significant climbing
+  key_demands:
+  - Sustained climbing power
+  - 4-5 hour endurance
+  - Gravel handling skills
+  - Fueling for medium-distance event
+  - Outdoor bike handling (less trainer, more road)
+plan_end: '2026-06-28'
+race_weekday: Sunday

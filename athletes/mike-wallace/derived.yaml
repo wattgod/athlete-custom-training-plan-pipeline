@@ -1,0 +1,53 @@
+athlete_id: mike-wallace
+generated_date: '2026-02-10'
+race_date: '2026-08-15'
+plan_start: '2026-02-16'
+plan_weeks: 26
+heavy_training_end: null
+heavy_training_weeks: 27
+maintenance_weeks: 0
+tier: POLARIZED
+tier_rationale: 61-year-old with extensive endurance background (30+ years touring,
+  randonneuring). 5-10 hours available per week. Recovering from orthopedic setbacks
+  (knee chondromalacia, hip resurfacing 2020). Long slow distance background favors
+  polarized approach with emphasis on aerobic base. Knee limitations require avoiding
+  high-force standing efforts.
+ability_level: Intermediate
+ability_rationale: Decades of long-distance cycling experience including transcontinental
+  tours, 200-1200km brevets, winter ultra events (Tuscobia 160, ITI 350). However,
+  recent fitness setbacks from hip surgery 2020 and ongoing knee issues. Currently
+  can complete 200km road events and 50-60mi gravel but fading in second half.
+training_readiness: ready_to_start
+readiness_notes: Managing knee condition (chondromalacia patella). Hip fully recovered
+  from 2020 surgery. On BP and cholesterol medications - monitor heart rate during
+  intensity. Family cardiac history requires conservative intensity progression.
+constraints:
+- Chondromalacia patella limits standing efforts - no stomping, mashing, or heavy
+  axial loading
+- Avoid leg extensions, lunges, stair machine in strength work
+- Wed/Fri limited availability (spouse time) - not ideal for long days
+- Solo training only - no group or club rides for external motivation
+- Family history of heart problems - conservative with high intensity
+- Monitor response to BP medications during hard efforts
+periodization_notes: Long base building phase (25 weeks) given extensive endurance
+  background and need to rebuild aerobic fitness post-2020 hip surgery. Polarized
+  approach with emphasis on Z2 volume. Short 2-week taper. Key focus on fueling and
+  hydration strategies to address late-event fade. August gravel century is intermediate
+  goal building toward winter fat bike A-events.
+equipment_ready: true
+equipment_notes: Smart trainer with power meter (indoor only), HR monitor, GPS device.
+  Full gym access for strength work.
+training_partners: []
+training_partner_notes: All riding is solo. Previously pushed harder on brevets when
+  riding with others. May need structured accountability to replace external motivation.
+race_demands:
+  distance_miles: 100
+  estimated_duration_hours: 7
+  terrain: Gravel roads, varied terrain
+  key_demands:
+  - 6-8 hour endurance capacity
+  - Consistent pacing to avoid fade
+  - Fueling and hydration execution
+  - Knee-friendly power delivery (seated, spinning)
+plan_end: '2026-08-16'
+race_weekday: Saturday

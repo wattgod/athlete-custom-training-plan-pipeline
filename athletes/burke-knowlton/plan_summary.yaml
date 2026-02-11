@@ -1,0 +1,23 @@
+athlete_id: burke-knowlton
+athlete_name: Burke Knowlton
+generated_date: '2026-02-10T15:29:27.475234'
+race:
+  name: SBT GRVL 73
+  date: '2026-06-28'
+  distance_miles: 73.0
+plan:
+  weeks: 19
+  start_date: '2026-02-16'
+  end_date: '2026-06-28'
+  methodology: MAF / Low-HR (LT1)
+  methodology_score: 75.0
+  tier: AYAHUASCA
+  ability_level: Beginner
+fueling:
+  hourly_carb_target: 80
+  total_carbs: 416
+  estimated_duration_hours: 5.2
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-profiles/athletes/burke-knowlton/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-profiles/athletes/burke-knowlton/workouts
+  workout_count: 92

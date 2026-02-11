@@ -1,0 +1,23 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W01_Thu_Feb19_Tempo</name>
+  <description>STRUCTURE:
+50 min with tempo blocks @ Z3 (76-87% FTP)
+
+PURPOSE:
+Muscular endurance. Building your ability to sustain moderate-hard efforts.
+
+EXECUTION:
+Controlled effort. Breathing harder but rhythmic. Stay seated.
+
+RPE:
+RPE 5-6 (comfortably hard)</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.68"/>
+    <SteadyState Duration="960" Power="0.60"/>
+    <SteadyState Duration="1440" Power="0.85"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

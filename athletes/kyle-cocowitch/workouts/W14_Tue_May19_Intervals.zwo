@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workout_file>
+    <author>Gravel God Training</author>
+    <name>W14_Tue_May19_Intervals</name>
+    <description>Week 14 (Build Phase) - Tue
+
+Threshold intervals: 3x10min @ 95% FTP</description>
+    <sportType>bike</sportType>
+    <workout>
+        <Warmup Duration="420" PowerLow="0.45" PowerHigh="0.65"/>
+        <IntervalsT Repeat="3" OnDuration="600" OnPower="0.95" OffDuration="300" OffPower="0.55"/>
+        <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+    </workout>
+</workout_file>

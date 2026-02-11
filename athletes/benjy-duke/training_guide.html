@@ -669,31 +669,457 @@ blockquote {
 /* ── Print Styles ──────────────────────────────────────────────────────── */
 
 @media print {
-  body {
-    background: white;
-    padding: 0;
+  /* === Page Setup === */
+  @page {
+    size: letter;
+    margin: 0.75in 0.875in;
   }
 
-  .gg-guide-toc {
-    display: none;
+  @page :first {
+    margin-top: 0;
+  }
+
+  /* === Base Reset for Print === */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  html {
+    font-size: 11pt;
+  }
+
+  body {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    color: #3a2e25 !important;
+    font-size: 11pt;
+    line-height: 1.6;
+  }
+
+  /* === Hide Non-Print Elements === */
+  .gg-guide-toc,
+  .no-print {
+    display: none !important;
+  }
+
+  /* === Layout Adjustments === */
+  .gg-guide {
+    max-width: 100%;
+    margin: 0;
   }
 
   .gg-guide-layout {
     display: block;
   }
 
+  .guide-content {
+    width: 100%;
+  }
+
+  /* === Cover Page / Header === */
+  .guide-header {
+    page-break-after: always;
+    text-align: center;
+    padding: 2in 0 1in 0;
+    margin-bottom: 0;
+    border-bottom: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 8in;
+  }
+
+  .guide-header__title {
+    font-size: 32pt;
+    font-weight: 700;
+    letter-spacing: -1px;
+    line-height: 1.1;
+    margin-bottom: 0.5in;
+    color: #3a2e25;
+  }
+
+  .guide-header__meta {
+    justify-content: center;
+    margin-top: 0.25in;
+  }
+
+  .guide-meta-tag {
+    background: #f5efe6 !important;
+    border: 2px solid #3a2e25 !important;
+    font-size: 9pt;
+    padding: 4px 12px;
+    margin: 4px;
+  }
+
+  .guide-meta-tag--gold {
+    background: #B7950B !important;
+    color: white !important;
+    border-color: #B7950B !important;
+  }
+
+  /* === Section Styling === */
   .guide-section {
+    page-break-inside: avoid;
+    margin-bottom: 24pt;
+    padding-top: 12pt;
+  }
+
+  .guide-section__title {
+    font-size: 18pt;
+    font-weight: 700;
+    color: #3a2e25;
+    border-bottom: 3px double #3a2e25;
+    padding-bottom: 8pt;
+    margin-bottom: 12pt;
+    page-break-after: avoid;
+  }
+
+  .guide-section__subtitle {
+    font-size: 10pt;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #8c7568;
+    margin-top: 16pt;
+    margin-bottom: 8pt;
+    page-break-after: avoid;
+  }
+
+  h3 {
+    font-size: 10pt;
+    page-break-after: avoid;
+    margin-top: 14pt;
+    margin-bottom: 6pt;
+  }
+
+  h4 {
+    font-size: 12pt;
+    page-break-after: avoid;
+    margin-top: 10pt;
+    margin-bottom: 4pt;
+  }
+
+  /* === Typography for Print === */
+  p {
+    font-size: 11pt;
+    line-height: 1.6;
+    max-width: 100%;
+    margin-bottom: 10pt;
+    orphans: 3;
+    widows: 3;
+  }
+
+  ul, ol {
+    margin-left: 18pt;
+    margin-bottom: 10pt;
+  }
+
+  li {
+    font-size: 11pt;
+    line-height: 1.5;
+    margin-bottom: 4pt;
+  }
+
+  /* === Links === */
+  a {
+    color: #3a2e25 !important;
+    text-decoration: none !important;
+  }
+
+  /* Don't print URLs for internal links */
+  a[href^="#"]::after {
+    content: none !important;
+  }
+
+  /* Print URLs for external links */
+  a[href^="http"]::after {
+    content: " [" attr(href) "]";
+    font-size: 8pt;
+    color: #8c7568;
+    font-family: 'Sometype Mono', monospace;
+  }
+
+  /* === Data Cards === */
+  .data-card {
+    background: #f5efe6 !important;
+    border: 2px solid #3a2e25 !important;
+    padding: 12pt;
+    margin-bottom: 12pt;
     page-break-inside: avoid;
   }
 
-  a {
-    color: var(--gg-color-dark-brown);
-    text-decoration: none;
+  .data-card__header {
+    font-size: 9pt;
+    color: #B7950B !important;
+    border-bottom: 2px solid #d4c5b9;
+    padding-bottom: 6pt;
+    margin-bottom: 8pt;
   }
 
-  a[href^="http"]::after {
-    content: " (" attr(href) ")";
-    font-size: var(--gg-font-size-xs);
+  .data-card__content {
+    font-size: 11pt;
+  }
+
+  /* === Tables === */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 12pt;
+    page-break-inside: avoid;
+    font-size: 10pt;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  th {
+    background: #3a2e25 !important;
+    color: white !important;
+    font-size: 9pt;
+    padding: 8pt 10pt;
+    text-align: left;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  td {
+    padding: 6pt 10pt;
+    border-bottom: 1px solid #d4c5b9;
+    font-size: 10pt;
+  }
+
+  tr:nth-child(even) td {
+    background: rgba(212, 197, 185, 0.2) !important;
+  }
+
+  /* === Callout Boxes === */
+  .callout {
+    background: #f5efe6 !important;
+    border: 2px solid #3a2e25 !important;
+    padding: 12pt;
+    margin: 12pt 0;
+    page-break-inside: avoid;
+  }
+
+  .callout--gold {
+    border-left: 4px solid #B7950B !important;
+  }
+
+  .callout--teal {
+    border-left: 4px solid #1A8A82 !important;
+  }
+
+  .callout__title {
+    font-size: 9pt;
+    color: #B7950B !important;
+    margin-bottom: 6pt;
+  }
+
+  .callout--teal .callout__title {
+    color: #1A8A82 !important;
+  }
+
+  .callout__content {
+    font-size: 10pt;
+  }
+
+  /* === Stats Grid === */
+  .stats-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8pt;
+    margin-bottom: 12pt;
+    page-break-inside: avoid;
+  }
+
+  .stat-card {
+    flex: 1 1 calc(25% - 8pt);
+    min-width: 80pt;
+    background: #f5efe6 !important;
+    border: 2px solid #3a2e25 !important;
+    padding: 10pt;
+    text-align: center;
+  }
+
+  .stat-card__value {
+    font-size: 16pt;
+    font-weight: 700;
+    color: #3a2e25;
+  }
+
+  .stat-card__label {
+    font-size: 8pt;
+    margin-top: 4pt;
+    color: #8c7568;
+  }
+
+  /* === Phase Indicators === */
+  .phase-indicator {
+    font-size: 8pt;
+    padding: 2pt 6pt;
+    border: 2px solid;
+    display: inline-block;
+  }
+
+  .phase-indicator--base {
+    color: #8c7568 !important;
+    border-color: #8c7568 !important;
+  }
+
+  .phase-indicator--build {
+    color: #1A8A82 !important;
+    border-color: #1A8A82 !important;
+  }
+
+  .phase-indicator--peak {
+    color: #B7950B !important;
+    border-color: #B7950B !important;
+  }
+
+  .phase-indicator--taper {
+    color: #A68E80 !important;
+    border-color: #A68E80 !important;
+  }
+
+  .phase-indicator--race {
+    background: #B7950B !important;
+    color: white !important;
+    border-color: #B7950B !important;
+  }
+
+  /* === Week Calendar === */
+  .week-calendar {
+    border: 2px solid #3a2e25 !important;
+    margin-bottom: 12pt;
+    page-break-inside: avoid;
+  }
+
+  .week-calendar__header {
+    background: #3a2e25 !important;
+    padding: 8pt 12pt;
+  }
+
+  .week-calendar__week {
+    color: white !important;
+    font-size: 11pt;
+  }
+
+  .week-calendar__dates {
+    color: #d4c5b9 !important;
+    font-size: 9pt;
+  }
+
+  .week-calendar__body {
+    background: #f5efe6 !important;
+    padding: 10pt;
+  }
+
+  /* === Tier Badges === */
+  .tier-badge {
+    font-size: 8pt;
+    padding: 2pt 6pt;
+  }
+
+  .tier-badge--t1 {
+    background: #59473c !important;
+    color: white !important;
+  }
+
+  .tier-badge--t2 {
+    background: #8c7568 !important;
+    color: white !important;
+  }
+
+  /* === Code/Inline === */
+  code {
+    font-size: 9pt;
+    background: #f5efe6 !important;
+    border: 1px solid #d4c5b9 !important;
+    padding: 1pt 4pt;
+  }
+
+  /* === Blockquotes === */
+  blockquote {
+    font-size: 12pt;
+    font-style: italic;
+    border-left: 4px solid #B7950B !important;
+    padding-left: 14pt;
+    margin: 14pt 0;
+    color: #59473c;
+    page-break-inside: avoid;
+  }
+
+  /* === Footer === */
+  .guide-footer {
+    page-break-before: always;
+    padding-top: 2in;
+    text-align: center;
+    border-top: none;
+    margin-top: 0;
+  }
+
+  .guide-footer__logo {
+    font-size: 14pt;
+    color: #B7950B !important;
+  }
+
+  .guide-footer__tagline {
+    font-size: 10pt;
+    color: #8c7568;
+    margin-top: 8pt;
+  }
+
+  /* === Horizontal Rules === */
+  hr {
+    border: none;
+    border-top: 3px double #3a2e25;
+    margin: 18pt 0;
+  }
+
+  /* === Page Break Control === */
+  .page-break-before {
+    page-break-before: always;
+  }
+
+  .page-break-after {
+    page-break-after: always;
+  }
+
+  .keep-together {
+    page-break-inside: avoid;
+  }
+
+  /* Prevent orphaned headings */
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+  }
+
+  /* Keep lists together when possible */
+  ul, ol {
+    page-break-inside: avoid;
+  }
+
+  /* === Running Header (for pages after first) === */
+  .print-header {
+    position: running(header);
+    font-family: 'Sometype Mono', monospace;
+    font-size: 8pt;
+    color: #8c7568;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* === Print-specific utility classes === */
+  .print-only {
+    display: block !important;
+  }
+
+  .screen-only {
+    display: none !important;
   }
 }
 

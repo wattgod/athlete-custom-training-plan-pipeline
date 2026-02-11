@@ -1,0 +1,67 @@
+athlete_id: burke-knowlton
+generated_date: '2026-02-10'
+race_date: '2026-06-28'
+plan_start: '2026-02-16'
+plan_weeks: 19
+heavy_training_end: null
+heavy_training_weeks: 20
+maintenance_weeks: 0
+tier: AYAHUASCA
+tier_rationale: Limited to 3 bike days per week (Thu/Sat/Sun) due to work travel Mon-Wed.
+  Time-crunched athlete with <5 hours/week cycling. Strength on travel days (Mon/Tue).
+  Beginner to cycling, needs aerobic base building.
+ability_level: Beginner
+ability_rationale: New to cycling (just got gravel bike). Strong general fitness background
+  from running, triathlon, weight training. No cycling-specific metrics yet. Endurance
+  athlete mindset.
+training_readiness: ready_to_start
+readiness_notes: GI issues improving. Muscles tight but manageable. Recovery capacity
+  reduced - plan must account for this.
+constraints:
+- Travel Mon PM - Wed PM weekly (no bike access)
+- Strength MUST be on Mon AM and Tue (travel days)
+- Bike workouts ONLY on Thu, Sat, Sun
+- Friday unavailable
+- Sunday is long day (120 min max)
+- Weekday bike workouts 45 min max
+- Recovery issues - conservative load needed
+periodization_notes: MAF-style aerobic base building due to beginner cycling status
+  and recovery concerns. 100% Z1-Z2 work to build aerobic foundation. Strength on
+  travel days (Mon/Tue) with hotel/bodyweight alternatives.
+equipment_ready: false
+equipment_notes: HR monitor, GPS, smartphone app. Buying smart trainer soon. Currently
+  has Peloton. No power meter yet.
+training_partners:
+- Kyle
+- Benjy
+training_partner_notes: Signed up for SBT GRVL with Kyle and Benjy
+race_demands:
+  distance_miles: 73
+  estimated_duration_hours: 4.5
+  terrain: Steamboat gravel roads, significant climbing, high altitude
+  key_demands:
+  - Sustained climbing power
+  - 4-5 hour endurance
+  - Gravel handling skills
+  - Fueling for medium-distance event
+  - High altitude adaptation
+plan_end: '2026-06-28'
+race_weekday: Sunday
+key_day_candidates:
+- thursday
+- saturday
+- sunday
+strength_day_candidates:
+- monday
+- tuesday
+bike_only_days:
+- thursday
+- saturday
+- sunday
+strength_only_days:
+- monday
+- tuesday
+unavailable_days:
+- wednesday
+- friday
+preferred_long_day: sunday

@@ -1,0 +1,266 @@
+name: Burke Knowlton
+email: ''
+phone: '8032696392'
+athlete_id: burke-knowlton
+birthday: '1991-04-11'
+age: 34
+primary_goal: specific_race
+target_race:
+  name: SBT GRVL 73
+  race_id: sbt_grvl_73
+  date: '2026-06-28'
+  distance_miles: 73.0
+  goal_type: compete
+  goal: compete
+  goal_description: "Finish strong for age group. Competitive mindset."
+a_events:
+- name: SBT GRVL 73
+  date: '2026-06-28'
+  distance_miles: 73.0
+  goal: compete
+  priority: A
+b_events: []
+c_events: []
+secondary_races: []
+racing:
+  has_goals: true
+  race_list: 'SBT GRVL 73 (Steamboat Gravel 73 miler)'
+  success_metrics: 'Finish strong for age group. Competitive.'
+  obstacles: 'Work demands and family time. Time in general. Travel schedule Mon-Wed.'
+  training_goals: 'Build baseline cycling fitness. No FTP data yet.'
+  goals_notes: ''
+training_history:
+  summary: "Played sports every season in high school. Sprint triathlon in college. Always been a runner, primarily lifts weights, HIIT, or indoor cycles on Peloton now. Trained for half marathon last summer. Just got a gravel bike and starting to ride."
+  years_cycling: '0-1'
+  years_structured: 1-3
+  strength_background: intermediate
+  highest_weekly_hours: 5
+  current_weekly_hours: 3
+  primary_sport_level: 3
+  primary_sport: 'Running, Peloton, Weight lifting'
+  secondary_sports: 'HIIT, general fitness'
+  strengths: 'Cardio and endurance. More endurance athlete than sprint. Very good at sticking to a plan when one is in place.'
+  weaknesses: "Without a good plan, tends to get inconsistent. Doesn't recover as well as before. Sometimes overtrains or doesn't recover well due to improper fueling, not enough stretching/mobility, or not resting enough. Muscles always tight."
+  races_last_year: 0
+  weather_limits: true
+  weather_description: 'Winter makes it tough to run and cycle outside'
+fitness_markers:
+  ftp_watts: null
+  ftp_date: null
+  ftp_notes: 'No baseline data yet - needs testing'
+  weight_kg: null
+  w_kg: null
+  resting_hr: null
+  max_hr: null
+recent_training:
+  last_12_weeks: moderate
+  current_phase: base_building
+  coming_off_injury: true
+  injury_notes: 'Acid reflux/GI issue past 2 months, now much improved'
+  days_since_last_ride: null
+weekly_availability:
+  total_hours_available: 5
+  cycling_hours_target: 3
+  strength_sessions_max: 2
+  notes: "Target 5-6 days/week for 30-60 min. Some weeks only 3 days. Travels Mon PM - Wed PM weekly for work. Strength must happen on travel days (Mon AM, Tue)."
+preferred_days:
+  monday:
+    availability: limited
+    time_slots:
+    - am
+    max_duration_min: 45
+    is_key_day_ok: false
+    workout_type: strength_only
+    notes: "AM only before travel. Strength workout only - no bike access after departure."
+  tuesday:
+    availability: limited
+    time_slots:
+    - am
+    - pm
+    max_duration_min: 45
+    is_key_day_ok: false
+    workout_type: strength_only
+    notes: "Traveling - hotel workout. Strength only, no bike."
+  wednesday:
+    availability: unavailable
+    time_slots: []
+    max_duration_min: 0
+    is_key_day_ok: false
+    notes: "Returns home afternoon. Recovery/rest day."
+  thursday:
+    availability: available
+    time_slots:
+    - am
+    - pm
+    max_duration_min: 45
+    is_key_day_ok: true
+    notes: "Home. Key cardio day."
+  friday:
+    availability: unavailable
+    time_slots: []
+    max_duration_min: 0
+    is_key_day_ok: false
+    notes: "Marked unavailable by athlete."
+  saturday:
+    availability: available
+    time_slots:
+    - am
+    max_duration_min: 60
+    is_key_day_ok: true
+    notes: "Available for bike workout."
+  sunday:
+    availability: available
+    time_slots:
+    - am
+    max_duration_min: 120
+    is_key_day_ok: true
+    is_long_day: true
+    notes: "Long workout day. Up to 2 hours available."
+schedule_constraints:
+  work_schedule: overtime
+  work_hours: 40-60
+  travel_frequency: weekly
+  travel_pattern: "Mon PM to Wed PM, 1-2 nights per week"
+  family_commitments: 'Partner/spouse, kids'
+  seasonal_changes: ''
+  preferred_off_days:
+  - wednesday
+  - friday
+  preferred_long_day: sunday
+  strength_only_days:
+  - monday
+  - tuesday
+  wake_time: '5:30 AM'
+  available_until: '9:30 PM'
+cycling_equipment:
+  smart_trainer: false
+  smart_trainer_notes: 'Buying indoor trainer soon. Currently has Peloton.'
+  power_meter_bike: false
+  hr_monitor: true
+  indoor_setup: peloton
+  bike_computer: 'Smartphone app'
+strength_equipment:
+- dumbbells
+- kettlebells
+training_environment:
+  primary_location: home
+  gym_type: home_equipment
+  outdoor_riding_access: limited_by_weather
+  indoor_riding_tolerance: good
+injury_history:
+  current_injuries:
+  - location: 'GI system'
+    description: 'Acid reflux and GI issue past 2 months. Much improved now, closer to normalcy.'
+    status: recovering
+    management: 'Strict diet including no caffeine. Pepcid.'
+  past_injuries: []
+movement_limitations:
+  deep_squat: null
+  single_leg_balance: null
+  push_up_position: null
+  hip_hinge: null
+  notes: 'Muscles always tight despite frequent stretching'
+health_factors:
+  age: 34
+  sleep_quality: good
+  sleep_hours_avg: 7.5
+  wake_time: '5:30 AM'
+  bed_time: '9:30 PM'
+  stress_level: moderate
+  recovery_capacity: reduced
+  recovery_notes: "Doesn't recover as well as before. Sometimes overtrains."
+  medical_conditions: 'Acid reflux (improving)'
+  medications: 'Pepcid'
+  health_notes: 'No caffeine due to GI issues'
+strength:
+  currently_training: true
+  routine: 'Dumbbells and kettlebells. Chest day, back day, arms day, leg day split.'
+  sessions_per_week: 3
+  mobility_rating: 4
+  mobility_notes: 'Tries to stretch often. Muscles always tight.'
+devices:
+  training_log: true
+  platforms:
+  - garmin_connect
+  devices:
+  - hr_monitor
+  - gps
+  - smartphone_app
+work:
+  employed: true
+  hours_per_week: 40-60
+  stress_level: moderate
+  travel_schedule: 'Mon PM - Wed PM weekly'
+life_balance:
+  relationships: 'Partner/Spouse, Kids'
+  time_commitments: 'Family, work travel'
+  time_management_challenge: true
+nutrition:
+  diet_styles:
+  - strict_diet
+  fluid_intake_rating: null
+  caffeine: 'None - no caffeine due to GI issues'
+  alcohol: ''
+  restrictions: 'Strict diet due to acid reflux/GI'
+  training_fuel: ''
+  post_workout: ''
+  notes: 'Nutrition guidance needed. GI issues require careful fueling.'
+bike:
+  last_fit: ''
+  pain: false
+  pain_description: ''
+social:
+  group_rides_per_week: 0
+  group_ride_importance: null
+  training_partners: 'Kyle and Benjy - signed up for same race'
+coaching:
+  previous_coach: false
+  experience: ''
+personal:
+  important_people: 'Partner, kids'
+  anything_else: "New to cycling but not new to fitness. Competitive mindset - wants to finish strong for age group."
+  life_affecting_training: 'Work travel Mon-Wed limits bike training to Thu/Sat/Sun'
+methodology_preferences:
+  polarized: 3
+  pyramidal: 3
+  threshold_focused: 3
+  hiit_focused: 3
+  high_volume: 2
+  time_crunched: 5
+  maf: 4
+  preferred_approach: time_crunched
+  past_success_with: 'Half marathon training, endurance sports'
+  past_failure_with: 'Inconsistent without a plan'
+workout_preferences:
+  longest_indoor_tolerable: 60
+  preferred_interval_style: mixed
+  music_or_entertainment: preferred
+  group_rides_available: false
+  outdoor_interval_friendly: true
+strength_preferences:
+  experience_level: intermediate
+  comfort_with_barbell: low
+  comfort_with_kettlebells: high
+  comfort_with_dumbbells: high
+  preferred_session_length: 45
+  time_of_day: separate_day
+  travel_workouts_needed: true
+coaching_style:
+  communication_frequency: weekly
+  feedback_detail: moderate
+  accountability_need: high
+  autonomy_preference: detailed_guidance
+  communication_style: flexible
+platforms:
+  primary: garmin_connect
+  secondary: ''
+  calendar_integration: ''
+communication:
+  preferred_method: ''
+  timezone: America/Denver
+  best_time_to_reach: ''
+plan_start:
+  preferred_start: '2026-02-10'
+  current_commitments: ''
+  end_heavy_training: ''
+  notes: ''

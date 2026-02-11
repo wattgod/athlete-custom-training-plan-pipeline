@@ -1,0 +1,34 @@
+selected_methodology: Sweet Spot / Threshold
+methodology_id: sweet_spot_threshold
+score: 85.0
+reasons:
+- Ideal hours match (7h in 7-10h sweet spot)
+- Beginner-friendly methodology
+- Flexible enough for variable schedule
+warnings: []
+configuration:
+  methodology: Sweet Spot / Threshold
+  intensity_distribution:
+    z1_z2: 0.5
+    z3: 0.35
+    z4_z5: 0.15
+  strength_approach: optional_short_efficient
+  key_workouts:
+  - sweet_spot_intervals
+  - over_unders
+  - tempo_blocks
+  progression_style: increase_density
+  testing_frequency: 4_6_weeks
+alternatives:
+- name: MAF / Low-HR (LT1)
+  score: 85.0
+  key_reason: Beginner-friendly methodology
+- name: Autoregulated (HRV-Based)
+  score: 80.0
+  key_reason: Acceptable hours (7h within 6-20h range)
+- name: Reverse Periodization
+  score: 70.0
+  key_reason: Acceptable hours (7h within 6-15h range)
+selection_date: '2026-02-10 15:13:56'
+confidence: high
+confidence_note: Strong match for athlete profile

@@ -1,0 +1,23 @@
+athlete_id: kyle-cocowitch
+athlete_name: Kyle Cocowitch
+generated_date: '2026-02-10T15:28:46.333247'
+race:
+  name: SBT GRVL 75
+  date: '2026-06-28'
+  distance_miles: 75.0
+plan:
+  weeks: 19
+  start_date: '2026-02-16'
+  end_date: '2026-06-28'
+  methodology: Sweet Spot / Threshold
+  methodology_score: 85.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 80
+  total_carbs: 416
+  estimated_duration_hours: 5.2
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-profiles/athletes/kyle-cocowitch/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-profiles/athletes/kyle-cocowitch/workouts
+  workout_count: 132

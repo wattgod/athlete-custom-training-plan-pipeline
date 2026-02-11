@@ -144,16 +144,16 @@ def format_workout_description(workout_type: str, duration: int, phase: str, wee
     execution = template['execution']
     rpe = template['rpe']
 
-    description = f"""• STRUCTURE:
+    description = f"""STRUCTURE:
 {structure}
 
-• PURPOSE:
+PURPOSE:
 {purpose}
 
-• EXECUTION:
+EXECUTION:
 {execution}
 
-• RPE:
+RPE:
 {rpe}"""
 
     return description
@@ -630,14 +630,14 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                     phase, week_num, week_in_phase, duration
                 )
                 # Update description with progressive workout name
-                full_description = f"• STRUCTURE:\n{progressive_name} - {duration} min\n\n" + \
+                full_description = f"STRUCTURE:\n{progressive_name} - {duration} min\n\n" + \
                     full_description.split('\n\n', 1)[1] if '\n\n' in full_description else full_description
                 workout_name = f"{workout_prefix}_{workout_type}_{progressive_name.replace(' ', '_')}"
             elif workout_type == 'Endurance' and phase == 'base':
                 # Use varied endurance generator for base phase
                 blocks, endurance_name = generate_progressive_endurance_blocks(week_num, duration)
                 # Update description with endurance variation name
-                full_description = f"• STRUCTURE:\n{endurance_name} - {duration} min\n\n" + \
+                full_description = f"STRUCTURE:\n{endurance_name} - {duration} min\n\n" + \
                     full_description.split('\n\n', 1)[1] if '\n\n' in full_description else full_description
             else:
                 blocks = create_workout_blocks(duration, power, workout_type)
@@ -735,11 +735,11 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 for ex, reps in strength_workout['exercises']:
                     video_url = get_video_url(ex)
                     if video_url:
-                        exercises_lines.append(f"• {ex} - {reps}\n  Video: {video_url}")
+                        exercises_lines.append(f"- {ex} - {reps}\n  Video: {video_url}")
                     else:
-                        exercises_lines.append(f"• {ex} - {reps}")
+                        exercises_lines.append(f"- {ex} - {reps}")
                 exercises_text = '\n'.join(exercises_lines)
-                full_description = f"• FOCUS: {strength_workout['focus']}\n\n• EXERCISES:\n{exercises_text}\n\n• EXECUTION:\nComplete all sets with good form. Rest 60-90 sec between sets."
+                full_description = f"FOCUS: {strength_workout['focus']}\n\nEXERCISES:\n{exercises_text}\n\nEXECUTION:\nComplete all sets with good form. Rest 60-90 sec between sets."
 
                 zwo_content = ZWO_TEMPLATE.format(
                     name=workout_name,

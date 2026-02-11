@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W08_Tue_Strength_Power_Development</name>
+  <description>FOCUS: Explosive power
+
+EXERCISES:
+- Jump Squat - 3x8
+  Video: https://vimeo.com/111473749
+- Box Step Up (fast) - 3x10 each
+  Video: https://vimeo.com/111125511
+- Medicine Ball Slam - 3x10
+- Single Leg Hop - 3x8 each
+- Plank to Push Up - 3x8
+  Video: https://vimeo.com/111126849
+- Lateral Lunge - 3x10 each
+  Video: https://vimeo.com/111032894
+
+EXECUTION:
+Complete all sets with good form. Rest 60-90 sec between sets.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.30" PowerHigh="0.40"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <Cooldown Duration="300" PowerLow="0.40" PowerHigh="0.30"/>
+  </workout>
+</workout_file>

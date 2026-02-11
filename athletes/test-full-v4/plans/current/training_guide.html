@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual's Training Plan: Unbound 200</title>
+    <style>
+        :root {
+            --primary: #1a1a2e;
+            --secondary: #16213e;
+            --accent: #e94560;
+            --accent-light: #ff6b6b;
+            --text: #edf2f7;
+            --text-muted: #a0aec0;
+            --success: #48bb78;
+            --warning: #ed8936;
+            --surface: #0f0f23;
+            --border: #2d3748;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--surface);
+            color: var(--text);
+            line-height: 1.6;
+            font-size: 16px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            padding: 3rem 0;
+            border-bottom: 2px solid var(--accent);
+            margin-bottom: 3rem;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        header .subtitle {
+            font-size: 1.25rem;
+            color: var(--text-muted);
+        }
+
+        header .meta {
+            margin-top: 1.5rem;
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+
+        header .meta-item {
+            text-align: center;
+        }
+
+        header .meta-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--text);
+        }
+
+        header .meta-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        section {
+            margin-bottom: 3rem;
+            background: var(--primary);
+            border-radius: 12px;
+            padding: 2rem;
+            border: 1px solid var(--border);
+        }
+
+        h2 {
+            color: var(--accent);
+            font-size: 1.75rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        h3 {
+            color: var(--text);
+            font-size: 1.25rem;
+            margin: 1.5rem 0 1rem;
+        }
+
+        p { margin-bottom: 1rem; }
+
+        ul, ol {
+            margin: 1rem 0 1rem 1.5rem;
+        }
+
+        li { margin-bottom: 0.5rem; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background: var(--secondary);
+            font-weight: 600;
+            color: var(--accent-light);
+        }
+
+        tr:hover { background: var(--secondary); }
+
+        .highlight-box {
+            background: var(--secondary);
+            border-left: 4px solid var(--accent);
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .highlight-box.success {
+            border-left-color: var(--success);
+        }
+
+        .highlight-box.warning {
+            border-left-color: var(--warning);
+        }
+
+        .key-day {
+            background: var(--accent);
+            color: white;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }
+
+        .phase-card {
+            background: var(--secondary);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+
+        .phase-card h4 {
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .phase-card .weeks {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .fueling-timeline {
+            display: grid;
+            gap: 0.5rem;
+        }
+
+        .timeline-row {
+            display: grid;
+            grid-template-columns: 60px 80px 1fr;
+            gap: 1rem;
+            padding: 0.5rem;
+            background: var(--secondary);
+            border-radius: 4px;
+        }
+
+        .timeline-hour {
+            font-weight: bold;
+            color: var(--accent);
+        }
+
+        .toc {
+            background: var(--secondary);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+
+        .toc h3 {
+            margin-top: 0;
+            margin-bottom: 1rem;
+        }
+
+        .toc ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .toc li {
+            padding: 0.3rem 0;
+        }
+
+        .toc a {
+            color: var(--text);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .toc a:hover {
+            color: var(--accent);
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            border-top: 1px solid var(--border);
+            margin-top: 2rem;
+        }
+
+        @media (max-width: 600px) {
+            .container { padding: 1rem; }
+            header h1 { font-size: 1.75rem; }
+            section { padding: 1.5rem; }
+            header .meta { gap: 1rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+
+<header>
+    <h1>Manual's Training Plan</h1>
+    <p class="subtitle">Unbound 200 — Traditional (Pyramidal)</p>
+    <div class="meta">
+        <div class="meta-item">
+            <div class="meta-value">2026-06-07</div>
+            <div class="meta-label">Race Date</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-value">200.0 mi</div>
+            <div class="meta-label">Distance</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-value">24 weeks</div>
+            <div class="meta-label">Plan Length</div>
+        </div>
+        <div class="meta-item">
+            <div class="meta-value">Compete</div>
+            <div class="meta-label">Goal</div>
+        </div>
+    </div>
+</header>
+
+
+<nav class="toc">
+    <h3>Contents</h3>
+    <ul>
+        <li><a href="#overview">1. Your Plan Overview</a></li>
+        <li><a href="#methodology">2. Training Methodology</a></li>
+        <li><a href="#weekly-structure">3. Your Weekly Structure</a></li>
+        <li><a href="#phases">4. Phase-by-Phase Guide</a></li>
+        <li><a href="#strength">5. Strength Training</a></li>
+        <li><a href="#fueling">6. Race-Day Fueling</a></li>
+        <li><a href="#gut-training">7. Gut Training Protocol</a></li>
+        <li><a href="#race-execution">8. Race Execution</a></li>
+        <li><a href="#adaptations">9. When Life Happens</a></li>
+    </ul>
+</nav>
+
+
+<section id="overview">
+    <h2>1. Your Plan Overview</h2>
+
+    <p>Manual, this plan is built specifically for you based on your questionnaire responses,
+    training availability, and race goals. It's not a template — it's your roadmap.</p>
+
+    <h3>Key Numbers</h3>
+    <table>
+        <tr><th>Metric</th><th>Your Plan</th></tr>
+        <tr><td>Weekly Cycling Hours</td><td>12 hours</td></tr>
+        <tr><td>Strength Sessions</td><td>2x per week</td></tr>
+        <tr><td>Methodology</td><td>Traditional (Pyramidal)</td></tr>
+        <tr><td>Confidence Score</td><td>75.0/100 (high)</td></tr>
+    </table>
+
+    <h3>Why This Approach</h3>
+    <ul>
+        <li>Ideal hours match (12h in 12-20h sweet spot)</li>
+<li>Excellent for ultra-distance events</li>
+    </ul>
+
+    
+        <div class="highlight-box warning">
+            <strong>Considerations:</strong>
+            <ul><li>Requires intermediate experience (new to structured training)</li></ul>
+        </div>
+        
+</section>
+
+
+<section id="methodology">
+    <h2>2. Training Methodology: Traditional (Pyramidal)</h2>
+
+    <div class="highlight-box">
+        <strong>Philosophy:</strong> Volume → intensity → density → specificity
+    </div>
+
+    <p>Build large aerobic base, then sharpen with intensity</p>
+
+    <h3>Intensity Distribution</h3>
+    
+        <table>
+            <tr><th>Zone</th><th>Time Distribution</th></tr>
+            <tr><td>Z1-Z2 (Easy/Endurance)</td><td>75%</td></tr>
+            <tr><td>Z3 (Tempo/Sweet Spot)</td><td>15%</td></tr>
+            <tr><td>Z4-Z5 (Threshold/VO2max)</td><td>10%</td></tr>
+        </table>
+        
+
+    <h3>Progression Style</h3>
+    <p>Volume Then Intensity</p>
+
+    
+        <h3>Alternative Approaches Considered</h3>
+        <ul><li><strong>MAF / Low-HR (LT1)</strong> (75.0/100): Ideal hours match (12h in 10-15h sweet spot)</li>
+<li><strong>Reverse Periodization</strong> (65.0/100): Ideal hours match (12h in 8-12h sweet spot)</li></ul>
+        
+</section>
+
+
+<section id="weekly-structure">
+    <h2>3. Your Weekly Structure</h2>
+
+    <p>This structure is based on your availability. Key sessions are marked — these are
+    non-negotiable for fitness gains. Everything else can flex around life.</p>
+
+    <table>
+        <tr>
+            <th>Day</th>
+            <th>Workout</th>
+            <th>Notes</th>
+        </tr>
+        
+        <tr>
+            <td>Monday </td>
+            <td>Endurance Ride</td>
+            <td>Up to 90min available</td>
+        </tr>
+        
+
+        <tr>
+            <td>Tuesday <span class="key-day">KEY</span></td>
+            <td>Key Cycling (PM)</td>
+            <td>Up to 90min available</td>
+        </tr>
+        
+
+        <tr>
+            <td>Wednesday </td>
+            <td>Easy Spin / Recovery</td>
+            <td>Up to 60min available</td>
+        </tr>
+        
+
+        <tr>
+            <td>Thursday <span class="key-day">KEY</span></td>
+            <td>Key Cycling (PM)</td>
+            <td>Up to 90min available</td>
+        </tr>
+        
+
+        <tr>
+            <td>Friday </td>
+            <td>Easy Spin / Recovery</td>
+            <td>Up to 45min available</td>
+        </tr>
+        
+
+        <tr>
+            <td>Saturday <span class="key-day">KEY</span></td>
+            <td>Strength (AM) + Key Cycling (PM)</td>
+            <td>Up to 300min available</td>
+        </tr>
+        
+
+        <tr>
+            <td>Sunday </td>
+            <td>Strength (AM) + Endurance Ride</td>
+            <td>Up to 180min available</td>
+        </tr>
+        
+    </table>
+
+    <div class="highlight-box success">
+        <strong>Priority Order (when life gets busy):</strong>
+        <ol>
+            <li>Key cycling sessions — these drive adaptation</li>
+            <li>Long ride — builds endurance foundation</li>
+            <li>Strength sessions — injury prevention + power</li>
+            <li>Easy rides — can be shortened or skipped</li>
+        </ol>
+    </div>
+</section>
+
+
+<section id="phases">
+    <h2>4. Phase-by-Phase Guide</h2>
+
+    <p>Your 24-week plan progresses through distinct phases. Each builds on the last.
+    Trust the process — fitness comes from consistency, not heroics.</p>
+
+    
+        <div class="phase-card">
+            <h4>Base 1</h4>
+            <div class="weeks">Weeks 1-4</div>
+            <p><strong>Focus:</strong> Foundation building: aerobic capacity + strength</p>
+        </div>
+        
+
+        <div class="phase-card">
+            <h4>Base 2</h4>
+            <div class="weeks">Weeks 5-8</div>
+            <p><strong>Focus:</strong> Volume extension: longer rides, durability</p>
+        </div>
+        
+
+        <div class="phase-card">
+            <h4>Build 1</h4>
+            <div class="weeks">Weeks 9-12</div>
+            <p><strong>Focus:</strong> Intensity introduction: threshold + VO2 work</p>
+        </div>
+        
+
+        <div class="phase-card">
+            <h4>Build 2</h4>
+            <div class="weeks">Weeks 13-16</div>
+            <p><strong>Focus:</strong> Race specificity: simulate race demands</p>
+        </div>
+        
+
+        <div class="phase-card">
+            <h4>Peak</h4>
+            <div class="weeks">Weeks 17-22</div>
+            <p><strong>Focus:</strong> Polish fitness, practice execution</p>
+        </div>
+        
+
+        <div class="phase-card">
+            <h4>Taper</h4>
+            <div class="weeks">Weeks 23-24</div>
+            <p><strong>Focus:</strong> Reduce, refresh, race ready</p>
+        </div>
+        
+</section>
+
+
+<section id="strength">
+    <h2>5. Strength Training</h2>
+
+    <p>Strength work is scheduled for: <strong>Sunday, Saturday</strong> (2x per week)</p>
+    <p>Equipment tier: <strong>Minimal</strong></p>
+
+    <h3>Strength Phases</h3>
+    <table>
+        <tr>
+            <th>Phase</th>
+            <th>Timing</th>
+            <th>Focus</th>
+            <th>Intensity</th>
+        </tr>
+        <tr><td>Learn to Lift</td><td>Weeks 1-4</td><td>Movement quality, neuromuscular adaptation</td><td>RPE 5-6, higher reps (10-15)</td></tr>
+<tr><td>Lift Heavy Sh*t</td><td>Weeks 5-10</td><td>Maximum strength development</td><td>RPE 7-8, lower reps (4-8)</td></tr>
+<tr><td>Lift Fast</td><td>Weeks 11-14</td><td>Power conversion — move weight quickly</td><td>RPE 7-8, low reps (3-6) with SPEED</td></tr>
+<tr><td>Don't Lose It</td><td>Final weeks</td><td>Maintain with minimal fatigue</td><td>RPE 5-6, moderate reps (6-10)</td></tr>
+    </table>
+
+    
+
+    <h3>Execution Guidelines</h3>
+    <ul>
+        <li><strong>Watch video demos</strong> before each exercise</li>
+        <li><strong>Rest between sets</strong> — strength needs recovery</li>
+        <li><strong>Log your weights</strong> — track progress</li>
+        <li><strong>Stop before failure</strong> — leave 1-2 reps in the tank</li>
+    </ul>
+</section>
+
+
+<section id="fueling">
+    <h2>6. Race-Day Fueling</h2>
+
+    <div class="highlight-box">
+        <strong>Your Targets:</strong> 76g carbs/hour → 1087g total
+    </div>
+
+    <h3>Energy Demands</h3>
+    <table>
+        <tr><th>Metric</th><th>Value</th></tr>
+        <tr><td>Estimated Duration</td><td>~14.3 hours</td></tr>
+        <tr><td>Total Calories</td><td>~13,277 kcal</td></tr>
+        <tr><td>Hourly Carb Target</td><td>76g/hr</td></tr>
+        <tr><td>Total Carbs Needed</td><td>1087g</td></tr>
+    </table>
+
+    <h3>Example Product Mix</h3>
+    <ul>
+        <li>Gels: ~17</li>
+        <li>Chews: ~8 packs</li>
+        <li>Drink mix: ~5 bottles</li>
+    </ul>
+    <p><em>Variety prevents palate fatigue. Test everything in training.</em></p>
+
+    <h3>Hydration</h3>
+    <ul>
+        <li>Target: 600ml per hour</li>
+        <li>Electrolytes: 500-1000mg sodium per hour</li>
+        <li>Sip consistently — don't wait until thirsty</li>
+    </ul>
+</section>
+
+
+<section id="gut-training">
+    <h2>7. Gut Training Protocol</h2>
+
+    <p>Your gut is trainable. Over 24 weeks, you'll progressively increase your
+    carbohydrate absorption capacity. This is essential — race-day fueling failures are
+    usually gut failures.</p>
+
+    
+        <div class="phase-card">
+            <h4>BASE</h4>
+            <div class="weeks">1-6</div>
+            <p><strong>Target:</strong> 40-50g/hr during training rides</p>
+            <p>Practice fueling on ALL rides over 90 minutes. Start with familiar products.</p>
+        </div>
+        
+        <div class="phase-card">
+            <h4>BUILD</h4>
+            <div class="weeks">7-14</div>
+            <p><strong>Target:</strong> 50-70g/hr during training rides</p>
+            <p>Gradually increase carb intake on long rides. Test race-day products.</p>
+        </div>
+        
+        <div class="phase-card">
+            <h4>PEAK</h4>
+            <div class="weeks">15-18</div>
+            <p><strong>Target:</strong> 60-80g/hr during training rides</p>
+            <p>Simulate race fueling on long rides. Lock in your race-day products.</p>
+        </div>
+        
+        <div class="phase-card">
+            <h4>RACE</h4>
+            <div class="weeks">Race day</div>
+            <p><strong>Target:</strong> 70-90g/hr during training rides</p>
+            <p>Stick to the plan. Nothing new on race day.</p>
+        </div>
+        
+
+    <div class="highlight-box warning">
+        <strong>Golden Rule:</strong> Nothing new on race day. Test all products and
+        intake rates during training.
+    </div>
+</section>
+
+
+<section id="race-execution">
+    <h2>8. Race Execution</h2>
+
+    <h3>Three-Act Pacing Strategy</h3>
+
+    <div class="phase-card">
+        <h4>Act 1: The Start (Miles 0-66)</h4>
+        <p><strong>Goal:</strong> Stay calm. Let the chaos pass.</p>
+        <ul>
+            <li>Start conservatively — adrenaline lies</li>
+            <li>Find your rhythm in the first 30 minutes</li>
+            <li>Begin fueling by mile 10 at the latest</li>
+        </ul>
+    </div>
+
+    <div class="phase-card">
+        <h4>Act 2: The Work (Miles 66-150)</h4>
+        <p><strong>Goal:</strong> Steady execution. This is where races are made.</p>
+        <ul>
+            <li>Maintain consistent effort — don't surge unnecessarily</li>
+            <li>Fuel relentlessly — every 20-30 minutes</li>
+            <li>Manage your mind — break it into segments</li>
+        </ul>
+    </div>
+
+    <div class="phase-card">
+        <h4>Act 3: The Finish (Miles 150-200.0)</h4>
+        <p><strong>Goal:</strong> Empty the tank. Leave nothing.</p>
+        <ul>
+            <li>If you've fueled well, you can push here</li>
+            <li>Keep eating even if appetite drops</li>
+            <li>This is what you trained for — go get it</li>
+        </ul>
+    </div>
+</section>
+
+
+<section id="adaptations">
+    <h2>9. When Life Happens</h2>
+
+    <p>Plans meet reality. Here's how to adapt without derailing your preparation.</p>
+
+    <h3>Missed Workouts</h3>
+    <table>
+        <tr><th>Situation</th><th>Action</th></tr>
+        <tr>
+            <td>Missed a key session this week</td>
+            <td>Move it to next available day (not day before another key session)</td>
+        </tr>
+        <tr>
+            <td>Missed multiple days</td>
+            <td>Skip and move on. Don't double up. Resume where the plan says.</td>
+        </tr>
+        <tr>
+            <td>Missed a whole week</td>
+            <td>Continue with current week's plan. The fitness is still there.</td>
+        </tr>
+    </table>
+
+    <h3>Fatigue Signals</h3>
+    <table>
+        <tr><th>How You Feel</th><th>Strength Adjustment</th><th>Cycling Adjustment</th></tr>
+        <tr>
+            <td>Legs tired, otherwise OK</td>
+            <td>Do upper body focus</td>
+            <td>Reduce intensity, keep duration</td>
+        </tr>
+        <tr>
+            <td>Generally exhausted</td>
+            <td>Mobility only or skip</td>
+            <td>Easy spin or complete rest</td>
+        </tr>
+        <tr>
+            <td>Coming down with something</td>
+            <td>Rest completely</td>
+            <td>Rest completely</td>
+        </tr>
+        <tr>
+            <td>Minor niggle/pain</td>
+            <td>Modify around it</td>
+            <td>Modify around it</td>
+        </tr>
+    </table>
+
+    <div class="highlight-box success">
+        <strong>Remember:</strong> Consistency beats intensity. A good-enough week done
+        consistently beats a perfect week followed by burnout. When in doubt, do less.
+        Fatigue masks fitness.
+    </div>
+</section>
+
+
+</div>
+<footer>
+    <p>Generated February 09, 2026 by Gravel God Cycling</p>
+    <p>Questions? Contact your coach: gravelgodcoaching@gmail.com</p>
+</footer>
+</body>
+</html>

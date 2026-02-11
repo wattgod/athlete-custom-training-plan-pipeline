@@ -1,15 +1,23 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
-    <author>Gravel God Training</author>
-    <name>W19_Sat_Jun27_Openers</name>
-    <description>Week 19 (Race Phase) - Sat
+  <author>Gravel God Training</author>
+  <name>W19_Sat_Jun27_Openers</name>
+  <description>STRUCTURE:
+30 min with 4x30sec openers @ 120% FTP
 
-Race week openers</description>
-    <sportType>bike</sportType>
-    <workout>
-        <Warmup Duration="300" PowerLow="0.45" PowerHigh="0.65"/>
-        <SteadyState Duration="960" Power="0.60"/>
-        <IntervalsT Repeat="4" OnDuration="30" OnPower="1.20" OffDuration="60" OffPower="0.50"/>
-        <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
-    </workout>
+PURPOSE:
+Pre-race activation. Wake up the legs without creating fatigue.
+
+EXECUTION:
+Short, sharp efforts. Full recovery between. Done when you feel snappy.
+
+RPE:
+RPE 7-8 for efforts (short and controlled)</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.68"/>
+    <SteadyState Duration="960" Power="0.60"/>
+    <IntervalsT Repeat="4" OnDuration="30" OnPower="1.20" OffDuration="60" OffPower="0.50"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
 </workout_file>

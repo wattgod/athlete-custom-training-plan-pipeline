@@ -118,7 +118,7 @@ class WorkoutLibrary:
             ],
         },
         {
-            'name': 'Mobility & Stability',
+            'name': 'Mobility and Stability',
             'focus': 'Recovery and flexibility',
             'exercises': [
                 ('Cat-Cow', '2x10'),

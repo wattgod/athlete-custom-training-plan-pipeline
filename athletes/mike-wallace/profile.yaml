@@ -1,0 +1,261 @@
+name: Mike Wallace
+email: ''
+phone: '5632711010'
+athlete_id: mike-wallace
+birthday: '1965-01-09'
+age: 61
+primary_goal: endurance_events
+target_race:
+  name: Gravel Century
+  race_id: gravel_century_generic
+  date: '2026-08-15'
+  distance_miles: 100.0
+  goal_type: finish
+  goal: finish
+  goal_description: "Complete gravel century or double century. Get back to randonneuring 300-400km on road. Stay off DNF cutoff bubble. Not fade in second half of events."
+a_events:
+- name: Winter Fat Bike Event 1
+  date: '2026-12-15'
+  distance_miles: 100.0
+  goal: finish
+  priority: A
+- name: Winter Fat Bike Event 2
+  date: '2027-01-15'
+  distance_miles: 100.0
+  goal: finish
+  priority: A
+b_events:
+- name: Gravel Century Goal
+  date: '2026-08-15'
+  distance_miles: 100.0
+  goal: finish
+  priority: B
+c_events: []
+secondary_races: []
+racing:
+  has_goals: true
+  race_list: 'Gravel century, randonneuring 300-400km, winter fat bike events'
+  success_metrics: 'Complete events without fading. Improve speed to stay off DNF cutoff. Better hydration and fueling to avoid metabolic blowup late in events.'
+  obstacles: 'Getting older. Intermittent left knee problems (chondromalacia patella). Hip resurfacing 2020 set back fitness significantly. All riding is solo - no club or group. Overwhelming amount of training advice causes paralysis.'
+  training_goals: 'Increase endurance and speed on gravel and road. Increase overall strength and flexibility.'
+  goals_notes: 'Wants to trust the plan and spend mental energy on getting workouts done, not second-guessing every ride or recovery session.'
+training_history:
+  summary: "Extensive touring background since early 20s. Ridden across US multiple times 1988-2007. Randonneuring 2007-2014 (200-1200km brevets). Past 10 years gravel, 200km road events, week-long bike tours. Winter fat biking since 2018 including Tuscobia 160 and ITI 350. Zwift past few years. Long slow distance background from touring. Speed came from riding with faster rando riders and high intensity running pre-2020."
+  years_cycling: '30+'
+  years_structured: 3
+  strength_background: intermediate
+  highest_weekly_hours: 10
+  current_weekly_hours: 5
+  primary_sport_level: 4
+  primary_sport: 'Long-distance cycling/touring'
+  secondary_sports: 'Fat biking, randonneuring'
+  strengths: 'Love to ride. Can be a strong rider when healthy. Extensive endurance background.'
+  weaknesses: 'Recent orthopedic setbacks. Sometimes struggle with motivation and self doubt. Lose focus. Fade in second half of events.'
+  races_last_year: 2
+  weather_limits: true
+  weather_description: 'Only rides indoors in extreme cold/wind, otherwise rides outside'
+fitness_markers:
+  ftp_watts: null
+  ftp_date: null
+  ftp_notes: 'FTP unknown - has indoor power meter only'
+  weight_kg: null
+  w_kg: null
+  resting_hr: null
+  max_hr: null
+recent_training:
+  last_12_weeks: moderate
+  current_phase: base
+  coming_off_injury: false
+  days_since_last_ride: null
+weekly_availability:
+  total_hours_available: 10
+  cycling_hours_target: 7
+  strength_sessions_max: 2
+  notes: "5-10 hours/week. Spouse off work Wed/Fri/weekends. Wed and Fri not great for long days. Can train Mon, Tue, Thu, Sat, Sun."
+preferred_days:
+  monday:
+    availability: available
+    time_slots:
+    - am
+    max_duration_min: 120
+    is_key_day_ok: true
+  tuesday:
+    availability: available
+    time_slots:
+    - am
+    max_duration_min: 120
+    is_key_day_ok: true
+  wednesday:
+    availability: unavailable
+    time_slots: []
+    max_duration_min: 0
+    is_key_day_ok: false
+  thursday:
+    availability: available
+    time_slots:
+    - am
+    max_duration_min: 120
+    is_key_day_ok: true
+  friday:
+    availability: unavailable
+    time_slots: []
+    max_duration_min: 0
+    is_key_day_ok: false
+  saturday:
+    availability: available
+    time_slots:
+    - am
+    max_duration_min: 300
+    is_key_day_ok: true
+  sunday:
+    availability: available
+    time_slots:
+    - am
+    max_duration_min: 180
+    is_key_day_ok: true
+schedule_constraints:
+  work_schedule: retired
+  work_hours: 0
+  travel_frequency: none
+  family_commitments: 'Spouse off work Wed/Fri and weekends. Generally spends time with spouse Wed and Fri.'
+  seasonal_changes: ''
+  preferred_off_days:
+  - wednesday
+  - friday
+  preferred_long_day: 'Saturday'
+  wake_time: '6:30 AM'
+  available_until: '10:30 AM'
+cycling_equipment:
+  smart_trainer: true
+  power_meter_bike: false
+  hr_monitor: true
+  indoor_setup: smart_trainer
+  bike_computer: 'GPS device'
+strength_equipment:
+- full_gym
+- machines
+- bodyweight
+training_environment:
+  primary_location: both
+  gym_type: full_gym
+  outdoor_riding_access: good
+  indoor_riding_tolerance: good
+injury_history:
+  current_injuries:
+  - location: 'Left knee'
+    description: 'Chondromalacia patella. Can spin OK but limited with standing, stomping pedals, or axial loading knee with heavy pressure.'
+    year: 2025
+    status: managing
+    management: 'Avoid leg extensions, lunges, stair machine. Focus on spinning not mashing.'
+  past_injuries:
+  - location: 'Left hip'
+    description: 'Hip resurfacing 2020. Took almost a year off from meaningful riding. Major turning point in losing fitness.'
+    year: 2020
+    status: recovered
+    management: 'No current restrictions from hip'
+movement_limitations:
+  deep_squat: limited
+  single_leg_balance: null
+  push_up_position: null
+  hip_hinge: null
+  notes: 'Knee limits standing/stomping efforts. Avoid leg extensions, lunges, stair machine. Machine squats to 90 degrees OK.'
+health_factors:
+  age: 61
+  sleep_quality: good
+  sleep_hours_avg: 7.5
+  wake_time: '6:30 AM'
+  bed_time: '10:30 PM'
+  stress_level: low
+  recovery_capacity: normal
+  medical_conditions: 'High blood pressure, high cholesterol, history of heart problems in immediate family'
+  medications: 'Amlodipine, olmesartan (BP), crestor (cholesterol)'
+  health_notes: 'Monitor heart rate during high intensity. Be conservative with intensity progression given family cardiac history.'
+strength:
+  currently_training: true
+  routine: 'Machine circuit 2x/week: 3 rounds bench press, shoulder press, lat pull downs, bicep curls, tricep extensions, seated rows, crunches. Occasional machine squats to 90 degrees. Core/plank and stretching.'
+  sessions_per_week: 2
+  mobility_rating: 5
+devices:
+  training_log: true
+  platforms:
+  - strava
+  - rwgps
+  - trainingpeaks
+  devices:
+  - hr_monitor
+  - power_meter_indoor
+  - gps
+  - smartphone
+work:
+  employed: false
+  hours_per_week: 0
+  stress_level: low
+life_balance:
+  relationships: 'Partner/Spouse'
+  time_commitments: 'Recently retired. Spouse time Wed/Fri/weekends.'
+  time_management_challenge: false
+nutrition:
+  diet_styles: []
+  fluid_intake_rating: null
+  caffeine: ''
+  alcohol: ''
+  restrictions: ''
+  training_fuel: ''
+  post_workout: ''
+  notes: 'Needs to work on hydration and fueling strategies to not feel metabolically blown up late in events.'
+bike:
+  last_fit: ''
+  pain: false
+  pain_description: ''
+social:
+  group_rides_per_week: 0
+  group_ride_importance: null
+  training_partners: ''
+coaching:
+  previous_coach: false
+  experience: ''
+personal:
+  important_people: 'Spouse'
+  anything_else: "Wants to trust the plan and not second-guess every ride. Previously on brevets would push harder to stay with others. Solo riding now lacks that external motivation. Would like to increase flexibility - interested in yoga. Prefers outdoor riding when weather permits."
+  life_affecting_training: 'All riding is solo these days, no club or group. Knee problems limit standing efforts.'
+methodology_preferences:
+  polarized: 4
+  pyramidal: 4
+  threshold_focused: 2
+  hiit_focused: 2
+  high_volume: 4
+  time_crunched: 3
+  preferred_approach: polarized
+  past_success_with: 'Long slow distance from touring background. Brevets with faster riders.'
+  past_failure_with: ''
+workout_preferences:
+  longest_indoor_tolerable: 120
+  preferred_interval_style: mixed
+  music_or_entertainment: preferred
+  group_rides_available: false
+  outdoor_interval_friendly: true
+strength_preferences:
+  experience_level: intermediate
+  comfort_with_barbell: low
+  comfort_with_kettlebells: moderate
+  preferred_session_length: 45
+  time_of_day: separate_day
+coaching_style:
+  communication_frequency: weekly
+  feedback_detail: moderate
+  accountability_need: high
+  autonomy_preference: structured_plan
+  communication_style: flexible
+platforms:
+  primary: trainingpeaks
+  secondary: strava
+  calendar_integration: ''
+communication:
+  preferred_method: ''
+  timezone: America/Chicago
+  best_time_to_reach: ''
+plan_start:
+  preferred_start: '2026-02-10'
+  current_commitments: ''
+  end_heavy_training: ''
+  notes: 'No constraints on heavy training end date. Building toward August gravel century as intermediate goal, winter fat bike events as A-events.'

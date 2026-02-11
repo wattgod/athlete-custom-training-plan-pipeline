@@ -1,0 +1,33 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W03_Tue_Strength_Cycling-Specific</name>
+  <description>FOCUS: Cycling muscles
+
+EXERCISES:
+- Bulgarian Split Squat - 3x10 each
+  Video: https://vimeo.com/111043982
+- Calf Raises - 3x15
+  Video: https://vimeo.com/111469204
+- Hip Hinge - 3x12
+  Video: https://www.youtube.com/watch?v=ctMrDzw8LYQ
+- Copenhagen Plank - 3x20sec each
+  Video: https://vimeo.com/111253801
+- Superman Hold - 3x30sec
+  Video: https://vimeo.com/111550284
+- Foam Roll IT Band - 2x60sec each
+
+EXECUTION:
+Complete all sets with good form. Rest 60-90 sec between sets.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.30" PowerHigh="0.40"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <Cooldown Duration="300" PowerLow="0.40" PowerHigh="0.30"/>
+  </workout>
+</workout_file>

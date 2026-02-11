@@ -1,0 +1,35 @@
+selected_methodology: Sweet Spot / Threshold
+methodology_id: sweet_spot_threshold
+score: 90.0
+reasons:
+- Ideal hours match (7h in 7-10h sweet spot)
+- Beginner-friendly methodology
+- Flexible enough for variable schedule
+- Appropriate for finish-focused goal
+warnings: []
+configuration:
+  methodology: Sweet Spot / Threshold
+  intensity_distribution:
+    z1_z2: 0.5
+    z3: 0.35
+    z4_z5: 0.15
+  strength_approach: optional_short_efficient
+  key_workouts:
+  - sweet_spot_intervals
+  - over_unders
+  - tempo_blocks
+  progression_style: increase_density
+  testing_frequency: 4_6_weeks
+alternatives:
+- name: Autoregulated (HRV-Based)
+  score: 85.0
+  key_reason: Acceptable hours (7h within 6-20h range)
+- name: MAF / Low-HR (LT1)
+  score: 75.0
+  key_reason: Beginner-friendly methodology
+- name: Polarized (80/20)
+  score: 65.0
+  key_reason: Experience exceeds requirements
+selection_date: '2026-02-10 15:14:21'
+confidence: high
+confidence_note: Strong match for athlete profile
