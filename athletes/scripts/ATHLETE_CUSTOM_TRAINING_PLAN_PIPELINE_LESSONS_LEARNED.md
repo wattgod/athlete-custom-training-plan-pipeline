@@ -258,6 +258,25 @@ Documentation:
    - **Threshold efforts** (race-pace)
 5. **Rule:** ALL methodologies need some Z5+ work - no pure "just grind at threshold" plans
 
+### Rule #15: Blended/Mixed Workouts with Multiple Dimensions (Feb 2026)
+1. **Problem:** Workouts were too one-dimensional (just tempo, just threshold, etc.)
+2. **Correction:** Real gravel racing requires varied efforts - workouts should reflect this
+3. **Blended Workout Principles:**
+   - Mix zones within single workout (e.g., G SPOT blocks + VO2max bursts)
+   - Vary cadence (seated climbing, standing attacks, high-cadence spins)
+   - Include terrain simulation (surges, sustained climbs, recovery valleys)
+   - Add neuromuscular work (sprints, accelerations) even in endurance rides
+4. **Workout Dimensions to Blend:**
+   - Power zone (Z2, Z3, Z4, Z5, Z6)
+   - Cadence (low <70rpm, normal 85-95rpm, high >100rpm)
+   - Position (seated, standing, aero)
+   - Terrain type (flat, rolling, climbing, descending recovery)
+   - Effort pattern (steady, surging, attack/recover)
+5. **Examples of Good Blended Workouts:**
+   - "Gravel Simulation": 10min Z2 → 3x(5min G SPOT + 30sec Z6 attack) → 15min Z2 → 2x(8min climbing @low cadence + 2min recovery)
+   - "Race Opener": Z2 warmup → 4x(20sec sprint + 3min Z3) → 10min G SPOT → 3x(1min VO2max + 2min Z2)
+6. **Rule:** Key workouts should hit 2-3 dimensions minimum, not just one power zone
+
 ## Required Deliverables (Pipeline Checklist)
 
 Every athlete package MUST include these files before delivery:

@@ -15,7 +15,7 @@ Based on the endurance_training_systems_master_table methodology matrix.
 Methodologies Available:
 1. Traditional (Pyramidal) - High volume base, progressive intensity
 2. Polarized (80/20) - Easy or hard, minimal middle
-3. Sweet Spot / Threshold - Time-efficient threshold focus
+3. G SPOT / Threshold - Time-efficient threshold focus with Z5+ top-end
 4. HIIT-Focused - Minimal volume, maximal intensity
 5. Block Periodization - Concentrated overload phases
 6. Reverse Periodization - Intensity first, volume later
@@ -104,21 +104,21 @@ _METHODOLOGIES_FALLBACK = {
         "testing_frequency": "4_6_weeks"
     },
 
-    "sweet_spot_threshold": {
-        "name": "Sweet Spot / Threshold",
-        "description": "Emphasize sub-threshold intervals to maximize FTP",
-        "philosophy": "Time-efficient threshold focus",
+    "g_spot_threshold": {
+        "name": "G SPOT / Threshold",
+        "description": "Emphasize sub-threshold intervals with Z5+ top-end work",
+        "philosophy": "Time-efficient threshold focus with high-intensity finishing",
         "min_hours": 6,
         "max_hours": 12,
         "ideal_hours": (7, 10),
-        "best_for": ["ftp_gains", "time_efficient", "indoor_training"],
+        "best_for": ["ftp_gains", "time_efficient", "indoor_training", "gravel_racing"],
         "not_for": ["ultra_endurance", "durability_focus"],
         "experience_required": "beginner",
         "stress_tolerance": "moderate",
         "schedule_flexibility": "high",  # Works with variable schedules
-        "intensity_distribution": {"z1_z2": 0.50, "z3": 0.35, "z4_z5": 0.15},
+        "intensity_distribution": {"z1_z2": 0.45, "z3": 0.30, "z4_z5": 0.25},
         "strength_approach": "optional_short_efficient",
-        "key_workouts": ["sweet_spot_intervals", "over_unders", "tempo_blocks"],
+        "key_workouts": ["g_spot_intervals", "over_unders", "tempo_blocks", "vo2max_intervals", "threshold_efforts"],
         "progression_style": "increase_density",
         "testing_frequency": "4_6_weeks"
     },

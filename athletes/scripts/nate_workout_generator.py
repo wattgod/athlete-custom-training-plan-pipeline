@@ -40,7 +40,25 @@ Notes
 -----
 G-Spot (87-92% FTP) replaces Sweet Spot throughout this generator.
 
-Version: 2.0 (Full Methodology Support)
+Blended/Mixed Workout Philosophy
+--------------------------------
+Real gravel racing requires varied efforts. Key workouts should blend multiple dimensions:
+- Power zones: Mix Z2, Z3, Z4, Z5+ within single workouts
+- Cadence: Low (<70rpm climbing), normal (85-95rpm), high (>100rpm spins)
+- Position: Seated grinding, standing attacks, aero recovery
+- Effort pattern: Steady, surging, attack/recover
+- Terrain sim: Sustained climbs, rolling intervals, recovery valleys
+
+Recommended archetypes for blended training:
+- G-Spot Criss-Cross: High/low alternation within G-Spot zone
+- Variable Pace Chaos: Unpredictable power changes like real racing
+- Breakaway Sim: Attack-and-hold patterns
+- Terrain Simulation: Variable power within Z2 for rolling courses
+- Race Simulation: Full race-like effort patterns
+
+ALL methodologies should include some Z5+ work (VO2max/Anaerobic) for top-end fitness.
+
+Version: 2.1 (Blended Workout Support)
 """
 
 import html
