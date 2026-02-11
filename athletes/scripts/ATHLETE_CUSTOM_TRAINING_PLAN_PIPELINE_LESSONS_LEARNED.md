@@ -204,14 +204,17 @@ Documentation:
    - Protocol: Add heat stress 4-8 weeks before race via extra layers, sauna, or hot environment
    - Applied universally - not just for high altitude races
 
-### Bug #10: Training Guide Template Changed Unexpectedly (Feb 2026)
-1. **Problem:** Regenerating workouts also regenerated training_guide.html with wrong template
-2. The guide in main directory got overwritten with new "brand tokens" template
-3. Original guide used simple Sometype Mono styling; new one had brand color system
-4. **Fix:** Restored from `plans/current/training_guide.html` backup
-5. **Rule:** Training guide in `plans/current/` is the APPROVED version
-6. **Rule:** DO NOT regenerate training guide unless explicitly requested
-7. **Rule:** NO emojis, NO brand token CSS, keep simple monospace styling
+### Bug #10: Training Guide Template Confusion (Feb 2026)
+1. **Problem:** Multiple training guide versions caused confusion about which was correct
+2. **Resolution:** The CORRECT format is the brand-styled version with:
+   - Source Serif 4 (editorial) + Sometype Mono (data) fonts
+   - Brand token CSS (warm browns, gold, teal accents)
+   - Two-voice typography (serif for prose, mono for labels/data)
+   - Full content sections (Training Brief, Fundamentals, Zones, etc.)
+3. **Reference file:** `/Users/mattirowe/Downloads/benjy-duke-package/training_guide.html`
+4. **PDF generation:** Use Chrome headless: `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --print-to-pdf=output.pdf --no-margins file://input.html`
+5. **Rule:** NO emojis anywhere in the guide
+6. **Rule:** DO NOT auto-regenerate guide when regenerating workouts
 
 ## Prevention
 
