@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}{{ profile.name }} - Gravel God{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+    <h2 style="margin-bottom: 0; border-bottom: none; padding-bottom: 0;">{{ profile.name }}</h2>
+    <div>
+        {% if outputs.has_dashboard %}
+        <a href="{{ url_for('athlete_dashboard', athlete_id=athlete_id) }}" class="btn secondary" target="_blank">Dashboard</a>
+        {% endif %}
+        {% if outputs.has_guide %}
+        <a href="{{ url_for('athlete_guide', athlete_id=athlete_id) }}" class="btn secondary" target="_blank">Training Guide</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="grid grid-2">
+    <!-- Profile Card -->
+    <div class="card">
+        <div class="card-header">Profile</div>
+        <table>
+            <tr><td><strong>Email</strong></td><td>{{ profile.email or '—' }}</td></tr>
+            <tr><td><strong>Age</strong></td><td>{{ profile.age or '—' }}</td></tr>
+            <tr><td><strong>Weight</strong></td><td>{{ profile.fitness_markers.weight_kg if profile.fitness_markers else '—' }} kg</td></tr>
+            <tr><td><strong>FTP</strong></td><td>{{ profile.fitness_markers.ftp_watts if profile.fitness_markers else '—' }} W</td></tr>
+        </table>
+    </div>
+
+    <!-- Target Race Card -->
+    <div class="card">
+        <div class="card-header">Target Race</div>
+        <table>
+            <tr><td><strong>Race</strong></td><td>{{ profile.target_race.name if profile.target_race else '—' }}</td></tr>
+            <tr><td><strong>Date</strong></td><td>{{ profile.target_race.date if profile.target_race else '—' }}</td></tr>
+            <tr><td><strong>Distance</strong></td><td>{{ profile.target_race.distance_miles if profile.target_race else '—' }} miles</td></tr>
+            <tr><td><strong>Elevation</strong></td><td>{{ profile.target_race.elevation_gain_ft if profile.target_race else '—' }} ft</td></tr>
+        </table>
+    </div>
+</div>
+
+<!-- Derived Classifications -->
+{% if derived %}
+<div class="card" style="margin-top: 16px;">
+    <div class="card-header">Classifications</div>
+    <div class="grid grid-3">
+        <div>
+            <strong>Tier:</strong>
+            <span class="badge">{{ derived.tier or '—' }}</span>
+        </div>
+        <div>
+            <strong>Plan Weeks:</strong>
+            {{ derived.plan_weeks or '—' }}
+        </div>
+        <div>
+            <strong>W/kg:</strong>
+            {{ "%.2f"|format(derived.w_per_kg) if derived.w_per_kg else '—' }}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Methodology -->
+{% if methodology %}
+<div class="card" style="margin-top: 16px;">
+    <div class="card-header">Methodology</div>
+    <p><strong>{{ methodology.name or methodology.selected or '—' }}</strong></p>
+    {% if methodology.philosophy %}
+    <p style="color: var(--muted); font-size: 13px;">{{ methodology.philosophy }}</p>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Weekly Structure -->
+{% if weekly_structure %}
+<div class="card" style="margin-top: 16px;">
+    <div class="card-header">Weekly Structure</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Day</th>
+                <th>Workout Type</th>
+                <th>Duration</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] %}
+            {% if weekly_structure.days and weekly_structure.days[day] %}
+            <tr>
+                <td>{{ day|capitalize }}</td>
+                <td>{{ weekly_structure.days[day].type or '—' }}</td>
+                <td>{{ weekly_structure.days[day].duration_min or '—' }} min</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- Pipeline Controls -->
+<div class="card" style="margin-top: 24px;">
+    <div class="card-header">Pipeline Controls</div>
+
+    <div style="margin-bottom: 16px;">
+        <h3>Output Status</h3>
+        <div class="grid grid-3" style="margin-top: 8px;">
+            <div>
+                <span class="badge {{ 'success' if outputs.has_derived else '' }}">
+                    {{ '✓' if outputs.has_derived else '○' }} Derived
+                </span>
+            </div>
+            <div>
+                <span class="badge {{ 'success' if outputs.has_methodology else '' }}">
+                    {{ '✓' if outputs.has_methodology else '○' }} Methodology
+                </span>
+            </div>
+            <div>
+                <span class="badge {{ 'success' if outputs.has_fueling else '' }}">
+                    {{ '✓' if outputs.has_fueling else '○' }} Fueling
+                </span>
+            </div>
+            <div>
+                <span class="badge {{ 'success' if outputs.has_weekly_structure else '' }}">
+                    {{ '✓' if outputs.has_weekly_structure else '○' }} Structure
+                </span>
+            </div>
+            <div>
+                <span class="badge {{ 'success' if outputs.has_workouts else '' }}">
+                    {{ '✓' if outputs.has_workouts else '○' }} Workouts
+                </span>
+            </div>
+            <div>
+                <span class="badge {{ 'success' if outputs.has_guide else '' }}">
+                    {{ '✓' if outputs.has_guide else '○' }} Guide
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-top: 24px;">
+        <h3>Run Pipeline</h3>
+        <div style="margin-top: 12px;">
+            <button class="btn" onclick="runFullPipeline()">Generate Full Package</button>
+        </div>
+
+        <div style="margin-top: 16px;">
+            <h3 style="font-size: 12px;">Individual Steps</h3>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">
+                <button class="btn secondary" onclick="runStep('validate')">Validate</button>
+                <button class="btn secondary" onclick="runStep('derive')">Derive</button>
+                <button class="btn secondary" onclick="runStep('methodology')">Methodology</button>
+                <button class="btn secondary" onclick="runStep('fueling')">Fueling</button>
+                <button class="btn secondary" onclick="runStep('structure')">Structure</button>
+                <button class="btn secondary" onclick="runStep('workouts')">Workouts</button>
+                <button class="btn secondary" onclick="runStep('guide')">Guide</button>
+                <button class="btn secondary" onclick="runStep('dashboard')">Dashboard</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="pipeline-output" style="margin-top: 24px; display: none;">
+        <h3>Output</h3>
+        <pre id="output-content" style="background: var(--soft); padding: 16px; border: 1px solid var(--border); overflow-x: auto; font-size: 12px; max-height: 300px; overflow-y: auto;"></pre>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const athleteId = "{{ athlete_id }}";
+
+function showOutput(content) {
+    const outputDiv = document.getElementById('pipeline-output');
+    const outputContent = document.getElementById('output-content');
+    outputDiv.style.display = 'block';
+    outputContent.textContent = content;
+}
+
+async function runFullPipeline() {
+    showOutput('Running full pipeline...');
+    try {
+        const response = await fetch(`/api/athlete/${athleteId}/generate`, { method: 'POST' });
+        const data = await response.json();
+
+        let output = data.success ? 'SUCCESS\n\n' : 'FAILED\n\n';
+        for (const result of data.results) {
+            output += `${result.step}: ${result.success ? 'OK' : 'FAILED'}\n`;
+            if (result.output) {
+                output += `  ${result.output}\n`;
+            }
+        }
+        showOutput(output);
+
+        if (data.success) {
+            setTimeout(() => location.reload(), 1500);
+        }
+    } catch (error) {
+        showOutput(`Error: ${error.message}`);
+    }
+}
+
+async function runStep(stepName) {
+    showOutput(`Running ${stepName}...`);
+    try {
+        const response = await fetch(`/api/athlete/${athleteId}/step/${stepName}`, { method: 'POST' });
+        const data = await response.json();
+        showOutput(data.success ? `SUCCESS\n\n${data.output}` : `FAILED\n\n${data.output}`);
+
+        if (data.success) {
+            setTimeout(() => location.reload(), 1500);
+        }
+    } catch (error) {
+        showOutput(`Error: ${error.message}`);
+    }
+}
+</script>
+{% endblock %}

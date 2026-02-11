@@ -1,0 +1,4 @@
+flask>=2.0.0
+pyyaml>=6.0
+gunicorn>=21.0.0
+stripe>=7.0.0

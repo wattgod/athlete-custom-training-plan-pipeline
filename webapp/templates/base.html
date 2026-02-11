@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Gravel God{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sometype+Mono:wght@400;500;600;700&family=Source+Serif+4:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Gravel God Brand Tokens */
+        :root {
+            /* Colors */
+            --gg-color-dark-brown: #3a2e25;
+            --gg-color-primary-brown: #59473c;
+            --gg-color-secondary-brown: #8c7568;
+            --gg-color-warm-brown: #A68E80;
+            --gg-color-tan: #d4c5b9;
+            --gg-color-sand: #ede4d8;
+            --gg-color-warm-paper: #f5efe6;
+            --gg-color-gold: #B7950B;
+            --gg-color-light-gold: #c9a92c;
+            --gg-color-teal: #1A8A82;
+            --gg-color-light-teal: #4ECDC4;
+            --gg-color-near-black: #1a1613;
+            --gg-color-white: #ffffff;
+            --gg-color-error: #c0392b;
+
+            /* Fonts */
+            --gg-font-data: 'Sometype Mono', monospace;
+            --gg-font-editorial: 'Source Serif 4', Georgia, serif;
+
+            /* Font Sizes */
+            --gg-font-size-xs: 13px;
+            --gg-font-size-sm: 14px;
+            --gg-font-size-base: 16px;
+            --gg-font-size-md: 18px;
+            --gg-font-size-lg: 20px;
+            --gg-font-size-xl: 24px;
+            --gg-font-size-2xl: 28px;
+
+            /* Spacing */
+            --gg-spacing-xs: 8px;
+            --gg-spacing-sm: 12px;
+            --gg-spacing-md: 16px;
+            --gg-spacing-lg: 24px;
+            --gg-spacing-xl: 32px;
+            --gg-spacing-2xl: 48px;
+
+            /* Borders - NO BORDER RADIUS */
+            --gg-border-subtle: 2px solid var(--gg-color-dark-brown);
+            --gg-border-standard: 3px solid var(--gg-color-dark-brown);
+            --gg-border-gold: 3px solid var(--gg-color-gold);
+
+            /* Transitions */
+            --gg-transition: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--gg-font-data);
+            background: var(--gg-color-sand);
+            color: var(--gg-color-near-black);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: var(--gg-spacing-lg);
+        }
+
+        header {
+            border-bottom: var(--gg-border-standard);
+            padding-bottom: var(--gg-spacing-md);
+            margin-bottom: var(--gg-spacing-xl);
+        }
+
+        header h1 {
+            font-family: var(--gg-font-editorial);
+            font-size: var(--gg-font-size-xl);
+            font-weight: 700;
+            color: var(--gg-color-dark-brown);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        header nav {
+            margin-top: var(--gg-spacing-sm);
+        }
+
+        header nav a {
+            color: var(--gg-color-primary-brown);
+            text-decoration: none;
+            margin-right: var(--gg-spacing-lg);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: var(--gg-font-size-xs);
+            letter-spacing: 1px;
+            transition: color var(--gg-transition);
+        }
+
+        header nav a:hover {
+            color: var(--gg-color-teal);
+        }
+
+        .flash-messages {
+            margin-bottom: var(--gg-spacing-lg);
+        }
+
+        .flash {
+            padding: var(--gg-spacing-sm) var(--gg-spacing-md);
+            border: var(--gg-border-subtle);
+            margin-bottom: var(--gg-spacing-xs);
+            font-size: var(--gg-font-size-sm);
+        }
+
+        .flash.success {
+            background: var(--gg-color-warm-paper);
+            border-color: var(--gg-color-teal);
+        }
+
+        .flash.error {
+            background: var(--gg-color-warm-paper);
+            border-color: var(--gg-color-error);
+        }
+
+        .flash.warning {
+            background: var(--gg-color-warm-paper);
+            border-color: var(--gg-color-gold);
+        }
+
+        h2 {
+            font-family: var(--gg-font-editorial);
+            font-size: var(--gg-font-size-lg);
+            font-weight: 700;
+            color: var(--gg-color-dark-brown);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: var(--gg-spacing-md);
+            padding-bottom: var(--gg-spacing-xs);
+            border-bottom: var(--gg-border-subtle);
+        }
+
+        h3 {
+            font-family: var(--gg-font-data);
+            font-size: var(--gg-font-size-sm);
+            font-weight: 600;
+            color: var(--gg-color-gold);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: var(--gg-spacing-sm);
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: var(--gg-color-primary-brown);
+            color: var(--gg-color-white);
+            border: var(--gg-border-subtle);
+            border-color: var(--gg-color-dark-brown);
+            font-family: var(--gg-font-data);
+            font-size: var(--gg-font-size-xs);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background-color var(--gg-transition), color var(--gg-transition);
+        }
+
+        .btn:hover {
+            background: var(--gg-color-dark-brown);
+            color: var(--gg-color-white);
+        }
+
+        .btn.secondary {
+            background: var(--gg-color-warm-paper);
+            color: var(--gg-color-dark-brown);
+        }
+
+        .btn.secondary:hover {
+            background: var(--gg-color-tan);
+        }
+
+        .btn.success {
+            background: var(--gg-color-teal);
+            border-color: var(--gg-color-teal);
+        }
+
+        .btn.success:hover {
+            background: #147a73;
+        }
+
+        .card {
+            background: var(--gg-color-warm-paper);
+            border: var(--gg-border-subtle);
+            padding: var(--gg-spacing-lg);
+            margin-bottom: var(--gg-spacing-md);
+        }
+
+        .card-header {
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: var(--gg-font-size-xs);
+            letter-spacing: 1px;
+            color: var(--gg-color-gold);
+            margin-bottom: var(--gg-spacing-sm);
+            padding-bottom: var(--gg-spacing-xs);
+            border-bottom: 1px solid var(--gg-color-tan);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            text-align: left;
+            padding: var(--gg-spacing-sm);
+            border-bottom: 1px solid var(--gg-color-tan);
+        }
+
+        th {
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 1px;
+            color: var(--gg-color-secondary-brown);
+            background: var(--gg-color-sand);
+        }
+
+        tr:hover {
+            background: var(--gg-color-sand);
+        }
+
+        a {
+            color: var(--gg-color-teal);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border: 1px solid var(--gg-color-dark-brown);
+            background: var(--gg-color-warm-paper);
+        }
+
+        .badge.success {
+            background: var(--gg-color-light-teal);
+            border-color: var(--gg-color-teal);
+            color: var(--gg-color-near-black);
+        }
+
+        .badge.warning {
+            background: var(--gg-color-light-gold);
+            border-color: var(--gg-color-gold);
+            color: var(--gg-color-near-black);
+        }
+
+        .badge.error {
+            background: #f5d0cc;
+            border-color: var(--gg-color-error);
+        }
+
+        .grid {
+            display: grid;
+            gap: var(--gg-spacing-md);
+        }
+
+        .grid-2 {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .grid-3 {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        @media (max-width: 768px) {
+            .grid-2, .grid-3 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .form-group {
+            margin-bottom: var(--gg-spacing-md);
+        }
+
+        .form-group label {
+            display: block;
+            font-size: var(--gg-font-size-xs);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--gg-color-secondary-brown);
+            margin-bottom: 6px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: var(--gg-border-subtle);
+            font-family: var(--gg-font-data);
+            font-size: var(--gg-font-size-sm);
+            background: var(--gg-color-white);
+            color: var(--gg-color-near-black);
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--gg-color-teal);
+        }
+
+        footer {
+            margin-top: var(--gg-spacing-2xl);
+            padding-top: var(--gg-spacing-lg);
+            border-top: var(--gg-border-subtle);
+            text-align: center;
+            font-size: 11px;
+            color: var(--gg-color-secondary-brown);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        /* Ensure NO border-radius anywhere */
+        *, *::before, *::after {
+            border-radius: 0 !important;
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Gravel God</h1>
+            <nav>
+                <a href="{{ url_for('index') }}">Athletes</a>
+                <a href="{{ url_for('new_athlete') }}">New Athlete</a>
+            </nav>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <main>
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer>
+            Gravel God Training Systems
+        </footer>
+    </div>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

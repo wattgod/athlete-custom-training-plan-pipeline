@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Athletes - Gravel God{% endblock %}
+
+{% block content %}
+<h2>Athletes</h2>
+
+{% if athletes %}
+<table>
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Target Race</th>
+            <th>Race Date</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for athlete in athletes %}
+        <tr>
+            <td><a href="{{ url_for('athlete_detail', athlete_id=athlete.id) }}">{{ athlete.name }}</a></td>
+            <td>{{ athlete.email or '—' }}</td>
+            <td>{{ athlete.race }}</td>
+            <td>{{ athlete.race_date or '—' }}</td>
+            <td>
+                <a href="{{ url_for('athlete_detail', athlete_id=athlete.id) }}" class="btn secondary">View</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="card">
+    <p>No athletes found. <a href="{{ url_for('new_athlete') }}">Create your first athlete</a>.</p>
+</div>
+{% endif %}
+{% endblock %}

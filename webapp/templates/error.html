@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}Error {{ code }} - Gravel God{% endblock %}
+
+{% block content %}
+<div style="text-align: center; padding: var(--gg-spacing-2xl) 0;">
+    <h2 style="border-bottom: none; font-size: var(--gg-font-size-3xl, 42px);">{{ code }}</h2>
+    <p style="color: var(--gg-color-secondary-brown); margin-top: var(--gg-spacing-md);">{{ error }}</p>
+    <a href="{{ url_for('index') }}" class="btn" style="margin-top: var(--gg-spacing-lg);">Back to Home</a>
+</div>
+{% endblock %}
