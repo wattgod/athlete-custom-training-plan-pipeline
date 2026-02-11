@@ -194,15 +194,15 @@ Documentation:
    - **Personal Header:** All workouts now include athlete first name, week X of Y, weeks to race countdown
    - **Phase Context:** Each workout shows current phase (BASE, BUILD, PEAK, TAPER, RACE)
    - **Progression Notes:** Shows progression level (1-6) with description of current training focus
-   - **Heat Acclimation:** For races >= 5000ft elevation, adds heat training reminders 4-8 weeks before race
+   - **Heat Acclimation:** ALL athletes get heat training reminders 4-8 weeks before race (independent of altitude)
 4. **Code Changes:**
    - `generate_athlete_package.py`: Added `generate_rest_day_zwo()` function
    - `generate_athlete_package.py`: Added personal header injection with athlete name, countdown, phase
-   - `generate_athlete_package.py`: Added heat acclimation protocol check based on `race_elevation_ft`
-5. **Note on Heat Acclimation:** Requires `race_elevation_ft` field in derived.yaml or a race database
-   - SBT GRVL: 6,732 ft (qualifies)
-   - BWR: 2,000 ft (does not qualify)
-   - Leadville: 10,152 ft (qualifies)
+   - `generate_athlete_package.py`: Added heat acclimation protocol for ALL races (not altitude-dependent)
+5. **Note on Heat Acclimation:** Heat acclimation benefits ALL athletes regardless of race elevation
+   - Improves thermoregulation, plasma volume, sweat rate
+   - Protocol: Add heat stress 4-8 weeks before race via extra layers, sauna, or hot environment
+   - Applied universally - not just for high altitude races
 
 ## Prevention
 

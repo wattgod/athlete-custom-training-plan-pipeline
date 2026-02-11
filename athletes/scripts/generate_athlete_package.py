@@ -219,6 +219,14 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     nate_methodology = METHODOLOGY_MAP.get(methodology_id, 'POLARIZED')
     total_weeks = plan_dates.get('plan_weeks', 12)
 
+    # Extract athlete context for personalized workouts
+    athlete_name = profile.get('name', 'Athlete').split()[0] if profile else 'Athlete'  # First name only
+    target_race = profile.get('target_race', {}) if profile else {}
+    race_name = target_race.get('name', 'A Event')
+    race_date = plan_dates.get('race_date', '')
+    # Heat acclimation benefits ALL athletes regardless of race elevation
+    needs_heat_training = True
+
     weeks = plan_dates.get('weeks', [])
 
     # Build athlete-specific weekly structure from profile
@@ -651,12 +659,40 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
             workout_type, description, duration, power = workout_template
 
-            # Skip rest days and unavailable days FIRST (before FTP injection)
+            # Generate Rest days as 1-min workouts with personalized instructions
             if workout_type == 'Rest' or duration == 0:
-                # But track if we're skipping a potential FTP test day
-                if week_num == 1 and day_abbrev == 'Fri':
-                    # FTP test needs alternate day - will use Thu or Sat
-                    pass
+                weeks_to_race = total_weeks - week_num + 1
+                rest_description = f"""REST DAY - {athlete_name}
+
+COUNTDOWN: {weeks_to_race} weeks to {race_name}
+
+TODAY'S FOCUS:
+- Complete rest from cycling
+- Active recovery allowed: walking, light stretching, yoga
+- Prioritize sleep (7-9 hours)
+
+RECOVERY CHECKLIST:
+- Hydration: 2-3L water minimum
+- Nutrition: Quality protein with each meal
+- Mobility: 10-15 min light stretching if desired
+- Mental: Visualize your race success
+
+PHASE: {phase.upper()}
+Week {week_num} of {total_weeks}
+
+Remember: Adaptation happens during rest, not during training.
+Trust the process, {athlete_name}."""
+
+                rest_blocks = '    <SteadyState Duration="60" Power="0.30"/>\n'
+                rest_content = ZWO_TEMPLATE.format(
+                    name=f"{workout_prefix}_Rest",
+                    description=rest_description,
+                    blocks=rest_blocks
+                )
+                filepath = zwo_dir / f"{workout_prefix}_Rest.zwo"
+                with open(filepath, 'w') as f:
+                    f.write(rest_content)
+                generated_files.append(filepath)
                 continue
 
             # FTP TEST INJECTION:
@@ -732,7 +768,26 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                         workout_name=workout_name
                     )
                     if zwo_content:
-                        # Write directly - Nate generator produces complete ZWO
+                        # Inject personalized header into description
+                        weeks_to_race = total_weeks - week_num + 1
+                        personal_header = f"{athlete_name} - Week {week_num}/{total_weeks} - {weeks_to_race} weeks to {race_name}\nPhase: {phase.upper()}\n\n"
+
+                        # Add heat training reminder (weeks 4-8 before race)
+                        heat_reminder = ""
+                        if needs_heat_training and 4 <= weeks_to_race <= 8:
+                            heat_reminder = "\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance\n\n"
+
+                        # Insert header after <description> tag
+                        zwo_content = zwo_content.replace(
+                            '<description>',
+                            f'<description>{personal_header}',
+                            1
+                        )
+                        # Insert heat reminder before EXECUTION if applicable
+                        if heat_reminder and 'EXECUTION:' in zwo_content:
+                            zwo_content = zwo_content.replace('EXECUTION:', f'{heat_reminder}EXECUTION:')
+
+                        # Write the personalized content
                         filepath = zwo_dir / f"{workout_name}.zwo"
                         with open(filepath, 'w') as f:
                             f.write(zwo_content)
@@ -765,6 +820,17 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 continue  # Skip if generator returned None
 
             filename = f"{workout_name}.zwo"
+
+            # Add personalized header to description
+            weeks_to_race = total_weeks - week_num + 1
+            personal_header = f"{athlete_name} - Week {week_num}/{total_weeks} - {weeks_to_race} weeks to {race_name}\nPhase: {phase.upper()}\n\n"
+
+            # Add heat training reminder (weeks 4-8 before race)
+            heat_reminder = ""
+            if needs_heat_training and 4 <= weeks_to_race <= 8:
+                heat_reminder = "\n\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance"
+
+            full_description = personal_header + full_description + heat_reminder
 
             # Create ZWO content
             zwo_content = ZWO_TEMPLATE.format(
