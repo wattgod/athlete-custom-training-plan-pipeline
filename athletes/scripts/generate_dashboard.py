@@ -19,7 +19,33 @@ from datetime import datetime, date
 from typing import Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
-from constants import DAY_ORDER_FULL, get_athlete_file, get_athlete_current_plan_dir
+from constants import DAY_ORDER_FULL, get_athlete_file, get_athlete_current_plan_dir, load_athlete_yaml
+
+
+def _load_dashboard_data(athlete_id: str) -> Dict:
+    """Load all data needed for dashboard generation."""
+    profile_path = get_athlete_file(athlete_id, "profile.yaml")
+    if not profile_path.exists():
+        raise FileNotFoundError(f"Profile not found: {profile_path}")
+
+    with open(profile_path, 'r') as f:
+        profile = yaml.safe_load(f)
+
+    derived = load_athlete_yaml(athlete_id, "derived.yaml") or {}
+    weekly_structure = load_athlete_yaml(athlete_id, "weekly_structure.yaml") or {}
+
+    plan_config_path = get_athlete_current_plan_dir(athlete_id) / "plan_config.yaml"
+    plan_config = {}
+    if plan_config_path.exists():
+        with open(plan_config_path, 'r') as f:
+            plan_config = yaml.safe_load(f)
+
+    return {
+        'profile': profile,
+        'derived': derived,
+        'weekly_structure': weekly_structure,
+        'plan_config': plan_config,
+    }
 
 
 def calculate_days_until(date_str: Optional[str]) -> Optional[int]:
@@ -249,31 +275,11 @@ def generate_dashboard(athlete_id: str) -> Path:
     Generate coach-first Neo-Brutalist dashboard for athlete.
     """
     # Load data
-    profile_path = get_athlete_file(athlete_id, "profile.yaml")
-    derived_path = get_athlete_file(athlete_id, "derived.yaml")
-    weekly_structure_path = get_athlete_file(athlete_id, "weekly_structure.yaml")
+    data = _load_dashboard_data(athlete_id)
+    profile = data['profile']
+    derived = data['derived']
+    weekly_structure = data['weekly_structure']
 
-    if not profile_path.exists():
-        raise FileNotFoundError(f"Profile not found: {profile_path}")
-    with open(profile_path, 'r') as f:
-        profile = yaml.safe_load(f)
-
-    derived = {}
-    if derived_path.exists():
-        with open(derived_path, 'r') as f:
-            derived = yaml.safe_load(f)
-
-    weekly_structure = {}
-    if weekly_structure_path.exists():
-        with open(weekly_structure_path, 'r') as f:
-            weekly_structure = yaml.safe_load(f)
-
-    plan_config_path = get_athlete_current_plan_dir(athlete_id) / "plan_config.yaml"
-    plan_config = {}
-    if plan_config_path.exists():
-        with open(plan_config_path, 'r') as f:
-            plan_config = yaml.safe_load(f)
-    
     name = profile.get('name', athlete_id)
     email = profile.get('email', '')
     target_race = profile.get("target_race", {})

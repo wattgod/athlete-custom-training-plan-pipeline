@@ -39,6 +39,21 @@ sys.path.insert(0, str(Path(__file__).parent))
 from constants import get_athlete_file
 
 
+def _load_methodologies() -> Dict:
+    """Load methodology definitions from YAML config."""
+    config_path = Path(__file__).parent / "config" / "methodologies.yaml"
+    if config_path.exists():
+        with open(config_path, 'r') as f:
+            data = yaml.safe_load(f)
+            # Convert ideal_hours from list to tuple for compatibility
+            for key, method in data.items():
+                if isinstance(method.get('ideal_hours'), list):
+                    method['ideal_hours'] = tuple(method['ideal_hours'])
+            return data
+    # Fallback to inline definition if config missing
+    return _METHODOLOGIES_FALLBACK
+
+
 @dataclass
 class MethodologyCandidate:
     """Represents a candidate methodology with scoring."""
@@ -49,8 +64,8 @@ class MethodologyCandidate:
     configuration: Dict
 
 
-# Methodology definitions with selection criteria
-METHODOLOGIES = {
+# Fallback methodology definitions (used if config/methodologies.yaml missing)
+_METHODOLOGIES_FALLBACK = {
     "traditional_pyramidal": {
         "name": "Traditional (Pyramidal)",
         "description": "Build large aerobic base, then sharpen with intensity",
@@ -222,6 +237,9 @@ METHODOLOGIES = {
         "testing_frequency": "signal_triggered"
     }
 }
+
+# Load from YAML config, fall back to inline definition
+METHODOLOGIES = _load_methodologies() if Path(Path(__file__).parent / "config" / "methodologies.yaml").exists() else _METHODOLOGIES_FALLBACK
 
 
 def calculate_methodology_score(

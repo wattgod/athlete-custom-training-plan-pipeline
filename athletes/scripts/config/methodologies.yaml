@@ -1,0 +1,183 @@
+# Training Methodology Definitions
+# Used by select_methodology.py for athlete plan generation
+
+traditional_pyramidal:
+  name: "Traditional (Pyramidal)"
+  description: "Build large aerobic base, then sharpen with intensity"
+  philosophy: "Volume → intensity → density → specificity"
+  min_hours: 10
+  max_hours: 30
+  ideal_hours: [12, 20]
+  best_for: ["long_events", "durability", "predictable_performance"]
+  not_for: ["time_crunched", "short_events", "low_volume"]
+  experience_required: "intermediate"
+  stress_tolerance: "moderate"
+  schedule_flexibility: "moderate"
+  intensity_distribution:
+    z1_z2: 0.75
+    z3: 0.15
+    z4_z5: 0.10
+  strength_approach: "heavy_base_maintenance_build"
+  key_workouts: ["long_z2", "tempo_progression", "threshold_intervals"]
+  progression_style: "volume_then_intensity"
+  testing_frequency: "phase_end"
+
+polarized_80_20:
+  name: "Polarized (80/20)"
+  description: "Most training easy, small amount very hard, minimal middle zone"
+  philosophy: "Hard/easy separation maximizes adaptation"
+  min_hours: 8
+  max_hours: 20
+  ideal_hours: [10, 15]
+  best_for: ["tolerance_building", "recovery_friendly", "structured_athletes"]
+  not_for: ["very_low_volume", "sprint_specialists"]
+  experience_required: "intermediate"
+  stress_tolerance: "high"
+  schedule_flexibility: "moderate"
+  intensity_distribution:
+    z1_z2: 0.80
+    z3: 0.00
+    z4_z5: 0.20
+  strength_approach: "year_round_heavy_explosive"
+  key_workouts: ["long_z2", "vo2max_intervals", "threshold_repeats"]
+  progression_style: "increase_hard_work_maintain_ratio"
+  testing_frequency: "4_6_weeks"
+
+sweet_spot_threshold:
+  name: "Sweet Spot / Threshold"
+  description: "Emphasize sub-threshold intervals to maximize FTP"
+  philosophy: "Time-efficient threshold focus"
+  min_hours: 6
+  max_hours: 12
+  ideal_hours: [7, 10]
+  best_for: ["ftp_gains", "time_efficient", "indoor_training"]
+  not_for: ["ultra_endurance", "durability_focus"]
+  experience_required: "beginner"
+  stress_tolerance: "moderate"
+  schedule_flexibility: "high"
+  intensity_distribution:
+    z1_z2: 0.50
+    z3: 0.35
+    z4_z5: 0.15
+  strength_approach: "optional_short_efficient"
+  key_workouts: ["sweet_spot_intervals", "over_unders", "tempo_blocks"]
+  progression_style: "increase_density"
+  testing_frequency: "4_6_weeks"
+
+hiit_focused:
+  name: "HIIT-Focused"
+  description: "Frequent maximal intervals, minimal volume"
+  philosophy: "Leverage high-intensity stimulus with minimal time"
+  min_hours: 3
+  max_hours: 6
+  ideal_hours: [4, 6]
+  best_for: ["time_crunched", "short_events", "existing_fitness"]
+  not_for: ["beginners", "ultra_endurance", "durability_building"]
+  experience_required: "intermediate"
+  stress_tolerance: "low"
+  schedule_flexibility: "high"
+  intensity_distribution:
+    z1_z2: 0.30
+    z3: 0.20
+    z4_z5: 0.50
+  strength_approach: "crucial_max_power"
+  key_workouts: ["vo2max_intervals", "tabata", "sprint_repeats"]
+  progression_style: "increase_intensity_not_volume"
+  testing_frequency: "block_end"
+
+block_periodization:
+  name: "Block Periodization"
+  description: "Target one capacity intensely per block, then shift focus"
+  philosophy: "Concentrated overload → consolidation → next capacity"
+  min_hours: 10
+  max_hours: 25
+  ideal_hours: [12, 18]
+  best_for: ["limiter_fixing", "advanced_athletes", "specific_goals"]
+  not_for: ["beginners", "many_races", "inconsistent_schedule"]
+  experience_required: "advanced"
+  stress_tolerance: "high"
+  schedule_flexibility: "low"
+  intensity_distribution: "block_dependent"
+  strength_approach: "separate_block"
+  key_workouts: ["block_specific"]
+  progression_style: "overload_consolidation_staircase"
+  testing_frequency: "block_end"
+
+reverse_periodization:
+  name: "Reverse Periodization"
+  description: "Intensity early, volume later"
+  philosophy: "Build top-end first, then extend durability"
+  min_hours: 6
+  max_hours: 15
+  ideal_hours: [8, 12]
+  best_for: ["winter_constrained", "short_leadup", "indoor_start"]
+  not_for: ["ultra_events", "big_base_needed"]
+  experience_required: "intermediate"
+  stress_tolerance: "moderate"
+  schedule_flexibility: "moderate"
+  intensity_distribution:
+    early:
+      z4_z5: 0.30
+    late:
+      z1_z2: 0.75
+  strength_approach: "early_max_then_maintenance"
+  key_workouts: ["early_vo2max", "late_long_rides"]
+  progression_style: "intensity_then_volume"
+  testing_frequency: "transition_points"
+
+autoregulated_hrv:
+  name: "Autoregulated (HRV-Based)"
+  description: "Use daily readiness to adjust intensity/volume"
+  philosophy: "Train hard when ready, back off when not"
+  min_hours: 6
+  max_hours: 20
+  ideal_hours: [8, 15]
+  best_for: ["variable_stress", "masters", "recovery_sensitive"]
+  not_for: ["rigid_schedule", "beginners_needing_structure"]
+  experience_required: "intermediate"
+  stress_tolerance: "variable"
+  schedule_flexibility: "very_high"
+  intensity_distribution: "readiness_dependent"
+  strength_approach: "autoregulated_heavy_when_ready"
+  key_workouts: ["readiness_driven"]
+  progression_style: "guided_by_readiness"
+  testing_frequency: "green_days"
+
+maf_low_hr:
+  name: "MAF / Low-HR (LT1)"
+  description: "Build aerobic engine by staying under LT1"
+  philosophy: "Aerobic base through constrained low intensity"
+  min_hours: 8
+  max_hours: 20
+  ideal_hours: [10, 15]
+  best_for: ["base_rebuild", "injury_return", "fat_adaptation"]
+  not_for: ["need_quick_gains", "time_crunched"]
+  experience_required: "beginner"
+  stress_tolerance: "very_high"
+  schedule_flexibility: "high"
+  intensity_distribution:
+    z1_z2: 0.95
+    z3: 0.05
+    z4_z5: 0.00
+  strength_approach: "foundational_mobility_durability"
+  key_workouts: ["long_z2_hr_capped", "aerobic_strides"]
+  progression_style: "duration_at_hr_cap"
+  testing_frequency: "3_4_weeks"
+
+goat_composite:
+  name: "GOAT (Gravel Optimized Adaptive Training)"
+  description: "Integrates pyramidal base, polarized weeks, limiter blocks, autoregulation"
+  philosophy: "Best of all approaches, adapted to athlete and phase"
+  min_hours: 8
+  max_hours: 25
+  ideal_hours: [10, 18]
+  best_for: ["most_athletes", "flexible_adaptive", "gravel_specific"]
+  not_for: ["pure_intuitive", "refuse_monitoring"]
+  experience_required: "intermediate"
+  stress_tolerance: "moderate"
+  schedule_flexibility: "high"
+  intensity_distribution: "phase_adaptive"
+  strength_approach: "integrated_year_round"
+  key_workouts: ["phase_specific_rotating"]
+  progression_style: "block_polarized_volume_modulation"
+  testing_frequency: "signal_triggered"
