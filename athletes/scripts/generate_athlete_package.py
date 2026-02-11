@@ -50,6 +50,7 @@ from workout_library import (
     generate_progressive_endurance_blocks,
     generate_strength_zwo,
 )
+from exercise_lookup import get_video_url
 
 # Get logger
 log = get_logger()
@@ -729,8 +730,15 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 workout_name = f"W{week_num:02d}_{strength_day}_Strength_{strength_workout['name'].replace(' ', '_')}"
                 filename = f"{workout_name}.zwo"
 
-                # Build description with exercises
-                exercises_text = '\n'.join([f"• {ex} - {reps}" for ex, reps in strength_workout['exercises']])
+                # Build description with exercises and video links
+                exercises_lines = []
+                for ex, reps in strength_workout['exercises']:
+                    video_url = get_video_url(ex)
+                    if video_url:
+                        exercises_lines.append(f"• {ex} - {reps}\n  Video: {video_url}")
+                    else:
+                        exercises_lines.append(f"• {ex} - {reps}")
+                exercises_text = '\n'.join(exercises_lines)
                 full_description = f"• FOCUS: {strength_workout['focus']}\n\n• EXERCISES:\n{exercises_text}\n\n• EXECUTION:\nComplete all sets with good form. Rest 60-90 sec between sets."
 
                 zwo_content = ZWO_TEMPLATE.format(
