@@ -1,10 +1,11 @@
 """
 Gravel God Webhook Receiver
 
-Receives WooCommerce/Stripe webhooks after successful payment,
+Receives Stripe webhooks after successful payment,
+creates Stripe Checkout Sessions from questionnaire data,
 triggers the training plan pipeline, and delivers to athlete.
 
-Deploy to: Railway, Render, or Vercel (free tier works)
+Deploy to: Railway
 """
 
 import os
@@ -15,10 +16,12 @@ import fcntl
 import hashlib
 import logging
 import subprocess
+import uuid
+import math
 from pathlib import Path
-from datetime import datetime
-from functools import wraps
+from datetime import datetime, timedelta, date
 from flask import Flask, request, jsonify
+import stripe
 import yaml
 
 app = Flask(__name__)
@@ -41,20 +44,59 @@ IS_PRODUCTION = os.environ.get('FLASK_ENV') == 'production'
 
 WOOCOMMERCE_SECRET = os.environ.get('WOOCOMMERCE_SECRET', '')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
 ATHLETES_DIR = os.environ.get('ATHLETES_DIR', '/app/athletes')
 SCRIPTS_DIR = os.environ.get('SCRIPTS_DIR', '/app/athletes/scripts')
 
+# CORS — only allow requests from our site
+ALLOWED_ORIGINS = ['https://gravelgodcycling.com', 'https://www.gravelgodcycling.com']
+
+# Configure Stripe
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
+
 # Validate required config in production
 if IS_PRODUCTION:
-    if not WOOCOMMERCE_SECRET and not STRIPE_WEBHOOK_SECRET:
-        raise RuntimeError("At least one of WOOCOMMERCE_SECRET or STRIPE_WEBHOOK_SECRET required in production")
+    if not STRIPE_WEBHOOK_SECRET:
+        raise RuntimeError("STRIPE_WEBHOOK_SECRET required in production")
+    if not STRIPE_SECRET_KEY:
+        raise RuntimeError("STRIPE_SECRET_KEY required in production")
 
-# Tier configuration
-TIERS = {
-    'starter': {'max_weeks': 8, 'price': 99},
-    'race_ready': {'max_weeks': 16, 'price': 149},
-    'full_build': {'max_weeks': 52, 'price': 199},
+# Pricing — $15/week computed from race date, capped at $249
+PRICE_PER_WEEK_CENTS = 1500   # $15/week
+PRICE_CAP_CENTS = 24900       # $249 max
+MIN_WEEKS = 4                 # Minimum 4 weeks ($60)
+STRIPE_PRODUCT_NAME = 'Custom Training Plan'
+
+# Pre-built Stripe price IDs (from scripts/create_stripe_products.py)
+# Training plan prices keyed by weeks (4–16, plus 17+ cap)
+TRAINING_PLAN_PRICE_IDS = {
+    4: 'price_1T2ekOLoaHDbEqSqRbpy02qh',
+    5: 'price_1T2ekOLoaHDbEqSqpJx9E1yq',
+    6: 'price_1T2ekOLoaHDbEqSqY1A8y6LK',
+    7: 'price_1T2ekPLoaHDbEqSq7mnndDhP',
+    8: 'price_1T2ekPLoaHDbEqSqevidiXbx',
+    9: 'price_1T2ekPLoaHDbEqSqkTTpr9dN',
+    10: 'price_1T2ekQLoaHDbEqSqJr4wjnF8',
+    11: 'price_1T2ekQLoaHDbEqSqJFJBGMkS',
+    12: 'price_1T2ekQLoaHDbEqSqScrmfxRF',
+    13: 'price_1T2ekQLoaHDbEqSqZ4o7bj8B',
+    14: 'price_1T2ekRLoaHDbEqSq3q1cniEc',
+    15: 'price_1T2ekRLoaHDbEqSqzhPHsmaP',
+    16: 'price_1T2ekRLoaHDbEqSqFXGSA95u',
+    17: 'price_1T2ekRLoaHDbEqSqgQVjT7FI',  # 17+ weeks (cap)
 }
+
+COACHING_PRICE_IDS = {
+    'min': 'price_1T2ekSLoaHDbEqSqY10rhBJE',   # $199/mo
+    'mid': 'price_1T2ekTLoaHDbEqSqCZ8dLEYk',   # $299/mo
+    'max': 'price_1T2ekULoaHDbEqSqLoY8g0BD',   # $1,200/mo
+}
+
+CONSULTING_PRICE_ID = 'price_1T2ekVLoaHDbEqSq0GGfoBEX'  # $150/hr
+
+# Intake data expiry (24 hours)
+INTAKE_EXPIRY_HOURS = 24
 
 # Pipeline timeout (5 minutes)
 PIPELINE_TIMEOUT = 300
@@ -68,6 +110,14 @@ def set_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-XSS-Protection'] = '1; mode=block'
+
+    # CORS for checkout API (questionnaire form submits cross-origin)
+    origin = request.headers.get('Origin', '')
+    if origin in ALLOWED_ORIGINS or not IS_PRODUCTION:
+        response.headers['Access-Control-Allow-Origin'] = origin or '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+
     return response
 
 
@@ -180,7 +230,6 @@ def verify_stripe_signature(payload: bytes, signature: str) -> bool:
         return True
 
     try:
-        import stripe
         stripe.Webhook.construct_event(payload, signature, STRIPE_WEBHOOK_SECRET)
         return True
     except stripe.error.SignatureVerificationError as e:
@@ -245,6 +294,113 @@ def mark_order_processed(order_id: str, athlete_id: str):
             fcntl.flock(f.fileno(), fcntl.LOCK_UN)
     except IOError as e:
         logger.error(f"Error marking order processed: {e}")
+
+
+# =============================================================================
+# INTAKE STORAGE — Questionnaire data stored temporarily before payment
+# =============================================================================
+
+def get_intake_dir() -> Path:
+    """Get or create the intake storage directory."""
+    intake_dir = Path(ATHLETES_DIR) / '.intake'
+    intake_dir.mkdir(parents=True, exist_ok=True)
+    return intake_dir
+
+
+def store_intake(intake_id: str, data: dict):
+    """Store questionnaire data for later retrieval after payment."""
+    intake_dir = get_intake_dir()
+    intake_file = intake_dir / f'{intake_id}.json'
+
+    with open(intake_file, 'w') as f:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        json.dump({
+            'intake_id': intake_id,
+            'stored_at': datetime.now().isoformat(),
+            'data': data,
+        }, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+    logger.info(f"Stored intake {intake_id}")
+
+
+def load_intake(intake_id: str) -> dict:
+    """Load stored questionnaire data. Returns empty dict if not found."""
+    # Validate intake_id is a valid UUID to prevent path traversal
+    try:
+        uuid.UUID(intake_id)
+    except (ValueError, AttributeError):
+        logger.warning(f"Invalid intake_id format: {intake_id}")
+        return {}
+
+    intake_file = get_intake_dir() / f'{intake_id}.json'
+    if not intake_file.exists():
+        logger.warning(f"Intake not found: {intake_id}")
+        return {}
+
+    try:
+        with open(intake_file, 'r') as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+            content = json.load(f)
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            return content.get('data', {})
+    except (json.JSONDecodeError, IOError) as e:
+        logger.error(f"Error loading intake {intake_id}: {e}")
+        return {}
+
+
+def cleanup_stale_intakes():
+    """Delete intake files older than INTAKE_EXPIRY_HOURS."""
+    intake_dir = get_intake_dir()
+    cutoff = datetime.now() - timedelta(hours=INTAKE_EXPIRY_HOURS)
+    cleaned = 0
+
+    for intake_file in intake_dir.glob('*.json'):
+        try:
+            mtime = datetime.fromtimestamp(intake_file.stat().st_mtime)
+            if mtime < cutoff:
+                intake_file.unlink()
+                cleaned += 1
+        except OSError as e:
+            logger.warning(f"Error cleaning intake file {intake_file}: {e}")
+
+    if cleaned:
+        logger.info(f"Cleaned {cleaned} stale intake files")
+
+
+# =============================================================================
+# PRICE COMPUTATION
+# =============================================================================
+
+def compute_plan_price(race_date_str: str) -> dict:
+    """Compute plan price based on weeks until A-race.
+
+    Returns dict with weeks, price_cents, price_display.
+    $15/week, minimum 4 weeks ($60), capped at $249.
+    """
+    try:
+        race_date = datetime.strptime(race_date_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        # If no valid date, use minimum price
+        return {
+            'weeks': MIN_WEEKS,
+            'price_cents': MIN_WEEKS * PRICE_PER_WEEK_CENTS,
+            'price_display': f'${MIN_WEEKS * PRICE_PER_WEEK_CENTS // 100}',
+        }
+
+    today = date.today()
+    days_until = (race_date - today).days
+    weeks = max(MIN_WEEKS, math.ceil(days_until / 7))
+
+    price_cents = min(weeks * PRICE_PER_WEEK_CENTS, PRICE_CAP_CENTS)
+
+    return {
+        'weeks': weeks,
+        'price_cents': price_cents,
+        'price_display': f'${price_cents // 100}',
+    }
 
 
 # =============================================================================
@@ -314,32 +470,85 @@ def extract_woocommerce_data(data: dict) -> dict:
 
 
 def extract_stripe_data(data: dict) -> dict:
-    """Extract athlete info from Stripe checkout session."""
+    """Extract athlete info from Stripe checkout session.
+
+    If an intake_id is present in metadata, loads the full questionnaire
+    data from the intake store (rich data from the form). Otherwise falls
+    back to extracting from Stripe metadata (sparse).
+    """
     session = data.get('data', {}).get('object', {})
     metadata = session.get('metadata', {})
     customer_details = session.get('customer_details', {})
 
-    name = customer_details.get('name', metadata.get('name', 'Unknown')).strip()
+    # Check for intake data from questionnaire flow
+    intake_id = metadata.get('intake_id', '')
+    intake_data = load_intake(intake_id) if intake_id else {}
+
+    name = (
+        intake_data.get('name')
+        or customer_details.get('name', metadata.get('name', 'Unknown'))
+    ).strip()
     athlete_id = sanitize_athlete_id(name)
 
-    # Determine tier from amount or metadata
-    amount = session.get('amount_total', 0) / 100  # cents to dollars
-    tier = metadata.get('tier')
-    if not tier:
-        if amount <= 99:
-            tier = 'starter'
-        elif amount <= 149:
-            tier = 'race_ready'
-        else:
-            tier = 'full_build'
+    email = (
+        intake_data.get('email')
+        or customer_details.get('email', '')
+    ).strip().lower()
 
-    return {
-        'athlete_id': athlete_id,
-        'order_id': session.get('id', ''),
-        'tier': tier,
-        'profile': {
+    # Tier from metadata — computed pricing model uses 'custom' as default
+    tier = metadata.get('tier', 'custom')
+
+    # Build profile — intake data provides the rich questionnaire fields
+    if intake_data:
+        # Convert weight from lbs to kg if provided
+        weight_lbs = safe_float(intake_data.get('weight'))
+        weight_kg = round(weight_lbs * 0.453592, 1) if weight_lbs else None
+
+        profile = {
             'name': name,
-            'email': customer_details.get('email', '').strip().lower(),
+            'email': email,
+            'sex': intake_data.get('sex', ''),
+            'age': safe_int(intake_data.get('age')),
+            'fitness_markers': {
+                'weight_kg': weight_kg,
+                'ftp_watts': safe_int(intake_data.get('ftp')),
+                'hr_max': safe_int(intake_data.get('hr_max')),
+                'hr_threshold': safe_int(intake_data.get('hr_threshold')),
+                'hr_resting': safe_int(intake_data.get('hr_resting')),
+                'power_or_hr': intake_data.get('powerOrHr', ''),
+                'pw_ratio': intake_data.get('pwRatio', ''),
+            },
+            'target_race': {
+                'name': intake_data.get('race_name', ''),
+                'date': intake_data.get('race_date', ''),
+                'distance_miles': intake_data.get('race_distance', ''),
+                'goal': intake_data.get('race_goal', ''),
+            },
+            'races': intake_data.get('races', []),
+            'weekly_schedule': {
+                'hours_per_week': intake_data.get('hours_per_week', ''),
+                'trainer_access': intake_data.get('trainer_access', ''),
+                'long_ride_days': intake_data.get('long_ride_days', []),
+                'interval_days': intake_data.get('interval_days', []),
+                'off_days': intake_data.get('off_days', []),
+            },
+            'strength': {
+                'current': intake_data.get('strength_current', ''),
+                'want': intake_data.get('strength_want', ''),
+                'equipment': intake_data.get('strength_equipment', ''),
+            },
+            'experience_level': intake_data.get('years_cycling', ''),
+            'sleep_quality': intake_data.get('sleep_quality', ''),
+            'stress_level': intake_data.get('stress_level', ''),
+            'injuries': intake_data.get('injuries', ''),
+            'notes': intake_data.get('notes', ''),
+            'blindspots': intake_data.get('blindspots', []),
+        }
+    else:
+        # Sparse fallback from Stripe metadata only
+        profile = {
+            'name': name,
+            'email': email,
             'age': safe_int(metadata.get('age')),
             'fitness_markers': {
                 'weight_kg': safe_float(metadata.get('weight_kg')),
@@ -362,6 +571,12 @@ def extract_stripe_data(data: dict) -> dict:
             'limiters': metadata.get('limiters', ''),
             'notes': metadata.get('notes', ''),
         }
+
+    return {
+        'athlete_id': athlete_id,
+        'order_id': session.get('id', ''),
+        'tier': tier,
+        'profile': profile,
     }
 
 
@@ -540,6 +755,215 @@ def health():
     return jsonify(checks), status_code
 
 
+@app.route('/api/create-checkout', methods=['POST', 'OPTIONS'])
+def create_checkout():
+    """Create a Stripe Checkout Session from questionnaire data.
+
+    Receives the full questionnaire submission, stores it temporarily,
+    creates a Stripe Checkout Session, and returns the checkout URL.
+    The customer completes payment on Stripe's hosted page, then the
+    webhook handler loads the stored data to build the profile.
+    """
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        return '', 204
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid JSON'}), 400
+
+    # Validate required fields
+    email = (data.get('email') or '').strip().lower()
+    if not email or '@' not in email or '.' not in email:
+        return jsonify({'error': 'Valid email is required'}), 400
+
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+
+    # Validate at least one race
+    races = data.get('races', [])
+    if not races:
+        return jsonify({'error': 'At least one race is required'}), 400
+
+    # Compute price from A-race date
+    a_race = next((r for r in races if r.get('priority') == 'A'), races[0])
+    race_date_str = a_race.get('date', '')
+    if not race_date_str:
+        return jsonify({'error': 'A-race date is required'}), 400
+
+    pricing = compute_plan_price(race_date_str)
+
+    # Generate intake ID and store questionnaire data
+    intake_id = str(uuid.uuid4())
+    data['computed_price_cents'] = pricing['price_cents']
+    data['computed_weeks'] = pricing['weeks']
+    store_intake(intake_id, data)
+
+    # Look up pre-built price ID, capping at 17 for 17+ weeks
+    price_key = min(pricing['weeks'], 17)
+    price_id = TRAINING_PLAN_PRICE_IDS.get(price_key)
+
+    # Create Stripe Checkout Session
+    try:
+        line_items = [{'price': price_id, 'quantity': 1}] if price_id else [{
+            'price_data': {
+                'currency': 'usd',
+                'product_data': {
+                    'name': STRIPE_PRODUCT_NAME,
+                    'description': f"{pricing['weeks']}-week custom training plan",
+                },
+                'unit_amount': pricing['price_cents'],
+            },
+            'quantity': 1,
+        }]
+
+        checkout_session = stripe.checkout.Session.create(
+            line_items=line_items,
+            mode='payment',
+            customer_email=email,
+            client_reference_id=intake_id,
+            metadata={
+                'intake_id': intake_id,
+                'product_type': 'training_plan',
+                'tier': 'custom',
+                'athlete_name': name,
+                'weeks': str(pricing['weeks']),
+                'price_cents': str(pricing['price_cents']),
+            },
+            success_url='https://gravelgodcycling.com/training-plans/success/',
+            cancel_url='https://gravelgodcycling.com/training-plans/questionnaire/',
+        )
+
+        logger.info(f"Created checkout session {checkout_session.id} for intake {intake_id} "
+                     f"({pricing['weeks']}wk, {pricing['price_display']})")
+
+        return jsonify({
+            'checkout_url': checkout_session.url,
+            'intake_id': intake_id,
+            'price': pricing,
+        })
+
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error creating checkout: {e}")
+        return jsonify({'error': 'Payment service error. Please try again.'}), 502
+    except Exception as e:
+        logger.exception(f"Checkout creation error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/create-coaching-checkout', methods=['POST', 'OPTIONS'])
+def create_coaching_checkout():
+    """Create a Stripe Checkout Session for coaching subscription.
+
+    Expects JSON: {email, name, tier: "min"|"mid"|"max"}
+    Returns: {checkout_url}
+    """
+    if request.method == 'OPTIONS':
+        return '', 204
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid JSON'}), 400
+
+    email = (data.get('email') or '').strip().lower()
+    if not email or '@' not in email or '.' not in email:
+        return jsonify({'error': 'Valid email is required'}), 400
+
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+
+    tier = (data.get('tier') or '').strip().lower()
+    if tier not in COACHING_PRICE_IDS:
+        return jsonify({'error': f'Invalid tier: {tier}. Must be min, mid, or max'}), 400
+
+    price_id = COACHING_PRICE_IDS[tier]
+
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            line_items=[{'price': price_id, 'quantity': 1}],
+            mode='subscription',
+            customer_email=email,
+            metadata={
+                'product_type': 'coaching',
+                'tier': tier,
+                'athlete_name': name,
+            },
+            success_url='https://gravelgodcycling.com/coaching/welcome/',
+            cancel_url='https://gravelgodcycling.com/coaching/',
+        )
+
+        logger.info(f"Created coaching checkout {checkout_session.id} "
+                     f"(tier={tier}, email={email})")
+
+        return jsonify({'checkout_url': checkout_session.url})
+
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error creating coaching checkout: {e}")
+        return jsonify({'error': 'Payment service error. Please try again.'}), 502
+    except Exception as e:
+        logger.exception(f"Coaching checkout error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/create-consulting-checkout', methods=['POST', 'OPTIONS'])
+def create_consulting_checkout():
+    """Create a Stripe Checkout Session for consulting.
+
+    Expects JSON: {email, name, hours: 1}
+    Returns: {checkout_url}
+    """
+    if request.method == 'OPTIONS':
+        return '', 204
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid JSON'}), 400
+
+    email = (data.get('email') or '').strip().lower()
+    if not email or '@' not in email or '.' not in email:
+        return jsonify({'error': 'Valid email is required'}), 400
+
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+
+    hours = data.get('hours', 1)
+    try:
+        hours = int(hours)
+        if hours < 1 or hours > 10:
+            return jsonify({'error': 'Hours must be between 1 and 10'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid hours value'}), 400
+
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            line_items=[{'price': CONSULTING_PRICE_ID, 'quantity': hours}],
+            mode='payment',
+            customer_email=email,
+            metadata={
+                'product_type': 'consulting',
+                'athlete_name': name,
+                'hours': str(hours),
+            },
+            success_url='https://gravelgodcycling.com/consulting/confirmed/',
+            cancel_url='https://gravelgodcycling.com/consulting/',
+        )
+
+        logger.info(f"Created consulting checkout {checkout_session.id} "
+                     f"({hours}hr, email={email})")
+
+        return jsonify({'checkout_url': checkout_session.url})
+
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error creating consulting checkout: {e}")
+        return jsonify({'error': 'Payment service error. Please try again.'}), 502
+    except Exception as e:
+        logger.exception(f"Consulting checkout error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
 @app.route('/webhook/woocommerce', methods=['POST'])
 def woocommerce_webhook():
     """Handle WooCommerce order webhook."""
@@ -619,43 +1043,137 @@ def stripe_webhook():
         return jsonify({'status': 'ignored', 'reason': f'Event type: {event_type}'})
 
     try:
-        order_data = extract_stripe_data(data)
+        session = data.get('data', {}).get('object', {})
+        metadata = session.get('metadata', {})
+        product_type = metadata.get('product_type', 'training_plan')
+        order_id = session.get('id', '')
 
-        # Idempotency check
-        if check_idempotency(order_data['order_id']):
+        # Idempotency check (applies to all product types)
+        if check_idempotency(order_id):
             return jsonify({
                 'status': 'duplicate',
                 'message': 'Order already processed'
             })
 
-        # Validate order data
-        is_valid, error_msg = validate_order_data(order_data)
-        if not is_valid:
-            logger.error(f"Invalid order data: {error_msg}")
-            return jsonify({'error': error_msg}), 400
-
-        athlete_id, profile_path = create_athlete_profile(order_data)
-        result = run_pipeline(athlete_id, deliver=True)
-
-        mark_order_processed(order_data['order_id'], athlete_id)
-        log_order(order_data, result)
-
-        if result['success']:
-            return jsonify({
-                'status': 'success',
-                'athlete_id': athlete_id,
-                'message': 'Training plan generated and delivered'
-            })
+        # Route by product type
+        if product_type == 'coaching':
+            return _handle_coaching_webhook(session, metadata, order_id)
+        elif product_type == 'consulting':
+            return _handle_consulting_webhook(session, metadata, order_id)
         else:
-            return jsonify({
-                'status': 'pipeline_failed',
-                'athlete_id': athlete_id,
-                'message': 'Order received but pipeline failed. Manual intervention required.'
-            })
+            return _handle_training_plan_webhook(data, order_id)
 
     except Exception as e:
         logger.exception(f"Stripe webhook error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
+
+
+def _handle_training_plan_webhook(data: dict, order_id: str) -> tuple:
+    """Handle training plan checkout completion — create profile + run pipeline."""
+    order_data = extract_stripe_data(data)
+
+    is_valid, error_msg = validate_order_data(order_data)
+    if not is_valid:
+        logger.error(f"Invalid order data: {error_msg}")
+        return jsonify({'error': error_msg}), 400
+
+    athlete_id, profile_path = create_athlete_profile(order_data)
+    result = run_pipeline(athlete_id, deliver=True)
+
+    mark_order_processed(order_data['order_id'], athlete_id)
+    log_order(order_data, result)
+
+    if result['success']:
+        return jsonify({
+            'status': 'success',
+            'athlete_id': athlete_id,
+            'message': 'Training plan generated and delivered'
+        })
+    else:
+        return jsonify({
+            'status': 'pipeline_failed',
+            'athlete_id': athlete_id,
+            'message': 'Order received but pipeline failed. Manual intervention required.'
+        })
+
+
+def _handle_coaching_webhook(session: dict, metadata: dict, order_id: str) -> tuple:
+    """Handle coaching subscription checkout completion — log + notify."""
+    tier = metadata.get('tier', 'unknown')
+    name = metadata.get('athlete_name', 'Unknown')
+    email = session.get('customer_details', {}).get('email', '')
+    subscription_id = session.get('subscription', '')
+
+    logger.info(f"Coaching subscription started: {name} ({email}), "
+                f"tier={tier}, subscription={subscription_id}")
+
+    mark_order_processed(order_id, sanitize_athlete_id(name))
+
+    log_dir = Path(ATHLETES_DIR) / '.logs'
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / f"{datetime.now().strftime('%Y-%m')}.jsonl"
+    log_entry = {
+        'timestamp': datetime.now().isoformat(),
+        'product_type': 'coaching',
+        'tier': tier,
+        'name': name,
+        'email': email,
+        'order_id': order_id,
+        'subscription_id': subscription_id,
+        'success': True,
+    }
+    try:
+        with open(log_file, 'a') as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            f.write(json.dumps(log_entry) + '\n')
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    except IOError as e:
+        logger.error(f"Failed to write coaching log: {e}")
+
+    return jsonify({
+        'status': 'success',
+        'product_type': 'coaching',
+        'tier': tier,
+        'message': f'Coaching subscription ({tier}) started for {name}'
+    })
+
+
+def _handle_consulting_webhook(session: dict, metadata: dict, order_id: str) -> tuple:
+    """Handle consulting checkout completion — log + notify."""
+    name = metadata.get('athlete_name', 'Unknown')
+    hours = metadata.get('hours', '1')
+    email = session.get('customer_details', {}).get('email', '')
+
+    logger.info(f"Consulting booked: {name} ({email}), {hours}hr")
+
+    mark_order_processed(order_id, sanitize_athlete_id(name))
+
+    log_dir = Path(ATHLETES_DIR) / '.logs'
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / f"{datetime.now().strftime('%Y-%m')}.jsonl"
+    log_entry = {
+        'timestamp': datetime.now().isoformat(),
+        'product_type': 'consulting',
+        'name': name,
+        'email': email,
+        'hours': hours,
+        'order_id': order_id,
+        'success': True,
+    }
+    try:
+        with open(log_file, 'a') as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            f.write(json.dumps(log_entry) + '\n')
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    except IOError as e:
+        logger.error(f"Failed to write consulting log: {e}")
+
+    return jsonify({
+        'status': 'success',
+        'product_type': 'consulting',
+        'hours': hours,
+        'message': f'Consulting ({hours}hr) booked for {name}'
+    })
 
 
 # Test endpoint only available in non-production
@@ -668,7 +1186,7 @@ if not IS_PRODUCTION:
         order_data = {
             'athlete_id': sanitize_athlete_id(data.get('athlete_id', 'test_athlete')),
             'order_id': 'test_' + datetime.now().strftime('%Y%m%d%H%M%S'),
-            'tier': data.get('tier', 'race_ready'),
+            'tier': data.get('tier', 'custom'),
             'profile': data.get('profile', {
                 'name': 'Test Athlete',
                 'email': 'test@example.com',
@@ -705,6 +1223,17 @@ if not IS_PRODUCTION:
         except Exception as e:
             logger.exception(f"Test webhook error: {e}")
             return jsonify({'error': 'Internal server error'}), 500
+
+
+# =============================================================================
+# STARTUP
+# =============================================================================
+
+# Clean up stale intake files on startup
+try:
+    cleanup_stale_intakes()
+except Exception as e:
+    logger.warning(f"Intake cleanup on startup failed: {e}")
 
 
 # =============================================================================
