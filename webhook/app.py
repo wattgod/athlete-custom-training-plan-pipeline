@@ -18,6 +18,8 @@ import logging
 import subprocess
 import uuid
 import math
+import smtplib
+from email.mime.text import MIMEText
 from pathlib import Path
 from datetime import datetime, timedelta, date
 from flask import Flask, request, jsonify
@@ -50,6 +52,13 @@ SCRIPTS_DIR = os.environ.get('SCRIPTS_DIR', '/app/athletes/scripts')
 
 # CORS — only allow requests from our site
 ALLOWED_ORIGINS = ['https://gravelgodcycling.com', 'https://www.gravelgodcycling.com']
+
+# Email notifications for new orders
+NOTIFICATION_EMAIL = os.environ.get('NOTIFICATION_EMAIL', '')
+SMTP_HOST = os.environ.get('SMTP_HOST', '')
+SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
+SMTP_USER = os.environ.get('SMTP_USER', '')
+SMTP_PASS = os.environ.get('SMTP_PASS', '')
 
 # Configure Stripe
 if STRIPE_SECRET_KEY:
@@ -98,6 +107,12 @@ CONSULTING_PRICE_ID = 'price_1T2ekVLoaHDbEqSq0GGfoBEX'  # $150/hr
 # Intake data expiry (24 hours)
 INTAKE_EXPIRY_HOURS = 24
 
+# Checkout session expiry — short expiry triggers Stripe's recovery flow sooner
+CHECKOUT_EXPIRY_MINUTES = 60
+
+# Cron endpoint secret (prevents unauthorized triggers)
+CRON_SECRET = os.environ.get('CRON_SECRET', '')
+
 # Pipeline timeout (5 minutes)
 PIPELINE_TIMEOUT = 300
 
@@ -119,6 +134,26 @@ def set_security_headers(response):
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
 
     return response
+
+
+# =============================================================================
+# PERIODIC CLEANUP
+# =============================================================================
+
+_last_intake_cleanup = datetime.now()
+
+
+@app.before_request
+def _periodic_intake_cleanup():
+    """Clean stale intake files hourly, not just on startup."""
+    global _last_intake_cleanup
+    now = datetime.now()
+    if (now - _last_intake_cleanup).total_seconds() > 3600:
+        _last_intake_cleanup = now
+        try:
+            cleanup_stale_intakes()
+        except Exception as e:
+            logger.warning(f"Periodic intake cleanup failed: {e}")
 
 
 # =============================================================================
@@ -155,6 +190,64 @@ def sanitize_athlete_id(name: str) -> str:
     safe_id = safe_id.strip('_-')
     safe_id = safe_id[:MAX_ATHLETE_ID_LENGTH]
     return safe_id
+
+
+def _mask_email(email: str) -> str:
+    """Mask email for safe logging: 'user@example.com' → 'u***@e***.com'"""
+    if not email or '@' not in email:
+        return '***'
+    local, domain = email.rsplit('@', 1)
+    parts = domain.rsplit('.', 1)
+    masked_local = local[0] + '***' if local else '***'
+    masked_domain = parts[0][0] + '***' if parts[0] else '***'
+    tld = '.' + parts[1] if len(parts) > 1 else ''
+    return f'{masked_local}@{masked_domain}{tld}'
+
+
+def _notify_new_order(product_type: str, details: dict):
+    """Send notification for new order. Falls back to CRITICAL log if SMTP not configured."""
+    subject = f"[Gravel God] New {product_type}: {details.get('name', 'Unknown')}"
+    body = '\n'.join(f"  {k}: {v}" for k, v in details.items())
+
+    if NOTIFICATION_EMAIL and SMTP_HOST:
+        try:
+            msg = MIMEText(body)
+            msg['Subject'] = subject
+            msg['From'] = SMTP_USER or 'noreply@gravelgodcycling.com'
+            msg['To'] = NOTIFICATION_EMAIL
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
+                s.starttls()
+                if SMTP_USER and SMTP_PASS:
+                    s.login(SMTP_USER, SMTP_PASS)
+                s.send_message(msg)
+            logger.info(f"Notification sent for {product_type}")
+        except Exception as e:
+            logger.error(f"Failed to send notification email: {e}")
+            logger.critical(f"NEW ORDER: {subject}\n{body}")
+    else:
+        # No SMTP configured — log at CRITICAL so it stands out in Railway
+        logger.critical(f"NEW ORDER: {subject}\n{body}")
+
+
+def _log_product_event(product_type: str, order_id: str, **details):
+    """Write a product event to the order log. Shared by coaching/consulting handlers."""
+    log_dir = Path(ATHLETES_DIR) / '.logs'
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / f"{datetime.now().strftime('%Y-%m')}.jsonl"
+    log_entry = {
+        'timestamp': datetime.now().isoformat(),
+        'product_type': product_type,
+        'order_id': order_id,
+        **details,
+        'success': True,
+    }
+    try:
+        with open(log_file, 'a') as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            f.write(json.dumps(log_entry) + '\n')
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    except IOError as e:
+        logger.error(f"Failed to write {product_type} log: {e}")
 
 
 def validate_order_data(order_data: dict) -> tuple:
@@ -792,6 +885,14 @@ def create_checkout():
     if not race_date_str:
         return jsonify({'error': 'A-race date is required'}), 400
 
+    # Reject race dates more than 7 days in the past
+    try:
+        parsed_race_date = datetime.strptime(race_date_str, '%Y-%m-%d').date()
+        if (date.today() - parsed_race_date).days > 7:
+            return jsonify({'error': 'Race date cannot be more than 7 days in the past'}), 400
+    except ValueError:
+        return jsonify({'error': 'Invalid race date format (expected YYYY-MM-DD)'}), 400
+
     pricing = compute_plan_price(race_date_str)
 
     # Generate intake ID and store questionnaire data
@@ -818,6 +919,8 @@ def create_checkout():
             'quantity': 1,
         }]
 
+        expires_at = int((datetime.now() + timedelta(minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
+
         checkout_session = stripe.checkout.Session.create(
             line_items=line_items,
             mode='payment',
@@ -831,12 +934,22 @@ def create_checkout():
                 'weeks': str(pricing['weeks']),
                 'price_cents': str(pricing['price_cents']),
             },
-            success_url='https://gravelgodcycling.com/training-plans/success/',
+            success_url='https://gravelgodcycling.com/training-plans/success/?session_id={CHECKOUT_SESSION_ID}',
             cancel_url='https://gravelgodcycling.com/training-plans/questionnaire/',
+            expires_at=expires_at,
+            after_expiration={
+                'recovery': {
+                    'enabled': True,
+                    'allow_promotion_codes': True,
+                }
+            },
+            consent_collection={
+                'promotions': 'auto',
+            },
         )
 
         logger.info(f"Created checkout session {checkout_session.id} for intake {intake_id} "
-                     f"({pricing['weeks']}wk, {pricing['price_display']})")
+                     f"({pricing['weeks']}wk, {pricing['price_display']}, {_mask_email(email)})")
 
         return jsonify({
             'checkout_url': checkout_session.url,
@@ -881,6 +994,8 @@ def create_coaching_checkout():
     price_id = COACHING_PRICE_IDS[tier]
 
     try:
+        expires_at = int((datetime.now() + timedelta(minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
+
         checkout_session = stripe.checkout.Session.create(
             line_items=[{'price': price_id, 'quantity': 1}],
             mode='subscription',
@@ -890,12 +1005,22 @@ def create_coaching_checkout():
                 'tier': tier,
                 'athlete_name': name,
             },
-            success_url='https://gravelgodcycling.com/coaching/welcome/',
+            success_url='https://gravelgodcycling.com/coaching/welcome/?session_id={CHECKOUT_SESSION_ID}',
             cancel_url='https://gravelgodcycling.com/coaching/',
+            expires_at=expires_at,
+            after_expiration={
+                'recovery': {
+                    'enabled': True,
+                    'allow_promotion_codes': True,
+                }
+            },
+            consent_collection={
+                'promotions': 'auto',
+            },
         )
 
         logger.info(f"Created coaching checkout {checkout_session.id} "
-                     f"(tier={tier}, email={email})")
+                     f"(tier={tier}, {_mask_email(email)})")
 
         return jsonify({'checkout_url': checkout_session.url})
 
@@ -938,6 +1063,8 @@ def create_consulting_checkout():
         return jsonify({'error': 'Invalid hours value'}), 400
 
     try:
+        expires_at = int((datetime.now() + timedelta(minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
+
         checkout_session = stripe.checkout.Session.create(
             line_items=[{'price': CONSULTING_PRICE_ID, 'quantity': hours}],
             mode='payment',
@@ -947,12 +1074,22 @@ def create_consulting_checkout():
                 'athlete_name': name,
                 'hours': str(hours),
             },
-            success_url='https://gravelgodcycling.com/consulting/confirmed/',
+            success_url='https://gravelgodcycling.com/consulting/confirmed/?session_id={CHECKOUT_SESSION_ID}',
             cancel_url='https://gravelgodcycling.com/consulting/',
+            expires_at=expires_at,
+            after_expiration={
+                'recovery': {
+                    'enabled': True,
+                    'allow_promotion_codes': True,
+                }
+            },
+            consent_collection={
+                'promotions': 'auto',
+            },
         )
 
         logger.info(f"Created consulting checkout {checkout_session.id} "
-                     f"({hours}hr, email={email})")
+                     f"({hours}hr, {_mask_email(email)})")
 
         return jsonify({'checkout_url': checkout_session.url})
 
@@ -998,20 +1135,35 @@ def woocommerce_webhook():
             return jsonify({'error': error_msg}), 400
 
         athlete_id, profile_path = create_athlete_profile(order_data)
-        result = run_pipeline(athlete_id, deliver=True)
 
-        # Mark as processed even if pipeline failed (to prevent retries)
+        # Mark as processed BEFORE pipeline to prevent TOCTOU race with
+        # webhook retries. Stripe/WooCommerce retry if we don't respond within
+        # ~20s, and the pipeline takes up to 5 minutes. Without this, retries
+        # pass the idempotency check and start duplicate pipelines.
         mark_order_processed(order_data['order_id'], athlete_id)
+
+        result = run_pipeline(athlete_id, deliver=True)
         log_order(order_data, result)
 
         if result['success']:
+            _notify_new_order('training_plan', {
+                'name': order_data['profile'].get('name', ''),
+                'email': order_data['profile'].get('email', ''),
+                'tier': order_data['tier'],
+                'order_id': order_data['order_id'],
+            })
             return jsonify({
                 'status': 'success',
                 'athlete_id': athlete_id,
                 'message': 'Training plan generated and delivered'
             })
         else:
-            # Log error but return 200 (webhook processed, pipeline failed)
+            _notify_new_order('training_plan_FAILED', {
+                'name': order_data['profile'].get('name', ''),
+                'email': order_data['profile'].get('email', ''),
+                'order_id': order_data['order_id'],
+                'error': result.get('stderr', '')[:200],
+            })
             return jsonify({
                 'status': 'pipeline_failed',
                 'athlete_id': athlete_id,
@@ -1025,7 +1177,7 @@ def woocommerce_webhook():
 
 @app.route('/webhook/stripe', methods=['POST'])
 def stripe_webhook():
-    """Handle Stripe checkout.session.completed webhook."""
+    """Handle Stripe webhook events (completed + expired checkouts)."""
     signature = request.headers.get('Stripe-Signature', '')
 
     if not verify_stripe_signature(request.data, signature):
@@ -1038,8 +1190,10 @@ def stripe_webhook():
 
     event_type = data.get('type', '')
 
-    # Only process completed checkouts
-    if event_type != 'checkout.session.completed':
+    # Route by event type
+    if event_type == 'checkout.session.expired':
+        return _handle_checkout_expired(data)
+    elif event_type != 'checkout.session.completed':
         return jsonify({'status': 'ignored', 'reason': f'Event type: {event_type}'})
 
     try:
@@ -1047,6 +1201,11 @@ def stripe_webhook():
         metadata = session.get('metadata', {})
         product_type = metadata.get('product_type', 'training_plan')
         order_id = session.get('id', '')
+
+        # Check if this was a recovered session
+        recovered_from = session.get('recovered_from')
+        if recovered_from:
+            logger.info(f"Recovered checkout from expired session {recovered_from}")
 
         # Idempotency check (applies to all product types)
         if check_idempotency(order_id):
@@ -1068,7 +1227,121 @@ def stripe_webhook():
         return jsonify({'error': 'Internal server error'}), 500
 
 
-def _handle_training_plan_webhook(data: dict, order_id: str) -> tuple:
+def _handle_checkout_expired(data: dict):
+    """Handle expired checkout session — send recovery email if customer opted in."""
+    try:
+        session = data.get('data', {}).get('object', {})
+        email = session.get('customer_details', {}).get('email', '')
+        metadata = session.get('metadata', {})
+        product_type = metadata.get('product_type', 'training_plan')
+        athlete_name = metadata.get('athlete_name', '')
+        consent = session.get('consent', {})
+
+        # Stripe provides a recovery URL when after_expiration.recovery is enabled
+        recovery = session.get('after_expiration', {}).get('recovery', {})
+        recovery_url = recovery.get('url', '')
+
+        if not email or not recovery_url:
+            logger.info(f"Expired checkout {session.get('id', '?')} — no email or recovery URL")
+            return jsonify({'status': 'ignored', 'reason': 'No recovery possible'})
+
+        # Only send if customer opted in to promotional emails
+        if consent.get('promotions') != 'opt_in':
+            logger.info(f"Expired checkout — customer did not opt in ({_mask_email(email)})")
+            return jsonify({'status': 'ignored', 'reason': 'No promotional consent'})
+
+        # Build product-specific recovery email
+        _send_recovery_email(email, athlete_name, product_type, metadata, recovery_url)
+
+        _log_product_event('cart_recovery', session.get('id', ''),
+                           email=email, original_product=product_type,
+                           recovery_url_sent=True)
+
+        logger.info(f"Sent recovery email for {product_type} to {_mask_email(email)}")
+        return jsonify({'status': 'recovery_sent'})
+
+    except Exception as e:
+        logger.exception(f"Error handling expired checkout: {e}")
+        return jsonify({'status': 'error'}), 500
+
+
+def _send_recovery_email(email: str, name: str, product_type: str,
+                         metadata: dict, recovery_url: str):
+    """Send a recovery email for an abandoned checkout."""
+    first_name = name.split()[0] if name else 'there'
+
+    if product_type == 'training_plan':
+        weeks = metadata.get('weeks', '')
+        subject = f"Your {weeks}-week training plan is still waiting"
+        body = (
+            f"Hey {first_name},\n\n"
+            f"You were building a custom {weeks}-week training plan — "
+            f"looks like you didn't finish checking out.\n\n"
+            f"Your plan details are saved. Pick up where you left off:\n"
+            f"{recovery_url}\n\n"
+            f"Your race is coming up. The sooner you start structured training, "
+            f"the stronger you'll be on race day.\n\n"
+            f"— Matt, Gravel God Cycling\n"
+            f"gravelgodcycling.com"
+        )
+    elif product_type == 'coaching':
+        tier = metadata.get('tier', '')
+        subject = "Your coaching spot is still available"
+        body = (
+            f"Hey {first_name},\n\n"
+            f"You were signing up for {tier}-tier coaching — "
+            f"your spot is still open.\n\n"
+            f"Pick up where you left off:\n"
+            f"{recovery_url}\n\n"
+            f"Athletes who work with a coach see measurable gains within "
+            f"the first month. Let's get started.\n\n"
+            f"— Matt, Gravel God Cycling\n"
+            f"gravelgodcycling.com"
+        )
+    else:  # consulting
+        hours = metadata.get('hours', '1')
+        subject = "Your consulting session is ready to book"
+        body = (
+            f"Hey {first_name},\n\n"
+            f"You were booking a {hours}-hour consulting session — "
+            f"still interested?\n\n"
+            f"Complete your booking:\n"
+            f"{recovery_url}\n\n"
+            f"— Matt, Gravel God Cycling\n"
+            f"gravelgodcycling.com"
+        )
+
+    if NOTIFICATION_EMAIL and SMTP_HOST:
+        try:
+            msg = MIMEText(body)
+            msg['Subject'] = subject
+            msg['From'] = SMTP_USER or 'matt@gravelgodcycling.com'
+            msg['To'] = email
+            msg['Reply-To'] = NOTIFICATION_EMAIL
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
+                s.starttls()
+                if SMTP_USER and SMTP_PASS:
+                    s.login(SMTP_USER, SMTP_PASS)
+                s.send_message(msg)
+            logger.info(f"Recovery email sent to {_mask_email(email)}")
+        except Exception as e:
+            logger.error(f"Failed to send recovery email: {e}")
+            # Still log at CRITICAL so we can follow up manually
+            logger.critical(
+                f"ABANDONED CART — manual follow-up needed\n"
+                f"  Email: {email}\n  Product: {product_type}\n"
+                f"  Recovery URL: {recovery_url}"
+            )
+    else:
+        # No SMTP — log for manual follow-up
+        logger.critical(
+            f"ABANDONED CART — SMTP not configured, manual follow-up needed\n"
+            f"  Email: {email}\n  Name: {name}\n"
+            f"  Product: {product_type}\n  Recovery URL: {recovery_url}"
+        )
+
+
+def _handle_training_plan_webhook(data: dict, order_id: str):
     """Handle training plan checkout completion — create profile + run pipeline."""
     order_data = extract_stripe_data(data)
 
@@ -1078,18 +1351,32 @@ def _handle_training_plan_webhook(data: dict, order_id: str) -> tuple:
         return jsonify({'error': error_msg}), 400
 
     athlete_id, profile_path = create_athlete_profile(order_data)
-    result = run_pipeline(athlete_id, deliver=True)
 
+    # Mark BEFORE pipeline — see WooCommerce handler comment for rationale
     mark_order_processed(order_data['order_id'], athlete_id)
+
+    result = run_pipeline(athlete_id, deliver=True)
     log_order(order_data, result)
 
     if result['success']:
+        _notify_new_order('training_plan', {
+            'name': order_data['profile'].get('name', ''),
+            'email': order_data['profile'].get('email', ''),
+            'tier': order_data['tier'],
+            'order_id': order_data['order_id'],
+        })
         return jsonify({
             'status': 'success',
             'athlete_id': athlete_id,
             'message': 'Training plan generated and delivered'
         })
     else:
+        _notify_new_order('training_plan_FAILED', {
+            'name': order_data['profile'].get('name', ''),
+            'email': order_data['profile'].get('email', ''),
+            'order_id': order_data['order_id'],
+            'error': result.get('stderr', '')[:200],
+        })
         return jsonify({
             'status': 'pipeline_failed',
             'athlete_id': athlete_id,
@@ -1097,38 +1384,27 @@ def _handle_training_plan_webhook(data: dict, order_id: str) -> tuple:
         })
 
 
-def _handle_coaching_webhook(session: dict, metadata: dict, order_id: str) -> tuple:
+def _handle_coaching_webhook(session: dict, metadata: dict, order_id: str):
     """Handle coaching subscription checkout completion — log + notify."""
     tier = metadata.get('tier', 'unknown')
     name = metadata.get('athlete_name', 'Unknown')
     email = session.get('customer_details', {}).get('email', '')
     subscription_id = session.get('subscription', '')
 
-    logger.info(f"Coaching subscription started: {name} ({email}), "
+    logger.info(f"Coaching subscription started: {name} ({_mask_email(email)}), "
                 f"tier={tier}, subscription={subscription_id}")
 
     mark_order_processed(order_id, sanitize_athlete_id(name))
-
-    log_dir = Path(ATHLETES_DIR) / '.logs'
-    log_dir.mkdir(exist_ok=True)
-    log_file = log_dir / f"{datetime.now().strftime('%Y-%m')}.jsonl"
-    log_entry = {
-        'timestamp': datetime.now().isoformat(),
-        'product_type': 'coaching',
-        'tier': tier,
+    _log_product_event('coaching', order_id,
+                       tier=tier, name=name, email=email,
+                       subscription_id=subscription_id)
+    _notify_new_order('coaching', {
         'name': name,
         'email': email,
-        'order_id': order_id,
+        'tier': tier,
         'subscription_id': subscription_id,
-        'success': True,
-    }
-    try:
-        with open(log_file, 'a') as f:
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-            f.write(json.dumps(log_entry) + '\n')
-            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-    except IOError as e:
-        logger.error(f"Failed to write coaching log: {e}")
+        'order_id': order_id,
+    })
 
     return jsonify({
         'status': 'success',
@@ -1138,35 +1414,23 @@ def _handle_coaching_webhook(session: dict, metadata: dict, order_id: str) -> tu
     })
 
 
-def _handle_consulting_webhook(session: dict, metadata: dict, order_id: str) -> tuple:
+def _handle_consulting_webhook(session: dict, metadata: dict, order_id: str):
     """Handle consulting checkout completion — log + notify."""
     name = metadata.get('athlete_name', 'Unknown')
     hours = metadata.get('hours', '1')
     email = session.get('customer_details', {}).get('email', '')
 
-    logger.info(f"Consulting booked: {name} ({email}), {hours}hr")
+    logger.info(f"Consulting booked: {name} ({_mask_email(email)}), {hours}hr")
 
     mark_order_processed(order_id, sanitize_athlete_id(name))
-
-    log_dir = Path(ATHLETES_DIR) / '.logs'
-    log_dir.mkdir(exist_ok=True)
-    log_file = log_dir / f"{datetime.now().strftime('%Y-%m')}.jsonl"
-    log_entry = {
-        'timestamp': datetime.now().isoformat(),
-        'product_type': 'consulting',
+    _log_product_event('consulting', order_id,
+                       name=name, email=email, hours=hours)
+    _notify_new_order('consulting', {
         'name': name,
         'email': email,
         'hours': hours,
         'order_id': order_id,
-        'success': True,
-    }
-    try:
-        with open(log_file, 'a') as f:
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-            f.write(json.dumps(log_entry) + '\n')
-            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-    except IOError as e:
-        logger.error(f"Failed to write consulting log: {e}")
+    })
 
     return jsonify({
         'status': 'success',
@@ -1192,7 +1456,7 @@ if not IS_PRODUCTION:
                 'email': 'test@example.com',
                 'target_race': {
                     'name': 'Test Race',
-                    'date': '2025-06-01',
+                    'date': (date.today() + timedelta(weeks=12)).isoformat(),
                     'distance_miles': 100,
                 }
             })
@@ -1223,6 +1487,223 @@ if not IS_PRODUCTION:
         except Exception as e:
             logger.exception(f"Test webhook error: {e}")
             return jsonify({'error': 'Internal server error'}), 500
+
+
+# =============================================================================
+# POST-PURCHASE FOLLOW-UP EMAIL SEQUENCE
+# =============================================================================
+
+# Day offsets and email templates for training plan follow-ups.
+# Coaching and consulting follow-ups are manual (high-touch).
+FOLLOWUP_SEQUENCE = [
+    {
+        'day': 1,
+        'subject': 'Getting started with your training plan',
+        'template': (
+            "Hey {first_name},\n\n"
+            "Your training plan was delivered yesterday. Here's how to get "
+            "the most out of it:\n\n"
+            "1. Import the .zwo files into TrainingPeaks, Zwift, or Wahoo\n"
+            "2. Read the training guide — especially the phase overview\n"
+            "3. Do today's workout. Don't overthink it.\n\n"
+            "Week 1 is calibration. The workouts might feel easy. That's "
+            "intentional. Trust the process.\n\n"
+            "If you have questions, reply to this email.\n\n"
+            "— Matt, Gravel God Cycling\n"
+            "gravelgodcycling.com"
+        ),
+    },
+    {
+        'day': 3,
+        'subject': 'Quick check-in — how\'s week 1?',
+        'template': (
+            "Hey {first_name},\n\n"
+            "You're a few days into your plan. A couple things:\n\n"
+            "- If your FTP was estimated, the zones might feel off. That's "
+            "normal. Week 1 includes a test protocol to dial it in.\n"
+            "- If you missed a workout, don't double up. Just pick up where "
+            "the plan says to go next.\n"
+            "- The strength sessions are optional but they matter. Even 20 "
+            "minutes twice a week makes a difference by race day.\n\n"
+            "Your free race prep kit has packing lists, race-day checklists, "
+            "and course intel for your target event:\n"
+            "https://gravelgodcycling.com/gravel-races/\n\n"
+            "— Matt\n"
+            "gravelgodcycling.com"
+        ),
+    },
+    {
+        'day': 7,
+        'subject': 'Week 1 done — what to expect next',
+        'template': (
+            "Hey {first_name},\n\n"
+            "You've finished your first week. The real training starts now.\n\n"
+            "Week 2+ is where the workouts start building. The efforts get "
+            "harder, the long rides get longer, and the plan starts earning "
+            "its keep.\n\n"
+            "Two things that matter most from here:\n"
+            "1. Consistency > intensity. Showing up 5 days matters more than "
+            "one hero session.\n"
+            "2. Sleep and fueling are training. The plan assumes you're "
+            "recovering between sessions.\n\n"
+            "If you want a human in your corner — weekly adjustments, "
+            "race-day strategy, and real accountability — coaching starts at "
+            "$199/month:\n"
+            "https://gravelgodcycling.com/coaching/\n\n"
+            "Train hard.\n\n"
+            "— Matt\n"
+            "gravelgodcycling.com"
+        ),
+    },
+]
+
+
+def _get_followup_log_path():
+    """Path to the follow-up sent log."""
+    log_dir = Path(ATHLETES_DIR) / '.logs'
+    log_dir.mkdir(exist_ok=True)
+    return log_dir / 'followup_sent.jsonl'
+
+
+def _get_sent_followups():
+    """Load set of (order_id, day) tuples already sent."""
+    sent = set()
+    log_path = _get_followup_log_path()
+    if log_path.exists():
+        for line in log_path.read_text().strip().split('\n'):
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+                sent.add((entry['order_id'], entry['day']))
+            except (json.JSONDecodeError, KeyError):
+                continue
+    return sent
+
+
+def _mark_followup_sent(order_id: str, day: int, email: str):
+    """Record that a follow-up was sent."""
+    log_path = _get_followup_log_path()
+    entry = json.dumps({
+        'order_id': order_id,
+        'day': day,
+        'email': _mask_email(email),
+        'sent_at': datetime.utcnow().isoformat(),
+    })
+    with open(log_path, 'a') as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        f.write(entry + '\n')
+        fcntl.flock(f, fcntl.LOCK_UN)
+
+
+def _send_followup_email(email: str, subject: str, body: str):
+    """Send a follow-up email. Returns True on success."""
+    if not (SMTP_HOST and SMTP_USER and SMTP_PASS):
+        logger.warning(f"SMTP not configured — skipping followup to {_mask_email(email)}")
+        return False
+
+    try:
+        msg = MIMEText(body)
+        msg['Subject'] = subject
+        msg['From'] = SMTP_USER
+        msg['To'] = email
+        msg['Reply-To'] = NOTIFICATION_EMAIL or SMTP_USER
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
+            s.starttls()
+            s.login(SMTP_USER, SMTP_PASS)
+            s.send_message(msg)
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send followup email to {_mask_email(email)}: {e}")
+        return False
+
+
+def process_followup_emails():
+    """Check order logs and send due follow-up emails. Returns stats dict."""
+    log_dir = Path(ATHLETES_DIR) / '.logs'
+    order_log = log_dir / 'orders.jsonl'
+
+    if not order_log.exists():
+        return {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0}
+
+    sent_followups = _get_sent_followups()
+    now = datetime.utcnow()
+    stats = {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0}
+
+    for line in order_log.read_text().strip().split('\n'):
+        if not line:
+            continue
+        try:
+            order = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        # Only follow up on training_plan orders (coaching/consulting are high-touch)
+        if order.get('product_type') != 'training_plan':
+            continue
+
+        stats['checked'] += 1
+        order_id = order.get('order_id', '')
+        email = order.get('email', '')
+        name = order.get('name', order.get('customer_name', ''))
+        order_time = order.get('timestamp', order.get('processed_at', ''))
+
+        if not email or not order_time or not order_id:
+            continue
+
+        try:
+            order_dt = datetime.fromisoformat(order_time.replace('Z', '+00:00').replace('+00:00', ''))
+        except (ValueError, AttributeError):
+            continue
+
+        days_since = (now - order_dt).days
+
+        for followup in FOLLOWUP_SEQUENCE:
+            day = followup['day']
+            # Send on the target day or up to 2 days late (catch-up window)
+            if days_since < day or days_since > day + 2:
+                continue
+            if (order_id, day) in sent_followups:
+                continue
+
+            first_name = name.split()[0] if name else 'there'
+            body = followup['template'].format(first_name=first_name)
+            subject = followup['subject']
+
+            if _send_followup_email(email, subject, body):
+                _mark_followup_sent(order_id, day, email)
+                sent_followups.add((order_id, day))
+                stats['sent'] += 1
+                logger.info(
+                    f"Followup day {day} sent to {_mask_email(email)} "
+                    f"(order {order_id})"
+                )
+            else:
+                stats['errors'] += 1
+
+    stats['skipped'] = stats['checked'] * len(FOLLOWUP_SEQUENCE) - stats['sent'] - stats['errors']
+    return stats
+
+
+@app.route('/api/cron/followup-emails', methods=['POST'])
+def cron_followup_emails():
+    """Daily cron endpoint — send follow-up emails for recent orders.
+
+    Secured by CRON_SECRET header. Call daily from an external scheduler.
+    """
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not hmac.compare_digest(secret, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        stats = process_followup_emails()
+        logger.info(f"Follow-up cron complete: {stats}")
+        return jsonify({'status': 'ok', **stats})
+    except Exception as e:
+        logger.exception(f"Follow-up cron error: {e}")
+        return jsonify({'error': 'Internal error'}), 500
 
 
 # =============================================================================
