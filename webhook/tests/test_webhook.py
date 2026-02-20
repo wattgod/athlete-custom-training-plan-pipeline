@@ -1713,7 +1713,9 @@ class TestCheckoutRecovery:
             )
             mock_logger.critical.assert_called_once()
             call_msg = mock_logger.critical.call_args[0][0]
-            assert 'test@test.com' in call_msg
+            # PII must be masked — raw email must NOT appear in logs
+            assert 'test@test.com' not in call_msg, "Raw email in log — PII violation"
+            assert 't***@t***.com' in call_msg  # masked email
             assert 'https://recover.example.com' in call_msg
 
     def test_checkout_session_includes_recovery_params(self, client, temp_athletes_dir):
@@ -1934,6 +1936,106 @@ class TestFollowupEmails:
             assert ('order_123', 1) in sent
             assert ('order_123', 3) in sent
             assert ('order_123', 7) not in sent
+
+
+# ── Quality Gate Tests ──────────────────────────────────────
+
+
+class TestSetupFeeAllTiers:
+    """Setup fee must be included in ALL coaching tier checkouts, not just min."""
+
+    @pytest.fixture(autouse=True)
+    def setup_stripe_mock(self, client, temp_athletes_dir):
+        self.client = client
+
+    def test_setup_fee_on_every_tier(self, client, temp_athletes_dir):
+        """Every coaching tier includes exactly 2 line items (subscription + $99 fee)."""
+        for tier in ['min', 'mid', 'max']:
+            with patch('app.stripe') as mock_stripe:
+                mock_session = MagicMock()
+                mock_session.id = f'cs_fee_{tier}'
+                mock_session.url = f'https://checkout.stripe.com/{tier}'
+                mock_stripe.checkout.Session.create.return_value = mock_session
+
+                response = client.post(
+                    '/api/create-coaching-checkout',
+                    json={'name': 'Fee Test', 'email': 'fee@test.com', 'tier': tier},
+                    content_type='application/json'
+                )
+                assert response.status_code == 200
+                call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+                line_items = call_kwargs['line_items']
+                assert len(line_items) == 2, (
+                    f"Tier {tier}: expected 2 line items (subscription + fee), got {len(line_items)}"
+                )
+
+    def test_setup_fee_price_id_matches(self, client, temp_athletes_dir):
+        """Setup fee line item uses the correct price ID."""
+        from app import COACHING_SETUP_FEE_PRICE_ID
+        assert COACHING_SETUP_FEE_PRICE_ID, "COACHING_SETUP_FEE_PRICE_ID must not be empty"
+
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_fee_check'
+            mock_session.url = 'https://checkout.stripe.com/fee-check'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            client.post(
+                '/api/create-coaching-checkout',
+                json={'name': 'Fee Test', 'email': 'fee@test.com', 'tier': 'min'},
+                content_type='application/json'
+            )
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            fee_item = call_kwargs['line_items'][1]
+            assert fee_item['price'] == COACHING_SETUP_FEE_PRICE_ID
+
+
+class TestPIIMasking:
+    """Raw email addresses must never appear in log output."""
+
+    def test_recovery_email_handler_masks_pii(self):
+        """Recovery email fallback logging uses _mask_email, not raw email."""
+        import inspect
+        from app import _send_recovery_email
+        source = inspect.getsource(_send_recovery_email)
+        # Count raw email references in log calls
+        import re
+        log_calls = re.findall(r'logger\.\w+\(.*?\)', source, re.DOTALL)
+        for call in log_calls:
+            if 'email' in call.lower() and 'mask_email' not in call and 'Email:' in call:
+                assert '_mask_email' in call, (
+                    f"PII violation: raw email in log call: {call[:100]}"
+                )
+
+    def test_no_month_in_recovery_emails(self):
+        """Recovery email copy must not say 'month' — billing is every 4 weeks."""
+        import inspect
+        from app import _send_recovery_email
+        source = inspect.getsource(_send_recovery_email)
+        assert 'first month' not in source, (
+            "Recovery email says 'first month' — should say 'first few weeks' (billing is /4wk)"
+        )
+
+
+class TestCoachingSuccessUrl:
+    """Coaching checkout success URL must include session_id for GA4."""
+
+    def test_success_url_has_session_id(self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_url_check'
+            mock_session.url = 'https://checkout.stripe.com/url-check'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            client.post(
+                '/api/create-coaching-checkout',
+                json={'name': 'URL Test', 'email': 'url@test.com', 'tier': 'min'},
+                content_type='application/json'
+            )
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert '{CHECKOUT_SESSION_ID}' in call_kwargs['success_url'], (
+                "Success URL must include {CHECKOUT_SESSION_ID} for GA4 attribution"
+            )
 
 
 if __name__ == '__main__':

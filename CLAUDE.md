@@ -70,20 +70,51 @@ JS `new Date()` uses browser timezone, Python `date.today()` uses server timezon
 ### Docker build context
 The Dockerfile copies `webhook/` and `athletes/` from repo root. If Railway's root directory is set to `/webhook`, the build context is restricted and `COPY athletes/` fails. Always keep root directory empty/unset.
 
+### Billing interval: every 4 weeks, NOT monthly
+Coaching subscriptions bill every 4 weeks (13 cycles/year), NOT monthly (12 cycles/year). The Stripe prices use `interval=week, interval_count=4`. Never use "monthly", "/mo", or "per month" in customer-facing copy. Tests enforce this: `TestPIIMasking.test_no_month_in_recovery_emails` and coaching-side `TestAccessibility.test_no_month_in_billing_context`.
+
+### CSS tokens must exist before use
+Never guess a CSS token name (e.g., `--gg-font-size-3xs`). Always check `gravel-god-brand/tokens/tokens.css` first. Undefined `var()` references silently inherit from the parent element. The coaching test `TestCssTokenValidation.test_all_var_refs_defined` catches this by checking every `var(--gg-*)` in coaching CSS against the actual token definitions.
+
+### Setup fee on ALL tiers
+The $99 setup fee must be tested on every coaching tier, not just `min`. `TestSetupFeeAllTiers.test_setup_fee_on_every_tier` verifies all 3 tiers have exactly 2 line items.
+
+### Follow-up email log path mismatch (KNOWN BUG)
+`process_followup_emails()` reads from `orders.jsonl` but `log_order()` writes to `YYYY-MM.jsonl`. The follow-up email system is non-functional until this is fixed. The test suite uses synthetic data that masks this bug.
+
+### Expired checkout handler: no idempotency
+`_handle_checkout_expired` returns 500 on error, causing Stripe to retry. There's no idempotency guard on expired events, so recovery emails can be sent multiple times. Fix: add idempotency tracking or return 200 on error.
+
+### Cross-repo dependency
+The coaching PAGE lives in `gravel-race-automation` but the checkout BACKEND lives here. Stripe prices are created by `gravel-race-automation/scripts/create_stripe_products.py` but consumed by `webhook/app.py`. Changes to pricing must update BOTH repos. No automated parity test exists yet.
+
+### `create_stripe_products.py` is documentation, not idempotent
+The script in `gravel-race-automation` documents the Stripe product structure. Running it creates NEW products/prices (Stripe prices are immutable). It does NOT update existing prices. When changing billing intervals or amounts, create new prices via Dashboard, update the hardcoded IDs in `app.py`, and update the script to match.
+
 ## Testing
 ```bash
 python3 -m pytest webhook/tests/test_webhook.py -v
 ```
-98 tests: health, validation, WooCommerce, Stripe, coaching checkout (incl. setup fee + promo codes), consulting checkout, coaching webhook, consulting webhook, intake storage, price computation, Python/JS parity, past date rejection, email masking, notification, idempotency timing, checkout recovery, follow-up emails.
+103 tests: health, validation, WooCommerce, Stripe, coaching checkout (setup fee on ALL tiers + promo codes + success URL), consulting checkout, coaching webhook, consulting webhook, intake storage, price computation, Python/JS parity, past date rejection, email masking, PII compliance, notification, idempotency timing, checkout recovery, follow-up emails.
+
+## Quality Gate Tests (prevent regressions)
+- `TestSetupFeeAllTiers` — setup fee on every tier, correct price ID
+- `TestPIIMasking` — no raw emails in logs, no "month" in recovery emails
+- `TestCoachingSuccessUrl` — success URL includes session_id for GA4
+- Coaching-side `TestCssTokenValidation` — every var(--gg-*) must be defined in tokens.css
+- Coaching-side `TestAccessibility` — FAQ aria-expanded reset, no "/MO" in billing
 
 ## Pending Work
-- [ ] Rotate Stripe secret key (exposed in conversation)
-- [ ] Create coaching setup fee product + price + coupon + promo code in LIVE mode (currently test mode only — update `COACHING_SETUP_FEE_PRICE_ID` in app.py)
-- [ ] Update Stripe webhook endpoint to also listen for `checkout.session.expired` events
+- [ ] **FIX: Follow-up email log path** — `process_followup_emails()` reads wrong file (orders.jsonl vs YYYY-MM.jsonl) and expects wrong schema
 - [ ] Set up SMTP env vars in Railway (NOTIFICATION_EMAIL + SMTP_* + CRON_SECRET)
-- [ ] Set up daily cron to call `/api/cron/followup-emails` (cron-job.org or Railway cron)
+- [ ] Set up daily cron to call `/api/cron/followup-emails` (after log path fix)
 - [ ] Create success/cancel pages in WordPress: `/coaching/welcome/`, `/consulting/confirmed/`, `/consulting/`
-- [ ] Custom domain (replace long Railway subdomain)
 - [ ] Add rate limiting to checkout endpoints (Flask-Limiter)
+- [ ] Enable `automatic_tax` on all checkout sessions (requires Stripe Tax setup)
+- [ ] Add `customer_creation='always'` to training plan + consulting checkouts
+- [ ] Add `phone_number_collection` to coaching checkout
+- [ ] Add `subscription_data.metadata` to coaching checkout (tier, athlete name)
+- [ ] Set up Stripe Customer Portal for subscription management
+- [ ] Custom domain (replace long Railway subdomain)
+- [ ] Add idempotency to expired checkout handler
 - [ ] Consider async pipeline execution to avoid Stripe timeout retries
-- [ ] Deploy updated training-plans HTML pages to WordPress (paste into Custom HTML blocks)

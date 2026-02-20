@@ -1306,7 +1306,7 @@ def _send_recovery_email(email: str, name: str, product_type: str,
             f"Pick up where you left off:\n"
             f"{recovery_url}\n\n"
             f"Athletes who work with a coach see measurable gains within "
-            f"the first month. Let's get started.\n\n"
+            f"the first few weeks. Let's get started.\n\n"
             f"— Matt, Gravel God Cycling\n"
             f"gravelgodcycling.com"
         )
@@ -1341,14 +1341,14 @@ def _send_recovery_email(email: str, name: str, product_type: str,
             # Still log at CRITICAL so we can follow up manually
             logger.critical(
                 f"ABANDONED CART — manual follow-up needed\n"
-                f"  Email: {email}\n  Product: {product_type}\n"
+                f"  Email: {_mask_email(email)}\n  Product: {product_type}\n"
                 f"  Recovery URL: {recovery_url}"
             )
     else:
         # No SMTP — log for manual follow-up
         logger.critical(
             f"ABANDONED CART — SMTP not configured, manual follow-up needed\n"
-            f"  Email: {email}\n  Name: {name}\n"
+            f"  Email: {_mask_email(email)}\n  Name: {name}\n"
             f"  Product: {product_type}\n  Recovery URL: {recovery_url}"
         )
 
