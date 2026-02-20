@@ -102,6 +102,11 @@ COACHING_PRICE_IDS = {
     'max': 'price_1T2ekULoaHDbEqSqLoY8g0BD',   # $1,200/mo
 }
 
+# One-time $99 setup fee added to all coaching checkouts
+# TODO: Replace with live price ID after creating in Stripe Dashboard
+COACHING_SETUP_FEE_PRICE_ID = 'price_1T2y2aLoaHDbEqSqafEZMdE0'  # $99 one-time
+COACHING_SETUP_FEE_CENTS = 9900
+
 CONSULTING_PRICE_ID = 'price_1T2ekVLoaHDbEqSq0GGfoBEX'  # $150/hr
 
 # Intake data expiry (24 hours)
@@ -996,10 +1001,18 @@ def create_coaching_checkout():
     try:
         expires_at = int((datetime.now() + timedelta(minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
 
+        # Line items: recurring subscription + one-time $99 setup fee
+        line_items = [
+            {'price': price_id, 'quantity': 1},
+        ]
+        if COACHING_SETUP_FEE_PRICE_ID:
+            line_items.append({'price': COACHING_SETUP_FEE_PRICE_ID, 'quantity': 1})
+
         checkout_session = stripe.checkout.Session.create(
-            line_items=[{'price': price_id, 'quantity': 1}],
+            line_items=line_items,
             mode='subscription',
             customer_email=email,
+            allow_promotion_codes=True,
             metadata={
                 'product_type': 'coaching',
                 'tier': tier,
@@ -1020,7 +1033,7 @@ def create_coaching_checkout():
         )
 
         logger.info(f"Created coaching checkout {checkout_session.id} "
-                     f"(tier={tier}, {_mask_email(email)})")
+                     f"(tier={tier}, setup_fee=$99, {_mask_email(email)})")
 
         return jsonify({'checkout_url': checkout_session.url})
 

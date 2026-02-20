@@ -1052,6 +1052,49 @@ class TestCoachingCheckout:
             assert call_kwargs['metadata']['product_type'] == 'coaching'
             assert call_kwargs['metadata']['tier'] == 'mid'
 
+    def test_coaching_checkout_includes_setup_fee(self, client, temp_athletes_dir):
+        """Coaching checkout includes $99 setup fee as second line item."""
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_coaching_fee'
+            mock_session.url = 'https://checkout.stripe.com/coaching-fee'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-coaching-checkout',
+                json={'name': 'Fee Test', 'email': 'fee@test.com', 'tier': 'min'},
+                content_type='application/json'
+            )
+
+            assert response.status_code == 200
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+
+            # Should have 2 line items: subscription + setup fee
+            line_items = call_kwargs['line_items']
+            assert len(line_items) == 2
+            # First item is the recurring subscription
+            assert line_items[0]['quantity'] == 1
+            # Second item is the setup fee
+            assert line_items[1]['quantity'] == 1
+
+    def test_coaching_checkout_allows_promo_codes(self, client, temp_athletes_dir):
+        """Coaching checkout enables promotion codes for setup fee waivers."""
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_coaching_promo'
+            mock_session.url = 'https://checkout.stripe.com/coaching-promo'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-coaching-checkout',
+                json={'name': 'Promo Test', 'email': 'promo@test.com', 'tier': 'mid'},
+                content_type='application/json'
+            )
+
+            assert response.status_code == 200
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert call_kwargs['allow_promotion_codes'] is True
+
     def test_coaching_checkout_all_tiers(self, client, temp_athletes_dir):
         """All three coaching tiers create valid sessions."""
         for tier in ['min', 'mid', 'max']:

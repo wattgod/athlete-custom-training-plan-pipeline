@@ -7,7 +7,7 @@ webhook/
   Dockerfile       <- Docker build (expects repo root as context)
   requirements.txt
   tests/
-    test_webhook.py <- 96 tests
+    test_webhook.py <- 98 tests
 athletes/
   scripts/         <- Pipeline scripts (generate_full_package.py)
 railway.json       <- Railway deploy config (root, NOT webhook/)
@@ -31,8 +31,10 @@ railway.json       <- Railway deploy config (root, NOT webhook/)
 ## Stripe Products
 - **Training plans**: 14 pre-built prices ($60-$249, keyed by weeks 4-17+)
 - **Coaching**: 3 subscription prices (min=$199/mo, mid=$299/mo, max=$1,200/mo)
+- **Coaching setup fee**: $99 one-time, added as second line item to all coaching checkouts
+- **Setup fee waiver**: Coupon "Waive Setup Fee" + promo code `NOSETUP` ($99 off, applies to setup fee product only)
 - **Consulting**: 1 per-hour price ($150/hr, quantity=hours)
-- **Price IDs**: Hardcoded in `app.py` lines 73-96, created by `scripts/create_stripe_products.py`
+- **Price IDs**: Hardcoded in `app.py` lines 73-108, created by `scripts/create_stripe_products.py`
 - **Webhook endpoint**: `we_1T2gDcLoaHDbEqSqb5sp6Tfj`, listens for `checkout.session.completed` + `checkout.session.expired`
 
 ## Checkout Features
@@ -72,10 +74,11 @@ The Dockerfile copies `webhook/` and `athletes/` from repo root. If Railway's ro
 ```bash
 python3 -m pytest webhook/tests/test_webhook.py -v
 ```
-96 tests: health, validation, WooCommerce, Stripe, coaching checkout, consulting checkout, coaching webhook, consulting webhook, intake storage, price computation, Python/JS parity, past date rejection, email masking, notification, idempotency timing, checkout recovery, follow-up emails.
+98 tests: health, validation, WooCommerce, Stripe, coaching checkout (incl. setup fee + promo codes), consulting checkout, coaching webhook, consulting webhook, intake storage, price computation, Python/JS parity, past date rejection, email masking, notification, idempotency timing, checkout recovery, follow-up emails.
 
 ## Pending Work
 - [ ] Rotate Stripe secret key (exposed in conversation)
+- [ ] Create coaching setup fee product + price + coupon + promo code in LIVE mode (currently test mode only — update `COACHING_SETUP_FEE_PRICE_ID` in app.py)
 - [ ] Update Stripe webhook endpoint to also listen for `checkout.session.expired` events
 - [ ] Set up SMTP env vars in Railway (NOTIFICATION_EMAIL + SMTP_* + CRON_SECRET)
 - [ ] Set up daily cron to call `/api/cron/followup-emails` (cron-job.org or Railway cron)
