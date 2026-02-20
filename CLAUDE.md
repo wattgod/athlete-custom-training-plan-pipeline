@@ -30,7 +30,7 @@ railway.json       <- Railway deploy config (root, NOT webhook/)
 
 ## Stripe Products
 - **Training plans**: 14 pre-built prices ($60-$249, keyed by weeks 4-17+)
-- **Coaching**: 3 subscription prices (min=$199/mo, mid=$299/mo, max=$1,200/mo)
+- **Coaching**: 3 subscription prices (min=$199/4wk, mid=$299/4wk, max=$1,200/4wk)
 - **Coaching setup fee**: $99 one-time, added as second line item to all coaching checkouts
 - **Setup fee waiver**: Coupon "Waive Setup Fee" + promo code `NOSETUP` ($99 off, applies to setup fee product only)
 - **Consulting**: 1 per-hour price ($150/hr, quantity=hours)

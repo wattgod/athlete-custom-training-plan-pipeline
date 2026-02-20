@@ -97,14 +97,13 @@ TRAINING_PLAN_PRICE_IDS = {
 }
 
 COACHING_PRICE_IDS = {
-    'min': 'price_1T2ekSLoaHDbEqSqY10rhBJE',   # $199/mo
-    'mid': 'price_1T2ekTLoaHDbEqSqCZ8dLEYk',   # $299/mo
-    'max': 'price_1T2ekULoaHDbEqSqLoY8g0BD',   # $1,200/mo
+    'min': 'price_1T2z58LoaHDbEqSqeb8lLS9g',   # $199/4wk
+    'mid': 'price_1T2z6SLoaHDbEqSqQIChOlOn',   # $299/4wk
+    'max': 'price_1T2z7MLoaHDbEqSqoWpedvF5',   # $1,200/4wk
 }
 
 # One-time $99 setup fee added to all coaching checkouts
-# TODO: Replace with live price ID after creating in Stripe Dashboard
-COACHING_SETUP_FEE_PRICE_ID = 'price_1T2y2aLoaHDbEqSqafEZMdE0'  # $99 one-time
+COACHING_SETUP_FEE_PRICE_ID = 'price_1T2yzQLoaHDbEqSqXKe6gNuF'  # $99 one-time (live)
 COACHING_SETUP_FEE_CENTS = 9900
 
 CONSULTING_PRICE_ID = 'price_1T2ekVLoaHDbEqSq0GGfoBEX'  # $150/hr
@@ -1561,7 +1560,7 @@ FOLLOWUP_SEQUENCE = [
             "recovering between sessions.\n\n"
             "If you want a human in your corner — weekly adjustments, "
             "race-day strategy, and real accountability — coaching starts at "
-            "$199/month:\n"
+            "$199 every 4 weeks:\n"
             "https://gravelgodcycling.com/coaching/\n\n"
             "Train hard.\n\n"
             "— Matt\n"
