@@ -79,11 +79,11 @@ Never guess a CSS token name (e.g., `--gg-font-size-3xs`). Always check `gravel-
 ### Setup fee on ALL tiers
 The $99 setup fee must be tested on every coaching tier, not just `min`. `TestSetupFeeAllTiers.test_setup_fee_on_every_tier` verifies all 3 tiers have exactly 2 line items.
 
-### Follow-up email log path mismatch (KNOWN BUG)
-`process_followup_emails()` reads from `orders.jsonl` but `log_order()` writes to `YYYY-MM.jsonl`. The follow-up email system is non-functional until this is fixed. The test suite uses synthetic data that masks this bug.
+### Rate limiting
+Flask-Limiter is configured with per-IP limits (20/min checkout endpoints, 60/min webhook, 5/min cron). Uses `X-Forwarded-For` header on Railway proxy. Storage is in-memory (`memory://`) — resets on deploy. If you need persistent rate limiting, switch to Redis.
 
-### Expired checkout handler: no idempotency
-`_handle_checkout_expired` returns 500 on error, causing Stripe to retry. There's no idempotency guard on expired events, so recovery emails can be sent multiple times. Fix: add idempotency tracking or return 200 on error.
+### Automatic tax
+`ENABLE_AUTOMATIC_TAX` env var (default: off). Set to `true` in Railway after configuring Stripe Tax. Adds `automatic_tax={'enabled': True}` to all checkout sessions.
 
 ### Cross-repo dependency
 The coaching PAGE lives in `gravel-race-automation` but the checkout BACKEND lives here. Stripe prices are created by `gravel-race-automation/scripts/create_stripe_products.py` but consumed by `webhook/app.py`. Changes to pricing must update BOTH repos. No automated parity test exists yet.
@@ -95,26 +95,25 @@ The script in `gravel-race-automation` documents the Stripe product structure. R
 ```bash
 python3 -m pytest webhook/tests/test_webhook.py -v
 ```
-103 tests: health, validation, WooCommerce, Stripe, coaching checkout (setup fee on ALL tiers + promo codes + success URL), consulting checkout, coaching webhook, consulting webhook, intake storage, price computation, Python/JS parity, past date rejection, email masking, PII compliance, notification, idempotency timing, checkout recovery, follow-up emails.
+114 tests: health, validation, WooCommerce, Stripe, coaching checkout (setup fee on ALL tiers + promo codes + success URL), consulting checkout, coaching webhook, consulting webhook, intake storage, price computation, Python/JS parity, past date rejection, email masking, PII compliance, notification, idempotency timing, checkout recovery, follow-up emails, rate limiting, customer creation, coaching enhancements, log order schema, expired checkout idempotency.
 
 ## Quality Gate Tests (prevent regressions)
 - `TestSetupFeeAllTiers` — setup fee on every tier, correct price ID
 - `TestPIIMasking` — no raw emails in logs, no "month" in recovery emails
 - `TestCoachingSuccessUrl` — success URL includes session_id for GA4
+- `TestExpiredCheckoutIdempotency` — duplicate expired events caught, returns 200 on error
+- `TestCustomerCreation` — training plan + consulting include `customer_creation='always'`
+- `TestCoachingCheckoutEnhancements` — phone_number_collection + subscription_data.metadata present
+- `TestLogOrderSchema` — log entries include email, name, product_type fields
+- `TestFollowupReadsCorrectLogFiles` — reads YYYY-MM.jsonl, skips failed orders
+- `TestRateLimiting` — limiter exists on app, checkout endpoints have rate limit decorators
 - Coaching-side `TestCssTokenValidation` — every var(--gg-*) must be defined in tokens.css
 - Coaching-side `TestAccessibility` — FAQ aria-expanded reset, no "/MO" in billing
 
 ## Pending Work
-- [ ] **FIX: Follow-up email log path** — `process_followup_emails()` reads wrong file (orders.jsonl vs YYYY-MM.jsonl) and expects wrong schema
 - [ ] Set up SMTP env vars in Railway (NOTIFICATION_EMAIL + SMTP_* + CRON_SECRET)
-- [ ] Set up daily cron to call `/api/cron/followup-emails` (after log path fix)
-- [ ] Create success/cancel pages in WordPress: `/coaching/welcome/`, `/consulting/confirmed/`, `/consulting/`
-- [ ] Add rate limiting to checkout endpoints (Flask-Limiter)
-- [ ] Enable `automatic_tax` on all checkout sessions (requires Stripe Tax setup)
-- [ ] Add `customer_creation='always'` to training plan + consulting checkouts
-- [ ] Add `phone_number_collection` to coaching checkout
-- [ ] Add `subscription_data.metadata` to coaching checkout (tier, athlete name)
+- [ ] Set up daily cron to call `/api/cron/followup-emails`
+- [ ] Enable `ENABLE_AUTOMATIC_TAX=true` in Railway (requires Stripe Tax account setup first)
 - [ ] Set up Stripe Customer Portal for subscription management
 - [ ] Custom domain (replace long Railway subdomain)
-- [ ] Add idempotency to expired checkout handler
 - [ ] Consider async pipeline execution to avoid Stripe timeout retries

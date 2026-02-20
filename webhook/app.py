@@ -23,10 +23,27 @@ from email.mime.text import MIMEText
 from pathlib import Path
 from datetime import datetime, timedelta, date
 from flask import Flask, request, jsonify
+from flask_limiter import Limiter
 import stripe
 import yaml
 
 app = Flask(__name__)
+
+
+def _get_real_ip():
+    """Get client IP, handling Railway/proxy X-Forwarded-For."""
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return request.remote_addr or '127.0.0.1'
+
+
+limiter = Limiter(
+    key_func=_get_real_ip,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://",
+)
 
 # =============================================================================
 # LOGGING
@@ -107,6 +124,10 @@ COACHING_SETUP_FEE_PRICE_ID = 'price_1T2yzQLoaHDbEqSqXKe6gNuF'  # $99 one-time (
 COACHING_SETUP_FEE_CENTS = 9900
 
 CONSULTING_PRICE_ID = 'price_1T2ekVLoaHDbEqSq0GGfoBEX'  # $150/hr
+
+# Stripe Tax — requires Stripe Tax to be enabled at account level first.
+# Set ENABLE_AUTOMATIC_TAX=true in Railway env vars after completing Stripe Tax setup.
+ENABLE_AUTOMATIC_TAX = os.environ.get('ENABLE_AUTOMATIC_TAX', '').lower() == 'true'
 
 # Intake data expiry (24 hours)
 INTAKE_EXPIRY_HOURS = 24
@@ -807,15 +828,21 @@ def run_pipeline(athlete_id: str, deliver: bool = True) -> dict:
 # =============================================================================
 
 def log_order(order_data: dict, result: dict):
-    """Log order processing for tracking with file locking."""
+    """Log order processing for tracking with file locking.
+
+    Includes email, name, product_type so follow-up email system can find orders.
+    """
     log_dir = Path(ATHLETES_DIR) / '.logs'
     log_dir.mkdir(exist_ok=True)
 
     log_entry = {
         'timestamp': datetime.now().isoformat(),
+        'product_type': 'training_plan',
         'athlete_id': order_data['athlete_id'],
         'order_id': order_data['order_id'],
         'tier': order_data['tier'],
+        'email': order_data.get('profile', {}).get('email', ''),
+        'name': order_data.get('profile', {}).get('name', ''),
         'success': result['success'],
         'error': result.get('stderr', '')[:500] if not result['success'] else None,
     }
@@ -853,6 +880,7 @@ def health():
 
 
 @app.route('/api/create-checkout', methods=['POST', 'OPTIONS'])
+@limiter.limit("20/minute")
 def create_checkout():
     """Create a Stripe Checkout Session from questionnaire data.
 
@@ -925,10 +953,11 @@ def create_checkout():
 
         expires_at = int((datetime.now() + timedelta(minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
 
-        checkout_session = stripe.checkout.Session.create(
+        session_kwargs = dict(
             line_items=line_items,
             mode='payment',
             customer_email=email,
+            customer_creation='always',
             client_reference_id=intake_id,
             metadata={
                 'intake_id': intake_id,
@@ -951,6 +980,10 @@ def create_checkout():
                 'promotions': 'auto',
             },
         )
+        if ENABLE_AUTOMATIC_TAX:
+            session_kwargs['automatic_tax'] = {'enabled': True}
+
+        checkout_session = stripe.checkout.Session.create(**session_kwargs)
 
         logger.info(f"Created checkout session {checkout_session.id} for intake {intake_id} "
                      f"({pricing['weeks']}wk, {pricing['price_display']}, {_mask_email(email)})")
@@ -970,6 +1003,7 @@ def create_checkout():
 
 
 @app.route('/api/create-coaching-checkout', methods=['POST', 'OPTIONS'])
+@limiter.limit("20/minute")
 def create_coaching_checkout():
     """Create a Stripe Checkout Session for coaching subscription.
 
@@ -1007,15 +1041,22 @@ def create_coaching_checkout():
         if COACHING_SETUP_FEE_PRICE_ID:
             line_items.append({'price': COACHING_SETUP_FEE_PRICE_ID, 'quantity': 1})
 
-        checkout_session = stripe.checkout.Session.create(
+        session_kwargs = dict(
             line_items=line_items,
             mode='subscription',
             customer_email=email,
             allow_promotion_codes=True,
+            phone_number_collection={'enabled': True},
             metadata={
                 'product_type': 'coaching',
                 'tier': tier,
                 'athlete_name': name,
+            },
+            subscription_data={
+                'metadata': {
+                    'tier': tier,
+                    'athlete_name': name,
+                },
             },
             success_url='https://gravelgodcycling.com/coaching/welcome/?session_id={CHECKOUT_SESSION_ID}',
             cancel_url='https://gravelgodcycling.com/coaching/',
@@ -1030,6 +1071,10 @@ def create_coaching_checkout():
                 'promotions': 'auto',
             },
         )
+        if ENABLE_AUTOMATIC_TAX:
+            session_kwargs['automatic_tax'] = {'enabled': True}
+
+        checkout_session = stripe.checkout.Session.create(**session_kwargs)
 
         logger.info(f"Created coaching checkout {checkout_session.id} "
                      f"(tier={tier}, setup_fee=$99, {_mask_email(email)})")
@@ -1045,6 +1090,7 @@ def create_coaching_checkout():
 
 
 @app.route('/api/create-consulting-checkout', methods=['POST', 'OPTIONS'])
+@limiter.limit("20/minute")
 def create_consulting_checkout():
     """Create a Stripe Checkout Session for consulting.
 
@@ -1077,10 +1123,11 @@ def create_consulting_checkout():
     try:
         expires_at = int((datetime.now() + timedelta(minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
 
-        checkout_session = stripe.checkout.Session.create(
+        session_kwargs = dict(
             line_items=[{'price': CONSULTING_PRICE_ID, 'quantity': hours}],
             mode='payment',
             customer_email=email,
+            customer_creation='always',
             metadata={
                 'product_type': 'consulting',
                 'athlete_name': name,
@@ -1099,6 +1146,10 @@ def create_consulting_checkout():
                 'promotions': 'auto',
             },
         )
+        if ENABLE_AUTOMATIC_TAX:
+            session_kwargs['automatic_tax'] = {'enabled': True}
+
+        checkout_session = stripe.checkout.Session.create(**session_kwargs)
 
         logger.info(f"Created consulting checkout {checkout_session.id} "
                      f"({hours}hr, {_mask_email(email)})")
@@ -1188,6 +1239,7 @@ def woocommerce_webhook():
 
 
 @app.route('/webhook/stripe', methods=['POST'])
+@limiter.limit("60/minute")
 def stripe_webhook():
     """Handle Stripe webhook events (completed + expired checkouts)."""
     signature = request.headers.get('Stripe-Signature', '')
@@ -1240,9 +1292,23 @@ def stripe_webhook():
 
 
 def _handle_checkout_expired(data: dict):
-    """Handle expired checkout session — send recovery email if customer opted in."""
+    """Handle expired checkout session — send recovery email if customer opted in.
+
+    Includes idempotency to prevent duplicate recovery emails when Stripe retries.
+    Returns 200 on all paths (even errors) to prevent Stripe from retrying.
+    """
     try:
         session = data.get('data', {}).get('object', {})
+        session_id = session.get('id', '')
+
+        # Idempotency — prevent duplicate recovery emails on Stripe retry
+        expired_key = f'expired_{session_id}'
+        if check_idempotency(expired_key):
+            return jsonify({'status': 'duplicate', 'message': 'Expired session already handled'})
+
+        # Mark early to prevent duplicates from concurrent retries
+        mark_order_processed(expired_key, 'recovery')
+
         email = session.get('customer_details', {}).get('email', '')
         metadata = session.get('metadata', {})
         product_type = metadata.get('product_type', 'training_plan')
@@ -1254,7 +1320,7 @@ def _handle_checkout_expired(data: dict):
         recovery_url = recovery.get('url', '')
 
         if not email or not recovery_url:
-            logger.info(f"Expired checkout {session.get('id', '?')} — no email or recovery URL")
+            logger.info(f"Expired checkout {session_id} — no email or recovery URL")
             return jsonify({'status': 'ignored', 'reason': 'No recovery possible'})
 
         # Only send if customer opted in to promotional emails
@@ -1265,7 +1331,7 @@ def _handle_checkout_expired(data: dict):
         # Build product-specific recovery email
         _send_recovery_email(email, athlete_name, product_type, metadata, recovery_url)
 
-        _log_product_event('cart_recovery', session.get('id', ''),
+        _log_product_event('cart_recovery', session_id,
                            email=email, original_product=product_type,
                            recovery_url_sent=True)
 
@@ -1274,7 +1340,10 @@ def _handle_checkout_expired(data: dict):
 
     except Exception as e:
         logger.exception(f"Error handling expired checkout: {e}")
-        return jsonify({'status': 'error'}), 500
+        # Return 200 even on error to prevent Stripe from retrying and
+        # sending duplicate recovery emails. The idempotency mark is already
+        # set, so retries would be caught, but 200 is cleaner.
+        return jsonify({'status': 'error', 'message': 'Logged for manual review'})
 
 
 def _send_recovery_email(email: str, name: str, product_type: str,
@@ -1631,73 +1700,83 @@ def _send_followup_email(email: str, subject: str, body: str):
 
 
 def process_followup_emails():
-    """Check order logs and send due follow-up emails. Returns stats dict."""
-    log_dir = Path(ATHLETES_DIR) / '.logs'
-    order_log = log_dir / 'orders.jsonl'
+    """Check order logs and send due follow-up emails. Returns stats dict.
 
-    if not order_log.exists():
+    Reads from YYYY-MM.jsonl files (written by log_order and _log_product_event).
+    Only processes training_plan orders that succeeded.
+    """
+    log_dir = Path(ATHLETES_DIR) / '.logs'
+
+    if not log_dir.exists():
         return {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0}
 
     sent_followups = _get_sent_followups()
     now = datetime.utcnow()
     stats = {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0}
 
-    for line in order_log.read_text().strip().split('\n'):
-        if not line:
-            continue
-        try:
-            order = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-
-        # Only follow up on training_plan orders (coaching/consulting are high-touch)
-        if order.get('product_type') != 'training_plan':
-            continue
-
-        stats['checked'] += 1
-        order_id = order.get('order_id', '')
-        email = order.get('email', '')
-        name = order.get('name', order.get('customer_name', ''))
-        order_time = order.get('timestamp', order.get('processed_at', ''))
-
-        if not email or not order_time or not order_id:
-            continue
-
-        try:
-            order_dt = datetime.fromisoformat(order_time.replace('Z', '+00:00').replace('+00:00', ''))
-        except (ValueError, AttributeError):
-            continue
-
-        days_since = (now - order_dt).days
-
-        for followup in FOLLOWUP_SEQUENCE:
-            day = followup['day']
-            # Send on the target day or up to 2 days late (catch-up window)
-            if days_since < day or days_since > day + 2:
+    # Read from all YYYY-MM.jsonl files (the format log_order actually writes to)
+    for log_file in sorted(log_dir.glob('20*.jsonl')):
+        for line in log_file.read_text().strip().split('\n'):
+            if not line:
                 continue
-            if (order_id, day) in sent_followups:
+            try:
+                order = json.loads(line)
+            except json.JSONDecodeError:
                 continue
 
-            first_name = name.split()[0] if name else 'there'
-            body = followup['template'].format(first_name=first_name)
-            subject = followup['subject']
+            # Only follow up on training_plan orders (coaching/consulting are high-touch)
+            if order.get('product_type') != 'training_plan':
+                continue
 
-            if _send_followup_email(email, subject, body):
-                _mark_followup_sent(order_id, day, email)
-                sent_followups.add((order_id, day))
-                stats['sent'] += 1
-                logger.info(
-                    f"Followup day {day} sent to {_mask_email(email)} "
-                    f"(order {order_id})"
-                )
-            else:
-                stats['errors'] += 1
+            # Skip failed orders — no plan was delivered
+            if not order.get('success', True):
+                continue
+
+            stats['checked'] += 1
+            order_id = order.get('order_id', '')
+            email = order.get('email', '')
+            name = order.get('name', order.get('customer_name', ''))
+            order_time = order.get('timestamp', order.get('processed_at', ''))
+
+            if not email or not order_time or not order_id:
+                continue
+
+            try:
+                order_dt = datetime.fromisoformat(order_time.replace('Z', '+00:00').replace('+00:00', ''))
+            except (ValueError, AttributeError):
+                continue
+
+            days_since = (now - order_dt).days
+
+            for followup in FOLLOWUP_SEQUENCE:
+                day = followup['day']
+                # Send on the target day or up to 2 days late (catch-up window)
+                if days_since < day or days_since > day + 2:
+                    continue
+                if (order_id, day) in sent_followups:
+                    continue
+
+                first_name = name.split()[0] if name else 'there'
+                body = followup['template'].format(first_name=first_name)
+                subject = followup['subject']
+
+                if _send_followup_email(email, subject, body):
+                    _mark_followup_sent(order_id, day, email)
+                    sent_followups.add((order_id, day))
+                    stats['sent'] += 1
+                    logger.info(
+                        f"Followup day {day} sent to {_mask_email(email)} "
+                        f"(order {order_id})"
+                    )
+                else:
+                    stats['errors'] += 1
 
     stats['skipped'] = stats['checked'] * len(FOLLOWUP_SEQUENCE) - stats['sent'] - stats['errors']
     return stats
 
 
 @app.route('/api/cron/followup-emails', methods=['POST'])
+@limiter.limit("5/minute")
 def cron_followup_emails():
     """Daily cron endpoint — send follow-up emails for recent orders.
 

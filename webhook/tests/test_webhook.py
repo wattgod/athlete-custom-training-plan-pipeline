@@ -1812,16 +1812,18 @@ class TestFollowupEmails:
         log_dir = tmp_path / '.logs'
         log_dir.mkdir()
 
-        # Create order from 1 day ago
-        order_time = (datetime.utcnow() - timedelta(days=1)).isoformat()
+        # Create order from 1 day ago — write to YYYY-MM.jsonl (the actual log format)
+        order_time = (datetime.utcnow() - timedelta(days=1))
         order = json.dumps({
             'product_type': 'training_plan',
             'order_id': 'cs_test_day1',
             'email': 'athlete@test.com',
             'name': 'Test Athlete',
-            'timestamp': order_time,
+            'timestamp': order_time.isoformat(),
+            'success': True,
         })
-        (log_dir / 'orders.jsonl').write_text(order + '\n')
+        log_filename = order_time.strftime('%Y-%m') + '.jsonl'
+        (log_dir / log_filename).write_text(order + '\n')
 
         with patch('app.ATHLETES_DIR', str(tmp_path)), \
              patch('app._send_followup_email') as mock_send:
@@ -1840,15 +1842,17 @@ class TestFollowupEmails:
         log_dir = tmp_path / '.logs'
         log_dir.mkdir()
 
-        order_time = (datetime.utcnow() - timedelta(days=1)).isoformat()
+        order_time = (datetime.utcnow() - timedelta(days=1))
         order = json.dumps({
             'product_type': 'training_plan',
             'order_id': 'cs_test_dedup',
             'email': 'athlete@test.com',
             'name': 'Test',
-            'timestamp': order_time,
+            'timestamp': order_time.isoformat(),
+            'success': True,
         })
-        (log_dir / 'orders.jsonl').write_text(order + '\n')
+        log_filename = order_time.strftime('%Y-%m') + '.jsonl'
+        (log_dir / log_filename).write_text(order + '\n')
 
         # Mark day 1 as already sent
         sent = json.dumps({
@@ -1872,15 +1876,17 @@ class TestFollowupEmails:
         log_dir = tmp_path / '.logs'
         log_dir.mkdir()
 
-        order_time = (datetime.utcnow() - timedelta(days=1)).isoformat()
+        order_time = (datetime.utcnow() - timedelta(days=1))
         order = json.dumps({
             'product_type': 'coaching',
             'order_id': 'cs_test_coaching',
             'email': 'coach@test.com',
             'name': 'Coach Client',
-            'timestamp': order_time,
+            'timestamp': order_time.isoformat(),
+            'success': True,
         })
-        (log_dir / 'orders.jsonl').write_text(order + '\n')
+        log_filename = order_time.strftime('%Y-%m') + '.jsonl'
+        (log_dir / log_filename).write_text(order + '\n')
 
         with patch('app.ATHLETES_DIR', str(tmp_path)), \
              patch('app._send_followup_email') as mock_send:
@@ -1895,15 +1901,17 @@ class TestFollowupEmails:
         log_dir = tmp_path / '.logs'
         log_dir.mkdir()
 
-        order_time = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        order_time = (datetime.utcnow() - timedelta(days=7))
         order = json.dumps({
             'product_type': 'training_plan',
             'order_id': 'cs_test_day7',
             'email': 'athlete@test.com',
             'name': 'Week One Done',
-            'timestamp': order_time,
+            'timestamp': order_time.isoformat(),
+            'success': True,
         })
-        (log_dir / 'orders.jsonl').write_text(order + '\n')
+        log_filename = order_time.strftime('%Y-%m') + '.jsonl'
+        (log_dir / log_filename).write_text(order + '\n')
 
         with patch('app.ATHLETES_DIR', str(tmp_path)), \
              patch('app._send_followup_email') as mock_send:
@@ -2035,6 +2043,270 @@ class TestCoachingSuccessUrl:
             call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
             assert '{CHECKOUT_SESSION_ID}' in call_kwargs['success_url'], (
                 "Success URL must include {CHECKOUT_SESSION_ID} for GA4 attribution"
+            )
+
+
+class TestExpiredCheckoutIdempotency:
+    """Expired checkout handler must be idempotent — no duplicate recovery emails."""
+
+    def test_duplicate_expired_event_caught(self, client, temp_athletes_dir):
+        """Second expired event for same session returns duplicate."""
+        expired_event = {
+            'type': 'checkout.session.expired',
+            'data': {
+                'object': {
+                    'id': 'cs_expired_idem',
+                    'customer_details': {'email': 'idem@test.com'},
+                    'metadata': {
+                        'product_type': 'training_plan',
+                        'athlete_name': 'Idem Test',
+                        'weeks': '8',
+                    },
+                    'consent': {'promotions': 'opt_in'},
+                    'after_expiration': {
+                        'recovery': {
+                            'url': 'https://checkout.stripe.com/recover/cs_expired_idem',
+                        }
+                    },
+                }
+            }
+        }
+
+        r1 = client.post('/webhook/stripe', json=expired_event,
+                         content_type='application/json')
+        assert r1.status_code == 200
+        assert r1.get_json()['status'] == 'recovery_sent'
+
+        r2 = client.post('/webhook/stripe', json=expired_event,
+                         content_type='application/json')
+        assert r2.status_code == 200
+        assert r2.get_json()['status'] == 'duplicate'
+
+    def test_expired_handler_returns_200_on_error(self, client, temp_athletes_dir):
+        """Expired handler returns 200 even on internal error to stop Stripe retries."""
+        expired_event = {
+            'type': 'checkout.session.expired',
+            'data': {
+                'object': {
+                    'id': 'cs_expired_err',
+                    'customer_details': {'email': 'err@test.com'},
+                    'metadata': {
+                        'product_type': 'training_plan',
+                        'athlete_name': 'Error Test',
+                    },
+                    'consent': {'promotions': 'opt_in'},
+                    'after_expiration': {
+                        'recovery': {
+                            'url': 'https://checkout.stripe.com/recover/cs_expired_err',
+                        }
+                    },
+                }
+            }
+        }
+
+        with patch('app._send_recovery_email', side_effect=Exception('SMTP down')):
+            response = client.post('/webhook/stripe', json=expired_event,
+                                   content_type='application/json')
+            assert response.status_code == 200
+
+
+class TestCustomerCreation:
+    """Training plan and consulting checkouts must create Stripe customers."""
+
+    def test_training_plan_creates_customer(self, client, temp_athletes_dir):
+        """Training plan checkout includes customer_creation='always'."""
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_cust_tp'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            future_date = (datetime.now() + timedelta(weeks=12)).strftime('%Y-%m-%d')
+            client.post(
+                '/api/create-checkout',
+                json={
+                    'name': 'Cust Test',
+                    'email': 'cust@test.com',
+                    'races': [{'name': 'R', 'date': future_date, 'priority': 'A'}],
+                },
+                content_type='application/json'
+            )
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert call_kwargs['customer_creation'] == 'always'
+
+    def test_consulting_creates_customer(self, client, temp_athletes_dir):
+        """Consulting checkout includes customer_creation='always'."""
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_cust_consult'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            client.post(
+                '/api/create-consulting-checkout',
+                json={'name': 'Cust Test', 'email': 'cust@test.com', 'hours': 1},
+                content_type='application/json'
+            )
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert call_kwargs['customer_creation'] == 'always'
+
+
+class TestCoachingCheckoutEnhancements:
+    """Coaching checkout must collect phone + pass metadata to subscription."""
+
+    def test_phone_number_collected(self, client, temp_athletes_dir):
+        """Coaching checkout enables phone number collection."""
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_phone'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            client.post(
+                '/api/create-coaching-checkout',
+                json={'name': 'Phone Test', 'email': 'phone@test.com', 'tier': 'min'},
+                content_type='application/json'
+            )
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert call_kwargs['phone_number_collection'] == {'enabled': True}
+
+    def test_subscription_data_has_metadata(self, client, temp_athletes_dir):
+        """Coaching checkout passes tier + name to subscription metadata."""
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_submeta'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            client.post(
+                '/api/create-coaching-checkout',
+                json={'name': 'Meta Test', 'email': 'meta@test.com', 'tier': 'max'},
+                content_type='application/json'
+            )
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            sub_data = call_kwargs['subscription_data']
+            assert sub_data['metadata']['tier'] == 'max'
+            assert sub_data['metadata']['athlete_name'] == 'Meta Test'
+
+
+class TestLogOrderSchema:
+    """log_order must include email, name, product_type for follow-up emails."""
+
+    def test_log_order_has_followup_fields(self, temp_athletes_dir):
+        """log_order entries include email, name, product_type."""
+        from app import log_order
+
+        order_data = {
+            'athlete_id': 'test_log',
+            'order_id': 'cs_log_test',
+            'tier': 'custom',
+            'profile': {
+                'name': 'Log Schema Test',
+                'email': 'schema@test.com',
+            }
+        }
+        result = {'success': True, 'stdout': '', 'stderr': ''}
+
+        with patch('app.ATHLETES_DIR', str(temp_athletes_dir)):
+            log_order(order_data, result)
+
+        log_dir = temp_athletes_dir / '.logs'
+        log_files = list(log_dir.glob('*.jsonl'))
+        assert len(log_files) == 1
+
+        with open(log_files[0]) as f:
+            entry = json.loads(f.readline())
+
+        assert entry['product_type'] == 'training_plan'
+        assert entry['email'] == 'schema@test.com'
+        assert entry['name'] == 'Log Schema Test'
+        assert entry['order_id'] == 'cs_log_test'
+        assert entry['success'] is True
+
+
+class TestFollowupReadsCorrectLogFiles:
+    """process_followup_emails must read from YYYY-MM.jsonl, not orders.jsonl."""
+
+    def test_reads_monthly_log_not_orders_jsonl(self, tmp_path):
+        """Follow-up reads from YYYY-MM.jsonl (where log_order writes)."""
+        log_dir = tmp_path / '.logs'
+        log_dir.mkdir()
+
+        order_time = (datetime.utcnow() - timedelta(days=1))
+        order = json.dumps({
+            'product_type': 'training_plan',
+            'order_id': 'cs_correct_path',
+            'email': 'correct@test.com',
+            'name': 'Correct Path',
+            'timestamp': order_time.isoformat(),
+            'success': True,
+        })
+
+        # Write to the correct YYYY-MM.jsonl path
+        log_filename = order_time.strftime('%Y-%m') + '.jsonl'
+        (log_dir / log_filename).write_text(order + '\n')
+
+        # orders.jsonl should NOT exist (that was the old bug)
+        assert not (log_dir / 'orders.jsonl').exists()
+
+        with patch('app.ATHLETES_DIR', str(tmp_path)), \
+             patch('app._send_followup_email') as mock_send:
+            mock_send.return_value = True
+            from app import process_followup_emails
+            stats = process_followup_emails()
+
+        # Should find the order and send day 1 email
+        assert stats['checked'] == 1
+        assert stats['sent'] == 1
+
+    def test_skips_failed_orders(self, tmp_path):
+        """Follow-up skips orders where pipeline failed."""
+        log_dir = tmp_path / '.logs'
+        log_dir.mkdir()
+
+        order_time = (datetime.utcnow() - timedelta(days=1))
+        order = json.dumps({
+            'product_type': 'training_plan',
+            'order_id': 'cs_failed',
+            'email': 'failed@test.com',
+            'name': 'Failed Order',
+            'timestamp': order_time.isoformat(),
+            'success': False,
+            'error': 'Pipeline timed out',
+        })
+        log_filename = order_time.strftime('%Y-%m') + '.jsonl'
+        (log_dir / log_filename).write_text(order + '\n')
+
+        with patch('app.ATHLETES_DIR', str(tmp_path)), \
+             patch('app._send_followup_email') as mock_send:
+            from app import process_followup_emails
+            stats = process_followup_emails()
+
+        mock_send.assert_not_called()
+        assert stats['checked'] == 0
+
+
+class TestRateLimiting:
+    """Checkout endpoints must have rate limiting."""
+
+    def test_rate_limit_config_exists(self):
+        """Verify rate limiter is configured on the app."""
+        import app as app_module
+        assert hasattr(app_module, 'limiter'), "Flask-Limiter not configured on app"
+
+    def test_checkout_endpoints_have_limits(self):
+        """All checkout endpoints must be rate-limited."""
+        import inspect
+        import app as app_module
+        source = inspect.getsource(app_module)
+        # Each checkout endpoint should have @limiter.limit before it
+        for endpoint in ['create_checkout', 'create_coaching_checkout',
+                         'create_consulting_checkout']:
+            # Find the function definition and check for limiter decorator
+            pattern = f'limiter.limit.*\ndef {endpoint}'
+            import re
+            assert re.search(pattern, source), (
+                f"Endpoint {endpoint} missing rate limit decorator"
             )
 
 
