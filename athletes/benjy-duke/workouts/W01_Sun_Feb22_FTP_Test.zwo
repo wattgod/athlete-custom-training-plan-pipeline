@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W01_Sun_Feb22_FTP_Test</name>
+  <description>Benjy - Week 1/19 - 19 weeks to SBT GRVL 75
+Phase: BASE
+
+STRUCTURE:
+60 min FTP test protocol: 15 min warmup, 5 min blowout, 5 min recovery, 20 min ALL OUT test, 15 min cooldown
+
+PURPOSE:
+Establish your training zones. The 20-minute effort sets everything.
+
+EXECUTION:
+Start controlled, settle in, suffer through the middle, finish strong. Average power × 0.95 = FTP.
+
+RPE:
+RPE 9/10 for the 20-minute test (very hard, barely sustainable)</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="720" PowerLow="0.45" PowerHigh="0.70"/>
+    <SteadyState Duration="300" Power="0.80"/>
+    <SteadyState Duration="300" Power="0.50"/>
+    <SteadyState Duration="300" Power="1.05"/>
+    <SteadyState Duration="300" Power="0.50"/>
+    <SteadyState Duration="1200" Power="1.00"/>
+    <Cooldown Duration="600" PowerLow="0.55" PowerHigh="0.40"/>
+  </workout>
+</workout_file>

@@ -1,0 +1,34 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W07_Tue_Mar31_Strength_Foundation_Strength_A</name>
+  <description>FOCUS: Lower body + core
+
+EXERCISES:
+- Goblet Squat - 3x12
+  Video: https://vimeo.com/111035086
+- Romanian Deadlift - 3x10
+  Video: https://vimeo.com/111043979
+- Step Ups - 3x10 each
+  Video: https://vimeo.com/111125511
+- Plank - 3x45sec
+  Video: https://vimeo.com/111126227
+- Dead Bug - 3x10 each
+  Video: https://vimeo.com/111109110
+- Glute Bridge - 3x15
+  Video: https://vimeo.com/111033887
+
+EXECUTION:
+Complete all sets with good form. Rest 60-90 sec between sets.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.30" PowerHigh="0.40"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <SteadyState Duration="200" Power="0.35"/>
+    <Cooldown Duration="300" PowerLow="0.40" PowerHigh="0.30"/>
+  </workout>
+</workout_file>

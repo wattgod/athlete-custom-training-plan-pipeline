@@ -1,0 +1,38 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W01_Wed_Feb18_Sprints</name>
+  <description>Benjy - Week 1/19 - 19 weeks to SBT GRVL 75
+Phase: BASE
+
+WARM-UP:
+-20min building from Z1 to Z2
+
+MAIN SET:
+-15min warmup Z2, 6x30sec @ 155% FTP all-out, 2min recovery between
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 4/6: Progressive - Increased challenge, refining execution
+-Increased intensity, reduced recovery - attack training
+
+PURPOSE:
+Attack training. Race-breaking sprint efforts.
+
+EXECUTION:
+-Maximum effort from the start. Full recovery between efforts is critical.
+
+NUTRITION:
+-60-80g carbs/hr. Start fueling at 30-45min. Mix gels and drink mix.
+
+HYDRATION:
+-500-750ml/hr. Adjust for heat and humidity.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="1200" PowerLow="0.50" PowerHigh="0.75"/>
+    <IntervalsT Repeat="6" OnDuration="30" OnPower="1.55" CadenceLow="85" CadenceHigh="95" OffDuration="120" OffPower="0.50"/>
+    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
+  </workout>
+</workout_file>

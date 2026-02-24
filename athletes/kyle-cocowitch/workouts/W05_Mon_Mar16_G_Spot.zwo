@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W05_Mon_Mar16_G_Spot</name>
+  <description>Kyle - Week 5/19 - 15 weeks to SBT GRVL 75
+Phase: BASE
+
+STRUCTURE:
+55 min with G SPOT intervals @ 88-94% FTP
+
+PURPOSE:
+The Gravel God efficiency zone. Maximum training stress with manageable recovery. Builds FTP and muscular endurance simultaneously.
+
+EXECUTION:
+Hard enough to create adaptation, easy enough to repeat. Cadence 85-95 rpm. Stay focused on form.
+
+RPE:
+RPE 6-7 (hard but sustainable, controlled breathing)</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.68"/>
+    <SteadyState Duration="240" Power="0.62"/>
+    <IntervalsT Repeat="3" OnDuration="600" OnPower="0.90" OffDuration="180" OffPower="0.55">
+      <textevent timeoffset="0" message="G SPOT interval - the efficiency zone. Stay smooth."/>
+      <textevent timeoffset="180" message="3 min in - try higher cadence 95+ rpm"/>
+      <textevent timeoffset="360" message="Halfway - drop to 80 rpm, feel the power"/>
+      <textevent timeoffset="480" message="Final 2 min - back to normal cadence, hold power"/>
+    </IntervalsT>
+    <SteadyState Duration="120" Power="0.55"/>
+    <IntervalsT Repeat="4" OnDuration="30" OnPower="1.15" OffDuration="90" OffPower="0.50">
+      <textevent timeoffset="0" message="SURGE! 30 seconds hard - simulate race attack"/>
+    </IntervalsT>
+    <SteadyState Duration="120" Power="0.58"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

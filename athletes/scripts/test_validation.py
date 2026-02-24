@@ -270,29 +270,34 @@ def test_athlete_path_utilities():
 
     athlete_id = "test-athlete"
 
-    # Test get_athlete_dir
+    # Test get_athlete_dir - now returns absolute path
     athlete_dir = get_athlete_dir(athlete_id)
-    assert str(athlete_dir) == f"athletes/{athlete_id}"
+    assert athlete_dir.is_absolute(), "Path should be absolute"
+    assert str(athlete_dir).endswith(f"athletes/{athlete_id}"), f"Path should end with athletes/{athlete_id}"
     print(f"✓ get_athlete_dir: {athlete_dir}")
 
     # Test get_athlete_file
     profile_path = get_athlete_file(athlete_id, "profile.yaml")
-    assert str(profile_path) == f"athletes/{athlete_id}/profile.yaml"
+    assert profile_path.is_absolute(), "Path should be absolute"
+    assert str(profile_path).endswith(f"athletes/{athlete_id}/profile.yaml")
     print(f"✓ get_athlete_file: {profile_path}")
 
     # Test get_athlete_plans_dir
     plans_dir = get_athlete_plans_dir(athlete_id)
-    assert str(plans_dir) == f"athletes/{athlete_id}/plans"
+    assert plans_dir.is_absolute(), "Path should be absolute"
+    assert str(plans_dir).endswith(f"athletes/{athlete_id}/plans")
     print(f"✓ get_athlete_plans_dir: {plans_dir}")
 
     # Test get_athlete_current_plan_dir
     current_dir = get_athlete_current_plan_dir(athlete_id)
-    assert str(current_dir) == f"athletes/{athlete_id}/plans/current"
+    assert current_dir.is_absolute(), "Path should be absolute"
+    assert str(current_dir).endswith(f"athletes/{athlete_id}/plans/current")
     print(f"✓ get_athlete_current_plan_dir: {current_dir}")
 
     # Test get_athlete_plan_dir
     plan_dir = get_athlete_plan_dir(athlete_id, 2026, "big-race")
-    assert str(plan_dir) == f"athletes/{athlete_id}/plans/2026-big-race"
+    assert plan_dir.is_absolute(), "Path should be absolute"
+    assert str(plan_dir).endswith(f"athletes/{athlete_id}/plans/2026-big-race")
     print(f"✓ get_athlete_plan_dir: {plan_dir}")
 
 

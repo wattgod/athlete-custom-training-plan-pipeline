@@ -1,0 +1,17 @@
+tier: finisher
+plan_weeks: 12
+starting_phase: base_1
+strength_frequency: 0
+equipment_tier: minimal
+risk_factors:
+- high_stress
+exercise_exclusions: []
+key_day_candidates:
+- wednesday
+- saturday
+- sunday
+strength_day_candidates: []
+derived_date: '2026-02-24 14:05:11'
+plan_start: '2026-03-09'
+plan_end: '2026-05-31'
+race_weekday: Saturday

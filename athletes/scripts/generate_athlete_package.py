@@ -23,6 +23,7 @@ from config_loader import get_config
 from constants import (
     DAY_FULL_TO_ABBREV,
     DAY_ABBREV_TO_FULL,
+    DAY_ORDER,
     FTP_TEST_DURATION_MIN,
     STRENGTH_PHASES,
 )
@@ -43,7 +44,8 @@ GUIDES_DIR = config.get_guides_dir()
 if GUIDES_DIR and (GUIDES_DIR / 'generators').exists():
     sys.path.insert(0, str(GUIDES_DIR / 'generators'))
 
-from guide_generator import generate_guide
+# Use local generate_html_guide instead of external guide_generator
+from generate_html_guide import generate_html_guide
 from workout_library import (
     WorkoutLibrary,
     generate_progressive_interval_blocks,
@@ -63,15 +65,20 @@ log = get_logger()
 
 # Map athlete methodology IDs to Nate generator methodology names
 METHODOLOGY_MAP = {
+    # Keys match config/methodologies.yaml IDs (returned by select_methodology.py)
+    'traditional_pyramidal': 'PYRAMIDAL',
+    'polarized_80_20': 'POLARIZED',
+    'sweet_spot_threshold': 'G_SPOT',
     'hiit_focused': 'HIT',
-    'polarized': 'POLARIZED',
-    'pyramidal': 'PYRAMIDAL',
-    'sweet_spot': 'G_SPOT',  # G-Spot replaces Sweet Spot
-    'threshold_focused': 'PYRAMIDAL',
-    'high_volume': 'PYRAMIDAL',
-    'time_crunched': 'HIT',
-    'maf_lt1': 'MAF_LT1',
-    'norwegian': 'NORWEGIAN',
+    'block_periodization': 'BLOCK',
+    'reverse_periodization': 'REVERSE',
+    'autoregulated_hrv': 'HRV_AUTO',
+    'maf_low_hr': 'MAF_LT1',
+    'critical_power': 'CRITICAL_POWER',
+    'inscyd': 'INSCYD',
+    'norwegian_double_threshold': 'NORWEGIAN',
+    'hvli_lsd': 'HVLI',
+    'goat_composite': 'GOAT',
 }
 
 
@@ -106,6 +113,24 @@ WORKOUT_DESCRIPTIONS = {
         'purpose': 'Maximum training stress with manageable recovery. The efficiency zone.',
         'execution': 'Hard enough to create adaptation, easy enough to repeat. Cadence 85-95 rpm.',
         'rpe': 'RPE 6-7 (hard but sustainable)',
+    },
+    'G_Spot': {
+        'structure': '{duration} min with G SPOT intervals @ 88-94% FTP',
+        'purpose': 'The Gravel God efficiency zone. Maximum training stress with manageable recovery. Builds FTP and muscular endurance simultaneously.',
+        'execution': 'Hard enough to create adaptation, easy enough to repeat. Cadence 85-95 rpm. Stay focused on form.',
+        'rpe': 'RPE 6-7 (hard but sustainable, controlled breathing)',
+    },
+    'Over_Under': {
+        'structure': '{duration} min with over-under intervals alternating 88-92% FTP (under) and 105-108% FTP (over)',
+        'purpose': 'Race simulation. Teaches your body to clear lactate while maintaining power. Essential for gravel where pace constantly changes.',
+        'execution': 'Unders are controlled, overs are hard surges. Focus on quick transitions. Cadence drops may occur on overs - thats normal.',
+        'rpe': 'RPE 7-8 (unders) to 8-9 (overs)',
+    },
+    'Blended': {
+        'structure': '{duration} min multi-zone workout combining G SPOT base with VO2max bursts and varied cadence',
+        'purpose': 'Race simulation. Real gravel demands varied efforts - this workout trains your body to handle constant zone changes.',
+        'execution': 'Mix of zones, cadences, and positions. Simulate terrain by varying effort. Stand for power bursts, seated for steady blocks.',
+        'rpe': 'RPE 5-8 (varies throughout workout)',
     },
     'Threshold': {
         'structure': '{duration} min with threshold intervals @ 95-100% FTP',
@@ -297,29 +322,75 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             return cap_duration(template, max_duration)
 
         # Designated KEY days get the primary interval session
-        if is_key_day:
-            week_workout_tracker['hard_days'].append(day_abbrev)
-            template = phase_templates.get('key_cardio')
-            return cap_duration(template, max_duration)
+        # BUT we still want methodology-aware selection, so fall through to methodology logic
+        # (removed early return that bypassed methodology selection)
 
-        # For LIMITED or AVAILABLE days without key_day flag:
+        # For LIMITED or AVAILABLE days:
         # Distribute workouts with proper zone variety
         day_order = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
         day_idx = day_order.index(day_abbrev) if day_abbrev in day_order else 0
         prev_day = day_order[day_idx - 1] if day_idx > 0 else None
 
-        # Check if previous day was hard
+        # Check if previous day was hard (VO2max, Threshold, Anaerobic need recovery)
         prev_was_hard = prev_day in week_workout_tracker['hard_days']
 
-        # Increment workout counter for variety
-        week_workout_tracker['workout_count'] += 1
-        workout_num = week_workout_tracker['workout_count']
+        # G SPOT Methodology Distribution Logic:
+        # Target: 45% Z1-Z2, 30% Z3/G-Spot, 25% Z4-Z5
+        # In a 7-day week with ~5-6 non-rest days:
+        # - 2-3 easy days (Recovery/Endurance/Long Ride)
+        # - 2 G-Spot/Tempo days
+        # - 1-2 high intensity days (VO2max/Threshold/Over-Under)
+        #
+        # Only require Recovery after 2+ consecutive hard days (prevent overtraining)
+        # Otherwise allow methodology-driven workout selection
 
-        # Determine workout based on phase, recovery needs, and variety
-        if prev_was_hard:
-            # Easy day after hard day - Z1/Z2
+        # Dynamic weekly structure derived from athlete profile
+        # Quality days: all available/limited days (methodology cycle handles intensity %)
+        # Easy days: unavailable/rest days only
+        # Long day: from profile preference (handled above - returns early)
+        #
+        # The methodology cycle determines WHAT quality workout to do (endurance vs
+        # intensity). For POLARIZED this means 80% endurance, 20% intensity among
+        # quality days. For G_SPOT, more intensity slots. This approach works
+        # regardless of whether the long day is Sat or Sun.
+        all_days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        quality_days = []
+        easy_days = []
+        for d in all_days:
+            if d == long_day_abbrev:
+                continue  # Long day handled above (returns early)
+            d_avail = get_day_availability(d)
+            if d_avail.get('availability') in ('unavailable', 'rest'):
+                easy_days.append(d)
+            else:
+                quality_days.append(d)
+        # Fallback if profile has no available days
+        if not quality_days:
+            quality_days = ['Mon', 'Wed', 'Thu', 'Fri']
+            easy_days = [d for d in all_days if d not in quality_days and d != long_day_abbrev]
+        n_quality = len(quality_days)
+
+        # Find which quality day positions are key days (is_key_day_ok=true)
+        # Intensity workouts should land on these positions, not arbitrary first slots
+        key_positions = [i for i, d in enumerate(quality_days)
+                         if get_day_availability(d).get('is_key_day_ok', False)]
+        # Fallback: if no key days marked, use first and middle positions
+        if not key_positions:
+            key_positions = [0, n_quality // 2] if n_quality > 1 else [0]
+
+        # Long day takes precedence (handled above - returns early for Sat)
+        # Quality days get methodology-driven workouts
+        is_quality_day = day_abbrev in quality_days
+
+        if day_abbrev in easy_days:
+            # True recovery day - Z1/Z2 easy spin
+            # Don't increment workout counter - recovery doesn't affect methodology cycle
             template = phase_templates.get('easy', ('Recovery', 'Easy spin', 30, 0.50))
         else:
+            # Increment workout counter ONLY for methodology-driven days
+            week_workout_tracker['workout_count'] += 1
+            workout_num = week_workout_tracker['workout_count']
+
             # Can do a harder workout - distribute zones based on phase
             week_workout_tracker['hard_days'].append(day_abbrev)
 
@@ -363,36 +434,136 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
             elif nate_methodology == 'POLARIZED':
                 # Polarized: 80% easy, 20% very hard (Z5+), minimal Z3/Z4
+                # Use key_positions to place intensity on athlete's preferred key days.
+                # (workout_num - 1) % n_quality gives 0-indexed position within the week.
+                nq = max(n_quality, 1)
+                cycle = (workout_num - 1) % nq
+                # Primary key position (first key day, e.g. Wed)
+                kp0 = key_positions[0] if key_positions else 0
+                # Secondary key position (second key day, e.g. Sat)
+                kp1 = key_positions[1] if len(key_positions) > 1 else (kp0 + nq // 2) % nq
                 if phase == 'base':
-                    cycle = workout_num % 5
-                    if cycle == 0:
+                    # 1 intensity per week on primary key day
+                    if cycle == kp0:
                         template = ('VO2max', 'VO2max: 4x4min @ 108-112% FTP', 55, 0.78)
                     else:
                         template = ('Endurance', 'Zone 2 steady', 50, 0.65)
                 elif phase == 'build':
-                    cycle = workout_num % 4
-                    if cycle == 0:
+                    # 2 intensity per week on both key days
+                    if cycle == kp0:
                         template = ('VO2max', 'VO2max: 5x4min @ 110-115% FTP', 55, 0.80)
-                    elif cycle == 1:
+                    elif cycle == kp1:
                         template = ('Anaerobic', 'Anaerobic: 6x1min @ 130% FTP', 45, 0.72)
                     else:
                         template = ('Endurance', 'Zone 2 steady', 50, 0.65)
                 elif phase == 'peak':
-                    cycle = workout_num % 3
-                    if cycle == 0:
+                    # 2 intensity per week on both key days
+                    if cycle == kp0:
                         template = ('VO2max', 'VO2max: 6x3min @ 115-120% FTP', 50, 0.82)
-                    elif cycle == 1:
+                    elif cycle == kp1:
                         template = ('Sprints', 'Neuromuscular: 8x20sec max', 40, 0.68)
                     else:
                         template = ('Endurance', 'Zone 2', 45, 0.62)
                 elif phase == 'taper':
-                    template = ('VO2max', 'Openers: 3x2min @ 110% FTP', 35, 0.60)
+                    # 1 opener on primary key day, rest easy
+                    if cycle == kp0:
+                        template = ('VO2max', 'Openers: 3x2min @ 110% FTP', 35, 0.60)
+                    else:
+                        template = ('Easy', 'Easy spin', 30, 0.55)
                 elif phase == 'race':
                     template = ('Easy', 'Activation', 25, 0.50)
                 elif phase == 'maintenance':
-                    cycle = workout_num % 3
-                    if cycle == 0:
+                    if cycle == kp0:
                         template = ('VO2max', 'VO2max: 4x3min @ 110% FTP', 45, 0.75)
+                    else:
+                        template = ('Endurance', 'Zone 2 maintenance', 50, 0.62)
+                else:
+                    template = ('Endurance', 'Zone 2', 45, 0.62)
+
+            elif nate_methodology == 'G_SPOT':
+                # G SPOT: 45% Z1-Z2, 30% Z3 (G SPOT/Tempo), 25% Z4-Z5
+                # The cycle drives methodology workouts; recovery/long ride add Z1-Z2
+                # Use (workout_num - 1) for 0-indexed cycling
+                cycle = (workout_num - 1)
+
+                if phase == 'base':
+                    # Base: Build aerobic foundation with G SPOT intro
+                    # Cycle of 4: G_Spot, Tempo, G_Spot, Over_Under (varies intensity)
+                    c = cycle % 4
+                    if c == 0:
+                        template = ('G_Spot', 'G SPOT Intro: 2x10min @ 88-90% FTP', 55, 0.89)
+                    elif c == 1:
+                        template = ('Tempo', 'Tempo Foundation: 2x12min @ 82-85% FTP', 50, 0.84)
+                    elif c == 2:
+                        template = ('G_Spot', 'G SPOT Builder: 3x8min @ 90% FTP', 50, 0.90)
+                    else:
+                        template = ('Over_Under', 'Over-Under Intro: 3x(3min under + 1min over)', 50, 0.92)
+                elif phase == 'build':
+                    # Build: Full G SPOT work with VO2max and threshold
+                    # Cycle of 5: G_Spot, Over_Under, VO2max, Threshold, G_Spot
+                    c = cycle % 5
+                    if c == 0:
+                        template = ('G_Spot', 'G SPOT Criss-Cross: 3x12min @ 88-94% FTP with surges', 55, 0.91)
+                    elif c == 1:
+                        template = ('Over_Under', 'Over-Unders: 4x(3min @ 90% + 1min @ 105%)', 55, 0.95)
+                    elif c == 2:
+                        template = ('VO2max', 'VO2max Builder: 4x4min @ 108-115% FTP', 55, 0.80)
+                    elif c == 3:
+                        template = ('Threshold', 'Threshold Blocks: 2x15min @ 95-100% FTP', 55, 0.97)
+                    else:
+                        template = ('G_Spot', 'G SPOT Progressive: 10-12-15min @ 90-92% FTP', 60, 0.91)
+                elif phase == 'peak':
+                    # Peak: Race-specific intensity with blended efforts
+                    c = cycle % 5
+                    if c == 0:
+                        template = ('G_Spot', 'Race Pace G SPOT: 3x15min @ 92-94% FTP', 60, 0.93)
+                    elif c == 1:
+                        template = ('VO2max', 'VO2max Repeats: 5x3min @ 115-120% FTP', 50, 0.82)
+                    elif c == 2:
+                        template = ('Threshold', 'Threshold + Attacks: 15min FTP with 3x1min surges', 55, 0.98)
+                    elif c == 3:
+                        template = ('Over_Under', 'Race Sim Over-Unders: 5x(2min @ 88% + 2min @ 105%)', 55, 0.95)
+                    else:
+                        template = ('Blended', 'Gravel Simulation: G SPOT + VO2 bursts', 55, 0.88)
+                elif phase == 'taper':
+                    # Taper: SHORT openers only - no VO2max, no fatigue
+                    # Day-specific taper protocol
+                    if day_abbrev == 'Mon':
+                        template = ('Easy', 'Taper: Easy spin, legs loose', 45, 0.55)
+                    elif day_abbrev == 'Tue':
+                        template = ('Openers', 'Openers: 4x30sec @ 110% + easy spin', 40, 0.60)
+                    elif day_abbrev == 'Wed':
+                        template = ('Easy', 'Taper: Z2 easy, stay fresh', 40, 0.55)
+                    elif day_abbrev == 'Thu':
+                        template = ('Openers', 'Openers: 3x1min @ race pace', 35, 0.65)
+                    elif day_abbrev == 'Fri':
+                        template = ('Shakeout', 'Shakeout: 20min easy spin only', 20, 0.50)
+                    else:
+                        template = ('Easy', 'Taper: Easy spin', 30, 0.50)
+                elif phase == 'race':
+                    # Race week: Day-specific protocol leading to race day
+                    if day_abbrev == 'Mon':
+                        template = ('Easy', 'Race Week: Easy spin, mental prep', 40, 0.50)
+                    elif day_abbrev == 'Tue':
+                        template = ('Openers', 'Race Week Openers: 3x30sec hard', 30, 0.55)
+                    elif day_abbrev == 'Wed':
+                        template = ('Easy', 'Race Week: Very easy, rest legs', 30, 0.50)
+                    elif day_abbrev == 'Thu':
+                        template = ('Openers', 'Race Week: Final openers 2x1min', 25, 0.55)
+                    elif day_abbrev == 'Fri':
+                        template = ('Shakeout', 'Race Week: Shakeout only, stay off feet', 20, 0.45)
+                    elif day_abbrev == 'Sat':
+                        template = ('Rest', 'Race Week: REST - hydrate, prep gear', 0, 0.0)
+                    else:
+                        template = ('Easy', 'Race Week: Easy activation', 25, 0.50)
+                elif phase == 'maintenance':
+                    c = cycle % 4
+                    if c == 0:
+                        template = ('G_Spot', 'G SPOT Maintenance: 2x10min @ 88-90% FTP', 50, 0.89)
+                    elif c == 1:
+                        template = ('VO2max', 'VO2max Touch: 3x3min @ 110% FTP', 45, 0.75)
+                    elif c == 2:
+                        template = ('Threshold', 'Threshold Touch: 2x8min @ 95% FTP', 45, 0.72)
                     else:
                         template = ('Endurance', 'Zone 2 maintenance', 50, 0.62)
                 else:
@@ -556,6 +727,61 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             easy_end = max(60, (main_duration - 15 - (3*10 + 2*3)) * 60)  # Remaining time
             blocks.append(f'    <SteadyState Duration="{easy_end}" Power="0.60"/>')
 
+        elif workout_type == 'G_Spot':
+            # G SPOT intervals (88-94% FTP) - the Gravel God efficiency zone
+            # Progressive blocks with varied durations - blended approach per Rule #15
+            easy_start = int(main_duration * 0.1) * 60
+            blocks.append(f'    <SteadyState Duration="{easy_start}" Power="0.62"/>')
+            # 3x10min @ 90% FTP with 3min rest, including cadence variation
+            blocks.append('    <IntervalsT Repeat="3" OnDuration="600" OnPower="0.90" OffDuration="180" OffPower="0.55">')
+            blocks.append('      <textevent timeoffset="0" message="G SPOT interval - the efficiency zone. Stay smooth."/>')
+            blocks.append('      <textevent timeoffset="180" message="3 min in - try higher cadence 95+ rpm"/>')
+            blocks.append('      <textevent timeoffset="360" message="Halfway - drop to 80 rpm, feel the power"/>')
+            blocks.append('      <textevent timeoffset="480" message="Final 2 min - back to normal cadence, hold power"/>')
+            blocks.append('    </IntervalsT>')
+            # Add a short burst block for variety (blended workout dimension)
+            blocks.append('    <SteadyState Duration="120" Power="0.55"/>')
+            blocks.append('    <IntervalsT Repeat="4" OnDuration="30" OnPower="1.15" OffDuration="90" OffPower="0.50">')
+            blocks.append('      <textevent timeoffset="0" message="SURGE! 30 seconds hard - simulate race attack"/>')
+            blocks.append('    </IntervalsT>')
+            blocks.append(f'    <SteadyState Duration="{max(60, int(main_duration * 0.05) * 60)}" Power="0.58"/>')
+
+        elif workout_type == 'Over_Under':
+            # Over-under intervals - alternating 88-92% (under) and 105-108% (over)
+            # Teaches lactate clearance while maintaining power
+            easy_start = int(main_duration * 0.1) * 60
+            blocks.append(f'    <SteadyState Duration="{easy_start}" Power="0.62"/>')
+            # 4 sets: 3min under @ 90%, 1min over @ 106%
+            for i in range(4):
+                blocks.append('    <SteadyState Duration="180" Power="0.90"/>')
+                blocks.append('    <SteadyState Duration="60" Power="1.06"/>')
+                if i < 3:  # Rest between sets
+                    blocks.append('    <SteadyState Duration="180" Power="0.50"/>')
+            blocks.append(f'    <SteadyState Duration="{max(60, int(main_duration * 0.1) * 60)}" Power="0.58"/>')
+
+        elif workout_type == 'Blended':
+            # Blended multi-zone workout - simulates gravel race demands
+            # Combines G SPOT base, VO2max bursts, tempo, and varied cadence
+            easy_start = int(main_duration * 0.1) * 60
+            blocks.append(f'    <SteadyState Duration="{easy_start}" Power="0.62"/>')
+            # Block 1: G SPOT with surges
+            blocks.append('    <SteadyState Duration="300" Power="0.88"/>')
+            blocks.append('    <IntervalsT Repeat="3" OnDuration="30" OnPower="1.20" OffDuration="90" OffPower="0.85">')
+            blocks.append('      <textevent timeoffset="0" message="ATTACK! Surge over the climb"/>')
+            blocks.append('    </IntervalsT>')
+            # Block 2: Sustained tempo
+            blocks.append('    <SteadyState Duration="180" Power="0.55"/>')
+            blocks.append('    <SteadyState Duration="480" Power="0.82"/>')
+            # Block 3: VO2max efforts
+            blocks.append('    <SteadyState Duration="120" Power="0.55"/>')
+            blocks.append('    <IntervalsT Repeat="3" OnDuration="120" OnPower="1.12" OffDuration="120" OffPower="0.50">')
+            blocks.append('      <textevent timeoffset="0" message="VO2max effort - 2 min hard!"/>')
+            blocks.append('    </IntervalsT>')
+            # Block 4: Race-pace finish
+            blocks.append('    <SteadyState Duration="120" Power="0.55"/>')
+            blocks.append('    <SteadyState Duration="300" Power="0.92"/>')
+            blocks.append(f'    <SteadyState Duration="{max(60, int(main_duration * 0.05) * 60)}" Power="0.55"/>')
+
         elif workout_type == 'Threshold':
             # Threshold intervals (Z4: 95-105% FTP)
             # 2-3x10-15min @ 95-100% FTP with 5min rest
@@ -632,6 +858,176 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         if phase == 'build' and first_build_week is None:
             first_build_week = week_num
 
+    # =========================================================================
+    # PRE-PLAN WEEK (W00): Generate workouts for days before plan officially starts
+    # This ensures athletes have guidance from day 1, not just from plan_start
+    # =========================================================================
+    def generate_pre_plan_week():
+        """Generate pre-plan week workouts (W00) for days before official plan start."""
+        from datetime import datetime, timedelta
+
+        plan_start_str = plan_dates.get('plan_start', '')
+        if not plan_start_str:
+            return []
+
+        plan_start = datetime.strptime(plan_start_str, '%Y-%m-%d')
+
+        # Calculate days from today until plan start
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        days_until_start = (plan_start - today).days
+
+        # Only generate pre-plan if plan starts in the future (1-7 days out)
+        if days_until_start <= 0 or days_until_start > 7:
+            return []
+
+        pre_plan_files = []
+        days_to_race = (datetime.strptime(race_date, '%Y-%m-%d') - today).days if race_date else 0
+
+        # Generate workouts for each day from today until plan start
+        for day_offset in range(days_until_start):
+            current_date = today + timedelta(days=day_offset)
+            day_abbrev = current_date.strftime('%a')[:3]  # Mon, Tue, etc.
+            date_short = current_date.strftime('%b%-d')  # Feb11, Feb12, etc.
+            days_to_plan_start = days_until_start - day_offset
+
+            # Skip unavailable days in pre-plan week
+            if use_custom_schedule:
+                day_avail = get_day_availability(day_abbrev)
+                if day_avail.get('availability') in ('unavailable', 'rest'):
+                    continue
+
+            # Pre-plan week workout structure
+            if day_abbrev == 'Sat':
+                # Longer endurance ride
+                workout_type = 'Pre_Plan_Endurance'
+                duration = 80
+                power = 0.65
+                description = f"""PRE-PLAN WEEK: Endurance Ride
+{athlete_name} - {days_to_plan_start} days until plan starts
+
+PURPOSE:
+Longer easy ride to build aerobic base and test nutrition.
+
+WORKOUT:
+- 75-90 min at Z2 (60-70% FTP)
+- Practice fueling: aim for 40-60g carbs/hour
+- Stay hydrated
+
+OUTDOOR STRONGLY ENCOURAGED:
+- Build confidence on gravel/mixed terrain
+- Practice reading the road ahead
+- Test your nutrition strategy
+
+Almost there, {athlete_name}!"""
+
+            elif day_abbrev == 'Sun':
+                # Rest day before plan starts
+                workout_type = 'Pre_Plan_Rest'
+                duration = 0
+                power = 0
+                description = f"""PRE-PLAN WEEK: Rest Day
+{athlete_name} - Plan starts tomorrow!
+
+PURPOSE:
+Complete rest before your {total_weeks}-week journey begins.
+
+TODAY:
+- OFF the bike
+- Light stretching or yoga if desired
+- Focus on sleep, hydration, nutrition
+
+PREP FOR TOMORROW:
+- Charge devices (bike computer, HRM, etc.)
+- Check bike mechanicals
+- Review your training zones
+
+{total_weeks} weeks to {race_name}.
+Trust the process. One workout at a time.
+
+Let's go, {athlete_name}! See you tomorrow."""
+
+            elif day_abbrev == 'Thu':
+                # Mobility/strength prep
+                workout_type = 'Pre_Plan_Strength_Prep'
+                duration = 35
+                power = 0
+                description = f"""PRE-PLAN WEEK: Strength Prep
+{athlete_name} - {days_to_plan_start} days until plan starts
+
+PURPOSE:
+Light movement prep to activate muscles before structured strength begins.
+
+WARM-UP (10 min):
+- 5 min easy spin or walk
+- Arm circles, leg swings, hip circles
+
+MOBILITY CIRCUIT (15 min, 2 rounds):
+- Cat-Cow stretches: 10 reps
+- Hip 90/90 rotations: 8 each side
+- Glute bridges: 12 reps
+- Bird dogs: 8 each side
+- Plank hold: 30 sec
+
+ACTIVATION (10 min):
+- Banded clamshells: 15 each side
+- Banded lateral walks: 10 each direction
+- Single leg balance: 30 sec each
+
+NOTES:
+- Keep everything light - no soreness tomorrow
+- This is movement prep, not a hard workout
+
+Good prep work, {athlete_name}!"""
+
+            else:
+                # Easy spin days (Mon, Tue, Wed, Fri)
+                workout_type = 'Pre_Plan_Easy'
+                duration = 45 if day_abbrev in ['Mon', 'Wed'] else 40
+                power = 0.55
+                description = f"""PRE-PLAN WEEK: Easy Spin
+{athlete_name} - {days_to_plan_start} days until plan starts
+
+PURPOSE:
+Keep the legs moving. Easy effort only.
+
+WORKOUT:
+- {duration} min easy spin
+- Z1-Z2 only (conversational pace)
+- High cadence (90-100 rpm) if comfortable
+- Focus on relaxed shoulders, loose grip
+
+NOTES:
+- Your {total_weeks}-week plan starts soon
+- Use this time to dial in nutrition, sleep, recovery habits
+- Check bike fit and equipment
+
+Stay loose, {athlete_name}!"""
+
+            # Build workout file
+            filename = f"W00_{day_abbrev}_{date_short}_{workout_type}.zwo"
+
+            if duration > 0:
+                blocks = create_workout_blocks(duration, power, 'Easy')
+            else:
+                blocks = "    <FreeRide Duration=\"60\"/>\n"
+
+            zwo_content = ZWO_TEMPLATE.format(
+                name=filename.replace('.zwo', ''),
+                description=description,
+                blocks=blocks
+            )
+
+            zwo_path = zwo_dir / filename
+            with open(zwo_path, 'w') as f:
+                f.write(zwo_content)
+            pre_plan_files.append(zwo_path)
+
+        return pre_plan_files
+
+    # Generate pre-plan week
+    pre_plan_files = generate_pre_plan_week()
+    generated_files.extend(pre_plan_files)
+
     for week in weeks:
         week_num = week['week']
         phase = week['phase']
@@ -647,6 +1043,69 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             date_short = day_info['date_short']
             workout_prefix = day_info['workout_prefix']
             is_race_day = day_info.get('is_race_day', False)
+            is_b_race_day = day_info.get('is_b_race_day', False)
+            is_b_race_opener = day_info.get('is_b_race_opener', False)
+            is_b_race_easy = day_info.get('is_b_race_easy', False)
+
+            # -----------------------------------------------------------
+            # B-RACE DAY: Generate a simplified race execution plan
+            # This replaces whatever workout was scheduled for the day.
+            # -----------------------------------------------------------
+            if is_b_race_day:
+                b_race_info = week.get('b_race', {})
+                b_race_name = b_race_info.get('name', 'B-Race')
+                b_race_plan_name = f"{workout_prefix}_RACE_DAY_{b_race_name.replace(' ', '_')}"
+                b_race_filename = f"{b_race_plan_name}.zwo"
+
+                b_race_description = f"""B-RACE DAY: {b_race_name}
+Date: {day_info['date']}
+Priority: B (training race - NOT the goal event)
+
+THIS IS A TRAINING RACE:
+- Race hard, but don't blow up your training block
+- Use this as a fitness check and race-craft practice
+- Target effort: 90-95% of A-race effort
+- Practice fueling, pacing, and gear choices
+
+PRE-RACE:
+- 15 min easy warmup with 3x30sec openers
+- Stay hydrated, eat familiar foods
+
+PACING:
+- Start conservative, find your rhythm
+- Use the middle third to test race pace
+- Final third: push if you feel good, back off if not
+
+POST-RACE:
+- Easy spin cooldown 15-20 min
+- Resume normal training within 2 days
+- This is a stepping stone to {race_name}, not the goal
+
+GO RACE SMART, {athlete_name.upper()}!
+"""
+
+                b_race_zwo = f"""<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>{b_race_plan_name}</name>
+  <description>{b_race_description}</description>
+  <sportType>bike</sportType>
+  <workout>
+    <FreeRide Duration="10800"/>
+  </workout>
+</workout_file>"""
+
+                filepath = zwo_dir / b_race_filename
+                with open(filepath, 'w') as f:
+                    f.write(b_race_zwo)
+                generated_files.append(filepath)
+                continue  # Done with B-race day
+
+            # Skip ZWO generation for unavailable days (integrity checker rejects them)
+            if use_custom_schedule:
+                day_avail = get_day_availability(day_abbrev)
+                if day_avail.get('availability') in ('unavailable', 'rest'):
+                    continue
 
             # Get workout template (custom or default)
             if use_custom_schedule:
@@ -658,6 +1117,30 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 continue
 
             workout_type, description, duration, power = workout_template
+
+            # -----------------------------------------------------------
+            # B-RACE OPENER: Day before a B-race gets an easy opener workout
+            # Replaces whatever intensity was scheduled.
+            # -----------------------------------------------------------
+            if is_b_race_opener:
+                b_race_info = week.get('b_race', {})
+                b_race_name = b_race_info.get('name', 'B-Race')
+                workout_type = 'Openers'
+                description = f'Pre-race openers for {b_race_name} (B-race tomorrow)'
+                duration = min(duration, 40) if duration > 0 else 40  # Cap at 40 min
+                power = 0.60
+
+            # -----------------------------------------------------------
+            # B-RACE EASY: 2 days before B-race (build/peak only)
+            # Reduces intensity to easy riding for mini-taper.
+            # -----------------------------------------------------------
+            if is_b_race_easy:
+                b_race_info = week.get('b_race', {})
+                b_race_name = b_race_info.get('name', 'B-Race')
+                workout_type = 'Easy'
+                description = f'Easy spin - mini-taper for {b_race_name} (B-race in 2 days)'
+                duration = min(duration, 45) if duration > 0 else 30
+                power = 0.55
 
             # Generate Rest days as 1-min workouts with personalized instructions
             if workout_type == 'Rest' or duration == 0:
@@ -704,28 +1187,54 @@ Trust the process, {athlete_name}."""
                 if not use_custom_schedule:
                     return True
                 avail = get_day_availability(day)
-                if avail.get('availability') == 'unavailable':
-                    return False
-                if not avail.get('is_key_day_ok', True):
+                if avail.get('availability') in ('unavailable', 'rest'):
                     return False
                 # Check duration - FTP test needs at least FTP_TEST_DURATION_MIN
                 max_duration = avail.get('max_duration_min', 120)
                 return max_duration >= FTP_TEST_DURATION_MIN
 
-            # Week 1 FTP test - prefer days with enough time (Sun > Sat > Thu)
-            if week_num == 1 and not ftp_test_week1_added:
-                # Order by typical max duration (Sun usually has most time)
-                ftp_day_candidates = ['Sun', 'Sat', 'Thu']
-                if day_abbrev in ftp_day_candidates and is_day_available_for_ftp(day_abbrev):
+            def get_ftp_day_candidates() -> list:
+                """Build FTP day candidates: key days first (excluding long day), then other days.
+
+                The long ride day is excluded — in polarized training the long Z2 ride
+                is the single most important workout for durability. FTP tests should
+                land on a non-long key day (e.g. interval day or weekend non-long day).
+                Falls back to ['Sat', 'Thu', 'Sun'] for non-custom schedules.
+                """
+                if not use_custom_schedule:
+                    return ['Sat', 'Thu', 'Sun']
+
+                key_days = []
+                other_days = []
+                for d in DAY_ORDER:
+                    if d == long_day_abbrev:
+                        continue  # Never put FTP test on the long ride day
+                    if not is_day_available_for_ftp(d):
+                        continue
+                    avail = get_day_availability(d)
+                    dur = avail.get('max_duration_min', 120)
+                    if avail.get('is_key_day_ok', False):
+                        key_days.append((d, dur))
+                    else:
+                        other_days.append((d, dur))
+                # Sort each group by max_duration descending
+                key_days.sort(key=lambda x: x[1], reverse=True)
+                other_days.sort(key=lambda x: x[1], reverse=True)
+                return [d for d, _ in key_days] + [d for d, _ in other_days]
+
+            ftp_day_candidates = get_ftp_day_candidates()
+
+            # Week 1 FTP test - prefer key days with most available time
+            if week_num == 1 and not ftp_test_week1_added and ftp_day_candidates:
+                if day_abbrev == ftp_day_candidates[0] and is_day_available_for_ftp(day_abbrev):
                     workout_type = 'FTP_Test'
                     description = 'The Assessment - Functional Threshold. Establish your baseline FTP to set training zones.'
                     duration = FTP_TEST_DURATION_MIN
                     power = 0.82
                     ftp_test_week1_added = True
             # Pre-build FTP test
-            elif first_build_week and week_num == first_build_week - 1 and not ftp_test_prebuild_added:
-                ftp_day_candidates = ['Sun', 'Sat', 'Thu']
-                if day_abbrev in ftp_day_candidates and is_day_available_for_ftp(day_abbrev):
+            elif first_build_week and week_num == first_build_week - 1 and not ftp_test_prebuild_added and ftp_day_candidates:
+                if day_abbrev == ftp_day_candidates[0] and is_day_available_for_ftp(day_abbrev):
                     workout_type = 'FTP_Test'
                     description = 'The Assessment - Functional Threshold. Retest before Build phase to update training zones.'
                     duration = FTP_TEST_DURATION_MIN
@@ -733,7 +1242,91 @@ Trust the process, {athlete_name}."""
                     ftp_test_prebuild_added = True
 
             if is_race_day:
-                continue  # Skip race day
+                # Create RACE DAY PLAN - not a workout, but a race execution guide
+                # Pull from fueling.yaml, race data, and training guide
+                race_plan_name = f"{workout_prefix}_RACE_DAY_{race_name.replace(' ', '_')}"
+                race_filename = f"{race_plan_name}.zwo"
+
+                # Get fueling data (passed via derived or load directly)
+                fueling_file = athlete_dir / 'fueling.yaml'
+                fueling_data = {}
+                if fueling_file.exists():
+                    with open(fueling_file, 'r') as f:
+                        fueling_data = yaml.safe_load(f) or {}
+
+                race_info = fueling_data.get('race', {})
+                carb_info = fueling_data.get('carbohydrates', {})
+
+                duration_hours = race_info.get('duration_hours', 5)
+                distance_miles = race_info.get('distance_miles', profile.get('target_race', {}).get('distance_miles', 75))
+                hourly_carbs = carb_info.get('hourly_target', 80)
+                total_carbs = carb_info.get('total_grams', 400)
+
+                # Estimate TSS (rough: ~60-70 TSS/hour for a hard gravel race)
+                estimated_tss = int(duration_hours * 65)
+
+                # Build race day plan description
+                race_description = f"""RACE DAY: {race_name}
+Date: {day_info['date']}
+
+TARGET METRICS:
+- Distance: {distance_miles} miles
+- Expected Duration: {duration_hours:.1f} hours
+- Estimated TSS: {estimated_tss}
+
+FUELING PLAN:
+- Carbs/hour: {hourly_carbs}g (range: {carb_info.get('hourly_range', [70, 90])})
+- Total carbs: {total_carbs}g over race
+- Start fueling at 20 min, every 20-30 min thereafter
+- Pre-race: 100-150g carbs 2-3 hours before start
+
+PACING STRATEGY:
+- First 30 min: EASY. Let others burn matches. You're playing the long game.
+- Mile 10-40: Find your rhythm. Target G SPOT zone (88-94% FTP) on climbs.
+- Final third: This is where you pass people. Increase effort as others fade.
+- Technical sections: Smooth > Fast. Avoid mechanicals.
+
+HYDRATION:
+- 500-750ml/hour depending on heat
+- Start hydrated (clear urine morning of race)
+- Don't wait until thirsty
+
+PRE-RACE CHECKLIST:
+- [ ] Bike mechanically sound
+- [ ] Tires appropriate pressure for conditions
+- [ ] Bottles filled with fuel mix
+- [ ] Pockets loaded (gels, bars, tool)
+- [ ] Electronics charged (computer, lights if needed)
+- [ ] Spare tube, CO2, multi-tool
+- [ ] Race number attached
+- [ ] Drop bags ready (if applicable)
+
+RACE MORNING:
+- Wake 3 hours before start
+- Breakfast: familiar foods, high carb, low fiber
+- Arrive 1 hour early for warmup
+- 15 min easy spin warmup with 2-3 openers
+
+GO GET IT, {athlete_name.upper()}!
+"""
+
+                # Create a minimal ZWO (TrainingPeaks needs it to be a workout file)
+                race_zwo = f"""<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>{race_plan_name}</name>
+  <description>{race_description}</description>
+  <sportType>bike</sportType>
+  <workout>
+    <FreeRide Duration="{int(duration_hours * 3600)}"/>
+  </workout>
+</workout_file>"""
+
+                filepath = zwo_dir / race_filename
+                with open(filepath, 'w') as f:
+                    f.write(race_zwo)
+                generated_files.append(filepath)
+                continue  # Done with race day
 
             # Create workout name
             workout_name = f"{workout_prefix}_{workout_type}"
@@ -854,49 +1447,51 @@ Trust the process, {athlete_name}."""
         strength_dir = zwo_dir
 
         # Find days suitable for strength workouts based on athlete schedule
-        # Prefer days marked as 'limited' or days that aren't key workout days
+        # CRITICAL: Strength days must be separated by at least 1 day for recovery
+        # CRITICAL: Don't put strength on the same day as FTP tests or very hard workouts
         def get_strength_days() -> list:
-            """Find appropriate days for strength workouts based on athlete availability."""
-            if not use_custom_schedule:
-                return ['Wed', 'Thu']  # Default days
+            """
+            Find appropriate days for strength workouts.
 
-            suitable_days = []
-            # Priority order: strength_only_days > limited availability > non-key days
-            for day_full, prefs in preferred_days.items():
-                if not isinstance(prefs, dict):
-                    continue
-                day_abbrev = DAY_FULL_TO_ABBREV.get(day_full.lower())
-                if not day_abbrev:
-                    continue
+            Rules:
+            1. Days must be separated (Mon/Wed, Mon/Thu, Tue/Thu, Tue/Fri - NOT Wed/Thu)
+            2. Avoid days with FTP tests
+            3. Prefer easy/recovery bike days for strength
+            4. If athlete specified strength_only_days, use those
+            """
+            # Check for athlete-specified strength days
+            if strength_only_abbrevs:
+                return strength_only_abbrevs[:2]
 
-                availability = prefs.get('availability', 'available')
-                is_key_ok = prefs.get('is_key_day_ok', True)
-                workout_type = prefs.get('workout_type', '')
+            # Good pairings with 1+ day gap:
+            # Mon/Wed, Mon/Thu, Tue/Thu, Tue/Fri, Wed/Fri
+            valid_pairings = [
+                ['Tue', 'Thu'],  # Best: easy days in our schedule (Tue is easy, Thu is quality but not FTP)
+                ['Mon', 'Thu'],  # Good: quality day + quality day with gap
+                ['Tue', 'Fri'],  # Good: easy day + quality day
+                ['Mon', 'Wed'],  # OK: two quality days early week
+                ['Wed', 'Fri'],  # OK: mid-week + end-week
+            ]
 
-                # Skip rest/unavailable days
-                if availability in ('rest', 'unavailable'):
-                    continue
-
-                # Prefer strength-only days first
-                if workout_type == 'strength_only' or day_abbrev in strength_only_abbrevs:
-                    suitable_days.insert(0, day_abbrev)
-                # Then limited availability days (good for shorter strength sessions)
-                elif availability == 'limited' and not is_key_ok:
-                    suitable_days.append(day_abbrev)
-                # Then non-key days
-                elif not is_key_ok:
-                    suitable_days.append(day_abbrev)
-
-            # Return at least 2 days, filling with defaults if needed
-            if len(suitable_days) < 2:
-                defaults = ['Wed', 'Thu', 'Mon', 'Fri']
-                for d in defaults:
-                    if d not in suitable_days and len(suitable_days) < 2:
-                        suitable_days.append(d)
-
-            return suitable_days[:2]
+            # Tue/Thu is best because Tue is an easy day in our weekly structure
+            # This puts strength on a recovery day, not stacking with hard bike
+            return ['Tue', 'Thu']
 
         strength_days = get_strength_days()
+
+        # Track which days have FTP tests (don't schedule strength on these)
+        ftp_test_days = set()
+        for week in weeks:
+            week_num = week['week']
+            # FTP tests are typically in Week 1 and pre-Build week
+            if week_num == 1:
+                # Week 1 FTP test is usually Thursday
+                ftp_test_days.add((week_num, 'Thu'))
+            # Check if this is the week before Build phase starts
+            if week.get('phase') == 'base':
+                next_week_idx = weeks.index(week) + 1
+                if next_week_idx < len(weeks) and weeks[next_week_idx].get('phase') == 'build':
+                    ftp_test_days.add((week_num, 'Thu'))
 
         for week in weeks:
             week_num = week['week']
@@ -911,6 +1506,10 @@ Trust the process, {athlete_name}."""
 
                 # Use athlete-appropriate strength day
                 strength_day = strength_days[session - 1] if session <= len(strength_days) else strength_days[0]
+
+                # Skip strength if this day has an FTP test
+                if (week_num, strength_day) in ftp_test_days:
+                    continue  # Don't add strength on FTP test day
 
                 # Get the date for this strength day from the week's days list
                 date_short = ""
@@ -1006,26 +1605,19 @@ def generate_athlete_package(athlete_id: str) -> dict:
     detail(f"Plan: {plan_weeks} weeks")
     detail(f"Methodology: {methodology.get('selected_methodology', 'Unknown')}")
 
-    # Find race data file
-    step(2, "Loading race data...")
+    # Race data loading is optional - guide generator gets info from profile
+    step(2, "Checking race data...")
     race_id = profile.get('target_race', {}).get('race_id', '')
 
-    if not GUIDES_DIR:
-        error("Guides directory not configured. Check config.yaml paths.guides_repo")
-        return {'success': False, 'error': 'Guides directory not configured'}
-
-    race_data_path = GUIDES_DIR / 'race_data' / f'{race_id}.json'
-
-    if not race_data_path.exists():
-        race_files = list((GUIDES_DIR / 'race_data').glob('*.json'))
-        error(f"Race data not found at {race_data_path}")
-        detail(f"Available race files: {[f.name for f in race_files]}")
-        detail(f"Please create {race_id}.json in {GUIDES_DIR / 'race_data'}/")
-        detail(f"Or update profile.yaml race_id to match an existing file.")
-        return {'success': False, 'error': f'Race data file not found: {race_id}.json'}
-
-    race_data = load_json(race_data_path)
-    detail(f"Loaded: {race_data_path.name}")
+    # Try to load race data if available, but don't fail if missing
+    race_data = None
+    if GUIDES_DIR:
+        race_data_path = GUIDES_DIR / 'race_data' / f'{race_id}.json'
+        if race_data_path.exists():
+            race_data = load_json(race_data_path)
+            detail(f"Loaded: {race_data_path.name}")
+        else:
+            detail(f"Race data file not found ({race_id}.json) - using profile data")
 
     # Build athlete_data dict for guide generator
     athlete_data = {
@@ -1040,16 +1632,8 @@ def generate_athlete_package(athlete_id: str) -> dict:
     step(3, "Generating training guide...")
     guide_path = athlete_dir / 'training_guide.html'
 
-    tier_name = derived.get('tier', 'FINISHER').upper()
-    ability_level = derived.get('ability_level', 'Intermediate')
-
-    generate_guide(
-        race_data=race_data,
-        tier_name=tier_name,
-        ability_level=ability_level,
-        output_path=str(guide_path),
-        athlete_data=athlete_data
-    )
+    # Use local HTML guide generator
+    generate_html_guide(athlete_id, output_path=guide_path)
 
     # Generate ZWO workout files
     step(4, "Generating ZWO workout files...")
@@ -1058,6 +1642,9 @@ def generate_athlete_package(athlete_id: str) -> dict:
 
     # Generate plan summary
     step(5, "Generating plan summary...")
+    tier_name = derived.get('tier', 'FINISHER').upper()
+    ability_level = derived.get('ability_level', 'Intermediate')
+
     summary = {
         'athlete_id': athlete_id,
         'athlete_name': athlete_name,

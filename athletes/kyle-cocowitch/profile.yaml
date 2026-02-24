@@ -10,6 +10,7 @@ target_race:
   race_id: sbt_grvl_75
   date: '2026-06-28'
   distance_miles: 75.0
+  elevation_ft: 6732
   goal_type: compete
   goal: compete
   goal_description: "Having fun! But also feeling very strong, well fueled, good endurance. I would like this race to feel like a breeze because of all of the training I have put in. Less focused on time based goals."

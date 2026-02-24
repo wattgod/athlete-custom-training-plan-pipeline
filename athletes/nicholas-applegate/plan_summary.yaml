@@ -1,0 +1,23 @@
+athlete_id: nicholas-applegate
+athlete_name: Nicholas Clift Shaw Applegate
+generated_date: '2026-02-24T14:05:11.358861'
+race:
+  name: Unbound Gravel 200
+  date: '2026-05-30'
+  distance_miles: 200
+plan:
+  weeks: 12
+  start_date: '2026-03-09'
+  end_date: '2026-05-31'
+  methodology: Polarized (80/20)
+  methodology_score: 100
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 66
+  total_carbs: 1111
+  estimated_duration_hours: 16.7
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/nicholas-applegate/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/nicholas-applegate/workouts
+  workout_count: 72

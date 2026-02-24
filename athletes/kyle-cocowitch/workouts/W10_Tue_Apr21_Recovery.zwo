@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W10_Tue_Apr21_Recovery</name>
+  <description>Kyle - Week 10/19 - 10 weeks to SBT GRVL 75
+Phase: BUILD
+
+STRUCTURE:
+45 min easy spin @ Z1 (50-55% FTP)
+
+PURPOSE:
+Active recovery. Blood flow without stress. Let your body adapt to previous training.
+
+EXECUTION:
+Keep it easy. If in doubt, go easier. No heroics.
+
+RPE:
+RPE 2-3 (very easy, conversational)</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.68"/>
+    <SteadyState Duration="2100" Power="0.55"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

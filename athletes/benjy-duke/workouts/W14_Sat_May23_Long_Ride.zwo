@@ -2,7 +2,10 @@
 <workout_file>
   <author>Gravel God Training</author>
   <name>W14_Sat_May23_Long_Ride</name>
-  <description>STRUCTURE:
+  <description>Benjy - Week 14/19 - 6 weeks to SBT GRVL 75
+Phase: BUILD
+
+STRUCTURE:
 150 min endurance ride with tempo blocks
 
 PURPOSE:
@@ -12,7 +15,12 @@ EXECUTION:
 Mostly Z2 with some Z3 blocks. Practice fueling and hydration.
 
 RPE:
-RPE 3-5 (easy to moderate)</description>
+RPE 3-5 (easy to moderate)
+
+HEAT ACCLIMATION:
+- Add 15-20 min sauna post-workout OR
+- Extra layers during warmup
+- Improves thermoregulation and race performance</description>
   <sportType>bike</sportType>
   <workout>
     <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.68"/>

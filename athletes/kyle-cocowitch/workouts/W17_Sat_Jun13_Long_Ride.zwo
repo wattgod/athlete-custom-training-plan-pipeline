@@ -1,15 +1,26 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
-    <author>Gravel God Training</author>
-    <name>W17_Sat_Jun13_Long_Ride</name>
-    <description>Week 17 (Peak Phase) - Sat
+  <author>Gravel God Training</author>
+  <name>W17_Sat_Jun13_Long_Ride</name>
+  <description>Kyle - Week 17/19 - 3 weeks to SBT GRVL 75
+Phase: PEAK
 
-Long ride with race-pace blocks</description>
-    <sportType>bike</sportType>
-    <workout>
-        <Warmup Duration="1080" PowerLow="0.45" PowerHigh="0.65"/>
-        <SteadyState Duration="6540" Power="0.65"/>
-        <SteadyState Duration="2820" Power="0.80"/>
-        <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
-    </workout>
+STRUCTURE:
+180 min endurance ride with tempo blocks
+
+PURPOSE:
+Building aerobic endurance and time in saddle. Race-specific duration work.
+
+EXECUTION:
+Mostly Z2 with some Z3 blocks. Practice fueling and hydration.
+
+RPE:
+RPE 3-5 (easy to moderate)</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="1080" PowerLow="0.50" PowerHigh="0.68"/>
+    <SteadyState Duration="6540" Power="0.65"/>
+    <SteadyState Duration="2820" Power="0.80"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
 </workout_file>

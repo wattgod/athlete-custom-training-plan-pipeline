@@ -1,0 +1,58 @@
+======================================================================
+PRE-DELIVERY CHECKLIST: kyle-cocowitch
+Generated: 2026-02-11 13:13:40
+======================================================================
+
+Athlete: Kyle Cocowitch
+Race: SBT GRVL 75 (2026-06-28)
+Methodology: G SPOT / Threshold
+
+----------------------------------------------------------------------
+
+## 1. AUTOMATED VALIDATION RESULTS
+
+  [✅] Distribution validation PASSED
+
+  [✅] Integrity check PASSED
+       ❌ ERRORS:
+       [ERROR] Guide missing '19-Week Arc' - regenerate guide
+       ⚠️  WARNINGS:
+       [WARNING] Fueling distance (73.0) != profile distance (75.0)
+       [WARNING] Workout exceeds time limit: W19_Sun_Jun28_RACE_DAY_SBT_GRVL_75.zwo (312min on sunday with 300min max)
+       ⚠️  INTEGRITY CHECK PASSED WITH ERRORS
+
+## 2. FILE VERIFICATION
+
+  [✅] Training guide HTML: training_guide.html (165,684 bytes)
+  [✅] Training guide PDF: training_guide.pdf (992,989 bytes)
+  [✅] Plan justification document: plan_justification.md (7,885 bytes)
+  [✅] Athlete profile: profile.yaml (6,984 bytes)
+  [✅] Methodology selection: methodology.yaml (979 bytes)
+  [✅] Derived values: derived.yaml (1,839 bytes)
+  [✅] Plan dates: plan_dates.yaml (18,530 bytes)
+  [✅] Workouts: 170 total (33 strength)
+
+## 3. MANUAL VERIFICATION (Check each item)
+
+  [ ] Reviewed plan_justification.md - decisions make sense
+  [ ] Opened training_guide.pdf - displays correctly
+  [ ] Spot-checked 3 random workouts - content looks correct
+  [ ] Verified athlete name appears in workout descriptions
+  [ ] Confirmed race name and date are correct
+  [ ] No 'Sweet Spot' references (should be 'G SPOT')
+  [ ] Strength workouts have dates in filename
+
+## 4. DELIVERY PACKAGE
+
+  [✅] Package exists: /Users/mattirowe/Downloads/kyle-cocowitch-training-plan
+  [✅] training_guide.pdf present
+  [✅] plan_justification.md present
+  [✅] workouts/ folder (164 files)
+
+----------------------------------------------------------------------
+
+✅ AUTOMATED CHECKS PASSED
+
+Complete the manual verification above before delivering.
+
+======================================================================

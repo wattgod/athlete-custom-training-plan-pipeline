@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W12_Fri_May8_Threshold</name>
+  <description>Kyle - Week 12/19 - 8 weeks to SBT GRVL 75
+Phase: BUILD
+
+WARM-UP:
+-20min building from Z1 to Z2
+
+MAIN SET:
+-15min warmup Z2, 15min @ 97% + 12min @ 99% + 10min @ 101% FTP, 5min recovery between
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 3/6: Development - Standard training load, building consistency
+-Increased intensity - finish above threshold
+
+PURPOSE:
+Threshold development. The power you can sustain for 20-60 minutes.
+
+
+HEAT ACCLIMATION:
+- Add 15-20 min sauna post-workout OR
+- Extra layers during warmup
+- Improves thermoregulation and race performance
+
+EXECUTION:
+-Find your rhythm early. Break long efforts into mental thirds.
+
+NUTRITION:
+-60-80g carbs/hr. Start fueling at 30-45min. Mix gels and drink mix.
+
+HYDRATION:
+-500-750ml/hr with electrolytes. Start hydrated.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="1200" PowerLow="0.50" PowerHigh="0.75"/>
+    <SteadyState Duration="900" Power="0.97" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="0.55" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="720" Power="0.99" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="0.55" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="600" Power="1.01" CadenceLow="85" CadenceHigh="95"/>
+    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
+  </workout>
+</workout_file>

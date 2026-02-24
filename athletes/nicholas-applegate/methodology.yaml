@@ -1,0 +1,36 @@
+selected_methodology: Polarized (80/20)
+methodology_id: polarized_80_20
+score: 100
+reasons:
+- Ideal hours match (10h in 10-15h sweet spot)
+- Experience exceeds requirements
+- Handles high life stress well
+- Excellent for ultra-distance events
+- Appropriate for finish-focused goal
+warnings: []
+configuration:
+  methodology: Polarized (80/20)
+  intensity_distribution:
+    z1_z2: 0.8
+    z3: 0.0
+    z4_z5: 0.2
+  strength_approach: year_round_heavy_explosive
+  key_workouts:
+  - long_z2
+  - vo2max_intervals
+  - threshold_repeats
+  progression_style: increase_hard_work_maintain_ratio
+  testing_frequency: 4_6_weeks
+alternatives:
+- name: MAF / Low-HR (LT1)
+  score: 100
+  key_reason: Ideal hours match (10h in 10-15h sweet spot)
+- name: Autoregulated (HRV-Based)
+  score: 95.0
+  key_reason: Ideal hours match (10h in 8-15h sweet spot)
+- name: GOAT (Gravel Optimized Adaptive Training)
+  score: 85.0
+  key_reason: Ideal hours match (10h in 10-18h sweet spot)
+selection_date: '2026-02-24 14:05:11'
+confidence: high
+confidence_note: Strong match for athlete profile

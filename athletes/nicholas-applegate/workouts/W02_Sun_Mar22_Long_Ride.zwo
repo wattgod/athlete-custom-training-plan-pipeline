@@ -1,0 +1,26 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W02_Sun_Mar22_Long_Ride</name>
+  <description>Nicholas - Week 2/12 - 11 weeks to Unbound Gravel 200
+Phase: BASE
+
+STRUCTURE:
+120 min endurance ride with tempo blocks
+
+PURPOSE:
+Building aerobic endurance and time in saddle. Race-specific duration work.
+
+EXECUTION:
+Mostly Z2 with some Z3 blocks. Practice fueling and hydration.
+
+RPE:
+RPE 3-5 (easy to moderate)</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="720" PowerLow="0.50" PowerHigh="0.68"/>
+    <SteadyState Duration="4320" Power="0.65"/>
+    <SteadyState Duration="1800" Power="0.80"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

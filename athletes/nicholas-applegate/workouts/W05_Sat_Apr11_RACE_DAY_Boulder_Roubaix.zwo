@@ -1,0 +1,35 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W05_Sat_Apr11_RACE_DAY_Boulder_Roubaix</name>
+  <description>B-RACE DAY: Boulder Roubaix
+Date: 2026-04-11
+Priority: B (training race - NOT the goal event)
+
+THIS IS A TRAINING RACE:
+- Race hard, but don't blow up your training block
+- Use this as a fitness check and race-craft practice
+- Target effort: 90-95% of A-race effort
+- Practice fueling, pacing, and gear choices
+
+PRE-RACE:
+- 15 min easy warmup with 3x30sec openers
+- Stay hydrated, eat familiar foods
+
+PACING:
+- Start conservative, find your rhythm
+- Use the middle third to test race pace
+- Final third: push if you feel good, back off if not
+
+POST-RACE:
+- Easy spin cooldown 15-20 min
+- Resume normal training within 2 days
+- This is a stepping stone to Unbound Gravel 200, not the goal
+
+GO RACE SMART, NICHOLAS!
+</description>
+  <sportType>bike</sportType>
+  <workout>
+    <FreeRide Duration="10800"/>
+  </workout>
+</workout_file>

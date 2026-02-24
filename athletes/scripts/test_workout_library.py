@@ -114,10 +114,14 @@ def test_zwo_generation():
     print(f"✓ Generated endurance workout: {name}")
 
     # Test strength ZWO
-    blocks, name = generate_strength_zwo(1, 1)
-    assert '<Warmup' in blocks or '<SteadyState' in blocks, "Strength workout should have content"
-    assert 'Exercise' in blocks, "Strength workout should have exercise prompts"
-    print(f"✓ Generated strength workout: {name}")
+    # Note: Strength ZWO doesn't include exercise names in blocks (textevent breaks TrainingPeaks)
+    # Exercise info goes in the workout description instead
+    blocks, workout = generate_strength_zwo(1, 1)
+    assert '<Warmup' in blocks, "Strength workout should have warmup"
+    assert '<SteadyState' in blocks, "Strength workout should have steady state blocks"
+    assert '<Cooldown' in blocks, "Strength workout should have cooldown"
+    assert workout.get('exercises'), "Should return workout with exercises"
+    print(f"✓ Generated strength workout: {workout['name']}")
 
 
 def test_strength_workout_text():

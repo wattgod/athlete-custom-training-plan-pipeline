@@ -1,14 +1,38 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
-    <author>Gravel God Training</author>
-    <name>W17_Wed_Jun10_VO2max</name>
-    <description>Week 17 (Peak Phase) - Wed
+  <author>Gravel God Training</author>
+  <name>W17_Wed_Jun10_VO2max</name>
+  <description>Kyle - Week 17/19 - 3 weeks to SBT GRVL 75
+Phase: PEAK
 
-VO2max intervals: 5x3min @ 110% FTP</description>
-    <sportType>bike</sportType>
-    <workout>
-        <Warmup Duration="360" PowerLow="0.45" PowerHigh="0.65"/>
-        <IntervalsT Repeat="5" OnDuration="180" OnPower="1.10" OffDuration="180" OffPower="0.50"/>
-        <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
-    </workout>
+WARM-UP:
+-15min building from Z1 to Z2
+
+MAIN SET:
+-15min warmup Z2, 7x3min @ 118-123% FTP, 2.5min recovery between
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 5/6: Advanced - High training load, pushing limits
+-Extended volume - maximum sustainable power
+
+PURPOSE:
+VO2max development. Maximum aerobic power—the engine that drives race-winning attacks.
+
+EXECUTION:
+-Hit target from the start, but don't hero interval 1. Full recovery between (4-5min Z1).
+
+NUTRITION:
+-30-60g carbs/hr. Easily digestible. Nothing heavy 2hrs before.
+
+HYDRATION:
+-500-750ml/hr with electrolytes. Start hydrated.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75"/>
+    <IntervalsT Repeat="7" OnDuration="180" OnPower="1.20" CadenceLow="90" CadenceHigh="100" OffDuration="180" OffPower="0.55"/>
+    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
+  </workout>
 </workout_file>

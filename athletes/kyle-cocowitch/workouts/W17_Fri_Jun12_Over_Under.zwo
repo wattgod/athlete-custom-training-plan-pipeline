@@ -1,0 +1,37 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W17_Fri_Jun12_Over_Under</name>
+  <description>Kyle - Week 17/19 - 3 weeks to SBT GRVL 75
+Phase: PEAK
+
+STRUCTURE:
+55 min with over-under intervals alternating 88-92% FTP (under) and 105-108% FTP (over)
+
+PURPOSE:
+Race simulation. Teaches your body to clear lactate while maintaining power. Essential for gravel where pace constantly changes.
+
+EXECUTION:
+Unders are controlled, overs are hard surges. Focus on quick transitions. Cadence drops may occur on overs - thats normal.
+
+RPE:
+RPE 7-8 (unders) to 8-9 (overs)</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.68"/>
+    <SteadyState Duration="240" Power="0.62"/>
+    <SteadyState Duration="180" Power="0.90"/>
+    <SteadyState Duration="60" Power="1.06"/>
+    <SteadyState Duration="180" Power="0.50"/>
+    <SteadyState Duration="180" Power="0.90"/>
+    <SteadyState Duration="60" Power="1.06"/>
+    <SteadyState Duration="180" Power="0.50"/>
+    <SteadyState Duration="180" Power="0.90"/>
+    <SteadyState Duration="60" Power="1.06"/>
+    <SteadyState Duration="180" Power="0.50"/>
+    <SteadyState Duration="180" Power="0.90"/>
+    <SteadyState Duration="60" Power="1.06"/>
+    <SteadyState Duration="240" Power="0.58"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

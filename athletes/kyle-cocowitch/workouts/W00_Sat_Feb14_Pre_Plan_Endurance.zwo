@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W00_Sat_Feb14_Pre_Plan_Endurance</name>
+  <description>PRE-PLAN WEEK: Endurance Ride
+Kyle - 2 days until plan starts
+
+PURPOSE:
+Longer easy ride to build aerobic base and test nutrition.
+
+WORKOUT:
+- 75-90 min at Z2 (60-70% FTP)
+- Practice fueling: aim for 40-60g carbs/hour
+- Stay hydrated
+
+OUTDOOR STRONGLY ENCOURAGED:
+- Build confidence on gravel/mixed terrain
+- Practice reading the road ahead
+- Test your nutrition strategy
+
+Almost there, Kyle!</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="480" PowerLow="0.50" PowerHigh="0.68"/>
+    <SteadyState Duration="4020" Power="0.65"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

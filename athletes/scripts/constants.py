@@ -12,12 +12,13 @@ from typing import Dict, List, Tuple, Optional
 # === ATHLETE PATH UTILITIES ===
 # Use these instead of constructing paths manually throughout the codebase
 
-ATHLETES_BASE_DIR: str = "athletes"
+# Get the absolute path to the athletes directory (scripts/../)
+ATHLETES_BASE_DIR: Path = Path(__file__).parent.parent.resolve()
 
 
 def get_athlete_dir(athlete_id: str) -> Path:
     """Get the base directory for an athlete."""
-    return Path(ATHLETES_BASE_DIR) / athlete_id
+    return ATHLETES_BASE_DIR / athlete_id
 
 
 def get_athlete_file(athlete_id: str, filename: str) -> Path:

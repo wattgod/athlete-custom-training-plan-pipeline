@@ -1,0 +1,57 @@
+======================================================================
+PRE-DELIVERY CHECKLIST: nicholas-applegate
+Generated: 2026-02-24 13:06:22
+======================================================================
+
+Athlete: Nicholas Clift Shaw Applegate
+Race: Unbound Gravel 200 (2026-05-30)
+Methodology: Polarized (80/20)
+
+----------------------------------------------------------------------
+
+## 1. AUTOMATED VALIDATION RESULTS
+
+  [✅] Distribution validation PASSED
+
+  [✅] Integrity check PASSED
+       ⚠️  WARNINGS:
+       [WARNING] Workout exceeds time limit: W12_Sat_May30_RACE_DAY_Unbound_Gravel_200.zwo (1002min on saturday with 240min max)
+
+## 2. FILE VERIFICATION
+
+  [✅] Training guide HTML: training_guide.html (152,783 bytes)
+  [❌] Training guide PDF: training_guide.pdf - MISSING
+  [❌] Plan justification document: plan_justification.md - MISSING
+  [✅] Athlete profile: profile.yaml (7,219 bytes)
+  [✅] Methodology selection: methodology.yaml (1,058 bytes)
+  [✅] Derived values: derived.yaml (338 bytes)
+  [✅] Plan dates: plan_dates.yaml (11,918 bytes)
+  [✅] Workouts: 72 total (0 strength)
+
+## 3. MANUAL VERIFICATION (Check each item)
+
+  [ ] Reviewed plan_justification.md - decisions make sense
+  [ ] Opened training_guide.pdf - displays correctly
+  [ ] Spot-checked 3 random workouts - content looks correct
+  [ ] Verified athlete name appears in workout descriptions
+  [ ] Confirmed race name and date are correct
+  [ ] No 'Sweet Spot' references (should be 'G SPOT')
+  [ ] Strength workouts have dates in filename
+
+## 4. DELIVERY PACKAGE
+
+  [❌] Package NOT FOUND: /Users/mattirowe/Downloads/nicholas-applegate-training-plan
+
+  Create package with:
+    mkdir -p ~/Downloads/nicholas-applegate-training-plan/workouts
+    cp /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/nicholas-applegate/training_guide.pdf ~/Downloads/nicholas-applegate-training-plan/
+    cp /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/nicholas-applegate/plan_justification.md ~/Downloads/nicholas-applegate-training-plan/
+    cp /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/nicholas-applegate/workouts/*.zwo ~/Downloads/nicholas-applegate-training-plan/workouts/
+
+----------------------------------------------------------------------
+
+✅ AUTOMATED CHECKS PASSED
+
+Complete the manual verification above before delivering.
+
+======================================================================

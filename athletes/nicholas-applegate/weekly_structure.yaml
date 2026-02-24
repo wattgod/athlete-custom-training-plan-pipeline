@@ -1,0 +1,44 @@
+description: Custom weekly structure for finisher tier
+days:
+  monday:
+    am: null
+    pm: easy_ride
+    is_key_day: false
+    notes: ''
+    max_duration: 120
+  tuesday:
+    am: null
+    pm: null
+    is_key_day: false
+    notes: ''
+    max_duration: 0
+  wednesday:
+    am: null
+    pm: intervals
+    is_key_day: true
+    notes: Key session - intervals PM
+    max_duration: 120
+  thursday:
+    am: null
+    pm: easy_ride
+    is_key_day: false
+    notes: ''
+    max_duration: 120
+  friday:
+    am: null
+    pm: easy_ride
+    is_key_day: false
+    notes: ''
+    max_duration: 120
+  saturday:
+    am: intervals
+    pm: null
+    is_key_day: true
+    notes: Key session - intervals or threshold
+    max_duration: 240
+  sunday:
+    am: long_ride
+    pm: null
+    is_key_day: true
+    notes: Key session - long ride
+    max_duration: 600

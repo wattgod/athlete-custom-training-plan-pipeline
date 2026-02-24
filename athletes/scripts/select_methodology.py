@@ -12,10 +12,15 @@ Selects the optimal training methodology for an athlete based on:
 
 Based on the endurance_training_systems_master_table methodology matrix.
 
+All 13 methodologies are defined in config/methodologies.yaml and scored
+objectively. Athlete free-text preferences are NOT used for scoring —
+only explicit past_failure_with (hard veto, -50pts) and past_success_with
+(+10pts) from intake extraction.
+
 Methodologies Available:
 1. Traditional (Pyramidal) - High volume base, progressive intensity
 2. Polarized (80/20) - Easy or hard, minimal middle
-3. G SPOT / Threshold - Time-efficient threshold focus with Z5+ top-end
+3. Sweet Spot / Threshold - Time-efficient threshold focus
 4. HIIT-Focused - Minimal volume, maximal intensity
 5. Block Periodization - Concentrated overload phases
 6. Reverse Periodization - Intensity first, volume later
@@ -92,7 +97,7 @@ _METHODOLOGIES_FALLBACK = {
         "min_hours": 8,
         "max_hours": 20,
         "ideal_hours": (10, 15),
-        "best_for": ["tolerance_building", "recovery_friendly", "structured_athletes"],
+        "best_for": ["tolerance_building", "recovery_friendly", "structured_athletes", "durability", "long_events"],
         "not_for": ["very_low_volume", "sprint_specialists"],
         "experience_required": "intermediate",
         "stress_tolerance": "high",  # Handles life stress well
@@ -216,6 +221,82 @@ _METHODOLOGIES_FALLBACK = {
         "key_workouts": ["long_z2_hr_capped", "aerobic_strides"],
         "progression_style": "duration_at_hr_cap",
         "testing_frequency": "3_4_weeks"
+    },
+
+    "critical_power": {
+        "name": "Critical Power / W'",
+        "description": "Balance CP duration and W' capacity for surge repeatability",
+        "philosophy": "Model-driven: extend CP, manage W' depletion",
+        "min_hours": 6,
+        "max_hours": 15,
+        "ideal_hours": (8, 12),
+        "best_for": ["repeated_surges", "technical_terrain", "crits", "short_gravel"],
+        "not_for": ["ultra_endurance", "durability_focus", "beginners"],
+        "experience_required": "advanced",
+        "stress_tolerance": "moderate",
+        "schedule_flexibility": "moderate",
+        "intensity_distribution": {"z1_z2": 0.60, "z3": 0.15, "z4_z5": 0.25},
+        "strength_approach": "power_focused",
+        "key_workouts": ["above_cp_repeats", "w_prime_depletion", "threshold_intervals"],
+        "progression_style": "increase_cp_then_w_prime",
+        "testing_frequency": "4_6_weeks"
+    },
+
+    "inscyd": {
+        "name": "INSCYD / Metabolic",
+        "description": "Sculpt VO2max and VLamax for metabolic optimization",
+        "philosophy": "Precise metabolic profiling drives training targets",
+        "min_hours": 8,
+        "max_hours": 20,
+        "ideal_hours": (10, 15),
+        "best_for": ["advanced_optimization", "road_racing", "triathlon"],
+        "not_for": ["beginners", "no_testing_access", "casual_riders"],
+        "experience_required": "advanced",
+        "stress_tolerance": "moderate",
+        "schedule_flexibility": "low",
+        "intensity_distribution": {"z1_z2": 0.65, "z3": 0.15, "z4_z5": 0.20},
+        "strength_approach": "metabolic_complementary",
+        "key_workouts": ["vo2max_targeted", "vlamax_reduction", "fat_oxidation"],
+        "progression_style": "metabolic_marker_driven",
+        "testing_frequency": "6_8_weeks"
+    },
+
+    "norwegian_double_threshold": {
+        "name": "Double-Threshold (Norwegian)",
+        "description": "Lactate-capped threshold doubles for elite aerobic development",
+        "philosophy": "Two moderate threshold sessions daily, staying below 4mmol",
+        "min_hours": 12,
+        "max_hours": 30,
+        "ideal_hours": (15, 25),
+        "best_for": ["elite_athletes", "high_volume_available", "threshold_development"],
+        "not_for": ["time_crunched", "beginners", "high_stress_lifestyle"],
+        "experience_required": "advanced",
+        "stress_tolerance": "low",
+        "schedule_flexibility": "low",
+        "intensity_distribution": {"z1_z2": 0.55, "z3": 0.35, "z4_z5": 0.10},
+        "strength_approach": "minimal_maintenance",
+        "key_workouts": ["norwegian_double", "threshold_cruise", "long_z2"],
+        "progression_style": "increase_threshold_volume",
+        "testing_frequency": "4_weeks"
+    },
+
+    "hvli_lsd": {
+        "name": "HVLI / LSD-Centric",
+        "description": "Massive low-intensity volume for ultra-endurance durability",
+        "philosophy": "Train the body to process fat and sustain output for 12+ hours",
+        "min_hours": 15,
+        "max_hours": 30,
+        "ideal_hours": (18, 25),
+        "best_for": ["ultra_endurance", "200_mile_events", "fat_adaptation", "durability"],
+        "not_for": ["time_crunched", "short_events", "need_quick_gains"],
+        "experience_required": "intermediate",
+        "stress_tolerance": "high",
+        "schedule_flexibility": "low",
+        "intensity_distribution": {"z1_z2": 0.90, "z3": 0.08, "z4_z5": 0.02},
+        "strength_approach": "durability_focused",
+        "key_workouts": ["hvli_extended", "multi_hour_z2", "back_to_back_long"],
+        "progression_style": "increase_duration_not_intensity",
+        "testing_frequency": "phase_end"
     },
 
     "goat_composite": {
@@ -426,9 +507,13 @@ def calculate_methodology_score(
             reasons.append("Past success with this approach")
 
     if past_failure:
-        if any(kw in method_name_lower for kw in past_failure.split()):
-            score -= 10
-            warnings.append("Past failure with this approach")
+        # Split on semicolons (multiple failures) and individual words
+        failure_terms = []
+        for segment in past_failure.split(';'):
+            failure_terms.extend(segment.strip().lower().split())
+        if any(kw in method_name_lower for kw in failure_terms if len(kw) > 2):
+            score -= 50
+            warnings.append(f"VETO: Athlete explicitly rejected this approach ('{past_failure}')")
 
     # ==========================================================================
     # SPECIAL CONDITIONS

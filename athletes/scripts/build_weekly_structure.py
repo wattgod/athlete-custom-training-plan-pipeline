@@ -19,20 +19,37 @@ def build_weekly_structure(
     preferred_days: Dict,
     key_days: List[str],
     strength_days: List[str],
-    tier: str
+    tier: str,
+    preferred_long_day: str = None
 ) -> Dict:
     """
     Build custom weekly structure from athlete preferences.
-    
+
     Args:
         preferred_days: Dict of day preferences from profile
         key_days: List of days that can handle key sessions
         strength_days: List of days for strength sessions
         tier: Athlete tier (ayahuasca, finisher, compete, podium)
-    
+        preferred_long_day: Day name for long ride (e.g. "sunday").
+            Falls back to the key day with the highest max_duration_min.
+
     Returns:
         Weekly structure dict compatible with unified generator
     """
+    # Resolve the long ride day
+    long_day = None
+    if preferred_long_day and preferred_long_day.strip():
+        long_day = preferred_long_day.strip().lower()
+    else:
+        # Fallback: pick the key day with the highest max_duration_min
+        best_duration = 0
+        for day_name in key_days:
+            prefs = preferred_days.get(day_name, {})
+            dur = prefs.get("max_duration_min", 0)
+            if dur > best_duration:
+                best_duration = dur
+                long_day = day_name
+
     structure = {
         "description": f"Custom weekly structure for {tier} tier",
         "days": {}
@@ -68,8 +85,8 @@ def build_weekly_structure(
         # Assign AM workout
         # Priority: Key sessions > Strength > Easy rides
         if "am" in time_slots:
-            if day == "saturday" and max_duration >= 180 and is_key:
-                # Saturday long ride takes priority
+            if day == long_day and max_duration >= 180 and is_key:
+                # Long ride day takes priority
                 day_struct["am"] = "long_ride"
                 day_struct["is_key_day"] = True
                 day_struct["notes"] = "Key session - long ride"
@@ -103,7 +120,7 @@ def build_weekly_structure(
             elif day_struct["am"] == "strength":
                 # After strength AM, can do intervals/long ride PM if it's a key day
                 if is_key:
-                    if day == "saturday" and max_duration >= 180:
+                    if day == long_day and max_duration >= 180:
                         day_struct["pm"] = "long_ride"
                         day_struct["is_key_day"] = True
                         day_struct["notes"] = "Strength AM + Long ride PM"
@@ -166,11 +183,13 @@ def main():
         derived = yaml.safe_load(f)
 
     # Build structure
+    schedule_constraints = profile.get("schedule_constraints", {})
     structure = build_weekly_structure(
         preferred_days=profile.get("preferred_days", {}),
         key_days=derived.get("key_day_candidates", []),
         strength_days=derived.get("strength_day_candidates", []),
-        tier=derived.get("tier", "finisher")
+        tier=derived.get("tier", "finisher"),
+        preferred_long_day=schedule_constraints.get("preferred_long_day", None)
     )
 
     # Save structure

@@ -10,6 +10,7 @@ target_race:
   race_id: sbt_grvl_75
   date: '2026-06-28'
   distance_miles: 75.0
+  elevation_ft: 6732
   goal_type: compete
   goal: compete
   goal_description: "Completing the 75-miler course with no pain and a respectable time. Top third of age bracket."

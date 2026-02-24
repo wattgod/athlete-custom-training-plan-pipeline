@@ -1,0 +1,38 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W05_Fri_Mar20_VO2max</name>
+  <description>Benjy - Week 5/19 - 15 weeks to SBT GRVL 75
+Phase: BASE
+
+WARM-UP:
+-15min building from Z1 to Z2
+
+MAIN SET:
+-15min warmup Z2, 6x3min @ 115-120% FTP, 2.5min recovery between
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 4/6: Progressive - Increased challenge, refining execution
+-Reduced recovery - building tolerance. Control early, push late
+
+PURPOSE:
+VO2max development. Maximum aerobic power—the engine that drives race-winning attacks.
+
+EXECUTION:
+-Hit target from the start, but don't hero interval 1. Full recovery between (4-5min Z1).
+
+NUTRITION:
+-30-60g carbs/hr. Easily digestible. Nothing heavy 2hrs before.
+
+HYDRATION:
+-500-750ml/hr with electrolytes. Start hydrated.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75"/>
+    <IntervalsT Repeat="6" OnDuration="180" OnPower="1.17" CadenceLow="90" CadenceHigh="100" OffDuration="180" OffPower="0.55"/>
+    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
+  </workout>
+</workout_file>

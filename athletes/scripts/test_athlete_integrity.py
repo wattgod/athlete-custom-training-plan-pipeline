@@ -13,6 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from constants import DAY_ABBREV_TO_FULL
+from known_races import KNOWN_RACE_DATES
 
 # Try to import config for URL patterns
 try:
@@ -448,23 +449,11 @@ def validate_known_races(profile: dict) -> list:
     """Validate against known race calendar."""
     errors = []
 
-    # Known 2026 race dates (add more as needed)
-    # Sources:
-    # - Unbound: https://www.unboundgravel.com/ (May 28-31, 2026, 200 on Saturday May 30)
-    # - SBT GRVL: https://www.sbtgrvl.com/ (June 26-28, 2026, race Sunday June 28)
-    KNOWN_RACES = {
-        'sbt_grvl': '2026-06-28',  # SBT GRVL - Sunday June 28, 2026
-        'unbound_gravel_200': '2026-05-30',  # Unbound 200 - Saturday May 30, 2026
-        'unbound_gravel_100': '2026-05-30',  # Unbound 100 - Saturday May 30, 2026
-        'unbound_gravel_50': '2026-05-30',   # Unbound 50
-        'unbound_xl': '2026-05-29',  # Unbound XL (350) - Friday May 29
-    }
-
     race_id = profile.get('target_race', {}).get('race_id', '')
     profile_date = profile.get('target_race', {}).get('date')
 
     # Check if race_id matches a known race
-    for known_id, known_date in KNOWN_RACES.items():
+    for known_id, known_date in KNOWN_RACE_DATES.items():
         if known_id in race_id.lower():
             if profile_date != known_date:
                 errors.append(IntegrityError("CRITICAL",

@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W00_Sun_Feb15_Pre_Plan_Rest</name>
+  <description>PRE-PLAN WEEK: Rest Day
+Kyle - Plan starts tomorrow!
+
+PURPOSE:
+Complete rest before your 19-week journey begins.
+
+TODAY:
+- OFF the bike
+- Light stretching or yoga if desired
+- Focus on sleep, hydration, nutrition
+
+PREP FOR TOMORROW:
+- Charge devices (bike computer, HRM, etc.)
+- Check bike mechanicals
+- Review your training zones
+
+19 weeks to SBT GRVL 75.
+Trust the process. One workout at a time.
+
+Let's go, Kyle! See you tomorrow.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <FreeRide Duration="60"/>
+  </workout>
+</workout_file>

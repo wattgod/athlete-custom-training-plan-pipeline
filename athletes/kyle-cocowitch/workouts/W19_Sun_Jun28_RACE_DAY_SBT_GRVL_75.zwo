@@ -1,0 +1,52 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W19_Sun_Jun28_RACE_DAY_SBT_GRVL_75</name>
+  <description>RACE DAY: SBT GRVL 75
+Date: 2026-06-28
+
+TARGET METRICS:
+- Distance: 73.0 miles
+- Expected Duration: 5.2 hours
+- Estimated TSS: 338
+
+FUELING PLAN:
+- Carbs/hour: 80g (range: [70, 90])
+- Total carbs: 416g over race
+- Start fueling at 20 min, every 20-30 min thereafter
+- Pre-race: 100-150g carbs 2-3 hours before start
+
+PACING STRATEGY:
+- First 30 min: EASY. Let others burn matches. You're playing the long game.
+- Mile 10-40: Find your rhythm. Target G SPOT zone (88-94% FTP) on climbs.
+- Final third: This is where you pass people. Increase effort as others fade.
+- Technical sections: Smooth > Fast. Avoid mechanicals.
+
+HYDRATION:
+- 500-750ml/hour depending on heat
+- Start hydrated (clear urine morning of race)
+- Don't wait until thirsty
+
+PRE-RACE CHECKLIST:
+- [ ] Bike mechanically sound
+- [ ] Tires appropriate pressure for conditions
+- [ ] Bottles filled with fuel mix
+- [ ] Pockets loaded (gels, bars, tool)
+- [ ] Electronics charged (computer, lights if needed)
+- [ ] Spare tube, CO2, multi-tool
+- [ ] Race number attached
+- [ ] Drop bags ready (if applicable)
+
+RACE MORNING:
+- Wake 3 hours before start
+- Breakfast: familiar foods, high carb, low fiber
+- Arrive 1 hour early for warmup
+- 15 min easy spin warmup with 2-3 openers
+
+GO GET IT, KYLE!
+</description>
+  <sportType>bike</sportType>
+  <workout>
+    <FreeRide Duration="18720"/>
+  </workout>
+</workout_file>

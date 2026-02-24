@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W01_Fri_Mar13_Endurance</name>
+  <description>Nicholas - Week 1/12 - 12 weeks to Unbound Gravel 200
+Phase: BASE
+
+STRUCTURE:
+Z2 Steady - 50 min
+
+PURPOSE:
+Aerobic base building. This is where 80% of your training volume lives.
+
+EXECUTION:
+Steady effort, smooth cadence 85-95 rpm. Nose-breathe if possible.
+
+RPE:
+RPE 3-4 (moderate, sustainable for hours)</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.45" PowerHigh="0.65"/>
+    <SteadyState Duration="2400" Power="0.65"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

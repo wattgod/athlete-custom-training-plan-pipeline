@@ -97,7 +97,8 @@ def validate_plan_dates(plan_dates: dict, race_date_str: str) -> list:
 
 def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
                          preferred_start: str = None,
-                         heavy_training_end: str = None) -> dict:
+                         heavy_training_end: str = None,
+                         b_events: list = None) -> dict:
     """
     Calculate all plan dates working backwards from race date.
 
@@ -107,10 +108,20 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         preferred_start: Optional preferred start date (plan may start later if race is sooner)
         heavy_training_end: Optional date when heavy training must end (e.g., "2026-06-01")
                            Weeks after this date will be maintenance/taper instead of build/peak
+        b_events: Optional list of B-priority events from profile, each with 'name' and 'date'
 
     Returns:
         Dict with plan timing information
+
+    Raises:
+        ValueError: If plan_weeks < 4 (can't fit base+build+taper) or > 52 (unreasonable)
     """
+    # Sanity bounds on plan_weeks
+    if plan_weeks < 4:
+        raise ValueError("Plan must be at least 4 weeks")
+    if plan_weeks > 52:
+        raise ValueError("Plan cannot exceed 52 weeks")
+
     # Parse race date
     race_date = datetime.strptime(race_date_str, '%Y-%m-%d')
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -211,6 +222,49 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
             'days': days
         })
 
+    # ---------------------------------------------------------------
+    # B-race overlay: mark weeks containing B-priority events
+    # This runs AFTER primary phase assignment so it doesn't disrupt
+    # the overall plan structure (base/build/peak/taper/race).
+    # ---------------------------------------------------------------
+    if b_events:
+        for b_event in b_events:
+            b_date_str = b_event.get('date')
+            b_name = b_event.get('name', 'B-Race')
+            if not b_date_str:
+                continue  # Skip B-events without a date
+
+            b_date = datetime.strptime(b_date_str, '%Y-%m-%d')
+
+            for week_data in week_dates:
+                w_monday = datetime.strptime(week_data['monday'], '%Y-%m-%d')
+                w_sunday = datetime.strptime(week_data['sunday'], '%Y-%m-%d')
+
+                if w_monday <= b_date <= w_sunday:
+                    # Mark this week as containing a B-race
+                    week_data['b_race'] = {
+                        'name': b_name,
+                        'date': b_date_str,
+                        'phase': week_data['phase'],  # Original phase preserved
+                    }
+
+                    # Mark the specific day as a B-race day
+                    for day_data in week_data['days']:
+                        if day_data['date'] == b_date_str:
+                            day_data['is_b_race_day'] = True
+
+                        # Mark the day before the race as an opener day
+                        day_dt = datetime.strptime(day_data['date'], '%Y-%m-%d')
+                        if day_dt == b_date - timedelta(days=1):
+                            day_data['is_b_race_opener'] = True
+
+                        # For build/peak phases, mark 2 days before as easy
+                        if week_data['phase'] in ('build', 'peak'):
+                            if day_dt == b_date - timedelta(days=2):
+                                day_data['is_b_race_easy'] = True
+
+                    break  # Found the week, move to next B-event
+
     result = {
         'race_date': race_date_str,
         'race_weekday': DAY_ORDER_DISPLAY[race_weekday],
@@ -240,6 +294,9 @@ def format_week_calendar(week_dates: list, race_date: str) -> str:
         notes = ""
         if week['is_race_week']:
             notes = f"RACE WEEK - Race on {race_date}"
+        elif week.get('b_race'):
+            b = week['b_race']
+            notes = f"B-RACE: {b['name']} on {b['date']}"
 
         lines.append(
             f"W{week['week']:02d}   | {week['phase']:<6} | {week['monday']} | {week['sunday']} | {notes}"
@@ -358,8 +415,11 @@ def main():
     elif not plan_weeks:
         plan_weeks = 12
 
+    # Get B-events from profile
+    b_events = profile.get('b_events', [])
+
     # Calculate dates with constraints
-    plan_dates = calculate_plan_dates(race_date, plan_weeks, preferred_start, heavy_training_end)
+    plan_dates = calculate_plan_dates(race_date, plan_weeks, preferred_start, heavy_training_end, b_events)
 
     # Print summary
     print("=" * 60)
