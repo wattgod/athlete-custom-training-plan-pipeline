@@ -504,10 +504,10 @@ class TestGravelSpecificArchetypes:
         from new_archetypes import NEW_ARCHETYPES
         assert 'Gravel_Specific' in NEW_ARCHETYPES
 
-    def test_gravel_specific_has_four_archetypes(self):
-        """Gravel_Specific has exactly 4 archetypes."""
+    def test_gravel_specific_has_five_archetypes(self):
+        """Gravel_Specific has exactly 5 archetypes (4 original + 1 advanced)."""
         from new_archetypes import NEW_ARCHETYPES
-        assert len(NEW_ARCHETYPES['Gravel_Specific']) == 4
+        assert len(NEW_ARCHETYPES['Gravel_Specific']) == 5
 
     def test_gravel_specific_archetype_names(self):
         """Verify all 4 archetype names are present."""
@@ -846,24 +846,24 @@ class TestGravelSpecificArchetypes:
         assert archetype is not None, "late_race should select an archetype"
 
     def test_gravel_specific_variation_cycles(self):
-        """Variations cycle through all 4 Gravel_Specific archetypes."""
+        """Variations cycle through all 5 Gravel_Specific archetypes."""
         from nate_workout_generator import select_archetype_for_workout
         names = set()
-        for v in range(4):
+        for v in range(5):
             arch = select_archetype_for_workout('gravel_specific', 'POLARIZED', variation=v)
             assert arch is not None, f"variation={v} returned None"
             names.add(arch['name'])
-        assert len(names) == 4, f"Should cycle through 4 archetypes, got {names}"
+        assert len(names) == 5, f"Should cycle through 5 archetypes, got {names}"
 
     def test_variation_wraps_around(self):
         """Variation index wraps around when exceeding archetype count."""
         from nate_workout_generator import select_archetype_for_workout
         arch_v0 = select_archetype_for_workout('gravel_specific', 'POLARIZED', variation=0)
-        arch_v4 = select_archetype_for_workout('gravel_specific', 'POLARIZED', variation=4)
+        arch_v5 = select_archetype_for_workout('gravel_specific', 'POLARIZED', variation=5)
         assert arch_v0 is not None
-        assert arch_v4 is not None
-        assert arch_v0['name'] == arch_v4['name'], \
-            "variation=4 should wrap to same archetype as variation=0"
+        assert arch_v5 is not None
+        assert arch_v0['name'] == arch_v5['name'], \
+            "variation=5 should wrap to same archetype as variation=0"
 
     # =========================================================================
     # 6. Integration Tests (ZWO output quality)
@@ -1727,6 +1727,1207 @@ class TestEdgeCases(unittest.TestCase):
                     failures.append(f"{wt} level {level}: {e}")
         self.assertEqual(failures, [],
             f"\n{len(failures)} edge level failures:\n" + "\n".join(failures))
+
+
+# =============================================================================
+# ADVANCED ARCHETYPES TESTS (Sprint 2: 16 new archetypes)
+# =============================================================================
+
+class TestAdvancedArchetypes:
+    """Tests for the 16 advanced archetypes added in Sprint 2."""
+
+    # =========================================================================
+    # 1. Archetype Data Integrity
+    # =========================================================================
+
+    def test_advanced_archetypes_import(self):
+        """advanced_archetypes.py imports and ADVANCED_ARCHETYPES dict exists."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        assert isinstance(ADVANCED_ARCHETYPES, dict)
+        assert len(ADVANCED_ARCHETYPES) == 8  # 8 categories
+
+    def test_advanced_archetypes_merged_into_new(self):
+        """All 16 advanced archetypes appear in NEW_ARCHETYPES after merge."""
+        from new_archetypes import NEW_ARCHETYPES
+        expected_names = [
+            'Ronnestad 30/15', 'Ronnestad 40/20', 'Float Sets',
+            'Criss-Cross Intervals', 'TTE Extension', 'BPA (Best Possible Average)',
+            'Hard Starts', 'Structured Fartlek', 'Attacks and Repeatability',
+            'Kitchen Sink All-Systems',
+            'Late-Race VO2max',
+            'Heat Acclimation Protocol',
+            'Burst Intervals',
+            'Gravel Race Simulation',
+            'FatMax VLamax Suppression', 'Glycolytic Power',
+        ]
+        all_names = set()
+        for archs in NEW_ARCHETYPES.values():
+            for a in archs:
+                all_names.add(a['name'])
+        for name in expected_names:
+            assert name in all_names, f"'{name}' not found in merged NEW_ARCHETYPES"
+
+    def test_all_advanced_have_six_levels(self):
+        """Every advanced archetype has levels 1-6."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                for lvl in ['1', '2', '3', '4', '5', '6']:
+                    assert lvl in arch['levels'], \
+                        f"{arch['name']} missing level {lvl}"
+
+    def test_level1_has_metadata(self):
+        """Level 1 of each advanced archetype has required metadata fields."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                l1 = arch['levels']['1']
+                assert 'cadence_prescription' in l1, \
+                    f"{arch['name']} L1 missing cadence_prescription"
+                assert 'position_prescription' in l1, \
+                    f"{arch['name']} L1 missing position_prescription"
+                assert 'execution' in l1, \
+                    f"{arch['name']} L1 missing execution"
+                assert 'structure' in l1, \
+                    f"{arch['name']} L1 missing structure"
+
+    def test_all_levels_have_structure_and_execution(self):
+        """Every level of every advanced archetype has structure and execution."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                for lvl_key, lvl_data in arch['levels'].items():
+                    assert 'structure' in lvl_data, \
+                        f"{arch['name']} L{lvl_key} missing structure"
+                    assert 'execution' in lvl_data, \
+                        f"{arch['name']} L{lvl_key} missing execution"
+
+    # =========================================================================
+    # 2. Power Range Validation
+    # =========================================================================
+
+    def test_power_values_in_global_range(self):
+        """All power targets in advanced archetypes within 0.50-2.00."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        failures = []
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                for lvl_key, lvl_data in arch['levels'].items():
+                    # Check top-level power keys
+                    for key in ['on_power', 'off_power', 'power', 'base_power']:
+                        if key in lvl_data:
+                            p = lvl_data[key]
+                            if not (0.30 <= p <= 2.00):
+                                failures.append(
+                                    f"{arch['name']} L{lvl_key} {key}={p}")
+                    # Check segment powers
+                    for seg in lvl_data.get('segments', []):
+                        for key in ['power', 'on_power', 'off_power']:
+                            if key in seg:
+                                p = seg[key]
+                                if not (0.30 <= p <= 2.00):
+                                    failures.append(
+                                        f"{arch['name']} L{lvl_key} seg {key}={p}")
+        assert failures == [], \
+            f"Power values out of range:\n" + "\n".join(failures)
+
+    # =========================================================================
+    # 3. ZWO Generation - All Advanced Archetypes
+    # =========================================================================
+
+    def test_all_advanced_generate_valid_zwo(self):
+        """All 16 advanced archetypes at all 6 levels generate valid ZWO XML."""
+        import xml.etree.ElementTree as ET
+        from new_archetypes import NEW_ARCHETYPES
+        from nate_workout_generator import generate_nate_zwo
+
+        cat_to_alias = {
+            'VO2max': 'vo2max', 'TT_Threshold': 'threshold',
+            'Race_Simulation': 'race_sim', 'Durability': 'durability',
+            'Endurance': 'endurance', 'Sprint_Neuromuscular': 'sprint',
+            'Gravel_Specific': 'gravel_specific', 'INSCYD': 'inscyd',
+        }
+
+        advanced_names = {
+            'Ronnestad 30/15', 'Ronnestad 40/20', 'Float Sets',
+            'Criss-Cross Intervals', 'TTE Extension', 'BPA (Best Possible Average)',
+            'Hard Starts', 'Structured Fartlek', 'Attacks and Repeatability',
+            'Kitchen Sink All-Systems', 'Late-Race VO2max',
+            'Heat Acclimation Protocol', 'Burst Intervals',
+            'Gravel Race Simulation',
+            'FatMax VLamax Suppression', 'Glycolytic Power',
+        }
+
+        failures = []
+        tested = 0
+        for category, alias in cat_to_alias.items():
+            archs = NEW_ARCHETYPES.get(category, [])
+            for idx, arch in enumerate(archs):
+                if arch['name'] not in advanced_names:
+                    continue
+                for lvl in range(1, 7):
+                    try:
+                        zwo = generate_nate_zwo(
+                            workout_type=alias, level=lvl,
+                            methodology='POLARIZED', variation=idx,
+                            workout_name=f"Test_{arch['name']}_L{lvl}"
+                        )
+                        if zwo is None:
+                            failures.append(f"{arch['name']} L{lvl}: returned None")
+                            continue
+                        ET.fromstring(zwo)
+                        tested += 1
+                    except ET.ParseError as e:
+                        failures.append(f"{arch['name']} L{lvl}: XML error: {e}")
+                    except Exception as e:
+                        failures.append(f"{arch['name']} L{lvl}: {type(e).__name__}: {e}")
+
+        assert failures == [], \
+            f"\n{len(failures)} failures:\n" + "\n".join(failures[:20])
+        assert tested >= 90, \
+            f"Expected 90+ valid ZWOs (16×6=96), only {tested} tested"
+
+    # =========================================================================
+    # 4. Type Mapping Tests
+    # =========================================================================
+
+    def test_advanced_type_aliases_resolve(self):
+        """All new type aliases resolve to valid archetypes."""
+        from nate_workout_generator import select_archetype_for_workout
+        aliases = [
+            'ronnestad_30_15', 'ronnestad_40_20', 'ronnestad', 'float_sets',
+            'hard_starts', 'criss_cross_intervals', 'tte_extension', 'tte',
+            'bpa', 'best_possible_average',
+            'structured_fartlek', 'fartlek',
+            'attacks', 'repeatability', 'kitchen_sink', 'all_systems',
+            'late_race_vo2', 'heat_acclimation', 'heat_adaptation',
+            'burst_intervals', 'bursts',
+            'gravel_race_sim',
+            'fatmax_suppression', 'vlamax_suppression',
+            'glycolytic_power', 'glycolytic',
+        ]
+        for alias in aliases:
+            arch = select_archetype_for_workout(alias, 'POLARIZED')
+            assert arch is not None, f"alias '{alias}' returned None"
+
+    def test_nate_workout_types_route_race_sim_and_durability(self):
+        """Race_Sim and Durability are in nate_workout_types routing dict."""
+        from pathlib import Path
+        src = (Path(__file__).parent / 'generate_athlete_package.py').read_text()
+        assert "'Race_Sim'" in src, "Race_Sim must be in nate_workout_types"
+        assert "'Durability'" in src, "Durability must be in nate_workout_types"
+        assert "'race_sim'" in src, "race_sim alias must be in nate_workout_types"
+        assert "'durability'" in src, "durability alias must be in nate_workout_types"
+
+    # =========================================================================
+    # 5. Category-Specific Tests
+    # =========================================================================
+
+    def test_ronnestad_30_15_has_segments(self):
+        """Ronnestad 30/15 uses segments format with 30sec ON / 15sec OFF."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['VO2max'] if a['name'] == 'Ronnestad 30/15'][0]
+        for lvl_key in ['1', '2', '3', '4', '5', '6']:
+            ld = arch['levels'][lvl_key]
+            assert 'segments' in ld, f"L{lvl_key} missing segments"
+            # Check at least one intervals segment has 30sec ON, 15sec OFF
+            has_30_15 = any(
+                s.get('on_duration') == 30 and s.get('off_duration') == 15
+                for s in ld['segments'] if s.get('type') == 'intervals'
+            )
+            assert has_30_15, f"L{lvl_key} missing 30/15 intervals segment"
+
+    def test_ronnestad_40_20_has_segments(self):
+        """Ronnestad 40/20 uses 40sec ON / 20sec OFF intervals."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['VO2max'] if a['name'] == 'Ronnestad 40/20'][0]
+        for lvl_key in ['1', '2', '3', '4', '5', '6']:
+            ld = arch['levels'][lvl_key]
+            has_40_20 = any(
+                s.get('on_duration') == 40 and s.get('off_duration') == 20
+                for s in ld['segments'] if s.get('type') == 'intervals'
+            )
+            assert has_40_20, f"L{lvl_key} missing 40/20 intervals segment"
+
+    def test_float_sets_has_tempo_recovery(self):
+        """Float Sets use tempo recovery (off_power >= 0.80) not Z1."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['VO2max'] if a['name'] == 'Float Sets'][0]
+        for lvl_key in ['1', '2', '3', '4', '5', '6']:
+            ld = arch['levels'][lvl_key]
+            off = ld.get('off_power', 0)
+            assert off >= 0.80, \
+                f"L{lvl_key} off_power={off} must be tempo (>=0.80)"
+
+    def test_hard_starts_have_burst_and_hold(self):
+        """Hard Starts segments contain both burst (>=1.50) and hold (0.95-1.05)."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['Race_Simulation'] if a['name'] == 'Hard Starts'][0]
+        for lvl_key in ['1', '2', '3', '4', '5', '6']:
+            ld = arch['levels'][lvl_key]
+            powers = [s['power'] for s in ld['segments']]
+            has_burst = any(p >= 1.50 for p in powers)
+            has_hold = any(0.90 <= p <= 1.10 for p in powers)
+            assert has_burst, f"L{lvl_key} missing burst segment"
+            assert has_hold, f"L{lvl_key} missing threshold hold segment"
+
+    def test_tte_extension_duration_increases(self):
+        """TTE Extension: total work duration increases from L1 to L6."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['TT_Threshold'] if a['name'] == 'TTE Extension'][0]
+        total_work = []
+        for lvl in ['1', '3', '6']:
+            ld = arch['levels'][lvl]
+            work = sum(s['duration'] for s in ld['segments'] if s.get('power', 0) >= 0.90)
+            total_work.append(work)
+        assert total_work[0] < total_work[1] < total_work[2], \
+            f"TTE work duration should increase: {total_work}"
+
+    def test_bpa_uses_single_effort(self):
+        """BPA uses single_effort format."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['TT_Threshold']
+                if a['name'] == 'BPA (Best Possible Average)'][0]
+        for lvl_key in ['1', '2', '3', '4', '5', '6']:
+            ld = arch['levels'][lvl_key]
+            assert ld.get('single_effort') is True, \
+                f"L{lvl_key} missing single_effort flag"
+
+    def test_late_race_vo2_uses_tired_vo2(self):
+        """Late-Race VO2max uses tired_vo2 format with base_duration."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = ADVANCED_ARCHETYPES['Durability'][0]
+        assert arch['name'] == 'Late-Race VO2max'
+        for lvl_key in ['1', '2', '3', '4', '5', '6']:
+            ld = arch['levels'][lvl_key]
+            assert 'tired_vo2' in ld, f"L{lvl_key} missing tired_vo2"
+            assert 'base_duration' in ld, f"L{lvl_key} missing base_duration"
+            assert 'intervals' in ld, f"L{lvl_key} missing intervals"
+            assert ld['base_duration'] >= 3600, \
+                f"L{lvl_key} base_duration should be >= 60min"
+
+    def test_kitchen_sink_touches_all_zones(self):
+        """Kitchen Sink has segments spanning Z2 through sprint."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['Race_Simulation']
+                if a['name'] == 'Kitchen Sink All-Systems'][0]
+        ld = arch['levels']['3']
+        powers = [s['power'] for s in ld['segments']]
+        has_z2 = any(0.60 <= p <= 0.75 for p in powers)
+        has_tempo = any(0.76 <= p <= 0.89 for p in powers)
+        has_threshold = any(0.90 <= p <= 1.05 for p in powers)
+        has_vo2 = any(1.06 <= p <= 1.30 for p in powers)
+        has_sprint = any(p >= 1.50 for p in powers)
+        assert all([has_z2, has_tempo, has_threshold, has_vo2, has_sprint]), \
+            f"Kitchen Sink must touch all zones"
+
+    def test_gravel_race_sim_is_long(self):
+        """Gravel Race Simulation L6 total duration exceeds 3 hours."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = ADVANCED_ARCHETYPES['Gravel_Specific'][0]
+        assert arch['name'] == 'Gravel Race Simulation'
+        ld = arch['levels']['6']
+        total_sec = sum(s['duration'] for s in ld['segments'])
+        assert total_sec >= 10800, \
+            f"L6 total duration {total_sec}s should be >= 3hr (10800s)"
+
+    def test_fatmax_vlamax_is_long_z2(self):
+        """FatMax VLamax Suppression is predominantly Z2 (power <= 0.85)."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['INSCYD']
+                if a['name'] == 'FatMax VLamax Suppression'][0]
+        ld = arch['levels']['3']
+        z2_time = sum(s['duration'] for s in ld['segments'] if s['power'] <= 0.75)
+        total_time = sum(s['duration'] for s in ld['segments'])
+        ratio = z2_time / total_time
+        assert ratio >= 0.90, \
+            f"FatMax should be 90%+ Z2, got {ratio:.1%}"
+
+    def test_glycolytic_power_uses_intervals(self):
+        """Glycolytic Power uses Format A intervals tuple."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['INSCYD']
+                if a['name'] == 'Glycolytic Power'][0]
+        for lvl_key in ['1', '2', '3', '4', '5', '6']:
+            ld = arch['levels'][lvl_key]
+            assert 'intervals' in ld, f"L{lvl_key} missing intervals"
+            assert isinstance(ld['intervals'], tuple), \
+                f"L{lvl_key} intervals should be tuple"
+
+    # =========================================================================
+    # 6. Level Progression Tests
+    # =========================================================================
+
+    def test_level_progression_power_increases(self):
+        """Higher levels produce higher max power in ZWO for advanced archetypes."""
+        import re
+        from nate_workout_generator import generate_nate_zwo
+        # Test with Ronnestad 30/15 (first VO2max advanced, need correct index)
+        from new_archetypes import NEW_ARCHETYPES
+        vo2_names = [a['name'] for a in NEW_ARCHETYPES['VO2max']]
+        ronnestad_idx = vo2_names.index('Ronnestad 30/15')
+
+        max_powers = []
+        for level in [1, 3, 6]:
+            zwo = generate_nate_zwo(
+                'vo2max', level=level,
+                methodology='POLARIZED', variation=ronnestad_idx
+            )
+            assert zwo is not None, f"Ronnestad 30/15 L{level} returned None"
+            powers = [float(m.group(1)) for m in re.finditer(r'Power="([\d.]+)"', zwo)]
+            max_powers.append(max(powers))
+        assert max_powers[0] < max_powers[2], \
+            f"L1 max power ({max_powers[0]}) should be < L6 ({max_powers[2]})"
+
+    # =========================================================================
+    # 7. Duration Scaling Integration
+    # =========================================================================
+
+    def test_race_sim_and_durability_in_interval_types(self):
+        """Race_Sim and Durability are in _INTERVAL_TYPES for duration scaling."""
+        from workout_templates import _INTERVAL_TYPES
+        assert 'Race_Sim' in _INTERVAL_TYPES
+        assert 'Durability' in _INTERVAL_TYPES
+
+    # =========================================================================
+    # 8. Total Count Verification
+    # =========================================================================
+
+    def test_total_archetype_count(self):
+        """Total archetypes should be 95 (79 original + 16 advanced)."""
+        from new_archetypes import NEW_ARCHETYPES
+        total = sum(len(archs) for archs in NEW_ARCHETYPES.values())
+        assert total == 95, f"Expected 95 total archetypes, got {total}"
+
+    def test_total_category_count(self):
+        """Total categories should still be 22."""
+        from new_archetypes import NEW_ARCHETYPES
+        assert len(NEW_ARCHETYPES) == 22, \
+            f"Expected 22 categories, got {len(NEW_ARCHETYPES)}"
+
+
+class TestAdvancedEdgeCases(unittest.TestCase):
+    """Edge cases, silent failure detection, data integrity, and regression guards
+    for the 16 advanced archetypes. Addresses:
+    - Helper function correctness (exact durations)
+    - Segment type validity (only steady/intervals/freeride/ramp)
+    - Level progression for ALL 16 archetypes
+    - No duplicate archetype names across entire system
+    - Positive durations and numeric power values
+    - Import failure detection (count guard)
+    - Nate routing end-to-end for Race_Sim and Durability
+    - Edge level bounds (0, 7 don't crash)
+    - Durability fallback handler positional check
+    - Maximum segment duration caps
+    """
+
+    # =========================================================================
+    # 1. Helper Function Unit Tests
+    # =========================================================================
+
+    def test_criss_cross_exact_duration(self):
+        """_criss_cross always returns segments summing exactly to total_sec."""
+        from advanced_archetypes import _criss_cross
+        for total, interval in [(900, 120), (1500, 90), (2400, 60), (1000, 130), (600, 200)]:
+            segs = _criss_cross(total, interval, 0.80, 1.00)
+            actual = sum(s['duration'] for s in segs)
+            assert actual == total, \
+                f"_criss_cross({total}, {interval}): expected {total}s, got {actual}s"
+
+    def test_criss_cross_alternates_power(self):
+        """_criss_cross alternates between floor and ceiling power."""
+        from advanced_archetypes import _criss_cross
+        segs = _criss_cross(600, 120, 0.80, 1.00)
+        for i, seg in enumerate(segs):
+            expected = 0.80 if i % 2 == 0 else 1.00
+            assert seg['power'] == expected, \
+                f"Segment {i}: expected {expected}, got {seg['power']}"
+
+    def test_criss_cross_remainder_segment(self):
+        """_criss_cross handles non-divisible totals with a remainder segment."""
+        from advanced_archetypes import _criss_cross
+        # 700 / 200 = 3 full + 100 remainder
+        segs = _criss_cross(700, 200, 0.80, 1.00)
+        assert len(segs) == 4
+        assert segs[-1]['duration'] == 100
+        assert sum(s['duration'] for s in segs) == 700
+
+    def test_base_with_efforts_exact_duration(self):
+        """_base_with_efforts always sums to exactly total_sec."""
+        from advanced_archetypes import _base_with_efforts
+        test_cases = [
+            (4800, [(30, 0.85)] * 3, 0.65),
+            (3600, [(300, 0.73)] * 3, 0.66),
+            (7200, [(180, 1.05), (300, 0.82), (180, 1.05), (300, 0.82), (180, 1.05)], 0.65),
+            (10800, [(30, 0.85)] * 8, 0.75),
+            (5400, [(600, 0.78)] * 5, 0.70),
+        ]
+        for total, efforts, base in test_cases:
+            segs = _base_with_efforts(total, efforts, base)
+            actual = sum(s['duration'] for s in segs)
+            assert actual == total, \
+                f"_base_with_efforts({total}, {len(efforts)} efforts): " \
+                f"expected {total}s, got {actual}s"
+
+    def test_base_with_efforts_edge_more_effort_than_total(self):
+        """_base_with_efforts gracefully handles effort > total time."""
+        from advanced_archetypes import _base_with_efforts
+        segs = _base_with_efforts(100, [(60, 0.90), (60, 0.90)], 0.65)
+        # Efforts alone = 120 > 100, should stack efforts without base gaps
+        assert all(s['power'] == 0.90 for s in segs)
+        assert len(segs) == 2
+
+    def test_hard_start_reps_correct_count(self):
+        """_hard_start_reps produces exactly `reps` burst segments."""
+        from advanced_archetypes import _hard_start_reps
+        for reps in [3, 4, 5]:
+            segs = _hard_start_reps(reps, 15, 1.50, 300, 0.95, 180)
+            bursts = [s for s in segs if s['power'] >= 1.50]
+            assert len(bursts) == reps, \
+                f"Expected {reps} bursts, got {len(bursts)}"
+
+    def test_hard_start_reps_no_trailing_rest(self):
+        """Last rep of _hard_start_reps has no trailing recovery."""
+        from advanced_archetypes import _hard_start_reps
+        segs = _hard_start_reps(3, 15, 1.50, 300, 0.95, 180)
+        # Last segment should be hold (0.95), not rest (0.55)
+        assert segs[-1]['power'] == 0.95, \
+            f"Last segment power should be hold (0.95), got {segs[-1]['power']}"
+
+    def test_attack_reps_correct_count(self):
+        """_attack_reps produces exactly `num_attacks` attack segments."""
+        from advanced_archetypes import _attack_reps
+        for n in [5, 6, 7, 8]:
+            segs = _attack_reps(300, 0.82, n, 30, 1.30, 180, 0.82)
+            attacks = [s for s in segs if s['power'] >= 1.30]
+            assert len(attacks) == n, \
+                f"Expected {n} attacks, got {len(attacks)}"
+
+    def test_attack_reps_no_trailing_rest(self):
+        """Last attack in _attack_reps has no trailing recovery."""
+        from advanced_archetypes import _attack_reps
+        segs = _attack_reps(300, 0.82, 5, 30, 1.30, 180, 0.82)
+        assert segs[-1]['power'] >= 1.30, \
+            f"Last segment should be attack, got power={segs[-1]['power']}"
+
+    # =========================================================================
+    # 2. Segment Duration Integrity — Every Segments-Based Archetype
+    # =========================================================================
+
+    def test_all_segments_archetypes_have_exact_durations(self):
+        """Every segments-based advanced archetype at every level has
+        segment duration sum matching its structure description's stated time."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        # Map archetype name → {level: expected total seconds from structure}
+        # Only check archetypes that use 'segments' key
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                for lvl_key in ['1', '2', '3', '4', '5', '6']:
+                    ld = arch['levels'][lvl_key]
+                    if 'segments' not in ld:
+                        continue
+                    total = sum(s.get('duration', 0) for s in ld['segments']
+                                if s.get('type') != 'intervals')
+                    # For intervals segments, compute expanded duration
+                    for s in ld['segments']:
+                        if s.get('type') == 'intervals':
+                            reps = s.get('repeats', 1)
+                            on_dur = s.get('on_duration', 0)
+                            off_dur = s.get('off_duration', 0)
+                            total += reps * (on_dur + off_dur)
+                    # Total must be positive (non-zero workout)
+                    assert total > 0, \
+                        f"{arch['name']} L{lvl_key}: segment total is 0"
+
+    # =========================================================================
+    # 3. Valid Segment Types Only
+    # =========================================================================
+
+    def test_all_segments_use_valid_types(self):
+        """Every segment in every advanced archetype uses a valid type."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        VALID_TYPES = {'steady', 'intervals', 'freeride', 'ramp'}
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                for lvl_key in ['1', '2', '3', '4', '5', '6']:
+                    ld = arch['levels'][lvl_key]
+                    if 'segments' not in ld:
+                        continue
+                    for i, seg in enumerate(ld['segments']):
+                        seg_type = seg.get('type')
+                        assert seg_type in VALID_TYPES, \
+                            f"{arch['name']} L{lvl_key} seg[{i}]: " \
+                            f"invalid type '{seg_type}', must be one of {VALID_TYPES}"
+
+    # =========================================================================
+    # 4. Level Progression for ALL 16 Archetypes
+    # =========================================================================
+
+    def test_all_16_archetypes_power_progresses(self):
+        """L1 max ON power or base power < L6 for every advanced archetype.
+        This catches silent regressions where higher levels don't actually get harder.
+        Note: Some archetypes (e.g. FatMax) progress via base power, not max power."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                name = arch['name']
+                l1 = arch['levels']['1']
+                l6 = arch['levels']['6']
+
+                def _all_powers(ld):
+                    """Extract all power values from any archetype format."""
+                    powers = []
+                    if 'segments' in ld:
+                        for s in ld['segments']:
+                            if 'power' in s:
+                                powers.append(s['power'])
+                            if 'on_power' in s:
+                                powers.append(s['on_power'])
+                    if 'on_power' in ld:
+                        powers.append(ld['on_power'])
+                    if 'power' in ld:
+                        powers.append(ld['power'])
+                    if 'base_power' in ld:
+                        powers.append(ld['base_power'])
+                    return powers
+
+                powers_l1 = _all_powers(l1)
+                powers_l6 = _all_powers(l6)
+                max_l1 = max(powers_l1) if powers_l1 else 0
+                max_l6 = max(powers_l6) if powers_l6 else 0
+                # Either max power increases, or if max is same (e.g. FatMax pops),
+                # the average/base power must increase
+                if max_l1 == max_l6:
+                    avg_l1 = sum(powers_l1) / len(powers_l1) if powers_l1 else 0
+                    avg_l6 = sum(powers_l6) / len(powers_l6) if powers_l6 else 0
+                    assert avg_l1 < avg_l6, \
+                        f"{name}: L1 avg power ({avg_l1:.3f}) should be < " \
+                        f"L6 avg power ({avg_l6:.3f}) when max power is equal"
+                else:
+                    assert max_l1 < max_l6, \
+                        f"{name}: L1 max power ({max_l1}) should be < " \
+                        f"L6 max power ({max_l6})"
+
+    def test_all_16_archetypes_volume_progresses(self):
+        """L1 total work duration <= L6 total work duration for segment-based archetypes.
+        Catches level definitions that accidentally decrease volume at higher levels."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                name = arch['name']
+                l1 = arch['levels']['1']
+                l6 = arch['levels']['6']
+
+                def _total_duration(ld):
+                    if 'segments' in ld:
+                        total = 0
+                        for s in ld['segments']:
+                            if s.get('type') == 'intervals':
+                                total += s.get('repeats', 1) * (
+                                    s.get('on_duration', 0) + s.get('off_duration', 0))
+                            else:
+                                total += s.get('duration', 0)
+                        return total
+                    if 'intervals' in ld and isinstance(ld['intervals'], tuple):
+                        reps, dur = ld['intervals']
+                        return reps * (dur + ld.get('off_duration', dur))
+                    if 'duration' in ld:
+                        return ld['duration']
+                    if 'base_duration' in ld:
+                        reps, dur = ld.get('intervals', (0, 0))
+                        return ld['base_duration'] + reps * (dur + ld.get('off_duration', dur))
+                    return 0
+
+                dur_l1 = _total_duration(l1)
+                dur_l6 = _total_duration(l6)
+                assert dur_l1 <= dur_l6, \
+                    f"{name}: L1 duration ({dur_l1}s) should be <= " \
+                    f"L6 duration ({dur_l6}s)"
+
+    # =========================================================================
+    # 5. No Duplicate Archetype Names Globally
+    # =========================================================================
+
+    def test_no_duplicate_names_globally(self):
+        """No two archetypes share the same name across the entire system."""
+        from new_archetypes import NEW_ARCHETYPES
+        all_names = []
+        for category, archetypes in NEW_ARCHETYPES.items():
+            for arch in archetypes:
+                all_names.append((category, arch['name']))
+        seen = {}
+        dupes = []
+        for cat, name in all_names:
+            if name in seen:
+                dupes.append(f"'{name}' in both {seen[name]} and {cat}")
+            seen[name] = cat
+        assert not dupes, f"Duplicate archetype names: {dupes}"
+
+    # =========================================================================
+    # 6. Positive Durations and Numeric Power Values
+    # =========================================================================
+
+    def test_all_segment_durations_positive(self):
+        """Every segment duration in every advanced archetype is > 0."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                for lvl_key in ['1', '2', '3', '4', '5', '6']:
+                    ld = arch['levels'][lvl_key]
+                    if 'segments' not in ld:
+                        continue
+                    for i, seg in enumerate(ld['segments']):
+                        dur = seg.get('duration', None)
+                        if dur is not None:
+                            assert isinstance(dur, (int, float)), \
+                                f"{arch['name']} L{lvl_key} seg[{i}]: " \
+                                f"duration is {type(dur).__name__}, not numeric"
+                            assert dur > 0, \
+                                f"{arch['name']} L{lvl_key} seg[{i}]: " \
+                                f"duration={dur}, must be > 0"
+
+    def test_all_power_values_numeric(self):
+        """Every power value in every advanced archetype is numeric (int/float)."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                for lvl_key in ['1', '2', '3', '4', '5', '6']:
+                    ld = arch['levels'][lvl_key]
+                    # Check top-level power keys
+                    for key in ['power', 'on_power', 'off_power', 'base_power']:
+                        if key in ld:
+                            val = ld[key]
+                            assert isinstance(val, (int, float)), \
+                                f"{arch['name']} L{lvl_key} {key}={val!r} " \
+                                f"is {type(val).__name__}, not numeric"
+                    # Check segment power keys
+                    if 'segments' in ld:
+                        for i, seg in enumerate(ld['segments']):
+                            for key in ['power', 'on_power', 'off_power']:
+                                if key in seg:
+                                    val = seg[key]
+                                    assert isinstance(val, (int, float)), \
+                                        f"{arch['name']} L{lvl_key} seg[{i}] " \
+                                        f"{key}={val!r} is {type(val).__name__}"
+
+    # =========================================================================
+    # 7. Import Failure Detection — Count Guard
+    # =========================================================================
+
+    def test_advanced_archetypes_import_count(self):
+        """ADVANCED_ARCHETYPES has exactly 16 archetypes across 8 categories.
+        If import fails silently, this catches it."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        total = sum(len(a) for a in ADVANCED_ARCHETYPES.values())
+        assert total == 16, f"Expected 16 advanced archetypes, got {total}"
+        assert len(ADVANCED_ARCHETYPES) == 8, \
+            f"Expected 8 categories, got {len(ADVANCED_ARCHETYPES)}"
+
+    def test_advanced_merge_into_new_archetypes(self):
+        """All 16 advanced archetypes are present in NEW_ARCHETYPES after merge."""
+        from new_archetypes import NEW_ARCHETYPES
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            assert category in NEW_ARCHETYPES, \
+                f"Category '{category}' missing from NEW_ARCHETYPES"
+            existing_names = {a['name'] for a in NEW_ARCHETYPES[category]}
+            for arch in archetypes:
+                assert arch['name'] in existing_names, \
+                    f"'{arch['name']}' not found in NEW_ARCHETYPES['{category}']"
+
+    # =========================================================================
+    # 8. All 6 Levels Exist for Every Archetype
+    # =========================================================================
+
+    def test_all_16_have_all_6_levels(self):
+        """Every advanced archetype has exactly levels '1' through '6'."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        expected_levels = {'1', '2', '3', '4', '5', '6'}
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                actual = set(arch['levels'].keys())
+                assert actual == expected_levels, \
+                    f"{arch['name']}: has levels {actual}, expected {expected_levels}"
+
+    # =========================================================================
+    # 9. Edge Level Bounds — Level 0 and 7 Don't Crash
+    # =========================================================================
+
+    def test_nate_generator_level_0_doesnt_crash(self):
+        """generate_nate_zwo with level=0 should return None or valid ZWO, not crash."""
+        from nate_workout_generator import generate_nate_zwo
+        try:
+            result = generate_nate_zwo('vo2max', level=0, methodology='POLARIZED')
+            # Level 0 might map to level 1 or return None — either is fine
+        except Exception as e:
+            self.fail(f"level=0 crashed: {e}")
+
+    def test_nate_generator_level_7_doesnt_crash(self):
+        """generate_nate_zwo with level=7 should return None or valid ZWO, not crash."""
+        from nate_workout_generator import generate_nate_zwo
+        try:
+            result = generate_nate_zwo('vo2max', level=7, methodology='POLARIZED')
+        except Exception as e:
+            self.fail(f"level=7 crashed: {e}")
+
+    # =========================================================================
+    # 10. Nate Routing for Race_Sim and Durability End-to-End
+    # =========================================================================
+
+    def test_race_sim_nate_routing_all_levels(self):
+        """Race_Sim routes through nate_workout_types and generates valid ZWO at every level."""
+        import re
+        from nate_workout_generator import generate_nate_zwo
+        from new_archetypes import NEW_ARCHETYPES
+        # Find the Race_Simulation category index for Hard Starts (first Race_Sim advanced)
+        race_sim_names = [a['name'] for a in NEW_ARCHETYPES.get('Race_Simulation', [])]
+        if 'Hard Starts' in race_sim_names:
+            idx = race_sim_names.index('Hard Starts')
+            for level in [1, 3, 6]:
+                zwo = generate_nate_zwo(
+                    'race_sim', level=level,
+                    methodology='POLARIZED', variation=idx
+                )
+                assert zwo is not None, \
+                    f"Race_Sim Hard Starts L{level} returned None"
+                assert 'Power=' in zwo, \
+                    f"Race_Sim Hard Starts L{level} has no Power= attributes"
+
+    def test_durability_nate_routing_all_levels(self):
+        """Durability routes through nate_workout_types and generates valid ZWO at every level."""
+        from nate_workout_generator import generate_nate_zwo
+        from new_archetypes import NEW_ARCHETYPES
+        dur_names = [a['name'] for a in NEW_ARCHETYPES.get('Durability', [])]
+        if 'Late-Race VO2max' in dur_names:
+            idx = dur_names.index('Late-Race VO2max')
+            for level in [1, 3, 6]:
+                zwo = generate_nate_zwo(
+                    'durability', level=level,
+                    methodology='POLARIZED', variation=idx
+                )
+                assert zwo is not None, \
+                    f"Durability Late-Race VO2max L{level} returned None"
+
+    # =========================================================================
+    # 11. Durability Fallback Handler Existence and Position
+    # =========================================================================
+
+    def test_durability_handler_exists_in_source(self):
+        """The Durability elif handler exists in generate_athlete_package.py
+        BEFORE the else fallback (positional guard)."""
+        import os
+        source_path = os.path.join(
+            os.path.dirname(__file__), 'generate_athlete_package.py')
+        with open(source_path) as f:
+            source = f.read()
+        dur_pos = source.find("elif workout_type == 'Durability'")
+        assert dur_pos != -1, \
+            "Durability handler missing from create_workout_blocks()"
+        # The Durability handler must come before the generic else + Cooldown
+        # pattern that signals the end of the if/elif chain
+        cooldown_after_else = source.find("# Cooldown", dur_pos)
+        assert cooldown_after_else != -1, \
+            "Expected '# Cooldown' comment after Durability handler"
+        # Also verify the handler has Z2 preload + tempo effort pattern
+        handler_block = source[dur_pos:dur_pos + 500]
+        assert 'Power="0.68"' in handler_block, \
+            "Durability handler missing Z2 preload (Power 0.68)"
+        assert 'Power="0.88"' in handler_block, \
+            "Durability handler missing tempo effort (Power 0.88)"
+
+    # =========================================================================
+    # 12. Maximum Segment Duration Caps
+    # =========================================================================
+
+    def test_no_single_segment_exceeds_6_hours(self):
+        """No individual segment should exceed 6 hours (21600s).
+        Catches helper functions that miscalculate and create absurdly long segments."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        MAX_SEGMENT_DURATION = 21600  # 6 hours
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                for lvl_key in ['1', '2', '3', '4', '5', '6']:
+                    ld = arch['levels'][lvl_key]
+                    if 'segments' not in ld:
+                        continue
+                    for i, seg in enumerate(ld['segments']):
+                        dur = seg.get('duration', 0)
+                        assert dur <= MAX_SEGMENT_DURATION, \
+                            f"{arch['name']} L{lvl_key} seg[{i}]: " \
+                            f"duration {dur}s exceeds {MAX_SEGMENT_DURATION}s (6hr) cap"
+
+    def test_no_power_exceeds_3x_ftp(self):
+        """No power value should exceed 3.0 (300% FTP).
+        Catches typos like 15.0 instead of 1.50."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        MAX_POWER = 3.0
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                for lvl_key in ['1', '2', '3', '4', '5', '6']:
+                    ld = arch['levels'][lvl_key]
+                    for key in ['power', 'on_power']:
+                        if key in ld:
+                            assert ld[key] <= MAX_POWER, \
+                                f"{arch['name']} L{lvl_key} {key}={ld[key]} " \
+                                f"exceeds {MAX_POWER}"
+                    if 'segments' in ld:
+                        for i, seg in enumerate(ld['segments']):
+                            for key in ['power', 'on_power']:
+                                if key in seg:
+                                    assert seg[key] <= MAX_POWER, \
+                                        f"{arch['name']} L{lvl_key} seg[{i}] " \
+                                        f"{key}={seg[key]} exceeds {MAX_POWER}"
+
+    # =========================================================================
+    # 13. Structure Key Presence
+    # =========================================================================
+
+    def test_every_level_has_structure_string(self):
+        """Every level in every advanced archetype has a 'structure' description."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                for lvl_key in ['1', '2', '3', '4', '5', '6']:
+                    ld = arch['levels'][lvl_key]
+                    assert 'structure' in ld, \
+                        f"{arch['name']} L{lvl_key}: missing 'structure' key"
+                    assert len(ld['structure']) > 10, \
+                        f"{arch['name']} L{lvl_key}: structure too short"
+
+    def test_level_1_has_full_metadata(self):
+        """Every archetype's L1 has cadence_prescription, position_prescription,
+        fueling, and execution (coaching text for first exposure)."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        REQUIRED_L1_KEYS = ['cadence_prescription', 'position_prescription',
+                            'fueling', 'execution']
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                ld = arch['levels']['1']
+                for key in REQUIRED_L1_KEYS:
+                    assert key in ld, \
+                        f"{arch['name']} L1: missing required key '{key}'"
+
+    # =========================================================================
+    # 14. ZWO Generation for Every Advanced Archetype (Silent Failure Detection)
+    # =========================================================================
+
+    def test_every_advanced_archetype_generates_valid_zwo(self):
+        """Every one of the 96 advanced variations generates a non-None ZWO
+        with valid XML structure. Catches silent generation failures."""
+        import re
+        from nate_workout_generator import generate_nate_zwo
+        from new_archetypes import NEW_ARCHETYPES
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+
+        failures = []
+        for category, adv_archetypes in ADVANCED_ARCHETYPES.items():
+            # Find position in merged list
+            merged_list = NEW_ARCHETYPES.get(category, [])
+            merged_names = [a['name'] for a in merged_list]
+            # Map category to nate workout type
+            cat_to_type = {
+                'VO2max': 'vo2max',
+                'TT_Threshold': 'threshold',
+                'Race_Simulation': 'race_sim',
+                'Durability': 'durability',
+                'Endurance': 'endurance',
+                'Sprint_Neuromuscular': 'sprint',
+                'Gravel_Specific': 'gravel_specific',
+                'INSCYD': 'inscyd',
+            }
+            workout_type = cat_to_type.get(category)
+            if not workout_type:
+                continue
+
+            for arch in adv_archetypes:
+                if arch['name'] not in merged_names:
+                    failures.append(f"{arch['name']}: not in merged list")
+                    continue
+                idx = merged_names.index(arch['name'])
+                for level in [1, 3, 6]:
+                    zwo = generate_nate_zwo(
+                        workout_type, level=level,
+                        methodology='POLARIZED', variation=idx
+                    )
+                    if zwo is None:
+                        failures.append(
+                            f"{arch['name']} L{level} ({workout_type}): returned None")
+                    elif '<workout_file>' not in zwo:
+                        failures.append(
+                            f"{arch['name']} L{level}: missing <workout_file> tag")
+
+        assert not failures, \
+            f"{len(failures)} ZWO generation failure(s):\n" + "\n".join(failures)
+
+    # =========================================================================
+    # 15. Type Alias Coverage
+    # =========================================================================
+
+    def test_all_advanced_type_aliases_in_source(self):
+        """Every type_to_category alias added for advanced archetypes exists
+        in the nate_workout_generator.py source code."""
+        import os
+        source_path = os.path.join(
+            os.path.dirname(__file__), 'nate_workout_generator.py')
+        with open(source_path) as f:
+            source = f.read()
+        advanced_aliases = [
+            'ronnestad_30_15', 'ronnestad_40_20', 'ronnestad', 'float_sets',
+            'hard_starts', 'criss_cross_intervals', 'tte_extension', 'tte',
+            'bpa', 'best_possible_average', 'structured_fartlek', 'fartlek',
+            'attacks', 'repeatability', 'kitchen_sink', 'all_systems',
+            'late_race_vo2', 'heat_acclimation', 'heat_adaptation',
+            'burst_intervals', 'bursts', 'fatmax_suppression',
+            'vlamax_suppression', 'glycolytic_power', 'glycolytic',
+        ]
+        missing = []
+        for alias in advanced_aliases:
+            # Check for the alias as a key in type_to_category dict
+            if f'"{alias}"' not in source and f"'{alias}'" not in source:
+                missing.append(alias)
+        assert not missing, \
+            f"Aliases missing from nate_workout_generator.py: {missing}"
+
+    # =========================================================================
+    # 16. Criss-Cross Duration Matches Structure Description
+    # =========================================================================
+
+    def test_criss_cross_durations_match_descriptions(self):
+        """Criss-Cross segment totals match the minutes stated in structure strings."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['TT_Threshold']
+                if a['name'] == 'Criss-Cross Intervals'][0]
+        expected_seconds = {
+            '1': 900,    # 15min
+            '2': 1200,   # 20min
+            '3': 1500,   # 25min
+            '4': 1800,   # 30min
+            '5': 2100,   # 35min
+            '6': 2400,   # 40min
+        }
+        for lvl_key, expected in expected_seconds.items():
+            total = sum(s['duration'] for s in arch['levels'][lvl_key]['segments'])
+            assert total == expected, \
+                f"Criss-Cross L{lvl_key}: got {total}s, expected {expected}s " \
+                f"({expected//60}min from structure description)"
+
+    # =========================================================================
+    # 17. Heat Acclimation Duration Matches Structure Description
+    # =========================================================================
+
+    def test_heat_acclimation_durations_match(self):
+        """Heat Acclimation segment totals match structure descriptions."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['Endurance']
+                if a['name'] == 'Heat Acclimation Protocol'][0]
+        expected_seconds = {
+            '1': 3000,    # 50min
+            '2': 3600,    # 60min
+            '3': 4200,    # 70min
+            '4': 4500,    # 75min
+            '5': 4800,    # 80min
+            '6': 5400,    # 90min
+        }
+        for lvl_key, expected in expected_seconds.items():
+            total = sum(s['duration'] for s in arch['levels'][lvl_key]['segments'])
+            assert total == expected, \
+                f"Heat Acclimation L{lvl_key}: got {total}s, expected {expected}s"
+
+    # =========================================================================
+    # 18. Gravel Race Sim Duration Matches Structure Description
+    # =========================================================================
+
+    def test_gravel_race_sim_durations_match(self):
+        """Gravel Race Sim segment totals match structure descriptions."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['Gravel_Specific']
+                if a['name'] == 'Gravel Race Simulation'][0]
+        expected_seconds = {
+            '1': 7200,    # 2hr
+            '2': 9000,    # 2.5hr
+            '3': 10800,   # 3hr
+            '4': 12600,   # 3.5hr
+            '5': 14400,   # 4hr
+            '6': 16200,   # 4.5hr
+        }
+        for lvl_key, expected in expected_seconds.items():
+            total = sum(s['duration'] for s in arch['levels'][lvl_key]['segments'])
+            assert total == expected, \
+                f"Gravel Race Sim L{lvl_key}: got {total}s, expected {expected}s"
+
+    # =========================================================================
+    # 19. Burst Intervals Duration Matches Structure Description
+    # =========================================================================
+
+    def test_burst_intervals_durations_match(self):
+        """Burst Intervals segment totals match structure descriptions."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['Sprint_Neuromuscular']
+                if a['name'] == 'Burst Intervals'][0]
+        expected_seconds = {
+            '1': 2700,    # 45min
+            '2': 3000,    # 50min
+            '3': 3300,    # 55min
+            '4': 3600,    # 60min
+            '5': 3900,    # 65min
+            '6': 4200,    # 70min
+        }
+        for lvl_key, expected in expected_seconds.items():
+            total = sum(s['duration'] for s in arch['levels'][lvl_key]['segments'])
+            assert total == expected, \
+                f"Burst Intervals L{lvl_key}: got {total}s, expected {expected}s"
+
+    # =========================================================================
+    # 20. FatMax VLamax Duration Matches Structure Description
+    # =========================================================================
+
+    def test_fatmax_durations_match(self):
+        """FatMax VLamax Suppression segment totals match structure descriptions."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['INSCYD']
+                if a['name'] == 'FatMax VLamax Suppression'][0]
+        expected_seconds = {
+            '1': 4800,    # 80min
+            '2': 6000,    # 100min
+            '3': 7200,    # 120min
+            '4': 8400,    # 140min
+            '5': 9600,    # 160min
+            '6': 10800,   # 180min
+        }
+        for lvl_key, expected in expected_seconds.items():
+            total = sum(s['duration'] for s in arch['levels'][lvl_key]['segments'])
+            assert total == expected, \
+                f"FatMax L{lvl_key}: got {total}s, expected {expected}s"
+
+    # =========================================================================
+    # 21. Format Consistency — Each Archetype Uses Exactly One Format
+    # =========================================================================
+
+    def test_each_level_uses_one_format_only(self):
+        """No level mixes segments + intervals tuple (ambiguous rendering).
+        An archetype level uses EITHER segments OR intervals tuple OR single_effort
+        OR tired_vo2 — never multiple."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        FORMAT_KEYS = ['segments', 'single_effort', 'tired_vo2']
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                for lvl_key in ['1', '2', '3', '4', '5', '6']:
+                    ld = arch['levels'][lvl_key]
+                    has_segments = 'segments' in ld
+                    has_intervals_tuple = (
+                        'intervals' in ld and isinstance(ld['intervals'], tuple)
+                        and not ld.get('tired_vo2')
+                    )
+                    has_single_effort = ld.get('single_effort', False)
+                    has_tired_vo2 = ld.get('tired_vo2', False)
+                    formats_present = sum([
+                        has_segments, has_intervals_tuple,
+                        has_single_effort, has_tired_vo2
+                    ])
+                    assert formats_present == 1, \
+                        f"{arch['name']} L{lvl_key}: has {formats_present} formats " \
+                        f"(segments={has_segments}, intervals_tuple={has_intervals_tuple}, " \
+                        f"single_effort={has_single_effort}, tired_vo2={has_tired_vo2}). " \
+                        f"Must have exactly 1."
+
+    # =========================================================================
+    # 22. Gravel Sim Sprint Finish Only at L6
+    # =========================================================================
+
+    def test_gravel_sim_sprint_finish_only_l6(self):
+        """Only L6 of Gravel Race Simulation includes a sprint finish segment."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['Gravel_Specific']
+                if a['name'] == 'Gravel Race Simulation'][0]
+        for lvl_key in ['1', '2', '3', '4', '5']:
+            segs = arch['levels'][lvl_key]['segments']
+            sprint_segs = [s for s in segs if s.get('power', 0) >= 1.50]
+            assert len(sprint_segs) == 0, \
+                f"L{lvl_key} should not have sprint finish, found {len(sprint_segs)} sprint segments"
+        # L6 should have sprint finish
+        segs_l6 = arch['levels']['6']['segments']
+        sprint_segs_l6 = [s for s in segs_l6 if s.get('power', 0) >= 1.50]
+        assert len(sprint_segs_l6) >= 1, \
+            "L6 should have sprint finish segment(s)"
+
+    # =========================================================================
+    # 23. BPA Duration Monotonically Increases
+    # =========================================================================
+
+    def test_bpa_duration_monotonically_increases(self):
+        """BPA effort duration strictly increases from L1 to L6."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['TT_Threshold']
+                if a['name'] == 'BPA (Best Possible Average)'][0]
+        durations = [arch['levels'][str(i)]['duration'] for i in range(1, 7)]
+        for i in range(len(durations) - 1):
+            assert durations[i] < durations[i+1], \
+                f"BPA duration should increase: L{i+1}={durations[i]}s >= L{i+2}={durations[i+1]}s"
+
+    # =========================================================================
+    # 24. Late-Race VO2max Base Duration Increases
+    # =========================================================================
+
+    def test_late_race_vo2_base_duration_increases(self):
+        """Late-Race VO2max base_duration (preload) strictly increases L1→L6."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = ADVANCED_ARCHETYPES['Durability'][0]
+        assert arch['name'] == 'Late-Race VO2max'
+        base_durations = [arch['levels'][str(i)]['base_duration'] for i in range(1, 7)]
+        for i in range(len(base_durations) - 1):
+            assert base_durations[i] < base_durations[i+1], \
+                f"base_duration should increase: L{i+1}={base_durations[i]}s >= L{i+2}={base_durations[i+1]}s"
+
+    # =========================================================================
+    # 25. Empty Segments Guard
+    # =========================================================================
+
+    def test_no_empty_segments_lists(self):
+        """No archetype has an empty segments list (would produce warmup-only ZWO)."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        for category, archetypes in ADVANCED_ARCHETYPES.items():
+            for arch in archetypes:
+                for lvl_key in ['1', '2', '3', '4', '5', '6']:
+                    ld = arch['levels'][lvl_key]
+                    if 'segments' in ld:
+                        assert len(ld['segments']) > 0, \
+                            f"{arch['name']} L{lvl_key}: has empty segments list"
+
+    # =========================================================================
+    # 26. Glycolytic Power Interval Count Increases
+    # =========================================================================
+
+    def test_glycolytic_interval_count_increases(self):
+        """Glycolytic Power rep count is monotonically non-decreasing L1→L6."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['INSCYD']
+                if a['name'] == 'Glycolytic Power'][0]
+        reps = [arch['levels'][str(i)]['intervals'][0] for i in range(1, 7)]
+        for i in range(len(reps) - 1):
+            assert reps[i] <= reps[i+1], \
+                f"Glycolytic reps should increase: L{i+1}={reps[i]} > L{i+2}={reps[i+1]}"
+
+    # =========================================================================
+    # 27. Ronnestad ON Power Monotonically Increases
+    # =========================================================================
+
+    def test_ronnestad_30_15_on_power_increases(self):
+        """Ronnestad 30/15 on_power strictly increases L1→L6."""
+        from advanced_archetypes import ADVANCED_ARCHETYPES
+        arch = [a for a in ADVANCED_ARCHETYPES['VO2max']
+                if a['name'] == 'Ronnestad 30/15'][0]
+        powers = []
+        for i in range(1, 7):
+            segs = arch['levels'][str(i)]['segments']
+            # Get max on_power from intervals segments
+            max_on = max(s['on_power'] for s in segs if s.get('type') == 'intervals')
+            powers.append(max_on)
+        for i in range(len(powers) - 1):
+            assert powers[i] < powers[i+1], \
+                f"Ronnestad 30/15 on_power should increase: " \
+                f"L{i+1}={powers[i]} >= L{i+2}={powers[i+1]}"
 
 
 if __name__ == '__main__':

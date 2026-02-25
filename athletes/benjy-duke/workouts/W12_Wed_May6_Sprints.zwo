@@ -6,22 +6,22 @@
 Phase: BUILD
 
 WARM-UP:
--10min building from Z1 to Z2
+-15min building from Z1 to Z2
 
 MAIN SET:
--15min warmup Z2, 3 sets: 10sec + 15sec + 20sec + 30sec @ max, 1.5min between efforts, 5min between sets
--Cadence: 105-120rpm (explosive race cadence)
--Position: Standing attacks, drops between
+-15min warmup Z2, 55min ride: endurance @ 67% FTP with 12x 12sec bursts @ 170% FTP
+-Cadence: 90-100rpm (efficient cadence)
+-Position: Alternate seated/standing every other interval
 
 COOL-DOWN:
 -10min easy spin Z1-Z2
 
 PROGRESSION:
 -Level 3/6: Development - Standard training load, building consistency
--Increased volume - three full sets
+-Twelve bursts, longer duration. Scattered to simulate race demands
 
 PURPOSE:
-Neuromuscular power. Explosive capacity for attacks and race-winning moves.
+Structured training. Building fitness through progressive overload.
 
 
 HEAT ACCLIMATION:
@@ -30,17 +30,41 @@ HEAT ACCLIMATION:
 - Improves thermoregulation and race performance
 
 EXECUTION:
--Maximum effort from the start. Full recovery between efforts is critical.
+-Focus on consistent effort and good form throughout.
 
 NUTRITION:
--30-60g carbs/hr. Easily digestible. Nothing heavy 2hrs before.
+-40-60g carbs/hr for efforts over 60min.
 
 HYDRATION:
--500-750ml/hr with electrolytes. Start hydrated.</description>
+-500-750ml/hr. Adjust for heat and humidity.</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.75"/>
-    <SteadyState Duration="2100" Power="1.80" CadenceLow="105" CadenceHigh="115"/>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75"/>
+    <SteadyState Duration="252" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="12" Power="1.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="242" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="12" Power="1.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="242" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="12" Power="1.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="242" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="12" Power="1.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="242" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="12" Power="1.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="242" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="12" Power="1.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="242" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="12" Power="1.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="242" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="12" Power="1.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="242" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="12" Power="1.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="242" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="12" Power="1.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="242" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="12" Power="1.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="242" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="12" Power="1.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="242" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
     <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
   </workout>
 </workout_file>

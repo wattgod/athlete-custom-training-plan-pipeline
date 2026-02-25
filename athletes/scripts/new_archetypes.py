@@ -3689,6 +3689,22 @@ try:
 except ImportError:
     pass  # imported_archetypes.py not present — skip
 
+# =============================================================================
+# MERGE ADVANCED ARCHETYPES (Sprint 2: 16 new archetypes across 8 categories)
+# =============================================================================
+try:
+    from advanced_archetypes import ADVANCED_ARCHETYPES
+    for _category, _archetypes in ADVANCED_ARCHETYPES.items():
+        if _category in NEW_ARCHETYPES:
+            existing_names = {a['name'] for a in NEW_ARCHETYPES[_category]}
+            for arch in _archetypes:
+                if arch['name'] not in existing_names:
+                    NEW_ARCHETYPES[_category].append(arch)
+        else:
+            NEW_ARCHETYPES[_category] = list(_archetypes)
+except ImportError:
+    pass  # advanced_archetypes.py not present — skip
+
 
 if __name__ == '__main__':
     # Print summary of new archetypes

@@ -9,7 +9,7 @@ WARM-UP:
 -20min building from Z1 to Z2
 
 MAIN SET:
--3x6min @ 93-105% FTP, RPE 7-8 (3min recovery); 5min @ 76-87% FTP, RPE 5-6; Cadence: 85-95rpm (race pace feel); Position: Seated, hoods
+-15min warmup Z2, 3x15min ramp: start @ 87% FTP, increase 2% every 3min to finish @ 101%, 4min recovery
 -Cadence: 90-100rpm (high cadence threshold)
 -Position: Race position - drops or aero
 
@@ -18,7 +18,7 @@ COOL-DOWN:
 
 PROGRESSION:
 -Level 5/6: Advanced - High training load, pushing limits
--Threshold maintenance. Brief threshold work to maintain race-pace feel without excessive recovery cost. Level 5: Extended sets. More work per set. This is where real adaptations lock in.
+-Reduced recovery - building threshold capacity under fatigue
 
 PURPOSE:
 Threshold development. The power you can sustain for 20-60 minutes.
@@ -34,7 +34,7 @@ HYDRATION:
   <sportType>bike</sportType>
   <workout>
     <Warmup Duration="1380" PowerLow="0.50" PowerHigh="0.75"/>
-    <IntervalsT Repeat="3" OnDuration="360" OnPower="1.00" CadenceLow="85" CadenceHigh="95" OffDuration="180" OffPower="0.55"/>
+    <IntervalsT Repeat="3" OnDuration="900" OnPower="1.00" CadenceLow="85" CadenceHigh="95" OffDuration="240" OffPower="0.55"/>
     <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
   </workout>
 </workout_file>

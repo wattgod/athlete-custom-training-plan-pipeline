@@ -984,6 +984,13 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                     blocks.append('    <SteadyState Duration="120" Power="0.50"/>')
             blocks.append(f'    <SteadyState Duration="{max(60, int(main_duration * 0.1) * 60)}" Power="0.58"/>')
 
+        elif workout_type == 'Durability':
+            # Durability fallback: Z2 preload then tempo effort
+            base_dur = int(main_duration * 0.65) * 60
+            effort_dur = int(main_duration * 0.25) * 60
+            blocks.append(f'    <SteadyState Duration="{base_dur}" Power="0.68"/>')
+            blocks.append(f'    <SteadyState Duration="{effort_dur}" Power="0.88"/>')
+
         else:
             blocks.append(f'    <SteadyState Duration="{main_duration * 60}" Power="{avg_power}"/>')
 
@@ -1703,6 +1710,9 @@ GO GET IT, {athlete_name.upper()}!
                 'Cadence_Work': 'cadence_work',
                 'Blended': 'blended',
                 'Tempo': 'tempo_workout',
+                # Advanced archetype routing (Sprint 2)
+                'Race_Sim': 'race_sim',
+                'Durability': 'durability',
             }
 
             if workout_type in nate_workout_types:

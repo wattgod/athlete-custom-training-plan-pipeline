@@ -212,6 +212,7 @@ _INTERVAL_TYPES = frozenset({
     'VO2max', 'Threshold', 'Anaerobic', 'Sprints', 'Sweet_Spot',
     'G_Spot', 'Over_Under', 'Blended', 'Over_Unders', 'Intervals',
     'SFR', 'Mixed_Climbing', 'Cadence_Work',
+    'Race_Sim', 'Durability',
 })
 
 # Workout types that are pure endurance (entire duration scales)

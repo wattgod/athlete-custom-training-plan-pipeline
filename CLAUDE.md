@@ -148,9 +148,10 @@ athletes/scripts/
 ├── generate_full_package.py    ← Pipeline orchestrator. Runs 9 steps in order
 ├── select_methodology.py       ← Scores 13 methodologies by objective data (hours/experience/stress)
 ├── generate_athlete_package.py ← ZWO workout generator. Maps methodology → Nate generator
-├── nate_workout_generator.py   ← 22 training systems, 79 archetypes, ZWO XML rendering
-├── new_archetypes.py           ← 79 archetypes across 22 categories (merged with imported)
+├── nate_workout_generator.py   ← 22 training systems, 95 archetypes, ZWO XML rendering
+├── new_archetypes.py           ← 95 archetypes across 22 categories (merged with imported + advanced)
 ├── imported_archetypes.py      ← 34 imported archetypes (6 new categories + augments 6 existing)
+├── advanced_archetypes.py      ← 16 advanced archetypes across 8 categories (Sprint 2 expansion)
 ├── calculate_plan_dates.py     ← Phase assignment (base/build/peak/taper/race) + B-race overlay
 ├── build_weekly_structure.py   ← Day-by-day slot assignment from profile availability
 ├── generate_html_guide.py      ← Data-driven HTML guide (zero LLM content)
@@ -259,7 +260,7 @@ B-races (priority B events from `b_events` in profile) get a mini-taper overlay 
 `generate_coaching_brief()` takes `athlete_dir` parameter and reads methodology.yaml, derived.yaml, plan_dates.yaml, fueling.yaml, weekly_structure.yaml. Without `athlete_dir` it degrades gracefully (methodology shows "Unknown"). It does NOT use questionnaire preference scores to determine methodology name — it reads the actual selection from methodology.yaml.
 
 ### Workout Archetype System
-- **79 archetypes** across **22 categories**, each with **6 progression levels** = **474 total variations**
+- **95 archetypes** across **22 categories**, each with **6 progression levels** = **570 total variations**
 - **Source of truth**: `new_archetypes.py` (merges with `imported_archetypes.py` at import time)
 - **Merge logic**: Imported archetypes append to existing categories (dedup by name) or create new categories
 - **Two archetype formats**:
@@ -284,4 +285,4 @@ python3 -m pytest athletes/scripts/test_intake_to_plan.py -v
 # Just distribution/schedule tests:
 python3 -m pytest athletes/scripts/test_distribution_and_schedule.py -v
 ```
-509 tests: 199 intake parser + methodology + multi-athlete + coaching brief, 28 plan preview (ZWO parsing + TSS + verification checks), 38 distribution/schedule, 7 generation pipeline, 1 custom guide, 13 plan dates, 4 pre-plan workouts, 13 validation, 125 workout generation (incl. imported archetypes, multi-methodology, variation cycling, segment edge cases, per-type power ranges, duration scaling, handler defense), 6 workout library, 12 ZWO format, 1 all-files.
+575 tests: 199 intake parser + methodology + multi-athlete + coaching brief, 28 plan preview (ZWO parsing + TSS + verification checks), 38 distribution/schedule, 7 generation pipeline, 1 custom guide, 13 plan dates, 4 pre-plan workouts, 13 validation, 191 workout generation (incl. imported archetypes, advanced archetypes, advanced edge cases, multi-methodology, variation cycling, segment edge cases, per-type power ranges, duration scaling, handler defense, helper function unit tests, duration integrity, level progression, silent failure detection), 6 workout library, 12 ZWO format, 1 all-files.

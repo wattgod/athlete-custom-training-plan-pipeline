@@ -6,35 +6,69 @@
 Phase: BASE
 
 WARM-UP:
--20min building from Z1 to Z2
+-15min building from Z1 to Z2
 
 MAIN SET:
--20min warmup Z2 with 2x1min openers, 1x40min @ 98-101% FTP, 10min cooldown
--Cadence: 90-100rpm (high cadence threshold)
--Position: Race position - drops or aero
+-15min warmup Z2, 35min criss-cross: alternate 60sec @ 84% / 60sec @ 108% FTP
+-Cadence: 95-105rpm (race cadence, controlled power)
+-Position: Standing for first 15sec, drops throughout
 
 COOL-DOWN:
 -10min easy spin Z1-Z2
 
 PROGRESSION:
 -Level 5/6: Advanced - High training load, pushing limits
--Race-realistic duration - this is your FTP test effort
+-Rapid oscillation. Every minute is a transition. Race-realistic power variability
 
 PURPOSE:
-Threshold development. The power you can sustain for 20-60 minutes.
+G-Spot criss-cross. Alternating high/low within the G-Spot zone.
 
 EXECUTION:
--Find your rhythm early. Break long efforts into mental thirds.
+-Focus on consistent effort and good form throughout.
 
 NUTRITION:
--60-80g carbs/hr. Start fueling at 30-45min. Mix gels and drink mix.
+-40-60g carbs/hr for efforts over 60min.
 
 HYDRATION:
--500-750ml/hr with electrolytes. Start hydrated.</description>
+-500-750ml/hr. Adjust for heat and humidity.</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="1200" PowerLow="0.50" PowerHigh="0.75"/>
-    <SteadyState Duration="2400" Power="1.00" CadenceLow="85" CadenceHigh="95"/>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="1.08" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="60" Power="0.84" CadenceLow="85" CadenceHigh="95"/>
     <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
   </workout>
 </workout_file>

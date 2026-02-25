@@ -6,10 +6,10 @@
 Phase: BASE
 
 WARM-UP:
--15min building from Z1 to Z2
+-10min building from Z1 to Z2
 
 MAIN SET:
--15min warmup Z2, 5x (12sec MAX + 25sec @ 80% of sprint), 2.5min recovery between
+-15min warmup Z2, 3 sets: 10sec + 15sec + 20sec + 30sec @ max, 1.5min between efforts, 5min between sets
 -Cadence: 105-120rpm (explosive race cadence)
 -Position: Standing attacks, drops between
 
@@ -18,23 +18,23 @@ COOL-DOWN:
 
 PROGRESSION:
 -Level 3/6: Development - Standard training load, building consistency
--Extended efforts - longer peak, longer fade
+-Increased volume - three full sets
 
 PURPOSE:
-Sprint development. Explosive start with controlled fade.
+Neuromuscular power. Explosive capacity for attacks and race-winning moves.
 
 EXECUTION:
--Focus on consistent effort and good form throughout.
+-Maximum effort from the start. Full recovery between efforts is critical.
 
 NUTRITION:
--40-60g carbs/hr for efforts over 60min.
+-30-60g carbs/hr. Easily digestible. Nothing heavy 2hrs before.
 
 HYDRATION:
--500-750ml/hr. Adjust for heat and humidity.</description>
+-500-750ml/hr with electrolytes. Start hydrated.</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="1135" PowerLow="0.50" PowerHigh="0.75"/>
-    <IntervalsT Repeat="5" OnDuration="37" OnPower="1.00" CadenceLow="85" CadenceHigh="95" OffDuration="150" OffPower="0.50"/>
-    <Cooldown Duration="930.0" PowerLow="0.75" PowerHigh="0.50"/>
+    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.75"/>
+    <SteadyState Duration="2100" Power="1.80" CadenceLow="105" CadenceHigh="115"/>
+    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
   </workout>
 </workout_file>

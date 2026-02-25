@@ -6,35 +6,35 @@
 Phase: BUILD
 
 WARM-UP:
--20min building from Z1 to Z2
+-15min building from Z1 to Z2
 
 MAIN SET:
--15min warmup Z2, 7x30sec @ 155% FTP all-out, 2min recovery between
--Cadence: 110-125rpm (maximum power cadence)
--Position: Race aggression - out of saddle on every effort
+-8x0:10 @ &gt;150% FTP, RPE 10 (1min recovery); 5min @ 76-87% FTP, RPE 5-6; Cadence: 50-60rpm start, accelerate through (max torque development); Position: Seated to standing
+-Cadence: 95-105rpm (race cadence, controlled power)
+-Position: Standing for first 15sec, drops throughout
 
 COOL-DOWN:
 -10min easy spin Z1-Z2
 
 PROGRESSION:
 -Level 5/6: Advanced - High training load, pushing limits
--Extended volume - race-realistic attack frequency
+-Neuromuscular power. Max torque from a near-stop builds the explosive power for steep pitches and accelerations. Level 5: Extended sets. More work per set. This is where real adaptations lock in.
 
 PURPOSE:
-Attack training. Race-breaking sprint efforts.
+Structured training. Building fitness through progressive overload.
 
 EXECUTION:
--Maximum effort from the start. Full recovery between efforts is critical.
+-Focus on consistent effort and good form throughout.
 
 NUTRITION:
--60-80g carbs/hr. Start fueling at 30-45min. Mix gels and drink mix.
+-40-60g carbs/hr. Moderate intensity, focus on recovery nutrition.
 
 HYDRATION:
--500-750ml/hr. Adjust for heat and humidity.</description>
+-500ml/hr with electrolytes. Lower intensity but sustained effort.</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="1350" PowerLow="0.50" PowerHigh="0.75"/>
-    <IntervalsT Repeat="7" OnDuration="30" OnPower="1.55" CadenceLow="85" CadenceHigh="95" OffDuration="120" OffPower="0.50"/>
-    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
+    <Warmup Duration="1342" PowerLow="0.50" PowerHigh="0.75"/>
+    <IntervalsT Repeat="8" OnDuration="10" OnPower="2.00" CadenceLow="85" CadenceHigh="95" OffDuration="60" OffPower="0.50"/>
+    <Cooldown Duration="1098.0" PowerLow="0.75" PowerHigh="0.50"/>
   </workout>
 </workout_file>

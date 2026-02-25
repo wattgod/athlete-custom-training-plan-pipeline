@@ -6,35 +6,35 @@
 Phase: BUILD
 
 WARM-UP:
--20min building from Z1 to Z2
+-15min building from Z1 to Z2
 
 MAIN SET:
--15min warmup Z2, 5x8min @ 90-92% HRmax (~112-115% FTP), 3min recovery between
+-15min warmup Z2, 5x 4min @ 115% FTP with 2.5min tempo float @ 84% FTP
 -Cadence: 95-105rpm (race cadence, controlled power)
--Position: Standing first 15sec of each interval, then seated in drops
+-Position: Standing for first 15sec, drops throughout
 
 COOL-DOWN:
 -10min easy spin Z1-Z2
 
 PROGRESSION:
 -Level 5/6: Advanced - High training load, pushing limits
--Increased intensity with reduced recovery - near race simulation
+-High volume float set. 20min of VO2max work with minimal true recovery
 
 PURPOSE:
-VO2max development. Research-backed Seiler format for masters athletes.
+Structured training. Building fitness through progressive overload.
 
 EXECUTION:
--Stay just below threshold - you should be able to talk in short sentences.
+-Focus on consistent effort and good form throughout.
 
 NUTRITION:
--60-80g carbs/hr. Start fueling at 30-45min. Mix gels and drink mix.
+-40-60g carbs/hr for efforts over 60min.
 
 HYDRATION:
 -500-750ml/hr. Adjust for heat and humidity.</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="1200" PowerLow="0.50" PowerHigh="0.75"/>
-    <IntervalsT Repeat="5" OnDuration="480" OnPower="1.13" CadenceLow="85" CadenceHigh="90" OffDuration="480" OffPower="0.55"/>
+    <Warmup Duration="1050" PowerLow="0.50" PowerHigh="0.75"/>
+    <IntervalsT Repeat="5" OnDuration="240" OnPower="1.15" CadenceLow="85" CadenceHigh="95" OffDuration="150" OffPower="0.84"/>
     <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
   </workout>
 </workout_file>

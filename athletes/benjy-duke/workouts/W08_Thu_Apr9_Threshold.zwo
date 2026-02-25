@@ -6,39 +6,35 @@
 Phase: BASE
 
 WARM-UP:
--20min building from Z1 to Z2
+-15min building from Z1 to Z2
 
 MAIN SET:
--15min warmup Z2, 15min @ 97% + 12min @ 99% + 10min @ 101% FTP, 5min recovery between
--Cadence: 88-95rpm (efficient threshold cadence)
--Position: Drops for efforts, hoods for recovery
+-15min warmup Z2, 30min sustained effort @ 94% FTP
+-Cadence: 90-100rpm (efficient cadence)
+-Position: Alternate seated/standing every other interval
 
 COOL-DOWN:
 -10min easy spin Z1-Z2
 
 PROGRESSION:
 -Level 3/6: Development - Standard training load, building consistency
--Increased intensity - finish above threshold
+-Half-hour BPA. Classic testing and racing duration
 
 PURPOSE:
-Threshold development. The power you can sustain for 20-60 minutes.
+Structured training. Building fitness through progressive overload.
 
 EXECUTION:
--Find your rhythm early. Break long efforts into mental thirds.
+-Focus on consistent effort and good form throughout.
 
 NUTRITION:
--60-80g carbs/hr. Start fueling at 30-45min. Mix gels and drink mix.
+-40-60g carbs/hr for efforts over 60min.
 
 HYDRATION:
--500-750ml/hr with electrolytes. Start hydrated.</description>
+-500-750ml/hr. Adjust for heat and humidity.</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="1380" PowerLow="0.50" PowerHigh="0.75"/>
-    <SteadyState Duration="900" Power="0.97" CadenceLow="85" CadenceHigh="95"/>
-    <SteadyState Duration="300" Power="0.55" CadenceLow="85" CadenceHigh="95"/>
-    <SteadyState Duration="720" Power="0.99" CadenceLow="85" CadenceHigh="95"/>
-    <SteadyState Duration="300" Power="0.55" CadenceLow="85" CadenceHigh="95"/>
-    <SteadyState Duration="600" Power="1.01" CadenceLow="85" CadenceHigh="95"/>
+    <Warmup Duration="1200" PowerLow="0.50" PowerHigh="0.75"/>
+    <SteadyState Duration="1800" Power="0.94" CadenceLow="85" CadenceHigh="95"/>
     <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
   </workout>
 </workout_file>
