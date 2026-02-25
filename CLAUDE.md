@@ -152,6 +152,7 @@ athletes/scripts/
 ├── new_archetypes.py           ← 95 archetypes across 22 categories (merged with imported + advanced)
 ├── imported_archetypes.py      ← 34 imported archetypes (6 new categories + augments 6 existing)
 ├── advanced_archetypes.py      ← 16 advanced archetypes across 8 categories (Sprint 2 expansion)
+├── archetype_registry.py       ← SOURCE OF TRUTH: catalog, lookup, validation for all 95 archetypes
 ├── calculate_plan_dates.py     ← Phase assignment (base/build/peak/taper/race) + B-race overlay
 ├── build_weekly_structure.py   ← Day-by-day slot assignment from profile availability
 ├── generate_html_guide.py      ← Data-driven HTML guide (zero LLM content)
@@ -285,4 +286,4 @@ python3 -m pytest athletes/scripts/test_intake_to_plan.py -v
 # Just distribution/schedule tests:
 python3 -m pytest athletes/scripts/test_distribution_and_schedule.py -v
 ```
-575 tests: 199 intake parser + methodology + multi-athlete + coaching brief, 28 plan preview (ZWO parsing + TSS + verification checks), 38 distribution/schedule, 7 generation pipeline, 1 custom guide, 13 plan dates, 4 pre-plan workouts, 13 validation, 191 workout generation (incl. imported archetypes, advanced archetypes, advanced edge cases, multi-methodology, variation cycling, segment edge cases, per-type power ranges, duration scaling, handler defense, helper function unit tests, duration integrity, level progression, silent failure detection), 6 workout library, 12 ZWO format, 1 all-files.
+589 tests: 199 intake parser + methodology + multi-athlete + coaching brief, 28 plan preview (ZWO parsing + TSS + verification checks), 38 distribution/schedule, 7 generation pipeline, 1 custom guide, 13 plan dates, 4 pre-plan workouts, 13 validation, 205 workout generation (incl. imported archetypes, advanced archetypes, advanced edge cases, registry catalog, multi-methodology, variation cycling, segment edge cases, per-type power ranges, duration scaling, handler defense, helper function unit tests, duration integrity, level progression, silent failure detection), 6 workout library, 12 ZWO format, 1 all-files.

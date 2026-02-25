@@ -2930,5 +2930,106 @@ class TestAdvancedEdgeCases(unittest.TestCase):
                 f"L{i+1}={powers[i]} >= L{i+2}={powers[i+1]}"
 
 
+class TestArchetypeRegistry(unittest.TestCase):
+    """Tests for archetype_registry.py — the source-of-truth catalog."""
+
+    def test_registry_import(self):
+        """Registry imports without error."""
+        from archetype_registry import ALL_ARCHETYPES, EXPECTED_TOTAL
+        assert len(ALL_ARCHETYPES) > 0
+
+    def test_registry_total_count(self):
+        """Registry reports correct total."""
+        from archetype_registry import ALL_ARCHETYPES, EXPECTED_TOTAL
+        total = sum(len(a) for a in ALL_ARCHETYPES.values())
+        assert total == EXPECTED_TOTAL, f"Expected {EXPECTED_TOTAL}, got {total}"
+
+    def test_registry_category_count(self):
+        """Registry has expected number of categories."""
+        from archetype_registry import ALL_ARCHETYPES, EXPECTED_CATEGORIES
+        assert len(ALL_ARCHETYPES) == EXPECTED_CATEGORIES
+
+    def test_registry_validation_passes(self):
+        """Registry self-validation passes with no errors."""
+        from archetype_registry import validate_registry
+        ok, errors = validate_registry()
+        assert ok, f"Registry validation failed: {errors}"
+
+    def test_get_archetype_source_advanced(self):
+        """Source tracking correctly identifies advanced archetypes."""
+        from archetype_registry import get_archetype_source
+        source = get_archetype_source('Criss-Cross Intervals')
+        assert source is not None, "Criss-Cross Intervals not found"
+        assert source['file'] == 'advanced_archetypes.py'
+        assert source['category'] == 'TT_Threshold'
+
+    def test_get_archetype_source_imported(self):
+        """Source tracking correctly identifies imported archetypes."""
+        from archetype_registry import get_archetype_source
+        source = get_archetype_source('High Cadence Intervals')
+        assert source is not None, "High Cadence Intervals not found"
+        assert source['file'] == 'imported_archetypes.py'
+
+    def test_get_archetype_source_base(self):
+        """Source tracking correctly identifies base archetypes."""
+        from archetype_registry import get_archetype_source
+        source = get_archetype_source('5x3 VO2 Classic')
+        assert source is not None, "5x3 VO2 Classic not found"
+        assert source['file'] == 'new_archetypes.py'
+
+    def test_get_archetype_by_name(self):
+        """get_archetype finds any archetype by name."""
+        from archetype_registry import get_archetype
+        result = get_archetype('Float Sets')
+        assert result is not None, "Float Sets not found"
+        cat, arch = result
+        assert cat == 'VO2max'
+        assert arch['levels']['1']['on_power'] == 1.06
+
+    def test_get_archetype_returns_none_for_unknown(self):
+        """get_archetype returns None for unknown names."""
+        from archetype_registry import get_archetype
+        assert get_archetype('Nonexistent Workout') is None
+
+    def test_list_archetypes_all(self):
+        """list_archetypes returns all 95."""
+        from archetype_registry import list_archetypes, EXPECTED_TOTAL
+        all_archs = list_archetypes()
+        assert len(all_archs) == EXPECTED_TOTAL
+
+    def test_list_archetypes_by_category(self):
+        """list_archetypes filters by category."""
+        from archetype_registry import list_archetypes
+        vo2 = list_archetypes(category='VO2max')
+        assert len(vo2) == 10  # 7 base + 3 advanced
+        names = {a['name'] for a in vo2}
+        assert 'Ronnestad 30/15' in names
+        assert 'Float Sets' in names
+
+    def test_list_archetypes_by_source(self):
+        """list_archetypes filters by source file."""
+        from archetype_registry import list_archetypes
+        advanced = list_archetypes(source_file='advanced_archetypes.py')
+        assert len(advanced) == 16
+
+    def test_all_three_sources_contributed(self):
+        """All 3 source files contributed archetypes."""
+        from archetype_registry import list_archetypes
+        for source_file, expected_count in [
+            ('new_archetypes.py', 45),
+            ('imported_archetypes.py', 34),
+            ('advanced_archetypes.py', 16),
+        ]:
+            archs = list_archetypes(source_file=source_file)
+            assert len(archs) == expected_count, \
+                f"{source_file}: expected {expected_count}, got {len(archs)}"
+
+    def test_registry_matches_new_archetypes(self):
+        """ALL_ARCHETYPES is the same object as NEW_ARCHETYPES (not a copy)."""
+        from archetype_registry import ALL_ARCHETYPES
+        from new_archetypes import NEW_ARCHETYPES
+        assert ALL_ARCHETYPES is NEW_ARCHETYPES
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
