@@ -9,17 +9,19 @@ WARM-UP:
 -15min building from Z1 to Z2
 
 MAIN SET:
--15min warmup Z2, 5x2min @ 118% FTP, 3min recovery between
+-15min warmup Z2, 6x90sec @ 122% FTP, 2.5min recovery between
+-Cadence: 100-110rpm (sustained high cadence)
+-Position: Standing start, drops when seated
 
 COOL-DOWN:
 -10min easy spin Z1-Z2
 
 PROGRESSION:
 -Level 4/6: Progressive - Increased challenge, refining execution
--Extended volume - race-breaking power
+-Extended volume - attack repeatability
 
 PURPOSE:
-Lactate tolerance. 2-minute efforts at race-breaking intensity.
+Anaerobic power. Short, sharp race-breaking efforts.
 
 EXECUTION:
 -Focus on consistent effort and good form throughout.
@@ -31,8 +33,8 @@ HYDRATION:
 -500-750ml/hr. Adjust for heat and humidity.</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75"/>
-    <IntervalsT Repeat="5" OnDuration="120" OnPower="1.18" CadenceLow="85" CadenceHigh="95" OffDuration="180" OffPower="0.50"/>
-    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
+    <Warmup Duration="3168" PowerLow="0.50" PowerHigh="0.75"/>
+    <IntervalsT Repeat="6" OnDuration="90" OnPower="1.22" CadenceLow="85" CadenceHigh="95" OffDuration="150" OffPower="0.50"/>
+    <Cooldown Duration="2592.0" PowerLow="0.75" PowerHigh="0.50"/>
   </workout>
 </workout_file>

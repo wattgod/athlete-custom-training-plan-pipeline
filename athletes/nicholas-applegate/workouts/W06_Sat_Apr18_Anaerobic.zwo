@@ -10,6 +10,8 @@ WARM-UP:
 
 MAIN SET:
 -15min warmup Z2, 5x2min @ 120% FTP, 2.5min recovery between
+-Cadence: 100-115rpm (maximum sustainable cadence)
+-Position: Standing for first 10sec, drops throughout
 
 COOL-DOWN:
 -10min easy spin Z1-Z2
@@ -37,8 +39,8 @@ HYDRATION:
 -500-750ml/hr. Adjust for heat and humidity.</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75"/>
+    <Warmup Duration="3217" PowerLow="0.50" PowerHigh="0.75"/>
     <IntervalsT Repeat="5" OnDuration="120" OnPower="1.20" CadenceLow="85" CadenceHigh="95" OffDuration="150" OffPower="0.50"/>
-    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
+    <Cooldown Duration="2633.0" PowerLow="0.75" PowerHigh="0.50"/>
   </workout>
 </workout_file>

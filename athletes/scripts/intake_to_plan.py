@@ -451,6 +451,28 @@ def parse_watts(val: str) -> Optional[int]:
     return None
 
 
+# Patterns that indicate FTP is unknown / athlete has no power meter
+_FTP_UNKNOWN_PATTERNS = re.compile(
+    r'^\s*(?:unknown|n/?a|none|no\s*power|no\s*power\s*meter|'
+    r'don.?t\s*know|not\s*sure|not\s*tested|untested|no\s*data|'
+    r'no\s*ftp|haven.?t\s*tested|unsure|idk|-)\s*$',
+    re.IGNORECASE,
+)
+
+
+def _parse_ftp_with_unknown_handling(raw: str) -> Optional[int]:
+    """Parse FTP value, returning None if unknown/missing/no power meter.
+
+    Detects patterns like 'unknown', 'N/A', 'no power meter', 'not tested'
+    and returns None instead of crashing on non-numeric input.
+    """
+    if not raw or not raw.strip():
+        return None
+    if _FTP_UNKNOWN_PATTERNS.match(raw.strip()):
+        return None
+    return parse_watts(raw)
+
+
 def parse_wkg(val: str) -> Optional[float]:
     """Extract W/kg from '3.56' or '3.56 W/kg'."""
     m = re.search(r'([\d.]+)', val)
@@ -690,7 +712,21 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     height_cm = height_to_cm(height_raw) if height_raw else 0
 
     ftp_raw = fitness.get('ftp', '')
-    ftp_watts = parse_watts(ftp_raw)
+    ftp_estimated = False
+    ftp_watts = _parse_ftp_with_unknown_handling(ftp_raw)
+    if ftp_watts is None and weight_kg > 0:
+        # Estimate FTP from weight: 2.5 W/kg for males, 2.2 W/kg for females
+        # Conservative estimate suitable for plan generation
+        default_wkg = 2.5 if sex == 'male' else 2.2
+        # Adjust for age: reduce by 0.5% per year over 40
+        age_factor = 1.0
+        if age > 40:
+            age_factor = max(0.7, 1.0 - 0.005 * (age - 40))
+        ftp_watts = int(round(default_wkg * age_factor * weight_kg))
+        ftp_estimated = True
+        print(f"{YELLOW}WARNING: FTP unknown — estimated {ftp_watts}W "
+              f"from {default_wkg} W/kg × {weight_kg}kg × {age_factor:.2f} age factor. "
+              f"FTP test should be scheduled in week 1.{RESET}")
 
     wkg_raw = fitness.get('w_kg', fitness.get('w/kg', ''))
     w_kg = parse_wkg(wkg_raw)
@@ -827,6 +863,23 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 'max_duration_min': 120,
                 'is_key_day_ok': False,
             }
+
+    # -- Volume capacity check --
+    # Warn if cycling_hours_target exceeds what the schedule can support
+    schedule_capacity_min = sum(
+        day_info['max_duration_min']
+        for day_info in preferred_days.values()
+        if day_info.get('availability') != 'unavailable'
+    )
+    schedule_capacity_hrs = schedule_capacity_min / 60.0
+    volume_warning = None
+    if cycling_hours_target > 0 and schedule_capacity_hrs > 0:
+        if cycling_hours_target > schedule_capacity_hrs:
+            volume_warning = (
+                f"Target volume ({cycling_hours_target}h/wk) exceeds schedule capacity "
+                f"({schedule_capacity_hrs:.0f}h/wk). Available days cannot support this volume."
+            )
+            print(f"{YELLOW}WARNING: {volume_warning}{RESET}")
 
     # -- Strength --
     strength_current = strength.get('current', 'none').lower()
@@ -1034,6 +1087,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         },
         'fitness_markers': {
             'ftp_watts': ftp_watts,
+            'ftp_estimated': ftp_estimated,
             'ftp_date': today.isoformat(),
             'weight_kg': weight_kg,
             'height_cm': height_cm,
@@ -1053,6 +1107,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'cycling_hours_target': cycling_hours_target,
             'strength_sessions_max': strength_sessions,
             'notes': f"{weekly_hours_raw} hours/week available. Currently doing {current_vol_raw}.",
+            'volume_warning': volume_warning,
         },
         'preferred_days': preferred_days,
         'schedule_constraints': {
@@ -1437,8 +1492,16 @@ def write_profile_yaml(profile: Dict[str, Any], output_path: Path) -> None:
 def generate_coaching_brief(
     profile: Dict[str, Any],
     parsed: Dict[str, Any],
+    athlete_dir: Optional[Path] = None,
 ) -> str:
-    """Generate private coaching brief markdown."""
+    """Generate comprehensive coaching brief from all pipeline output YAMLs.
+
+    Reads methodology.yaml, derived.yaml, plan_dates.yaml, fueling.yaml,
+    weekly_structure.yaml to produce a complete decision-tracing document.
+    Every questionnaire input is mapped to its implementation choice.
+    """
+    import yaml
+
     name = profile['name']
     athlete_id = profile['athlete_id']
     target = profile.get('target_race', {})
@@ -1446,169 +1509,490 @@ def generate_coaching_brief(
     w_kg = profile.get('fitness_markers', {}).get('w_kg', '?')
     weight_kg = profile.get('weight_kg', '?')
     cycling_hours = profile.get('weekly_availability', {}).get('cycling_hours_target', '?')
-    methodology = profile.get('methodology_preferences', {})
 
-    # Determine tier heuristic
-    try:
-        hrs = int(cycling_hours)
-    except (ValueError, TypeError):
-        hrs = 0
-    if hrs <= 5:
-        tier = 'Ayahuasca (<=5hrs)'
-    elif hrs <= 10:
-        tier = 'Finisher (<=10hrs)'
-    elif hrs <= 16:
-        tier = 'Compete (<=16hrs)'
-    else:
-        tier = 'Podium (>16hrs)'
+    # -- Load pipeline output YAMLs --
+    methodology_data = {}
+    derived_data = {}
+    plan_dates_data = {}
+    fueling_data = {}
+    weekly_structure_data = {}
 
-    # Determine methodology name
-    meth_scores = {
-        'Polarized': methodology.get('polarized', 3),
-        'Pyramidal': methodology.get('pyramidal', 3),
-        'Threshold': methodology.get('threshold_focused', 3),
-        'HIIT': methodology.get('hiit_focused', 3),
-    }
-    top_meth = max(meth_scores, key=meth_scores.get)
-    if meth_scores[top_meth] >= 4:
-        meth_name = f"{top_meth} (80/20)" if top_meth == 'Polarized' else top_meth
-    else:
-        meth_name = "Balanced / Structured"
+    if athlete_dir:
+        ad = Path(athlete_dir)
+        for fname, target_dict in [
+            ('methodology.yaml', 'methodology_data'),
+            ('derived.yaml', 'derived_data'),
+            ('plan_dates.yaml', 'plan_dates_data'),
+            ('fueling.yaml', 'fueling_data'),
+            ('weekly_structure.yaml', 'weekly_structure_data'),
+        ]:
+            fpath = ad / fname
+            if fpath.exists():
+                with open(fpath) as f:
+                    data = yaml.safe_load(f) or {}
+                if target_dict == 'methodology_data':
+                    methodology_data = data
+                elif target_dict == 'derived_data':
+                    derived_data = data
+                elif target_dict == 'plan_dates_data':
+                    plan_dates_data = data
+                elif target_dict == 'fueling_data':
+                    fueling_data = data
+                elif target_dict == 'weekly_structure_data':
+                    weekly_structure_data = data
 
-    # Race date
+    # -- Extract key values from pipeline outputs --
+    meth_name = methodology_data.get('selected_methodology', 'Unknown')
+    meth_id = methodology_data.get('methodology_id', 'unknown')
+    meth_score = methodology_data.get('score', '?')
+    meth_reasons = methodology_data.get('reasons', [])
+    meth_warnings = methodology_data.get('warnings', [])
+    meth_alternatives = methodology_data.get('alternatives', [])
+    meth_config = methodology_data.get('configuration', {})
+    meth_confidence = methodology_data.get('confidence', '?')
+
+    tier = derived_data.get('tier', 'unknown')
+    plan_weeks = derived_data.get('plan_weeks', '?')
+    starting_phase = derived_data.get('starting_phase', '?')
+    risk_factors_derived = derived_data.get('risk_factors', [])
+    key_day_candidates = derived_data.get('key_day_candidates', [])
+    plan_start = derived_data.get('plan_start', '?')
+    plan_end = derived_data.get('plan_end', '?')
+
     race_date = target.get('date', 'TBD')
     race_name = target.get('name', 'TBD')
+    goal_type = target.get('goal_type', target.get('goal', '?'))
 
-    # Plan duration estimate
-    plan_weeks = '?'
-    if race_date and race_date != 'TBD':
-        try:
-            rd = datetime.strptime(race_date, '%Y-%m-%d').date()
-            today = date.today()
-            days_until_monday = (7 - today.weekday()) % 7
-            if days_until_monday == 0:
-                days_until_monday = 7
-            start = today + __import__('datetime').timedelta(days=days_until_monday)
-            plan_weeks = str((rd - start).days // 7)
-        except (ValueError, TypeError):
-            pass
+    # -- Intensity distribution from methodology config --
+    intensity = meth_config.get('intensity_distribution', {})
+    z1_z2_pct = intensity.get('z1_z2', '?')
+    z3_pct = intensity.get('z3', '?')
+    z4_z5_pct = intensity.get('z4_z5', '?')
 
-    # Build the questionnaire -> decision mapping table
-    schedule = parsed.get('schedule', {})
-    recovery = parsed.get('recovery', {})
-    health = parsed.get('health', {})
-    additional = parsed.get('additional', {})
-    goals = parsed.get('goals', {})
-    strength_sec = parsed.get('strength', {})
-    work_life = parsed.get('work_life', {})
-    coaching_sec = parsed.get('coaching', {})
-    fitness = parsed.get('current_fitness', {})
+    # =====================================================================
+    # SECTION 1: PLAN OVERVIEW
+    # =====================================================================
+    md = f"# Coaching Brief: {name}\n"
+    md += f"*INTERNAL DOCUMENT — Coach eyes only*\n\n"
 
-    mappings = []
+    md += f"## 1. Plan Overview\n"
+    md += f"| Field | Value |\n"
+    md += f"|-------|-------|\n"
+    md += f"| Athlete ID | {athlete_id} |\n"
+    md += f"| Email | {profile.get('email', '')} |\n"
+    md += f"| Plan Duration | {plan_weeks} weeks ({plan_start} to {plan_end}) |\n"
+    md += f"| Methodology | {meth_name} (score: {meth_score}/100, confidence: {meth_confidence}) |\n"
+    md += f"| Methodology ID | `{meth_id}` |\n"
+    md += f"| Tier | {tier} |\n"
+    md += f"| Starting Phase | {starting_phase} |\n"
+    md += f"| Target Race | {race_name} ({race_date}) |\n"
+    md += f"| Goal | {goal_type} |\n"
+    md += f"| FTP | {ftp}W ({w_kg} W/kg) at {weight_kg}kg |\n"
+    md += f"| Age | {profile.get('health_factors', {}).get('age', '?')} |\n"
+    md += f"| Sex | {profile.get('sex', '?')} |\n"
+    md += f"| Cycling Hours | {cycling_hours} hrs/week target |\n"
+    md += f"| Current Hours | {profile.get('training_history', {}).get('current_weekly_hours', '?')} hrs/week |\n"
+    md += f"| Experience | {profile.get('training_history', {}).get('years_cycling', '?')}yr cycling, {profile.get('training_history', {}).get('years_structured', '?')}yr structured |\n"
+    md += f"| Recovery | {profile.get('health_factors', {}).get('recovery_capacity', '?')} |\n"
+    md += f"| Stress | {profile.get('health_factors', {}).get('stress_level', '?')} |\n"
+    md += f"\n"
+
+    # =====================================================================
+    # SECTION 2: QUESTIONNAIRE -> DECISION MAPPING TABLE
+    # =====================================================================
+    md += f"## 2. Questionnaire -> Implementation Mapping\n"
+    md += f"| # | Questionnaire Input | Pipeline Decision | Rationale |\n"
+    md += f"|---|---------------------|-------------------|-----------|\n"
+
+    row_num = 0
+
+    def _add_row(q_input: str, decision: str, rationale: str) -> str:
+        nonlocal row_num
+        row_num += 1
+        qi = q_input.replace('|', '/').replace('\n', ' ')
+        de = decision.replace('|', '/').replace('\n', ' ')
+        ra = rationale.replace('|', '/').replace('\n', ' ')
+        return f"| {row_num} | {qi} | {de} | {ra} |\n"
 
     # Hours -> tier
-    hrs_raw = schedule.get('weekly_hours_available', '?')
-    mappings.append((
-        f"Weekly Hours: {hrs_raw}",
+    md += _add_row(
+        f"Weekly hours: {cycling_hours}",
         f"Tier: {tier}",
-        f"{hrs_raw} hrs maps to {tier.lower()} tier",
-    ))
+        f"Derived by derive_classifications.py from cycling_hours_target",
+    )
 
-    # FTP -> ability
-    if ftp and w_kg:
-        ability = 'Intermediate' if float(w_kg) < 4.0 else 'Advanced'
-        mappings.append((
+    # FTP -> W/kg
+    if ftp and ftp != '?' and w_kg and w_kg != '?':
+        md += _add_row(
             f"FTP: {ftp}W at {weight_kg}kg",
-            f"{ability} ability",
-            f"{w_kg} W/kg = solid {fitness.get('estimated_category', 'Cat 4')}",
-        ))
+            f"W/kg: {w_kg}",
+            "Calculated: ftp_watts / weight_kg",
+        )
 
-    # Long ride day
-    long_days = schedule.get('long_ride_days', '')
-    if long_days:
-        mappings.append((
-            f"Long Ride: {long_days.title()}",
-            f"{long_days.title()} long Z2 ride",
-            "Respected as-is, ramping to 8+ hrs",
-        ))
+    # Experience -> methodology eligibility
+    yrs_structured = profile.get('training_history', {}).get('years_structured', '?')
+    yrs_cycling = profile.get('training_history', {}).get('years_cycling', '?')
+    md += _add_row(
+        f"Experience: {yrs_cycling}yr cycling, {yrs_structured}yr structured",
+        f"Methodology: {meth_name}",
+        f"select_methodology.py scored 13 options; experience contributes ±15 pts",
+    )
 
-    # Off days
-    off_days = schedule.get('off_days', '')
-    if off_days:
-        mappings.append((
-            f"Off Days: {off_days.title()}",
-            f"No workouts {off_days.title()}",
-            "Full rest day",
-        ))
+    # Hours -> methodology
+    md += _add_row(
+        f"Available hours: {cycling_hours}/wk",
+        f"Methodology hours match: +30 if in sweet spot",
+        f"Primary scoring factor (±30 pts). {cycling_hours}hr → {meth_name}",
+    )
 
-    # Interval days
-    int_days = schedule.get('interval_days', '')
-    if int_days:
-        mappings.append((
-            f"Interval Days: {int_days.title()}",
-            f"{int_days.title()} key day",
-            "VO2max/Anaerobic assigned here",
-        ))
+    # Stress -> methodology
+    stress = profile.get('health_factors', {}).get('stress_level', '?')
+    recovery_cap = profile.get('health_factors', {}).get('recovery_capacity', '?')
+    md += _add_row(
+        f"Stress: {stress}, Recovery: {recovery_cap}",
+        f"Stress handling score: ±15 pts",
+        f"High stress + slow recovery → favor stress-tolerant methodologies",
+    )
 
-    # Recovery speed
-    rec_speed = recovery.get('recovery_speed', '')
-    if rec_speed and rec_speed.lower() == 'slow':
-        mappings.append((
-            "Recovery Speed: slow",
-            "High stress flag",
-            "Reduced intensity frequency",
-        ))
+    # Past failure -> veto
+    past_failure = profile.get('methodology_preferences', {}).get('past_failure_with', '')
+    if past_failure:
+        md += _add_row(
+            f"Past failure: \"{past_failure}\"",
+            f"VETO: -50 pts on matching methodologies",
+            "Hard exclusion — athlete explicitly rejected this approach",
+        )
 
-    # Methodology from text
-    other_text = additional.get('other', '')
-    if 'sweet spot' in other_text.lower() or 'base' in other_text.lower():
-        mappings.append((
-            "Past: sweet spot didn't work",
-            f"{top_meth} methodology",
-            "Explicitly base-focused, not threshold",
-        ))
+    # Race distance -> methodology
+    race_dist = target.get('distance_miles', '?')
+    md += _add_row(
+        f"Race distance: {race_dist} miles",
+        f"Ultra-distance bonus: +15 pts for durability methodologies",
+        f"200mi event favors Polarized, MAF, HVLI for long-event durability",
+    )
+
+    # Goal type
+    md += _add_row(
+        f"Goal: {goal_type}",
+        f"Goal type scoring: ±10 pts",
+        f"Finish goal → favor endurance/durability methodologies",
+    )
+
+    # Preferred days -> weekly structure
+    pref_days = profile.get('preferred_days', {})
+    off_days = profile.get('schedule_constraints', {}).get('preferred_off_days', [])
+    long_day = profile.get('schedule_constraints', {}).get('preferred_long_day', '?')
+    off_str = ', '.join(d.title() for d in off_days) if off_days else 'None'
+    md += _add_row(
+        f"Off days: {off_str}",
+        f"No workouts on {off_str}",
+        "Respected exactly as stated by athlete",
+    )
+    md += _add_row(
+        f"Long ride day: {long_day}",
+        f"{long_day.title() if isinstance(long_day, str) else long_day} = long Z2 ride",
+        f"Max duration: {pref_days.get(long_day, {}).get('max_duration_min', '?')}min",
+    )
+
+    # Key days from weekly structure
+    ws_days = weekly_structure_data.get('days', {})
+    key_days_actual = [d.title() for d, info in ws_days.items() if info and info.get('is_key_day')]
+    md += _add_row(
+        f"Key day candidates: {', '.join(d.title() for d in key_day_candidates)}",
+        f"Key days assigned: {', '.join(key_days_actual)}",
+        "build_weekly_structure.py assigns intervals/long ride to key days",
+    )
+
+    # Interval day assignments
+    for day_name, day_info in ws_days.items():
+        if day_info and day_info.get('pm') == 'intervals':
+            md += _add_row(
+                f"{day_name.title()} available PM, key day OK",
+                f"{day_name.title()} PM = Intervals ({day_info.get('max_duration', '?')}min max)",
+                day_info.get('notes', 'Key session assigned'),
+            )
+        elif day_info and day_info.get('am') == 'intervals':
+            md += _add_row(
+                f"{day_name.title()} available AM, key day OK",
+                f"{day_name.title()} AM = Intervals ({day_info.get('max_duration', '?')}min max)",
+                day_info.get('notes', 'Key session assigned'),
+            )
+
+    # Easy day assignments
+    for day_name, day_info in ws_days.items():
+        slot = day_info.get('pm') or day_info.get('am') if day_info else None
+        if slot == 'easy_ride':
+            time_slot = 'PM' if day_info.get('pm') == 'easy_ride' else 'AM'
+            md += _add_row(
+                f"{day_name.title()} available, not key day",
+                f"{day_name.title()} {time_slot} = Easy ride ({day_info.get('max_duration', '?')}min max)",
+                "Fill day — active recovery / Z2 endurance",
+            )
+
+    # Long ride assignment
+    for day_name, day_info in ws_days.items():
+        if day_info and (day_info.get('am') == 'long_ride' or day_info.get('pm') == 'long_ride'):
+            md += _add_row(
+                f"{day_name.title()} = preferred long ride day",
+                f"{day_name.title()} AM = Long ride ({day_info.get('max_duration', '?')}min max)",
+                "Most important workout in polarized plan",
+            )
 
     # Strength
-    include = strength_sec.get('include', 'no')
-    mappings.append((
-        f"Include Strength: {include}",
-        f"{profile.get('strength', {}).get('sessions_per_week', 0)} strength sessions",
-        "Ankle limitation noted" if any(i.get('area') == 'ankle' for i in profile.get('injury_history', {}).get('past_injuries', [])) else "Per athlete preference",
-    ))
+    strength_include = profile.get('strength', {}).get('include_in_plan', False)
+    strength_sessions = profile.get('strength', {}).get('sessions_per_week', 0)
+    ankle_issue = any(
+        i.get('area') == 'ankle'
+        for i in profile.get('injury_history', {}).get('past_injuries', [])
+    )
+    md += _add_row(
+        f"Strength training: {'yes' if strength_include else 'no'}",
+        f"{strength_sessions} sessions/week",
+        f"{'Ankle limitation restricts exercises' if ankle_issue else 'Per athlete preference'}",
+    )
 
-    # Medical
-    conditions = health.get('medical_conditions', '')
+    # Medical conditions
+    conditions = profile.get('health_factors', {}).get('medical_conditions', '')
     if conditions and conditions.lower() not in ('none', 'n/a', ''):
-        mappings.append((
-            conditions,
-            "Medical flag",
-            "Monitor recovery, adjust intensity accordingly",
-        ))
+        meds = profile.get('health_factors', {}).get('medications', '')
+        md += _add_row(
+            f"Medical: {conditions}",
+            f"Risk flag: monitor recovery",
+            f"Medications: {meds}" if meds and meds.lower() not in ('none', 'n/a', '') else "No medications listed",
+        )
+
+    # Indoor tolerance -> workout design
+    indoor_tol = profile.get('training_environment', {}).get('indoor_riding_tolerance', '?')
+    longest_indoor = profile.get('workout_preferences', {}).get('longest_indoor_tolerable', '?')
+    md += _add_row(
+        f"Indoor tolerance: {indoor_tol}, max indoor: {longest_indoor}min",
+        f"Weeknight trainer cap: {longest_indoor}min",
+        "Workout durations respect indoor tolerance limit",
+    )
 
     # Coaching style
-    autonomy_raw = coaching_sec.get('autonomy', '')
-    if autonomy_raw:
-        mappings.append((
-            f"Autonomy: {autonomy_raw}",
-            f"{profile.get('coaching_style', {}).get('autonomy_preference', '')}",
-            "Wants to understand WHY behind each workout",
-        ))
+    autonomy = profile.get('coaching_style', {}).get('autonomy_preference', '?')
+    md += _add_row(
+        f"Coaching style: {autonomy}",
+        f"Guide includes workout rationale",
+        "Athlete wants to understand WHY behind each workout",
+    )
 
-    # Build risk factors
+    # B events
+    b_events = profile.get('b_events', [])
+    for ev in b_events:
+        ev_name = ev.get('name', '?')
+        ev_date = ev.get('date', 'TBD')
+        md += _add_row(
+            f"B event: {ev_name} ({ev_date})",
+            f"B-race overlay on race week: opener + RACE_DAY ZWO",
+            "Training race — 90-95% effort, no phase change",
+        )
+
+    md += f"\n"
+
+    # =====================================================================
+    # SECTION 3: METHODOLOGY SELECTION (full breakdown)
+    # =====================================================================
+    md += f"## 3. Methodology Selection\n"
+    md += f"### Selected: {meth_name}\n"
+    md += f"- **Score**: {meth_score}/100\n"
+    md += f"- **Confidence**: {meth_confidence}\n"
+    md += f"- **Methodology ID**: `{meth_id}`\n\n"
+
+    if meth_reasons:
+        md += f"**Why this methodology won:**\n"
+        for r in meth_reasons:
+            md += f"- {r}\n"
+        md += f"\n"
+
+    if meth_warnings:
+        md += f"**Warnings:**\n"
+        for w in meth_warnings:
+            md += f"- {w}\n"
+        md += f"\n"
+
+    if meth_alternatives:
+        md += f"**Alternatives considered:**\n"
+        md += f"| Rank | Methodology | Score | Key Reason |\n"
+        md += f"|------|-------------|-------|------------|\n"
+        for i, alt in enumerate(meth_alternatives, 1):
+            alt_name = alt.get('name', '?')
+            alt_score = alt.get('score', '?')
+            alt_reason = alt.get('key_reason', '').replace('|', '/')
+            md += f"| {i} | {alt_name} | {alt_score} | {alt_reason} |\n"
+        md += f"\n"
+
+    # Intensity distribution
+    if intensity:
+        md += f"### Zone Distribution Targets\n"
+        md += f"| Zone | Target % |\n"
+        md += f"|------|----------|\n"
+        if z1_z2_pct != '?':
+            md += f"| Z1-Z2 (endurance) | {int(z1_z2_pct * 100)}% |\n"
+        if z3_pct != '?':
+            md += f"| Z3 (tempo/sweet spot) | {int(z3_pct * 100)}% |\n"
+        if z4_z5_pct != '?':
+            md += f"| Z4-Z5 (threshold/VO2max) | {int(z4_z5_pct * 100)}% |\n"
+        md += f"\n"
+
+    # Key workouts
+    key_workouts = meth_config.get('key_workouts', [])
+    if key_workouts:
+        md += f"### Key Workout Types\n"
+        for kw in key_workouts:
+            md += f"- {kw.replace('_', ' ').title()}\n"
+        md += f"\n"
+
+    testing_freq = meth_config.get('testing_frequency', '?')
+    progression = meth_config.get('progression_style', '?')
+    md += f"- **Testing Frequency**: {testing_freq}\n"
+    md += f"- **Progression Style**: {progression.replace('_', ' ').title() if isinstance(progression, str) else progression}\n\n"
+
+    # =====================================================================
+    # SECTION 4: PHASE STRUCTURE (week-by-week)
+    # =====================================================================
+    md += f"## 4. Phase Structure\n"
+    weeks = plan_dates_data.get('weeks', [])
+    if weeks:
+        md += f"| Week | Dates | Phase | B-Race | Notes |\n"
+        md += f"|------|-------|-------|--------|-------|\n"
+        for w in weeks:
+            wk = w.get('week', '?')
+            mon = w.get('monday_short', '?')
+            sun = w.get('sunday_short', '?')
+            phase = w.get('phase', '?')
+            is_race_wk = w.get('is_race_week', False)
+            b_race_info = w.get('b_race', {})
+            b_race_str = ''
+            if b_race_info:
+                b_race_str = f"{b_race_info.get('name', '?')} ({b_race_info.get('date', '?')})"
+            notes = ''
+            if is_race_wk:
+                notes = 'A-RACE WEEK'
+            # Check for FTP test days
+            for d in w.get('days', []):
+                if d.get('is_b_race_day'):
+                    notes += ' B-race day' if notes else 'B-race day'
+            md += f"| W{wk:02d} | {mon}-{sun} | {phase.upper()} | {b_race_str} | {notes} |\n"
+        md += f"\n"
+    else:
+        md += f"*No plan_dates.yaml found*\n\n"
+
+    # =====================================================================
+    # SECTION 5: WEEKLY STRUCTURE
+    # =====================================================================
+    md += f"## 5. Weekly Structure\n"
+    if ws_days:
+        md += f"| Day | Slot | Workout Type | Key Day | Max Duration |\n"
+        md += f"|-----|------|--------------|---------|-------------|\n"
+        day_order = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        for day_name in day_order:
+            day_info = ws_days.get(day_name, {})
+            if not day_info:
+                md += f"| {day_name.title()} | — | OFF | — | — |\n"
+                continue
+            am = day_info.get('am')
+            pm = day_info.get('pm')
+            is_key = day_info.get('is_key_day', False)
+            max_dur = day_info.get('max_duration', 0)
+            if am and pm:
+                workout = f"AM: {am}, PM: {pm}"
+                slot = "AM+PM"
+            elif am:
+                workout = am.replace('_', ' ').title()
+                slot = "AM"
+            elif pm:
+                workout = pm.replace('_', ' ').title()
+                slot = "PM"
+            else:
+                workout = "OFF"
+                slot = "—"
+            key_str = "YES" if is_key else "no"
+            dur_str = f"{max_dur}min" if max_dur else "—"
+            md += f"| {day_name.title()} | {slot} | {workout} | {key_str} | {dur_str} |\n"
+        md += f"\n"
+    else:
+        md += f"*No weekly_structure.yaml found*\n\n"
+
+    # =====================================================================
+    # SECTION 6: FUELING PLAN
+    # =====================================================================
+    md += f"## 6. Fueling Plan\n"
+    if fueling_data:
+        carbs = fueling_data.get('carbohydrates', {})
+        cals = fueling_data.get('calories', {})
+        hydration = fueling_data.get('recommendations', {}).get('hydration', {})
+
+        md += f"| Field | Value |\n"
+        md += f"|-------|-------|\n"
+        md += f"| Race Duration | {cals.get('duration_hours', '?')} hrs |\n"
+        md += f"| Total Calories | {cals.get('total_calories', '?')} kcal |\n"
+        md += f"| Calories/Hour | {cals.get('calories_per_hour', '?')} kcal/hr |\n"
+        md += f"| Carb Target | {carbs.get('hourly_target', '?')}g/hr |\n"
+        md += f"| Carb Range | {carbs.get('hourly_range', ['?','?'])[0]}-{carbs.get('hourly_range', ['?','?'])[1]}g/hr |\n"
+        md += f"| Total Carbs | {carbs.get('total_grams', '?')}g |\n"
+        md += f"| Hydration | {hydration.get('target_ml_per_hour', '?')}ml/hr |\n"
+        md += f"| Electrolytes | {hydration.get('electrolytes', '?')} |\n"
+        md += f"\n"
+
+        # Gut training phases
+        gut = fueling_data.get('gut_training', {}).get('phases', {})
+        if gut:
+            md += f"### Gut Training Progression\n"
+            md += f"| Phase | Weeks | Target (g/hr) | Guidance |\n"
+            md += f"|-------|-------|---------------|----------|\n"
+            for phase_name in ['base', 'build', 'peak', 'race']:
+                phase_info = gut.get(phase_name, {})
+                if phase_info:
+                    wks = phase_info.get('weeks', '?')
+                    tgt = phase_info.get('target_range', ['?', '?'])
+                    guidance = phase_info.get('guidance', '').replace('|', '/').replace('\n', ' ')
+                    md += f"| {phase_name.upper()} | {wks} | {tgt[0]}-{tgt[1]} | {guidance} |\n"
+            md += f"\n"
+    else:
+        md += f"*No fueling.yaml found*\n\n"
+
+    # =====================================================================
+    # SECTION 7: B-RACE HANDLING
+    # =====================================================================
+    b_events = profile.get('b_events', [])
+    if b_events:
+        md += f"## 7. B-Race Handling\n"
+        for ev in b_events:
+            ev_name = ev.get('name', '?')
+            ev_date = ev.get('date', 'TBD')
+            md += f"### {ev_name} ({ev_date})\n"
+            md += f"- **Priority**: B (training race)\n"
+            md += f"- **Overlay**: Replaces existing workout on race day with RACE_DAY ZWO\n"
+            md += f"- **Day before**: Openers (40min cap, 4x30sec @ 120% FTP)\n"
+
+            # Find which week this B-race falls in
+            for w in weeks:
+                b_race_info = w.get('b_race', {})
+                if b_race_info and b_race_info.get('name') == ev_name:
+                    phase = b_race_info.get('phase', '?')
+                    wk = w.get('week', '?')
+                    md += f"- **Week**: W{wk:02d} ({phase} phase)\n"
+                    if phase in ('build', 'peak'):
+                        md += f"- **2 days before**: Easy ride (45min cap) — deeper mini-taper in {phase}\n"
+                    break
+            md += f"- **Post-race**: Resume normal training within 2 days\n\n"
+
+    # =====================================================================
+    # SECTION 8: RISK FACTORS
+    # =====================================================================
+    md += f"## 8. Risk Factors\n"
     risks = []
-    if work_life.get('job_stress', '').lower() == 'high':
-        work_hrs = work_life.get('work_hours', '')
-        risks.append(f"High work stress ({work_hrs}hr weeks)" if work_hrs else "High work stress")
-    if work_life.get('life_stress', '').lower() == 'high':
-        fam = work_life.get('family', '')
-        risks.append(f"High life stress ({fam})" if fam else "High life stress")
-    if recovery.get('recovery_speed', '').lower() == 'slow':
-        risks.append("Slow recovery")
+    # From derived.yaml
+    for rf in risk_factors_derived:
+        risks.append(rf.replace('_', ' ').title())
+    # From profile
     if conditions and conditions.lower() not in ('none', 'n/a', ''):
-        med = health.get('medications', '')
-        risk_str = conditions
-        if med and med.lower() not in ('none', 'n/a', ''):
-            risk_str += f" -- monitor for complications"
+        meds = profile.get('health_factors', {}).get('medications', '')
+        risk_str = f"Medical: {conditions}"
+        if meds and meds.lower() not in ('none', 'n/a', ''):
+            risk_str += f" (meds: {meds})"
         risks.append(risk_str)
     for inj in profile.get('injury_history', {}).get('past_injuries', []):
         area = inj.get('area', '')
@@ -1617,66 +2001,104 @@ def generate_coaching_brief(
         if area:
             risk_str = f"Chronic {side + ' ' if side else ''}{area}"
             if desc:
-                risk_str += f" -- {desc[:80]}"
+                truncated = desc[:100].rsplit(' ', 1)[0] if len(desc) > 100 else desc
+                risk_str += f" — {truncated}"
             risks.append(risk_str)
+    work_hrs = profile.get('schedule_constraints', {}).get('work_hours', '')
+    if str(profile.get('work', {}).get('stress_level', '')).lower() == 'high':
+        risks.append(f"High work stress ({work_hrs}hr weeks)" if work_hrs else "High work stress")
+    family = profile.get('schedule_constraints', {}).get('family_commitments', '')
+    if family:
+        risks.append(f"Family commitments: {family}")
+    if not risks:
+        risks.append("No major risk factors identified")
+    for r in risks:
+        md += f"- {r}\n"
+    md += f"\n"
 
-    # Build key notes
+    # =====================================================================
+    # SECTION 9: KEY COACHING NOTES
+    # =====================================================================
+    md += f"## 9. Key Coaching Notes\n"
     notes = []
-    other = additional.get('other', '')
-    prev = additional.get('previous_coach', '')
-    if 'base' in other.lower():
-        notes.append("Athlete explicitly wants BASE BUILDING, not sweet spot")
-    if 'sweet spot' in other.lower():
-        notes.append("Previous failure: dedicated sweet spot block -- lacked durability")
-    if 'trainer' in other.lower():
-        notes.append("Willing to do 2hr trainer sessions on weeknights")
-    if prev and prev.lower().startswith('yes'):
-        notes.append("Has worked with a coach before -- likes flexibility")
-    if 'understand' in (prev + other).lower() or 'why' in (prev + other).lower():
-        notes.append("Wants to understand WHY behind each workout (motivation driver)")
 
-    b_events_data = profile.get('b_events', [])
-    for ev in b_events_data:
+    # From athlete's own words
+    anything_else = profile.get('personal', {}).get('anything_else', '')
+    if anything_else:
+        # Extract key themes
+        lower = anything_else.lower()
+        if 'base' in lower:
+            notes.append("Athlete explicitly wants BASE BUILDING, not sweet spot")
+        if 'sweet spot' in lower:
+            notes.append("Previous failure: dedicated sweet spot block — lacked durability")
+        if 'trainer' in lower:
+            max_indoor = profile.get('workout_preferences', {}).get('longest_indoor_tolerable', '?')
+            notes.append(f"Willing to do up to {max_indoor}min trainer sessions on weeknights")
+        if 'zone 2' in lower or 'z2' in lower:
+            notes.append("Specifically asked for long Z2 rides — validates Polarized selection")
+        if 'durability' in lower:
+            notes.append("Durability is primary concern — key metric for plan success")
+        if 'nutrition' in lower or 'fuel' in lower:
+            notes.append("Wants to dial in nutrition alongside training")
+
+    # Coaching experience
+    if profile.get('coaching', {}).get('previous_coach'):
+        coach_exp = profile.get('coaching', {}).get('experience', '')
+        if coach_exp:
+            notes.append(f"Previous coaching experience: {coach_exp[:100]}")
+
+    # Motivation
+    quit_reasons = profile.get('motivation', {}).get('past_quit_reasons', '')
+    if quit_reasons:
+        notes.append(f"Past quit reasons: {quit_reasons}")
+
+    best_block = profile.get('mental_game', {}).get('best_training_block', '')
+    if best_block:
+        notes.append(f"Best training block: {best_block}")
+
+    # B-events without dates
+    for ev in b_events:
         if not ev.get('date'):
-            notes.append(f"{ev['name']} is a B event -- no date provided, needs follow-up")
+            notes.append(f"B event '{ev.get('name', '?')}' has no date — needs follow-up")
 
-    # Render
-    md = f"# Coaching Brief: {name}\n\n"
-    md += f"## Plan Overview\n"
-    md += f"| Field | Value |\n"
-    md += f"|-------|-------|\n"
-    md += f"| Athlete ID | {athlete_id} |\n"
-    md += f"| Plan Duration | {plan_weeks} weeks |\n"
-    md += f"| Methodology | {meth_name} |\n"
-    md += f"| Tier | {tier} |\n"
-    md += f"| Target Race | {race_name} ({race_date}) |\n"
-    md += f"| FTP | {ftp}W ({w_kg} W/kg) |\n"
-    md += f"| Cycling Hours | {cycling_hours} hrs/week |\n"
-    md += f"| Email | {profile.get('email', '')} |\n"
+    if not notes:
+        notes.append("No special coaching notes")
+    for n in notes:
+        md += f"- {n}\n"
     md += f"\n"
 
-    md += f"## Questionnaire -> Plan Mapping\n"
-    md += f"| Questionnaire Input | Coaching Decision | Rationale |\n"
-    md += f"|---------------------|-------------------|-----------|\n"
-    for qinput, decision, rationale in mappings:
-        # Escape pipe chars in table cells
-        qi = qinput.replace('|', '/').replace('\n', ' ')
-        de = decision.replace('|', '/').replace('\n', ' ')
-        ra = rationale.replace('|', '/').replace('\n', ' ')
-        md += f"| {qi} | {de} | {ra} |\n"
+    # =====================================================================
+    # SECTION 10: PIPELINE OUTPUT FILES
+    # =====================================================================
+    md += f"## 10. Pipeline Output Files\n"
+    md += f"| File | Status |\n"
+    md += f"|------|--------|\n"
+    if athlete_dir:
+        ad = Path(athlete_dir)
+        expected_files = [
+            'profile.yaml', 'derived.yaml', 'weekly_structure.yaml',
+            'methodology.yaml', 'fueling.yaml', 'plan_dates.yaml',
+            'coaching_brief.md', 'training_guide.html', 'training_guide.pdf',
+            'dashboard.html',
+        ]
+        for fname in expected_files:
+            exists = (ad / fname).exists()
+            status = 'OK' if exists else 'MISSING'
+            md += f"| {fname} | {status} |\n"
+        # Check workouts dir
+        workouts_dir = ad / 'workouts'
+        if workouts_dir.exists():
+            zwo_count = len(list(workouts_dir.glob('*.zwo')))
+            md += f"| workouts/*.zwo | {zwo_count} files |\n"
+        else:
+            md += f"| workouts/*.zwo | MISSING |\n"
     md += f"\n"
 
-    if risks:
-        md += f"## Risk Factors\n"
-        for r in risks:
-            md += f"- {r}\n"
-        md += f"\n"
-
-    if notes:
-        md += f"## Key Coaching Notes\n"
-        for n in notes:
-            md += f"- {n}\n"
-        md += f"\n"
+    # =====================================================================
+    # FOOTER
+    # =====================================================================
+    md += f"---\n"
+    md += f"*Generated by intake_to_plan.py on {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n"
 
     return md
 
@@ -1882,7 +2304,14 @@ def copy_to_downloads(athlete_id: str, coaching_brief_md: str) -> Path:
         print(f"  {GREEN}Copied:{RESET} fueling.yaml")
         delivered.append('fueling.yaml')
 
-    # 7. Generate PDF from training guide
+    # 7. Plan preview
+    preview = athlete_dir / 'plan_preview.html'
+    if preview.exists():
+        shutil.copy2(preview, downloads_dir / 'plan_preview.html')
+        print(f"  {GREEN}Copied:{RESET} plan_preview.html (verification dashboard)")
+        delivered.append('plan_preview.html')
+
+    # 8. Generate PDF from training guide
     guide_html = downloads_dir / 'training_guide.html'
     if guide_html.exists():
         pdf_path = downloads_dir / 'training_guide.pdf'
@@ -2081,7 +2510,7 @@ def main():
 
     # -- Step 4: Generate coaching brief --
     print(f"\n{BOLD}Step 4: Generating coaching brief...{RESET}")
-    coaching_brief = generate_coaching_brief(profile, parsed)
+    coaching_brief = generate_coaching_brief(profile, parsed, athlete_dir=athlete_dir)
     print(f"  {GREEN}Generated{RESET} coaching_brief.md")
 
     # Also write to athlete directory
@@ -2089,6 +2518,24 @@ def main():
     with open(brief_path, 'w') as f:
         f.write(coaching_brief)
     print(f"  {GREEN}Written:{RESET} {brief_path}")
+
+    # -- Step 4b: Generate plan preview --
+    print(f"\n{BOLD}Step 4b: Generating plan preview...{RESET}")
+    try:
+        from generate_plan_preview import build_preview_data, render_preview_html
+        preview_data = build_preview_data(athlete_dir)
+        preview_html = render_preview_html(preview_data)
+        preview_path = athlete_dir / 'plan_preview.html'
+        with open(preview_path, 'w') as f:
+            f.write(preview_html)
+        checks_pass = sum(1 for c in preview_data['checks'] if c['status'] == 'PASS')
+        checks_total = len(preview_data['checks'])
+        print(f"  {GREEN}Generated{RESET} plan_preview.html ({checks_pass}/{checks_total} checks pass)")
+        for c in preview_data['checks']:
+            icon = GREEN + '✓' if c['status'] == 'PASS' else (YELLOW + '⚠' if c['status'] == 'WARN' else RED + '✗')
+            print(f"    {icon}{RESET} {c['name']}: {c['detail']}")
+    except Exception as e:
+        print(f"  {YELLOW}Preview generation failed: {e}{RESET}")
 
     # -- Step 5: Copy to Downloads --
     print(f"\n{BOLD}Step 5: Copying to Downloads...{RESET}")
@@ -2106,20 +2553,24 @@ def main():
     # Show what's in the package
     pdf_exists = (downloads_path / 'training_guide.pdf').exists()
     zwo_count = len(list((downloads_path / 'workouts').glob('*.zwo'))) if (downloads_path / 'workouts').exists() else 0
+    preview_exists = (downloads_path / 'plan_preview.html').exists()
     print(f"\n  {BOLD}Package contents:{RESET}")
-    print(f"    workouts/          {zwo_count} ZWO files")
+    print(f"    workouts/            {zwo_count} ZWO files")
     print(f"    training_guide.html  (open in browser)")
     if pdf_exists:
         print(f"    training_guide.pdf   (send to athlete)")
+    if preview_exists:
+        print(f"    plan_preview.html    (verification — open FIRST)")
     print(f"    coaching_brief.md    (PRIVATE — coach only)")
     print(f"    plan_summary.yaml")
     print(f"    fueling.yaml")
 
     print(f"\n  {CYAN}Next steps:{RESET}")
-    print(f"  1. Review coaching_brief.md (questionnaire → decision mapping)")
-    print(f"  2. Open training_guide.html in browser, spot-check weeks 1/6/12")
-    print(f"  3. Push delivery/ repo to deploy hosted guide URL")
-    print(f"  4. Send PDF + workouts.zip to athlete")
+    print(f"  1. Open plan_preview.html — verify all checks pass, scan week-by-week grid")
+    print(f"  2. Review coaching_brief.md (questionnaire → decision mapping)")
+    print(f"  3. Open training_guide.html in browser, spot-check weeks 1/6/12")
+    print(f"  4. Push delivery/ repo to deploy hosted guide URL")
+    print(f"  5. Send PDF + workouts.zip to athlete")
     print()
 
 

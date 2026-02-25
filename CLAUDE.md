@@ -144,19 +144,23 @@ Questionnaire (markdown)
 ### Key Files Map
 ```
 athletes/scripts/
-├── intake_to_plan.py          ← Entry point. Parse questionnaire → run pipeline → deliver
-├── generate_full_package.py   ← Pipeline orchestrator. Runs 9 steps in order
-├── select_methodology.py      ← Scores 13 methodologies by objective data (hours/experience/stress)
+├── intake_to_plan.py           ← Entry point. Parse questionnaire → run pipeline → deliver
+├── generate_full_package.py    ← Pipeline orchestrator. Runs 9 steps in order
+├── select_methodology.py       ← Scores 13 methodologies by objective data (hours/experience/stress)
 ├── generate_athlete_package.py ← ZWO workout generator. Maps methodology → Nate generator
-├── nate_workout_generator.py  ← 14 training systems, workout archetypes, ZWO XML rendering
-├── calculate_plan_dates.py    ← Phase assignment (base/build/peak/taper/race) + B-race overlay
-├── build_weekly_structure.py  ← Day-by-day slot assignment from profile availability
-├── generate_html_guide.py     ← Data-driven HTML guide (zero LLM content)
-├── known_races.py             ← Single source of truth for race dates/distances
-├── constants.py               ← Validation bounds, day mappings, phase definitions
-├── config/methodologies.yaml  ← 13 methodology definitions with scoring parameters
+├── nate_workout_generator.py   ← 22 training systems, 79 archetypes, ZWO XML rendering
+├── new_archetypes.py           ← 79 archetypes across 22 categories (merged with imported)
+├── imported_archetypes.py      ← 34 imported archetypes (6 new categories + augments 6 existing)
+├── calculate_plan_dates.py     ← Phase assignment (base/build/peak/taper/race) + B-race overlay
+├── build_weekly_structure.py   ← Day-by-day slot assignment from profile availability
+├── generate_html_guide.py      ← Data-driven HTML guide (zero LLM content)
+├── generate_plan_preview.py    ← Visual verification: parses ZWO, calculates TSS/IF, 9 checks
+├── known_races.py              ← Single source of truth for race dates/distances
+├── constants.py                ← Validation bounds, day mappings, phase definitions
+├── config/methodologies.yaml   ← 13 methodology definitions with scoring parameters
 └── tests/
-    ├── test_intake_to_plan.py           ← 164 tests (parser, methodology, multi-athlete)
+    ├── test_intake_to_plan.py           ← 199 tests (parser, methodology, multi-athlete, coaching brief)
+    ├── test_plan_preview.py             ← 28 tests (ZWO parsing, TSS, zone, verification checks)
     ├── test_distribution_and_schedule.py ← 38 tests (day placement, zones, FTP)
     └── test_*.py                        ← 73 more tests (formats, validation, generation)
 ```
@@ -174,7 +178,8 @@ What the user gets in `~/Downloads/{athlete-id}-training-plan/`:
 - `training_guide.html` — data-driven, no LLM
 - `training_guide.pdf` — requires Chrome
 - `dashboard.html`
-- `coaching_brief.md` — PRIVATE (coach eyes only)
+- `plan_preview.html` — verification dashboard (parses ZWO, calculates TSS/IF, 9 automated checks)
+- `coaching_brief.md` — PRIVATE, 10-section decision trace from questionnaire to implementation
 - `fueling.yaml`
 - `plan_summary.yaml`
 
@@ -247,6 +252,27 @@ B-races (priority B events from `b_events` in profile) get a mini-taper overlay 
 #### Dashboard and PDF failures must be visible
 `copy_to_downloads()` prints a DELIVERY SUMMARY at the end showing [OK] and [MISS] items. Dashboard missing = ERROR (not warning). PDF missing = ERROR with "install Google Chrome" message. Both tracked in `delivery_gaps` list.
 
+#### Plan preview parses actual ZWO power data
+`generate_plan_preview.py` calculates real TSS and IF from ZWO XML power segments (not hardcoded estimates). It uses normalized power (4th power averaging) for accurate intensity factor. FreeRide elements (race days) get estimated power since they have no target. The 9 automated checks verify: weekly volume vs target, off days, long ride day, zone distribution, phase progression, TSS progression, B-race placement, key days, FTP tests.
+
+#### Coaching brief reads pipeline output YAMLs
+`generate_coaching_brief()` takes `athlete_dir` parameter and reads methodology.yaml, derived.yaml, plan_dates.yaml, fueling.yaml, weekly_structure.yaml. Without `athlete_dir` it degrades gracefully (methodology shows "Unknown"). It does NOT use questionnaire preference scores to determine methodology name — it reads the actual selection from methodology.yaml.
+
+### Workout Archetype System
+- **79 archetypes** across **22 categories**, each with **6 progression levels** = **474 total variations**
+- **Source of truth**: `new_archetypes.py` (merges with `imported_archetypes.py` at import time)
+- **Merge logic**: Imported archetypes append to existing categories (dedup by name) or create new categories
+- **Two archetype formats**:
+  - **Format A (intervals)**: `intervals` tuple + `on_power`, `off_power`, `off_duration`
+  - **Format B (segments)**: list of segment dicts with `type` (steady/intervals/freeride/ramp), `duration`, `power`
+- **Categories**: VO2max, TT_Threshold, Sprint_Neuromuscular, Anaerobic_Capacity, Durability, Endurance, Race_Simulation, G_Spot, LT1_MAF, Critical_Power, Norwegian_Double, HVLI_Extended, Testing, Recovery, INSCYD, Gravel_Specific, SFR_Muscle_Force, Over_Under, Mixed_Climbing, Cadence_Work, Blended, Tempo
+- **6 NEW categories** (from imported): SFR_Muscle_Force, Over_Under, Mixed_Climbing, Cadence_Work, Blended, Tempo
+- **All 11 Nate types** have custom handlers in `generate_athlete_package.py` (no generic SteadyState fallback)
+- **Duration scaling**: SFR, Mixed_Climbing, Cadence_Work are in `_INTERVAL_TYPES` (cap at 120 min, scale warmup/cooldown)
+- **Methodology-aware selection**: `select_archetype_for_workout()` applies methodology-specific start offsets
+- **Variation cycling**: Counter per workout type wraps via modulo across archetype list
+- **Segments handler**: Supports steady, intervals, freeride, ramp segment types; unknown types render as SteadyState with warning
+
 ## Testing (Training Pipeline)
 ```bash
 # Full test suite (includes webhook + pipeline tests):
@@ -258,4 +284,4 @@ python3 -m pytest athletes/scripts/test_intake_to_plan.py -v
 # Just distribution/schedule tests:
 python3 -m pytest athletes/scripts/test_distribution_and_schedule.py -v
 ```
-275 tests: 164 intake parser + methodology + multi-athlete, 38 distribution/schedule, 7 generation pipeline, 1 custom guide, 13 plan dates, 4 pre-plan workouts, 13 validation, 15 workout generation, 6 workout library, 12 ZWO format, 1 all-files.
+509 tests: 199 intake parser + methodology + multi-athlete + coaching brief, 28 plan preview (ZWO parsing + TSS + verification checks), 38 distribution/schedule, 7 generation pipeline, 1 custom guide, 13 plan dates, 4 pre-plan workouts, 13 validation, 125 workout generation (incl. imported archetypes, multi-methodology, variation cycling, segment edge cases, per-type power ranges, duration scaling, handler defense), 6 workout library, 12 ZWO format, 1 all-files.

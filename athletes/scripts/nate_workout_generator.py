@@ -525,13 +525,16 @@ PROGRESSION_STYLES = {
 # =============================================================================
 
 def get_archetype_by_category_and_index(category: str, index: int = 0) -> Optional[Dict]:
-    """Get a specific archetype from a category by index."""
+    """Get a specific archetype from a category by index (wraps via modulo)."""
     if category not in NEW_ARCHETYPES:
         return None
 
     archetypes = NEW_ARCHETYPES[category]
-    if index >= len(archetypes):
-        index = 0
+    if not archetypes:
+        return None
+
+    # Modulo wrapping so incrementing counters cycle through all archetypes
+    index = index % len(archetypes)
 
     return archetypes[index]
 
@@ -641,6 +644,35 @@ def select_archetype_for_workout(
         "vlamax": "INSCYD",
         "fatmax": "INSCYD",
         "metabolic": "INSCYD",
+        # Gravel-Specific
+        "gravel_specific": "Gravel_Specific",
+        "gravel": "Gravel_Specific",
+        "surge_settle": "Gravel_Specific",
+        "microbursts": "Gravel_Specific",
+        "gravel_grind": "Gravel_Specific",
+        "late_race": "Gravel_Specific",
+        # SFR / Muscle Force
+        "sfr": "SFR_Muscle_Force",
+        "sfr_muscle_force": "SFR_Muscle_Force",
+        "force": "SFR_Muscle_Force",
+        # Over/Under
+        "over_under": "Over_Under",
+        "overunder": "Over_Under",
+        "ou": "Over_Under",
+        # Mixed Climbing
+        "climbing": "Mixed_Climbing",
+        "mixed_climbing": "Mixed_Climbing",
+        # Cadence Work
+        "cadence": "Cadence_Work",
+        "cadence_work": "Cadence_Work",
+        "high_cadence": "Cadence_Work",
+        # Blended
+        "blended": "Blended",
+        "mixed": "Blended",
+        # Tempo (different from existing "tempo" -> "G_Spot" mapping!)
+        "tempo_workout": "Tempo",
+        "tempo_advanced": "Tempo",
+        "tempo_intervals": "Tempo",
     }
 
     category = type_to_category.get(workout_type.lower())
@@ -720,12 +752,14 @@ def select_archetype_for_workout(
         },
     }
 
-    # Get methodology-specific variation if available
+    # Get methodology-specific starting offset if available.
+    # The caller's variation is added on top so rotating counters cycle
+    # through all archetypes starting from the methodology's preferred one.
     method_overrides = methodology_overrides.get(methodology, {})
-    if category in method_overrides:
-        variation = method_overrides[category]
+    start_offset = method_overrides.get(category, 0)
+    effective_variation = start_offset + variation
 
-    return get_archetype_by_category_and_index(category, variation)
+    return get_archetype_by_category_and_index(category, effective_variation)
 
 
 def is_recovery_week(week_num: int, recovery_pattern: str = "3:1") -> bool:
@@ -1259,8 +1293,11 @@ def get_workout_warmup_duration(archetype: Dict, level_data: Dict) -> int:
     if main_duration > 7200 and "endurance" in archetype_name:
         return 0
 
-    # No structured warmup for recovery - just easy spinning throughout
-    if "recovery" in archetype_name or "flush" in archetype_name:
+    # No structured warmup for recovery rides - just easy spinning throughout.
+    # "Loaded Recovery" is a VO2max workout (not a recovery ride), so exclude it.
+    if ("flush" in archetype_name or
+            ("recovery" in archetype_name and "loaded" not in archetype_name
+             and "vo2" not in archetype_name)):
         return 0
 
     # Longer warmup for threshold/TT work - need to be fully prepared
@@ -1292,8 +1329,10 @@ def get_workout_cooldown_duration(archetype: Dict, level_data: Dict) -> int:
 
     archetype_name = archetype.get("name", "").lower()
 
-    # Minimal cooldown for recovery rides
-    if "recovery" in archetype_name or "flush" in archetype_name:
+    # Minimal cooldown for recovery rides (not "Loaded Recovery" VO2max)
+    if ("flush" in archetype_name or
+            ("recovery" in archetype_name and "loaded" not in archetype_name
+             and "vo2" not in archetype_name)):
         return Durations.COOLDOWN_SHORT  # 5 min
 
     # Standard cooldown
@@ -1434,6 +1473,61 @@ def validate_workout_duration(blocks: List[str], archetype: Dict) -> bool:
     return True
 
 
+def _generate_stochastic_blocks(
+    total_duration_sec: int,
+    power_low: float,
+    power_high: float,
+    min_effort_sec: int = 15,
+    max_effort_sec: int = 120,
+    seed: int = 42,
+    cadence_range: str = None,
+) -> list:
+    """Generate a series of short blocks with varied power, simulating race conditions.
+
+    Uses deterministic PRNG for reproducible output. Power alternates between
+    efforts above and below the midpoint to create a jagged, race-realistic pattern.
+
+    Returns a list of ZWO XML block strings.
+    """
+    import hashlib
+    blocks = []
+    remaining = total_duration_sec
+
+    # Deterministic seed from input
+    state = int(hashlib.md5(f"{seed}_{total_duration_sec}".encode()).hexdigest(), 16)
+
+    def next_rand():
+        nonlocal state
+        # Simple LCG for deterministic pseudo-random
+        state = (state * 6364136223846793005 + 1442695040888963407) & 0xFFFFFFFFFFFFFFFF
+        return (state >> 33) / 0x7FFFFFFF  # 0.0 to ~1.0
+
+    power_mid = (power_low + power_high) / 2
+    above = True  # Alternate above/below midpoint for natural variation
+
+    while remaining > 0:
+        # Random duration within bounds
+        r = next_rand()
+        dur = int(min_effort_sec + r * (max_effort_sec - min_effort_sec))
+        dur = min(dur, remaining)
+        if dur < 5:
+            break
+
+        # Power: alternate above/below midpoint with random offset
+        r2 = next_rand()
+        if above:
+            power = power_mid + r2 * (power_high - power_mid)
+        else:
+            power = power_low + r2 * (power_mid - power_low)
+        above = not above
+
+        power = round(power, 2)
+        blocks.append(generate_steady_state_block(dur, power, cadence_range=cadence_range))
+        remaining -= dur
+
+    return blocks
+
+
 def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
     """
     Generate ZWO XML blocks from a Nate archetype level.
@@ -1473,6 +1567,62 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
                 repeats, duration, on_power, off_dur, off_power,
                 cadence_range=cadence_range
             ))
+
+        blocks.append(generate_cooldown_block(cooldown_duration))
+
+    # =====================================================================
+    # SEGMENTS-BASED WORKOUTS (imported archetypes, blended, multi-section)
+    # =====================================================================
+    elif "segments" in level_data:
+        segments = level_data["segments"]
+
+        blocks.append(generate_warmup_block(warmup_duration))
+
+        for seg in segments:
+            seg_type = seg.get("type", "steady")
+            seg_cadence = None
+            if "cadence_low" in seg and "cadence_high" in seg:
+                seg_cadence = f"{seg['cadence_low']}-{seg['cadence_high']}"
+            elif "cadence" in seg:
+                seg_cadence = str(seg["cadence"])
+
+            if seg_type == "steady":
+                seg_dur = seg.get("duration", 300)
+                seg_power = seg.get("power", 0.65)
+                blocks.append(generate_steady_state_block(
+                    seg_dur, seg_power,
+                    cadence_range=seg_cadence or cadence_range
+                ))
+            elif seg_type == "intervals":
+                repeats = seg.get("repeats", 3)
+                on_dur = seg.get("on_duration", 180)
+                on_power = seg.get("on_power", 1.0)
+                blocks.append(generate_intervals_block(
+                    repeats, on_dur, on_power,
+                    seg.get("off_duration", 180), seg.get("off_power", 0.55),
+                    cadence_range=seg_cadence or cadence_range
+                ))
+            elif seg_type == "freeride":
+                seg_dur = seg.get("duration", 600)
+                blocks.append(f'    <FreeRide Duration="{seg_dur}"/>')
+            elif seg_type == "ramp":
+                seg_dur = seg.get("duration", 600)
+                start_power = seg.get("start_power", seg.get("power_low", 0.65))
+                end_power = seg.get("end_power", seg.get("power_high", 1.0))
+                blocks.append(generate_ramp_block(seg_dur, start_power, end_power))
+            else:
+                # Unknown segment type — log warning and render as steady state
+                # so the workout doesn't silently lose blocks
+                get_logger().warning(
+                    f"Unknown segment type '{seg_type}' in archetype — "
+                    f"rendering as steady state"
+                )
+                seg_dur = seg.get("duration", 300)
+                seg_power = seg.get("power", 0.65)
+                blocks.append(generate_steady_state_block(
+                    seg_dur, seg_power,
+                    cadence_range=seg_cadence or cadence_range
+                ))
 
         blocks.append(generate_cooldown_block(cooldown_duration))
 
@@ -1926,6 +2076,212 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
         blocks.append(generate_cooldown_block(cooldown_duration))
 
     # =====================================================================
+    # VARIABLE PACE CHAOS (Stochastic Power)
+    # =====================================================================
+    elif "chaos" in level_data:
+        block_duration = level_data.get("block_duration", 1200)
+        power_range = level_data.get("power_range", (0.80, 1.15))
+        effort_range = level_data.get("effort_range", (30, 120))
+        num_blocks = level_data.get("blocks", 1)
+        block_recovery = level_data.get("block_recovery", 300)
+
+        blocks.append(generate_warmup_block(warmup_duration))
+
+        for block_num in range(num_blocks):
+            # Use block_num as part of seed for varied patterns per block
+            seed = hash(archetype.get("name", "chaos")) + block_num
+            stochastic = _generate_stochastic_blocks(
+                total_duration_sec=block_duration,
+                power_low=power_range[0],
+                power_high=power_range[1],
+                min_effort_sec=effort_range[0],
+                max_effort_sec=effort_range[1],
+                seed=seed,
+                cadence_range=cadence_range,
+            )
+            blocks.extend(stochastic)
+
+            # Recovery between blocks
+            if num_blocks > 1 and block_num < num_blocks - 1:
+                blocks.append(generate_steady_state_block(
+                    block_recovery, ZWODefaults.RECOVERY_POWER, cadence_range=cadence_range
+                ))
+
+        blocks.append(generate_cooldown_block(cooldown_duration))
+
+    # =====================================================================
+    # SURGE AND SETTLE (Gravel-Specific)
+    # =====================================================================
+    elif "surge_settle" in level_data:
+        surges_per_set = level_data.get("surges_per_set", 4)
+        sets = level_data.get("sets", 2)
+        surge_dur = level_data.get("surge_duration", 20)
+        surge_power = level_data.get("surge_power", 1.35)
+        settle_dur = level_data.get("settle_duration", 75)
+        settle_power = level_data.get("settle_power", 0.85)
+        set_recovery = level_data.get("set_recovery", 300)
+
+        blocks.append(generate_warmup_block(warmup_duration))
+
+        for set_num in range(sets):
+            for surge in range(surges_per_set):
+                blocks.append(generate_steady_state_block(
+                    surge_dur, surge_power, cadence_range=cadence_range
+                ))
+                blocks.append(generate_steady_state_block(
+                    settle_dur, settle_power, cadence_range=cadence_range
+                ))
+
+            if sets > 1 and set_num < sets - 1:
+                blocks.append(generate_steady_state_block(
+                    set_recovery, ZWODefaults.RECOVERY_POWER, cadence_range=cadence_range
+                ))
+
+        blocks.append(generate_cooldown_block(cooldown_duration))
+
+    # =====================================================================
+    # TERRAIN MICROBURSTS (Gravel-Specific)
+    # =====================================================================
+    elif "microbursts" in level_data:
+        block_duration = level_data.get("block_duration", 900)
+        base_power = level_data.get("base_power", 0.85)
+        burst_dur = level_data.get("burst_duration", 6)
+        burst_power = level_data.get("burst_power", 1.30)
+        burst_interval = level_data.get("burst_interval", 60)
+        sets = level_data.get("sets", 1)
+        set_recovery = level_data.get("set_recovery", 0)
+
+        blocks.append(generate_warmup_block(warmup_duration))
+
+        for set_num in range(sets):
+            # Generate base+burst pattern
+            remaining = block_duration
+            while remaining > burst_interval:
+                # Base effort until next burst
+                base_dur = burst_interval - burst_dur
+                blocks.append(generate_steady_state_block(
+                    base_dur, base_power, cadence_range=cadence_range
+                ))
+                blocks.append(generate_steady_state_block(
+                    burst_dur, burst_power, cadence_range=cadence_range
+                ))
+                remaining -= burst_interval
+
+            # Remaining base effort after last burst
+            if remaining > 0:
+                blocks.append(generate_steady_state_block(
+                    remaining, base_power, cadence_range=cadence_range
+                ))
+
+            if sets > 1 and set_num < sets - 1 and set_recovery > 0:
+                blocks.append(generate_steady_state_block(
+                    set_recovery, ZWODefaults.RECOVERY_POWER, cadence_range=cadence_range
+                ))
+
+        blocks.append(generate_cooldown_block(cooldown_duration))
+
+    # =====================================================================
+    # GRAVEL GRIND (Gravel-Specific)
+    # =====================================================================
+    elif "gravel_grind" in level_data:
+        block_duration = level_data.get("block_duration", 1200)
+        base_power = level_data.get("base_power", 0.85)
+        num_spikes = level_data.get("num_spikes", 5)
+        spike_dur = level_data.get("spike_duration", 10)
+        spike_power = level_data.get("spike_power", 1.28)
+        sets = level_data.get("sets", 1)
+        set_recovery = level_data.get("set_recovery", 0)
+
+        blocks.append(generate_warmup_block(warmup_duration))
+
+        for set_num in range(sets):
+            # Evenly space spikes within the block
+            total_spike_time = num_spikes * spike_dur
+            base_time = block_duration - total_spike_time
+            gap = base_time // (num_spikes + 1) if num_spikes > 0 else block_duration
+
+            for spike_num in range(num_spikes):
+                # Base effort before spike
+                blocks.append(generate_steady_state_block(
+                    gap, base_power, cadence_range=cadence_range
+                ))
+                # Terrain spike
+                blocks.append(generate_steady_state_block(
+                    spike_dur, spike_power, cadence_range=cadence_range
+                ))
+
+            # Final base segment after last spike
+            remaining_base = base_time - (gap * num_spikes)
+            if remaining_base > 0:
+                blocks.append(generate_steady_state_block(
+                    remaining_base, base_power, cadence_range=cadence_range
+                ))
+            elif gap > 0:
+                # Add trailing base segment
+                blocks.append(generate_steady_state_block(
+                    gap, base_power, cadence_range=cadence_range
+                ))
+
+            if sets > 1 and set_num < sets - 1 and set_recovery > 0:
+                blocks.append(generate_steady_state_block(
+                    set_recovery, ZWODefaults.RECOVERY_POWER, cadence_range=cadence_range
+                ))
+
+        blocks.append(generate_cooldown_block(cooldown_duration))
+
+    # =====================================================================
+    # LATE RACE SURGE PROTOCOL (Gravel-Specific)
+    # =====================================================================
+    elif "late_race" in level_data:
+        preload_dur = level_data.get("preload_duration", 1200)
+        preload_power = level_data.get("preload_power", 0.70)
+        efforts = level_data.get("efforts", [])
+        sets = level_data.get("sets", 1)
+        set_recovery = level_data.get("set_recovery", 300)
+        finisher_count = level_data.get("finisher_count", 0)
+        finisher_dur = level_data.get("finisher_duration", 30)
+        finisher_power = level_data.get("finisher_power", 1.30)
+
+        blocks.append(generate_warmup_block(warmup_duration))
+
+        # Fatigue preload
+        blocks.append(generate_steady_state_block(
+            preload_dur, preload_power, cadence_range=cadence_range
+        ))
+
+        # Escalating effort sets
+        for set_num in range(sets):
+            for effort in efforts:
+                if isinstance(effort, dict):
+                    blocks.append(generate_steady_state_block(
+                        effort.get("duration", 180),
+                        effort.get("power", 1.00),
+                        cadence_range=cadence_range
+                    ))
+
+            if sets > 1 and set_num < sets - 1:
+                blocks.append(generate_steady_state_block(
+                    set_recovery, ZWODefaults.RECOVERY_POWER, cadence_range=cadence_range
+                ))
+
+        # Optional finisher efforts (sprint finish simulation)
+        if finisher_count > 0:
+            # Brief recovery before finishers
+            blocks.append(generate_steady_state_block(
+                60, ZWODefaults.RECOVERY_POWER, cadence_range=cadence_range
+            ))
+            for i in range(finisher_count):
+                blocks.append(generate_steady_state_block(
+                    finisher_dur, finisher_power, cadence_range=cadence_range
+                ))
+                if i < finisher_count - 1:
+                    blocks.append(generate_steady_state_block(
+                        30, ZWODefaults.RECOVERY_POWER, cadence_range=cadence_range
+                    ))
+
+        blocks.append(generate_cooldown_block(cooldown_duration))
+
+    # =====================================================================
     # RECOVERY WORKOUTS
     # =====================================================================
     elif "recovery" in level_data:
@@ -2095,6 +2451,26 @@ def get_nutrition_guidelines(archetype: Dict, level_data: Dict) -> str:
     if any(x in archetype_name for x in ["breakaway", "race", "chaos", "sector"]):
         return "70-80g carbs/hr. Practice race-day nutrition exactly as you'll execute it."
 
+    # Gravel-specific workouts - race fueling practice
+    if any(x in archetype_name for x in ["surge", "settle", "microburst", "gravel grind", "late race"]):
+        return "60-80g carbs/hr. Practice race nutrition - eating while the power varies."
+
+    # SFR / Force workouts - moderate fueling
+    if any(x in archetype_name for x in ["sfr", "force", "stomp"]):
+        return "40-60g carbs/hr. Moderate intensity, focus on recovery nutrition."
+
+    # Over/Under and Climbing - high fueling
+    if any(x in archetype_name for x in ["over", "under", "climbing", "mixed climb"]):
+        return "60-80g carbs/hr. Variable intensity demands consistent fueling."
+
+    # Blended multi-system - race fueling
+    if any(x in archetype_name for x in ["blended", "buffer"]):
+        return "60-80g carbs/hr. Practice race nutrition - multi-zone demands steady fueling."
+
+    # Tired/Durability imported - race fueling practice
+    if any(x in archetype_name for x in ["tired 30", "tired 40", "tired threshold", "tired tempo", "simulation combo", "bookend"]):
+        return "60-80g carbs/hr. Fueling under fatigue is a skill to practice."
+
     # Threshold/tempo/G-Spot workouts - guide says 60-80g for moderate-to-high intensity
     if any(x in archetype_name for x in ["threshold", "g-spot", "norwegian", "tt", "sustained"]):
         return "60-80g carbs/hr. Start fueling at 30-45min. Mix gels and drink mix."
@@ -2133,6 +2509,18 @@ def get_hydration_guidelines(archetype: Dict, level_data: Dict) -> str:
     # High-intensity = higher sweat rate
     if any(x in archetype_name for x in ["vo2", "anaerobic", "sprint", "threshold"]):
         return "500-750ml/hr with electrolytes. Start hydrated."
+
+    # Gravel-specific - variable intensity means higher sweat rate
+    if any(x in archetype_name for x in ["surge", "settle", "microburst", "gravel grind", "late race"]):
+        return "500-750ml/hr with electrolytes. Variable power = higher sweat rate than steady state."
+
+    # Force/SFR - moderate sweat
+    if any(x in archetype_name for x in ["sfr", "force", "stomp"]):
+        return "500ml/hr with electrolytes. Lower intensity but sustained effort."
+
+    # Multi-zone/blended - higher sweat
+    if any(x in archetype_name for x in ["blended", "buffer", "over", "under", "climbing"]):
+        return "500-750ml/hr with electrolytes. Variable intensity = unpredictable sweat rate."
 
     # Long rides
     if duration > 5400:
@@ -2185,6 +2573,337 @@ def get_execution_tips(archetype: Dict, level_data: Dict) -> str:
     return "Focus on consistent effort and good form throughout."
 
 
+def _get_default_cadence(archetype_name: str, level: int) -> str:
+    """Return a default cadence prescription based on workout category and level.
+
+    Used as a fallback when an archetype level doesn't specify cadence_prescription.
+    Cadence progresses from comfortable to race-pace across levels.
+    """
+    name_lower = archetype_name.lower()
+
+    # Category-specific base cadences
+    if any(x in name_lower for x in ["vo2", "norwegian"]):
+        # VO2max: high cadence for aerobic efficiency
+        defaults = {
+            1: "85-95rpm (comfortable turnover)",
+            2: "90-100rpm (building turnover)",
+            3: "90-100rpm (high cadence for VO2max efficiency)",
+            4: "95-100rpm (race cadence, controlled power)",
+            5: "95-105rpm (race cadence, controlled power)",
+            6: "95-105rpm (race cadence, maximum output)",
+        }
+    elif any(x in name_lower for x in ["threshold", "sustained", "ramp", "descending threshold"]):
+        # Threshold: moderate-high cadence
+        defaults = {
+            1: "85-90rpm (comfortable, sustainable)",
+            2: "85-95rpm (building sustainable cadence)",
+            3: "88-95rpm (efficient threshold cadence)",
+            4: "90-95rpm (race threshold cadence)",
+            5: "90-100rpm (high cadence threshold)",
+            6: "90-100rpm (race cadence throughout)",
+        }
+    elif any(x in name_lower for x in ["sprint", "attack", "peak", "buildup"]):
+        # Sprint/neuromuscular: explosive
+        defaults = {
+            1: "100-110rpm (high turnover for power)",
+            2: "100-115rpm (building explosive cadence)",
+            3: "105-120rpm (explosive race cadence)",
+            4: "110-120rpm (race attack cadence)",
+            5: "110-125rpm (maximum power cadence)",
+            6: "115-130rpm (all-out sprint cadence)",
+        }
+    elif any(x in name_lower for x in ["anaerobic", "killer", "1min", "90sec"]):
+        # Anaerobic: high cadence for power
+        defaults = {
+            1: "95-105rpm (high turnover)",
+            2: "95-105rpm (building power cadence)",
+            3: "100-110rpm (race effort cadence)",
+            4: "100-110rpm (sustained high cadence)",
+            5: "100-115rpm (maximum sustainable cadence)",
+            6: "105-115rpm (all-out effort cadence)",
+        }
+    elif any(x in name_lower for x in ["g-spot", "g_spot", "gspot", "tempo"]):
+        # G-Spot: moderate cadence, sustainable
+        defaults = {
+            1: "85-90rpm (comfortable, find rhythm)",
+            2: "85-92rpm (building consistency)",
+            3: "88-95rpm (sustainable race cadence)",
+            4: "90-95rpm (race simulation cadence)",
+            5: "90-95rpm (dialed race cadence)",
+            6: "90-100rpm (race-day cadence)",
+        }
+    elif any(x in name_lower for x in ["durability", "tired", "double", "progressive fatigue"]):
+        # Durability: maintain cadence under fatigue
+        defaults = {
+            1: "85-90rpm (comfortable baseline)",
+            2: "85-90rpm (maintain under light fatigue)",
+            3: "85-95rpm (cadence discipline when tired)",
+            4: "88-95rpm (hold cadence as fatigue builds)",
+            5: "90-95rpm (race cadence despite fatigue)",
+            6: "90-95rpm (race cadence under max fatigue)",
+        }
+    elif any(x in name_lower for x in ["surge", "settle", "microburst", "gravel grind", "late race"]):
+        # Gravel-specific: variable cadence with terrain response
+        defaults = {
+            1: "85-95rpm (find your terrain cadence)",
+            2: "88-98rpm (practice quick cadence changes)",
+            3: "90-100rpm (terrain-responsive cadence)",
+            4: "90-105rpm (race cadence with surge response)",
+            5: "90-110rpm (full range terrain cadence)",
+            6: "90-115rpm (maximum terrain adaptability)",
+        }
+    elif any(x in name_lower for x in ["sfr", "force rep", "muscle force"]):
+        # SFR: Low cadence for force development
+        defaults = {
+            1: "50-60rpm (force development, controlled)",
+            2: "50-60rpm (building torque tolerance)",
+            3: "50-60rpm (sustained force, smooth power)",
+            4: "50-55rpm (maximum force development)",
+            5: "50-55rpm (race-grade torque)",
+            6: "50-55rpm (peak force, gravel climb simulation)",
+        }
+    elif any(x in name_lower for x in ["over", "under", "climbing", "mixed"]):
+        # Over/Under and Climbing: Variable cadence
+        defaults = {
+            1: "70-80rpm (climbing cadence)",
+            2: "70-85rpm (building climbing range)",
+            3: "70-85rpm seated, 60-70rpm standing",
+            4: "65-80rpm (terrain-responsive climbing)",
+            5: "65-85rpm (full climbing cadence range)",
+            6: "60-85rpm (race climbing cadence)",
+        }
+    elif any(x in name_lower for x in ["cadence", "high cadence"]):
+        # Cadence Work: High cadence
+        defaults = {
+            1: "100-110rpm (leg speed focus)",
+            2: "100-110rpm (building speed endurance)",
+            3: "105-115rpm (higher sustained cadence)",
+            4: "105-115rpm (race-speed leg turnover)",
+            5: "110-120rpm (maximum sustained cadence)",
+            6: "110-120rpm (peak leg speed)",
+        }
+    elif any(x in name_lower for x in ["blended", "buffer"]):
+        # Blended: Variable cadence
+        defaults = {
+            1: "85-95rpm (comfortable baseline)",
+            2: "85-100rpm (adapting to changes)",
+            3: "85-100rpm (multi-zone cadence)",
+            4: "90-105rpm (race-like cadence variation)",
+            5: "90-105rpm (full range variation)",
+            6: "85-110rpm (maximum adaptability)",
+        }
+    elif any(x in name_lower for x in ["tempo accel", "tempo sprint", "tempo lift", "bookend tempo", "3x15"]):
+        # Tempo variants
+        defaults = {
+            1: "85-90rpm (sustainable tempo cadence)",
+            2: "85-92rpm (building tempo consistency)",
+            3: "88-95rpm (efficient tempo cadence)",
+            4: "88-95rpm (race-pace tempo)",
+            5: "90-95rpm (high-efficiency tempo)",
+            6: "90-100rpm (race-day tempo cadence)",
+        }
+    elif any(x in name_lower for x in ["tired", "bookend", "simulation combo"]):
+        # Durability: Maintain cadence under fatigue
+        defaults = {
+            1: "85-90rpm (comfortable under fatigue)",
+            2: "85-90rpm (cadence discipline when tired)",
+            3: "85-95rpm (race cadence despite fatigue)",
+            4: "88-95rpm (hold cadence as fatigue builds)",
+            5: "90-95rpm (race cadence under deep fatigue)",
+            6: "90-95rpm (race cadence under max fatigue)",
+        }
+    elif any(x in name_lower for x in ["breakaway", "race", "sector", "variable", "chaos"]):
+        # Race simulation: variable cadence
+        defaults = {
+            1: "85-95rpm (comfortable, practice variability)",
+            2: "85-100rpm (adapt to changes)",
+            3: "85-100rpm (race-like cadence variation)",
+            4: "90-105rpm (attack cadence on efforts, recovery spin between)",
+            5: "90-105rpm (race cadence with surges)",
+            6: "90-110rpm (full race cadence range)",
+        }
+    elif any(x in name_lower for x in ["endurance", "opener", "terrain", "hvli"]):
+        # Endurance / Openers: comfortable
+        defaults = {
+            1: "80-90rpm (natural, comfortable)",
+            2: "80-90rpm (sustainable turnover)",
+            3: "82-92rpm (building efficiency)",
+            4: "85-92rpm (consistent, efficient)",
+            5: "85-95rpm (race-pace practice)",
+            6: "85-95rpm (race-day efficiency)",
+        }
+    else:
+        # Generic fallback
+        defaults = {
+            1: "85-95rpm (comfortable turnover)",
+            2: "85-95rpm (building consistency)",
+            3: "90-100rpm (efficient cadence)",
+            4: "90-100rpm (race cadence)",
+            5: "95-105rpm (race cadence, controlled power)",
+            6: "95-105rpm (race cadence, maximum output)",
+        }
+
+    return defaults.get(level, defaults[3])
+
+
+def _get_default_position(archetype_name: str, level: int) -> str:
+    """Return a default position prescription based on workout category and level.
+
+    Used as a fallback when an archetype level doesn't specify position_prescription.
+    Position progresses from comfortable to race-aggressive across levels.
+    """
+    name_lower = archetype_name.lower()
+
+    # Category-specific positions
+    if any(x in name_lower for x in ["vo2", "norwegian"]):
+        defaults = {
+            1: "Seated, on the hoods",
+            2: "Seated, hoods or drops",
+            3: "Drops for efforts, hoods for recovery",
+            4: "Drops for efforts, hoods for recovery",
+            5: "Standing first 15sec of each interval, then seated in drops",
+            6: "Standing first 15sec of each interval, drops throughout",
+        }
+    elif any(x in name_lower for x in ["threshold", "sustained", "ramp", "descending threshold"]):
+        defaults = {
+            1: "Seated, on the hoods",
+            2: "Seated, hoods or drops",
+            3: "Drops for efforts, hoods for recovery",
+            4: "Aero position if comfortable, otherwise drops",
+            5: "Race position - drops or aero",
+            6: "Full race position throughout",
+        }
+    elif any(x in name_lower for x in ["sprint", "attack", "peak", "buildup"]):
+        defaults = {
+            1: "Out of saddle for sprints, seated recovery",
+            2: "Out of saddle for sprints, drops for seated efforts",
+            3: "Standing attacks, drops between",
+            4: "Full standing sprints, aggressive seated position",
+            5: "Race aggression - out of saddle on every effort",
+            6: "Maximum aggression - full race attack mode",
+        }
+    elif any(x in name_lower for x in ["anaerobic", "killer", "1min", "90sec"]):
+        defaults = {
+            1: "Seated, on the hoods",
+            2: "Seated or standing as needed",
+            3: "Standing start, sit as power stabilizes",
+            4: "Standing start, drops when seated",
+            5: "Standing for first 10sec, drops throughout",
+            6: "Full race aggression - whatever produces power",
+        }
+    elif any(x in name_lower for x in ["g-spot", "g_spot", "gspot", "tempo"]):
+        defaults = {
+            1: "Seated, on the hoods",
+            2: "Seated, hoods or drops",
+            3: "Alternate seated/standing every other interval",
+            4: "Drops for efforts, hoods for recovery",
+            5: "Race position practice",
+            6: "Full race position throughout",
+        }
+    elif any(x in name_lower for x in ["durability", "tired", "double", "progressive fatigue"]):
+        defaults = {
+            1: "Comfortable, alternate hoods/drops every 20min",
+            2: "Alternate positions every 15-20min",
+            3: "Practice race position under fatigue",
+            4: "Race position on efforts, hoods on recovery",
+            5: "Full race position rotation",
+            6: "Race position throughout - build tolerance",
+        }
+    elif any(x in name_lower for x in ["surge", "settle", "microburst", "gravel grind", "late race"]):
+        # Gravel-specific: frequent position changes
+        defaults = {
+            1: "Seated mostly, stand for surges/spikes",
+            2: "Alternate seated/standing on efforts",
+            3: "Standing surges, drops for sustained work",
+            4: "Race-like position changes - stand, sit, drops, hoods",
+            5: "Full race aggression with rapid position changes",
+            6: "Maximum race simulation - constant position adaptation",
+        }
+    elif any(x in name_lower for x in ["sfr", "force rep", "muscle force"]):
+        defaults = {
+            1: "Seated, hands on hoods, focus on pedal stroke",
+            2: "Seated, hoods or tops, smooth circles",
+            3: "Seated in drops, engage core",
+            4: "Seated, drops, full body tension",
+            5: "Seated, drops, race climbing position",
+            6: "Seated, drops, maximum force application",
+        }
+    elif any(x in name_lower for x in ["over", "under", "climbing", "mixed"]):
+        defaults = {
+            1: "Seated for unders, standing for overs",
+            2: "Alternate seated/standing on efforts",
+            3: "Standing for threshold surges, seated for tempo",
+            4: "Race-like position changes on gradient changes",
+            5: "Full climbing aggression - stand, sit, attack",
+            6: "Maximum climbing versatility",
+        }
+    elif any(x in name_lower for x in ["cadence", "high cadence"]):
+        defaults = {
+            1: "Seated, on the hoods, relaxed upper body",
+            2: "Seated, hoods, focus on smooth pedal circles",
+            3: "Seated, drops for higher cadence efforts",
+            4: "Seated, drops, minimal upper body movement",
+            5: "Race position - drops, still upper body",
+            6: "Full race position, maximum efficiency",
+        }
+    elif any(x in name_lower for x in ["blended", "buffer"]):
+        defaults = {
+            1: "Vary positions with effort type",
+            2: "Match position to effort: drops for hard, hoods for easy",
+            3: "Race-like position transitions",
+            4: "Full position repertoire",
+            5: "Aggressive position changes matching efforts",
+            6: "Full race mode - constant adaptation",
+        }
+    elif any(x in name_lower for x in ["tempo accel", "tempo sprint", "tempo lift", "bookend tempo", "3x15"]):
+        defaults = {
+            1: "Seated, hoods for tempo, drops for efforts",
+            2: "Hoods for base, drops for acceleration",
+            3: "Race position practice during tempo blocks",
+            4: "Drops throughout, standing for sprints",
+            5: "Full race position rotation",
+            6: "Race-day position strategy",
+        }
+    elif any(x in name_lower for x in ["tired", "bookend", "simulation combo"]):
+        defaults = {
+            1: "Comfortable, alternate every 20min",
+            2: "Alternate hoods/drops as fatigue builds",
+            3: "Practice race position under fatigue",
+            4: "Race position on efforts despite fatigue",
+            5: "Full race position under deep fatigue",
+            6: "Race position throughout - build tolerance",
+        }
+    elif any(x in name_lower for x in ["breakaway", "race", "sector", "variable", "chaos"]):
+        defaults = {
+            1: "Vary between hoods and drops",
+            2: "Drops on efforts, hoods on recovery",
+            3: "Standing attacks, drops between",
+            4: "Race position - match real race movements",
+            5: "Full race aggression with position changes",
+            6: "Full race mode - attack and recover positions",
+        }
+    elif any(x in name_lower for x in ["endurance", "opener", "terrain", "hvli"]):
+        defaults = {
+            1: "Comfortable, alternate every 20min",
+            2: "Alternate hoods/drops every 15-20min",
+            3: "Practice race position in final third",
+            4: "Position rotation - build comfort in all positions",
+            5: "Race position practice throughout",
+            6: "Full position rotation including aero",
+        }
+    else:
+        defaults = {
+            1: "Seated, on the hoods",
+            2: "Seated, hoods or drops",
+            3: "Alternate seated/standing every other interval",
+            4: "Drops for efforts, hoods for recovery",
+            5: "Standing for first 15sec, drops throughout",
+            6: "Full race position throughout",
+        }
+
+    return defaults.get(level, defaults[3])
+
+
 def generate_description(
     archetype: Dict,
     level: int,
@@ -2213,10 +2932,12 @@ def generate_description(
     lines.append("MAIN SET:")
     lines.append(f"-{level_data.get('structure', 'See workout structure')}")
 
-    # Dimensions
+    # Dimensions — use archetype-specific values if present, otherwise
+    # fall back to level-appropriate defaults based on workout category
     if include_dimensions:
-        cadence = level_data.get("cadence_prescription")
-        position = level_data.get("position_prescription")
+        archetype_name = archetype.get("name", "")
+        cadence = level_data.get("cadence_prescription") or _get_default_cadence(archetype_name, level)
+        position = level_data.get("position_prescription") or _get_default_position(archetype_name, level)
 
         if cadence:
             lines.append(f"-Cadence: {cadence}")

@@ -24,7 +24,7 @@ HEAT ACCLIMATION:
   <sportType>bike</sportType>
   <workout>
     <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.68"/>
-    <SteadyState Duration="1560" Power="0.60"/>
+    <SteadyState Duration="1440" Power="0.60"/>
     <IntervalsT Repeat="4" OnDuration="30" OnPower="1.20" OffDuration="60" OffPower="0.50"/>
     <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
   </workout>

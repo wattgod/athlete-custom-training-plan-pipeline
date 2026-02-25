@@ -47,6 +47,6 @@ GO GET IT, BENJY!
 </description>
   <sportType>bike</sportType>
   <workout>
-    <FreeRide Duration="19440"/>
+    <FreeRide Duration="19200"/>
   </workout>
 </workout_file>

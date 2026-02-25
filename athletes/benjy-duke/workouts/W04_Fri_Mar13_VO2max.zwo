@@ -9,14 +9,16 @@ WARM-UP:
 -15min building from Z1 to Z2
 
 MAIN SET:
--15min warmup Z2, 5x3min @ 110-115% FTP, 3min recovery between
+-15min warmup Z2, 4x (3min @ 117% FTP + 2min @ 85% FTP), 3min Z1 between sets
+-Cadence: 90-100rpm (building turnover)
+-Position: Seated, hoods or drops
 
 COOL-DOWN:
 -10min easy spin Z1-Z2
 
 PROGRESSION:
 -Level 2/6: Foundation - Building base fitness with moderate challenge
--Building volume - control the power, don't go too deep early
+-Building volume - tempo recovery keeps HR elevated
 
 PURPOSE:
 VO2max development. Maximum aerobic power—the engine that drives race-winning attacks.
@@ -25,14 +27,14 @@ EXECUTION:
 -Hit target from the start, but don't hero interval 1. Full recovery between (4-5min Z1).
 
 NUTRITION:
--30-60g carbs/hr. Easily digestible. Nothing heavy 2hrs before.
+-60-80g carbs/hr. Variable intensity demands consistent fueling.
 
 HYDRATION:
 -500-750ml/hr with electrolytes. Start hydrated.</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75"/>
-    <IntervalsT Repeat="5" OnDuration="180" OnPower="1.12" CadenceLow="90" CadenceHigh="100" OffDuration="180" OffPower="0.55"/>
+    <Warmup Duration="1080" PowerLow="0.50" PowerHigh="0.75"/>
+    <IntervalsT Repeat="4" OnDuration="300" OnPower="1.17" CadenceLow="90" CadenceHigh="100" OffDuration="180" OffPower="0.50"/>
     <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
   </workout>
 </workout_file>

@@ -6,7 +6,7 @@
 Phase: MAINTENANCE
 
 STRUCTURE:
-45 min @ Z2 (65-75% FTP)
+200 min @ Z2 (65-75% FTP)
 
 PURPOSE:
 Aerobic base building. This is where 80% of your training volume lives.
@@ -18,8 +18,8 @@ RPE:
 RPE 3-4 (moderate, sustainable for hours)</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.68"/>
-    <SteadyState Duration="2100" Power="0.62"/>
+    <Warmup Duration="1200" PowerLow="0.50" PowerHigh="0.68"/>
+    <SteadyState Duration="10500" Power="0.62"/>
     <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
   </workout>
 </workout_file>

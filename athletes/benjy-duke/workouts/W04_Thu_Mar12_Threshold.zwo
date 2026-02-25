@@ -9,14 +9,16 @@ WARM-UP:
 -20min building from Z1 to Z2
 
 MAIN SET:
--20min warmup Z2 with 2x1min openers, 1x25min @ 96-99% FTP, 10min cooldown
+-10x3min @ 93-105% FTP, RPE 7-8 (1min recovery); 5min @ 76-87% FTP, RPE 5-6; Cadence: 85-95rpm (race cadence for threshold work); Position: Seated, drops or hoods
+-Cadence: 85-95rpm (building sustainable cadence)
+-Position: Seated, hoods or drops
 
 COOL-DOWN:
 -10min easy spin Z1-Z2
 
 PROGRESSION:
 -Level 2/6: Foundation - Building base fitness with moderate challenge
--Building duration - find your rhythm and lock in
+-Threshold accumulation. Many short threshold intervals with brief recovery build high-volume threshold work. This format accumulates more time at threshold than longer intervals allow, building race-pace endurance. Level 2: Building volume. Same pattern, more work. The fitness is in the accumulation.
 
 PURPOSE:
 Threshold development. The power you can sustain for 20-60 minutes.
@@ -32,7 +34,7 @@ HYDRATION:
   <sportType>bike</sportType>
   <workout>
     <Warmup Duration="1200" PowerLow="0.50" PowerHigh="0.75"/>
-    <SteadyState Duration="1500" Power="0.97" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="10" OnDuration="180" OnPower="1.00" CadenceLow="85" CadenceHigh="95" OffDuration="60" OffPower="0.70"/>
     <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
   </workout>
 </workout_file>

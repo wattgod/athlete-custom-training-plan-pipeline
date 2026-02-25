@@ -119,7 +119,7 @@ WORKOUT_DURATIONS: Dict[str, int] = {
 
 # === FTP TEST ===
 
-FTP_TEST_DURATION_MIN: int = 62  # Based on standard protocol
+FTP_TEST_DURATION_MIN: int = 60  # 10m warmup + 5m RPE6 + 5m easy + 5m blowout + 5m easy + 20m FTP + 10m cooldown
 
 
 # === TRAINING PHASES ===

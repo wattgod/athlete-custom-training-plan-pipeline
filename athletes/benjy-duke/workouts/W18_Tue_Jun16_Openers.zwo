@@ -1,0 +1,26 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W18_Tue_Jun16_Openers</name>
+  <description>Benjy - Week 18/19 - 2 weeks to SBT GRVL 75
+Phase: TAPER
+
+STRUCTURE:
+30 min with 4x30sec openers @ 120% FTP
+
+PURPOSE:
+Pre-race activation. Wake up the legs without creating fatigue.
+
+EXECUTION:
+Short, sharp efforts. Full recovery between. Done when you feel snappy.
+
+RPE:
+RPE 7-8 for efforts (short and controlled)</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.68"/>
+    <SteadyState Duration="840" Power="0.60"/>
+    <IntervalsT Repeat="4" OnDuration="30" OnPower="1.20" OffDuration="60" OffPower="0.50"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

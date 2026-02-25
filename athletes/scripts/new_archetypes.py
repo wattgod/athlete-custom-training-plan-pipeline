@@ -3292,6 +3292,359 @@ INSCYD_NEW = [
 
 
 # =============================================================================
+# GRAVEL-SPECIFIC ARCHETYPES
+# =============================================================================
+
+GRAVEL_SPECIFIC = [
+    {
+        'name': 'Surge and Settle',
+        'levels': {
+            '1': {
+                'structure': '15min warmup Z2, 2x (3 surges: 20sec @ 130% FTP, 90sec settle @ 85% FTP), 5min recovery between sets',
+                'execution': 'Explosive out of saddle for each surge, then immediately settle to tempo. Practice rapid power changes.',
+                'cadence_prescription': '100-120rpm surge, 85-90rpm settle',
+                'cadence': 105,
+                'position_prescription': 'Out of saddle for surges, seated in drops for settle',
+                'timing_prescription': 'Fresh or moderate fatigue',
+                'fueling': '60-70g CHO/hr',
+                'surge_settle': True,
+                'surges_per_set': 3,
+                'sets': 2,
+                'surge_duration': 20,
+                'surge_power': 1.30,
+                'settle_duration': 90,
+                'settle_power': 0.85,
+                'set_recovery': 300
+            },
+            '2': {
+                'structure': '15min warmup Z2, 2x (4 surges: 20sec @ 135% FTP, 75sec settle @ 85% FTP), 5min recovery between sets',
+                'execution': 'Added surge per set. Hold settle power steady between surges.',
+                'surge_settle': True,
+                'surges_per_set': 4,
+                'sets': 2,
+                'surge_duration': 20,
+                'surge_power': 1.35,
+                'settle_duration': 75,
+                'settle_power': 0.85,
+                'set_recovery': 300
+            },
+            '3': {
+                'structure': '15min warmup Z2, 2x (5 surges: 20sec @ 138% FTP, 60sec settle @ 86% FTP), 4min recovery between sets',
+                'execution': 'More surges, shorter settle. Building sustained surge capacity.',
+                'surge_settle': True,
+                'surges_per_set': 5,
+                'sets': 2,
+                'surge_duration': 20,
+                'surge_power': 1.38,
+                'settle_duration': 60,
+                'settle_power': 0.86,
+                'set_recovery': 240
+            },
+            '4': {
+                'structure': '15min warmup Z2, 3x (4 surges: 25sec @ 140% FTP, 60sec settle @ 87% FTP), 4min recovery between sets',
+                'execution': 'Three sets now. Longer surges, higher settle power. Manage fatigue across sets.',
+                'surge_settle': True,
+                'surges_per_set': 4,
+                'sets': 3,
+                'surge_duration': 25,
+                'surge_power': 1.40,
+                'settle_duration': 60,
+                'settle_power': 0.87,
+                'set_recovery': 240
+            },
+            '5': {
+                'structure': '15min warmup Z2, 3x (5 surges: 25sec @ 145% FTP, 50sec settle @ 88% FTP), 3min recovery between sets',
+                'execution': 'Race-realistic density. Reduced recovery between sets forces adaptation.',
+                'surge_settle': True,
+                'surges_per_set': 5,
+                'sets': 3,
+                'surge_duration': 25,
+                'surge_power': 1.45,
+                'settle_duration': 50,
+                'settle_power': 0.88,
+                'set_recovery': 180
+            },
+            '6': {
+                'structure': '15min warmup Z2, 3x (6 surges: 30sec @ 150% FTP, 45sec settle @ 88% FTP), 3min recovery between sets',
+                'execution': 'Maximum surge density and power. Full race-simulation intensity.',
+                'surge_settle': True,
+                'surges_per_set': 6,
+                'sets': 3,
+                'surge_duration': 30,
+                'surge_power': 1.50,
+                'settle_duration': 45,
+                'settle_power': 0.88,
+                'set_recovery': 180
+            }
+        }
+    },
+    {
+        'name': 'Terrain Microbursts',
+        'levels': {
+            '1': {
+                'structure': '15min warmup Z2, 15min @ 82% FTP with 5sec bursts @ 125% every 90sec',
+                'execution': 'Maintain base power between bursts. Each burst is a quick acceleration - dont overthink it, just punch it.',
+                'cadence_prescription': '88-92rpm base, 100-110rpm on bursts',
+                'cadence': 92,
+                'position_prescription': 'Seated in drops. Stand briefly for bursts.',
+                'timing_prescription': 'Moderate fatigue OK',
+                'fueling': '60-70g CHO/hr',
+                'microbursts': True,
+                'block_duration': 900,
+                'base_power': 0.82,
+                'burst_duration': 5,
+                'burst_power': 1.25,
+                'burst_interval': 90,
+                'sets': 1,
+                'set_recovery': 0
+            },
+            '2': {
+                'structure': '15min warmup Z2, 20min @ 83% FTP with 6sec bursts @ 128% every 75sec',
+                'execution': 'Longer block, slightly higher base and burst power. Stay smooth.',
+                'microbursts': True,
+                'block_duration': 1200,
+                'base_power': 0.83,
+                'burst_duration': 6,
+                'burst_power': 1.28,
+                'burst_interval': 75,
+                'sets': 1,
+                'set_recovery': 0
+            },
+            '3': {
+                'structure': '15min warmup Z2, 2x 12min @ 85% FTP with 6sec bursts @ 132% every 60sec, 5min recovery',
+                'execution': 'Two blocks now. More frequent bursts demand better recovery between punches.',
+                'microbursts': True,
+                'block_duration': 720,
+                'base_power': 0.85,
+                'burst_duration': 6,
+                'burst_power': 1.32,
+                'burst_interval': 60,
+                'sets': 2,
+                'set_recovery': 300
+            },
+            '4': {
+                'structure': '15min warmup Z2, 2x 15min @ 87% FTP with 7sec bursts @ 135% every 50sec, 4min recovery',
+                'execution': 'Higher base, longer bursts, tighter intervals. This is rocky singletrack simulation.',
+                'microbursts': True,
+                'block_duration': 900,
+                'base_power': 0.87,
+                'burst_duration': 7,
+                'burst_power': 1.35,
+                'burst_interval': 50,
+                'sets': 2,
+                'set_recovery': 240
+            },
+            '5': {
+                'structure': '15min warmup Z2, 2x 15min @ 88% FTP with 8sec bursts @ 140% every 40sec, 4min recovery',
+                'execution': 'Near-constant microburst frequency. Sustained power under repeated disruption.',
+                'microbursts': True,
+                'block_duration': 900,
+                'base_power': 0.88,
+                'burst_duration': 8,
+                'burst_power': 1.40,
+                'burst_interval': 40,
+                'sets': 2,
+                'set_recovery': 240
+            },
+            '6': {
+                'structure': '15min warmup Z2, 3x 12min @ 90% FTP with 8sec bursts @ 145% every 35sec, 3min recovery',
+                'execution': 'Maximum microburst density across three blocks. Race-day terrain simulation.',
+                'microbursts': True,
+                'block_duration': 720,
+                'base_power': 0.90,
+                'burst_duration': 8,
+                'burst_power': 1.45,
+                'burst_interval': 35,
+                'sets': 3,
+                'set_recovery': 180
+            }
+        }
+    },
+    {
+        'name': 'Gravel Grind',
+        'levels': {
+            '1': {
+                'structure': '15min warmup Z2, 20min @ 82% FTP with 4 terrain spikes (10sec @ 120% FTP)',
+                'execution': 'Grinding sustained effort with sharp terrain spikes. Spikes are evenly distributed. Recover ON the base effort, not off.',
+                'cadence_prescription': '85-90rpm base, 95-105rpm on spikes',
+                'cadence': 90,
+                'position_prescription': 'Drops for base, out of saddle for spikes',
+                'timing_prescription': 'Can do on moderate fatigue',
+                'fueling': '60-80g CHO/hr - practice race nutrition',
+                'gravel_grind': True,
+                'block_duration': 1200,
+                'base_power': 0.82,
+                'num_spikes': 4,
+                'spike_duration': 10,
+                'spike_power': 1.20,
+                'sets': 1,
+                'set_recovery': 0
+            },
+            '2': {
+                'structure': '15min warmup Z2, 25min @ 83% FTP with 5 terrain spikes (10sec @ 125% FTP)',
+                'execution': 'Longer grind block, more spikes. Hold base power through each spike recovery.',
+                'gravel_grind': True,
+                'block_duration': 1500,
+                'base_power': 0.83,
+                'num_spikes': 5,
+                'spike_duration': 10,
+                'spike_power': 1.25,
+                'sets': 1,
+                'set_recovery': 0
+            },
+            '3': {
+                'structure': '15min warmup Z2, 2x 15min @ 85% FTP with 5 terrain spikes (12sec @ 128% FTP), 5min recovery',
+                'execution': 'Two grinding blocks. Longer spikes test your ability to return to base quickly.',
+                'gravel_grind': True,
+                'block_duration': 900,
+                'base_power': 0.85,
+                'num_spikes': 5,
+                'spike_duration': 12,
+                'spike_power': 1.28,
+                'sets': 2,
+                'set_recovery': 300
+            },
+            '4': {
+                'structure': '15min warmup Z2, 2x 18min @ 87% FTP with 6 terrain spikes (12sec @ 132% FTP), 4min recovery',
+                'execution': 'Higher base power with more frequent spikes. This is hour-3-of-a-gravel-race territory.',
+                'gravel_grind': True,
+                'block_duration': 1080,
+                'base_power': 0.87,
+                'num_spikes': 6,
+                'spike_duration': 12,
+                'spike_power': 1.32,
+                'sets': 2,
+                'set_recovery': 240
+            },
+            '5': {
+                'structure': '15min warmup Z2, 2x 20min @ 88% FTP with 7 terrain spikes (10sec @ 138% FTP), 4min recovery',
+                'execution': 'Dense spike pattern on a high base. Spikes are sharper but shorter - punch and recover.',
+                'gravel_grind': True,
+                'block_duration': 1200,
+                'base_power': 0.88,
+                'num_spikes': 7,
+                'spike_duration': 10,
+                'spike_power': 1.38,
+                'sets': 2,
+                'set_recovery': 240
+            },
+            '6': {
+                'structure': '15min warmup Z2, 2x 25min @ 90% FTP with 8 terrain spikes (8sec @ 145% FTP), 3min recovery',
+                'execution': 'Maximum grind. High base with rapid-fire spikes. The 200-miler special.',
+                'gravel_grind': True,
+                'block_duration': 1500,
+                'base_power': 0.90,
+                'num_spikes': 8,
+                'spike_duration': 8,
+                'spike_power': 1.45,
+                'sets': 2,
+                'set_recovery': 180
+            }
+        }
+    },
+    {
+        'name': 'Late Race Surge Protocol',
+        'levels': {
+            '1': {
+                'structure': '15min warmup Z2, 15min Z2 preload, 1x (3min @ 92% + 2min @ 102% FTP)',
+                'execution': 'The preload is NOT recovery. Its fatiguing Z2 to simulate hours of riding. Then hit efforts HARD.',
+                'cadence_prescription': '85-90rpm preload, 90-95rpm efforts',
+                'cadence': 90,
+                'position_prescription': 'Hoods for preload, drops for efforts',
+                'timing_prescription': 'Best on moderate fatigue - dont come in fresh',
+                'fueling': '60-80g CHO/hr - fuel through the preload',
+                'late_race': True,
+                'preload_duration': 900,
+                'preload_power': 0.68,
+                'efforts': [
+                    {'duration': 180, 'power': 0.92},
+                    {'duration': 120, 'power': 1.02}
+                ],
+                'sets': 1,
+                'set_recovery': 0
+            },
+            '2': {
+                'structure': '15min warmup Z2, 20min Z2 preload, 1x (3min @ 95% + 2min @ 105% + 1min @ 112% FTP)',
+                'execution': 'Longer preload, added third effort. Escalating intensity mimics late-race attacks.',
+                'late_race': True,
+                'preload_duration': 1200,
+                'preload_power': 0.68,
+                'efforts': [
+                    {'duration': 180, 'power': 0.95},
+                    {'duration': 120, 'power': 1.05},
+                    {'duration': 60, 'power': 1.12}
+                ],
+                'sets': 1,
+                'set_recovery': 0
+            },
+            '3': {
+                'structure': '15min warmup Z2, 20min Z2 preload, 2x (3min @ 95% + 2min @ 108% + 1min @ 115% FTP), 5min recovery',
+                'execution': 'Two full sets after preload. Second set is where the real adaptation happens.',
+                'late_race': True,
+                'preload_duration': 1200,
+                'preload_power': 0.70,
+                'efforts': [
+                    {'duration': 180, 'power': 0.95},
+                    {'duration': 120, 'power': 1.08},
+                    {'duration': 60, 'power': 1.15}
+                ],
+                'sets': 2,
+                'set_recovery': 300
+            },
+            '4': {
+                'structure': '15min warmup Z2, 25min Z2 preload, 2x (4min @ 98% + 3min @ 110% + 1min @ 118% FTP), 5min recovery',
+                'execution': 'Extended preload and longer efforts. This is the hour-5 push to the finish.',
+                'late_race': True,
+                'preload_duration': 1500,
+                'preload_power': 0.70,
+                'efforts': [
+                    {'duration': 240, 'power': 0.98},
+                    {'duration': 180, 'power': 1.10},
+                    {'duration': 60, 'power': 1.18}
+                ],
+                'sets': 2,
+                'set_recovery': 300
+            },
+            '5': {
+                'structure': '15min warmup Z2, 25min Z2 preload, 2x (4min @ 100% + 3min @ 112% + 90sec @ 120% FTP), 4min recovery, then 3x 30sec @ 130% finishers',
+                'execution': 'Full protocol with sprint finishers. The finishers simulate the final kick on empty legs.',
+                'late_race': True,
+                'preload_duration': 1500,
+                'preload_power': 0.72,
+                'efforts': [
+                    {'duration': 240, 'power': 1.00},
+                    {'duration': 180, 'power': 1.12},
+                    {'duration': 90, 'power': 1.20}
+                ],
+                'sets': 2,
+                'set_recovery': 240,
+                'finisher_count': 3,
+                'finisher_duration': 30,
+                'finisher_power': 1.30
+            },
+            '6': {
+                'structure': '15min warmup Z2, 30min Z2 preload, 2x (5min @ 102% + 3min @ 115% + 2min @ 122% FTP), 4min recovery, then 4x 30sec @ 135% finishers',
+                'execution': 'Maximum late-race simulation. Longest preload, hardest efforts, most finishers. Empty the tank.',
+                'late_race': True,
+                'preload_duration': 1800,
+                'preload_power': 0.72,
+                'efforts': [
+                    {'duration': 300, 'power': 1.02},
+                    {'duration': 180, 'power': 1.15},
+                    {'duration': 120, 'power': 1.22}
+                ],
+                'sets': 2,
+                'set_recovery': 240,
+                'finisher_count': 4,
+                'finisher_duration': 30,
+                'finisher_power': 1.35
+            }
+        }
+    }
+]
+
+
+# =============================================================================
 # COMBINED DICTIONARY FOR INTEGRATION
 # =============================================================================
 
@@ -3314,7 +3667,27 @@ NEW_ARCHETYPES = {
     'Testing': TESTING_PROTOCOLS,
     'Recovery': RECOVERY_NEW,
     'INSCYD': INSCYD_NEW,
+    # Gravel-specific workout patterns
+    'Gravel_Specific': GRAVEL_SPECIFIC,
 }
+
+
+# =============================================================================
+# MERGE IMPORTED ARCHETYPES (from Cursor ZWO dump: 34 types x 6 levels)
+# =============================================================================
+try:
+    from imported_archetypes import IMPORTED_ARCHETYPES
+    for _category, _archetypes in IMPORTED_ARCHETYPES.items():
+        if _category in NEW_ARCHETYPES:
+            # Append to existing category, avoiding duplicates by name
+            existing_names = {a['name'] for a in NEW_ARCHETYPES[_category]}
+            for arch in _archetypes:
+                if arch['name'] not in existing_names:
+                    NEW_ARCHETYPES[_category].append(arch)
+        else:
+            NEW_ARCHETYPES[_category] = list(_archetypes)
+except ImportError:
+    pass  # imported_archetypes.py not present — skip
 
 
 if __name__ == '__main__':

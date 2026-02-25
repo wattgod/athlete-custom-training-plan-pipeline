@@ -298,5 +298,97 @@ class TestAllGeneratedFiles:
         assert not errors, f"ZWO format errors:\n" + "\n".join(errors)
 
 
+class TestDurationRounding:
+    """Test that all workout durations are rounded to nearest 10 minutes.
+
+    Durations like 67min, 94min, 107min break the clean training plan feel.
+    All workouts should have durations that are multiples of 10 (e.g., 70, 90, 110).
+    """
+
+    def _parse_zwo_total_minutes(self, zwo_path: Path) -> int:
+        """Parse a ZWO file and return total duration in minutes."""
+        import xml.etree.ElementTree as ET
+
+        tree = ET.parse(zwo_path)
+        root = tree.getroot()
+        workout = root.find('workout')
+        if workout is None:
+            return 0
+
+        total_seconds = 0
+        for elem in workout:
+            dur = float(elem.get('Duration', 0))
+            if elem.tag == 'IntervalsT':
+                repeats = int(elem.get('Repeat', 1))
+                on_dur = float(elem.get('OnDuration', 0))
+                off_dur = float(elem.get('OffDuration', 0))
+                total_seconds += repeats * (on_dur + off_dur)
+            else:
+                total_seconds += dur
+
+        return int(total_seconds / 60)
+
+    def test_all_nicholas_workout_durations_divisible_by_10(self):
+        """Every ZWO in nicholas-applegate/workouts should have duration divisible by 10."""
+        workout_dir = Path(__file__).parent.parent / 'nicholas-applegate' / 'workouts'
+        if not workout_dir.exists():
+            pytest.skip("nicholas-applegate workouts directory not found")
+
+        zwo_files = sorted(workout_dir.glob('*.zwo'))
+        if not zwo_files:
+            pytest.skip("No ZWO files found")
+
+        errors = []
+        for zwo_file in zwo_files:
+            total_min = self._parse_zwo_total_minutes(zwo_file)
+            if total_min > 0 and total_min % 10 != 0:
+                errors.append(f"{zwo_file.name}: {total_min}min (not divisible by 10)")
+
+        assert not errors, (
+            f"{len(errors)} workout(s) have durations not divisible by 10:\n"
+            + "\n".join(errors)
+        )
+
+    def test_round_duration_to_10_function(self):
+        """Test the round_duration_to_10 helper."""
+        from workout_templates import round_duration_to_10
+
+        # Standard rounding (away from midpoint)
+        assert round_duration_to_10(67) == 70
+        assert round_duration_to_10(94) == 90
+        assert round_duration_to_10(107) == 110
+        assert round_duration_to_10(121) == 120
+        assert round_duration_to_10(136) == 140
+        assert round_duration_to_10(56) == 60
+        assert round_duration_to_10(44) == 40
+        assert round_duration_to_10(36) == 40
+        assert round_duration_to_10(24) == 20
+
+        # Exact multiples stay the same
+        assert round_duration_to_10(60) == 60
+        assert round_duration_to_10(90) == 90
+        assert round_duration_to_10(120) == 120
+        assert round_duration_to_10(180) == 180
+
+        # Result is always a multiple of 10
+        for val in [67, 94, 107, 121, 135, 55, 45, 35, 25, 15, 5]:
+            result = round_duration_to_10(val)
+            assert result % 10 == 0, f"round_duration_to_10({val}) = {result}, not a multiple of 10"
+
+        # Zero and negative pass through
+        assert round_duration_to_10(0) == 0
+        assert round_duration_to_10(-1) == -1
+
+        # Very small rounds to minimum 10
+        assert round_duration_to_10(1) == 10
+        assert round_duration_to_10(4) == 10
+
+    def test_ftp_test_duration_is_60(self):
+        """FTP test protocol must sum to exactly 60 minutes."""
+        from constants import FTP_TEST_DURATION_MIN
+        assert FTP_TEST_DURATION_MIN == 60, \
+            f"FTP_TEST_DURATION_MIN should be 60, got {FTP_TEST_DURATION_MIN}"
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

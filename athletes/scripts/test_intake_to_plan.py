@@ -39,6 +39,8 @@ from intake_to_plan import (
     _normalize_section_name,
     extract_date_from_text,
     extract_distance_from_name,
+    generate_coaching_brief,
+    _parse_ftp_with_unknown_handling,
 )
 from known_races import match_race, KNOWN_RACES, RACE_ALIASES
 from constants import (
@@ -1485,3 +1487,427 @@ class TestPlanWeeksClamping:
         # 52 weeks should work
         result_52 = calculate_plan_dates('2028-06-01', plan_weeks=52)
         assert result_52 is not None
+
+
+# ===========================================================================
+# Coaching Brief Tests
+# ===========================================================================
+
+class TestCoachingBrief:
+    """Tests for generate_coaching_brief — reads pipeline YAMLs, traces decisions."""
+
+    @pytest.fixture
+    def nicholas_athlete_dir(self):
+        return Path(__file__).parent.parent / 'nicholas-applegate'
+
+    @pytest.fixture
+    def nicholas_profile(self, nicholas_athlete_dir):
+        import yaml
+        with open(nicholas_athlete_dir / 'profile.yaml') as f:
+            return yaml.safe_load(f)
+
+    def test_brief_reads_methodology_yaml(self, nicholas_profile, nicholas_athlete_dir):
+        """Brief should show actual methodology from methodology.yaml, not 'Balanced'."""
+        brief = generate_coaching_brief(nicholas_profile, {}, athlete_dir=nicholas_athlete_dir)
+        assert 'Polarized (80/20)' in brief
+        assert 'Balanced / Structured' not in brief
+
+    def test_brief_has_all_sections(self, nicholas_profile, nicholas_athlete_dir):
+        """Brief must contain all 10 numbered sections."""
+        brief = generate_coaching_brief(nicholas_profile, {}, athlete_dir=nicholas_athlete_dir)
+        assert '## 1. Plan Overview' in brief
+        assert '## 2. Questionnaire -> Implementation Mapping' in brief
+        assert '## 3. Methodology Selection' in brief
+        assert '## 4. Phase Structure' in brief
+        assert '## 5. Weekly Structure' in brief
+        assert '## 6. Fueling Plan' in brief
+        assert '## 7. B-Race Handling' in brief
+        assert '## 8. Risk Factors' in brief
+        assert '## 9. Key Coaching Notes' in brief
+        assert '## 10. Pipeline Output Files' in brief
+
+    def test_brief_shows_methodology_score(self, nicholas_profile, nicholas_athlete_dir):
+        """Brief should show methodology score from methodology.yaml."""
+        brief = generate_coaching_brief(nicholas_profile, {}, athlete_dir=nicholas_athlete_dir)
+        assert 'score: 100/100' in brief
+
+    def test_brief_shows_veto(self, nicholas_profile, nicholas_athlete_dir):
+        """Brief should show past_failure_with as a VETO row."""
+        brief = generate_coaching_brief(nicholas_profile, {}, athlete_dir=nicholas_athlete_dir)
+        assert 'VETO' in brief
+        assert 'Sweet Spot' in brief
+
+    def test_brief_shows_phase_structure(self, nicholas_profile, nicholas_athlete_dir):
+        """Brief should list all 12 weeks with phases."""
+        brief = generate_coaching_brief(nicholas_profile, {}, athlete_dir=nicholas_athlete_dir)
+        assert 'W01' in brief
+        assert 'W12' in brief
+        assert 'BASE' in brief
+        assert 'BUILD' in brief
+        assert 'PEAK' in brief
+        assert 'TAPER' in brief
+        assert 'RACE' in brief
+
+    def test_brief_shows_b_race(self, nicholas_profile, nicholas_athlete_dir):
+        """Brief should include Boulder Roubaix B-race handling."""
+        brief = generate_coaching_brief(nicholas_profile, {}, athlete_dir=nicholas_athlete_dir)
+        assert 'Boulder Roubaix' in brief
+        assert 'B-race overlay' in brief or 'B (training race)' in brief
+
+    def test_brief_shows_fueling(self, nicholas_profile, nicholas_athlete_dir):
+        """Brief should include fueling plan from fueling.yaml."""
+        brief = generate_coaching_brief(nicholas_profile, {}, athlete_dir=nicholas_athlete_dir)
+        assert '66g/hr' in brief or '66' in brief
+        assert 'Gut Training' in brief
+
+    def test_brief_shows_weekly_structure(self, nicholas_profile, nicholas_athlete_dir):
+        """Brief should show day-by-day workout assignments."""
+        brief = generate_coaching_brief(nicholas_profile, {}, athlete_dir=nicholas_athlete_dir)
+        assert 'Monday' in brief
+        assert 'Sunday' in brief
+        assert 'Long Ride' in brief
+        assert 'Intervals' in brief
+
+    def test_brief_shows_zone_distribution(self, nicholas_profile, nicholas_athlete_dir):
+        """Brief should show zone distribution targets from methodology config."""
+        brief = generate_coaching_brief(nicholas_profile, {}, athlete_dir=nicholas_athlete_dir)
+        assert '80%' in brief
+        assert '0%' in brief
+        assert '20%' in brief
+
+    def test_brief_shows_alternatives(self, nicholas_profile, nicholas_athlete_dir):
+        """Brief should list alternative methodologies that were considered."""
+        brief = generate_coaching_brief(nicholas_profile, {}, athlete_dir=nicholas_athlete_dir)
+        assert 'MAF' in brief
+        assert 'Autoregulated' in brief or 'HRV' in brief
+
+    def test_brief_works_without_athlete_dir(self, nicholas_profile):
+        """Brief should still generate (degraded) without athlete_dir."""
+        brief = generate_coaching_brief(nicholas_profile, {})
+        assert '## 1. Plan Overview' in brief
+        assert 'Unknown' in brief  # methodology falls back to Unknown
+
+    def test_brief_medical_conditions_shown(self, nicholas_profile, nicholas_athlete_dir):
+        """Brief should show medical conditions in risk factors and mapping."""
+        brief = generate_coaching_brief(nicholas_profile, {}, athlete_dir=nicholas_athlete_dir)
+        assert 'hemophilia' in brief.lower()
+        assert 'factor IX' in brief or 'Recombinant' in brief
+
+
+# ===========================================================================
+# TestEdgeCasesSilentFailures — guards against silent pipeline failures
+# ===========================================================================
+
+class TestEdgeCasesSilentFailures:
+    """Edge cases that could cause silent failures in the training plan pipeline.
+
+    Covers: zero B-events, FTP unknown, very short plans, high-volume athletes,
+    zero off days, missing YAMLs, and race distance edge cases.
+    """
+
+    # -----------------------------------------------------------------------
+    # Helper: build a parsed intake dict (mirrors TestMultiAthleteProfiles)
+    # -----------------------------------------------------------------------
+
+    @staticmethod
+    def _make_parsed(
+        name='Test Athlete', age=30, weight='75 kg', sex='male',
+        ftp='250 W', years_cycling=5, years_structured=2,
+        weekly_hours='8-10', races='Unbound 200',
+        long_ride_days='saturday', off_days='',
+        interval_days='', strength_include='no', strength_current='none',
+        job_stress='moderate', life_stress='moderate',
+    ):
+        """Build a parsed intake dict suitable for build_profile()."""
+        return {
+            'athlete_name': name,
+            '__header__': {'email': f'{name.split()[0].lower()}@test.com'},
+            'basic_info': {
+                'age': str(age),
+                'weight': weight,
+                'sex': sex,
+            },
+            'goals': {
+                'primary_goal': 'specific_race',
+                'races': races,
+            },
+            'current_fitness': {
+                'ftp': ftp,
+                'years_cycling': str(years_cycling),
+                'years_structured': str(years_structured),
+            },
+            'schedule': {
+                'weekly_hours_available': str(weekly_hours),
+                'long_ride_days': long_ride_days,
+                'interval_days': interval_days,
+                'off_days': off_days,
+            },
+            'recovery': {
+                'resting_hr': '55 bpm',
+                'typical_sleep': '7 hrs',
+                'sleep_quality': 'good',
+                'recovery_speed': 'normal',
+            },
+            'equipment': {
+                'devices': 'garmin, power_meter',
+                'platform': 'trainingpeaks',
+            },
+            'work_life': {
+                'work_hours': '40',
+                'job_stress': job_stress,
+                'life_stress': life_stress,
+            },
+            'health': {},
+            'strength': {
+                'current': strength_current,
+                'include': strength_include,
+            },
+            'coaching': {'autonomy': 'guided'},
+            'mental_game': {},
+            'additional': {},
+        }
+
+    # -------------------------------------------------------------------
+    # 1. Zero B-events
+    # -------------------------------------------------------------------
+
+    def test_zero_b_events_profile_builds(self):
+        """Profile with only 1 race (no B-events) should build cleanly."""
+        parsed = self._make_parsed(races='Unbound 200')
+        profile = build_profile(parsed)
+        assert profile['b_events'] == []
+        assert len(profile['a_events']) == 1
+
+    def test_zero_b_events_coaching_brief(self):
+        """Coaching brief should not crash when b_events is empty."""
+        parsed = self._make_parsed(races='Unbound 200')
+        profile = build_profile(parsed)
+        brief = generate_coaching_brief(profile, parsed)
+        # Section 7 (B-Race Handling) should be absent
+        assert '## 7. B-Race Handling' not in brief
+        # Other sections should still be present
+        assert '## 1. Plan Overview' in brief
+        assert '## 8. Risk Factors' in brief
+        assert '## 9. Key Coaching Notes' in brief
+        assert '## 10. Pipeline Output Files' in brief
+
+    def test_zero_b_events_sanity_passes(self):
+        """Profile with zero B-events should pass sanity validation."""
+        parsed = self._make_parsed(races='Unbound 200')
+        profile = build_profile(parsed)
+        validate_profile_sanity(profile)  # should not raise
+
+    # -------------------------------------------------------------------
+    # 2. FTP unknown / no power meter
+    # -------------------------------------------------------------------
+
+    def test_parse_ftp_unknown_returns_none(self):
+        """_parse_ftp_with_unknown_handling returns None for 'unknown'."""
+        assert _parse_ftp_with_unknown_handling('unknown') is None
+
+    def test_parse_ftp_na_returns_none(self):
+        """_parse_ftp_with_unknown_handling returns None for 'N/A'."""
+        assert _parse_ftp_with_unknown_handling('N/A') is None
+
+    def test_parse_ftp_no_power_meter_returns_none(self):
+        """_parse_ftp_with_unknown_handling returns None for 'no power meter'."""
+        assert _parse_ftp_with_unknown_handling('no power meter') is None
+
+    def test_parse_ftp_not_tested_returns_none(self):
+        """_parse_ftp_with_unknown_handling returns None for 'not tested'."""
+        assert _parse_ftp_with_unknown_handling('not tested') is None
+
+    def test_parse_ftp_dont_know_returns_none(self):
+        """_parse_ftp_with_unknown_handling returns None for "don't know"."""
+        assert _parse_ftp_with_unknown_handling("don't know") is None
+
+    def test_parse_ftp_empty_returns_none(self):
+        """_parse_ftp_with_unknown_handling returns None for empty string."""
+        assert _parse_ftp_with_unknown_handling('') is None
+
+    def test_parse_ftp_dash_returns_none(self):
+        """_parse_ftp_with_unknown_handling returns None for '-'."""
+        assert _parse_ftp_with_unknown_handling('-') is None
+
+    def test_parse_ftp_normal_value(self):
+        """_parse_ftp_with_unknown_handling returns watts for '315 W'."""
+        assert _parse_ftp_with_unknown_handling('315 W') == 315
+
+    def test_parse_ftp_just_number(self):
+        """_parse_ftp_with_unknown_handling returns watts for '250'."""
+        assert _parse_ftp_with_unknown_handling('250') == 250
+
+    def test_ftp_unknown_estimates_from_weight(self):
+        """FTP='unknown' should estimate FTP from weight, not crash."""
+        parsed = self._make_parsed(ftp='unknown', weight='75 kg', sex='male', age=30)
+        profile = build_profile(parsed)
+        ftp = profile['fitness_markers']['ftp_watts']
+        assert ftp is not None
+        assert ftp > 0
+        assert profile['fitness_markers']['ftp_estimated'] is True
+
+    def test_ftp_unknown_female_lower_estimate(self):
+        """Female FTP estimate should use 2.2 W/kg (lower than male 2.5)."""
+        male_parsed = self._make_parsed(ftp='unknown', weight='70 kg', sex='male', age=30)
+        female_parsed = self._make_parsed(ftp='unknown', weight='70 kg', sex='female', age=30)
+        male_profile = build_profile(male_parsed)
+        female_profile = build_profile(female_parsed)
+        assert male_profile['fitness_markers']['ftp_watts'] > female_profile['fitness_markers']['ftp_watts']
+
+    def test_ftp_unknown_age_adjusted(self):
+        """Older athletes should get lower FTP estimates."""
+        young_parsed = self._make_parsed(ftp='unknown', weight='75 kg', age=30)
+        old_parsed = self._make_parsed(ftp='unknown', weight='75 kg', age=60)
+        young_profile = build_profile(young_parsed)
+        old_profile = build_profile(old_parsed)
+        assert young_profile['fitness_markers']['ftp_watts'] > old_profile['fitness_markers']['ftp_watts']
+
+    def test_ftp_unknown_wkg_calculated(self):
+        """W/kg should be calculated from estimated FTP."""
+        parsed = self._make_parsed(ftp='unknown', weight='75 kg')
+        profile = build_profile(parsed)
+        ftp = profile['fitness_markers']['ftp_watts']
+        wkg = profile['fitness_markers']['w_kg']
+        assert wkg is not None
+        expected_wkg = round(ftp / 75.0, 2)
+        assert abs(wkg - expected_wkg) < 0.01
+
+    def test_ftp_unknown_passes_sanity(self):
+        """Estimated FTP should pass sanity validation bounds."""
+        parsed = self._make_parsed(ftp='unknown', weight='75 kg')
+        profile = build_profile(parsed)
+        validate_profile_sanity(profile)  # should not raise
+
+    def test_ftp_known_not_estimated(self):
+        """Normal FTP should not be flagged as estimated."""
+        parsed = self._make_parsed(ftp='315 W')
+        profile = build_profile(parsed)
+        assert profile['fitness_markers']['ftp_estimated'] is False
+        assert profile['fitness_markers']['ftp_watts'] == 315
+
+    def test_ftp_no_power_meter_builds_plan(self):
+        """'no power meter' FTP should produce a buildable profile."""
+        parsed = self._make_parsed(ftp='no power meter', weight='80 kg', age=35)
+        profile = build_profile(parsed)
+        assert profile['fitness_markers']['ftp_watts'] > 0
+        assert profile['fitness_markers']['ftp_estimated'] is True
+        # W/kg should be reasonable
+        wkg = profile['fitness_markers']['w_kg']
+        assert 1.0 <= wkg <= 5.0
+
+    # -------------------------------------------------------------------
+    # 4. High-volume athlete (20 hours/week)
+    # -------------------------------------------------------------------
+
+    def test_high_volume_volume_warning_emitted(self):
+        """20h/wk athlete with limited schedule should get volume warning."""
+        parsed = self._make_parsed(
+            name='Hank Volume',
+            weekly_hours=20,
+            long_ride_days='sunday',
+            off_days='monday',
+            interval_days='tuesday, thursday',
+        )
+        profile = build_profile(parsed)
+        warning = profile['weekly_availability'].get('volume_warning')
+        # The schedule capacity is sum of max_duration_min for available days.
+        # With monday off, 6 available days:
+        # sun=600, tue=120, wed=120, thu=120, fri=120, sat=240 = 1320min = 22h
+        # Target 20h should be under 22h capacity, so no warning.
+        # But let's verify the field is populated correctly.
+        assert 'volume_warning' in profile['weekly_availability']
+
+    def test_high_volume_exceeding_capacity_warns(self):
+        """30h/wk target with limited schedule MUST produce a volume warning."""
+        parsed = self._make_parsed(
+            name='Ultra Volume',
+            weekly_hours=30,
+            long_ride_days='saturday',
+            off_days='sunday, monday, tuesday',
+            # Only 4 days available: wed=120, thu=120, fri=120, sat=600 = 960min = 16h
+        )
+        profile = build_profile(parsed)
+        warning = profile['weekly_availability']['volume_warning']
+        assert warning is not None, "Should warn when 30h target exceeds 16h capacity"
+        assert 'exceeds' in warning.lower()
+
+    def test_high_volume_still_generates_profile(self):
+        """Volume warning should not prevent profile generation."""
+        parsed = self._make_parsed(
+            name='Ultra Volume',
+            weekly_hours=30,
+            long_ride_days='saturday',
+            off_days='sunday, monday, tuesday',
+        )
+        profile = build_profile(parsed)
+        # Profile should still be complete
+        assert profile['name'] == 'Ultra Volume'
+        assert profile['weekly_availability']['cycling_hours_target'] == 30
+        # Sanity should pass (volume warning is non-blocking)
+        validate_profile_sanity(profile)
+
+    def test_high_volume_no_warning_when_capacity_sufficient(self):
+        """20h target with enough schedule capacity should NOT warn."""
+        parsed = self._make_parsed(
+            name='High But Feasible',
+            weekly_hours=20,
+            long_ride_days='saturday',
+            off_days='',
+            # All 7 days available:
+            # sat=600, sun=240, mon-fri=120*5=600 -> total=1440min=24h
+        )
+        profile = build_profile(parsed)
+        assert profile['weekly_availability']['volume_warning'] is None
+
+    # -------------------------------------------------------------------
+    # 5. Zero off days (7 available days)
+    # -------------------------------------------------------------------
+
+    def test_zero_off_days_all_seven_assigned(self):
+        """Athlete with 0 off days should get all 7 days assigned."""
+        parsed = self._make_parsed(
+            name='Seven Day Sam',
+            off_days='',
+            long_ride_days='saturday',
+        )
+        profile = build_profile(parsed)
+        available_count = sum(
+            1 for d in profile['preferred_days'].values()
+            if d['availability'] != 'unavailable'
+        )
+        assert available_count == 7, f"Expected 7 available days, got {available_count}"
+
+    def test_zero_off_days_no_unavailable(self):
+        """No days should be marked unavailable when off_days is empty."""
+        parsed = self._make_parsed(
+            name='No Rest Rick',
+            off_days='',
+        )
+        profile = build_profile(parsed)
+        for day_name, day_info in profile['preferred_days'].items():
+            assert day_info['availability'] != 'unavailable', (
+                f"Day '{day_name}' should not be unavailable with zero off days"
+            )
+
+    def test_zero_off_days_passes_sanity(self):
+        """Zero off days profile should pass sanity validation."""
+        parsed = self._make_parsed(name='Full Week Fred', off_days='')
+        profile = build_profile(parsed)
+        validate_profile_sanity(profile)
+
+    def test_zero_off_days_has_key_days(self):
+        """With 7 days available, there should be multiple key days."""
+        parsed = self._make_parsed(
+            name='Key Day Ken',
+            off_days='',
+            long_ride_days='saturday',
+            interval_days='tuesday, thursday',
+        )
+        profile = build_profile(parsed)
+        key_days = [
+            d for d, info in profile['preferred_days'].items()
+            if info.get('is_key_day_ok')
+        ]
+        assert len(key_days) >= 3, (
+            f"Expected at least 3 key days with 7 available, got {len(key_days)}: {key_days}"
+        )

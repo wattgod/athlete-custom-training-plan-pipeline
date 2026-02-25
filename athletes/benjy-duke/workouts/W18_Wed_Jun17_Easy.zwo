@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W18_Wed_Jun17_Easy</name>
+  <description>Benjy - Week 18/19 - 2 weeks to SBT GRVL 75
+Phase: TAPER
+
+STRUCTURE:
+30 min easy spin @ Z1-Z2 (55-65% FTP)
+
+PURPOSE:
+Recovery and aerobic maintenance. Easy means easy.
+
+EXECUTION:
+Smooth pedaling, relaxed. Could hold a conversation easily.
+
+RPE:
+RPE 2-3 (easy)</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.68"/>
+    <SteadyState Duration="1200" Power="0.5"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

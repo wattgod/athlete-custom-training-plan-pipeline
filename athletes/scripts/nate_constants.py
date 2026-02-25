@@ -171,7 +171,7 @@ class Levels:
     MIN_LEVEL: Final[int] = 1
     MAX_LEVEL: Final[int] = 6
     DEFAULT_LEVEL: Final[int] = 3
-    TAPER_LEVEL: Final[int] = 4
+    TAPER_LEVEL: Final[int] = 2
 
     # Progression thresholds (as fraction of build phase)
     LEVEL_1_THRESHOLD: Final[float] = 0.17

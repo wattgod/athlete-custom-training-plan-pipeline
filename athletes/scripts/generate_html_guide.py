@@ -1503,6 +1503,8 @@ class GuideGenerator:
         self.plan_config = None
         self.plan_summary = None
         self.plan_dates = None
+        self.fueling = None
+        self.methodology = None
 
         self._load_data()
     
@@ -1537,6 +1539,18 @@ class GuideGenerator:
                 self.plan_dates = yaml.safe_load(f)
         else:
             self.plan_dates = None
+
+        # Load fueling.yaml if exists (race-day fueling plan)
+        fueling_path = base_path / "fueling.yaml"
+        if fueling_path.exists():
+            with open(fueling_path, 'r') as f:
+                self.fueling = yaml.safe_load(f)
+
+        # Load methodology.yaml if exists (selected training methodology)
+        methodology_path = base_path / "methodology.yaml"
+        if methodology_path.exists():
+            with open(methodology_path, 'r') as f:
+                self.methodology = yaml.safe_load(f)
 
         # Load plan config if exists
         plans_dir = base_path / "plans"
@@ -1634,10 +1648,16 @@ class GuideGenerator:
         # Sections
         sections.append(self._generate_quick_reference())
         sections.append(self._generate_race_timeline())
+        b_race_section = self._generate_b_race_section()
+        if b_race_section:
+            sections.append(b_race_section)
         sections.append(self._generate_your_goals())
         sections.append(self._generate_training_philosophy())
         sections.append(self._generate_blindspots())
         sections.append(self._generate_atp_table())
+        week_table = self._generate_week_reference_table()
+        if week_table:
+            sections.append(week_table)
         sections.append(self._generate_your_weekly_schedule())
         sections.append(self._generate_phase_progression())
         sections.append(self._generate_training_fundamentals())
@@ -1689,13 +1709,20 @@ class GuideGenerator:
 '''
     
     def _generate_toc(self) -> str:
+        b_events = self.profile.get('b_events', [])
+
         toc_items = [
             ("quick-reference", "Quick Reference"),
             ("race-timeline", "Your Race Calendar"),
+        ]
+        if b_events:
+            toc_items.append(("b-race", f"B-Race: {b_events[0].get('name', 'B-Race')}"))
+        toc_items += [
             ("your-goals", "Your Goals"),
             ("training-philosophy", "Your Training Philosophy"),
             ("blindspots", "Your Blindspots"),
             ("atp", "24-Week Training Plan"),
+            ("week-reference", "Week-by-Week Reference"),
             ("your-schedule", "Your Weekly Schedule"),
             ("phase-progression", "Phase Progression"),
             ("training-fundamentals", "Training Fundamentals"),
@@ -1895,6 +1922,107 @@ class GuideGenerator:
 </section>
 '''
     
+    def _generate_b_race_section(self) -> str:
+        """Generate dedicated B-race section with execution strategy."""
+        b_events = self.profile.get('b_events', [])
+        if not b_events:
+            return ''
+
+        parts = []
+        for i, b_event in enumerate(b_events):
+            b_name = b_event.get('name', 'B-Race')
+            b_date = b_event.get('date', 'TBD')
+            b_distance = b_event.get('distance_miles', '?')
+            b_goal = b_event.get('goal', 'compete')
+
+            # Find which week this B-race falls on from plan_dates
+            b_week_num = '?'
+            b_phase = '?'
+            if self.plan_dates:
+                for week in self.plan_dates.get('weeks', []):
+                    b_race_info = week.get('b_race')
+                    if b_race_info and b_race_info.get('name') == b_name:
+                        b_week_num = week['week']
+                        b_phase = b_race_info.get('phase', week.get('phase', '?'))
+                        break
+
+            parts.append(f'''
+    <div class="callout alert">
+        <h4>{b_name}</h4>
+        <table style="margin: 8px 0;">
+            <tbody>
+                <tr><td style="border: none; padding: 4px 16px 4px 0;"><strong>Date:</strong></td><td style="border: none;">{b_date}</td></tr>
+                <tr><td style="border: none; padding: 4px 16px 4px 0;"><strong>Distance:</strong></td><td style="border: none;">{b_distance} miles</td></tr>
+                <tr><td style="border: none; padding: 4px 16px 4px 0;"><strong>Week:</strong></td><td style="border: none;">{"W" + str(b_week_num).zfill(2) if b_week_num != '?' else '?'} ({b_phase} phase)</td></tr>
+                <tr><td style="border: none; padding: 4px 16px 4px 0;"><strong>Goal:</strong></td><td style="border: none;">{b_goal.title()}</td></tr>
+                <tr><td style="border: none; padding: 4px 16px 4px 0;"><strong>Priority:</strong></td><td style="border: none;">B — training race, not your goal event</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h3>Execution Strategy</h3>
+    <p>This is a <strong>training race</strong>, not your A-event. The purpose is to practice race execution, test nutrition, and build race fitness — not to peak for a result.</p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Aspect</th>
+                <th>Approach</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Effort Level</strong></td>
+                <td>90-95% of A-race effort. Controlled, not all-out. Save something for the training weeks ahead.</td>
+            </tr>
+            <tr>
+                <td><strong>Pacing</strong></td>
+                <td>Start conservative. Use this to practice your A-race pacing strategy.</td>
+            </tr>
+            <tr>
+                <td><strong>Nutrition</strong></td>
+                <td>Test your race-day fueling plan. This is a dress rehearsal for {self._get_race_name()}.</td>
+            </tr>
+            <tr>
+                <td><strong>Equipment</strong></td>
+                <td>Race on the same gear and setup you plan to use at your A-event.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>Pre-Race Preparation</h3>
+    <ul>
+        <li><strong>Day before (opener):</strong> Short ride with a few race-pace efforts (20-30 min total). Open up the legs without creating fatigue.</li>
+        <li><strong>Race morning:</strong> Familiar pre-race meal, same timing as you plan for your A-event.</li>
+        <li><strong>Warm-up:</strong> 15-20 min easy spinning, a few progressive efforts to race pace.</li>
+    </ul>
+
+    <h3>Post-Race Recovery</h3>
+    <ul>
+        <li><strong>Race day:</strong> Recovery nutrition within 30 min. Easy spin to cool down.</li>
+        <li><strong>Day after:</strong> Easy recovery ride (30-45 min Z1) or complete rest. Listen to your body.</li>
+        <li><strong>Resume training:</strong> Return to scheduled plan. Don't try to "make up" any reduced volume from race week.</li>
+    </ul>
+
+    <div class="callout tip">
+        <h4>What to Learn From This Race</h4>
+        <p>After {b_name}, assess: Did your nutrition plan work? Did your pacing strategy hold? What would you change for {self._get_race_name()}? Write it down while it is fresh.</p>
+    </div>
+''')
+
+        # Format week number properly - handle both int and string
+        try:
+            _ = int(b_week_num)
+        except (ValueError, TypeError):
+            pass
+
+        return f'''
+<section id="b-race">
+    <h2>B-Race Strategy</h2>
+    {"".join(parts)}
+</section>
+'''
+
     def _generate_your_goals(self) -> str:
         """Generate section showing athlete's stated goals."""
         target_race = self.profile.get('target_race', {})
@@ -1991,16 +2119,38 @@ class GuideGenerator:
 </section>
 '''
     
-    def _generate_training_philosophy(self) -> str:
-        """Generate training philosophy explanation based on tier."""
+    def _get_methodology_name(self) -> str:
+        """Get methodology name from methodology.yaml, with tier-based fallback."""
+        if self.methodology:
+            return self.methodology.get('selected_methodology', '')
+        # Fallback to tier-based name
         tier = self.derived.get('tier', 'compete').lower()
-        
-        # Philosophy varies by tier
+        fallbacks = {
+            'ayahuasca': 'Minimum Effective Dose',
+            'finisher': 'Polarized Foundation',
+            'compete': 'Polarized Performance',
+            'podium': 'Elite Periodization',
+        }
+        return fallbacks.get(tier, 'Polarized Performance')
+
+    def _generate_training_philosophy(self) -> str:
+        """Generate training philosophy explanation based on methodology.yaml + tier."""
+        tier = self.derived.get('tier', 'compete').lower()
+        methodology_name = self._get_methodology_name()
+
+        # Intensity distribution from methodology.yaml if available
+        if self.methodology:
+            config = self.methodology.get('configuration', {})
+            dist = config.get('intensity_distribution', {})
+            easy_pct = int(dist.get('z1_z2', 0.8) * 100)
+            hard_pct = 100 - easy_pct
+        else:
+            easy_pct = 80
+            hard_pct = 20
+
+        # Philosophy description and principles vary by tier
         philosophies = {
             'ayahuasca': {
-                'name': 'Minimum Effective Dose',
-                'easy_pct': 85,
-                'hard_pct': 15,
                 'desc': 'Maximum results from minimum time investment. Every workout counts.',
                 'principles': [
                     'Quality over quantity — no junk miles',
@@ -2010,33 +2160,24 @@ class GuideGenerator:
                 ]
             },
             'finisher': {
-                'name': 'Polarized Foundation',
-                'easy_pct': 80,
-                'hard_pct': 20,
                 'desc': 'Build aerobic base with strategic intensity. Classic endurance approach.',
                 'principles': [
-                    '80% easy / 20% hard intensity distribution',
+                    f'{easy_pct}% easy / {hard_pct}% hard intensity distribution',
                     'Long rides build the engine',
                     'Two quality sessions per week',
                     'Strength supports, doesn\'t replace, bike work'
                 ]
             },
             'compete': {
-                'name': 'Polarized Performance',
-                'easy_pct': 80,
-                'hard_pct': 20,
                 'desc': 'Proven approach for competitive endurance athletes. Easy truly easy, hard truly hard.',
                 'principles': [
-                    'Strict 80/20 polarized distribution',
+                    f'Strict {easy_pct}/{hard_pct} polarized distribution',
                     'Three key sessions in peak weeks',
                     'Race-specific intervals in Build phase',
                     'Integrated strength for power and resilience'
                 ]
             },
             'podium': {
-                'name': 'Elite Periodization',
-                'easy_pct': 75,
-                'hard_pct': 25,
                 'desc': 'High-volume foundation with aggressive intensity blocks. For serious competitors.',
                 'principles': [
                     'Higher training load requires precise recovery',
@@ -2046,24 +2187,34 @@ class GuideGenerator:
                 ]
             }
         }
-        
+
         p = philosophies.get(tier, philosophies['compete'])
-        
-        easy_width = p['easy_pct'] * 3  # Scale for visual
-        hard_width = p['hard_pct'] * 3
-        
+
+        # Add methodology reasons if available
+        reasons_html = ''
+        if self.methodology and self.methodology.get('reasons'):
+            reasons = self.methodology['reasons']
+            reasons_html = '''
+    <h3>Why This Methodology Was Selected</h3>
+    <ul>
+        ''' + ''.join([f'<li>{r}</li>' for r in reasons]) + '''
+    </ul>'''
+
+        easy_width = easy_pct * 3  # Scale for visual
+        hard_width = hard_pct * 3
+
         return f'''
 <section id="training-philosophy">
     <h2>4 · Your Training Philosophy</h2>
-    
-    <p>Your plan follows <strong>{p['name']}</strong> — the approach best suited to your tier ({tier.upper()}) and goals.</p>
+
+    <p>Your plan follows <strong>{methodology_name}</strong> — selected specifically for your profile, goals, and available training hours.</p>
     
     <div class="philosophy-framework">
         <h3 style="margin-top: 0;">Intensity Distribution</h3>
         
         <div class="philosophy-diagram">
-            <div class="philosophy-bar bar-easy" style="width: {easy_width}px;">EASY {p['easy_pct']}%</div>
-            <div class="philosophy-bar bar-hard" style="width: {hard_width}px;">HARD {p['hard_pct']}%</div>
+            <div class="philosophy-bar bar-easy" style="width: {easy_width}px;">EASY {easy_pct}%</div>
+            <div class="philosophy-bar bar-hard" style="width: {hard_width}px;">HARD {hard_pct}%</div>
         </div>
         
         <p style="text-align: center; font-size: 13px; color: var(--gg-muted);">{p['desc']}</p>
@@ -2073,7 +2224,9 @@ class GuideGenerator:
     <ol>
         {"".join([f"<li>{principle}</li>" for principle in p['principles']])}
     </ol>
-    
+
+    {reasons_html}
+
     <h3>Why This Works</h3>
     
     <p><strong>The science:</strong> Decades of research on elite endurance athletes consistently shows that ~80% easy / ~20% hard produces better results than "moderate" training (threshold grinding). The easy work builds aerobic capacity without accumulating fatigue. The hard work drives specific adaptations.</p>
@@ -2303,6 +2456,123 @@ class GuideGenerator:
 </section>
 '''
     
+    def _generate_week_reference_table(self) -> str:
+        """Generate compact week-by-week reference table from plan_dates + ZWO files."""
+        if not self.plan_dates:
+            return ''
+
+        weeks = self.plan_dates.get('weeks', [])
+        if not weeks:
+            return ''
+
+        # Find workout files directory
+        base_path = get_athlete_dir(self.athlete_id)
+        workouts_dir = base_path / "workouts"
+
+        # Build a lookup: W01_Mon -> workout type (from filename)
+        workout_lookup = {}
+        if workouts_dir.exists():
+            for f in workouts_dir.glob("*.zwo"):
+                name = f.stem  # e.g. W01_Mon_Mar9_Endurance
+                parts = name.split('_', 3)  # W01, Mon, Mar9, Endurance
+                if len(parts) >= 4:
+                    week_day_key = f"{parts[0]}_{parts[1]}"  # W01_Mon
+                    workout_type = parts[3].replace('_', ' ')  # Endurance, VO2max, RACE DAY Boulder Roubaix
+                    workout_lookup[week_day_key] = workout_type
+
+        day_abbrevs = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+        rows = ''
+        for week in weeks:
+            w_num = week['week']
+            w_phase = week.get('phase', '?')
+            w_monday = week.get('monday_short', '')
+            w_sunday = week.get('sunday_short', '')
+            b_race = week.get('b_race')
+
+            # Get workout for each day
+            day_cells = ''
+            w_key = f"W{w_num:02d}"
+            for day_abbr in day_abbrevs:
+                lookup_key = f"{w_key}_{day_abbr}"
+                workout = workout_lookup.get(lookup_key, '')
+
+                # Shorten common names
+                short = workout
+                if 'RACE DAY' in short:
+                    short = 'RACE'
+                elif short == 'Long Ride':
+                    short = 'Long'
+                elif short == 'Endurance':
+                    short = 'End'
+                elif short == 'FTP Test':
+                    short = 'FTP'
+
+                cell_style = ''
+                if 'RACE' in workout:
+                    cell_style = ' style="background: #000; color: #fff; font-weight: 700;"'
+                elif workout in ('VO2max', 'Anaerobic', 'Sprints', 'Threshold'):
+                    cell_style = ' style="font-weight: 600;"'
+                elif workout == 'Openers':
+                    cell_style = ' style="font-style: italic;"'
+                elif workout == '':
+                    short = 'OFF'
+                    cell_style = ' style="color: #999;"'
+
+                day_cells += f'<td{cell_style}>{short}</td>'
+
+            # B-race indicator
+            notes = ''
+            if b_race:
+                notes = f'B: {b_race.get("name", "")}'
+            elif week.get('is_race_week'):
+                notes = 'A-RACE'
+
+            phase_class = w_phase.lower() if w_phase else ''
+            rows += f'''
+            <tr>
+                <td><strong>W{w_num:02d}</strong></td>
+                <td>{w_monday}-{w_sunday}</td>
+                <td><span class="atp-week-phase {phase_class}" style="display:inline-block;padding:2px 6px;font-size:10px;">{w_phase.upper()}</span></td>
+                {day_cells}
+                <td style="font-size:10px;">{notes}</td>
+            </tr>'''
+
+        return f'''
+<section id="week-reference">
+    <h2>Week-by-Week Reference</h2>
+
+    <p>Quick reference for all {len(weeks)} weeks. Workout types for each day at a glance.</p>
+
+    <div style="overflow-x: auto;">
+    <table style="font-size: 11px; white-space: nowrap;">
+        <thead>
+            <tr>
+                <th>Week</th>
+                <th>Dates</th>
+                <th>Phase</th>
+                <th>Mon</th>
+                <th>Tue</th>
+                <th>Wed</th>
+                <th>Thu</th>
+                <th>Fri</th>
+                <th>Sat</th>
+                <th>Sun</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            {rows}
+        </tbody>
+    </table>
+    </div>
+
+    <div style="margin-top: 12px; font-size: 11px; color: #666;">
+        <strong>Key:</strong> End = Endurance (Z2) | Long = Long Ride | FTP = FTP Test | RACE = Race Day | OFF = Rest Day
+    </div>
+</section>
+'''
+
     def _generate_atp_table(self) -> str:
         """Generate interactive Annual Training Plan table."""
         plan_weeks = self.derived.get('plan_weeks', 12)
@@ -3281,6 +3551,228 @@ document.addEventListener('DOMContentLoaded', function() {{
 </section>
 '''
     
+    def _generate_race_fueling_subsection(self) -> str:
+        """Generate race-day fueling section using athlete-specific data from fueling.yaml."""
+        if not self.fueling:
+            return ''
+
+        carbs = self.fueling.get('carbohydrates', {})
+        hourly_target = carbs.get('hourly_target', 60)
+        hourly_range = carbs.get('hourly_range', [])
+        total_grams = carbs.get('total_grams', 0)
+        total_range = carbs.get('total_range', [])
+        duration = carbs.get('duration_hours', 0)
+
+        recs = self.fueling.get('recommendations', {})
+        hydration = recs.get('hydration', {})
+        hydration_target = hydration.get('target_ml_per_hour', 500)
+        electrolytes = hydration.get('electrolytes', '')
+        pre_race = recs.get('pre_race', {})
+        pre_meal_timing = pre_race.get('meal_timing', '3-4 hours before start')
+        pre_meal_composition = pre_race.get('meal_composition', '')
+        pre_meal_example = pre_race.get('example', '')
+        pre_final_top_off = pre_race.get('final_top_off', '')
+
+        # Product recommendations
+        example_products = recs.get('example_products', {})
+        gels_only = example_products.get('gels_only', {})
+        mixed = example_products.get('mixed_approach', {})
+        real_food = example_products.get('real_food_hybrid', {})
+
+        # Gut training phases
+        gut = self.fueling.get('gut_training', {})
+        phases = gut.get('phases', {})
+
+        athlete_weight = self.fueling.get('athlete', {}).get('weight_kg', '?')
+        range_str = f"{hourly_range[0]}-{hourly_range[1]}g/hr" if len(hourly_range) == 2 else f"{hourly_target}g/hr"
+        total_range_str = f"{total_range[0]}-{total_range[1]}g" if len(total_range) == 2 else f"{total_grams}g"
+
+        # Build gut training rows
+        gut_rows = ''
+        for phase_name in ['base', 'build', 'peak', 'race']:
+            phase = phases.get(phase_name, {})
+            if phase:
+                tr = phase.get('target_range', [])
+                tr_str = f"{tr[0]}-{tr[1]}g/hr" if len(tr) == 2 else '—'
+                weeks = phase.get('weeks', '—')
+                desc = phase.get('description', '')
+                guidance = phase.get('guidance', '')
+                gut_rows += f'''
+                <tr>
+                    <td><strong>{phase_name.title()}</strong></td>
+                    <td>{weeks}</td>
+                    <td>{tr_str}</td>
+                    <td>{desc}</td>
+                    <td style="font-size: 11px;">{guidance}</td>
+                </tr>'''
+
+        # Build product strategy rows
+        product_html = ''
+        if gels_only or mixed or real_food:
+            product_html = '''
+        <h4>Product Strategy Options</h4>
+        <table style="margin: 12px 0;">
+            <thead>
+                <tr>
+                    <th>Strategy</th>
+                    <th>Details</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>'''
+            if gels_only:
+                product_html += f'''
+                <tr>
+                    <td><strong>Gels Only</strong></td>
+                    <td>{gels_only.get("quantity", "?")} gels total, {gels_only.get("frequency", "?")}</td>
+                    <td>{gels_only.get("notes", "")}</td>
+                </tr>'''
+            if mixed:
+                product_html += f'''
+                <tr>
+                    <td><strong>Mixed Approach</strong></td>
+                    <td>{mixed.get("gels", "?")} gels + {mixed.get("chews_packs", "?")} chews packs + {mixed.get("drink_mix_bottles", "?")} drink mix bottles</td>
+                    <td>{mixed.get("notes", "")}</td>
+                </tr>'''
+            if real_food:
+                product_html += f'''
+                <tr>
+                    <td><strong>Real Food Hybrid</strong></td>
+                    <td>{real_food.get("gels", "?")} gels + {real_food.get("rice_cakes_bars", "?")} rice cakes/bars + {real_food.get("drink_mix", "?")} drink mix</td>
+                    <td>{real_food.get("notes", "")}</td>
+                </tr>'''
+            product_html += '''
+            </tbody>
+        </table>'''
+
+        return f'''
+    <div class="callout alert">
+        <h4>Your Race-Day Fueling Plan — {self._get_race_name()}</h4>
+        <p>Calculated for your {duration:.1f}-hour race at {athlete_weight} kg body weight.</p>
+
+        <div class="nutrition-macros" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="macro-box">
+                <span class="macro-value">{hourly_target}</span>
+                <span class="macro-unit">g/hr</span>
+                <div class="macro-label">Carb Target</div>
+            </div>
+            <div class="macro-box">
+                <span class="macro-value">{range_str}</span>
+                <span class="macro-unit">&nbsp;</span>
+                <div class="macro-label">Target Range</div>
+            </div>
+            <div class="macro-box">
+                <span class="macro-value">{total_grams}</span>
+                <span class="macro-unit">g total</span>
+                <div class="macro-label">Total Race Carbs</div>
+            </div>
+            <div class="macro-box">
+                <span class="macro-value">{hydration_target}</span>
+                <span class="macro-unit">ml/hr</span>
+                <div class="macro-label">Hydration</div>
+            </div>
+        </div>
+
+        <p style="font-size: 11px; color: #666; margin-top: 8px;">Total range: {total_range_str}. Electrolytes: {electrolytes}</p>
+    </div>
+
+    <h4>Pre-Race Nutrition</h4>
+    <div class="callout info">
+        <p><strong>Timing:</strong> {pre_meal_timing}</p>
+        <p><strong>Composition:</strong> {pre_meal_composition}</p>
+        <p><strong>Example:</strong> {pre_meal_example}</p>
+        <p><strong>Final top-off:</strong> {pre_final_top_off}</p>
+    </div>
+
+    <h4>Gut Training Progression</h4>
+    <p>Your gut must be trained to absorb {hourly_target}g/hr on race day. Follow this progression:</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Phase</th>
+                <th>Weeks</th>
+                <th>Target</th>
+                <th>Goal</th>
+                <th>Guidance</th>
+            </tr>
+        </thead>
+        <tbody>
+            {gut_rows}
+        </tbody>
+    </table>
+
+    {product_html}
+'''
+
+    def _generate_during_training_table(self) -> str:
+        """Generate during-training fueling table, using athlete-specific targets when available."""
+        if self.fueling:
+            carbs = self.fueling.get('carbohydrates', {})
+            hourly_target = carbs.get('hourly_target', 60)
+            return f'''<table>
+        <thead>
+            <tr>
+                <th>Session Type</th>
+                <th>Carbs/Hour</th>
+                <th>Timing</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>&lt;90 min easy</td>
+                <td>Optional (0-30g)</td>
+                <td>Water is fine</td>
+            </tr>
+            <tr>
+                <td>90 min - 2 hrs</td>
+                <td>30-{min(hourly_target, 60)}g</td>
+                <td>Start at 30 min</td>
+            </tr>
+            <tr>
+                <td>2-4 hrs (training)</td>
+                <td>{hourly_target}g (your target)</td>
+                <td>Every 20 min — gut training</td>
+            </tr>
+            <tr>
+                <td>Race / 4+ hrs</td>
+                <td>{hourly_target}g (your target)</td>
+                <td>Every 15-20 min — nothing new on race day</td>
+            </tr>
+        </tbody>
+    </table>'''
+        else:
+            return '''<table>
+        <thead>
+            <tr>
+                <th>Session Type</th>
+                <th>Carbs/Hour</th>
+                <th>Timing</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>&lt;90 min easy</td>
+                <td>Optional (0-30g)</td>
+                <td>Water is fine</td>
+            </tr>
+            <tr>
+                <td>90 min - 2 hrs</td>
+                <td>30-60g</td>
+                <td>Start at 30 min</td>
+            </tr>
+            <tr>
+                <td>2-4 hrs</td>
+                <td>60-75g</td>
+                <td>Every 20 min</td>
+            </tr>
+            <tr>
+                <td>Race / 4+ hrs</td>
+                <td>80-100g</td>
+                <td>Every 15-20 min</td>
+            </tr>
+        </tbody>
+    </table>'''
+
     def _generate_nutrition_section(self) -> str:
         """Generate personalized nutrition targets based on athlete questionnaire data."""
         
@@ -3493,11 +3985,12 @@ document.addEventListener('DOMContentLoaded', function() {{
         <p style="font-size: 11px; margin-top: 8px; color: #666;"><strong>Rule:</strong> Hard sessions need fuel. Easy sessions are flexible.</p>
     </div>
     
+    {self._generate_race_fueling_subsection()}
+
     <div class="callout tip">
-        <h4>During Training — The 60-80g Per Hour Rule</h4>
-        <p>For any ride <strong>over 90 minutes at moderate-to-high intensity (Z3+)</strong>, you need <strong>60-80g of carbohydrates per hour.</strong></p>
-        <p style="font-size: 12px; color: #666;">Your gut can absorb ~60g glucose/hour. Add fructose (different transporters) to reach 90g. Sweet spot: 70-75g/hour.</p>
-        
+        <h4>During Training — Carb Targets by Session Type</h4>
+        <p style="font-size: 12px; color: #666;">Your gut can absorb ~60g glucose/hour. Add fructose (different transporters) to reach 90g.</p>
+
         <table style="margin: 12px 0;">
             <thead>
                 <tr>
@@ -3658,37 +4151,7 @@ document.addEventListener('DOMContentLoaded', function() {{
     </table>
     
     <h3>During Training</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>Session Type</th>
-                <th>Carbs/Hour</th>
-                <th>Timing</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>&lt;90 min easy</td>
-                <td>Optional (0-30g)</td>
-                <td>Water is fine</td>
-            </tr>
-            <tr>
-                <td>90 min - 2 hrs</td>
-                <td>30-60g</td>
-                <td>Start at 30 min</td>
-            </tr>
-            <tr>
-                <td>2-4 hrs</td>
-                <td>60-75g</td>
-                <td>Every 20 min</td>
-            </tr>
-            <tr>
-                <td>Race / 4+ hrs</td>
-                <td>80-100g</td>
-                <td>Every 15-20 min</td>
-            </tr>
-        </tbody>
-    </table>
+    {self._generate_during_training_table()}
     
     <div class="callout tip">
         <h4>Fuel the Work</h4>

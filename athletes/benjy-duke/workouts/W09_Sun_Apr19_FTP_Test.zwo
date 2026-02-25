@@ -18,7 +18,7 @@ RPE:
 RPE 9/10 for the 20-minute test (very hard, barely sustainable)</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="720" PowerLow="0.45" PowerHigh="0.70"/>
+    <Warmup Duration="600" PowerLow="0.45" PowerHigh="0.70"/>
     <SteadyState Duration="300" Power="0.80"/>
     <SteadyState Duration="300" Power="0.50"/>
     <SteadyState Duration="300" Power="1.05"/>

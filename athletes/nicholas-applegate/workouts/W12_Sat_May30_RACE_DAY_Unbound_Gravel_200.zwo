@@ -47,6 +47,6 @@ GO GET IT, NICHOLAS!
 </description>
   <sportType>bike</sportType>
   <workout>
-    <FreeRide Duration="60120"/>
+    <FreeRide Duration="60000"/>
   </workout>
 </workout_file>

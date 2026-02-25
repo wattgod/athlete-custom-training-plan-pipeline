@@ -1059,5 +1059,93 @@ class TestOutputCompleteness:
                 f"Week {week_num} has only {count} workouts (expected 5-6 for 6 available days)"
 
 
+# ============================================================================
+# TestZeroOffDays — edge case: athlete with 7 available days
+# ============================================================================
+
+class TestZeroOffDays:
+    """Test weekly structure handles 7 available days (zero off days)."""
+
+    def test_seven_days_all_assigned(self):
+        """With 0 off days, build_weekly_structure should assign all 7 days."""
+        profile = make_profile(
+            preferred_long_day='saturday',
+            key_days=['wednesday', 'thursday', 'saturday', 'sunday'],
+            # All 7 days available (default), no unavailable/rest days
+        )
+        key_days = [
+            d for d, prefs in profile['preferred_days'].items()
+            if prefs.get('is_key_day_ok', False)
+        ]
+
+        structure = build_weekly_structure(
+            preferred_days=profile['preferred_days'],
+            key_days=key_days,
+            strength_days=[],
+            tier='compete',
+            preferred_long_day='saturday',
+        )
+
+        assigned = 0
+        for day_name, day_info in structure['days'].items():
+            am = day_info.get('am')
+            pm = day_info.get('pm')
+            if am or pm:
+                assigned += 1
+        assert assigned == 7, (
+            f"Expected 7 assigned days with zero off days, got {assigned}"
+        )
+
+    def test_seven_days_has_easy_day(self):
+        """With 7 available days, at least 1 day should be easy (not all intensity)."""
+        profile = make_profile(
+            preferred_long_day='sunday',
+            key_days=['wednesday', 'friday', 'saturday', 'sunday'],
+        )
+        key_days = [
+            d for d, prefs in profile['preferred_days'].items()
+            if prefs.get('is_key_day_ok', False)
+        ]
+
+        structure = build_weekly_structure(
+            preferred_days=profile['preferred_days'],
+            key_days=key_days,
+            strength_days=[],
+            tier='compete',
+            preferred_long_day='sunday',
+        )
+
+        easy_count = 0
+        for day_name, day_info in structure['days'].items():
+            am = day_info.get('am', '')
+            pm = day_info.get('pm', '')
+            workout_type = pm or am
+            if workout_type in ('easy_ride', 'recovery'):
+                easy_count += 1
+        assert easy_count >= 1, (
+            f"Expected at least 1 easy day with 7 available, got {easy_count}. "
+            f"Structure: {structure['days']}"
+        )
+
+    def test_seven_days_distribution_valid(self):
+        """With 7 available days, quality_days + easy_days derivation should work."""
+        profile = make_profile(
+            preferred_long_day='saturday',
+            key_days=['wednesday', 'saturday', 'sunday'],
+        )
+        long_day_abbrev = 'Sat'
+
+        quality_days, easy_days = derive_quality_and_easy_days(profile, long_day_abbrev)
+        total = len(quality_days) + len(easy_days)
+        # Should have at least 5 days allocated (some may overlap as long day)
+        assert total >= 5, (
+            f"Expected at least 5 days, got {total}: quality={quality_days}, easy={easy_days}"
+        )
+        # Long day abbreviation should NOT be in quality_days (it's its own thing)
+        assert long_day_abbrev not in quality_days, (
+            f"Long day {long_day_abbrev} should not be in quality_days"
+        )
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

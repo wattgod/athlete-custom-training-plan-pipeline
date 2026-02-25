@@ -6,7 +6,7 @@
 Phase: MAINTENANCE
 
 STRUCTURE:
-45 min @ Z2 (65-75% FTP)
+40 min @ Z2 (65-75% FTP)
 
 PURPOSE:
 Aerobic base building. This is where 80% of your training volume lives.
@@ -24,7 +24,7 @@ HEAT ACCLIMATION:
   <sportType>bike</sportType>
   <workout>
     <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.68"/>
-    <SteadyState Duration="2100" Power="0.62"/>
+    <SteadyState Duration="1800" Power="0.62"/>
     <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
   </workout>
 </workout_file>

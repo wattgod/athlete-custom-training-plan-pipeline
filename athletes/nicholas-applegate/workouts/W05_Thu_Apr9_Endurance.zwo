@@ -6,7 +6,7 @@
 Phase: BASE
 
 STRUCTURE:
-Z2 Spin Ups - 50 min
+Z2 Spin Ups - 80 min
 
 PURPOSE:
 Aerobic base building. This is where 80% of your training volume lives.
@@ -23,8 +23,8 @@ HEAT ACCLIMATION:
 - Improves thermoregulation and race performance</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="300" PowerLow="0.45" PowerHigh="0.65"/>
-    <SteadyState Duration="2400" Power="0.65"/>
+    <Warmup Duration="480" PowerLow="0.45" PowerHigh="0.65"/>
+    <SteadyState Duration="4020" Power="0.65"/>
     <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
   </workout>
 </workout_file>

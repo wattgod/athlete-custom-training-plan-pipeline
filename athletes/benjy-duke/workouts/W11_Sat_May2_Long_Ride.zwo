@@ -6,7 +6,7 @@
 Phase: BUILD
 
 STRUCTURE:
-150 min endurance ride with tempo blocks
+170 min endurance ride with tempo blocks
 
 PURPOSE:
 Building aerobic endurance and time in saddle. Race-specific duration work.
@@ -18,9 +18,9 @@ RPE:
 RPE 3-5 (easy to moderate)</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.68"/>
-    <SteadyState Duration="5460" Power="0.65"/>
-    <SteadyState Duration="2340" Power="0.80"/>
+    <Warmup Duration="1020" PowerLow="0.50" PowerHigh="0.68"/>
+    <SteadyState Duration="6240" Power="0.65"/>
+    <SteadyState Duration="2640" Power="0.80"/>
     <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
   </workout>
 </workout_file>

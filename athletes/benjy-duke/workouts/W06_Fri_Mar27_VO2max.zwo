@@ -9,14 +9,16 @@ WARM-UP:
 -15min building from Z1 to Z2
 
 MAIN SET:
--15min warmup Z2, 7x3min @ 118-123% FTP, 2.5min recovery between
+-12x0:40 @ 106-120% FTP, RPE 9 (0min recovery); 5min @ 76-87% FTP, RPE 5-6; Cadence: 90-100rpm (high turnover for repeated efforts); Position: Seated, hoods
+-Cadence: 95-105rpm (race cadence, controlled power)
+-Position: Standing first 15sec of each interval, then seated in drops
 
 COOL-DOWN:
 -10min easy spin Z1-Z2
 
 PROGRESSION:
 -Level 5/6: Advanced - High training load, pushing limits
--Extended volume - maximum sustainable power
+-Repeated high-intensity efforts. Builds the ability to attack, recover, and attack again—essential for racing dynamics. Level 5: Extended sets. More work per set. This is where real adaptations lock in.
 
 PURPOSE:
 VO2max development. Maximum aerobic power—the engine that drives race-winning attacks.
@@ -31,8 +33,8 @@ HYDRATION:
 -500-750ml/hr with electrolytes. Start hydrated.</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75"/>
-    <IntervalsT Repeat="7" OnDuration="180" OnPower="1.20" CadenceLow="90" CadenceHigh="100" OffDuration="180" OffPower="0.55"/>
-    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
+    <Warmup Duration="1320" PowerLow="0.50" PowerHigh="0.75"/>
+    <IntervalsT Repeat="12" OnDuration="40" OnPower="1.20" CadenceLow="90" CadenceHigh="100" OffDuration="10" OffPower="0.50"/>
+    <Cooldown Duration="1080.0" PowerLow="0.75" PowerHigh="0.50"/>
   </workout>
 </workout_file>
