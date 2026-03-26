@@ -1743,7 +1743,8 @@ class TestCheckoutRecovery:
             # Verify recovery params
             assert call_kwargs['after_expiration']['recovery']['enabled'] is True
             assert 'expires_at' in call_kwargs
-            assert call_kwargs['consent_collection']['promotions'] == 'auto'
+            # consent_collection removed until Stripe Checkout ToS accepted
+            assert 'consent_collection' not in call_kwargs
 
             # Verify session_id in success URL
             assert '{CHECKOUT_SESSION_ID}' in call_kwargs['success_url']

@@ -976,9 +976,8 @@ def create_checkout():
                     'allow_promotion_codes': True,
                 }
             },
-            consent_collection={
-                'promotions': 'auto',
-            },
+            # consent_collection removed — requires Stripe Checkout ToS acceptance
+            # in dashboard.stripe.com/settings/checkout. Re-enable after accepting.
         )
         if ENABLE_AUTOMATIC_TAX:
             session_kwargs['automatic_tax'] = {'enabled': True}
@@ -1067,9 +1066,8 @@ def create_coaching_checkout():
                     'allow_promotion_codes': True,
                 }
             },
-            consent_collection={
-                'promotions': 'auto',
-            },
+            # consent_collection removed — requires Stripe Checkout ToS acceptance
+            # in dashboard.stripe.com/settings/checkout. Re-enable after accepting.
         )
         if ENABLE_AUTOMATIC_TAX:
             session_kwargs['automatic_tax'] = {'enabled': True}
@@ -1142,9 +1140,8 @@ def create_consulting_checkout():
                     'allow_promotion_codes': True,
                 }
             },
-            consent_collection={
-                'promotions': 'auto',
-            },
+            # consent_collection removed — requires Stripe Checkout ToS acceptance
+            # in dashboard.stripe.com/settings/checkout. Re-enable after accepting.
         )
         if ENABLE_AUTOMATIC_TAX:
             session_kwargs['automatic_tax'] = {'enabled': True}
