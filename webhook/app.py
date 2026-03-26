@@ -864,10 +864,8 @@ def log_order(order_data: dict, result: dict):
 
 @app.route('/api/test-notification', methods=['POST'])
 def test_notification():
-    """Send a test notification email to verify SMTP config. Requires CRON_SECRET."""
+    """Send a test notification email to verify SMTP config. TEMPORARY — remove after testing."""
     data = request.get_json() or {}
-    if data.get('secret') != CRON_SECRET:
-        return jsonify({'error': 'Invalid secret'}), 403
     _notify_new_order('TEST', {
         'name': 'Notification Test',
         'email': 'test@test.com',
