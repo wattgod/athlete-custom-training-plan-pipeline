@@ -862,6 +862,21 @@ def log_order(order_data: dict, result: dict):
 # ROUTES
 # =============================================================================
 
+@app.route('/api/test-notification', methods=['POST'])
+def test_notification():
+    """Send a test notification email to verify SMTP config. Requires CRON_SECRET."""
+    data = request.get_json() or {}
+    if data.get('secret') != CRON_SECRET:
+        return jsonify({'error': 'Invalid secret'}), 403
+    _notify_new_order('TEST', {
+        'name': 'Notification Test',
+        'email': 'test@test.com',
+        'race': 'Test Race',
+        'note': 'This is a test notification to verify SMTP works.',
+    })
+    return jsonify({'status': 'sent', 'to': NOTIFICATION_EMAIL, 'smtp_host': SMTP_HOST})
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint with dependency checks."""
