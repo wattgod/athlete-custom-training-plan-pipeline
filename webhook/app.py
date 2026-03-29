@@ -18,8 +18,7 @@ import logging
 import subprocess
 import uuid
 import math
-import smtplib
-from email.mime.text import MIMEText
+import requests as http_requests
 from pathlib import Path
 from datetime import datetime, timedelta, date
 from flask import Flask, request, jsonify
@@ -72,10 +71,8 @@ ALLOWED_ORIGINS = ['https://gravelgodcycling.com', 'https://www.gravelgodcycling
 
 # Email notifications for new orders
 NOTIFICATION_EMAIL = os.environ.get('NOTIFICATION_EMAIL', '')
-SMTP_HOST = os.environ.get('SMTP_HOST', '')
-SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
-SMTP_USER = os.environ.get('SMTP_USER', '')
-SMTP_PASS = os.environ.get('SMTP_PASS', '')
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+RESEND_FROM = os.environ.get('RESEND_FROM', 'Gravel God <noreply@gravelgodcycling.com>')
 
 # Configure Stripe
 if STRIPE_SECRET_KEY:
@@ -229,28 +226,48 @@ def _mask_email(email: str) -> str:
     return f'{masked_local}@{masked_domain}{tld}'
 
 
+def _send_email(to: str, subject: str, body: str, reply_to: str = None):
+    """Send email via Resend HTTP API. Returns True on success."""
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY not configured — cannot send email")
+        return False
+
+    payload = {
+        'from': RESEND_FROM,
+        'to': [to],
+        'subject': subject,
+        'text': body,
+    }
+    if reply_to:
+        payload['reply_to'] = reply_to
+
+    try:
+        resp = http_requests.post(
+            'https://api.resend.com/emails',
+            headers={'Authorization': f'Bearer {RESEND_API_KEY}'},
+            json=payload,
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            logger.info(f"Email sent: {subject} → {_mask_email(to)}")
+            return True
+        else:
+            logger.error(f"Resend API error {resp.status_code}: {resp.text}")
+            return False
+    except Exception as e:
+        logger.error(f"Failed to send email via Resend: {e}")
+        return False
+
+
 def _notify_new_order(product_type: str, details: dict):
-    """Send notification for new order. Falls back to CRITICAL log if SMTP not configured."""
+    """Send notification for new order. Falls back to CRITICAL log if Resend not configured."""
     subject = f"[Gravel God] New {product_type}: {details.get('name', 'Unknown')}"
     body = '\n'.join(f"  {k}: {v}" for k, v in details.items())
 
-    if NOTIFICATION_EMAIL and SMTP_HOST:
-        try:
-            msg = MIMEText(body)
-            msg['Subject'] = subject
-            msg['From'] = SMTP_USER or 'noreply@gravelgodcycling.com'
-            msg['To'] = NOTIFICATION_EMAIL
-            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
-                s.starttls()
-                if SMTP_USER and SMTP_PASS:
-                    s.login(SMTP_USER, SMTP_PASS)
-                s.send_message(msg)
-            logger.info(f"Notification sent for {product_type}")
-        except Exception as e:
-            logger.error(f"Failed to send notification email: {e}")
+    if NOTIFICATION_EMAIL and RESEND_API_KEY:
+        if not _send_email(NOTIFICATION_EMAIL, subject, body):
             logger.critical(f"NEW ORDER: {subject}\n{body}")
     else:
-        # No SMTP configured — log at CRITICAL so it stands out in Railway
         logger.critical(f"NEW ORDER: {subject}\n{body}")
 
 
@@ -872,7 +889,7 @@ def test_notification():
         'race': 'Test Race',
         'note': 'This is a test notification to verify SMTP works.',
     })
-    return jsonify({'status': 'sent', 'to': NOTIFICATION_EMAIL, 'smtp_host': SMTP_HOST})
+    return jsonify({'status': 'sent', 'to': NOTIFICATION_EMAIL, 'provider': 'resend'})
 
 
 @app.route('/health', methods=['GET'])
@@ -1402,31 +1419,19 @@ def _send_recovery_email(email: str, name: str, product_type: str,
             f"gravelgodcycling.com"
         )
 
-    if NOTIFICATION_EMAIL and SMTP_HOST:
-        try:
-            msg = MIMEText(body)
-            msg['Subject'] = subject
-            msg['From'] = SMTP_USER or 'matt@gravelgodcycling.com'
-            msg['To'] = email
-            msg['Reply-To'] = NOTIFICATION_EMAIL
-            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
-                s.starttls()
-                if SMTP_USER and SMTP_PASS:
-                    s.login(SMTP_USER, SMTP_PASS)
-                s.send_message(msg)
-            logger.info(f"Recovery email sent to {_mask_email(email)}")
-        except Exception as e:
-            logger.error(f"Failed to send recovery email: {e}")
-            # Still log at CRITICAL so we can follow up manually
+    reply_to = NOTIFICATION_EMAIL or None
+    if RESEND_API_KEY:
+        if not _send_email(email, subject, body, reply_to=reply_to):
             logger.critical(
-                f"ABANDONED CART — manual follow-up needed\n"
+                f"ABANDONED CART — email failed\n"
                 f"  Email: {_mask_email(email)}\n  Product: {product_type}\n"
                 f"  Recovery URL: {recovery_url}"
             )
+        else:
+            logger.info(f"Recovery email sent to {_mask_email(email)}")
     else:
-        # No SMTP — log for manual follow-up
         logger.critical(
-            f"ABANDONED CART — SMTP not configured, manual follow-up needed\n"
+            f"ABANDONED CART — Resend not configured, manual follow-up needed\n"
             f"  Email: {_mask_email(email)}\n  Name: {name}\n"
             f"  Product: {product_type}\n  Recovery URL: {recovery_url}"
         )
@@ -1688,25 +1693,13 @@ def _mark_followup_sent(order_id: str, day: int, email: str):
 
 
 def _send_followup_email(email: str, subject: str, body: str):
-    """Send a follow-up email. Returns True on success."""
-    if not (SMTP_HOST and SMTP_USER and SMTP_PASS):
-        logger.warning(f"SMTP not configured — skipping followup to {_mask_email(email)}")
+    """Send a follow-up email via Resend. Returns True on success."""
+    if not RESEND_API_KEY:
+        logger.warning(f"Resend not configured — skipping followup to {_mask_email(email)}")
         return False
 
-    try:
-        msg = MIMEText(body)
-        msg['Subject'] = subject
-        msg['From'] = SMTP_USER
-        msg['To'] = email
-        msg['Reply-To'] = NOTIFICATION_EMAIL or SMTP_USER
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
-            s.starttls()
-            s.login(SMTP_USER, SMTP_PASS)
-            s.send_message(msg)
-        return True
-    except Exception as e:
-        logger.error(f"Failed to send followup email to {_mask_email(email)}: {e}")
-        return False
+    reply_to = NOTIFICATION_EMAIL or None
+    return _send_email(email, subject, body, reply_to=reply_to)
 
 
 def process_followup_emails():
