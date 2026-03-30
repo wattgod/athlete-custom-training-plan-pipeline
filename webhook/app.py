@@ -524,7 +524,7 @@ Payment received — thank you. Here's what happens next:
 
 1. Your custom {weeks_mention}training plan{race_mention} is being built right now.
 2. I'll review it personally to make sure everything checks out.
-3. You'll get an invite to connect on TrainingPeaks — that's where your plan lives.
+3. You'll get a link to connect on TrainingPeaks — that's where your workouts live.
 4. Expect everything to be ready within 24 hours.
 
 You don't need to do anything yet. I'll email you when the plan is live on TrainingPeaks.
@@ -550,7 +550,7 @@ gravelgodcycling.com
     <ol style="font-size: 14px; padding-left: 20px; line-height: 2.2;">
       <li>Your custom {weeks_mention}training plan{race_mention} is <strong>being built right now</strong>.</li>
       <li>I'll <strong>review it personally</strong> to make sure everything checks out.</li>
-      <li>You'll get an invite to connect on <strong>TrainingPeaks</strong> — that's where your plan lives.</li>
+      <li>You'll get a link to connect on <strong>TrainingPeaks</strong> — that's where your workouts live.</li>
       <li>Expect everything to be <strong>ready within 24 hours</strong>.</li>
     </ol>
 
@@ -1627,7 +1627,7 @@ def confirm_plan_ready(athlete_id):
 Your custom training plan{race_mention} is built, reviewed, and live on TrainingPeaks.
 
 Here's what to do:
-1. Log in to TrainingPeaks — you should have a coach invite from me. Accept it.
+1. Connect with me on TrainingPeaks: https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU
 2. Your calendar now has every workout loaded, day by day, through race week.
 3. Each workout has target power zones, duration, and structure — just follow the plan.
 4. Do today's workout. Don't overthink it.
@@ -1659,7 +1659,7 @@ gravelgodcycling.com
 
     <h3 style="margin: 24px 0 12px; font-size: 16px; color: #59473c;">Get started</h3>
     <ol style="font-size: 14px; padding-left: 20px; line-height: 2.2;">
-      <li><strong>Log in to TrainingPeaks</strong> — you should have a coach invite from me. Accept it.</li>
+      <li><strong><a href="https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU" style="color: #1A8A82;">Connect with me on TrainingPeaks</a></strong> — click this link to attach to my coach account.</li>
       <li><strong>Check your calendar</strong> — every workout is loaded, day by day, through race week.</li>
       <li><strong>Follow the structure</strong> — each workout has target power zones, duration, and intervals.</li>
       <li><strong>Do today's workout.</strong> Don't overthink it.</li>
