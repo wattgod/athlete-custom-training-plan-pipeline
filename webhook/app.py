@@ -127,7 +127,7 @@ CONSULTING_PRICE_ID = 'price_1T2ekVLoaHDbEqSq0GGfoBEX'  # $150/hr
 ENABLE_AUTOMATIC_TAX = os.environ.get('ENABLE_AUTOMATIC_TAX', '').lower() == 'true'
 
 # Intake data expiry (24 hours)
-INTAKE_EXPIRY_HOURS = 24
+INTAKE_EXPIRY_HOURS = None  # Never auto-delete — intake data is tiny and needed for retries
 
 # Checkout session expiry — short expiry triggers Stripe's recovery flow sooner
 CHECKOUT_EXPIRY_MINUTES = 60
@@ -487,22 +487,8 @@ def load_intake(intake_id: str) -> dict:
 
 
 def cleanup_stale_intakes():
-    """Delete intake files older than INTAKE_EXPIRY_HOURS."""
-    intake_dir = get_intake_dir()
-    cutoff = datetime.now() - timedelta(hours=INTAKE_EXPIRY_HOURS)
-    cleaned = 0
-
-    for intake_file in intake_dir.glob('*.json'):
-        try:
-            mtime = datetime.fromtimestamp(intake_file.stat().st_mtime)
-            if mtime < cutoff:
-                intake_file.unlink()
-                cleaned += 1
-        except OSError as e:
-            logger.warning(f"Error cleaning intake file {intake_file}: {e}")
-
-    if cleaned:
-        logger.info(f"Cleaned {cleaned} stale intake files")
+    """No-op. Intake files are kept permanently — they're small and needed for retries."""
+    pass
 
 
 # =============================================================================
@@ -1447,6 +1433,18 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
         return jsonify({'error': error_msg}), 400
 
     athlete_id, profile_path = create_athlete_profile(order_data)
+
+    # Save intake data alongside athlete profile as permanent backup
+    intake_id = data.get('data', {}).get('object', {}).get('metadata', {}).get('intake_id', '')
+    if intake_id:
+        intake_data = load_intake(intake_id)
+        if intake_data:
+            backup_path = Path(ATHLETES_DIR) / athlete_id / 'intake_backup.json'
+            try:
+                with open(backup_path, 'w') as f:
+                    json.dump(intake_data, f, indent=2)
+            except Exception as e:
+                logger.warning(f"Failed to backup intake data: {e}")
 
     # Mark BEFORE pipeline — see WooCommerce handler comment for rationale
     mark_order_processed(order_data['order_id'], athlete_id)
