@@ -772,26 +772,131 @@ def create_athlete_profile(order_data: dict) -> tuple:
 # PIPELINE EXECUTION
 # =============================================================================
 
-def run_pipeline(athlete_id: str, deliver: bool = True) -> dict:
-    """Run the full training plan pipeline with timeout."""
-    script_path = Path(SCRIPTS_DIR) / 'generate_full_package.py'
+def _questionnaire_to_markdown(intake_data: dict, name: str = '', email: str = '') -> str:
+    """Convert web questionnaire JSON into the markdown format intake_to_plan.py expects."""
+    name = name or intake_data.get('name', 'Unknown Athlete')
+    email = email or intake_data.get('email', '')
 
-    if not script_path.exists():
-        return {
-            'success': False,
-            'stdout': '',
-            'stderr': f'Pipeline script not found: {script_path}'
-        }
+    # Build race list
+    races = intake_data.get('races', [])
+    race_lines = []
+    for r in races:
+        priority = r.get('priority', 'A')
+        race_lines.append(f"  {r.get('name', 'Unknown')} ({r.get('date', 'TBD')}, "
+                          f"{r.get('distance', '~100 mi')}, priority {priority})")
 
-    cmd = ['python3', str(script_path), athlete_id]
-    if deliver:
-        cmd.append('--deliver')
+    # Map long_ride_days/interval_days/off_days
+    long_days = ', '.join(intake_data.get('long_ride_days', ['Saturday']))
+    interval_days = ', '.join(intake_data.get('interval_days', ['Tuesday', 'Thursday']))
+    off_days = ', '.join(intake_data.get('off_days', []))
 
-    logger.info(f"Running pipeline for {athlete_id}")
+    # Height
+    height_ft = intake_data.get('height_ft', '')
+    height_in = intake_data.get('height_in', '')
+    height_str = f"{height_ft}'{height_in}\"" if height_ft else ''
+
+    # Goal mapping
+    goal_map = {'Survive': 'finish', 'Finish Strong': 'finish', 'Compete': 'compete', 'Podium': 'podium'}
+    a_race = next((r for r in races if r.get('priority') == 'A'), races[0] if races else {})
+    goal = goal_map.get(a_race.get('goal', ''), 'finish')
+
+    md = f"""# Athlete Intake: {name}
+Email: {email}
+Submitted: {datetime.now().strftime('%Y-%m-%d')}
+
+## Basic Info
+- Sex: {intake_data.get('sex', 'Male')}
+- Age: {intake_data.get('age', '')}
+- Weight: {intake_data.get('weight', '')} lbs
+- Height: {height_str}
+
+## Goals
+- Primary Goal: specific_race
+- Races:
+{chr(10).join(race_lines)}
+- Success: {a_race.get('goal', 'finish')}
+
+## Current Fitness
+- FTP: {intake_data.get('ftp', 'unknown')}
+- HR Max: {intake_data.get('hr_max', '')}
+- HR Threshold: {intake_data.get('hr_threshold', '')}
+- W/kg: {intake_data.get('pwRatio', '')}
+- Years Cycling: {intake_data.get('years_cycling', '3')}
+- Years Structured: {intake_data.get('prior_plan_experience', '1')}
+- Longest Recent Ride: {intake_data.get('longest_ride', '3-4 hrs')}
+
+## Recovery & Baselines
+- Resting HR: {intake_data.get('hr_resting', '')}
+- Typical Sleep: {intake_data.get('sleep_quality', '7 hours')}
+- Sleep Quality: {intake_data.get('sleep_quality', 'good')}
+
+## Equipment
+- Indoor Trainer: {intake_data.get('trainer_access', 'smart trainer')}
+- Devices: power meter, HR strap
+
+## Schedule
+- Weekly Hours Available: {intake_data.get('hours_per_week', '10')}
+- Current Volume: {intake_data.get('hours_per_week', '8')}
+- Long Ride Days: {long_days}
+- Interval Days: {interval_days}
+- Off Days: {off_days or 'None'}
+
+## Strength
+- Current: {intake_data.get('strength_current', 'none')}
+- Include: {intake_data.get('strength_want', 'no')}
+- Equipment: {intake_data.get('strength_equipment', 'minimal')}
+
+## Health
+- Current Injuries: {intake_data.get('injuries', 'None')}
+
+## Work & Life
+- Life Stress: {intake_data.get('stress_level', 'moderate')}
+
+## Additional
+- Other: {intake_data.get('notes', '')}
+"""
+    return md
+
+
+def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None) -> dict:
+    """Run the full training plan pipeline via intake_to_plan.py."""
+    script_path = Path(SCRIPTS_DIR) / 'intake_to_plan.py'
+
+    # Fallback to generate_full_package.py if no intake data (legacy path)
+    if not intake_data:
+        script_path = Path(SCRIPTS_DIR) / 'generate_full_package.py'
+        if not script_path.exists():
+            return {
+                'success': False,
+                'stdout': '',
+                'stderr': f'Pipeline script not found: {script_path}'
+            }
+        cmd = ['python3', str(script_path), athlete_id]
+        if deliver:
+            cmd.append('--deliver')
+        logger.info(f"Running legacy pipeline for {athlete_id}")
+    else:
+        if not script_path.exists():
+            return {
+                'success': False,
+                'stdout': '',
+                'stderr': f'Pipeline script not found: {script_path}'
+            }
+        cmd = ['python3', str(script_path)]
+        logger.info(f"Running intake pipeline for {athlete_id}")
+
+    # Generate markdown input for intake pipeline
+    stdin_data = None
+    if intake_data:
+        name = intake_data.get('name', '')
+        email = intake_data.get('email', '')
+        stdin_data = _questionnaire_to_markdown(intake_data, name=name, email=email)
+        logger.info(f"Generated {len(stdin_data)} char markdown intake for {athlete_id}")
 
     try:
         result = subprocess.run(
             cmd,
+            input=stdin_data,
             capture_output=True,
             text=True,
             timeout=PIPELINE_TIMEOUT,
@@ -1436,22 +1541,21 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
 
     athlete_id, profile_path = create_athlete_profile(order_data)
 
-    # Save intake data alongside athlete profile as permanent backup
+    # Load intake data for pipeline and backup
     intake_id = data.get('data', {}).get('object', {}).get('metadata', {}).get('intake_id', '')
-    if intake_id:
-        intake_data = load_intake(intake_id)
-        if intake_data:
-            backup_path = Path(ATHLETES_DIR) / athlete_id / 'intake_backup.json'
-            try:
-                with open(backup_path, 'w') as f:
-                    json.dump(intake_data, f, indent=2)
-            except Exception as e:
-                logger.warning(f"Failed to backup intake data: {e}")
+    intake_data = load_intake(intake_id) if intake_id else {}
+    if intake_data:
+        backup_path = Path(ATHLETES_DIR) / athlete_id / 'intake_backup.json'
+        try:
+            with open(backup_path, 'w') as f:
+                json.dump(intake_data, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to backup intake data: {e}")
 
     # Mark BEFORE pipeline — see WooCommerce handler comment for rationale
     mark_order_processed(order_data['order_id'], athlete_id)
 
-    result = run_pipeline(athlete_id, deliver=True)
+    result = run_pipeline(athlete_id, deliver=True, intake_data=intake_data or None)
     log_order(order_data, result)
 
     if result['success']:
@@ -1590,7 +1694,9 @@ def test_webhook():
         athlete_id, profile_path = create_athlete_profile(order_data)
 
         if data.get('run_pipeline', False):
-            result = run_pipeline(athlete_id, deliver=False)
+            # Load intake data if available for the real pipeline path
+            test_intake_data = load_intake(intake_id) if intake_id else None
+            result = run_pipeline(athlete_id, deliver=False, intake_data=test_intake_data)
             return jsonify({
                 'status': 'success' if result['success'] else 'error',
                 'athlete_id': athlete_id,
