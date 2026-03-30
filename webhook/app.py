@@ -1545,21 +1545,43 @@ def test_webhook():
         return jsonify({'error': 'Unauthorized'}), 401
 
     data = request.get_json() or {}
+    intake_id = data.get('intake_id', '')
 
-    order_data = {
-        'athlete_id': sanitize_athlete_id(data.get('athlete_id', 'test_athlete')),
-        'order_id': 'test_' + datetime.now().strftime('%Y%m%d%H%M%S'),
-        'tier': data.get('tier', 'custom'),
-        'profile': data.get('profile', {
-            'name': 'Test Athlete',
-            'email': 'test@example.com',
-            'target_race': {
-                'name': 'Test Race',
-                'date': (date.today() + timedelta(weeks=12)).isoformat(),
-                'distance_miles': 100,
+    # If intake_id provided, simulate the real webhook flow using stored questionnaire data
+    if intake_id:
+        fake_stripe_data = {
+            'data': {
+                'object': {
+                    'id': 'test_' + datetime.now().strftime('%Y%m%d%H%M%S'),
+                    'metadata': {
+                        'intake_id': intake_id,
+                        'product_type': 'training_plan',
+                        'tier': 'custom',
+                        'athlete_name': data.get('name', 'Test Athlete'),
+                    },
+                    'customer_details': {
+                        'email': data.get('email', 'test@example.com'),
+                        'name': data.get('name', 'Test Athlete'),
+                    }
+                }
             }
-        })
-    }
+        }
+        order_data = extract_stripe_data(fake_stripe_data)
+    else:
+        order_data = {
+            'athlete_id': sanitize_athlete_id(data.get('athlete_id', 'test_athlete')),
+            'order_id': 'test_' + datetime.now().strftime('%Y%m%d%H%M%S'),
+            'tier': data.get('tier', 'custom'),
+            'profile': data.get('profile', {
+                'name': 'Test Athlete',
+                'email': 'test@example.com',
+                'target_race': {
+                    'name': 'Test Race',
+                    'date': (date.today() + timedelta(weeks=12)).isoformat(),
+                    'distance_miles': 100,
+                }
+            })
+        }
 
     if not validate_athlete_id(order_data['athlete_id']):
         return jsonify({'error': 'Invalid athlete ID'}), 400
