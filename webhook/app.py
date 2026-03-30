@@ -1642,10 +1642,20 @@ def _handle_consulting_webhook(session: dict, metadata: dict, order_id: str):
     })
 
 
-# Test endpoint — requires CRON_SECRET header for auth
+# =============================================================================
+# TEST ENDPOINT — runs the EXACT same code path as a real Stripe webhook.
+# Secured by CRON_SECRET header. Requires intake_id with stored questionnaire.
+# =============================================================================
 @app.route('/webhook/test', methods=['POST'])
 def test_webhook():
-    """Test endpoint — secured by X-Cron-Secret header. TEMPORARY — remove after validation."""
+    """Simulate a real customer checkout → pipeline → notification flow.
+
+    Runs the identical code path as _handle_training_plan_webhook:
+    extract → validate → create profile → load intake → mark processed →
+    run pipeline → log order → send notification email.
+
+    Required: intake_id (from a stored questionnaire), name, email.
+    """
     secret = request.headers.get('X-Cron-Secret', '')
     if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
         return jsonify({'error': 'Unauthorized'}), 401
@@ -1653,69 +1663,96 @@ def test_webhook():
     data = request.get_json() or {}
     intake_id = data.get('intake_id', '')
 
-    # If intake_id provided, simulate the real webhook flow using stored questionnaire data
-    if intake_id:
-        fake_stripe_data = {
-            'data': {
-                'object': {
-                    'id': 'test_' + datetime.now().strftime('%Y%m%d%H%M%S'),
-                    'metadata': {
-                        'intake_id': intake_id,
-                        'product_type': 'training_plan',
-                        'tier': 'custom',
-                        'athlete_name': data.get('name', 'Test Athlete'),
-                    },
-                    'customer_details': {
-                        'email': data.get('email', 'test@example.com'),
-                        'name': data.get('name', 'Test Athlete'),
-                    }
+    # If questionnaire data is provided inline, store it and generate an intake_id
+    if not intake_id and data.get('questionnaire'):
+        intake_id = str(uuid.uuid4())
+        store_intake(intake_id, data['questionnaire'])
+        logger.info(f"Test: stored inline questionnaire as {intake_id}")
+
+    if not intake_id:
+        return jsonify({'error': 'intake_id or questionnaire object is required'}), 400
+
+    # Build a fake Stripe event that mirrors real checkout.session.completed
+    order_id = 'test_' + datetime.now().strftime('%Y%m%d%H%M%S')
+    fake_stripe_data = {
+        'data': {
+            'object': {
+                'id': order_id,
+                'metadata': {
+                    'intake_id': intake_id,
+                    'product_type': 'training_plan',
+                    'tier': 'custom',
+                    'athlete_name': data.get('name', 'Test Athlete'),
+                },
+                'customer_details': {
+                    'email': data.get('email', 'test@example.com'),
+                    'name': data.get('name', 'Test Athlete'),
                 }
             }
         }
-        order_data = extract_stripe_data(fake_stripe_data)
-    else:
-        order_data = {
-            'athlete_id': sanitize_athlete_id(data.get('athlete_id', 'test_athlete')),
-            'order_id': 'test_' + datetime.now().strftime('%Y%m%d%H%M%S'),
-            'tier': data.get('tier', 'custom'),
-            'profile': data.get('profile', {
-                'name': 'Test Athlete',
-                'email': 'test@example.com',
-                'target_race': {
-                    'name': 'Test Race',
-                    'date': (date.today() + timedelta(weeks=12)).isoformat(),
-                    'distance_miles': 100,
-                }
-            })
-        }
+    }
 
-    if not validate_athlete_id(order_data['athlete_id']):
-        return jsonify({'error': 'Invalid athlete ID'}), 400
+    # === Same code path as _handle_training_plan_webhook ===
 
+    order_data = extract_stripe_data(fake_stripe_data)
+
+    is_valid, error_msg = validate_order_data(order_data)
+    if not is_valid:
+        return jsonify({'error': error_msg}), 400
+
+    athlete_id, profile_path = create_athlete_profile(order_data)
+
+    # Load intake data (questionnaire) for pipeline
+    intake_data = load_intake(intake_id)
+    if not intake_data:
+        return jsonify({'error': f'Intake {intake_id} not found or expired'}), 404
+
+    # Backup intake (same as real flow)
+    backup_path = Path(ATHLETES_DIR) / athlete_id / 'intake_backup.json'
     try:
-        athlete_id, profile_path = create_athlete_profile(order_data)
+        with open(backup_path, 'w') as f:
+            json.dump(intake_data, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Failed to backup intake data: {e}")
 
-        if data.get('run_pipeline', False):
-            # Load intake data if available for the real pipeline path
-            test_intake_data = load_intake(intake_id) if intake_id else None
-            result = run_pipeline(athlete_id, deliver=False, intake_data=test_intake_data)
-            return jsonify({
-                'status': 'success' if result['success'] else 'error',
-                'athlete_id': athlete_id,
-                'profile_path': str(profile_path),
-                'pipeline': result
-            })
+    # Idempotency mark (same as real flow)
+    mark_order_processed(order_data['order_id'], athlete_id)
 
+    # Run pipeline with deliver=True (same as real flow)
+    result = run_pipeline(athlete_id, deliver=True, intake_data=intake_data)
+
+    # Log order (same as real flow)
+    log_order(order_data, result)
+
+    # Send notification email (same as real flow)
+    if result['success']:
+        _notify_new_order('training_plan', {
+            'name': order_data['profile'].get('name', ''),
+            'email': order_data['profile'].get('email', ''),
+            'tier': order_data['tier'],
+            'order_id': order_data['order_id'],
+        })
         return jsonify({
             'status': 'success',
             'athlete_id': athlete_id,
             'profile_path': str(profile_path),
-            'message': 'Profile created (pipeline not run)'
+            'message': 'Full flow complete: profile → pipeline → log → notification',
+            'pipeline': result,
         })
-
-    except Exception as e:
-        logger.exception(f"Test webhook error: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
+    else:
+        _notify_new_order('training_plan_FAILED', {
+            'name': order_data['profile'].get('name', ''),
+            'email': order_data['profile'].get('email', ''),
+            'order_id': order_data['order_id'],
+            'error': result.get('stderr', '')[:200],
+        })
+        return jsonify({
+            'status': 'pipeline_failed',
+            'athlete_id': athlete_id,
+            'profile_path': str(profile_path),
+            'message': 'Pipeline failed. Notification sent.',
+            'pipeline': result,
+        })
 
 
 # =============================================================================
