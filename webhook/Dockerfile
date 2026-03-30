@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
 # Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser
 
 WORKDIR /app
 
@@ -13,11 +13,8 @@ RUN pip install --no-cache-dir -r webhook/requirements.txt
 COPY webhook/ ./webhook/
 COPY athletes/ ./athletes/
 
-# Set ownership to non-root user
+# Set base ownership
 RUN chown -R appuser:appuser /app
-
-# Switch to non-root user
-USER appuser
 
 # Set environment variables
 ENV ATHLETES_DIR=/app/athletes
@@ -34,5 +31,7 @@ WORKDIR /app/webhook
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
 
-# Run with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "300", "--graceful-timeout", "30", "app:app"]
+# Start as root to fix volume permissions, then drop to appuser via gunicorn
+# Railway volumes mount as root, so appuser can't write without this
+CMD chown -R appuser:appuser /app/athletes 2>/dev/null; \
+    exec gunicorn --bind 0.0.0.0:8080 --workers 2 --timeout 300 --graceful-timeout 30 --user appuser --group appuser app:app
