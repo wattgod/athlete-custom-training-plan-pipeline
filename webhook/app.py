@@ -1536,53 +1536,56 @@ def _handle_consulting_webhook(session: dict, metadata: dict, order_id: str):
     })
 
 
-# Test endpoint only available in non-production
-if not IS_PRODUCTION:
-    @app.route('/webhook/test', methods=['POST'])
-    def test_webhook():
-        """Test endpoint for development only."""
-        data = request.get_json() or {}
+# Test endpoint — requires CRON_SECRET header for auth
+@app.route('/webhook/test', methods=['POST'])
+def test_webhook():
+    """Test endpoint — secured by X-Cron-Secret header. TEMPORARY — remove after validation."""
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
+        return jsonify({'error': 'Unauthorized'}), 401
 
-        order_data = {
-            'athlete_id': sanitize_athlete_id(data.get('athlete_id', 'test_athlete')),
-            'order_id': 'test_' + datetime.now().strftime('%Y%m%d%H%M%S'),
-            'tier': data.get('tier', 'custom'),
-            'profile': data.get('profile', {
-                'name': 'Test Athlete',
-                'email': 'test@example.com',
-                'target_race': {
-                    'name': 'Test Race',
-                    'date': (date.today() + timedelta(weeks=12)).isoformat(),
-                    'distance_miles': 100,
-                }
-            })
-        }
+    data = request.get_json() or {}
 
-        if not validate_athlete_id(order_data['athlete_id']):
-            return jsonify({'error': 'Invalid athlete ID'}), 400
+    order_data = {
+        'athlete_id': sanitize_athlete_id(data.get('athlete_id', 'test_athlete')),
+        'order_id': 'test_' + datetime.now().strftime('%Y%m%d%H%M%S'),
+        'tier': data.get('tier', 'custom'),
+        'profile': data.get('profile', {
+            'name': 'Test Athlete',
+            'email': 'test@example.com',
+            'target_race': {
+                'name': 'Test Race',
+                'date': (date.today() + timedelta(weeks=12)).isoformat(),
+                'distance_miles': 100,
+            }
+        })
+    }
 
-        try:
-            athlete_id, profile_path = create_athlete_profile(order_data)
+    if not validate_athlete_id(order_data['athlete_id']):
+        return jsonify({'error': 'Invalid athlete ID'}), 400
 
-            if data.get('run_pipeline', False):
-                result = run_pipeline(athlete_id, deliver=False)
-                return jsonify({
-                    'status': 'success' if result['success'] else 'error',
-                    'athlete_id': athlete_id,
-                    'profile_path': str(profile_path),
-                    'pipeline': result
-                })
+    try:
+        athlete_id, profile_path = create_athlete_profile(order_data)
 
+        if data.get('run_pipeline', False):
+            result = run_pipeline(athlete_id, deliver=False)
             return jsonify({
-                'status': 'success',
+                'status': 'success' if result['success'] else 'error',
                 'athlete_id': athlete_id,
                 'profile_path': str(profile_path),
-                'message': 'Profile created (pipeline not run)'
+                'pipeline': result
             })
 
-        except Exception as e:
-            logger.exception(f"Test webhook error: {e}")
-            return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({
+            'status': 'success',
+            'athlete_id': athlete_id,
+            'profile_path': str(profile_path),
+            'message': 'Profile created (pipeline not run)'
+        })
+
+    except Exception as e:
+        logger.exception(f"Test webhook error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # =============================================================================
