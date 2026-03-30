@@ -227,7 +227,7 @@ def _mask_email(email: str) -> str:
     return f'{masked_local}@{masked_domain}{tld}'
 
 
-def _send_email(to: str, subject: str, body: str, reply_to: str = None):
+def _send_email(to: str, subject: str, body: str, html: str = None, reply_to: str = None):
     """Send email via Resend HTTP API. Returns True on success."""
     if not RESEND_API_KEY:
         logger.warning("RESEND_API_KEY not configured — cannot send email")
@@ -239,6 +239,8 @@ def _send_email(to: str, subject: str, body: str, reply_to: str = None):
         'subject': subject,
         'text': body,
     }
+    if html:
+        payload['html'] = html
     if reply_to:
         payload['reply_to'] = reply_to
 
@@ -260,16 +262,255 @@ def _send_email(to: str, subject: str, body: str, reply_to: str = None):
         return False
 
 
+def _build_training_plan_email(details: dict) -> tuple:
+    """Build subject + HTML for a training plan order notification."""
+    name = details.get('name', 'Unknown')
+    email = details.get('email', '')
+    tier = details.get('tier', 'custom')
+    order_id = details.get('order_id', '')
+    race_name = details.get('race_name', '')
+    race_date = details.get('race_date', '')
+    ftp = details.get('ftp', '')
+    weight_kg = details.get('weight_kg', '')
+    hours = details.get('hours_per_week', '')
+    weeks = details.get('plan_weeks', '')
+    workouts = details.get('workout_count', '')
+    methodology = details.get('methodology', '')
+    athlete_id = details.get('athlete_id', '')
+    pipeline_ok = details.get('pipeline_success', True)
+    error_msg = details.get('error', '')
+
+    status = 'DELIVERED' if pipeline_ok else 'FAILED'
+    status_color = '#1A8A82' if pipeline_ok else '#c0392b'
+
+    subject = f"[GG] {'New plan' if pipeline_ok else 'FAILED'}: {name} — {race_name or 'training plan'}"
+
+    html = f"""
+<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+  <div style="background: {status_color}; color: white; padding: 16px 24px; border-radius: 4px 4px 0 0;">
+    <h2 style="margin: 0; font-size: 18px;">{status}: {name}</h2>
+    <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">{race_name} &middot; {tier} tier &middot; Order {order_id}</p>
+  </div>
+
+  <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
+    <h3 style="margin: 0 0 12px; font-size: 15px; color: #59473c;">Athlete</h3>
+    <table style="font-size: 14px; border-collapse: collapse; width: 100%;">
+      <tr><td style="padding: 4px 12px 4px 0; color: #888; width: 120px;">Name</td><td style="padding: 4px 0;"><strong>{name}</strong></td></tr>
+      <tr><td style="padding: 4px 12px 4px 0; color: #888;">Email</td><td style="padding: 4px 0;"><a href="mailto:{email}">{email}</a></td></tr>
+      {'<tr><td style="padding: 4px 12px 4px 0; color: #888;">FTP</td><td style="padding: 4px 0;">' + str(ftp) + 'W</td></tr>' if ftp else ''}
+      {'<tr><td style="padding: 4px 12px 4px 0; color: #888;">Weight</td><td style="padding: 4px 0;">' + str(weight_kg) + ' kg</td></tr>' if weight_kg else ''}
+      {'<tr><td style="padding: 4px 12px 4px 0; color: #888;">Hours/week</td><td style="padding: 4px 0;">' + str(hours) + '</td></tr>' if hours else ''}
+    </table>
+
+    <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Plan</h3>
+    <table style="font-size: 14px; border-collapse: collapse; width: 100%;">
+      {'<tr><td style="padding: 4px 12px 4px 0; color: #888; width: 120px;">Race</td><td style="padding: 4px 0;"><strong>' + race_name + '</strong></td></tr>' if race_name else ''}
+      {'<tr><td style="padding: 4px 12px 4px 0; color: #888;">Race date</td><td style="padding: 4px 0;">' + race_date + '</td></tr>' if race_date else ''}
+      {'<tr><td style="padding: 4px 12px 4px 0; color: #888;">Duration</td><td style="padding: 4px 0;">' + str(weeks) + ' weeks</td></tr>' if weeks else ''}
+      {'<tr><td style="padding: 4px 12px 4px 0; color: #888;">Workouts</td><td style="padding: 4px 0;">' + str(workouts) + ' ZWO files</td></tr>' if workouts else ''}
+      {'<tr><td style="padding: 4px 12px 4px 0; color: #888;">Methodology</td><td style="padding: 4px 0;">' + methodology + '</td></tr>' if methodology else ''}
+    </table>"""
+
+    if pipeline_ok:
+        html += f"""
+    <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Your next steps</h3>
+    <ol style="font-size: 14px; padding-left: 20px; line-height: 1.8;">
+      <li>Open <code>plan_preview.html</code> — verify checks pass, scan the week grid</li>
+      <li>Review <code>coaching_brief.md</code> — questionnaire-to-decision trace</li>
+      <li>Spot-check <code>training_guide.html</code> (weeks 1, mid, final)</li>
+      <li>Zip workouts + guide, email to <a href="mailto:{email}">{name}</a></li>
+      <li>Day 1 follow-up fires automatically (check cron)</li>
+    </ol>"""
+    else:
+        html += f"""
+    <div style="margin: 20px 0; padding: 16px; background: #fdf2f2; border: 1px solid #e8c4c4; border-radius: 4px;">
+      <h3 style="margin: 0 0 8px; font-size: 15px; color: #c0392b;">Pipeline failed</h3>
+      <pre style="font-size: 12px; white-space: pre-wrap; margin: 0; color: #666;">{error_msg or 'Check Railway logs for details.'}</pre>
+    </div>
+    <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Recovery steps</h3>
+    <ol style="font-size: 14px; padding-left: 20px; line-height: 1.8;">
+      <li>Check Railway logs: <code>railway logs --service stripe-webhook</code></li>
+      <li>Fix the issue, re-run locally: <code>pbpaste | python3 intake_to_plan.py</code></li>
+      <li>Email {name} to let them know — don't leave them hanging</li>
+    </ol>"""
+
+    html += f"""
+    <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 24px 0 16px;">
+    <p style="font-size: 12px; color: #999; margin: 0;">
+      Athlete ID: {athlete_id} &middot; Order: {order_id}<br>
+      Pipeline: {'passed' if pipeline_ok else 'FAILED'} &middot; {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}
+    </p>
+  </div>
+</div>"""
+
+    # Plain text fallback
+    text = f"""{status}: {name}
+Race: {race_name} ({race_date})
+Tier: {tier} | FTP: {ftp}W | Hours: {hours}/wk
+Plan: {weeks} weeks, {workouts} workouts
+Methodology: {methodology}
+Order: {order_id} | Athlete ID: {athlete_id}
+
+Next steps:
+1. Open plan_preview.html — verify checks
+2. Review coaching_brief.md
+3. Spot-check training_guide.html
+4. Zip + email to {name} ({email})
+5. Day 1 follow-up fires via cron
+"""
+    if not pipeline_ok:
+        text += f"\nERROR: {error_msg}\nCheck Railway logs immediately.\n"
+
+    return subject, text, html
+
+
+def _build_coaching_email(details: dict) -> tuple:
+    """Build subject + HTML for a coaching subscription notification."""
+    name = details.get('name', 'Unknown')
+    email = details.get('email', '')
+    tier = details.get('tier', 'unknown')
+    subscription_id = details.get('subscription_id', '')
+    order_id = details.get('order_id', '')
+
+    subject = f"[GG] New coaching: {name} — {tier} tier"
+    html = f"""
+<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+  <div style="background: #59473c; color: white; padding: 16px 24px; border-radius: 4px 4px 0 0;">
+    <h2 style="margin: 0; font-size: 18px;">New coaching: {name}</h2>
+    <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">{tier} tier &middot; Order {order_id}</p>
+  </div>
+  <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
+    <table style="font-size: 14px; border-collapse: collapse; width: 100%;">
+      <tr><td style="padding: 4px 12px 4px 0; color: #888;">Name</td><td><strong>{name}</strong></td></tr>
+      <tr><td style="padding: 4px 12px 4px 0; color: #888;">Email</td><td><a href="mailto:{email}">{email}</a></td></tr>
+      <tr><td style="padding: 4px 12px 4px 0; color: #888;">Tier</td><td>{tier}</td></tr>
+      <tr><td style="padding: 4px 12px 4px 0; color: #888;">Subscription</td><td><code>{subscription_id}</code></td></tr>
+    </table>
+    <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Next steps</h3>
+    <ol style="font-size: 14px; padding-left: 20px; line-height: 1.8;">
+      <li>Send welcome email to <a href="mailto:{email}">{name}</a> within 24 hours</li>
+      <li>Schedule intake call</li>
+      <li>Set up TrainingPeaks shared calendar</li>
+    </ol>
+  </div>
+</div>"""
+    text = f"New coaching: {name} ({email}), {tier} tier, subscription {subscription_id}, order {order_id}"
+    return subject, text, html
+
+
+def _build_consulting_email(details: dict) -> tuple:
+    """Build subject + HTML for a consulting booking notification."""
+    name = details.get('name', 'Unknown')
+    email = details.get('email', '')
+    hours = details.get('hours', '1')
+    order_id = details.get('order_id', '')
+
+    subject = f"[GG] Consulting booked: {name} — {hours}hr"
+    html = f"""
+<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+  <div style="background: #B7950B; color: white; padding: 16px 24px; border-radius: 4px 4px 0 0;">
+    <h2 style="margin: 0; font-size: 18px;">Consulting: {name}</h2>
+    <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">{hours} hour(s) &middot; Order {order_id}</p>
+  </div>
+  <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
+    <table style="font-size: 14px; border-collapse: collapse; width: 100%;">
+      <tr><td style="padding: 4px 12px 4px 0; color: #888;">Name</td><td><strong>{name}</strong></td></tr>
+      <tr><td style="padding: 4px 12px 4px 0; color: #888;">Email</td><td><a href="mailto:{email}">{email}</a></td></tr>
+      <tr><td style="padding: 4px 12px 4px 0; color: #888;">Hours</td><td>{hours}</td></tr>
+    </table>
+    <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Next steps</h3>
+    <ol style="font-size: 14px; padding-left: 20px; line-height: 1.8;">
+      <li>Email <a href="mailto:{email}">{name}</a> to schedule the call</li>
+      <li>Send calendar invite with video link</li>
+    </ol>
+  </div>
+</div>"""
+    text = f"Consulting booked: {name} ({email}), {hours}hr, order {order_id}"
+    return subject, text, html
+
+
 def _notify_new_order(product_type: str, details: dict):
-    """Send notification for new order. Falls back to CRITICAL log if Resend not configured."""
-    subject = f"[Gravel God] New {product_type}: {details.get('name', 'Unknown')}"
-    body = '\n'.join(f"  {k}: {v}" for k, v in details.items())
+    """Send rich notification for new order. Falls back to CRITICAL log if Resend not configured."""
+    if product_type in ('training_plan', 'training_plan_FAILED'):
+        details['pipeline_success'] = product_type == 'training_plan'
+        subject, text, html = _build_training_plan_email(details)
+    elif product_type == 'coaching':
+        subject, text, html = _build_coaching_email(details)
+    elif product_type == 'consulting':
+        subject, text, html = _build_consulting_email(details)
+    else:
+        # Fallback for TEST and unknown types
+        subject = f"[Gravel God] {product_type}: {details.get('name', 'Unknown')}"
+        text = '\n'.join(f"  {k}: {v}" for k, v in details.items())
+        html = None
 
     if NOTIFICATION_EMAIL and RESEND_API_KEY:
-        if not _send_email(NOTIFICATION_EMAIL, subject, body):
-            logger.critical(f"NEW ORDER: {subject}\n{body}")
+        if not _send_email(NOTIFICATION_EMAIL, subject, text, html=html):
+            logger.critical(f"NEW ORDER: {subject}\n{text}")
     else:
-        logger.critical(f"NEW ORDER: {subject}\n{body}")
+        logger.critical(f"NEW ORDER: {subject}\n{text}")
+
+
+def _build_plan_notification_details(order_data: dict, result: dict,
+                                     intake_data: dict = None) -> dict:
+    """Build enriched details dict for training plan notifications."""
+    profile = order_data.get('profile', {})
+    fitness = profile.get('fitness_markers', {})
+    target = profile.get('target_race', {})
+    schedule = profile.get('weekly_schedule', {})
+
+    # Parse workout count from pipeline stdout
+    stdout = result.get('stdout', '')
+    workout_count = ''
+    for line in stdout.split('\n'):
+        if '.zwo files' in line:
+            # e.g. "  workouts/            145 .zwo files"
+            parts = line.strip().split()
+            for i, p in enumerate(parts):
+                if p == '.zwo':
+                    workout_count = parts[i - 1] if i > 0 else ''
+                    break
+
+    # Parse plan weeks from stdout
+    plan_weeks = ''
+    for line in stdout.split('\n'):
+        if '-week plan' in line:
+            for word in line.split():
+                if word.endswith('-week'):
+                    plan_weeks = word.replace('-week', '')
+                    break
+
+    # Try to get methodology from athlete dir
+    methodology = ''
+    athlete_id = order_data.get('athlete_id', '')
+    meth_path = Path(ATHLETES_DIR) / athlete_id / 'methodology.yaml'
+    if meth_path.exists():
+        try:
+            import yaml
+            with open(meth_path) as f:
+                meth_data = yaml.safe_load(f)
+                methodology = meth_data.get('name', meth_data.get('methodology', ''))
+        except Exception:
+            pass
+
+    return {
+        'name': profile.get('name', ''),
+        'email': profile.get('email', ''),
+        'tier': order_data.get('tier', 'custom'),
+        'order_id': order_data.get('order_id', ''),
+        'athlete_id': athlete_id,
+        'race_name': target.get('name', intake_data.get('race_name', '') if intake_data else ''),
+        'race_date': target.get('date', intake_data.get('race_date', '') if intake_data else ''),
+        'ftp': fitness.get('ftp_watts', intake_data.get('ftp', '') if intake_data else ''),
+        'weight_kg': fitness.get('weight_kg', ''),
+        'hours_per_week': (schedule.get('hours_per_week', '')
+                          or schedule.get('cycling_hours_target', '')
+                          or (intake_data.get('hours_per_week', '') if intake_data else '')),
+        'plan_weeks': plan_weeks,
+        'workout_count': workout_count,
+        'methodology': methodology,
+        'error': result.get('stderr', '')[:500] if not result.get('success') else '',
+    }
 
 
 def _log_product_event(product_type: str, order_id: str, **details):
@@ -1330,25 +1571,16 @@ def woocommerce_webhook():
         result = run_pipeline(athlete_id, deliver=True)
         log_order(order_data, result)
 
+        details = _build_plan_notification_details(order_data, result)
         if result['success']:
-            _notify_new_order('training_plan', {
-                'name': order_data['profile'].get('name', ''),
-                'email': order_data['profile'].get('email', ''),
-                'tier': order_data['tier'],
-                'order_id': order_data['order_id'],
-            })
+            _notify_new_order('training_plan', details)
             return jsonify({
                 'status': 'success',
                 'athlete_id': athlete_id,
                 'message': 'Training plan generated and delivered'
             })
         else:
-            _notify_new_order('training_plan_FAILED', {
-                'name': order_data['profile'].get('name', ''),
-                'email': order_data['profile'].get('email', ''),
-                'order_id': order_data['order_id'],
-                'error': result.get('stderr', '')[:200],
-            })
+            _notify_new_order('training_plan_FAILED', details)
             return jsonify({
                 'status': 'pipeline_failed',
                 'athlete_id': athlete_id,
@@ -1560,25 +1792,16 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
     result = run_pipeline(athlete_id, deliver=True, intake_data=intake_data or None)
     log_order(order_data, result)
 
+    details = _build_plan_notification_details(order_data, result, intake_data)
     if result['success']:
-        _notify_new_order('training_plan', {
-            'name': order_data['profile'].get('name', ''),
-            'email': order_data['profile'].get('email', ''),
-            'tier': order_data['tier'],
-            'order_id': order_data['order_id'],
-        })
+        _notify_new_order('training_plan', details)
         return jsonify({
             'status': 'success',
             'athlete_id': athlete_id,
             'message': 'Training plan generated and delivered'
         })
     else:
-        _notify_new_order('training_plan_FAILED', {
-            'name': order_data['profile'].get('name', ''),
-            'email': order_data['profile'].get('email', ''),
-            'order_id': order_data['order_id'],
-            'error': result.get('stderr', '')[:200],
-        })
+        _notify_new_order('training_plan_FAILED', details)
         return jsonify({
             'status': 'pipeline_failed',
             'athlete_id': athlete_id,
@@ -1725,13 +1948,9 @@ def test_webhook():
     log_order(order_data, result)
 
     # Send notification email (same as real flow)
+    details = _build_plan_notification_details(order_data, result, intake_data)
     if result['success']:
-        _notify_new_order('training_plan', {
-            'name': order_data['profile'].get('name', ''),
-            'email': order_data['profile'].get('email', ''),
-            'tier': order_data['tier'],
-            'order_id': order_data['order_id'],
-        })
+        _notify_new_order('training_plan', details)
         return jsonify({
             'status': 'success',
             'athlete_id': athlete_id,
@@ -1740,12 +1959,7 @@ def test_webhook():
             'pipeline': result,
         })
     else:
-        _notify_new_order('training_plan_FAILED', {
-            'name': order_data['profile'].get('name', ''),
-            'email': order_data['profile'].get('email', ''),
-            'order_id': order_data['order_id'],
-            'error': result.get('stderr', '')[:200],
-        })
+        _notify_new_order('training_plan_FAILED', details)
         return jsonify({
             'status': 'pipeline_failed',
             'athlete_id': athlete_id,
