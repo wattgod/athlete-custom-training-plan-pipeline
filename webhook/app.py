@@ -1217,7 +1217,21 @@ def persist_deliverables(athlete_id: str) -> dict:
     Returns dict with delivery_dir, zip_path, customer_zip_path, and file counts.
     Customer zip excludes coach-only files (coaching_brief, profile, methodology).
     """
+    # Handle underscore/hyphen mismatch between webhook (sam_delgado) and
+    # intake_to_plan.py (sam-delgado). Check both conventions.
     athlete_dir = Path(ATHLETES_DIR) / athlete_id
+    alt_id = athlete_id.replace('_', '-')
+    alt_dir = Path(ATHLETES_DIR) / alt_id
+
+    if not athlete_dir.exists() and alt_dir.exists():
+        athlete_dir = alt_dir
+    elif not athlete_dir.exists():
+        # Try finding any matching directory
+        for d in Path(ATHLETES_DIR).iterdir():
+            if d.is_dir() and d.name.replace('-', '_') == athlete_id.replace('-', '_'):
+                athlete_dir = d
+                break
+
     delivery_dir = Path(DELIVERIES_DIR) / athlete_id
     delivery_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1225,7 +1239,9 @@ def persist_deliverables(athlete_id: str) -> dict:
     missing = []
 
     # Also check the ~/Downloads path (where intake_to_plan.py copies curated files)
-    downloads_dir = Path.home() / 'Downloads' / f'{athlete_id}-training-plan'
+    downloads_dir = Path.home() / 'Downloads' / f'{alt_id}-training-plan'
+    if not downloads_dir.exists():
+        downloads_dir = Path.home() / 'Downloads' / f'{athlete_id}-training-plan'
     source_dir = downloads_dir if downloads_dir.exists() else athlete_dir
 
     # Copy workouts/
@@ -1294,6 +1310,11 @@ def _create_zip(source_dir: Path, zip_path: Path, exclude_zip: bool = True,
                 zf.write(item, rel)
 
 
+def _normalize_athlete_id(athlete_id: str) -> str:
+    """Normalize athlete_id for consistent token generation (underscore form)."""
+    return athlete_id.replace('-', '_')
+
+
 def _generate_download_token(athlete_id: str) -> str:
     """Generate a signed download token for an athlete's deliverables.
 
@@ -1301,19 +1322,20 @@ def _generate_download_token(athlete_id: str) -> str:
     """
     secret = os.environ.get('CRON_SECRET', 'dev-secret')
     date_str = datetime.now().strftime('%Y-%m')  # Monthly rotation
-    payload = f'{athlete_id}:{date_str}'
+    payload = f'{_normalize_athlete_id(athlete_id)}:{date_str}'
     return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
 
 
 def _verify_download_token(athlete_id: str, token: str) -> bool:
     """Verify a download token. Checks current and previous month."""
     secret = os.environ.get('CRON_SECRET', 'dev-secret')
+    norm_id = _normalize_athlete_id(athlete_id)
     for delta_months in (0, -1):
         d = date.today().replace(day=1)
         if delta_months:
             d = d - timedelta(days=1)  # Last day of previous month
         date_str = d.strftime('%Y-%m')
-        payload = f'{athlete_id}:{date_str}'
+        payload = f'{norm_id}:{date_str}'
         expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
         if hmac.compare_digest(token, expected):
             return True
@@ -1414,16 +1436,18 @@ def download_deliverables(athlete_id):
     if not has_secret and not has_token:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    if not validate_athlete_id(athlete_id):
+    # Normalize — accept both underscore and hyphen forms
+    norm_id = _normalize_athlete_id(athlete_id)
+    if not validate_athlete_id(norm_id):
         return jsonify({'error': 'Invalid athlete ID'}), 400
 
     zip_type = request.args.get('type', 'customer')
-    delivery_dir = Path(DELIVERIES_DIR) / athlete_id
+    delivery_dir = Path(DELIVERIES_DIR) / norm_id
 
     if zip_type == 'full':
-        zip_path = delivery_dir / f'{athlete_id}-full-package.zip'
+        zip_path = delivery_dir / f'{norm_id}-full-package.zip'
     else:
-        zip_path = delivery_dir / f'{athlete_id}-training-plan.zip'
+        zip_path = delivery_dir / f'{norm_id}-training-plan.zip'
 
     if not zip_path.exists():
         return jsonify({'error': 'Deliverables not found. Pipeline may not have run yet.'}), 404
