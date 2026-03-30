@@ -18,10 +18,13 @@ import logging
 import subprocess
 import uuid
 import math
+import shutil
+import zipfile
+import base64
 import requests as http_requests
 from pathlib import Path
 from datetime import datetime, timedelta, date
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_limiter import Limiter
 import stripe
 import yaml
@@ -66,6 +69,7 @@ STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
 ATHLETES_DIR = os.environ.get('ATHLETES_DIR', '/app/athletes')
 SCRIPTS_DIR = os.environ.get('SCRIPTS_DIR', '/app/athletes/scripts')
 DATA_DIR = os.environ.get('DATA_DIR', ATHLETES_DIR)  # Persistent volume for intake/logs
+DELIVERIES_DIR = os.path.join(DATA_DIR, 'deliveries')  # Persistent: zipped plans for download
 
 # CORS — only allow requests from our site
 ALLOWED_ORIGINS = ['https://gravelgodcycling.com', 'https://www.gravelgodcycling.com']
@@ -279,6 +283,13 @@ def _build_training_plan_email(details: dict) -> tuple:
     athlete_id = details.get('athlete_id', '')
     pipeline_ok = details.get('pipeline_success', True)
     error_msg = details.get('error', '')
+    download_token = details.get('download_token', '')
+
+    # Build download URLs
+    base_url = 'https://athlete-custom-training-plan-pipeline-production.up.railway.app'
+    download_full = f'{base_url}/api/download/{athlete_id}?type=full&token={download_token}' if download_token else ''
+    download_customer = f'{base_url}/api/download/{athlete_id}?type=customer&token={download_token}' if download_token else ''
+    deliver_url = f'{base_url}/api/deliver/{athlete_id}' if athlete_id else ''
 
     status = 'DELIVERED' if pipeline_ok else 'FAILED'
     status_color = '#1A8A82' if pipeline_ok else '#c0392b'
@@ -313,12 +324,14 @@ def _build_training_plan_email(details: dict) -> tuple:
 
     if pipeline_ok:
         html += f"""
+    {'<div style="margin: 20px 0; text-align: center;"><a href="' + download_full + '" style="display: inline-block; background: #59473c; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: bold;">Download Full Package</a> &nbsp; <a href="' + download_customer + '" style="display: inline-block; background: #1A8A82; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: bold;">Download Customer Zip</a></div>' if download_full else ''}
+
     <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Your next steps</h3>
     <ol style="font-size: 14px; padding-left: 20px; line-height: 1.8;">
-      <li>Open <code>plan_preview.html</code> — verify checks pass, scan the week grid</li>
-      <li>Review <code>coaching_brief.md</code> — questionnaire-to-decision trace</li>
+      <li>Download the full package (button above) — review <code>plan_preview.html</code> and <code>coaching_brief.md</code></li>
       <li>Spot-check <code>training_guide.html</code> (weeks 1, mid, final)</li>
-      <li>Zip workouts + guide, email to <a href="mailto:{email}">{name}</a></li>
+      <li>When ready, deliver to <a href="mailto:{email}">{name}</a>:<br>
+        <code style="font-size: 12px; background: #f0ede8; padding: 4px 8px; border-radius: 3px;">curl -X POST {deliver_url} -H "X-Cron-Secret: $CRON_SECRET"</code></li>
       <li>Day 1 follow-up fires automatically (check cron)</li>
     </ol>"""
     else:
@@ -351,12 +364,14 @@ Plan: {weeks} weeks, {workouts} workouts
 Methodology: {methodology}
 Order: {order_id} | Athlete ID: {athlete_id}
 
+Download full package: {download_full}
+Download customer zip: {download_customer}
+
 Next steps:
-1. Open plan_preview.html — verify checks
-2. Review coaching_brief.md
-3. Spot-check training_guide.html
-4. Zip + email to {name} ({email})
-5. Day 1 follow-up fires via cron
+1. Download full package — review plan_preview.html + coaching_brief.md
+2. Spot-check training_guide.html (weeks 1, mid, final)
+3. Deliver to {name}: curl -X POST {deliver_url} -H "X-Cron-Secret: $CRON_SECRET"
+4. Day 1 follow-up fires via cron
 """
     if not pipeline_ok:
         text += f"\nERROR: {error_msg}\nCheck Railway logs immediately.\n"
@@ -1174,6 +1189,138 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
 
 
 # =============================================================================
+# DELIVERY PERSISTENCE — zip deliverables to persistent volume
+# =============================================================================
+
+# Files the customer gets (order matters for zip listing)
+CUSTOMER_DELIVERABLES = [
+    'training_guide.html',
+    'training_guide.pdf',
+    'dashboard.html',
+    'plan_preview.html',
+    'fueling.yaml',
+]
+# Coach-only files (not sent to customer)
+COACH_DELIVERABLES = [
+    'coaching_brief.md',
+    'plan_summary.yaml',
+    'profile.yaml',
+    'methodology.yaml',
+    'derived.yaml',
+    'intake_backup.json',
+]
+
+
+def persist_deliverables(athlete_id: str) -> dict:
+    """Copy deliverables from ephemeral athlete dir to persistent volume and create zip.
+
+    Returns dict with delivery_dir, zip_path, customer_zip_path, and file counts.
+    Customer zip excludes coach-only files (coaching_brief, profile, methodology).
+    """
+    athlete_dir = Path(ATHLETES_DIR) / athlete_id
+    delivery_dir = Path(DELIVERIES_DIR) / athlete_id
+    delivery_dir.mkdir(parents=True, exist_ok=True)
+
+    copied = []
+    missing = []
+
+    # Also check the ~/Downloads path (where intake_to_plan.py copies curated files)
+    downloads_dir = Path.home() / 'Downloads' / f'{athlete_id}-training-plan'
+    source_dir = downloads_dir if downloads_dir.exists() else athlete_dir
+
+    # Copy workouts/
+    workouts_src = source_dir / 'workouts'
+    if not workouts_src.exists():
+        workouts_src = athlete_dir / 'workouts'
+    if workouts_src.exists():
+        workouts_dst = delivery_dir / 'workouts'
+        if workouts_dst.exists():
+            shutil.rmtree(workouts_dst)
+        shutil.copytree(workouts_src, workouts_dst)
+        zwo_count = len(list(workouts_dst.glob('*.zwo')))
+        copied.append(f'workouts/ ({zwo_count} .zwo files)')
+    else:
+        missing.append('workouts/')
+
+    # Copy individual files
+    for fname in CUSTOMER_DELIVERABLES + COACH_DELIVERABLES:
+        src = source_dir / fname
+        if not src.exists():
+            src = athlete_dir / fname  # Fallback to raw athlete dir
+        if src.exists():
+            shutil.copy2(src, delivery_dir / fname)
+            copied.append(fname)
+        elif fname in ('training_guide.pdf',):
+            pass  # PDF is optional (no Chrome on Railway)
+        else:
+            missing.append(fname)
+
+    # Create FULL zip (coach — everything)
+    full_zip = delivery_dir / f'{athlete_id}-full-package.zip'
+    _create_zip(delivery_dir, full_zip, exclude_zip=True)
+
+    # Create CUSTOMER zip (no coach-only files)
+    customer_zip = delivery_dir / f'{athlete_id}-training-plan.zip'
+    _create_zip(delivery_dir, customer_zip, exclude_zip=True,
+                exclude_files=set(COACH_DELIVERABLES))
+
+    logger.info(f"Persisted deliverables for {athlete_id}: "
+                f"{len(copied)} files, full={full_zip.stat().st_size // 1024}KB, "
+                f"customer={customer_zip.stat().st_size // 1024}KB")
+
+    return {
+        'delivery_dir': str(delivery_dir),
+        'full_zip': str(full_zip),
+        'customer_zip': str(customer_zip),
+        'full_zip_size': full_zip.stat().st_size,
+        'customer_zip_size': customer_zip.stat().st_size,
+        'copied': copied,
+        'missing': missing,
+    }
+
+
+def _create_zip(source_dir: Path, zip_path: Path, exclude_zip: bool = True,
+                exclude_files: set = None):
+    """Create a zip file from source_dir contents."""
+    exclude_files = exclude_files or set()
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for item in sorted(source_dir.rglob('*')):
+            if item.is_file():
+                rel = item.relative_to(source_dir)
+                if exclude_zip and item.suffix == '.zip':
+                    continue
+                if rel.name in exclude_files:
+                    continue
+                zf.write(item, rel)
+
+
+def _generate_download_token(athlete_id: str) -> str:
+    """Generate a signed download token for an athlete's deliverables.
+
+    Token = HMAC-SHA256(CRON_SECRET, athlete_id:date). Valid for 30 days.
+    """
+    secret = os.environ.get('CRON_SECRET', 'dev-secret')
+    date_str = datetime.now().strftime('%Y-%m')  # Monthly rotation
+    payload = f'{athlete_id}:{date_str}'
+    return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def _verify_download_token(athlete_id: str, token: str) -> bool:
+    """Verify a download token. Checks current and previous month."""
+    secret = os.environ.get('CRON_SECRET', 'dev-secret')
+    for delta_months in (0, -1):
+        d = date.today().replace(day=1)
+        if delta_months:
+            d = d - timedelta(days=1)  # Last day of previous month
+        date_str = d.strftime('%Y-%m')
+        payload = f'{athlete_id}:{date_str}'
+        expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
+        if hmac.compare_digest(token, expected):
+            return True
+    return False
+
+
+# =============================================================================
 # LOGGING
 # =============================================================================
 
@@ -1243,6 +1390,221 @@ def health():
 
     status_code = 200 if checks['status'] == 'ok' else 503
     return jsonify(checks), status_code
+
+
+# =============================================================================
+# DELIVERY ENDPOINTS — download zips, send to customer
+# =============================================================================
+
+@app.route('/api/download/<athlete_id>', methods=['GET'])
+def download_deliverables(athlete_id):
+    """Download an athlete's deliverables zip.
+
+    Auth: either X-Cron-Secret header OR ?token= signed URL parameter.
+    Query params:
+      ?type=customer (default) — customer-facing zip (no coach files)
+      ?type=full — full package including coaching_brief, profile, etc.
+    """
+    # Auth: header secret or signed token
+    secret = request.headers.get('X-Cron-Secret', '')
+    token = request.args.get('token', '')
+    has_secret = secret and hmac.compare_digest(secret, os.environ.get('CRON_SECRET', ''))
+    has_token = token and _verify_download_token(athlete_id, token)
+
+    if not has_secret and not has_token:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    if not validate_athlete_id(athlete_id):
+        return jsonify({'error': 'Invalid athlete ID'}), 400
+
+    zip_type = request.args.get('type', 'customer')
+    delivery_dir = Path(DELIVERIES_DIR) / athlete_id
+
+    if zip_type == 'full':
+        zip_path = delivery_dir / f'{athlete_id}-full-package.zip'
+    else:
+        zip_path = delivery_dir / f'{athlete_id}-training-plan.zip'
+
+    if not zip_path.exists():
+        return jsonify({'error': 'Deliverables not found. Pipeline may not have run yet.'}), 404
+
+    return send_file(
+        zip_path,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=zip_path.name,
+    )
+
+
+@app.route('/api/deliver/<athlete_id>', methods=['POST'])
+def deliver_to_customer(athlete_id):
+    """Send the training plan to the customer via email.
+
+    Secured by X-Cron-Secret. Coach reviews first, then triggers this.
+
+    POST body (optional):
+      {"message": "Custom note to include in the email"}
+    """
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    if not validate_athlete_id(athlete_id):
+        return jsonify({'error': 'Invalid athlete ID'}), 400
+
+    delivery_dir = Path(DELIVERIES_DIR) / athlete_id
+    customer_zip = delivery_dir / f'{athlete_id}-training-plan.zip'
+
+    if not customer_zip.exists():
+        return jsonify({'error': 'Deliverables not found. Run pipeline first.'}), 404
+
+    # Load order data to get customer email
+    log_dir = Path(DATA_DIR) / '.logs'
+    customer_email = None
+    customer_name = None
+    race_name = None
+
+    # Search recent logs for this athlete
+    for log_file in sorted(log_dir.glob('*.jsonl'), reverse=True):
+        try:
+            with open(log_file) as f:
+                for line in f:
+                    entry = json.loads(line.strip())
+                    if (entry.get('athlete_id', '').replace('-', '_') == athlete_id.replace('-', '_')
+                            and entry.get('success')):
+                        customer_email = entry.get('email', '')
+                        customer_name = entry.get('name', '')
+                        break
+        except (json.JSONDecodeError, IOError):
+            continue
+        if customer_email:
+            break
+
+    if not customer_email:
+        return jsonify({'error': 'Customer email not found in order logs'}), 404
+
+    # Load intake backup for race name
+    intake_backup = delivery_dir / 'intake_backup.json'
+    if intake_backup.exists():
+        try:
+            with open(intake_backup) as f:
+                backup = json.load(f)
+                race_name = backup.get('race_name', '')
+        except Exception:
+            pass
+
+    # Custom coach message
+    data = request.get_json() or {}
+    coach_note = data.get('message', '')
+
+    # Build and send customer delivery email
+    first_name = customer_name.split()[0] if customer_name else 'there'
+    race_mention = f' for {race_name}' if race_name else ''
+
+    subject = f'Your training plan{race_mention} is ready'
+
+    text_body = f"""Hey {first_name},
+
+Your custom training plan{race_mention} is ready. The zip file is attached — here's what's inside:
+
+- workouts/ — ZWO files for every session (import into Zwift, TrainingPeaks, or Wahoo)
+- training_guide.html — open in your browser for the full plan overview
+- dashboard.html — visual summary of your training block
+- fueling.yaml — race-day nutrition targets
+
+Getting started:
+1. Import the .zwo files into your training app
+2. Open training_guide.html — read the phase overview
+3. Do today's workout. Don't overthink it.
+
+Week 1 is calibration. The workouts may feel easy. That's intentional. Trust the process.
+
+{('Note from your coach: ' + coach_note + chr(10) + chr(10)) if coach_note else ''}If you have any questions, just reply to this email.
+
+— Matt, Gravel God Cycling
+gravelgodcycling.com
+"""
+
+    html_body = f"""
+<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+  <div style="background: #59473c; color: white; padding: 24px; border-radius: 4px 4px 0 0;">
+    <h1 style="margin: 0; font-size: 22px;">Your training plan is ready</h1>
+    {f'<p style="margin: 6px 0 0; opacity: 0.9; font-size: 15px;">{race_name}</p>' if race_name else ''}
+  </div>
+
+  <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
+    <p style="font-size: 15px; line-height: 1.6;">Hey {first_name},</p>
+
+    <p style="font-size: 15px; line-height: 1.6;">Your custom training plan{race_mention} is attached as a zip file. Here's what's inside:</p>
+
+    <table style="font-size: 14px; border-collapse: collapse; width: 100%; margin: 16px 0;">
+      <tr><td style="padding: 8px 12px; background: #f0ede8; border-bottom: 1px solid #e0e0e0;"><code>workouts/</code></td><td style="padding: 8px 12px; border-bottom: 1px solid #e0e0e0;">ZWO files for every session — import into Zwift, TrainingPeaks, or Wahoo</td></tr>
+      <tr><td style="padding: 8px 12px; background: #f0ede8; border-bottom: 1px solid #e0e0e0;"><code>training_guide.html</code></td><td style="padding: 8px 12px; border-bottom: 1px solid #e0e0e0;">Open in browser — full plan overview with phase breakdowns</td></tr>
+      <tr><td style="padding: 8px 12px; background: #f0ede8; border-bottom: 1px solid #e0e0e0;"><code>dashboard.html</code></td><td style="padding: 8px 12px; border-bottom: 1px solid #e0e0e0;">Visual summary of your training block</td></tr>
+      <tr><td style="padding: 8px 12px; background: #f0ede8;"><code>fueling.yaml</code></td><td style="padding: 8px 12px;">Race-day nutrition targets</td></tr>
+    </table>
+
+    <h3 style="margin: 24px 0 12px; font-size: 16px; color: #59473c;">Getting started</h3>
+    <ol style="font-size: 14px; padding-left: 20px; line-height: 2;">
+      <li>Import the <code>.zwo</code> files into your training app</li>
+      <li>Open <code>training_guide.html</code> — read the phase overview</li>
+      <li>Do today's workout. Don't overthink it.</li>
+    </ol>
+
+    <p style="font-size: 14px; line-height: 1.6; color: #666; margin-top: 16px;">Week 1 is calibration. The workouts may feel easy. That's intentional. Trust the process.</p>
+
+    {f'<div style="margin: 20px 0; padding: 16px; background: #fff; border-left: 3px solid #1A8A82;"><p style="margin: 0; font-size: 14px; color: #555;"><strong>Note from your coach:</strong> {coach_note}</p></div>' if coach_note else ''}
+
+    <p style="font-size: 14px; line-height: 1.6;">Questions? Just reply to this email.</p>
+
+    <p style="font-size: 14px; margin-top: 24px;">— Matt, Gravel God Cycling<br>
+    <a href="https://gravelgodcycling.com" style="color: #1A8A82;">gravelgodcycling.com</a></p>
+  </div>
+</div>"""
+
+    # Send with zip attachment
+    zip_bytes = customer_zip.read_bytes()
+    zip_b64 = base64.b64encode(zip_bytes).decode('utf-8')
+
+    payload = {
+        'from': RESEND_FROM,
+        'to': [customer_email],
+        'subject': subject,
+        'text': text_body,
+        'html': html_body,
+        'reply_to': NOTIFICATION_EMAIL,
+        'attachments': [
+            {
+                'filename': customer_zip.name,
+                'content': zip_b64,
+            }
+        ],
+    }
+
+    try:
+        resp = http_requests.post(
+            'https://api.resend.com/emails',
+            headers={'Authorization': f'Bearer {RESEND_API_KEY}'},
+            json=payload,
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            logger.info(f"Delivered plan to {_mask_email(customer_email)} for {athlete_id}")
+            return jsonify({
+                'status': 'delivered',
+                'athlete_id': athlete_id,
+                'email': _mask_email(customer_email),
+                'zip_size_kb': len(zip_bytes) // 1024,
+            })
+        else:
+            logger.error(f"Delivery failed: Resend {resp.status_code}: {resp.text}")
+            return jsonify({
+                'error': f'Email delivery failed: {resp.status_code}',
+                'detail': resp.text[:200],
+            }), 502
+    except Exception as e:
+        logger.error(f"Delivery exception for {athlete_id}: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/create-checkout', methods=['POST', 'OPTIONS'])
@@ -1571,8 +1933,15 @@ def woocommerce_webhook():
         result = run_pipeline(athlete_id, deliver=True)
         log_order(order_data, result)
 
+        if result['success']:
+            try:
+                persist_deliverables(athlete_id)
+            except Exception as e:
+                logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
+
         details = _build_plan_notification_details(order_data, result)
         if result['success']:
+            details['download_token'] = _generate_download_token(athlete_id)
             _notify_new_order('training_plan', details)
             return jsonify({
                 'status': 'success',
@@ -1792,8 +2161,15 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
     result = run_pipeline(athlete_id, deliver=True, intake_data=intake_data or None)
     log_order(order_data, result)
 
+    if result['success']:
+        try:
+            persist_deliverables(athlete_id)
+        except Exception as e:
+            logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
+
     details = _build_plan_notification_details(order_data, result, intake_data)
     if result['success']:
+        details['download_token'] = _generate_download_token(athlete_id)
         _notify_new_order('training_plan', details)
         return jsonify({
             'status': 'success',
@@ -1947,9 +2323,17 @@ def test_webhook():
     # Log order (same as real flow)
     log_order(order_data, result)
 
+    # Persist deliverables to volume + create zip (same as real flow)
+    if result['success']:
+        try:
+            persist_deliverables(athlete_id)
+        except Exception as e:
+            logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
+
     # Send notification email (same as real flow)
     details = _build_plan_notification_details(order_data, result, intake_data)
     if result['success']:
+        details['download_token'] = _generate_download_token(athlete_id)
         _notify_new_order('training_plan', details)
         return jsonify({
             'status': 'success',
