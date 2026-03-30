@@ -984,6 +984,22 @@ def test_notification():
     return jsonify({'status': 'sent', 'to': NOTIFICATION_EMAIL, 'provider': 'resend'})
 
 
+@app.route('/api/test-store-intake', methods=['POST'])
+def test_store_intake():
+    """Store intake data for testing. TEMPORARY — secured by CRON_SECRET."""
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid JSON'}), 400
+
+    intake_id = str(uuid.uuid4())
+    store_intake(intake_id, data)
+    return jsonify({'status': 'stored', 'intake_id': intake_id})
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint with dependency checks."""
