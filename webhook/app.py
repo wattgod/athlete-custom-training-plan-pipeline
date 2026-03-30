@@ -267,7 +267,7 @@ def _send_email(to: str, subject: str, body: str, html: str = None, reply_to: st
 
 
 def _build_training_plan_email(details: dict) -> tuple:
-    """Build subject + HTML for a training plan order notification."""
+    """Build coach notification email — athlete info + step-by-step fulfillment checklist."""
     name = details.get('name', 'Unknown')
     email = details.get('email', '')
     tier = details.get('tier', 'custom')
@@ -285,25 +285,16 @@ def _build_training_plan_email(details: dict) -> tuple:
     error_msg = details.get('error', '')
     download_token = details.get('download_token', '')
 
-    # Build download URLs
     base_url = 'https://athlete-custom-training-plan-pipeline-production.up.railway.app'
     download_full = f'{base_url}/api/download/{athlete_id}?type=full&token={download_token}' if download_token else ''
-    download_customer = f'{base_url}/api/download/{athlete_id}?type=customer&token={download_token}' if download_token else ''
-    deliver_url = f'{base_url}/api/deliver/{athlete_id}' if athlete_id else ''
 
-    status = 'DELIVERED' if pipeline_ok else 'FAILED'
     status_color = '#1A8A82' if pipeline_ok else '#c0392b'
+    status_label = 'READY FOR REVIEW' if pipeline_ok else 'PIPELINE FAILED'
 
-    subject = f"[GG] {'New plan' if pipeline_ok else 'FAILED'}: {name} — {race_name or 'training plan'}"
+    subject = f"[GG] {'New order' if pipeline_ok else 'FAILED'}: {name} — {race_name or 'training plan'}"
 
-    html = f"""
-<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-  <div style="background: {status_color}; color: white; padding: 16px 24px; border-radius: 4px 4px 0 0;">
-    <h2 style="margin: 0; font-size: 18px;">{status}: {name}</h2>
-    <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">{race_name} &middot; {tier} tier &middot; Order {order_id}</p>
-  </div>
-
-  <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
+    # Shared athlete + plan info block
+    info_html = f"""
     <h3 style="margin: 0 0 12px; font-size: 15px; color: #59473c;">Athlete</h3>
     <table style="font-size: 14px; border-collapse: collapse; width: 100%;">
       <tr><td style="padding: 4px 12px 4px 0; color: #888; width: 120px;">Name</td><td style="padding: 4px 0;"><strong>{name}</strong></td></tr>
@@ -323,59 +314,103 @@ def _build_training_plan_email(details: dict) -> tuple:
     </table>"""
 
     if pipeline_ok:
-        html += f"""
-    {'<div style="margin: 20px 0; text-align: center;"><a href="' + download_full + '" style="display: inline-block; background: #59473c; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: bold;">Download Full Package</a> &nbsp; <a href="' + download_customer + '" style="display: inline-block; background: #1A8A82; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: bold;">Download Customer Zip</a></div>' if download_full else ''}
+        html = f"""
+<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+  <div style="background: {status_color}; color: white; padding: 16px 24px; border-radius: 4px 4px 0 0;">
+    <h2 style="margin: 0; font-size: 18px;">{status_label}: {name}</h2>
+    <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">{race_name} &middot; {tier} tier</p>
+  </div>
 
-    <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Your next steps</h3>
-    <ol style="font-size: 14px; padding-left: 20px; line-height: 1.8;">
-      <li>Download the full package (button above) — review <code>plan_preview.html</code> and <code>coaching_brief.md</code></li>
-      <li>Spot-check <code>training_guide.html</code> (weeks 1, mid, final)</li>
-      <li>When ready, deliver to <a href="mailto:{email}">{name}</a>:<br>
-        <code style="font-size: 12px; background: #f0ede8; padding: 4px 8px; border-radius: 3px;">curl -X POST {deliver_url} -H "X-Cron-Secret: $CRON_SECRET"</code></li>
-      <li>Day 1 follow-up fires automatically (check cron)</li>
-    </ol>"""
-    else:
-        html += f"""
-    <div style="margin: 20px 0; padding: 16px; background: #fdf2f2; border: 1px solid #e8c4c4; border-radius: 4px;">
-      <h3 style="margin: 0 0 8px; font-size: 15px; color: #c0392b;">Pipeline failed</h3>
-      <pre style="font-size: 12px; white-space: pre-wrap; margin: 0; color: #666;">{error_msg or 'Check Railway logs for details.'}</pre>
+  <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
+    {info_html}
+
+    {'<div style="margin: 24px 0; text-align: center;"><a href="' + download_full + '" style="display: inline-block; background: #59473c; color: white; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-size: 15px; font-weight: bold;">Download Full Package</a></div>' if download_full else ''}
+
+    <h3 style="margin: 24px 0 12px; font-size: 15px; color: #59473c;">Fulfillment checklist</h3>
+    <ol style="font-size: 14px; padding-left: 20px; line-height: 2.0;">
+      <li><strong>Download the package</strong> (button above)</li>
+      <li><strong>Review quality</strong> — open <code>plan_preview.html</code>, check the week grid and quality gates</li>
+      <li><strong>Read coaching brief</strong> — <code>coaching_brief.md</code> maps questionnaire answers to plan decisions</li>
+      <li><strong>Spot-check workouts</strong> — open <code>training_guide.html</code>, check weeks 1, mid, and final</li>
+      <li><strong>Create athlete in TrainingPeaks</strong> — add <a href="mailto:{email}">{name}</a> to your coach account</li>
+      <li><strong>Import ZWO files</strong> — drag workouts into their TP calendar, starting week 1</li>
+      <li><strong>Send confirmation email</strong> — let them know the plan is live on TrainingPeaks:<br>
+        <code style="font-size: 12px; background: #f0ede8; padding: 4px 8px; border-radius: 3px; display: inline-block; margin-top: 4px;">curl -X POST {base_url}/api/confirm/{athlete_id} -H "X-Cron-Secret: $CRON_SECRET"</code></li>
+    </ol>
+
+    <div style="margin: 20px 0; padding: 12px 16px; background: #fff; border-left: 3px solid #B7950B;">
+      <p style="margin: 0; font-size: 13px; color: #666;">
+        <strong>Timeline:</strong> Customer got a payment confirmation email automatically. They're expecting the plan within 24 hours. Don't let it sit.
+      </p>
     </div>
-    <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Recovery steps</h3>
-    <ol style="font-size: 14px; padding-left: 20px; line-height: 1.8;">
-      <li>Check Railway logs: <code>railway logs --service stripe-webhook</code></li>
-      <li>Fix the issue, re-run locally: <code>pbpaste | python3 intake_to_plan.py</code></li>
-      <li>Email {name} to let them know — don't leave them hanging</li>
-    </ol>"""
 
-    html += f"""
     <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 24px 0 16px;">
     <p style="font-size: 12px; color: #999; margin: 0;">
       Athlete ID: {athlete_id} &middot; Order: {order_id}<br>
-      Pipeline: {'passed' if pipeline_ok else 'FAILED'} &middot; {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}
+      Pipeline: passed &middot; {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}
+    </p>
+  </div>
+</div>"""
+    else:
+        html = f"""
+<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+  <div style="background: {status_color}; color: white; padding: 16px 24px; border-radius: 4px 4px 0 0;">
+    <h2 style="margin: 0; font-size: 18px;">PIPELINE FAILED: {name}</h2>
+    <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">{race_name} &middot; Order {order_id}</p>
+  </div>
+
+  <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
+    {info_html}
+
+    <div style="margin: 20px 0; padding: 16px; background: #fdf2f2; border: 1px solid #e8c4c4; border-radius: 4px;">
+      <h3 style="margin: 0 0 8px; font-size: 15px; color: #c0392b;">Error</h3>
+      <pre style="font-size: 12px; white-space: pre-wrap; margin: 0; color: #666;">{error_msg or 'Check Railway logs for details.'}</pre>
+    </div>
+
+    <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Recovery steps</h3>
+    <ol style="font-size: 14px; padding-left: 20px; line-height: 2.0;">
+      <li><strong>Check Railway logs</strong>: <code>railway logs --service stripe-webhook</code></li>
+      <li><strong>Fix the issue</strong>, re-run locally: <code>pbpaste | python3 intake_to_plan.py</code></li>
+      <li><strong>Email {name}</strong> — let them know there's a short delay, don't ghost them</li>
+    </ol>
+
+    <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 24px 0 16px;">
+    <p style="font-size: 12px; color: #999; margin: 0;">
+      Athlete ID: {athlete_id} &middot; Order: {order_id}<br>
+      Pipeline: FAILED &middot; {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}
     </p>
   </div>
 </div>"""
 
     # Plain text fallback
-    text = f"""{status}: {name}
+    text = f"""{'READY FOR REVIEW' if pipeline_ok else 'PIPELINE FAILED'}: {name}
 Race: {race_name} ({race_date})
 Tier: {tier} | FTP: {ftp}W | Hours: {hours}/wk
 Plan: {weeks} weeks, {workouts} workouts
 Methodology: {methodology}
 Order: {order_id} | Athlete ID: {athlete_id}
+{'Download: ' + download_full if download_full else ''}
 
-Download full package: {download_full}
-Download customer zip: {download_customer}
-
-Next steps:
-1. Download full package — review plan_preview.html + coaching_brief.md
-2. Spot-check training_guide.html (weeks 1, mid, final)
-3. Deliver to {name}: curl -X POST {deliver_url} -H "X-Cron-Secret: $CRON_SECRET"
-4. Day 1 follow-up fires via cron
+{'Fulfillment checklist:' if pipeline_ok else 'Recovery steps:'}
 """
-    if not pipeline_ok:
-        text += f"\nERROR: {error_msg}\nCheck Railway logs immediately.\n"
+    if pipeline_ok:
+        text += f"""1. Download the package (link above)
+2. Review plan_preview.html — check week grid and quality gates
+3. Read coaching_brief.md — questionnaire-to-decision trace
+4. Spot-check training_guide.html (weeks 1, mid, final)
+5. Create {name} in TrainingPeaks, add to coach account
+6. Import ZWO files into their TP calendar
+7. Send confirmation: curl -X POST {base_url}/api/confirm/{athlete_id} -H "X-Cron-Secret: $CRON_SECRET"
 
+Timeline: Customer got payment confirmation. They expect the plan within 24h.
+"""
+    else:
+        text += f"""1. Check Railway logs: railway logs --service stripe-webhook
+2. Fix the issue, re-run locally: pbpaste | python3 intake_to_plan.py
+3. Email {name} — let them know there's a short delay
+
+ERROR: {error_msg}
+"""
     return subject, text, html
 
 
@@ -464,6 +499,77 @@ def _notify_new_order(product_type: str, details: dict):
             logger.critical(f"NEW ORDER: {subject}\n{text}")
     else:
         logger.critical(f"NEW ORDER: {subject}\n{text}")
+
+
+def _send_payment_confirmation(customer_email: str, customer_name: str,
+                               race_name: str = '', plan_weeks: str = ''):
+    """Send immediate payment confirmation to customer.
+
+    Auto-fires on successful Stripe checkout. Tells them what they bought,
+    that we're building their plan, and when to expect it.
+    """
+    if not RESEND_API_KEY:
+        logger.warning("Cannot send payment confirmation — RESEND_API_KEY not set")
+        return
+
+    first_name = customer_name.split()[0] if customer_name else 'there'
+    race_mention = f' for {race_name}' if race_name else ''
+    weeks_mention = f'{plan_weeks}-week ' if plan_weeks else ''
+
+    subject = f'Payment confirmed — your {weeks_mention}training plan{race_mention}'
+
+    text = f"""Hey {first_name},
+
+Payment received — thank you. Here's what happens next:
+
+1. Your custom {weeks_mention}training plan{race_mention} is being built right now.
+2. I'll review it personally to make sure everything checks out.
+3. You'll get an invite to connect on TrainingPeaks — that's where your plan lives.
+4. Expect everything to be ready within 24 hours.
+
+You don't need to do anything yet. I'll email you when the plan is live on TrainingPeaks.
+
+If you have questions in the meantime, reply to this email.
+
+— Matt, Gravel God Cycling
+gravelgodcycling.com
+"""
+
+    html = f"""
+<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+  <div style="background: #59473c; color: white; padding: 24px; border-radius: 4px 4px 0 0;">
+    <h1 style="margin: 0; font-size: 22px;">Payment confirmed</h1>
+    <p style="margin: 6px 0 0; opacity: 0.9; font-size: 15px;">{weeks_mention}training plan{race_mention}</p>
+  </div>
+
+  <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
+    <p style="font-size: 15px; line-height: 1.6;">Hey {first_name},</p>
+
+    <p style="font-size: 15px; line-height: 1.6;">Payment received — thank you. Here's what happens next:</p>
+
+    <ol style="font-size: 14px; padding-left: 20px; line-height: 2.2;">
+      <li>Your custom {weeks_mention}training plan{race_mention} is <strong>being built right now</strong>.</li>
+      <li>I'll <strong>review it personally</strong> to make sure everything checks out.</li>
+      <li>You'll get an invite to connect on <strong>TrainingPeaks</strong> — that's where your plan lives.</li>
+      <li>Expect everything to be <strong>ready within 24 hours</strong>.</li>
+    </ol>
+
+    <div style="margin: 24px 0; padding: 16px; background: #fff; border-left: 3px solid #1A8A82;">
+      <p style="margin: 0; font-size: 14px; color: #555;">You don't need to do anything yet. I'll email you when the plan is live on TrainingPeaks.</p>
+    </div>
+
+    <p style="font-size: 14px; line-height: 1.6;">Questions in the meantime? Reply to this email.</p>
+
+    <p style="font-size: 14px; margin-top: 24px; color: #666;">— Matt, Gravel God Cycling<br>
+    <a href="https://gravelgodcycling.com" style="color: #1A8A82;">gravelgodcycling.com</a></p>
+  </div>
+</div>"""
+
+    ok = _send_email(customer_email, subject, text, html=html, reply_to=NOTIFICATION_EMAIL)
+    if ok:
+        logger.info(f"Payment confirmation sent to {_mask_email(customer_email)}")
+    else:
+        logger.error(f"Failed to send payment confirmation to {_mask_email(customer_email)}")
 
 
 def _build_plan_notification_details(order_data: dict, result: dict,
@@ -1460,41 +1566,34 @@ def download_deliverables(athlete_id):
     )
 
 
-@app.route('/api/deliver/<athlete_id>', methods=['POST'])
-def deliver_to_customer(athlete_id):
-    """Send the training plan to the customer via email.
+@app.route('/api/confirm/<athlete_id>', methods=['POST'])
+def confirm_plan_ready(athlete_id):
+    """Send "your plan is live on TrainingPeaks" email to customer.
 
-    Secured by X-Cron-Secret. Coach reviews first, then triggers this.
-
-    POST body (optional):
-      {"message": "Custom note to include in the email"}
+    Coach triggers this AFTER reviewing the plan and importing to TP.
+    Secured by X-Cron-Secret.
     """
     secret = request.headers.get('X-Cron-Secret', '')
     if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
         return jsonify({'error': 'Unauthorized'}), 401
 
-    if not validate_athlete_id(athlete_id):
+    norm_id = _normalize_athlete_id(athlete_id)
+    if not validate_athlete_id(norm_id):
         return jsonify({'error': 'Invalid athlete ID'}), 400
 
-    delivery_dir = Path(DELIVERIES_DIR) / athlete_id
-    customer_zip = delivery_dir / f'{athlete_id}-training-plan.zip'
-
-    if not customer_zip.exists():
-        return jsonify({'error': 'Deliverables not found. Run pipeline first.'}), 404
-
-    # Load order data to get customer email
+    # Find customer email and race from order logs
     log_dir = Path(DATA_DIR) / '.logs'
     customer_email = None
     customer_name = None
     race_name = None
+    plan_weeks = None
 
-    # Search recent logs for this athlete
     for log_file in sorted(log_dir.glob('*.jsonl'), reverse=True):
         try:
             with open(log_file) as f:
                 for line in f:
                     entry = json.loads(line.strip())
-                    if (entry.get('athlete_id', '').replace('-', '_') == athlete_id.replace('-', '_')
+                    if (entry.get('athlete_id', '').replace('-', '_') == norm_id
                             and entry.get('success')):
                         customer_email = entry.get('email', '')
                         customer_name = entry.get('name', '')
@@ -1507,7 +1606,8 @@ def deliver_to_customer(athlete_id):
     if not customer_email:
         return jsonify({'error': 'Customer email not found in order logs'}), 404
 
-    # Load intake backup for race name
+    # Load intake backup for race details
+    delivery_dir = Path(DELIVERIES_DIR) / norm_id
     intake_backup = delivery_dir / 'intake_backup.json'
     if intake_backup.exists():
         try:
@@ -1517,33 +1617,29 @@ def deliver_to_customer(athlete_id):
         except Exception:
             pass
 
-    # Custom coach message
-    data = request.get_json() or {}
-    coach_note = data.get('message', '')
-
-    # Build and send customer delivery email
     first_name = customer_name.split()[0] if customer_name else 'there'
     race_mention = f' for {race_name}' if race_name else ''
 
-    subject = f'Your training plan{race_mention} is ready'
+    subject = f'Your training plan{race_mention} is live on TrainingPeaks'
 
     text_body = f"""Hey {first_name},
 
-Your custom training plan{race_mention} is ready. The zip file is attached — here's what's inside:
+Your custom training plan{race_mention} is built, reviewed, and live on TrainingPeaks.
 
-- workouts/ — ZWO files for every session (import into Zwift, TrainingPeaks, or Wahoo)
-- training_guide.html — open in your browser for the full plan overview
-- dashboard.html — visual summary of your training block
-- fueling.yaml — race-day nutrition targets
+Here's what to do:
+1. Log in to TrainingPeaks — you should have a coach invite from me. Accept it.
+2. Your calendar now has every workout loaded, day by day, through race week.
+3. Each workout has target power zones, duration, and structure — just follow the plan.
+4. Do today's workout. Don't overthink it.
 
-Getting started:
-1. Import the .zwo files into your training app
-2. Open training_guide.html — read the phase overview
-3. Do today's workout. Don't overthink it.
+A few things to know:
+- Week 1 is calibration. It may feel easy. That's intentional.
+- If life gets in the way and you miss a day, skip it and move on. Don't double up.
+- I can see your completed workouts in TP. I'm watching — in a good way.
 
-Week 1 is calibration. The workouts may feel easy. That's intentional. Trust the process.
+If you have questions at any point, just reply to this email.
 
-{('Note from your coach: ' + coach_note + chr(10) + chr(10)) if coach_note else ''}If you have any questions, just reply to this email.
+Let's get after it.
 
 — Matt, Gravel God Cycling
 gravelgodcycling.com
@@ -1552,83 +1648,52 @@ gravelgodcycling.com
     html_body = f"""
 <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
   <div style="background: #59473c; color: white; padding: 24px; border-radius: 4px 4px 0 0;">
-    <h1 style="margin: 0; font-size: 22px;">Your training plan is ready</h1>
+    <h1 style="margin: 0; font-size: 22px;">Your plan is live</h1>
     {f'<p style="margin: 6px 0 0; opacity: 0.9; font-size: 15px;">{race_name}</p>' if race_name else ''}
   </div>
 
   <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
     <p style="font-size: 15px; line-height: 1.6;">Hey {first_name},</p>
 
-    <p style="font-size: 15px; line-height: 1.6;">Your custom training plan{race_mention} is attached as a zip file. Here's what's inside:</p>
+    <p style="font-size: 15px; line-height: 1.6;">Your custom training plan{race_mention} is built, reviewed, and <strong>live on TrainingPeaks</strong>.</p>
 
-    <table style="font-size: 14px; border-collapse: collapse; width: 100%; margin: 16px 0;">
-      <tr><td style="padding: 8px 12px; background: #f0ede8; border-bottom: 1px solid #e0e0e0;"><code>workouts/</code></td><td style="padding: 8px 12px; border-bottom: 1px solid #e0e0e0;">ZWO files for every session — import into Zwift, TrainingPeaks, or Wahoo</td></tr>
-      <tr><td style="padding: 8px 12px; background: #f0ede8; border-bottom: 1px solid #e0e0e0;"><code>training_guide.html</code></td><td style="padding: 8px 12px; border-bottom: 1px solid #e0e0e0;">Open in browser — full plan overview with phase breakdowns</td></tr>
-      <tr><td style="padding: 8px 12px; background: #f0ede8; border-bottom: 1px solid #e0e0e0;"><code>dashboard.html</code></td><td style="padding: 8px 12px; border-bottom: 1px solid #e0e0e0;">Visual summary of your training block</td></tr>
-      <tr><td style="padding: 8px 12px; background: #f0ede8;"><code>fueling.yaml</code></td><td style="padding: 8px 12px;">Race-day nutrition targets</td></tr>
-    </table>
-
-    <h3 style="margin: 24px 0 12px; font-size: 16px; color: #59473c;">Getting started</h3>
-    <ol style="font-size: 14px; padding-left: 20px; line-height: 2;">
-      <li>Import the <code>.zwo</code> files into your training app</li>
-      <li>Open <code>training_guide.html</code> — read the phase overview</li>
-      <li>Do today's workout. Don't overthink it.</li>
+    <h3 style="margin: 24px 0 12px; font-size: 16px; color: #59473c;">Get started</h3>
+    <ol style="font-size: 14px; padding-left: 20px; line-height: 2.2;">
+      <li><strong>Log in to TrainingPeaks</strong> — you should have a coach invite from me. Accept it.</li>
+      <li><strong>Check your calendar</strong> — every workout is loaded, day by day, through race week.</li>
+      <li><strong>Follow the structure</strong> — each workout has target power zones, duration, and intervals.</li>
+      <li><strong>Do today's workout.</strong> Don't overthink it.</li>
     </ol>
 
-    <p style="font-size: 14px; line-height: 1.6; color: #666; margin-top: 16px;">Week 1 is calibration. The workouts may feel easy. That's intentional. Trust the process.</p>
+    <div style="margin: 24px 0; padding: 16px; background: #fff; border-left: 3px solid #59473c;">
+      <p style="margin: 0 0 8px; font-size: 14px; color: #555;"><strong>Good to know:</strong></p>
+      <ul style="font-size: 14px; padding-left: 18px; line-height: 1.8; color: #555; margin: 0;">
+        <li>Week 1 is calibration. It may feel easy. That's intentional.</li>
+        <li>If life gets in the way, skip the day and move on. Don't double up.</li>
+        <li>I can see your completed workouts in TP. I'm watching — in a good way.</li>
+      </ul>
+    </div>
 
-    {f'<div style="margin: 20px 0; padding: 16px; background: #fff; border-left: 3px solid #1A8A82;"><p style="margin: 0; font-size: 14px; color: #555;"><strong>Note from your coach:</strong> {coach_note}</p></div>' if coach_note else ''}
+    <p style="font-size: 14px; line-height: 1.6;">Questions at any point? Just reply to this email.</p>
 
-    <p style="font-size: 14px; line-height: 1.6;">Questions? Just reply to this email.</p>
+    <p style="font-size: 15px; line-height: 1.6; margin-top: 20px;">Let's get after it.</p>
 
-    <p style="font-size: 14px; margin-top: 24px;">— Matt, Gravel God Cycling<br>
+    <p style="font-size: 14px; margin-top: 24px; color: #666;">— Matt, Gravel God Cycling<br>
     <a href="https://gravelgodcycling.com" style="color: #1A8A82;">gravelgodcycling.com</a></p>
   </div>
 </div>"""
 
-    # Send with zip attachment
-    zip_bytes = customer_zip.read_bytes()
-    zip_b64 = base64.b64encode(zip_bytes).decode('utf-8')
-
-    payload = {
-        'from': RESEND_FROM,
-        'to': [customer_email],
-        'subject': subject,
-        'text': text_body,
-        'html': html_body,
-        'reply_to': NOTIFICATION_EMAIL,
-        'attachments': [
-            {
-                'filename': customer_zip.name,
-                'content': zip_b64,
-            }
-        ],
-    }
-
-    try:
-        resp = http_requests.post(
-            'https://api.resend.com/emails',
-            headers={'Authorization': f'Bearer {RESEND_API_KEY}'},
-            json=payload,
-            timeout=30,
-        )
-        if resp.status_code == 200:
-            logger.info(f"Delivered plan to {_mask_email(customer_email)} for {athlete_id}")
-            return jsonify({
-                'status': 'delivered',
-                'athlete_id': athlete_id,
-                'email': _mask_email(customer_email),
-                'zip_size_kb': len(zip_bytes) // 1024,
-            })
-        else:
-            logger.error(f"Delivery failed: Resend {resp.status_code}: {resp.text}")
-            return jsonify({
-                'error': f'Email delivery failed: {resp.status_code}',
-                'detail': resp.text[:200],
-            }), 502
-    except Exception as e:
-        logger.error(f"Delivery exception for {athlete_id}: {e}")
-        return jsonify({'error': str(e)}), 500
+    ok = _send_email(customer_email, subject, text_body, html=html_body,
+                     reply_to=NOTIFICATION_EMAIL)
+    if ok:
+        logger.info(f"Sent plan confirmation to {_mask_email(customer_email)} for {norm_id}")
+        return jsonify({
+            'status': 'confirmed',
+            'athlete_id': norm_id,
+            'email': _mask_email(customer_email),
+        })
+    else:
+        return jsonify({'error': 'Failed to send confirmation email'}), 502
 
 
 @app.route('/api/create-checkout', methods=['POST', 'OPTIONS'])
@@ -2182,6 +2247,12 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
     # Mark BEFORE pipeline — see WooCommerce handler comment for rationale
     mark_order_processed(order_data['order_id'], athlete_id)
 
+    # Send instant payment confirmation to customer (before pipeline runs)
+    customer_email = order_data['profile'].get('email', '')
+    customer_name = order_data['profile'].get('name', '')
+    race_name = intake_data.get('race_name', '') if intake_data else ''
+    _send_payment_confirmation(customer_email, customer_name, race_name=race_name)
+
     result = run_pipeline(athlete_id, deliver=True, intake_data=intake_data or None)
     log_order(order_data, result)
 
@@ -2340,6 +2411,12 @@ def test_webhook():
 
     # Idempotency mark (same as real flow)
     mark_order_processed(order_data['order_id'], athlete_id)
+
+    # Send instant payment confirmation to customer (same as real flow)
+    customer_email = order_data['profile'].get('email', '')
+    customer_name = order_data['profile'].get('name', '')
+    race_name = intake_data.get('race_name', '') if intake_data else ''
+    _send_payment_confirmation(customer_email, customer_name, race_name=race_name)
 
     # Run pipeline with deliver=True (same as real flow)
     result = run_pipeline(athlete_id, deliver=True, intake_data=intake_data)
