@@ -10,9 +10,13 @@ RUN pip install --no-cache-dir -r webhook/requirements.txt
 COPY webhook/ ./webhook/
 COPY athletes/ ./athletes/
 
+# Create persistent data directory (Railway volume mounts here)
+RUN mkdir -p /data
+
 # Set environment variables
 ENV ATHLETES_DIR=/app/athletes
 ENV SCRIPTS_DIR=/app/athletes/scripts
+ENV DATA_DIR=/data
 ENV PORT=8080
 ENV FLASK_ENV=production
 

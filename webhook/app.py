@@ -65,6 +65,7 @@ STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
 ATHLETES_DIR = os.environ.get('ATHLETES_DIR', '/app/athletes')
 SCRIPTS_DIR = os.environ.get('SCRIPTS_DIR', '/app/athletes/scripts')
+DATA_DIR = os.environ.get('DATA_DIR', ATHLETES_DIR)  # Persistent volume for intake/logs
 
 # CORS — only allow requests from our site
 ALLOWED_ORIGINS = ['https://gravelgodcycling.com', 'https://www.gravelgodcycling.com']
@@ -273,7 +274,7 @@ def _notify_new_order(product_type: str, details: dict):
 
 def _log_product_event(product_type: str, order_id: str, **details):
     """Write a product event to the order log. Shared by coaching/consulting handlers."""
-    log_dir = Path(ATHLETES_DIR) / '.logs'
+    log_dir = Path(DATA_DIR) / '.logs'
     log_dir.mkdir(exist_ok=True)
     log_file = log_dir / f"{datetime.now().strftime('%Y-%m')}.jsonl"
     log_entry = {
@@ -384,7 +385,7 @@ def check_idempotency(order_id: str) -> bool:
     if not order_id:
         return False
 
-    processed_file = Path(ATHLETES_DIR) / '.processed_orders.json'
+    processed_file = Path(DATA_DIR) / '.processed_orders.json'
 
     try:
         if processed_file.exists():
@@ -406,7 +407,7 @@ def mark_order_processed(order_id: str, athlete_id: str):
     if not order_id:
         return
 
-    processed_file = Path(ATHLETES_DIR) / '.processed_orders.json'
+    processed_file = Path(DATA_DIR) / '.processed_orders.json'
     processed_file.parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -436,8 +437,8 @@ def mark_order_processed(order_id: str, athlete_id: str):
 # =============================================================================
 
 def get_intake_dir() -> Path:
-    """Get or create the intake storage directory."""
-    intake_dir = Path(ATHLETES_DIR) / '.intake'
+    """Get or create the intake storage directory on persistent volume."""
+    intake_dir = Path(DATA_DIR) / '.intake'
     intake_dir.mkdir(parents=True, exist_ok=True)
     return intake_dir
 
@@ -835,7 +836,7 @@ def log_order(order_data: dict, result: dict):
 
     Includes email, name, product_type so follow-up email system can find orders.
     """
-    log_dir = Path(ATHLETES_DIR) / '.logs'
+    log_dir = Path(DATA_DIR) / '.logs'
     log_dir.mkdir(exist_ok=True)
 
     log_entry = {
@@ -886,6 +887,7 @@ def health():
         'status': 'ok',
         'athletes_dir': Path(ATHLETES_DIR).exists(),
         'scripts_dir': Path(SCRIPTS_DIR).exists(),
+        'data_dir': Path(DATA_DIR).exists(),
     }
 
     if not checks['athletes_dir'] or not checks['scripts_dir']:
@@ -1654,7 +1656,7 @@ FOLLOWUP_SEQUENCE = [
 
 def _get_followup_log_path():
     """Path to the follow-up sent log."""
-    log_dir = Path(ATHLETES_DIR) / '.logs'
+    log_dir = Path(DATA_DIR) / '.logs'
     log_dir.mkdir(exist_ok=True)
     return log_dir / 'followup_sent.jsonl'
 
@@ -1706,7 +1708,7 @@ def process_followup_emails():
     Reads from YYYY-MM.jsonl files (written by log_order and _log_product_event).
     Only processes training_plan orders that succeeded.
     """
-    log_dir = Path(ATHLETES_DIR) / '.logs'
+    log_dir = Path(DATA_DIR) / '.logs'
 
     if not log_dir.exists():
         return {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0}
