@@ -95,10 +95,20 @@ def validate_plan_dates(plan_dates: dict, race_date_str: str) -> list:
     return errors
 
 
+def parse_meso_pattern(pattern: str) -> tuple:
+    """Parse meso pattern string like '3:1' into (load_weeks, recovery_weeks)."""
+    try:
+        parts = pattern.split(':')
+        return (int(parts[0]), int(parts[1]))
+    except (ValueError, IndexError):
+        return (3, 1)  # Safe default
+
+
 def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
                          preferred_start: str = None,
                          heavy_training_end: str = None,
-                         b_events: list = None) -> dict:
+                         b_events: list = None,
+                         meso_pattern: str = None) -> dict:
     """
     Calculate all plan dates working backwards from race date.
 
@@ -223,9 +233,35 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         })
 
     # ---------------------------------------------------------------
+    # Recovery week marking: insert deload weeks per mesocycle pattern.
+    # Runs AFTER phase assignment but BEFORE B-race overlay.
+    # Recovery weeks preserve their training phase but get is_recovery_week=True.
+    # ---------------------------------------------------------------
+    from constants import RECOVERY_WEEK_MIN_PLAN_WEEKS, DEFAULT_MESO_PATTERN
+    effective_pattern = meso_pattern or DEFAULT_MESO_PATTERN
+    load_weeks, recovery_weeks = parse_meso_pattern(effective_pattern)
+    cycle_length = load_weeks + recovery_weeks
+
+    for week_data in week_dates:
+        week_data['is_recovery_week'] = False  # Default
+
+    if plan_weeks >= RECOVERY_WEEK_MIN_PLAN_WEEKS:
+        for week_data in week_dates:
+            wn = week_data['week']
+            phase = week_data['phase']
+            # Never mark taper or race weeks as recovery
+            if phase in ('taper', 'race'):
+                continue
+            # Position within the mesocycle (0-indexed)
+            position_in_cycle = (wn - 1) % cycle_length
+            if position_in_cycle >= load_weeks:
+                week_data['is_recovery_week'] = True
+
+    # ---------------------------------------------------------------
     # B-race overlay: mark weeks containing B-priority events
     # This runs AFTER primary phase assignment so it doesn't disrupt
     # the overall plan structure (base/build/peak/taper/race).
+    # If a B-race falls on a recovery week, clear recovery flag.
     # ---------------------------------------------------------------
     if b_events:
         for b_event in b_events:
@@ -241,6 +277,10 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
                 w_sunday = datetime.strptime(week_data['sunday'], '%Y-%m-%d')
 
                 if w_monday <= b_date <= w_sunday:
+                    # B-race overrides recovery — athlete needs to race, not rest
+                    if week_data.get('is_recovery_week'):
+                        week_data['is_recovery_week'] = False
+
                     # Mark this week as containing a B-race
                     week_data['b_race'] = {
                         'name': b_name,
@@ -415,11 +455,22 @@ def main():
     elif not plan_weeks:
         plan_weeks = 12
 
+    # Load meso_pattern from methodology.yaml if available
+    meso_pattern = None
+    methodology_path = athlete_dir / 'methodology.yaml'
+    if methodology_path.exists():
+        with open(methodology_path, 'r') as f:
+            meth_data = yaml.safe_load(f) or {}
+            meso_pattern = meth_data.get('configuration', {}).get('meso_pattern')
+            if not meso_pattern:
+                meso_pattern = meth_data.get('meso_pattern')
+
     # Get B-events from profile
     b_events = profile.get('b_events', [])
 
-    # Calculate dates with constraints
-    plan_dates = calculate_plan_dates(race_date, plan_weeks, preferred_start, heavy_training_end, b_events)
+    # Calculate dates with constraints (including recovery week marking)
+    plan_dates = calculate_plan_dates(race_date, plan_weeks, preferred_start,
+                                      heavy_training_end, b_events, meso_pattern)
 
     # Print summary
     print("=" * 60)

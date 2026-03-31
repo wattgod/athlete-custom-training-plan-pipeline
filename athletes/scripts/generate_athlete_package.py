@@ -26,6 +26,15 @@ from constants import (
     DAY_ORDER,
     FTP_TEST_DURATION_MIN,
     STRENGTH_PHASES,
+    FUEL_TAGS,
+    INTENSITY_WORKOUT_TYPES,
+    RACE_SIM_WORKOUT_TYPES,
+    MASTERS_AGE_THRESHOLD,
+    TRAINING_AGE_CONSTRAINTS,
+    MASTERS_MAX_INTENSITY_PER_WEEK,
+    WEEKLY_HOUR_BUDGET_TOLERANCE,
+    RECOVERY_WEEK_VOLUME_FACTOR,
+    DEFAULT_MESO_PATTERN,
 )
 from logger import get_logger, header, step, detail, success, error, warning
 from pre_generation_validator import validate_athlete_data
@@ -39,6 +48,18 @@ from workout_templates import (
     calculate_target_duration,
     scale_zwo_to_target_duration,
 )
+
+def _get_fuel_tag_for_type(workout_type: str) -> str:
+    """Return fuel guidance string for a workout type, or empty string."""
+    if workout_type in RACE_SIM_WORKOUT_TYPES or 'race_sim' in workout_type.lower():
+        return FUEL_TAGS['race_sim']
+    elif workout_type in INTENSITY_WORKOUT_TYPES:
+        return FUEL_TAGS['intensity']
+    elif workout_type in ('Recovery', 'Easy', 'Shakeout', 'Rest'):
+        return ''
+    else:
+        return FUEL_TAGS['endurance']
+
 
 # Get config and set up paths
 config = get_config()
@@ -370,6 +391,54 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     # Track workout distribution across the week for proper hard/easy alternation
     # This ensures we don't stack hard days back-to-back and provides zone variety
     week_workout_tracker = {'hard_days': [], 'current_week': 0, 'workout_count': 0}
+
+    # --- COMPLIANCE RULES (from block-builder methodology) ---
+    # Training age + masters constraints (Step 3)
+    training_history = profile.get('training_history', {}) if profile else {}
+    years_structured = training_history.get('years_structured', 99)
+    if isinstance(years_structured, str):
+        try:
+            years_structured = float(years_structured.replace('+', ''))
+        except (ValueError, TypeError):
+            years_structured = 99
+    athlete_age = (profile.get('health_factors', {}).get('age')
+                   or profile.get('age', 30)) if profile else 30
+    if isinstance(athlete_age, str):
+        try:
+            athlete_age = int(athlete_age)
+        except (ValueError, TypeError):
+            athlete_age = 30
+    is_masters = athlete_age >= MASTERS_AGE_THRESHOLD
+
+    # Determine max intensity per week and max workout level
+    max_intensity_per_week = 99  # Unconstrained default
+    max_workout_level = 6
+    # TRAINING_AGE_CONSTRAINTS: {0: (1,2), 1: (2,3)}
+    # years_structured=0: brand new → (1,2)
+    # years_structured=0.5: < 1 year → (2,3)
+    # years_structured=2+: unconstrained
+    for age_threshold, (max_int, max_lvl) in sorted(TRAINING_AGE_CONSTRAINTS.items(), reverse=True):
+        if years_structured <= age_threshold:
+            max_intensity_per_week = max_int
+            max_workout_level = max_lvl
+    if is_masters:
+        max_intensity_per_week = min(max_intensity_per_week, MASTERS_MAX_INTENSITY_PER_WEEK)
+
+    # Per-week intensity counter + cross-week intensity tracking (Steps 3-4)
+    week_intensity_count = 0
+    plan_last_intensity_day = None  # Persists across weeks for back-to-back ban
+
+    # Weekly hour budget (Step 5)
+    cycling_hours_target = 10  # Sane default if profile is missing
+    if profile:
+        cycling_hours_target = profile.get('weekly_availability', {}).get('cycling_hours_target', 10)
+        if isinstance(cycling_hours_target, str):
+            try:
+                cycling_hours_target = float(cycling_hours_target)
+            except (ValueError, TypeError):
+                cycling_hours_target = 10
+    max_weekly_minutes = cycling_hours_target * 60 * WEEKLY_HOUR_BUDGET_TOLERANCE
+    week_total_minutes = 0
 
     def build_day_schedule(day_abbrev: str, phase: str, phase_templates: dict, week_num: int = 0) -> tuple:
         """
@@ -1366,15 +1435,24 @@ Stay loose, {athlete_name}!"""
     pre_plan_files = generate_pre_plan_week()
     generated_files.extend(pre_plan_files)
 
-    # Track per-workout-type counter to cycle through archetype variations.
-    # The Nate generator's get_archetype_by_category_and_index() uses modulo
-    # wrapping, so an incrementing counter naturally cycles through all
-    # available archetypes for each workout type.
-    variation_counters = {}  # e.g. {'vo2max': 0, 'threshold': 0}
+    # Series coherence: within a mesocycle (3 load weeks in 3:1), same day+type
+    # slot gets the same archetype variation. Level progresses +1/week within meso.
+    # New mesocycle = new archetype variation for variety.
+    from calculate_plan_dates import parse_meso_pattern
+    _meso_load, _meso_recovery = parse_meso_pattern(
+        methodology.get('configuration', {}).get('meso_pattern', DEFAULT_MESO_PATTERN)
+    )
+    _meso_cycle_len = _meso_load + _meso_recovery
+    meso_archetype_map = {}  # (meso_index, day_abbrev, nate_type) → variation
+    global_variation_counter = {}  # nate_type → next variation index
+    variation_counters = {}  # Legacy compat — still used in the lookup below
 
     for week in weeks:
         week_num = week['week']
         phase = week['phase']
+        week['_recovery_opener_added'] = False  # Reset per-week recovery tracker
+        week_intensity_count = 0  # Reset intensity counter per week
+        week_total_minutes = 0  # Reset hour budget per week
 
         # Use custom schedule if available, otherwise use centralized default templates
         if use_custom_schedule:
@@ -1443,6 +1521,9 @@ GO RACE SMART, {athlete_name.upper()}!
                 with open(filepath, 'w') as f:
                     f.write(b_race_zwo)
                 generated_files.append(filepath)
+                # B-race is intensity — update compliance trackers
+                plan_last_intensity_day = day_abbrev
+                week_intensity_count += 1
                 continue  # Done with B-race day
 
             # Skip ZWO generation for unavailable days (integrity checker rejects them)
@@ -1485,6 +1566,89 @@ GO RACE SMART, {athlete_name.upper()}!
                 description = f'Easy spin - mini-taper for {b_race_name} (B-race in 2 days)'
                 duration = min(duration, 45) if duration > 0 else 30
                 power = 0.55
+
+            # -----------------------------------------------------------
+            # RECOVERY WEEK OVERRIDE: Downgrade intensity to easy,
+            # allow one Openers session per week, reduce all durations.
+            # Recovery weeks have zero intensity above Z2 except Openers.
+            # -----------------------------------------------------------
+            is_recovery = week.get('is_recovery_week', False)
+            if is_recovery and workout_type not in ('Rest', 'Strength'):
+                vol_factor = sum(RECOVERY_WEEK_VOLUME_FACTOR) / 2  # midpoint ~0.575
+
+                if workout_type in INTENSITY_WORKOUT_TYPES or workout_type == 'FTP_Test':
+                    # First intensity slot → Openers; rest → Endurance
+                    if not week.get('_recovery_opener_added', False):
+                        workout_type = 'Openers'
+                        description = f'Recovery week openers — keep the legs sharp'
+                        duration = min(duration, 35) if duration > 0 else 30
+                        power = 0.55
+                        week['_recovery_opener_added'] = True
+                    else:
+                        workout_type = 'Endurance'
+                        description = f'Recovery week — easy zone 2 spin'
+                        duration = max(20, int(duration * vol_factor))
+                        power = 0.60
+                elif workout_type == 'Long_Ride':
+                    description = f'Recovery week long ride — shorter and easy'
+                    duration = max(30, int(duration * 0.60))
+                    power = 0.58  # Easy effort for recovery week
+                else:
+                    # Easy/Endurance/Shakeout — reduce duration
+                    duration = max(20, int(duration * vol_factor))
+
+            # -----------------------------------------------------------
+            # COMPLIANCE ENFORCEMENT (Steps 3-5)
+            # Applied after recovery week override but before ZWO generation.
+            # -----------------------------------------------------------
+            if workout_type in INTENSITY_WORKOUT_TYPES:
+                # Step 3: Training age — cap intensity count per week
+                if week_intensity_count >= max_intensity_per_week:
+                    workout_type = 'Endurance'
+                    description = f'Easy endurance (intensity cap: {max_intensity_per_week}/week)'
+                    duration = max(20, min(duration, 60))
+                    power = 0.62
+
+                # Step 4: Back-to-back intensity ban (cross-week aware)
+                elif plan_last_intensity_day is not None:
+                    day_order = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                    curr_idx = day_order.index(day_abbrev) if day_abbrev in day_order else -1
+                    last_idx = day_order.index(plan_last_intensity_day) if plan_last_intensity_day in day_order else -1
+                    # Same week: adjacent days
+                    same_week_adjacent = (curr_idx - last_idx == 1 and
+                                          week_num == week_workout_tracker.get('current_week', 0))
+                    # Cross-week: Sunday → Monday
+                    cross_week = (plan_last_intensity_day == 'Sun' and day_abbrev == 'Mon' and
+                                  week_num == week_workout_tracker.get('current_week', 0) + 1)
+                    if same_week_adjacent or cross_week:
+                        workout_type = 'Endurance'
+                        description = 'Easy day — no back-to-back intensity'
+                        duration = max(20, min(duration, 60))
+                        power = 0.62
+
+            # Track intensity for compliance (only if still intensity after checks)
+            if workout_type in INTENSITY_WORKOUT_TYPES:
+                week_intensity_count += 1
+                plan_last_intensity_day = day_abbrev
+            elif workout_type not in ('Rest', 'Strength', 'Long_Ride'):
+                # Non-intensity, non-rest: clear the back-to-back tracker
+                plan_last_intensity_day = None
+
+            # Step 5: Weekly hour budget enforcement (cycling only, exclude Strength)
+            if workout_type != 'Strength' and workout_type != 'Rest' and duration > 0:
+                if week_total_minutes + duration > max_weekly_minutes:
+                    remaining = max(0, max_weekly_minutes - week_total_minutes)
+                    if remaining < 20:
+                        workout_type = 'Rest'
+                        duration = 0
+                    else:
+                        duration = int(remaining // 10) * 10  # Round down to 10
+                        if workout_type in INTENSITY_WORKOUT_TYPES:
+                            # Can't do meaningful intensity in scraps of time
+                            workout_type = 'Endurance'
+                            description = 'Easy spin (hour budget)'
+                            power = 0.60
+                week_total_minutes += duration
 
             # Generate Rest days as 1-min workouts with personalized instructions
             if workout_type == 'Rest' or duration == 0:
@@ -1582,7 +1746,8 @@ Trust the process, {athlete_name}."""
                     else:
                         ftp_descriptions[tw] = 'The Assessment - Functional Threshold. Mid-plan retest to update training zones.'
 
-            if week_num in ftp_test_target_weeks and week_num not in ftp_tests_added and ftp_day_candidates:
+            if (week_num in ftp_test_target_weeks and week_num not in ftp_tests_added
+                    and ftp_day_candidates and not week.get('is_recovery_week', False)):
                 if day_abbrev == ftp_day_candidates[0] and is_day_available_for_ftp(day_abbrev):
                     workout_type = 'FTP_Test'
                     description = ftp_descriptions.get(week_num, 'The Assessment - Functional Threshold. Retest to update training zones.')
@@ -1695,6 +1860,7 @@ GO GET IT, {athlete_name.upper()}!
             # Generate blocks - use Nate generator for key workouts
             # Calculate progression level based on week in plan
             level = calculate_level_from_week(week_num, total_weeks)
+            level = min(level, max_workout_level)  # Training age cap
 
             # Map workout types to Nate generator types
             nate_workout_types = {
@@ -1718,11 +1884,20 @@ GO GET IT, {athlete_name.upper()}!
             if workout_type in nate_workout_types:
                 # Use Nate generator for high-intensity workouts
                 nate_type = nate_workout_types[workout_type]
-                # Get and increment variation counter for this workout type
-                if nate_type not in variation_counters:
-                    variation_counters[nate_type] = 0
-                variation = variation_counters[nate_type]
-                variation_counters[nate_type] += 1
+                # Series coherence: same slot in same mesocycle → same archetype
+                meso_index = (week_num - 1) // _meso_cycle_len
+                slot_key = (meso_index, day_abbrev, nate_type)
+                if slot_key in meso_archetype_map:
+                    variation = meso_archetype_map[slot_key]
+                else:
+                    # New mesocycle or new slot: advance to next variation
+                    if nate_type not in global_variation_counter:
+                        global_variation_counter[nate_type] = 0
+                    variation = global_variation_counter[nate_type]
+                    global_variation_counter[nate_type] += 1
+                    meso_archetype_map[slot_key] = variation
+                # Legacy compat
+                variation_counters[nate_type] = variation
                 try:
                     zwo_content = generate_nate_zwo(
                         workout_type=nate_type,
@@ -1748,10 +1923,12 @@ GO GET IT, {athlete_name.upper()}!
                         if needs_heat_training and 4 <= weeks_to_race <= 8:
                             heat_reminder = "\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance\n\n"
 
-                        # Insert header after <description> tag
+                        # Insert fuel tag + header after <description> tag
+                        fuel_tag = _get_fuel_tag_for_type(workout_type)
+                        fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
                         zwo_content = zwo_content.replace(
                             '<description>',
-                            f'<description>{personal_header}',
+                            f'<description>{fuel_prefix}{personal_header}',
                             1
                         )
                         # Insert heat reminder before EXECUTION if applicable
@@ -1801,7 +1978,11 @@ GO GET IT, {athlete_name.upper()}!
             if needs_heat_training and 4 <= weeks_to_race <= 8:
                 heat_reminder = "\n\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance"
 
-            full_description = personal_header + full_description + heat_reminder
+            # Add fuel tag
+            fuel_tag = _get_fuel_tag_for_type(workout_type)
+            fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
+
+            full_description = fuel_prefix + personal_header + full_description + heat_reminder
 
             # Create ZWO content
             zwo_content = ZWO_TEMPLATE.format(

@@ -100,9 +100,11 @@ def build_weekly_structure(
                 day_struct["am"] = "strength"
                 day_struct["notes"] = "Strength session"
             elif is_strength and is_key:
-                # Strength on key day (AM strength, PM intervals/long ride)
-                day_struct["am"] = "strength"
-                day_struct["notes"] = "Strength AM"
+                # Key day wins — no max strength on intensity days.
+                # Strength sessions go on non-key available days instead.
+                day_struct["am"] = "intervals"
+                day_struct["is_key_day"] = True
+                day_struct["notes"] = "Key session (strength on non-key days only)"
             else:
                 day_struct["am"] = "easy_ride"
                 day_struct["notes"] = "Easy ride or recovery"
@@ -118,20 +120,12 @@ def build_weekly_structure(
                 else:
                     day_struct["pm"] = None
             elif day_struct["am"] == "strength":
-                # After strength AM, can do intervals/long ride PM if it's a key day
-                if is_key:
-                    if day == long_day and max_duration >= 180:
-                        day_struct["pm"] = "long_ride"
-                        day_struct["is_key_day"] = True
-                        day_struct["notes"] = "Strength AM + Long ride PM"
-                    else:
-                        day_struct["pm"] = "intervals"
-                        day_struct["is_key_day"] = True
-                        day_struct["notes"] = "Strength AM + Intervals PM"
-                elif max_duration >= 60:
-                    # Easy ride PM after strength
+                # Strength AM — easy spin PM only (no intensity, per block-builder rules)
+                if max_duration >= 60:
                     day_struct["pm"] = "easy_ride"
                     day_struct["notes"] += " + Easy spin PM"
+                else:
+                    day_struct["pm"] = None
             elif is_key and not day_struct["is_key_day"]:
                 # PM key session
                 day_struct["pm"] = "intervals"

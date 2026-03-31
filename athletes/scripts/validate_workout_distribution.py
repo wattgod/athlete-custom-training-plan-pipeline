@@ -126,15 +126,36 @@ def validate_distribution(athlete_id: str) -> tuple[bool, str]:
         else:
             return False, f"ERROR: Unknown methodology '{methodology_id}' and no config found"
 
-    # Count workouts by zone
+    # Build set of recovery week numbers (excluded from distribution calc)
+    recovery_weeks = set()
+    plan_dates_file = athlete_dir / 'plan_dates.yaml'
+    if plan_dates_file.exists():
+        with open(plan_dates_file, 'r') as f:
+            plan_dates = yaml.safe_load(f) or {}
+        for week_data in plan_dates.get('weeks', []):
+            if week_data.get('is_recovery_week', False):
+                recovery_weeks.add(week_data['week'])
+
+    # Count workouts by zone (excluding recovery weeks)
     zone_counts = defaultdict(int)
     excluded_types = []
     unknown_types = []
+    recovery_excluded_count = 0
 
     for workout in workouts_dir.glob('*.zwo'):
         stem = workout.stem
         parts = stem.split('_')
         workout_type = '_'.join(parts[3:]) if len(parts) >= 4 else stem
+
+        # Exclude recovery week workouts from distribution calc
+        if recovery_weeks and len(parts) >= 1:
+            try:
+                week_num = int(parts[0].replace('W', ''))
+                if week_num in recovery_weeks:
+                    recovery_excluded_count += 1
+                    continue
+            except (ValueError, IndexError):
+                pass
 
         # Check if excluded (assessments, race days, strength)
         is_excluded = any(workout_type.startswith(p) for p in EXCLUDED_PREFIXES)
@@ -226,6 +247,83 @@ def validate_distribution(athlete_id: str) -> tuple[bool, str]:
     return passed, '\n'.join(report)
 
 
+def validate_vo2max_gap(athlete_id: str) -> tuple[bool, str]:
+    """
+    Validate VO2max sessions don't have gaps exceeding 16 calendar days.
+
+    Excludes recovery weeks from gap counting (VO2max is suppressed during recovery).
+    Returns (passed, message). Warns but doesn't fail — some methodologies
+    intentionally avoid VO2max (MAF, HVLI).
+    """
+    from datetime import datetime
+    from constants import VO2MAX_GAP_MAX_DAYS
+
+    athletes_dir = Path(__file__).parent.parent
+    athlete_dir = athletes_dir / athlete_id
+    workouts_dir = athlete_dir / 'workouts'
+    plan_dates_file = athlete_dir / 'plan_dates.yaml'
+
+    if not workouts_dir.exists() or not plan_dates_file.exists():
+        return True, "VO2max gap check: skipped (missing files)"
+
+    with open(plan_dates_file, 'r') as f:
+        plan_dates = yaml.safe_load(f) or {}
+
+    # Build date lookup: (week_num, day_abbrev) → calendar date string
+    date_lookup = {}
+    recovery_weeks = set()
+    for week_data in plan_dates.get('weeks', []):
+        wn = week_data['week']
+        if week_data.get('is_recovery_week', False):
+            recovery_weeks.add(wn)
+        for day_data in week_data.get('days', []):
+            date_lookup[(wn, day_data['day'])] = day_data['date']
+
+    # Find all VO2max workout dates (excluding recovery weeks)
+    vo2max_dates = []
+    for workout in sorted(workouts_dir.glob('*.zwo')):
+        stem = workout.stem
+        parts = stem.split('_')
+        if len(parts) < 4:
+            continue
+        workout_type = '_'.join(parts[3:])
+        if not workout_type.startswith('VO2max'):
+            continue
+
+        try:
+            week_num = int(parts[0].replace('W', ''))
+        except (ValueError, IndexError):
+            continue
+
+        if week_num in recovery_weeks:
+            continue  # Skip recovery weeks
+
+        day_abbrev = parts[1]
+        date_str = date_lookup.get((week_num, day_abbrev))
+        if date_str:
+            vo2max_dates.append((datetime.strptime(date_str, '%Y-%m-%d'), stem))
+
+    if len(vo2max_dates) <= 1:
+        return True, "VO2max gap check: OK (0-1 VO2max sessions — gap check N/A)"
+
+    vo2max_dates.sort()
+
+    # Check gaps
+    warnings = []
+    for i in range(1, len(vo2max_dates)):
+        gap = (vo2max_dates[i][0] - vo2max_dates[i-1][0]).days
+        if gap > VO2MAX_GAP_MAX_DAYS:
+            warnings.append(
+                f"  {gap}-day gap between {vo2max_dates[i-1][1]} and {vo2max_dates[i][1]}"
+            )
+
+    if warnings:
+        msg = f"VO2max gap check: WARN — {len(warnings)} gap(s) > {VO2MAX_GAP_MAX_DAYS} days:\n" + '\n'.join(warnings)
+        return True, msg  # Warn but pass (some methodologies skip VO2max)
+    else:
+        return True, f"VO2max gap check: OK ({len(vo2max_dates)} sessions, all within {VO2MAX_GAP_MAX_DAYS}-day window)"
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python3 validate_workout_distribution.py <athlete_id>")
@@ -236,8 +334,11 @@ def main():
 
     athlete_id = sys.argv[1]
     passed, report = validate_distribution(athlete_id)
-
     print(report)
+
+    # Also run VO2max gap check
+    gap_passed, gap_report = validate_vo2max_gap(athlete_id)
+    print(f"\n{gap_report}")
 
     sys.exit(0 if passed else 1)
 

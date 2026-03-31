@@ -196,3 +196,44 @@ RECOMMENDED_PROFILE_FIELDS: List[str] = [
     'weekly_availability.cycling_hours_target',
     'schedule_constraints.preferred_long_day',
 ]
+
+
+# === COMPLIANCE RULES (from block-builder methodology) ===
+
+# Workout types that count as "intensity" for sequencing and cap rules.
+# Openers is NOT intensity — it's allowed in recovery weeks.
+INTENSITY_WORKOUT_TYPES: List[str] = [
+    'VO2max', 'Anaerobic', 'Sprints', 'Threshold', 'Race_Sim',
+    'Over_Under', 'Blended', 'Intervals', 'Tempo',
+    'G_Spot', 'Critical_Power', 'Norwegian_Double', 'HVLI_Extended',
+    'SFR_Muscle_Force', 'Mixed_Climbing', 'Cadence_Work',
+]
+
+# Recovery week parameters
+RECOVERY_WEEK_VOLUME_FACTOR: Tuple[float, float] = (0.50, 0.65)  # min/max of normal volume
+RECOVERY_WEEK_MIN_PLAN_WEEKS: int = 6  # Plans shorter than this skip recovery weeks
+DEFAULT_MESO_PATTERN: str = "3:1"  # 3 load weeks + 1 recovery
+
+# Training age constraints: years_structured → (max_intensity_per_week, max_workout_level)
+TRAINING_AGE_CONSTRAINTS: Dict[int, Tuple[int, int]] = {
+    0: (1, 2),   # Brand new: 1 intensity/week, Level 1-2 only
+    1: (2, 3),   # < 1 year structured: 2 intensity/week, Level 1-3
+}
+MASTERS_AGE_THRESHOLD: int = 50  # Age >= this triggers masters constraints
+MASTERS_MAX_INTENSITY_PER_WEEK: int = 2
+
+# Weekly hour budget
+WEEKLY_HOUR_BUDGET_TOLERANCE: float = 1.10  # 110% of cycling_hours_target
+
+# VO2max continuity
+VO2MAX_GAP_MAX_DAYS: int = 16  # Max calendar days between VO2max sessions
+
+# Per-workout fuel tags (injected as <textevent> in ZWO files)
+FUEL_TAGS: Dict[str, str] = {
+    'intensity': 'HIGH FUEL: Target 60-90g carbs/hr. Eat early, eat often.',
+    'endurance': 'MODERATE FUEL: Target 30-60g carbs/hr. Stay topped up.',
+    'race_sim': 'PRACTICE FUEL: Race-day fueling 80-100g carbs/hr. Practice your plan.',
+}
+
+# Workout types that get PRACTICE FUEL instead of HIGH FUEL
+RACE_SIM_WORKOUT_TYPES: List[str] = ['Race_Sim', 'Gravel_Specific']

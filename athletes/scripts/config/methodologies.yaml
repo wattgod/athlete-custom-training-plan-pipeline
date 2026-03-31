@@ -13,6 +13,7 @@ traditional_pyramidal:
   experience_required: "intermediate"
   stress_tolerance: "moderate"
   schedule_flexibility: "moderate"
+  meso_pattern: "3:1"
   intensity_distribution:
     z1_z2: 0.75
     z3: 0.15
@@ -34,6 +35,7 @@ polarized_80_20:
   experience_required: "intermediate"
   stress_tolerance: "high"
   schedule_flexibility: "moderate"
+  meso_pattern: "3:1"
   intensity_distribution:
     z1_z2: 0.80
     z3: 0.00
@@ -55,6 +57,7 @@ sweet_spot_threshold:
   experience_required: "beginner"
   stress_tolerance: "moderate"
   schedule_flexibility: "high"
+  meso_pattern: "3:1"
   intensity_distribution:
     z1_z2: 0.50
     z3: 0.35
@@ -76,6 +79,7 @@ hiit_focused:
   experience_required: "intermediate"
   stress_tolerance: "low"
   schedule_flexibility: "high"
+  meso_pattern: "3:1"
   intensity_distribution:
     z1_z2: 0.30
     z3: 0.20
@@ -97,6 +101,7 @@ block_periodization:
   experience_required: "advanced"
   stress_tolerance: "high"
   schedule_flexibility: "low"
+  meso_pattern: "2:1"
   intensity_distribution: "block_dependent"
   strength_approach: "separate_block"
   key_workouts: ["block_specific"]
@@ -115,6 +120,7 @@ reverse_periodization:
   experience_required: "intermediate"
   stress_tolerance: "moderate"
   schedule_flexibility: "moderate"
+  meso_pattern: "3:1"
   intensity_distribution:
     early:
       z4_z5: 0.30
@@ -137,6 +143,7 @@ autoregulated_hrv:
   experience_required: "intermediate"
   stress_tolerance: "variable"
   schedule_flexibility: "very_high"
+  meso_pattern: "3:1"
   intensity_distribution: "readiness_dependent"
   strength_approach: "autoregulated_heavy_when_ready"
   key_workouts: ["readiness_driven"]
@@ -155,6 +162,7 @@ maf_low_hr:
   experience_required: "beginner"
   stress_tolerance: "very_high"
   schedule_flexibility: "high"
+  meso_pattern: "3:1"
   intensity_distribution:
     z1_z2: 0.95
     z3: 0.05
@@ -176,6 +184,7 @@ critical_power:
   experience_required: "advanced"
   stress_tolerance: "moderate"
   schedule_flexibility: "moderate"
+  meso_pattern: "3:1"
   intensity_distribution:
     z1_z2: 0.60
     z3: 0.15
@@ -197,6 +206,7 @@ inscyd:
   experience_required: "advanced"
   stress_tolerance: "moderate"
   schedule_flexibility: "low"
+  meso_pattern: "3:1"
   intensity_distribution:
     z1_z2: 0.65
     z3: 0.15
@@ -218,6 +228,7 @@ norwegian_double_threshold:
   experience_required: "advanced"
   stress_tolerance: "low"
   schedule_flexibility: "low"
+  meso_pattern: "3:1"
   intensity_distribution:
     z1_z2: 0.55
     z3: 0.35
@@ -239,6 +250,7 @@ hvli_lsd:
   experience_required: "intermediate"
   stress_tolerance: "high"
   schedule_flexibility: "low"
+  meso_pattern: "3:1"
   intensity_distribution:
     z1_z2: 0.90
     z3: 0.08
@@ -260,6 +272,7 @@ goat_composite:
   experience_required: "intermediate"
   stress_tolerance: "moderate"
   schedule_flexibility: "high"
+  meso_pattern: "3:1"
   intensity_distribution: "phase_adaptive"
   strength_approach: "integrated_year_round"
   key_workouts: ["phase_specific_rotating"]
