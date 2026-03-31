@@ -2223,6 +2223,248 @@ def run_quality_gates(athlete_id: str) -> bool:
 
 
 # ===========================================================================
+# Personal Email Generator
+# ===========================================================================
+
+def generate_personal_email(
+    profile: Dict[str, Any],
+    parsed: Dict[str, Any],
+    athlete_dir: Optional[Path] = None,
+) -> str:
+    """Generate a personalized plan delivery email from questionnaire + plan data.
+
+    This email demonstrates that the coach read the questionnaire and made
+    thoughtful decisions. It references specific details the athlete provided
+    and explains key plan decisions tied to their situation.
+
+    Output is markdown — coach reviews/edits before sending.
+    """
+    import yaml
+
+    name = profile.get('name', 'there')
+    first_name = name.split()[0] if name else 'there'
+    target = profile.get('target_race', {})
+    race_name = target.get('name', 'your race')
+    race_date = target.get('date', '')
+    race_goal = target.get('goal_description', target.get('goal', ''))
+    ftp = profile.get('fitness_markers', {}).get('ftp_watts')
+    ftp_estimated = profile.get('fitness_markers', {}).get('ftp_estimated', False)
+    cycling_hours = profile.get('weekly_availability', {}).get('cycling_hours_target', '')
+    age = profile.get('age', profile.get('health_factors', {}).get('age', ''))
+    years_cycling = profile.get('training_history', {}).get('years_cycling', '')
+
+    # Load plan output for plan-specific details
+    plan_weeks = None
+    methodology_name = None
+    if athlete_dir:
+        ad = Path(athlete_dir)
+        for fname, loader in [
+            ('plan_dates.yaml', lambda d: d.get('plan_weeks')),
+            ('methodology.yaml', lambda d: d.get('selected_methodology', d.get('name', ''))),
+        ]:
+            fpath = ad / fname
+            if fpath.exists():
+                try:
+                    with open(fpath) as f:
+                        data = yaml.safe_load(f) or {}
+                    if fname == 'plan_dates.yaml':
+                        plan_weeks = loader(data)
+                    elif fname == 'methodology.yaml':
+                        methodology_name = loader(data)
+                except Exception:
+                    pass
+
+    # Count workouts
+    workouts_dir = Path(athlete_dir) / 'workouts' if athlete_dir else None
+    workout_count = 0
+    if workouts_dir and workouts_dir.exists():
+        workout_count = len(list(workouts_dir.glob('*.zwo')))
+
+    # --- Extract questionnaire signals for personalization ---
+    notes = profile.get('notes', parsed.get('additional', {}).get('other', ''))
+    injuries_raw = profile.get('injury_history', {}).get('current_injuries', [])
+    injuries_text = parsed.get('health', {}).get('current_injuries', '')
+    stress_level = profile.get('health_factors', {}).get('stress_level', '')
+    sleep_raw = profile.get('health_factors', {}).get('sleep_hours_avg', '')
+    strength_current = profile.get('strength', {}).get('routine',
+                                   parsed.get('strength', {}).get('current', ''))
+    strength_include = profile.get('strength', {}).get('include_in_plan', False)
+
+    # Preferred days
+    preferred_days = profile.get('preferred_days', {})
+    off_days = [d.title() for d, v in preferred_days.items()
+                if v.get('availability') in ('unavailable', 'rest')]
+    interval_days = [d.title() for d, v in preferred_days.items()
+                     if v.get('is_key_day_ok')]
+    long_day = profile.get('schedule_constraints', {}).get('preferred_long_day', '')
+
+    # Weaknesses / blindspots from questionnaire
+    weaknesses = parsed.get('basic_info', {}).get('weaknesses',
+                 parsed.get('current_fitness', {}).get('weaknesses', ''))
+    blindspots_list = profile.get('blindspots', [])
+    blindspots = ', '.join(blindspots_list) if isinstance(blindspots_list, list) else str(blindspots_list)
+
+    # Training background
+    background = parsed.get('basic_info', {}).get('background',
+                 parsed.get('goals', {}).get('background', ''))
+    if not background:
+        # Try to extract from notes
+        for section in ('basic_info', 'goals', 'work_life', 'additional'):
+            section_data = parsed.get(section, {})
+            for k, v in section_data.items():
+                if isinstance(v, str) and len(v) > 50:
+                    background = v
+                    break
+            if background:
+                break
+
+    # --- Build email sections ---
+    lines = []
+    lines.append(f"**Subject:** Your {race_name} plan is live on TrainingPeaks\n")
+    lines.append(f"Hey {first_name},\n")
+
+    # Plan summary
+    week_str = f"{plan_weeks}-week " if plan_weeks else ""
+    lines.append(f"Your {week_str}plan is built and loaded on TrainingPeaks. "
+                 f"Here's what I want you to know about how it's structured.\n")
+
+    # --- Personal acknowledgment (the "I see you" paragraph) ---
+    # Pull the most human detail from their questionnaire
+    ack_parts = []
+    if background and len(background) > 20:
+        ack_parts.append(background.rstrip('.'))
+    if isinstance(age, (int, float)) and int(age) >= 50:
+        ack_parts.append(f"at {int(age)}, you're bringing decades of experience to this")
+    if race_goal:
+        ack_parts.append(f"your goal — {race_goal.lower().rstrip('.')} — is clear and achievable")
+
+    if ack_parts:
+        lines.append(f"First — {'. '.join(ack_parts[:2])}. "
+                     f"{'That tells me a lot about who you are as an athlete.' if len(ack_parts) >= 2 else ''}\n")
+
+    lines.append("A few things specific to your plan:\n")
+
+    # --- FTP status ---
+    if ftp_estimated:
+        lines.append(f"**FTP test in Week 1.** Your FTP is estimated right now ({ftp}W) since "
+                     "we don't have test data yet. The plan has a test scheduled early so we "
+                     "establish your real zones. Everything after that will be calibrated to your "
+                     "actual numbers.\n")
+    elif ftp:
+        lines.append(f"**Your zones are set.** FTP of {ftp}W gives us clean power targets "
+                     "across every workout. The plan includes a retest mid-plan to adjust as "
+                     "you get fitter.\n")
+
+    # --- Intensity cap explanation ---
+    is_masters = isinstance(age, (int, float)) and int(age) >= 50
+    if is_masters or stress_level in ('high', 'very_high'):
+        reasons = []
+        if is_masters:
+            reasons.append("recovery needs at this stage")
+        if stress_level in ('high', 'very_high'):
+            reasons.append("your high-stress job")
+        if sleep_raw and ('6' in str(sleep_raw) or '5' in str(sleep_raw)):
+            reasons.append(f"{sleep_raw} hours of sleep")
+        reason_str = ' and '.join(reasons)
+        lines.append(f"**Two intensity sessions per week, max.** Given {reason_str}, "
+                     "recovery is the priority — not volume. "
+                     f"{'Your key days are ' + ' and '.join(d for d in interval_days[:2]) + '.' if interval_days else ''} "
+                     "Everything else is easy endurance or rest.\n")
+
+    # --- Specific concerns from their questionnaire ---
+    concern_sections = []
+
+    # Heat / weather
+    if any(w in notes.lower() for w in ['heat', 'hot', 'acclim', 'kansas', 'weather']):
+        concern_sections.append(
+            "**Heat prep is built in.** The plan includes heat acclimation cues starting "
+            "4 weeks out — sauna post-ride or extra layers during warmup. Your long rides "
+            "have practice fueling targets so race day isn't the first time you test nutrition "
+            "at effort in the heat."
+        )
+
+    # VO2/cadence weakness
+    if any(w in (weaknesses + ' ' + blindspots).lower() for w in ['vo2', 'cadence', 'top end', 'high intensity']):
+        concern_sections.append(
+            "**VO2 and cadence work.** You flagged these as weaknesses. The plan includes "
+            "targeted sessions but keeps them short and structured — not suffer-fests. "
+            "The goal is consistent stimulus, not destroying yourself."
+        )
+
+    # Climbing
+    if any(w in (weaknesses + ' ' + blindspots + ' ' + notes).lower() for w in ['climb', 'ascent', 'hill']):
+        concern_sections.append(
+            "**Climbing.** The plan builds climbing-specific work into your key sessions. "
+            "If you're limited on hills locally, trainer intervals at climbing cadence "
+            "(60-70 RPM) are a strong substitute."
+        )
+
+    # Trainer vs outdoor
+    if any(w in (weaknesses + ' ' + blindspots + ' ' + notes).lower() for w in ['trainer', 'zwift', 'indoor', 'outdoor']):
+        concern_sections.append(
+            "**Trainer vs. outdoor.** As weather opens up, push your long rides outside. "
+            "The fitness transfers, but bike handling and fueling-at-speed don't build on "
+            "the trainer. Weekday intervals can stay indoors."
+        )
+
+    # Family/schedule accommodation
+    schedule_notes = parsed.get('schedule', {}).get('notes',
+                     parsed.get('work_life', {}).get('notes', ''))
+    additional_notes = notes + ' ' + schedule_notes
+    # Look for specific events (graduation, wedding, travel, etc.)
+    event_keywords = ['graduat', 'wedding', 'travel', 'vacation', 'trip', 'conference']
+    for kw in event_keywords:
+        if kw in additional_notes.lower():
+            # Extract the sentence containing the keyword
+            for sentence in additional_notes.replace('. ', '.\n').split('\n'):
+                if kw in sentence.lower() and len(sentence) > 15:
+                    concern_sections.append(
+                        f"**Schedule note.** {sentence.strip().rstrip('.')} — "
+                        "this falls during taper, so the plan is already light that week. "
+                        "No conflicts."
+                    )
+                    break
+            break
+
+    # Health / medical
+    if injuries_text and 'none' not in injuries_text.lower():
+        concern_sections.append(
+            "**Health considerations noted.** Your medical history is in the coaching brief. "
+            "If anything changes or flares up, let me know and we'll adjust."
+        )
+
+    for section in concern_sections:
+        lines.append(f"{section}\n")
+
+    # --- Strength ---
+    if strength_include and strength_current:
+        lines.append(
+            "**Strength stays.** Your current gym work is solid. The plan keeps strength "
+            "on non-intensity days so it doesn't compete with your key cycling sessions.\n"
+        )
+
+    # --- Off days ---
+    if off_days:
+        lines.append(f"**{', '.join(off_days)} {'is' if len(off_days) == 1 else 'are'} off.** "
+                     "Completely. No guilt.\n")
+
+    # --- CTA ---
+    lines.append(
+        "Connect with me on TrainingPeaks using this link — that's where your workouts live:\n"
+        "https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU\n"
+    )
+
+    if plan_weeks:
+        lines.append(f"Week 1 starts soon. Do {'the FTP test' if ftp_estimated else 'the first workout'} "
+                     "and we're rolling.\n")
+
+    lines.append("Questions anytime — just reply to this email.\n")
+    lines.append("— Matt")
+
+    return '\n'.join(lines)
+
+
+# ===========================================================================
 # Deliverables Copier
 # ===========================================================================
 
@@ -2536,6 +2778,19 @@ def main():
             print(f"    {icon}{RESET} {c['name']}: {c['detail']}")
     except Exception as e:
         print(f"  {YELLOW}Preview generation failed: {e}{RESET}")
+
+    # -- Step 4c: Generate personal delivery email --
+    print(f"\n{BOLD}Step 4c: Generating personal email...{RESET}")
+    try:
+        personal_email = generate_personal_email(profile, parsed, athlete_dir=athlete_dir)
+        email_path = athlete_dir / 'personal_email.md'
+        with open(email_path, 'w') as f:
+            f.write(personal_email)
+        print(f"  {GREEN}Generated{RESET} personal_email.md")
+        print(f"  {GREEN}Written:{RESET} {email_path}")
+    except Exception as e:
+        personal_email = ''
+        print(f"  {YELLOW}Personal email generation failed: {e}{RESET}")
 
     # -- Step 5: Copy to Downloads --
     print(f"\n{BOLD}Step 5: Copying to Downloads...{RESET}")
