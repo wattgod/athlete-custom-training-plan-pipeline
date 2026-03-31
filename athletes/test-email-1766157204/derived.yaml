@@ -1,5 +1,5 @@
 tier: compete
-plan_weeks: 24
+plan_weeks: 8
 starting_phase: base_2
 strength_frequency: 2
 equipment_tier: minimal
@@ -14,3 +14,6 @@ strength_day_candidates:
 - sunday
 - saturday
 derived_date: '2025-12-19 15:13:42'
+plan_start: '2026-04-06'
+plan_end: '2026-05-31'
+race_weekday: Saturday

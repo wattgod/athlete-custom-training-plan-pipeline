@@ -7,13 +7,13 @@ primary_goal: specific_race
 target_race:
   name: Unbound 200
   race_id: unbound_gravel_200
-  date: '2026-06-07'
+  date: '2026-05-30'
   distance_miles: 200.0
   goal_type: compete
   goal: compete
 a_events:
 - name: Unbound 200
-  date: '2026-06-07'
+  date: '2026-05-30'
   distance_miles: 200.0
   goal: compete
   priority: A
