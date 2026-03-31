@@ -2192,6 +2192,7 @@ def run_quality_gates(athlete_id: str) -> bool:
         ('Workout Distribution', 'validate_workout_distribution.py'),
         ('Athlete Integrity', 'test_athlete_integrity.py'),
         ('Pre-Delivery Checklist', 'pre_delivery_checklist.py'),
+        ('Guide Quality', 'validate_guide_quality.py'),
     ]
 
     all_ok = True
