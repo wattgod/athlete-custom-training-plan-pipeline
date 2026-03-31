@@ -22,7 +22,7 @@ COPY webhook/requirements.txt ./webhook/
 RUN pip install --no-cache-dir -r webhook/requirements.txt && \
     python -c "import weasyprint; print(f'WeasyPrint {weasyprint.__version__} OK')"
 
-# Copy application code
+# Copy application code (bust cache: 2026-03-31)
 COPY webhook/ ./webhook/
 COPY athletes/ ./athletes/
 
