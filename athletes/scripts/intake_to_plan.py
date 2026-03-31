@@ -2546,6 +2546,13 @@ def copy_to_downloads(athlete_id: str, coaching_brief_md: str) -> Path:
         print(f"  {GREEN}Copied:{RESET} fueling.yaml")
         delivered.append('fueling.yaml')
 
+    # 6b. Personal email (coach reviews before sending)
+    personal_email = athlete_dir / 'personal_email.md'
+    if personal_email.exists():
+        shutil.copy2(personal_email, downloads_dir / 'personal_email.md')
+        print(f"  {GREEN}Copied:{RESET} personal_email.md (REVIEW before sending)")
+        delivered.append('personal_email.md')
+
     # 7. Plan preview
     preview = athlete_dir / 'plan_preview.html'
     if preview.exists():
