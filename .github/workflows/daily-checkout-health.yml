@@ -1,0 +1,76 @@
+name: "Daily Checkout Health Check [TEST]"
+
+# Runs every morning at 7 AM Mountain (13:00 UTC)
+# This is a HEALTH CHECK — it creates a test checkout session to verify
+# the Railway webhook, Stripe integration, and email notifications are working.
+# No real charges are made. The checkout session expires after 60 minutes.
+
+on:
+  schedule:
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+
+jobs:
+  checkout-health:
+    name: "[TEST] Verify checkout flow"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: "[TEST] Health check — Railway service"
+        run: |
+          echo "🔍 Checking Railway service health..."
+          RESPONSE=$(curl -sf https://athlete-custom-training-plan-pipeline-production.up.railway.app/health)
+          echo "$RESPONSE" | python3 -m json.tool
+          STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+          if [ "$STATUS" != "ok" ]; then
+            echo "❌ Health check failed: status=$STATUS"
+            exit 1
+          fi
+          echo "✅ Railway service healthy"
+
+      - name: "[TEST] Create test checkout session"
+        run: |
+          echo "🔍 Creating test checkout session..."
+          RESPONSE=$(curl -sf -X POST \
+            https://athlete-custom-training-plan-pipeline-production.up.railway.app/api/create-checkout \
+            -H "Content-Type: application/json" \
+            -H "Origin: https://gravelgodcycling.com" \
+            -d '{
+              "email": "healthcheck@gravelgodcycling.com",
+              "name": "Daily Health Check [TEST]",
+              "races": [{"name": "Health Check Race", "date": "2026-12-31", "priority": "A"}],
+              "ftp": 200,
+              "weight": "70kg"
+            }')
+
+          echo "$RESPONSE" | python3 -m json.tool
+
+          # Verify response has checkout_url
+          URL=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('checkout_url',''))")
+          if [ -z "$URL" ] || [[ "$URL" != https://checkout.stripe.com/* ]]; then
+            echo "❌ Checkout session creation failed — no valid Stripe URL returned"
+            exit 1
+          fi
+          echo "✅ Checkout session created successfully"
+
+          # Verify price is reasonable
+          PRICE=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['price']['price_cents'])")
+          if [ "$PRICE" -lt 6000 ] || [ "$PRICE" -gt 25000 ]; then
+            echo "⚠️ Unexpected price: $PRICE cents (expected 6000-25000)"
+            exit 1
+          fi
+          echo "✅ Price check passed: $PRICE cents"
+
+      - name: "[TEST] Verify test-notification endpoint removed"
+        run: |
+          echo "🔍 Confirming test-notification endpoint is gone..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            https://athlete-custom-training-plan-pipeline-production.up.railway.app/api/test-notification \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          if [ "$HTTP_CODE" != "404" ]; then
+            echo "❌ /api/test-notification still exists (HTTP $HTTP_CODE) — security risk!"
+            exit 1
+          fi
+          echo "✅ Test endpoint removed (404)"
