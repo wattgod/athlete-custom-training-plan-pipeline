@@ -96,6 +96,15 @@ def has_weasyprint() -> bool:
         return True
     except ImportError:
         return False
+    except OSError as e:
+        # Missing C library (pango, cairo, etc.)
+        import sys
+        print(f"WeasyPrint import failed (system dep missing): {e}", file=sys.stderr)
+        return False
+    except Exception as e:
+        import sys
+        print(f"WeasyPrint import failed: {e}", file=sys.stderr)
+        return False
 
 
 def generate_pdf_chrome(html_path: Path, pdf_path: Path, timeout: int = 60) -> Tuple[bool, str]:
@@ -137,6 +146,11 @@ def generate_pdf_chrome(html_path: Path, pdf_path: Path, timeout: int = 60) -> T
 def generate_pdf_weasyprint(html_path: Path, pdf_path: Path) -> Tuple[bool, str]:
     """Generate PDF using WeasyPrint."""
     if not has_weasyprint():
+        # Try importing directly to get the real error message
+        try:
+            import weasyprint
+        except Exception as e:
+            return False, f"WeasyPrint not available: {e}"
         return False, "WeasyPrint not installed"
 
     try:
