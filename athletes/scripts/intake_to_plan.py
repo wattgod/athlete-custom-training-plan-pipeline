@@ -2329,18 +2329,31 @@ def generate_personal_email(
                  f"Here's what I want you to know about how it's structured.\n")
 
     # --- Personal acknowledgment (the "I see you" paragraph) ---
-    # Pull the most human detail from their questionnaire
+    # Build a clean, human summary from structured fields — never dump raw notes.
     ack_parts = []
-    if background and len(background) > 20:
-        ack_parts.append(background.rstrip('.'))
-    if isinstance(age, (int, float)) and int(age) >= 50:
-        ack_parts.append(f"at {int(age)}, you're bringing decades of experience to this")
-    if race_goal:
-        ack_parts.append(f"your goal — {race_goal.lower().rstrip('.')} — is clear and achievable")
+
+    # Sport background (short, structured)
+    sport_bg = parsed.get('basic_info', {}).get('primary_sport', '')
+    experience_level = parsed.get('basic_info', {}).get('experience_level', '')
+    strengths_raw = parsed.get('basic_info', {}).get('strengths', '')
+    # Extract first strength only (before the first comma)
+    first_strength = strengths_raw.split(',')[0].strip().lower() if strengths_raw else ''
+
+    if years_cycling and int(str(years_cycling).replace('+', '') or 0) >= 10:
+        ack_parts.append(f"{years_cycling} years in the sport")
+    if sport_bg and sport_bg.lower() not in ('cycling', 'gravel', 'gravel cycling', 'bike'):
+        ack_parts.append(f"a {sport_bg.lower()} background")
+    if first_strength and len(first_strength) < 40:
+        ack_parts.append(f"an {first_strength}" if first_strength[0] in 'aeiou' else f"a {first_strength}")
 
     if ack_parts:
-        lines.append(f"First — {'. '.join(ack_parts[:2])}. "
-                     f"{'That tells me a lot about who you are as an athlete.' if len(ack_parts) >= 2 else ''}\n")
+        lines.append(f"First — I can see you're coming in with {', '.join(ack_parts[:2])}. ")
+    if isinstance(age, (int, float)) and int(age) >= 50:
+        lines[-1] = lines[-1].rstrip() + f" At {int(age)}, you know what it takes.\n"
+    elif race_goal:
+        lines[-1] = lines[-1].rstrip() + f" Your goal — {race_goal.lower().rstrip('.')} — is clear and achievable.\n"
+    else:
+        lines[-1] = lines[-1].rstrip() + " That tells me a lot about who you are as an athlete.\n"
 
     lines.append("A few things specific to your plan:\n")
 
@@ -2363,8 +2376,14 @@ def generate_personal_email(
             reasons.append("recovery needs at this stage")
         if stress_level in ('high', 'very_high'):
             reasons.append("your high-stress job")
-        if sleep_raw and ('6' in str(sleep_raw) or '5' in str(sleep_raw)):
-            reasons.append(f"{sleep_raw} hours of sleep")
+        sleep_str = str(sleep_raw) if sleep_raw else ''
+        # Extract lower bound from ranges like "6-7" or "6-7 hours"
+        try:
+            sleep_num = float(sleep_str.split('-')[0].split()[0])
+        except (ValueError, IndexError):
+            sleep_num = 8
+        if sleep_num < 7:
+            reasons.append(f"{sleep_str.split()[0] if ' ' in sleep_str else sleep_str} hours of sleep")
         reason_str = ' and '.join(reasons)
         lines.append(f"**Two intensity sessions per week, max.** Given {reason_str}, "
                      "recovery is the priority — not volume. "
