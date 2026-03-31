@@ -17,9 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies first (better caching)
+# Install Python dependencies (including WeasyPrint for PDF generation)
 COPY webhook/requirements.txt ./webhook/
-RUN pip install --no-cache-dir -r webhook/requirements.txt
+RUN pip install --no-cache-dir -r webhook/requirements.txt && \
+    python -c "import weasyprint; print(f'WeasyPrint {weasyprint.__version__} OK')"
 
 # Copy application code
 COPY webhook/ ./webhook/
