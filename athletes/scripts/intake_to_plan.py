@@ -2667,12 +2667,14 @@ def main():
 
     args = parser.parse_args()
 
-    # -- Pre-flight: Chrome availability --
+    # -- Pre-flight: PDF engine availability --
     try:
-        from pdf_generator import find_chrome
-        if not find_chrome():
-            print(f"{YELLOW}[WARN]{RESET} Google Chrome not found — PDF generation will be skipped.")
-            print(f"       Install Chrome for PDF output: https://www.google.com/chrome/")
+        from pdf_generator import find_chrome, has_weasyprint
+        has_chrome = bool(find_chrome())
+        has_wp = has_weasyprint()
+        if not has_chrome and not has_wp:
+            print(f"{YELLOW}[WARN]{RESET} No PDF engine found — PDF generation will be skipped.")
+            print(f"       Install Chrome or WeasyPrint (pip install weasyprint)")
     except ImportError:
         print(f"{YELLOW}[WARN]{RESET} pdf_generator.py not found — PDF generation will be skipped.")
 
