@@ -112,7 +112,8 @@ python3 -m pytest webhook/tests/test_webhook.py -v
 
 ## Pending Work
 - [x] Set up SMTP env vars in Railway — NOTIFICATION_EMAIL, SMTP_HOST, SMTP_PORT, SMTP_USER, CRON_SECRET all configured
-- [ ] Add `SMTP_PASS` to Railway (Gmail App Password from https://myaccount.google.com/apppasswords)
+- [x] Email notifications confirmed working via Resend API (tested 2026-03-31)
+- [x] Removed unauthenticated `/api/test-notification` endpoint (2026-03-31)
 - [ ] Set up daily cron to call `/api/cron/followup-emails` (needs external service — Railway cron restarts entire container)
 - [ ] Enable `ENABLE_AUTOMATIC_TAX=true` in Railway (requires Stripe Tax account setup first)
 - [ ] Set up Stripe Customer Portal for subscription management

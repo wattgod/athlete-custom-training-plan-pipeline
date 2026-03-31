@@ -1488,18 +1488,6 @@ def log_order(order_data: dict, result: dict):
 # ROUTES
 # =============================================================================
 
-@app.route('/api/test-notification', methods=['POST'])
-def test_notification():
-    """Send a test notification email to verify SMTP config. TEMPORARY — remove after testing."""
-    data = request.get_json() or {}
-    _notify_new_order('TEST', {
-        'name': 'Notification Test',
-        'email': 'test@test.com',
-        'race': 'Test Race',
-        'note': 'This is a test notification to verify SMTP works.',
-    })
-    return jsonify({'status': 'sent', 'to': NOTIFICATION_EMAIL, 'provider': 'resend'})
-
 
 
 
@@ -1844,8 +1832,9 @@ def create_checkout():
                     'allow_promotion_codes': True,
                 }
             },
-            # consent_collection removed — requires Stripe Checkout ToS acceptance
-            # in dashboard.stripe.com/settings/checkout. Re-enable after accepting.
+            consent_collection={
+                'promotions': 'auto',
+            },
         )
         if ENABLE_AUTOMATIC_TAX:
             session_kwargs['automatic_tax'] = {'enabled': True}
@@ -1934,8 +1923,9 @@ def create_coaching_checkout():
                     'allow_promotion_codes': True,
                 }
             },
-            # consent_collection removed — requires Stripe Checkout ToS acceptance
-            # in dashboard.stripe.com/settings/checkout. Re-enable after accepting.
+            consent_collection={
+                'promotions': 'auto',
+            },
         )
         if ENABLE_AUTOMATIC_TAX:
             session_kwargs['automatic_tax'] = {'enabled': True}
@@ -2008,8 +1998,9 @@ def create_consulting_checkout():
                     'allow_promotion_codes': True,
                 }
             },
-            # consent_collection removed — requires Stripe Checkout ToS acceptance
-            # in dashboard.stripe.com/settings/checkout. Re-enable after accepting.
+            consent_collection={
+                'promotions': 'auto',
+            },
         )
         if ENABLE_AUTOMATIC_TAX:
             session_kwargs['automatic_tax'] = {'enabled': True}
