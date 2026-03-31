@@ -1,10 +1,12 @@
 name: Test Pipeline
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - 'athletes/scripts/**'
+      - 'athletes/*/profile.yaml'
       - 'config.yaml'
       - 'requirements.txt'
       - '.github/workflows/test-pipeline.yml'
