@@ -1,39 +1,38 @@
-name: "Daily Checkout Health Check [TEST]"
+name: "Daily Checkout Health Check"
 
 # Runs every morning at 7 AM Mountain (13:00 UTC)
-# This is a HEALTH CHECK — it creates a test checkout session to verify
-# the Railway webhook, Stripe integration, and email notifications are working.
-# No real charges are made. The checkout session expires after 60 minutes.
+# Verifies all three checkout flows: training plans, coaching, consulting.
+# No real charges — sessions expire after 60 minutes.
 
 on:
   schedule:
     - cron: '0 13 * * *'
   workflow_dispatch:
 
+env:
+  API_BASE: https://athlete-custom-training-plan-pipeline-production.up.railway.app
+
 jobs:
   checkout-health:
-    name: "[TEST] Verify checkout flow"
+    name: "Verify all checkout flows"
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
-      - name: "[TEST] Health check — Railway service"
+      - name: "Health check — Railway service"
         run: |
-          echo "🔍 Checking Railway service health..."
-          RESPONSE=$(curl -sf https://athlete-custom-training-plan-pipeline-production.up.railway.app/health)
+          RESPONSE=$(curl -sf $API_BASE/health)
           echo "$RESPONSE" | python3 -m json.tool
           STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
           if [ "$STATUS" != "ok" ]; then
-            echo "❌ Health check failed: status=$STATUS"
+            echo "::error::Health check failed: status=$STATUS"
             exit 1
           fi
-          echo "✅ Railway service healthy"
 
-      - name: "[TEST] Create test checkout session"
+      - name: "Training plan checkout"
         run: |
-          echo "🔍 Creating test checkout session..."
           RESPONSE=$(curl -sf -X POST \
-            https://athlete-custom-training-plan-pipeline-production.up.railway.app/api/create-checkout \
+            $API_BASE/api/create-checkout \
             -H "Content-Type: application/json" \
             -H "Origin: https://gravelgodcycling.com" \
             -d '{
@@ -44,33 +43,76 @@ jobs:
               "weight": "70kg"
             }')
 
-          echo "$RESPONSE" | python3 -m json.tool
-
-          # Verify response has checkout_url
           URL=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('checkout_url',''))")
-          if [ -z "$URL" ] || [[ "$URL" != https://checkout.stripe.com/* ]]; then
-            echo "❌ Checkout session creation failed — no valid Stripe URL returned"
+          if [[ "$URL" != https://checkout.stripe.com/* ]]; then
+            echo "::error::Training plan checkout failed — no valid Stripe URL"
+            echo "$RESPONSE" | python3 -m json.tool
             exit 1
           fi
-          echo "✅ Checkout session created successfully"
 
-          # Verify price is reasonable
           PRICE=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['price']['price_cents'])")
           if [ "$PRICE" -lt 6000 ] || [ "$PRICE" -gt 25000 ]; then
-            echo "⚠️ Unexpected price: $PRICE cents (expected 6000-25000)"
+            echo "::error::Unexpected training plan price: $PRICE cents"
             exit 1
           fi
-          echo "✅ Price check passed: $PRICE cents"
+          echo "Training plan checkout OK ($PRICE cents)"
 
-      - name: "[TEST] Verify test-notification endpoint removed"
+      - name: "Coaching checkout (mid tier)"
         run: |
-          echo "🔍 Confirming test-notification endpoint is gone..."
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-            https://athlete-custom-training-plan-pipeline-production.up.railway.app/api/test-notification \
+          RESPONSE=$(curl -sf -X POST \
+            $API_BASE/api/create-coaching-checkout \
             -H "Content-Type: application/json" \
-            -d '{}')
-          if [ "$HTTP_CODE" != "404" ]; then
-            echo "❌ /api/test-notification still exists (HTTP $HTTP_CODE) — security risk!"
+            -H "Origin: https://gravelgodcycling.com" \
+            -d '{
+              "email": "healthcheck@gravelgodcycling.com",
+              "name": "Daily Health Check [TEST]",
+              "tier": "mid"
+            }')
+
+          URL=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('checkout_url',''))")
+          if [[ "$URL" != https://checkout.stripe.com/* ]]; then
+            echo "::error::Coaching checkout failed — no valid Stripe URL"
+            echo "$RESPONSE" | python3 -m json.tool
             exit 1
           fi
-          echo "✅ Test endpoint removed (404)"
+          echo "Coaching checkout OK (mid tier)"
+
+      - name: "Consulting checkout (1 hour)"
+        run: |
+          RESPONSE=$(curl -sf -X POST \
+            $API_BASE/api/create-consulting-checkout \
+            -H "Content-Type: application/json" \
+            -H "Origin: https://gravelgodcycling.com" \
+            -d '{
+              "email": "healthcheck@gravelgodcycling.com",
+              "name": "Daily Health Check [TEST]",
+              "hours": 1
+            }')
+
+          URL=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('checkout_url',''))")
+          if [[ "$URL" != https://checkout.stripe.com/* ]]; then
+            echo "::error::Consulting checkout failed — no valid Stripe URL"
+            echo "$RESPONSE" | python3 -m json.tool
+            exit 1
+          fi
+          echo "Consulting checkout OK (1 hour)"
+
+      - name: "Questionnaire-started endpoint"
+        run: |
+          RESPONSE=$(curl -sf -X POST \
+            $API_BASE/api/questionnaire-started \
+            -H "Content-Type: application/json" \
+            -H "Origin: https://gravelgodcycling.com" \
+            -d '{
+              "email": "healthcheck@gravelgodcycling.com",
+              "name": "Daily Health Check [TEST]",
+              "sections_reached": 1,
+              "source": "health-check"
+            }')
+
+          STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))")
+          if [ "$STATUS" != "tracked" ] && [ "$STATUS" != "already_tracked" ]; then
+            echo "::error::Questionnaire-started endpoint failed: $STATUS"
+            exit 1
+          fi
+          echo "Questionnaire-started endpoint OK ($STATUS)"
