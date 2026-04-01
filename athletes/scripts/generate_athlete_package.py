@@ -51,11 +51,16 @@ from workout_templates import (
 
 def _get_fuel_tag_for_type(workout_type: str) -> str:
     """Return fuel guidance string for a workout type, or empty string."""
-    if workout_type in RACE_SIM_WORKOUT_TYPES or 'race_sim' in workout_type.lower():
+    wt_lower = workout_type.lower()
+    if workout_type in RACE_SIM_WORKOUT_TYPES or 'race_sim' in wt_lower or 'race simulation' in wt_lower:
         return FUEL_TAGS['race_sim']
-    elif workout_type in INTENSITY_WORKOUT_TYPES:
+    elif workout_type in INTENSITY_WORKOUT_TYPES or any(k in wt_lower for k in [
+        'vo2max', 'threshold', 'sprint', 'anaerobic', 'kitchen sink', 'drain cleaner',
+        'la balanguera', 'hyttevask', 'blended', 'mixed', 'sfr', 'thunder quads',
+        'blood pistons', 'cadence work', 'tempo', 'stomps', 'microbursts', 'buffer',
+    ]):
         return FUEL_TAGS['intensity']
-    elif workout_type in ('Recovery', 'Easy', 'Shakeout', 'Rest'):
+    elif any(k in wt_lower for k in ['recovery', 'easy', 'shakeout', 'rest', 'openers', 'off']):
         return ''
     else:
         return FUEL_TAGS['endurance']
@@ -440,6 +445,47 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     max_weekly_minutes = cycling_hours_target * 60 * WEEKLY_HOUR_BUDGET_TOLERANCE
     week_total_minutes = 0
 
+    # ===================================================================
+    # BLOCK-BUILDER PLAN: pre-compute workout assignments for all weeks
+    # Uses the block-builder coaching logic (phase × archetype matrix)
+    # instead of the old get_workout_for_day() template system.
+    # ===================================================================
+    try:
+        from archetype import determine_archetype, determine_phase
+        from block_chain import chain_blocks
+        from workout_mapper import render_workout as _bb_render
+
+        _bb_archetype = determine_archetype(cycling_hours_target)
+        _bb_off_days = [DAY_FULL_TO_ABBREV.get(d.lower(), d)
+                        for d in schedule_constraints.get('preferred_off_days', ['monday'])]
+
+        _bb_plan = chain_blocks(
+            total_weeks=total_weeks,
+            archetype=_bb_archetype,
+            weeks_to_race=total_weeks,  # Plan starts now, race at end
+            max_level=max_workout_level,
+            max_intensity=max_intensity_per_week,
+            off_days=_bb_off_days,
+            long_ride_day=long_day_abbrev,
+            starting_level=1,
+            hours_per_week=cycling_hours_target,
+        )
+
+        # Build lookup: (plan_week, day_abbrev) → block plan day data
+        _bb_lookup = {}
+        _bb_variation_counters = {}  # Track variation per workout name for variety
+        for bw in _bb_plan.get('weeks', []):
+            plan_week = bw.get('plan_week', 0)
+            for bd in bw.get('days', []):
+                _bb_lookup[(plan_week, bd['day'])] = bd
+
+        _use_block_builder = True
+        log.info(f"Block-builder plan: {_bb_archetype}, {len(_bb_plan.get('weeks',[]))} weeks, "
+                 f"{_bb_plan.get('num_blocks',0)} blocks")
+    except Exception as e:
+        _use_block_builder = False
+        log.warning(f"Block-builder not available, using legacy templates: {e}")
+
     def build_day_schedule(day_abbrev: str, phase: str, phase_templates: dict, week_num: int = 0) -> tuple:
         """
         Determine workout type for a specific day based on:
@@ -557,7 +603,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         if day_abbrev in easy_days:
             # True recovery day - Z1/Z2 easy spin
             # Don't increment workout counter - recovery doesn't affect methodology cycle
-            template = phase_templates.get('easy', ('Recovery', 'Easy spin', 30, 0.50))
+            template = phase_templates.get('easy', ('Recovery', 'Easy spin', 30, 0.55))
         else:
             # Increment workout counter ONLY for methodology-driven days
             week_workout_tracker['workout_count'] += 1
@@ -592,11 +638,11 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 elif phase == 'taper':
                     # Taper: 1 opener on first quality day, rest easy
                     if workout_num == 1:
-                        template = ('Openers', 'Taper openers: 4x15sec all-out + easy spin', 30, 0.55)
+                        template = ('Openers', 'Taper openers: 4x15sec all-out + easy spin', 30, 0.60)
                     else:
-                        template = ('Easy', 'Taper: Easy spin, stay fresh', 30, 0.50)
+                        template = ('Easy', 'Taper: Easy spin, stay fresh', 30, 0.58)
                 elif phase == 'race':
-                    template = ('Easy', 'Easy activation', 25, 0.50)
+                    template = ('Easy', 'Easy activation', 25, 0.58)
                 elif phase == 'maintenance':
                     cycle = workout_num % 3
                     if cycle == 0:
@@ -652,9 +698,9 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                     if cycle == kp0:
                         template = ('Openers', 'Taper openers: 4x30sec @ 110% + easy spin', 35, 0.60)
                     else:
-                        template = ('Easy', 'Taper: Easy spin, stay fresh', 30, 0.55)
+                        template = ('Easy', 'Taper: Easy spin, stay fresh', 30, 0.58)
                 elif phase == 'race':
-                    template = ('Easy', 'Activation', 25, 0.50)
+                    template = ('Easy', 'Activation', 25, 0.58)
                 elif phase == 'maintenance':
                     if cycle == kp0:
                         template = ('VO2max', 'VO2max: 4x3min @ 110% FTP', 45, 0.75)
@@ -712,33 +758,33 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                     # Taper: SHORT openers only - no VO2max, no fatigue
                     # Day-specific taper protocol
                     if day_abbrev == 'Mon':
-                        template = ('Easy', 'Taper: Easy spin, legs loose', 45, 0.55)
+                        template = ('Easy', 'Taper: Easy spin, legs loose', 45, 0.58)
                     elif day_abbrev == 'Tue':
                         template = ('Openers', 'Openers: 4x30sec @ 110% + easy spin', 40, 0.60)
                     elif day_abbrev == 'Wed':
-                        template = ('Easy', 'Taper: Z2 easy, stay fresh', 40, 0.55)
+                        template = ('Easy', 'Taper: Z2 easy, stay fresh', 40, 0.58)
                     elif day_abbrev == 'Thu':
                         template = ('Openers', 'Openers: 3x1min @ race pace', 35, 0.65)
                     elif day_abbrev == 'Fri':
-                        template = ('Shakeout', 'Shakeout: 20min easy spin only', 20, 0.50)
+                        template = ('Shakeout', 'Shakeout: 20min easy spin only', 20, 0.55)
                     else:
-                        template = ('Easy', 'Taper: Easy spin', 30, 0.50)
+                        template = ('Easy', 'Taper: Easy spin', 30, 0.58)
                 elif phase == 'race':
                     # Race week: Day-specific protocol leading to race day
                     if day_abbrev == 'Mon':
-                        template = ('Easy', 'Race Week: Easy spin, mental prep', 40, 0.50)
+                        template = ('Easy', 'Race Week: Easy spin, mental prep', 40, 0.58)
                     elif day_abbrev == 'Tue':
-                        template = ('Openers', 'Race Week Openers: 3x30sec hard', 30, 0.55)
+                        template = ('Openers', 'Race Week Openers: 3x30sec hard', 30, 0.60)
                     elif day_abbrev == 'Wed':
-                        template = ('Easy', 'Race Week: Very easy, rest legs', 30, 0.50)
+                        template = ('Easy', 'Race Week: Very easy, rest legs', 30, 0.55)
                     elif day_abbrev == 'Thu':
-                        template = ('Openers', 'Race Week: Final openers 2x1min', 25, 0.55)
+                        template = ('Openers', 'Race Week: Final openers 2x1min', 25, 0.60)
                     elif day_abbrev == 'Fri':
-                        template = ('Shakeout', 'Race Week: Shakeout only, stay off feet', 20, 0.45)
+                        template = ('Shakeout', 'Race Week: Shakeout only, stay off feet', 20, 0.55)
                     elif day_abbrev == 'Sat':
                         template = ('Rest', 'Race Week: REST - hydrate, prep gear', 0, 0.0)
                     else:
-                        template = ('Easy', 'Race Week: Easy activation', 25, 0.50)
+                        template = ('Easy', 'Race Week: Easy activation', 25, 0.58)
                 elif phase == 'maintenance':
                     c = cycle % 4
                     if c == 0:
@@ -784,9 +830,9 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                     if workout_num % 2 == 0:
                         template = ('Openers', 'Taper openers: 4x30sec @ 110% + easy spin', 35, 0.60)
                     else:
-                        template = ('Easy', 'Taper: Easy spin, stay fresh', 30, 0.55)
+                        template = ('Easy', 'Taper: Easy spin, stay fresh', 30, 0.58)
                 elif phase == 'race':
-                    template = ('Easy', 'Easy spin', 30, 0.50)
+                    template = ('Easy', 'Easy spin', 30, 0.58)
                 elif phase == 'maintenance':
                     cycle = workout_num % 3
                     if cycle == 0:
@@ -827,25 +873,69 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 </workout_file>"""
 
     def create_workout_blocks(duration_min: int, avg_power: float, workout_type: str) -> str:
-        """Generate ZWO workout blocks with 4-space indent per v6.0 spec."""
+        """Generate ZWO workout blocks with 4-space indent per v6.0 spec.
+
+        Power zone reference (from nate_constants.PowerZones):
+            Z1 Recovery: 0.45-0.55   Z2 Endurance: 0.56-0.75
+            Z3 Tempo:    0.76-0.87   Z4 Threshold: 0.93-1.00
+            Z5 VO2max:   1.06-1.20   Z6 Anaerobic: 1.21+
+
+        Rules:
+        - Warmup must NOT ramp above main set power (Easy/Recovery/Endurance)
+        - Cooldown must ramp DOWN (PowerLow > PowerHigh in ZWO Cooldown element)
+        - Easy = Z2 low (0.58-0.62), NOT Z1
+        - Recovery = Z1 high (0.50-0.55)
+        - Endurance = Z2 mid (0.62-0.68)
+        """
         if duration_min == 0:
             return "    <FreeRide Duration=\"60\"/>\n"
 
         blocks = []
 
+        # Determine warmup/cooldown targets based on workout type
+        # For easy/endurance workouts, warmup should NOT exceed main set power
+        if workout_type in ['Recovery', 'Easy', 'Shakeout']:
+            # Recovery/Easy: Z1→Z2 low. Main set at Z2 low (0.58-0.62)
+            warmup_low = 0.45
+            warmup_high = min(0.58, avg_power)  # Never above main set
+            main_power = max(0.58, avg_power)    # Floor at Z2 low
+            cooldown_low = warmup_low
+            cooldown_high = main_power           # Ramp from main set down to recovery
+        elif workout_type == 'Endurance':
+            # Endurance: Z1→Z2 mid. Main set at Z2 mid (0.62-0.68)
+            warmup_low = 0.45
+            warmup_high = min(0.62, avg_power)   # Never above main set
+            main_power = max(0.62, avg_power)     # Floor at Z2 mid
+            cooldown_low = 0.45
+            cooldown_high = main_power
+        elif workout_type == 'Long_Ride':
+            # Long ride: proper progressive warmup to Z2
+            warmup_low = 0.50
+            warmup_high = 0.68
+            main_power = avg_power
+            cooldown_low = 0.45
+            cooldown_high = 0.60
+        else:
+            # Intensity workouts: full warmup ramp
+            warmup_low = 0.50
+            warmup_high = 0.75
+            main_power = avg_power
+            cooldown_low = 0.45
+            cooldown_high = 0.60
+
         # Warmup (10% of workout or min 5 min)
         warmup_min = max(5, int(duration_min * 0.1))
-        blocks.append(f'    <Warmup Duration="{warmup_min * 60}" PowerLow="0.50" PowerHigh="0.68"/>')
+        blocks.append(f'    <Warmup Duration="{warmup_min * 60}" PowerLow="{warmup_low:.2f}" PowerHigh="{warmup_high:.2f}"/>')
 
         main_duration = duration_min - warmup_min - 5  # Save 5 min for cooldown
 
         if workout_type in ['Recovery', 'Easy', 'Shakeout']:
-            # Steady easy effort
-            blocks.append(f'    <SteadyState Duration="{main_duration * 60}" Power="{avg_power}"/>')
+            # Steady easy effort at Z2 low
+            blocks.append(f'    <SteadyState Duration="{main_duration * 60}" Power="{main_power:.2f}"/>')
 
         elif workout_type == 'Endurance':
-            # Zone 2 steady
-            blocks.append(f'    <SteadyState Duration="{main_duration * 60}" Power="{avg_power}"/>')
+            # Zone 2 steady at Z2 mid
+            blocks.append(f'    <SteadyState Duration="{main_duration * 60}" Power="{main_power:.2f}"/>')
 
         elif workout_type == 'Tempo':
             # Warmup more, then tempo block
@@ -1063,8 +1153,10 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         else:
             blocks.append(f'    <SteadyState Duration="{main_duration * 60}" Power="{avg_power}"/>')
 
-        # Cooldown
-        blocks.append(f'    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>')
+        # Cooldown — ramps from cooldown_high (near main set) down to cooldown_low (recovery)
+        # ZWO Cooldown: PowerLow=start, PowerHigh=end (NOT reversed like some docs say)
+        # TrainingPeaks renders range as "low-high%" so we put the higher value in PowerLow
+        blocks.append(f'    <Cooldown Duration="300" PowerLow="{cooldown_high:.2f}" PowerHigh="{cooldown_low:.2f}"/>')
 
         # Correct total duration to match target (duration_min * 60 seconds)
         # Percentage-based splits can lose 1-2 minutes to int() truncation
@@ -1386,7 +1478,7 @@ Good prep work, {athlete_name}!"""
                 # Easy spin days (Mon, Tue, Wed, Fri)
                 workout_type = 'Pre_Plan_Easy'
                 duration = 45 if day_abbrev in ['Mon', 'Wed'] else 40
-                power = 0.55
+                power = 0.60  # Z2 low — easy but not recovery
                 description = f"""PRE-PLAN WEEK: Easy Spin
 {athlete_name} - {days_to_plan_start} days until plan starts
 
@@ -1532,7 +1624,58 @@ GO RACE SMART, {athlete_name.upper()}!
                 if day_avail.get('availability') in ('unavailable', 'rest'):
                     continue
 
-            # Get workout template (custom or default)
+            # ---------------------------------------------------------------
+            # BLOCK-BUILDER PATH: Use pre-computed plan for workout selection
+            # Falls back to legacy template system if block builder unavailable
+            # ---------------------------------------------------------------
+            if _use_block_builder:
+                bb_day = _bb_lookup.get((week_num, day_abbrev))
+                if not bb_day or bb_day.get('name') in ('OFF', 'Rest Day') or bb_day.get('role') == 'off':
+                    continue
+
+                bb_name = bb_day['name']
+                bb_level = bb_day.get('level', 3)
+                bb_duration = bb_day.get('duration', 60)
+
+                # Track variation for endurance variety
+                var_key = bb_name
+                var_offset = _bb_variation_counters.get(var_key, 0)
+                _bb_variation_counters[var_key] = var_offset + 1
+
+                # Render ZWO through block-builder workout mapper
+                workout_name = f"{workout_prefix}_{bb_name.replace(' ', '_').replace('/', '_')}"
+
+                zwo_content = _bb_render(
+                    name=bb_name,
+                    level=bb_level,
+                    methodology=nate_methodology,
+                    workout_name=workout_name,
+                    variation_offset=var_offset,
+                )
+
+                if zwo_content:
+                    # Inject personalized header
+                    weeks_to_race = total_weeks - week_num + 1
+                    personal_header = (
+                        f"{athlete_name} - Week {week_num}/{total_weeks} - "
+                        f"{weeks_to_race} weeks to {race_name}\n"
+                        f"Phase: {phase.upper()}\n\n"
+                    )
+                    fuel_tag = _get_fuel_tag_for_type(bb_name)
+                    fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
+                    zwo_content = zwo_content.replace(
+                        '<description>',
+                        f'<description>{fuel_prefix}{personal_header}',
+                        1
+                    )
+
+                    filepath = zwo_dir / f"{workout_name}.zwo"
+                    with open(filepath, 'w') as f:
+                        f.write(zwo_content)
+                    generated_files.append(filepath)
+                    continue  # Skip legacy path entirely
+
+            # LEGACY PATH: Use old template system
             if use_custom_schedule:
                 workout_template = get_workout_for_day(day_abbrev, phase, week_num)
             else:
@@ -1565,7 +1708,7 @@ GO RACE SMART, {athlete_name.upper()}!
                 workout_type = 'Easy'
                 description = f'Easy spin - mini-taper for {b_race_name} (B-race in 2 days)'
                 duration = min(duration, 45) if duration > 0 else 30
-                power = 0.55
+                power = 0.58
 
             # -----------------------------------------------------------
             # RECOVERY WEEK OVERRIDE: Downgrade intensity to easy,
@@ -1582,7 +1725,7 @@ GO RACE SMART, {athlete_name.upper()}!
                         workout_type = 'Openers'
                         description = f'Recovery week openers — keep the legs sharp'
                         duration = min(duration, 35) if duration > 0 else 30
-                        power = 0.55
+                        power = 0.58
                         week['_recovery_opener_added'] = True
                     else:
                         workout_type = 'Endurance'

@@ -390,5 +390,174 @@ class TestDurationRounding:
             f"FTP_TEST_DURATION_MIN should be 60, got {FTP_TEST_DURATION_MIN}"
 
 
+class TestZWOPowerSanity:
+    """Ensure workout power targets make physiological sense.
+
+    Rules (learned the hard way):
+    1. Warmup must NOT ramp above main set power for Easy/Recovery/Endurance
+    2. Cooldown must ramp DOWN (or at least not ramp UP)
+    3. Easy rides = Z2 low (0.56-0.65), NOT Z1 (0.45-0.55)
+    4. Recovery rides = Z1 high (0.50-0.55)
+    5. Endurance rides = Z2 (0.56-0.75)
+    6. Main set power must always be >= warmup end power for easy workouts
+    """
+
+    def _parse_blocks(self, zwo_content: str) -> list:
+        """Parse ZWO content into list of (tag, attrs) tuples."""
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(zwo_content)
+        workout = root.find('workout')
+        if workout is None:
+            return []
+        return [(elem.tag, elem.attrib) for elem in workout]
+
+    def test_easy_warmup_never_exceeds_main_set(self):
+        """For Easy/Recovery workouts, warmup end power <= main set power."""
+        sys.path.insert(0, str(Path(__file__).parent))
+        from generate_athlete_package import generate_zwo_files
+
+        # Test create_workout_blocks directly via its enclosing function
+        # We'll test the principle by generating a sample
+        workout_dir = Path(__file__).parent.parent / 'benjy-duke' / 'workouts'
+        if not workout_dir.exists():
+            pytest.skip("benjy-duke workouts not found")
+
+        errors = []
+        for zwo_file in sorted(workout_dir.glob('*.zwo')):
+            name = zwo_file.stem
+            # Only check Easy/Endurance/Recovery workouts (not intensity)
+            is_easy = any(t in name for t in ['Easy', 'Endurance', 'Pre_Plan_Easy', 'Shakeout'])
+            if not is_easy:
+                continue
+
+            blocks = self._parse_blocks(zwo_file.read_text())
+            if not blocks:
+                continue
+
+            # Find warmup end power and highest main set power
+            # Nate-generated endurance has structured blocks (e.g., alternating 65%/75%)
+            # so compare warmup against the HIGHEST main set power
+            warmup_high = None
+            max_main_power = 0
+            for tag, attrs in blocks:
+                if tag == 'Warmup':
+                    warmup_high = float(attrs.get('PowerHigh', 0))
+                elif tag == 'SteadyState':
+                    p = float(attrs.get('Power', 0))
+                    if p > max_main_power:
+                        max_main_power = p
+
+            if warmup_high and max_main_power > 0:
+                # Endurance workouts use structured Z2 blocks — warmup can be
+                # slightly above individual blocks (e.g., 75% warmup into 65%/72% blocks)
+                # Allow 5% tolerance for Endurance, 2% for Easy/Recovery
+                tolerance = 0.05 if 'Endurance' in name else 0.02
+                if warmup_high > max_main_power + tolerance:
+                    errors.append(
+                        f"{name}: warmup ends at {warmup_high:.0%} but max main set is {max_main_power:.0%} "
+                        f"(warmup should NOT ramp above main set for easy workouts)"
+                    )
+
+        assert not errors, "Warmup > main set violations:\n" + "\n".join(errors)
+
+    def test_easy_power_is_zone2_not_zone1(self):
+        """Easy workout main set must be Z2 (>=0.56), not Z1 recovery."""
+        workout_dir = Path(__file__).parent.parent / 'benjy-duke' / 'workouts'
+        if not workout_dir.exists():
+            pytest.skip("benjy-duke workouts not found")
+
+        errors = []
+        for zwo_file in sorted(workout_dir.glob('*.zwo')):
+            name = zwo_file.stem
+            is_easy = any(t in name for t in ['Easy', 'Pre_Plan_Easy'])
+            if not is_easy or 'Strength' in name:
+                continue
+
+            blocks = self._parse_blocks(zwo_file.read_text())
+            for tag, attrs in blocks:
+                if tag == 'SteadyState':
+                    power = float(attrs.get('Power', 0))
+                    if 0 < power < 0.56:
+                        errors.append(
+                            f"{name}: main set at {power:.0%} FTP — "
+                            f"that's Z1 recovery, not Easy. Must be >= 56% (Z2)."
+                        )
+                    break  # Only check first SteadyState
+
+        assert not errors, "Easy rides in Z1 (should be Z2):\n" + "\n".join(errors)
+
+    def test_endurance_power_is_zone2(self):
+        """Endurance workout main set must be solidly in Z2 (>=0.60)."""
+        workout_dir = Path(__file__).parent.parent / 'benjy-duke' / 'workouts'
+        if not workout_dir.exists():
+            pytest.skip("benjy-duke workouts not found")
+
+        errors = []
+        for zwo_file in sorted(workout_dir.glob('*Endurance*.zwo')):
+            name = zwo_file.stem
+            if 'Strength' in name:
+                continue
+
+            blocks = self._parse_blocks(zwo_file.read_text())
+            for tag, attrs in blocks:
+                if tag == 'SteadyState':
+                    power = float(attrs.get('Power', 0))
+                    if 0 < power < 0.58:
+                        errors.append(
+                            f"{name}: main set at {power:.0%} FTP — "
+                            f"Endurance should be >= 58% (Z2 low-mid)."
+                        )
+                    break
+
+        assert not errors, "Endurance rides below Z2:\n" + "\n".join(errors)
+
+    def test_cooldown_does_not_ramp_up(self):
+        """Cooldown power must decrease or stay flat, never increase."""
+        workout_dir = Path(__file__).parent.parent / 'benjy-duke' / 'workouts'
+        if not workout_dir.exists():
+            pytest.skip("benjy-duke workouts not found")
+
+        errors = []
+        for zwo_file in sorted(workout_dir.glob('*.zwo')):
+            name = zwo_file.stem
+            blocks = self._parse_blocks(zwo_file.read_text())
+            for tag, attrs in blocks:
+                if tag == 'Cooldown':
+                    low = float(attrs.get('PowerLow', 0))
+                    high = float(attrs.get('PowerHigh', 0))
+                    # In ZWO, Cooldown renders PowerLow→PowerHigh
+                    # So PowerLow should be higher (start) and PowerHigh lower (end)
+                    if low > 0 and high > 0 and high > low + 0.02:
+                        errors.append(
+                            f"{name}: cooldown ramps UP from {low:.0%} to {high:.0%} "
+                            f"(should decrease)"
+                        )
+
+        assert not errors, "Cooldown ramp-up violations:\n" + "\n".join(errors)
+
+    def test_template_power_values_in_valid_range(self):
+        """All power template values in generate_athlete_package.py must be
+        in valid zones: 0.45-1.60 FTP, and Easy/Recovery types >= 0.55."""
+        script_path = Path(__file__).parent / 'generate_athlete_package.py'
+        content = script_path.read_text()
+
+        # Find all template tuples: ('Type', 'desc', duration, power)
+        pattern = r"template\s*=\s*\('(\w+)',\s*'[^']+',\s*\d+,\s*([\d.]+)\)"
+        matches = re.findall(pattern, content)
+
+        errors = []
+        for wtype, power_str in matches:
+            power = float(power_str)
+            # Rest templates legitimately have power=0 (no riding)
+            if wtype == 'Rest':
+                continue
+            if power < 0.45 or power > 1.60:
+                errors.append(f"template ({wtype}, power={power}) outside valid range 0.45-1.60")
+            if wtype in ('Easy', 'Recovery', 'Shakeout') and power < 0.55:
+                errors.append(f"template ({wtype}, power={power}) below Z1 high (0.55) — too low")
+
+        assert not errors, "Invalid template power values:\n" + "\n".join(errors)
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
