@@ -1735,6 +1735,86 @@ gravelgodcycling.com
         return jsonify({'error': 'Failed to send confirmation email'}), 502
 
 
+@app.route('/api/questionnaire-started', methods=['POST', 'OPTIONS'])
+@limiter.limit("10/minute")
+def questionnaire_started():
+    """Log when a user fills in name + email on the questionnaire.
+
+    Stores contact info so we can follow up if they abandon the form
+    before reaching Stripe checkout. Deduplicates by email within 24hrs.
+    """
+    if request.method == 'OPTIONS':
+        return '', 204
+
+    data = request.get_json(silent=True)
+    if not data:
+        return '', 204  # Fail silently — this is a beacon
+
+    email = (data.get('email') or '').strip().lower()
+    name = (data.get('name') or '').strip()
+    if not email or '@' not in email:
+        return '', 204
+
+    # Store in monthly questionnaire-starts log (dedup by email within 24hrs)
+    log_dir = Path(DATA_DIR) / '.logs'
+    log_dir.mkdir(parents=True, exist_ok=True)
+    now = datetime.now()
+    starts_file = log_dir / f"questionnaire-starts-{now.strftime('%Y-%m')}.jsonl"
+
+    # Check current + previous month for recent duplicate (24hr window can span months)
+    prev_month = (now.replace(day=1) - timedelta(days=1)).strftime('%Y-%m')
+    files_to_check = [starts_file, log_dir / f"questionnaire-starts-{prev_month}.jsonl"]
+    try:
+        for check_file in files_to_check:
+            if not check_file.exists():
+                continue
+            with open(check_file, 'r') as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line.strip())
+                        if (entry.get('email') == email and
+                                (now - datetime.fromisoformat(entry['timestamp'])).total_seconds() < 86400):
+                            return jsonify({'status': 'already_tracked'}), 200
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+    except IOError:
+        pass
+
+    entry = {
+        'timestamp': now.isoformat(),
+        'email': email,
+        'name': name,
+        'sections_reached': data.get('sections_reached', 0),
+        'source': data.get('source', ''),
+        'user_agent': request.headers.get('User-Agent', '')[:200],
+    }
+
+    try:
+        with open(starts_file, 'a') as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            f.write(json.dumps(entry) + '\n')
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    except IOError as e:
+        logger.error(f"Failed to log questionnaire start: {e}")
+
+    logger.info(f"Questionnaire started: {_mask_email(email)} ({name.split()[0] if name else '?'})")
+
+    # Notify coach of new questionnaire start
+    if NOTIFICATION_EMAIL and RESEND_API_KEY:
+        subject = f"Questionnaire started: {name or 'Unknown'}"
+        body = (
+            f"Someone started the training plan questionnaire.\n\n"
+            f"Name: {name}\n"
+            f"Email: {email}\n"
+            f"Time: {now.strftime('%Y-%m-%d %H:%M')} UTC\n\n"
+            f"If they don't complete checkout within a few hours, "
+            f"consider a personal follow-up.\n"
+        )
+        _send_email(NOTIFICATION_EMAIL, subject, body)
+
+    return jsonify({'status': 'tracked'}), 200
+
+
 @app.route('/api/create-checkout', methods=['POST', 'OPTIONS'])
 @limiter.limit("20/minute")
 def create_checkout():

@@ -2311,5 +2311,96 @@ class TestRateLimiting:
             )
 
 
+class TestQuestionnaireStarted:
+    """Tests for /api/questionnaire-started endpoint."""
+
+    def test_tracks_valid_start(self, client, temp_athletes_dir):
+        """Valid name + email gets logged."""
+        os.environ['DATA_DIR'] = str(temp_athletes_dir)
+        response = client.post('/api/questionnaire-started',
+                               json={'name': 'Test Rider', 'email': 'test@example.com',
+                                     'sections_reached': 2, 'source': 'questionnaire'})
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'tracked'
+
+        # Verify log file written (monthly rotation)
+        from datetime import datetime as dt
+        month = dt.now().strftime('%Y-%m')
+        log_file = temp_athletes_dir / '.logs' / f'questionnaire-starts-{month}.jsonl'
+        assert log_file.exists()
+        entry = json.loads(log_file.read_text().strip())
+        assert entry['email'] == 'test@example.com'
+        assert entry['name'] == 'Test Rider'
+
+    def test_deduplicates_within_24hrs(self, client, temp_athletes_dir):
+        """Same email within 24hrs returns already_tracked."""
+        os.environ['DATA_DIR'] = str(temp_athletes_dir)
+        client.post('/api/questionnaire-started',
+                    json={'name': 'Test', 'email': 'dupe@example.com'})
+        response = client.post('/api/questionnaire-started',
+                               json={'name': 'Test', 'email': 'dupe@example.com'})
+        assert response.status_code == 200
+        assert response.get_json()['status'] == 'already_tracked'
+
+    def test_missing_email_returns_204(self, client):
+        """Missing email fails silently."""
+        response = client.post('/api/questionnaire-started',
+                               json={'name': 'Test'})
+        assert response.status_code == 204
+
+    def test_invalid_email_returns_204(self, client):
+        """Invalid email fails silently."""
+        response = client.post('/api/questionnaire-started',
+                               json={'name': 'Test', 'email': 'notanemail'})
+        assert response.status_code == 204
+
+    def test_empty_body_returns_204(self, client, temp_athletes_dir):
+        """Empty/missing JSON fails silently."""
+        os.environ['DATA_DIR'] = str(temp_athletes_dir)
+        response = client.post('/api/questionnaire-started',
+                               data='', content_type='application/json')
+        assert response.status_code == 204
+
+    def test_cors_preflight(self, client):
+        """OPTIONS request returns 204."""
+        response = client.options('/api/questionnaire-started')
+        assert response.status_code == 204
+
+    def test_sends_notification_email(self, client, temp_athletes_dir):
+        """Coach gets notified of new questionnaire start."""
+        os.environ['DATA_DIR'] = str(temp_athletes_dir)
+        with patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app.RESEND_API_KEY', 'test-key'), \
+             patch('app._send_email') as mock_send:
+            mock_send.return_value = True
+            client.post('/api/questionnaire-started',
+                        json={'name': 'Test Rider', 'email': 'test@example.com'})
+            mock_send.assert_called_once()
+            args = mock_send.call_args
+            assert 'coach@example.com' in args[0]
+            assert 'Test Rider' in args[0][1]  # subject
+
+    def test_pii_not_logged(self, client, temp_athletes_dir):
+        """Email address is masked in log output."""
+        os.environ['DATA_DIR'] = str(temp_athletes_dir)
+        import logging
+        with patch.object(logging.getLogger('gravel-god-webhook'), 'info') as mock_log:
+            client.post('/api/questionnaire-started',
+                        json={'name': 'Test', 'email': 'secret@example.com'})
+            log_msg = mock_log.call_args[0][0]
+            assert 'secret@example.com' not in log_msg
+            assert 's***' in log_msg  # masked
+
+    def test_rate_limited(self):
+        """Endpoint has rate limit decorator."""
+        import inspect
+        import app as app_module
+        source = inspect.getsource(app_module)
+        import re
+        assert re.search(r'limiter\.limit.*\ndef questionnaire_started', source), \
+            "questionnaire_started missing rate limit"
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
