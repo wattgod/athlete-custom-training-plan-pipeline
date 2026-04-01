@@ -1,0 +1,79 @@
+# Strength Periodization — Parallel Track
+# Source: block-builder references/strength-periodization.md
+#
+# Strength is SEPARATE from cycling TSS. Never counted in cycling hour budget.
+# CRITICAL: Never pair max strength with a key interval session on the same day.
+
+phases:
+  anatomical_adaptation:
+    cycling_phase: "base_early"
+    sets_reps: "2-3 × 15-20"
+    load: "50-60% 1RM"
+    frequency: "2-3x/week"
+    progression: "progressive"
+    exercises:
+      primary: ["Back Squat", "RDL", "Step-ups", "Hip Thrust"]
+      secondary: ["Bulgarian Split Squat", "Single-leg Press", "Calf Raises"]
+      supplementary: ["Overhead Press", "Bent-over Row", "Planks", "Dead Bug"]
+
+  max_strength:
+    cycling_phase: "base_late"
+    sets_reps: "3-5 × 3-5"
+    load: "65-85% 1RM"
+    frequency: "2-3x/week"
+    progression: "progressive"
+    exercises:
+      primary: ["Back Squat", "RDL", "Step-ups", "Hip Thrust"]
+      secondary: ["Bulgarian Split Squat", "Nordic Curl", "Calf Raises"]
+      supplementary: ["Overhead Press", "Bent-over Row", "Pallof Press"]
+
+  maintenance:
+    cycling_phase: "build"
+    sets_reps: "3 × 5"
+    load: "75% 1RM"
+    frequency: "2x/week"
+    progression: "stable"
+    exercises:
+      primary: ["Back Squat", "RDL", "Hip Thrust"]
+      secondary: ["Bulgarian Split Squat", "Calf Raises"]
+      supplementary: ["Planks", "Dead Bug"]
+
+  race_prep:
+    cycling_phase: "race_prep"
+    sets_reps: "2 × 3"
+    load: "70-75% 1RM"
+    frequency: "1-2x/week"
+    progression: "maintain"
+    exercises:
+      primary: ["Back Squat", "RDL"]
+      secondary: ["Bulgarian Split Squat"]
+      supplementary: ["Planks"]
+
+  racing:
+    cycling_phase: "racing"
+    sets_reps: "1-2 × 3"
+    load: "65-70% 1RM"
+    frequency: "1x/week"
+    progression: "maintain_or_slight_decrease"
+    exercises:
+      primary: ["Back Squat", "RDL"]
+      secondary: []
+      supplementary: ["Planks"]
+
+  deload:
+    cycling_phase: "recovery_week"
+    sets_reps: "bodyweight only"
+    load: "none"
+    frequency: "1x/week"
+    progression: "none"
+    exercises:
+      primary: ["Bodyweight Squats", "Glute Bridges", "Single-leg Balance"]
+      secondary: ["Cat-Cow", "Hip 90/90", "Bird Dogs"]
+      supplementary: ["Foam Rolling", "Stretching", "Yoga"]
+
+# Scheduling rules
+scheduling:
+  never_pair_with_key_interval: true
+  min_hours_between_strength_and_cycling: 6
+  preferred_days: ["off_days", "easy_cycling_days"]
+  recovery_week_is_always_deload: true

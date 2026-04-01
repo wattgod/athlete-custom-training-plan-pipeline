@@ -1,0 +1,316 @@
+# Workout Library — 31 canonical types with duration (min) and TSS per level
+# Source: block-builder references/workout-library.md
+#
+# Format: name → levels 1-6 → {duration_min, tss}
+# Duration in minutes, TSS is cycling training stress score
+
+workouts:
+  VO2max 30/30:
+    category: vo2max
+    levels:
+      1: {duration: 33, tss: 32}
+      2: {duration: 34, tss: 35}
+      3: {duration: 35, tss: 38}
+      4: {duration: 36, tss: 41}
+      5: {duration: 36, tss: 42}
+      6: {duration: 38, tss: 46}
+
+  VO2max 40/20:
+    category: vo2max
+    levels:
+      1: {duration: 31, tss: 31}
+      2: {duration: 32, tss: 35}
+      3: {duration: 34, tss: 38}
+      4: {duration: 35, tss: 41}
+      5: {duration: 35, tss: 42}
+      6: {duration: 37, tss: 47}
+
+  VO2max Extended:
+    category: vo2max
+    levels:
+      1: {duration: 45, tss: 50}
+      2: {duration: 52, tss: 63}
+      3: {duration: 55, tss: 70}
+      4: {duration: 52, tss: 68}
+      5: {duration: 55, tss: 74}
+      6: {duration: 61, tss: 83}
+
+  VO2max Steady Intervals:
+    category: vo2max
+    levels:
+      1: {duration: 43, tss: 47}
+      2: {duration: 47, tss: 54}
+      3: {duration: 50, tss: 61}
+      4: {duration: 52, tss: 67}
+      5: {duration: 52, tss: 67}
+      6: {duration: 52, tss: 70}
+
+  VO2 Bookend:
+    category: durability
+    levels:
+      1: {duration: 109, tss: 98}
+      2: {duration: 129, tss: 115}
+      3: {duration: 153, tss: 147}
+      4: {duration: 167, tss: 166}
+      5: {duration: 187, tss: 183}
+      6: {duration: 197, tss: 196}
+
+  Threshold Accumulation:
+    category: threshold
+    levels:
+      1: {duration: 57, tss: 69}
+      2: {duration: 65, tss: 81}
+      3: {duration: 73, tss: 93}
+      4: {duration: 79, tss: 104}
+      5: {duration: 81, tss: 108}
+      6: {duration: 88, tss: 121}
+
+  Threshold Progressive:
+    category: threshold
+    levels:
+      1: {duration: 45, tss: 54}
+      2: {duration: 49, tss: 61}
+      3: {duration: 55, tss: 71}
+      4: {duration: 80, tss: 107}
+      5: {duration: 90, tss: 125}
+      6: {duration: 110, tss: 157}
+
+  Threshold Steady:
+    category: threshold
+    levels:
+      1: {duration: 55, tss: 63}
+      2: {duration: 67, tss: 81}
+      3: {duration: 73, tss: 92}
+      4: {duration: 70, tss: 90}
+      5: {duration: 79, tss: 105}
+      6: {duration: 85, tss: 113}
+
+  Threshold Touch:
+    category: threshold
+    levels:
+      1: {duration: 30, tss: 28}
+      2: {duration: 43, tss: 43}
+      3: {duration: 45, tss: 47}
+      4: {duration: 49, tss: 53}
+      5: {duration: 52, tss: 58}
+      6: {duration: 58, tss: 69}
+
+  G-Spot:
+    category: threshold
+    levels:
+      1: {duration: 35, tss: 33}
+      2: {duration: 51, tss: 51}
+      3: {duration: 64, tss: 67}
+      4: {duration: 68, tss: 72}
+      5: {duration: 74, tss: 81}
+      6: {duration: 76, tss: 84}
+
+  Tempo:
+    category: tempo
+    levels:
+      1: {duration: 40, tss: 37}
+      2: {duration: 61, tss: 60}
+      3: {duration: 79, tss: 80}
+      4: {duration: 89, tss: 92}
+      5: {duration: 94, tss: 98}
+      6: {duration: 99, tss: 104}
+
+  Tempo with Accelerations:
+    category: tempo
+    levels:
+      1: {duration: 55, tss: 53}
+      2: {duration: 64, tss: 63}
+      3: {duration: 64, tss: 67}
+      4: {duration: 75, tss: 77}
+      5: {duration: 75, tss: 82}
+      6: {duration: 85, tss: 96}
+
+  Tempo with Sprints:
+    category: tempo
+    levels:
+      1: {duration: 66, tss: 66}
+      2: {duration: 69, tss: 71}
+      3: {duration: 73, tss: 76}
+      4: {duration: 89, tss: 95}
+      5: {duration: 101, tss: 109}
+      6: {duration: 101, tss: 118}
+
+  Race Simulation:
+    category: race_sim
+    levels:
+      1: {duration: 52, tss: 53}
+      2: {duration: 61, tss: 63}
+      3: {duration: 63, tss: 74}
+      4: {duration: 75, tss: 80}
+      5: {duration: 78, tss: 95}
+      6: {duration: 80, tss: 100}
+
+  Mixed Climbing:
+    category: climbing
+    levels:
+      1: {duration: 43, tss: 40}
+      2: {duration: 50, tss: 47}
+      3: {duration: 66, tss: 70}
+      4: {duration: 77, tss: 84}
+      5: {duration: 84, tss: 94}
+      6: {duration: 88, tss: 97}
+
+  Mixed Climbing Variations:
+    category: climbing
+    levels:
+      1: {duration: 60, tss: 69}
+      2: {duration: 80, tss: 96}
+      3: {duration: 80, tss: 98}
+      4: {duration: 83, tss: 105}
+      5: {duration: 103, tss: 130}
+      6: {duration: 101, tss: 133}
+
+  Mixed Intervals:
+    category: blended
+    levels:
+      1: {duration: 46, tss: 53}
+      2: {duration: 54, tss: 65}
+      3: {duration: 58, tss: 73}
+      4: {duration: 62, tss: 76}
+      5: {duration: 67, tss: 86}
+      6: {duration: 76, tss: 99}
+
+  Cadence Work:
+    category: neuromuscular
+    levels:
+      1: {duration: 47, tss: 37}
+      2: {duration: 52, tss: 42}
+      3: {duration: 52, tss: 42}
+      4: {duration: 53, tss: 43}
+      5: {duration: 53, tss: 44}
+      6: {duration: 55, tss: 46}
+
+  SFR:
+    category: sfr
+    levels:
+      1: {duration: 43, tss: 40}
+      2: {duration: 47, tss: 46}
+      3: {duration: 50, tss: 51}
+      4: {duration: 55, tss: 59}
+      5: {duration: 61, tss: 67}
+      6: {duration: 63, tss: 73}
+
+  Microbursts:
+    category: neuromuscular
+    levels:
+      1: {duration: 30, tss: 24}
+      2: {duration: 31, tss: 27}
+      3: {duration: 33, tss: 29}
+      4: {duration: 33, tss: 31}
+      5: {duration: 35, tss: 33}
+      6: {duration: 36, tss: 37}
+
+  Stomps:
+    category: neuromuscular
+    levels:
+      1: {duration: 33, tss: 25}
+      2: {duration: 34, tss: 26}
+      3: {duration: 35, tss: 28}
+      4: {duration: 34, tss: 27}
+      5: {duration: 34, tss: 29}
+      6: {duration: 36, tss: 32}
+
+  Buffer Workout:
+    category: durability
+    levels:
+      1: {duration: 167, tss: 150}
+      2: {duration: 169, tss: 153}
+      3: {duration: 173, tss: 159}
+      4: {duration: 193, tss: 175}
+      5: {duration: 227, tss: 215}
+      6: {duration: 253, tss: 238}
+
+  Blended 30/30 and SFR:
+    category: blended
+    levels:
+      1: {duration: 104, tss: 101}
+      2: {duration: 112, tss: 109}
+      3: {duration: 120, tss: 120}
+      4: {duration: 132, tss: 137}
+      5: {duration: 129, tss: 138}
+      6: {duration: 132, tss: 142}
+
+  Blended VO2max and G Spot:
+    category: blended
+    levels:
+      1: {duration: 65, tss: 73}
+      2: {duration: 85, tss: 97}
+      3: {duration: 88, tss: 102}
+      4: {duration: 94, tss: 110}
+      5: {duration: 102, tss: 120}
+      6: {duration: 114, tss: 137}
+
+  Blended Endurance, Threshold, and Sprints:
+    category: blended
+    levels:
+      1: {duration: 149, tss: 154}
+      2: {duration: 160, tss: 172}
+      3: {duration: 185, tss: 199}
+      4: {duration: 201, tss: 229}
+      5: {duration: 216, tss: 241}
+      6: {duration: 216, tss: 247}
+
+  Endurance:
+    category: endurance
+    levels:
+      1: {duration: 70, tss: 55}
+      2: {duration: 100, tss: 79}
+      3: {duration: 130, tss: 104}
+      4: {duration: 160, tss: 128}
+      5: {duration: 190, tss: 153}
+      6: {duration: 250, tss: 202}
+
+  Endurance Blocks:
+    category: endurance
+    levels:
+      1: {duration: 120, tss: 107}
+      2: {duration: 160, tss: 143}
+      3: {duration: 180, tss: 162}
+      4: {duration: 200, tss: 180}
+      5: {duration: 225, tss: 203}
+      6: {duration: 240, tss: 216}
+
+  Endurance with Surges:
+    category: endurance
+    levels:
+      1: {duration: 250, tss: 206}
+      2: {duration: 279, tss: 231}
+      3: {duration: 309, tss: 257}
+      4: {duration: 309, tss: 258}
+      5: {duration: 369, tss: 309}
+      6: {duration: 369, tss: 311}
+
+  NP/IF Target:
+    category: endurance
+    levels:
+      1: {duration: 145, tss: 184}
+      2: {duration: 175, tss: 224}
+      3: {duration: 205, tss: 265}
+      4: {duration: 235, tss: 305}
+      5: {duration: 265, tss: 346}
+      6: {duration: 295, tss: 386}
+
+  Rest Day:
+    category: recovery
+    levels:
+      1: {duration: 35, tss: 23}
+      2: {duration: 35, tss: 23}
+      3: {duration: 35, tss: 23}
+      4: {duration: 35, tss: 23}
+      5: {duration: 35, tss: 23}
+      6: {duration: 35, tss: 23}
+
+  FTP Test:
+    category: testing
+    levels:
+      1: {duration: 56, tss: 69}
+      2: {duration: 56, tss: 69}
+      3: {duration: 56, tss: 69}
+      4: {duration: 56, tss: 69}
+      5: {duration: 56, tss: 69}
+      6: {duration: 56, tss: 69}

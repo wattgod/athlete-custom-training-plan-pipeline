@@ -1,0 +1,61 @@
+# Block Notes — exact coaching text per week type
+# Source: block-builder references/block-notes.md
+# Placed on Monday of each week in the plan
+
+load: |
+  LOAD WEEK — Your training load is higher than average. You're pushing for increased fitness through harder training than your body is used to. Mostly through increased weekly training time; sometimes more intensity. Rarely both.
+
+  To succeed:
+  1. Prioritize training — this is the week that counts
+  2. Eat more, especially carbs
+  3. Hydrate aggressively
+  4. Prioritize sleep (8+ hours)
+  5. Monk mode — minimize social distractions
+
+  By the end of the week, you should feel TIRED but not DESTROYED.
+
+medium: |
+  MEDIUM WEEK — Training load stays fairly constant. The purpose is to sustain your load but shift the composition of workouts.
+
+  To succeed:
+  1. Don't be tempted to do extra training
+  2. Stay on top of nutrition, hydration, and sleep
+  3. Pay attention to workouts — many seem like repeats but have an extra set or differ slightly
+
+  End of week goal: Neutral — not too tired, not too rested.
+
+recovery: |
+  RECOVERY WEEK — Training load is lower. You're giving your body time to repair stress from load weeks so it can adapt.
+
+  To succeed:
+  1. Don't train more than planned
+  2. Don't train harder than planned
+  3. Don't be afraid to shorten workouts
+  4. Do as much restorative movement as you want (yoga, stretching, walking)
+  5. Great time to prioritize other things than training
+
+  The goal: feel refreshed and excited to train harder again.
+
+race: |
+  RACE WEEK — Training prioritizes showing up rested, fueled, and ready to race.
+
+  To succeed:
+  1. Don't train more than planned before the race
+  2. Don't train harder than planned before the race
+  3. Don't radically change anything, especially your diet
+  4. Spend time during the week on logistics
+  5. Double down on sleep
+  6. Minimize social life 1-2 days out
+
+  The goal: perform well with good energy and medium-low fatigue.
+
+uber_load: |
+  UBER LOAD WEEK — Training load is significantly higher than average. This is a deliberate overreach — you'll end the week feeling depleted.
+
+  IMPORTANT: By the end of the week, you should feel DESTROYED. This is a calculated risk. The adaptation comes in the recovery week that follows. If you don't recover properly after this, the whole thing backfires.
+
+  Rules:
+  1. Sleep is non-negotiable (9+ hours)
+  2. Eat everything in sight
+  3. Cancel all optional social commitments
+  4. If anything feels wrong (sharp pain, illness), STOP immediately

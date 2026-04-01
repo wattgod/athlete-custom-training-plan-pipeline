@@ -1,0 +1,159 @@
+# Workout Selection Matrix — Phase × Archetype → Workout Slots
+# Source: block-builder references/workout-selection.md
+#
+# Each phase defines workout slots (intensity_1, intensity_2, intensity_3,
+# long_ride, filler) with archetype-specific overrides.
+#
+# Level ranges indicate which levels are appropriate for each phase.
+# Series coherence: same workout name across load weeks, +1 level per week.
+
+phases:
+  base:
+    description: "Build aerobic engine, maintain VO2max ceiling, develop force"
+    weeks_to_race: ">16"
+    level_range: [1, 3]
+    slots:
+      intensity_1:
+        default: "VO2max 30/30"
+        frequency: "every ~14 days"
+        overrides:
+          time_crunched: {name: "VO2max 30/30", note: "every 10-12 days"}
+          volume: {name: "VO2max 40/20", note: "every 14 days"}
+          goat: {name: "VO2max Steady Intervals", note: "every 14 days"}
+      intensity_2:
+        default: "Tempo with Accelerations"
+        alternatives: ["Cadence Work", "Mixed Intervals", "Mixed Climbing"]
+        overrides:
+          time_crunched: {name: "Tempo with Accelerations"}
+          volume: {name: "Mixed Climbing Variations"}
+      intensity_3:
+        default: "SFR"
+        note: "Only if hours allow. Time-crunched: skip."
+        overrides:
+          time_crunched: null  # skip — stick to 2
+          volume: {name: "SFR", note: "SFR + on-bike strength"}
+      long_ride:
+        default: "Endurance"
+        level_range: [3, 6]
+        overrides:
+          time_crunched: {name: "Endurance", level_range: [3, 4]}
+          volume: {name: "Endurance with Surges", level_range: [4, 6]}
+      filler:
+        default: "Endurance"
+        level_range: [1, 3]
+        overrides:
+          time_crunched: {name: "Endurance", level_range: [1, 2]}
+          volume: {name: "Endurance", level_range: [2, 4]}
+
+  build:
+    description: "Raise threshold, extend VO2max duration, race-like demands"
+    weeks_to_race: "8-12"
+    level_range: [3, 5]
+    slots:
+      intensity_1:
+        default: "Threshold Accumulation"
+        alternatives: ["Threshold Progressive", "Threshold Steady"]
+        overrides:
+          time_crunched: {name: "Threshold Progressive"}
+          volume: {name: "Threshold Accumulation"}
+      intensity_2:
+        default: "VO2max Extended"
+        alternatives: ["VO2max Steady Intervals", "VO2 Bookend"]
+        overrides:
+          time_crunched: {name: "VO2max Extended"}
+          volume: {name: "VO2max Steady Intervals"}
+      intensity_3:
+        default: "Blended VO2max and G Spot"
+        alternatives: ["Race Simulation", "Mixed Intervals"]
+        note: "Kitchen Sink family when Tier 3 archetypes available"
+        overrides:
+          time_crunched: {name: "Mixed Intervals"}
+          volume: {name: "Blended Endurance, Threshold, and Sprints"}
+      long_ride:
+        default: "Endurance with Surges"
+        level_range: [3, 5]
+        overrides:
+          time_crunched: {name: "Race Simulation", level_range: [3, 4]}
+          volume: {name: "Endurance with Surges", level_range: [4, 6]}
+      filler:
+        default: "Endurance"
+        level_range: [1, 3]
+
+  race_prep:
+    description: "Sharpen race fitness, practice pacing/fueling, reduce volume"
+    weeks_to_race: "4-8"
+    level_range: [4, 6]
+    slots:
+      intensity_1:
+        default: "Race Simulation"
+        overrides:
+          time_crunched: {name: "Race Simulation", level_range: [4, 5]}
+          volume: {name: "Race Simulation", level_range: [5, 6]}
+      intensity_2:
+        default: "Blended VO2max and G Spot"
+        alternatives: ["Threshold Accumulation", "VO2max Extended"]
+        note: "Kitchen Sink when available"
+        overrides:
+          time_crunched: {name: "Mixed Intervals"}
+          volume: {name: "Blended Endurance, Threshold, and Sprints"}
+      intensity_3:
+        default: null
+        note: "Openers if race week approaches"
+      long_ride:
+        default: "Endurance with Surges"
+        level_range: [3, 5]
+        overrides:
+          time_crunched: {name: "Endurance with Surges", level_range: [3, 4]}
+          volume: {name: "Endurance with Surges", level_range: [4, 5]}
+      filler:
+        default: "Endurance"
+        level_range: [1, 2]
+
+  racing:
+    description: "Taper, arrive fresh, openers only"
+    weeks_to_race: "<4"
+    level_range: [1, 3]
+    slots:
+      intensity_1:
+        default: "Openers"
+        note: "One session mid-week only"
+      intensity_2:
+        default: null
+        note: "Maybe Threshold Touch L1-2 if >2 weeks out"
+      intensity_3:
+        default: null
+      long_ride:
+        default: "Endurance"
+        level_range: [2, 3]
+        note: "Reduced duration"
+      filler:
+        default: "Rest Day"
+
+# Recovery week overrides (apply to ANY phase recovery week)
+recovery_week:
+  allowed_workouts:
+    - "Endurance"       # L1-L2 ONLY
+    - "Openers"         # ONE session only
+    - "Rest Day"
+  forbidden_workouts:
+    - "Endurance Blocks"
+    - "Endurance with Surges"
+    - "Cadence Work"
+    - "Tempo"
+    - "Tempo with Accelerations"
+    - "Tempo with Sprints"
+    - "Threshold Accumulation"
+    - "Threshold Progressive"
+    - "Threshold Steady"
+    - "VO2max 30/30"
+    - "VO2max 40/20"
+    - "VO2max Extended"
+    - "VO2max Steady Intervals"
+    - "SFR"
+    - "Race Simulation"
+    - "Mixed Intervals"
+    - "Mixed Climbing"
+    - "Mixed Climbing Variations"
+    - "Buffer Workout"
+  max_endurance_level: 2
+  openers_count: 1

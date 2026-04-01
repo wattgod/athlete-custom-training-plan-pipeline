@@ -3705,6 +3705,38 @@ try:
 except ImportError:
     pass  # advanced_archetypes.py not present — skip
 
+# =============================================================================
+# MERGE KITCHEN SINK ARCHETYPES (block-builder signature workouts)
+# =============================================================================
+try:
+    from kitchen_sink import KITCHEN_SINK_ARCHETYPES
+    for _category, _archetypes in KITCHEN_SINK_ARCHETYPES.items():
+        if _category in NEW_ARCHETYPES:
+            existing_names = {a['name'] for a in NEW_ARCHETYPES[_category]}
+            for arch in _archetypes:
+                if arch['name'] not in existing_names:
+                    NEW_ARCHETYPES[_category].append(arch)
+        else:
+            NEW_ARCHETYPES[_category] = list(_archetypes)
+except ImportError:
+    pass
+
+# =============================================================================
+# MERGE SFR SERIES ARCHETYPES (Thunder Quads, Blood Pistons)
+# =============================================================================
+try:
+    from sfr_series import SFR_SERIES_ARCHETYPES
+    for _category, _archetypes in SFR_SERIES_ARCHETYPES.items():
+        if _category in NEW_ARCHETYPES:
+            existing_names = {a['name'] for a in NEW_ARCHETYPES[_category]}
+            for arch in _archetypes:
+                if arch['name'] not in existing_names:
+                    NEW_ARCHETYPES[_category].append(arch)
+        else:
+            NEW_ARCHETYPES[_category] = list(_archetypes)
+except ImportError:
+    pass
+
 
 if __name__ == '__main__':
     # Print summary of new archetypes

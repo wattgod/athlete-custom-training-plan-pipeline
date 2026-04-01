@@ -1,0 +1,43 @@
+# TSS Guardrails by Athlete Archetype
+# Source: block-builder SKILL.md Step 3
+#
+# MAX weekly hours = athlete_hours × 1.10
+# Recovery week TSS = 50-65% of load week average
+
+archetypes:
+  time_crunched:
+    hours_range: [0, 8]
+    load_tss: [300, 400]
+    recovery_tss: [150, 240]
+    max_intensity_per_week: 2
+    max_long_ride_hours: 3
+
+  specialist:
+    hours_range: [8, 12]
+    load_tss: [500, 600]
+    recovery_tss: [250, 360]
+    max_intensity_per_week: 3
+    max_long_ride_hours: 4
+
+  volume:
+    hours_range: [12, 15]
+    load_tss: [650, 800]
+    recovery_tss: [325, 480]
+    max_intensity_per_week: 3
+    max_long_ride_hours: 5
+
+  goat:
+    hours_range: [15, 25]
+    load_tss: [800, 1000]
+    recovery_tss: [400, 600]
+    max_intensity_per_week: 3
+    max_long_ride_hours: 7
+
+# Hour budget tolerance: weekly hours must not exceed this multiplier
+hour_budget_tolerance: 1.10
+
+# Recovery week TSS as fraction of load week average
+recovery_tss_range: [0.50, 0.65]
+
+# TSS guardrail tolerance for compliance check
+tss_tolerance: 0.15
