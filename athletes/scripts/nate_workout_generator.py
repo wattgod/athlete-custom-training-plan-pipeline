@@ -1615,9 +1615,11 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
             seg_type = seg.get("type", "steady")
             seg_cadence = None
             if "cadence_low" in seg and "cadence_high" in seg:
-                seg_cadence = f"{seg['cadence_low']}-{seg['cadence_high']}"
+                seg_cadence = (int(seg['cadence_low']), int(seg['cadence_high']))
             elif "cadence" in seg:
-                seg_cadence = str(seg["cadence"])
+                # Single cadence value → create a ±5 range
+                c = int(seg["cadence"])
+                seg_cadence = (max(60, c - 5), c + 5)
 
             if seg_type == "steady":
                 seg_dur = seg.get("duration", 300)

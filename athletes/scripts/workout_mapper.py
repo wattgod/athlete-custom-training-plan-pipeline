@@ -183,11 +183,26 @@ def render_workout(
         return None
 
     nate_type, base_variation = mapping
+
+    # Pin certain workout types to their exact archetype — no variation cycling.
+    # Openers must always be the Pre-Race Openers archetype (index 0 in Endurance).
+    # FTP Test must always be the test protocol. Rest Day must always be rest.
+    PINNED_TYPES = {'Openers', 'FTP Test', 'Rest Day', 'Endurance with Surges', 'NP/IF Target'}
+    effective_variation = base_variation
+    if name not in PINNED_TYPES and variation_offset > 0:
+        # For Endurance filler: cycle between Endurance Blocks (3) and Heat Acclim (4) only.
+        # Avoid Openers (0), Terrain Sim (1, broken at low levels), Surges (2, too many segments).
+        if nate_type == 'endurance':
+            safe_offsets = [0, 1]  # relative to base_variation=3 → indices 3, 4
+            effective_variation = base_variation + safe_offsets[variation_offset % len(safe_offsets)]
+        else:
+            effective_variation = base_variation + variation_offset
+
     return generate_nate_zwo(
         workout_type=nate_type,
         level=level,
         methodology=methodology,
-        variation=base_variation + variation_offset,
+        variation=effective_variation,
         workout_name=workout_name,
     )
 
