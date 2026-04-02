@@ -187,7 +187,9 @@ def render_workout(
     # Pin certain workout types to their exact archetype — no variation cycling.
     # Openers must always be the Pre-Race Openers archetype (index 0 in Endurance).
     # FTP Test must always be the test protocol. Rest Day must always be rest.
-    PINNED_TYPES = {'Openers', 'FTP Test', 'Rest Day', 'Endurance with Surges', 'NP/IF Target'}
+    PINNED_TYPES = {'Openers', 'FTP Test', 'Rest Day', 'Endurance with Surges', 'NP/IF Target',
+                     'Race Simulation', 'Kitchen Sink - Drain Cleaner', 'La Balanguera',
+                     'Hyttevask', 'Thunder Quads', 'Blood Pistons'}
     effective_variation = base_variation
     if name not in PINNED_TYPES and variation_offset > 0:
         # For Endurance filler: cycle between Endurance Blocks (3) and Heat Acclim (4) only.

@@ -384,9 +384,27 @@ def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
     if abs(target_seconds - total_seconds) <= 60:
         return zwo_xml
 
-    # If target is smaller than current, don't shrink
+    # Shrink if needed: scale non-interval blocks proportionally
     if target_seconds < total_seconds:
-        return zwo_xml
+        if interval_seconds > 0:
+            # Interval workout: keep intervals, shrink warmup+cooldown
+            non_iv = total_seconds - interval_seconds
+            scale = max(0.3, (target_seconds - interval_seconds) / non_iv) if non_iv > 0 else 1.0
+            for elem in workout:
+                if elem.tag in ('Warmup', 'Cooldown', 'SteadyState') and elem.tag != 'IntervalsT':
+                    dur = float(elem.get('Duration', 0))
+                    elem.set('Duration', str(int(dur * scale)))
+        else:
+            # Endurance: scale all SteadyState blocks proportionally
+            scale = target_seconds / total_seconds
+            for elem in workout:
+                if elem.tag in ('Warmup', 'Cooldown', 'SteadyState'):
+                    dur = float(elem.get('Duration', 0))
+                    elem.set('Duration', str(int(dur * scale)))
+        # Rebuild ZWO string preserving the original XML declaration format
+        # (ET.tostring produces wrong encoding declaration)
+        output = ET.tostring(root, encoding='unicode')
+        return "<?xml version='1.0' encoding='UTF-8'?>\n" + output
 
     # Strategy depends on workout type
     if workout_type in _INTERVAL_TYPES and interval_seconds > 0:

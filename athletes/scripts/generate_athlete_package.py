@@ -1638,7 +1638,10 @@ GO RACE SMART, {athlete_name.upper()}!
                 bb_duration = bb_day.get('duration', 60)
 
                 # Track variation for endurance variety
-                var_key = bb_name
+                # Separate counters for long_ride vs filler so long rides
+                # don't cycle to short archetypes
+                bb_role = bb_day.get('role', 'filler')
+                var_key = f"{bb_name}_{bb_role}"
                 var_offset = _bb_variation_counters.get(var_key, 0)
                 _bb_variation_counters[var_key] = var_offset + 1
 
@@ -1654,6 +1657,14 @@ GO RACE SMART, {athlete_name.upper()}!
                 )
 
                 if zwo_content:
+                    # Scale ZWO duration to match the block-builder's target duration.
+                    # The Nate generator produces archetype-native durations which may
+                    # differ from the workout library's TSS-calibrated durations.
+                    if bb_duration > 0:
+                        from workout_templates import scale_zwo_to_target_duration
+                        zwo_content = scale_zwo_to_target_duration(
+                            zwo_content, bb_duration, bb_name
+                        )
                     # Inject personalized header
                     weeks_to_race = total_weeks - week_num + 1
                     personal_header = (
