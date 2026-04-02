@@ -184,21 +184,22 @@ def render_workout(
 
     nate_type, base_variation = mapping
 
+    # ----------------------------------------------------------------
+    # SIMPLE ENDURANCE: Match TP library exactly.
+    # TP Endurance L1-L6 = steady Z2 ride + cooldown. No segments,
+    # no alternating power, no surges. Just ride at 70% for the duration.
+    # This is what a real coach prescribes for easy days.
+    # ----------------------------------------------------------------
+    if name == 'Endurance':
+        return _render_simple_endurance(level, workout_name)
+
     # Pin certain workout types to their exact archetype — no variation cycling.
-    # Openers must always be the Pre-Race Openers archetype (index 0 in Endurance).
-    # FTP Test must always be the test protocol. Rest Day must always be rest.
     PINNED_TYPES = {'Openers', 'FTP Test', 'Rest Day', 'Endurance with Surges', 'NP/IF Target',
                      'Race Simulation', 'Kitchen Sink - Drain Cleaner', 'La Balanguera',
                      'Hyttevask', 'Thunder Quads', 'Blood Pistons'}
     effective_variation = base_variation
     if name not in PINNED_TYPES and variation_offset > 0:
-        # For Endurance filler: cycle between Endurance Blocks (3) and Heat Acclim (4) only.
-        # Avoid Openers (0), Terrain Sim (1, broken at low levels), Surges (2, too many segments).
-        if nate_type == 'endurance':
-            safe_offsets = [0, 1]  # relative to base_variation=3 → indices 3, 4
-            effective_variation = base_variation + safe_offsets[variation_offset % len(safe_offsets)]
-        else:
-            effective_variation = base_variation + variation_offset
+        effective_variation = base_variation + variation_offset
 
     return generate_nate_zwo(
         workout_type=nate_type,
@@ -207,6 +208,64 @@ def render_workout(
         variation=effective_variation,
         workout_name=workout_name,
     )
+
+
+# TP Library Endurance: steady Z2 + cooldown. Level scales duration only.
+_ENDURANCE_LEVELS = {
+    1: {'duration_min': 70,  'power': 0.68},
+    2: {'duration_min': 100, 'power': 0.69},
+    3: {'duration_min': 130, 'power': 0.70},
+    4: {'duration_min': 160, 'power': 0.70},
+    5: {'duration_min': 190, 'power': 0.70},
+    6: {'duration_min': 250, 'power': 0.70},
+}
+
+def _render_simple_endurance(level: int, workout_name: Optional[str] = None) -> str:
+    """Render a simple endurance workout matching the TP library.
+
+    Structure: Warmup → Steady Z2 → Cooldown.
+    Level controls duration only. Power stays at ~70% FTP.
+    This matches what a real coach puts on TrainingPeaks.
+    """
+    cfg = _ENDURANCE_LEVELS.get(level, _ENDURANCE_LEVELS[3])
+    total_sec = cfg['duration_min'] * 60
+    power = cfg['power']
+
+    warmup_sec = 600  # 10min warmup
+    cooldown_sec = 600  # 10min cooldown
+    main_sec = total_sec - warmup_sec - cooldown_sec
+
+    if main_sec < 600:  # Minimum 10min main set
+        main_sec = 600
+        warmup_sec = 300
+        cooldown_sec = 300
+
+    name = workout_name or f'Endurance_L{level}'
+    desc = (
+        f"MAIN SET:\n"
+        f"- {main_sec // 60}min @ 66-75% FTP (RPE 3-4)\n"
+        f"- Position: Alternate every 30 min: drops (aero) → hoods (power)\n"
+        f"- Cadence: self-selected, comfortable endurance cadence\n\n"
+        f"COOL-DOWN:\n"
+        f"- {cooldown_sec // 60}min easy spin Z1-Z2 (RPE 2-3)\n\n"
+        f"PURPOSE:\n"
+        f"Aerobic base building. Easy riding builds mitochondrial density "
+        f"and fat oxidation — the foundation everything else rests on.\n\n"
+        f"Level {level}: Cadence and position focus. Same structure — refine the execution."
+    )
+
+    return f"""<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>{name}</name>
+  <description>{desc}</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="{warmup_sec}" PowerLow="0.50" PowerHigh="{power:.2f}"/>
+    <SteadyState Duration="{main_sec}" Power="{power:.2f}"/>
+    <Cooldown Duration="{cooldown_sec}" PowerLow="{power:.2f}" PowerHigh="0.45"/>
+  </workout>
+</workout_file>"""
 
 
 def get_mapped_types() -> list:

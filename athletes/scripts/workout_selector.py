@@ -98,6 +98,14 @@ def select_workouts_for_week(
         if name is None:
             continue  # Skip (e.g., time_crunched skips intensity_3)
 
+        # Rotate through alternatives across blocks for variety.
+        # base_level changes per block (1→2→3...) so different blocks
+        # get different workout selections from the alternatives list.
+        alternatives = slot.get('alternatives', [])
+        if alternatives and base_level > 1:
+            all_options = [name] + alternatives
+            name = all_options[(base_level - 1) % len(all_options)]
+
         workouts.append({
             'slot': slot_name,
             'name': name,
