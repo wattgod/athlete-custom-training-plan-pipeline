@@ -796,8 +796,8 @@ def _section_race_profile(race_name, race_distance, elevation, location,
       <div class="stat-card__label">Miles</div>
     </div>
     <div class="stat-card">
-      <div class="stat-card__value">{elevation}</div>
-      <div class="stat-card__label">Elevation (ft)</div>
+      <div class="stat-card__value">{f"{int(elevation):,}" if elevation else "—"} ft</div>
+      <div class="stat-card__label">Climbing</div>
     </div>
     <div class="stat-card">
       <div class="stat-card__value">{plan_duration}</div>
