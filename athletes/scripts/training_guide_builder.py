@@ -619,7 +619,7 @@ def _section_training_plan_brief(
     schedule_rows = []
     for day in all_days:
         info = days_info.get(day, {"session": "rest", "notes": ""})
-        session = info["session"].replace("_", " ").title()
+        session = info.get("label", info["session"].replace("_", " ").title())
         schedule_rows.append(f"<tr><td><strong>{day.title()}</strong></td><td>{session}</td></tr>")
     schedule_table = "\n    ".join(schedule_rows)
 
@@ -1131,7 +1131,7 @@ def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: s
     for day in all_days:
         info = days.get(day, {"session": "rest", "notes": ""})
         session = info["session"]
-        session_display = session.replace("_", " ").title()
+        session_display = info.get("label", session.replace("_", " ").title())
         notes = info.get("notes", "")
         duration = duration_map.get(session, "45-60 min")
         highlight = ' class="race-day-row"' if session in ("long_ride", "intervals") else ""
@@ -3532,31 +3532,71 @@ def generate_training_guide(athlete_id: str, output_path=None):
     derived.setdefault('level', 'Intermediate')
     derived.setdefault('weekly_hours', str(profile.get('weekly_availability', {}).get('cycling_hours_target', 9)))
 
-    # ── Build schedule from weekly_structure ──
-    # step_07 expects: schedule = {'days': {'monday': {'session': 'easy_ride'}}}
-    # Coaching pipeline has: weekly_structure.yaml → days → {am, pm, is_key_day, max_duration}
-    schedule = {'days': {}}
-    ws_path = athlete_dir / 'weekly_structure.yaml'
-    if ws_path.exists():
-        with open(ws_path) as f:
-            ws = yaml.safe_load(f)
-        raw_days = ws.get('days', {})
-        for day_name, info in raw_days.items():
-            am = info.get('am')
-            pm = info.get('pm')
-            is_off = info.get('max_duration', 0) == 0 and not am and not pm
-            is_key = info.get('is_key_day', False)
+    # ── Plan duration (needed by schedule builder AND plan_config) ──
+    plan_duration = derived.get('plan_weeks', 12)
 
-            if is_off:
-                schedule['days'][day_name] = {'session': 'rest'}
-            elif am == 'long_ride' or pm == 'long_ride':
-                schedule['days'][day_name] = {'session': 'long_ride'}
-            elif is_key:
-                schedule['days'][day_name] = {'session': 'intervals'}
-            elif am == 'strength' or pm == 'strength':
-                schedule['days'][day_name] = {'session': 'strength'}
-            else:
-                schedule['days'][day_name] = {'session': pm or am or 'easy_ride'}
+    # ── Build schedule from block-builder plan (actual workout assignments) ──
+    # Use the block-builder's first load week to determine the weekly pattern.
+    # This shows what the athlete actually DOES, not just slot types.
+    schedule = {'days': {}}
+    try:
+        from archetype import determine_archetype
+        from block_chain import chain_blocks
+
+        sc = profile.get('schedule_constraints', {})
+        _DAY_NORM = {'monday': 'Mon', 'tuesday': 'Tue', 'wednesday': 'Wed',
+                     'thursday': 'Thu', 'friday': 'Fri', 'saturday': 'Sat', 'sunday': 'Sun'}
+        bb_off = [_DAY_NORM.get(d.lower(), d) for d in sc.get('preferred_off_days', ['monday'])]
+        bb_long = _DAY_NORM.get(sc.get('preferred_long_day', 'saturday').lower(), 'Sat')
+        bb_hours = profile.get('weekly_availability', {}).get('cycling_hours_target', 9)
+        bb_arch = determine_archetype(bb_hours)
+
+        bb_plan = chain_blocks(
+            total_weeks=min(6, plan_duration), archetype=bb_arch,
+            weeks_to_race=plan_duration, max_level=6, max_intensity=3,
+            off_days=bb_off, long_ride_day=bb_long,
+            starting_level=1, hours_per_week=bb_hours,
+        )
+        # Use week 1 (first load week) as the template
+        if bb_plan.get('weeks'):
+            w1 = bb_plan['weeks'][0]
+            _ABBREV_TO_FULL = {'Mon': 'monday', 'Tue': 'tuesday', 'Wed': 'wednesday',
+                               'Thu': 'thursday', 'Fri': 'friday', 'Sat': 'saturday', 'Sun': 'sunday'}
+            for day_data in w1.get('days', []):
+                day_full = _ABBREV_TO_FULL.get(day_data['day'], day_data['day'].lower())
+                role = day_data.get('role', 'filler')
+                name = day_data.get('name', '')
+                if role == 'off' or name == 'OFF':
+                    schedule['days'][day_full] = {'session': 'rest'}
+                elif role == 'long_ride':
+                    schedule['days'][day_full] = {'session': 'long_ride'}
+                elif role == 'intensity':
+                    # Use actual workout name for intensity days
+                    schedule['days'][day_full] = {'session': 'intervals', 'label': name}
+                elif name == 'Rest Day':
+                    schedule['days'][day_full] = {'session': 'rest'}
+                else:
+                    schedule['days'][day_full] = {'session': 'easy_ride'}
+    except Exception as _sched_err:
+        # Fallback to weekly_structure.yaml
+        import traceback; traceback.print_exc()
+        ws_path = athlete_dir / 'weekly_structure.yaml'
+        if ws_path.exists():
+            with open(ws_path) as f:
+                ws = yaml.safe_load(f)
+            raw_days = ws.get('days', {})
+            for day_name, info in raw_days.items():
+                am = info.get('am')
+                pm = info.get('pm')
+                is_off = info.get('max_duration', 0) == 0 and not am and not pm
+                if is_off:
+                    schedule['days'][day_name] = {'session': 'rest'}
+                elif am == 'long_ride' or pm == 'long_ride':
+                    schedule['days'][day_name] = {'session': 'long_ride'}
+                elif info.get('is_key_day'):
+                    schedule['days'][day_name] = {'session': 'intervals'}
+                else:
+                    schedule['days'][day_name] = {'session': pm or am or 'easy_ride'}
 
     # ── Build plan_config ──
     plan_duration = derived.get('plan_weeks', 12)
