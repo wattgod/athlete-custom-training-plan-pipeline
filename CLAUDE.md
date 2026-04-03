@@ -1,5 +1,31 @@
 # Athlete Custom Training Plan Pipeline
 
+**Commercial-grade automated training plan generator. Current as of April 2, 2026.**
+
+Questionnaire → Block-Builder Engine → ZWO Workouts → HTML Guide → PDF → Delivery
+
+## Status: Production
+- 641 tests passing, 0 failures
+- Block-builder coaching engine integrated (April 2026)
+- 100 archetypes × 6 levels = 600 workout variations
+- 31 canonical workout types from TP library
+- 11 CRITICAL compliance rules validated before delivery
+- Full delivery: ZWO files + 144KB HTML guide + PDF + dashboard + coaching brief
+
+## End-to-End Flow
+```
+1. Athlete fills questionnaire → Stripe checkout
+2. Webhook fires → pipeline runs automatically on Railway
+3. Coach gets email notification with:
+   - Download link for full package
+   - 7-step fulfillment checklist
+   - Athlete info (name, email, FTP, weight, hours, race)
+4. Coach reviews plan_preview.html + coaching_brief.md
+5. Coach imports ZWO files to TrainingPeaks
+6. Coach sends confirmation via API endpoint
+7. Follow-up emails auto-fire (Day 1, 3, 7)
+```
+
 ## Project Structure
 ```
 webhook/
@@ -7,9 +33,10 @@ webhook/
   Dockerfile       <- Docker build (expects repo root as context)
   requirements.txt
   tests/
-    test_webhook.py <- 98 tests
+    test_webhook.py <- 114 tests
 athletes/
-  scripts/         <- Pipeline scripts (generate_full_package.py)
+  scripts/         <- Pipeline scripts + block-builder engine
+  config/          <- Block-builder YAML configs (workout library, selection matrix, TSS)
 railway.json       <- Railway deploy config (root, NOT webhook/)
 ```
 
@@ -120,6 +147,58 @@ python3 -m pytest webhook/tests/test_webhook.py -v
 - [ ] Custom domain (replace long Railway subdomain)
 - [ ] Consider async pipeline execution to avoid Stripe timeout retries
 - [ ] Rotate Stripe secret key (current key was exposed in Playwriter session)
+
+## Block-Builder Coaching Engine (April 2026)
+
+### What It Replaced
+The old `get_workout_for_day()` (800 lines of hardcoded templates) selected workouts via methodology-driven if/elif chains. 92% of workouts hit a flat SteadyState fallback. The block-builder engine replaces this with a phase × archetype selection matrix.
+
+### How It Works
+```
+Profile → archetype.py (hours/week → Time-Crunched/Specialist/Volume/GOAT)
+       → block_chain.py (chain 3-week blocks: Load/Load/Recovery)
+       → workout_selector.py (phase × archetype → workout names + levels from YAML)
+       → series_tracker.py (same workout name +1 level per load week)
+       → workout_mapper.py (block-builder name → Nate ZWO rendering)
+       → block_compliance.py (11 CRITICAL rules validated)
+```
+
+### Key Files
+```
+athletes/scripts/
+├── archetype.py          ← hours → archetype, weeks → phase, training age constraints
+├── block_builder.py      ← Build 3-week blocks (Load/Load/Recovery)
+├── block_chain.py        ← Chain blocks across 4-26 week plans
+├── workout_selector.py   ← Phase × archetype matrix → workout names + levels
+├── series_tracker.py     ← Same workout name across load weeks, +1 level
+├── workout_mapper.py     ← 31 block-builder types → Nate ZWO rendering
+├── block_compliance.py   ← 11 CRITICAL compliance rules
+├── kitchen_sink.py       ← Drain Cleaner, La Balanguera, Hyttevask archetypes
+└── sfr_series.py         ← Thunder Quads, Blood Pistons archetypes
+
+athletes/config/
+├── workout_library.yaml        ← 31 types × 6 levels with TSS/duration
+├── workout_selection.yaml      ← Phase × archetype → workout slots
+├── tss_guardrails.yaml         ← TSS budgets by athlete volume
+├── strength_periodization.yaml ← AA → Max → Maintenance → Deload
+└── block_notes.yaml            ← Load/Recovery/Race week coaching text
+```
+
+### Compliance Rules (11 CRITICAL — plan fails if any violated)
+1. No back-to-back intensity days
+2. VO2max every 14 days (racing phase exempt)
+3. Recovery week TSS 50-65% of load average
+4. Recovery week zero intensity except openers
+5. 2-3 intensity per load week (racing exempt)
+6. Long ride every load week
+7. Fuel tags on every cycling workout
+8. Strength track present
+9. Series coherence (same name, +1 level)
+10. Hours within ±10% of available
+11. Off days respected
+
+### Fallback
+If block-builder modules fail to load, the old `get_workout_for_day()` template system is still present and handles workout selection as before. The block-builder path is tried first; fallback is automatic.
 
 ## Intake-to-Plan Pipeline
 
