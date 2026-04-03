@@ -74,8 +74,14 @@ GUIDES_DIR = config.get_guides_dir()
 if GUIDES_DIR and (GUIDES_DIR / 'generators').exists():
     sys.path.insert(0, str(GUIDES_DIR / 'generators'))
 
-# Use local generate_html_guide instead of external guide_generator
-from generate_html_guide import generate_html_guide
+# CURRENT guide builder: training_guide_builder.py (step_07 style with coaching extensions)
+# Fallback: generate_html_guide.py (old style, still available)
+try:
+    from training_guide_builder import generate_training_guide
+    _use_new_guide = True
+except ImportError:
+    from generate_html_guide import generate_html_guide
+    _use_new_guide = False
 from workout_library import (
     WorkoutLibrary,
     generate_progressive_interval_blocks,
@@ -2358,7 +2364,10 @@ def generate_athlete_package(athlete_id: str) -> dict:
     # Generate training guide AFTER workouts (reads ZWO filenames for ATP table)
     step(4, "Generating training guide...")
     guide_path = athlete_dir / 'training_guide.html'
-    generate_html_guide(athlete_id, output_path=guide_path)
+    if _use_new_guide:
+        generate_training_guide(athlete_id, output_path=guide_path)
+    else:
+        generate_html_guide(athlete_id, output_path=guide_path)
 
     # Generate plan summary
     step(5, "Generating plan summary...")
