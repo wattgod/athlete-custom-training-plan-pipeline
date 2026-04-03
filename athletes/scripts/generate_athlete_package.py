@@ -2350,17 +2350,15 @@ def generate_athlete_package(athlete_id: str) -> dict:
         'plan_dates': plan_dates
     }
 
-    # Generate training guide
-    step(3, "Generating training guide...")
-    guide_path = athlete_dir / 'training_guide.html'
-
-    # Use local HTML guide generator
-    generate_html_guide(athlete_id, output_path=guide_path)
-
-    # Generate ZWO workout files
-    step(4, "Generating ZWO workout files...")
+    # Generate ZWO workout files FIRST (guide reads from workouts dir)
+    step(3, "Generating ZWO workout files...")
     zwo_files = generate_zwo_files(athlete_dir, plan_dates, methodology, derived, profile)
     detail(f"Generated {len(zwo_files)} workout files")
+
+    # Generate training guide AFTER workouts (reads ZWO filenames for ATP table)
+    step(4, "Generating training guide...")
+    guide_path = athlete_dir / 'training_guide.html'
+    generate_html_guide(athlete_id, output_path=guide_path)
 
     # Generate plan summary
     step(5, "Generating plan summary...")
