@@ -329,9 +329,7 @@ def _build_full_guide(
     level_display = level.title()
     ftp = profile["fitness"].get("ftp_watts")
 
-    # Avoid "Unbound Gravel 200 200mi" — if race name contains the distance, skip the suffix
-    if str(race_distance) in str(race_name):
-        race_distance = ""  # Don't append redundant distance
+    # Note: redundant "200 200mi" cleaned up in post-processing by generate_training_guide()
     template = plan_config.get("template", {})
     sched = profile.get("schedule", {})
     weekly_hours = sched.get("weekly_hours", derived.get("weekly_hours", ""))
@@ -430,7 +428,7 @@ def _build_full_guide(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{athlete_name} - {race_name} {race_distance + "mi" if race_distance else ""} Training Guide</title>
+    <title>{athlete_name} - {race_name} {str(race_distance) + "mi" if race_distance else ""} Training Guide</title>
 
     <!-- Fonts: Source Serif 4 (editorial) + Sometype Mono (data) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -444,7 +442,7 @@ def _build_full_guide(
     <div class="gg-guide-layout">
 
       <header class="guide-header">
-        <h1>{race_name} {race_distance + "mi" if race_distance else ""} &ndash; Custom Plan for {athlete_name} ({plan_duration} weeks)</h1>
+        <h1>{race_name} {str(race_distance) + "mi" if race_distance else ""} &ndash; Custom Plan for {athlete_name} ({plan_duration} weeks)</h1>
         <div class="guide-meta">
           <span>{race_name}</span>
           <span>{race_distance} miles</span>
@@ -628,7 +626,7 @@ def _section_training_plan_brief(
     return f"""<section id="section-1" class="gg-section">
   <h2>1 &middot; Training Plan Brief</h2>
 
-  <p>Welcome to your <strong>{race_name} {race_distance + "mi" if race_distance else ""}</strong> training plan. This guide is built
+  <p>Welcome to your <strong>{race_name} {str(race_distance) + "mi" if race_distance else ""}</strong> training plan. This guide is built
   entirely from your questionnaire responses. Every number, every schedule, every recommendation
   is calibrated to your specific situation.</p>
 
@@ -812,7 +810,7 @@ def _section_race_profile(race_name, race_distance, elevation, location,
     <div class="data-card__content">
       <table>
         <tbody>
-          <tr><td><strong>Race</strong></td><td>{race_name} {race_distance + "mi" if race_distance else ""}</td></tr>
+          <tr><td><strong>Race</strong></td><td>{race_name} {str(race_distance) + "mi" if race_distance else ""}</td></tr>
           <tr><td><strong>Location</strong></td><td>{location}</td></tr>
           <tr><td><strong>Terrain</strong></td><td>{terrain}</td></tr>
           <tr><td><strong>Climate</strong></td><td>{climate}</td></tr>
@@ -853,7 +851,7 @@ def _section_non_negotiables(non_negs, race_name, race_distance, elevation=0, ra
     if not non_negs:
         return f"""<section id="section-3" class="gg-section">
   <h2>3 &middot; Non-Negotiables</h2>
-  <p>These are the things you <strong>must</strong> do to race {race_name} {race_distance + "mi" if race_distance else ""} successfully.
+  <p>These are the things you <strong>must</strong> do to race {race_name} {str(race_distance) + "mi" if race_distance else ""} successfully.
   Not suggestions. Requirements.</p>
 
   <div class="gg-module gg-blackpill">
@@ -893,7 +891,7 @@ def _section_non_negotiables(non_negs, race_name, race_distance, elevation=0, ra
 
     return f"""<section id="section-3" class="gg-section">
   <h2>3 &middot; Non-Negotiables</h2>
-  <p>These are the things you <strong>must</strong> do to race {race_name} {race_distance + "mi" if race_distance else ""} successfully.
+  <p>These are the things you <strong>must</strong> do to race {race_name} {str(race_distance) + "mi" if race_distance else ""} successfully.
   Not suggestions. Requirements.</p>
 {''.join(cards)}
 </section>"""
@@ -1695,7 +1693,7 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
   <div class="data-card">
     <div class="data-card__header">YOUR PERSONALIZED FUELING TARGETS</div>
     <div class="data-card__content">
-      <p>Based on your body weight ({weight_lbs} lbs / {weight_kg:.0f} kg), race distance ({race_distance + "mi" if race_distance else ""}),
+      <p>Based on your body weight ({weight_lbs} lbs / {weight_kg:.0f} kg), race distance ({str(race_distance) + "mi" if race_distance else ""}),
       and estimated duration (~{est_hours} hours &mdash; {bracket_label}).</p>
       <div class="stats-grid">
         <div class="stat-card">
@@ -2271,7 +2269,7 @@ If something fails in the dress rehearsal, fix it before race day.</p></div>"""
   <li>Eat a real meal within 60 minutes (protein + carbs + fat)</li>
   <li>Light walking to keep blood flowing</li>
   <li>No training for 3-5 days minimum</li>
-  <li>Celebrate. You just raced {race_name} {race_distance + "mi" if race_distance else ""}. That's not nothing.</li>
+  <li>Celebrate. You just raced {race_name} {str(race_distance) + "mi" if race_distance else ""}. That's not nothing.</li>
   </ul>
 </section>"""
 
@@ -3486,12 +3484,40 @@ def generate_training_guide(athlete_id: str, output_path=None):
             fueling = yaml.safe_load(f)
 
     # ── Adapt profile fields ──
-    if 'fitness' not in profile and 'fitness_markers' in profile:
+    if (not profile.get('fitness')) and profile.get('fitness_markers'):
         profile['fitness'] = profile['fitness_markers']
-    if 'schedule' not in profile and 'weekly_availability' in profile:
+    if (not profile.get('schedule')) and profile.get('weekly_availability'):
+        sc = profile.get('schedule_constraints', {})
+        off = sc.get('preferred_off_days', [])
+        long = sc.get('preferred_long_day', 'saturday')
         profile['schedule'] = {
             'weekly_hours': str(profile['weekly_availability'].get('cycling_hours_target', 9)),
+            'off_days': off,
+            'long_ride_days': [long],
+            'interval_days': [],
         }
+    # Ensure demographics exist (step_07 reads weight/height from here)
+    if not profile.get('demographics'):
+        fm = profile.get('fitness_markers', {})
+        weight_kg = fm.get('weight_kg', profile.get('weight_kg', 0))
+        height_cm = fm.get('height_cm', profile.get('height_cm', 0))
+        total_inches = height_cm / 2.54 if height_cm else 0
+        profile['demographics'] = {
+            'weight_lbs': round(weight_kg * 2.205) if weight_kg else 0,
+            'weight_kg': weight_kg,
+            'height_cm': height_cm,
+            'height_ft': int(total_inches // 12) if total_inches else '',
+            'height_in': int(total_inches % 12) if total_inches else '',
+            'age': profile.get('health_factors', {}).get('age', 0),
+            'sex': fm.get('sex', 'unknown'),
+        }
+    # Ensure training_history has years_cycling
+    th = profile.get('training_history', {})
+    if th and not th.get('years_cycling'):
+        th['years_cycling'] = th.get('years_structured', '')
+    # Ensure health_factors accessible as 'health'
+    if not profile.get('health') and profile.get('health_factors'):
+        profile['health'] = profile['health_factors']
     # Fix strength bool → string
     strength = profile.get('strength', {})
     if isinstance(strength.get('include_in_plan'), bool):
@@ -3502,35 +3528,35 @@ def generate_training_guide(athlete_id: str, output_path=None):
     derived.setdefault('race_name', target_race.get('name', 'Your Race'))
     derived.setdefault('race_distance_miles', target_race.get('distance_miles', 0))
     derived.setdefault('race_date', plan_dates.get('race_date', ''))
+    derived.setdefault('elevation_feet', target_race.get('elevation_ft', 0))
     derived.setdefault('level', 'Intermediate')
+    derived.setdefault('weekly_hours', str(profile.get('weekly_availability', {}).get('cycling_hours_target', 9)))
 
     # ── Build schedule from weekly_structure ──
-    # Translate coaching pipeline format (am/pm slots) → step_07 format
-    schedule = {}
+    # step_07 expects: schedule = {'days': {'monday': {'session': 'easy_ride'}}}
+    # Coaching pipeline has: weekly_structure.yaml → days → {am, pm, is_key_day, max_duration}
+    schedule = {'days': {}}
     ws_path = athlete_dir / 'weekly_structure.yaml'
     if ws_path.exists():
         with open(ws_path) as f:
             ws = yaml.safe_load(f)
         raw_days = ws.get('days', {})
-        _slot_map = {
-            'easy_ride': 'Endurance', 'long_ride': 'Long Ride',
-            'intervals': 'Intervals', 'strength': 'Strength',
-            None: None,
-        }
         for day_name, info in raw_days.items():
-            am = _slot_map.get(info.get('am'), info.get('am'))
-            pm = _slot_map.get(info.get('pm'), info.get('pm'))
+            am = info.get('am')
+            pm = info.get('pm')
             is_off = info.get('max_duration', 0) == 0 and not am and not pm
+            is_key = info.get('is_key_day', False)
+
             if is_off:
-                schedule[day_name] = {'session': 'OFF', 'notes': 'Rest day'}
-            elif info.get('is_key_day'):
-                schedule[day_name] = {'session': am or pm or 'Key Session', 'notes': 'Key session day'}
+                schedule['days'][day_name] = {'session': 'rest'}
+            elif am == 'long_ride' or pm == 'long_ride':
+                schedule['days'][day_name] = {'session': 'long_ride'}
+            elif is_key:
+                schedule['days'][day_name] = {'session': 'intervals'}
+            elif am == 'strength' or pm == 'strength':
+                schedule['days'][day_name] = {'session': 'strength'}
             else:
-                sessions = [s for s in [am, pm] if s]
-                if 'Strength' in sessions:
-                    schedule[day_name] = {'session': 'Strength + Easy Ride', 'notes': ''}
-                else:
-                    schedule[day_name] = {'session': sessions[0] if sessions else 'Endurance', 'notes': ''}
+                schedule['days'][day_name] = {'session': pm or am or 'easy_ride'}
 
     # ── Build plan_config ──
     plan_duration = derived.get('plan_weeks', 12)
@@ -3577,6 +3603,7 @@ def generate_training_guide(athlete_id: str, output_path=None):
         # Also flatten vitals to top level
         vitals = inner.get('vitals', {})
         race_data.setdefault('distance_miles', vitals.get('distance_mi'))
+        race_data.setdefault('elevation_feet', vitals.get('elevation_ft'))
         race_data.setdefault('elevation_gain_feet', vitals.get('elevation_ft'))
         race_data.setdefault('location', vitals.get('location'))
         race_data.setdefault('city', vitals.get('location', '').split(',')[0].strip() if vitals.get('location') else '')
@@ -3630,11 +3657,15 @@ def generate_training_guide(athlete_id: str, output_path=None):
             html, count=1, flags=re.DOTALL
         )
 
-    # Clean up empty distance artifacts (e.g., "200 mi" when distance already in name)
-    html = html.replace(' mi Training Guide', ' Training Guide')
-    html = html.replace(' mi &ndash;', ' &ndash;')
-    html = html.replace(' mi training plan', ' training plan')
-    html = html.replace(' mi successfully', ' successfully')
+    # Clean up redundant distance in titles (e.g., "Unbound Gravel 200 200mi")
+    rd = derived.get('race_distance_miles', 0)
+    rn = derived.get('race_name', '')
+    if rd and str(rd) in rn:
+        html = html.replace(f'{rd}mi Training Guide', 'Training Guide')
+        html = html.replace(f'{rd}mi &ndash;', '&ndash;')
+        html = html.replace(f'{rd}mi training plan', 'training plan')
+        html = html.replace(f'{rd}mi successfully', 'successfully')
+        html = html.replace(f' {rd}mi</td>', '</td>')  # Stat card: just show number
 
     output_path.write_text(html, encoding='utf-8')
     return output_path
