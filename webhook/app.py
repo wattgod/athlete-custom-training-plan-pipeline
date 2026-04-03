@@ -518,18 +518,25 @@ def _send_payment_confirmation(customer_email: str, customer_name: str,
 
     subject = f'Payment confirmed — your {weeks_mention}training plan{race_mention}'
 
+    tp_connect_url = 'https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU'
+
     text = f"""Hey {first_name},
 
-Payment received — thank you. Here's what happens next:
+Payment received — thank you.
 
+YOUR ONE ACTION ITEM:
+Connect to my coaching account on TrainingPeaks so I can push your workouts there:
+{tp_connect_url}
+
+If you don't have a TrainingPeaks account, create a free one first at trainingpeaks.com, then click the link above.
+
+WHAT HAPPENS NEXT:
 1. Your custom {weeks_mention}training plan{race_mention} is being built right now.
-2. I'll review it personally to make sure everything checks out.
-3. You'll get a link to connect on TrainingPeaks — that's where your workouts live.
-4. Expect everything to be ready within 24 hours.
+2. I'll review it personally and make sure everything is dialed.
+3. Within 24 hours, your workouts will be live on your TrainingPeaks calendar.
+4. You'll get an email when it's ready with your training guide (PDF).
 
-You don't need to do anything yet. I'll email you when the plan is live on TrainingPeaks.
-
-If you have questions in the meantime, reply to this email.
+Questions? Reply to this email.
 
 — Matt, Gravel God Cycling
 gravelgodcycling.com
@@ -545,20 +552,30 @@ gravelgodcycling.com
   <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
     <p style="font-size: 15px; line-height: 1.6;">Hey {first_name},</p>
 
-    <p style="font-size: 15px; line-height: 1.6;">Payment received — thank you. Here's what happens next:</p>
+    <p style="font-size: 15px; line-height: 1.6;">Payment received — thank you.</p>
 
-    <ol style="font-size: 14px; padding-left: 20px; line-height: 2.2;">
-      <li>Your custom {weeks_mention}training plan{race_mention} is <strong>being built right now</strong>.</li>
-      <li>I'll <strong>review it personally</strong> to make sure everything checks out.</li>
-      <li>You'll get a link to connect on <strong>TrainingPeaks</strong> — that's where your workouts live.</li>
-      <li>Expect everything to be <strong>ready within 24 hours</strong>.</li>
-    </ol>
-
-    <div style="margin: 24px 0; padding: 16px; background: #fff; border-left: 3px solid #1A8A82;">
-      <p style="margin: 0; font-size: 14px; color: #555;">You don't need to do anything yet. I'll email you when the plan is live on TrainingPeaks.</p>
+    <div style="margin: 20px 0; padding: 20px; background: #fff; border: 2px solid #1A8A82; border-radius: 6px;">
+      <h3 style="margin: 0 0 8px; font-size: 16px; color: #59473c;">Your one action item</h3>
+      <p style="margin: 0 0 16px; font-size: 14px; color: #555;">Connect to my coaching account on TrainingPeaks so I can push your workouts there:</p>
+      <div style="text-align: center;">
+        <a href="{tp_connect_url}" style="display: inline-block; background: #1A8A82; color: white; padding: 14px 32px; text-decoration: none; border-radius: 4px; font-size: 15px; font-weight: bold;">Connect on TrainingPeaks</a>
+      </div>
+      <p style="margin: 12px 0 0; font-size: 12px; color: #999; text-align: center;">Don't have a TrainingPeaks account? <a href="https://www.trainingpeaks.com/athlete-edition/" style="color: #1A8A82;">Create a free one first</a>, then click above.</p>
     </div>
 
-    <p style="font-size: 14px; line-height: 1.6;">Questions in the meantime? Reply to this email.</p>
+    <h3 style="margin: 24px 0 12px; font-size: 15px; color: #59473c;">What happens next</h3>
+    <ol style="font-size: 14px; padding-left: 20px; line-height: 2.2;">
+      <li>Your custom {weeks_mention}training plan{race_mention} is <strong>being built right now</strong>.</li>
+      <li>I'll <strong>review it personally</strong> and make sure everything is dialed.</li>
+      <li>Within <strong>24 hours</strong>, your workouts will be live on your TrainingPeaks calendar.</li>
+      <li>You'll get an email when it's ready with your <strong>training guide</strong> (PDF).</li>
+    </ol>
+
+    <div style="margin: 24px 0; padding: 12px 16px; background: #f5f5f0; border-left: 3px solid #B7950B;">
+      <p style="margin: 0; font-size: 13px; color: #666;"><strong>Delivery timeline:</strong> Most plans are ready same-day. Maximum 24 hours. I'll email you the moment it's live.</p>
+    </div>
+
+    <p style="font-size: 14px; line-height: 1.6;">Questions? Reply to this email.</p>
 
     <p style="font-size: 14px; margin-top: 24px; color: #666;">— Matt, Gravel God Cycling<br>
     <a href="https://gravelgodcycling.com" style="color: #1A8A82;">gravelgodcycling.com</a></p>
