@@ -206,11 +206,14 @@ def _select_recovery_week(config: dict) -> List[Dict[str, Any]]:
 
 
 def _select_race_week() -> List[Dict[str, Any]]:
-    """Race week: Openers + easy endurance + rest."""
+    """Race week: Openers mid-week + 1 easy ride + mostly rest.
+
+    Block-builder spec: Mon OFF, Tue Openers, Wed Easy 45-60min,
+    Thu OFF, Fri OFF (travel), Sat RACE, Sun OFF.
+    """
     return [
         {'slot': 'openers', 'name': 'Openers', 'level': 2, 'role': 'intensity'},
-        {'slot': 'filler', 'name': 'Endurance', 'level': 1, 'role': 'filler'},
-        {'slot': 'rest', 'name': 'Rest Day', 'level': 1, 'role': 'rest'},
+        {'slot': 'filler', 'name': 'Rest Day', 'level': 1, 'role': 'rest'},
     ]
 
 

@@ -277,9 +277,13 @@ def _build_week(
             }
 
         else:
-            # Filler — recovery weeks alternate endurance with rest
-            if week_type == 'recovery' and filler_count > 0 and filler_count % 3 == 0:
-                # Every other filler day is rest during recovery
+            # Race week: mostly rest. One easy ride (Wed), rest of filler = Rest Day.
+            if week_type == 'race' and filler_count != 1:
+                workout = {'name': 'Rest Day', 'level': 1, 'tss': 23, 'duration': 35, 'role': 'filler'}
+            elif week_type == 'race' and filler_count == 1:
+                # One easy ride mid-week
+                workout = {'name': 'Endurance', 'level': 1, 'tss': 55, 'duration': 50, 'role': 'filler'}
+            elif week_type == 'recovery' and filler_count > 0 and filler_count % 3 == 0:
                 workout = {'name': 'Rest Day', 'level': 1, 'tss': 23, 'duration': 35, 'role': 'filler'}
             else:
                 w = filler_workout or {'name': 'Endurance', 'level': 1}
