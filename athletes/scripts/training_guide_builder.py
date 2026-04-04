@@ -2221,6 +2221,9 @@ If something fails in the dress rehearsal, fix it before race day.</p></div>"""
         label = scenario.replace("_", " ").title()
         if isinstance(advice, dict):
             action = advice.get("action", str(advice))
+        elif isinstance(advice, list):
+            action = '</li><li>'.join(str(a) for a in advice)
+            action = f'<ol><li>{action}</li></ol>'
         else:
             action = str(advice)
         decision_cards.append(f'  <div class="data-card"><div class="data-card__header">IF: {label.upper()}</div><div class="data-card__content"><p>{action}</p></div></div>')
@@ -3648,6 +3651,18 @@ def generate_training_guide(athlete_id: str, output_path=None):
         race_data.setdefault('location', vitals.get('location'))
         race_data.setdefault('city', vitals.get('location', '').split(',')[0].strip() if vitals.get('location') else '')
         race_data.setdefault('state', vitals.get('location', '').split(',')[-1].strip() if vitals.get('location') else '')
+        # Create race_metadata for step_07 compatibility
+        race_data.setdefault('race_metadata', {
+            'location': vitals.get('location', ''),
+            'elevation_feet': vitals.get('elevation_ft', 0),
+        })
+        # Create race_characteristics for terrain/climate
+        terrain = inner.get('terrain', {})
+        climate = inner.get('climate', {})
+        race_data.setdefault('race_characteristics', {
+            'terrain': terrain.get('primary', ''),
+            'climate': climate.get('summary', '') if isinstance(climate, dict) else str(climate),
+        })
 
     # ── Generate the guide ──
     html = _build_full_guide(
