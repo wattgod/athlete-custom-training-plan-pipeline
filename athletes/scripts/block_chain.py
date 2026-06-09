@@ -85,7 +85,15 @@ def build_plan_from_calendar(
         week_type = desc.get('week_type', 'load')
 
         if prev_phase is not None and bb_phase != prev_phase:
+            # Phase transition closes the running block: workouts change
+            # system (base VO2 → build threshold), so the series tracker
+            # must not demand name coherence across the boundary.
+            violations.extend(tracker.validate_block())
+            tracker.end_block()
+            tracker.start_block()
+            block_number += 1
             phase_block_index = 1
+            week_in_block = 1
         prev_phase = bb_phase
 
         if week_type == 'load':

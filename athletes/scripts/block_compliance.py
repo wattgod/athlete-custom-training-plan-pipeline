@@ -55,17 +55,28 @@ def _load_config(name: str) -> dict:
 # Individual Rules
 # ============================================================
 
+def _day_is_intensity(day_data: dict) -> bool:
+    """A day counts as intensity by its assigned ROLE, not its workout name.
+
+    Low-strain variants (e.g. Cadence Work L1) can appear as fillers; the
+    pipeline's role assignment is the intent. Name-based classification is
+    the fallback for plans without roles (legacy dicts).
+    """
+    role = day_data.get('role')
+    if role is not None:
+        return role == 'intensity'
+    return day_data.get('name', '') in INTENSITY_TYPES
+
+
 def r01_no_back_to_back_intensity(weeks: List[dict]) -> Tuple[bool, str]:
     """R01 [CRITICAL]: No back-to-back intensity days."""
-    DAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     violations = []
 
     for week in weeks:
         prev_was_intensity = False
         prev_day = None
         for day_data in week.get('days', []):
-            name = day_data.get('name', '')
-            is_intensity = name in INTENSITY_TYPES
+            is_intensity = _day_is_intensity(day_data)
             if prev_was_intensity and is_intensity:
                 violations.append(f"W{week.get('plan_week', '?')}: {prev_day}→{day_data['day']}")
             prev_was_intensity = is_intensity

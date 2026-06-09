@@ -143,17 +143,18 @@ phases:
 # variants, MTB through sprint/neuromuscular work.
 # ---------------------------------------------------------------------------
 disciplines:
+  # NOTE: build intensity_2 is the VO2max slot — discipline extras must NOT
+  # displace it (R02 requires VO2 stimulus every 14 days). Build-phase extras
+  # go on intensity_3 (the optional third slot).
   gravel:
     base:
       intensity_2:
         extra_alternatives: ["SFR"]
     build:
-      intensity_2:
-        extra_alternatives: ["Microbursts"]
       intensity_3:
-        extra_alternatives: ["Mixed Climbing Variations"]
+        extra_alternatives: ["Microbursts", "Mixed Climbing Variations"]
     race_prep:
-      intensity_2:
+      intensity_3:
         extra_alternatives: ["Microbursts"]
   road:
     base:
@@ -162,20 +163,20 @@ disciplines:
     build:
       intensity_1:
         extra_alternatives: ["Threshold Progressive"]
-      intensity_2:
+      intensity_3:
         extra_alternatives: ["Blended VO2max and G Spot"]
     race_prep:
-      intensity_2:
+      intensity_3:
         extra_alternatives: ["G-Spot"]
   mtb:
     base:
       intensity_2:
         extra_alternatives: ["Stomps"]
     build:
-      intensity_2:
+      intensity_3:
         extra_alternatives: ["Microbursts", "Stomps"]
     race_prep:
-      intensity_2:
+      intensity_3:
         extra_alternatives: ["Microbursts"]
 
 # Recovery week overrides (apply to ANY phase recovery week)

@@ -308,11 +308,15 @@ def _run_verification_checks(
             })
 
     # 2. Off days respected
+    # Race days are exempt: an athlete whose B-race falls on their usual
+    # off day is racing, not violating the schedule.
     off_days = profile.get('schedule_constraints', {}).get('preferred_off_days', [])
     violations = []
     for w in weeks_data:
         for d in w['days']:
             if d['day'].lower()[:3] in [od[:3] for od in off_days]:
+                if d.get('is_race') or d.get('is_b_race'):
+                    continue
                 if not d['is_off'] and d.get('workout'):
                     violations.append(f"W{w['week']:02d} {d['day']}")
     checks.append({
@@ -344,20 +348,24 @@ def _run_verification_checks(
     intensity_dist = meth_config.get('intensity_distribution', {})
     target_z1z2 = intensity_dist.get('z1_z2', 0)
     if target_z1z2 and weeks_data:
-        total_easy = 0
-        total_hard = 0
+        # Count TIME, not workouts. Intensity distribution targets (80/20,
+        # 95/5) are defined on training time — counting sessions punishes a
+        # 45min interval workout the same as a 5h Z2 ride.
+        easy_min = 0.0
+        hard_min = 0.0
         for w in weeks_data:
             if w['phase'] in ('taper', 'race'):
                 continue
             for d in w['days']:
                 wo = d.get('workout')
                 if wo and wo.get('zone') not in ('REST', None):
+                    dur = wo.get('duration_min', 0) or 0
                     if wo['zone'] in ('Z1', 'Z2'):
-                        total_easy += 1
+                        easy_min += dur
                     else:
-                        total_hard += 1
-        total = total_easy + total_hard
-        easy_pct = (total_easy / total * 100) if total > 0 else 0
+                        hard_min += dur
+        total_min = easy_min + hard_min
+        easy_pct = (easy_min / total_min * 100) if total_min > 0 else 0
         target_pct = target_z1z2 * 100
         diff = abs(easy_pct - target_pct)
         # PASS: delta < 10%, WARN: 10-15%, FAIL: > 15%
@@ -370,8 +378,8 @@ def _run_verification_checks(
         checks.append({
             'name': 'Zone Distribution',
             'status': status,
-            'detail': (f"Target: {target_pct:.0f}% easy | Actual: {easy_pct:.0f}% easy "
-                       f"({total_easy}/{total} workouts) | Delta: {diff:.0f}% | "
+            'detail': (f"Target: {target_pct:.0f}% easy | Actual: {easy_pct:.0f}% easy by time "
+                       f"({easy_min:.0f}/{total_min:.0f} min) | Delta: {diff:.0f}% | "
                        f"Thresholds: PASS <10%, WARN 10-15%, FAIL >15%"),
         })
 
@@ -416,17 +424,35 @@ def _run_verification_checks(
     })
 
     # 7. B-race present
+    # Only B-races that fall INSIDE the plan window can be placed. Races
+    # before plan start or after the A-race (e.g. a victory-lap century the
+    # week after) are out of scope, not missing.
     b_events = profile.get('b_events', [])
     if b_events:
+        plan_start = plan_dates.get('plan_start', '')
+        plan_end = plan_dates.get('plan_end', '')
         b_race_weeks = [w for w in weeks_data if w.get('b_race')]
         b_names_found = [w['b_race'].get('name', '?') for w in b_race_weeks]
-        b_names_expected = [e.get('name', '?') for e in b_events if e.get('date')]
-        missing = [n for n in b_names_expected if n not in b_names_found]
+        in_window = []
+        out_of_window = []
+        for e in b_events:
+            date = e.get('date', '')
+            if not date:
+                continue
+            if plan_start and plan_end and (date < plan_start or date > plan_end):
+                out_of_window.append(e.get('name', '?'))
+            else:
+                in_window.append(e.get('name', '?'))
+        missing = [n for n in in_window if n not in b_names_found]
+        detail = f"Found: {', '.join(b_names_found) if b_names_found else 'none'}"
+        if missing:
+            detail += f" | MISSING: {', '.join(missing)}"
+        if out_of_window:
+            detail += f" | Outside plan window (n/a): {', '.join(out_of_window)}"
         checks.append({
             'name': 'B-Race Placed',
             'status': 'PASS' if not missing else 'FAIL',
-            'detail': f"Found: {', '.join(b_names_found)}" +
-                      (f" | MISSING: {', '.join(missing)}" if missing else ""),
+            'detail': detail,
         })
 
     # 8. Key day placement

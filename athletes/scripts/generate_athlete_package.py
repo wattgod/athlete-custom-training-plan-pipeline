@@ -459,11 +459,12 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     # workouts fill each week.
     # ===================================================================
     try:
-        from archetype import determine_archetype, determine_phase
+        from archetype import determine_archetype, determine_phase, derive_discipline
         from block_chain import build_plan_from_calendar
         from workout_mapper import render_workout as _bb_render
 
         _bb_archetype = determine_archetype(cycling_hours_target)
+        _bb_discipline = derive_discipline(profile or {})
         _bb_off_days = [DAY_FULL_TO_ABBREV.get(d.lower(), d)
                         for d in schedule_constraints.get('preferred_off_days', ['monday'])]
 
@@ -494,6 +495,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             long_ride_day=long_day_abbrev,
             starting_level=1,
             hours_per_week=cycling_hours_target,
+            discipline=_bb_discipline,
         )
 
         # Build lookup: (plan_week, day_abbrev) → block plan day data
@@ -506,11 +508,37 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
         _use_block_builder = True
         log.info(f"Block-builder plan (calendar-driven): {_bb_archetype}, "
+                 f"discipline={_bb_discipline}, "
                  f"{len(_bb_plan.get('weeks',[]))} weeks, "
                  f"{_bb_plan.get('num_blocks',0)} blocks")
     except Exception as e:
         _use_block_builder = False
         log.warning(f"Block-builder not available, using legacy templates: {e}")
+
+    # ===================================================================
+    # COMPLIANCE GATE — the plan must pass all CRITICAL rules BEFORE any
+    # ZWO is rendered. A failing plan kills the build loudly instead of
+    # delivering a broken plan to a paying athlete. This raise is outside
+    # the try/except above so it cannot trigger the legacy fallback.
+    # ===================================================================
+    if _use_block_builder:
+        from block_compliance import validate_plan as _bb_validate, \
+            format_compliance_report as _bb_report
+        _compliance = _bb_validate(
+            _bb_plan,
+            target_hours=cycling_hours_target,
+            off_days=_bb_off_days,
+            max_intensity=max_intensity_per_week,
+        )
+        if not _compliance['critical_pass']:
+            report = _bb_report(_compliance)
+            log.error("COMPLIANCE GATE FAILED\n" + report)
+            raise RuntimeError(
+                f"Plan failed compliance gate "
+                f"({_compliance['critical_score']} critical rules passed):\n{report}"
+            )
+        log.info(f"Compliance gate: {_compliance['critical_score']} critical, "
+                 f"score {_compliance['score']}%")
 
     def build_day_schedule(day_abbrev: str, phase: str, phase_templates: dict, week_num: int = 0) -> tuple:
         """
