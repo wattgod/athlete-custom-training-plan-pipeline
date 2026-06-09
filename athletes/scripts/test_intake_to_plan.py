@@ -40,6 +40,7 @@ from intake_to_plan import (
     extract_date_from_text,
     extract_distance_from_name,
     generate_coaching_brief,
+    parse_race_line,
     _parse_ftp_with_unknown_handling,
 )
 from known_races import match_race, KNOWN_RACES, RACE_ALIASES
@@ -392,6 +393,153 @@ class TestMatchRace:
         assert result is not None
         race_id, _ = result
         assert race_id == 'big_sugar'
+
+    def test_does_not_overmatch_on_stop_word_gravel(self):
+        # Regression: "Gravel Blinduro Czech" used to match unbound_gravel_200
+        # via single-token overlap on the word "gravel". Must return None.
+        assert match_race('Gravel Blinduro Czech') is None
+
+    def test_does_not_match_meta_wrapped_input(self):
+        # Race lines arrive with trailing metadata in the markdown intake. The
+        # matcher must not over-match on parenthetical noise.
+        result = match_race('Gravel Blinduro Czech (2026-09-05, 50, priority C)')
+        assert result is None
+
+    def test_does_not_overmatch_on_stop_word_tour(self):
+        # "El Tour de Tucson" shares "tour"/"de" with stop words; must not match.
+        assert match_race('El Tour de Tucson') is None
+
+    def test_unknown_named_race_returns_none(self):
+        assert match_race('Borderlands AZ State Championships') is None
+
+    def test_alias_substring_with_year_suffix(self):
+        # An athlete writing "Unbound 200 2026" should still resolve via the
+        # "unbound 200" alias substring.
+        result = match_race('Unbound 200 2026')
+        assert result is not None
+        race_id, _ = result
+        assert race_id == 'unbound_gravel_200'
+
+
+# ===========================================================================
+# TestParseRaceLine — race-line parsing (name, date, distance, priority)
+# ===========================================================================
+
+class TestParseRaceLine:
+    """Tests for parse_race_line()."""
+
+    def test_full_meta(self):
+        result = parse_race_line('Borderlands AZ State Championships (2026-11-14, 100, priority A)')
+        assert result == {
+            'name': 'Borderlands AZ State Championships',
+            'date': '2026-11-14',
+            'distance_miles': 100,
+            'priority': 'A',
+        }
+
+    def test_priority_c(self):
+        result = parse_race_line('Gravel Blinduro Czech (2026-09-05, 50, priority C)')
+        assert result['priority'] == 'C'
+
+    def test_no_meta(self):
+        result = parse_race_line('Unbound 200')
+        assert result == {
+            'name': 'Unbound 200',
+            'date': '',
+            'distance_miles': 0,
+            'priority': None,
+        }
+
+    def test_partial_meta_no_priority(self):
+        result = parse_race_line('Steamboat 100 (2026-08-15, 100)')
+        assert result['priority'] is None
+        assert result['date'] == '2026-08-15'
+        assert result['distance_miles'] == 100
+
+    def test_priority_lowercase_input(self):
+        result = parse_race_line('Race X (2026-07-04, 75, priority b)')
+        assert result['priority'] == 'B'
+
+    def test_empty_line(self):
+        result = parse_race_line('')
+        assert result['name'] == ''
+        assert result['priority'] is None
+
+    def test_name_contains_parens_but_trailing_meta_present(self):
+        # Only the *trailing* parenthesis is treated as metadata.
+        result = parse_race_line('Race (Special Edition) (2026-05-30, 200, priority A)')
+        assert result['name'] == 'Race (Special Edition)'
+        assert result['priority'] == 'A'
+
+
+# ===========================================================================
+# TestRacePriorityAssignment — build_profile target-race selection
+# ===========================================================================
+
+class TestRacePriorityAssignment:
+    """Regression tests for the position-based priority bug.
+
+    Earlier code assumed ``i == 0`` was the A race. Athletes who listed a B/C
+    race first ended up with the wrong target. Target must now be the first
+    explicit priority A.
+    """
+
+    def _profile_with_races(self, races_str: str) -> dict:
+        parsed = {
+            'athlete_name': 'Race Priority Test',
+            '__header__': {},
+            'basic_info': {'age': '40', 'weight': '70 kg', 'sex': 'male'},
+            'goals': {'primary_goal': 'specific_race', 'races': races_str},
+            'current_fitness': {'ftp': '250 W'},
+            'schedule': {'weekly_hours_available': '10'},
+            'recovery': {},
+            'equipment': {},
+            'work_life': {},
+            'health': {},
+            'strength': {},
+            'additional': {},
+        }
+        return build_profile(parsed)
+
+    def test_target_is_first_explicit_priority_a(self):
+        # Jesse Couch's exact intake order: C, C, A, A.
+        # Target must be the first A (Borderlands), not the first listed (Czech).
+        races = (
+            'Gravel Blinduro Czech (2026-09-05, 50, priority C)\n'
+            'Gravel Blinduro Czech (2026-09-06, 50, priority C)\n'
+            'Borderlands AZ State Championships (2026-11-14, 100, priority A)\n'
+            'El Tour de Tucson (2026-11-21, 100, priority B)'
+        )
+        profile = self._profile_with_races(races)
+        assert profile['target_race']['name'] == 'Borderlands AZ State Championships'
+        assert profile['target_race']['date'] == '2026-11-14'
+
+    def test_target_falls_back_to_first_when_no_explicit_a(self):
+        # If no race carries an explicit "priority A" annotation, the first
+        # listed race is treated as target — preserves legacy behavior for
+        # intakes that omit priorities.
+        races = 'Unbound 200\nSteamboat'
+        profile = self._profile_with_races(races)
+        assert 'unbound' in profile['target_race'].get('race_id', '').lower()
+
+    def test_athlete_priority_preserved_in_events(self):
+        races = (
+            'Race One (2026-05-01, 100, priority B)\n'
+            'Race Two (2026-09-01, 200, priority A)'
+        )
+        profile = self._profile_with_races(races)
+        a_names = [e['name'] for e in profile.get('a_events', [])]
+        b_names = [e['name'] for e in profile.get('b_events', [])]
+        assert a_names == ['Race Two']
+        assert b_names == ['Race One']
+
+    def test_meta_strip_prevents_overmatch(self):
+        # Trailing meta in the race line must not leak into match_race(),
+        # which would otherwise return false-positive matches.
+        races = 'Gravel Blinduro Czech (2026-09-05, 50, priority A)'
+        profile = self._profile_with_races(races)
+        # Should NOT be matched to Unbound — name stays as-typed.
+        assert profile['target_race']['name'] == 'Gravel Blinduro Czech'
 
 
 # ===========================================================================

@@ -1,6 +1,20 @@
 #!/usr/bin/env python3
 """
-Intake-to-Plan: End-to-end pipeline from athlete questionnaire to deliverables.
+============================================================================
+  PRIMARY PIPELINE ENTRY POINT — production webhook + manual CLI
+============================================================================
+
+This is THE file that runs in production for every paid order.
+The Stripe webhook (`webhook/app.py::run_pipeline`) invokes this script
+with the athlete's questionnaire piped to stdin. See PIPELINE.md for the
+full map of which script does what.
+
+Related scripts (do NOT confuse for the entry point):
+  - generate_full_package.py     internal 9-step orchestrator (called by THIS)
+  - generate_athlete_package.py  internal ZWO workout generator
+  - generate_html_guide.py       internal HTML guide renderer
+
+----------------------------------------------------------------------------
 
 Takes a markdown-formatted athlete questionnaire (pasted as stdin or from a file)
 and runs the full pipeline, producing deliverables in ~/Downloads/.
@@ -623,8 +637,61 @@ def extract_distance_from_name(name: str) -> int:
 
 
 # ===========================================================================
-# Race Matching
+# Race Line Parsing
 # ===========================================================================
+
+_RACE_PRIORITY_RE = re.compile(r'priority\s+([A-D])\b', re.IGNORECASE)
+_RACE_DATE_RE = re.compile(r'\b(\d{4}-\d{2}-\d{2})\b')
+
+
+def parse_race_line(line: str) -> Dict[str, Any]:
+    """
+    Parse one race line from the markdown intake.
+
+    Expected shape: ``Name (YYYY-MM-DD, miles, priority X)`` — each field in
+    the parens is optional, athletes may omit any combination.
+
+    Returns: ``{'name': str, 'date': str, 'distance_miles': int, 'priority': str|None}``.
+    Priority is uppercased ('A'|'B'|'C'|'D') when present, else None.
+    """
+    raw = line.strip()
+    if not raw:
+        return {'name': '', 'date': '', 'distance_miles': 0, 'priority': None}
+
+    # Pull metadata out of the trailing parenthesis (if present)
+    meta = ''
+    name = raw
+    paren_match = re.search(r'\s*\(([^)]*)\)\s*$', raw)
+    if paren_match:
+        meta = paren_match.group(1)
+        name = raw[:paren_match.start()].strip()
+
+    date = ''
+    distance = 0
+    priority = None
+
+    if meta:
+        date_match = _RACE_DATE_RE.search(meta)
+        if date_match:
+            date = date_match.group(1)
+
+        priority_match = _RACE_PRIORITY_RE.search(meta)
+        if priority_match:
+            priority = priority_match.group(1).upper()
+
+        # Numeric distance: bare integer in the meta string (not the date).
+        for part in [p.strip() for p in meta.split(',')]:
+            if part.isdigit() and 1 <= int(part) <= 999:
+                distance = int(part)
+                break
+
+    return {
+        'name': name,
+        'date': date,
+        'distance_miles': distance,
+        'priority': priority,
+    }
+
 
 # ===========================================================================
 # Athlete ID Generation
@@ -746,65 +813,78 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     success_text = goals.get('success', '')
     obstacles_text = goals.get('obstacles', '')
 
-    # Match races
+    # Parse each race line into structured fields (name, date, distance, priority)
+    parsed_races = [parse_race_line(r) for r in race_list]
+
+    # Target race = first explicit priority A; fall back to first race if none.
+    target_idx = next(
+        (i for i, r in enumerate(parsed_races) if r['priority'] == 'A'),
+        0 if parsed_races else -1,
+    )
+
     a_events = []
     b_events = []
     target_race_info = {}
 
-    for i, race_name in enumerate(race_list):
-        matched = match_race(race_name)
+    for i, parsed in enumerate(parsed_races):
+        race_name_clean = parsed['name']
+        is_target = (i == target_idx)
+        # Athlete-supplied priority wins. If absent, target gets A and the rest B.
+        priority = parsed['priority'] or ('A' if is_target else 'B')
+
+        matched = match_race(race_name_clean)
         event = {
-            'name': race_name,
-            'date': '',
-            'distance_miles': 0,
-            'goal': 'finish' if i == 0 else 'compete',
-            'priority': 'A' if i == 0 else 'B',
+            'name': race_name_clean,
+            'date': parsed['date'],
+            'distance_miles': parsed['distance_miles'],
+            'goal': 'finish' if is_target else 'compete',
+            'priority': priority,
         }
+
         if matched:
             race_id, info = matched
-            event['date'] = info['date']
-            event['distance_miles'] = info['distance_miles']
-            if i == 0:
+            # Athlete-provided date/distance win (more current than KNOWN_RACES).
+            if not event['date']:
+                event['date'] = info['date']
+            if not event['distance_miles']:
+                event['distance_miles'] = info['distance_miles']
+            event['name'] = info['name']
+            if is_target:
                 target_race_info = {
                     'name': info['name'],
                     'race_id': race_id,
-                    'date': info['date'],
-                    'distance_miles': info['distance_miles'],
+                    'date': event['date'],
+                    'distance_miles': event['distance_miles'],
                     'elevation_ft': info.get('elevation_ft', 0),
                     'goal_type': 'finish',
                     'goal': 'finish',
                     'goal_description': success_text,
                 }
-                event['name'] = info['name']
         else:
-            # Unknown race — extract what we can from athlete-provided data
-            print(f"{YELLOW}WARNING: Race '{race_name}' not in known_races.py "
+            # Unknown race — use athlete-provided fields, fall back to extraction.
+            print(f"{YELLOW}WARNING: Race '{race_name_clean}' not in known_races.py "
                   f"— using athlete-provided data. Consider adding to known_races.py.{RESET}")
 
-            # Try to extract distance from race name (e.g., "Steamboat 100" -> 100)
-            extracted_distance = extract_distance_from_name(race_name)
-            event['distance_miles'] = extracted_distance
+            if not event['distance_miles']:
+                event['distance_miles'] = extract_distance_from_name(race_name_clean)
 
-            # Try to extract date from the full questionnaire text
-            # Look in goals section first (most likely location for race dates)
-            goals_text = ' '.join(str(v) for v in goals.values() if v)
-            extracted_date = extract_date_from_text(goals_text)
-            if extracted_date:
-                event['date'] = extracted_date
+            if not event['date']:
+                goals_text = ' '.join(str(v) for v in goals.values() if v)
+                event['date'] = extract_date_from_text(goals_text)
 
-            if i == 0:
+            if is_target:
                 target_race_info = {
-                    'name': race_name,
-                    'race_id': re.sub(r'[^a-z0-9]+', '_', race_name.lower()).strip('_'),
-                    'date': extracted_date,
-                    'distance_miles': extracted_distance,
+                    'name': race_name_clean,
+                    'race_id': re.sub(r'[^a-z0-9]+', '_', race_name_clean.lower()).strip('_'),
+                    'date': event['date'],
+                    'distance_miles': event['distance_miles'],
                     'elevation_ft': 0,
                     'goal_type': 'finish',
                     'goal': 'finish',
                     'goal_description': success_text,
                 }
 
-        if i == 0:
+        if priority == 'A':
             a_events.append(event)
         else:
             b_events.append(event)

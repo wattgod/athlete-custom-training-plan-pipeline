@@ -146,35 +146,69 @@ RACE_ALIASES: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 # Race matching function
 # ---------------------------------------------------------------------------
+
+# Generic terms shared across most race names. Matching on these alone produces
+# false positives (e.g. "Gravel Blinduro Czech" → "Unbound Gravel 200").
+_MATCH_STOP_WORDS = frozenset({
+    'gravel', 'race', 'ride', 'rally', 'classic', 'championship',
+    'championships', 'the', 'of', 'and', 'cycling', 'event', 'open',
+    'tour', 'de', 'la', 'le', 'el',
+    '50', '75', '100', '150', '200', '300', '350',
+})
+
+
+def _discriminative_tokens(text: str) -> set:
+    return set(text.lower().split()) - _MATCH_STOP_WORDS
+
+
 def match_race(name: str) -> Optional[Tuple[str, Dict[str, Any]]]:
     """
-    Fuzzy-match a user-provided race name to a known race.
+    Match a user-provided race name to a known race.
+
+    Order of precedence:
+      1. Exact alias (RACE_ALIASES)
+      2. Substring containment, gated on discriminative content
+         (rejects matches that share only stop words)
+      3. Token overlap ≥ 2 on discriminative tokens
+
     Returns (race_id, race_info) or None.
     """
     normalized = name.strip().lower()
 
-    # Direct alias match
+    # 1. Direct alias match
     if normalized in RACE_ALIASES:
         race_id = RACE_ALIASES[normalized]
         return race_id, KNOWN_RACES[race_id]
 
-    # Substring matching on known race names
+    # 2. Substring containment with discriminative content
+    name_disc = _discriminative_tokens(normalized)
     for race_id, info in KNOWN_RACES.items():
-        if normalized in info['name'].lower() or info['name'].lower() in normalized:
-            return race_id, info
+        race_name_lower = info['name'].lower()
+        if normalized in race_name_lower or race_name_lower in normalized:
+            race_disc = _discriminative_tokens(race_name_lower)
+            # Substring match counts only if the shared content includes a
+            # discriminative token (not just stop words).
+            if name_disc & race_disc:
+                return race_id, info
 
-    # Token matching: if any known race name words match significantly
-    name_tokens = set(normalized.split())
+    # 2b. Substring containment against alias keys ("unbound 200 2026" → "unbound 200")
+    for alias, race_id in RACE_ALIASES.items():
+        if alias in normalized:
+            alias_disc = _discriminative_tokens(alias)
+            if alias_disc and (alias_disc & name_disc) == alias_disc:
+                return race_id, KNOWN_RACES[race_id]
+
+    # 3. Token overlap ≥ 2 on discriminative tokens
+    if len(name_disc) < 2:
+        return None
+
     best_match = None
-    best_score = 0
+    best_score = 1
     for race_id, info in KNOWN_RACES.items():
-        race_tokens = set(info['name'].lower().split())
-        overlap = len(name_tokens & race_tokens)
-        if overlap > best_score and overlap >= 1:
+        race_disc = _discriminative_tokens(info['name'].lower())
+        overlap = len(name_disc & race_disc)
+        if overlap > best_score:
             best_score = overlap
             best_match = (race_id, info)
 
-    if best_match and best_score >= 1:
-        return best_match
-
-    return None
+    return best_match

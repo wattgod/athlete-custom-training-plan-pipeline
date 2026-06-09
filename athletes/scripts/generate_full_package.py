@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
 """
+============================================================================
+  INTERNAL ORCHESTRATOR — not the entry point.
+  Production entry point is intake_to_plan.py. See PIPELINE.md.
+============================================================================
+
+This script runs the 9-step pipeline against an *existing* profile.yaml.
+It is invoked by intake_to_plan.py once the profile has been built from
+the questionnaire. It is ALSO retained as a legacy fallback in
+webhook/app.py::run_pipeline for the no-intake-data path.
+
+----------------------------------------------------------------------------
+
 Generate Full Athlete Package
 
 One-command pipeline that runs all steps to generate a complete training package:
