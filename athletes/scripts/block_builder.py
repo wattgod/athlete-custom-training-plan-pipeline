@@ -373,24 +373,35 @@ def _build_week(
             **workout,
         })
 
-    # Post-assignment budget trim: if total exceeds hours_per_week × 1.10,
-    # convert filler days to rest (starting from the end) until within budget
-    tolerance = 1.15 if hours_per_week < 6 else 1.10
-    max_minutes = hours_per_week * 60 * tolerance
-    total_duration = sum(d.get('duration', 0) for d in days)
-    if total_duration > max_minutes and week_type == 'load':
-        for i in range(len(days) - 1, -1, -1):
-            if total_duration <= max_minutes:
-                break
-            if days[i]['role'] == 'filler' and days[i]['name'] != 'Rest Day':
-                removed_dur = days[i]['duration']
-                removed_tss = days[i]['tss']
-                days[i] = {
-                    'day': days[i]['day'], 'name': 'Rest Day', 'level': 1,
-                    'tss': 23, 'duration': 35, 'role': 'filler',
-                }
-                total_duration -= (removed_dur - 35)
-                total_tss -= (removed_tss - 23)
+    # Post-assignment budget trim: convert filler days to rest (starting
+    # from the end) until within budget.
+    # - Load weeks: hours x 1.10 (1.15 for very low-hour athletes)
+    # - Recovery weeks: hours x 0.62 — a recovery week must actually unload.
+    #   The fixed recovery template (~5h) was 80%+ of a low-hour athlete's
+    #   load volume, defeating the purpose.
+    if week_type == 'load':
+        tolerance = 1.15 if hours_per_week < 6 else 1.10
+        max_minutes = hours_per_week * 60 * tolerance
+    elif week_type == 'recovery':
+        max_minutes = hours_per_week * 60 * 0.62
+    else:
+        max_minutes = None
+
+    if max_minutes is not None:
+        total_duration = sum(d.get('duration', 0) for d in days)
+        if total_duration > max_minutes:
+            for i in range(len(days) - 1, -1, -1):
+                if total_duration <= max_minutes:
+                    break
+                if days[i]['role'] == 'filler' and days[i]['name'] != 'Rest Day':
+                    removed_dur = days[i]['duration']
+                    removed_tss = days[i]['tss']
+                    days[i] = {
+                        'day': days[i]['day'], 'name': 'Rest Day', 'level': 1,
+                        'tss': 23, 'duration': 35, 'role': 'filler',
+                    }
+                    total_duration -= (removed_dur - 35)
+                    total_tss -= (removed_tss - 23)
 
     return {
         'week_num': week_num,
