@@ -67,7 +67,11 @@ def select_workouts_for_week(
 
     # Recovery week: strict rules
     if week_type == 'recovery':
-        return _select_recovery_week(config)
+        return _select_recovery_week(config, hours_per_week)
+
+    # Taper week: openers + short rides only
+    if week_type == 'taper':
+        return _select_taper_week(hours_per_week)
 
     # Race week
     if week_type == 'race':
@@ -194,13 +198,38 @@ def _get_level_range(slot: dict, archetype: str) -> Tuple[int, int]:
     return tuple(slot.get('level_range', [1, 6]))
 
 
-def _select_recovery_week(config: dict) -> List[Dict[str, Any]]:
-    """Recovery week: ONLY Endurance L1-L2 + one Openers. Sacred."""
+def _select_recovery_week(config: dict, hours_per_week: float = 10) -> List[Dict[str, Any]]:
+    """Recovery week: Endurance L1-L2, one Openers, and a SHORT long ride.
+
+    The long ride never disappears — a recovery week keeps the weekend
+    rhythm with a reduced-duration Z2 ride (~50-60% of a load-week long
+    ride). Without this slot, the long-ride day was silently left empty.
+    """
     recovery_config = config.get('recovery_week', {})
     max_level = recovery_config.get('max_endurance_level', 2)
 
+    # Short long ride: Endurance L2 (~90min) for most athletes,
+    # L3 (~130min) only when weekly hours support it.
+    long_level = 3 if hours_per_week >= 12 else 2
+    long_level = min(long_level, max(max_level, 2))
+
     return [
         {'slot': 'openers', 'name': 'Openers', 'level': 1, 'role': 'intensity'},
+        {'slot': 'long_ride', 'name': 'Endurance', 'level': long_level, 'role': 'long_ride'},
+        {'slot': 'filler', 'name': 'Endurance', 'level': 1, 'role': 'filler'},
+    ]
+
+
+def _select_taper_week(hours_per_week: float = 10) -> List[Dict[str, Any]]:
+    """Taper week: 1-2 openers, short Z2 rides, reduced long ride.
+
+    ~60% volume of a load week, intensity limited to openers, and a
+    final medium ride on the long-ride day for equipment/fueling rehearsal.
+    """
+    return [
+        {'slot': 'openers', 'name': 'Openers', 'level': 2, 'role': 'intensity'},
+        {'slot': 'openers_2', 'name': 'Openers', 'level': 1, 'role': 'intensity'},
+        {'slot': 'long_ride', 'name': 'Endurance', 'level': 2, 'role': 'long_ride'},
         {'slot': 'filler', 'name': 'Endurance', 'level': 1, 'role': 'filler'},
     ]
 

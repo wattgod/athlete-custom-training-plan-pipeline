@@ -452,23 +452,42 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     week_total_minutes = 0
 
     # ===================================================================
-    # BLOCK-BUILDER PLAN: pre-compute workout assignments for all weeks
-    # Uses the block-builder coaching logic (phase × archetype matrix)
-    # instead of the old get_workout_for_day() template system.
+    # BLOCK-BUILDER PLAN: pre-compute workout assignments for all weeks.
+    # The CALENDAR (plan_dates.yaml) is the single source of truth for
+    # week typing — phases, recovery weeks, taper, and race week all come
+    # from calculate_plan_dates.py. The block-builder only decides WHICH
+    # workouts fill each week.
     # ===================================================================
     try:
         from archetype import determine_archetype, determine_phase
-        from block_chain import chain_blocks
+        from block_chain import build_plan_from_calendar
         from workout_mapper import render_workout as _bb_render
 
         _bb_archetype = determine_archetype(cycling_hours_target)
         _bb_off_days = [DAY_FULL_TO_ABBREV.get(d.lower(), d)
                         for d in schedule_constraints.get('preferred_off_days', ['monday'])]
 
-        _bb_plan = chain_blocks(
-            total_weeks=total_weeks,
+        # Derive week descriptors from plan_dates (calendar truth)
+        _bb_descriptors = []
+        for _w in weeks:
+            _w_phase = _w.get('phase', 'base')
+            if _w.get('is_race_week') or _w_phase == 'race':
+                _w_type = 'race'
+            elif _w_phase == 'taper':
+                _w_type = 'taper'
+            elif _w.get('is_recovery_week'):
+                _w_type = 'recovery'
+            else:
+                _w_type = 'load'
+            _bb_descriptors.append({
+                'plan_week': _w['week'],
+                'phase': _w_phase,
+                'week_type': _w_type,
+            })
+
+        _bb_plan = build_plan_from_calendar(
+            week_descriptors=_bb_descriptors,
             archetype=_bb_archetype,
-            weeks_to_race=total_weeks,  # Plan starts now, race at end
             max_level=max_workout_level,
             max_intensity=max_intensity_per_week,
             off_days=_bb_off_days,
@@ -486,7 +505,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 _bb_lookup[(plan_week, bd['day'])] = bd
 
         _use_block_builder = True
-        log.info(f"Block-builder plan: {_bb_archetype}, {len(_bb_plan.get('weeks',[]))} weeks, "
+        log.info(f"Block-builder plan (calendar-driven): {_bb_archetype}, "
+                 f"{len(_bb_plan.get('weeks',[]))} weeks, "
                  f"{_bb_plan.get('num_blocks',0)} blocks")
     except Exception as e:
         _use_block_builder = False
@@ -1281,6 +1301,36 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         if late_week > 0:
             ftp_test_target_weeks.append(late_week)
 
+    # Pre-compute the FTP test day. Used to gate the block-builder path so
+    # the FTP day defers to the legacy injection logic (which owns FTP tests).
+    # Mirrors get_ftp_day_candidates(): key days first, long day excluded.
+    def _ftp_day_viable(day: str) -> bool:
+        if not use_custom_schedule:
+            return True
+        avail = get_day_availability(day)
+        if avail.get('availability') in ('unavailable', 'rest'):
+            return False
+        return avail.get('max_duration_min', 120) >= FTP_TEST_DURATION_MIN
+
+    if use_custom_schedule:
+        _ftp_key_days, _ftp_other_days = [], []
+        for _d in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']:
+            if _d == long_day_abbrev or not _ftp_day_viable(_d):
+                continue
+            _avail = get_day_availability(_d)
+            _entry = (_d, _avail.get('max_duration_min', 120))
+            if _avail.get('is_key_day_ok', False):
+                _ftp_key_days.append(_entry)
+            else:
+                _ftp_other_days.append(_entry)
+        _ftp_key_days.sort(key=lambda x: x[1], reverse=True)
+        _ftp_other_days.sort(key=lambda x: x[1], reverse=True)
+        _ftp_candidates_precomputed = ([d for d, _ in _ftp_key_days]
+                                       + [d for d, _ in _ftp_other_days])
+    else:
+        _ftp_candidates_precomputed = ['Sat', 'Thu', 'Sun']
+    _ftp_slot_day = _ftp_candidates_precomputed[0] if _ftp_candidates_precomputed else None
+
     # Total weeks per phase (used for long ride progression)
     phase_total_weeks = dict(phase_counters)  # snapshot after counting all weeks
 
@@ -1632,9 +1682,25 @@ GO RACE SMART, {athlete_name.upper()}!
 
             # ---------------------------------------------------------------
             # BLOCK-BUILDER PATH: Use pre-computed plan for workout selection
-            # Falls back to legacy template system if block builder unavailable
+            # Falls back to legacy template system if block builder unavailable.
+            #
+            # Certain days DEFER to the legacy path, which owns their special
+            # handling: A-race day plans, B-race openers/easy mini-taper, and
+            # FTP test injection. Without this gate the block path would render
+            # a normal workout and skip those overlays entirely.
             # ---------------------------------------------------------------
-            if _use_block_builder:
+            _defer_to_legacy = (
+                is_race_day
+                or is_b_race_opener
+                or is_b_race_easy
+                or (
+                    week_num in ftp_test_target_weeks
+                    and week_num not in ftp_tests_added
+                    and not week.get('is_recovery_week', False)
+                    and day_abbrev == _ftp_slot_day
+                )
+            )
+            if _use_block_builder and not _defer_to_legacy:
                 bb_day = _bb_lookup.get((week_num, day_abbrev))
                 if not bb_day or bb_day.get('name') in ('OFF', 'Rest Day') or bb_day.get('role') == 'off':
                     continue

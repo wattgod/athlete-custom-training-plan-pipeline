@@ -2,16 +2,127 @@
 """
 Block Chain — chains 3-week blocks across full plan duration.
 
-Divides total plan weeks into sequential blocks (Load/Load/Recovery),
-handling phase transitions and remainder weeks (taper/race).
+Two entry points:
+
+1. build_plan_from_calendar() — PREFERRED. Consumes week descriptors derived
+   from plan_dates.yaml so the calendar (phases, recovery weeks, taper, race
+   week, B-race overlays) is the single source of truth. The block-builder
+   only decides WHAT workouts fill each week, never WHICH weeks are which.
+
+2. chain_blocks() — legacy. Divides total plan weeks into its own 3-week
+   Load/Load/Recovery cycle. Kept for backward compatibility; its week typing
+   can disagree with plan_dates (recovery on different weeks, final block
+   mis-phased), which produced broken plans. Do not use for new code.
 
 Source: block-builder SKILL.md, adapted for continuous plan generation
 """
 
 from typing import Dict, List, Any, Optional
 from archetype import determine_phase
-from block_builder import build_block
+from block_builder import build_block, build_calendar_week
 from series_tracker import SeriesTracker
+
+# plan_dates phase → block-builder phase
+CALENDAR_PHASE_MAP = {
+    'base': 'base',
+    'build': 'build',
+    'peak': 'race_prep',
+    'taper': 'taper',
+    'race': 'race',
+}
+
+
+def build_plan_from_calendar(
+    week_descriptors: List[Dict[str, Any]],
+    archetype: str,
+    max_level: int = 6,
+    max_intensity: int = 3,
+    off_days: List[str] = None,
+    long_ride_day: str = 'Sat',
+    starting_level: int = 1,
+    hours_per_week: float = 10,
+) -> Dict[str, Any]:
+    """Build a full plan from calendar week descriptors (plan_dates truth).
+
+    Args:
+        week_descriptors: One dict per week, in order:
+            {'plan_week': int (1-based),
+             'phase': str  (plan_dates phase: base/build/peak/taper/race),
+             'week_type': str ('load' | 'recovery' | 'taper' | 'race')}
+        archetype: Athlete archetype ('time_crunched'|'specialist'|'volume'|'goat')
+        max_level: Maximum workout level (training age constraint)
+        max_intensity: Max intensity sessions per load week
+        off_days: Preferred off days (day abbreviations, e.g. ['Sun'])
+        long_ride_day: Preferred long ride day abbreviation
+        starting_level: Level for the first load block
+        hours_per_week: Weekly cycling hour target
+
+    Returns:
+        Plan dict shaped like chain_blocks() output: {'weeks': [...], ...}
+    """
+    if off_days is None:
+        off_days = ['Mon']
+
+    tracker = SeriesTracker()
+    tracker.start_block()
+
+    all_weeks = []
+    block_number = 1
+    block_base_level = starting_level
+    week_in_block = 1
+    violations = []
+
+    for desc in week_descriptors:
+        plan_week = desc['plan_week']
+        bb_phase = CALENDAR_PHASE_MAP.get(desc.get('phase', 'base'), 'base')
+        week_type = desc.get('week_type', 'load')
+
+        if week_type == 'load':
+            wk_intensity = max_intensity
+        elif week_type == 'taper':
+            wk_intensity = 2  # openers only
+        else:  # recovery, race
+            wk_intensity = 1
+
+        week = build_calendar_week(
+            week_type=week_type,
+            phase=bb_phase,
+            archetype=archetype,
+            block_number=block_number,
+            week_in_block=week_in_block,
+            base_level=block_base_level,
+            max_level=max_level,
+            max_intensity=wk_intensity,
+            off_days=off_days,
+            long_ride_day=long_ride_day,
+            hours_per_week=hours_per_week,
+            series_tracker=tracker,
+        )
+        week['plan_week'] = plan_week
+        all_weeks.append(week)
+
+        # Block bookkeeping: a recovery/taper/race week closes the block.
+        # Level progression within a block comes from week_in_block
+        # (workout selection adds week_in_block - 1 to base_level).
+        if week_type == 'load':
+            tracker.advance_week()
+            week_in_block += 1
+        else:
+            violations.extend(tracker.validate_block())
+            tracker.end_block()
+            tracker.start_block()
+            block_number += 1
+            week_in_block = 1
+            # Next block starts one level up, capped by training age.
+            block_base_level = min(block_base_level + 1, max_level)
+
+    return {
+        'total_weeks': len(week_descriptors),
+        'archetype': archetype,
+        'num_blocks': block_number,
+        'weeks': all_weeks,
+        'all_violations': violations,
+    }
 
 
 def chain_blocks(

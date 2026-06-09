@@ -143,6 +143,51 @@ def build_block(
     }
 
 
+def build_calendar_week(
+    week_type: str,
+    phase: str,
+    archetype: str,
+    block_number: int,
+    week_in_block: int,
+    base_level: int,
+    max_level: int = 6,
+    max_intensity: int = 3,
+    off_days: List[str] = None,
+    long_ride_day: str = 'Sat',
+    hours_per_week: float = 10,
+    series_tracker: Optional[SeriesTracker] = None,
+) -> Dict[str, Any]:
+    """Build one week whose type and phase come from the calendar (plan_dates).
+
+    Unlike build_block(), this does not impose a Load/Load/Recovery rhythm —
+    the caller (build_plan_from_calendar) supplies week_type per week from
+    plan_dates.yaml, the single source of scheduling truth.
+    """
+    if off_days is None:
+        off_days = ['Mon']
+    if series_tracker is None:
+        series_tracker = SeriesTracker()
+        series_tracker.start_block()
+
+    day_roles = _build_day_template(off_days, long_ride_day, max_intensity)
+
+    week = _build_week(
+        week_num=week_in_block,
+        week_type=week_type,
+        phase=phase,
+        archetype=archetype,
+        day_roles=day_roles,
+        base_level=base_level,
+        max_level=max_level,
+        max_intensity=max_intensity,
+        series_tracker=series_tracker,
+        week_in_block=week_in_block,
+        hours_per_week=hours_per_week,
+    )
+    week['block_number'] = block_number
+    return week
+
+
 def _build_day_template(
     off_days: List[str],
     long_ride_day: str,
