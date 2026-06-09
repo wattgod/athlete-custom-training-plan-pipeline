@@ -220,6 +220,68 @@ class TestCalendarPlan:
             assert phase in CALENDAR_PHASE_MAP
 
 
+class TestVariety:
+    """Phase 3 regression: 80 of 150 workouts used to be identical
+    'Endurance.zwo'. Selection must rotate names across blocks and days."""
+
+    def test_at_least_12_unique_workout_names(self):
+        plan = _build_jesse_plan()
+        names = {d['name'] for w in plan['weeks'] for d in w['days']
+                 if d['name'] not in ('OFF', 'Rest Day')}
+        assert len(names) >= 12, f"Only {len(names)} unique names: {sorted(names)}"
+
+    def test_long_rides_rotate_across_blocks(self):
+        plan = _build_jesse_plan()
+        long_ride_names = {
+            _day(w, 'Sat')['name'] for w in plan['weeks']
+            if w['week_type'] == 'load'
+        }
+        assert len(long_ride_names) >= 3, (
+            f"Long rides should rotate variants, got {long_ride_names}"
+        )
+
+    def test_filler_days_vary_within_week(self):
+        """At least some load weeks must have >1 distinct filler name."""
+        plan = _build_jesse_plan()
+        weeks_with_varied_fillers = 0
+        for w in plan['weeks']:
+            if w['week_type'] != 'load':
+                continue
+            fillers = {d['name'] for d in w['days'] if d.get('role') == 'filler'}
+            if len(fillers) > 1:
+                weeks_with_varied_fillers += 1
+        assert weeks_with_varied_fillers >= 10, (
+            f"Only {weeks_with_varied_fillers} load weeks have varied fillers"
+        )
+
+    def test_adjacent_blocks_use_different_intensity(self):
+        """Wednesday intensity in base block 1 vs block 2 must differ."""
+        plan = _build_jesse_plan()
+        # W1 (block 1) and W5 (block 2) are both base-phase load weeks
+        w1_int = {d['name'] for d in _week(plan, 1)['days'] if d.get('role') == 'intensity'}
+        w5_int = {d['name'] for d in _week(plan, 5)['days'] if d.get('role') == 'intensity'}
+        assert w1_int != w5_int, (
+            f"Adjacent blocks repeat the same intensity menu: {w1_int}"
+        )
+
+    def test_filler_level_ladders_up(self):
+        """Fillers progress from L1 early-plan to L2+ later (volume builds)."""
+        plan = _build_jesse_plan()
+        early = [d['level'] for d in _week(plan, 1)['days'] if d.get('role') == 'filler']
+        late = [d['level'] for d in _week(plan, 17)['days'] if d.get('role') == 'filler']
+        assert max(late) > max(early), (
+            f"Filler levels never progress: early {early}, late {late}"
+        )
+
+    def test_weekly_volume_builds_across_plan(self):
+        plan = _build_jesse_plan()
+        w1 = sum(d['duration'] for d in _week(plan, 1)['days'])
+        w19 = sum(d['duration'] for d in _week(plan, 19)['days'])
+        assert w19 > w1 * 1.3, (
+            f"Plan volume should build: W1={w1}min, W19={w19}min"
+        )
+
+
 class TestBuildCalendarWeek:
     def test_single_recovery_week_standalone(self):
         week = build_calendar_week(

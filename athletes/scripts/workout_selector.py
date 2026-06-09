@@ -48,20 +48,26 @@ def select_workouts_for_week(
     max_level: int = 6,
     max_intensity: int = 3,
     hours_per_week: float = 10,
+    block_number: int = 1,
 ) -> List[Dict[str, Any]]:
     """Select workouts for a single week.
 
     Args:
         phase: Training phase ('base', 'build', 'race_prep', 'racing')
         archetype: Athlete archetype ('time_crunched', 'specialist', 'volume', 'goat')
-        week_type: 'load', 'recovery', or 'race'
-        week_in_block: Position within 3-week block (1=first load, 2=second load, 3=recovery)
+        week_type: 'load', 'recovery', 'taper', or 'race'
+        week_in_block: Position within block (1=first load week, ...)
         base_level: Starting level for this block (1-6)
         max_level: Maximum level allowed (from training age constraints)
         max_intensity: Maximum intensity sessions per week
+        block_number: 1-based block sequence number. Drives rotation through
+            intensity/long-ride alternatives so adjacent blocks never repeat
+            the same workout names, and the filler level ladder.
 
     Returns:
         List of workout dicts: [{'slot': str, 'name': str, 'level': int, 'role': str}]
+        Filler dicts may carry a 'pool' key (list of names) that the week
+        builder cycles across filler days for day-to-day variety.
     """
     config = _load_selection_config()
 
@@ -103,12 +109,13 @@ def select_workouts_for_week(
             continue  # Skip (e.g., time_crunched skips intensity_3)
 
         # Rotate through alternatives across blocks for variety.
-        # base_level changes per block (1→2→3...) so different blocks
-        # get different workout selections from the alternatives list.
+        # block_number advances per mesocycle, so adjacent blocks pull
+        # different names from the alternatives list while series
+        # coherence (same name within a block) is preserved.
         alternatives = slot.get('alternatives', [])
-        if alternatives and base_level > 1:
+        if alternatives:
             all_options = [name] + alternatives
-            name = all_options[(base_level - 1) % len(all_options)]
+            name = all_options[(block_number - 1) % len(all_options)]
 
         workouts.append({
             'slot': slot_name,
@@ -121,6 +128,12 @@ def select_workouts_for_week(
     # Long ride — level must fit within weekly hour budget
     long_slot = slots.get('long_ride', {})
     long_name = _get_slot_workout(long_slot, archetype)
+    # Rotate long-ride variants across blocks (only when no archetype
+    # override pinned a specific ride).
+    long_alternatives = long_slot.get('alternatives', [])
+    if long_name and long_alternatives and archetype not in long_slot.get('overrides', {}):
+        long_options = [long_name] + long_alternatives
+        long_name = long_options[(block_number - 1) % len(long_options)]
     if long_name:
         long_level_range = _get_level_range(long_slot, archetype)
         long_level = min(max(level, long_level_range[0]), long_level_range[1])
@@ -157,14 +170,26 @@ def select_workouts_for_week(
     filler_slot = slots.get('filler', {})
     filler_name = _get_slot_workout(filler_slot, archetype)
     filler_level_range = _get_level_range(filler_slot, archetype)
-    filler_level = min(filler_level_range[0], max_level)
+    # Level ladder: fillers progress +1 every 2 blocks within their range,
+    # so base-phase volume builds across the plan instead of pinning at L1.
+    filler_level = min(
+        filler_level_range[0] + (block_number - 1) // 2,
+        filler_level_range[1],
+        max_level,
+    )
 
-    workouts.append({
+    filler_entry = {
         'slot': 'filler',
         'name': filler_name or 'Endurance',
         'level': filler_level,
         'role': 'filler',
-    })
+    }
+    # Day-to-day variety: pool of low-strain variants the week builder
+    # cycles across filler days (e.g. Endurance / Cadence Work).
+    filler_pool = filler_slot.get('pool')
+    if filler_pool:
+        filler_entry['pool'] = list(filler_pool)
+    workouts.append(filler_entry)
 
     return workouts
 

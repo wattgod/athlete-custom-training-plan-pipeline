@@ -183,6 +183,7 @@ def build_calendar_week(
         series_tracker=series_tracker,
         week_in_block=week_in_block,
         hours_per_week=hours_per_week,
+        block_number=block_number,
     )
     week['block_number'] = block_number
     return week
@@ -248,6 +249,7 @@ def _build_week(
     series_tracker: SeriesTracker,
     week_in_block: int,
     hours_per_week: float = 10,
+    block_number: int = 1,
 ) -> Dict[str, Any]:
     """Build a single week with day-by-day workout assignments."""
 
@@ -261,6 +263,7 @@ def _build_week(
         max_level=max_level,
         max_intensity=max_intensity,
         hours_per_week=hours_per_week,
+        block_number=block_number,
     )
 
     # Organize menu by role
@@ -332,11 +335,28 @@ def _build_week(
                 workout = {'name': 'Rest Day', 'level': 1, 'tss': 23, 'duration': 35, 'role': 'filler'}
             else:
                 w = filler_workout or {'name': 'Endurance', 'level': 1}
-                tss = get_workout_tss(w['name'], w['level'])
-                dur = get_workout_duration(w['name'], w['level'])
+                f_name = w['name']
+                f_level = w['level']
+                # Cycle the filler pool across filler days for variety.
+                # Shift the cycle by week so the same weekday doesn't get the
+                # same variant every single week.
+                pool = w.get('pool')
+                if pool and week_type == 'load':
+                    f_name = pool[(filler_count + week_in_block - 1) % len(pool)]
+                    if get_workout_duration(f_name, f_level) <= 0:
+                        # Unknown level for this variant — clamp to a level
+                        # the library defines, else fall back to Endurance.
+                        for try_level in range(min(f_level, 6), 0, -1):
+                            if get_workout_duration(f_name, try_level) > 0:
+                                f_level = try_level
+                                break
+                        else:
+                            f_name = 'Endurance'
+                tss = get_workout_tss(f_name, f_level)
+                dur = get_workout_duration(f_name, f_level)
                 workout = {
-                    'name': w['name'],
-                    'level': w['level'],
+                    'name': f_name,
+                    'level': f_level,
                     'tss': tss,
                     'duration': dur,
                     'role': 'filler',
