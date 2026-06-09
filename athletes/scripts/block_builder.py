@@ -384,6 +384,10 @@ def _build_week(
         max_minutes = hours_per_week * 60 * tolerance
     elif week_type == 'recovery':
         max_minutes = hours_per_week * 60 * 0.62
+    elif week_type == 'taper':
+        max_minutes = hours_per_week * 60 * 0.70
+    elif week_type == 'race':
+        max_minutes = hours_per_week * 60 * 0.60
     else:
         max_minutes = None
 
@@ -402,6 +406,30 @@ def _build_week(
                     }
                     total_duration -= (removed_dur - 35)
                     total_tss -= (removed_tss - 23)
+
+        # Fillers exhausted but still over budget (time-crunched athletes in
+        # high-level blocks): step the longest intensity/long-ride workout
+        # down a level at a time until the week fits or everything is at L1.
+        total_duration = sum(d.get('duration', 0) for d in days)
+        while total_duration > max_minutes:
+            candidates = [d for d in days
+                          if d.get('role') in ('intensity', 'long_ride')
+                          and d.get('level', 1) > 1]
+            if not candidates:
+                break
+            longest = max(candidates, key=lambda d: d.get('duration', 0))
+            new_level = longest['level'] - 1
+            new_dur = get_workout_duration(longest['name'], new_level)
+            new_tss = get_workout_tss(longest['name'], new_level)
+            if new_dur <= 0:
+                # Library gap — treat as unloweable, stop trying this one
+                longest['level'] = 1
+                continue
+            total_duration -= (longest['duration'] - new_dur)
+            total_tss -= (longest['tss'] - new_tss)
+            longest['level'] = new_level
+            longest['duration'] = new_dur
+            longest['tss'] = new_tss
 
     return {
         'week_num': week_num,

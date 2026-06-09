@@ -153,15 +153,46 @@ python3 -m pytest webhook/tests/test_webhook.py -v
 ### What It Replaced
 The old `get_workout_for_day()` (800 lines of hardcoded templates) selected workouts via methodology-driven if/elif chains. 92% of workouts hit a flat SteadyState fallback. The block-builder engine replaces this with a phase × archetype selection matrix.
 
-### How It Works
+### How It Works (June 2026: calendar-driven)
 ```
-Profile → archetype.py (hours/week → Time-Crunched/Specialist/Volume/GOAT)
-       → block_chain.py (chain 3-week blocks: Load/Load/Recovery)
-       → workout_selector.py (phase × archetype → workout names + levels from YAML)
+Profile → archetype.py (hours/week → Time-Crunched/Specialist/Volume/GOAT,
+       |                + derive_discipline: gravel/road/mtb from target race)
+       → calculate_plan_dates.py (SINGLE SOURCE OF TRUTH for week typing:
+       |                phases, recovery weeks, taper, race week, B-races)
+       → block_chain.build_plan_from_calendar (consumes plan_dates descriptors;
+       |                NEVER invents its own Load/Load/Recovery rhythm)
+       → workout_selector.py (phase × archetype × discipline → names + levels;
+       |                filler pools, long-ride alternatives, level ladder)
        → series_tracker.py (same workout name +1 level per load week)
+       → block_compliance.py (11 CRITICAL rules — HARD GATE before render;
+       |                a failing plan raises and kills the build)
        → workout_mapper.py (block-builder name → Nate ZWO rendering)
-       → block_compliance.py (11 CRITICAL rules validated)
 ```
+
+### Critical pitfalls (June 2026 overhaul — Jesse Couch incident)
+- **plan_dates.yaml is the ONLY source of week typing.** `chain_blocks()` is
+  legacy: it imposes its own 3-week L/L/R rhythm that disagrees with
+  plan_dates (recovery on wrong weeks, final block mis-phased, Saturdays
+  silently dropped). Always use `build_plan_from_calendar()`.
+- **The compliance gate raise lives OUTSIDE the block-builder try/except** in
+  generate_athlete_package. Inside it, a failed gate would silently fall back
+  to legacy templates — the failure mode the gate exists to prevent.
+- **Race/B-race/FTP days defer to the legacy overlay path.** The block path
+  is gated by `_defer_to_legacy` — without it the block path renders a normal
+  workout and the race-day plan / FTP test / B-race mini-taper never fires.
+- **Never displace the build-phase VO2 slot (intensity_2).** Discipline
+  extras go on intensity_3. Displacing VO2 for a block = 6-week VO2 gap =
+  R02 failure.
+- **Empty off-days list ≠ no off days.** `schedule_constraints.get(
+  'preferred_off_days') or ['monday']` — an empty list bypasses dict.get's
+  default and produces a 7-day training week.
+- **Week budgets by type**: load = hours×1.10 (1.15 if <6h), recovery =
+  hours×0.62, taper = hours×0.70, race = hours×0.60. Trim converts fillers
+  to Rest Day first, then down-levels the longest intensity/long-ride.
+- **Phase transitions close the running block** (series coherence resets);
+  rotation through alternatives uses the PHASE-LOCAL block index.
+- **R01 classifies intensity by assigned role, not workout name** — Cadence
+  Work L1 as a filler is an easy day.
 
 ### Key Files
 ```

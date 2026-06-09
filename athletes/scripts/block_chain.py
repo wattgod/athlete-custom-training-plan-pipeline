@@ -27,6 +27,7 @@ CALENDAR_PHASE_MAP = {
     'base': 'base',
     'build': 'build',
     'peak': 'race_prep',
+    'maintenance': 'base',  # steady aerobic upkeep between blocks
     'taper': 'taper',
     'race': 'race',
 }

@@ -465,8 +465,11 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
         _bb_archetype = determine_archetype(cycling_hours_target)
         _bb_discipline = derive_discipline(profile or {})
+        # Empty off-days list must still yield a rest day — nobody trains
+        # 7 days/week. (An empty list bypasses dict.get's default.)
         _bb_off_days = [DAY_FULL_TO_ABBREV.get(d.lower(), d)
-                        for d in schedule_constraints.get('preferred_off_days', ['monday'])]
+                        for d in (schedule_constraints.get('preferred_off_days')
+                                  or ['monday'])]
 
         # Derive week descriptors from plan_dates (calendar truth)
         _bb_descriptors = []
