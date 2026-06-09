@@ -135,6 +135,49 @@ phases:
       filler:
         default: "Rest Day"
 
+# ---------------------------------------------------------------------------
+# Discipline overlays — widen rotation pools per race discipline.
+# extra_alternatives are APPENDED to the slot's alternatives before
+# block-number rotation, so gravel athletes naturally cycle through
+# gravel-specific work in some blocks, road athletes through threshold
+# variants, MTB through sprint/neuromuscular work.
+# ---------------------------------------------------------------------------
+disciplines:
+  gravel:
+    base:
+      intensity_2:
+        extra_alternatives: ["SFR"]
+    build:
+      intensity_2:
+        extra_alternatives: ["Microbursts"]
+      intensity_3:
+        extra_alternatives: ["Mixed Climbing Variations"]
+    race_prep:
+      intensity_2:
+        extra_alternatives: ["Microbursts"]
+  road:
+    base:
+      intensity_2:
+        extra_alternatives: ["Tempo"]
+    build:
+      intensity_1:
+        extra_alternatives: ["Threshold Progressive"]
+      intensity_2:
+        extra_alternatives: ["Blended VO2max and G Spot"]
+    race_prep:
+      intensity_2:
+        extra_alternatives: ["G-Spot"]
+  mtb:
+    base:
+      intensity_2:
+        extra_alternatives: ["Stomps"]
+    build:
+      intensity_2:
+        extra_alternatives: ["Microbursts", "Stomps"]
+    race_prep:
+      intensity_2:
+        extra_alternatives: ["Microbursts"]
+
 # Recovery week overrides (apply to ANY phase recovery week)
 recovery_week:
   allowed_workouts:

@@ -156,6 +156,7 @@ def build_calendar_week(
     long_ride_day: str = 'Sat',
     hours_per_week: float = 10,
     series_tracker: Optional[SeriesTracker] = None,
+    discipline: str = 'gravel',
 ) -> Dict[str, Any]:
     """Build one week whose type and phase come from the calendar (plan_dates).
 
@@ -184,6 +185,7 @@ def build_calendar_week(
         week_in_block=week_in_block,
         hours_per_week=hours_per_week,
         block_number=block_number,
+        discipline=discipline,
     )
     week['block_number'] = block_number
     return week
@@ -250,6 +252,7 @@ def _build_week(
     week_in_block: int,
     hours_per_week: float = 10,
     block_number: int = 1,
+    discipline: str = 'gravel',
 ) -> Dict[str, Any]:
     """Build a single week with day-by-day workout assignments."""
 
@@ -264,6 +267,7 @@ def _build_week(
         max_intensity=max_intensity,
         hours_per_week=hours_per_week,
         block_number=block_number,
+        discipline=discipline,
     )
 
     # Organize menu by role

@@ -49,6 +49,7 @@ def select_workouts_for_week(
     max_intensity: int = 3,
     hours_per_week: float = 10,
     block_number: int = 1,
+    discipline: str = 'gravel',
 ) -> List[Dict[str, Any]]:
     """Select workouts for a single week.
 
@@ -112,7 +113,18 @@ def select_workouts_for_week(
         # block_number advances per mesocycle, so adjacent blocks pull
         # different names from the alternatives list while series
         # coherence (same name within a block) is preserved.
-        alternatives = slot.get('alternatives', [])
+        # Discipline overlays widen the pool (gravel → Microbursts /
+        # Mixed Climbing, road → threshold variants, mtb → sprints).
+        # Extras are inserted at the FRONT of the alternatives so the
+        # second block in a phase already hits discipline-specific work.
+        alternatives = list(slot.get('alternatives', []))
+        discipline_overlay = (config.get('disciplines', {})
+                              .get(discipline, {})
+                              .get(phase, {})
+                              .get(slot_name, {}))
+        for pos, extra in enumerate(discipline_overlay.get('extra_alternatives', [])):
+            if extra != name and extra not in alternatives:
+                alternatives.insert(pos, extra)
         if alternatives:
             all_options = [name] + alternatives
             name = all_options[(block_number - 1) % len(all_options)]
@@ -172,8 +184,10 @@ def select_workouts_for_week(
     filler_level_range = _get_level_range(filler_slot, archetype)
     # Level ladder: fillers progress +1 every 2 blocks within their range,
     # so base-phase volume builds across the plan instead of pinning at L1.
+    # base_level rises once per block across the WHOLE plan (block_number is
+    # phase-local and resets, so it can't drive a global ladder).
     filler_level = min(
-        filler_level_range[0] + (block_number - 1) // 2,
+        filler_level_range[0] + (base_level - 1) // 2,
         filler_level_range[1],
         max_level,
     )

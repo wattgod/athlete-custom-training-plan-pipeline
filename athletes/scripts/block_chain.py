@@ -41,6 +41,7 @@ def build_plan_from_calendar(
     long_ride_day: str = 'Sat',
     starting_level: int = 1,
     hours_per_week: float = 10,
+    discipline: str = 'gravel',
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -71,11 +72,21 @@ def build_plan_from_calendar(
     block_base_level = starting_level
     week_in_block = 1
     violations = []
+    # Phase-local block index: rotation through workout alternatives uses
+    # this (not the absolute block number) so the 2nd block of EVERY phase
+    # reaches the first alternative. Absolute numbering skipped options when
+    # a phase started at a high block number.
+    phase_block_index = 1
+    prev_phase = None
 
     for desc in week_descriptors:
         plan_week = desc['plan_week']
         bb_phase = CALENDAR_PHASE_MAP.get(desc.get('phase', 'base'), 'base')
         week_type = desc.get('week_type', 'load')
+
+        if prev_phase is not None and bb_phase != prev_phase:
+            phase_block_index = 1
+        prev_phase = bb_phase
 
         if week_type == 'load':
             wk_intensity = max_intensity
@@ -88,7 +99,7 @@ def build_plan_from_calendar(
             week_type=week_type,
             phase=bb_phase,
             archetype=archetype,
-            block_number=block_number,
+            block_number=phase_block_index,
             week_in_block=week_in_block,
             base_level=block_base_level,
             max_level=max_level,
@@ -97,8 +108,10 @@ def build_plan_from_calendar(
             long_ride_day=long_ride_day,
             hours_per_week=hours_per_week,
             series_tracker=tracker,
+            discipline=discipline,
         )
         week['plan_week'] = plan_week
+        week['block_number'] = block_number
         all_weeks.append(week)
 
         # Block bookkeeping: a recovery/taper/race week closes the block.
@@ -112,6 +125,7 @@ def build_plan_from_calendar(
             tracker.end_block()
             tracker.start_block()
             block_number += 1
+            phase_block_index += 1
             week_in_block = 1
             # Next block starts one level up, capped by training age.
             block_base_level = min(block_base_level + 1, max_level)

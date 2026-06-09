@@ -135,3 +135,44 @@ def get_athlete_constraints(profile: Dict[str, Any]) -> Dict[str, Any]:
         'max_intensity_per_week': max_intensity,
         'max_level': training_age['max_level'],
     }
+
+
+# ---------------------------------------------------------------------------
+# Discipline detection
+# ---------------------------------------------------------------------------
+
+# Keyword → discipline. Checked against the target race name (lowercased).
+# Order matters: first match wins. Default is 'gravel' (core audience).
+_DISCIPLINE_KEYWORDS = [
+    ('mtb', 'mtb'),
+    ('mountain bike', 'mtb'),
+    ('xc ', 'mtb'),
+    ('gravel', 'gravel'),
+    ('unbound', 'gravel'),
+    ('bwr', 'gravel'),
+    ('fondo', 'road'),
+    ('tour de', 'road'),
+    ('road race', 'road'),
+    ('criterium', 'road'),
+    ('crit ', 'road'),
+    ('hillclimb', 'road'),
+    ('hill climb', 'road'),
+]
+
+
+def derive_discipline(profile: dict) -> str:
+    """Infer race discipline ('gravel' | 'road' | 'mtb') from the profile.
+
+    Checks an explicit profile field first, then keyword-matches the target
+    race name. Defaults to 'gravel'.
+    """
+    explicit = (profile.get('discipline')
+                or profile.get('target_race', {}).get('discipline'))
+    if explicit in ('gravel', 'road', 'mtb'):
+        return explicit
+
+    name = profile.get('target_race', {}).get('name', '').lower()
+    for keyword, discipline in _DISCIPLINE_KEYWORDS:
+        if keyword in name:
+            return discipline
+    return 'gravel'

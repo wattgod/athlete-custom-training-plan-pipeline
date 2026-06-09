@@ -282,6 +282,55 @@ class TestVariety:
         )
 
 
+class TestDisciplineGating:
+    """Phase 4: discipline-specific archetype pools."""
+
+    def _intensity_menu(self, discipline):
+        plan = _build_jesse_plan(archetype='specialist', hours_per_week=10,
+                                 discipline=discipline)
+        return {d['name'] for w in plan['weeks'] for d in w['days']
+                if d.get('role') == 'intensity' and d['name'] != 'Openers'}
+
+    def test_gravel_gets_gravel_specific_work(self):
+        menu = self._intensity_menu('gravel')
+        assert 'Microbursts' in menu or 'SFR' in menu, (
+            f"Gravel plan missing gravel-specific work: {sorted(menu)}"
+        )
+
+    def test_road_does_not_get_microbursts(self):
+        menu = self._intensity_menu('road')
+        assert 'Microbursts' not in menu
+
+    def test_mtb_gets_neuromuscular_work(self):
+        menu = self._intensity_menu('mtb')
+        assert 'Stomps' in menu or 'Microbursts' in menu
+
+    def test_disciplines_produce_different_menus(self):
+        menus = {d: self._intensity_menu(d) for d in ('gravel', 'road', 'mtb')}
+        assert menus['gravel'] != menus['road']
+        assert menus['road'] != menus['mtb']
+
+
+class TestDeriveDiscipline:
+    def test_keyword_detection(self):
+        from archetype import derive_discipline
+        cases = [
+            ('Unbound Gravel 200', 'gravel'),
+            ('El Tour de Tucson', 'road'),
+            ('Maratona Gran Fondo', 'road'),
+            ('Leadville Trail 100 MTB', 'mtb'),
+            ('Borderlands AZ State Championships', 'gravel'),  # default
+        ]
+        for name, expected in cases:
+            got = derive_discipline({'target_race': {'name': name}})
+            assert got == expected, f"{name}: expected {expected}, got {got}"
+
+    def test_explicit_field_wins(self):
+        from archetype import derive_discipline
+        profile = {'discipline': 'road', 'target_race': {'name': 'Gravel Worlds'}}
+        assert derive_discipline(profile) == 'road'
+
+
 class TestBuildCalendarWeek:
     def test_single_recovery_week_standalone(self):
         week = build_calendar_week(
