@@ -201,13 +201,29 @@ def render_workout(
     if name not in PINNED_TYPES and variation_offset > 0:
         effective_variation = base_variation + variation_offset
 
-    return generate_nate_zwo(
+    zwo = generate_nate_zwo(
         workout_type=nate_type,
         level=level,
         methodology=methodology,
         variation=effective_variation,
         workout_name=workout_name,
     )
+    if zwo:
+        return zwo
+
+    # The planner (block-builder) explicitly requested this workout; the
+    # Nate generator's methodology avoid-list must not veto it into None
+    # (MAF_LT1 refused VO2max work, silently dropping those days to legacy
+    # templates). The planner's selection wins — render under POLARIZED.
+    if methodology != 'POLARIZED':
+        return generate_nate_zwo(
+            workout_type=nate_type,
+            level=level,
+            methodology='POLARIZED',
+            variation=effective_variation,
+            workout_name=workout_name,
+        )
+    return None
 
 
 # TP Library Endurance: steady Z2 + cooldown. Level scales duration only.

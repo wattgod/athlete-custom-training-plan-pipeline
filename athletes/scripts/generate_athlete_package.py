@@ -460,7 +460,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     # ===================================================================
     try:
         from archetype import determine_archetype, determine_phase, derive_discipline
-        from block_chain import build_plan_from_calendar
+        from block_chain import build_plan_from_calendar, derive_week_descriptors
         from workout_mapper import render_workout as _bb_render
 
         _bb_archetype = determine_archetype(cycling_hours_target)
@@ -471,23 +471,19 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                         for d in (schedule_constraints.get('preferred_off_days')
                                   or ['monday'])]
 
-        # Derive week descriptors from plan_dates (calendar truth)
-        _bb_descriptors = []
-        for _w in weeks:
-            _w_phase = _w.get('phase', 'base')
-            if _w.get('is_race_week') or _w_phase == 'race':
-                _w_type = 'race'
-            elif _w_phase == 'taper':
-                _w_type = 'taper'
-            elif _w.get('is_recovery_week'):
-                _w_type = 'recovery'
-            else:
-                _w_type = 'load'
-            _bb_descriptors.append({
-                'plan_week': _w['week'],
-                'phase': _w_phase,
-                'week_type': _w_type,
-            })
+        # Derive week descriptors from plan_dates (calendar truth) — shared
+        # function, also exercised by the golden tests.
+        _bb_descriptors = derive_week_descriptors(plan_dates)
+
+        # Per-day duration caps from athlete availability — enforced inside
+        # the week builder so plan dict, compliance, and rendered ZWOs agree.
+        # (bool(preferred_days), not use_custom_schedule — that name is only
+        # assigned further down in this function.)
+        _bb_day_caps = {}
+        if preferred_days:
+            for _abbrev in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']:
+                _avail = get_day_availability(_abbrev)
+                _bb_day_caps[_abbrev] = _avail.get('max_duration_min', 0) or 0
 
         _bb_plan = build_plan_from_calendar(
             week_descriptors=_bb_descriptors,
@@ -499,6 +495,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             starting_level=1,
             hours_per_week=cycling_hours_target,
             discipline=_bb_discipline,
+            day_caps=_bb_day_caps or None,
         )
 
         # Build lookup: (plan_week, day_abbrev) → block plan day data
@@ -515,8 +512,14 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                  f"{len(_bb_plan.get('weeks',[]))} weeks, "
                  f"{_bb_plan.get('num_blocks',0)} blocks")
     except Exception as e:
-        _use_block_builder = False
-        log.warning(f"Block-builder not available, using legacy templates: {e}")
+        # NO silent fallback. A block-builder exception used to degrade to
+        # legacy templates, which bypass the compliance gate entirely — a
+        # coding error could ship an ungated plan to a paying athlete
+        # (exactly that happened during development: a NameError silently
+        # produced a full legacy plan). Fail loudly instead.
+        log.error(f"Block-builder failed — refusing to fall back to "
+                  f"ungated legacy templates: {e}")
+        raise
 
     # ===================================================================
     # COMPLIANCE GATE — the plan must pass all CRITICAL rules BEFORE any
@@ -1345,7 +1348,9 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
     if use_custom_schedule:
         _ftp_key_days, _ftp_other_days = [], []
-        for _d in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']:
+        # Tue/Thu first — tests replace the quality session on a hard day.
+        # Iteration order MUST match get_ftp_day_candidates() below.
+        for _d in ['Tue', 'Thu', 'Mon', 'Wed', 'Fri', 'Sat', 'Sun']:
             if _d == long_day_abbrev or not _ftp_day_viable(_d):
                 continue
             _avail = get_day_availability(_d)
@@ -1759,6 +1764,16 @@ GO RACE SMART, {athlete_name.upper()}!
                     variation_offset=var_offset,
                 )
 
+                if not zwo_content:
+                    # A planned workout that fails to render is a bug, not a
+                    # fallback case — silent legacy fallthrough here shipped
+                    # mixed-source plans for weeks before it was noticed.
+                    raise RuntimeError(
+                        f"Block-builder workout failed to render: "
+                        f"'{bb_name}' L{bb_level} (week {week_num} {day_abbrev}, "
+                        f"methodology {nate_methodology})"
+                    )
+
                 if zwo_content:
                     # Scale ZWO duration to match the block-builder's target duration.
                     # The Nate generator produces archetype-native durations which may
@@ -1971,7 +1986,11 @@ Trust the process, {athlete_name}."""
 
                 key_days = []
                 other_days = []
-                for d in DAY_ORDER:
+                # Tue/Thu first: tests replace the quality session on a
+                # normal hard day (coach testing-week pattern) instead of
+                # adding a hard day. MUST match the hoisted _ftp_slot_day
+                # iteration order or the gated day never gets its test.
+                for d in ['Tue', 'Thu', 'Mon', 'Wed', 'Fri', 'Sat', 'Sun']:
                     if d == long_day_abbrev:
                         continue  # Never put FTP test on the long ride day
                     if not is_day_available_for_ftp(d):
@@ -1982,7 +2001,8 @@ Trust the process, {athlete_name}."""
                         key_days.append((d, dur))
                     else:
                         other_days.append((d, dur))
-                # Sort each group by max_duration descending
+                # Stable sort by max_duration desc preserves Tue/Thu
+                # preference among equal-duration days
                 key_days.sort(key=lambda x: x[1], reverse=True)
                 other_days.sort(key=lambda x: x[1], reverse=True)
                 return [d for d, _ in key_days] + [d for d, _ in other_days]

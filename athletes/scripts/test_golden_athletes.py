@@ -9,42 +9,32 @@ the generator is producing plans we wouldn't hand to a paying athlete.
 """
 
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from block_chain import build_plan_from_calendar
+from block_chain import build_plan_from_calendar, derive_week_descriptors
 from block_compliance import validate_plan, format_compliance_report
+from calculate_plan_dates import calculate_plan_dates
 
 
 def make_descriptors(total_weeks: int) -> list:
-    """Replicate calculate_plan_dates' standard week typing.
+    """Build descriptors from the REAL calendar generator.
 
-    Race week last; taper the week before (plans >= 8wk); recovery every
-    4th week (skipping taper/race); phases base → build → peak by plan
-    fraction (base 50%, build 25%, peak the rest).
+    The race date is computed relative to today so these tests never go
+    stale, and the descriptors come from calculate_plan_dates →
+    derive_week_descriptors — the exact production path. A private replica
+    here would let calendar/builder drift slip through (the root cause of
+    the June 2026 plan-quality incident).
     """
-    descriptors = []
-    base_end = max(1, round(total_weeks * 0.50))
-    build_end = max(base_end + 1, round(total_weeks * 0.75))
-
-    for w in range(1, total_weeks + 1):
-        if w == total_weeks:
-            phase, wtype = 'race', 'race'
-        elif total_weeks >= 8 and w == total_weeks - 1:
-            phase, wtype = 'taper', 'taper'
-        else:
-            if w <= base_end:
-                phase = 'base'
-            elif w <= build_end:
-                phase = 'build'
-            else:
-                phase = 'peak'
-            wtype = 'recovery' if (w % 4 == 0) else 'load'
-        descriptors.append({'plan_week': w, 'phase': phase, 'week_type': wtype})
-    return descriptors
+    # Race lands on the Saturday at least total_weeks weeks out
+    race = date.today() + timedelta(weeks=total_weeks)
+    race += timedelta(days=(5 - race.weekday()) % 7)  # next Saturday
+    plan_dates = calculate_plan_dates(race.isoformat(), plan_weeks=total_weeks)
+    return derive_week_descriptors(plan_dates)
 
 
 GOLDEN_ATHLETES = {
@@ -155,6 +145,49 @@ class TestGoldenStructure:
             assert total <= max_min, (
                 f"{name} W{w['plan_week']}: {total}min > {max_min:.0f}min budget"
             )
+
+
+class TestRenderCoverage:
+    """Every selectable workout name must render under every methodology.
+
+    The Nate generator's methodology avoid-lists used to veto planner
+    selections into None (MAF_LT1 × VO2max), silently dropping those days
+    to legacy templates. The mapper now falls back to POLARIZED rendering;
+    this test pins the invariant.
+    """
+
+    def test_all_names_render_under_all_methodologies(self):
+        from workout_mapper import render_workout, get_mapped_types
+        from generate_athlete_package import METHODOLOGY_MAP
+        failures = []
+        for m in sorted(set(METHODOLOGY_MAP.values())):
+            for n in get_mapped_types():
+                if render_workout(n, level=3, methodology=m) is None:
+                    failures.append((m, n))
+        assert not failures, f"Render failures: {failures}"
+
+
+class TestGoldenDayCaps:
+    """Per-day duration caps must hold in the plan dict."""
+
+    def test_capped_athlete_no_day_exceeds_cap(self):
+        caps = {'Mon': 60, 'Tue': 75, 'Wed': 60, 'Thu': 75, 'Fri': 60,
+                'Sat': 300, 'Sun': 0}
+        plan = build_plan_from_calendar(
+            week_descriptors=make_descriptors(12),
+            archetype='specialist', off_days=['Sun'], long_ride_day='Sat',
+            hours_per_week=8, discipline='gravel', day_caps=caps,
+        )
+        violations = []
+        for w in plan['weeks']:
+            for d in w['days']:
+                if d.get('role') == 'off':
+                    continue
+                cap = caps.get(d['day'], 0)
+                if cap and d.get('duration', 0) > cap:
+                    violations.append(
+                        f"W{w['plan_week']} {d['day']}: {d['duration']} > {cap}")
+        assert not violations, f"Day cap violations: {violations}"
 
 
 class TestGoldenVariety:

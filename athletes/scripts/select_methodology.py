@@ -487,6 +487,18 @@ def calculate_methodology_score(
         elif "time_crunched" in best_for:
             score -= 10
             warnings.append("Time-crunched approach may limit podium potential")
+        # Zero high-intensity allocation cannot produce podium fitness.
+        # Without this, a podium-chasing Cat 3 scored MAF / Low-HR at 100
+        # ("beginner-friendly", "finish-focused") over Polarized.
+        # (intensity_distribution is a free-text string for some
+        # methodologies — only dicts carry a usable z4_z5 number.)
+        _dist = methodology.get("intensity_distribution", {})
+        z4_z5 = _dist.get("z4_z5", 0.1) if isinstance(_dist, dict) else 0.1
+        if z4_z5 <= 0.0:
+            score -= 20
+            warnings.append(
+                "Zero-intensity methodology conflicts with podium goal"
+            )
     elif goal_type == "finish":
         if "recovery_friendly" in best_for or "beginner" in methodology["experience_required"]:
             score += 5

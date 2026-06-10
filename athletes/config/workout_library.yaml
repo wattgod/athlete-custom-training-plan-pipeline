@@ -295,6 +295,16 @@ workouts:
       5: {duration: 265, tss: 346}
       6: {duration: 295, tss: 386}
 
+  Openers:
+    category: recovery
+    levels:
+      1: {duration: 35, tss: 22}
+      2: {duration: 40, tss: 26}
+      3: {duration: 40, tss: 28}
+      4: {duration: 45, tss: 30}
+      5: {duration: 45, tss: 32}
+      6: {duration: 45, tss: 34}
+
   Rest Day:
     category: recovery
     levels:

@@ -57,7 +57,17 @@ def _jesse_descriptors():
     return descriptors
 
 
+_DEFAULT_PLAN_CACHE = {}
+
+
 def _build_jesse_plan(**overrides):
+    """Build the canonical 21-week test plan. The no-override default is
+    memoized — a dozen tests use it and each build takes ~3s."""
+    if not overrides:
+        if 'default' not in _DEFAULT_PLAN_CACHE:
+            _DEFAULT_PLAN_CACHE['default'] = _build_jesse_plan(_fresh=True)
+        return _DEFAULT_PLAN_CACHE['default']
+    overrides.pop('_fresh', None)
     kwargs = dict(
         week_descriptors=_jesse_descriptors(),
         archetype='goat',
@@ -158,7 +168,7 @@ class TestCalendarPlan:
             rec = sum(d['duration'] for d in _week(plan, n)['days'])
             prev_load = sum(d['duration'] for d in _week(plan, n - 1)['days'])
             ratio = rec / prev_load
-            assert 0.30 <= ratio <= 0.75, (
+            assert 0.30 <= ratio <= 0.72, (
                 f"W{n} recovery volume ratio {ratio:.2f} outside band"
             )
 

@@ -530,6 +530,39 @@ def _run_verification_checks(
                            f"Thresholds: PASS >=25%, WARN 15-25%, FAIL <15%"),
             })
 
+    # 11b. Per-Day Duration Caps — every EMITTED workout must respect the
+    # athlete's per-day availability. This validates the rendered files,
+    # not the plan dict, so builder/renderer drift cannot hide a violation.
+    pref_days = profile.get('preferred_days', {})
+    if pref_days and weeks_data:
+        day_caps = {}
+        abbrev_map = {'monday': 'Mon', 'tuesday': 'Tue', 'wednesday': 'Wed',
+                      'thursday': 'Thu', 'friday': 'Fri', 'saturday': 'Sat',
+                      'sunday': 'Sun'}
+        for full, info in pref_days.items():
+            cap = (info or {}).get('max_duration_min', 0)
+            if cap:
+                day_caps[abbrev_map.get(full, full)] = cap
+        cap_violations = []
+        TOLERANCE = 1.10  # warmup/cooldown padding from ZWO scaling
+        for w in weeks_data:
+            for d in w['days']:
+                wo = d.get('workout')
+                if not wo or d.get('is_race') or d.get('is_b_race'):
+                    continue
+                cap = day_caps.get(d['day'], 0)
+                dur = wo.get('duration_min', 0) or 0
+                if cap and dur > cap * TOLERANCE:
+                    cap_violations.append(
+                        f"W{w['week']:02d} {d['day']}: {dur:.0f}min > {cap}min cap")
+        checks.append({
+            'name': 'Per-Day Duration Caps',
+            'status': 'PASS' if not cap_violations else 'FAIL',
+            'detail': ("All workouts within day availability"
+                       if not cap_violations
+                       else f"VIOLATIONS: {'; '.join(cap_violations[:5])}"),
+        })
+
     # 12. Taper Intensity — taper weeks should have lower avg IF than build/peak
     taper_ifs = []
     build_peak_ifs = []

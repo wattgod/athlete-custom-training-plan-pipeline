@@ -33,6 +33,33 @@ CALENDAR_PHASE_MAP = {
 }
 
 
+def derive_week_descriptors(plan_dates: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Derive calendar week descriptors from a plan_dates dict.
+
+    THE single place that maps plan_dates week typing to block-builder
+    week types. Production (generate_athlete_package) and tests must both
+    use this — a private replica in either place reintroduces the
+    calendar/builder drift that broke plans in June 2026.
+    """
+    descriptors = []
+    for w in plan_dates.get('weeks', []):
+        phase = w.get('phase', 'base')
+        if w.get('is_race_week') or phase == 'race':
+            week_type = 'race'
+        elif phase == 'taper':
+            week_type = 'taper'
+        elif w.get('is_recovery_week'):
+            week_type = 'recovery'
+        else:
+            week_type = 'load'
+        descriptors.append({
+            'plan_week': w['week'],
+            'phase': phase,
+            'week_type': week_type,
+        })
+    return descriptors
+
+
 def build_plan_from_calendar(
     week_descriptors: List[Dict[str, Any]],
     archetype: str,
@@ -43,6 +70,7 @@ def build_plan_from_calendar(
     starting_level: int = 1,
     hours_per_week: float = 10,
     discipline: str = 'gravel',
+    day_caps: Dict[str, int] = None,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -118,6 +146,7 @@ def build_plan_from_calendar(
             hours_per_week=hours_per_week,
             series_tracker=tracker,
             discipline=discipline,
+            day_caps=day_caps,
         )
         week['plan_week'] = plan_week
         week['block_number'] = block_number

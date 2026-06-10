@@ -157,6 +157,7 @@ def build_calendar_week(
     hours_per_week: float = 10,
     series_tracker: Optional[SeriesTracker] = None,
     discipline: str = 'gravel',
+    day_caps: Dict[str, int] = None,
 ) -> Dict[str, Any]:
     """Build one week whose type and phase come from the calendar (plan_dates).
 
@@ -186,6 +187,7 @@ def build_calendar_week(
         hours_per_week=hours_per_week,
         block_number=block_number,
         discipline=discipline,
+        day_caps=day_caps,
     )
     week['block_number'] = block_number
     return week
@@ -213,9 +215,12 @@ def _build_day_template(
     # Step 2: Long ride day
     roles[long_ride_day] = 'long_ride'
 
-    # Step 3: Place intensity on available non-consecutive days
-    # Must not be adjacent to other intensity days OR to the long ride day
-    available = [d for d in DAY_ORDER if d not in roles]
+    # Step 3: Place intensity on available non-consecutive days.
+    # Must not be adjacent to other intensity days OR to the long ride day.
+    # Preference order matches coach practice: Tue/Thu are the canonical
+    # quality days (fresh after Monday, buffered from the weekend long ride).
+    PREFERRED_INTENSITY_ORDER = ['Tue', 'Thu', 'Mon', 'Wed', 'Fri', 'Sat', 'Sun']
+    available = [d for d in PREFERRED_INTENSITY_ORDER if d not in roles]
     hard_days = [long_ride_day]  # Long ride counts as "hard" for adjacency
     intensity_days = []
     for d in available:
@@ -239,6 +244,32 @@ def _build_day_template(
     return roles
 
 
+def _fit_workout_to_cap(workout: Dict[str, Any], cap: int) -> Dict[str, Any]:
+    """Fit a workout to a per-day duration cap.
+
+    Steps the level down until the library duration fits; as a last resort
+    hard-caps the duration (the renderer scales the ZWO to match) with TSS
+    scaled proportionally. Without this, athletes with '45min weekdays' got
+    3-hour Wednesday workouts that only the WEEKLY budget noticed.
+    """
+    if not cap or cap <= 0 or workout.get('duration', 0) <= cap:
+        return workout
+    name = workout.get('name', '')
+    level = workout.get('level', 1)
+    while level > 1:
+        level -= 1
+        dur = get_workout_duration(name, level)
+        if 0 < dur <= cap:
+            workout['level'] = level
+            workout['duration'] = dur
+            workout['tss'] = get_workout_tss(name, level)
+            return workout
+    orig_dur = workout.get('duration', 0) or 1
+    workout['tss'] = round(workout.get('tss', 0) * cap / orig_dur)
+    workout['duration'] = cap
+    return workout
+
+
 def _build_week(
     week_num: int,
     week_type: str,
@@ -253,6 +284,7 @@ def _build_week(
     hours_per_week: float = 10,
     block_number: int = 1,
     discipline: str = 'gravel',
+    day_caps: Dict[str, int] = None,
 ) -> Dict[str, Any]:
     """Build a single week with day-by-day workout assignments."""
 
@@ -367,6 +399,10 @@ def _build_week(
                 }
             filler_count += 1
 
+        # Per-day duration cap (athlete availability). Off days excluded.
+        if day_caps and workout.get('role') != 'off' and workout.get('duration', 0) > 0:
+            workout = _fit_workout_to_cap(workout, day_caps.get(day, 0))
+
         total_tss += workout.get('tss', 0)
         days.append({
             'day': day,
@@ -383,7 +419,10 @@ def _build_week(
         tolerance = 1.15 if hours_per_week < 6 else 1.10
         max_minutes = hours_per_week * 60 * tolerance
     elif week_type == 'recovery':
-        max_minutes = hours_per_week * 60 * 0.62
+        # 0.55 of HOURS ≈ 50-70% of actual load volume across athletes
+        # (load weeks land at 0.79-1.10 of stated hours), keeping recovery
+        # inside the 50-65%-of-load coaching band.
+        max_minutes = hours_per_week * 60 * 0.55
     elif week_type == 'taper':
         max_minutes = hours_per_week * 60 * 0.70
     elif week_type == 'race':

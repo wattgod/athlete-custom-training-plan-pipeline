@@ -193,6 +193,27 @@ Profile → archetype.py (hours/week → Time-Crunched/Specialist/Volume/GOAT,
   rotation through alternatives uses the PHASE-LOCAL block index.
 - **R01 classifies intensity by assigned role, not workout name** — Cadence
   Work L1 as a filler is an easy day.
+- **There is NO legacy fallback for block-builder exceptions.** A
+  NameError once silently produced a full ungated legacy plan. Exceptions
+  raise; render-None raises. The legacy path exists ONLY for the deliberate
+  `_defer_to_legacy` days (race day, B-race mini-taper, FTP tests).
+- **render_workout falls back to POLARIZED when a methodology vetoes the
+  requested type** (MAF_LT1 refused VO2max → None → silent legacy days).
+  The planner's selection always renders. Invariant test:
+  TestRenderCoverage (all names × all methodologies).
+- **goal_type derives from the athlete's success text** (derive_goal_type:
+  'podium'/'win'/'top 5'/'age group' → 'podium'). It was hardcoded
+  'finish', so podium athletes scored as finish-focused beginners and got
+  MAF over Polarized. Podium also penalizes z4_z5==0 methodologies (-20).
+- **Per-day duration caps flow from preferred_days through day_caps into
+  _build_week** (_fit_workout_to_cap: level-down then hard-cap). The
+  preview check 'Per-Day Duration Caps' validates EMITTED files. The
+  designated long day always gets max_duration_min=600 even for
+  'Flexible' athletes (the generic weekend 240 cap strangled long rides).
+- **Intensity days prefer Tue/Thu** (coach pattern: fresh after Monday,
+  buffered from the weekend long ride); FTP tests land on Tue.
+- **Week 1 ramps in** one filler level below normal — no athlete starts at
+  full steady-state volume with an FTP test on top.
 
 ### Key Files
 ```

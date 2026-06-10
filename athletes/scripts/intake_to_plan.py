@@ -643,6 +643,25 @@ def extract_distance_from_name(name: str) -> int:
 _RACE_PRIORITY_RE = re.compile(r'priority\s+([A-D])\b', re.IGNORECASE)
 _RACE_DATE_RE = re.compile(r'\b(\d{4}-\d{2}-\d{2})\b')
 
+_COMPETITIVE_GOAL_KEYWORDS = (
+    'podium', 'win', 'victory', 'top 3', 'top-3', 'top 5', 'top-5',
+    'top 10', 'top-10', 'compete', 'competitive', 'qualify', 'age group',
+)
+
+
+def derive_goal_type(success_text: str) -> str:
+    """Map the athlete's stated success definition to a goal type.
+
+    'podium' unlocks advanced methodologies and penalizes zero-intensity
+    systems in methodology scoring. Previously this was hardcoded to
+    'finish' for everyone, so a podium-chasing Cat 3 got scored as a
+    finish-focused beginner (MAF / Low-HR selected over Polarized).
+    """
+    text = (success_text or '').lower()
+    if any(k in text for k in _COMPETITIVE_GOAL_KEYWORDS):
+        return 'podium'
+    return 'finish'
+
 
 def parse_race_line(line: str) -> Dict[str, Any]:
     """
@@ -826,6 +845,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     b_events = []
     target_race_info = {}
 
+    goal_type = derive_goal_type(success_text)
+
     for i, parsed in enumerate(parsed_races):
         race_name_clean = parsed['name']
         is_target = (i == target_idx)
@@ -837,7 +858,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'name': race_name_clean,
             'date': parsed['date'],
             'distance_miles': parsed['distance_miles'],
-            'goal': 'finish' if is_target else 'compete',
+            'goal': goal_type if is_target else 'compete',
             'priority': priority,
         }
 
@@ -856,8 +877,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                     'date': event['date'],
                     'distance_miles': event['distance_miles'],
                     'elevation_ft': info.get('elevation_ft', 0),
-                    'goal_type': 'finish',
-                    'goal': 'finish',
+                    'goal_type': goal_type,
+                    'goal': goal_type,
                     'goal_description': success_text,
                 }
         else:
@@ -879,8 +900,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                     'date': event['date'],
                     'distance_miles': event['distance_miles'],
                     'elevation_ft': 0,
-                    'goal_type': 'finish',
-                    'goal': 'finish',
+                    'goal_type': goal_type,
+                    'goal': goal_type,
                     'goal_description': success_text,
                 }
 
@@ -943,6 +964,18 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 'max_duration_min': 120,
                 'is_key_day_ok': False,
             }
+
+    # "Flexible" athletes name no long-ride day, so the designated long day
+    # fell through to the generic weekend cap (240min) — contradicting a
+    # stated 4-5h longest ride and capping every long ride at 4h. The long
+    # day always gets long-ride treatment unless it's an off day.
+    if preferred_long_day not in off_days:
+        preferred_days[preferred_long_day] = {
+            'availability': 'available',
+            'time_slots': ['am'],
+            'max_duration_min': 600,
+            'is_key_day_ok': True,
+        }
 
     # -- Volume capacity check --
     # Warn if cycling_hours_target exceeds what the schedule can support

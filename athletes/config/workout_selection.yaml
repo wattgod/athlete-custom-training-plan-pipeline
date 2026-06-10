@@ -46,6 +46,7 @@ phases:
         overrides:
           time_crunched: {name: "Endurance", level_range: [1, 2]}
           volume: {name: "Endurance", level_range: [2, 4]}
+          goat: {name: "Endurance", level_range: [2, 5]}
 
   build:
     description: "Raise threshold, extend VO2max duration, race-like demands"

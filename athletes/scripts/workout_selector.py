@@ -151,8 +151,11 @@ def select_workouts_for_week(
         long_level = min(max(level, long_level_range[0]), long_level_range[1])
         long_level = min(long_level, max_level)
 
-        # Budget check: long ride should be ≤40% of weekly hours
-        max_long_min = hours_per_week * 60 * 0.40
+        # Budget check: long ride ≤45% of weekly hours. Coach reality check
+        # (Matti's manual plans): 4-5h Saturdays on 10-12h weeks = 42-50%.
+        # 40% forced a 12h athlete's long ride down to 4h39 — under-long for
+        # a 100mi gravel A-race.
+        max_long_min = hours_per_week * 60 * 0.45
         while long_level > 1:
             dur = get_workout_duration(long_name, long_level)
             if dur <= max_long_min:
@@ -191,6 +194,11 @@ def select_workouts_for_week(
         filler_level_range[1],
         max_level,
     )
+    # Week 1 ramp-in: the very first week of the plan eases the athlete in
+    # one filler level below normal (a coach starts a new athlete ~80% of
+    # steady-state volume, not at full load with an FTP test on top).
+    if block_number == 1 and week_in_block == 1:
+        filler_level = max(1, filler_level - 1)
 
     filler_entry = {
         'slot': 'filler',
@@ -247,10 +255,10 @@ def _select_recovery_week(config: dict, hours_per_week: float = 10) -> List[Dict
     recovery_config = config.get('recovery_week', {})
     max_level = recovery_config.get('max_endurance_level', 2)
 
-    # Short long ride: Endurance L2 (~90min) for most athletes,
-    # L3 (~130min) only when weekly hours support it.
-    long_level = 3 if hours_per_week >= 12 else 2
-    long_level = min(long_level, max(max_level, 2))
+    # Short long ride: Endurance L2 (~100min) for everyone. L3 (130min)
+    # matched the early-base LOAD long ride — a recovery weekend identical
+    # to a load weekend isn't recovery.
+    long_level = min(2, max(max_level, 2))
 
     return [
         {'slot': 'openers', 'name': 'Openers', 'level': 1, 'role': 'intensity'},
