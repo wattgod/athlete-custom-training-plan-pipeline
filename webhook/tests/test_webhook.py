@@ -6,6 +6,7 @@ Run with: pytest webhook/tests/test_webhook.py -v
 """
 
 import os
+import re
 import sys
 import json
 import hmac
@@ -2400,6 +2401,51 @@ class TestQuestionnaireStarted:
         import re
         assert re.search(r'limiter\.limit.*\ndef questionnaire_started', source), \
             "questionnaire_started missing rate limit"
+
+
+class TestPipelineErrorExcerpt:
+    """Failure details must survive into logs/emails. intake_to_plan.py
+    reports most errors on STDOUT — stderr-only capture produced the blank
+    error field in the Jun 9 2026 Jesse Couch failure."""
+
+    def test_prefers_stderr_when_present(self):
+        from app import _pipeline_error_excerpt
+        result = {'stderr': 'Traceback: boom', 'stdout': 'lots of progress'}
+        assert _pipeline_error_excerpt(result) == 'Traceback: boom'
+
+    def test_falls_back_to_stdout_tail(self):
+        from app import _pipeline_error_excerpt
+        result = {'stderr': '', 'stdout': 'x' * 1000 + 'FATAL: race not matched'}
+        excerpt = _pipeline_error_excerpt(result)
+        assert 'FATAL: race not matched' in excerpt
+        assert len(excerpt) <= 500
+
+    def test_empty_result_gives_empty_string(self):
+        from app import _pipeline_error_excerpt
+        assert _pipeline_error_excerpt({'stderr': '', 'stdout': ''}) == ''
+        assert _pipeline_error_excerpt({}) == ''
+
+    def test_whitespace_only_stderr_falls_back(self):
+        from app import _pipeline_error_excerpt
+        result = {'stderr': '  \n ', 'stdout': 'the real error'}
+        assert _pipeline_error_excerpt(result) == 'the real error'
+
+
+class TestPipelineTimeoutHeadroom:
+    """PIPELINE_TIMEOUT must leave room under gunicorn's --timeout (600) so
+    the FAILED email can send before the worker is killed."""
+
+    def test_default_timeout_below_gunicorn(self):
+        from app import PIPELINE_TIMEOUT
+        assert PIPELINE_TIMEOUT < 600
+
+    def test_dockerfile_gunicorn_timeout_exceeds_pipeline_timeout(self):
+        from app import PIPELINE_TIMEOUT
+        dockerfile = Path(__file__).parent.parent / 'Dockerfile'
+        text = dockerfile.read_text()
+        match = re.search(r'"--timeout",\s*"(\d+)"', text)
+        assert match, 'gunicorn --timeout not found in Dockerfile CMD'
+        assert int(match.group(1)) > PIPELINE_TIMEOUT
 
 
 if __name__ == '__main__':

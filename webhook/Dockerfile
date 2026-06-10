@@ -2,9 +2,13 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# System deps for WeasyPrint PDF generation
-# WeasyPrint needs pango, cairo, gdk-pixbuf, and their font/text backends
+# System deps for PDF generation.
+# Chromium is the PRIMARY engine: WeasyPrint takes 30+ min of CPU on Railway's
+# shared vCPU for the full training guide (verified Jun 2026 — every order
+# timed out), while Chromium renders it in seconds. WeasyPrint libs stay as a
+# time-boxed fallback only.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
     libpango-1.0-0 \
     libpangoft2-1.0-0 \
     libpangocairo-1.0-0 \
@@ -15,7 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libharfbuzz0b \
     fonts-liberation \
     fonts-dejavu-core \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && chromium --version
 
 # Install Python dependencies (including WeasyPrint for PDF generation)
 COPY webhook/requirements.txt ./webhook/
@@ -45,5 +50,9 @@ WORKDIR /app/webhook
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
 
-# Run with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "300", "--graceful-timeout", "30", "app:app"]
+# Run with gunicorn.
+# Worker timeout MUST exceed PIPELINE_TIMEOUT (app.py, default 480s) so the
+# failure notification email can send before gunicorn kills the worker.
+# A killed worker = no FAILED email AND Stripe retries hit the idempotency
+# mark and return "duplicate" — the order dies silently.
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "600", "--graceful-timeout", "30", "app:app"]

@@ -124,6 +124,7 @@ def generate_pdf_chrome(html_path: Path, pdf_path: Path, timeout: int = 60) -> T
             "--headless=new",  # Use new headless mode (better rendering)
             "--disable-gpu",
             "--no-sandbox",  # Required for Docker/CI
+            "--disable-dev-shm-usage",  # Containers have tiny /dev/shm; use /tmp instead
             "--disable-software-rasterizer",
             "--run-all-compositor-stages-before-draw",  # Better rendering
             f"--print-to-pdf={pdf_path}",
@@ -143,8 +144,21 @@ def generate_pdf_chrome(html_path: Path, pdf_path: Path, timeout: int = 60) -> T
         return False, f"Chrome error: {e}"
 
 
-def generate_pdf_weasyprint(html_path: Path, pdf_path: Path) -> Tuple[bool, str]:
-    """Generate PDF using WeasyPrint."""
+# Rendering runs in a SUBPROCESS so it can be killed on timeout. WeasyPrint
+# renders in-process with no cancellation hook; on Railway's shared vCPU the
+# full training guide took 30+ minutes of CPU (Jun 2026), hanging every order
+# past the webhook's pipeline timeout. Never call weasyprint.write_pdf()
+# directly from a server code path.
+_WEASYPRINT_RENDER_SNIPPET = (
+    "import sys\n"
+    "from weasyprint import HTML\n"
+    "from weasyprint.text.fonts import FontConfiguration\n"
+    "HTML(filename=sys.argv[1]).write_pdf(sys.argv[2], font_config=FontConfiguration())\n"
+)
+
+
+def generate_pdf_weasyprint(html_path: Path, pdf_path: Path, timeout: int = 120) -> Tuple[bool, str]:
+    """Generate PDF using WeasyPrint in a time-boxed subprocess."""
     if not has_weasyprint():
         # Try importing directly to get the real error message
         try:
@@ -154,25 +168,24 @@ def generate_pdf_weasyprint(html_path: Path, pdf_path: Path) -> Tuple[bool, str]
         return False, "WeasyPrint not installed"
 
     try:
-        from weasyprint import HTML, CSS
-        from weasyprint.text.fonts import FontConfiguration
-
-        font_config = FontConfiguration()
-
-        # Read HTML
-        html = HTML(filename=str(html_path))
-
-        # Generate PDF
-        html.write_pdf(
-            str(pdf_path),
-            font_config=font_config,
+        result = subprocess.run(
+            [sys.executable, "-c", _WEASYPRINT_RENDER_SNIPPET,
+             str(html_path), str(pdf_path)],
+            capture_output=True, text=True, timeout=timeout,
         )
 
         if pdf_path.exists() and pdf_path.stat().st_size > 0:
             return True, f"Generated with WeasyPrint ({pdf_path.stat().st_size // 1024} KB)"
+        elif result.returncode != 0:
+            tail = (result.stderr or result.stdout or '').strip().splitlines()
+            return False, f"WeasyPrint error: {tail[-1] if tail else 'unknown'}"
         else:
             return False, "WeasyPrint produced empty file"
 
+    except subprocess.TimeoutExpired:
+        # Partial output from the killed render is garbage — remove it
+        pdf_path.unlink(missing_ok=True)
+        return False, f"WeasyPrint timed out after {timeout}s"
     except Exception as e:
         return False, f"WeasyPrint error: {e}"
 
@@ -207,9 +220,12 @@ def generate_pdf_wkhtmltopdf(html_path: Path, pdf_path: Path, timeout: int = 60)
         return False, f"wkhtmltopdf error: {e}"
 
 
-def generate_pdf(html_path: Path, pdf_path: Path, timeout: int = 60) -> Tuple[bool, str]:
+def generate_pdf(html_path: Path, pdf_path: Path, timeout: int = 120) -> Tuple[bool, str]:
     """
     Generate PDF from HTML using the best available engine.
+
+    The timeout applies PER ENGINE and must stay well under the webhook's
+    PIPELINE_TIMEOUT (480s) — three engines × 120s = 360s worst case.
 
     Returns (success, message) tuple.
     """
@@ -228,10 +244,7 @@ def generate_pdf(html_path: Path, pdf_path: Path, timeout: int = 60) -> Tuple[bo
 
     errors = []
     for name, generator in engines:
-        if name == "WeasyPrint":
-            success, message = generator(html_path, pdf_path)
-        else:
-            success, message = generator(html_path, pdf_path, timeout)
+        success, message = generator(html_path, pdf_path, timeout)
 
         if success:
             return True, message

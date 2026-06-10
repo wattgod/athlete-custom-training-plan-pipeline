@@ -140,8 +140,24 @@ CHECKOUT_EXPIRY_MINUTES = 60
 # Cron endpoint secret (prevents unauthorized triggers)
 CRON_SECRET = os.environ.get('CRON_SECRET', '')
 
-# Pipeline timeout (5 minutes)
-PIPELINE_TIMEOUT = 300
+# Pipeline timeout. Must stay BELOW gunicorn's --timeout (600 in Dockerfile)
+# so the timeout path can still send the FAILED notification email before
+# gunicorn kills the worker.
+PIPELINE_TIMEOUT = int(os.environ.get('PIPELINE_TIMEOUT', '480'))
+
+
+def _pipeline_error_excerpt(result: dict, limit: int = 500) -> str:
+    """Best error excerpt from a pipeline result.
+
+    intake_to_plan.py reports most failures on stdout (stderr is often
+    empty), so fall back to the TAIL of stdout — that's where the
+    error/traceback lands.
+    """
+    stderr = (result.get('stderr') or '').strip()
+    if stderr:
+        return stderr[:limit]
+    stdout = (result.get('stdout') or '').strip()
+    return stdout[-limit:] if stdout else ''
 
 # =============================================================================
 # SECURITY HEADERS
@@ -647,7 +663,7 @@ def _build_plan_notification_details(order_data: dict, result: dict,
         'plan_weeks': plan_weeks,
         'workout_count': workout_count,
         'methodology': methodology,
-        'error': result.get('stderr', '')[:500] if not result.get('success') else '',
+        'error': _pipeline_error_excerpt(result) if not result.get('success') else '',
     }
 
 
@@ -1287,7 +1303,10 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
         if success:
             logger.info(f"Pipeline succeeded for {athlete_id}")
         else:
-            logger.error(f"Pipeline failed for {athlete_id}: {result.stderr[:500]}")
+            logger.error(
+                f"Pipeline failed for {athlete_id}: "
+                f"{_pipeline_error_excerpt({'stderr': result.stderr, 'stdout': result.stdout})}"
+            )
 
         return {
             'success': success,
@@ -1487,7 +1506,7 @@ def log_order(order_data: dict, result: dict):
         'email': order_data.get('profile', {}).get('email', ''),
         'name': order_data.get('profile', {}).get('name', ''),
         'success': result['success'],
-        'error': result.get('stderr', '')[:500] if not result['success'] else None,
+        'error': _pipeline_error_excerpt(result) if not result['success'] else None,
     }
 
     log_file = log_dir / f"{datetime.now().strftime('%Y-%m')}.jsonl"
