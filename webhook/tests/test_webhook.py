@@ -2431,6 +2431,61 @@ class TestPipelineErrorExcerpt:
         assert _pipeline_error_excerpt(result) == 'the real error'
 
 
+class TestGa4ServerSidePurchase:
+    """Server-side GA4 purchase must fire for real payments, skip tests,
+    and never break order processing."""
+
+    def test_noop_without_api_secret(self):
+        import app as app_module
+        with patch.object(app_module, 'GA4_MP_API_SECRET', ''), \
+             patch.object(app_module.http_requests, 'post') as mock_post:
+            app_module._send_ga4_purchase('cs_live_x', 24900, 'training_plan', 'Plan')
+        mock_post.assert_not_called()
+
+    def test_skips_test_orders(self):
+        import app as app_module
+        with patch.object(app_module, 'GA4_MP_API_SECRET', 'secret'), \
+             patch.object(app_module.http_requests, 'post') as mock_post:
+            app_module._send_ga4_purchase('test_20260609', 24900, 'training_plan', 'Plan')
+        mock_post.assert_not_called()
+
+    def test_sends_purchase_payload(self):
+        import app as app_module
+        with patch.object(app_module, 'GA4_MP_API_SECRET', 'secret'), \
+             patch.object(app_module.http_requests, 'post') as mock_post:
+            mock_post.return_value = MagicMock(status_code=204)
+            app_module._send_ga4_purchase('cs_live_abc123', 24900,
+                                          'training_plan', 'Custom Training Plan')
+
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        assert 'google-analytics.com/mp/collect' in args[0]
+        assert kwargs['params']['api_secret'] == 'secret'
+        event = kwargs['json']['events'][0]
+        assert event['name'] == 'purchase'
+        assert event['params']['transaction_id'] == 'cs_live_abc123'
+        assert event['params']['value'] == 249.0
+        assert event['params']['currency'] == 'USD'
+        assert kwargs['timeout'] == 5
+
+    def test_never_raises_on_network_error(self):
+        import app as app_module
+        with patch.object(app_module, 'GA4_MP_API_SECRET', 'secret'), \
+             patch.object(app_module.http_requests, 'post',
+                          side_effect=Exception('network down')):
+            # Must not raise — analytics never blocks an order
+            app_module._send_ga4_purchase('cs_live_x', 100, 'coaching', 'Coaching')
+
+    def test_handles_missing_amount(self):
+        import app as app_module
+        with patch.object(app_module, 'GA4_MP_API_SECRET', 'secret'), \
+             patch.object(app_module.http_requests, 'post') as mock_post:
+            mock_post.return_value = MagicMock(status_code=204)
+            app_module._send_ga4_purchase('cs_live_x', None, 'coaching', 'Coaching')
+        event = mock_post.call_args.kwargs['json']['events'][0]
+        assert event['params']['value'] == 0.0
+
+
 class TestPipelineTimeoutHeadroom:
     """PIPELINE_TIMEOUT must leave room under gunicorn's --timeout (600) so
     the FAILED email can send before the worker is killed."""

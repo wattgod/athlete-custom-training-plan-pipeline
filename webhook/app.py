@@ -79,6 +79,15 @@ NOTIFICATION_EMAIL = os.environ.get('NOTIFICATION_EMAIL', '')
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 RESEND_FROM = os.environ.get('RESEND_FROM', 'Gravel God <noreply@gravelgodcycling.com>')
 
+# GA4 Measurement Protocol — server-side purchase tracking.
+# The client-side purchase event (success page) only records when the visitor
+# accepted the cookie banner; consent-denied buyers are invisible in GA4
+# (verified Jun 2026). This path fires for every real payment. No-op until
+# GA4_MP_API_SECRET is set (GA4 Admin → Data Streams → web stream →
+# Measurement Protocol API secrets).
+GA4_MEASUREMENT_ID = os.environ.get('GA4_MEASUREMENT_ID', 'G-EJJZ9T6M52')
+GA4_MP_API_SECRET = os.environ.get('GA4_MP_API_SECRET', '')
+
 # Configure Stripe
 if STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
@@ -493,6 +502,57 @@ def _build_consulting_email(details: dict) -> tuple:
 </div>"""
     text = f"Consulting booked: {name} ({email}), {hours}hr, order {order_id}"
     return subject, text, html
+
+
+def _send_ga4_purchase(order_id: str, value_cents, product_type: str,
+                       item_name: str):
+    """Record a purchase in GA4 via Measurement Protocol (server-side).
+
+    Fires for every real payment regardless of the buyer's cookie-consent
+    state. Shares transaction_id with the client-side success-page event so
+    GA4 deduplicates the two. Never raises — analytics must not affect order
+    processing. Skips test orders (order_id prefix 'test_').
+    """
+    if not GA4_MP_API_SECRET:
+        return
+    if order_id.startswith('test_'):
+        return
+    try:
+        payload = {
+            # Synthetic client_id — server event with no browser context.
+            # Deterministic per order so Stripe retries map to one "user".
+            'client_id': f'srv.{order_id[-16:] or "order"}',
+            'events': [{
+                'name': 'purchase',
+                'params': {
+                    'transaction_id': order_id,
+                    'currency': 'USD',
+                    'value': round((value_cents or 0) / 100, 2),
+                    'product_type': product_type,
+                    'event_source': 'stripe_webhook',
+                    'items': [{
+                        'item_name': item_name,
+                        'item_category': product_type,
+                        'price': round((value_cents or 0) / 100, 2),
+                        'quantity': 1,
+                    }],
+                },
+            }],
+        }
+        resp = http_requests.post(
+            'https://www.google-analytics.com/mp/collect',
+            params={'measurement_id': GA4_MEASUREMENT_ID,
+                    'api_secret': GA4_MP_API_SECRET},
+            json=payload,
+            timeout=5,
+        )
+        if resp.status_code >= 300:
+            logger.warning(f"GA4 MP purchase non-2xx: {resp.status_code}")
+        else:
+            logger.info(f"GA4 purchase recorded: {product_type} "
+                        f"${(value_cents or 0) / 100:.2f} ({order_id[:24]})")
+    except Exception as e:
+        logger.warning(f"GA4 MP purchase failed (non-fatal): {e}")
 
 
 def _notify_new_order(product_type: str, details: dict):
@@ -2405,6 +2465,11 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
     # Mark BEFORE pipeline — see WooCommerce handler comment for rationale
     mark_order_processed(order_data['order_id'], athlete_id)
 
+    # Record purchase in GA4 (server-side, consent-independent)
+    session_obj = data.get('data', {}).get('object', {})
+    _send_ga4_purchase(order_data['order_id'], session_obj.get('amount_total'),
+                       'training_plan', 'Custom Training Plan')
+
     # Send instant payment confirmation to customer (before pipeline runs)
     customer_email = order_data['profile'].get('email', '')
     customer_name = order_data['profile'].get('name', '')
@@ -2449,6 +2514,8 @@ def _handle_coaching_webhook(session: dict, metadata: dict, order_id: str):
                 f"tier={tier}, subscription={subscription_id}")
 
     mark_order_processed(order_id, sanitize_athlete_id(name))
+    _send_ga4_purchase(order_id, session.get('amount_total'),
+                       'coaching', f'Coaching ({tier})')
     _log_product_event('coaching', order_id,
                        tier=tier, name=name, email=email,
                        subscription_id=subscription_id)
@@ -2477,6 +2544,8 @@ def _handle_consulting_webhook(session: dict, metadata: dict, order_id: str):
     logger.info(f"Consulting booked: {name} ({_mask_email(email)}), {hours}hr")
 
     mark_order_processed(order_id, sanitize_athlete_id(name))
+    _send_ga4_purchase(order_id, session.get('amount_total'),
+                       'consulting', 'Consulting Session')
     _log_product_event('consulting', order_id,
                        name=name, email=email, hours=hours)
     _notify_new_order('consulting', {
