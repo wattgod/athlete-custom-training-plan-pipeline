@@ -1659,6 +1659,7 @@ class GuideGenerator:
         if week_table:
             sections.append(week_table)
         sections.append(self._generate_your_weekly_schedule())
+        sections.append(self._generate_weekly_rituals())
         sections.append(self._generate_phase_progression())
         sections.append(self._generate_training_fundamentals())
         sections.append(self._generate_training_zones())
@@ -2790,6 +2791,63 @@ document.addEventListener('DOMContentLoaded', function() {{
                     </div>
         '''
     
+    def _generate_weekly_rituals(self) -> str:
+        """Week-type coaching notes + the Sunday Self-Review ritual.
+
+        The week-type text comes from athletes/config/block_notes.yaml so
+        the guide speaks in the same voice as the coach's manual plans.
+        """
+        notes_path = Path(__file__).parent.parent / 'config' / 'block_notes.yaml'
+        block_notes = {}
+        try:
+            with open(notes_path) as f:
+                block_notes = yaml.safe_load(f) or {}
+        except OSError:
+            pass
+
+        type_labels = [
+            ('load', 'Load Week'),
+            ('medium', 'Medium Week'),
+            ('recovery', 'Recovery Week'),
+            ('race', 'Race Week'),
+        ]
+        note_blocks = ''
+        for key, label in type_labels:
+            text = (block_notes.get(key) or '').strip()
+            if not text:
+                continue
+            paragraphs = ''.join(
+                f'<p>{line.strip()}</p>' if not line.strip()[0:1].isdigit()
+                else f'<p style="margin-left: 16px;">{line.strip()}</p>'
+                for line in text.split('\n') if line.strip()
+            )
+            note_blocks += f'''
+            <div class="week-type-note">
+                <h3>{label}</h3>
+                {paragraphs}
+            </div>'''
+
+        return f'''
+        <section id="weekly-rituals">
+            <h2>Week Types &amp; The Sunday Review</h2>
+            <p>Every week in your plan has a job. Knowing which kind of week
+            you're in tells you how to act when motivation argues with the
+            schedule.</p>
+            {note_blocks}
+            <div class="week-type-note" style="border: 2px solid #000; padding: 16px; margin-top: 24px;">
+                <h3>The Sunday Self-Review — 3 Questions</h3>
+                <p>Every Sunday, before the new week starts, take five minutes
+                and write down answers to these three questions. Athletes who
+                do this consistently improve faster than athletes who train
+                more. It is the cheapest fitness you will ever buy.</p>
+                <p style="margin-left: 16px;"><strong>1.</strong> What went well this week — and why?</p>
+                <p style="margin-left: 16px;"><strong>2.</strong> What went badly — and why?</p>
+                <p style="margin-left: 16px;"><strong>3.</strong> What is ONE thing you can DO next week that's specific and within your control?</p>
+                <p>Keep the answers somewhere you'll see them. Next Sunday,
+                start by reading last week's answer to question 3.</p>
+            </div>
+        </section>'''
+
     def _generate_your_weekly_schedule(self) -> str:
         if not self.weekly_structure:
             return '<section id="your-schedule"><h2>2 · Your Weekly Schedule</h2><p>Weekly structure not yet generated.</p></section>'

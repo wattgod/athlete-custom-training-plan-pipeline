@@ -100,6 +100,7 @@ WORKOUT_MAP = {
     'Rest Day':                 ('recovery', 1),   # Rest Day
     'Openers':                  ('endurance', 0),  # Pre-Race Openers
     'FTP Test':                 ('testing', 1),    # 20min FTP Test
+    'Anaerobic Test':           ('testing', 2),    # CP Test Protocol
     'NP/IF Target':             ('endurance', 1),  # Terrain Simulation Z2
 
     # === Tier 3: Kitchen Sink + SFR series (new archetypes) ===
@@ -282,6 +283,45 @@ def _render_simple_endurance(level: int, workout_name: Optional[str] = None) -> 
     <Cooldown Duration="{cooldown_sec}" PowerLow="{power:.2f}" PowerHigh="0.45"/>
   </workout>
 </workout_file>"""
+
+
+def resolve_display_name(
+    name: str,
+    methodology: str = 'POLARIZED',
+    variation_offset: int = 0,
+) -> str:
+    """Resolve the personality name of the archetype a workout renders as.
+
+    'SFR' is what the selection matrix calls it; 'Thunder Quads' is what
+    the athlete sees on the calendar. Mirrors render_workout's archetype
+    choice (same pinning + variation rules) so the title always matches
+    the rendered content. Falls back to the canonical name.
+    """
+    if name == 'Endurance':
+        return 'Endurance'
+
+    mapping = resolve_workout(name)
+    if mapping is None:
+        return name
+
+    nate_type, base_variation = mapping
+    PINNED = {'Openers', 'FTP Test', 'Rest Day', 'Endurance with Surges',
+              'NP/IF Target', 'Race Simulation', 'Kitchen Sink - Drain Cleaner',
+              'La Balanguera', 'Hyttevask', 'Thunder Quads', 'Blood Pistons'}
+    effective_variation = base_variation
+    if name not in PINNED and variation_offset > 0:
+        effective_variation = base_variation + variation_offset
+
+    try:
+        from nate_workout_generator import select_archetype_for_workout
+        arch = select_archetype_for_workout(nate_type, methodology, effective_variation)
+        if not arch:
+            arch = select_archetype_for_workout(nate_type, 'POLARIZED', effective_variation)
+        if arch and arch.get('name'):
+            return arch['name']
+    except Exception:
+        pass
+    return name
 
 
 def get_mapped_types() -> list:

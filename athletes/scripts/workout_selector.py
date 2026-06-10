@@ -80,6 +80,10 @@ def select_workouts_for_week(
     if week_type == 'taper':
         return _select_taper_week(hours_per_week)
 
+    # Testing week: assessment battery instead of training intensity
+    if week_type == 'testing':
+        return _select_testing_week(hours_per_week, max_level)
+
     # Race week
     if week_type == 'race':
         return _select_race_week()
@@ -277,6 +281,36 @@ def _select_taper_week(hours_per_week: float = 10) -> List[Dict[str, Any]]:
         {'slot': 'openers', 'name': 'Openers', 'level': 2, 'role': 'intensity'},
         {'slot': 'openers_2', 'name': 'Openers', 'level': 1, 'role': 'intensity'},
         {'slot': 'long_ride', 'name': 'Endurance', 'level': 2, 'role': 'long_ride'},
+        {'slot': 'filler', 'name': 'Endurance', 'level': 1, 'role': 'filler'},
+    ]
+
+
+def _select_testing_week(hours_per_week: float = 10, max_level: int = 6) -> List[Dict[str, Any]]:
+    """Testing week: a battery of assessments, not a single FTP test.
+
+    Coach pattern (Matti's manual plans): FTP test Tue, anaerobic
+    assessment Thu, long aerobic/metabolism test Sat. The Tue FTP slot is
+    rendered by the legacy FTP injection (the renderer defers that day);
+    the name here keeps the plan dict honest for compliance/preview.
+
+    The Saturday aerobic/metabolism test scales with experience
+    (training-age max_level as proxy): beginners ~2h (Endurance L3),
+    intermediates ~3h (L5), advanced ~4h (L6) — clamped to the long-ride
+    hours budget (45% of weekly hours).
+    """
+    if max_level <= 3:
+        long_level = 3   # ~130min — beginner
+    elif max_level <= 5:
+        long_level = 5   # ~190min — intermediate
+    else:
+        long_level = 6   # ~250min — advanced
+    max_long_min = hours_per_week * 60 * 0.45
+    while long_level > 2 and get_workout_duration('Endurance', long_level) > max_long_min:
+        long_level -= 1
+    return [
+        {'slot': 'intensity_1', 'name': 'FTP Test', 'level': 1, 'role': 'intensity'},
+        {'slot': 'intensity_2', 'name': 'Anaerobic Test', 'level': 1, 'role': 'intensity'},
+        {'slot': 'long_ride', 'name': 'Endurance', 'level': long_level, 'role': 'long_ride'},
         {'slot': 'filler', 'name': 'Endurance', 'level': 1, 'role': 'filler'},
     ]
 

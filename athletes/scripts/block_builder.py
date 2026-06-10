@@ -415,7 +415,7 @@ def _build_week(
     # - Recovery weeks: hours x 0.62 — a recovery week must actually unload.
     #   The fixed recovery template (~5h) was 80%+ of a low-hour athlete's
     #   load volume, defeating the purpose.
-    if week_type == 'load':
+    if week_type in ('load', 'testing'):
         tolerance = 1.15 if hours_per_week < 6 else 1.10
         max_minutes = hours_per_week * 60 * tolerance
     elif week_type == 'recovery':

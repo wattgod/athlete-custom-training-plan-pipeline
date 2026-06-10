@@ -341,6 +341,51 @@ class TestDeriveDiscipline:
         assert derive_discipline(profile) == 'road'
 
 
+class TestTestingWeek:
+    """Testing weeks are an assessment battery (coach pattern), not a
+    single FTP test floating in a normal load week."""
+
+    def _testing_week(self):
+        descs = [{'plan_week': 1, 'phase': 'base', 'week_type': 'testing'}] + [
+            {'plan_week': w, 'phase': 'base',
+             'week_type': 'recovery' if w == 4 else 'load'}
+            for w in range(2, 6)]
+        plan = build_plan_from_calendar(
+            week_descriptors=descs, archetype='specialist',
+            off_days=['Sun'], long_ride_day='Sat', hours_per_week=10)
+        return plan['weeks'][0]
+
+    def test_battery_composition(self):
+        w1 = self._testing_week()
+        names = {d['day']: d['name'] for d in w1['days']}
+        assert names['Tue'] == 'FTP Test'
+        assert names['Thu'] == 'Anaerobic Test'
+        assert names['Sat'] == 'Endurance'  # long aerobic test slot
+
+    def test_anaerobic_test_renders(self):
+        from workout_mapper import render_workout
+        assert render_workout('Anaerobic Test', level=1,
+                              methodology='POLARIZED') is not None
+
+    def test_metabolism_test_scales_with_experience(self):
+        """Beginners ~2h, intermediates ~3h, advanced ~4h (coach spec)."""
+        from workout_selector import _select_testing_week, get_workout_duration
+        cases = [(3, 8, 120, 140), (5, 12, 170, 200), (6, 15, 230, 260)]
+        for max_level, hrs, lo, hi in cases:
+            menu = _select_testing_week(hrs, max_level)
+            lr = next(w for w in menu if w['role'] == 'long_ride')
+            dur = get_workout_duration('Endurance', lr['level'])
+            assert lo <= dur <= hi, (
+                f"max_level={max_level}: {dur}min not in [{lo},{hi}]")
+
+    def test_metabolism_test_respects_hours_budget(self):
+        from workout_selector import _select_testing_week, get_workout_duration
+        menu = _select_testing_week(8, 6)  # advanced but only 8h/wk
+        lr = next(w for w in menu if w['role'] == 'long_ride')
+        dur = get_workout_duration('Endurance', lr['level'])
+        assert dur <= 8 * 60 * 0.45 + 30  # small slack for level granularity
+
+
 class TestBuildCalendarWeek:
     def test_single_recovery_week_standalone(self):
         week = build_calendar_week(

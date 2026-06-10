@@ -127,8 +127,8 @@ def build_plan_from_calendar(
 
         if week_type == 'load':
             wk_intensity = max_intensity
-        elif week_type == 'taper':
-            wk_intensity = 2  # openers only
+        elif week_type in ('taper', 'testing'):
+            wk_intensity = 2  # openers / assessment battery
         else:  # recovery, race
             wk_intensity = 1
 
@@ -155,7 +155,18 @@ def build_plan_from_calendar(
         # Block bookkeeping: a recovery/taper/race week closes the block.
         # Level progression within a block comes from week_in_block
         # (workout selection adds week_in_block - 1 to base_level).
-        if week_type == 'load':
+        if week_type == 'testing':
+            # Standalone assessment block: the battery is one-off tests, not
+            # a training series — close it so the series tracker never pairs
+            # 'FTP Test' with the next block's intervals. No level bump
+            # (tests aren't training load).
+            violations.extend(tracker.validate_block())
+            tracker.end_block()
+            tracker.start_block()
+            block_number += 1
+            phase_block_index += 1
+            week_in_block = 1
+        elif week_type == 'load':
             tracker.advance_week()
             week_in_block += 1
         else:

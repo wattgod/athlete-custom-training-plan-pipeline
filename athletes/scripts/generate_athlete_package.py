@@ -9,6 +9,7 @@ Generate complete athlete training package:
 Usage: python3 generate_athlete_package.py <athlete_id>
 """
 
+import re
 import sys
 import json
 import yaml
@@ -475,6 +476,16 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         # function, also exercised by the golden tests.
         _bb_descriptors = derive_week_descriptors(plan_dates)
 
+        # Week 1 is a TESTING week (assessment battery: FTP Tue, anaerobic
+        # Thu, long aerobic test Sat) — unless the athlete is returning
+        # from injury, in which case week 1 stays a gentle load week with
+        # the single Tue FTP test.
+        _risk_factors = (derived or {}).get('risk_factors', []) or []
+        if 'returning_from_injury' not in _risk_factors:
+            for _d in _bb_descriptors:
+                if _d['plan_week'] == 1 and _d['week_type'] == 'load':
+                    _d['week_type'] = 'testing'
+
         # Per-day duration caps from athlete availability — enforced inside
         # the week builder so plan dict, compliance, and rendered ZWOs agree.
         # (bool(preferred_days), not use_custom_schedule — that name is only
@@ -498,13 +509,19 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             day_caps=_bb_day_caps or None,
         )
 
-        # Build lookup: (plan_week, day_abbrev) → block plan day data
+        # Build lookup: (plan_week, day_abbrev) → block plan day data.
+        # week_in_block rides along for series numbering in workout titles
+        # ("Thunder Quads 2" on the second load week of a block).
         _bb_lookup = {}
         _bb_variation_counters = {}  # Track variation per workout name for variety
         for bw in _bb_plan.get('weeks', []):
             plan_week = bw.get('plan_week', 0)
             for bd in bw.get('days', []):
-                _bb_lookup[(plan_week, bd['day'])] = bd
+                _bb_lookup[(plan_week, bd['day'])] = {
+                    **bd,
+                    '_week_in_block': bw.get('week_num', 1),
+                    '_block_number': bw.get('block_number', 1),
+                }
 
         _use_block_builder = True
         log.info(f"Block-builder plan (calendar-driven): {_bb_archetype}, "
@@ -1745,16 +1762,38 @@ GO RACE SMART, {athlete_name.upper()}!
                 bb_level = bb_day.get('level', 3)
                 bb_duration = bb_day.get('duration', 60)
 
-                # Track variation for endurance variety
-                # Separate counters for long_ride vs filler so long rides
-                # don't cycle to short archetypes
+                # Track variation for endurance variety.
+                # INTENSITY days: variation is keyed to the BLOCK so a series
+                # is the same archetype progressing +1 level per week (the
+                # per-render counter used to swap archetypes mid-series:
+                # 5x4 SFR → SFR Cadence Contrast → 5x4 SFR in one block).
+                # Fillers/long rides keep the per-render counter — day-to-day
+                # variety is desirable there.
                 bb_role = bb_day.get('role', 'filler')
-                var_key = f"{bb_name}_{bb_role}"
-                var_offset = _bb_variation_counters.get(var_key, 0)
-                _bb_variation_counters[var_key] = var_offset + 1
+                if bb_role == 'intensity':
+                    var_offset = bb_day.get('_block_number', 1) - 1
+                else:
+                    var_key = f"{bb_name}_{bb_role}"
+                    var_offset = _bb_variation_counters.get(var_key, 0)
+                    _bb_variation_counters[var_key] = var_offset + 1
+
+                # Workout personality: intensity days carry the archetype's
+                # name and a series number ("Thunder_Quads_2") instead of the
+                # generic selection-matrix name ("SFR"). Coach-grade titles.
+                display_name = bb_name
+                if bb_role == 'intensity' and bb_name not in ('FTP Test', 'Anaerobic Test', 'Openers'):
+                    from workout_mapper import resolve_display_name
+                    display_name = resolve_display_name(
+                        bb_name, methodology=nate_methodology,
+                        variation_offset=var_offset,
+                    )
+                    series_no = bb_day.get('_week_in_block', 0)
+                    if series_no and series_no > 0:
+                        display_name = f"{display_name} {series_no}"
 
                 # Render ZWO through block-builder workout mapper
-                workout_name = f"{workout_prefix}_{bb_name.replace(' ', '_').replace('/', '_')}"
+                _safe = re.sub(r'[^A-Za-z0-9 _-]', '', display_name)
+                workout_name = f"{workout_prefix}_{_safe.replace(' ', '_')}"
 
                 zwo_content = _bb_render(
                     name=bb_name,

@@ -315,6 +315,16 @@ workouts:
       5: {duration: 35, tss: 23}
       6: {duration: 35, tss: 23}
 
+  Anaerobic Test:
+    category: testing
+    levels:
+      1: {duration: 62, tss: 60}
+      2: {duration: 62, tss: 60}
+      3: {duration: 62, tss: 60}
+      4: {duration: 62, tss: 60}
+      5: {duration: 62, tss: 60}
+      6: {duration: 62, tss: 60}
+
   FTP Test:
     category: testing
     levels:
