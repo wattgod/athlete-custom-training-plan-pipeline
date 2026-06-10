@@ -71,22 +71,48 @@ SCRIPTS_DIR = os.environ.get('SCRIPTS_DIR', '/app/athletes/scripts')
 DATA_DIR = os.environ.get('DATA_DIR', ATHLETES_DIR)  # Persistent volume for intake/logs
 DELIVERIES_DIR = os.path.join(DATA_DIR, 'deliveries')  # Persistent: zipped plans for download
 
-# CORS — only allow requests from our site
-ALLOWED_ORIGINS = ['https://gravelgodcycling.com', 'https://www.gravelgodcycling.com']
+# CORS — only allow requests from our brand sites
+ALLOWED_ORIGINS = [
+    'https://gravelgodcycling.com', 'https://www.gravelgodcycling.com',
+    'https://roadielabs.com', 'https://www.roadielabs.com',
+]
+
+# Multi-brand support — this webhook serves all brand sites. Brand is derived
+# from the request Origin at checkout creation, stored in Stripe metadata,
+# and read back in the webhook handlers (success URLs, GA4 routing, emails).
+BRANDS = {
+    'gravelgod': {
+        'name': 'Gravel God Cycling',
+        'site': 'https://gravelgodcycling.com',
+        'questionnaire_path': '/training-plans/questionnaire/',
+        'ga4_measurement_id': os.environ.get('GA4_MEASUREMENT_ID', 'G-EJJZ9T6M52'),
+        'ga4_mp_api_secret': os.environ.get('GA4_MP_API_SECRET', ''),
+    },
+    'roadielabs': {
+        'name': 'Roadie Labs',
+        'site': 'https://roadielabs.com',
+        'questionnaire_path': '/questionnaire/',
+        'ga4_measurement_id': os.environ.get('GA4_MEASUREMENT_ID_RL', ''),
+        'ga4_mp_api_secret': os.environ.get('GA4_MP_API_SECRET_RL', ''),
+    },
+}
+DEFAULT_BRAND = 'gravelgod'
+
+
+def _brand_from_origin(origin: str) -> str:
+    """Map a request Origin header to a brand key."""
+    if 'roadielabs.com' in (origin or '').lower():
+        return 'roadielabs'
+    return DEFAULT_BRAND
+
+
+def _brand_config(brand: str) -> dict:
+    return BRANDS.get(brand or DEFAULT_BRAND, BRANDS[DEFAULT_BRAND])
 
 # Email notifications for new orders
 NOTIFICATION_EMAIL = os.environ.get('NOTIFICATION_EMAIL', '')
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 RESEND_FROM = os.environ.get('RESEND_FROM', 'Gravel God <noreply@gravelgodcycling.com>')
-
-# GA4 Measurement Protocol — server-side purchase tracking.
-# The client-side purchase event (success page) only records when the visitor
-# accepted the cookie banner; consent-denied buyers are invisible in GA4
-# (verified Jun 2026). This path fires for every real payment. No-op until
-# GA4_MP_API_SECRET is set (GA4 Admin → Data Streams → web stream →
-# Measurement Protocol API secrets).
-GA4_MEASUREMENT_ID = os.environ.get('GA4_MEASUREMENT_ID', 'G-EJJZ9T6M52')
-GA4_MP_API_SECRET = os.environ.get('GA4_MP_API_SECRET', '')
 
 # Configure Stripe
 if STRIPE_SECRET_KEY:
@@ -505,15 +531,19 @@ def _build_consulting_email(details: dict) -> tuple:
 
 
 def _send_ga4_purchase(order_id: str, value_cents, product_type: str,
-                       item_name: str):
+                       item_name: str, brand: str = DEFAULT_BRAND):
     """Record a purchase in GA4 via Measurement Protocol (server-side).
 
     Fires for every real payment regardless of the buyer's cookie-consent
-    state. Shares transaction_id with the client-side success-page event so
-    GA4 deduplicates the two. Never raises — analytics must not affect order
-    processing. Skips test orders (order_id prefix 'test_').
+    state — the client-side purchase event (success page) only records when
+    the visitor accepted the cookie banner (verified Jun 2026, invisible
+    even in Realtime otherwise). Shares transaction_id with the client-side
+    event so GA4 deduplicates the two. Routes to the brand's GA4 property.
+    Never raises — analytics must not affect order processing. No-op until
+    the brand's MP api_secret env var is set; skips test orders.
     """
-    if not GA4_MP_API_SECRET:
+    cfg = _brand_config(brand)
+    if not cfg['ga4_mp_api_secret'] or not cfg['ga4_measurement_id']:
         return
     if order_id.startswith('test_'):
         return
@@ -541,8 +571,8 @@ def _send_ga4_purchase(order_id: str, value_cents, product_type: str,
         }
         resp = http_requests.post(
             'https://www.google-analytics.com/mp/collect',
-            params={'measurement_id': GA4_MEASUREMENT_ID,
-                    'api_secret': GA4_MP_API_SECRET},
+            params={'measurement_id': cfg['ga4_measurement_id'],
+                    'api_secret': cfg['ga4_mp_api_secret']},
             json=payload,
             timeout=5,
         )
@@ -578,15 +608,21 @@ def _notify_new_order(product_type: str, details: dict):
 
 
 def _send_payment_confirmation(customer_email: str, customer_name: str,
-                               race_name: str = '', plan_weeks: str = ''):
+                               race_name: str = '', plan_weeks: str = '',
+                               brand: str = DEFAULT_BRAND):
     """Send immediate payment confirmation to customer.
 
     Auto-fires on successful Stripe checkout. Tells them what they bought,
-    that we're building their plan, and when to expect it.
+    that we're building their plan, and when to expect it. Sign-off and
+    site link follow the brand the customer bought from.
     """
     if not RESEND_API_KEY:
         logger.warning("Cannot send payment confirmation — RESEND_API_KEY not set")
         return
+
+    brand_cfg = _brand_config(brand)
+    brand_name = brand_cfg['name']
+    brand_site = brand_cfg['site'].replace('https://', '')
 
     first_name = customer_name.split()[0] if customer_name else 'there'
     race_mention = f' for {race_name}' if race_name else ''
@@ -614,8 +650,8 @@ WHAT HAPPENS NEXT:
 
 Questions? Reply to this email.
 
-— Matt, Gravel God Cycling
-gravelgodcycling.com
+— Matt, {brand_name}
+{brand_site}
 """
 
     html = f"""
@@ -653,8 +689,8 @@ gravelgodcycling.com
 
     <p style="font-size: 14px; line-height: 1.6;">Questions? Reply to this email.</p>
 
-    <p style="font-size: 14px; margin-top: 24px; color: #666;">— Matt, Gravel God Cycling<br>
-    <a href="https://gravelgodcycling.com" style="color: #1A8A82;">gravelgodcycling.com</a></p>
+    <p style="font-size: 14px; margin-top: 24px; color: #666;">— Matt, {brand_name}<br>
+    <a href="{brand_cfg['site']}" style="color: #1A8A82;">{brand_site}</a></p>
   </div>
 </div>"""
 
@@ -1959,10 +1995,15 @@ def create_checkout():
 
     pricing = compute_plan_price(race_date_str)
 
+    # Brand follows the requesting site (gravelgodcycling.com / roadielabs.com)
+    brand = _brand_from_origin(request.headers.get('Origin', ''))
+    brand_cfg = _brand_config(brand)
+
     # Generate intake ID and store questionnaire data
     intake_id = str(uuid.uuid4())
     data['computed_price_cents'] = pricing['price_cents']
     data['computed_weeks'] = pricing['weeks']
+    data['brand'] = brand
     store_intake(intake_id, data)
 
     # Look up pre-built price ID, capping at 17 for 17+ weeks
@@ -1998,9 +2039,10 @@ def create_checkout():
                 'athlete_name': name,
                 'weeks': str(pricing['weeks']),
                 'price_cents': str(pricing['price_cents']),
+                'brand': brand,
             },
-            success_url='https://gravelgodcycling.com/training-plans/success/?session_id={CHECKOUT_SESSION_ID}',
-            cancel_url='https://gravelgodcycling.com/training-plans/questionnaire/',
+            success_url=f"{brand_cfg['site']}/training-plans/success/?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{brand_cfg['site']}{brand_cfg['questionnaire_path']}",
             expires_at=expires_at,
             after_expiration={
                 'recovery': {
@@ -2467,14 +2509,16 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
 
     # Record purchase in GA4 (server-side, consent-independent)
     session_obj = data.get('data', {}).get('object', {})
+    brand = session_obj.get('metadata', {}).get('brand', DEFAULT_BRAND)
     _send_ga4_purchase(order_data['order_id'], session_obj.get('amount_total'),
-                       'training_plan', 'Custom Training Plan')
+                       'training_plan', 'Custom Training Plan', brand=brand)
 
     # Send instant payment confirmation to customer (before pipeline runs)
     customer_email = order_data['profile'].get('email', '')
     customer_name = order_data['profile'].get('name', '')
     race_name = intake_data.get('race_name', '') if intake_data else ''
-    _send_payment_confirmation(customer_email, customer_name, race_name=race_name)
+    _send_payment_confirmation(customer_email, customer_name, race_name=race_name,
+                               brand=brand)
 
     result = run_pipeline(athlete_id, deliver=True, intake_data=intake_data or None)
     log_order(order_data, result)
@@ -2515,7 +2559,8 @@ def _handle_coaching_webhook(session: dict, metadata: dict, order_id: str):
 
     mark_order_processed(order_id, sanitize_athlete_id(name))
     _send_ga4_purchase(order_id, session.get('amount_total'),
-                       'coaching', f'Coaching ({tier})')
+                       'coaching', f'Coaching ({tier})',
+                       brand=metadata.get('brand', DEFAULT_BRAND))
     _log_product_event('coaching', order_id,
                        tier=tier, name=name, email=email,
                        subscription_id=subscription_id)
@@ -2545,7 +2590,8 @@ def _handle_consulting_webhook(session: dict, metadata: dict, order_id: str):
 
     mark_order_processed(order_id, sanitize_athlete_id(name))
     _send_ga4_purchase(order_id, session.get('amount_total'),
-                       'consulting', 'Consulting Session')
+                       'consulting', 'Consulting Session',
+                       brand=metadata.get('brand', DEFAULT_BRAND))
     _log_product_event('consulting', order_id,
                        name=name, email=email, hours=hours)
     _notify_new_order('consulting', {

@@ -2431,27 +2431,47 @@ class TestPipelineErrorExcerpt:
         assert _pipeline_error_excerpt(result) == 'the real error'
 
 
+def _ga4_brands(gravel_secret='secret', rl_secret='rl-secret'):
+    """BRANDS dict with controllable MP secrets for tests."""
+    return {
+        'gravelgod': {
+            'name': 'Gravel God Cycling',
+            'site': 'https://gravelgodcycling.com',
+            'questionnaire_path': '/training-plans/questionnaire/',
+            'ga4_measurement_id': 'G-TESTGRAVEL',
+            'ga4_mp_api_secret': gravel_secret,
+        },
+        'roadielabs': {
+            'name': 'Roadie Labs',
+            'site': 'https://roadielabs.com',
+            'questionnaire_path': '/questionnaire/',
+            'ga4_measurement_id': 'G-TESTROAD',
+            'ga4_mp_api_secret': rl_secret,
+        },
+    }
+
+
 class TestGa4ServerSidePurchase:
     """Server-side GA4 purchase must fire for real payments, skip tests,
-    and never break order processing."""
+    route per brand, and never break order processing."""
 
     def test_noop_without_api_secret(self):
         import app as app_module
-        with patch.object(app_module, 'GA4_MP_API_SECRET', ''), \
+        with patch.object(app_module, 'BRANDS', _ga4_brands(gravel_secret='')), \
              patch.object(app_module.http_requests, 'post') as mock_post:
             app_module._send_ga4_purchase('cs_live_x', 24900, 'training_plan', 'Plan')
         mock_post.assert_not_called()
 
     def test_skips_test_orders(self):
         import app as app_module
-        with patch.object(app_module, 'GA4_MP_API_SECRET', 'secret'), \
+        with patch.object(app_module, 'BRANDS', _ga4_brands()), \
              patch.object(app_module.http_requests, 'post') as mock_post:
             app_module._send_ga4_purchase('test_20260609', 24900, 'training_plan', 'Plan')
         mock_post.assert_not_called()
 
     def test_sends_purchase_payload(self):
         import app as app_module
-        with patch.object(app_module, 'GA4_MP_API_SECRET', 'secret'), \
+        with patch.object(app_module, 'BRANDS', _ga4_brands()), \
              patch.object(app_module.http_requests, 'post') as mock_post:
             mock_post.return_value = MagicMock(status_code=204)
             app_module._send_ga4_purchase('cs_live_abc123', 24900,
@@ -2461,6 +2481,7 @@ class TestGa4ServerSidePurchase:
         args, kwargs = mock_post.call_args
         assert 'google-analytics.com/mp/collect' in args[0]
         assert kwargs['params']['api_secret'] == 'secret'
+        assert kwargs['params']['measurement_id'] == 'G-TESTGRAVEL'
         event = kwargs['json']['events'][0]
         assert event['name'] == 'purchase'
         assert event['params']['transaction_id'] == 'cs_live_abc123'
@@ -2468,9 +2489,28 @@ class TestGa4ServerSidePurchase:
         assert event['params']['currency'] == 'USD'
         assert kwargs['timeout'] == 5
 
+    def test_routes_to_brand_property(self):
+        import app as app_module
+        with patch.object(app_module, 'BRANDS', _ga4_brands()), \
+             patch.object(app_module.http_requests, 'post') as mock_post:
+            mock_post.return_value = MagicMock(status_code=204)
+            app_module._send_ga4_purchase('cs_live_x', 24900, 'training_plan',
+                                          'Plan', brand='roadielabs')
+        params = mock_post.call_args.kwargs['params']
+        assert params['measurement_id'] == 'G-TESTROAD'
+        assert params['api_secret'] == 'rl-secret'
+
+    def test_unconfigured_brand_is_noop(self):
+        import app as app_module
+        with patch.object(app_module, 'BRANDS', _ga4_brands(rl_secret='')), \
+             patch.object(app_module.http_requests, 'post') as mock_post:
+            app_module._send_ga4_purchase('cs_live_x', 24900, 'training_plan',
+                                          'Plan', brand='roadielabs')
+        mock_post.assert_not_called()
+
     def test_never_raises_on_network_error(self):
         import app as app_module
-        with patch.object(app_module, 'GA4_MP_API_SECRET', 'secret'), \
+        with patch.object(app_module, 'BRANDS', _ga4_brands()), \
              patch.object(app_module.http_requests, 'post',
                           side_effect=Exception('network down')):
             # Must not raise — analytics never blocks an order
@@ -2478,12 +2518,78 @@ class TestGa4ServerSidePurchase:
 
     def test_handles_missing_amount(self):
         import app as app_module
-        with patch.object(app_module, 'GA4_MP_API_SECRET', 'secret'), \
+        with patch.object(app_module, 'BRANDS', _ga4_brands()), \
              patch.object(app_module.http_requests, 'post') as mock_post:
             mock_post.return_value = MagicMock(status_code=204)
             app_module._send_ga4_purchase('cs_live_x', None, 'coaching', 'Coaching')
         event = mock_post.call_args.kwargs['json']['events'][0]
         assert event['params']['value'] == 0.0
+
+
+class TestMultiBrand:
+    """Brand derivation from Origin, CORS allowlist, and brand-aware checkout."""
+
+    def test_roadielabs_origin_maps_to_brand(self):
+        from app import _brand_from_origin
+        assert _brand_from_origin('https://roadielabs.com') == 'roadielabs'
+        assert _brand_from_origin('https://www.roadielabs.com') == 'roadielabs'
+
+    def test_gravel_and_unknown_origins_default(self):
+        from app import _brand_from_origin, DEFAULT_BRAND
+        assert _brand_from_origin('https://gravelgodcycling.com') == DEFAULT_BRAND
+        assert _brand_from_origin('') == DEFAULT_BRAND
+        assert _brand_from_origin('https://evil.example.com') == DEFAULT_BRAND
+
+    def test_roadielabs_in_cors_allowlist(self):
+        from app import ALLOWED_ORIGINS
+        assert 'https://roadielabs.com' in ALLOWED_ORIGINS
+        assert 'https://www.roadielabs.com' in ALLOWED_ORIGINS
+
+    def test_brand_config_falls_back_to_default(self):
+        from app import _brand_config, BRANDS, DEFAULT_BRAND
+        assert _brand_config('nonsense') == BRANDS[DEFAULT_BRAND]
+        assert _brand_config('') == BRANDS[DEFAULT_BRAND]
+
+    def test_checkout_uses_brand_success_url(self, client, tmp_path):
+        """A checkout created from roadielabs.com sends the customer back
+        to roadielabs.com, with brand recorded in metadata."""
+        future = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
+        with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.stripe.checkout.Session.create') as mock_create:
+            mock_create.return_value = MagicMock(
+                id='cs_test_rl', url='https://checkout.stripe.com/x')
+            resp = client.post(
+                '/api/create-checkout',
+                json={'name': 'Road Tester', 'email': 'road@test.com',
+                      'races': [{'name': 'Maratona', 'date': future,
+                                 'priority': 'A'}]},
+                headers={'Origin': 'https://roadielabs.com'})
+
+        assert resp.status_code == 200
+        kwargs = mock_create.call_args.kwargs
+        assert kwargs['success_url'].startswith(
+            'https://roadielabs.com/training-plans/success/')
+        assert kwargs['cancel_url'] == 'https://roadielabs.com/questionnaire/'
+        assert kwargs['metadata']['brand'] == 'roadielabs'
+
+    def test_checkout_defaults_to_gravel_urls(self, client, tmp_path):
+        future = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
+        with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.stripe.checkout.Session.create') as mock_create:
+            mock_create.return_value = MagicMock(
+                id='cs_test_gg', url='https://checkout.stripe.com/x')
+            resp = client.post(
+                '/api/create-checkout',
+                json={'name': 'Gravel Tester', 'email': 'gravel@test.com',
+                      'races': [{'name': 'Unbound', 'date': future,
+                                 'priority': 'A'}]},
+                headers={'Origin': 'https://gravelgodcycling.com'})
+
+        assert resp.status_code == 200
+        kwargs = mock_create.call_args.kwargs
+        assert kwargs['success_url'].startswith(
+            'https://gravelgodcycling.com/training-plans/success/')
+        assert kwargs['metadata']['brand'] == 'gravelgod'
 
 
 class TestPipelineTimeoutHeadroom:
