@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W00_Wed_Jun10_Pre_Plan_Easy</name>
+  <description>PRE-PLAN WEEK: Easy Spin
+GG - 5 days until plan starts
+
+PURPOSE:
+Keep the legs moving. Easy effort only.
+
+WORKOUT:
+- 45 min easy spin
+- Z1-Z2 only (conversational pace)
+- High cadence (90-100 rpm) if comfortable
+- Focus on relaxed shoulders, loose grip
+
+NOTES:
+- Your 7-week plan starts soon
+- Use this time to dial in nutrition, sleep, recovery habits
+- Check bike fit and equipment
+
+Stay loose, GG!</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.45" PowerHigh="0.58"/>
+    <SteadyState Duration="1800" Power="0.60"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

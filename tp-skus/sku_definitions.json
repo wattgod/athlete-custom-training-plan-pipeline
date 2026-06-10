@@ -1,0 +1,75 @@
+{
+  "_doc": "TrainingPeaks static-plan SKU families — northstar P3.1. Each family × duration (8/12/16wk) = one TP marketplace plan, built once in TP's plan builder from the generated manifest. Race→family maps live in each brand repo at data/tp-sku-map.json; TP URLs get pasted into data/tp-sku-links.json there. Design center: 6-10 hrs/week, intermediate athlete (FTP 230 / 165 lbs).",
+  "families": {
+    "gravel-ultra": {
+      "name": "Gravel Ultra-Distance Plan",
+      "tagline": "For 150-mile-plus gravel: durability is the event.",
+      "design_race": {"name": "Ultra Gravel 200", "distance": "200", "goal": "finish-strong"},
+      "longest_ride": "4-5hrs",
+      "notes": "Built for ultra-distance gravel (150-200+ miles, 12+ hour days). Durability is the defining demand: long rides are the centerpiece, fueling is trained like an interval, and late-race resilience efforts simulate hour ten, not hour one."
+    },
+    "gravel-climber": {
+      "name": "Gravel Climbing Plan",
+      "tagline": "For mountain gravel: sustained climbs decide the day.",
+      "design_race": {"name": "Mountain Gravel 100", "distance": "100", "goal": "finish-strong"},
+      "longest_ride": "3-4hrs",
+      "notes": "Built for climbing-heavy gravel races (8,000ft+ over 100 miles). Sustained climbing strength: low-cadence muscular work, threshold repeats, and long rides with real elevation. Includes altitude arrival guidance for high-elevation events."
+    },
+    "gravel-conditions": {
+      "name": "Gravel Heat & Altitude Plan",
+      "tagline": "For races where the weather is the main rival.",
+      "design_race": {"name": "Desert Gravel 100", "distance": "100", "goal": "finish-strong"},
+      "longest_ride": "3-4hrs",
+      "notes": "Built for hot or high gravel races where conditions decide outcomes. Standard race fitness plus a dedicated heat-acclimatization block in the final 3 weeks, sweat-rate-aware fueling progression, and conservative pacing protocols for the first hour."
+    },
+    "gravel-fast-punchy": {
+      "name": "Fast Gravel Plan",
+      "tagline": "For short, violent gravel: speed and surges.",
+      "design_race": {"name": "Fast Gravel 60", "distance": "50", "goal": "top 25% age group"},
+      "longest_ride": "2-3hrs",
+      "notes": "Built for shorter, fast gravel races (40-75 miles) decided by repeated hard surges and group dynamics. VO2 development is the spine; race simulations rehearse attacking and recovering at race pace. Handling skills under fatigue included."
+    },
+    "gravel-allrounder": {
+      "name": "Gravel Race Plan",
+      "tagline": "The standard gravel century build, done right.",
+      "design_race": {"name": "Classic Gravel 100", "distance": "100", "goal": "finish-strong"},
+      "longest_ride": "3-4hrs",
+      "notes": "Built for the classic gravel century: a balanced demand profile where threshold durability, fueling execution, and pacing discipline beat any single superpower. The plan most gravel racers actually need."
+    },
+    "road-alpine-fondo": {
+      "name": "Alpine Gran Fondo Plan",
+      "tagline": "For the big mountain fondos: Maratona, Marmotte, Otztaler.",
+      "design_race": {"name": "Alpine Fondo 90", "distance": "100", "goal": "finish-strong"},
+      "longest_ride": "3-4hrs",
+      "notes": "Built for alpine gran fondos with 10,000ft+ of climbing. Sustained climbing power at threshold, gearing-realistic low-cadence strength, descending recovery skills, and altitude arrival strategy. The long ride progressively rehearses back-to-back climbs."
+    },
+    "road-rolling-fast": {
+      "name": "Fast Road Race Plan",
+      "tagline": "For fast, rolling road races: speed wins, surges decide.",
+      "design_race": {"name": "Rolling Road 75", "distance": "75", "goal": "top 25% age group"},
+      "longest_ride": "2-3hrs",
+      "notes": "Built for fast rolling road races and fondos decided by group riding and repeated accelerations. VO2 intervals are the spine, threshold supports, and race simulations train surge-and-settle rhythm — the skill of going hard twice."
+    },
+    "road-distance": {
+      "name": "Road Endurance Plan",
+      "tagline": "For double centuries and audax-length days.",
+      "design_race": {"name": "Endurance Road 150", "distance": "150", "goal": "finish-strong"},
+      "longest_ride": "4-5hrs",
+      "notes": "Built for long-distance road events (130+ miles). Durability-first: progressive long rides, fueling trained at volume, position comfort, and the steady-state engine that makes hour eight feel like hour three."
+    },
+    "road-allrounder": {
+      "name": "Gran Fondo Plan",
+      "tagline": "The standard gran fondo build, done right.",
+      "design_race": {"name": "Classic Fondo 100", "distance": "100", "goal": "finish-strong"},
+      "longest_ride": "3-4hrs",
+      "notes": "Built for the classic gran fondo: balanced demands where threshold fitness, group-riding economy, and fueling execution decide your day. The plan most fondo riders actually need."
+    }
+  },
+  "durations_weeks": [8, 12, 16],
+  "design_athlete": {
+    "ftp": 230, "weight_lbs": 165, "height": "5'10\"", "age": 38, "sex": "male",
+    "weekly_hours": "7-10", "years_cycling": "3-5", "sleep": "good", "stress": "moderate",
+    "strength": {"current": "occasional", "include": "yes", "equipment": "home-basic"},
+    "off_day": "Monday"
+  }
+}

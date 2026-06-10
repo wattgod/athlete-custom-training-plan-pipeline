@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W03_Sat_Jul11_Endurance_Blocks</name>
+  <description>[MODERATE FUEL: Target 30-60g carbs/hr. Stay topped up.]
+
+GG - Week 3/14 - 12 weeks to Classic Gravel 100
+Phase: BASE
+
+WARM-UP:
+-15min building from Z1 to Z2
+
+MAIN SET:
+-10min warmup Z2, 70min ride: endurance @ 67% FTP with 3x 7min thermal blocks @ 74% FTP
+-Cadence: 90-100rpm (efficient cadence)
+-Position: Alternate seated/standing every other interval
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 3/6: Development - Standard training load, building consistency
+-Extended thermal blocks. Body should be adapting — sweating earlier, lower HR
+
+PURPOSE:
+Structured training. Building fitness through progressive overload.
+
+EXECUTION:
+-Focus on consistent effort and good form throughout.
+
+NUTRITION:
+-40-60g carbs/hr for efforts over 60min.
+
+HYDRATION:
+-500-750ml/hr. Adjust for heat and humidity.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75"/>
+    <SteadyState Duration="5835" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="420" Power="0.74" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="735" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="420" Power="0.74" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="735" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="420" Power="0.74" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="735" Power="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
+  </workout>
+</workout_file>

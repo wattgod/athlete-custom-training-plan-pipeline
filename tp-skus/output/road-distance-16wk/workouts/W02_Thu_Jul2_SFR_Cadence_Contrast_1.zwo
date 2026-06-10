@@ -1,0 +1,44 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W02_Thu_Jul2_SFR_Cadence_Contrast_1</name>
+  <description>[HIGH FUEL: Target 60-90g carbs/hr. Eat early, eat often.]
+
+GG - Week 2/14 - 13 weeks to Endurance Road 150
+Phase: BASE
+
+WARM-UP:
+-15min building from Z1 to Z2
+
+MAIN SET:
+-3x3min SFR @ 55rpm, then 3x30sec high cadence @ 110rpm
+-Cadence: Self-selected
+-Position: Seated, hoods
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 1/6: Introductory - Focus on form and learning the workout pattern
+-
+
+PURPOSE:
+Structured training. Building fitness through progressive overload.
+
+EXECUTION:
+-Focus on consistent effort and good form throughout.
+
+NUTRITION:
+-40-60g carbs/hr. Moderate intensity, focus on recovery nutrition.
+
+HYDRATION:
+-500ml/hr with electrolytes. Lower intensity but sustained effort.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="450" PowerLow="0.50" PowerHigh="0.75" />
+    <SteadyState Duration="300" Power="0.87" CadenceLow="100" CadenceHigh="120" />
+    <IntervalsT Repeat="3" OnDuration="180" OnPower="0.90" CadenceLow="60" CadenceHigh="60" OffDuration="180" OffPower="0.55" />
+    <IntervalsT Repeat="3" OnDuration="30" OnPower="0.75" CadenceLow="105" CadenceHigh="115" OffDuration="120" OffPower="0.55" />
+    <Cooldown Duration="300" PowerLow="0.75" PowerHigh="0.50" />
+  </workout>
+</workout_file>

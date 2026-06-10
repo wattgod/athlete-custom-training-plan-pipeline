@@ -1,0 +1,44 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W05_Tue_Jul14_TTE_Extension_1</name>
+  <description>[HIGH FUEL: Target 60-90g carbs/hr. Eat early, eat often.]
+
+GG - Week 5/7 - 3 weeks to Classic Gravel 100
+Phase: BUILD
+
+WARM-UP:
+-20min building from Z1 to Z2
+
+MAIN SET:
+-15min warmup Z2, 2x 18min @ 96% FTP with 5min recovery
+-Cadence: 85-95rpm (building consistency)
+-Position: Seated, hoods or drops
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 2/6: Foundation - Building base fitness with moderate challenge
+-Extending time at threshold. Focus on relaxed upper body
+
+PURPOSE:
+Structured training. Building fitness through progressive overload.
+
+EXECUTION:
+-Focus on consistent effort and good form throughout.
+
+NUTRITION:
+-60-80g carbs/hr. Start fueling at 30-45min. Mix gels and drink mix.
+
+HYDRATION:
+-500-750ml/hr. Adjust for heat and humidity.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="828" PowerLow="0.50" PowerHigh="0.75" />
+    <SteadyState Duration="745" Power="0.96" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="207" Power="0.55" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="745" Power="0.96" CadenceLow="85" CadenceHigh="95" />
+    <Cooldown Duration="414" PowerLow="0.75" PowerHigh="0.50" />
+  </workout>
+</workout_file>

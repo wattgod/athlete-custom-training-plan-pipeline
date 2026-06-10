@@ -1,0 +1,37 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W05_Sat_Jul25_NPIF_Target</name>
+  <description>[MODERATE FUEL: Target 30-60g carbs/hr. Stay topped up.]
+
+GG - Week 5/14 - 10 weeks to Desert Gravel 100
+Phase: BASE
+
+MAIN SET:
+-2.5hr Z2 with variable power: alternate 4min @ 67% / 6min @ 78% FTP throughout
+-Cadence: 82-92rpm (building efficiency)
+-Position: Practice race position in final third
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 3/6: Development - Standard training load, building consistency
+-Uneven segments - longer "climbs"
+
+PURPOSE:
+Terrain simulation. Variable power within Z2 for rolling course preparation.
+
+EXECUTION:
+-Focus on consistent effort and good form throughout.
+
+NUTRITION:
+-40-60g carbs/hr. Real food works well - PB&amp;J, bananas, bars.
+
+HYDRATION:
+-500-1000ml/hr depending on conditions. Include sodium.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
+  </workout>
+</workout_file>

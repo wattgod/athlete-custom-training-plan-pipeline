@@ -1,0 +1,42 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W07_Thu_Aug6_Float_Sets_1</name>
+  <description>[HIGH FUEL: Target 60-90g carbs/hr. Eat early, eat often.]
+
+GG - Week 7/14 - 8 weeks to Ultra Gravel 200
+Phase: BUILD
+
+WARM-UP:
+-15min building from Z1 to Z2
+
+MAIN SET:
+-15min warmup Z2, 3x 4min @ 108% FTP with 3min tempo float @ 82% FTP
+-Cadence: 85-95rpm (building consistency)
+-Position: Seated, hoods or drops
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 2/6: Foundation - Building base fitness with moderate challenge
+-Extended ON duration. Float recovery keeps HR elevated for greater stimulus
+
+PURPOSE:
+Structured training. Building fitness through progressive overload.
+
+EXECUTION:
+-Focus on consistent effort and good form throughout.
+
+NUTRITION:
+-40-60g carbs/hr for efforts over 60min.
+
+HYDRATION:
+-500-750ml/hr. Adjust for heat and humidity.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75"/>
+    <IntervalsT Repeat="3" OnDuration="240" OnPower="1.08" CadenceLow="85" CadenceHigh="95" OffDuration="180" OffPower="0.82"/>
+    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
+  </workout>
+</workout_file>

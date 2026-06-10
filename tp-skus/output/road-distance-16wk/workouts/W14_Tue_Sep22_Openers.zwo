@@ -1,0 +1,50 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W14_Tue_Sep22_Openers</name>
+  <description>GG - Week 14/14 - 1 weeks to Endurance Road 150
+Phase: RACE
+
+WARM-UP:
+-25min building from Z1 to Z2
+
+MAIN SET:
+-25min Z1-Z2 easy, 3x30sec @ 110% FTP with 2min easy, 5min Z1 cooldown
+-Cadence: 85-100rpm (adapt to changes)
+-Position: Drops on efforts, hoods on recovery
+
+COOL-DOWN:
+-5min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 2/6: Foundation - Building base fitness with moderate challenge
+-Standard openers - 3 short efforts to activate
+
+PURPOSE:
+Pre-race activation. Wake up the legs without creating fatigue.
+
+EXECUTION:
+-Simulate race intensity. Practice fueling and pacing under pressure.
+
+NUTRITION:
+-70-80g carbs/hr. Practice race-day nutrition exactly as you'll execute it.
+
+HYDRATION:
+-500-750ml/hr. Adjust for heat and humidity.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <SteadyState Duration="1770" Power="0.65" CadenceLow="85" CadenceHigh="95">
+      <textevent timeoffset="0" message="Easy warmup for openers"/>
+    </SteadyState>
+    <SteadyState Duration="30" Power="1.10" CadenceLow="85" CadenceHigh="95">
+      <textevent timeoffset="0" message="Opener 1 of 3"/>
+    </SteadyState>
+    <SteadyState Duration="120" Power="0.55" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="30" Power="1.10" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="120" Power="0.55" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="30" Power="1.10" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="0.50" CadenceLow="85" CadenceHigh="95">
+      <textevent timeoffset="0" message="Spin out"/>
+    </SteadyState>
+  </workout>
+</workout_file>

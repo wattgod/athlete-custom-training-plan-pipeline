@@ -1,0 +1,42 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W05_Tue_Jul21_Single_Sustained_Threshold_1</name>
+  <description>[HIGH FUEL: Target 60-90g carbs/hr. Eat early, eat often.]
+
+GG - Week 5/10 - 6 weeks to Rolling Road 75
+Phase: BUILD
+
+WARM-UP:
+-20min building from Z1 to Z2
+
+MAIN SET:
+-20min warmup Z2 with 2x1min openers, 1x25min @ 96-99% FTP, 10min cooldown
+-Cadence: 85-95rpm (building sustainable cadence)
+-Position: Seated, hoods or drops
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 2/6: Foundation - Building base fitness with moderate challenge
+-Building duration - find your rhythm and lock in
+
+PURPOSE:
+Threshold development. The power you can sustain for 20-60 minutes.
+
+EXECUTION:
+-Find your rhythm early. Break long efforts into mental thirds.
+
+NUTRITION:
+-60-80g carbs/hr. Start fueling at 30-45min. Mix gels and drink mix.
+
+HYDRATION:
+-500-750ml/hr with electrolytes. Start hydrated.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="1200" PowerLow="0.50" PowerHigh="0.75"/>
+    <SteadyState Duration="2100" Power="0.97" CadenceLow="85" CadenceHigh="95"/>
+    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
+  </workout>
+</workout_file>

@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W07_Sat_Aug1_Rest</name>
+  <description>REST DAY - GG
+
+COUNTDOWN: 1 weeks to Rolling Road 75
+
+TODAY'S FOCUS:
+- Complete rest from cycling
+- Active recovery allowed: walking, light stretching, yoga
+- Prioritize sleep (7-9 hours)
+
+RECOVERY CHECKLIST:
+- Hydration: 2-3L water minimum
+- Nutrition: Quality protein with each meal
+- Mobility: 10-15 min light stretching if desired
+- Mental: Visualize your race success
+
+PHASE: RACE
+Week 7 of 7
+
+Remember: Adaptation happens during rest, not during training.
+Trust the process, GG.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <SteadyState Duration="60" Power="0.30"/>
+  </workout>
+</workout_file>
