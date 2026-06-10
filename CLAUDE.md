@@ -1,5 +1,14 @@
 # Athlete Custom Training Plan Pipeline
 
+## Northstar
+This repo is the **fulfillment engine** of the ecosystem master plan: rated race
+databases (gravel/road/ski) drive buyers → this pipeline turns a questionnaire
+into a coach-grade plan in ~20s at ~$0 marginal cost → courses/coaching upsell →
+ultimately plans deliver on **Endure Labs**, replacing TrainingPeaks (Phase 6:
+`trainingpeaks_url` → `endure_url`). Reliability here IS the business — a failed
+order is a refund and a reputation hit. Read `gravel-god-cycling/NORTHSTAR.md`
+before large or ambiguous work.
+
 **Commercial-grade automated training plan generator. Current as of April 2, 2026.**
 
 Questionnaire → Block-Builder Engine → ZWO Workouts → HTML Guide → PDF → Delivery
