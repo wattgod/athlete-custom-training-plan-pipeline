@@ -1,0 +1,52 @@
+name: "Daily Follow-up + Touchpoint Emails"
+
+# Fires the email lifecycle engine once a day:
+#   - day 1/3/7 follow-up sequence (FOLLOWUP_SEQUENCE)
+#   - plan-aware lifecycle touchpoints (setup check, FTP-rescale offer,
+#     recovery-week note, mid-plan survey, B-race debriefs, race-week
+#     checklist, post-race survey + coaching bridge)
+#
+# Railway can't self-cron (its cron restarts the whole container), so this
+# workflow is THE thing that makes the anti-churn spine actually send.
+# Dedup lives server-side (followup_sent.jsonl) — running twice is safe.
+#
+# Requires repo secret: CRON_SECRET (same value as the Railway env var).
+
+on:
+  schedule:
+    # 9 AM Mountain (15:00 UTC) — emails land mid-morning for US athletes
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+
+env:
+  API_BASE: https://athlete-custom-training-plan-pipeline-production.up.railway.app
+
+jobs:
+  send-emails:
+    name: "Trigger follow-up + touchpoint cron"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: "Fail fast if CRON_SECRET is missing"
+        run: |
+          if [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "::error::CRON_SECRET repo secret not set — emails will never send. Add it in repo Settings → Secrets (same value as the Railway CRON_SECRET env var)."
+            exit 1
+          fi
+
+      - name: "POST /api/cron/followup-emails"
+        run: |
+          RESPONSE=$(curl -sf -X POST \
+            "$API_BASE/api/cron/followup-emails" \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}")
+          echo "$RESPONSE" | python3 -m json.tool
+          STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))")
+          if [ "$STATUS" != "ok" ]; then
+            echo "::error::Email cron returned status=$STATUS"
+            exit 1
+          fi
+
+      - name: "Summarize"
+        if: success()
+        run: echo "Email cron fired — see response above for sent/skipped counts (followups + touchpoints)."
