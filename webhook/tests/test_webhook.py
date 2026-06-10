@@ -2611,3 +2611,101 @@ class TestPipelineTimeoutHeadroom:
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+
+
+# =============================================================================
+# Lifecycle touchpoints (anti-churn email spine)
+# =============================================================================
+
+class TestComputeTouchpoints:
+    """compute_touchpoints() builds the plan-aware email schedule."""
+
+    @staticmethod
+    def _plan_dates():
+        weeks = []
+        from datetime import date, timedelta
+        start = date(2026, 6, 22)
+        for i in range(12):
+            monday = start + timedelta(weeks=i)
+            weeks.append({
+                'week': i + 1,
+                'monday': monday.isoformat(),
+                'sunday': (monday + timedelta(days=6)).isoformat(),
+                'is_recovery_week': (i + 1) in (4, 8),
+                'is_race_week': (i + 1) == 12,
+            })
+        weeks[6]['b_race'] = {'name': 'Tune-Up Race', 'date': '2026-08-08'}
+        return {
+            'plan_start': '2026-06-22',
+            'plan_end': '2026-09-13',
+            'race_date': '2026-09-12',
+            'race_week_monday': '2026-09-07',
+            'weeks': weeks,
+        }
+
+    def test_all_touchpoint_kinds_present(self):
+        from app import compute_touchpoints
+        touches = compute_touchpoints(self._plan_dates(), 'Jesse', 'Borderlands')
+        keys = {t['key'] for t in touches}
+        assert 'setup_check' in keys
+        assert 'ftp_rescale' in keys
+        assert 'recovery_note' in keys
+        assert 'midplan_survey' in keys
+        assert 'b_debrief_2026-08-08' in keys
+        assert 'race_week' in keys
+        assert 'postrace' in keys
+
+    def test_dates_are_sorted_and_iso(self):
+        from app import compute_touchpoints
+        import re as _re
+        touches = compute_touchpoints(self._plan_dates(), 'Jesse', 'Borderlands')
+        dates = [t['date'] for t in touches]
+        assert dates == sorted(dates)
+        assert all(_re.match(r'^\d{4}-\d{2}-\d{2}$', d) for d in dates)
+
+    def test_setup_check_is_day_two(self):
+        from app import compute_touchpoints
+        touches = compute_touchpoints(self._plan_dates(), 'Jesse', 'Borderlands')
+        setup = next(t for t in touches if t['key'] == 'setup_check')
+        assert setup['date'] == '2026-06-23'
+
+    def test_postrace_is_day_after_race(self):
+        from app import compute_touchpoints
+        touches = compute_touchpoints(self._plan_dates(), 'Jesse', 'Borderlands')
+        post = next(t for t in touches if t['key'] == 'postrace')
+        assert post['date'] == '2026-09-13'
+
+    def test_recovery_note_on_first_recovery_week_only(self):
+        from app import compute_touchpoints
+        touches = compute_touchpoints(self._plan_dates(), 'Jesse', 'Borderlands')
+        notes = [t for t in touches if t['key'] == 'recovery_note']
+        assert len(notes) == 1
+
+    def test_first_name_personalizes_body(self):
+        from app import compute_touchpoints
+        touches = compute_touchpoints(self._plan_dates(), 'Jesse', 'Borderlands')
+        assert all('Jesse' in t['body'] for t in touches)
+
+    def test_empty_plan_dates_returns_empty(self):
+        from app import compute_touchpoints
+        assert compute_touchpoints({}, 'X', 'Y') == []
+
+    def test_postrace_contains_coaching_bridge(self):
+        from app import compute_touchpoints
+        touches = compute_touchpoints(self._plan_dates(), 'Jesse', 'Borderlands')
+        post = next(t for t in touches if t['key'] == 'postrace')
+        assert 'coaching' in post['body'].lower()
+
+
+class TestTravelDatesPassthrough:
+    def test_markdown_includes_travel_dates(self):
+        from app import _questionnaire_to_markdown
+        md = _questionnaire_to_markdown(
+            {'travel_dates': '2026-10-15, 2026-10-18 to 2026-10-19'},
+            name='T', email='t@e.com')
+        assert 'Travel Dates: 2026-10-15, 2026-10-18 to 2026-10-19' in md
+
+    def test_markdown_travel_dates_default_none(self):
+        from app import _questionnaire_to_markdown
+        md = _questionnaire_to_markdown({}, name='T', email='t@e.com')
+        assert 'Travel Dates: None' in md

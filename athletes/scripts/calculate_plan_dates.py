@@ -108,7 +108,8 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
                          preferred_start: str = None,
                          heavy_training_end: str = None,
                          b_events: list = None,
-                         meso_pattern: str = None) -> dict:
+                         meso_pattern: str = None,
+                         travel_dates: list = None) -> dict:
     """
     Calculate all plan dates working backwards from race date.
 
@@ -305,6 +306,19 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
 
                     break  # Found the week, move to next B-event
 
+    # ---------------------------------------------------------------
+    # Travel-day overlay: athletes lose training days to travel
+    # (flights to races, relocations). Mark them so the renderer swaps
+    # the planned workout for an optional shakeout. Race/B-race day
+    # flags take precedence downstream.
+    # ---------------------------------------------------------------
+    if travel_dates:
+        travel_set = {str(t).strip() for t in travel_dates if t}
+        for week_data in week_dates:
+            for day_data in week_data['days']:
+                if day_data['date'] in travel_set:
+                    day_data['is_travel_day'] = True
+
     result = {
         'race_date': race_date_str,
         'race_weekday': DAY_ORDER_DISPLAY[race_weekday],
@@ -465,12 +479,14 @@ def main():
             if not meso_pattern:
                 meso_pattern = meth_data.get('meso_pattern')
 
-    # Get B-events from profile
+    # Get B-events and travel dates from profile
     b_events = profile.get('b_events', [])
+    travel_dates = profile.get('travel_dates', [])
 
     # Calculate dates with constraints (including recovery week marking)
     plan_dates = calculate_plan_dates(race_date, plan_weeks, preferred_start,
-                                      heavy_training_end, b_events, meso_pattern)
+                                      heavy_training_end, b_events, meso_pattern,
+                                      travel_dates)
 
     # Print summary
     print("=" * 60)

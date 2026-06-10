@@ -648,6 +648,43 @@ _COMPETITIVE_GOAL_KEYWORDS = (
     'top 10', 'top-10', 'compete', 'competitive', 'qualify', 'age group',
 )
 
+_TRAVEL_RANGE_RE = re.compile(
+    r'(\d{4}-\d{2}-\d{2})\s*(?:to|through|–|-)\s*(\d{4}-\d{2}-\d{2})')
+
+
+def parse_travel_dates(text: str) -> List[str]:
+    """Parse travel dates from intake text into a sorted list of ISO dates.
+
+    Accepts comma-separated single dates and ranges:
+    '2026-09-03 to 2026-09-08, 2026-10-15' → every date in the range plus
+    the single date. Ranges longer than 14 days are ignored (likely a typo
+    or a relocation, not a travel disruption).
+    """
+    from datetime import datetime as _dt, timedelta as _td
+    if not text:
+        return []
+    dates = set()
+    remaining = text
+    for m in _TRAVEL_RANGE_RE.finditer(text):
+        try:
+            start = _dt.strptime(m.group(1), '%Y-%m-%d')
+            end = _dt.strptime(m.group(2), '%Y-%m-%d')
+        except ValueError:
+            continue
+        if start <= end and (end - start).days <= 14:
+            d = start
+            while d <= end:
+                dates.add(d.strftime('%Y-%m-%d'))
+                d += _td(days=1)
+        remaining = remaining.replace(m.group(0), ' ')
+    for m in re.finditer(r'\b(\d{4}-\d{2}-\d{2})\b', remaining):
+        try:
+            _dt.strptime(m.group(1), '%Y-%m-%d')
+            dates.add(m.group(1))
+        except ValueError:
+            continue
+    return sorted(dates)
+
 
 def derive_goal_type(success_text: str) -> str:
     """Map the athlete's stated success definition to a goal type.
@@ -1223,6 +1260,9 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'volume_warning': volume_warning,
         },
         'preferred_days': preferred_days,
+        'travel_dates': parse_travel_dates(
+            schedule.get('travel_dates', '') or additional.get('travel_dates', '')
+        ),
         'schedule_constraints': {
             'work_schedule': '9-5',
             'work_hours': work_hours,

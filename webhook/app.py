@@ -342,7 +342,36 @@ def _build_training_plan_email(details: dict) -> tuple:
     status_color = '#1A8A82' if pipeline_ok else '#c0392b'
     status_label = 'READY FOR REVIEW' if pipeline_ok else 'PIPELINE FAILED'
 
+    # Edge-case review flags — profiles where automation is most likely to
+    # need a human eye before delivery. The plan still generated and passed
+    # the compliance gate; these flag elevated-judgment cases.
+    review_flags = []
+    try:
+        _hours_num = float(str(hours).split('-')[0]) if hours else 0
+    except (ValueError, TypeError):
+        _hours_num = 0
+    if _hours_num and _hours_num < 6:
+        review_flags.append('Very low hours (<6h/wk) — check workout fit')
+    try:
+        _weeks_num = int(weeks) if weeks else 0
+    except (ValueError, TypeError):
+        _weeks_num = 0
+    if _weeks_num > 26:
+        review_flags.append(f'Long plan ({_weeks_num} wks) — check phase balance')
+    _age = details.get('age', 0)
+    try:
+        _age = int(_age)
+    except (ValueError, TypeError):
+        _age = 0
+    if _age >= 55:
+        review_flags.append(f'Masters athlete ({_age}) — check recovery spacing')
+    if details.get('risk_factors'):
+        review_flags.append(
+            'Risk factors: ' + ', '.join(str(r) for r in details['risk_factors']))
+
     subject = f"[GG] {'New order' if pipeline_ok else 'FAILED'}: {name} — {race_name or 'training plan'}"
+    if pipeline_ok and review_flags:
+        subject = subject.replace('[GG] New order', '[GG] New order ⚠ REVIEW')
 
     # Shared athlete + plan info block
     info_html = f"""
@@ -374,6 +403,8 @@ def _build_training_plan_email(details: dict) -> tuple:
 
   <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
     {info_html}
+
+    {'<div style="margin: 16px 0; padding: 12px 16px; background: #fff3cd; border: 2px solid #B7950B; border-radius: 4px;"><strong style="color: #59473c;">⚠ REVIEW FLAGS</strong><ul style="margin: 8px 0 0; padding-left: 20px; font-size: 13px;">' + ''.join('<li>' + f + '</li>' for f in review_flags) + '</ul></div>' if review_flags else ''}
 
     {'<div style="margin: 24px 0; text-align: center;"><a href="' + download_full + '" style="display: inline-block; background: #59473c; color: white; padding: 14px 28px; text-decoration: none; border-radius: 4px; font-size: 15px; font-weight: bold;">Download Full Package</a></div>' if download_full else ''}
 
@@ -1331,6 +1362,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 - Long Ride Days: {long_days}
 - Interval Days: {interval_days}
 - Off Days: {off_days or 'None'}
+- Travel Dates: {intake_data.get('travel_dates', '') or 'None'}
 
 ## Strength
 - Current: {intake_data.get('strength_current', 'none')}
@@ -2920,6 +2952,265 @@ def process_followup_emails():
     return stats
 
 
+# =============================================================================
+# LIFECYCLE TOUCHPOINTS — plan-aware anti-churn emails
+#
+# Unlike the fixed day-1/3/7 FOLLOWUP_SEQUENCE, these are computed from the
+# athlete's actual plan calendar (plan_dates.yaml): FTP-rescale offer after
+# the testing week, reassurance at the first recovery week, a mid-plan
+# survey, B-race debriefs, race-week checklist, and the post-race
+# survey + coaching offer. All reply-driven: responses land in the coach
+# inbox and become coaching-funnel conversations.
+# =============================================================================
+
+def compute_touchpoints(plan_dates: dict, first_name: str, race_name: str) -> list:
+    """Compute the lifecycle touchpoint schedule for one athlete's plan.
+
+    Returns a list of {'date': 'YYYY-MM-DD', 'key': str, 'subject': str,
+    'body': str}, sorted by date. Dates come from plan_dates.yaml — the
+    same calendar that drives workout generation, so touches always match
+    the plan the athlete is actually riding.
+    """
+    from datetime import timedelta as _td
+
+    weeks = plan_dates.get('weeks', [])
+    if not weeks:
+        return []
+
+    def _d(s):
+        return datetime.strptime(s, '%Y-%m-%d')
+
+    def _iso(dt):
+        return dt.strftime('%Y-%m-%d')
+
+    touches = []
+    plan_start = plan_dates.get('plan_start', '')
+    race_date = plan_dates.get('race_date', '')
+
+    # 1. Setup check — day 2 of the plan
+    if plan_start:
+        touches.append({
+            'date': _iso(_d(plan_start) + _td(days=1)),
+            'key': 'setup_check',
+            'subject': 'Quick check — did everything load OK?',
+            'body': (
+                f"Hey {first_name},\n\n"
+                "You're one day into the plan. Quick check: did the workouts "
+                "load into TrainingPeaks OK, and did the first session sync "
+                "to your head unit?\n\n"
+                "If anything looks off, just hit reply and I'll sort it out "
+                "today.\n\nMatti\nGravel God Cycling"
+            ),
+        })
+
+    # 2. FTP rescale offer — end of week 1 (testing week)
+    if weeks:
+        w1_sunday = weeks[0].get('sunday', '')
+        if w1_sunday:
+            touches.append({
+                'date': w1_sunday,
+                'key': 'ftp_rescale',
+                'subject': 'Got your test results? Reply and I\'ll rescale your plan',
+                'body': (
+                    f"Hey {first_name},\n\n"
+                    "Week 1 testing is done. If your FTP came out different "
+                    "from what you put in the questionnaire, reply with the "
+                    "new number and I'll rescale every remaining workout in "
+                    "your plan to match. Takes me minutes, keeps every "
+                    "interval honest.\n\n"
+                    "This is the difference between a static plan and one "
+                    "that adapts with you — use it.\n\nMatti"
+                ),
+            })
+
+    # 3. First recovery week — reassurance
+    for w in weeks:
+        if w.get('is_recovery_week'):
+            touches.append({
+                'date': w.get('monday', ''),
+                'key': 'recovery_note',
+                'subject': 'This week is supposed to feel easy',
+                'body': (
+                    f"Hey {first_name},\n\n"
+                    "You just hit your first recovery week. The volume drop "
+                    "is intentional — this is where your body banks the "
+                    "fitness from the last block. Don't add workouts, don't "
+                    "extend rides. Feeling fresh by Sunday IS the workout.\n\n"
+                    "If you're NOT feeling recovered by end of week, reply "
+                    "and tell me — that's signal worth acting on.\n\nMatti"
+                ),
+            })
+            break
+
+    # 4. Mid-plan survey — ~45% through
+    if len(weeks) >= 6:
+        mid_week = weeks[max(1, round(len(weeks) * 0.45)) - 1]
+        touches.append({
+            'date': mid_week.get('monday', ''),
+            'key': 'midplan_survey',
+            'subject': f'Halfway check-in — 3 quick questions',
+            'body': (
+                f"Hey {first_name},\n\n"
+                "You're around the halfway mark. Three questions — just hit "
+                "reply with one-line answers:\n\n"
+                "1. Are you finishing the hard days, or surviving them?\n"
+                "2. Is the plan too hard, too easy, or about right?\n"
+                "3. What's getting in the way, if anything?\n\n"
+                "I read every reply and adjust plans when the answers call "
+                "for it.\n\nMatti"
+            ),
+        })
+
+    # 5. B-race debriefs — day after each B-race
+    seen_b = set()
+    for w in weeks:
+        b = w.get('b_race')
+        if b and b.get('date') and b['date'] not in seen_b:
+            seen_b.add(b['date'])
+            touches.append({
+                'date': _iso(_d(b['date']) + _td(days=1)),
+                'key': f"b_debrief_{b['date']}",
+                'subject': f"How did {b.get('name', 'the race')} go?",
+                'body': (
+                    f"Hey {first_name},\n\n"
+                    f"How was {b.get('name', 'the race')}? Reply with the "
+                    "short version — result, how the legs felt, anything "
+                    "that surprised you. If something's off, there's still "
+                    "time to tune the final block before "
+                    f"{race_name}.\n\nMatti"
+                ),
+            })
+
+    # 6. Race-week checklist — Monday of race week
+    race_week_monday = plan_dates.get('race_week_monday', '')
+    if race_week_monday:
+        touches.append({
+            'date': race_week_monday,
+            'key': 'race_week',
+            'subject': f'Race week. Here\'s your checklist.',
+            'body': (
+                f"Hey {first_name},\n\n"
+                f"It's race week for {race_name}. The work is done — "
+                "nothing you do this week makes you fitter, plenty makes "
+                "you slower. Checklist:\n\n"
+                "- Follow the taper exactly. Openers sharpen, they don't train\n"
+                "- Fueling: practice nothing new on race day; your race-day "
+                "carb targets are in your fueling plan\n"
+                "- Equipment check Saturday ride: tires, sealant, bolts, bags\n"
+                "- Sleep is the priority. Wednesday night matters more than "
+                "the night before\n\n"
+                "Go get it. Reply if anything feels off.\n\nMatti"
+            ),
+        })
+
+    # 7. Post-race — survey + coaching bridge
+    if race_date:
+        touches.append({
+            'date': _iso(_d(race_date) + _td(days=1)),
+            'key': 'postrace',
+            'subject': f'How did {race_name} go?',
+            'body': (
+                f"Hey {first_name},\n\n"
+                f"You did it. However {race_name} went, I want to hear it — "
+                "reply with:\n\n"
+                "1. Your result (and how it compared to your goal)\n"
+                "2. The single best and worst moment of the day\n"
+                "3. Would you recommend this plan to a riding buddy? "
+                "(honest answer)\n\n"
+                "And if this race lit the fire for the next one: my coaching "
+                "roster has a spot open, and plan customers who join within "
+                "two weeks get their first month's plan adjustments built "
+                "off everything we just learned about you. Reply 'coaching' "
+                "and I'll send details.\n\nMatti"
+            ),
+        })
+
+    touches = [t for t in touches if t.get('date')]
+    touches.sort(key=lambda t: t['date'])
+    return touches
+
+
+def process_touchpoint_emails():
+    """Send lifecycle touchpoints due today. Returns stats dict.
+
+    Stateless: recomputes each athlete's schedule from plan_dates.yaml on
+    every run and dedupes via the followup sent-log (key = 'tp:<key>').
+    """
+    log_dir = Path(DATA_DIR) / '.logs'
+    if not log_dir.exists():
+        return {'checked': 0, 'sent': 0, 'errors': 0}
+
+    sent = _get_sent_followups()
+    today = datetime.utcnow().strftime('%Y-%m-%d')
+    yesterday = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
+    stats = {'checked': 0, 'sent': 0, 'errors': 0}
+
+    for log_file in sorted(log_dir.glob('20*.jsonl')):
+        for line in log_file.read_text().strip().split('\n'):
+            if not line:
+                continue
+            try:
+                order = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if order.get('product_type') != 'training_plan':
+                continue
+            if not order.get('success', True):
+                continue
+
+            athlete_id = order.get('athlete_id', '')
+            email = order.get('email', '')
+            name = order.get('name', '')
+            order_id = order.get('order_id', '')
+            if not athlete_id or not email or not order_id:
+                continue
+
+            plan_dates_path = (Path(ATHLETES_DIR)
+                               / athlete_id.replace('_', '-')
+                               / 'plan_dates.yaml')
+            if not plan_dates_path.exists():
+                plan_dates_path = Path(ATHLETES_DIR) / athlete_id / 'plan_dates.yaml'
+            if not plan_dates_path.exists():
+                continue
+
+            try:
+                with open(plan_dates_path) as f:
+                    plan_dates = yaml.safe_load(f) or {}
+            except (OSError, yaml.YAMLError):
+                continue
+
+            stats['checked'] += 1
+            first_name = name.split()[0] if name else 'there'
+            race_name = order.get('race_name', 'your race')
+
+            for touch in compute_touchpoints(plan_dates, first_name, race_name):
+                # Due today (or yesterday — 1-day catch-up window)
+                if touch['date'] not in (today, yesterday):
+                    continue
+                dedupe_key = (order_id, f"tp:{touch['key']}")
+                if dedupe_key in sent:
+                    continue
+                try:
+                    _send_email(
+                        to=email,
+                        subject=touch['subject'],
+                        body=touch['body'],
+                        reply_to=NOTIFICATION_EMAIL or None,
+                    )
+                    _mark_followup_sent(order_id, f"tp:{touch['key']}", email)
+                    sent.add(dedupe_key)
+                    stats['sent'] += 1
+                    logger.info(
+                        f"Touchpoint {touch['key']} sent to "
+                        f"{_mask_email(email)} (order {order_id})"
+                    )
+                except Exception as e:
+                    stats['errors'] += 1
+                    logger.error(f"Touchpoint send failed: {e}")
+
+    return stats
+
+
 @app.route('/api/cron/followup-emails', methods=['POST'])
 @limiter.limit("5/minute")
 def cron_followup_emails():
@@ -2936,7 +3227,10 @@ def cron_followup_emails():
     try:
         stats = process_followup_emails()
         logger.info(f"Follow-up cron complete: {stats}")
-        return jsonify({'status': 'ok', **stats})
+        tp_stats = process_touchpoint_emails()
+        logger.info(f"Touchpoint cron complete: {tp_stats}")
+        return jsonify({'status': 'ok', **stats,
+                        'touchpoints': tp_stats})
     except Exception as e:
         logger.exception(f"Follow-up cron error: {e}")
         return jsonify({'error': 'Internal error'}), 500

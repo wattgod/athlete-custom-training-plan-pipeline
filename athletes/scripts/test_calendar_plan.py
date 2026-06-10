@@ -386,6 +386,33 @@ class TestTestingWeek:
         assert dur <= 8 * 60 * 0.45 + 30  # small slack for level granularity
 
 
+class TestTravelDates:
+    def test_parse_singles_and_ranges(self):
+        from intake_to_plan import parse_travel_dates
+        got = parse_travel_dates('2026-09-03 to 2026-09-05, 2026-10-15')
+        assert got == ['2026-09-03', '2026-09-04', '2026-09-05', '2026-10-15']
+
+    def test_parse_ignores_silly_ranges(self):
+        from intake_to_plan import parse_travel_dates
+        # A 3-month "range" is a relocation, not travel disruption
+        got = parse_travel_dates('2026-06-01 to 2026-09-01')
+        # endpoints still captured as single dates
+        assert '2026-06-15' not in got
+
+    def test_calendar_marks_travel_days(self):
+        from datetime import date, timedelta
+        from calculate_plan_dates import calculate_plan_dates
+        race = date.today() + timedelta(weeks=8)
+        race += timedelta(days=(5 - race.weekday()) % 7)
+        travel = (race - timedelta(days=30)).isoformat()
+        pd = calculate_plan_dates(race.isoformat(), plan_weeks=8,
+                                  travel_dates=[travel])
+        marked = [d for w in pd['weeks'] for d in w['days']
+                  if d.get('is_travel_day')]
+        assert len(marked) == 1
+        assert marked[0]['date'] == travel
+
+
 class TestBuildCalendarWeek:
     def test_single_recovery_week_standalone(self):
         week = build_calendar_week(

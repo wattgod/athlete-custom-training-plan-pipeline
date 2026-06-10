@@ -1727,6 +1727,50 @@ GO RACE SMART, {athlete_name.upper()}!
                 week_intensity_count += 1
                 continue  # Done with B-race day
 
+            # -----------------------------------------------------------
+            # TRAVEL DAY: planned workout is replaced by an optional
+            # 30-min shakeout spin. Race-day flags take precedence (the
+            # day before a B-race is often a travel day AND the opener
+            # day — the opener wins).
+            # -----------------------------------------------------------
+            _travel_on_off_day = False
+            if use_custom_schedule and day_info.get('is_travel_day'):
+                _travel_avail = get_day_availability(day_abbrev)
+                _travel_on_off_day = (
+                    _travel_avail.get('availability') in ('unavailable', 'rest'))
+            if (day_info.get('is_travel_day')
+                    and not is_race_day and not is_b_race_day
+                    and not is_b_race_opener
+                    and not _travel_on_off_day):
+                travel_plan_name = f"{workout_prefix}_Travel_Day_Shakeout"
+                travel_zwo = f"""<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>{travel_plan_name}</name>
+  <description>TRAVEL DAY — optional shakeout.
+
+You're traveling today, so the planned workout is replaced by an
+OPTIONAL 30-minute easy spin. If you can ride, keep it conversational
+(Z1-Z2) — it helps the legs after sitting in transit. If you can't,
+skip it guilt-free: one missed easy day costs nothing.
+
+TIPS:
+- Hydrate more than usual (flights dehydrate)
+- Walk every hour if you're in transit all day
+- Get back on schedule tomorrow</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.45" PowerHigh="0.60"/>
+    <SteadyState Duration="1200" Power="0.60"/>
+    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+  </workout>
+</workout_file>"""
+                filepath = zwo_dir / f"{travel_plan_name}.zwo"
+                with open(filepath, 'w') as f:
+                    f.write(travel_zwo)
+                generated_files.append(filepath)
+                continue  # Travel day handled
+
             # Skip ZWO generation for unavailable days (integrity checker rejects them)
             if use_custom_schedule:
                 day_avail = get_day_availability(day_abbrev)
