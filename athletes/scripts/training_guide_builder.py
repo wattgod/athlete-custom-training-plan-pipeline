@@ -444,11 +444,7 @@ def _build_full_guide(
       <header class="guide-header">
         <h1>{race_name} {str(race_distance) + "mi" if race_distance else ""} &ndash; Custom Plan for {athlete_name} ({plan_duration} weeks)</h1>
         <div class="guide-meta">
-          <span>{race_name}</span>
-          <span>{race_distance} miles</span>
-          <span>{elevation} ft</span>
-          <span>{duration_est if duration_est else f'{plan_duration}-week plan'}</span>
-          <span>{location}</span>
+{_meta_badges(race_name, race_distance, elevation, duration_est, plan_duration, location)}
         </div>
       </header>
 
@@ -3333,7 +3329,64 @@ footer.guide-footer {
   margin-top: 8px;
 }
 
-/* === Print — see pipeline/print.css (injected by step 8) === */
+/* === Print ===
+   Chromium cannot fragment the two-column grid: content gets squeezed
+   into the 260px TOC track (one-word-per-line titles, vertically wrapped
+   table headers) and the sticky TOC prints on top of body text. Print
+   must flatten the layout to a single block column. */
+@media print {
+  @page { size: letter; margin: 0.6in 0.7in; }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    max-width: 100%;
+    background: #fff;
+    font-size: 11pt;
+    line-height: 1.55;
+  }
+
+  /* Flatten the grid; the sticky TOC is useless on paper */
+  .gg-guide-layout { display: block; }
+  nav.gg-guide-toc { display: none; }
+  .gg-guide-content { max-width: 100%; }
+
+  /* Cover header gets its own page */
+  header.guide-header { page-break-after: always; border-bottom: none; padding-top: 2in; }
+  h1 { font-size: 26pt; }
+  .guide-meta { margin-top: 24px; }
+  .guide-meta span { white-space: nowrap; }
+
+  /* Never split a component across pages */
+  .data-card, .stat-card, .gg-module, .race-day-row, .guide-meta,
+  table, figure, svg, blockquote {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .stats-grid { break-inside: avoid; }
+
+  /* Headings stay with their content; major sections start clean */
+  h2, h3, h4 { break-after: avoid; page-break-after: avoid; }
+  h2 { break-before: page; page-break-before: always; font-size: 16pt; }
+  .gg-section:first-of-type h2, header.guide-header + * h2 { break-before: auto; page-break-before: auto; }
+
+  /* Tables: full width, readable, headers never wrap letter-by-letter */
+  table { width: 100%; font-size: 9pt; }
+  th { white-space: nowrap; }
+  td, th { padding: 5pt 7pt; }
+
+  /* Prose can use the full page on paper */
+  p { max-width: none; }
+
+  /* No interactive affordances on paper */
+  a { color: inherit; text-decoration: none; }
+  [onclick] { pointer-events: none; }
+}
 
 /* === Mobile === */
 @media (max-width: 700px) {
@@ -3441,6 +3494,24 @@ def _length_score(distance) -> int:
 # Status: PRODUCTION (April 2026)
 # Source: gravel-race-automation/pipeline/step_07_guide.py + coaching extensions
 # =============================================================================
+
+def _meta_badges(race_name, race_distance, elevation, duration_est,
+                 plan_duration, location) -> str:
+    """Cover badges — empty values are dropped, never rendered as bare
+    units ('FT') or empty chips."""
+    def has(v) -> bool:
+        return v not in (None, '', 0, '0') and str(v).strip() not in ('', '—', '-', 'TBD', 'None')
+
+    badges = [race_name if has(race_name) else None]
+    if has(race_distance):
+        badges.append(f"{race_distance} miles")
+    if has(elevation):
+        badges.append(f"{elevation} ft")
+    badges.append(duration_est if has(duration_est) else f"{plan_duration}-week plan")
+    if has(location):
+        badges.append(location)
+    return '\n'.join(f'          <span>{b}</span>' for b in badges if b)
+
 
 def generate_training_guide(athlete_id: str, output_path=None):
     """

@@ -107,6 +107,36 @@ def has_weasyprint() -> bool:
         return False
 
 
+# A real training guide is 30+ pages; a handful of pages means the render
+# died partway (or printed a stub) and must not be delivered to a customer.
+MIN_GUIDE_PAGES = 10
+
+
+def count_pdf_pages(pdf_path: Path) -> int:
+    """Count page objects in a PDF without external deps.
+
+    Counts /Type /Page object markers — NOT the page-tree /Count entry,
+    which also appears in outline dictionaries and misled both `file`
+    and a debugging session into believing a 40-page PDF had 8 pages.
+    """
+    import re
+    data = pdf_path.read_bytes()
+    return len(re.findall(rb"/Type\s*/Page[^s]", data))
+
+
+def validate_pdf(pdf_path: Path, min_pages: int = MIN_GUIDE_PAGES) -> Tuple[bool, str]:
+    """Sanity-check a generated PDF: header magic + plausible page count."""
+    data = pdf_path.read_bytes()
+    if not data.startswith(b"%PDF-"):
+        return False, "not a PDF (bad magic bytes)"
+    if b"%%EOF" not in data[-2048:]:
+        return False, "missing %%EOF trailer (truncated write)"
+    pages = count_pdf_pages(pdf_path)
+    if pages < min_pages:
+        return False, f"only {pages} pages (expected >= {min_pages})"
+    return True, f"{pages} pages"
+
+
 def generate_pdf_chrome(html_path: Path, pdf_path: Path, timeout: int = 60) -> Tuple[bool, str]:
     """Generate PDF using Chrome headless."""
     chrome = find_chrome()
@@ -127,14 +157,21 @@ def generate_pdf_chrome(html_path: Path, pdf_path: Path, timeout: int = 60) -> T
             "--disable-dev-shm-usage",  # Containers have tiny /dev/shm; use /tmp instead
             "--disable-software-rasterizer",
             "--run-all-compositor-stages-before-draw",  # Better rendering
+            "--virtual-time-budget=10000",  # Let fonts/layout settle before print
             f"--print-to-pdf={pdf_path}",
-            "--print-to-pdf-no-header",  # No default Chrome headers
+            # Modern flag — the old --print-to-pdf-no-header is silently
+            # ignored by current Chrome, which shipped PDFs with timestamp
+            # headers and file:// footers on every page
+            "--no-pdf-header-footer",
             # Let CSS control margins via @page rules
             html_url
         ], capture_output=True, text=True, timeout=timeout)
 
         if pdf_path.exists() and pdf_path.stat().st_size > 0:
-            return True, f"Generated with Chrome ({pdf_path.stat().st_size // 1024} KB)"
+            ok, msg = validate_pdf(pdf_path)
+            if not ok:
+                return False, f"Chrome produced invalid PDF: {msg}"
+            return True, f"Generated with Chrome ({pdf_path.stat().st_size // 1024} KB, {msg})"
         else:
             return False, f"Chrome failed: {result.stderr}"
 
@@ -175,7 +212,10 @@ def generate_pdf_weasyprint(html_path: Path, pdf_path: Path, timeout: int = 120)
         )
 
         if pdf_path.exists() and pdf_path.stat().st_size > 0:
-            return True, f"Generated with WeasyPrint ({pdf_path.stat().st_size // 1024} KB)"
+            ok, msg = validate_pdf(pdf_path)
+            if not ok:
+                return False, f"WeasyPrint produced invalid PDF: {msg}"
+            return True, f"Generated with WeasyPrint ({pdf_path.stat().st_size // 1024} KB, {msg})"
         elif result.returncode != 0:
             tail = (result.stderr or result.stdout or '').strip().splitlines()
             return False, f"WeasyPrint error: {tail[-1] if tail else 'unknown'}"
@@ -210,7 +250,10 @@ def generate_pdf_wkhtmltopdf(html_path: Path, pdf_path: Path, timeout: int = 60)
         ], capture_output=True, text=True, timeout=timeout)
 
         if pdf_path.exists() and pdf_path.stat().st_size > 0:
-            return True, f"Generated with wkhtmltopdf ({pdf_path.stat().st_size // 1024} KB)"
+            ok, msg = validate_pdf(pdf_path)
+            if not ok:
+                return False, f"wkhtmltopdf produced invalid PDF: {msg}"
+            return True, f"Generated with wkhtmltopdf ({pdf_path.stat().st_size // 1024} KB, {msg})"
         else:
             return False, f"wkhtmltopdf failed: {result.stderr}"
 
