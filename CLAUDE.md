@@ -350,6 +350,21 @@ python3 athletes/scripts/intake_to_plan.py --file intake.md --dry-run
 
 ### Known Pitfalls (Training Pipeline)
 
+#### TWO guide generators exist — only ONE ships (do not fix the wrong one)
+`training_guide_builder.py` is the PRODUCTION guide builder (called from
+`generate_athlete_package.py` step 4; writes athlete-root
+`training_guide.html` → validated → PDF'd → delivered).
+`generate_html_guide.py` is RETIRED (June 2026): it wrote an unused
+shadow copy to `plans/current/`, has known data bugs, and its CLI
+refuses to run without `GG_RUN_RETIRED_GUIDE=1`. It is kept (not
+deleted) only for `test_custom_guide.py`. A debugging session once
+fixed the retired generator instead of the shipping one — that is why
+this note exists. The guide's print CSS lives INLINE in
+`training_guide_builder.py::_css()` (`@media print` flattens the
+two-column grid, which Chromium cannot paginate). PDF output is
+validated by `pdf_generator.validate_pdf()` (magic bytes, EOF, >=10
+pages counted by `/Type /Page` OBJECTS — the outline `/Count` lies).
+
 #### Intake fields must be coerced to correct types
 `parse_years("4+")` used to return the string `"4+"`. `validate_profile.py` does `years_structured < 0` which throws `TypeError: '<' not supported between str and int`. ALL fields consumed by validators must be parsed to int/float at intake time. Tests: `TestBuildProfileTypes` (10 tests).
 

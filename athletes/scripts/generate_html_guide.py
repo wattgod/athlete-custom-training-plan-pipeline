@@ -1,9 +1,25 @@
 #!/usr/bin/env python3
 """
-Generate Personalized HTML Training Guide
+╔══════════════════════════════════════════════════════════════════════╗
+║  RETIRED — DO NOT USE, DO NOT FIX, DO NOT WIRE BACK INTO THE PIPELINE ║
+╚══════════════════════════════════════════════════════════════════════╝
 
-Creates a comprehensive, neo-brutalist styled training guide
-customized to the athlete's profile, race, and plan.
+Retired June 2026. The PRODUCTION guide builder is
+`training_guide_builder.py` (generate_training_guide), called from
+generate_athlete_package.py step 4. It writes the athlete-root
+training_guide.html that gets validated, PDF'd, and DELIVERED.
+
+This file is the OLD renderer. It writes a shadow copy to
+plans/current/ that nothing reads, and its output has known data bugs
+(duplicate B-race entries, wrong plan-week headings) plus none of the
+print-CSS fixes. It once cost a real customer (Jesse Couch) a broken
+PDF because a debugging session fixed THIS generator instead of the
+one that ships.
+
+Kept only because test_custom_guide.py exercises the importable
+function. The CLI entry refuses to run without GG_RUN_RETIRED_GUIDE=1.
+If you are an agent looking for "the guide generator": close this file
+and open training_guide_builder.py.
 """
 
 import yaml
@@ -4875,5 +4891,12 @@ def main():
 
 
 if __name__ == "__main__":
+    import os
+    if os.environ.get("GG_RUN_RETIRED_GUIDE") != "1":
+        print("RETIRED: generate_html_guide.py no longer ships guides.")
+        print("The production builder is training_guide_builder.py")
+        print("(called from generate_athlete_package.py step 4).")
+        print("Set GG_RUN_RETIRED_GUIDE=1 only if you truly need the old renderer.")
+        sys.exit(1)
     main()
 

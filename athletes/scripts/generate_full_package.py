@@ -130,7 +130,8 @@ def run_pipeline(
         PipelineStep("Build Weekly Structure", "build_weekly_structure.py"),
         PipelineStep("Calculate Plan Dates", "calculate_plan_dates.py"),
         PipelineStep("Generate Workouts", "generate_athlete_package.py"),
-        PipelineStep("Generate HTML Guide", "generate_html_guide.py"),
+        # 'Generate HTML Guide' RETIRED Jun 2026 — guide ships from
+        # training_guide_builder inside the Generate Workouts step
         PipelineStep("Generate Dashboard", "generate_dashboard.py"),
     ]
 

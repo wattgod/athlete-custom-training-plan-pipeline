@@ -2268,7 +2268,9 @@ PIPELINE_STEPS = [
     ('Calculate Fueling', 'calculate_fueling.py'),
     ('Calculate Plan Dates', 'calculate_plan_dates.py'),
     ('Generate Workouts', 'generate_athlete_package.py'),
-    ('Generate HTML Guide', 'generate_html_guide.py'),
+    # 'Generate HTML Guide' step RETIRED Jun 2026 — the shipped guide is
+    # written by training_guide_builder inside the Generate Workouts step;
+    # generate_html_guide.py only produced an unused shadow copy
     ('Generate Dashboard', 'generate_dashboard.py'),
 ]
 
