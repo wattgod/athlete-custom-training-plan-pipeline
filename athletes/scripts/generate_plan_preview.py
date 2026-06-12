@@ -366,7 +366,12 @@ def _run_verification_checks(
                         hard_min += dur
         total_min = easy_min + hard_min
         easy_pct = (easy_min / total_min * 100) if total_min > 0 else 0
-        target_pct = target_z1z2 * 100
+        # Methodology distributions (e.g. g_spot 45/30/25) describe session
+        # emphasis, not time-in-zone: warmups and interval recoveries are
+        # easy time inside "hard" files. Real plans of every methodology run
+        # >=70% easy by time — floor the target so threshold-flavored
+        # methodologies don't false-FAIL well-built plans.
+        target_pct = max(target_z1z2 * 100, 70.0)
         diff = abs(easy_pct - target_pct)
         # PASS: delta < 10%, WARN: 10-15%, FAIL: > 15%
         if diff < 10:
@@ -579,15 +584,15 @@ def _run_verification_checks(
         avg_taper_if = sum(taper_ifs) / len(taper_ifs)
         avg_build_if = sum(build_peak_ifs) / len(build_peak_ifs)
         taper_ratio = (avg_taper_if / avg_build_if * 100) if avg_build_if > 0 else 0
-        if taper_ratio < 80:
-            ti_status = 'PASS'
-        else:
-            ti_status = 'WARN'
+        # Correct tapering cuts VOLUME and keeps intensity — a high taper IF
+        # is textbook (short sharp openers). Only flag a taper that is
+        # HARDER than the build, which is a build week in disguise.
+        ti_status = 'PASS' if taper_ratio <= 105 else 'WARN'
         checks.append({
             'name': 'Taper Intensity',
             'status': ti_status,
             'detail': (f"Taper avg IF: {avg_taper_if:.2f} | Build/Peak avg IF: {avg_build_if:.2f} | "
-                       f"Ratio: {taper_ratio:.0f}% | Threshold: WARN if >= 80%"),
+                       f"Ratio: {taper_ratio:.0f}% | Threshold: WARN if > 105% (taper harder than build)"),
         })
 
     return checks

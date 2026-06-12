@@ -118,8 +118,10 @@ def validate_workout_schedule_alignment(workouts_dir: Path, profile: dict, plan_
             ftp_tests_found.append((week_num, day_abbrev, filename))
 
         # === CHECK 1: No workouts on unavailable days ===
+        # RACE_DAY and B-race overlay sessions land on the race's actual
+        # date — weekly availability does not apply to them.
         availability = day_prefs.get('availability', 'available')
-        if availability == 'unavailable':
+        if availability == 'unavailable' and 'RACE_DAY' not in filename:
             errors.append(IntegrityError("ERROR",
                 f"Workout on unavailable day: {filename} ({day_full} marked unavailable)"))
 
@@ -357,16 +359,19 @@ def validate_athlete_integrity(athlete_dir: Path) -> list:
 
         plan_weeks = derived.get('plan_weeks', 12)
 
-        # Check for hardcoded "12-week" that should be dynamic
+        # Check for hardcoded "12-week" that should be dynamic.
+        # (The "-Week Arc" heading belonged to the RETIRED legacy guide —
+        # the shipping builder writes "({N} weeks)" / "{N}-week plan".)
         if plan_weeks != 12:
-            if '12-Week Arc' in guide_content or '12-week plan' in guide_content:
+            if '12-week plan' in guide_content or '(12 weeks)' in guide_content:
                 errors.append(IntegrityError("ERROR",
                     f"Guide contains hardcoded '12-week' but plan is {plan_weeks} weeks - regenerate guide"))
 
-            # Check correct week count appears
-            if f'{plan_weeks}-Week Arc' not in guide_content:
+            if (f'{plan_weeks}-week plan' not in guide_content
+                    and f'({plan_weeks} weeks)' not in guide_content
+                    and f'{plan_weeks}-week' not in guide_content):
                 errors.append(IntegrityError("ERROR",
-                    f"Guide missing '{plan_weeks}-Week Arc' - regenerate guide"))
+                    f"Guide does not mention the {plan_weeks}-week duration - regenerate guide"))
 
         # === CHECK: Guide contains correct race name ===
         target_race_name = profile.get('target_race', {}).get('name', '')
