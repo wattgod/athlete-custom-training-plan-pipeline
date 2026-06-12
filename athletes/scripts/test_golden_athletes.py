@@ -166,6 +166,59 @@ class TestRenderCoverage:
                     failures.append((m, n))
         assert not failures, f"Render failures: {failures}"
 
+    def test_rendered_durations_match_library(self):
+        """Every emittable workout must render at a plausible duration.
+
+        The 'NP/IF Target' archetype had no render handler and shipped a
+        10-MINUTE long ride for entire base blocks — not-None alone is
+        not enough; the minutes must agree with the workout library.
+        """
+        import re
+        import yaml
+        from pathlib import Path
+        from workout_mapper import WORKOUT_MAP, render_workout
+        from generate_athlete_package import METHODOLOGY_MAP
+        from workout_library import WorkoutLibrary
+
+        lib = WorkoutLibrary()
+        sel = yaml.safe_load(
+            (Path(__file__).parent.parent / 'config' / 'workout_selection.yaml').read_text())
+        names = set()
+
+        def walk(o):
+            if isinstance(o, dict):
+                for v in o.values():
+                    walk(v)
+            elif isinstance(o, list):
+                for v in o:
+                    walk(v)
+            elif isinstance(o, str):
+                names.add(o)
+
+        walk(sel)
+        emittable = sorted(n for n in names if n in WORKOUT_MAP)
+        assert len(emittable) >= 25, "selection surface shrank unexpectedly"
+
+        failures = []
+        methodologies = sorted(set(METHODOLOGY_MAP.values()))
+        for name in emittable:
+            for level in (1, 3, 6):  # ends + middle of the ladder
+                try:
+                    expect = lib.get_duration(name, level)
+                except Exception:
+                    expect = 0
+                for m in methodologies:
+                    xml = render_workout(name, level=level, methodology=m)
+                    if xml is None:
+                        continue  # legitimate veto — upstream falls back
+                    mins = sum(int(d) for d in re.findall(r'Duration="(\d+)"', xml)) / 60
+                    if name not in ('Rest Day', 'Openers') and mins < 15:
+                        failures.append(f"{name} L{level} {m}: {mins:.0f}min")
+                    elif expect and abs(mins - expect) > max(0.5 * expect, 45):
+                        failures.append(
+                            f"{name} L{level} {m}: {mins:.0f}min vs library {expect}min")
+        assert not failures, f"{len(failures)} duration violations: {failures[:8]}"
+
 
 class TestGoldenDayCaps:
     """Per-day duration caps must hold in the plan dict."""
