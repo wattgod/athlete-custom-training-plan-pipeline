@@ -215,7 +215,9 @@ def validate_guide(athlete_id: str) -> tuple:
         report.append("")
 
     if errors:
-        report.append("GUIDE QUALITY: FAILED — fix errors before delivery")
+        # "CRITICAL" is the magic word run_quality_gates() looks for —
+        # without it a guide full of placeholders ships as a warning
+        report.append("GUIDE QUALITY: FAILED — CRITICAL — fix errors before delivery")
         passed = False
     elif warnings:
         report.append("GUIDE QUALITY: PASSED (with warnings)")

@@ -2932,7 +2932,13 @@ def main():
     if not args.skip_quality_gates:
         gates_ok = run_quality_gates(athlete_id)
         if not gates_ok:
-            print(f"\n{YELLOW}Quality gates had issues. Review above.{RESET}")
+            # Critical gate failures BLOCK delivery — a guide with
+            # placeholders/slop/missing sections must never reach a
+            # customer. Use --skip-quality-gates only for debugging.
+            print(f"\n{RED}CRITICAL quality gate failure — delivery blocked. "
+                  f"Fix the issues above (or rerun with --skip-quality-gates "
+                  f"to debug).{RESET}")
+            sys.exit(1)
 
     # -- Step 4: Generate coaching brief --
     print(f"\n{BOLD}Step 4: Generating coaching brief...{RESET}")

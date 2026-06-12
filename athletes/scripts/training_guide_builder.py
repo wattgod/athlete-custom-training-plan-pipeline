@@ -27,6 +27,17 @@ _TIER_AVG_SPEED = {
 }
 
 
+
+def _race_display(race_name, race_distance) -> str:
+    """Race name with distance appended ONLY when not already in the name
+    (prevents "Unbound Gravel 200 200mi")."""
+    name = str(race_name or "").strip()
+    if not race_distance:
+        return name
+    if str(race_distance) in name:
+        return name
+    return f"{name} {race_distance}mi"
+
 def _get_phase_boundaries(plan_duration: int) -> Dict:
     """Return phase boundaries for any plan duration.
 
@@ -204,15 +215,13 @@ def _conditional_triggers(profile: Dict, race_data: Dict) -> Dict:
     if not race_data:
         race_data = {}
     meta = race_data.get("race_metadata", {})
-    elevation = race_data.get("elevation_feet", meta.get("start_elevation_feet", 0)) or 0
-    try:
-        elev_num = int(str(elevation).replace(",", "")) if elevation else 0
-    except (ValueError, TypeError):
-        elev_num = 0
-    avg_elev = meta.get("avg_elevation_feet", elev_num) or 0
+    # CRITICAL: race_data["elevation_feet"] is total CLIMBING (gain), not
+    # altitude above sea level. Using it here once told an Unbound athlete
+    # the race "takes place at 11,000 feet" (Emporia, KS sits at ~1,100).
+    # Altitude fires ONLY on true above-sea-level signals.
+    avg_elev = meta.get("avg_elevation_feet", 0) or 0
     start_elev = meta.get("start_elevation_feet", 0) or 0
-
-    show_altitude = avg_elev > 5000 or start_elev > 5000 or elev_num > 5000
+    show_altitude = avg_elev > 5000 or start_elev > 5000
 
     sex = profile.get("demographics", {}).get("sex", "")
     show_women = bool(sex and sex.lower() == "female")
@@ -427,7 +436,7 @@ def _build_full_guide(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{athlete_name} - {race_name} {str(race_distance) + "mi" if race_distance else ""} Training Guide</title>
+    <title>{athlete_name} - {_race_display(race_name, race_distance)} Training Guide</title>
 
     <!-- Fonts: Source Serif 4 (editorial) + Sometype Mono (data) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -441,7 +450,7 @@ def _build_full_guide(
     <div class="gg-guide-layout">
 
       <header class="guide-header">
-        <h1>{race_name} {str(race_distance) + "mi" if race_distance else ""} &ndash; Custom Plan for {athlete_name} ({plan_duration} weeks)</h1>
+        <h1>{_race_display(race_name, race_distance)} &ndash; Custom Plan for {athlete_name} ({plan_duration} weeks)</h1>
         <div class="guide-meta">
 {_meta_badges(race_name, race_distance, elevation, duration_est, plan_duration, location)}
         </div>
@@ -615,7 +624,7 @@ def _section_training_plan_brief(
     return f"""<section id="section-1" class="gg-section">
   <h2>1 &middot; Training Plan Brief</h2>
 
-  <p>Welcome to your <strong>{race_name} {str(race_distance) + "mi" if race_distance else ""}</strong> training plan. This guide is built
+  <p>Welcome to your <strong>{_race_display(race_name, race_distance)}</strong> training plan. This guide is built
   entirely from your questionnaire responses. Every number, every schedule, every recommendation
   is calibrated to your specific situation.</p>
 
@@ -783,7 +792,7 @@ def _section_race_profile(race_name, race_distance, elevation, location,
     stats_html = '<div class="stats-grid">' + ''.join(stat_cards) + '</div>'
 
     detail_pairs = [
-        ("Race", f"{race_name} {str(race_distance) + 'mi' if race_distance else ''}".strip()),
+        ("Race", _race_display(race_name, race_distance)),
         ("Location", location),
         ("Terrain", terrain if has_race_intel else ""),
         ("Climate", climate),
@@ -852,7 +861,7 @@ def _section_training_zones(ftp: Optional[int], tier: str):
                 f'<td>{watts}</td><td>{pct} FTP</td><td>{hr} HRmax</td><td>{rpe}</td>'
                 f'<td>{feel}</td></tr>'
             )
-        power_note = f'<p><strong>Your FTP: {ftp}W</strong>. Your plan schedules retests &mdash; update your zones after each one.</p>'
+        power_note = f'<p><strong>Your FTP: {ftp}W</strong>. After any retest, update your zones everywhere &mdash; head unit, Zwift, and this chart.</p>'
     else:
         power_rows = []
         for zone, name, pct, hr, rpe, feel in zone_data:
@@ -863,7 +872,7 @@ def _section_training_zones(ftp: Optional[int], tier: str):
                 f'<td>{feel}</td></tr>'
             )
         power_note = """<div class="gg-module gg-alert"><div class="gg-label">BEFORE YOU START: FTP TEST REQUIRED</div>
-<p><strong>Your plan opens with an FTP test &mdash; treat it as the most important session it contains.</strong>
+<p><strong>Complete an FTP test before the structured intervals begin.</strong>
 Without your FTP, every zone target in this plan is a percentage of an unknown number. Until you test,
 use RPE (Rate of Perceived Exertion) to guide intensity.</p>
 <p>After testing, recalculate all zones: <strong>Zone watts = FTP &times; zone percentage.</strong>
@@ -897,7 +906,7 @@ If you use Zwift, TrainerRoad, or a Garmin &mdash; update your FTP setting immed
   </div>
 
   <h3>FTP Testing Protocol</h3>
-  <p>Your plan includes FTP tests at regular intervals. Here's the 20-minute test protocol:</p>
+  <p>When an FTP test appears on your calendar, here's how to execute the 20-minute protocol:</p>
   <ol>
   <li>12 minutes progressive warmup (Z1 to Z2)</li>
   <li>5 minutes at RPE 6/10 (moderate effort)</li>
@@ -1103,12 +1112,13 @@ def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: s
     </div>
   </div>
 
-  <h3>When to Modify the Schedule</h3>
+  <h3>When Life Interferes</h3>
+  <p>The plan owns the schedule. When real life collides with it, these principles keep the
+  damage contained:</p>
   <ul>
-  <li><strong>Swap same-type days:</strong> Tuesday intervals can move to Wednesday if needed. Don't move a key session to the day before another key session.</li>
-  <li><strong>Never stack key sessions:</strong> Intervals + Long Ride on back-to-back days creates excessive fatigue without proportional adaptation.</li>
-  <li><strong>Travel weeks:</strong> Drop to 2 key sessions minimum. Keep one interval day and one long ride. Everything else becomes easy or rest.</li>
-  <li><strong>Illness:</strong> Drop ALL intensity. Zone 2 only if you feel up to it. If symptoms are below the neck (chest, body aches), take complete rest.</li>
+  <li><strong>Protect the key sessions first.</strong> If a week falls apart, keep one interval session and the long ride; let everything else go easy or disappear.</li>
+  <li><strong>Never stack key sessions back-to-back</strong> to "catch up" &mdash; that creates fatigue without proportional adaptation. A missed session stays missed.</li>
+  <li><strong>Illness: drop ALL intensity.</strong> Easy riding only if you feel up to it. Symptoms below the neck (chest, body aches) mean complete rest.</li>
   </ul>
 </section>"""
 
@@ -1499,7 +1509,7 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
   <div class="data-card">
     <div class="data-card__header">YOUR PERSONALIZED FUELING TARGETS</div>
     <div class="data-card__content">
-      <p>Based on your body weight ({weight_lbs} lbs / {weight_kg:.0f} kg), race distance ({str(race_distance) + "mi" if race_distance else ""}),
+      <p>Based on your body weight ({weight_lbs} lbs / {weight_kg:.0f} kg), race distance ({f"{race_distance} miles" if race_distance else "unknown"}),
       and estimated duration (~{est_hours} hours &mdash; {bracket_label}).</p>
       <div class="stats-grid">
         <div class="stat-card">
@@ -2024,7 +2034,7 @@ If something fails in the dress rehearsal, fix it before race day.</p></div>"""
   <li>Eat a real meal within 60 minutes (protein + carbs + fat)</li>
   <li>Light walking to keep blood flowing</li>
   <li>No training for 3-5 days minimum</li>
-  <li>Celebrate. You just raced {race_name} {str(race_distance) + "mi" if race_distance else ""}. That's not nothing.</li>
+  <li>Celebrate. You just raced {_race_display(race_name, race_distance)}. That's not nothing.</li>
   </ul>
 </section>"""
 
@@ -2408,26 +2418,24 @@ def _section_altitude_training(race_data: Dict, race_name: str, elevation, secti
     """Altitude training — conditional on elevation > 5000ft. Section number is dynamic."""
     meta = race_data.get("race_metadata", {})
     start_elev = meta.get("start_elevation_feet", 0) or 0
-    avg_elev = meta.get("avg_elevation_feet", start_elev)
-
-    try:
-        elev_num = int(str(elevation).replace(",", "")) if elevation else 0
-    except (ValueError, TypeError):
-        elev_num = 0
+    avg_elev = meta.get("avg_elevation_feet", start_elev) or start_elev
+    # The `elevation` arg is total CLIMBING — never use it as altitude.
+    if not (start_elev or avg_elev):
+        return ""  # no real altitude data: render nothing rather than nonsense
 
     # Power loss formula: ~1% per 1,000 feet above 3,000ft
-    power_loss = round(max(0, (max(elev_num, start_elev, avg_elev) - 3000) / 1000) * 1.0, 1)
+    power_loss = round(max(0, (max(start_elev, avg_elev) - 3000) / 1000) * 1.0, 1)
 
     return f"""<section id="section-{section_num}" class="gg-section">
   <h2>{section_num} &middot; Altitude Training</h2>
 
-  <p>{race_name} takes place at significant altitude. The start elevation is around {start_elev or elev_num} feet,
-  with racing at {avg_elev or elev_num}+ feet. This has real, measurable effects on performance that you
+  <p>{race_name} takes place at significant altitude. The start elevation is around {start_elev or avg_elev} feet,
+  with racing at {avg_elev or start_elev}+ feet. This has real, measurable effects on performance that you
   cannot ignore.</p>
 
   <div class="gg-module gg-blackpill">
     <div class="gg-label">THE ALTITUDE REALITY</div>
-    <p>At {avg_elev or elev_num} feet, expect approximately <strong>{power_loss}% reduction in FTP</strong> compared to sea level.
+    <p>At {avg_elev or start_elev} feet, expect approximately <strong>{power_loss}% reduction in FTP</strong> compared to sea level.
     Your heart rate will run higher at the same power output. RPE becomes unreliable &mdash; use a power meter.
     Recovery between efforts takes longer. Sleep quality may suffer for the first 2-3 nights.</p>
   </div>

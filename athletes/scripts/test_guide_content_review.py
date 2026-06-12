@@ -74,7 +74,10 @@ class TestNoScheduleDuplication:
         assert "Retest every" not in html
         assert "80% of your training should be" not in html
         assert "80/20 rule" not in html
-        assert "20-minute test" in html  # the protocol (how, not when) stays
+        assert "20-minute protocol" in html  # the protocol (how, not when) stays
+        assert "plan schedules retests" not in html
+        assert "plan includes FTP tests" not in html
+        assert "plan opens with an FTP test" not in html
 
 
 class TestEquipmentSanity:
@@ -103,6 +106,37 @@ class TestDirtCraftAlignment:
         # Dirt Craft L05: hardpack ~70/30, loose gravel 65/35, mud ~50/50
         assert "65/35 on loose gravel" in html
         assert "50/50 on loose)" not in html
+
+
+class TestAltitudeIsNotClimbing:
+    """elevation_feet is total CLIMBING — it once made the guide claim
+    Unbound 'takes place at 11,000 feet' (Emporia, KS: ~1,100 ft)."""
+
+    def test_climbing_does_not_trigger_altitude(self):
+        from training_guide_builder import _conditional_triggers
+        race_data = {"elevation_feet": 11000, "race_metadata": {}}
+        assert _conditional_triggers({}, race_data)["altitude"] is False
+
+    def test_real_altitude_triggers(self):
+        from training_guide_builder import _conditional_triggers
+        race_data = {"race_metadata": {"start_elevation_feet": 6500}}
+        assert _conditional_triggers({}, race_data)["altitude"] is True
+
+    def test_section_refuses_without_altitude_data(self):
+        from training_guide_builder import _section_altitude_training
+        html = _section_altitude_training({"elevation_feet": 11000}, "Test Race", 11000)
+        assert html == ""
+
+    def test_section_never_uses_climbing_number(self):
+        from training_guide_builder import _section_altitude_training
+        race_data = {"race_metadata": {"start_elevation_feet": 6000,
+                                       "avg_elevation_feet": 7000},
+                     "elevation_feet": 11000}
+        html = _section_altitude_training(race_data, "Test Race", 11000)
+        # dynamic claims use real altitude, never the climbing total
+        assert "around 11000" not in html and "At 11000" not in html
+        assert "around 6000" in html
+        assert "At 7000 feet" in html
 
 
 class TestRaceProfileHonesty:
