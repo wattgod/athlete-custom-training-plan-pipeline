@@ -476,6 +476,13 @@ def _section_training_plan_brief(
     fitness = profile.get("fitness", {})
     sched = profile.get("schedule", {})
     strength = profile.get("strength", {})
+    # equipment can live in two profile shapes — prefer the explicit
+    # strength_equipment list ("full-gym" printed as "bodyweight" once)
+    _strength_equip_list = profile.get("strength_equipment") or []
+    if _strength_equip_list and not strength.get("equipment"):
+        strength = dict(strength)
+        strength["equipment"] = ", ".join(
+            str(e).replace("-", " ") for e in _strength_equip_list)
     health = profile.get("health", {})
     history = profile.get("training_history", {})
 
