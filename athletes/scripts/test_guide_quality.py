@@ -47,21 +47,22 @@ class TestSlopDetection:
 class TestRequiredSections:
     def test_all_present(self):
         html = """
-        <h2>Quick Reference</h2>
-        <h2>Training Philosophy</h2>
-        <h2>Phase Progression</h2>
+        <h2>Training Plan Brief</h2>
+        <h2>Race Profile</h2>
         <h2>Training Zones</h2>
-        <h2>Nutrition</h2>
+        <h2>Phase Progression</h2>
+        <h2>Nutrition Strategy</h2>
         <h2>Race Week</h2>
+        <h2>Race Day</h2>
         """
         issues = check_required_sections(html)
         assert len(issues) == 0
 
     def test_missing_section(self):
-        html = "<h2>Quick Reference</h2><h2>Training Zones</h2>"
+        html = "<h2>Training Plan Brief</h2><h2>Training Zones</h2>"
         issues = check_required_sections(html)
         assert len(issues) > 0
-        assert any('Training Philosophy' in i for i in issues)
+        assert any('Race Profile' in i for i in issues)
 
 
 class TestPlaceholders:

@@ -50,13 +50,17 @@ def check_guide_slop(html_content: str) -> list:
 # Required Sections
 # ============================================================
 
+# Must track training_guide_builder.REQUIRED_SECTIONS (the shipping guide).
+# "Quick Reference"/"Training Philosophy" were the RETIRED legacy guide's
+# sections — validating against those produced permanent false warnings.
 REQUIRED_SECTIONS = [
-    'Quick Reference',
-    'Training Philosophy',
-    'Phase Progression',
+    'Training Plan Brief',
+    'Race Profile',
     'Training Zones',
+    'Phase Progression',
     'Nutrition',
     'Race Week',
+    'Race Day',
 ]
 
 REQUIRED_DATA = [
@@ -93,7 +97,11 @@ PLACEHOLDER_PATTERNS = [
     r'\{ftp\}',
     r'undefined',
     r'\bNaN\b',
-    r'\bNone\b(?!\s*\))',  # Python None leaked into HTML (but not "None)" in code blocks)
+    # Python None leaked into HTML: only flag when it stands alone in a
+    # value position (table cell, after a colon/label) — NOT the English
+    # word ("None of it matters" is prose, not a leak)
+    r'>\s*None\s*<',
+    r':\s*None\b',
 ]
 
 

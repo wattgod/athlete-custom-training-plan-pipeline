@@ -136,15 +136,15 @@ def _estimate_race_hours(distance_miles: float, elevation_ft: float, tier: str) 
 
 # ── Required guide sections (Gate 7 checks for these) ────────
 
+# "non-negotiables" and "week-by-week overview" were REMOVED per coach
+# review (Jun 2026) — do not re-add. Schedule content lives in the plan.
 REQUIRED_SECTIONS = [
     "training plan brief",
     "race profile",
-    "non-negotiables",
     "training zones",
     "how adaptation works",
     "weekly structure",
     "phase progression",
-    "week-by-week overview",
     "workout execution",
     "recovery protocol",
     "equipment checklist",
@@ -181,7 +181,7 @@ TIER_METHODOLOGY = {
                       ("Z3 (Tempo)", "5%", "Used sparingly for race-specific pacing"),
                       ("Z4-Z5 (Threshold+)", "15%", "Targeted high-intensity for race sharpness")],
         "key_workouts": ["Long endurance rides (5-7 hours)", "VO2max intervals (4-6 min)", "Threshold over-unders", "Race-pace group rides"],
-        "progression": "Volume is your engine. Intensity is your turbocharger. Don't sacrifice volume for more intervals.",
+        "progression": "Volume is your engine. Intensity sharpens it. Don't sacrifice volume for more intervals.",
     },
     "podium": {
         "name": "High-Volume Polarized",
@@ -228,12 +228,10 @@ def _build_section_titles(profile: Dict, race_data: Dict):
     titles = [
         "Training Plan Brief",
         "Race Profile",
-        "Non-Negotiables",
         "Training Zones",
         "How Adaptation Works",
         "Weekly Structure",
         "Phase Progression",
-        "Week-by-Week Overview",
         "Workout Execution",
         "Recovery Protocol",
         "Equipment Checklist",
@@ -383,17 +381,18 @@ def _build_full_guide(
         derived=derived, date_xref=date_xref or {},
     ))
 
-    # 3-15. Core sections
-    sections.append(_section_non_negotiables(non_negs, race_name, race_distance, elevation, race_data))
+    # 3-14. Core sections.
+    # REMOVED per coach review (Jun 2026): Non-Negotiables (pointless),
+    # Week-by-Week Overview (the schedule lives in the training plan, not
+    # the guide). Do not re-add calendar/schedule content to the guide.
     sections.append(_section_training_zones(ftp, tier))
     sections.append(_section_adaptation())
     sections.append(_section_weekly_structure(schedule, tier_display, weekly_hours))
-    sections.append(_section_phase_progression(plan_duration, tier, ride_realism, derived.get("plan_start_date", ""), derived.get("recovery_week_cadence", 4)))
-    sections.append(_section_week_by_week(template, plan_duration, plan_config, weekly_hours, ftp, derived.get("plan_start_date", "")))
+    sections.append(_section_phase_progression(plan_duration, tier, ride_realism))
     sections.append(_section_workout_execution(tier, ftp))
     sections.append(_section_recovery_protocol(tier, profile))
     sections.append(_section_equipment_checklist(profile, race_data))
-    sections.append(_section_nutrition(race_data, tier, race_distance, profile, plan_duration, derived.get("plan_start_date", "")))
+    sections.append(_section_nutrition(race_data, tier, race_distance, profile, plan_duration))
     sections.append(_section_mental_preparation(race_data, race_distance, tier))
     sections.append(_section_race_week(race_data, tier, race_name, derived))
     sections.append(_section_race_day(race_data, tier, race_distance, race_name, weekly_hours))
@@ -401,7 +400,7 @@ def _build_full_guide(
 
     # Conditional sections — uses shared trigger logic (no duplication)
     triggers = _conditional_triggers(profile, race_data)
-    next_section = 17  # first conditional is always after section 16
+    next_section = 15  # first conditional is always after section 14
     if triggers["altitude"]:
         sections.append(_section_altitude_training(race_data, race_name, elevation, section_num=next_section))
         next_section += 1
@@ -609,15 +608,9 @@ def _section_training_plan_brief(
         except (ValueError, TypeError):
             calendar_html = ""
 
-    # Weekly schedule summary
-    all_days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    # Day-by-day schedule table removed per coach review (Jun 2026) — the
+    # plan calendar owns the schedule; the brief shows only the shape
     days_info = schedule.get("days", {})
-    schedule_rows = []
-    for day in all_days:
-        info = days_info.get(day, {"session": "rest", "notes": ""})
-        session = info.get("label", info["session"].replace("_", " ").title())
-        schedule_rows.append(f"<tr><td><strong>{day.title()}</strong></td><td>{session}</td></tr>")
-    schedule_table = "\n    ".join(schedule_rows)
 
     return f"""<section id="section-1" class="gg-section">
   <h2>1 &middot; Training Plan Brief</h2>
@@ -646,7 +639,7 @@ def _section_training_plan_brief(
     </div>
     <div class="stat-card">
       <div class="stat-card__value">{years}</div>
-      <div class="stat-card__label">Cycling Experience</div>
+      <div class="stat-card__label">Years Riding</div>
     </div>
     <div class="stat-card">
       <div class="stat-card__value">{ftp if ftp else 'TBD'}{'W' if ftp else ''}</div>
@@ -655,19 +648,14 @@ def _section_training_plan_brief(
   </div>
 
   <div class="data-card">
-    <div class="data-card__header">YOUR WEEKLY SCHEDULE (FROM QUESTIONNAIRE)</div>
+    <div class="data-card__header">YOUR WEEK, AT A GLANCE</div>
     <div class="data-card__content">
-      <table>
-      <thead><tr><th>Day</th><th>Session Type</th></tr></thead>
-      <tbody>
-      {schedule_table}
-      </tbody>
-      </table>
       <p><strong>Off days:</strong> {', '.join(d.title() for d in off_days) if off_days else 'None specified'} &mdash;
       <strong>Long rides:</strong> {', '.join(d.title() for d in long_days) if long_days else 'Weekends'} &mdash;
       <strong>Intervals:</strong> {', '.join(d.title() for d in interval_days) if interval_days else 'Mid-week'}</p>
       {f'<p><strong>Strength training:</strong> Included ({strength.get("equipment", "bodyweight")})</p>' if strength_include and strength_include.lower() == "yes" else ''}
       {f'<p><strong>Indoor trainer:</strong> Available ({trainer})</p>' if trainer and trainer != "no" else ''}
+      <p>The day-by-day schedule lives in your training calendar &mdash; that is the source of truth.</p>
     </div>
   </div>
 
@@ -681,7 +669,7 @@ def _section_training_plan_brief(
       <h4>Why This Methodology Was Selected</h4>
       <ul>
         <li><strong>{weekly_hours} hours/week</strong> matches the {meth['name']} approach</li>
-        <li><strong>{years}</strong> of cycling experience at <strong>{level_display}</strong> level</li>
+        <li><strong>{years} years</strong> of cycling experience at <strong>{level_display}</strong> level</li>
         <li><strong>{meth['name']}</strong> training distribution (based on your available hours)</li>
       </ul>
     </div>
@@ -743,22 +731,22 @@ def _section_race_profile(race_name, race_distance, elevation, location,
                 xref = date_xref or {}
                 if xref.get("date_match") is True:
                     verify_icon = "&#10003;"  # checkmark
-                    verify_class = "gg-success"
+                    verify_color = "#1A8A82"
                     verify_text = f"Verified against race database ({xref.get('date_specific', '')})"
                 elif xref.get("date_match") is False:
                     verify_icon = "&#9888;"  # warning
-                    verify_class = "gg-alert"
+                    verify_color = "#B7950B"
                     verify_text = (
                         f"Date mismatch: race database says \"{xref.get('date_specific', '')}\". "
                         f"Please verify your race date."
                     )
                 elif xref.get("matched"):
                     verify_icon = "&#8505;"  # info
-                    verify_class = "gg-module"
+                    verify_color = "#8c7568"
                     verify_text = "Race found in database but date could not be cross-referenced"
                 else:
                     verify_icon = "&#8505;"  # info
-                    verify_class = "gg-module"
+                    verify_color = "#8c7568"
                     verify_text = "Race not in database — please verify your date independently"
 
                 date_verification_html = f"""
@@ -769,7 +757,7 @@ def _section_race_profile(race_name, race_distance, elevation, location,
         <tbody>
           <tr><td><strong>Race Date</strong></td><td>{day_of_week}, {date_display}</td></tr>
           <tr><td><strong>Countdown</strong></td><td>{days_until} days from today</td></tr>
-          <tr><td><strong>Verification</strong></td><td><span class="{verify_class}">{verify_icon} {verify_text}</span></td></tr>
+          <tr><td style="white-space: nowrap;"><strong>Status</strong></td><td><span style="color: {verify_color};">{verify_icon} {verify_text}</span></td></tr>
         </tbody>
       </table>
       <p style="margin-top: 8px; font-size: 0.85em; color: #666;">
@@ -781,122 +769,67 @@ def _section_race_profile(race_name, race_distance, elevation, location,
             except ValueError:
                 pass
 
+    # Coach review (Jun 2026): only show what we actually know. Empty rows,
+    # placeholder dashes, and a radar chart built from defaults erode trust
+    # in the data we DO have.
+    has_race_intel = bool(race_data.get("race_characteristics") or race_data.get("race_metadata"))
+
+    stat_cards = []
+    if race_distance:
+        stat_cards.append(f'<div class="stat-card"><div class="stat-card__value">{race_distance}</div><div class="stat-card__label">Miles</div></div>')
+    if elevation:
+        stat_cards.append(f'<div class="stat-card"><div class="stat-card__value">{int(float(elevation)):,} ft</div><div class="stat-card__label">Climbing</div></div>')
+    stat_cards.append(f'<div class="stat-card"><div class="stat-card__value">{plan_duration}</div><div class="stat-card__label">Weeks</div></div>')
+    stats_html = '<div class="stats-grid">' + ''.join(stat_cards) + '</div>'
+
+    detail_pairs = [
+        ("Race", f"{race_name} {str(race_distance) + 'mi' if race_distance else ''}".strip()),
+        ("Location", location),
+        ("Terrain", terrain if has_race_intel else ""),
+        ("Climate", climate),
+        ("Methodology", f"{meth['name']} ({level_display} level)"),
+        ("Expected Duration", duration_est),
+    ]
+    detail_rows = "\n".join(
+        f"          <tr><td><strong>{k}</strong></td><td>{v}</td></tr>"
+        for k, v in detail_pairs if v and str(v).strip()
+    )
+
+    radar_html = (f'<div style="text-align: center; margin: 24px 0;">\n{radar_svg}\n  </div>'
+                  if has_race_intel else "")
+    no_intel_note = ("" if has_race_intel else
+                     '<p>We don\'t have database intel on this race yet, so this guide leans on '
+                     'the details from your questionnaire. If you learn specifics about the course '
+                     '&mdash; surface, climbing, aid stations &mdash; reply to your delivery email '
+                     'and we\'ll factor them in.</p>')
+
     return f"""<section id="section-2" class="gg-section">
   <h2>2 &middot; Race Profile</h2>
 
 {f'<div class="gg-module gg-alert"><div class="gg-label">RACE HOOK</div><p>{hook_text}</p></div>' if hook_text else ''}
 
-  <div class="stats-grid">
-    <div class="stat-card">
-      <div class="stat-card__value">{race_distance}</div>
-      <div class="stat-card__label">Miles</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-card__value">{f"{int(elevation):,}" if elevation else "—"} ft</div>
-      <div class="stat-card__label">Climbing</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-card__value">{plan_duration}</div>
-      <div class="stat-card__label">Weeks</div>
-    </div>
-  </div>
+  {stats_html}
 
   <div class="data-card">
     <div class="data-card__header">RACE DETAILS</div>
     <div class="data-card__content">
       <table>
         <tbody>
-          <tr><td><strong>Race</strong></td><td>{race_name} {str(race_distance) + "mi" if race_distance else ""}</td></tr>
-          <tr><td><strong>Location</strong></td><td>{location}</td></tr>
-          <tr><td><strong>Terrain</strong></td><td>{terrain}</td></tr>
-          <tr><td><strong>Climate</strong></td><td>{climate}</td></tr>
-          <tr><td><strong>Methodology</strong></td><td>{meth['name']} ({level_display} level)</td></tr>
-          <tr><td><strong>Expected Duration</strong></td><td>{duration_est if duration_est else 'Varies by fitness'}</td></tr>
+{detail_rows}
         </tbody>
       </table>
     </div>
   </div>
 {date_verification_html}
-
-  <div style="text-align: center; margin: 24px 0;">
-{radar_svg}
-  </div>
-</section>"""
-
-
-def _section_non_negotiables(non_negs, race_name, race_distance, elevation=0, race_data=None):
-    if race_data is None:
-        race_data = {}
-
-    # Altitude non-negotiable
-    altitude_nn = ""
-    elev_num = 0
-    try:
-        elev_num = int(str(elevation).replace(",", "")) if elevation else 0
-    except (ValueError, TypeError):
-        pass
-    if elev_num > 5000:
-        altitude_nn = f"""
-  <div class="gg-module gg-blackpill">
-    <div class="gg-label">NON-NEGOTIABLE</div>
-    <p><strong>Altitude Acclimatization.</strong> Racing at {elevation}+ feet without acclimatization will
-    significantly impact performance. Arrive 1-2 weeks early if possible, or use altitude simulation
-    (heat training provides partial crossover benefits).</p>
-  </div>"""
-
-    if not non_negs:
-        return f"""<section id="section-3" class="gg-section">
-  <h2>3 &middot; Non-Negotiables</h2>
-  <p>These are the things you <strong>must</strong> do to race {race_name} {str(race_distance) + "mi" if race_distance else ""} successfully.
-  Not suggestions. Requirements.</p>
-
-  <div class="gg-module gg-blackpill">
-    <div class="gg-label">NON-NEGOTIABLE</div>
-    <p><strong>Dress Rehearsal.</strong> Complete a race-simulation long ride at target intensity 3 weeks before race day.</p>
-  </div>
-
-  <div class="gg-module gg-blackpill">
-    <div class="gg-label">NON-NEGOTIABLE</div>
-    <p><strong>Nutrition Practice.</strong> Practice your exact race-day fueling plan on at least 3 long rides.</p>
-  </div>
-
-  <div class="gg-module gg-blackpill">
-    <div class="gg-label">NON-NEGOTIABLE</div>
-    <p><strong>Equipment Tested.</strong> Race with zero new equipment. Everything must be tested in training.</p>
-  </div>
-
-  {altitude_nn}
-</section>"""
-
-    cards = []
-    # Handle both list format (coaching pipeline) and dict format (gravel-race-automation)
-    items = non_negs if isinstance(non_negs, list) else [v if isinstance(v, dict) else {"requirement": str(v)} for v in non_negs.values()]
-    for val in items:
-        if isinstance(val, dict):
-            req = val.get("requirement", "")
-            by_when = val.get("by_when", "")
-            why = val.get("why", "")
-            cards.append(
-                f'  <div class="gg-module gg-blackpill">'
-                f'<div class="gg-label">NON-NEGOTIABLE</div>'
-                f"<p><strong>{req}</strong></p>"
-                f"<p><strong>By when:</strong> {by_when}</p>"
-                f"<p><strong>Why:</strong> {why}</p>"
-                f"</div>"
-            )
-
-    return f"""<section id="section-3" class="gg-section">
-  <h2>3 &middot; Non-Negotiables</h2>
-  <p>These are the things you <strong>must</strong> do to race {race_name} {str(race_distance) + "mi" if race_distance else ""} successfully.
-  Not suggestions. Requirements.</p>
-{''.join(cards)}
+{radar_html}
+{no_intel_note}
 </section>"""
 
 
 def _section_training_zones(ftp: Optional[int], tier: str):
     zone_data = [
         ("1", "Active Recovery", "< 55%", "< 68%", "1-2", "Very easy, conversational. You should feel like you're barely working."),
-        ("2", "Endurance", "56-75%", "69-83%", "3-4", "Easy effort. You can speak in full sentences. This is where 80% of your riding should be."),
+        ("2", "Endurance", "56-75%", "69-83%", "3-4", "Easy effort. You can speak in full sentences. The bulk of your riding lives here."),
         ("3", "Tempo", "76-87%", "84-94%", "5-6", "Moderate. You can speak in short phrases. Comfortably hard."),
         ("GS", "G Spot", "88-93%", "92-96%", "6-7", "The G Spot between tempo and threshold. Maximum training stimulus with manageable fatigue."),
         ("4", "Threshold", "94-105%", "95-105%", "7-8", "Hard. Few words only. This is your FTP &mdash; sustainable for about 1 hour all-out."),
@@ -919,7 +852,7 @@ def _section_training_zones(ftp: Optional[int], tier: str):
                 f'<td>{watts}</td><td>{pct} FTP</td><td>{hr} HRmax</td><td>{rpe}</td>'
                 f'<td>{feel}</td></tr>'
             )
-        power_note = f'<p><strong>Your FTP: {ftp}W</strong>. Retest every 6 weeks.</p>'
+        power_note = f'<p><strong>Your FTP: {ftp}W</strong>. Your plan schedules retests &mdash; update your zones after each one.</p>'
     else:
         power_rows = []
         for zone, name, pct, hr, rpe, feel in zone_data:
@@ -930,25 +863,26 @@ def _section_training_zones(ftp: Optional[int], tier: str):
                 f'<td>{feel}</td></tr>'
             )
         power_note = """<div class="gg-module gg-alert"><div class="gg-label">BEFORE YOU START: FTP TEST REQUIRED</div>
-<p><strong>Your Week 1 priority is completing an FTP test.</strong> Without your FTP, every zone target
-in this plan is a percentage of an unknown number. Until you test, use RPE (Rate of Perceived Exertion)
-to guide intensity &mdash; but get this done in your first week. No structured intervals until you have your number.</p>
+<p><strong>Your plan opens with an FTP test &mdash; treat it as the most important session it contains.</strong>
+Without your FTP, every zone target in this plan is a percentage of an unknown number. Until you test,
+use RPE (Rate of Perceived Exertion) to guide intensity.</p>
 <p>After testing, recalculate all zones: <strong>Zone watts = FTP &times; zone percentage.</strong>
 If you use Zwift, TrainerRoad, or a Garmin &mdash; update your FTP setting immediately after testing.</p></div>"""
 
     rows_html = "\n".join(power_rows)
 
-    return f"""<section id="section-4" class="gg-section">
-  <h2>4 &middot; Training Zones</h2>
+    return f"""<section id="section-3" class="gg-section">
+  <h2>3 &middot; Training Zones</h2>
 
   <h3>The Point of Zones</h3>
   <p>Training zones aren't arbitrary numbers. Each zone targets a specific physiological system.
   Training in the wrong zone doesn't just reduce effectiveness &mdash; it actively harms your progression
   by creating the wrong type of fatigue without the right type of adaptation.</p>
 
-  <p><strong>The 80/20 rule:</strong> 80% of your training should be in Zones 1-2 (easy).
-  20% should be in Zones 4-6 (hard). Zone 3 is the "gray zone" &mdash; too hard to recover from,
-  too easy to create real adaptation. Avoid it unless specifically prescribed.</p>
+  <p>Your plan controls how much time you spend in each zone &mdash; the zones are the vocabulary,
+  the plan is the sentence. Your only job is to hit the prescribed zone when a workout calls for it.
+  One caution that holds for every methodology: Zone 3 is the "gray zone" &mdash; too hard to recover
+  from, too easy to create real adaptation. Ride it only when prescribed.</p>
 
   {power_note}
 
@@ -993,8 +927,8 @@ If you use Zwift, TrainerRoad, or a Garmin &mdash; update your FTP setting immed
 
 
 def _section_adaptation():
-    return """<section id="section-5" class="gg-section">
-  <h2>5 &middot; How Adaptation Works</h2>
+    return """<section id="section-4" class="gg-section">
+  <h2>4 &middot; How Adaptation Works</h2>
 
   <p>Every workout in this plan exists for a reason. Understanding the adaptation model
   helps you make smart decisions when life disrupts the plan.</p>
@@ -1102,14 +1036,6 @@ def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: s
         per_ride = 2.5
         long_ride_duration = "2-3 hours"
 
-    duration_map = {
-        "rest": "&mdash;",
-        "long_ride": long_ride_duration,
-        "intervals": "60-90 min",
-        "easy_ride": "45-60 min",
-        "strength": "45-60 min",
-    }
-
     # If long rides are short relative to available time, add a tactical note
     long_ride_note = ""
     if max_hrs > 0 and long_ride_count > 0 and per_ride < 3.0:
@@ -1123,49 +1049,22 @@ def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: s
     is worth more than two 1.5 hour rides for building the endurance you'll need on race day.</p>
   </div>"""
 
-    rows = []
-    for day in all_days:
-        info = days.get(day, {"session": "rest", "notes": ""})
-        session = info["session"]
-        session_display = info.get("label", session.replace("_", " ").title())
-        notes = info.get("notes", "")
-        duration = duration_map.get(session, "45-60 min")
-        highlight = ' class="race-day-row"' if session in ("long_ride", "intervals") else ""
-        rows.append(
-            f'<tr{highlight}><td><strong>{day.title()}</strong></td>'
-            f"<td>{session_display}</td><td>{duration}</td><td>{notes}</td></tr>"
-        )
-
-    rows_html = "\n".join(rows)
-
     training_days = [d for d, v in days.items() if v["session"] != "rest"]
     key_days = [d for d, v in days.items() if v["session"] in ("long_ride", "intervals")]
 
-    return f"""<section id="section-6" class="gg-section">
-  <h2>6 &middot; Weekly Structure</h2>
+    # Coach review (Jun 2026): NO day-by-day schedule table here. The
+    # schedule lives in the training plan; this section explains the ROLE
+    # of each session type so the athlete understands what they're doing.
+    return f"""<section id="section-5" class="gg-section">
+  <h2>5 &middot; Weekly Structure</h2>
 
-  <p>Your weekly structure is built from your questionnaire preferences. Key sessions are highlighted.
-  This structure repeats each week with progressive overload applied through the phases.</p>
+  <p>Every week of your plan is built from the same four ingredients: a long ride, interval sessions,
+  easy rides, and strength work. Your plan places them on specific days &mdash; follow the calendar.
+  What matters here is understanding what each session type is <em>for</em>, because riders who
+  understand the purpose execute better than riders who just follow orders.</p>
 
-  <div class="stats-grid">
-    <div class="stat-card">
-      <div class="stat-card__value">{len(training_days)}</div>
-      <div class="stat-card__label">Training Days</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-card__value">{len(key_days)}</div>
-      <div class="stat-card__label">Key Sessions</div>
-    </div>
-  </div>
-
-  <div style="overflow-x: auto;">
-  <table>
-  <thead><tr><th>Day</th><th>Session</th><th>Duration</th><th>Notes</th></tr></thead>
-  <tbody>
-  {rows_html}
-  </tbody>
-  </table>
-  </div>
+  <p>Your week has {len(training_days)} training days, {len(key_days)} of which are key sessions.
+  Key sessions are the ones that drive adaptation. Everything else supports them.</p>
 
   <h3>Session Types Explained</h3>
 
@@ -1214,77 +1113,59 @@ def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: s
 </section>"""
 
 
-def _section_phase_progression(plan_duration: int, tier: str, ride_realism: float = 1.0, plan_start_date: str = "", recovery_week_cadence: int = 4):
+def _section_phase_progression(plan_duration: int, tier: str, ride_realism: float = 1.0):
     # Long ride description adapts to what the athlete can actually do
     if ride_realism >= 0.6:
-        base_lr_desc = "Long rides build from current fitness to 60-70% of race duration."
+        base_lr_desc = "Long rides build from current fitness toward 60-70% of expected race duration."
     elif ride_realism >= 0.3:
-        base_lr_desc = "Long rides build progressively. Your weekly budget limits ride length, so focus on making each long ride count with race-pace fueling practice."
+        base_lr_desc = "Long rides build progressively. Your weekly budget limits ride length, so each long ride counts double &mdash; use them for race-pace fueling practice."
     else:
         base_lr_desc = "Long rides build progressively within your time budget. Quality over quantity &mdash; every long ride includes nutrition rehearsal and race-pace efforts to compensate for volume."
 
-    # Use shared phase boundaries so labels are consistent everywhere
-    bounds = _get_phase_boundaries(plan_duration)
-    b = bounds["base"]
-    bu = bounds["build"]
-    p = bounds["peak"]
-    t = bounds["taper"]
-
-    if plan_duration == 20:
-        phases = [
-            ("Base 1", f"1-5", "base", f"Build aerobic foundation. All riding is Zone 1-2 with progressive volume increases. Strength is 2x/week. This phase feels easy &mdash; that's the point."),
-            ("Base 2", f"6-{b[1]}", "base", f"Introduce low-intensity intervals (tempo, G Spot). Volume continues to build. Strength transitions to maintenance. Long rides extend by 15-20 min/week."),
-            ("Build", f"{bu[0]}-{bu[1]}", "build", "Race-specific intensity. VO2max and threshold intervals. Long rides include race-pace efforts. This is where it gets hard. Fatigue is expected and managed through recovery weeks."),
-            ("Peak + Taper", f"{p[0]}-{t[1]}", "peak", f"Sharpen fitness. Reduce volume by 30-40%, maintain intensity. Race simulation rides. Final dress rehearsal in Week {p[0]}-{p[0]+1}. Taper begins 10-14 days before race."),
-        ]
-    elif plan_duration == 16:
-        phases = [
-            ("Base", f"{b[0]}-{b[1]}", "base", f"Build aerobic foundation. Progressive volume with Zone 1-2 riding. Strength 2x/week. {base_lr_desc}"),
-            ("Build", f"{bu[0]}-{bu[1]}", "build", "Race-specific intensity enters the picture. Threshold and VO2max intervals. Long rides add race-pace efforts. Manage fatigue with recovery weeks every 3rd week."),
-            ("Peak", f"{p[0]}-{p[1]}", "peak", "Maximum specificity. Race simulation rides. Dress rehearsal long ride. Intensity stays high, volume starts to drop."),
-            ("Taper", f"{t[0]}-{t[1]}", "taper", "Reduce volume 30-40%. Short sharp efforts to maintain top-end fitness. Rest is the priority. Trust the training. Arrive at the start line fresh."),
-        ]
-    else:
-        phases = [
-            ("Base", f"{b[0]}-{b[1]}", "base", f"Build aerobic foundation rapidly. Zone 2 focus with progressive volume. Strength 2x/week. {base_lr_desc if plan_duration <= 12 else 'Compressed timeline means every session counts.'}"),
-            ("Build", f"{bu[0]}-{bu[1]}", "build", "Jump into race-specific work. Threshold and VO2max intervals. Long rides with race-pace efforts. Higher intensity than a longer plan because there's less time."),
-            ("Peak", f"{p[0]}-{p[1]}", "peak", "Maximum specificity. Dress rehearsal ride. Race simulation intervals. Volume drops, intensity stays high."),
-            ("Taper", f"{t[0]}-{t[1]}", "taper", "Reduce volume 30-40%. Short sharp efforts. Rest and recovery. Arrive fresh."),
-        ]
+    # Coach review (Jun 2026): this section is GENERAL. No week numbers, no
+    # dates, no cadence claims — the plan calendar owns all of that. This
+    # explains what each phase is for so the athlete trusts the shape.
+    phases = [
+        ("Base", "base",
+         f"The foundation. Mostly easy aerobic riding with progressive volume, plus strength work. "
+         f"This phase feels too easy &mdash; that's the point. Aerobic base determines your ceiling; "
+         f"there is no shortcut around it. {base_lr_desc}"),
+        ("Build", "build",
+         "Race-specific intensity enters: threshold and VO2max intervals, long rides with race-pace "
+         "efforts. This is where it gets hard. Fatigue is expected &mdash; it's being managed "
+         "deliberately through the recovery weeks your plan schedules."),
+        ("Peak", "peak",
+         "Maximum specificity. Race-simulation rides, dress-rehearsal fueling, intensity stays high "
+         "while volume starts to drop. You should feel fitness arriving."),
+        ("Taper", "taper",
+         "Volume drops sharply; short, sharp efforts keep the engine awake. You cannot gain fitness "
+         "now &mdash; you can only show up fresh or show up tired. Trust the training and rest."),
+    ]
 
     phase_cards = []
-    for name, weeks, phase_type, desc in phases:
-        # Compute date range from week span if plan_start_date is available
-        date_label = ""
-        if plan_start_date and "-" in weeks:
-            parts = weeks.split("-")
-            try:
-                w_start, w_end = int(parts[0]), int(parts[-1])
-                date_label = f" ({_phase_date_range(plan_start_date, w_start, w_end)})"
-            except ValueError:
-                pass
+    for name, phase_type, desc in phases:
         phase_cards.append(f"""  <div class="data-card">
-    <div class="data-card__header"><span class="phase-indicator phase-indicator--{phase_type}">{name}</span> &mdash; WEEKS {weeks}{date_label}</div>
+    <div class="data-card__header"><span class="phase-indicator phase-indicator--{phase_type}">{name}</span></div>
     <div class="data-card__content">
       <p>{desc}</p>
     </div>
   </div>""")
 
-    return f"""<section id="section-7" class="gg-section">
-  <h2>7 &middot; Phase Progression</h2>
-  <p>Your {plan_duration}-week plan is divided into {len(phases)} phases. Each phase has a specific purpose.
-  Don't rush through base to get to the "hard stuff" &mdash; base fitness determines your ceiling.</p>
+    return f"""<section id="section-6" class="gg-section">
+  <h2>6 &middot; Phase Progression</h2>
+  <p>Your {plan_duration}-week plan moves through {len(phases)} phases, each with a specific purpose.
+  The exact week ranges are in your training calendar &mdash; what matters here is why each phase
+  exists, so you don't rush base to get to the "hard stuff." Base fitness determines your ceiling.</p>
 
 {''.join(phase_cards)}
 
   <div class="gg-module gg-tactical">
     <div class="gg-label">RECOVERY WEEKS</div>
-    <p>Every {recovery_week_cadence}{'rd' if recovery_week_cadence == 3 else 'th'} week is a recovery week &mdash; volume drops 30-40%, intensity drops to Zone 2 only.
-    These weeks are where adaptation happens. Skipping recovery weeks is the fastest path to
-    overtraining and stalled progress. They are not optional.</p>
+    <p>Your plan schedules regular recovery weeks &mdash; volume drops 30-40%, intensity drops to easy
+    riding only. These weeks are where adaptation actually happens. Skipping them is the fastest path
+    to overtraining and stalled progress. They are not optional.</p>
   </div>
 </section>"""
-
 
 def _parse_hours_range(hours_str: str):
     """Parse '5-7' or '10-12' into (lo, hi) floats. Returns (0, 0) on failure."""
@@ -1319,76 +1200,6 @@ def _scale_volume_hours(template_hrs: str, scale_factor: float) -> str:
     return f"{lo_s}-{hi_s}"
 
 
-def _section_week_by_week(template: Dict, plan_duration: int, plan_config: Dict, weekly_hours: str = "", ftp: Optional[int] = None, plan_start_date: str = ""):
-    weeks = template.get("weeks", [])
-    if not weeks:
-        return '<section id="section-8" class="gg-section"><h2>8 &middot; Week-by-Week Overview</h2><p>Week-by-week details will be provided with your ZWO workout files.</p></section>'
-
-    # Calculate scale factor: athlete's stated max hours / template's peak hours
-    athlete_lo, athlete_hi = _parse_hours_range(weekly_hours)
-    template_peak = 0
-    for w in weeks:
-        _, hi = _parse_hours_range(w.get("volume_hours", ""))
-        template_peak = max(template_peak, hi)
-    scale_factor = (athlete_hi / template_peak) if (athlete_hi > 0 and template_peak > 0) else 1.0
-
-    rows = []
-    for week in weeks:
-        wnum = week.get("week_number", 0)
-        focus = week.get("focus", "")
-        vol_pct = week.get("volume_percent", 100)
-        raw_hrs = week.get("volume_hours", "")
-        vol_hrs = _scale_volume_hours(raw_hrs, scale_factor) if scale_factor < 1.0 else raw_hrs
-        all_workouts = week.get("workouts", [])
-        # Count only training sessions, not rest/off days
-        workout_count = sum(1 for w in all_workouts if "rest" not in w.get("name", "").lower())
-
-        # Determine phase — uses shared boundaries for consistency
-        phase_label, phase_type = _week_phase(wnum, plan_duration)
-        # Override focus text that implies a different phase
-        focus = _sanitize_focus_for_phase(focus, phase_type)
-
-        ftp_weeks = plan_config.get("ftp_test_weeks", [])
-        # When FTP is not provided, Week 1 is the mandatory testing week
-        if ftp is None and wnum == 1 and 1 not in ftp_weeks:
-            ftp_weeks = [1] + ftp_weeks
-        ftp_marker = " [FTP TEST]" if wnum in ftp_weeks else ""
-
-        # Compute week date range (Mon-Sun) if plan_start_date available
-        date_col = ""
-        if plan_start_date:
-            w_mon = _week_to_date(plan_start_date, wnum)
-            w_sun = w_mon + timedelta(days=6)
-            date_col = f"<td>{w_mon.strftime('%b %-d')}&ndash;{w_sun.strftime('%b %-d')}</td>"
-
-        rows.append(
-            f'<tr><td><strong>W{wnum}</strong></td>'
-            f'{date_col}'
-            f'<td><span class="phase-indicator phase-indicator--{phase_type}">{phase_label}</span></td>'
-            f"<td>{focus}{ftp_marker}</td>"
-            f"<td>{vol_pct}%</td>"
-            f'<td>{vol_hrs if vol_hrs else "&mdash;"}</td>'
-            f"<td>{workout_count}</td></tr>"
-        )
-
-    rows_html = "\n".join(rows)
-
-    return f"""<section id="section-8" class="gg-section">
-  <h2>8 &middot; Week-by-Week Overview</h2>
-  <p>This is your {plan_duration}-week roadmap. Each week has a specific focus. Volume percentage
-  indicates training load relative to your peak week (100%).</p>
-
-  <div style="overflow-x: auto;">
-  <table>
-  <thead><tr><th>Week</th>{('<th>Dates</th>' if plan_start_date else '')}<th>Phase</th><th>Focus</th><th>Volume</th><th>Hours</th><th>Sessions</th></tr></thead>
-  <tbody>
-  {rows_html}
-  </tbody>
-  </table>
-  </div>
-</section>"""
-
-
 def _section_workout_execution(tier: str, ftp: Optional[int] = None):
     no_ftp_note = ""
     if ftp is None:
@@ -1399,8 +1210,8 @@ def _section_workout_execution(tier: str, ftp: Optional[int] = None):
   and all workout targets will calibrate automatically.</p></div>
 """
 
-    return f"""<section id="section-9" class="gg-section">
-  <h2>9 &middot; Workout Execution</h2>
+    return f"""<section id="section-7" class="gg-section">
+  <h2>7 &middot; Workout Execution</h2>
   {no_ftp_note}
   <h3>The Execution Gap</h3>
   <p><strong>The plan says:</strong> "4x4min at 110% FTP with 4min recovery."</p>
@@ -1497,8 +1308,8 @@ def _section_recovery_protocol(tier: str, profile: Dict):
     This is not weakness &mdash; it's smart resource management.</p>
   </div>"""
 
-    return f"""<section id="section-10" class="gg-section">
-  <h2>10 &middot; Recovery Protocol</h2>
+    return f"""<section id="section-8" class="gg-section">
+  <h2>8 &middot; Recovery Protocol</h2>
 
   <p>Adaptation happens during recovery, not during training. The workout is the stimulus.
   Recovery is where you actually get faster.</p>
@@ -1583,8 +1394,8 @@ def _section_equipment_checklist(profile: Dict, race_data: Dict):
     surface_hazards = race_data.get("race_specific", {}).get("surface_hazards", [])
     hazard_items = "\n".join(f"<li>{h}</li>" for h in surface_hazards) if surface_hazards else ""
 
-    return f"""<section id="section-11" class="gg-section">
-  <h2>11 &middot; Equipment Checklist</h2>
+    return f"""<section id="section-9" class="gg-section">
+  <h2>9 &middot; Equipment Checklist</h2>
 
   <h3>Training Equipment</h3>
 
@@ -1593,10 +1404,10 @@ def _section_equipment_checklist(profile: Dict, race_data: Dict):
     <div class="data-card__content">
       <ul>
         <li><strong>Bike</strong> &mdash; gravel or similar, in good working order</li>
-        <li><strong>Helmet</strong> &mdash; always, even on trainer</li>
+        <li><strong>Helmet</strong> &mdash; every outdoor ride, no exceptions</li>
         {'<li><strong>Indoor trainer</strong> &mdash; for interval sessions and bad weather days</li>' if has_trainer else ''}
-        <li><strong>Water bottles / hydration pack</strong> &mdash; minimum 2 bottles per ride</li>
-        <li><strong>Repair kit</strong> &mdash; spare tube, CO2, tire lever, multi-tool</li>
+        <li><strong>Water bottles / hydration pack</strong> &mdash; two bottles for anything over 90 minutes outdoors; one within reach on the trainer</li>
+        <li><strong>Repair kit (outdoor rides)</strong> &mdash; spare tube, CO2, tire lever, multi-tool</li>
       </ul>
     </div>
   </div>
@@ -1633,10 +1444,9 @@ def _section_equipment_checklist(profile: Dict, race_data: Dict):
 </section>"""
 
 
-def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict = None, plan_duration: int = 12, plan_start_date: str = ""):
+def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict = None, plan_duration: int = 12):
     if profile is None:
         profile = {}
-    phases = _get_phase_boundaries(plan_duration)
     mods = race_data.get("workout_modifications", {})
     fuel = mods.get("fueling", {})
 
@@ -1757,13 +1567,13 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
     pre_race_carbs = f"{round(weight_kg * 2)}-{round(weight_kg * 3)}g carbs" if weight_kg else "2-3g carbs per kg bodyweight"
     post_carbs = f"{round(weight_kg * 1)}-{round(weight_kg * 1.5)}g carbs" if weight_kg else "1-1.5g carbs per kg bodyweight"
 
-    return f"""<section id="section-12" class="gg-section">
-  <h2>12 &middot; Nutrition Strategy</h2>
+    return f"""<section id="section-10" class="gg-section">
+  <h2>10 &middot; Nutrition Strategy</h2>
 
   <p>You can have perfect training, a dialed bike, and excellent pacing strategy. None of it matters if
   you run out of fuel halfway through your race.</p>
-  <p>Nutrition determines ~8% of your race result. That's enough to separate finishing strong from
-  crawling to the line.</p>
+  <p>Fueling errors are the most common preventable cause of bad race days &mdash; the difference
+  between finishing strong and crawling to the line.</p>
 
   {aggressive_note}
   {personalized_html}
@@ -1886,7 +1696,7 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
   <thead><tr><th>Race Duration</th><th>Carbs/Hour</th><th>Fluid/Hour</th><th>Physiology</th></tr></thead>
   <tbody>
   <tr><td>2-4 hours</td><td>80-100g</td><td>600-800ml</td><td>High intensity, carbs are dominant fuel</td></tr>
-  <tr><td>4-8 hours</td><td>60-80g</td><td>700-900ml</td><td>Classic endurance range (Jeukendrup 2014)</td></tr>
+  <tr><td>4-8 hours</td><td>60-90g</td><td>700-900ml</td><td>Classic endurance range (Jeukendrup 2014); racing hard with a trained gut justifies the top end</td></tr>
   <tr><td>8-12 hours</td><td>50-70g</td><td>700-900ml</td><td>Fat oxidation increasing, GI risk climbing</td></tr>
   <tr><td>12-16 hours</td><td>40-60g</td><td>750-1000ml</td><td>Reverse crossover point &mdash; fat is primary fuel</td></tr>
   <tr><td>16+ hours</td><td>30-50g</td><td>750-1000ml</td><td>GI tolerance is the limiter, not energy</td></tr>
@@ -1916,10 +1726,10 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
   your gut won't tolerate eating during races. SGLT1 transporters double in ~2 weeks of
   training (GSSI), but full adaptation takes 6-12 weeks.</p>
   <ul>
-    <li><strong>Base Phase &mdash; Weeks {phases['base'][0]}-{phases['base'][1]}{f" ({_phase_date_range(plan_start_date, phases['base'][0], phases['base'][1])})" if plan_start_date else ""}:</strong> Practice eating real food on easy rides. 40-50g carbs/hour, mostly solid. Build tolerance gradually.</li>
-    <li><strong>Build Phase &mdash; Weeks {phases['build'][0]}-{phases['build'][1]}{f" ({_phase_date_range(plan_start_date, phases['build'][0], phases['build'][1])})" if plan_start_date else ""}:</strong> Increase to 60-70g carbs/hour. Mix liquids and solids. Practice eating at tempo pace.</li>
-    <li><strong>Peak Training &mdash; Weeks {phases['peak'][0]}-{phases['peak'][1]}{f" ({_phase_date_range(plan_start_date, phases['peak'][0], phases['peak'][1])})" if plan_start_date else ""}:</strong> Hit your race-day target. Race nutrition only (gels, drink, bars you'll use on race day). Practice at race pace.</li>
-    <li><strong>Race Week{f" ({_week_to_date(plan_start_date, phases['taper'][1]).strftime('%b %-d')})" if plan_start_date else ""}:</strong> Stick with what worked in training. No new products. Trust your gut (literally).</li>
+    <li><strong>Base phase:</strong> Practice eating real food on easy rides. 40-50g carbs/hour, mostly solid. Build tolerance gradually.</li>
+    <li><strong>Build phase:</strong> Increase to 60-70g carbs/hour. Mix liquids and solids. Practice eating at tempo pace.</li>
+    <li><strong>Peak phase:</strong> Hit your race-day target. Race nutrition only (gels, drink, bars you'll use on race day). Practice at race pace.</li>
+    <li><strong>Race week:</strong> Stick with what worked in training. No new products. Trust your gut (literally).</li>
   </ul>
 
   <h3>Race-Day Nutrition Execution</h3>
@@ -2030,8 +1840,8 @@ def _section_mental_preparation(race_data: Dict, race_distance, tier: str):
   </table>
   </div>"""
 
-    return f"""<section id="section-13" class="gg-section">
-  <h2>13 &middot; Mental Preparation</h2>
+    return f"""<section id="section-11" class="gg-section">
+  <h2>11 &middot; Mental Preparation</h2>
 
   <p>A {race_distance}-mile gravel race is as much a mental challenge as a physical one.
   Your body will want to quit before it needs to. Your brain will lie to you about how bad it is.
@@ -2091,81 +1901,28 @@ def _section_mental_preparation(race_data: Dict, race_distance, tier: str):
 
 
 def _section_race_week(race_data: Dict, tier: str, race_name: str, derived: Dict = None):
-    # Determine race day from actual race date
-    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    race_day_name = "Saturday"  # fallback
-    if derived:
-        race_date_str = derived.get("race_date", "")
-        if race_date_str:
-            try:
-                race_date = datetime.strptime(str(race_date_str), "%Y-%m-%d")
-                race_day_name = race_date.strftime("%A")
-            except (ValueError, TypeError):
-                pass
-
-    # Build race week schedule relative to race day
-    # Protocol: countdown from race day
-    race_day_idx = day_names.index(race_day_name)
-    schedule = {}
-    for offset in range(-6, 1):  # -6 days to race day
-        day_idx = (race_day_idx + offset) % 7
-        day = day_names[day_idx]
-        if offset == 0:
-            schedule[day] = ("race", "", "")
-        elif offset == -1:
-            schedule[day] = ("REST", "Pre-race dinner: familiar, carb-rich", "Course recon if possible, lay out everything")
-        elif offset == -2:
-            schedule[day] = ("20 min easy with 2x20sec openers", "Carb loading continues", "Travel if needed")
-        elif offset == -3:
-            schedule[day] = ("REST or 20 min easy spin", "Carb-rich meals, extra sodium", "Pack race bag")
-        elif offset == -4:
-            schedule[day] = ("30 min with 3x30sec openers", "Begin carb loading", "Finalize nutrition plan")
-        elif offset == -5:
-            schedule[day] = ("Easy spin 30-45 min, Zone 1", "Normal eating, well hydrated", "Lay out race gear, check bike")
-        elif offset == -6:
-            schedule[day] = ("Easy spin 30-45 min, Zone 1", "Normal eating, well hydrated", "Review plan, mental rehearsal")
-
-    # Build rows in chronological countdown order (Day -6 through Race Day, then Recovery)
-    rows = []
-    for offset in range(-6, 1):
-        day_idx = (race_day_idx + offset) % 7
-        day = day_names[day_idx]
-        entry = schedule.get(day, ("REST", "", ""))
-        countdown = f"Day {offset}" if offset < 0 else "Race Day"
-        if entry[0] == "race":
-            rows.append(f'<tr class="race-day-row"><td><strong>{countdown}</strong></td><td><strong>{day}</strong></td>'
-                        f'<td colspan="3"><strong>RACE DAY: {race_name}</strong> &mdash; see Race Day section below</td></tr>')
-        else:
-            rows.append(f'<tr><td>{countdown}</td><td><strong>{day}</strong></td><td>{entry[0]}</td>'
-                        f'<td>{entry[1]}</td><td>{entry[2]}</td></tr>')
-
-    # Recovery day is always the last row
-    recovery_day_idx = (race_day_idx + 1) % 7
-    recovery_day = day_names[recovery_day_idx]
-    rows.append(f'<tr><td>Day +1</td><td><strong>{recovery_day}</strong></td><td>Easy spin or rest</td>'
-                f'<td>Celebrate. You earned it.</td><td>Recovery begins</td></tr>')
-
-    rows_html = "\n  ".join(rows)
-
-    return f"""<section id="section-14" class="gg-section">
-  <h2>14 &middot; Race Week</h2>
+    # Coach review (Jun 2026): NO day-by-day race-week schedule here — the
+    # taper schedule lives in the training plan. This section is the
+    # checklist and the principles.
+    return f"""<section id="section-12" class="gg-section">
+  <h2>12 &middot; Race Week</h2>
 
   <p>Race week is about arriving at the start line fresh, confident, and prepared.
-  You cannot gain fitness in the last week. You CAN lose it by doing too much.</p>
+  You cannot gain fitness in the last week. You CAN lose it by doing too much.
+  Your plan has the taper schedule &mdash; follow it. The principles below are what the
+  schedule is protecting.</p>
 
-  <h3>Race Week Schedule</h3>
-  <div style="overflow-x: auto;">
-  <table>
-  <thead><tr><th>Countdown</th><th>Day</th><th>Training</th><th>Nutrition</th><th>Other</th></tr></thead>
-  <tbody>
-  {rows_html}
-  </tbody>
-  </table>
-  </div>
+  <h3>Race Week Principles</h3>
+  <ul>
+  <li><strong>No fitness tests.</strong> The urge to "check the legs" with one more hard effort spends race-day matches. Heavy legs mid-week are the taper working, not fitness leaving.</li>
+  <li><strong>Nothing new.</strong> No new equipment, food, or routines. Race week is execution, not experimentation.</li>
+  <li><strong>Front-load the logistics.</strong> Bike serviced, gear laid out, and bags packed early in the week &mdash; the night before is for sleeping, not wrenching.</li>
+  <li><strong>Sleep is cumulative.</strong> Bank 8-9 hours per night all week. The night before the race is usually bad for everyone &mdash; it also matters least if the week was good.</li>
+  </ul>
 
   <h3>Pre-Race Checklist</h3>
   <ul>
-  <li>Bike serviced and in race-ready condition (do this by Wednesday, not Friday)</li>
+  <li>Bike serviced and in race-ready condition (do this by mid-week, not the night before)</li>
   <li>Tire pressure set for conditions (lower for gravel: 30-40 PSI depending on tire width)</li>
   <li>Nutrition packed and tested (same brands/products used in training)</li>
   <li>Bottles filled with your tested hydration mix</li>
@@ -2184,7 +1941,6 @@ def _section_race_week(race_data: Dict, tier: str, race_name: str, derived: Dict
     Rice, pasta, bread, potatoes, fruit. Reduce fiber and fat intake to avoid GI issues.</p>
   </div>
 </section>"""
-
 
 def _section_race_day(race_data: Dict, tier: str, race_distance, race_name: str, weekly_hours: str = ""):
     dr_hours = race_data.get("dress_rehearsal_hours", {})
@@ -2225,8 +1981,8 @@ If something fails in the dress rehearsal, fix it before race day.</p></div>"""
         decision_cards.append(f'  <div class="data-card"><div class="data-card__header">IF: {label.upper()}</div><div class="data-card__content"><p>{action}</p></div></div>')
     decision_html = "\n".join(decision_cards) if decision_cards else ""
 
-    return f"""<section id="section-15" class="gg-section">
-  <h2>15 &middot; Race Day</h2>
+    return f"""<section id="section-13" class="gg-section">
+  <h2>13 &middot; Race Day</h2>
 
   {dr_html}
 
@@ -2285,8 +2041,8 @@ def _section_gravel_skills(race_data: Dict) -> str:
         hazard_html = f"""<h3>Course-Specific Surface Hazards</h3>
   <ul>{items}</ul>"""
 
-    return f"""<section id="section-16" class="gg-section">
-  <h2>16 &middot; Gravel Skills</h2>
+    return f"""<section id="section-14" class="gg-section">
+  <h2>14 &middot; Gravel Skills</h2>
 
   <p>Gravel racing rewards skill as much as fitness. A technically proficient rider at 3.5 W/kg
   will beat a 4.0 W/kg rider who can't handle loose corners or descents. These skills are
@@ -2300,7 +2056,7 @@ def _section_gravel_skills(race_data: Dict) -> str:
       <p>On loose gravel, your front tire has less grip than on pavement. To corner safely:</p>
       <ul>
         <li>Drop your outside foot to 6 o'clock position</li>
-        <li>Press weight through outside pedal and inside hand</li>
+        <li>Load the outside pedal &mdash; it does 60-70% of the work. Hands stay quiet; the inside hand should feel almost empty</li>
         <li>Keep the bike more upright than you would on pavement</li>
         <li>Look where you want to go &mdash; not at the obstacle you want to avoid</li>
       </ul>
@@ -2314,7 +2070,7 @@ def _section_gravel_skills(race_data: Dict) -> str:
       <ul>
         <li>Brake early and progressively &mdash; no grabbing</li>
         <li>Release brakes before the apex</li>
-        <li>Use both brakes (70% front, 30% rear on hardpack; 50/50 on loose)</li>
+        <li>Use both brakes &mdash; roughly 70/30 front-to-rear on hardpack, 65/35 on loose gravel; only mud and deep sand approach 50/50</li>
         <li>If the rear slides, do NOT grab the front brake</li>
       </ul>
     </div>
@@ -2498,7 +2254,7 @@ def _section_gravel_skills(race_data: Dict) -> str:
 
 
 
-def _section_masters_training(profile: Dict, derived: Dict, section_num: int = 19) -> str:
+def _section_masters_training(profile: Dict, derived: Dict, section_num: int = 17) -> str:
     """Masters training — conditional on age >= 40.
     Content sourced from gravel-plans-experimental Compete Masters template
     and existing masters plan guides. Section number is dynamic."""
@@ -2648,7 +2404,7 @@ def _section_masters_training(profile: Dict, derived: Dict, section_num: int = 1
 </section>"""
 
 
-def _section_altitude_training(race_data: Dict, race_name: str, elevation, section_num: int = 17) -> str:
+def _section_altitude_training(race_data: Dict, race_name: str, elevation, section_num: int = 15) -> str:
     """Altitude training — conditional on elevation > 5000ft. Section number is dynamic."""
     meta = race_data.get("race_metadata", {})
     start_elev = meta.get("start_elevation_feet", 0) or 0
@@ -2764,7 +2520,7 @@ def _section_altitude_training(race_data: Dict, race_name: str, elevation, secti
 </section>"""
 
 
-def _section_women_specific(profile: Dict, race_data: Dict, race_name: str, section_num: int = 18) -> str:
+def _section_women_specific(profile: Dict, race_data: Dict, race_name: str, section_num: int = 16) -> str:
     """Women-specific training considerations — conditional on sex == female. Section number is dynamic."""
     demo = profile.get("demographics", {})
     weight_lbs = demo.get("weight_lbs", "")
@@ -3370,10 +3126,11 @@ footer.guide-footer {
   }
   .stats-grid { break-inside: avoid; }
 
-  /* Headings stay with their content; major sections start clean */
+  /* Headings stay with their content. Sections flow naturally — forcing
+     every h2 onto a new page left half-empty pages between sections. */
   h2, h3, h4 { break-after: avoid; page-break-after: avoid; }
-  h2 { break-before: page; page-break-before: always; font-size: 16pt; }
-  .gg-section:first-of-type h2, header.guide-header + * h2 { break-before: auto; page-break-before: auto; }
+  h2 { font-size: 16pt; margin-top: 28pt; }
+  .gg-section { margin-top: 18pt; }
 
   /* Tables: full width, readable, headers never wrap letter-by-letter */
   table { width: 100%; font-size: 9pt; }
@@ -3752,17 +3509,10 @@ def generate_training_guide(athlete_id: str, output_path=None):
     )
 
     # ── Post-process: inject coaching-pipeline-specific sections ──
+    import re
 
-    # 1. Replace step_07's section 8 fallback with real ATP table
-    atp_html = _build_atp_table(athlete_dir, plan_dates)
-    if atp_html:
-        import re
-        # Remove the fallback "Week-by-week details will be provided" text
-        html = re.sub(
-            r'<section id="section-8"[^>]*>.*?</section>',
-            f'<section id="section-8">{atp_html}</section>',
-            html, count=1, flags=re.DOTALL
-        )
+    # ATP/week-by-week table injection REMOVED per coach review (Jun 2026):
+    # the schedule lives in the training plan, not the guide. Do not re-add.
 
     # 2. Inject Goals & Blindspots AFTER section 1 (Training Plan Brief)
     goals_html = _build_goals_section(profile)
@@ -3774,14 +3524,16 @@ def generate_training_guide(athlete_id: str, output_path=None):
             html = html.replace('<section id="section-2"',
                                f'{goals_html}\n\n<section id="section-2"', 1)
 
-    # 3. Replace step_07's nutrition section with our fueling.yaml data
+    # 3. Inject personalized fueling.yaml targets INTO the nutrition section
+    # (section-10). Previously this REPLACED the entire science-rich section
+    # with a 3-stat card — customers lost the fueling framework. Now the
+    # personalized card leads and the framework follows.
     nutrition_html = _build_nutrition_section(fueling, profile)
     if nutrition_html and fueling:
-        html = re.sub(
-            r'<section id="section-12"[^>]*>.*?</section>',
-            f'<section id="section-12">{nutrition_html}</section>',
-            html, count=1, flags=re.DOTALL
-        )
+        nutrition_anchor = '<h2>10 &middot; Nutrition Strategy</h2>'
+        if nutrition_anchor in html:
+            html = html.replace(nutrition_anchor,
+                                f'{nutrition_anchor}\n{nutrition_html}', 1)
 
     # Clean up redundant distance in titles (e.g., "Unbound Gravel 200 200mi")
     rd = derived.get('race_distance_miles', 0)
@@ -3795,102 +3547,6 @@ def generate_training_guide(athlete_id: str, output_path=None):
 
     output_path.write_text(html, encoding='utf-8')
     return output_path
-
-
-def _build_atp_table(athlete_dir, plan_dates) -> str:
-    """Build week-by-week reference table from ZWO filenames."""
-    from pathlib import Path
-    workouts_dir = athlete_dir / 'workouts'
-    if not workouts_dir.exists() or not plan_dates:
-        return ''
-
-    weeks = plan_dates.get('weeks', [])
-    if not weeks:
-        return ''
-
-    # Build lookup: W01_Mon → workout type
-    workout_lookup = {}
-    for f in workouts_dir.glob('*.zwo'):
-        parts = f.stem.split('_', 3)
-        if len(parts) >= 4:
-            key = f'{parts[0]}_{parts[1]}'
-            workout_type = parts[3].replace('_', ' ')
-            # Keep cycling workout (not strength) as the displayed one
-            if 'Strength' not in workout_type:
-                workout_lookup[key] = workout_type
-
-    day_abbrevs = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-
-    rows = ''
-    for week in weeks:
-        w_num = week['week']
-        w_phase = week.get('phase', '?')
-        w_monday = week.get('monday_short', '')
-        w_sunday = week.get('sunday_short', '')
-        w_key = f'W{w_num:02d}'
-
-        day_cells = ''
-        for day_abbr in day_abbrevs:
-            lookup_key = f'{w_key}_{day_abbr}'
-            workout = workout_lookup.get(lookup_key, '')
-
-            short = workout
-            if 'RACE DAY' in short: short = '<strong>RACE</strong>'
-            elif short == 'Long Ride': short = 'Long'
-            elif short == 'Endurance': short = 'End'
-            elif short == 'FTP Test': short = 'FTP'
-            elif 'Threshold' in short: short = 'Thresh'
-            elif 'VO2max' in short: short = 'VO2'
-            elif 'Blended' in short: short = 'Blended'
-            elif 'Race Simulation' in short: short = 'RaceSim'
-            elif short == '': short = '<span style="color:#999">OFF</span>'
-
-            cell_style = ''
-            if 'RACE' in workout: cell_style = ' style="background:#59473c;color:#fff;font-weight:700"'
-            elif any(k in workout for k in ['VO2max','Threshold','Race Sim','Blended','Anaerobic','Sprint']): cell_style = ' style="font-weight:600"'
-            elif workout == 'Openers': cell_style = ' style="font-style:italic"'
-
-            day_cells += f'<td{cell_style}>{short}</td>'
-
-        phase_colors = {'base':'#B7950B','build':'#1A8A82','peak':'#c0392b','taper':'#8c7568','race':'#59473c'}
-        phase_bg = phase_colors.get(w_phase, '#999')
-        phase_badge = f'<span style="display:inline-block;padding:2px 6px;font-size:10px;background:{phase_bg};color:#fff;font-family:Sometype Mono,monospace;text-transform:uppercase">{w_phase}</span>'
-
-        rows += f'''
-            <tr>
-                <td><strong>{w_key}</strong></td>
-                <td>{w_monday}-{w_sunday}</td>
-                <td>{phase_badge}</td>
-                {day_cells}
-            </tr>'''
-
-    return f'''
-    <section style="margin:40px 0">
-      <h2 style="font-family:'Sometype Mono',monospace;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#59473c;border-bottom:2px solid #59473c;padding-bottom:8px">
-        Week-by-Week Reference
-      </h2>
-      <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;font-size:12px;font-family:'Sometype Mono',monospace">
-          <thead>
-            <tr style="border-bottom:2px solid #59473c">
-              <th style="text-align:left;padding:6px 4px">WK</th>
-              <th style="text-align:left;padding:6px 4px">DATES</th>
-              <th style="text-align:left;padding:6px 4px">PHASE</th>
-              <th style="padding:6px 4px">M</th><th style="padding:6px 4px">T</th>
-              <th style="padding:6px 4px">W</th><th style="padding:6px 4px">T</th>
-              <th style="padding:6px 4px">F</th><th style="padding:6px 4px">S</th>
-              <th style="padding:6px 4px">S</th>
-            </tr>
-          </thead>
-          <tbody>{rows}
-          </tbody>
-        </table>
-      </div>
-      <p style="font-size:11px;color:#888;margin-top:8px">
-        <strong>Key:</strong> End = Endurance (Z2) | Thresh = Threshold | VO2 = VO2max intervals |
-        RaceSim = Race Simulation | Blended = Multi-system | OFF = Rest Day
-      </p>
-    </section>'''
 
 
 def _build_goals_section(profile) -> str:
@@ -3945,10 +3601,10 @@ def _build_nutrition_section(fueling, profile) -> str:
     range_str = f"{hourly_range[0]}-{hourly_range[1]}g/hr" if len(hourly_range) == 2 else f"{hourly}g/hr"
 
     return f'''
-    <section style="margin:40px 0">
-      <h2 style="font-family:'Sometype Mono',monospace;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#59473c;border-bottom:2px solid #59473c;padding-bottom:8px">
-        Your Nutrition Targets
-      </h2>
+    <div style="margin:24px 0">
+      <h3 style="font-family:'Sometype Mono',monospace;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#59473c;border-bottom:2px solid #59473c;padding-bottom:8px">
+        Your Personalized Targets
+      </h3>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0">
         <div style="padding:20px;background:#fff;border:2px solid #59473c">
@@ -3966,7 +3622,7 @@ def _build_nutrition_section(fueling, profile) -> str:
         <strong>Hydration:</strong> {hydration.get('target_ml_per_hour', 600)}ml/hr with {hydration.get('electrolytes', '500-1000mg sodium/hr')}<br>
         <strong>Pre-race meal:</strong> 3-4 hours before start, high carb, moderate protein, low fat/fiber
       </div>
-    </section>'''
+    </div>'''
 
 
 # ── Entry point when called as script ──
