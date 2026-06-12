@@ -48,7 +48,6 @@ class TestRequiredSections:
     def test_all_present(self):
         html = """
         <h2>Training Plan Brief</h2>
-        <h2>Race Profile</h2>
         <h2>Training Zones</h2>
         <h2>Phase Progression</h2>
         <h2>Nutrition Strategy</h2>
@@ -62,7 +61,7 @@ class TestRequiredSections:
         html = "<h2>Training Plan Brief</h2><h2>Training Zones</h2>"
         issues = check_required_sections(html)
         assert len(issues) > 0
-        assert any('Race Profile' in i for i in issues)
+        assert any('Phase Progression' in i for i in issues)
 
 
 class TestPlaceholders:

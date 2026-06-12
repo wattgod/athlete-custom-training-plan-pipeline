@@ -55,7 +55,6 @@ def check_guide_slop(html_content: str) -> list:
 # sections — validating against those produced permanent false warnings.
 REQUIRED_SECTIONS = [
     'Training Plan Brief',
-    'Race Profile',
     'Training Zones',
     'Phase Progression',
     'Nutrition',

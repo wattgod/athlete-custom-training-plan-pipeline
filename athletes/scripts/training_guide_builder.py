@@ -151,7 +151,6 @@ def _estimate_race_hours(distance_miles: float, elevation_ft: float, tier: str) 
 # review (Jun 2026) — do not re-add. Schedule content lives in the plan.
 REQUIRED_SECTIONS = [
     "training plan brief",
-    "race profile",
     "training zones",
     "how adaptation works",
     "weekly structure",
@@ -236,7 +235,6 @@ def _build_section_titles(profile: Dict, race_data: Dict):
     """Build section titles with sequential numbering (no ID gaps)."""
     titles = [
         "Training Plan Brief",
-        "Race Profile",
         "Training Zones",
         "How Adaptation Works",
         "Weekly Structure",
@@ -357,38 +355,19 @@ def _build_full_guide(
     lr_ceiling = max_weekly * 0.4 if max_weekly > 0 else 0
     ride_realism = (lr_ceiling / est_race_hrs) if est_race_hrs > 0 else 1.0
 
-    # Radar data
-    radar_data = {
-        "elevation": _terrain_score(race_data),
-        "length": _length_score(race_distance),
-        "technical": {"easy": 1, "moderate": 3, "hard": 4, "extreme": 5}.get(
-            race_chars.get("technical_difficulty", "moderate"), 3
-        ),
-        "climate": {"cool": 1, "mild": 2, "warm": 3, "hot": 4, "extreme": 5}.get(
-            race_chars.get("climate", "mild"), 2
-        ),
-        "altitude": {"low": 1, "moderate": 2, "moderate_high": 3, "high": 4, "extreme": 5}.get(
-            race_chars.get("altitude_category", "low"), 1
-        ),
-        "adventure": 4,
-    }
-    radar_svg = _generate_radar_svg(radar_data)
-
     # Build all sections
     sections = []
 
     # 1. Training Plan Brief (hardcoded from questionnaire)
     sections.append(_section_training_plan_brief(
         athlete_name, race_name, race_distance, tier, tier_display,
-        level_display, plan_duration, profile, derived, schedule, plan_config
+        level_display, plan_duration, profile, derived, schedule, plan_config,
+        date_xref=date_xref or {},
     ))
 
-    # 2. Race Profile
-    sections.append(_section_race_profile(
-        race_name, race_distance, elevation, location,
-        tier, level_display, plan_duration, radar_svg, race_data,
-        derived=derived, date_xref=date_xref or {},
-    ))
+    # Race Profile section REMOVED per coach review (Jun 2026) — it mostly
+    # restated the cover badges and rendered default-built radar charts.
+    # The date-verification card moved into section 1.
 
     # 3-14. Core sections.
     # REMOVED per coach review (Jun 2026): Non-Negotiables (pointless),
@@ -409,7 +388,7 @@ def _build_full_guide(
 
     # Conditional sections — uses shared trigger logic (no duplication)
     triggers = _conditional_triggers(profile, race_data)
-    next_section = 15  # first conditional is always after section 14
+    next_section = 14  # first conditional is always after section 13
     if triggers["altitude"]:
         sections.append(_section_altitude_training(race_data, race_name, elevation, section_num=next_section))
         next_section += 1
@@ -489,7 +468,8 @@ def _build_full_guide(
 
 def _section_training_plan_brief(
     athlete_name, race_name, race_distance, tier, tier_display,
-    level_display, plan_duration, profile, derived, schedule, plan_config
+    level_display, plan_duration, profile, derived, schedule, plan_config,
+    date_xref=None,
 ):
     """Section 1: Hardcoded athlete-specific overview from questionnaire data."""
     demo = profile.get("demographics", {})
@@ -547,17 +527,6 @@ def _section_training_plan_brief(
             "maximizing time in saddle; intensity quality and nutrition "
             "rehearsal compensate for volume"
         )
-
-    # Intensity distribution table
-    intensity_rows = []
-    for zone, pct, purpose in meth["intensity"]:
-        intensity_rows.append(f"<tr><td><strong>{zone}</strong></td><td>{pct}</td><td>{purpose}</td></tr>")
-    intensity_html = "\n    ".join(intensity_rows)
-
-    # Format key workouts with computed long ride target
-    formatted_workouts = [w.format(long_ride_target=long_ride_target) if "{long_ride_target}" in w else w
-                          for w in meth["key_workouts"]]
-    key_workouts = "\n    ".join(f"<li>{w}</li>" for w in formatted_workouts)
 
     # Training calendar with actual dates — uses plan_start_date from derived (single source of truth)
     plan_start_str = derived.get("plan_start_date", "")
@@ -620,6 +589,7 @@ def _section_training_plan_brief(
     # Day-by-day schedule table removed per coach review (Jun 2026) — the
     # plan calendar owns the schedule; the brief shows only the shape
     days_info = schedule.get("days", {})
+    date_card = _date_verification_card(derived, date_xref or {})
 
     return f"""<section id="section-1" class="gg-section">
   <h2>1 &middot; Training Plan Brief</h2>
@@ -656,6 +626,8 @@ def _section_training_plan_brief(
     </div>
   </div>
 
+{date_card}
+
   <div class="data-card">
     <div class="data-card__header">YOUR WEEK, AT A GLANCE</div>
     <div class="data-card__content">
@@ -684,21 +656,6 @@ def _section_training_plan_brief(
     </div>
   </div>
 
-  <h3>Intensity Distribution</h3>
-  <div style="overflow-x: auto;">
-  <table>
-  <thead><tr><th>Zone</th><th>% of Training</th><th>Purpose</th></tr></thead>
-  <tbody>
-  {intensity_html}
-  </tbody>
-  </table>
-  </div>
-
-  <h3>Key Workouts in This Plan</h3>
-  <ul>
-  {key_workouts}
-  </ul>
-
   <h3>Progression Style</h3>
   <p>{meth['progression']}</p>
 
@@ -713,18 +670,10 @@ def _section_training_plan_brief(
 </section>"""
 
 
-def _section_race_profile(race_name, race_distance, elevation, location,
-                          tier, level_display, plan_duration, radar_svg, race_data,
-                          derived=None, date_xref=None):
-    meth = TIER_METHODOLOGY.get(tier, TIER_METHODOLOGY["finisher"])
-    race_chars = race_data.get("race_characteristics", {})
-    terrain = race_chars.get("terrain", "gravel").replace("_", " ").title()
-    climate = race_chars.get("climate", "").title()
-    duration_est = race_data.get("duration_estimate", "")
-
-    hooks = race_data.get("race_hooks", {})
-    hook_text = hooks.get("punchy", "") if isinstance(hooks, dict) else ""
-
+def _date_verification_card(derived, date_xref) -> str:
+    """Race-date verification card — lives in section 1 since the Race
+    Profile section was removed per coach review (Jun 2026). A wrong
+    race date wrecks the taper; this stays."""
     # Build race date verification callout
     date_verification_html = ""
     if derived:
@@ -778,62 +727,7 @@ def _section_race_profile(race_name, race_distance, elevation, location,
             except ValueError:
                 pass
 
-    # Coach review (Jun 2026): only show what we actually know. Empty rows,
-    # placeholder dashes, and a radar chart built from defaults erode trust
-    # in the data we DO have.
-    has_race_intel = bool(race_data.get("race_characteristics") or race_data.get("race_metadata"))
-
-    stat_cards = []
-    if race_distance:
-        stat_cards.append(f'<div class="stat-card"><div class="stat-card__value">{race_distance}</div><div class="stat-card__label">Miles</div></div>')
-    if elevation:
-        stat_cards.append(f'<div class="stat-card"><div class="stat-card__value">{int(float(elevation)):,} ft</div><div class="stat-card__label">Climbing</div></div>')
-    stat_cards.append(f'<div class="stat-card"><div class="stat-card__value">{plan_duration}</div><div class="stat-card__label">Weeks</div></div>')
-    stats_html = '<div class="stats-grid">' + ''.join(stat_cards) + '</div>'
-
-    detail_pairs = [
-        ("Race", _race_display(race_name, race_distance)),
-        ("Location", location),
-        ("Terrain", terrain if has_race_intel else ""),
-        ("Climate", climate),
-        ("Methodology", f"{meth['name']} ({level_display} level)"),
-        ("Expected Duration", duration_est),
-    ]
-    detail_rows = "\n".join(
-        f"          <tr><td><strong>{k}</strong></td><td>{v}</td></tr>"
-        for k, v in detail_pairs if v and str(v).strip()
-    )
-
-    radar_html = (f'<div style="text-align: center; margin: 24px 0;">\n{radar_svg}\n  </div>'
-                  if has_race_intel else "")
-    no_intel_note = ("" if has_race_intel else
-                     '<p>We don\'t have database intel on this race yet, so this guide leans on '
-                     'the details from your questionnaire. If you learn specifics about the course '
-                     '&mdash; surface, climbing, aid stations &mdash; reply to your delivery email '
-                     'and we\'ll factor them in.</p>')
-
-    return f"""<section id="section-2" class="gg-section">
-  <h2>2 &middot; Race Profile</h2>
-
-{f'<div class="gg-module gg-alert"><div class="gg-label">RACE HOOK</div><p>{hook_text}</p></div>' if hook_text else ''}
-
-  {stats_html}
-
-  <div class="data-card">
-    <div class="data-card__header">RACE DETAILS</div>
-    <div class="data-card__content">
-      <table>
-        <tbody>
-{detail_rows}
-        </tbody>
-      </table>
-    </div>
-  </div>
-{date_verification_html}
-{radar_html}
-{no_intel_note}
-</section>"""
-
+    return date_verification_html
 
 def _section_training_zones(ftp: Optional[int], tier: str):
     zone_data = [
@@ -880,8 +774,8 @@ If you use Zwift, TrainerRoad, or a Garmin &mdash; update your FTP setting immed
 
     rows_html = "\n".join(power_rows)
 
-    return f"""<section id="section-3" class="gg-section">
-  <h2>3 &middot; Training Zones</h2>
+    return f"""<section id="section-2" class="gg-section">
+  <h2>2 &middot; Training Zones</h2>
 
   <h3>The Point of Zones</h3>
   <p>Training zones aren't arbitrary numbers. Each zone targets a specific physiological system.
@@ -936,8 +830,8 @@ If you use Zwift, TrainerRoad, or a Garmin &mdash; update your FTP setting immed
 
 
 def _section_adaptation():
-    return """<section id="section-4" class="gg-section">
-  <h2>4 &middot; How Adaptation Works</h2>
+    return """<section id="section-3" class="gg-section">
+  <h2>3 &middot; How Adaptation Works</h2>
 
   <p>Every workout in this plan exists for a reason. Understanding the adaptation model
   helps you make smart decisions when life disrupts the plan.</p>
@@ -1064,8 +958,8 @@ def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: s
     # Coach review (Jun 2026): NO day-by-day schedule table here. The
     # schedule lives in the training plan; this section explains the ROLE
     # of each session type so the athlete understands what they're doing.
-    return f"""<section id="section-5" class="gg-section">
-  <h2>5 &middot; Weekly Structure</h2>
+    return f"""<section id="section-4" class="gg-section">
+  <h2>4 &middot; Weekly Structure</h2>
 
   <p>Every week of your plan is built from the same four ingredients: a long ride, interval sessions,
   easy rides, and strength work. Your plan places them on specific days &mdash; follow the calendar.
@@ -1161,8 +1055,8 @@ def _section_phase_progression(plan_duration: int, tier: str, ride_realism: floa
     </div>
   </div>""")
 
-    return f"""<section id="section-6" class="gg-section">
-  <h2>6 &middot; Phase Progression</h2>
+    return f"""<section id="section-5" class="gg-section">
+  <h2>5 &middot; Phase Progression</h2>
   <p>Your {plan_duration}-week plan moves through {len(phases)} phases, each with a specific purpose.
   The exact week ranges are in your training calendar &mdash; what matters here is why each phase
   exists, so you don't rush base to get to the "hard stuff." Base fitness determines your ceiling.</p>
@@ -1220,8 +1114,8 @@ def _section_workout_execution(tier: str, ftp: Optional[int] = None):
   and all workout targets will calibrate automatically.</p></div>
 """
 
-    return f"""<section id="section-7" class="gg-section">
-  <h2>7 &middot; Workout Execution</h2>
+    return f"""<section id="section-6" class="gg-section">
+  <h2>6 &middot; Workout Execution</h2>
   {no_ftp_note}
   <h3>The Execution Gap</h3>
   <p><strong>The plan says:</strong> "4x4min at 110% FTP with 4min recovery."</p>
@@ -1318,8 +1212,8 @@ def _section_recovery_protocol(tier: str, profile: Dict):
     This is not weakness &mdash; it's smart resource management.</p>
   </div>"""
 
-    return f"""<section id="section-8" class="gg-section">
-  <h2>8 &middot; Recovery Protocol</h2>
+    return f"""<section id="section-7" class="gg-section">
+  <h2>7 &middot; Recovery Protocol</h2>
 
   <p>Adaptation happens during recovery, not during training. The workout is the stimulus.
   Recovery is where you actually get faster.</p>
@@ -1404,8 +1298,8 @@ def _section_equipment_checklist(profile: Dict, race_data: Dict):
     surface_hazards = race_data.get("race_specific", {}).get("surface_hazards", [])
     hazard_items = "\n".join(f"<li>{h}</li>" for h in surface_hazards) if surface_hazards else ""
 
-    return f"""<section id="section-9" class="gg-section">
-  <h2>9 &middot; Equipment Checklist</h2>
+    return f"""<section id="section-8" class="gg-section">
+  <h2>8 &middot; Equipment Checklist</h2>
 
   <h3>Training Equipment</h3>
 
@@ -1577,8 +1471,8 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
     pre_race_carbs = f"{round(weight_kg * 2)}-{round(weight_kg * 3)}g carbs" if weight_kg else "2-3g carbs per kg bodyweight"
     post_carbs = f"{round(weight_kg * 1)}-{round(weight_kg * 1.5)}g carbs" if weight_kg else "1-1.5g carbs per kg bodyweight"
 
-    return f"""<section id="section-10" class="gg-section">
-  <h2>10 &middot; Nutrition Strategy</h2>
+    return f"""<section id="section-9" class="gg-section">
+  <h2>9 &middot; Nutrition Strategy</h2>
 
   <p>You can have perfect training, a dialed bike, and excellent pacing strategy. None of it matters if
   you run out of fuel halfway through your race.</p>
@@ -1850,8 +1744,8 @@ def _section_mental_preparation(race_data: Dict, race_distance, tier: str):
   </table>
   </div>"""
 
-    return f"""<section id="section-11" class="gg-section">
-  <h2>11 &middot; Mental Preparation</h2>
+    return f"""<section id="section-10" class="gg-section">
+  <h2>10 &middot; Mental Preparation</h2>
 
   <p>A {race_distance}-mile gravel race is as much a mental challenge as a physical one.
   Your body will want to quit before it needs to. Your brain will lie to you about how bad it is.
@@ -1914,8 +1808,8 @@ def _section_race_week(race_data: Dict, tier: str, race_name: str, derived: Dict
     # Coach review (Jun 2026): NO day-by-day race-week schedule here — the
     # taper schedule lives in the training plan. This section is the
     # checklist and the principles.
-    return f"""<section id="section-12" class="gg-section">
-  <h2>12 &middot; Race Week</h2>
+    return f"""<section id="section-11" class="gg-section">
+  <h2>11 &middot; Race Week</h2>
 
   <p>Race week is about arriving at the start line fresh, confident, and prepared.
   You cannot gain fitness in the last week. You CAN lose it by doing too much.
@@ -1991,8 +1885,8 @@ If something fails in the dress rehearsal, fix it before race day.</p></div>"""
         decision_cards.append(f'  <div class="data-card"><div class="data-card__header">IF: {label.upper()}</div><div class="data-card__content"><p>{action}</p></div></div>')
     decision_html = "\n".join(decision_cards) if decision_cards else ""
 
-    return f"""<section id="section-13" class="gg-section">
-  <h2>13 &middot; Race Day</h2>
+    return f"""<section id="section-12" class="gg-section">
+  <h2>12 &middot; Race Day</h2>
 
   {dr_html}
 
@@ -2051,8 +1945,8 @@ def _section_gravel_skills(race_data: Dict) -> str:
         hazard_html = f"""<h3>Course-Specific Surface Hazards</h3>
   <ul>{items}</ul>"""
 
-    return f"""<section id="section-14" class="gg-section">
-  <h2>14 &middot; Gravel Skills</h2>
+    return f"""<section id="section-13" class="gg-section">
+  <h2>13 &middot; Gravel Skills</h2>
 
   <p>Gravel racing rewards skill as much as fitness. A technically proficient rider at 3.5 W/kg
   will beat a 4.0 W/kg rider who can't handle loose corners or descents. These skills are
@@ -3167,99 +3061,6 @@ footer.guide-footer {
 # SVG HELPERS
 # ══════════════════════════════════════════════════════════════
 
-def _generate_radar_svg(radar_data: Dict) -> str:
-    center_x, center_y = 200, 160
-    max_radius = 120
-    order = ["elevation", "length", "technical", "climate", "altitude", "adventure"]
-    angles = [270, 330, 30, 90, 150, 210]
-
-    points = []
-    for i, key in enumerate(order):
-        value = radar_data.get(key, 1)
-        radius = max_radius * (value / 5)
-        angle_rad = math.radians(angles[i])
-        x = center_x + radius * math.cos(angle_rad)
-        y = center_y + radius * math.sin(angle_rad)
-        points.append((round(x), round(y)))
-
-    polygon_points = " ".join(f"{x},{y}" for x, y in points)
-    circles = "\n    ".join(
-        f'<circle cx="{x}" cy="{y}" r="6" fill="#B7950B" stroke="#3a2e25" stroke-width="2"/>'
-        for x, y in points
-    )
-
-    labels = [
-        (200, 25, "middle", f"ELEVATION ({radar_data['elevation']}/5)"),
-        (330, 95, "start", f"LENGTH ({radar_data['length']}/5)"),
-        (330, 230, "start", f"TECHNICAL ({radar_data['technical']}/5)"),
-        (200, 305, "middle", f"CLIMATE ({radar_data['climate']}/5)"),
-        (70, 230, "end", f"ALTITUDE ({radar_data['altitude']}/5)"),
-        (70, 95, "end", f"ADVENTURE ({radar_data['adventure']}/5)"),
-    ]
-    label_elems = "\n    ".join(
-        f'<text x="{x}" y="{y}" text-anchor="{anchor}" '
-        f'font-family="Sometype Mono, monospace" font-size="11" font-weight="700" '
-        f'letter-spacing="0.1em" fill="#3a2e25">{text}</text>'
-        for x, y, anchor, text in labels
-    )
-
-    grid_circles = "\n    ".join(
-        f'<circle cx="{center_x}" cy="{center_y}" r="{r}" fill="none" stroke="#d4c5b9" stroke-width="1"/>'
-        for r in [24, 48, 72, 96, 120]
-    )
-
-    axis_lines = "\n    ".join(
-        f'<line x1="{center_x}" y1="{center_y}" '
-        f'x2="{round(center_x + max_radius * math.cos(math.radians(a)))}" '
-        f'y2="{round(center_y + max_radius * math.sin(math.radians(a)))}" '
-        f'stroke="#d4c5b9" stroke-width="1"/>'
-        for a in angles
-    )
-
-    return f"""<svg viewBox="-60 0 520 350" width="520" height="350" style="max-width:100%;">
-    <rect x="0" y="0" width="400" height="350" fill="#f5efe6"/>
-    {grid_circles}
-    {axis_lines}
-    <polygon points="{polygon_points}" fill="rgba(183, 149, 11, 0.2)" stroke="#B7950B" stroke-width="3"/>
-    {circles}
-    {label_elems}
-</svg>"""
-
-
-def _terrain_score(race_data: Dict) -> int:
-    elev = race_data.get("elevation_feet", 0)
-    if not elev:
-        meta = race_data.get("race_metadata", {})
-        elev = meta.get("elevation_feet", 0)
-    if elev > 10000: return 5
-    if elev > 7000: return 4
-    if elev > 4000: return 3
-    if elev > 2000: return 2
-    return 1
-
-
-def _length_score(distance) -> int:
-    if not distance: return 3
-    d = int(distance) if distance else 0
-    if d > 150: return 5
-    if d > 100: return 4
-    if d > 60: return 3
-    if d > 30: return 2
-    return 1
-
-
-# =============================================================================
-# COACHING PIPELINE ADAPTER
-# =============================================================================
-# This adapter is the CURRENT, IN-USE entry point for the coaching pipeline.
-# It translates coaching pipeline profile format → step_07 guide format.
-#
-# Called by generate_athlete_package.py instead of generate_html_guide.py.
-#
-# Status: PRODUCTION (April 2026)
-# Source: gravel-race-automation/pipeline/step_07_guide.py + coaching extensions
-# =============================================================================
-
 def _meta_badges(race_name, race_distance, elevation, duration_est,
                  plan_duration, location) -> str:
     """Cover badges — empty values are dropped, never rendered as bare
@@ -3538,7 +3339,7 @@ def generate_training_guide(athlete_id: str, output_path=None):
     # personalized card leads and the framework follows.
     nutrition_html = _build_nutrition_section(fueling, profile)
     if nutrition_html and fueling:
-        nutrition_anchor = '<h2>10 &middot; Nutrition Strategy</h2>'
+        nutrition_anchor = '<h2>9 &middot; Nutrition Strategy</h2>'
         if nutrition_anchor in html:
             html = html.replace(nutrition_anchor,
                                 f'{nutrition_anchor}\n{nutrition_html}', 1)

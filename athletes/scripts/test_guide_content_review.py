@@ -24,7 +24,6 @@ from training_guide_builder import (
     _section_phase_progression,
     _section_equipment_checklist,
     _section_gravel_skills,
-    _section_race_profile,
     _build_section_titles,
 )
 
@@ -139,20 +138,31 @@ class TestAltitudeIsNotClimbing:
         assert "At 7000 feet" in html
 
 
-class TestRaceProfileHonesty:
-    def _render(self, race_data):
-        return _section_race_profile(
-            "Test Race", 100, "", "", "compete", "Intermediate", 21,
-            "<svg>radar</svg>", race_data, derived={}, date_xref={})
+class TestRaceProfileRemoved:
+    """Race Profile section removed entirely per coach review (Jun 2026);
+    only the race-date verification card survives, inside section 1."""
 
-    def test_no_intel_hides_radar_and_empty_rows(self):
-        html = self._render({})
-        assert "<svg>radar</svg>" not in html          # radar needs real data
-        assert "database intel on this race" in html   # honest note instead
-        assert ">Location</strong></td><td></td>" not in html
-        assert ">Climate" not in html
+    def test_race_profile_not_in_titles(self):
+        titles = [t for _, t in _build_section_titles({}, {})]
+        assert "Race Profile" not in titles
+        assert "race profile" not in REQUIRED_SECTIONS
 
-    def test_with_intel_shows_radar(self):
-        html = self._render({"race_characteristics": {"terrain": "gravel"}})
-        assert "<svg>radar</svg>" in html
-        assert "database intel" not in html
+    def test_date_verification_card_lives_in_brief(self):
+        from training_guide_builder import _section_training_plan_brief
+        html = _section_training_plan_brief(
+            "Jess", "Test Race", 100, "compete", "Compete", "Intermediate",
+            21, {"fitness": {}, "demographics": {}, "schedule": {}},
+            {"race_date": "2099-11-14"}, {"days": {}}, {},
+            date_xref={})
+        assert "RACE DATE VERIFICATION" in html
+        assert "Triple-check" in html
+
+    def test_brief_has_no_prescriptive_methodology_tables(self):
+        from training_guide_builder import _section_training_plan_brief
+        html = _section_training_plan_brief(
+            "Jess", "Test Race", 100, "compete", "Compete", "Intermediate",
+            21, {"fitness": {}, "demographics": {}, "schedule": {}},
+            {}, {"days": {}}, {})
+        assert "Key Workouts in This Plan" not in html
+        assert "Intensity Distribution" not in html
+        assert "% of Training" not in html
