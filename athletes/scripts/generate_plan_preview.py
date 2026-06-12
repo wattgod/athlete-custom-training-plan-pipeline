@@ -287,11 +287,21 @@ def _run_verification_checks(
     # 1. Weekly hours target vs actual
     target_hours = profile.get('weekly_availability', {}).get('cycling_hours_target', 0)
     if target_hours and weeks_data:
-        # Average hours across non-race, non-taper weeks (training weeks)
-        training_weeks = [w for w in weeks_data
-                          if w['phase'] not in ('taper', 'race') and w['total_hours'] > 0]
-        if training_weeks:
-            avg_hours = sum(w['total_hours'] for w in training_weeks) / len(training_weeks)
+        # Measure against BUILD/PEAK load weeks — base deliberately ramps
+        # at ~70-80% (progressive overload), and averaging the ramp into one
+        # number false-flagged correctly built plans. Recovery weeks are
+        # deliberately low and excluded.
+        phase_of = {}
+        meat_weeks = [w for w in weeks_data
+                      if w['phase'].startswith(('build', 'peak'))
+                      and w['total_hours'] > 0
+                      and not w.get('is_recovery')]
+        # recovery weeks inside build/peak run ~half volume — drop the
+        # bottom outliers by excluding weeks under 70% of the phase max
+        if meat_weeks:
+            peak_h = max(w['total_hours'] for w in meat_weeks)
+            load_weeks = [w for w in meat_weeks if w['total_hours'] >= 0.7 * peak_h]
+            avg_hours = sum(w['total_hours'] for w in load_weeks) / len(load_weeks)
             pct_of_target = (avg_hours / float(target_hours)) * 100 if float(target_hours) > 0 else 0
             # PASS: 80-120%, WARN: 70-80% or 120-140%, FAIL: <70% or >140%
             if 80 <= pct_of_target <= 120:
@@ -303,7 +313,7 @@ def _run_verification_checks(
             checks.append({
                 'name': 'Weekly Volume',
                 'status': status,
-                'detail': (f"Target: {target_hours}h/wk | Avg training weeks: {avg_hours:.1f}h/wk "
+                'detail': (f"Target: {target_hours}h/wk | Avg build/peak load weeks: {avg_hours:.1f}h/wk "
                            f"({pct_of_target:.0f}%) | Thresholds: PASS 80-120%, WARN 70-80%/120-140%, FAIL <70%/>140%"),
             })
 

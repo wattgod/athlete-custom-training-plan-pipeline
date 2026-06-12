@@ -470,6 +470,64 @@ def _build_week(
             longest['duration'] = new_dur
             longest['tss'] = new_tss
 
+    # Grow-to-floor: the trim above only shrinks. Without growth, LOAD
+    # weeks for high-volume athletes filled at ~50% of stated hours (a
+    # 16h GOAT got 8.2h base weeks). Level UP until the week reaches the
+    # floor — long ride first (cheapest quality volume), then fillers —
+    # respecting per-day caps and the level ceiling.
+    # The first base block is the deliberate ramp-in — no floor there.
+    if (max_minutes is not None and week_type == 'load'
+            and not (phase == 'base' and block_number <= 1)):
+        # Phase-aware floor preserves periodized PROGRESSION: base ramps
+        # (lower floor, rising per block) while build/peak fill near target.
+        # A flat 0.80 floor made W1 as big as W19.
+        if phase == 'base':
+            floor_pct = min(0.62 + 0.05 * max(block_number - 1, 0), 0.75)
+        elif phase == 'build':
+            floor_pct = 0.82
+        elif phase == 'peak':
+            floor_pct = 0.86
+        else:
+            floor_pct = 0.72
+        floor_minutes = hours_per_week * 60 * floor_pct
+        total_duration = sum(d.get('duration', 0) for d in days)
+        guard = 0
+        while total_duration < floor_minutes and guard < 40:
+            guard += 1
+            candidates = [d for d in days
+                          if d.get('role') in ('long_ride', 'filler')
+                          and d.get('name') != 'Rest Day'
+                          and d.get('level', 1) < max_level]
+            # long ride grows before fillers
+            candidates.sort(key=lambda d: (d.get('role') != 'long_ride',
+                                           d.get('duration', 0)))
+            grew = False
+            for d in candidates:
+                new_level = d['level'] + 1
+                new_dur = get_workout_duration(d['name'], new_level)
+                new_tss = get_workout_tss(d['name'], new_level)
+                if new_dur <= d.get('duration', 0):
+                    continue
+                cap = (day_caps or {}).get(d['day'], 0)
+                if cap and new_dur > cap:
+                    continue
+                delta = new_dur - d['duration']
+                if total_duration + delta > max_minutes:
+                    continue
+                # don't overshoot the floor by more than 8% — overshoot in
+                # base weeks flattened the base->peak volume progression
+                if total_duration + delta > floor_minutes * 1.08:
+                    continue
+                total_duration += (new_dur - d['duration'])
+                total_tss += (new_tss - d.get('tss', 0))
+                d['level'] = new_level
+                d['duration'] = new_dur
+                d['tss'] = new_tss
+                grew = True
+                break
+            if not grew:
+                break
+
     return {
         'week_num': week_num,
         'week_type': week_type,

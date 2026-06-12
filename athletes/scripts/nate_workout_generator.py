@@ -1959,6 +1959,31 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
         blocks.append(generate_cooldown_block(cooldown_duration))
 
     # =====================================================================
+    # TERRAIN SIMULATION Z2 (variable-power endurance — long-ride pool)
+    # This format key existed in the archetypes with NO handler: the
+    # dispatch fell through and shipped a cooldown-only 10-minute file as
+    # a long ride. Alternates low/high Z2 segments across the duration.
+    # =====================================================================
+    elif "terrain_sim" in level_data:
+        ts_total = level_data.get("duration", 5400)
+        ts_low = level_data.get("low_power", 0.68)
+        ts_high = level_data.get("high_power", 0.77)
+        ts_seg = level_data.get("segment_duration", 300)
+
+        blocks.append(generate_warmup_block(warmup_duration))
+        remaining = max(ts_total - warmup_duration - cooldown_duration, ts_seg)
+        i = 0
+        while remaining > 0:
+            seg = min(ts_seg, remaining)
+            power = ts_high if i % 2 else ts_low
+            blocks.append(generate_steady_state_block(
+                seg, power, cadence_range=cadence_range
+            ))
+            remaining -= seg
+            i += 1
+        blocks.append(generate_cooldown_block(cooldown_duration))
+
+    # =====================================================================
     # LT1/MAF CAPPED ENDURANCE
     # =====================================================================
     elif "lt1_capped" in level_data or "maf_test" in level_data:
@@ -3170,12 +3195,18 @@ def generate_nate_workout(
     # Generate blocks
     blocks = generate_blocks_from_archetype(archetype, level)
 
-    # Validate workout duration
-    if blocks and not validate_workout_duration([blocks], archetype):
-        get_logger().warning(
-            f"Workout duration validation failed for {archetype.get('name', 'unknown')}"
+    # Validate workout duration — a failing render must NOT ship.
+    # "Continue anyway" once delivered a 10-minute long ride: the caller
+    # treats None as a render failure and raises loudly.
+    # Rest/recovery placeholders are zero-duration BY DESIGN and exempt.
+    _zero_duration_ok = any(k in str(archetype.get('name', '')).lower()
+                            for k in ('rest day', 'off day', 'rest_day'))
+    if blocks and not _zero_duration_ok and not validate_workout_duration([blocks], archetype):
+        get_logger().error(
+            f"Workout duration validation FAILED for "
+            f"{archetype.get('name', 'unknown')} — refusing to render"
         )
-        # Continue anyway - validation is a warning, not a hard failure
+        return None, None, None
 
     return name, description, blocks
 

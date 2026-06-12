@@ -211,15 +211,25 @@ def r05_intensity_count(weeks: List[dict], max_per_week: int = 3) -> Tuple[bool,
     return True, "2-3 intensity per load week"
 
 
-def r06_long_ride_present(weeks: List[dict]) -> Tuple[bool, str]:
-    """R06 [CRITICAL]: Long ride every load week."""
+def r06_long_ride_present(weeks: List[dict], target_hours: float = 0) -> Tuple[bool, str]:
+    """R06 [CRITICAL]: Long ride every load week — at a plausible duration."""
+    # Time-crunched athletes legitimately run shorter long rides
+    min_long = 60 if (target_hours and target_hours < 7) else 90
     violations = []
     for week in weeks:
         if week.get('week_type') != 'load':
             continue
-        has_long = any(d.get('role') == 'long_ride' for d in week.get('days', []))
-        if not has_long:
+        long_rides = [d for d in week.get('days', []) if d.get('role') == 'long_ride']
+        if not long_rides:
             violations.append(f"W{week.get('plan_week')}")
+        else:
+            # A broken render once shipped a 10-minute "long ride" — the
+            # role alone is not enough; the duration must be plausible.
+            for d in long_rides:
+                dur = (d.get('workout') or {}).get('duration', d.get('duration', 0)) or 0
+                if 0 < dur < min_long:
+                    violations.append(
+                        f"W{week.get('plan_week')} (long ride only {dur}min)")
 
     if violations:
         return False, f"Missing long ride: {'; '.join(violations)}"
@@ -252,20 +262,32 @@ def r19_hours_fit(weeks: List[dict], target_hours: float) -> Tuple[bool, str]:
     """
     tolerance = 0.15 if target_hours < 6 else 0.10
     max_hours = target_hours * (1 + tolerance) * 60  # Convert to minutes
+    # LOAD weeks must also hit a FLOOR — an upper-bound-only check let a
+    # broken archetype ship five 3.8h "load" weeks to a 10h athlete.
+    # Floor is generous (35% under) because W1 ramps in and day caps bite.
+    min_hours = target_hours * 0.65 * 60
 
     violations = []
     for week in weeks:
-        if week.get('week_type') == 'recovery':
+        wtype = week.get('week_type')
+        if wtype == 'recovery':
             continue
         total_min = week.get('total_duration', 0)
         if total_min > max_hours:
             violations.append(
                 f"W{week.get('plan_week')}: {total_min}min > {max_hours:.0f}min max"
             )
+        elif (wtype == 'load' and total_min < min_hours
+              # first base block is the deliberate ramp-in (matches the
+              # builder's grow-to-floor exemption)
+              and not (week.get('phase') == 'base' and week.get('plan_week', 1) <= 4)):
+            violations.append(
+                f"W{week.get('plan_week')}: {total_min}min < {min_hours:.0f}min floor (load week)"
+            )
 
     if violations:
-        return False, f"Hours exceeded: {'; '.join(violations[:3])}"
-    return True, f"Hours within ±10% of {target_hours}h"
+        return False, f"Hours out of range: {'; '.join(violations[:3])}"
+    return True, f"Hours within range of {target_hours}h"
 
 
 def r20_off_days_respected(weeks: List[dict], off_days: List[str]) -> Tuple[bool, str]:
@@ -318,7 +340,7 @@ def validate_plan(
     rules['R03'] = {'severity': 'CRITICAL', **_rule_result(*r03_recovery_tss_ceiling(weeks))}
     rules['R04'] = {'severity': 'CRITICAL', **_rule_result(*r04_recovery_intensity_ceiling(weeks))}
     rules['R05'] = {'severity': 'CRITICAL', **_rule_result(*r05_intensity_count(weeks, max_intensity))}
-    rules['R06'] = {'severity': 'CRITICAL', **_rule_result(*r06_long_ride_present(weeks))}
+    rules['R06'] = {'severity': 'CRITICAL', **_rule_result(*r06_long_ride_present(weeks, target_hours))}
     rules['R08'] = {'severity': 'CRITICAL', **_rule_result(*r08_fuel_tags(weeks))}
     rules['R11'] = {'severity': 'CRITICAL', **_rule_result(*r11_strength_present(weeks))}
     rules['R14'] = {'severity': 'CRITICAL', **_rule_result(*r14_series_coherence(plan))}
