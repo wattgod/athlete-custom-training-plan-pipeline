@@ -1,0 +1,22 @@
+[
+ {
+  "date": "baseline-v1",
+  "quality": -3.76,
+  "n": 5,
+  "avg_score": 3.0,
+  "contract_pass_rate": 0.4,
+  "weighted_problem_load": 16.4,
+  "critical_count": 9,
+  "distinct_issues": 23
+ },
+ {
+  "date": "baseline-v1",
+  "quality": -1.4,
+  "n": 5,
+  "avg_score": 4.0,
+  "contract_pass_rate": 0.4,
+  "weighted_problem_load": 13.0,
+  "critical_count": 8,
+  "distinct_issues": 18
+ }
+]

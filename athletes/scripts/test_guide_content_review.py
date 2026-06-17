@@ -138,6 +138,27 @@ class TestAltitudeIsNotClimbing:
         assert "At 7000 feet" in html
 
 
+class TestMethodologyMatchesSelection:
+    """The guide must display the ACTUALLY-SELECTED methodology, never a
+    tier default (the judge's top recurring finding: MAF/Sweet-Spot
+    athletes told they're on 'Traditional Pyramidal')."""
+
+    def test_display_built_from_selection(self):
+        from training_guide_builder import _methodology_display
+        d = _methodology_display({
+            "selected_methodology": "MAF / Low-HR (LT1)",
+            "configuration": {"intensity_distribution": {"z1_z2": 0.95, "z3": 0.0, "z4_z5": 0.05},
+                              "progression_style": "build_aerobic_base"},
+        })
+        assert d["name"] == "MAF / Low-HR (LT1)"
+        assert "95% easy" in d["description"]
+        assert "Traditional Pyramidal" not in d["description"]
+
+    def test_empty_methodology_yields_no_override(self):
+        from training_guide_builder import _methodology_display
+        assert _methodology_display({}) == {}
+
+
 class TestBrandByDiscipline:
     """A road athlete must not get a GRAVEL GOD footer or gravel-cornering
     drills; gravel/mtb keep Gravel God. (Roadie Labs branding.)"""

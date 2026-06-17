@@ -17,7 +17,7 @@ on:
     - cron: '0 13 * * *'  # daily 13:00 UTC
 
 permissions:
-  contents: read
+  contents: write   # commit the growing quality_history + backlog
   issues: write
 
 jobs:
@@ -45,8 +45,7 @@ jobs:
           pip install pyyaml python-dateutil pypdf anthropic requests
           pip install -r webhook/requirements.txt || echo "webhook reqs partial"
 
-      - name: Run avatars through the pipeline + judge
-        id: run
+      - name: Run the improvement loop (avatars → judge → aggregate → score)
         working-directory: athletes/scripts
         env:
           PYTHONPATH: ${{ github.workspace }}
@@ -55,25 +54,30 @@ jobs:
         run: |
           mkdir -p "$GG_DELIVERY_DIR"
           SEED=$(date -u +%Y-%m-%d)
-          COUNT="${{ github.event.inputs.count || '3' }}"
-          # Never fail the JOB on a bad plan — the report carries the verdict;
-          # the issue body is what the coach reads.
-          python daily_avatar_run.py --count "$COUNT" --seed "$SEED" \
-            --out "$GG_DELIVERY_DIR/report.md" || true
-          echo "report=$GG_DELIVERY_DIR/report.md" >> "$GITHUB_OUTPUT"
+          COUNT="${{ github.event.inputs.count || '8' }}"
+          # Loop appends to config/quality_history.json and rewrites
+          # config/improvement_backlog.md. Never fail the job on a bad plan.
+          python improvement_loop.py --count "$COUNT" --seed "$SEED" || true
 
-      - name: Post the daily report as an issue
+      - name: Commit the quality trend + backlog
+        run: |
+          git config user.name "avatar-judge-bot"
+          git config user.email "noreply@gravelgodcycling.com"
+          git add athletes/config/quality_history.json athletes/config/improvement_backlog.md
+          git diff --cached --quiet || {
+            git commit -m "avatar-judge: quality trend $(date -u +%Y-%m-%d)"
+            git push
+          }
+
+      - name: Post the ranked backlog as an issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          REPORT="${{ steps.run.outputs.report }}"
-          if [ ! -s "$REPORT" ]; then
-            echo "No report produced"; exit 0
-          fi
+          REPORT="athletes/config/improvement_backlog.md"
+          [ -s "$REPORT" ] || { echo "No backlog produced"; exit 0; }
           gh issue create \
             --title "Avatar judge — $(date -u +%Y-%m-%d)" \
-            --body-file "$REPORT" \
-            --label "avatar-judge" 2>/dev/null \
+            --body-file "$REPORT" --label "avatar-judge" 2>/dev/null \
           || gh issue create \
             --title "Avatar judge — $(date -u +%Y-%m-%d)" \
             --body-file "$REPORT"

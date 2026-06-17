@@ -92,7 +92,10 @@ def _contract(athlete_dir, delivery_dir):
     return (not failures), failures
 
 
-def run(count, seed, out_path):
+def run_avatars(count, seed, judge_plans=True):
+    """Synth -> pipeline -> contract -> (judge) for `count` avatars.
+    Returns the list of per-avatar result records. Shared by the daily
+    report and the improvement loop."""
     from synthesize_athlete import synthesize
 
     delivery_base = Path(os.environ.get("GG_DELIVERY_DIR")
@@ -128,10 +131,16 @@ def run(count, seed, out_path):
         rec["contract_ok"] = ok
         rec["failures"] = failures
 
-        from judge_plan import judge
-        rec["verdict"] = judge(athlete_dir, delivery_dir, meta)
+        if judge_plans:
+            from judge_plan import judge
+            rec["verdict"] = judge(athlete_dir, delivery_dir, meta)
         results.append(rec)
 
+    return results
+
+
+def run(count, seed, out_path):
+    results = run_avatars(count, seed)
     report = _render_report(seed, results)
     if out_path:
         Path(out_path).write_text(report)
