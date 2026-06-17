@@ -53,7 +53,15 @@ class TestWeasyprintTimebox:
 
     def test_success_when_subprocess_writes_pdf(self, html_file, tmp_path):
         pdf = tmp_path / 'out.pdf'
-        fake = "import sys\nopen(sys.argv[2], 'wb').write(b'%PDF-1.4 ' + b'x' * 2048)\n"
+        # A realistic PDF: valid magic, page objects, and an EOF trailer.
+        # generate_pdf_weasyprint now validates output (a real render is
+        # multi-page) so the fixture must look like a real document.
+        fake = (
+            "import sys\n"
+            "pages = b''.join(b'%d 0 obj << /Type /Page >> endobj\\n' % (i+10) "
+            "for i in range(12))\n"
+            "open(sys.argv[2], 'wb').write(b'%PDF-1.4\\n' + pages + b'%%EOF\\n')\n"
+        )
         with patch.object(pdf_generator, 'has_weasyprint', return_value=True), \
              patch.object(pdf_generator, '_WEASYPRINT_RENDER_SNIPPET', fake):
             ok, msg = pdf_generator.generate_pdf_weasyprint(html_file, pdf, timeout=10)

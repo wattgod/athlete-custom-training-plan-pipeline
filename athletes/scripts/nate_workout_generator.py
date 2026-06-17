@@ -63,6 +63,7 @@ Version: 2.1 (Blended Workout Support)
 
 import html
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
@@ -1558,6 +1559,43 @@ def _generate_stochastic_blocks(
         blocks.append(generate_steady_state_block(dur, power, cadence_range=cadence_range))
         remaining -= dur
 
+    return blocks
+
+
+def _clamp_blocks_to_max(blocks: str, max_seconds: int) -> str:
+    """Shrink an over-long workout to the ZWO duration cap.
+
+    Endurance long rides at high levels can render to ~6.4h, over the 6h
+    cap. Rather than drop the ride, trim the longest <SteadyState> segments
+    (the aerobic body of the ride) until the total fits. Intervals and
+    warm/cool are left intact so the workout's shape survives.
+    """
+    durations = [int(d) for d in re.findall(r'Duration="(\d+)"', blocks)]
+    total = sum(durations)
+    overflow = total - max_seconds
+    if overflow <= 0:
+        return blocks
+
+    # Trim from SteadyState segments, largest first.
+    steady = list(re.finditer(r'<SteadyState\b[^>]*\bDuration="(\d+)"', blocks))
+    steady.sort(key=lambda m: int(m.group(1)), reverse=True)
+    edits = []  # (start, end, old_dur_str, new_dur_str)
+    for m in steady:
+        if overflow <= 0:
+            break
+        dur = int(m.group(1))
+        # keep at least 5 min in any trimmed steady block
+        trim = min(overflow, max(dur - 300, 0))
+        if trim <= 0:
+            continue
+        new_dur = dur - trim
+        span = m.span(1)
+        edits.append((span[0], span[1], str(new_dur)))
+        overflow -= trim
+
+    # apply edits right-to-left so offsets stay valid
+    for start, end, new_val in sorted(edits, key=lambda e: e[0], reverse=True):
+        blocks = blocks[:start] + new_val + blocks[end:]
     return blocks
 
 
@@ -3195,18 +3233,23 @@ def generate_nate_workout(
     # Generate blocks
     blocks = generate_blocks_from_archetype(archetype, level)
 
-    # Validate workout duration — a failing render must NOT ship.
-    # "Continue anyway" once delivered a 10-minute long ride: the caller
-    # treats None as a render failure and raises loudly.
+    # Refuse to ship a TOO-SHORT render — that's the broken-handler bug
+    # (NP/IF once shipped a cooldown-only 10-minute long ride). A too-LONG
+    # render is real training that merely exceeds the ZWO cap; clamp it
+    # rather than drop it (dropping a 6.4h long ride is worse than a 6h one).
     # Rest/recovery placeholders are zero-duration BY DESIGN and exempt.
-    _zero_duration_ok = any(k in str(archetype.get('name', '')).lower()
-                            for k in ('rest day', 'off day', 'rest_day'))
-    if blocks and not _zero_duration_ok and not validate_workout_duration([blocks], archetype):
-        get_logger().error(
-            f"Workout duration validation FAILED for "
-            f"{archetype.get('name', 'unknown')} — refusing to render"
-        )
-        return None, None, None
+    _name_l = str(archetype.get('name', '')).lower()
+    _zero_duration_ok = any(k in _name_l for k in ('rest day', 'off day', 'rest_day'))
+    if blocks and not _zero_duration_ok:
+        total_seconds = sum(int(d) for d in re.findall(r'Duration="(\d+)"', blocks))
+        if total_seconds < ValidationLimits.MIN_WORKOUT_DURATION:
+            get_logger().error(
+                f"Workout duration {total_seconds}s below minimum for "
+                f"{archetype.get('name', 'unknown')} — refusing to render"
+            )
+            return None, None, None
+        if total_seconds > ValidationLimits.MAX_WORKOUT_DURATION:
+            blocks = _clamp_blocks_to_max(blocks, ValidationLimits.MAX_WORKOUT_DURATION)
 
     return name, description, blocks
 

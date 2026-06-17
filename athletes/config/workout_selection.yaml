@@ -77,7 +77,11 @@ phases:
         alternatives: ["NP/IF Target", "Endurance Blocks"]
         level_range: [3, 5]
         overrides:
-          time_crunched: {name: "Race Simulation", level_range: [3, 4]}
+          # The long-ride slot must ALWAYS be an endurance ride, never a
+          # short quality session. time_crunched used to get "Race
+          # Simulation" (75-80min) here — shorter than its own fillers, on
+          # athletes with a wide-open long-ride day. Keep it endurance.
+          time_crunched: {name: "Endurance with Surges", level_range: [3, 5]}
           volume: {name: "Endurance with Surges", level_range: [4, 6]}
       filler:
         default: "Endurance"

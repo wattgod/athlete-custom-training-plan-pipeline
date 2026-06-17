@@ -138,6 +138,42 @@ class TestAltitudeIsNotClimbing:
         assert "At 7000 feet" in html
 
 
+class TestLongRideSlotIsAlwaysEndurance:
+    """The long-ride slot must never be a short quality session. A
+    time_crunched athlete once got 'Race Simulation' (75-80min) as the
+    weekly long ride — shorter than its own fillers, on an athlete with a
+    wide-open long-ride day. Long ride = endurance, every phase, every
+    archetype."""
+
+    ENDURANCE_FAMILY = {
+        "Endurance", "Endurance with Surges", "Endurance Blocks",
+        "NP/IF Target", "Long Z2", "Terrain Simulation Z2",
+        "Long Endurance", "Z2 Endurance",
+    }
+
+    def test_no_long_ride_slot_is_a_quality_session(self):
+        import yaml
+        from pathlib import Path
+        cfg = yaml.safe_load(
+            (Path(__file__).parent.parent / "config" / "workout_selection.yaml").read_text())
+        phases = cfg.get("phases", cfg)
+        offenders = []
+        for phase, pdata in phases.items():
+            if not isinstance(pdata, dict):
+                continue
+            lr = pdata.get("slots", {}).get("long_ride")
+            if not lr:
+                continue
+            picks = {"default": lr.get("default")}
+            for arch, ov in (lr.get("overrides") or {}).items():
+                picks[arch] = ov.get("name") if isinstance(ov, dict) else ov
+            for who, name in picks.items():
+                if name and name not in self.ENDURANCE_FAMILY:
+                    offenders.append(f"{phase}.{who} = {name}")
+        assert not offenders, (
+            "long-ride slots must be endurance-family: " + "; ".join(offenders))
+
+
 class TestRaceProfileRemoved:
     """Race Profile section removed entirely per coach review (Jun 2026);
     only the race-date verification card survives, inside section 1."""

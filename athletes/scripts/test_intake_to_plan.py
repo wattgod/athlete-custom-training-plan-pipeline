@@ -61,11 +61,14 @@ NICHOLAS_INTAKE_PATH = Path("/tmp/nicholas-intake.md")
 
 @pytest.fixture
 def nicholas_intake_text():
-    """Load the real Nicholas Applegate intake markdown."""
-    assert NICHOLAS_INTAKE_PATH.exists(), (
-        f"Nicholas intake fixture not found at {NICHOLAS_INTAKE_PATH}. "
-        f"Copy it there before running tests."
-    )
+    """Load the real Nicholas Applegate intake markdown.
+
+    This is an external fixture (not committed). SKIP cleanly when it's
+    absent instead of erroring — a missing optional fixture must not turn
+    the whole regular-test run red.
+    """
+    if not NICHOLAS_INTAKE_PATH.exists():
+        pytest.skip(f"optional fixture {NICHOLAS_INTAKE_PATH} not present")
     return NICHOLAS_INTAKE_PATH.read_text()
 
 

@@ -2656,7 +2656,11 @@ def copy_to_downloads(athlete_id: str, coaching_brief_md: str) -> Path:
     - fueling.yaml
     """
     athlete_dir = get_athlete_dir(athlete_id)
-    downloads_dir = Path.home() / 'Downloads' / f'{athlete_id}-training-plan'
+    # GG_DELIVERY_DIR lets tests/CI redirect deliverables out of the real
+    # ~/Downloads. Default is unchanged for normal coach runs.
+    _delivery_root = os.environ.get('GG_DELIVERY_DIR')
+    base = Path(_delivery_root) if _delivery_root else (Path.home() / 'Downloads')
+    downloads_dir = base / f'{athlete_id}-training-plan'
 
     # Clean existing
     if downloads_dir.exists():
