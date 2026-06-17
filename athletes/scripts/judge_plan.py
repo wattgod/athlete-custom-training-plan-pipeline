@@ -37,8 +37,26 @@ def _guide_plain_text(athlete_dir: Path) -> str:
 def _plan_facts(athlete_dir: Path, delivery_dir: Path, meta: dict) -> dict:
     """Compact, judge-relevant facts about the plan + who it's for."""
     facts = {"persona": meta.get("persona"), "persona_label": meta.get("persona_label"),
-             "discipline": meta.get("discipline"), "weeks_out": meta.get("weeks_out"),
+             "discipline": meta.get("discipline"),
+             "weeks_until_race": meta.get("weeks_out"),
              "ftp_known": meta.get("ftp_known")}
+    # The plan LENGTH and the WEEKS-UNTIL-RACE are different numbers: a plan
+    # can be shorter than the lead time and start later, ending on race day.
+    # Give the judge both, clearly, so it stops reading that as a contradiction.
+    try:
+        derived = yaml.safe_load((athlete_dir / "derived.yaml").read_text()) or {}
+        pdates = {}
+        pdp = athlete_dir / "plan_dates.yaml"
+        if pdp.exists():
+            pdates = yaml.safe_load(pdp.read_text()) or {}
+        facts["plan_weeks"] = derived.get("plan_weeks") or pdates.get("plan_weeks")
+        facts["plan_start_date"] = pdates.get("plan_start") or pdates.get("plan_start_date")
+        facts["plan_note"] = (
+            "plan_weeks is the plan LENGTH; the plan ends on race day, so if it "
+            "is shorter than weeks_until_race the athlete simply starts later. "
+            "These are NOT a contradiction.")
+    except Exception:
+        pass
     try:
         from generate_plan_preview import build_preview_data
         data = build_preview_data(athlete_dir)

@@ -143,6 +143,17 @@ def get_athlete_constraints(profile: Dict[str, Any]) -> Dict[str, Any]:
 
 # Keyword → discipline. Checked against the target race name (lowercased).
 # Order matters: first match wins. Default is 'gravel' (core audience).
+#
+# INVARIANT: the gravel block (gravel/unbound/bwr) is checked BEFORE any road
+# keyword so a "Gravel Fondo" / "Gran Fondo" gravel event resolves to gravel,
+# never road. Add new road terms below the gravel block, never above it.
+#
+# The road terms past the obvious ones (fondo/sportive/...) are series and
+# event brands that are road-only in the race DB but lack a generic road word
+# in their name. They were verified to have ZERO collisions with gravel-only
+# race names in config/races.json (e.g. "GFNY" appears in 31 road names and 0
+# gravel-only names). This is the fallback for dual-listed events whose DB
+# discipline is ambiguous (None) — see known_races._snapshot_races.
 _DISCIPLINE_KEYWORDS = [
     ('mtb', 'mtb'),
     ('mountain bike', 'mtb'),
@@ -164,6 +175,19 @@ _DISCIPLINE_KEYWORDS = [
     ('crit ', 'road'),
     ('hillclimb', 'road'),
     ('hill climb', 'road'),
+    # Road event brands / series (DB-verified road-only, no gravel collisions).
+    ('gfny', 'road'),            # Gran Fondo New York series (31 road events)
+    ('etape', 'road'),           # L'Étape series
+    ("l'étape", 'road'),
+    ('étape', 'road'),
+    ('marmotte', 'road'),        # La Marmotte
+    ('maratona', 'road'),        # Maratona dles Dolomites
+    ('velothon', 'road'),
+    ('kom challenge', 'road'),   # Taiwan KOM Challenge (road hillclimb)
+    ('conquistador', 'road'),    # La Ruta de los Conquistadores
+    ('taupo', 'road'),           # Lake Taupo Cycle Challenge
+    ('shimanami', 'road'),       # Cycling Shimanami
+    ('bike ms', 'road'),         # Bike MS charity road rides
 ]
 
 

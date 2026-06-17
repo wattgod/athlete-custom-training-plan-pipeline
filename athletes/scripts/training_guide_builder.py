@@ -789,13 +789,18 @@ def _section_training_zones(ftp: Optional[int], tier: str):
 
     if ftp:
         power_rows = []
+        prev_high_w = 0  # each zone's floor = previous zone's ceiling + 1
         for zone, name, pct, hr, rpe, feel in zone_data:
             pct_range = pct.replace("%", "").replace("< ", "0-").replace("> ", "")
             if "-" in pct_range:
                 low, high = pct_range.split("-")
-                watts = f"{int(ftp * int(low)/100)}-{int(ftp * int(high)/100)}W"
+                high_w = int(ftp * int(high) / 100)
+                # contiguous watts — no 1-watt gaps or overlaps between zones
+                low_w = 0 if prev_high_w == 0 else prev_high_w + 1
+                watts = f"{low_w}-{high_w}W"
+                prev_high_w = high_w
             else:
-                watts = f"> {int(ftp * 1.2)}W"
+                watts = f"> {prev_high_w + 1}W" if prev_high_w else f"> {int(ftp * 1.2)}W"
             ss_class = ' class="race-day-row"' if zone == "GS" else ""
             power_rows.append(
                 f'<tr{ss_class}><td><strong>{zone}</strong></td><td>{name}</td>'
@@ -847,17 +852,17 @@ If you use Zwift, TrainerRoad, or a Garmin &mdash; update your FTP setting immed
   </div>
 
   <h3>FTP Testing Protocol</h3>
-  <p>When an FTP test appears on your calendar, here's how to execute the 20-minute protocol:</p>
+  <p>When an FTP test appears on your calendar, here's how to execute the 20-minute protocol. There is
+  <strong>one</strong> maximal effort &mdash; the 20-minute test. Everything before it is preparation.</p>
   <ol>
-  <li>12 minutes progressive warmup (Z1 to Z2)</li>
-  <li>5 minutes at RPE 6/10 (moderate effort)</li>
-  <li>5 minutes easy recovery (Z1)</li>
-  <li><strong>5 minutes ALL OUT</strong> &mdash; go as hard as you can sustain</li>
-  <li>5 minutes easy recovery</li>
-  <li><strong>20 minutes ALL OUT</strong> &mdash; start conservatively at RPE 8, adjust up. This sets your FTP.</li>
+  <li>12 minutes progressive warmup (Z1 building to Z2)</li>
+  <li>3 minutes at RPE 7 (moderate-hard), then 1 minute easy &mdash; just opening the legs</li>
+  <li><strong>5-minute hard opener</strong> &mdash; ride this hard (RPE 8-9), NOT all-out. Its only job is to clear out your anaerobic system so the 20-minute number reflects sustainable power, not a sprint. This is not the test.</li>
+  <li>10 minutes easy recovery (Z1) &mdash; fully recover before the test</li>
+  <li><strong>20-MINUTE TIME TRIAL</strong> &mdash; this is the test. Start at an effort you're confident you can hold, then build. Even pacing beats going out hard and fading. This sets your FTP.</li>
   <li>10 minutes easy cooldown</li>
   </ol>
-  <p><strong>Formula:</strong> FTP = 20-minute average power x 0.95</p>
+  <p><strong>Formula:</strong> FTP = 20-minute average power &times; 0.95</p>
 
   <div class="gg-module gg-alert">
     <div class="gg-label">WARNING</div>
@@ -981,7 +986,10 @@ def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: s
         lr_hi = per_ride
         lr_lo_str = f"{lr_lo:.1f}".rstrip("0").rstrip(".")
         lr_hi_str = f"{lr_hi:.1f}".rstrip("0").rstrip(".")
-        long_ride_duration = f"{lr_lo_str}-{lr_hi_str} hours"
+        # When the floor collapses the range to a single value, don't render
+        # a nonsensical "1.5-1.5 hours".
+        long_ride_duration = (f"{lr_hi_str} hours" if lr_lo_str == lr_hi_str
+                              else f"{lr_lo_str}-{lr_hi_str} hours")
     else:
         per_ride = 2.5
         long_ride_duration = "2-3 hours"
@@ -1021,7 +1029,7 @@ def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: s
   <div class="data-card">
     <div class="data-card__header">LONG RIDE</div>
     <div class="data-card__content">
-      <p>The backbone of gravel preparation. Primarily Zone 2 with race-specific efforts mixed in
+      <p>The backbone of endurance preparation. Primarily Zone 2 with race-specific efforts mixed in
       during Build and Peak phases. Build duration progressively &mdash; don't jump to your peak duration of {long_ride_duration} in Week 1.</p>
     </div>
   </div>
@@ -1794,7 +1802,7 @@ def _section_mental_preparation(race_data: Dict, race_distance, tier: str):
     return f"""<section id="section-10" class="gg-section">
   <h2>10 &middot; Mental Preparation</h2>
 
-  <p>A {race_distance}-mile gravel race is as much a mental challenge as a physical one.
+  <p>A {race_distance}-mile race is as much a mental challenge as a physical one.
   Your body will want to quit before it needs to. Your brain will lie to you about how bad it is.
   Having a mental strategy is not optional.</p>
 
@@ -1963,7 +1971,7 @@ If something fails in the dress rehearsal, fix it before race day.</p></div>"""
   <div class="gg-module gg-blackpill">
     <div class="gg-label">THE GOLDEN RULE</div>
     <p>Start slower than you think you should.
-    Every experienced gravel racer will tell you the same thing: the race doesn't start until
+    Every experienced endurance racer will tell you the same thing: the race doesn't start until
     the last third. Everyone goes out too hard. Be the one who doesn't.</p>
   </div>
 

@@ -138,6 +138,38 @@ class TestAltitudeIsNotClimbing:
         assert "At 7000 feet" in html
 
 
+class TestGuideTextBugs:
+    """Fixes for judge-found content bugs."""
+
+    def test_zone_watts_are_contiguous(self):
+        import re
+        from training_guide_builder import _section_training_zones
+        html = _section_training_zones(235, "compete")
+        watts = [(int(a), int(b)) for a, b in re.findall(r"(\d+)-(\d+)W", html)]
+        assert len(watts) >= 5
+        gaps = [(watts[i][1], watts[i + 1][0]) for i in range(len(watts) - 1)
+                if watts[i + 1][0] - watts[i][1] != 1]
+        assert not gaps, f"zone watt gaps/overlaps: {gaps}"
+
+    def test_ftp_protocol_has_one_maximal_test(self):
+        from training_guide_builder import _section_training_zones
+        html = _section_training_zones(235, "compete")
+        assert "ALL OUT" not in html  # the old two-all-out wording is gone
+        assert "20-MINUTE TIME TRIAL" in html
+        assert "not the test" in html  # the opener is explicitly not maximal
+
+    def test_long_ride_duration_never_degenerate(self):
+        from training_guide_builder import _section_weekly_structure
+        # a tiny budget collapses lo==hi; must not render "1.5-1.5 hours"
+        sched = {"days": {"saturday": {"session": "long_ride"},
+                          "sunday": {"session": "rest"}}}
+        html = _section_weekly_structure(sched, "Finisher", "4")
+        assert "1.5-1.5" not in html
+        import re
+        # lookbehind so we don't false-match "4-4" inside a valid "2.4-4 hours"
+        assert not re.search(r"(?<![\d.])(\d+(?:\.\d+)?)-\1 hours", html)
+
+
 class TestMethodologyMatchesSelection:
     """The guide must display the ACTUALLY-SELECTED methodology, never a
     tier default (the judge's top recurring finding: MAF/Sweet-Spot

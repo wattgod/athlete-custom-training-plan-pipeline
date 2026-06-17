@@ -20,6 +20,16 @@
   "distinct_issues": 18
  },
  {
+  "date": "crank-v1",
+  "quality": 0.4,
+  "n": 6,
+  "avg_score": 6.0,
+  "contract_pass_rate": 0.5,
+  "weighted_problem_load": 14.0,
+  "critical_count": 8,
+  "distinct_issues": 31
+ },
+ {
   "date": "2026-06-17",
   "quality": null,
   "n": 8,
