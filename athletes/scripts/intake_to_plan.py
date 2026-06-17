@@ -918,6 +918,10 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                     'goal': goal_type,
                     'goal_description': success_text,
                 }
+                # Discipline from the race DB drives guide branding (road ->
+                # Roadie Labs + road skills). Only set when the DB knows it.
+                if info.get('discipline'):
+                    target_race_info['discipline'] = info['discipline']
         else:
             # Unknown race — use athlete-provided fields, fall back to extraction.
             print(f"{YELLOW}WARNING: Race '{race_name_clean}' not in known_races.py "

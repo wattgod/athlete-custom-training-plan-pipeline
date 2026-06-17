@@ -1,0 +1,79 @@
+name: "Daily Avatar Judge"
+
+# A couple of synthetic-but-realistic athletes come through the real
+# pipeline every day; each plan is run through the deterministic
+# send-worthy contract and an LLM coach-judge. Findings post as an issue.
+#
+# This is the fuzzing + judgment layer over test_order_acceptance.py's
+# fixed golden orders: random realistic input + a coach's eye, daily.
+
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "how many avatars"
+        default: "3"
+  schedule:
+    - cron: '0 13 * * *'  # daily 13:00 UTC
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  judge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Chromium (PDF engine)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml python-dateutil pypdf anthropic requests
+          pip install -r webhook/requirements.txt || echo "webhook reqs partial"
+
+      - name: Run avatars through the pipeline + judge
+        id: run
+        working-directory: athletes/scripts
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GG_DELIVERY_DIR: ${{ runner.temp }}/avatar-delivery
+        run: |
+          mkdir -p "$GG_DELIVERY_DIR"
+          SEED=$(date -u +%Y-%m-%d)
+          COUNT="${{ github.event.inputs.count || '3' }}"
+          # Never fail the JOB on a bad plan — the report carries the verdict;
+          # the issue body is what the coach reads.
+          python daily_avatar_run.py --count "$COUNT" --seed "$SEED" \
+            --out "$GG_DELIVERY_DIR/report.md" || true
+          echo "report=$GG_DELIVERY_DIR/report.md" >> "$GITHUB_OUTPUT"
+
+      - name: Post the daily report as an issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPORT="${{ steps.run.outputs.report }}"
+          if [ ! -s "$REPORT" ]; then
+            echo "No report produced"; exit 0
+          fi
+          gh issue create \
+            --title "Avatar judge — $(date -u +%Y-%m-%d)" \
+            --body-file "$REPORT" \
+            --label "avatar-judge" 2>/dev/null \
+          || gh issue create \
+            --title "Avatar judge — $(date -u +%Y-%m-%d)" \
+            --body-file "$REPORT"

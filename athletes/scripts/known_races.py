@@ -6,7 +6,54 @@ All race metadata (dates, distances, elevations) lives here.
 Other scripts import from this module rather than duplicating the data.
 """
 
+import json
+from functools import lru_cache
+from pathlib import Path
 from typing import Dict, Optional, Tuple, Any
+
+# The curated KNOWN_RACES below carry hand-tuned aliases and are authoritative.
+# Beyond them, match_race falls back to the full 1,184-race snapshot
+# (config/races.json, built by build_race_snapshot.py) so a real customer's
+# race validates against the actual database, not just this hand-list.
+_SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "config" / "races.json"
+
+
+@lru_cache(maxsize=1)
+def _snapshot_races() -> Dict[str, Dict[str, Any]]:
+    """Load the race snapshot, normalized to the KNOWN_RACES field shape
+    (distance_mi -> distance_miles). Keyed by 'discipline:slug'."""
+    if not _SNAPSHOT_PATH.exists():
+        return {}
+    try:
+        data = json.loads(_SNAPSHOT_PATH.read_text())
+    except Exception:
+        return {}
+    races = data.get("races", {})
+    # Names listed under more than one discipline (an event in both the
+    # gravel AND road DBs) are discipline-AMBIGUOUS — don't claim a
+    # discipline for them; let the guide's keyword logic decide.
+    by_name = {}
+    for e in races.values():
+        by_name.setdefault((e.get("name") or "").strip().lower(), set()).add(
+            e.get("discipline"))
+    ambiguous = {n for n, ds in by_name.items() if len(ds) > 1}
+
+    out = {}
+    for key, e in races.items():
+        if not e.get("date"):
+            continue  # date validation needs a specific date
+        name = e.get("name", "")
+        disc = e.get("discipline")
+        if name.strip().lower() in ambiguous:
+            disc = None
+        out[key] = {
+            "name": name,
+            "date": e.get("date"),
+            "distance_miles": e.get("distance_mi"),
+            "elevation_ft": e.get("elevation_ft") or 0,
+            "discipline": disc,
+        }
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -211,4 +258,19 @@ def match_race(name: str) -> Optional[Tuple[str, Dict[str, Any]]]:
             best_score = overlap
             best_match = (race_id, info)
 
+    if best_match:
+        return best_match
+
+    # 4. Fall back to the full snapshot (1,184 real races). Same precedence:
+    #    exact name, then strongest discriminative-token overlap.
+    snap = _snapshot_races()
+    for race_id, info in snap.items():
+        if info["name"].lower() == normalized:
+            return race_id, info
+    best_score = 1
+    for race_id, info in snap.items():
+        overlap = len(name_disc & _discriminative_tokens(info["name"].lower()))
+        if overlap > best_score:
+            best_score = overlap
+            best_match = (race_id, info)
     return best_match

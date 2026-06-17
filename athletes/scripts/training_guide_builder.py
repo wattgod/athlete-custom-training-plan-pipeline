@@ -149,6 +149,24 @@ def _estimate_race_hours(distance_miles: float, elevation_ft: float, tier: str) 
 
 # "non-negotiables" and "week-by-week overview" were REMOVED per coach
 # review (Jun 2026) — do not re-add. Schedule content lives in the plan.
+# Brand per discipline — a road athlete must not get a "GRAVEL GOD" footer
+# or a gravel-cornering chapter. (Full Roadie Labs design-token/font port is
+# a separate task; this fixes the visible brand + the discipline-specific
+# skills chapter so the deliverable is correct for the athlete's sport.)
+BRANDS = {
+    "gravel": {"logo": "GRAVEL GOD", "tagline": "Custom training plans for gravel racing",
+               "skills_title": "Gravel Skills"},
+    "mtb": {"logo": "GRAVEL GOD", "tagline": "Custom training plans for off-road racing",
+            "skills_title": "Off-Road Skills"},
+    "road": {"logo": "ROADIE LABS", "tagline": "Custom training plans for road racing",
+             "skills_title": "Road Skills"},
+}
+
+
+def _brand(discipline):
+    return BRANDS.get((discipline or "gravel").lower(), BRANDS["gravel"])
+
+
 REQUIRED_SECTIONS = [
     "training plan brief",
     "training zones",
@@ -233,6 +251,11 @@ def _conditional_triggers(profile: Dict, race_data: Dict) -> Dict:
 
 def _build_section_titles(profile: Dict, race_data: Dict):
     """Build section titles with sequential numbering (no ID gaps)."""
+    try:
+        from archetype import derive_discipline
+        skills_title = _brand(derive_discipline(profile or {}))["skills_title"]
+    except Exception:
+        skills_title = "Gravel Skills"
     titles = [
         "Training Plan Brief",
         "Training Zones",
@@ -246,7 +269,7 @@ def _build_section_titles(profile: Dict, race_data: Dict):
         "Mental Preparation",
         "Race Week",
         "Race Day",
-        "Gravel Skills",
+        skills_title,
     ]
 
     triggers = _conditional_triggers(profile, race_data)
@@ -291,10 +314,12 @@ def generate_guide(
     if race_data is None:
         race_data = {}
 
-    # Cross-reference race date against race-data database
-    from pipeline.step_01_validate import cross_reference_race_date
+    # Cross-reference race date against the real race database (1,184-race
+    # snapshot + curated known_races). The old import pulled from the gravel
+    # repo's `pipeline` package, which isn't importable here — so date_xref
+    # was always empty and EVERY race showed "not in database". Now local.
     race_date_str = derived.get("race_date", "")
-    date_xref = cross_reference_race_date(race_name, race_date_str, base_dir) if race_name and race_date_str else {}
+    date_xref = _cross_reference_race_date(race_name, race_date_str) if race_name and race_date_str else {}
 
     html = _build_full_guide(
         athlete_name=athlete_name,
@@ -333,6 +358,15 @@ def _build_full_guide(
     tier_display = tier.replace("_", " ").title()
     level_display = level.title()
     ftp = profile["fitness"].get("ftp_watts")
+
+    # Brand by discipline — a road athlete gets ROADIE LABS + road skills,
+    # never a GRAVEL GOD footer or gravel-cornering drills.
+    try:
+        from archetype import derive_discipline
+        _discipline = derive_discipline(profile or {})
+    except Exception:
+        _discipline = "gravel"
+    brand = _brand(_discipline)
 
     # Note: redundant "200 200mi" cleaned up in post-processing by generate_training_guide()
     template = plan_config.get("template", {})
@@ -384,7 +418,7 @@ def _build_full_guide(
     sections.append(_section_mental_preparation(race_data, race_distance, tier))
     sections.append(_section_race_week(race_data, tier, race_name, derived))
     sections.append(_section_race_day(race_data, tier, race_distance, race_name, weekly_hours))
-    sections.append(_section_gravel_skills(race_data))
+    sections.append(_section_skills(race_data, _discipline))
 
     # Conditional sections — uses shared trigger logic (no duplication)
     triggers = _conditional_triggers(profile, race_data)
@@ -449,8 +483,8 @@ def _build_full_guide(
       </div>
 
       <footer class="guide-footer">
-        <div class="footer-logo">GRAVEL GOD</div>
-        <div class="footer-tagline">Custom training plans for gravel racing</div>
+        <div class="footer-logo">{brand['logo']}</div>
+        <div class="footer-tagline">{brand['tagline']}</div>
         <p style="margin-top: 8px; font-family: var(--gg-font-data); font-size: 12px; color: var(--gg-color-secondary-brown);">
           {plan_duration} Weeks &middot; ENDURE Plan Engine
         </p>
@@ -1940,6 +1974,84 @@ If something fails in the dress rehearsal, fix it before race day.</p></div>"""
 </section>"""
 
 
+def _section_skills(race_data: Dict, discipline: str = "gravel") -> str:
+    """Skills chapter — dispatched by discipline so a road athlete gets road
+    skills, not gravel-cornering drills."""
+    if (discipline or "gravel").lower() == "road":
+        return _section_road_skills(race_data)
+    return _section_gravel_skills(race_data)
+
+
+def _section_road_skills(race_data: Dict) -> str:
+    """Section 13: road-racing skills — the road counterpart to the gravel
+    skills chapter. Pack craft, descending, and cornering on tarmac."""
+    return """<section id="section-13" class="gg-section">
+  <h2>13 &middot; Road Skills</h2>
+
+  <p>Road racing rewards bike-handling and positioning as much as fitness. A rider who can
+  hold a wheel, corner at speed, and read a group will beat a stronger rider who burns matches
+  fighting for position. These skills are trainable &mdash; practice them deliberately.</p>
+
+  <h3>Riding in the Pack</h3>
+  <div class="data-card">
+    <div class="data-card__header">HOLDING A WHEEL</div>
+    <div class="data-card__content">
+      <ul>
+        <li>Sit 30&ndash;60cm off the wheel in front &mdash; close enough to draft (20&ndash;30% energy saving), far enough to react.</li>
+        <li>Look through and past the rider ahead, not at their wheel. Your bike follows your eyes.</li>
+        <li>Match speed with the brakes feathered, not grabbed &mdash; surging and braking is how gaps and crashes start.</li>
+        <li>Never overlap your front wheel with someone's rear wheel. A small swerve takes you down.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="data-card">
+    <div class="data-card__header">POSITIONING &amp; CROSSWINDS</div>
+    <div class="data-card__content">
+      <ul>
+        <li>Stay in the front third before climbs, corners, and crosswind sections &mdash; moving up costs energy, getting shelled costs the race.</li>
+        <li>In a crosswind the draft is diagonal: shelter sits behind and to the leeward side, forming echelons. Know which side the wind is from.</li>
+        <li>Move up on the sheltered side and at the front of surges, not by fighting through the gutter.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Cornering on Tarmac</h3>
+  <div class="data-card">
+    <div class="data-card__header">THE FAST LINE</div>
+    <div class="data-card__content">
+      <ul>
+        <li>Brake in a straight line BEFORE the corner; be off the brakes by the apex.</li>
+        <li>Outside-in-outside: enter wide, clip the apex, drift out. Outside foot down and weighted.</li>
+        <li>Look at the exit, not the apex. In a group, hold your line &mdash; predictability keeps everyone upright.</li>
+        <li>In the wet, brake earlier and lean less; paint, manhole covers, and oil are ice.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Descending</h3>
+  <div class="data-card">
+    <div class="data-card__header">SPEED WITH CONTROL</div>
+    <div class="data-card__content">
+      <ul>
+        <li>Hands in the drops &mdash; lower centre of gravity and full brake leverage.</li>
+        <li>Feather both brakes before corners; trail off as you tip in. Don't brake mid-corner.</li>
+        <li>Relax your upper body. A tense rider fights the bike; a loose rider lets it track.</li>
+        <li>On a known descent, scout the tight corners. On an unknown one, ride within sight lines.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Handling Drills</h3>
+  <p>Ten minutes of drills per week builds race-day confidence.</p>
+  <ul>
+    <li><strong>Bottle grabs:</strong> reach for your bottle while holding a straight line. Both hands, eyes up.</li>
+    <li><strong>Shoulder rubs:</strong> with a trusted rider, lean shoulder-to-shoulder on grass at low speed &mdash; contact stops being scary.</li>
+    <li><strong>Cornering laps:</strong> a quiet bend, increasing entry speed each lap until you find the limit. No traffic, no heroics.</li>
+    <li><strong>Paceline rotation:</strong> with a small group, practise smooth through-and-off so pulls are even and seamless.</li>
+  </ul>
+</section>"""
+
+
 def _section_gravel_skills(race_data: Dict) -> str:
     """Section 15: Gravel-specific skills and technique guidance."""
     terrain = race_data.get("race_characteristics", {}).get("terrain", "gravel")
@@ -3086,6 +3198,32 @@ def _meta_badges(race_name, race_distance, elevation, duration_est,
     return '\n'.join(f'          <span>{b}</span>' for b in badges if b)
 
 
+def _cross_reference_race_date(race_name: str, athlete_date: str) -> dict:
+    """Verify the athlete's race date against the real race database.
+
+    Returns {matched, date_match, date_specific} for the guide's
+    verification card. matched=False -> race not in DB (athlete data
+    stands). date_match True/False -> the athlete's date agrees with the
+    database (or not). Tolerant: same day = match.
+    """
+    try:
+        from known_races import match_race
+    except Exception:
+        return {}
+    hit = match_race(race_name)
+    if not hit:
+        return {"matched": False, "date_match": None, "date_specific": ""}
+    info = hit[1]
+    db_date = info.get("date")
+    if not db_date or not athlete_date:
+        return {"matched": True, "date_match": None, "date_specific": db_date or ""}
+    return {
+        "matched": True,
+        "date_match": (str(db_date)[:10] == str(athlete_date)[:10]),
+        "date_specific": db_date,
+    }
+
+
 def generate_training_guide(athlete_id: str, output_path=None):
     """
     CURRENT GUIDE BUILDER — produces the branded training guide with:
@@ -3321,7 +3459,9 @@ def generate_training_guide(athlete_id: str, output_path=None):
         schedule=schedule,
         plan_config=plan_config,
         race_data=race_data,
-        date_xref={},
+        # Verify the athlete's date against the real race DB (was hardcoded
+        # empty here, so every guide showed "not in database").
+        date_xref=_cross_reference_race_date(race_name, derived.get('race_date', '')),
     )
 
     # ── Post-process: inject coaching-pipeline-specific sections ──

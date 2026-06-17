@@ -138,6 +138,53 @@ class TestAltitudeIsNotClimbing:
         assert "At 7000 feet" in html
 
 
+class TestBrandByDiscipline:
+    """A road athlete must not get a GRAVEL GOD footer or gravel-cornering
+    drills; gravel/mtb keep Gravel God. (Roadie Labs branding.)"""
+
+    def test_road_gets_road_skills_not_gravel(self):
+        from training_guide_builder import _section_skills
+        road = _section_skills({}, "road")
+        assert "Road Skills" in road
+        assert "HOLDING A WHEEL" in road  # pack craft
+        assert "loose gravel" not in road.lower()
+
+    def test_gravel_gets_gravel_skills(self):
+        from training_guide_builder import _section_skills
+        assert "Gravel Skills" in _section_skills({}, "gravel")
+
+    def test_brand_logo_by_discipline(self):
+        from training_guide_builder import _brand
+        assert _brand("road")["logo"] == "ROADIE LABS"
+        assert _brand("gravel")["logo"] == "GRAVEL GOD"
+        assert _brand("mtb")["logo"] == "GRAVEL GOD"
+        assert _brand(None)["logo"] == "GRAVEL GOD"  # safe default
+
+
+class TestDateVerificationWired:
+    """The date-verification card was hardcoded empty (broken cross-repo
+    import), so every guide said 'not in database'. It must verify real
+    races against the snapshot now."""
+
+    def test_real_race_verifies(self):
+        from training_guide_builder import _cross_reference_race_date
+        # any real dated race in the snapshot
+        from real_races import buildable_races
+        races = buildable_races(min_weeks=0, max_weeks=520)
+        if not races:
+            import pytest
+            pytest.skip("snapshot empty")
+        race = races[0]
+        x = _cross_reference_race_date(race["name"], race["date"])
+        assert x.get("matched") is True
+        assert x.get("date_match") is True
+
+    def test_unknown_race_not_in_db(self):
+        from training_guide_builder import _cross_reference_race_date
+        x = _cross_reference_race_date("Totally Fictional Race 99000", "2026-09-26")
+        assert x.get("matched") is False
+
+
 class TestLongRideSlotIsAlwaysEndurance:
     """The long-ride slot must never be a short quality session. A
     time_crunched athlete once got 'Race Simulation' (75-80min) as the

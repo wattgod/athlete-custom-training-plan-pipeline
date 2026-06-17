@@ -51,10 +51,32 @@ _skip_reason = "set GG_RUN_ACCEPTANCE=1 to run the slow end-to-end order suite"
 # have broken the pipeline. Race dates use known_races entries with FUTURE
 # dates so the (correct) past-date / date-mismatch gates don't trip.
 # ---------------------------------------------------------------------------
+def _real_gravel_race():
+    """A stable, future-dated REAL gravel race from the snapshot so golden
+    orders test against actual events and never rot when a date rolls past.
+    Falls back to a fixed race if the snapshot isn't built."""
+    import random
+    from datetime import date as _date
+    try:
+        from real_races import pick
+        race = pick(random.Random("acceptance-golden-v1"), discipline="gravel",
+                    min_weeks=14, max_weeks=28, min_mi=50, max_mi=110,
+                    today=_date.today().isoformat())
+        if race:
+            return race
+    except Exception:
+        pass
+    return {"name": "Big Sugar Gravel", "date": "2026-10-17",
+            "distance_mi": 104, "elevation_ft": 6000}
+
+
+_RACE = _real_gravel_race()
+_RACE_DIST = f"{int(round(float(_RACE['distance_mi'])))} miles"
+
 GOLDEN_ORDERS = [
     {
         "id": "acctest-gravel-fullgym",
-        "label": "mid-volume gravel, known race, FTP known, FULL GYM",
+        "label": "mid-volume gravel, real race, FTP known, FULL GYM",
         # exercises: strength-equipment coherence (Jesse's bug), volume fill,
         # standard methodology selection
         "intake": {
@@ -67,11 +89,11 @@ GOLDEN_ORDERS = [
             "strength_current": "2x/week", "strength_want": "yes",
             "strength_equipment": "full gym",
             "sleep_quality": "good", "stress_level": "moderate", "injuries": "None",
-            "races": [{"name": "Big Sugar Gravel", "date": "2026-10-17",
-                       "distance": "104 miles", "priority": "A", "goal": "Compete"}],
+            "races": [{"name": _RACE["name"], "date": _RACE["date"],
+                       "distance": _RACE_DIST, "priority": "A", "goal": "Compete"}],
         },
         "expect": {
-            "ftp": "240", "race": "Big Sugar Gravel", "race_date": "2026-10-17",
+            "ftp": "240", "race": _RACE["name"], "race_date": _RACE["date"],
             "strength_equipment": "full gym", "target_hours": 9.0,
         },
     },
@@ -90,11 +112,11 @@ GOLDEN_ORDERS = [
             "strength_current": "occasional", "strength_want": "yes",
             "strength_equipment": "dumbbells",
             "sleep_quality": "fair", "stress_level": "moderate", "injuries": "None",
-            "races": [{"name": "Big Sugar Gravel", "date": "2026-10-17",
-                       "distance": "50 miles", "priority": "A", "goal": "Finish Strong"}],
+            "races": [{"name": _RACE["name"], "date": _RACE["date"],
+                       "distance": _RACE_DIST, "priority": "A", "goal": "Finish Strong"}],
         },
         "expect": {
-            "ftp": "165", "race": "Big Sugar Gravel", "race_date": "2026-10-17",
+            "ftp": "165", "race": _RACE["name"], "race_date": _RACE["date"],
             "strength_equipment": "dumbbells", "target_hours": 7.0,
         },
     },

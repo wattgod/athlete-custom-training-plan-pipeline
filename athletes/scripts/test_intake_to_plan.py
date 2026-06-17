@@ -1441,9 +1441,9 @@ class TestUnknownRaceFallback:
 
     def test_unknown_race_uses_raw_name(self):
         """Unknown race should keep the original athlete-provided name."""
-        parsed = self._make_parsed_with_race('Copper Triangle')
+        parsed = self._make_parsed_with_race('Zephyr Desert Rally')
         profile = build_profile(parsed)
-        assert profile['target_race']['name'] == 'Copper Triangle'
+        assert profile['target_race']['name'] == 'Zephyr Desert Rally'
 
     def test_unknown_race_extracts_distance(self):
         """'Zephyr Desert Rally 150' should extract distance_miles=150."""
@@ -1460,7 +1460,7 @@ class TestUnknownRaceFallback:
 
     def test_unknown_race_generates_valid_race_id(self):
         """Unknown race should still generate a valid race_id."""
-        parsed = self._make_parsed_with_race('Copper Triangle')
+        parsed = self._make_parsed_with_race('Zephyr Desert Rally')
         profile = build_profile(parsed)
         race_id = profile['target_race']['race_id']
         assert race_id, "race_id should not be empty"
@@ -1469,7 +1469,7 @@ class TestUnknownRaceFallback:
     def test_unknown_race_extracts_date_from_goals(self):
         """Date in goals text should be extracted for unknown races."""
         parsed = self._make_parsed_with_race(
-            'Copper Triangle',
+            'Zephyr Desert Rally',
             goals_extra={'success': 'Finish the race on June 6, 2026'}
         )
         profile = build_profile(parsed)
