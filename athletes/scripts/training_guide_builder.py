@@ -1216,8 +1216,9 @@ def _section_workout_execution(tier: str, ftp: Optional[int] = None):
     <div class="data-card__header">RULE 4: CADENCE MATTERS</div>
     <div class="data-card__content">
       <p>Alternate between high cadence (95-105 rpm) and low cadence (60-75 rpm) intervals.
-      High cadence = cardiovascular stimulus. Low cadence = muscular strength.
-      Gravel racing requires both &mdash; you need to grind up climbs and spin on flats.</p>
+      High cadence trains the cardiovascular system; low cadence builds muscular force.
+      A complete rider develops both &mdash; the range to spin smoothly when fresh and to
+      push a big gear when the road tilts up.</p>
     </div>
   </div>
 
@@ -1228,7 +1229,7 @@ def _section_workout_execution(tier: str, ftp: Optional[int] = None):
   skills practice, group rides.</p>
   <p><strong>Balance:</strong> Aim for at least 1-2 outdoor rides per week. Indoor training is
   efficient but doesn't prepare you for real-world race conditions &mdash; wind, terrain changes,
-  group dynamics, and the mental challenge of being on the bike for 6+ hours.</p>
+  group dynamics, and the mental challenge of a long day in the saddle.</p>
 
   <h3>When and How to Modify Workouts</h3>
   <ul>
@@ -1991,9 +1992,87 @@ If something fails in the dress rehearsal, fix it before race day.</p></div>"""
 def _section_skills(race_data: Dict, discipline: str = "gravel") -> str:
     """Skills chapter — dispatched by discipline so a road athlete gets road
     skills, not gravel-cornering drills."""
-    if (discipline or "gravel").lower() == "road":
+    disc = (discipline or "gravel").lower()
+    if disc == "road":
         return _section_road_skills(race_data)
+    if disc == "mtb":
+        return _section_mtb_skills(race_data)
     return _section_gravel_skills(race_data)
+
+
+def _section_mtb_skills(race_data: Dict) -> str:
+    """Section 13: mountain-bike skills — singletrack-specific handling. An MTB
+    racer needs trail technique (line choice, drops, switchbacks, braking
+    traction), not gravel-road cornering or road pack craft."""
+    return """<section id="section-13" class="gg-section">
+  <h2>13 &middot; Mountain Bike Skills</h2>
+
+  <p>Cross-country racing is won on the technical sections as much as the climbs. A rider who
+  carries speed through rock gardens and rails switchbacks saves matches that a stronger but
+  clumsy rider burns. Trail skills are trainable &mdash; ride the hard features deliberately
+  until they stop costing you watts.</p>
+
+  <h3>Body Position &amp; Vision</h3>
+  <div class="data-card">
+    <div class="data-card__header">THE ATTACK POSITION</div>
+    <div class="data-card__content">
+      <ul>
+        <li>Out of the saddle on descents and techy ground: knees and elbows bent, weight centred, heels dropped.</li>
+        <li>Let the bike move beneath you &mdash; stay loose so the suspension and tyres can track the trail.</li>
+        <li>Look 3&ndash;5 seconds ahead to the exit of a feature, never down at the front wheel. The bike goes where you look.</li>
+        <li>Pick your line early and commit. Hesitation in a rock garden is how you wash out.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Braking &amp; Traction</h3>
+  <div class="data-card">
+    <div class="data-card__header">CONTROL ON LOOSE GROUND</div>
+    <div class="data-card__content">
+      <ul>
+        <li>Brake BEFORE the feature, not in it. Set your speed early, then roll through off the brakes.</li>
+        <li>One or two fingers on each lever &mdash; modulate, don't grab. A locked wheel slides; a rolling wheel steers.</li>
+        <li>Favour the front brake for stopping power, but ease it on loose or steep ground to keep the front from washing.</li>
+        <li>On climbs, stay seated for rear-wheel traction and meter your power so the tyre doesn't spin.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Switchbacks &amp; Cornering</h3>
+  <div class="data-card">
+    <div class="data-card__header">TIGHT TURNS AT SPEED</div>
+    <div class="data-card__content">
+      <ul>
+        <li>Outside foot down and weighted; drive your weight through the outside pedal to load the tyres.</li>
+        <li>Look through the corner to the exit. Lean the bike more than your body on flat, loose turns.</li>
+        <li>On tight switchbacks, set up wide, brake before the apex, then pivot the front wheel and accelerate out.</li>
+        <li>Use any berm &mdash; it's free grip. Stay high on the entry and let the banking turn you.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Drops, Roots &amp; Rock Gardens</h3>
+  <div class="data-card">
+    <div class="data-card__header">CARRYING SPEED THROUGH CHATTER</div>
+    <div class="data-card__content">
+      <ul>
+        <li>Speed is your friend in rough ground &mdash; momentum carries you over chatter that traps a slow wheel.</li>
+        <li>Approach roots and rocks square-on where you can; a wet root hit at an angle is the classic crash.</li>
+        <li>For small drops, push the bars forward and let the bike come to you &mdash; land both wheels or rear-first, never nose-down.</li>
+        <li>Ratchet your pedals (half-strokes) through tight rocky sections to avoid clipping a pedal.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Trail Drills</h3>
+  <p>Fifteen minutes of skills per week builds race-day confidence.</p>
+  <ul>
+    <li><strong>Track stand:</strong> balance stationary on a slight rise &mdash; builds the slow-speed control that saves techy climbs.</li>
+    <li><strong>Front-wheel lifts:</strong> manual the front wheel up over a line on flat ground; the foundation for clearing roots and ledges.</li>
+    <li><strong>Cornering laps:</strong> a known loose bend, increasing entry speed each lap until the tyres start to drift.</li>
+    <li><strong>Repeat the feature:</strong> session the one rock garden or switchback that scares you until it's automatic.</li>
+  </ul>
+</section>"""
 
 
 def _section_road_skills(race_data: Dict) -> str:

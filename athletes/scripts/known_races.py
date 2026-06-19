@@ -52,6 +52,7 @@ def _snapshot_races() -> Dict[str, Dict[str, Any]]:
             "distance_miles": e.get("distance_mi"),
             "elevation_ft": e.get("elevation_ft") or 0,
             "discipline": disc,
+            "location": e.get("location", ""),
         }
     return out
 

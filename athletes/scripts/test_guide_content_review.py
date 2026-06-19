@@ -176,6 +176,17 @@ class TestGuideTextBugs:
         assert "20-MINUTE TIME TRIAL" in html
         assert "not the test" in html  # the opener is explicitly not maximal
 
+    def test_workout_execution_is_discipline_neutral(self):
+        # the judge flagged a gravel cadence cue and an indoor "6+ hours"
+        # string leaking into road/mtb plans — the execution chapter must
+        # be discipline-neutral
+        from training_guide_builder import _section_workout_execution
+        html = _section_workout_execution("Competitor", 250)
+        low = html.lower()
+        assert "gravel racing requires" not in low
+        assert "6+ hours" not in html
+        assert "grind up climbs and spin on flats" not in low
+
     def test_long_ride_duration_never_degenerate(self):
         from training_guide_builder import _section_weekly_structure
         # a tiny budget collapses lo==hi; must not render "1.5-1.5 hours"
@@ -223,6 +234,15 @@ class TestBrandByDiscipline:
     def test_gravel_gets_gravel_skills(self):
         from training_guide_builder import _section_skills
         assert "Gravel Skills" in _section_skills({}, "gravel")
+
+    def test_mtb_gets_mtb_skills_not_gravel_or_road(self):
+        from training_guide_builder import _section_skills
+        mtb = _section_skills({}, "mtb")
+        assert "Mountain Bike Skills" in mtb
+        assert "rock garden" in mtb.lower() or "switchback" in mtb.lower()
+        # not the road pack-craft chapter, not gravel-only cornering framing
+        assert "HOLDING A WHEEL" not in mtb
+        assert "Gravel Skills" not in mtb
 
     def test_brand_logo_by_discipline(self):
         from training_guide_builder import _brand
