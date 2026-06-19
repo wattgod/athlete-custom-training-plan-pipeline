@@ -187,6 +187,20 @@ class TestGuideTextBugs:
         assert "6+ hours" not in html
         assert "grind up climbs and spin on flats" not in low
 
+    def test_long_ride_peak_capped_by_race_duration(self):
+        # the judge flagged a 6.8h long ride for a ~3.8h race — a weekly-hours
+        # budget artifact that contradicts the fueling section. The peak must
+        # not wildly exceed race duration.
+        import re
+        from training_guide_builder import _section_weekly_structure
+        sched = {"days": {"saturday": {"session": "long_ride"},
+                          "sunday": {"session": "rest"},
+                          "tuesday": {"session": "intervals"},
+                          "thursday": {"session": "intervals"}}}
+        html = _section_weekly_structure(sched, "Finisher", "11", 3.8)
+        hi = max(float(b) for _, b in re.findall(r"([\d.]+)-([\d.]+) hours", html))
+        assert hi <= 3.8 * 1.2, f"long-ride peak {hi}h exceeds race-duration cap"
+
     def test_long_ride_duration_never_degenerate(self):
         from training_guide_builder import _section_weekly_structure
         # a tiny budget collapses lo==hi; must not render "1.5-1.5 hours"

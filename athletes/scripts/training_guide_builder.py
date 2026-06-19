@@ -157,7 +157,7 @@ BRANDS = {
     "gravel": {"logo": "GRAVEL GOD", "tagline": "Custom training plans for gravel racing",
                "skills_title": "Gravel Skills"},
     "mtb": {"logo": "GRAVEL GOD", "tagline": "Custom training plans for off-road racing",
-            "skills_title": "Off-Road Skills"},
+            "skills_title": "Mountain Bike Skills"},
     "road": {"logo": "ROADIE LABS", "tagline": "Custom training plans for road racing",
              "skills_title": "Road Skills"},
 }
@@ -409,7 +409,7 @@ def _build_full_guide(
     # the guide). Do not re-add calendar/schedule content to the guide.
     sections.append(_section_training_zones(ftp, tier))
     sections.append(_section_adaptation())
-    sections.append(_section_weekly_structure(schedule, tier_display, weekly_hours))
+    sections.append(_section_weekly_structure(schedule, tier_display, weekly_hours, est_race_hrs))
     sections.append(_section_phase_progression(plan_duration, tier, ride_realism))
     sections.append(_section_workout_execution(tier, ftp))
     sections.append(_section_recovery_protocol(tier, profile))
@@ -949,7 +949,8 @@ def _section_adaptation():
 </section>"""
 
 
-def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: str = ""):
+def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: str = "",
+                              est_race_hrs: float = 0):
     days = schedule.get("days", {})
     all_days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
@@ -981,6 +982,13 @@ def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: s
         per_ride = remaining / long_ride_count
         # Floor: at least 1.5 hours for meaningful endurance work
         per_ride = max(per_ride, 1.5)
+        # Cap by race duration: a long ride that wildly exceeds the race
+        # (e.g. 6.8h for a 3.8h event) is a budget artifact, not coaching —
+        # it contradicts the fueling section and worries the athlete. The
+        # longest ride should approach race duration, not blow past it.
+        if est_race_hrs and est_race_hrs > 0:
+            per_ride = min(per_ride, est_race_hrs * 1.15)
+            per_ride = max(per_ride, 1.5)
         # Range: base to peak (recovery weeks to build weeks)
         lr_lo = max(1.5, per_ride * 0.6)
         lr_hi = per_ride
