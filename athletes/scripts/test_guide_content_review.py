@@ -252,6 +252,59 @@ class TestBrandByDiscipline:
         assert _brand(None)["logo"] == "GRAVEL GOD"  # safe default
 
 
+class TestRaceDataResolution:
+    """The guide must load the race file that MATCHES the named race, never
+    an unrelated one via fuzzy substring/first-token matching. The judge
+    caught 'Niseko, Hokkaido, Japan' rendered on a Greek gran fondo."""
+
+    def _race_dir(self):
+        from pathlib import Path
+        d = Path.home() / 'Documents' / 'GravelGod' / 'gravel-race-automation' / 'race-data'
+        return d
+
+    def test_loutraki_loads_greece_not_japan(self):
+        import pytest
+        from training_guide_builder import _resolve_race_data
+        d = self._race_dir()
+        if not d.exists():
+            pytest.skip("race-data dir not present")
+        rd, loc = _resolve_race_data("UCI Gran Fondo Loutraki", [d])
+        # the VENUE fields must be the Greek race, not Japan. (The file's
+        # prose legitimately mentions the Niseko worlds as a qualification
+        # target — that's history, not the venue, so we only check location.)
+        venue = " ".join(str(x).lower() for x in [
+            loc,
+            (rd.get('race', {}).get('vitals', {}) or {}).get('location'),
+            rd.get('location'),
+            (rd.get('race_metadata') or {}).get('location'),
+        ] if x)
+        assert "loutraki" in venue or "greece" in venue
+        assert "niseko" not in venue and "hokkaido" not in venue and "japan" not in venue
+
+    def test_no_first_token_or_substring_cross_match(self):
+        # a race whose name shares a leading token with an unrelated file
+        # must not silently load that file
+        import pytest
+        from training_guide_builder import _resolve_race_data
+        d = self._race_dir()
+        if not d.exists():
+            pytest.skip("race-data dir not present")
+        # gibberish race that matches nothing → empty, never a wrong file
+        rd, loc = _resolve_race_data("Zzzx Nonexistent Fondo 9999", [d])
+        assert rd == {}
+
+    def test_verified_location_overlaid_when_file_missing(self):
+        # even when no JSON file exists, a matched race still yields its
+        # verified location (so the venue is correct, never blank-or-wrong)
+        from training_guide_builder import _resolve_race_data
+        from pathlib import Path
+        # point at an empty dir to force the file-miss path
+        rd, loc = _resolve_race_data("Maratona dles Dolomites", [Path("/tmp/nonexistent-race-dir")])
+        assert rd == {}
+        # location comes from the matcher, not a file
+        assert loc and "Italy" in loc
+
+
 class TestDateVerificationWired:
     """The date-verification card was hardcoded empty (broken cross-repo
     import), so every guide said 'not in database'. It must verify real

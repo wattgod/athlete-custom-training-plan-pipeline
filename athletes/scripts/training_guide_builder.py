@@ -3348,6 +3348,63 @@ def _cross_reference_race_date(race_name: str, athlete_date: str) -> dict:
     }
 
 
+def _resolve_race_data(race_name, race_data_dirs):
+    """Load a race's JSON from the gravel-race-automation DB, keyed off the
+    VERIFIED matcher so the venue we render always belongs to the race we
+    name. Returns (race_data_dict, verified_location_or_None).
+
+    The old loader guessed the file via slug.split('-')[0] (first token) and
+    a `slug[:10] in stem` substring glob — both could load an UNRELATED
+    race's JSON, putting a wrong venue (e.g. "Niseko, Hokkaido" on a Greek
+    gran fondo) in the guide. A wrong venue destroys athlete trust; a blank
+    one merely omits. We match exactly, fall back to a tight prefix only, and
+    overlay the matcher's authoritative location when no file is found.
+    """
+    name_slug = (race_name or "").lower().replace(' ', '-').replace("'", '')
+
+    canonical_slug = None
+    verified_location = None
+    try:
+        from known_races import match_race
+        _hit = match_race(race_name)
+        if _hit:
+            _key = _hit[0]
+            canonical_slug = _key.split(':', 1)[1] if ':' in _key else _key
+            verified_location = _hit[1].get('location') or None
+    except Exception:
+        pass
+
+    candidate_slugs = [s for s in [
+        canonical_slug,
+        canonical_slug.replace('_', '-') if canonical_slug else None,
+        name_slug,
+        name_slug.replace('-gravel', ''),
+    ] if s]
+
+    race_data = {}
+    for race_data_dir in race_data_dirs:
+        if not race_data_dir.exists():
+            continue
+        # exact slug match only — no first-token or arbitrary-substring guessing
+        for cand in candidate_slugs:
+            race_file = race_data_dir / f'{cand}.json'
+            if race_file.exists():
+                with open(race_file) as f:
+                    race_data = json.load(f)
+                break
+        # tight prefix-only fallback (e.g. belgian-waffle-ride →
+        # belgian-waffle-ride-kansas) — NEVER an arbitrary substring match
+        if not race_data and len(name_slug) >= 8:
+            for rf in sorted(race_data_dir.glob('*.json')):
+                if rf.stem.startswith(name_slug):
+                    with open(rf) as f:
+                        race_data = json.load(f)
+                    break
+        if race_data:
+            break
+    return race_data, verified_location
+
+
 def generate_training_guide(athlete_id: str, output_path=None):
     """
     CURRENT GUIDE BUILDER — produces the branded training guide with:
@@ -3528,31 +3585,11 @@ def generate_training_guide(athlete_id: str, output_path=None):
     }
 
     # ── Load race data from gravel-race-automation (if available) ──
-    race_data = {}
     race_name = derived['race_name']
-    # Try multiple paths
-    for race_data_dir in [
+    race_data, verified_location = _resolve_race_data(race_name, [
         scripts_dir.parent.parent.parent / 'gravel-race-automation' / 'race-data',
         Path.home() / 'Documents' / 'GravelGod' / 'gravel-race-automation' / 'race-data',
-    ]:
-        if race_data_dir.exists():
-            # Try to match race name to JSON file
-            slug = race_name.lower().replace(' ', '-').replace("'", '')
-            for candidate in [slug, slug.replace('-gravel', ''), slug.split('-')[0]]:
-                race_file = race_data_dir / f'{candidate}.json'
-                if race_file.exists():
-                    with open(race_file) as f:
-                        race_data = json.load(f)
-                    break
-            # Try glob match
-            if not race_data:
-                for rf in race_data_dir.glob('*.json'):
-                    if slug[:10] in rf.stem:
-                        with open(rf) as f:
-                            race_data = json.load(f)
-                        break
-            if race_data:
-                break
+    ])
 
     # Unwrap race data: raw JSON has {"race": {...}}, step_07 expects flat dict
     if 'race' in race_data and isinstance(race_data['race'], dict):
@@ -3579,6 +3616,16 @@ def generate_training_guide(athlete_id: str, output_path=None):
             'terrain': terrain.get('primary', ''),
             'climate': climate.get('summary', '') if isinstance(climate, dict) else str(climate),
         })
+
+    # Overlay the verified venue from the race DB so a missing JSON file
+    # still renders the CORRECT location (matched to race_name) rather than
+    # a blank or stale one. The matcher's location is authoritative.
+    if verified_location:
+        _rm = race_data.setdefault('race_metadata', {})
+        if not _rm.get('location'):
+            _rm['location'] = verified_location
+        if not race_data.get('location'):
+            race_data['location'] = verified_location
 
     # ── Generate the guide ──
     html = _build_full_guide(
