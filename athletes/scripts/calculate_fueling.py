@@ -123,31 +123,31 @@ GUT_TRAINING_PHASES = {
 # CALORIE CALCULATION FUNCTIONS
 # =============================================================================
 
-def estimate_race_duration(distance_miles: float, goal_type: str, elevation_feet: int = 0) -> float:
+# Average speeds (mph) by discipline × goal. Road is far faster than gravel
+# (smooth tarmac, drafting); using gravel speeds for a road event over-
+# estimated a 96-mile road race at 8h when it's really ~5h, which then
+# mis-calibrated the entire fueling plan.
+_SPEED_BY_DISCIPLINE = {
+    "road":   {"survival": 14.0, "finish": 16.0, "compete": 19.0, "podium": 22.0},
+    "gravel": {"survival": 10.0, "finish": 12.0, "compete": 14.0, "podium": 16.0},
+    "mtb":    {"survival": 7.0,  "finish": 9.0,  "compete": 11.0, "podium": 13.0},
+}
+_SPEED_FLOOR = {"road": 12.0, "gravel": 8.0, "mtb": 6.0}
+
+
+def estimate_race_duration(distance_miles: float, goal_type: str,
+                           elevation_feet: int = 0, discipline: str = "gravel") -> float:
     """
-    Estimate race duration in hours based on distance, goal, and terrain.
-
-    Args:
-        distance_miles: Race distance in miles
-        goal_type: "survival", "finish", "compete", or "podium"
-        elevation_feet: Total elevation gain
-
-    Returns:
-        Estimated duration in hours
+    Estimate race duration in hours based on distance, goal, terrain, and
+    discipline (road events are much faster than gravel/mtb).
     """
-    # Base speeds by goal type (mph)
-    base_speeds = {
-        "survival": 10.0,
-        "finish": 12.0,
-        "compete": 14.0,
-        "podium": 16.0
-    }
-
-    base_speed = base_speeds.get(goal_type, 12.0)
+    disc = (discipline or "gravel").lower()
+    speeds = _SPEED_BY_DISCIPLINE.get(disc, _SPEED_BY_DISCIPLINE["gravel"])
+    base_speed = speeds.get(goal_type, speeds["finish"])
 
     # Elevation penalty: reduce speed by 1mph per 5000ft of climbing per 100 miles
     elevation_penalty = (elevation_feet / 5000) * (100 / max(distance_miles, 50)) * 1.0
-    adjusted_speed = max(8.0, base_speed - elevation_penalty)
+    adjusted_speed = max(_SPEED_FLOOR.get(disc, 8.0), base_speed - elevation_penalty)
 
     duration_hours = distance_miles / adjusted_speed
 
@@ -160,7 +160,8 @@ def calculate_race_calories(
     distance_miles: float,
     elevation_feet: int = 0,
     duration_hours: Optional[float] = None,
-    goal_type: str = "finish"
+    goal_type: str = "finish",
+    discipline: str = "gravel"
 ) -> Dict:
     """
     Calculate estimated calorie expenditure for a race.
@@ -192,7 +193,7 @@ def calculate_race_calories(
 
     # Duration-based adjustment
     if duration_hours is None:
-        duration_hours = estimate_race_duration(distance_miles, goal_type, elevation_feet)
+        duration_hours = estimate_race_duration(distance_miles, goal_type, elevation_feet, discipline)
 
     if duration_hours < 4:
         duration_factor = DURATION_ADJUSTMENTS["under_4h"]
@@ -358,14 +359,19 @@ def generate_fueling_context(
     target_race = profile.get("target_race", {})
     distance_miles = target_race.get("distance_miles", 100)
     goal_type = target_race.get("goal_type", "finish")
+    try:
+        from archetype import derive_discipline
+        discipline = derive_discipline(profile)
+    except Exception:
+        discipline = "gravel"
 
     if race_data:
         elevation_feet = race_data.get("elevation_feet", 0) or race_data.get("race_metadata", {}).get("elevation_feet", 0)
     else:
         elevation_feet = 0
 
-    # Calculate duration
-    duration_hours = estimate_race_duration(distance_miles, goal_type, elevation_feet)
+    # Calculate duration (discipline-aware — road is much faster than gravel)
+    duration_hours = estimate_race_duration(distance_miles, goal_type, elevation_feet, discipline)
 
     # Calculate calories
     calorie_data = calculate_race_calories(
@@ -374,7 +380,8 @@ def generate_fueling_context(
         distance_miles=distance_miles,
         elevation_feet=elevation_feet,
         duration_hours=duration_hours,
-        goal_type=goal_type
+        goal_type=goal_type,
+        discipline=discipline
     )
 
     # Calculate carb targets

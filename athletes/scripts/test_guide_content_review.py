@@ -138,6 +138,24 @@ class TestAltitudeIsNotClimbing:
         assert "At 7000 feet" in html
 
 
+class TestFuelingDurationByDiscipline:
+    """Race-duration estimate must reflect discipline — a road event is far
+    faster than gravel. (Judge caught an 8h estimate for a 96mi road race.)"""
+
+    def test_road_faster_than_gravel_than_mtb(self):
+        from calculate_fueling import estimate_race_duration
+        road = estimate_race_duration(96, "finish", 4000, "road")
+        gravel = estimate_race_duration(96, "finish", 4000, "gravel")
+        mtb = estimate_race_duration(96, "finish", 4000, "mtb")
+        assert road < gravel < mtb
+        assert road < 7.5  # 96mi road should not read as an 8h+ slog
+
+    def test_default_discipline_is_gravel(self):
+        from calculate_fueling import estimate_race_duration
+        assert (estimate_race_duration(100, "finish", 0)
+                == estimate_race_duration(100, "finish", 0, "gravel"))
+
+
 class TestGuideTextBugs:
     """Fixes for judge-found content bugs."""
 

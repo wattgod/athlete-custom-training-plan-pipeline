@@ -1398,8 +1398,10 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     # Estimate race duration in minutes for the 30% rule
     if race_distance_miles > 0:
         from calculate_fueling import estimate_race_duration
+        from archetype import derive_discipline
         estimated_race_duration_min = estimate_race_duration(
-            race_distance_miles, race_goal_type, race_elevation_ft
+            race_distance_miles, race_goal_type, race_elevation_ft,
+            derive_discipline(profile or {})
         ) * 60
     else:
         estimated_race_duration_min = 0
