@@ -234,6 +234,32 @@ class TestMethodologyMatchesSelection:
         assert _methodology_display({}) == {}
 
 
+class TestDistributionHonesty:
+    """The displayed intensity distribution must not contradict the plan. A
+    literal '0% tempo' for Polarized contradicts the Build-phase tempo the
+    plan prescribes (judge flag)."""
+
+    def test_polarized_does_not_claim_zero_tempo(self):
+        from training_guide_builder import _methodology_display
+        d = _methodology_display({
+            "selected_methodology": "Polarized 80/20",
+            "configuration": {"intensity_distribution":
+                              {"z1_z2": 0.80, "z3": 0.0, "z4_z5": 0.20}}})
+        desc = d["description"].lower()
+        assert "0% tempo" not in desc
+        assert "polarized" in desc
+        # honest about minimize-not-eliminate
+        assert "minimal" in desc or "still see" in desc
+
+    def test_three_way_split_preserved_when_tempo_real(self):
+        from training_guide_builder import _methodology_display
+        d = _methodology_display({
+            "selected_methodology": "Sweet Spot",
+            "configuration": {"intensity_distribution":
+                              {"z1_z2": 0.50, "z3": 0.35, "z4_z5": 0.15}}})
+        assert "35% tempo" in d["description"]
+
+
 class TestBrandByDiscipline:
     """A road athlete must not get a GRAVEL GOD footer or gravel-cornering
     drills; gravel/mtb keep Gravel God. (Roadie Labs branding.)"""
