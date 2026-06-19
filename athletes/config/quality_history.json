@@ -48,5 +48,15 @@
   "weighted_problem_load": 1.5,
   "critical_count": 0,
   "distinct_issues": 0
+ },
+ {
+  "date": "2026-06-19",
+  "quality": null,
+  "n": 8,
+  "avg_score": null,
+  "contract_pass_rate": 0.12,
+  "weighted_problem_load": 2.62,
+  "critical_count": 0,
+  "distinct_issues": 0
  }
 ]
