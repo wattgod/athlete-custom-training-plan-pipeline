@@ -1721,7 +1721,11 @@ def generate_coaching_brief(
     goal_type = target.get('goal_type', target.get('goal', '?'))
 
     # -- Intensity distribution from methodology config --
+    # Some methodologies use a string distribution ("readiness_dependent",
+    # "block_dependent") rather than fixed fractions — guard for that.
     intensity = meth_config.get('intensity_distribution', {})
+    if not isinstance(intensity, dict):
+        intensity = {}
     z1_z2_pct = intensity.get('z1_z2', '?')
     z3_pct = intensity.get('z3', '?')
     z4_z5_pct = intensity.get('z4_z5', '?')

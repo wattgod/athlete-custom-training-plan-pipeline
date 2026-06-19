@@ -538,11 +538,43 @@ def calculate_methodology_score(
             reasons.append("Good for indoor-heavy early training")
 
     # Masters athletes
-    age = profile.get("health_factors", {}).get("age")
+    age = profile.get("health_factors", {}).get("age") or profile.get("age")
+    dist = methodology.get("intensity_distribution")
+    z1z2 = dist.get("z1_z2") if isinstance(dist, dict) else None
+    z4z5 = dist.get("z4_z5") if isinstance(dist, dict) else None
+
     if age and age >= 50:
         if methodology["stress_tolerance"] in ["very_high", "high", "variable"]:
             score += 10
             reasons.append("Recovery-friendly for masters athletes")
+        # MEDICAL SAFETY: steer masters away from very-hard methodologies.
+        # A 50%+-hard plan (HIIT-Focused) for a masters returner is an
+        # overtraining/injury risk and a coaching-liability flag.
+        if z4z5 is not None and z4z5 >= 0.30:
+            penalty = 25 if z4z5 >= 0.45 else 15
+            score -= penalty
+            warnings.append(
+                f"High-intensity load ({z4z5*100:.0f}% hard) is aggressive for a masters athlete")
+
+    # DELIVERABILITY: the block-builder enforces 2-3 intensity days/week +
+    # VO2max every 14 days (CRITICAL compliance rules), so the plan it emits
+    # is always ~70-85% easy by time. Methodologies whose distribution falls
+    # outside that band can't be faithfully delivered — the guide would claim
+    # a distribution the workouts don't match (the avatar judge's recurring
+    # Zone-Distribution failure). Down-rank the undeliverable extremes.
+    if z1z2 is not None:
+        if z1z2 >= 0.90:        # e.g. MAF/LT1 95% easy — builder injects required intensity
+            score -= 20
+            warnings.append("Near-zero-intensity distribution not deliverable under compliance rules")
+        elif z4z5 is not None and z4z5 >= 0.40:  # e.g. HIIT 50% hard — builder caps intensity
+            score -= 20
+            warnings.append("Very-high-intensity distribution not deliverable under compliance rules")
+    elif not isinstance(dist, dict):
+        # Adaptive/readiness/block-dependent distributions can't be faithfully
+        # delivered by the fixed-calendar builder either — prefer a concrete,
+        # deliverable methodology.
+        score -= 15
+        warnings.append("Adaptive distribution not deliverable by the calendar-based builder")
 
     # Coming off injury
     coming_off_injury = profile.get("recent_training", {}).get("coming_off_injury", False)
@@ -557,9 +589,17 @@ def calculate_methodology_score(
     # ==========================================================================
     # BUILD CONFIGURATION
     # ==========================================================================
+    # Normalize the distribution to a dict so every downstream consumer
+    # (guide, coaching brief, preview) can rely on .get() — adaptive
+    # methodologies use string descriptors otherwise.
+    _norm_dist = methodology["intensity_distribution"]
+    if not isinstance(_norm_dist, dict) or "z1_z2" not in _norm_dist:
+        # builder's real, deliverable shape (polarized-ish)
+        _norm_dist = {"z1_z2": 0.80, "z3": 0.05, "z4_z5": 0.15}
+
     configuration = {
         "methodology": methodology["name"],
-        "intensity_distribution": methodology["intensity_distribution"],
+        "intensity_distribution": _norm_dist,
         "strength_approach": methodology["strength_approach"],
         "key_workouts": methodology["key_workouts"],
         "progression_style": methodology["progression_style"],

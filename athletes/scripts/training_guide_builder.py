@@ -3206,9 +3206,13 @@ def _methodology_display(methodology_yaml: dict) -> dict:
     if not name:
         return {}
     cfg = methodology_yaml.get("configuration", {}) or {}
-    dist = cfg.get("intensity_distribution", {}) or {}
+    dist = cfg.get("intensity_distribution", {})
+    # Some methodologies describe their distribution as a string
+    # ("readiness_dependent", "block_dependent", "phase_adaptive") rather
+    # than fixed z1/z3/z4_z5 fractions — handle both.
+    dist = dist if isinstance(dist, dict) else {}
     z1 = dist.get("z1_z2"); z3 = dist.get("z3"); z45 = dist.get("z4_z5")
-    if z1 is not None:
+    if z1 is not None and z3 is not None and z45 is not None:
         desc = (f"Your plan runs a {z1*100:.0f}% easy / {z3*100:.0f}% tempo / "
                 f"{z45*100:.0f}% hard intensity distribution &mdash; the balance "
                 f"the {name} methodology calls for, matched to your hours and "
