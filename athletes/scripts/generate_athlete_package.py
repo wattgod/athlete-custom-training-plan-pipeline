@@ -346,6 +346,36 @@ def load_json(path: Path) -> dict:
         return json.load(f)
 
 
+def select_strength_days(is_available, strength_only_abbrevs=None) -> list:
+    """Pick up to two strength days that the athlete is available for.
+
+    is_available(day_abbrev) -> bool : true when strength may go on that day
+    (available, not an off/rest day, not the long-ride day).
+    strength_only_abbrevs : athlete-specified strength days (win if given).
+
+    Prefers 1+-day-gap pairings (no back-to-back), else any two available
+    days with a 2+ day gap. Never returns an unavailable/off day.
+    """
+    from constants import DAY_ORDER
+    if strength_only_abbrevs:
+        return [d for d in strength_only_abbrevs if is_available(d)][:2] \
+            or strength_only_abbrevs[:2]
+    valid_pairings = [
+        ['Tue', 'Thu'], ['Mon', 'Thu'], ['Tue', 'Fri'], ['Mon', 'Wed'],
+        ['Wed', 'Fri'], ['Mon', 'Fri'], ['Wed', 'Sat'], ['Thu', 'Sat'],
+        ['Mon', 'Sat'], ['Tue', 'Sat'],
+    ]
+    for pair in valid_pairings:
+        if all(is_available(d) for d in pair):
+            return pair
+    avail = [d for d in DAY_ORDER if is_available(d)]
+    for i, a in enumerate(avail):
+        for b in avail[i + 1:]:
+            if abs(DAY_ORDER.index(a) - DAY_ORDER.index(b)) >= 2:
+                return [a, b]
+    return avail[:2]
+
+
 def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, derived: dict, profile: dict = None) -> list:
     """
     Generate ZWO workout files based on plan_dates, methodology, and athlete schedule preferences.
@@ -2379,23 +2409,16 @@ GO GET IT, {athlete_name.upper()}!
             3. Prefer easy/recovery bike days for strength
             4. If athlete specified strength_only_days, use those
             """
-            # Check for athlete-specified strength days
-            if strength_only_abbrevs:
-                return strength_only_abbrevs[:2]
+            # Strength must land on days the athlete is actually available —
+            # NOT their declared off days, and not the long-ride day. (The
+            # old code hardcoded Tue/Thu, putting strength on off days and
+            # failing the Off-Days check for athletes who rest Tue/Thu.)
+            def _strength_ok(d):
+                avail = get_day_availability(d)
+                return (avail.get('availability') not in ('unavailable', 'rest')
+                        and d != long_day_abbrev)
 
-            # Good pairings with 1+ day gap:
-            # Mon/Wed, Mon/Thu, Tue/Thu, Tue/Fri, Wed/Fri
-            valid_pairings = [
-                ['Tue', 'Thu'],  # Best: easy days in our schedule (Tue is easy, Thu is quality but not FTP)
-                ['Mon', 'Thu'],  # Good: quality day + quality day with gap
-                ['Tue', 'Fri'],  # Good: easy day + quality day
-                ['Mon', 'Wed'],  # OK: two quality days early week
-                ['Wed', 'Fri'],  # OK: mid-week + end-week
-            ]
-
-            # Tue/Thu is best because Tue is an easy day in our weekly structure
-            # This puts strength on a recovery day, not stacking with hard bike
-            return ['Tue', 'Thu']
+            return select_strength_days(_strength_ok, strength_only_abbrevs)
 
         strength_days = get_strength_days()
 
