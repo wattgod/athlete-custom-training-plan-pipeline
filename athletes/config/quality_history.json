@@ -68,5 +68,15 @@
   "weighted_problem_load": 9.33,
   "critical_count": 2,
   "distinct_issues": 8
+ },
+ {
+  "date": "crank-v2",
+  "quality": 2.22,
+  "n": 6,
+  "avg_score": 5.75,
+  "contract_pass_rate": 0.67,
+  "weighted_problem_load": 9.67,
+  "critical_count": 5,
+  "distinct_issues": 23
  }
 ]

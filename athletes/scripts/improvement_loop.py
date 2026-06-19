@@ -69,6 +69,12 @@ def aggregate(results):
     for r in results:
         v = r.get("verdict", {})
         for p in (v.get("problems") or []):
+            # the judge occasionally returns a bare string instead of
+            # {severity, issue} — normalize defensively
+            if isinstance(p, str):
+                p = {"severity": "minor", "issue": p}
+            elif not isinstance(p, dict):
+                continue
             sig = _issue_signature(p.get("issue", ""))
             if not sig:
                 continue
