@@ -634,6 +634,64 @@ def _send_ga4_purchase(order_id: str, value_cents, product_type: str,
         logger.warning(f"GA4 MP purchase failed (non-fatal): {e}")
 
 
+def _send_pipeline_delay_email(details: dict, brand: str = DEFAULT_BRAND) -> bool:
+    """On a pipeline FAILURE, email the ATHLETE that their plan is delayed and
+    being finished by hand — so a paid order never sits silently while only
+    the coach is notified. They already got a payment confirmation; this is
+    the "don't ghost them" follow-up the failure alert always reminds us to
+    send. Never throws, never blocks the webhook response. Returns True if sent.
+    """
+    try:
+        email = (details.get('email') or '').strip()
+        if not email:
+            logger.error("pipeline-delay email skipped: no athlete email in details")
+            return False
+        first = (details.get('name') or '').split()[0] if details.get('name') else 'there'
+        race = (details.get('race_name') or '').strip()
+        race_mention = f' for {race}' if race else ''
+        brand_name = _brand_config(brand).get('name', 'Gravel God Cycling')
+        subject = "A quick update on your training plan"
+        text = f"""Hey {first},
+
+Your payment came through — thank you. I hit a brief snag building your custom
+training plan{race_mention} automatically, so I'm finishing it by hand to make
+sure every detail is right.
+
+You'll have it within 24 hours. Nothing more is needed from you right now.
+
+Questions, or anything you want to add? Just reply to this email.
+
+— Matt, {brand_name}
+"""
+        html = f"""
+<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+  <div style="background: #59473c; color: white; padding: 24px; border-radius: 4px 4px 0 0;">
+    <h1 style="margin: 0; font-size: 21px;">A quick update on your plan</h1>
+  </div>
+  <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none; font-size: 15px; line-height: 1.6;">
+    <p>Hey {first},</p>
+    <p>Your payment came through — thank you. I hit a brief snag building your
+    custom training plan{race_mention} automatically, so I'm <strong>finishing it
+    by hand</strong> to make sure every detail is right.</p>
+    <p>You'll have it <strong>within 24 hours</strong>. Nothing more is needed
+    from you right now.</p>
+    <p>Questions, or anything you want to add? Just reply to this email.</p>
+    <p style="margin-top: 20px;">— Matt, {brand_name}</p>
+  </div>
+</div>
+"""
+        ok = _send_email(email, subject, text, html=html,
+                         reply_to=NOTIFICATION_EMAIL or None)
+        if ok:
+            logger.info(f"Sent pipeline-delay email to athlete {_mask_email(email)}")
+        else:
+            logger.error(f"Pipeline-delay email FAILED to send to {_mask_email(email)}")
+        return ok
+    except Exception as e:
+        logger.error(f"Pipeline-delay email errored: {e}")
+        return False
+
+
 def _notify_new_order(product_type: str, details: dict):
     """Send rich notification for new order. Falls back to CRITICAL log if Resend not configured."""
     if product_type in ('training_plan', 'training_plan_FAILED'):
@@ -654,6 +712,12 @@ def _notify_new_order(product_type: str, details: dict):
             logger.critical(f"NEW ORDER: {subject}\n{text}")
     else:
         logger.critical(f"NEW ORDER: {subject}\n{text}")
+
+    # On a pipeline failure, also email the ATHLETE so a paid order never sits
+    # silently — they paid, the coach is notified, but until now the athlete
+    # heard nothing. This is the "don't ghost them" follow-up.
+    if product_type == 'training_plan_FAILED':
+        _send_pipeline_delay_email(details, brand=details.get('brand', DEFAULT_BRAND))
 
 
 def _send_payment_confirmation(customer_email: str, customer_name: str,
