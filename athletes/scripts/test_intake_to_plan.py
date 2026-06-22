@@ -2234,3 +2234,16 @@ class TestEdgeCasesSilentFailures:
         assert len(key_days) >= 3, (
             f"Expected at least 3 key days with 7 available, got {len(key_days)}: {key_days}"
         )
+
+
+class TestDeliverableTrim:
+    """Phase 3: the dashboard step is retired; the two deliverables that matter
+    are the ZWO workouts and the training guide. PDF is best-effort (HTML is
+    the guaranteed fallback) and must never fail the order."""
+
+    def test_dashboard_step_removed(self):
+        from intake_to_plan import PIPELINE_STEPS
+        scripts = [s for _, s in PIPELINE_STEPS]
+        assert 'generate_dashboard.py' not in scripts
+        # the workout/guide step is still there (it writes the guide)
+        assert 'generate_athlete_package.py' in scripts

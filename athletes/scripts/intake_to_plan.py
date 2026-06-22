@@ -2266,7 +2266,6 @@ def generate_coaching_brief(
             'profile.yaml', 'derived.yaml', 'weekly_structure.yaml',
             'methodology.yaml', 'fueling.yaml', 'plan_dates.yaml',
             'coaching_brief.md', 'training_guide.html', 'training_guide.pdf',
-            'dashboard.html',
         ]
         for fname in expected_files:
             exists = (ad / fname).exists()
@@ -2304,8 +2303,11 @@ PIPELINE_STEPS = [
     ('Generate Workouts', 'generate_athlete_package.py'),
     # 'Generate HTML Guide' step RETIRED Jun 2026 — the shipped guide is
     # written by training_guide_builder inside the Generate Workouts step;
-    # generate_html_guide.py only produced an unused shadow copy
-    ('Generate Dashboard', 'generate_dashboard.py'),
+    # generate_html_guide.py only produced an unused shadow copy.
+    # 'Generate Dashboard' step RETIRED Jun 2026 (Phase 3) — the dashboard was
+    # an extra artifact customers didn't use; the two deliverables that matter
+    # are the ZWO workouts and the training guide (PDF). One fewer thing to
+    # break per order.
 ]
 
 
@@ -2352,13 +2354,13 @@ def run_pipeline(athlete_id: str) -> bool:
             print(f"    {DIM}{error_msg}{RESET}")
             return False
 
-    # -- Post-pipeline verification: check critical deliverables --
+    # -- Post-pipeline verification: the two deliverables that matter are the
+    # ZWO workouts and the training guide. (Dashboard retired in Phase 3.) --
     athlete_dir = get_athlete_dir(athlete_id)
-    dashboard_path = athlete_dir / 'dashboard.html'
-    if not dashboard_path.exists():
-        print(f"\n  {RED}[ERROR]{RESET} dashboard.html was NOT generated despite pipeline success")
-        print(f"    Expected at: {dashboard_path}")
-        print(f"    The generate_dashboard.py step may have exited 0 without producing output.")
+    guide_path = athlete_dir / 'training_guide.html'
+    if not guide_path.exists():
+        print(f"\n  {RED}[ERROR]{RESET} training_guide.html was NOT generated despite pipeline success")
+        print(f"    Expected at: {guide_path}")
         return False
 
     print(f"\n{GREEN}Pipeline completed successfully.{RESET}")
@@ -2683,8 +2685,7 @@ def copy_to_downloads(athlete_id: str, coaching_brief_md: str) -> Path:
 
     Contents:
     - workouts/ (all .zwo files)
-    - training_guide.html
-    - dashboard.html
+    - training_guide.html + training_guide.pdf
     - coaching_brief.md
     - plan_summary.yaml (derived.yaml)
     - fueling.yaml
@@ -2728,15 +2729,8 @@ def copy_to_downloads(athlete_id: str, coaching_brief_md: str) -> Path:
         print(f"  {YELLOW}[WARN]{RESET} training_guide.html not found")
         delivery_gaps.append('training_guide.html')
 
-    # 3. Dashboard
-    dashboard = athlete_dir / 'dashboard.html'
-    if dashboard.exists():
-        shutil.copy2(dashboard, downloads_dir / 'dashboard.html')
-        print(f"  {GREEN}Copied:{RESET} dashboard.html")
-        delivered.append('dashboard.html')
-    else:
-        print(f"  {RED}[ERROR]{RESET} dashboard.html not found -- generate_dashboard.py may have failed silently")
-        delivery_gaps.append('dashboard.html')
+    # 3. Dashboard — RETIRED (Phase 3). The deliverables that matter are the
+    # ZWO workouts and the training guide; the dashboard was an unused extra.
 
     # 4. Coaching brief
     brief_path = downloads_dir / 'coaching_brief.md'
@@ -2773,23 +2767,32 @@ def copy_to_downloads(athlete_id: str, coaching_brief_md: str) -> Path:
         print(f"  {GREEN}Copied:{RESET} plan_preview.html (verification dashboard)")
         delivered.append('plan_preview.html')
 
-    # 8. Generate PDF from training guide
+    # 8. Generate PDF from the training guide — BEST EFFORT. The PDF needs
+    # Chromium; if that's unavailable the order must NOT fail, because the
+    # HTML guide (already delivered above) carries the same content. A missing
+    # PDF is a clean degradation the coach can fill by hand, never a gap that
+    # reads as a broken order.
     guide_html = downloads_dir / 'training_guide.html'
     if guide_html.exists():
         pdf_path = downloads_dir / 'training_guide.pdf'
+        pdf_done = False
         try:
             from pdf_generator import generate_pdf
             pdf_ok, pdf_msg = generate_pdf(guide_html, pdf_path)
             if pdf_ok:
                 print(f"  {GREEN}Generated:{RESET} training_guide.pdf ({pdf_path.stat().st_size // 1024} KB)")
                 delivered.append('training_guide.pdf')
+                pdf_done = True
             else:
-                print(f"  {RED}[ERROR]{RESET} PDF generation failed: {pdf_msg}")
-                print(f"    Install Google Chrome for PDF output")
-                delivery_gaps.append('training_guide.pdf')
-        except ImportError:
-            print(f"  {RED}[ERROR]{RESET} PDF generation failed -- install Google Chrome for PDF output")
-            delivery_gaps.append('training_guide.pdf')
+                print(f"  {YELLOW}[WARN]{RESET} PDF not generated ({pdf_msg}) — "
+                      f"the HTML guide ships as the guide deliverable.")
+        except Exception as e:
+            print(f"  {YELLOW}[WARN]{RESET} PDF not generated ({type(e).__name__}) — "
+                  f"the HTML guide ships as the guide deliverable.")
+        if not pdf_done:
+            # ensure the guide is unmistakably present as the delivered guide
+            if 'training_guide.html' not in delivered:
+                delivered.append('training_guide.html (PDF unavailable)')
 
     # 8. Copy guide to delivery folder for hosting
     try:
