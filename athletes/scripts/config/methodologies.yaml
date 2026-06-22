@@ -33,8 +33,11 @@ time_crunched:
 
 g_spot:
   name: "G Spot (Read the Room)"
-  description: "Train the productive zone between tempo and threshold — dialed by feel and readiness, not a rigid percentage."
-  philosophy: "Read the room: the most training stimulus you can absorb today, autoregulated by how you actually feel."
+  # HONEST framing: the plan is a fixed calendar of productive-zone work; "read
+  # the room" is the ATHLETE's job — adjust effort against the targets by feel.
+  # The engine does NOT read HRV/readiness, so we do not claim it does.
+  description: "Train the productive zone between tempo and threshold — then read the room: hold the targets when you're fresh, ease off when you're cooked."
+  philosophy: "The most productive stimulus you can absorb — with built-in permission to autoregulate the effort by feel against the day's target, not chase a number you don't have."
   min_hours: 5
   max_hours: 13
   ideal_hours: [6, 10]

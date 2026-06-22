@@ -281,15 +281,18 @@ def test_fueling_targets_are_physiological(built_order):
 
 
 def test_compliance_is_perfect(built_order):
-    """11/11 critical compliance — re-checked from the emitted plan."""
-    summary_path = built_order["athlete_dir"] / "plan_summary.yaml"
-    # plan_summary records the gate result; the generator already raises on
-    # failure, so its existence + the clean exit is the proof. Assert the
-    # summary exists and records no critical violations.
-    assert summary_path.exists(), "plan_summary.yaml missing"
-    summary = yaml.safe_load(summary_path.read_text()) or {}
-    compliance = summary.get("compliance", {})
-    if compliance:
-        crit = compliance.get("critical_failures", compliance.get("critical_pass"))
-        # tolerate either schema: a count of 0, or a True pass flag
-        assert crit in (0, True, None), f"critical compliance not clean: {compliance}"
+    """The golden order must deliver CLEAN — no compliance/quality flag.
+
+    Since the gates now flag-for-review instead of hard-failing (the safety
+    net), 'exit 0' alone no longer proves the plan is compliant. The real
+    signal is NEEDS_REVIEW.txt: the compliance gate and the quality gates both
+    write it when they flag a plan. A known-good golden athlete must produce
+    NO flag — if a regression makes its plan non-compliant or trips a quality
+    gate, this file appears and the build fails red (re-arming the net the old
+    vacuous assertion lost)."""
+    athlete_dir = built_order["athlete_dir"]
+    assert (athlete_dir / "plan_summary.yaml").exists(), "plan_summary.yaml missing"
+    review = athlete_dir / "NEEDS_REVIEW.txt"
+    assert not review.exists(), (
+        "golden order was FLAGGED for review — a compliance or quality gate "
+        f"failed on a known-good athlete:\n{review.read_text() if review.exists() else ''}")

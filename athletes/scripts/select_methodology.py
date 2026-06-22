@@ -89,8 +89,8 @@ _METHODOLOGIES_FALLBACK = {
     },
     "g_spot": {
         "name": "G Spot (Read the Room)",
-        "description": "Train the productive zone between tempo and threshold \u2014 dialed by feel and readiness, not a rigid percentage.",
-        "philosophy": "Read the room: the most stimulus you can absorb today, autoregulated by how you feel.",
+        "description": "Train the productive zone between tempo and threshold \u2014 then read the room: hold the targets when you're fresh, ease off when you're cooked.",
+        "philosophy": "The most productive stimulus you can absorb, with built-in permission to autoregulate the effort by feel against the day's target.",
         "min_hours": 5, "max_hours": 13, "ideal_hours": (6, 10),
         "best_for": ["productive_efficiency", "self_aware_athletes", "variable_stress", "masters", "gravel_racing"],
         "not_for": ["rigid_plan_wanters", "pure_sprinters"],
