@@ -1353,6 +1353,10 @@ def _questionnaire_to_markdown(intake_data: dict, name: str = '', email: str = '
     a_race = next((r for r in races if r.get('priority') == 'A'), races[0] if races else {})
     goal = goal_map.get(a_race.get('goal', ''), 'finish')
 
+    # The race the customer SELECTED on the site carries its slug — the pipeline
+    # resolves the target race by this ID (exact), skipping fuzzy name-matching.
+    target_slug = intake_data.get('race_slug') or a_race.get('slug', '') or ''
+
     md = f"""# Athlete Intake: {name}
 Email: {email}
 Submitted: {datetime.now().strftime('%Y-%m-%d')}
@@ -1365,6 +1369,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 
 ## Goals
 - Primary Goal: specific_race
+- Race Slug: {target_slug}
 - Races:
 {chr(10).join(race_lines)}
 - Success: {a_race.get('goal', 'finish')}

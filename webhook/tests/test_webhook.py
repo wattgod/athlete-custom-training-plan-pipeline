@@ -2744,3 +2744,24 @@ class TestComplianceNeedsReview:
             order, {'success': True, 'stdout': 'all good'}, None)
         assert flagged['needs_review'] is True
         assert clean['needs_review'] is False
+
+
+class TestRaceSlugPassthrough:
+    """The race the customer selected (?race=slug) must reach the pipeline so it
+    resolves the target race by ID, not by fuzzy-matching the typed name."""
+
+    def test_markdown_emits_race_slug(self):
+        from app import _questionnaire_to_markdown
+        md = _questionnaire_to_markdown(
+            {'race_slug': 'bwr-north-carolina',
+             'races': [{'name': 'Belgian Waffle Ride', 'date': '2026-10-03',
+                        'distance': '131 miles', 'priority': 'A'}]},
+            name='T', email='t@e.com')
+        assert 'Race Slug: bwr-north-carolina' in md
+
+    def test_markdown_slug_blank_when_absent(self):
+        from app import _questionnaire_to_markdown
+        md = _questionnaire_to_markdown(
+            {'races': [{'name': 'Some Race', 'date': '2026-10-03', 'priority': 'A'}]},
+            name='T', email='t@e.com')
+        assert 'Race Slug:' in md  # field present, value empty — harmless

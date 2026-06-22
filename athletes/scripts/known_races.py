@@ -209,6 +209,32 @@ def _discriminative_tokens(text: str) -> set:
     return set(text.lower().split()) - _MATCH_STOP_WORDS
 
 
+def lookup_by_slug(slug: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+    """Resolve a race by its canonical SLUG — exact, no fuzzy guessing.
+
+    This is the preferred path: the customer picked a specific race on the
+    site, so the questionnaire carries its slug (e.g. 'bwr-north-carolina').
+    Looking it up by ID removes the entire class of name-matching bugs
+    (substring over-match, wrong edition, date mismatch). The slug is the
+    race-data filename / race-index key. Returns (race_id, info) or None.
+    """
+    if not slug:
+        return None
+    s = slug.strip().lower().strip('/')
+    # 1. Curated KNOWN_RACES are keyed by slug directly.
+    if s in KNOWN_RACES:
+        return s, KNOWN_RACES[s]
+    # 2. Snapshot keys are 'discipline:slug' — match the slug part. Prefer a
+    #    discipline-specific key but accept the bare slug too.
+    snap = _snapshot_races()
+    if s in snap:
+        return s, snap[s]
+    for key, info in snap.items():
+        if key.split(':', 1)[-1] == s:
+            return key, info
+    return None
+
+
 def match_race(name: str) -> Optional[Tuple[str, Dict[str, Any]]]:
     """
     Match a user-provided race name to a known race.

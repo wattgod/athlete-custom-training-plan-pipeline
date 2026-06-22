@@ -414,6 +414,46 @@ class TestMatchRace:
         # entry now matched by exact name — that's correct, not overmatch.)
         assert match_race('Tour de My Imaginary Backyard Loop XYZ') is None
 
+    def test_lookup_by_slug_is_exact(self):
+        from known_races import lookup_by_slug
+        m = lookup_by_slug('bwr-north-carolina')
+        assert m is not None
+        _id, info = m
+        assert 'north carolina' in info['name'].lower()
+        assert str(info.get('date', '')).startswith('2026-10')
+        # a discipline-prefixed snapshot key resolves by its bare slug too
+        assert lookup_by_slug('gran-fondo-loutraki') is not None
+        # unknown slug → None (no fuzzy fallback here)
+        assert lookup_by_slug('totally-made-up-race-xyz') is None
+
+    def test_slug_fixes_race_identity(self):
+        # the form carried an AMBIGUOUS name ("Belgian Waffle Ride") that fuzzy-
+        # matching sends to the wrong edition (San Diego) — the slug nails the
+        # exact race (NC), killing the wrong-edition order-killer. The athlete's
+        # own date is respected (it drives pricing / is their real race date).
+        import intake_to_plan as itp
+        md = """## Basic Info
+- Name: Slug Test
+- Email: s@e.com
+- Age: 40
+- Weight: 170 lbs
+
+## Goals
+- Primary Goal: specific_race
+- Race Slug: bwr-north-carolina
+- Races:
+  Belgian Waffle Ride (2026-10-03, 131 miles, priority A)
+
+## Schedule
+- Weekly Hours Available: 8
+"""
+        prof = itp.build_profile(itp.parse_intake_markdown(md))
+        tr = prof['target_race']
+        assert 'north carolina' in tr['name'].lower()   # exact race, not San Diego
+        assert tr['race_id'] == 'bwr-north-carolina'
+        assert tr.get('location')                       # verified venue from DB
+        assert str(tr['date']) == '2026-10-03'          # athlete's date respected
+
     def test_exact_name_beats_substring_variant(self):
         # "Belgian Waffle Ride North Carolina" (Oct, NC) must NOT match the
         # shorter curated "Belgian Waffle Ride" (May, San Diego) that is a

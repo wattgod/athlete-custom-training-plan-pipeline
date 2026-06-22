@@ -58,7 +58,7 @@ from constants import (
     AGE_MIN,
     AGE_MAX,
 )
-from known_races import KNOWN_RACES, RACE_ALIASES, match_race
+from known_races import KNOWN_RACES, RACE_ALIASES, match_race, lookup_by_slug
 
 # ---------------------------------------------------------------------------
 # ANSI colors for terminal output
@@ -863,13 +863,26 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
 
     goal_type = derive_goal_type(success_text)
 
+    # The customer picked a specific race on the site, so the questionnaire
+    # carries its SLUG. For the target race we resolve by slug (exact) — this
+    # is the preferred path and removes the whole name-matching bug class.
+    target_slug = (goals.get('race_slug') or '').strip()
+
     for i, parsed in enumerate(parsed_races):
         race_name_clean = parsed['name']
         is_target = (i == target_idx)
         # Athlete-supplied priority wins. If absent, target gets A and the rest B.
         priority = parsed['priority'] or ('A' if is_target else 'B')
 
-        matched = match_race(race_name_clean)
+        # Prefer an exact slug match for the target race; fall back to fuzzy
+        # name-matching (manual intakes / B-races with no slug).
+        matched = None
+        matched_by_slug = False
+        if is_target and target_slug:
+            matched = lookup_by_slug(target_slug)
+            matched_by_slug = matched is not None
+        if not matched:
+            matched = match_race(race_name_clean)
         event = {
             'name': race_name_clean,
             'date': parsed['date'],
@@ -880,16 +893,22 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
 
         if matched:
             race_id, info = matched
-            # Athlete-provided date/distance win (more current than KNOWN_RACES).
+            # The slug nails the race IDENTITY (exactly which event) — that's
+            # what kills the wrong-edition / not-in-database / date-mismatch
+            # order-killers. The athlete's own date/distance still win when
+            # given (their date drives the plan length they were priced on, and
+            # their distance is the route they're actually doing); we only fall
+            # back to the DB for anything they left blank.
             if not event['date']:
-                event['date'] = info['date']
+                event['date'] = info.get('date', '')
             if not event['distance_miles']:
-                event['distance_miles'] = info['distance_miles']
+                event['distance_miles'] = info.get('distance_miles', 0)
             event['name'] = info['name']
             if is_target:
                 target_race_info = {
                     'name': info['name'],
-                    'race_id': race_id,
+                    # clean slug (snapshot keys are 'discipline:slug')
+                    'race_id': race_id.split(':', 1)[-1],
                     'date': event['date'],
                     'distance_miles': event['distance_miles'],
                     'elevation_ft': info.get('elevation_ft', 0),
@@ -897,6 +916,10 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                     'goal': goal_type,
                     'goal_description': success_text,
                 }
+                # Verified venue from the DB (used by the guide, and lets the
+                # integrity check trust the date instead of re-deriving it).
+                if info.get('location'):
+                    target_race_info['location'] = info['location']
                 # Discipline from the race DB drives guide branding (road ->
                 # Roadie Labs + road skills). Only set when the DB knows it.
                 if info.get('discipline'):
