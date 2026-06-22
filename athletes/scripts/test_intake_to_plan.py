@@ -624,10 +624,21 @@ class TestValidateParsedIntake:
             validate_parsed_intake(parsed)
 
     def test_missing_required_field_raises(self, minimal_valid_parsed):
+        # a genuinely-required field (age) must still raise when absent
+        parsed = copy.deepcopy(minimal_valid_parsed)
+        del parsed['basic_info']['age']
+        with pytest.raises(IntakeValidationError, match="Age"):
+            validate_parsed_intake(parsed)
+
+    def test_missing_ftp_does_not_raise(self, minimal_valid_parsed):
+        # FTP is NOT hard-required — it's estimated from weight. Hard-failing
+        # on a blank FTP refunded a real customer (Taylor Foster, 2026-06-22).
         parsed = copy.deepcopy(minimal_valid_parsed)
         del parsed['current_fitness']['ftp']
-        with pytest.raises(IntakeValidationError, match="FTP"):
-            validate_parsed_intake(parsed)
+        validate_parsed_intake(parsed)  # must not raise
+        parsed2 = copy.deepcopy(minimal_valid_parsed)
+        parsed2['current_fitness']['ftp'] = ''   # blank, like a real athlete
+        validate_parsed_intake(parsed2)  # must not raise
 
     def test_empty_races_raises(self, minimal_valid_parsed):
         parsed = copy.deepcopy(minimal_valid_parsed)
@@ -720,6 +731,68 @@ class TestValidateProfileSanity:
 # ===========================================================================
 # TestBuildProfileTypes
 # ===========================================================================
+
+class TestBlankFtpIsNotRequired:
+    """A real paying customer (Taylor Foster, Big Sugar Gravel, 2026-06-22)
+    had their order REFUNDED because they left FTP blank and intake validation
+    hard-failed — even though the pipeline estimates FTP from weight. A
+    blank/unknown FTP must pass validation and be estimated, never block."""
+
+    _MD = """## Basic Info
+- Name: Taylor Foster
+- Email: t@example.com
+- Age: 41
+- Weight: 90.7 kg
+- Sex: Male
+
+## Goals
+- Primary Goal: specific_race
+- Races:
+  Big Sugar Gravel (2026-10-17, 68 miles, priority A)
+
+## Current Fitness
+- FTP:
+- Years Cycling: 4
+
+## Recovery & Baselines
+- Sleep Quality: good
+
+## Equipment
+- Trainer Access: smart trainer
+
+## Schedule
+- Weekly Hours Available: 5-7
+- Long Ride Days: Saturday
+- Off Days: Sunday, Monday
+
+## Strength
+- Strength Training: no
+
+## Health
+- Injuries: None
+
+## Work & Life
+- Stress Level: moderate
+
+## Additional
+- Notes: blank-FTP regression
+"""
+
+    def test_blank_ftp_passes_validation(self):
+        import intake_to_plan as itp
+        parsed = itp.parse_intake_markdown(self._MD)
+        # was raising IntakeValidationError("FTP is required in Current Fitness")
+        itp.validate_parsed_intake(parsed)
+
+    def test_blank_ftp_is_estimated_from_weight(self):
+        import intake_to_plan as itp
+        parsed = itp.parse_intake_markdown(self._MD)
+        prof = itp.build_profile(parsed)
+        fm = prof.get('fitness_markers', {})
+        assert fm.get('ftp_watts') and fm['ftp_watts'] > 0
+        assert fm.get('ftp_estimated') is True
+        itp.validate_profile_sanity(prof)  # estimated FTP must be in bounds
+
 
 class TestBuildProfileTypes:
     """Verify all value types in the built profile are correct."""

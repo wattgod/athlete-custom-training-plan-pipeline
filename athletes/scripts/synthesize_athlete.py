@@ -126,6 +126,13 @@ def synthesize(seed: str, index: int = 0, today: str = None,
     wkg = round(r.uniform(*persona["ftp_wkg"]), 2)
     ftp = int(round(weight_kg * wkg / 5) * 5)
     ftp_known = r.random() < persona["ftp_known"]
+    # Athletes who don't know their FTP express it two ways IRL: they type
+    # "unknown"/"N/A", or they just leave the field BLANK. The blank case once
+    # hard-failed intake validation and refunded a real customer, so the
+    # fleet must exercise it — half of unknown-FTP avatars submit "" not
+    # "unknown". (Both must estimate FTP from weight, never block.)
+    ftp_value = (ftp if ftp_known
+                 else ("" if r.random() < 0.5 else "unknown"))
 
     hours = r.randint(*persona["hours"])
     years = r.randint(*persona["years"])
@@ -192,7 +199,7 @@ def synthesize(seed: str, index: int = 0, today: str = None,
         "weight": weight,
         "height_ft": height_ft,
         "height_in": height_in,
-        "ftp": ftp if ftp_known else "unknown",
+        "ftp": ftp_value,
         "years_cycling": str(years),
         "prior_plan_experience": str(min(years, r.randint(0, 4))),
         "hours_per_week": str(hours),

@@ -133,9 +133,11 @@ def validate_parsed_intake(parsed: Dict[str, Any]) -> None:
         'goals': {
             'races': 'At least one race must be listed in Goals.',
         },
-        'current_fitness': {
-            'ftp': 'FTP is required in Current Fitness.',
-        },
+        # FTP is NOT hard-required: many athletes don't know it. A blank/
+        # unknown FTP is estimated from weight (2.5/2.2 W/kg × age factor) in
+        # build_profile and a week-1 FTP test is scheduled. Hard-failing on a
+        # missing FTP refunded a real paying customer (Taylor Foster, Big
+        # Sugar Gravel, 2026-06-22) whose plan we could absolutely have built.
         'schedule': {
             'weekly_hours_available': 'Weekly hours available is required in Schedule.',
         },
