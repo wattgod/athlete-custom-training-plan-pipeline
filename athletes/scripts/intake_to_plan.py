@@ -2386,7 +2386,13 @@ def run_quality_gates(athlete_id: str) -> bool:
         ('Guide Quality', 'validate_guide_quality.py'),
     ]
 
-    all_ok = True
+    # ONE severity model (Phase 4): a quality issue FLAGS the plan for the
+    # coach's pre-send review — it does NOT block/refund the order. Delivery is
+    # not auto-send: the coach reviews coaching_brief.md + the plan before it
+    # reaches the athlete, so a flagged plan never surprises the customer. This
+    # matches the compliance gate's behaviour, so the checks stop fighting each
+    # other (the integrity date-mismatch used to refund whole races here).
+    flagged = []
     for name, script in gates:
         script_path = SCRIPTS_DIR / script
         if not script_path.exists():
@@ -2405,13 +2411,36 @@ def run_quality_gates(athlete_id: str) -> bool:
         if result.returncode == 0:
             print(f"{GREEN}OK{RESET}")
         else:
-            print(f"{YELLOW}WARN{RESET}")
-            # Quality gates are advisory -- don't block
-            if 'CRITICAL' in (result.stdout + result.stderr):
-                all_ok = False
-                print(f"    {RED}Critical issues found -- review output above{RESET}")
+            blob = (result.stdout or "") + (result.stderr or "")
+            if 'CRITICAL' in blob:
+                print(f"{YELLOW}NEEDS REVIEW{RESET}")
+                # capture the critical lines for the coach
+                crit = [ln.strip() for ln in blob.splitlines()
+                        if 'CRITICAL' in ln or 'should be' in ln][:4]
+                flagged.append((name, crit))
+            else:
+                print(f"{YELLOW}WARN{RESET}")  # non-critical advisory only
 
-    return all_ok
+    if flagged:
+        try:
+            from constants import get_athlete_file
+            review = get_athlete_dir(athlete_id) / 'NEEDS_REVIEW.txt'
+            existing = review.read_text() if review.exists() else ""
+            lines = [existing, "", "QUALITY GATES FLAGGED (review before sending):"]
+            for name, crit in flagged:
+                lines.append(f"  • {name}")
+                for c in crit:
+                    lines.append(f"      {c}")
+            review.write_text("\n".join(lines).lstrip() + "\n")
+        except Exception:
+            pass
+        # CI / debugging can restore hard-blocking.
+        if os.environ.get('GG_STRICT_QUALITY') == '1':
+            print(f"\n{RED}GG_STRICT_QUALITY: quality gate flagged — blocking.{RESET}")
+            return False
+
+    # Always True — the order delivers; flags go to the coach, not a refund.
+    return True
 
 
 # ===========================================================================
@@ -2982,16 +3011,15 @@ def main():
         print(f"\n{RED}Pipeline failed. Fix errors above and re-run.{RESET}")
         sys.exit(1)
 
-    # -- Step 3b: Quality gates --
+    # -- Step 3b: Quality gates (flag-for-review, never block) --
+    # A quality issue flags the plan for the coach's pre-send review (written to
+    # NEEDS_REVIEW.txt → coaching brief banner → "needs review" coach email). It
+    # does NOT refund the order. The coach reviews before the plan reaches the
+    # athlete, so nothing unreviewed surprises the customer. (GG_STRICT_QUALITY=1
+    # restores hard-blocking for CI/debugging.)
     if not args.skip_quality_gates:
-        gates_ok = run_quality_gates(athlete_id)
-        if not gates_ok:
-            # Critical gate failures BLOCK delivery — a guide with
-            # placeholders/slop/missing sections must never reach a
-            # customer. Use --skip-quality-gates only for debugging.
-            print(f"\n{RED}CRITICAL quality gate failure — delivery blocked. "
-                  f"Fix the issues above (or rerun with --skip-quality-gates "
-                  f"to debug).{RESET}")
+        if not run_quality_gates(athlete_id):
+            # Only reachable under GG_STRICT_QUALITY=1 (CI/debugging).
             sys.exit(1)
 
     # -- Step 4: Generate coaching brief --
