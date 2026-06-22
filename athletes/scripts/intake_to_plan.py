@@ -108,62 +108,24 @@ def validate_parsed_intake(parsed: Dict[str, Any]) -> None:
     """
     errors: List[str] = []
 
-    # --- Required sections ---
-    required_sections = ['basic_info', 'goals', 'current_fitness', 'schedule']
-    missing_sections = []
-    for section in required_sections:
-        val = parsed.get(section)
-        if not isinstance(val, dict) or not val:
-            missing_sections.append(section)
-
-    if missing_sections:
-        errors.append(
-            f"Missing or empty required sections: {', '.join(missing_sections)}. "
-            f"Check that the questionnaire has ## headings for: "
-            f"{', '.join(s.replace('_', ' ').title() for s in missing_sections)}."
-        )
-
-    # --- Required fields (only check if section exists) ---
-    required_fields = {
-        'basic_info': {
-            'age': 'Age is required in Basic Info.',
-            'weight': 'Weight is required in Basic Info.',
-            'sex': 'Sex is required in Basic Info.',
-        },
-        'goals': {
-            'races': 'At least one race must be listed in Goals.',
-        },
-        # FTP is NOT hard-required: many athletes don't know it. A blank/
-        # unknown FTP is estimated from weight (2.5/2.2 W/kg × age factor) in
-        # build_profile and a week-1 FTP test is scheduled. Hard-failing on a
-        # missing FTP refunded a real paying customer (Taylor Foster, Big
-        # Sugar Gravel, 2026-06-22) whose plan we could absolutely have built.
-        'schedule': {
-            'weekly_hours_available': 'Weekly hours available is required in Schedule.',
-        },
-    }
-
-    missing_fields = []
-    for section, fields in required_fields.items():
-        section_data = parsed.get(section, {})
-        if not isinstance(section_data, dict):
-            continue  # Already caught by missing sections check
-        for field, hint in fields.items():
-            val = section_data.get(field)
-            if val is None or (isinstance(val, str) and not val.strip()):
-                missing_fields.append(hint)
-
-    # Special check: races must have at least one entry
+    # The ONLY hard requirement is a race to train for — that's the one thing
+    # we genuinely cannot build a plan without. Everything else (age, sex,
+    # weight, FTP, weekly hours, the whole basic_info/current_fitness/schedule
+    # sections) is OPTIONAL: build_profile fills missing values with sane,
+    # flagged assumptions and week-1 testing dials them in. Requiring more than
+    # this just turns recoverable gaps into refunded orders.
     goals_data = parsed.get('goals', {})
+    race_list = []
     if isinstance(goals_data, dict):
         races_val = goals_data.get('races', '')
         if isinstance(races_val, str) and races_val.strip():
             race_list = [r.strip() for r in races_val.split('\n') if r.strip()]
-            if not race_list:
-                missing_fields.append('At least one race must be listed in Goals.')
-
-    if missing_fields:
-        errors.append("Missing required fields:\n" + "\n".join(f"  - {f}" for f in missing_fields))
+    if not race_list:
+        errors.append(
+            "At least one race must be listed in Goals — it's the one field we "
+            "can't build a plan without. (Everything else is optional and "
+            "estimated.)"
+        )
 
     if errors:
         raise IntakeValidationError(
@@ -836,6 +798,21 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     height_raw = basic.get('height', '')
     height_cm = height_to_cm(height_raw) if height_raw else 0
 
+    # ── Forgiving defaults ──────────────────────────────────────────────
+    # An athlete must be able to get a custom plan without filling in
+    # everything. Missing demographics get sane, clearly-flagged assumptions
+    # rather than failing the order. The plan stays custom to the race + hours
+    # + whatever they DID provide; week-1 testing dials in the rest.
+    if not age or age <= 0:
+        age = 40
+        print(f"{YELLOW}NOTE: age not provided — assuming {age}.{RESET}")
+    if sex not in ('male', 'female'):
+        sex = 'male'
+    if not weight_kg or weight_kg <= 0:
+        weight_kg = 75.0 if sex == 'male' else 62.0
+        print(f"{YELLOW}NOTE: weight not provided — assuming {weight_kg}kg for "
+              f"FTP/fueling estimates. Update for precise fueling.{RESET}")
+
     ftp_raw = fitness.get('ftp', '')
     ftp_estimated = False
     ftp_watts = _parse_ftp_with_unknown_handling(ftp_raw)
@@ -957,6 +934,12 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     weekly_hours_raw = schedule.get('weekly_hours_available', '0')
     hours_min, hours_max = parse_range(weekly_hours_raw)
     cycling_hours_target = hours_max or hours_min or 0
+    if not cycling_hours_target or cycling_hours_target <= 0:
+        # Volume is the biggest driver of plan shape, but a missing value must
+        # not fail the order — assume a common recreational load and flag it.
+        cycling_hours_target = 8
+        print(f"{YELLOW}NOTE: weekly hours not provided — assuming "
+              f"{cycling_hours_target}h/wk.{RESET}")
 
     current_vol_raw = schedule.get('current_volume', '0')
     vol_min, vol_max = parse_range(current_vol_raw)

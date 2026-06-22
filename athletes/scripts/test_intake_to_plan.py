@@ -617,28 +617,29 @@ class TestValidateParsedIntake:
         # Should not raise
         validate_parsed_intake(minimal_valid_parsed)
 
-    def test_missing_required_section_raises(self, minimal_valid_parsed):
+    def test_missing_demographics_do_not_raise(self, minimal_valid_parsed):
+        # The intake is forgiving: a missing basic_info section (age/weight/
+        # sex) must NOT block the order — build_profile fills sane, flagged
+        # defaults. Only a missing race is fatal. (Was: hard-required.)
         parsed = copy.deepcopy(minimal_valid_parsed)
         del parsed['basic_info']
-        with pytest.raises(IntakeValidationError, match="basic_info"):
-            validate_parsed_intake(parsed)
+        validate_parsed_intake(parsed)  # must not raise
 
-    def test_missing_required_field_raises(self, minimal_valid_parsed):
-        # a genuinely-required field (age) must still raise when absent
+    def test_missing_individual_fields_do_not_raise(self, minimal_valid_parsed):
+        # age, weight, sex, weekly hours, FTP are all optional + estimated.
         parsed = copy.deepcopy(minimal_valid_parsed)
-        del parsed['basic_info']['age']
-        with pytest.raises(IntakeValidationError, match="Age"):
-            validate_parsed_intake(parsed)
+        for sec, field in [('basic_info', 'age'), ('basic_info', 'weight'),
+                           ('basic_info', 'sex'), ('current_fitness', 'ftp'),
+                           ('schedule', 'weekly_hours_available')]:
+            parsed.get(sec, {}).pop(field, None)
+        validate_parsed_intake(parsed)  # must not raise
 
     def test_missing_ftp_does_not_raise(self, minimal_valid_parsed):
-        # FTP is NOT hard-required — it's estimated from weight. Hard-failing
-        # on a blank FTP refunded a real customer (Taylor Foster, 2026-06-22).
+        # FTP is estimated from weight; a blank FTP refunded a real customer
+        # (Taylor Foster, 2026-06-22) before this was fixed.
         parsed = copy.deepcopy(minimal_valid_parsed)
-        del parsed['current_fitness']['ftp']
+        parsed['current_fitness']['ftp'] = ''   # blank, like a real athlete
         validate_parsed_intake(parsed)  # must not raise
-        parsed2 = copy.deepcopy(minimal_valid_parsed)
-        parsed2['current_fitness']['ftp'] = ''   # blank, like a real athlete
-        validate_parsed_intake(parsed2)  # must not raise
 
     def test_empty_races_raises(self, minimal_valid_parsed):
         parsed = copy.deepcopy(minimal_valid_parsed)
@@ -646,16 +647,12 @@ class TestValidateParsedIntake:
         with pytest.raises(IntakeValidationError, match="race"):
             validate_parsed_intake(parsed)
 
-    def test_all_missing_listed(self):
-        # Completely empty parsed dict: multiple missing sections
+    def test_only_a_missing_race_is_fatal(self):
+        # The ONE hard requirement: a race. An otherwise-empty intake fails
+        # only on the race, nothing else.
         parsed = {'athlete_name': 'Test', '__header__': {}}
-        with pytest.raises(IntakeValidationError) as exc_info:
+        with pytest.raises(IntakeValidationError, match="race"):
             validate_parsed_intake(parsed)
-        msg = str(exc_info.value)
-        assert 'basic_info' in msg
-        assert 'goals' in msg
-        assert 'current_fitness' in msg
-        assert 'schedule' in msg
 
 
 # ===========================================================================
