@@ -99,8 +99,27 @@ def select_workouts_for_week(
     workouts = []
     intensity_count = 0
 
+    # Intensity slots — VO2max FIRST when the budget is tight. The build-phase
+    # VO2 slot is intensity_2, but a low-training-age athlete (max_intensity=1)
+    # would fill only intensity_1 (threshold) and never get VO2 → a 6-7 week
+    # VO2 gap → R02 gate failure → refunded order. Prioritising the VO2 slot
+    # guarantees VO2 is the workout that's KEPT, not the one dropped, in every
+    # phase. (Stable: non-VO2 slots keep their relative order.)
+    try:
+        from block_compliance import VO2MAX_TYPES as _VO2
+    except Exception:
+        _VO2 = set()
+
+    def _is_vo2_slot(sn):
+        s = slots.get(sn) or {}
+        nm = _get_slot_workout(s, archetype) or s.get('default', '')
+        return nm in _VO2
+
+    intensity_slots = sorted(['intensity_1', 'intensity_2', 'intensity_3'],
+                             key=lambda sn: 0 if _is_vo2_slot(sn) else 1)
+
     # Intensity slots
-    for slot_name in ['intensity_1', 'intensity_2', 'intensity_3']:
+    for slot_name in intensity_slots:
         if intensity_count >= max_intensity:
             break
 

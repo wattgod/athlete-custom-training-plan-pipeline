@@ -341,6 +341,38 @@ class TestDeriveDiscipline:
         assert derive_discipline(profile) == 'road'
 
 
+class TestVO2GapWithLowIntensityBudget:
+    """A low-training-age athlete gets max_intensity=1. The build-phase VO2
+    slot is intensity_2, so a fixed slot order would fill only intensity_1
+    (threshold) and leave a 6-7 week VO2 gap → R02 gate failure → refunded
+    order. The selector now fills the VO2 slot FIRST, so VO2 survives a tight
+    budget in every phase."""
+
+    def _plan(self, max_intensity, archetype='specialist'):
+        return build_plan_from_calendar(
+            week_descriptors=_jesse_descriptors(), archetype=archetype,
+            max_level=6, max_intensity=max_intensity, off_days=['Sun'],
+            long_ride_day='Sat', hours_per_week=8)
+
+    def test_r02_passes_with_single_intensity_budget(self):
+        from block_compliance import r02_vo2max_frequency
+        for mi in (1, 2, 3):
+            plan = self._plan(mi)
+            ok, msg = r02_vo2max_frequency(plan['weeks'])
+            assert ok, f"max_intensity={mi}: R02 failed — {msg}"
+
+    def test_build_weeks_have_vo2_even_at_budget_one(self):
+        from block_compliance import VO2MAX_TYPES
+        plan = self._plan(1)
+        build_load = [w for w in plan['weeks']
+                      if w.get('phase') == 'build' and w.get('week_type') == 'load']
+        assert build_load, "no build load weeks in fixture"
+        for w in build_load:
+            names = [d.get('name') for d in w['days']]
+            assert any(n in VO2MAX_TYPES for n in names), (
+                f"build week {w.get('plan_week')} has no VO2 at max_intensity=1: {names}")
+
+
 class TestTestingWeek:
     """Testing weeks are an assessment battery (coach pattern), not a
     single FTP test floating in a normal load week."""
