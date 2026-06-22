@@ -228,8 +228,23 @@ def match_race(name: str) -> Optional[Tuple[str, Dict[str, Any]]]:
         race_id = RACE_ALIASES[normalized]
         return race_id, KNOWN_RACES[race_id]
 
-    # 2. Substring containment with discriminative content
+    # 2. EXACT full-name match (KNOWN_RACES, then the snapshot) — must beat
+    #    substring containment below. "Belgian Waffle Ride North Carolina" is
+    #    an exact snapshot entry (Oct, NC); the shorter curated "Belgian Waffle
+    #    Ride" (May, San Diego) is a SUBSTRING of it, so substring-first
+    #    matching grabbed the wrong race + wrong date and the integrity gate
+    #    killed every build of that race. Exact also rescues single-token names
+    #    ("Prosecco Cycling") that the <2-token guard below would reject.
     name_disc = _discriminative_tokens(normalized)
+    for race_id, info in KNOWN_RACES.items():
+        if info['name'].lower() == normalized:
+            return race_id, info
+    snap = _snapshot_races()
+    for race_id, info in snap.items():
+        if info["name"].lower() == normalized:
+            return race_id, info
+
+    # 3. Substring containment with discriminative content
     for race_id, info in KNOWN_RACES.items():
         race_name_lower = info['name'].lower()
         if normalized in race_name_lower or race_name_lower in normalized:
@@ -239,22 +254,12 @@ def match_race(name: str) -> Optional[Tuple[str, Dict[str, Any]]]:
             if name_disc & race_disc:
                 return race_id, info
 
-    # 2b. Substring containment against alias keys ("unbound 200 2026" → "unbound 200")
+    # 3b. Substring containment against alias keys ("unbound 200 2026" → "unbound 200")
     for alias, race_id in RACE_ALIASES.items():
         if alias in normalized:
             alias_disc = _discriminative_tokens(alias)
             if alias_disc and (alias_disc & name_disc) == alias_disc:
                 return race_id, KNOWN_RACES[race_id]
-
-    # 3. Exact full-name match against the snapshot ALWAYS wins — even for
-    #    single-discriminative-token names ("Prosecco Cycling", "Houffa
-    #    Gravel", where "cycling"/"gravel" are stop words) that the <2-token
-    #    guard below would otherwise reject. The guide was showing "race not
-    #    in database" for races that are literally exact entries in it.
-    snap = _snapshot_races()
-    for race_id, info in snap.items():
-        if info["name"].lower() == normalized:
-            return race_id, info
 
     # 4. Token overlap ≥ 2 on discriminative tokens (needs >=2 to be safe
     #    against coincidental single-stop-word collisions).

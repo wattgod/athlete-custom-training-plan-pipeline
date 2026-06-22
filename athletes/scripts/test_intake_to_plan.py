@@ -414,6 +414,20 @@ class TestMatchRace:
         # entry now matched by exact name — that's correct, not overmatch.)
         assert match_race('Tour de My Imaginary Backyard Loop XYZ') is None
 
+    def test_exact_name_beats_substring_variant(self):
+        # "Belgian Waffle Ride North Carolina" (Oct, NC) must NOT match the
+        # shorter curated "Belgian Waffle Ride" (May, San Diego) that is a
+        # substring of it — the wrong date failed the integrity gate and
+        # killed every build of that race.
+        m = match_race('BELGIAN WAFFLE RIDE NORTH CAROLINA')
+        assert m is not None
+        race_id, info = m
+        assert 'north-carolina' in race_id or 'nc' in race_id.lower()
+        assert str(info.get('date', '')).startswith('2026-10')
+        # the plain San Diego event still resolves to itself
+        m2 = match_race('Belgian Waffle Ride')
+        assert m2 and m2[0] == 'belgian_waffle_ride'
+
     def test_single_distinctive_token_real_race_matches(self):
         # Regression: "Prosecco Cycling" / "Houffa Gravel" have only ONE
         # discriminative token ("cycling"/"gravel" are stop words) and the
