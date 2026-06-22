@@ -1,0 +1,86 @@
+name: "Weekly Coverage Sweep"
+
+# BREADTH complement to the daily avatar judge (which is DEPTH: a few
+# random athletes scored by an LLM coach). This sweep drives the main
+# personas through the real pipeline against a stratified sample across the
+# whole race database and runs the deterministic send-worthy contract on
+# every build — no LLM cost. It answers "can we deliver a plan for every
+# race we sell, for every kind of buyer?" and clusters structural failures
+# (gate blocks by rule, preview FAILs) by persona, discipline, and race.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sample:
+        description: "stratified race sample size"
+        default: "40"
+      workers:
+        description: "parallel builds"
+        default: "4"
+  schedule:
+    - cron: '0 9 * * 1'  # Mondays 09:00 UTC
+
+permissions:
+  contents: write   # commit the coverage trend + report
+  issues: write
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Chromium (PDF engine)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml python-dateutil pypdf anthropic requests
+          pip install -r webhook/requirements.txt || echo "webhook reqs partial"
+
+      - name: Run the coverage sweep (personas × stratified race sample)
+        working-directory: athletes/scripts
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          GG_COVERAGE_DIR: ${{ runner.temp }}/coverage-runs
+        run: |
+          mkdir -p "$GG_COVERAGE_DIR"
+          SAMPLE="${{ github.event.inputs.sample || '40' }}"
+          WORKERS="${{ github.event.inputs.workers || '4' }}"
+          SEED=$(date -u +%Y-%m-%d)
+          # Writes config/coverage_report.md + appends config/coverage_history.json.
+          # Never fail the job on a bad plan — a failing build is data, not an error.
+          python coverage_sweep.py --sample "$SAMPLE" --workers "$WORKERS" --seed "$SEED" || true
+
+      - name: Commit the coverage trend + report
+        run: |
+          git config user.name "coverage-sweep-bot"
+          git config user.email "noreply@gravelgodcycling.com"
+          git add athletes/config/coverage_history.json athletes/config/coverage_report.md
+          git diff --cached --quiet || {
+            git pull --rebase --autostash origin main || true
+            git commit -m "coverage-sweep: $(date -u +%Y-%m-%d)"
+            git push
+          }
+
+      - name: Post the coverage report as an issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPORT="athletes/config/coverage_report.md"
+          [ -s "$REPORT" ] || { echo "No coverage report produced"; exit 0; }
+          gh issue create \
+            --title "Coverage sweep — $(date -u +%Y-%m-%d)" \
+            --body-file "$REPORT" --label "coverage-sweep" 2>/dev/null \
+            || echo "issue create skipped (label or perms)"

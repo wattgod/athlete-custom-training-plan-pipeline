@@ -88,18 +88,31 @@ def _rng(seed: str, index: int) -> random.Random:
     return random.Random(f"{seed}::{index}")
 
 
-def synthesize(seed: str, index: int = 0, today: str = None) -> dict:
+def _persona_by_key(key):
+    for p in PERSONAS:
+        if p["key"] == key:
+            return p
+    return None
+
+
+def synthesize(seed: str, index: int = 0, today: str = None,
+               persona_key: str = None, race: dict = None) -> dict:
     """Return a realistic, reproducible webhook intake dict.
 
     seed: stable per-day key (e.g. an ISO date). index: distinct athlete
     within the day. today: ISO date the plan is built relative to (race
     dates are placed comfortably in the future from here).
+
+    persona_key: force a specific persona (else random). race: force a
+    specific target race (a real_races dict with name/date/distance_mi/
+    elevation_ft/discipline) instead of a random pick — used by the coverage
+    sweep to build the main personas against EACH race in the database.
     """
     r = _rng(seed, index)
     base_day = (datetime.strptime(today, "%Y-%m-%d").date() if today
                 else date(2026, 6, 16))
 
-    persona = r.choice(PERSONAS)
+    persona = _persona_by_key(persona_key) or r.choice(PERSONAS)
     sex = r.choice(["Male", "Male", "Female"])  # ~1/3 female
     age = r.randint(*persona["age"])
 
@@ -121,12 +134,16 @@ def synthesize(seed: str, index: int = 0, today: str = None) -> dict:
 
     # Pick a REAL race from the snapshot, matched to discipline + far enough
     # out to build a plan. Fall back to a plausible invented race only if the
-    # snapshot is missing (e.g. not yet built).
-    from real_races import pick as pick_race
-    race_mi_lo, race_mi_hi = persona.get("race_mi", (35, 130))
-    race = pick_race(r, discipline=RACE_DISCIPLINE[discipline],
-                     min_weeks=8, max_weeks=28, today=base_day.isoformat(),
-                     min_mi=race_mi_lo, max_mi=race_mi_hi)
+    # snapshot is missing (e.g. not yet built). A forced `race` (coverage
+    # sweep) skips the pick and drives discipline from the race itself.
+    if race is not None:
+        discipline = race.get("discipline") or discipline
+    else:
+        from real_races import pick as pick_race
+        race_mi_lo, race_mi_hi = persona.get("race_mi", (35, 130))
+        race = pick_race(r, discipline=RACE_DISCIPLINE[discipline],
+                         min_weeks=8, max_weeks=28, today=base_day.isoformat(),
+                         min_mi=race_mi_lo, max_mi=race_mi_hi)
     if race:
         race_name = race["name"]
         race_date = race["date"]

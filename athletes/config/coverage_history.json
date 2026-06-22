@@ -1,0 +1,31 @@
+[
+ {
+  "date": "smoke",
+  "n": 3,
+  "pass": 2,
+  "pass_rate": 0.667,
+  "by_persona": {
+   "weekend_warrior": 0.667
+  },
+  "by_discipline": {
+   "gravel": 0.667
+  }
+ },
+ {
+  "date": "2026-06-22",
+  "n": 30,
+  "pass": 16,
+  "pass_rate": 0.533,
+  "by_persona": {
+   "weekend_warrior": 0.5,
+   "masters_returner": 0.5,
+   "time_crunched_parent": 0.833,
+   "veteran_podium_chaser": 0.333,
+   "ambitious_first_timer": 0.5
+  },
+  "by_discipline": {
+   "gravel": 0.45,
+   "road": 0.7
+  }
+ }
+]
