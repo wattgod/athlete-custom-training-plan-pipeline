@@ -461,8 +461,23 @@ def validate_known_races(profile: dict) -> list:
     for known_id, known_date in KNOWN_RACE_DATES.items():
         if known_id in race_id.lower():
             if profile_date != known_date:
-                errors.append(IntegrityError("CRITICAL",
-                    f"Race date for {race_id} should be {known_date}, not {profile_date}"))
+                # Two internal date sources (the 1,184-race snapshot and the
+                # curated calendar) drift by a few days as races announce/move
+                # dates. That must NOT refund a customer whose plan is
+                # periodized to the date THEY gave — a small gap is OUR data
+                # drift, not their error. Only a large gap (wrong race / wrong
+                # year, e.g. a customer typo) is a genuine hard block.
+                try:
+                    from datetime import datetime
+                    d1 = datetime.strptime(str(profile_date)[:10], '%Y-%m-%d').date()
+                    d2 = datetime.strptime(str(known_date)[:10], '%Y-%m-%d').date()
+                    gap_days = abs((d1 - d2).days)
+                except Exception:
+                    gap_days = 999
+                level = "CRITICAL" if gap_days > 21 else "WARNING"
+                errors.append(IntegrityError(level,
+                    f"Race date for {race_id} is {profile_date}; calendar has "
+                    f"{known_date} ({gap_days}d apart)"))
             break
 
     return errors
@@ -632,3 +647,30 @@ if __name__ == '__main__':
         sys.exit(1)
 
     sys.exit(0 if success else 1)
+
+
+def test_small_date_drift_is_warning_not_critical():
+    """A few days' difference between the snapshot and the curated calendar is
+    OUR data drift, not the customer's error — it must NOT hard-block (refund)
+    an order. Gravel Worlds (snapshot Aug 19 vs curated Aug 22) killed every
+    build of that race before this."""
+    from known_races import KNOWN_RACE_DATES
+    kid = next(iter(KNOWN_RACE_DATES))
+    known = KNOWN_RACE_DATES[kid]
+    from datetime import datetime, timedelta
+    near = (datetime.strptime(known, '%Y-%m-%d').date() + timedelta(days=3)).isoformat()
+    profile = {'target_race': {'race_id': kid, 'date': near}}
+    errs = validate_known_races(profile)
+    assert all(e.level != 'CRITICAL' for e in errs), [str(e) for e in errs]
+
+
+def test_large_date_gap_still_critical():
+    """A wrong year/month (customer typo) is a genuine error and must block."""
+    from known_races import KNOWN_RACE_DATES
+    kid = next(iter(KNOWN_RACE_DATES))
+    known = KNOWN_RACE_DATES[kid]
+    from datetime import datetime, timedelta
+    far = (datetime.strptime(known, '%Y-%m-%d').date() + timedelta(days=120)).isoformat()
+    profile = {'target_race': {'race_id': kid, 'date': far}}
+    errs = validate_known_races(profile)
+    assert any(e.level == 'CRITICAL' for e in errs)
