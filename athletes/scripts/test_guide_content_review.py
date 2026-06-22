@@ -155,6 +155,18 @@ class TestFuelingDurationByDiscipline:
         assert (estimate_race_duration(100, "finish", 0)
                 == estimate_race_duration(100, "finish", 0, "gravel"))
 
+    def test_zero_or_missing_distance_never_yields_zero_duration(self):
+        # judge caught a 0.0h race in the plan JSON → race-day fueling anchored
+        # to a zero-length event. A present-but-zero/None/garbage distance must
+        # fall back to a sane non-zero duration.
+        from calculate_fueling import estimate_race_duration, generate_fueling_context
+        for d in (0, None, "", -5, "abc"):
+            assert estimate_race_duration(d, "finish", 0, "gravel") > 0, d
+        prof = {"target_race": {"name": "X", "distance_miles": 0, "goal_type": "finish"},
+                "fitness_markers": {"weight_kg": 70}, "sex": "male"}
+        dur = generate_fueling_context(prof).get("race", {}).get("duration_hours")
+        assert dur and dur > 0, dur
+
 
 class TestGuideTextBugs:
     """Fixes for judge-found content bugs."""

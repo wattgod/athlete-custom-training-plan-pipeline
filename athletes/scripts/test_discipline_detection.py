@@ -141,6 +141,21 @@ class TestRoadDiscipline:
                      "Taiwan KOM Challenge", "La Marmotte"):
             assert derive_discipline({"target_race": {"name": name}}) == "road", name
 
+    def test_mtb_brand_events_classified_mtb(self):
+        """Famous MTB events whose names carry no 'mtb' word (Iceman Cometh,
+        Whiskey Off-Road, Marji Gesick) were defaulting to gravel, so MTB
+        athletes got the gravel skills chapter. The strengthened keyword
+        fallback now classifies them mtb."""
+        for name in ("Iceman Cometh", "WHISKEY OFF-ROAD", "Marji Gesick",
+                     "Chequamegon MTB"):
+            assert derive_discipline({"target_race": {"name": name}}) == "mtb", name
+
+    def test_true_grit_gravel_not_misread_as_mtb(self):
+        # 'true grit' is deliberately NOT an mtb keyword — it names a GRAVEL
+        # race. Guard against a future regression that adds it.
+        assert derive_discipline(
+            {"target_race": {"name": "Lauf True Grit Gravel Epic"}}) == "gravel"
+
 
 # --------------------------------------------------------------------------- #
 # (b) Gravel race stays gravel

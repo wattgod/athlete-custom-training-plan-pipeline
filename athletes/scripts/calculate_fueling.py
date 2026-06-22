@@ -141,6 +141,16 @@ def estimate_race_duration(distance_miles: float, goal_type: str,
     Estimate race duration in hours based on distance, goal, terrain, and
     discipline (road events are much faster than gravel/mtb).
     """
+    # A missing/zero/garbage distance must never yield a 0.0h race — that
+    # anchors the entire nutrition section (carbs/hr, timeline) to a
+    # zero-length event, which is nonsensical and potentially harmful.
+    try:
+        distance_miles = float(distance_miles)
+    except (TypeError, ValueError):
+        distance_miles = 0.0
+    if distance_miles <= 0:
+        distance_miles = 62.0  # median gravel/road event — sane fallback
+
     disc = (discipline or "gravel").lower()
     speeds = _SPEED_BY_DISCIPLINE.get(disc, _SPEED_BY_DISCIPLINE["gravel"])
     base_speed = speeds.get(goal_type, speeds["finish"])
@@ -355,9 +365,16 @@ def generate_fueling_context(
             # Default assumption
             weight_kg = 75 if sex == "male" else 65
 
-    # Extract race data
+    # Extract race data. A present-but-zero/None distance must NOT slip
+    # through (dict.get's default only fires on a MISSING key) — fall back to
+    # the race DB, then a sane default, so fueling is never anchored to 0.0h.
     target_race = profile.get("target_race", {})
-    distance_miles = target_race.get("distance_miles", 100)
+    distance_miles = target_race.get("distance_miles")
+    if not distance_miles or float(distance_miles) <= 0:
+        rd = race_data or {}
+        distance_miles = (rd.get("distance_miles")
+                          or rd.get("race_metadata", {}).get("distance_miles")
+                          or 100)
     goal_type = target_race.get("goal_type", "finish")
     try:
         from archetype import derive_discipline

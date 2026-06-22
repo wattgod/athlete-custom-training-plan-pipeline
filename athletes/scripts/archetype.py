@@ -158,6 +158,16 @@ _DISCIPLINE_KEYWORDS = [
     ('mtb', 'mtb'),
     ('mountain bike', 'mtb'),
     ('xc ', 'mtb'),
+    # MTB event brands (DB-verified MTB, checked before gravel/road so they
+    # win; each is discriminative — no gravel/road name collisions. NB:
+    # 'true grit' is deliberately EXCLUDED — it names a GRAVEL race
+    # ("Lauf True Grit Gravel Epic"), not an MTB event).
+    ('iceman', 'mtb'),            # Iceman Cometh (MI point-to-point MTB)
+    ('chequamegon', 'mtb'),
+    ('marji gesick', 'mtb'),
+    ('whiskey off-road', 'mtb'),  # Whiskey Off-Road (Prescott, AZ)
+    ('cape epic', 'mtb'),         # Absa Cape Epic (stage MTB)
+    ('breck epic', 'mtb'),        # Breck Epic
     ('gravel', 'gravel'),
     ('unbound', 'gravel'),
     ('bwr', 'gravel'),

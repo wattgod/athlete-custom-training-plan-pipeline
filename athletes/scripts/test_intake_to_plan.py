@@ -409,8 +409,18 @@ class TestMatchRace:
         assert result is None
 
     def test_does_not_overmatch_on_stop_word_tour(self):
-        # "El Tour de Tucson" shares "tour"/"de" with stop words; must not match.
-        assert match_race('El Tour de Tucson') is None
+        # A made-up name that shares only the stop words "tour"/"de" with real
+        # races must NOT fuzzy-match. (NB: "El Tour de Tucson" is a REAL DB
+        # entry now matched by exact name — that's correct, not overmatch.)
+        assert match_race('Tour de My Imaginary Backyard Loop XYZ') is None
+
+    def test_single_distinctive_token_real_race_matches(self):
+        # Regression: "Prosecco Cycling" / "Houffa Gravel" have only ONE
+        # discriminative token ("cycling"/"gravel" are stop words) and the
+        # <2-token guard used to reject them BEFORE the exact-snapshot lookup,
+        # so the guide showed "race not in database" for races literally in it.
+        for name in ('Prosecco Cycling', 'Houffa Gravel'):
+            assert match_race(name) is not None, name
 
     def test_unknown_named_race_returns_none(self):
         assert match_race('Borderlands AZ State Championships') is None

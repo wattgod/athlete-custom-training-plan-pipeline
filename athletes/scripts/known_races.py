@@ -246,7 +246,18 @@ def match_race(name: str) -> Optional[Tuple[str, Dict[str, Any]]]:
             if alias_disc and (alias_disc & name_disc) == alias_disc:
                 return race_id, KNOWN_RACES[race_id]
 
-    # 3. Token overlap ≥ 2 on discriminative tokens
+    # 3. Exact full-name match against the snapshot ALWAYS wins — even for
+    #    single-discriminative-token names ("Prosecco Cycling", "Houffa
+    #    Gravel", where "cycling"/"gravel" are stop words) that the <2-token
+    #    guard below would otherwise reject. The guide was showing "race not
+    #    in database" for races that are literally exact entries in it.
+    snap = _snapshot_races()
+    for race_id, info in snap.items():
+        if info["name"].lower() == normalized:
+            return race_id, info
+
+    # 4. Token overlap ≥ 2 on discriminative tokens (needs >=2 to be safe
+    #    against coincidental single-stop-word collisions).
     if len(name_disc) < 2:
         return None
 
@@ -262,12 +273,7 @@ def match_race(name: str) -> Optional[Tuple[str, Dict[str, Any]]]:
     if best_match:
         return best_match
 
-    # 4. Fall back to the full snapshot (1,184 real races). Same precedence:
-    #    exact name, then strongest discriminative-token overlap.
-    snap = _snapshot_races()
-    for race_id, info in snap.items():
-        if info["name"].lower() == normalized:
-            return race_id, info
+    # 5. Fall back to strongest discriminative-token overlap in the snapshot.
     best_score = 1
     for race_id, info in snap.items():
         overlap = len(name_disc & _discriminative_tokens(info["name"].lower()))
