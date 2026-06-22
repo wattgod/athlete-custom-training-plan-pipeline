@@ -1438,31 +1438,31 @@ def _derive_methodology(text: str) -> Dict[str, Any]:
     - past_success_with: explicit endorsements ("polarized worked well")
     """
     prefs = {
+        'time_crunched': 3,
+        'g_spot': 3,
         'polarized': 3,
         'pyramidal': 3,
-        'threshold_focused': 3,
-        'hiit_focused': 3,
-        'high_volume': 3,
-        'time_crunched': 3,
         'preferred_approach': '',
         'past_success_with': '',
         'past_failure_with': '',
     }
 
-    # Map training approach keywords → methodology display names
-    # These are used for matching against methodology names in select_methodology.py
+    # Map training-approach keywords → the FOUR methodology names (for matching
+    # past-failure vetoes / past-success endorsements in select_methodology).
+    # NB: "sweet spot" is deliberately NOT mapped to G Spot — they're different
+    # (rigid % vs read-the-room), so a failed-sweet-spot athlete may thrive on
+    # G Spot. A "sweet spot didn't work" mention simply vetoes nothing now.
     approach_keywords = {
-        'sweet spot': 'Sweet Spot / Threshold',
-        'threshold': 'Threshold',
-        'hiit': 'HIIT',
-        'high intensity': 'HIIT',
-        'polarized': 'Polarized',
-        '80/20': 'Polarized',
-        'base only': 'MAF',
-        'maf': 'MAF',
-        'low hr': 'Low-HR',
-        'high volume': 'volume',
-        'block': 'Block',
+        'time crunch': 'Time-Crunched',
+        'time-crunch': 'Time-Crunched',
+        'g spot': 'G Spot (Read the Room)',
+        'g-spot': 'G Spot (Read the Room)',
+        'read the room': 'G Spot (Read the Room)',
+        'polarized': 'Polarized (80/20)',
+        '80/20': 'Polarized (80/20)',
+        'pyramidal': 'Traditional (Pyramidal)',
+        'traditional': 'Traditional (Pyramidal)',
+        'base building': 'Traditional (Pyramidal)',
     }
 
     # Negative context patterns (within ~80 chars of keyword)

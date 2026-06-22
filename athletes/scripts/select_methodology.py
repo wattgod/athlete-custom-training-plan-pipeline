@@ -71,16 +71,62 @@ class MethodologyCandidate:
 
 # Fallback methodology definitions (used if config/methodologies.yaml missing)
 _METHODOLOGIES_FALLBACK = {
+    "time_crunched": {
+        "name": "Time-Crunched",
+        "description": "Every session earns its place. One protected long ride, the rest short and sharp \u2014 no junk miles.",
+        "philosophy": "Make every hour count: density over volume, with the long ride kept sacred.",
+        "min_hours": 3, "max_hours": 9, "ideal_hours": (4, 7),
+        "best_for": ["time_crunched", "busy_professionals", "consistent_short_sessions", "gravel_racing"],
+        "not_for": ["ultra_endurance", "high_volume_seekers"],
+        "experience_required": "beginner",
+        "stress_tolerance": "moderate",
+        "schedule_flexibility": "high",
+        "intensity_distribution": {"z1_z2": 0.70, "z3": 0.10, "z4_z5": 0.20},
+        "strength_approach": "optional_short_efficient",
+        "key_workouts": ["protected_long_ride", "vo2max_intervals", "threshold_repeats"],
+        "progression_style": "increase_density",
+        "testing_frequency": "4_6_weeks"
+    },
+    "g_spot": {
+        "name": "G Spot (Read the Room)",
+        "description": "Train the productive zone between tempo and threshold \u2014 dialed by feel and readiness, not a rigid percentage.",
+        "philosophy": "Read the room: the most stimulus you can absorb today, autoregulated by how you feel.",
+        "min_hours": 5, "max_hours": 13, "ideal_hours": (6, 10),
+        "best_for": ["productive_efficiency", "self_aware_athletes", "variable_stress", "masters", "gravel_racing"],
+        "not_for": ["rigid_plan_wanters", "pure_sprinters"],
+        "experience_required": "beginner",
+        "stress_tolerance": "moderate",
+        "schedule_flexibility": "high",
+        "intensity_distribution": {"z1_z2": 0.65, "z3": 0.25, "z4_z5": 0.10},
+        "strength_approach": "optional_short_efficient",
+        "key_workouts": ["g_spot_intervals", "over_unders", "long_z2"],
+        "progression_style": "increase_density",
+        "testing_frequency": "4_6_weeks"
+    },
+    "polarized_80_20": {
+        "name": "Polarized (80/20)",
+        "description": "Most training genuinely easy, the hard days genuinely hard, the gray-zone middle kept minimal.",
+        "philosophy": "Hard/easy separation maximizes adaptation when you have the hours to ride easy.",
+        "min_hours": 8, "max_hours": 22, "ideal_hours": (10, 16),
+        "best_for": ["tolerance_building", "recovery_friendly", "structured_athletes", "durability", "long_events", "high_volume"],
+        "not_for": ["very_low_volume"],
+        "experience_required": "intermediate",
+        "stress_tolerance": "high",
+        "schedule_flexibility": "moderate",
+        "intensity_distribution": {"z1_z2": 0.80, "z3": 0.00, "z4_z5": 0.20},
+        "strength_approach": "year_round_heavy_explosive",
+        "key_workouts": ["long_z2", "vo2max_intervals", "threshold_repeats"],
+        "progression_style": "increase_hard_work_maintain_ratio",
+        "testing_frequency": "4_6_weeks"
+    },
     "traditional_pyramidal": {
         "name": "Traditional (Pyramidal)",
-        "description": "Build large aerobic base, then sharpen with intensity",
-        "philosophy": "Volume → intensity → density → specificity",
-        "min_hours": 10,
-        "max_hours": 30,
-        "ideal_hours": (12, 20),
-        "best_for": ["long_events", "durability", "predictable_performance"],
-        "not_for": ["time_crunched", "short_events", "low_volume"],
-        "experience_required": "intermediate",
+        "description": "Build a big aerobic base first, then sharpen \u2014 the forgiving, proven path to a first finish.",
+        "philosophy": "Volume \u2192 intensity \u2192 specificity. Build the engine before you tune it.",
+        "min_hours": 7, "max_hours": 30, "ideal_hours": (10, 18),
+        "best_for": ["first_timers", "finishers", "long_events", "durability", "predictable_performance", "base_building"],
+        "not_for": ["very_short_leadup", "very_low_volume"],
+        "experience_required": "beginner",
         "stress_tolerance": "moderate",
         "schedule_flexibility": "moderate",
         "intensity_distribution": {"z1_z2": 0.75, "z3": 0.15, "z4_z5": 0.10},
@@ -89,234 +135,6 @@ _METHODOLOGIES_FALLBACK = {
         "progression_style": "volume_then_intensity",
         "testing_frequency": "phase_end"
     },
-
-    "polarized_80_20": {
-        "name": "Polarized (80/20)",
-        "description": "Most training easy, small amount very hard, minimal middle zone",
-        "philosophy": "Hard/easy separation maximizes adaptation",
-        "min_hours": 8,
-        "max_hours": 20,
-        "ideal_hours": (10, 15),
-        "best_for": ["tolerance_building", "recovery_friendly", "structured_athletes", "durability", "long_events"],
-        "not_for": ["very_low_volume", "sprint_specialists"],
-        "experience_required": "intermediate",
-        "stress_tolerance": "high",  # Handles life stress well
-        "schedule_flexibility": "moderate",
-        "intensity_distribution": {"z1_z2": 0.80, "z3": 0.00, "z4_z5": 0.20},
-        "strength_approach": "year_round_heavy_explosive",
-        "key_workouts": ["long_z2", "vo2max_intervals", "threshold_repeats"],
-        "progression_style": "increase_hard_work_maintain_ratio",
-        "testing_frequency": "4_6_weeks"
-    },
-
-    "g_spot_threshold": {
-        "name": "G SPOT / Threshold",
-        "description": "Emphasize sub-threshold intervals with Z5+ top-end work",
-        "philosophy": "Time-efficient threshold focus with high-intensity finishing",
-        "min_hours": 6,
-        "max_hours": 12,
-        "ideal_hours": (7, 10),
-        "best_for": ["ftp_gains", "time_efficient", "indoor_training", "gravel_racing"],
-        "not_for": ["ultra_endurance", "durability_focus"],
-        "experience_required": "beginner",
-        "stress_tolerance": "moderate",
-        "schedule_flexibility": "high",  # Works with variable schedules
-        "intensity_distribution": {"z1_z2": 0.45, "z3": 0.30, "z4_z5": 0.25},
-        "strength_approach": "optional_short_efficient",
-        "key_workouts": ["g_spot_intervals", "over_unders", "tempo_blocks", "vo2max_intervals", "threshold_efforts"],
-        "progression_style": "increase_density",
-        "testing_frequency": "4_6_weeks"
-    },
-
-    "hiit_focused": {
-        "name": "HIIT-Focused",
-        "description": "Frequent maximal intervals, minimal volume",
-        "philosophy": "Leverage high-intensity stimulus with minimal time",
-        "min_hours": 3,
-        "max_hours": 6,
-        "ideal_hours": (4, 6),
-        "best_for": ["time_crunched", "short_events", "existing_fitness"],
-        "not_for": ["beginners", "ultra_endurance", "durability_building"],
-        "experience_required": "intermediate",  # Must have base fitness
-        "stress_tolerance": "low",  # High neural/metabolic stress
-        "schedule_flexibility": "high",
-        "intensity_distribution": {"z1_z2": 0.30, "z3": 0.20, "z4_z5": 0.50},
-        "strength_approach": "crucial_max_power",
-        "key_workouts": ["vo2max_intervals", "tabata", "sprint_repeats"],
-        "progression_style": "increase_intensity_not_volume",
-        "testing_frequency": "block_end"
-    },
-
-    "block_periodization": {
-        "name": "Block Periodization",
-        "description": "Target one capacity intensely per block, then shift focus",
-        "philosophy": "Concentrated overload → consolidation → next capacity",
-        "min_hours": 10,
-        "max_hours": 25,
-        "ideal_hours": (12, 18),
-        "best_for": ["limiter_fixing", "advanced_athletes", "specific_goals"],
-        "not_for": ["beginners", "many_races", "inconsistent_schedule"],
-        "experience_required": "advanced",
-        "stress_tolerance": "high",
-        "schedule_flexibility": "low",  # Needs consistent execution
-        "intensity_distribution": "block_dependent",
-        "strength_approach": "separate_block",
-        "key_workouts": ["block_specific"],
-        "progression_style": "overload_consolidation_staircase",
-        "testing_frequency": "block_end"
-    },
-
-    "reverse_periodization": {
-        "name": "Reverse Periodization",
-        "description": "Intensity early, volume later",
-        "philosophy": "Build top-end first, then extend durability",
-        "min_hours": 6,
-        "max_hours": 15,
-        "ideal_hours": (8, 12),
-        "best_for": ["winter_constrained", "short_leadup", "indoor_start"],
-        "not_for": ["ultra_events", "big_base_needed"],
-        "experience_required": "intermediate",
-        "stress_tolerance": "moderate",
-        "schedule_flexibility": "moderate",
-        "intensity_distribution": {"early": {"z4_z5": 0.30}, "late": {"z1_z2": 0.75}},
-        "strength_approach": "early_max_then_maintenance",
-        "key_workouts": ["early_vo2max", "late_long_rides"],
-        "progression_style": "intensity_then_volume",
-        "testing_frequency": "transition_points"
-    },
-
-    "autoregulated_hrv": {
-        "name": "Autoregulated (HRV-Based)",
-        "description": "Use daily readiness to adjust intensity/volume",
-        "philosophy": "Train hard when ready, back off when not",
-        "min_hours": 6,
-        "max_hours": 20,
-        "ideal_hours": (8, 15),
-        "best_for": ["variable_stress", "masters", "recovery_sensitive"],
-        "not_for": ["rigid_schedule", "beginners_needing_structure"],
-        "experience_required": "intermediate",
-        "stress_tolerance": "variable",  # Adapts to stress
-        "schedule_flexibility": "very_high",
-        "intensity_distribution": "readiness_dependent",
-        "strength_approach": "autoregulated_heavy_when_ready",
-        "key_workouts": ["readiness_driven"],
-        "progression_style": "guided_by_readiness",
-        "testing_frequency": "green_days"
-    },
-
-    "maf_low_hr": {
-        "name": "MAF / Low-HR (LT1)",
-        "description": "Build aerobic engine by staying under LT1",
-        "philosophy": "Aerobic base through constrained low intensity",
-        "min_hours": 8,
-        "max_hours": 20,
-        "ideal_hours": (10, 15),
-        "best_for": ["base_rebuild", "injury_return", "fat_adaptation"],
-        "not_for": ["need_quick_gains", "time_crunched"],
-        "experience_required": "beginner",
-        "stress_tolerance": "very_high",  # Very low stress training
-        "schedule_flexibility": "high",
-        "intensity_distribution": {"z1_z2": 0.95, "z3": 0.05, "z4_z5": 0.00},
-        "strength_approach": "foundational_mobility_durability",
-        "key_workouts": ["long_z2_hr_capped", "aerobic_strides"],
-        "progression_style": "duration_at_hr_cap",
-        "testing_frequency": "3_4_weeks"
-    },
-
-    "critical_power": {
-        "name": "Critical Power / W'",
-        "description": "Balance CP duration and W' capacity for surge repeatability",
-        "philosophy": "Model-driven: extend CP, manage W' depletion",
-        "min_hours": 6,
-        "max_hours": 15,
-        "ideal_hours": (8, 12),
-        "best_for": ["repeated_surges", "technical_terrain", "crits", "short_gravel"],
-        "not_for": ["ultra_endurance", "durability_focus", "beginners"],
-        "experience_required": "advanced",
-        "stress_tolerance": "moderate",
-        "schedule_flexibility": "moderate",
-        "intensity_distribution": {"z1_z2": 0.60, "z3": 0.15, "z4_z5": 0.25},
-        "strength_approach": "power_focused",
-        "key_workouts": ["above_cp_repeats", "w_prime_depletion", "threshold_intervals"],
-        "progression_style": "increase_cp_then_w_prime",
-        "testing_frequency": "4_6_weeks"
-    },
-
-    "inscyd": {
-        "name": "INSCYD / Metabolic",
-        "description": "Sculpt VO2max and VLamax for metabolic optimization",
-        "philosophy": "Precise metabolic profiling drives training targets",
-        "min_hours": 8,
-        "max_hours": 20,
-        "ideal_hours": (10, 15),
-        "best_for": ["advanced_optimization", "road_racing", "triathlon"],
-        "not_for": ["beginners", "no_testing_access", "casual_riders"],
-        "experience_required": "advanced",
-        "stress_tolerance": "moderate",
-        "schedule_flexibility": "low",
-        "intensity_distribution": {"z1_z2": 0.65, "z3": 0.15, "z4_z5": 0.20},
-        "strength_approach": "metabolic_complementary",
-        "key_workouts": ["vo2max_targeted", "vlamax_reduction", "fat_oxidation"],
-        "progression_style": "metabolic_marker_driven",
-        "testing_frequency": "6_8_weeks"
-    },
-
-    "norwegian_double_threshold": {
-        "name": "Double-Threshold (Norwegian)",
-        "description": "Lactate-capped threshold doubles for elite aerobic development",
-        "philosophy": "Two moderate threshold sessions daily, staying below 4mmol",
-        "min_hours": 12,
-        "max_hours": 30,
-        "ideal_hours": (15, 25),
-        "best_for": ["elite_athletes", "high_volume_available", "threshold_development"],
-        "not_for": ["time_crunched", "beginners", "high_stress_lifestyle"],
-        "experience_required": "advanced",
-        "stress_tolerance": "low",
-        "schedule_flexibility": "low",
-        "intensity_distribution": {"z1_z2": 0.55, "z3": 0.35, "z4_z5": 0.10},
-        "strength_approach": "minimal_maintenance",
-        "key_workouts": ["norwegian_double", "threshold_cruise", "long_z2"],
-        "progression_style": "increase_threshold_volume",
-        "testing_frequency": "4_weeks"
-    },
-
-    "hvli_lsd": {
-        "name": "HVLI / LSD-Centric",
-        "description": "Massive low-intensity volume for ultra-endurance durability",
-        "philosophy": "Train the body to process fat and sustain output for 12+ hours",
-        "min_hours": 15,
-        "max_hours": 30,
-        "ideal_hours": (18, 25),
-        "best_for": ["ultra_endurance", "200_mile_events", "fat_adaptation", "durability"],
-        "not_for": ["time_crunched", "short_events", "need_quick_gains"],
-        "experience_required": "intermediate",
-        "stress_tolerance": "high",
-        "schedule_flexibility": "low",
-        "intensity_distribution": {"z1_z2": 0.90, "z3": 0.08, "z4_z5": 0.02},
-        "strength_approach": "durability_focused",
-        "key_workouts": ["hvli_extended", "multi_hour_z2", "back_to_back_long"],
-        "progression_style": "increase_duration_not_intensity",
-        "testing_frequency": "phase_end"
-    },
-
-    "goat_composite": {
-        "name": "GOAT (Gravel Optimized Adaptive Training)",
-        "description": "Integrates pyramidal base, polarized weeks, limiter blocks, autoregulation",
-        "philosophy": "Best of all approaches, adapted to athlete and phase",
-        "min_hours": 8,
-        "max_hours": 25,
-        "ideal_hours": (10, 18),
-        "best_for": ["most_athletes", "flexible_adaptive", "gravel_specific"],
-        "not_for": ["pure_intuitive", "refuse_monitoring"],
-        "experience_required": "intermediate",
-        "stress_tolerance": "moderate",
-        "schedule_flexibility": "high",
-        "intensity_distribution": "phase_adaptive",
-        "strength_approach": "integrated_year_round",
-        "key_workouts": ["phase_specific_rotating"],
-        "progression_style": "block_polarized_volume_modulation",
-        "testing_frequency": "signal_triggered"
-    }
 }
 
 # Load from YAML config, fall back to inline definition
@@ -503,6 +321,12 @@ def calculate_methodology_score(
         if "recovery_friendly" in best_for or "beginner" in methodology["experience_required"]:
             score += 5
             reasons.append("Appropriate for finish-focused goal")
+        # First-timers / finishers belong on the base-heavy Traditional path
+        # (build the engine before tuning it) — boost it for low-experience
+        # finish goals so it wins over the more intensity-forward options.
+        if "first_timers" in best_for and years_structured <= 2:
+            score += 12
+            reasons.append("Base-heavy build suits a first-timer finish goal")
 
     # ==========================================================================
     # ATHLETE PREFERENCES (±10 points)

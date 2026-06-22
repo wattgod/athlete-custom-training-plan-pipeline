@@ -1175,18 +1175,44 @@ class TestMethodologySelection:
         result = select_methodology(profile, {})
         assert result['methodology_id'] != 'hiit_focused'
 
+    def _fit_profile(self, hours, years, goal):
+        return {'health_factors': {'age': 38}, 'age': 38,
+                'weekly_availability': {'cycling_hours_target': hours},
+                'training_history': {'years_structured': years},
+                'fitness_markers': {'ftp_watts': 220, 'sex': 'male'},
+                'target_race': {'name': 'Test Gravel 100', 'distance_miles': 100,
+                                'goal_type': goal, 'discipline': 'gravel'}}
+
+    def _selected(self, profile):
+        from select_methodology import select_methodology
+        r = select_methodology(profile, {'plan_weeks': 16}, None)
+        return r.get('selected_methodology') or r.get('name') or ''
+
+    def test_four_methods_land_on_the_right_athlete(self):
+        # the customer-fit mapping the lineup was designed around
+        assert 'Time-Crunched' in self._selected(self._fit_profile(5, 3, 'finish'))
+        assert 'Polarized' in self._selected(self._fit_profile(14, 8, 'podium'))
+        # a first-timer/finisher with hours belongs on the base-heavy path
+        assert 'Pyramidal' in self._selected(self._fit_profile(10, 1, 'finish'))
+
+    def test_no_deleted_methodology_can_be_selected(self):
+        # sweet spot / MAF / HIIT / Norwegian / etc. must never surface again
+        banned = ('Sweet Spot', 'HIIT', 'MAF', 'Norwegian', 'INSCYD',
+                  'Critical Power', 'Reverse', 'HVLI', 'GOAT', 'HRV')
+        for h, y, g in [(4, 0, 'finish'), (7, 2, 'compete'), (12, 5, 'podium'),
+                        (16, 10, 'podium'), (6, 1, 'finish')]:
+            name = self._selected(self._fit_profile(h, y, g))
+            assert not any(b in name for b in banned), f"deleted method surfaced: {name}"
+
     def test_all_yaml_methodologies_scored(self):
-        """All 13 YAML methodologies should be in the selection pool."""
+        """The FOUR customer-fit methodologies are the whole selection pool."""
         from select_methodology import METHODOLOGIES
         expected_ids = {
-            'traditional_pyramidal', 'polarized_80_20', 'sweet_spot_threshold',
-            'hiit_focused', 'block_periodization', 'reverse_periodization',
-            'autoregulated_hrv', 'maf_low_hr', 'critical_power', 'inscyd',
-            'norwegian_double_threshold', 'hvli_lsd', 'goat_composite',
+            'time_crunched', 'g_spot', 'polarized_80_20', 'traditional_pyramidal',
         }
         actual_ids = set(METHODOLOGIES.keys())
-        missing = expected_ids - actual_ids
-        assert not missing, f"Missing from YAML: {missing}"
+        assert actual_ids == expected_ids, (
+            f"methodology lineup drifted: {actual_ids ^ expected_ids}")
 
     def test_all_yaml_ids_in_methodology_map(self):
         """Every YAML methodology ID must have an entry in METHODOLOGY_MAP."""
@@ -1220,23 +1246,23 @@ class TestMethodologySelection:
         # Text that mentions base, polarized, zone 2 — old code would set polarized=5
         text = "i want more base building, zone 2, polarized approach, 80/20 training"
         prefs = _derive_methodology(text)
-        for key in ('polarized', 'pyramidal', 'threshold_focused', 'hiit_focused', 'high_volume', 'time_crunched'):
+        for key in ('time_crunched', 'g_spot', 'polarized', 'pyramidal'):
             assert prefs[key] == 3, f"{key} should be neutral 3, got {prefs[key]}"
 
     def test_derive_methodology_captures_failure(self):
-        """Explicit failure language near approach keyword should be captured."""
+        """Explicit failure language near an approach keyword should be captured."""
         from intake_to_plan import _derive_methodology
-        text = "tried sweet spot but it didn't work for building durability"
+        text = "tried polarized but it didn't work for me"
         prefs = _derive_methodology(text)
-        assert prefs['past_failure_with'] != '', "Should capture sweet spot failure"
-        assert 'Sweet Spot' in prefs['past_failure_with'] or 'Threshold' in prefs['past_failure_with']
+        assert prefs['past_failure_with'] != '', "Should capture polarized failure"
+        assert 'Polarized' in prefs['past_failure_with']
 
     def test_derive_methodology_no_false_positives(self):
         """Mention without negative context should NOT trigger failure."""
         from intake_to_plan import _derive_methodology
-        text = "i did some sweet spot training last year and it was fine"
+        text = "i did some polarized training last year and it was fine"
         prefs = _derive_methodology(text)
-        assert 'Sweet Spot' not in prefs.get('past_failure_with', '')
+        assert 'Polarized' not in prefs.get('past_failure_with', '')
 
     def test_derive_methodology_captures_success(self):
         """Positive context near keyword should be captured as success."""

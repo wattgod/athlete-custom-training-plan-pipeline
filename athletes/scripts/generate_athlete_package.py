@@ -194,19 +194,14 @@ def round_zwo_durations(zwo_xml: str) -> str:
 # Map athlete methodology IDs to Nate generator methodology names
 METHODOLOGY_MAP = {
     # Keys match config/methodologies.yaml IDs (returned by select_methodology.py)
-    'traditional_pyramidal': 'PYRAMIDAL',
+    # FOUR customer-fit methods (June 2026). The block-builder is the engine;
+    # these map to the Nate render IDs that exist. Time-Crunched renders via
+    # POLARIZED — its density comes from the time-crunched ARCHETYPE (hours-
+    # driven), not the methodology. (Legacy IDs HIT/MAF/BLOCK/etc. retired.)
+    'time_crunched': 'POLARIZED',
+    'g_spot': 'G_SPOT',
     'polarized_80_20': 'POLARIZED',
-    'sweet_spot_threshold': 'G_SPOT',
-    'hiit_focused': 'HIT',
-    'block_periodization': 'BLOCK',
-    'reverse_periodization': 'REVERSE',
-    'autoregulated_hrv': 'HRV_AUTO',
-    'maf_low_hr': 'MAF_LT1',
-    'critical_power': 'CRITICAL_POWER',
-    'inscyd': 'INSCYD',
-    'norwegian_double_threshold': 'NORWEGIAN',
-    'hvli_lsd': 'HVLI',
-    'goat_composite': 'GOAT',
+    'traditional_pyramidal': 'PYRAMIDAL',
 }
 
 
