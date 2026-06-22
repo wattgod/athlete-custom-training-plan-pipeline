@@ -115,6 +115,8 @@ def _build_one(persona_key, race, idx, base_day):
         "discipline": race.get("discipline"),
         "distance_mi": race.get("distance_mi"),
         "ok": False,
+        "delivered": False,
+        "needs_review": False,
         "failures": [],
     }
     delivery_base = Path(os.environ.get("GG_COVERAGE_DIR")
@@ -127,14 +129,24 @@ def _build_one(persona_key, race, idx, base_day):
                             persona_key=persona_key, race=race)
         proc, athlete_id = _run_pipeline(intake, droot)
         if proc.returncode != 0:
+            # No package produced — the only bucket that refunds a customer.
             rec["failures"] = [_gate_reason(proc)]
             rec["tail"] = ((proc.stderr or "") + (proc.stdout or ""))[-500:]
             return rec
+        # A package WAS produced and delivered (returncode 0).
+        rec["delivered"] = True
         athlete_dir = SCRIPTS_DIR.parent / athlete_id
         created.append(athlete_dir)
         delivery_dir = droot / f"{athlete_id}-training-plan"
         ok, failures = _contract(athlete_dir, delivery_dir)
-        rec["ok"] = ok
+        # Delivered but flagged (by the compliance gate or a quality check) =
+        # NOT clean send-worthy; it needs a coach pass before sending. Still
+        # delivered — the order is not lost.
+        flagged = "GG_NEEDS_REVIEW=1" in (proc.stdout or "")
+        if flagged:
+            failures = list(failures) + ["needs review: compliance flagged (delivered)"]
+        rec["needs_review"] = bool(flagged or not ok)
+        rec["ok"] = bool(ok and not flagged)
         rec["failures"] = failures
         return rec
     except Exception as e:  # a crash is itself a coverage failure to record
@@ -180,6 +192,12 @@ def run(personas, races, workers, seed):
 def _aggregate(results, seed):
     n = len(results)
     ok = sum(1 for r in results if r["ok"])
+    # Three honest business buckets: delivered clean, delivered-but-needs-review
+    # (a coach pass before sending — order NOT lost), and outright failed (no
+    # plan produced — the only bucket that would refund a customer).
+    delivered = sum(1 for r in results if r.get("delivered"))
+    needs_review = sum(1 for r in results if r.get("needs_review") and r.get("delivered"))
+    failed = n - delivered
     by_failure = defaultdict(int)
     by_persona = defaultdict(lambda: [0, 0])      # [pass, total]
     by_discipline = defaultdict(lambda: [0, 0])
@@ -199,6 +217,10 @@ def _aggregate(results, seed):
         "date": seed,
         "n": n,
         "pass": ok,
+        "needs_review": needs_review,
+        "failed": failed,
+        "delivered": delivered,
+        "delivered_rate": round(delivered / n, 3) if n else 0,
         "pass_rate": round(ok / n, 3) if n else 0,
         "by_failure": dict(sorted(by_failure.items(), key=lambda kv: -kv[1])),
         "by_persona": {k: round(v[0] / v[1], 3) if v[1] else 0
@@ -216,13 +238,17 @@ def _aggregate(results, seed):
 
 def _write_report(m):
     lines = [f"# Coverage sweep — {m['date']}", ""]
-    lines.append(f"**{m['pass']}/{m['n']} builds send-worthy "
-                 f"({int(m['pass_rate']*100)}%)** across the main personas × "
-                 f"the race database.")
+    lines.append(f"**{m['delivered']}/{m['n']} orders DELIVERED a plan "
+                 f"({int(m['delivered_rate']*100)}%)** — the customer-facing "
+                 f"number (no refund). Of those, {m['pass']} were clean and "
+                 f"{m['needs_review']} need a coach pass before sending. "
+                 f"**{m['failed']} produced NO plan** (the only refund bucket).")
     lines.append("")
     lines.append("Breadth complement to the daily depth judge: every cell is a "
-                 "real pipeline build checked against the deterministic "
-                 "send-worthy contract (no LLM).")
+                 "real pipeline build. 'Clean' passes the deterministic "
+                 "send-worthy contract; 'needs review' delivered but tripped a "
+                 "compliance check (coach reviews before sending); 'failed' "
+                 "produced nothing.")
     lines.append("")
     lines.append("## Pass rate by persona")
     for k, v in sorted(m["by_persona"].items(), key=lambda kv: kv[1]):
@@ -254,14 +280,17 @@ def _append_history(m):
             hist = json.loads(HISTORY.read_text())
         except Exception:
             hist = []
-    hist.append({k: m[k] for k in ("date", "n", "pass", "pass_rate",
-                                   "by_persona", "by_discipline")})
+    hist.append({k: m[k] for k in ("date", "n", "pass", "needs_review",
+                                   "failed", "delivered", "delivered_rate",
+                                   "pass_rate", "by_persona", "by_discipline")})
     HISTORY.write_text(json.dumps(hist, indent=1))
 
 
 def _print_summary(m):
     print(f"\n=== Coverage {m['date']} ===")
-    print(f"send-worthy: {m['pass']}/{m['n']} ({int(m['pass_rate']*100)}%)")
+    print(f"delivered: {m['delivered']}/{m['n']} ({int(m['delivered_rate']*100)}%)  "
+          f"[clean {m['pass']} · needs-review {m['needs_review']} · "
+          f"FAILED {m['failed']}]")
     if m["by_failure"]:
         print("top failure types:")
         for k, c in list(m["by_failure"].items())[:6]:

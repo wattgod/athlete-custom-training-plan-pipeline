@@ -1721,6 +1721,24 @@ def generate_coaching_brief(
     md = f"# Coaching Brief: {name}\n"
     md += f"*INTERNAL DOCUMENT — Coach eyes only*\n\n"
 
+    # If the automatic compliance checks flagged the plan, surface it LOUDLY at
+    # the very top — the plan was still delivered, but it should be reviewed and
+    # adjusted before it goes to the athlete. (Written by the compliance gate.)
+    if athlete_dir:
+        _review = Path(athlete_dir) / 'NEEDS_REVIEW.txt'
+        if _review.exists():
+            try:
+                _detail = _review.read_text()
+            except Exception:
+                _detail = ''
+            md += "> ## ⚠️ NEEDS REVIEW BEFORE SENDING\n"
+            md += "> The automatic coach checks flagged this plan. It was built "
+            md += "and delivered, but **review and adjust the flagged weeks "
+            md += "before sending it to the athlete.**\n>\n"
+            for _ln in _detail.splitlines():
+                md += f"> {_ln}\n"
+            md += "\n"
+
     md += f"## 1. Plan Overview\n"
     md += f"| Field | Value |\n"
     md += f"|-------|-------|\n"
@@ -2778,6 +2796,19 @@ def copy_to_downloads(athlete_id: str, coaching_brief_md: str) -> Path:
         print(f"\n  {RED}{BOLD}{len(delivery_gaps)} deliverable(s) missing -- review errors above{RESET}")
     else:
         print(f"\n  {GREEN}All deliverables present.{RESET}")
+
+    # If the compliance checks flagged the plan, the order STILL delivered, but
+    # emit a machine-readable marker so the webhook can tell the coach "needs
+    # review" (vs a clean delivery) and so the coach reviews it first.
+    _review = Path(ATHLETES_DIR) / athlete_id / 'NEEDS_REVIEW.txt' \
+        if 'ATHLETES_DIR' in globals() else None
+    if _review is None:
+        from pathlib import Path as _P
+        _review = _P(__file__).resolve().parent.parent / athlete_id / 'NEEDS_REVIEW.txt'
+    if _review.exists():
+        print(f"\n  {YELLOW}{BOLD}NEEDS_REVIEW: plan delivered but flagged by "
+              f"auto-checks — review coaching_brief.md before sending.{RESET}")
+        print("GG_NEEDS_REVIEW=1")  # machine marker for the webhook
 
     return downloads_dir
 

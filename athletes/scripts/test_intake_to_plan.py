@@ -1757,6 +1757,18 @@ class TestCoachingBrief:
         assert 'Polarized (80/20)' in brief
         assert 'Balanced / Structured' not in brief
 
+    def test_needs_review_banner_when_flagged(self, nicholas_profile, tmp_path):
+        # the safety net: when the compliance gate flags a plan it writes
+        # NEEDS_REVIEW.txt; the coaching brief must surface that LOUDLY at the
+        # top so the coach reviews it before sending.
+        (tmp_path / 'NEEDS_REVIEW.txt').write_text("failed R02: VO2max gap")
+        brief = generate_coaching_brief(nicholas_profile, {}, athlete_dir=tmp_path)
+        assert 'NEEDS REVIEW BEFORE SENDING' in brief
+        assert 'R02' in brief
+        # ... and NO banner on a clean build
+        clean = generate_coaching_brief(nicholas_profile, {}, athlete_dir=tmp_path.parent)
+        assert 'NEEDS REVIEW BEFORE SENDING' not in clean
+
     def test_brief_has_all_sections(self, nicholas_profile, nicholas_athlete_dir):
         """Brief must contain all 10 numbered sections."""
         brief = generate_coaching_brief(nicholas_profile, {}, athlete_dir=nicholas_athlete_dir)

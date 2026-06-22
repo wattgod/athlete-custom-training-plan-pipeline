@@ -10,6 +10,7 @@ Usage: python3 generate_athlete_package.py <athlete_id>
 """
 
 import re
+import os
 import sys
 import json
 import yaml
@@ -581,13 +582,36 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         )
         if not _compliance['critical_pass']:
             report = _bb_report(_compliance)
-            log.error("COMPLIANCE GATE FAILED\n" + report)
-            raise RuntimeError(
-                f"Plan failed compliance gate "
-                f"({_compliance['critical_score']} critical rules passed):\n{report}"
-            )
-        log.info(f"Compliance gate: {_compliance['critical_score']} critical, "
-                 f"score {_compliance['score']}%")
+            log.error("COMPLIANCE GATE FLAGGED (delivering for coach review)\n" + report)
+            # BUSINESS RULE: never deliver NOTHING. The block-builder produced a
+            # real, complete plan that missed one or more CRITICAL checks.
+            # Hard-failing here = a refunded order + a 2am fire drill. Instead we
+            # DELIVER the plan and LOUDLY flag it for the coach's normal pre-send
+            # review (the 24h window the customer was already promised). The
+            # failure is RECORDED, not silent — which was the whole reason this
+            # gate used to hard-fail. (This is NOT the feared ungated
+            # legacy-template fallback; the block-builder-EXCEPTION path above
+            # still raises, because a crash means there is no plan to deliver.)
+            # Set GG_STRICT_COMPLIANCE=1 to restore hard-fail (CI / debugging).
+            if os.environ.get('GG_STRICT_COMPLIANCE') == '1':
+                raise RuntimeError(
+                    f"Plan failed compliance gate "
+                    f"({_compliance['critical_score']} critical rules passed):\n{report}"
+                )
+            try:
+                (athlete_dir / 'NEEDS_REVIEW.txt').write_text(
+                    "AUTO-CHECK FLAGGED — REVIEW BEFORE SENDING\n"
+                    "=================================================\n\n"
+                    "The plan was built and delivered, but the automatic coach "
+                    "checks flagged "
+                    f"{_compliance['critical_score']} critical rule(s). Review the "
+                    "flagged weeks and adjust before sending to the athlete.\n\n"
+                    + report + "\n")
+            except Exception:
+                pass
+        else:
+            log.info(f"Compliance gate: {_compliance['critical_score']} critical, "
+                     f"score {_compliance['score']}%")
 
     def build_day_schedule(day_abbrev: str, phase: str, phase_templates: dict, week_num: int = 0) -> tuple:
         """

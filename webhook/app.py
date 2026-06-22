@@ -387,8 +387,18 @@ def _build_training_plan_email(details: dict) -> tuple:
         review_flags.append(
             'Risk factors: ' + ', '.join(str(r) for r in details['risk_factors']))
 
+    # Strongest flag: the plan DELIVERED but an automatic compliance check
+    # failed. The order is NOT lost — it just needs a human pass before sending.
+    needs_review = bool(details.get('needs_review'))
+    if needs_review:
+        review_flags.insert(0,
+            'AUTO-CHECK FAILED — plan delivered but a compliance rule was '
+            'flagged. Review coaching_brief.md and adjust before sending.')
+
     subject = f"[GG] {'New order' if pipeline_ok else 'FAILED'}: {name} — {race_name or 'training plan'}"
-    if pipeline_ok and review_flags:
+    if pipeline_ok and needs_review:
+        subject = subject.replace('[GG] New order', '[GG] ⚠ NEEDS REVIEW')
+    elif pipeline_ok and review_flags:
         subject = subject.replace('[GG] New order', '[GG] New order ⚠ REVIEW')
 
     # Shared athlete + plan info block
@@ -809,6 +819,9 @@ def _build_plan_notification_details(order_data: dict, result: dict,
         'workout_count': workout_count,
         'methodology': methodology,
         'error': _pipeline_error_excerpt(result) if not result.get('success') else '',
+        # The plan delivered, but the automatic coach checks flagged it — review
+        # coaching_brief.md before sending. Distinct from a clean delivery.
+        'needs_review': 'GG_NEEDS_REVIEW=1' in stdout,
     }
 
 

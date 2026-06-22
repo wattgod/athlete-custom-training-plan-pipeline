@@ -2709,3 +2709,38 @@ class TestTravelDatesPassthrough:
         from app import _questionnaire_to_markdown
         md = _questionnaire_to_markdown({}, name='T', email='t@e.com')
         assert 'Travel Dates: None' in md
+
+
+class TestComplianceNeedsReview:
+    """A plan that delivers but fails an auto-compliance check must reach the
+    coach as 'NEEDS REVIEW' — the order is NOT lost, it just needs a human pass
+    before sending (the safety net that replaced hard-failing the order)."""
+
+    def _details(self, needs_review):
+        return {'name': 'Taylor F', 'email': 't@e.com', 'race_name': 'Big Sugar',
+                'athlete_id': 'tf', 'needs_review': needs_review,
+                'pipeline_success': True, 'download_token': 'tok'}
+
+    def test_needs_review_subject_and_body(self):
+        from app import _build_training_plan_email
+        subj, text, html = _build_training_plan_email(self._details(True))
+        assert 'NEEDS REVIEW' in subj
+        assert 'AUTO-CHECK FAILED' in (text + (html or ''))
+
+    def test_clean_delivery_has_no_review_flag(self):
+        from app import _build_training_plan_email
+        subj, text, html = _build_training_plan_email(self._details(False))
+        assert 'NEEDS REVIEW' not in subj
+        assert 'AUTO-CHECK FAILED' not in (text + (html or ''))
+
+    def test_marker_in_stdout_sets_needs_review(self):
+        from app import _build_plan_notification_details
+        order = {'profile': {'name': 'X', 'email': 'x@e.com',
+                             'target_race': {'name': 'R', 'date': '2026-10-01'}},
+                 'order_id': 'o', 'athlete_id': 'x'}
+        flagged = _build_plan_notification_details(
+            order, {'success': True, 'stdout': '...\nGG_NEEDS_REVIEW=1\n'}, None)
+        clean = _build_plan_notification_details(
+            order, {'success': True, 'stdout': 'all good'}, None)
+        assert flagged['needs_review'] is True
+        assert clean['needs_review'] is False
