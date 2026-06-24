@@ -233,13 +233,14 @@ class TestMethodologyMatchesSelection:
     def test_display_built_from_selection(self):
         from training_guide_builder import _methodology_display
         d = _methodology_display({
-            "selected_methodology": "MAF / Low-HR (LT1)",
-            "configuration": {"intensity_distribution": {"z1_z2": 0.95, "z3": 0.0, "z4_z5": 0.05},
-                              "progression_style": "build_aerobic_base"},
+            "selected_methodology": "Polarized (80/20)",
+            "configuration": {"intensity_distribution": {"z1_z2": 0.80, "z3": 0.0, "z4_z5": 0.20},
+                              "emphasis": "a hard/easy split",
+                              "progression_style": "increase_hard_work"},
         })
-        assert d["name"] == "MAF / Low-HR (LT1)"
-        assert "95% easy" in d["description"]
-        assert "Traditional Pyramidal" not in d["description"]
+        assert d["name"] == "Polarized (80/20)"
+        # honest VOLUME framing ("roughly N% easy"), not a precise split
+        assert "80%" in d["description"] and "easy" in d["description"].lower()
 
     def test_empty_methodology_yields_no_override(self):
         from training_guide_builder import _methodology_display
@@ -251,25 +252,25 @@ class TestDistributionHonesty:
     literal '0% tempo' for Polarized contradicts the Build-phase tempo the
     plan prescribes (judge flag)."""
 
-    def test_polarized_does_not_claim_zero_tempo(self):
+    def test_display_never_claims_a_precise_tempo_or_hard_split(self):
+        # The plan is compliance-bound to mostly-easy riding, so the guide must
+        # NOT promise an exact "X% tempo / Y% hard" it can't deliver. It states
+        # volume honestly ("roughly N% easy") and describes the emphasis.
         from training_guide_builder import _methodology_display
-        d = _methodology_display({
-            "selected_methodology": "Polarized 80/20",
-            "configuration": {"intensity_distribution":
-                              {"z1_z2": 0.80, "z3": 0.0, "z4_z5": 0.20}}})
-        desc = d["description"].lower()
-        assert "0% tempo" not in desc
-        assert "polarized" in desc
-        # honest about minimize-not-eliminate
-        assert "minimal" in desc or "still see" in desc
-
-    def test_three_way_split_preserved_when_tempo_real(self):
-        from training_guide_builder import _methodology_display
-        d = _methodology_display({
-            "selected_methodology": "Sweet Spot",
-            "configuration": {"intensity_distribution":
-                              {"z1_z2": 0.50, "z3": 0.35, "z4_z5": 0.15}}})
-        assert "35% tempo" in d["description"]
+        import re
+        for z1, z3, z45, emph in [(0.80, 0.0, 0.20, "a hard/easy split"),
+                                  (0.65, 0.25, 0.10, "the productive zone")]:
+            d = _methodology_display({
+                "selected_methodology": "M",
+                "configuration": {"intensity_distribution":
+                                  {"z1_z2": z1, "z3": z3, "z4_z5": z45},
+                                  "emphasis": emph}})
+            desc = d["description"]
+            assert "0% tempo" not in desc
+            # no precise "NN% tempo" or "NN% hard" claim
+            assert not re.search(r"\d+%\s*(tempo|hard)", desc.lower()), desc
+            assert emph in desc                       # leads with the emphasis
+            assert "roughly" in desc.lower()          # honest volume framing
 
 
 class TestBrandByDiscipline:

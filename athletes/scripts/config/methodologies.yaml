@@ -13,6 +13,7 @@ time_crunched:
   name: "Time-Crunched"
   description: "Every session earns its place. One protected long ride, the rest short and sharp — no junk miles."
   philosophy: "Make every hour count: density over volume, with the long ride kept sacred."
+  emphasis: "a protected long ride plus short, intensity-dense sessions — every ride earns its place, no junk miles"
   min_hours: 3
   max_hours: 9
   ideal_hours: [4, 7]
@@ -38,6 +39,7 @@ g_spot:
   # The engine does NOT read HRV/readiness, so we do not claim it does.
   description: "Train the productive zone between tempo and threshold — then read the room: hold the targets when you're fresh, ease off when you're cooked."
   philosophy: "The most productive stimulus you can absorb — with built-in permission to autoregulate the effort by feel against the day's target, not chase a number you don't have."
+  emphasis: "the productive zone between tempo and threshold (G-Spot and threshold-touch work) dialed by feel, with VO2 to hold the top end"
   min_hours: 5
   max_hours: 13
   ideal_hours: [6, 10]
@@ -60,6 +62,7 @@ polarized_80_20:
   name: "Polarized (80/20)"
   description: "Most training genuinely easy, the hard days genuinely hard, the gray-zone middle kept minimal."
   philosophy: "Hard/easy separation maximizes adaptation when you have the hours to ride easy."
+  emphasis: "a hard/easy split — most riding genuinely easy, the few hard days VO2 and threshold, the gray-zone middle kept minimal"
   min_hours: 8
   max_hours: 22
   ideal_hours: [10, 16]
@@ -82,6 +85,7 @@ traditional_pyramidal:
   name: "Traditional (Pyramidal)"
   description: "Build a big aerobic base first, then sharpen — the forgiving, proven path to a first finish."
   philosophy: "Volume → intensity → specificity. Build the engine before you tune it."
+  emphasis: "a big aerobic base first, sharpened with tempo and threshold progressions as the race nears"
   min_hours: 7
   max_hours: 30
   ideal_hours: [10, 18]

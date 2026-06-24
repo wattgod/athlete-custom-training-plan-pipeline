@@ -3294,28 +3294,28 @@ def _methodology_display(methodology_yaml: dict) -> dict:
         return {}
     cfg = methodology_yaml.get("configuration", {}) or {}
     dist = cfg.get("intensity_distribution", {})
-    # Some methodologies describe their distribution as a string
-    # ("readiness_dependent", "block_dependent", "phase_adaptive") rather
-    # than fixed z1/z3/z4_z5 fractions — handle both.
     dist = dist if isinstance(dist, dict) else {}
-    z1 = dist.get("z1_z2"); z3 = dist.get("z3"); z45 = dist.get("z4_z5")
-    if z1 is not None and z3 is not None and z45 is not None:
-        if z3 < 0.05:
-            # Polarized minimizes the tempo "gray zone" — it doesn't ban it.
-            # Stating a literal "0% tempo" contradicts the Build-phase tempo
-            # the plan actually prescribes and confuses athletes.
-            desc = (f"Your plan runs a polarized {z1*100:.0f}% easy / "
-                    f"{z45*100:.0f}% hard distribution &mdash; most riding is "
-                    f"genuinely easy and hard days are genuinely hard. The middle "
-                    f"'gray zone' (tempo) is kept deliberately minimal rather than "
-                    f"eliminated, so you'll still see targeted tempo efforts in the "
-                    f"Build phase. This is the balance the {name} methodology calls "
-                    f"for, matched to your hours and experience.")
-        else:
-            desc = (f"Your plan runs a {z1*100:.0f}% easy / {z3*100:.0f}% tempo / "
-                    f"{z45*100:.0f}% hard intensity distribution &mdash; the balance "
-                    f"the {name} methodology calls for, matched to your hours and "
-                    f"experience.")
+    z1 = dist.get("z1_z2")
+    emphasis = (cfg.get("emphasis") or "").strip()
+
+    # Lead with what the plan ACTUALLY emphasizes (the workouts genuinely
+    # reflect the method), and frame VOLUME honestly. We deliberately do NOT
+    # state a precise tempo/hard split: the plan is compliance-bound to mostly
+    # easy riding, so an exact "X% tempo / Y% hard" was aspirational and could
+    # contradict the calendar. "Roughly N% easy by volume" is true; the
+    # emphasis describes where the hard work actually goes.
+    if emphasis:
+        desc = (f"Your {name} plan is built around {emphasis}.")
+        if z1 is not None:
+            desc += (f" By volume most of your riding stays genuinely easy "
+                     f"(roughly {z1*100:.0f}%) &mdash; that's what builds the "
+                     f"engine; the hard days are where this plan does its "
+                     f"specific work.")
+        desc += " Matched to your hours and experience."
+    elif z1 is not None:
+        desc = (f"Your {name} plan keeps most riding genuinely easy (roughly "
+                f"{z1*100:.0f}% by volume), with the hard days focused where "
+                f"they count. Matched to your hours and experience.")
     else:
         desc = f"Your plan follows the {name} methodology, matched to your hours and experience."
     prog_style = (cfg.get("progression_style", "") or "").replace("_", " ")

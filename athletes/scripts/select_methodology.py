@@ -424,6 +424,9 @@ def calculate_methodology_score(
     configuration = {
         "methodology": methodology["name"],
         "intensity_distribution": _norm_dist,
+        # Honest qualitative description of what the plan actually emphasizes —
+        # the guide leads with this, not aspirational exact percentages.
+        "emphasis": methodology.get("emphasis", ""),
         "strength_approach": methodology["strength_approach"],
         "key_workouts": methodology["key_workouts"],
         "progression_style": methodology["progression_style"],
