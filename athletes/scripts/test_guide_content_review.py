@@ -493,3 +493,34 @@ class TestHeartRateZones:
         prof = itp.build_profile(itp.parse_intake_markdown(md))
         fm = prof['fitness_markers']
         assert fm.get('max_hr') == 184 and fm.get('lthr') == 170
+
+
+class TestRoadLabsBrand:
+    """A road athlete gets the Roadie Labs identity (newsprint/charcoal
+    monochrome), gravel/MTB keep Gravel God brown. Same fonts (shared)."""
+
+    def test_road_css_is_charcoal_newsprint(self):
+        from training_guide_builder import _css
+        road = _css("road")
+        assert "--gg-color-primary-brown: #1a1a1a" in road   # charcoal, not brown
+        assert "--gg-color-warm-paper: #f5f5f0" in road       # newsprint bg
+        assert "#59473c" not in road                          # no GG brown
+
+    def test_gravel_css_stays_brown(self):
+        from training_guide_builder import _css
+        grav = _css("gravel")
+        assert "--gg-color-primary-brown: #59473c" in grav
+        assert "#1a1a1a" not in grav.replace("1a1613", "")    # no charcoal token
+
+    def test_no_inline_brand_hex_bypasses_the_token_swap(self):
+        # every brand color in the guide body must be a var(--gg-*) token so it
+        # follows the brand; a hardcoded #59473c/#B7950B/#1A8A82 would leak GG
+        # brown into a road plan
+        import training_guide_builder as tgb, inspect, re
+        src = inspect.getsource(tgb)
+        body = src.split("def _css", 1)[0] + src.split("return _colors", 1)[-1] \
+            if False else src
+        # ignore the two _css palette strings (the legit token definitions)
+        body = re.sub(r'--gg-color-[a-z-]+: #[0-9A-Fa-f]{6};', '', body)
+        leaks = re.findall(r'(?:solid |:)#(?:59473c|B7950B|1A8A82|c0392b)', body)
+        assert not leaks, f"inline brand hex bypasses the token swap: {leaks}"

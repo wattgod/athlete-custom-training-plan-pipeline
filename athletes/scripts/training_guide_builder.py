@@ -458,7 +458,7 @@ def _build_full_guide(
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Sometype+Mono:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
 
-    {_css()}
+    {_css(_discipline)}
 </head>
 <body>
   <main class="gg-guide-page">
@@ -2857,12 +2857,28 @@ def _section_women_specific(profile: Dict, race_data: Dict, race_name: str, sect
 # CSS — Gravel God Brand System
 # ══════════════════════════════════════════════════════════════
 
-def _css():
-    return """<style>
-/* === Brand Tokens === */
-:root {
-  /* color */
-  --gg-color-dark-brown: #3a2e25;
+def _css(brand="gravel"):
+    # Same token NAMES, brand-specific VALUES — every var(--gg-*) in the guide
+    # follows automatically. Road athletes get the Roadie Labs newsprint/
+    # charcoal monochrome identity; gravel/MTB keep Gravel God brown. Fonts are
+    # shared (Sometype Mono + Source Serif), so this is a pure palette swap.
+    if (brand or "gravel").lower() == "road":
+        _colors = """  --gg-color-dark-brown: #000000;
+  --gg-color-primary-brown: #1a1a1a;
+  --gg-color-secondary-brown: #333333;
+  --gg-color-warm-brown: #555555;
+  --gg-color-tan: #d0d0c8;
+  --gg-color-sand: #e8e8e2;
+  --gg-color-warm-paper: #f5f5f0;
+  --gg-color-gold: #1a1a1a;
+  --gg-color-light-gold: #777777;
+  --gg-color-teal: #333333;
+  --gg-color-light-teal: #555555;
+  --gg-color-near-black: #1a1a1a;
+  --gg-color-white: #ffffff;
+  --gg-color-error: #8b1a1a;"""
+    else:
+        _colors = """  --gg-color-dark-brown: #3a2e25;
   --gg-color-primary-brown: #59473c;
   --gg-color-secondary-brown: #8c7568;
   --gg-color-warm-brown: #A68E80;
@@ -2875,7 +2891,12 @@ def _css():
   --gg-color-light-teal: #4ECDC4;
   --gg-color-near-black: #1a1613;
   --gg-color-white: #ffffff;
-  --gg-color-error: #c0392b;
+  --gg-color-error: #c0392b;"""
+    return """<style>
+/* === Brand Tokens === */
+:root {
+  /* color */
+""" + _colors + """
 
   /* font */
   --gg-font-data: 'Sometype Mono', monospace;
@@ -3759,17 +3780,17 @@ def _build_goals_section(profile) -> str:
 
     items = []
     if success:
-        items.append(f'<div style="margin:12px 0;padding:12px 16px;background:#fff;border-left:3px solid #1A8A82"><strong>Success looks like:</strong> {success}</div>')
+        items.append(f'<div style="margin:12px 0;padding:12px 16px;background:#fff;border-left:3px solid var(--gg-color-teal)"><strong>Success looks like:</strong> {success}</div>')
     if obstacles:
-        items.append(f'<div style="margin:12px 0;padding:12px 16px;background:#fff;border-left:3px solid #B7950B"><strong>Obstacles to overcome:</strong> {obstacles}</div>')
+        items.append(f'<div style="margin:12px 0;padding:12px 16px;background:#fff;border-left:3px solid var(--gg-color-gold)"><strong>Obstacles to overcome:</strong> {obstacles}</div>')
     if strengths:
-        items.append(f'<div style="margin:12px 0;padding:12px 16px;background:#fff;border-left:3px solid #1A8A82"><strong>Your strengths:</strong> {strengths}</div>')
+        items.append(f'<div style="margin:12px 0;padding:12px 16px;background:#fff;border-left:3px solid var(--gg-color-teal)"><strong>Your strengths:</strong> {strengths}</div>')
     if weaknesses:
-        items.append(f'<div style="margin:12px 0;padding:12px 16px;background:#fff;border-left:3px solid #c0392b"><strong>Your blindspots:</strong> {weaknesses}</div>')
+        items.append(f'<div style="margin:12px 0;padding:12px 16px;background:#fff;border-left:3px solid var(--gg-color-error)"><strong>Your blindspots:</strong> {weaknesses}</div>')
 
     return f'''
     <section style="margin:40px 0">
-      <h2 style="font-family:'Sometype Mono',monospace;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#59473c;border-bottom:2px solid #59473c;padding-bottom:8px">
+      <h2 style="font-family:'Sometype Mono',monospace;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:var(--gg-color-primary-brown);border-bottom:2px solid var(--gg-color-primary-brown);padding-bottom:8px">
         Your Goals &amp; Blindspots
       </h2>
       <p style="font-family:'Source Serif 4',Georgia,serif;color:#555">From your questionnaire — this is what we're building toward and what we're watching out for.</p>
@@ -3797,22 +3818,22 @@ def _build_nutrition_section(fueling, profile) -> str:
 
     return f'''
     <div style="margin:24px 0">
-      <h3 style="font-family:'Sometype Mono',monospace;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#59473c;border-bottom:2px solid #59473c;padding-bottom:8px">
+      <h3 style="font-family:'Sometype Mono',monospace;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:var(--gg-color-primary-brown);border-bottom:2px solid var(--gg-color-primary-brown);padding-bottom:8px">
         Your Personalized Targets
       </h3>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0">
-        <div style="padding:20px;background:#fff;border:2px solid #59473c">
-          <div style="font-family:'Sometype Mono',monospace;font-size:28px;font-weight:700;color:#59473c">{hourly}g/hr</div>
+        <div style="padding:20px;background:#fff;border:2px solid var(--gg-color-primary-brown)">
+          <div style="font-family:'Sometype Mono',monospace;font-size:28px;font-weight:700;color:var(--gg-color-primary-brown)">{hourly}g/hr</div>
           <div style="font-family:'Sometype Mono',monospace;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px">Carb Target</div>
         </div>
-        <div style="padding:20px;background:#fff;border:2px solid #59473c">
-          <div style="font-family:'Sometype Mono',monospace;font-size:28px;font-weight:700;color:#59473c">{total}g</div>
+        <div style="padding:20px;background:#fff;border:2px solid var(--gg-color-primary-brown)">
+          <div style="font-family:'Sometype Mono',monospace;font-size:28px;font-weight:700;color:var(--gg-color-primary-brown)">{total}g</div>
           <div style="font-family:'Sometype Mono',monospace;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px">Total Race Carbs</div>
         </div>
       </div>
 
-      <div style="padding:16px;background:#fff;border-left:3px solid #B7950B;margin:16px 0">
+      <div style="padding:16px;background:#fff;border-left:3px solid var(--gg-color-gold);margin:16px 0">
         <strong>Race-day range:</strong> {range_str}<br>
         <strong>Hydration:</strong> {hydration.get('target_ml_per_hour', 600)}ml/hr with {hydration.get('electrolytes', '500-1000mg sodium/hr')}<br>
         <strong>Pre-race meal:</strong> 3-4 hours before start, high carb, moderate protein, low fat/fiber
