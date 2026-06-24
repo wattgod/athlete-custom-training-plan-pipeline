@@ -158,6 +158,7 @@ def build_calendar_week(
     series_tracker: Optional[SeriesTracker] = None,
     discipline: str = 'gravel',
     day_caps: Dict[str, int] = None,
+    methodology: str = 'polarized_80_20',
 ) -> Dict[str, Any]:
     """Build one week whose type and phase come from the calendar (plan_dates).
 
@@ -188,6 +189,7 @@ def build_calendar_week(
         block_number=block_number,
         discipline=discipline,
         day_caps=day_caps,
+        methodology=methodology,
     )
     week['block_number'] = block_number
     return week
@@ -285,6 +287,7 @@ def _build_week(
     block_number: int = 1,
     discipline: str = 'gravel',
     day_caps: Dict[str, int] = None,
+    methodology: str = 'polarized_80_20',
 ) -> Dict[str, Any]:
     """Build a single week with day-by-day workout assignments."""
 
@@ -300,6 +303,7 @@ def _build_week(
         hours_per_week=hours_per_week,
         block_number=block_number,
         discipline=discipline,
+        methodology=methodology,
     )
 
     # Organize menu by role

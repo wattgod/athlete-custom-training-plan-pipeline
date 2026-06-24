@@ -17,6 +17,23 @@ from typing import Dict, List, Optional, Any, Tuple
 # Load workout selection config
 _CONFIG_DIR = Path(__file__).parent.parent / 'config'
 
+# What makes the four methods produce DIFFERENT plans (not just labels): the VO2
+# day stays for compliance, but the second hard day reflects the method's
+# signature. A POOL per method (rotated by block) keeps block-to-block variety;
+# discipline-specific work is left untouched so gravel/mtb still feel distinct.
+# Every name is renderable and survives that method's render-time veto.
+_METHODOLOGY_SECONDARY = {
+    'polarized_80_20':       ['Threshold Progressive', 'Threshold Accumulation', 'VO2max 40/20'],
+    'time_crunched':         ['Threshold Progressive', 'Threshold Touch', 'VO2max 40/20'],
+    'g_spot':                ['G-Spot', 'Threshold Touch', 'Threshold Steady'],
+    'traditional_pyramidal': ['Tempo with Accelerations', 'Tempo with Sprints', 'Threshold Steady'],
+}
+# Discipline-specific intensity work — never overwritten, so a gravel/mtb plan
+# keeps its signature work alongside the methodology emphasis.
+_DISCIPLINE_INTENSITY = {
+    'Microbursts', 'Mixed Climbing', 'Mixed Climbing Variations', 'Stomps',
+}
+
 
 def _load_config(filename: str) -> dict:
     with open(_CONFIG_DIR / filename) as f:
@@ -50,6 +67,7 @@ def select_workouts_for_week(
     hours_per_week: float = 10,
     block_number: int = 1,
     discipline: str = 'gravel',
+    methodology: str = 'polarized_80_20',
 ) -> List[Dict[str, Any]]:
     """Select workouts for a single week.
 
@@ -159,6 +177,26 @@ def select_workouts_for_week(
             'role': 'intensity',
         })
         intensity_count += 1
+
+    # ── Methodology emphasis: the plan now GENUINELY differs by method ──────
+    # The block-builder picks compliant slots; the selected methodology then
+    # steers the SECONDARY (non-VO2) intensity day toward its signature work —
+    # a G Spot plan rides G-Spot/over-unders, a Pyramidal plan rides tempo
+    # progressions, a Polarized / Time-Crunched plan stays hard threshold. The
+    # VO2 stimulus is preserved (R02), and series coherence holds because the
+    # same emphasis name repeats across the block. This also ALIGNS the choice
+    # with the render-time methodology veto (POLARIZED vetoes G-Spot, etc.), so
+    # the workout survives instead of silently falling back to a generic one.
+    pool = _METHODOLOGY_SECONDARY.get(methodology)
+    if pool:
+        from block_compliance import VO2MAX_TYPES
+        pick = pool[(block_number - 1) % len(pool)]  # rotate by block → variety
+        for w in workouts:
+            if (w['role'] == 'intensity'
+                    and w['name'] not in VO2MAX_TYPES
+                    and w['name'] not in _DISCIPLINE_INTENSITY):
+                w['name'] = pick
+                break
 
     # Long ride — level must fit within weekly hour budget
     long_slot = slots.get('long_ride', {})

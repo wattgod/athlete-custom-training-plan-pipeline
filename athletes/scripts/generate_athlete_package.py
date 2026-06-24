@@ -529,6 +529,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             hours_per_week=cycling_hours_target,
             discipline=_bb_discipline,
             day_caps=_bb_day_caps or None,
+            methodology=methodology_id,
         )
 
         # Build lookup: (plan_week, day_abbrev) → block plan day data.

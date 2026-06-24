@@ -71,6 +71,7 @@ def build_plan_from_calendar(
     hours_per_week: float = 10,
     discipline: str = 'gravel',
     day_caps: Dict[str, int] = None,
+    methodology: str = 'polarized_80_20',
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -147,6 +148,7 @@ def build_plan_from_calendar(
             series_tracker=tracker,
             discipline=discipline,
             day_caps=day_caps,
+            methodology=methodology,
         )
         week['plan_week'] = plan_week
         week['block_number'] = block_number

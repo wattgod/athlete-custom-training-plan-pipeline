@@ -341,6 +341,47 @@ class TestDeriveDiscipline:
         assert derive_discipline(profile) == 'road'
 
 
+class TestMethodologyDifferentiatesThePlan:
+    """ANTI-THEATER: the four methodologies must produce genuinely DIFFERENT
+    workout plans, not the same plan with different labels. The methodology
+    steers the secondary (non-VO2) intensity day; the VO2 day and discipline
+    work are preserved."""
+
+    def _secondaries(self, methodology):
+        from block_compliance import VO2MAX_TYPES
+        plan = build_plan_from_calendar(
+            week_descriptors=_jesse_descriptors(), archetype='specialist',
+            max_level=6, max_intensity=2, off_days=['Sun'], long_ride_day='Sat',
+            hours_per_week=8, methodology=methodology)
+        names = set()
+        for w in plan['weeks']:
+            if w.get('week_type') == 'load':
+                for d in w['days']:
+                    if d.get('role') == 'intensity' and d['name'] not in VO2MAX_TYPES:
+                        names.add(d['name'])
+        return names
+
+    def test_methods_produce_different_intensity_work(self):
+        pol = self._secondaries('polarized_80_20')
+        gsp = self._secondaries('g_spot')
+        pyr = self._secondaries('traditional_pyramidal')
+        # each method's signature work shows up and the sets are not identical
+        assert any('G-Spot' in n or 'Threshold Touch' in n or 'Threshold Steady' in n for n in gsp)
+        assert any('Tempo' in n for n in pyr)
+        assert pol != gsp and gsp != pyr and pol != pyr, (
+            f"methods produced identical plans (theater): {pol} {gsp} {pyr}")
+
+    def test_differentiated_plans_stay_compliant(self):
+        from block_compliance import validate_plan
+        for m in ('polarized_80_20', 'g_spot', 'traditional_pyramidal', 'time_crunched'):
+            plan = build_plan_from_calendar(
+                week_descriptors=_jesse_descriptors(), archetype='specialist',
+                max_level=6, max_intensity=2, off_days=['Sun'], long_ride_day='Sat',
+                hours_per_week=8, methodology=m)
+            r = validate_plan(plan, target_hours=8, off_days=['Sun'], max_intensity=2)
+            assert r['critical_pass'], f"{m} not compliant: {r.get('critical_score')}"
+
+
 class TestVO2GapWithLowIntensityBudget:
     """A low-training-age athlete gets max_intensity=1. The build-phase VO2
     slot is intensity_2, so a fixed slot order would fill only intensity_1
