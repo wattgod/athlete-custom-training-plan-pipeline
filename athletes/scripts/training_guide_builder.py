@@ -407,7 +407,9 @@ def _build_full_guide(
     # REMOVED per coach review (Jun 2026): Non-Negotiables (pointless),
     # Week-by-Week Overview (the schedule lives in the training plan, not
     # the guide). Do not re-add calendar/schedule content to the guide.
-    sections.append(_section_training_zones(ftp, tier))
+    _fit = profile.get("fitness", {})
+    sections.append(_section_training_zones(
+        ftp, tier, lthr=_fit.get("lthr"), max_hr=_fit.get("max_hr")))
     sections.append(_section_adaptation())
     sections.append(_section_weekly_structure(schedule, tier_display, weekly_hours, est_race_hrs))
     sections.append(_section_phase_progression(plan_duration, tier, ride_realism))
@@ -776,7 +778,28 @@ def _date_verification_card(derived, date_xref) -> str:
 
     return date_verification_html
 
-def _section_training_zones(ftp: Optional[int], tier: str):
+def _hr_bpm_band(pct_str: str, lthr: int) -> str:
+    """Convert a '% of LTHR' band ('69-83%', '< 68%', '> 106%') to a bpm band
+    off the athlete's measured threshold HR."""
+    s = pct_str.replace("%", "").strip()
+    if not s or s.upper() == "N/A":
+        return "&mdash;"
+    try:
+        if s.startswith("< "):
+            return f"&lt; {round(int(s[2:]) * lthr / 100)} bpm"
+        if s.startswith("> "):
+            return f"&gt; {round(int(s[2:]) * lthr / 100)} bpm"
+        if "-" in s:
+            lo, hi = s.split("-")
+            return f"{round(int(lo) * lthr / 100)}-{round(int(hi) * lthr / 100)} bpm"
+    except ValueError:
+        pass
+    return "&mdash;"
+
+
+def _section_training_zones(ftp: Optional[int], tier: str,
+                            lthr: Optional[int] = None,
+                            max_hr: Optional[int] = None):
     zone_data = [
         ("1", "Active Recovery", "< 55%", "< 68%", "1-2", "Very easy, conversational. You should feel like you're barely working."),
         ("2", "Endurance", "56-75%", "69-83%", "3-4", "Easy effort. You can speak in full sentences. The bulk of your riding lives here."),
@@ -802,9 +825,10 @@ def _section_training_zones(ftp: Optional[int], tier: str):
             else:
                 watts = f"> {prev_high_w + 1}W" if prev_high_w else f"> {int(ftp * 1.2)}W"
             ss_class = ' class="race-day-row"' if zone == "GS" else ""
+            bpm_cell = f'<td>{_hr_bpm_band(hr, lthr)}</td>' if lthr else ''
             power_rows.append(
                 f'<tr{ss_class}><td><strong>{zone}</strong></td><td>{name}</td>'
-                f'<td>{watts}</td><td>{pct} FTP</td><td>{hr} HRmax</td><td>{rpe}</td>'
+                f'<td>{watts}</td><td>{pct} FTP</td><td>{hr} LTHR</td>{bpm_cell}<td>{rpe}</td>'
                 f'<td>{feel}</td></tr>'
             )
         power_note = f'<p><strong>Your FTP: {ftp}W</strong>. After any retest, update your zones everywhere &mdash; head unit, Zwift, and this chart.</p>'
@@ -812,9 +836,10 @@ def _section_training_zones(ftp: Optional[int], tier: str):
         power_rows = []
         for zone, name, pct, hr, rpe, feel in zone_data:
             ss_class = ' class="race-day-row"' if zone == "GS" else ""
+            bpm_cell = f'<td>{_hr_bpm_band(hr, lthr)}</td>' if lthr else ''
             power_rows.append(
                 f'<tr{ss_class}><td><strong>{zone}</strong></td><td>{name}</td>'
-                f'<td>&mdash;</td><td>{pct} FTP</td><td>{hr} HRmax</td><td>{rpe}</td>'
+                f'<td>&mdash;</td><td>{pct} FTP</td><td>{hr} LTHR</td>{bpm_cell}<td>{rpe}</td>'
                 f'<td>{feel}</td></tr>'
             )
         power_note = """<div class="gg-module gg-alert"><div class="gg-label">BEFORE YOU START: FTP TEST REQUIRED</div>
@@ -825,6 +850,18 @@ use RPE (Rate of Perceived Exertion) to guide intensity.</p>
 If you use Zwift, TrainerRoad, or a Garmin &mdash; update your FTP setting immediately after testing.</p></div>"""
 
     rows_html = "\n".join(power_rows)
+
+    # Real HR anchors when the athlete has tested (HR zones are % of LTHR, not
+    # HRmax — Zone 4 ≈ threshold). Gives an HR-based rider true bpm targets.
+    hr_bpm_header = '<th>HR (bpm)</th>' if lthr else ''
+    if lthr:
+        _maxhr = f' &middot; measured HRmax {max_hr} bpm' if max_hr else ''
+        hr_note = (f'<p><strong>Your threshold HR (LTHR): {lthr} bpm</strong>{_maxhr}. '
+                   f'The HR zones below are a percentage of your LTHR &mdash; Zone 4 '
+                   f'(Threshold) sits right around {lthr} bpm. Use power as the primary '
+                   f'target and HR as the cross-check; on a hot or fatigued day, trust HR.</p>')
+    else:
+        hr_note = ''
 
     return f"""<section id="section-2" class="gg-section">
   <h2>2 &middot; Training Zones</h2>
@@ -840,11 +877,12 @@ If you use Zwift, TrainerRoad, or a Garmin &mdash; update your FTP setting immed
   from, too easy to create real adaptation. Ride it only when prescribed.</p>
 
   {power_note}
+  {hr_note}
 
   <h3>The Zone Chart</h3>
   <div style="overflow-x: auto;">
   <table class="zone-table">
-  <thead><tr><th>Zone</th><th>Name</th><th>Power</th><th>% FTP</th><th>% HRmax</th><th>RPE</th><th>Feel</th></tr></thead>
+  <thead><tr><th>Zone</th><th>Name</th><th>Power</th><th>% FTP</th><th>% LTHR</th>{hr_bpm_header}<th>RPE</th><th>Feel</th></tr></thead>
   <tbody>
   {rows_html}
   </tbody>

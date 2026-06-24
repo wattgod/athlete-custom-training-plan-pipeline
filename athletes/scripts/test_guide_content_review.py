@@ -446,3 +446,50 @@ class TestRaceProfileRemoved:
         assert "Key Workouts in This Plan" not in html
         assert "Intensity Distribution" not in html
         assert "% of Training" not in html
+
+
+class TestHeartRateZones:
+    """An HR-tested athlete must get real bpm zones off their LTHR — not just
+    % columns, and not the mislabeled '% HRmax' (the values are % of LTHR)."""
+
+    def test_lthr_drives_bpm_bands_and_relabel(self):
+        from training_guide_builder import _section_training_zones
+        html = _section_training_zones(155, "finisher", lthr=170, max_hr=184)
+        assert '% LTHR' in html and '% HRmax' not in html   # relabel
+        assert 'HR (bpm)' in html                            # real bpm column
+        assert 'threshold HR (LTHR): 170' in html            # the anchor
+        assert '184 bpm' in html                             # measured HRmax
+        # Zone 4 (~95-105% LTHR) must bracket 170 bpm
+        import re
+        bands = [(int(a), int(b)) for a, b in re.findall(r'(\d{2,3})-(\d{2,3}) bpm', html)]
+        assert any(lo <= 170 <= hi for lo, hi in bands), bands
+
+    def test_no_hr_data_keeps_percent_only(self):
+        from training_guide_builder import _section_training_zones
+        html = _section_training_zones(200, "finisher")  # no lthr
+        assert 'HR (bpm)' not in html        # no bpm column without a tested LTHR
+
+    def test_build_profile_captures_hr_markers(self):
+        import intake_to_plan as itp
+        md = """## Basic Info
+- Name: HR Rider
+- Email: h@e.com
+- Age: 31
+- Weight: 150 lbs
+
+## Goals
+- Primary Goal: specific_race
+- Races:
+  Big Sugar Gravel (2026-10-17, 100 miles, priority A)
+
+## Current Fitness
+- FTP: 155
+- HR Max: 184
+- HR Threshold: 170
+
+## Schedule
+- Weekly Hours Available: 6
+"""
+        prof = itp.build_profile(itp.parse_intake_markdown(md))
+        fm = prof['fitness_markers']
+        assert fm.get('max_hr') == 184 and fm.get('lthr') == 170

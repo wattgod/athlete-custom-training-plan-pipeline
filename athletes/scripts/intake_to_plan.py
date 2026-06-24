@@ -836,6 +836,12 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         w_kg = round(ftp_watts / weight_kg, 2)
 
     resting_hr = parse_hr(recovery.get('resting_hr', ''))
+    # Real measured HR markers from Current Fitness — drive HR zones instead of
+    # an age-estimated HRmax. (These used to be dropped; an HR-based athlete
+    # then got generic %HRmax zones off a formula, not their own numbers.)
+    max_hr = parse_hr(fitness.get('hr_max', '')) or parse_hr(recovery.get('hr_max', ''))
+    lthr = (parse_hr(fitness.get('hr_threshold', ''))
+            or parse_hr(fitness.get('lthr', '')))
     sleep_hours = parse_hours(recovery.get('typical_sleep', ''))
     sleep_quality = recovery.get('sleep_quality', 'good').lower()
     recovery_speed = recovery.get('recovery_speed', 'normal').lower()
@@ -1256,7 +1262,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'sex': sex,
             'w_kg': w_kg,
             'resting_hr': resting_hr,
-            'max_hr': None,
+            'max_hr': max_hr,
+            'lthr': lthr,
         },
         'recent_training': {
             'last_12_weeks': 'sporadic',
