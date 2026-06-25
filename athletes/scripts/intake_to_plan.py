@@ -1190,6 +1190,15 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     plan_start = today + __import__('datetime').timedelta(days=days_until_monday)
     plan_start_str = plan_start.isoformat()
 
+    # Brand discipline hint (from the questionnaire's `- Discipline:` line, set
+    # by the webhook from the buying brand). This is the LOWEST-priority signal:
+    # derive_discipline uses the race's own DB discipline, then the race-name
+    # keyword, and only falls back to this hint instead of the gravel default —
+    # so an unknown race on Roadie Labs builds a ROAD plan, but a known gravel
+    # race a road customer picked still resolves gravel.
+    _disc_hint = (goals.get('discipline', '') or '').strip().lower()
+    _disc_hint = _disc_hint if _disc_hint in ('road', 'gravel', 'mtb') else ''
+
     # Calculate weeks to target race (with clamping to 4-26 range)
     MIN_PLAN_WEEKS = 4
     MAX_PLAN_WEEKS = 26
@@ -1231,6 +1240,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         'weight_kg': weight_kg,
         'primary_goal': primary_goal.replace(' ', '_'),
         'target_race': target_race_info,
+        # lowest-priority discipline fallback (brand hint); see derive_discipline
+        'discipline_default': _disc_hint,
         'a_events': a_events,
         'b_events': b_events,
         'c_events': [],

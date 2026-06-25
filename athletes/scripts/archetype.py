@@ -204,8 +204,8 @@ _DISCIPLINE_KEYWORDS = [
 def derive_discipline(profile: dict) -> str:
     """Infer race discipline ('gravel' | 'road' | 'mtb') from the profile.
 
-    Checks an explicit profile field first, then keyword-matches the target
-    race name. Defaults to 'gravel'.
+    Priority: explicit profile/race discipline → race-name keyword → brand
+    discipline hint (discipline_default, set from the buying brand) → gravel.
     """
     explicit = (profile.get('discipline')
                 or profile.get('target_race', {}).get('discipline'))
@@ -216,4 +216,8 @@ def derive_discipline(profile: dict) -> str:
     for keyword, discipline in _DISCIPLINE_KEYWORDS:
         if keyword in name:
             return discipline
-    return 'gravel'
+
+    # Brand hint as the final fallback instead of the bare gravel default — a
+    # Roadie Labs order with an unknown race should still be road.
+    hint = (profile.get('discipline_default') or '').strip().lower()
+    return hint if hint in ('gravel', 'road', 'mtb') else 'gravel'

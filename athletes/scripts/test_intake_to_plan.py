@@ -2247,3 +2247,42 @@ class TestDeliverableTrim:
         assert 'generate_dashboard.py' not in scripts
         # the workout/guide step is still there (it writes the guide)
         assert 'generate_athlete_package.py' in scripts
+
+
+class TestBrandDisciplineHint:
+    """A Roadie Labs order is a ROAD athlete — even when the race name is
+    unknown (no slug, no road keyword), the brand discipline hint must keep it
+    off the gravel default. The race's own discipline (DB) still wins when known."""
+
+    def _disc(self, brand, race_name, slug=None):
+        import intake_to_plan as itp
+        from archetype import derive_discipline
+        slug_line = f"- Race Slug: {slug}\n" if slug else ""
+        hint = {'roadielabs': 'road', 'gravelgod': 'gravel'}.get(brand, '')
+        md = f"""## Basic Info
+- Name: T
+- Email: t@e.com
+- Age: 35
+- Weight: 150 lbs
+
+## Goals
+- Primary Goal: specific_race
+{slug_line}- Discipline: {hint}
+- Races:
+  {race_name} (2026-11-01, 80 miles, priority A)
+
+## Schedule
+- Weekly Hours Available: 8
+"""
+        return derive_discipline(itp.build_profile(itp.parse_intake_markdown(md)))
+
+    def test_roadielabs_unknown_race_is_road(self):
+        assert self._disc('roadielabs', 'My Local Sufferfest 80') == 'road'
+
+    def test_gravelgod_unknown_race_stays_gravel(self):
+        assert self._disc('gravelgod', 'My Local Sufferfest 80') == 'gravel'
+
+    def test_known_race_discipline_wins_over_brand_hint(self):
+        # a roadielabs customer who picked a real GRAVEL race gets gravel (the
+        # race's own discipline is more specific than the brand hint)
+        assert self._disc('roadielabs', 'Unbound Gravel 200', slug='unbound_gravel_200') == 'gravel'

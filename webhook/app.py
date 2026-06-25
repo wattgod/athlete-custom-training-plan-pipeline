@@ -1247,6 +1247,16 @@ def extract_stripe_data(data: dict) -> dict:
             'notes': metadata.get('notes', ''),
         }
 
+    # Brand is the strongest discipline signal: a Roadie Labs customer is a
+    # ROAD athlete. derive_discipline checks profile['discipline'] first, so
+    # without this a road order with an unknown race name fell through to the
+    # gravel default and got gravel archetypes + a Gravel God guide.
+    _brand = (metadata.get('brand') or '').lower()
+    if _brand == 'roadielabs':
+        profile['discipline'] = 'road'
+    elif _brand == 'gravelgod':
+        profile.setdefault('discipline', 'gravel')
+
     return {
         'athlete_id': athlete_id,
         'order_id': session.get('id', ''),
@@ -1357,6 +1367,12 @@ def _questionnaire_to_markdown(intake_data: dict, name: str = '', email: str = '
     # resolves the target race by this ID (exact), skipping fuzzy name-matching.
     target_slug = intake_data.get('race_slug') or a_race.get('slug', '') or ''
 
+    # Brand is the strongest discipline signal: a Roadie Labs order is a ROAD
+    # athlete. Carry it so an UNKNOWN race name doesn't fall through to the
+    # gravel default (and a road customer gets a gravel plan + Gravel God guide).
+    _brand = (intake_data.get('brand') or '').lower()
+    _discipline_hint = {'roadielabs': 'road', 'gravelgod': 'gravel'}.get(_brand, '')
+
     md = f"""# Athlete Intake: {name}
 Email: {email}
 Submitted: {datetime.now().strftime('%Y-%m-%d')}
@@ -1370,6 +1386,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 ## Goals
 - Primary Goal: specific_race
 - Race Slug: {target_slug}
+- Discipline: {_discipline_hint}
 - Races:
 {chr(10).join(race_lines)}
 - Success: {a_race.get('goal', 'finish')}
