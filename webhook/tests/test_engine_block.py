@@ -576,3 +576,12 @@ class TestAdapterUnits:
         assert not errors
         result = generate_block(params)
         assert 0 <= result['engine']['generated_ms'] < 500
+
+
+def test_null_methodology_uses_default(client, auth_headers, base_payload):
+    """Explicit null methodology means 'default', not a validation error
+    (clients that JSON-serialize optional fields send null — Endure adapter)."""
+    payload = dict(base_payload)
+    payload['methodology'] = None
+    resp = client.post('/engine/block', json=payload, headers=auth_headers)
+    assert resp.status_code == 200, resp.get_json()
