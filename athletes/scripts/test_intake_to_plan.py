@@ -1746,9 +1746,13 @@ class TestPlanWeeksClamping:
                 'elevation_ft': 11000,
             }
         }
+        # build_profile resolves races via match_race_scored (match + meta)
+        _meta = {'method': 'alias', 'score': 1.0,
+                 'matched_slug': 'unbound_gravel_200', 'near_misses': []}
         with patch('intake_to_plan.KNOWN_RACES', close_races), \
-             patch('intake_to_plan.match_race') as mock_match:
-            mock_match.return_value = ('unbound_gravel_200', close_races['unbound_gravel_200'])
+             patch('intake_to_plan.match_race_scored') as mock_match:
+            mock_match.return_value = (
+                ('unbound_gravel_200', close_races['unbound_gravel_200']), _meta)
             profile_close = build_profile(parsed_close)
             # The plan_notes should reference ~4 weeks (clamped from 2)
             notes = profile_close['plan_start']['notes']
@@ -1768,8 +1772,9 @@ class TestPlanWeeksClamping:
             }
         }
         with patch('intake_to_plan.KNOWN_RACES', far_races), \
-             patch('intake_to_plan.match_race') as mock_match:
-            mock_match.return_value = ('unbound_gravel_200', far_races['unbound_gravel_200'])
+             patch('intake_to_plan.match_race_scored') as mock_match:
+            mock_match.return_value = (
+                ('unbound_gravel_200', far_races['unbound_gravel_200']), _meta)
             profile_far = build_profile(parsed_far)
             notes = profile_far['plan_start']['notes']
             assert '~26 weeks' in notes, (

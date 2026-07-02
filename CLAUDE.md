@@ -373,6 +373,9 @@ pages counted by `/Type /Page` OBJECTS — the outline `/Count` lies).
 #### KNOWN_RACES must come from `known_races.py` (single source of truth)
 Race data was duplicated in `intake_to_plan.py`, `test_athlete_integrity.py`, and race JSON files. When Unbound moved from June 6 to May 30, only one copy was updated. Now: `known_races.py` is the sole source. NEVER define race dates locally.
 
+#### Unknown races must NEVER default to a real race
+`create_profile_from_form.py` once hardcoded `race_id: 'unbound_gravel_200'` — a fondo rider could silently get a 200-mile-gravel-shaped plan. Resolution is `match_race_scored()` (exact/alias/substring, then conservative stdlib fuzzy: score >= 0.85 AND >= 0.05 margin over the runner-up; near-ties like "Unbound Gravel 150" stay UNMATCHED). Unmatched → generic profile from the athlete's own intake (`build_generic_race_profile`), `race_match: {method: none, near_misses}` in profile.yaml, 🚨 UNMATCHED RACE block in coaching_brief.md + pre-delivery checklist. Loud to the coach, invisible to the athlete (verbatim race name, no "not in database" copy in the guide). Tests: `test_race_matching.py`.
+
 #### FTP_Test is an assessment, not a training session
 FTP tests are periodic assessments that skew zone distribution counts. They're excluded from distribution validation via `EXCLUDED_PREFIXES` in `validate_workout_distribution.py` (alongside RACE_DAY and Strength). If you add a new non-training workout type, add it to `EXCLUDED_PREFIXES`.
 

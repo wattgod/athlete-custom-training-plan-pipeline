@@ -58,7 +58,9 @@ from constants import (
     AGE_MIN,
     AGE_MAX,
 )
-from known_races import KNOWN_RACES, RACE_ALIASES, match_race, lookup_by_slug
+from known_races import (KNOWN_RACES, RACE_ALIASES, match_race,
+                         match_race_scored, lookup_by_slug,
+                         build_generic_race_profile)
 
 # ---------------------------------------------------------------------------
 # ANSI colors for terminal output
@@ -883,12 +885,20 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         # Prefer an exact slug match for the target race; fall back to fuzzy
         # name-matching (manual intakes / B-races with no slug).
         matched = None
+        match_meta = None
         matched_by_slug = False
         if is_target and target_slug:
             matched = lookup_by_slug(target_slug)
             matched_by_slug = matched is not None
+            if matched:
+                match_meta = {
+                    'method': 'slug',
+                    'score': 1.0,
+                    'matched_slug': matched[0].split(':', 1)[-1],
+                    'near_misses': [],
+                }
         if not matched:
-            matched = match_race(race_name_clean)
+            matched, match_meta = match_race_scored(race_name_clean)
         event = {
             'name': race_name_clean,
             'date': parsed['date'],
@@ -921,6 +931,9 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                     'goal_type': goal_type,
                     'goal': goal_type,
                     'goal_description': success_text,
+                    # How the race was resolved — audited by the coach brief
+                    # and the pre-delivery checklist.
+                    'race_match': match_meta,
                 }
                 # Verified venue from the DB (used by the guide, and lets the
                 # integrity check trust the date instead of re-deriving it).
@@ -931,9 +944,18 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 if info.get('discipline'):
                     target_race_info['discipline'] = info['discipline']
         else:
-            # Unknown race — use athlete-provided fields, fall back to extraction.
-            print(f"{YELLOW}WARNING: Race '{race_name_clean}' not in known_races.py "
-                  f"— using athlete-provided data. Consider adding to known_races.py.{RESET}")
+            # UNMATCHED race — build the plan from what the athlete actually
+            # told us (never map to a real race by default: a fondo rider
+            # must not get an Unbound-shaped plan). Loud to the coach (brief
+            # + checklist flag), invisible to the athlete (their race name
+            # is used verbatim; no fabricated course data).
+            near = (match_meta or {}).get('near_misses', [])
+            near_str = ', '.join(
+                f"{n['name']} ({n['score']})" for n in near) or 'none'
+            print(f"{YELLOW}WARNING: Race '{race_name_clean}' did not match any "
+                  f"race in the database — building a GENERIC profile from the "
+                  f"athlete's own intake. Near misses: {near_str}. "
+                  f"Verify before delivery (see coaching brief).{RESET}")
 
             if not event['distance_miles']:
                 event['distance_miles'] = extract_distance_from_name(race_name_clean)
@@ -943,15 +965,25 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 event['date'] = extract_date_from_text(goals_text)
 
             if is_target:
+                generic = build_generic_race_profile(
+                    race_name_clean,
+                    date=event['date'],
+                    distance_miles=event['distance_miles'],
+                )
                 target_race_info = {
-                    'name': race_name_clean,
+                    'name': race_name_clean,   # athlete's name, verbatim
                     'race_id': re.sub(r'[^a-z0-9]+', '_', race_name_clean.lower()).strip('_'),
                     'date': event['date'],
                     'distance_miles': event['distance_miles'],
-                    'elevation_ft': 0,
+                    'elevation_ft': generic['elevation_ft'],
                     'goal_type': goal_type,
                     'goal': goal_type,
                     'goal_description': success_text,
+                    'generic_profile': True,
+                    # Neutral demand assumptions (race_category_scorer shape)
+                    # — disclosed to the coach, never shown to the athlete.
+                    'generic_demands': generic['demands'],
+                    'race_match': match_meta,
                 }
 
         if priority == 'A':
@@ -1242,6 +1274,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         'target_race': target_race_info,
         # lowest-priority discipline fallback (brand hint); see derive_discipline
         'discipline_default': _disc_hint,
+        # (generic_demands for an unmatched race are refined with the derived
+        # discipline right after this dict is assembled — see below)
         'a_events': a_events,
         'b_events': b_events,
         'c_events': [],
@@ -1440,6 +1474,20 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'notes': plan_notes,
         },
     }
+
+    # Unmatched race: refine the neutral demand assumptions with the DERIVED
+    # discipline (race-name keywords + brand hint) — a "fondo" in the name or
+    # a Roadie Labs order shapes the generic profile as road, not gravel.
+    if target_race_info.get('generic_profile'):
+        try:
+            from archetype import derive_discipline
+            from known_races import generic_race_demands
+            disc = derive_discipline(profile)
+            target_race_info['generic_discipline'] = disc
+            target_race_info['generic_demands'] = generic_race_demands(
+                target_race_info.get('distance_miles', 0), disc)
+        except ImportError:
+            pass  # keep the discipline-neutral demands already set
 
     return profile
 
@@ -1779,6 +1827,43 @@ def generate_coaching_brief(
             for _ln in _detail.splitlines():
                 md += f"> {_ln}\n"
             md += "\n"
+
+    # If the athlete's race did NOT confidently match the race database, the
+    # plan was built from a GENERIC profile — the coach must verify the race
+    # before this goes out. Loud here, invisible to the athlete (their guide
+    # uses their race name verbatim and no fabricated course data).
+    _rm = (target.get('race_match') or {})
+    if _rm.get('method') == 'none':
+        _raw_name = target.get('name', '(no race name)')
+        _gd = target.get('generic_demands') or {}
+        _gdisc = target.get('generic_discipline', 'unknown')
+        md += "> ## 🚨 UNMATCHED RACE — VERIFY BEFORE SENDING\n"
+        md += (f"> The athlete's race **\"{_raw_name}\"** did not confidently "
+               f"match any race in the database (best score: "
+               f"{_rm.get('score', 0)}, threshold: 0.85).\n>\n")
+        md += ("> The plan was built from a **generic profile** using the "
+               "athlete's own intake — it was NOT mapped to any real race:\n")
+        md += f"> - Race name (used verbatim, athlete-facing): {_raw_name}\n"
+        md += f"> - Date: {target.get('date') or 'NOT PROVIDED'} (from athlete intake)\n"
+        md += (f"> - Distance: "
+               f"{target.get('distance_miles') or 'NOT PROVIDED'} miles "
+               f"(athlete-provided / extracted from name)\n")
+        md += ("> - Elevation: none assumed (no fabricated course data in "
+               "the athlete guide)\n")
+        md += (f"> - Demand assumptions: neutral {_gdisc} demands for the "
+               f"given distance ({_gd})\n>\n")
+        _near = _rm.get('near_misses') or []
+        if _near:
+            md += ("> Closest database candidates — verify none of these is "
+                   "the actual race:\n")
+            for _i, _n in enumerate(_near, 1):
+                md += (f"> {_i}. {_n.get('name')} (`{_n.get('slug')}`) — "
+                       f"score {_n.get('score')}\n")
+        else:
+            md += "> No close database candidates found.\n"
+        md += (">\n> **Action:** confirm race identity, date, and distance "
+               "with the athlete. If it IS a known race, add an alias to "
+               "known_races.py and regenerate.\n\n")
 
     md += f"## 1. Plan Overview\n"
     md += f"| Field | Value |\n"
