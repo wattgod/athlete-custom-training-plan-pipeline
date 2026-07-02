@@ -320,7 +320,9 @@ def validate_request(payload: Any) -> Tuple[Dict[str, Any], Dict[str, str]]:
             errors['block.start_date'] = 'Must be a valid YYYY-MM-DD date'
 
     # ---- methodology (optional) --------------------------------------------
-    methodology = payload.get('methodology', 'polarized_80_20')
+    # None/absent both mean "use the default" — clients that JSON-serialize
+    # optional fields send explicit null (observed: Endure adapter 2026-07-02).
+    methodology = payload.get('methodology') or 'polarized_80_20'
     if methodology not in METHODOLOGIES:
         errors['methodology'] = f"Must be one of {sorted(METHODOLOGIES)}"
         methodology = 'polarized_80_20'
