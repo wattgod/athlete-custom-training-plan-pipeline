@@ -95,7 +95,7 @@ FOLLOWUP_SEQUENCE = [
             "Coaching can. Weekly adjustments to what actually happened, "
             "plus direct access to me for race strategy and the questions "
             "between workouts. Details: "
-            "https://gravelgodcycling.com/coaching/ ($199 every 4 weeks). "
+            "https://gravelgodcycling.com/coaching/ (from $199 every 4 weeks). "
             "If the plan alone is enough, that's a fine answer too.\n\n"
             "Questions — about coaching or about week 2 — reply to this "
             "email.\n\n"
