@@ -26,6 +26,11 @@ os.environ['FLASK_ENV'] = 'test'
 os.environ['WOOCOMMERCE_SECRET'] = ''  # Disable signature check in tests
 os.environ['STRIPE_WEBHOOK_SECRET'] = ''
 os.environ['STRIPE_SECRET_KEY'] = ''  # Disable in tests
+# Legacy tests assert the original synchronous webhook contract (pipeline
+# runs inline, response reports success/pipeline_failed). Production default
+# is async; TestAsyncPipelineJobs/TestOrderStatus/TestJobSweep clear this
+# to exercise the default queued path.
+os.environ['SYNC_PIPELINE'] = '1'
 
 
 @pytest.fixture
@@ -2765,3 +2770,389 @@ class TestRaceSlugPassthrough:
             {'races': [{'name': 'Some Race', 'date': '2026-10-03', 'priority': 'A'}]},
             name='T', email='t@e.com')
         assert 'Race Slug:' in md  # field present, value empty — harmless
+
+# =============================================================================
+# ASYNC PIPELINE JOBS — default production path (SYNC_PIPELINE unset)
+# =============================================================================
+
+def _async_env():
+    """Context manager: clear SYNC_PIPELINE so the default async path runs."""
+    return patch.dict(os.environ, {'SYNC_PIPELINE': ''})
+
+
+def _stripe_event(session_id='cs_test_async', name='Async Tester',
+                  email='async@test.com'):
+    return {
+        'type': 'checkout.session.completed',
+        'data': {
+            'object': {
+                'id': session_id,
+                'amount_total': 18000,
+                'customer_details': {'name': name, 'email': email},
+                'metadata': {'tier': 'custom'},
+            }
+        }
+    }
+
+
+@pytest.fixture
+def jobs_dir(app):
+    """Clean jobs directory for the app module's JOBS_DIR."""
+    import app as app_module
+    d = Path(app_module.JOBS_DIR)
+    if d.exists():
+        for f in d.glob('*.json'):
+            f.unlink()
+    d.mkdir(parents=True, exist_ok=True)
+    yield d
+    for f in d.glob('*.json'):
+        f.unlink()
+
+
+class TestAsyncPipelineJobs:
+    """Default async path: 200 to Stripe fast, durable job records."""
+
+    def test_webhook_returns_accepted_without_running_pipeline(
+            self, client, temp_athletes_dir, jobs_dir):
+        """Webhook responds 'accepted' immediately; pipeline deferred to thread."""
+        with _async_env(), \
+             patch('app._start_job_thread') as mock_thread, \
+             patch('app.run_pipeline') as mock_pipeline:
+            response = client.post('/webhook/stripe',
+                                   json=_stripe_event('cs_async_accept'),
+                                   content_type='application/json')
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'accepted'
+        assert data['athlete_id'] == 'async_tester'
+        assert data['job_status'] == 'queued'
+        mock_thread.assert_called_once()
+        mock_pipeline.assert_not_called()  # nothing ran in the request
+
+        # Durable job record written to the volume, queued
+        job = json.loads((jobs_dir / 'async_tester.json').read_text())
+        assert job['status'] == 'queued'
+        assert job['order_id'] == 'cs_async_accept'
+        assert job['attempts'] == 1
+        assert job['order_data']['athlete_id'] == 'async_tester'
+
+    def test_order_marked_processed_before_thread_spawn(
+            self, client, temp_athletes_dir, jobs_dir):
+        """Idempotency mark still lands before generation starts."""
+        import app as app_module
+        with _async_env(), patch('app._start_job_thread'):
+            client.post('/webhook/stripe',
+                        json=_stripe_event('cs_async_idem'),
+                        content_type='application/json')
+        assert app_module.check_idempotency('cs_async_idem')
+
+    def test_duplicate_webhook_does_not_double_run(
+            self, client, temp_athletes_dir, jobs_dir):
+        """Stripe retry → 'duplicate', only one thread ever spawned."""
+        with _async_env(), patch('app._start_job_thread') as mock_thread:
+            r1 = client.post('/webhook/stripe',
+                             json=_stripe_event('cs_async_dup'),
+                             content_type='application/json')
+            r2 = client.post('/webhook/stripe',
+                             json=_stripe_event('cs_async_dup'),
+                             content_type='application/json')
+
+        assert r1.get_json()['status'] == 'accepted'
+        assert r2.get_json()['status'] == 'duplicate'
+        assert mock_thread.call_count == 1
+
+    def test_spawn_guard_skips_athlete_with_job_in_flight(
+            self, temp_athletes_dir, app, jobs_dir):
+        """Same athlete_id with a queued/running job → no second spawn."""
+        import app as app_module
+        app_module._write_job({'athlete_id': 'busy_rider', 'order_id': 'cs_1',
+                               'status': 'running', 'attempts': 1})
+
+        with _async_env(), patch('app._start_job_thread') as mock_thread:
+            job, result = app_module._spawn_plan_job(
+                {'athlete_id': 'busy_rider', 'order_id': 'cs_2',
+                 'tier': 'custom', 'profile': {}})
+
+        assert job['order_id'] == 'cs_1'  # existing job returned
+        assert result is None
+        mock_thread.assert_not_called()
+
+    def test_success_path_preserves_delivery_behaviors(
+            self, client, temp_athletes_dir, jobs_dir):
+        """Job thread still: runs pipeline, logs order, persists ZIP,
+        sends the coach delivery email, marks job succeeded."""
+        import app as app_module
+
+        def run_inline(job, intake_data=None):
+            return app_module._execute_plan_job(job, intake_data=intake_data)
+
+        with _async_env(), \
+             patch('app._start_job_thread', side_effect=run_inline), \
+             patch('app.run_pipeline') as mock_pipeline, \
+             patch('app.persist_deliverables') as mock_persist, \
+             patch('app._notify_new_order') as mock_notify, \
+             patch('app.log_order') as mock_log:
+            mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
+            response = client.post('/webhook/stripe',
+                                   json=_stripe_event('cs_async_ok'),
+                                   content_type='application/json')
+
+        assert response.get_json()['status'] == 'accepted'
+        mock_pipeline.assert_called_once()
+        mock_persist.assert_called_once_with('async_tester')
+        mock_log.assert_called_once()
+        assert mock_notify.call_args[0][0] == 'training_plan'
+        assert 'download_token' in mock_notify.call_args[0][1]
+
+        job = json.loads((jobs_dir / 'async_tester.json').read_text())
+        assert job['status'] == 'succeeded'
+        assert job['error'] is None
+
+    def test_failure_marks_failed_and_notifies_operator(
+            self, client, temp_athletes_dir, jobs_dir):
+        """Pipeline failure → job failed with error, loud operator email."""
+        import app as app_module
+
+        def run_inline(job, intake_data=None):
+            return app_module._execute_plan_job(job, intake_data=intake_data)
+
+        with _async_env(), \
+             patch('app._start_job_thread', side_effect=run_inline), \
+             patch('app.run_pipeline') as mock_pipeline, \
+             patch('app._notify_new_order') as mock_notify:
+            mock_pipeline.return_value = {
+                'success': False, 'stdout': '', 'stderr': 'boom: step 7 exploded'}
+            response = client.post('/webhook/stripe',
+                                   json=_stripe_event('cs_async_fail'),
+                                   content_type='application/json')
+
+        assert response.status_code == 200  # Stripe still gets 200
+        assert mock_notify.call_args[0][0] == 'training_plan_FAILED'
+
+        job = json.loads((jobs_dir / 'async_tester.json').read_text())
+        assert job['status'] == 'failed'
+        assert 'boom' in job['error']
+
+    def test_job_crash_never_leaves_running_record(
+            self, temp_athletes_dir, app, jobs_dir):
+        """An unexpected exception in the thread marks the job failed."""
+        import app as app_module
+        job = {'athlete_id': 'crash_case', 'order_id': 'cs_crash',
+               'status': 'queued', 'attempts': 1,
+               'order_data': {'athlete_id': 'crash_case', 'order_id': 'cs_crash',
+                              'tier': 'custom', 'profile': {}}}
+        app_module._write_job(job)
+
+        with patch('app.run_pipeline', side_effect=RuntimeError('kaboom')), \
+             patch('app._notify_new_order') as mock_notify:
+            result = app_module._execute_plan_job(job)
+
+        assert result['success'] is False
+        record = app_module._read_job('crash_case')
+        assert record['status'] == 'failed'
+        assert 'kaboom' in record['error']
+        assert mock_notify.call_args[0][0] == 'training_plan_FAILED'
+
+    def test_atomic_write_leaves_no_temp_files(self, app, jobs_dir):
+        """Job writes go through temp + os.replace; no droppings left."""
+        import app as app_module
+        app_module._write_job({'athlete_id': 'atomic_check',
+                               'status': 'queued', 'attempts': 1})
+        leftovers = [p for p in jobs_dir.iterdir() if p.suffix == '.tmp']
+        assert leftovers == []
+        assert app_module._read_job('atomic_check')['status'] == 'queued'
+
+
+class TestJobSweep:
+    """Startup/cron sweep retries jobs orphaned by restarts."""
+
+    def _stale_job(self, app_module, athlete_id, status='running', attempts=1,
+                   minutes_old=45):
+        job = {
+            'athlete_id': athlete_id,
+            'order_id': f'cs_{athlete_id}',
+            'status': status,
+            'attempts': attempts,
+            'max_attempts': 2,
+            'order_data': {'athlete_id': athlete_id,
+                           'order_id': f'cs_{athlete_id}',
+                           'tier': 'custom',
+                           'profile': {'name': 'Stuck Rider',
+                                       'email': 'stuck@test.com'}},
+        }
+        app_module._write_job(job)
+        # Backdate updated_at past the stuck threshold
+        raw = json.loads(app_module._job_path(athlete_id).read_text())
+        raw['updated_at'] = (datetime.now()
+                             - timedelta(minutes=minutes_old)).isoformat()
+        app_module._job_path(athlete_id).write_text(json.dumps(raw))
+        return raw
+
+    def test_sweep_retries_stuck_job(self, app, jobs_dir):
+        import app as app_module
+        self._stale_job(app_module, 'stuck_one', status='running', attempts=1)
+
+        with _async_env(), patch('app._start_job_thread') as mock_thread:
+            stats = app_module.sweep_stuck_jobs()
+
+        assert stats['retried'] == 1
+        assert stats['failed'] == 0
+        mock_thread.assert_called_once()
+        record = app_module._read_job('stuck_one')
+        assert record['status'] == 'queued'
+        assert record['attempts'] == 2
+
+    def test_sweep_fails_job_after_max_attempts(self, app, jobs_dir):
+        import app as app_module
+        self._stale_job(app_module, 'stuck_max', status='queued', attempts=2)
+
+        with _async_env(), \
+             patch('app._start_job_thread') as mock_thread, \
+             patch('app._notify_new_order') as mock_notify:
+            stats = app_module.sweep_stuck_jobs()
+
+        assert stats['failed'] == 1
+        assert stats['retried'] == 0
+        mock_thread.assert_not_called()
+        assert mock_notify.call_args[0][0] == 'training_plan_FAILED'
+        record = app_module._read_job('stuck_max')
+        assert record['status'] == 'failed'
+        assert 'stuck' in record['error'].lower()
+
+    def test_sweep_skips_fresh_and_finished_jobs(self, app, jobs_dir):
+        import app as app_module
+        # Fresh running job (just written → updated_at = now)
+        app_module._write_job({'athlete_id': 'fresh_run', 'status': 'running',
+                               'attempts': 1, 'order_data': {}})
+        # Finished jobs
+        app_module._write_job({'athlete_id': 'done_ok', 'status': 'succeeded',
+                               'attempts': 1})
+        app_module._write_job({'athlete_id': 'done_bad', 'status': 'failed',
+                               'attempts': 2})
+
+        with _async_env(), patch('app._start_job_thread') as mock_thread:
+            stats = app_module.sweep_stuck_jobs()
+
+        assert stats['retried'] == 0
+        assert stats['failed'] == 0
+        mock_thread.assert_not_called()
+        assert app_module._read_job('fresh_run')['status'] == 'running'
+
+    def test_sweep_endpoint_requires_secret(self, client, jobs_dir):
+        with patch.dict(os.environ, {'CRON_SECRET': 'shhh'}), \
+             patch('app.CRON_SECRET', 'shhh'):
+            r_no = client.post('/api/jobs/sweep')
+            r_bad = client.post('/api/jobs/sweep',
+                                headers={'X-Cron-Secret': 'wrong'})
+            r_ok = client.post('/api/jobs/sweep',
+                               headers={'X-Cron-Secret': 'shhh'})
+
+        assert r_no.status_code == 401
+        assert r_bad.status_code == 401
+        assert r_ok.status_code == 200
+        assert r_ok.get_json()['status'] == 'ok'
+
+
+class TestOrderStatus:
+    """Customer-facing /api/order-status — honest, gentle, never an error."""
+
+    def test_processing_while_job_running(self, app, client, jobs_dir):
+        import app as app_module
+        app_module._write_job({'athlete_id': 'inflight_rider',
+                               'status': 'running', 'attempts': 1})
+        r = client.get('/api/order-status/inflight_rider')
+        assert r.status_code == 200
+        data = r.get_json()
+        assert data['status'] == 'processing'
+        assert data['download_ready'] is False
+
+    def test_ready_when_job_succeeded(self, app, client, jobs_dir):
+        import app as app_module
+        app_module._write_job({'athlete_id': 'done_rider',
+                               'status': 'succeeded', 'attempts': 1})
+        r = client.get('/api/order-status/done_rider')
+        assert r.get_json()['status'] == 'ready'
+
+    def test_ready_when_customer_zip_exists(self, app, client, jobs_dir):
+        import app as app_module
+        d = Path(app_module.DELIVERIES_DIR) / 'zipped_rider'
+        d.mkdir(parents=True, exist_ok=True)
+        (d / 'zipped_rider-training-plan.zip').write_bytes(b'PK')
+        try:
+            r = client.get('/api/order-status/zipped_rider')
+            data = r.get_json()
+            assert data['status'] == 'ready'
+            assert data['download_ready'] is True
+        finally:
+            (d / 'zipped_rider-training-plan.zip').unlink()
+
+    def test_failed_job_reads_gentle_not_broken(self, app, client, jobs_dir):
+        """Failure is loud to the operator, invisible-gentle to the customer."""
+        import app as app_module
+        app_module._write_job({'athlete_id': 'failed_rider', 'status': 'failed',
+                               'attempts': 2,
+                               'error': 'Traceback: ValueError: secret stack'})
+        r = client.get('/api/order-status/failed_rider')
+        assert r.status_code == 200
+        data = r.get_json()
+        assert data['status'] == 'processing'  # never "failed" to customer
+        body = r.get_data(as_text=True)
+        assert 'Traceback' not in body
+        assert 'secret stack' not in body
+        assert 'error' not in data
+
+    def test_session_id_resolves_via_processed_orders(
+            self, client, temp_athletes_dir, jobs_dir):
+        """Success page only has ?session_id= — map it to the athlete."""
+        import app as app_module
+        with _async_env(), patch('app._start_job_thread'):
+            client.post('/webhook/stripe',
+                        json=_stripe_event('cs_status_lookup'),
+                        content_type='application/json')
+
+        r = client.get('/api/order-status/cs_status_lookup')
+        assert r.status_code == 200
+        assert r.get_json()['status'] == 'processing'  # job queued
+
+    def test_unknown_session_reads_processing_not_error(self, client, jobs_dir):
+        """Webhook may lag the success page — never scare the customer."""
+        r = client.get('/api/order-status/cs_never_seen_before')
+        assert r.status_code == 200
+        assert r.get_json()['status'] == 'processing'
+
+    def test_unknown_athlete_returns_404(self, client, jobs_dir):
+        r = client.get('/api/order-status/nobody_here_xyz')
+        assert r.status_code == 404
+        assert r.get_json()['status'] == 'unknown'
+
+    def test_invalid_ref_rejected(self, client, jobs_dir):
+        r = client.get('/api/order-status/..%2Fetc%2Fpasswd')
+        assert r.status_code == 404
+
+
+class TestSyncPipelineEscapeHatch:
+    """SYNC_PIPELINE=1 keeps the old inline path for tests/local debugging."""
+
+    def test_sync_mode_flag(self, app):
+        import app as app_module
+        with patch.dict(os.environ, {'SYNC_PIPELINE': '1'}):
+            assert app_module._sync_pipeline_mode() is True
+        with patch.dict(os.environ, {'SYNC_PIPELINE': ''}):
+            assert app_module._sync_pipeline_mode() is False
+
+    def test_sync_mode_returns_legacy_success_contract(
+            self, client, temp_athletes_dir, jobs_dir):
+        """Inline path still reports success/pipeline_failed synchronously."""
+        with patch.dict(os.environ, {'SYNC_PIPELINE': '1'}), \
+             patch('app.run_pipeline') as mock_pipeline, \
+             patch('app._notify_new_order'):
+            mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
+            r = client.post('/webhook/stripe',
+                            json=_stripe_event('cs_sync_legacy'),
+                            content_type='application/json')
+        assert r.get_json()['status'] == 'success'
+
+        # And the job record reflects the completed run
+        import app as app_module
+        assert app_module._read_job('async_tester')['status'] == 'succeeded'

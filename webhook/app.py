@@ -16,6 +16,7 @@ import fcntl
 import hashlib
 import logging
 import subprocess
+import threading
 import uuid
 import math
 import shutil
@@ -223,7 +224,7 @@ _last_intake_cleanup = datetime.now()
 
 @app.before_request
 def _periodic_intake_cleanup():
-    """Clean stale intake files hourly, not just on startup."""
+    """Hourly housekeeping: stale intakes + orphaned pipeline jobs."""
     global _last_intake_cleanup
     now = datetime.now()
     if (now - _last_intake_cleanup).total_seconds() > 3600:
@@ -232,6 +233,12 @@ def _periodic_intake_cleanup():
             cleanup_stale_intakes()
         except Exception as e:
             logger.warning(f"Periodic intake cleanup failed: {e}")
+        try:
+            stats = sweep_stuck_jobs()
+            if stats.get('retried') or stats.get('failed'):
+                logger.warning(f"Periodic job sweep: {stats}")
+        except Exception as e:
+            logger.error(f"Periodic job sweep failed: {e}")
 
 
 # =============================================================================
@@ -1702,6 +1709,269 @@ def log_order(order_data: dict, result: dict):
 
 
 # =============================================================================
+# ASYNC PIPELINE JOBS — durable JSON job records + background threads
+#
+# The pipeline takes minutes; Stripe times out webhook responses at ~20s.
+# The webhook handler now writes a job record to the persistent volume
+# (DATA_DIR/jobs/{athlete_id}.json), spawns the pipeline in a background
+# thread, and returns 200 to Stripe immediately. Job records survive
+# Railway restarts; sweep_stuck_jobs() retries jobs orphaned mid-generation
+# (on startup, hourly, and via POST /api/jobs/sweep for external cron).
+#
+# SYNC_PIPELINE=1 preserves the old inline path (tests / local debugging).
+# =============================================================================
+
+JOBS_DIR = os.path.join(DATA_DIR, 'jobs')
+
+# A queued/running job untouched for this long is considered orphaned by a
+# restart or crash and gets retried by the sweep (max JOB_MAX_ATTEMPTS).
+JOB_STUCK_AFTER_MINUTES = int(os.environ.get('JOB_STUCK_AFTER_MINUTES', '30'))
+JOB_MAX_ATTEMPTS = int(os.environ.get('JOB_MAX_ATTEMPTS', '2'))
+
+# Serializes job-file writes within this process (cross-process safety comes
+# from atomic tempfile + os.replace; gunicorn runs 2 workers).
+_jobs_write_lock = threading.Lock()
+
+
+def _sync_pipeline_mode() -> bool:
+    """True when SYNC_PIPELINE=1 — run the pipeline inline in the request."""
+    return os.environ.get('SYNC_PIPELINE', '') == '1'
+
+
+def _job_path(athlete_id: str) -> Path:
+    return Path(JOBS_DIR) / f'{athlete_id}.json'
+
+
+def _write_job(job: dict):
+    """Atomically persist a job record (temp file + os.replace)."""
+    job['updated_at'] = datetime.now().isoformat()
+    path = _job_path(job['athlete_id'])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f'.{path.name}.tmp')
+    with _jobs_write_lock:
+        with open(tmp, 'w') as f:
+            json.dump(job, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+
+
+def _read_job(athlete_id: str) -> dict:
+    """Load a job record. Returns None if absent or unreadable."""
+    path = _job_path(athlete_id)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f"Unreadable job record {path.name}: {e}")
+        return None
+
+
+def _update_job(athlete_id: str, **fields) -> dict:
+    """Read-modify-write a job record."""
+    job = _read_job(athlete_id) or {'athlete_id': athlete_id}
+    job.update(fields)
+    _write_job(job)
+    return job
+
+
+def _execute_plan_job(job: dict, intake_data: dict = None):
+    """Run the full generation flow for one job and keep its record updated.
+
+    Runs in a background thread by default (inline when SYNC_PIPELINE=1).
+    Preserves the exact behaviors of the old synchronous path: run pipeline
+    → log order → persist zips → coach notification (success or FAILED).
+    Never raises — a crashed job is marked failed and the operator notified
+    loudly; the customer never sees an error (order-killer-prevention rule).
+
+    Returns the pipeline result dict.
+    """
+    athlete_id = job['athlete_id']
+    order_data = job.get('order_data', {})
+    if intake_data is None and job.get('intake_id'):
+        intake_data = load_intake(job['intake_id'])
+
+    try:
+        _update_job(athlete_id, status='running',
+                    started_at=datetime.now().isoformat())
+
+        result = run_pipeline(athlete_id, deliver=True,
+                              intake_data=intake_data or None)
+        log_order(order_data, result)
+
+        if result['success']:
+            try:
+                persist_deliverables(athlete_id)
+            except Exception as e:
+                logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
+
+        details = _build_plan_notification_details(order_data, result,
+                                                   intake_data or None)
+        if result['success']:
+            details['download_token'] = _generate_download_token(athlete_id)
+            _notify_new_order('training_plan', details)
+            _update_job(athlete_id, status='succeeded',
+                        finished_at=datetime.now().isoformat(), error=None)
+        else:
+            _notify_new_order('training_plan_FAILED', details)
+            _update_job(athlete_id, status='failed',
+                        finished_at=datetime.now().isoformat(),
+                        error=_pipeline_error_excerpt(result))
+        return result
+
+    except Exception as e:
+        # Loud to the operator, never customer-visible.
+        logger.critical(
+            f"PLAN JOB CRASHED for {athlete_id} "
+            f"(order {job.get('order_id', '?')}): {e}", exc_info=True)
+        try:
+            _update_job(athlete_id, status='failed',
+                        finished_at=datetime.now().isoformat(),
+                        error=str(e)[:500])
+            details = _build_plan_notification_details(
+                order_data,
+                {'success': False, 'stdout': '', 'stderr': str(e)[:500]},
+                intake_data or None)
+            _notify_new_order('training_plan_FAILED', details)
+        except Exception:
+            logger.exception(f"Failed to record job crash for {athlete_id}")
+        return {'success': False, 'stdout': '', 'stderr': str(e)}
+
+
+def _start_job_thread(job: dict, intake_data: dict = None) -> threading.Thread:
+    """Spawn the job in a background (non-daemon) thread.
+
+    Separate function so tests can patch it to run inline/deterministically.
+    daemon=False: on graceful shutdown the worker waits for the thread
+    (gunicorn --graceful-timeout 30); a hard kill is what the sweep handles.
+    """
+    t = threading.Thread(
+        target=_execute_plan_job,
+        args=(job,),
+        kwargs={'intake_data': intake_data},
+        name=f'plan-job-{job["athlete_id"]}',
+        daemon=False,
+    )
+    t.start()
+    return t
+
+
+def _spawn_plan_job(order_data: dict, intake_id: str = '',
+                    intake_data: dict = None) -> tuple:
+    """Write a queued job record and launch generation.
+
+    Returns (job, sync_result). sync_result is the pipeline result when
+    SYNC_PIPELINE=1 (inline execution), else None (background thread).
+
+    Guards against the same athlete's job running twice: if a queued or
+    running job already exists for this athlete_id, no new one is spawned
+    (webhook retries are already absorbed upstream by order idempotency).
+    """
+    athlete_id = order_data['athlete_id']
+
+    existing = _read_job(athlete_id)
+    if existing and existing.get('status') in ('queued', 'running'):
+        logger.warning(
+            f"Job for {athlete_id} already {existing['status']} "
+            f"(order {existing.get('order_id', '?')}) — not spawning duplicate")
+        return existing, None
+
+    job = {
+        'athlete_id': athlete_id,
+        'order_id': order_data.get('order_id', ''),
+        'intake_id': intake_id or '',
+        'status': 'queued',
+        'attempts': 1,
+        'max_attempts': JOB_MAX_ATTEMPTS,
+        'created_at': datetime.now().isoformat(),
+        'started_at': None,
+        'finished_at': None,
+        'error': None,
+        # Full order_data so sweep retries are self-contained after restart.
+        'order_data': order_data,
+    }
+    _write_job(job)
+
+    if _sync_pipeline_mode():
+        result = _execute_plan_job(job, intake_data=intake_data)
+        return job, result
+
+    _start_job_thread(job, intake_data=intake_data)
+    return job, None
+
+
+def sweep_stuck_jobs() -> dict:
+    """Retry jobs orphaned in queued/running (e.g. by a Railway restart).
+
+    A job untouched for JOB_STUCK_AFTER_MINUTES is respawned with
+    attempts+1; past JOB_MAX_ATTEMPTS it's marked failed and the operator
+    is notified loudly. Runs on startup, hourly (before_request), and via
+    POST /api/jobs/sweep (X-Cron-Secret) for external cron wiring.
+    """
+    stats = {'scanned': 0, 'retried': 0, 'failed': 0}
+    jobs_dir = Path(JOBS_DIR)
+    if not jobs_dir.exists():
+        return stats
+
+    stuck_before = datetime.now() - timedelta(minutes=JOB_STUCK_AFTER_MINUTES)
+
+    for path in sorted(jobs_dir.glob('*.json')):
+        job = _read_job(path.stem)
+        if not job or job.get('status') not in ('queued', 'running'):
+            continue
+        stats['scanned'] += 1
+
+        try:
+            updated_at = datetime.fromisoformat(job.get('updated_at', ''))
+        except (ValueError, TypeError):
+            updated_at = datetime.min
+        if updated_at > stuck_before:
+            continue  # Recently touched — probably still running
+
+        athlete_id = job['athlete_id']
+        attempts = int(job.get('attempts', 1))
+        max_attempts = int(job.get('max_attempts', JOB_MAX_ATTEMPTS))
+
+        if attempts >= max_attempts:
+            logger.critical(
+                f"PLAN JOB ORPHANED after {attempts} attempts: {athlete_id} "
+                f"(order {job.get('order_id', '?')}) — marking failed, "
+                f"manual re-run required")
+            _update_job(athlete_id, status='failed',
+                        finished_at=datetime.now().isoformat(),
+                        error=f'Job stuck after {attempts} attempts '
+                              f'(likely restart mid-generation)')
+            try:
+                details = _build_plan_notification_details(
+                    job.get('order_data', {}),
+                    {'success': False, 'stdout': '',
+                     'stderr': f'Job orphaned after {attempts} attempts — '
+                               f'likely a restart mid-generation. '
+                               f'Re-run the pipeline manually.'},
+                    None)
+                _notify_new_order('training_plan_FAILED', details)
+            except Exception:
+                logger.exception(f"Failed to notify for orphaned job {athlete_id}")
+            stats['failed'] += 1
+        else:
+            job['attempts'] = attempts + 1
+            job['status'] = 'queued'
+            job['error'] = None
+            _write_job(job)
+            logger.warning(
+                f"Retrying stuck job for {athlete_id} "
+                f"(attempt {job['attempts']}/{max_attempts})")
+            if _sync_pipeline_mode():
+                _execute_plan_job(job)
+            else:
+                _start_job_thread(job)
+            stats['retried'] += 1
+
+    return stats
+
+
+# =============================================================================
 # ROUTES
 # =============================================================================
 
@@ -1770,6 +2040,105 @@ def download_deliverables(athlete_id):
         as_attachment=True,
         download_name=zip_path.name,
     )
+
+
+# Order/session references: Stripe session ids (cs_...), test ids, or
+# athlete ids. Never used as a filesystem path without validation.
+_ORDER_REF_RE = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
+
+# Customer-facing status copy — honest, never an error or a "we broke".
+_MSG_IN_PROGRESS = ("Your custom plan is being generated right now — "
+                    "you'll get an email as soon as it's ready.")
+_MSG_FINISHING = ("We're putting the finishing touches on your plan "
+                  "and will email it to you shortly.")
+_MSG_READY = "Your plan is ready — check your email for the details."
+
+
+@app.route('/api/order-status/<ref>', methods=['GET'])
+@limiter.limit("30/minute")
+def order_status(ref):
+    """Customer-facing order status for the success page.
+
+    <ref> is either the Stripe checkout session id (the success page gets
+    ?session_id={CHECKOUT_SESSION_ID}) or an athlete id. Returns
+    {status, download_ready, message} where status is ready|processing|
+    unknown. A failed job reads as "processing" with a gentle finishing
+    message — failures are loud to the operator (email/logs), invisible
+    to the customer.
+    """
+    if not ref or not _ORDER_REF_RE.match(ref):
+        return jsonify({'status': 'unknown', 'download_ready': False}), 404
+
+    athlete_id = None
+    is_session_ref = ref.startswith('cs_') or ref.startswith('test_')
+    if is_session_ref:
+        # Map session/order id → athlete via the idempotency ledger
+        processed_file = Path(DATA_DIR) / '.processed_orders.json'
+        try:
+            if processed_file.exists():
+                entry = json.loads(processed_file.read_text()).get(ref)
+                if entry:
+                    athlete_id = entry.get('athlete_id', '')
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"order-status: could not read processed orders: {e}")
+        if not athlete_id:
+            # Stripe's webhook may simply not have arrived yet — honest
+            # in-progress, never an error the customer has to interpret.
+            return jsonify({'status': 'processing', 'download_ready': False,
+                            'message': _MSG_IN_PROGRESS})
+    else:
+        athlete_id = _normalize_athlete_id(ref.lower())
+        if not validate_athlete_id(athlete_id):
+            return jsonify({'status': 'unknown', 'download_ready': False}), 404
+
+    norm_id = _normalize_athlete_id(athlete_id)
+    customer_zip = Path(DELIVERIES_DIR) / norm_id / f'{norm_id}-training-plan.zip'
+    download_ready = customer_zip.exists()
+
+    job = _read_job(norm_id) or {}
+    job_status = job.get('status', '')
+
+    if download_ready or job_status == 'succeeded':
+        return jsonify({'status': 'ready', 'download_ready': download_ready,
+                        'message': _MSG_READY})
+    if job_status in ('queued', 'running'):
+        return jsonify({'status': 'processing', 'download_ready': False,
+                        'message': _MSG_IN_PROGRESS})
+    if job_status == 'failed':
+        # Operator already notified loudly; the customer sees a calm
+        # "finishing up" — the coach recovers the order manually.
+        return jsonify({'status': 'processing', 'download_ready': False,
+                        'message': _MSG_FINISHING})
+    if is_session_ref:
+        # Order known (idempotency mark) but no job record — legacy or
+        # sync-mode order. Report in-progress; email delivery still applies.
+        return jsonify({'status': 'processing', 'download_ready': False,
+                        'message': _MSG_IN_PROGRESS})
+    return jsonify({'status': 'unknown', 'download_ready': False}), 404
+
+
+@app.route('/api/jobs/sweep', methods=['POST'])
+@limiter.limit("5/minute")
+def jobs_sweep():
+    """Retry jobs orphaned by a restart. Secured by X-Cron-Secret.
+
+    Also runs automatically on startup and hourly; this endpoint exists so
+    an external cron can add a third safety net (wire later — do NOT add a
+    GitHub workflow here).
+    """
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not hmac.compare_digest(secret, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        stats = sweep_stuck_jobs()
+        logger.info(f"Job sweep complete: {stats}")
+        return jsonify({'status': 'ok', **stats})
+    except Exception as e:
+        logger.exception(f"Job sweep error: {e}")
+        return jsonify({'error': 'Internal error'}), 500
 
 
 @app.route('/api/confirm/<athlete_id>', methods=['POST'])
@@ -2376,31 +2745,29 @@ def woocommerce_webhook():
         # pass the idempotency check and start duplicate pipelines.
         mark_order_processed(order_data['order_id'], athlete_id)
 
-        result = run_pipeline(athlete_id, deliver=True)
-        log_order(order_data, result)
+        # Queue generation, return immediately (same async path as Stripe).
+        job, sync_result = _spawn_plan_job(order_data)
 
-        if result['success']:
-            try:
-                persist_deliverables(athlete_id)
-            except Exception as e:
-                logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
-
-        details = _build_plan_notification_details(order_data, result)
-        if result['success']:
-            details['download_token'] = _generate_download_token(athlete_id)
-            _notify_new_order('training_plan', details)
-            return jsonify({
-                'status': 'success',
-                'athlete_id': athlete_id,
-                'message': 'Training plan generated and delivered'
-            })
-        else:
-            _notify_new_order('training_plan_FAILED', details)
+        if sync_result is not None:
+            # SYNC_PIPELINE=1 — legacy inline path (tests / local debugging)
+            if sync_result['success']:
+                return jsonify({
+                    'status': 'success',
+                    'athlete_id': athlete_id,
+                    'message': 'Training plan generated and delivered'
+                })
             return jsonify({
                 'status': 'pipeline_failed',
                 'athlete_id': athlete_id,
                 'message': 'Order received but pipeline failed. Manual intervention required.'
             })
+
+        return jsonify({
+            'status': 'accepted',
+            'athlete_id': athlete_id,
+            'job_status': job.get('status', 'queued'),
+            'message': 'Training plan generation queued'
+        })
 
     except Exception as e:
         logger.exception(f"WooCommerce webhook error: {e}")
@@ -2617,31 +2984,32 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
     _send_payment_confirmation(customer_email, customer_name, race_name=race_name,
                                brand=brand)
 
-    result = run_pipeline(athlete_id, deliver=True, intake_data=intake_data or None)
-    log_order(order_data, result)
+    # Queue generation and return 200 to Stripe immediately — the pipeline
+    # takes minutes, Stripe times out at ~20s. The background job handles
+    # log_order, ZIP persistence, and the coach notification email.
+    job, sync_result = _spawn_plan_job(order_data, intake_id=intake_id,
+                                       intake_data=intake_data or None)
 
-    if result['success']:
-        try:
-            persist_deliverables(athlete_id)
-        except Exception as e:
-            logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
-
-    details = _build_plan_notification_details(order_data, result, intake_data)
-    if result['success']:
-        details['download_token'] = _generate_download_token(athlete_id)
-        _notify_new_order('training_plan', details)
-        return jsonify({
-            'status': 'success',
-            'athlete_id': athlete_id,
-            'message': 'Training plan generated and delivered'
-        })
-    else:
-        _notify_new_order('training_plan_FAILED', details)
+    if sync_result is not None:
+        # SYNC_PIPELINE=1 — legacy inline path (tests / local debugging)
+        if sync_result['success']:
+            return jsonify({
+                'status': 'success',
+                'athlete_id': athlete_id,
+                'message': 'Training plan generated and delivered'
+            })
         return jsonify({
             'status': 'pipeline_failed',
             'athlete_id': athlete_id,
             'message': 'Order received but pipeline failed. Manual intervention required.'
         })
+
+    return jsonify({
+        'status': 'accepted',
+        'athlete_id': athlete_id,
+        'job_status': job.get('status', 'queued'),
+        'message': 'Training plan generation queued'
+    })
 
 
 def _handle_coaching_webhook(session: dict, metadata: dict, order_id: str):
@@ -3310,6 +3678,16 @@ try:
     cleanup_stale_intakes()
 except Exception as e:
     logger.warning(f"Intake cleanup on startup failed: {e}")
+
+# Crash durability: retry jobs orphaned by a restart mid-generation.
+# Only touches queued/running records older than JOB_STUCK_AFTER_MINUTES,
+# so a fresh deploy doesn't double-run anything actively in flight.
+try:
+    _startup_sweep = sweep_stuck_jobs()
+    if _startup_sweep.get('retried') or _startup_sweep.get('failed'):
+        logger.warning(f"Startup job sweep: {_startup_sweep}")
+except Exception as e:
+    logger.error(f"Startup job sweep failed: {e}")
 
 
 # =============================================================================
