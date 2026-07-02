@@ -81,24 +81,25 @@ def load_weekly_structure(athlete_id: str) -> Optional[Dict]:
     return None
 
 
-def get_race_data(race_id: str) -> Dict:
+def get_race_data(race_id: str, fallback_name: str = None) -> Dict:
     """Load race data from unified system."""
     # Try multiple locations for race data
     possible_paths = [
         generator_path / f"{race_id}.json" if generator_path else None,
         Path.home() / "gravel-landing-page-project" / "races" / f"{race_id}.json",
     ]
-    
+
     for race_path in possible_paths:
         if race_path and race_path.exists():
             with open(race_path, 'r') as f:
                 return json.load(f)
-    
-    # Return default race data
+
+    # Generic race data — keep the athlete's own race name, never
+    # substitute a different event's identity.
     return {
         "race_metadata": {
-            "name": "Generic Gravel Race",
-            "date": "June"
+            "name": fallback_name or "Your Race",
+            "date": ""
         }
     }
 
@@ -133,13 +134,15 @@ def generate_athlete_plan(athlete_id: str) -> Dict:
     derived = load_derived(athlete_id)
     weekly_structure = load_weekly_structure(athlete_id)
     
-    # Extract race info
-    target_race = profile.get("target_race", {})
-    race_id = target_race.get("race_id", "unbound_gravel_200")
-    race_date = target_race.get("date", "2025-06-07")
-    
+    # Extract race info. NO default race: an athlete whose race is unknown
+    # must get a generic plan built from their own inputs, never a plan
+    # silently shaped for unbound_gravel_200 (the old behavior).
+    target_race = profile.get("target_race") or {}
+    race_id = target_race.get("race_id") or "generic_race"
+    race_date = target_race.get("date", "")
+
     # Get race data
-    race_data = get_race_data(race_id)
+    race_data = get_race_data(race_id, fallback_name=target_race.get("name"))
     
     # Create output directory
     year = datetime.now().year

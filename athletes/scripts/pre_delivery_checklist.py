@@ -18,6 +18,45 @@ from pathlib import Path
 from datetime import datetime
 
 
+def race_match_lines(profile: dict) -> list:
+    """Checklist lines describing HOW the target race was resolved.
+
+    An UNMATCHED race means the plan was built from a generic profile using
+    the athlete's own intake — the coach must verify race identity, date,
+    and distance before delivery. Loud to the coach, invisible to the
+    athlete. Returns [] for old profiles without race_match metadata.
+    """
+    race = (profile or {}).get('target_race') or {}
+    rm = race.get('race_match') or {}
+    if not rm:
+        return []
+
+    lines = ["## 0. RACE MATCH", ""]
+    if rm.get('method') == 'none':
+        lines.append(f"  [🚨] UNMATCHED RACE — VERIFY: \"{race.get('name', '?')}\"")
+        lines.append("       No confident match in the race database "
+                     f"(best score {rm.get('score', 0)}, threshold 0.85).")
+        lines.append("       Plan was built from a GENERIC profile using the "
+                     "athlete's own intake")
+        lines.append(f"       (date: {race.get('date') or 'NOT PROVIDED'}, "
+                     f"distance: {race.get('distance_miles') or 'NOT PROVIDED'} mi, "
+                     f"discipline: {race.get('generic_discipline', 'unknown')}).")
+        near = rm.get('near_misses') or []
+        if near:
+            lines.append("       Closest database candidates:")
+            for n in near:
+                lines.append(f"         - {n.get('name')} ({n.get('slug')}) "
+                             f"— score {n.get('score')}")
+        lines.append("       [ ] Coach verified race identity, date, and "
+                     "distance with the athlete")
+    else:
+        lines.append(f"  [✅] Race matched: {race.get('name', '?')} "
+                     f"(`{rm.get('matched_slug')}`) via {rm.get('method')}, "
+                     f"score {rm.get('score')}")
+    lines.append("")
+    return lines
+
+
 def generate_checklist(athlete_id: str) -> str:
     """Generate a comprehensive pre-delivery checklist."""
     athletes_dir = Path(__file__).parent.parent
@@ -43,6 +82,7 @@ def generate_checklist(athlete_id: str) -> str:
         race_name = race.get('name', 'Unknown')
         race_date = race.get('date', 'Unknown')
     else:
+        profile = {}
         athlete_name = athlete_id
         race_name = 'Unknown'
         race_date = 'Unknown'
@@ -60,6 +100,9 @@ def generate_checklist(athlete_id: str) -> str:
     lines.append("")
     lines.append("-" * 70)
     lines.append("")
+
+    # Section 0: Race match audit (UNMATCHED race = generic plan, verify!)
+    lines.extend(race_match_lines(profile))
 
     # Section 1: Automated Validation Results
     lines.append("## 1. AUTOMATED VALIDATION RESULTS")
