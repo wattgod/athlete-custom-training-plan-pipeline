@@ -97,8 +97,8 @@ The webhook secret doesn't exist until after the webhook endpoint is registered 
 ### PII in logs
 Never log raw email addresses. Use `_mask_email()` for all log output. Railway logs persist and are accessible to anyone with project access.
 
-### Stripe Checkout timeout
-The pipeline runs synchronously and takes up to 5 minutes. Stripe expects 2xx within 20 seconds. The response will be late, and Stripe will mark it as "failed" and retry. Retries are caught by idempotency, so processing is correct. But the Stripe dashboard will show failed delivery attempts. Future improvement: run pipeline in a background thread or job queue.
+### Stripe Checkout timeout → async pipeline jobs (July 2026)
+The pipeline takes up to 5 minutes; Stripe expects 2xx within 20 seconds. The webhook now writes a durable job record to `DATA_DIR/jobs/{athlete_id}.json` (queued|running|succeeded|failed, attempt count, error), spawns the pipeline in a background thread, and returns 200 immediately. Job records live on the Railway persistent volume, so `sweep_stuck_jobs()` (runs on startup, hourly via before_request, and via authenticated `POST /api/jobs/sweep`) retries jobs orphaned by a restart mid-generation — max 2 attempts, then status=failed + loud operator email. Customer-facing status: `GET /api/order-status/<session_id-or-athlete_id>` returns ready|processing|unknown and never exposes errors (a failed job reads as "finishing your plan"). `SYNC_PIPELINE=1` restores the old inline path for tests/local debugging. External cron for the sweep endpoint can be wired later (send `X-Cron-Secret`).
 
 ### Price parity timezone edge case
 JS `new Date()` uses browser timezone, Python `date.today()` uses server timezone (UTC on Railway). At midnight boundaries, week counts can differ by 1. The parity test runs both in the same timezone so it doesn't catch this. Real-world impact is low ($15 difference at week boundaries).
@@ -154,7 +154,8 @@ python3 -m pytest webhook/tests/test_webhook.py -v
 - [ ] Enable `ENABLE_AUTOMATIC_TAX=true` in Railway (requires Stripe Tax account setup first)
 - [ ] Set up Stripe Customer Portal for subscription management
 - [ ] Custom domain (replace long Railway subdomain)
-- [ ] Consider async pipeline execution to avoid Stripe timeout retries
+- [x] Async pipeline execution (July 2026) — background thread + durable job records + startup/hourly/cron sweep; see "Stripe Checkout timeout" section
+- [ ] Optionally point external cron at `POST /api/jobs/sweep` (X-Cron-Secret) as a third safety net
 - [ ] Rotate Stripe secret key (current key was exposed in Playwriter session)
 
 ## Block-Builder Coaching Engine (April 2026)
