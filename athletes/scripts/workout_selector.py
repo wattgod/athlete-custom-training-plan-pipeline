@@ -10,6 +10,7 @@ Source: block-builder SKILL.md Steps 4-6, references/workout-selection.md
 """
 
 import yaml
+import functools
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 
@@ -35,7 +36,16 @@ _DISCIPLINE_INTENSITY = {
 }
 
 
+@functools.lru_cache(maxsize=None)
 def _load_config(filename: str) -> dict:
+    """Load a YAML config, cached for the process lifetime.
+
+    The configs are static package data; without the cache, every
+    get_workout_tss/get_workout_duration lookup re-parsed the YAML
+    (~700ms per generated block — the /engine/block endpoint needs <500ms).
+    Callers must NOT mutate the returned dict (all current callers copy
+    before modifying).
+    """
     with open(_CONFIG_DIR / filename) as f:
         return yaml.safe_load(f)
 

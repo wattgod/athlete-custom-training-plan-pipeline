@@ -72,6 +72,7 @@ def build_plan_from_calendar(
     discipline: str = 'gravel',
     day_caps: Dict[str, int] = None,
     methodology: str = 'polarized_80_20',
+    phase_block_start: int = 1,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -87,6 +88,11 @@ def build_plan_from_calendar(
         long_ride_day: Preferred long ride day abbreviation
         starting_level: Level for the first load block
         hours_per_week: Weekly cycling hour target
+        phase_block_start: 1-based rotation seed for the FIRST phase's
+            workout-variety rotation. Standalone blocks (Endure /engine/block)
+            pass the athlete's progression here so consecutive externally
+            chained blocks pull different alternatives instead of repeating
+            block 1's selections. Full-season plans keep the default (1).
 
     Returns:
         Plan dict shaped like chain_blocks() output: {'weeks': [...], ...}
@@ -106,7 +112,7 @@ def build_plan_from_calendar(
     # this (not the absolute block number) so the 2nd block of EVERY phase
     # reaches the first alternative. Absolute numbering skipped options when
     # a phase started at a high block number.
-    phase_block_index = 1
+    phase_block_index = max(1, phase_block_start)
     prev_phase = None
 
     for desc in week_descriptors:

@@ -3609,6 +3609,66 @@ def cron_followup_emails():
 
 
 # =============================================================================
+# ENGINE — deterministic block generation for Endure Labs (Convergence Phase 1)
+# =============================================================================
+
+@app.route('/engine/block', methods=['POST'])
+@limiter.limit("60/minute")
+def engine_block():
+    """POST /engine/block — deterministic training-block generation.
+
+    Exposes the block-builder core so Endure Labs generates blocks in <1s
+    instead of a 30s LLM call. Contract is FROZEN (see engine_adapter.py):
+    - Auth: X-Engine-Secret vs ENGINE_SHARED_SECRET (503 unset, 401 mismatch)
+    - 400 invalid request (with field errors)
+    - 422 compliance gate CRITICAL failure
+    - 500 unexpected
+    """
+    secret = request.headers.get('X-Engine-Secret', '')
+    expected = os.environ.get('ENGINE_SHARED_SECRET', '')
+    if not expected:
+        return jsonify({'error': 'ENGINE_SHARED_SECRET not configured'}), 503
+    if not hmac.compare_digest(secret, expected):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    payload = request.get_json(silent=True)
+    if payload is None:
+        return jsonify({'error': 'invalid_request',
+                        'fields': {'body': 'Request body must be JSON'}}), 400
+
+    try:
+        from engine_adapter import (
+            validate_request as engine_validate,
+            generate_block as engine_generate,
+            ComplianceFailure,
+        )
+    except Exception as e:
+        logger.exception(f"Engine adapter import failed: {e}")
+        return jsonify({'error': 'Internal error'}), 500
+
+    params, field_errors = engine_validate(payload)
+    if field_errors:
+        return jsonify({'error': 'invalid_request', 'fields': field_errors}), 400
+
+    try:
+        result = engine_generate(params)
+    except ComplianceFailure as cf:
+        logger.warning(
+            f"Engine block compliance gate failed: {cf.compliance['violations']}")
+        return jsonify({'error': 'compliance_failed',
+                        'compliance': cf.compliance}), 422
+    except Exception as e:
+        logger.exception(f"Engine block generation failed: {e}")
+        return jsonify({'error': 'Internal error'}), 500
+
+    logger.info(
+        f"Engine block generated: phase={params['phase']} weeks={params['weeks']} "
+        f"archetype={params['archetype']} methodology={params['methodology']} "
+        f"in {result['engine']['generated_ms']}ms")
+    return jsonify(result)
+
+
+# =============================================================================
 # STARTUP
 # =============================================================================
 
