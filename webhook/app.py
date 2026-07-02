@@ -716,7 +716,7 @@ WHAT HAPPENS NEXT:
 
 Questions? Reply to this email.
 
-— Matt, {brand_name}
+— Matti, {brand_name}
 {brand_site}
 """
 
@@ -755,7 +755,7 @@ Questions? Reply to this email.
 
     <p style="font-size: 14px; line-height: 1.6;">Questions? Reply to this email.</p>
 
-    <p style="font-size: 14px; margin-top: 24px; color: #666;">— Matt, {brand_name}<br>
+    <p style="font-size: 14px; margin-top: 24px; color: #666;">— Matti, {brand_name}<br>
     <a href="{brand_cfg['site']}" style="color: #1A8A82;">{brand_site}</a></p>
   </div>
 </div>"""
@@ -2275,9 +2275,7 @@ A few things to know:
 
 If you have questions at any point, just reply to this email.
 
-Let's get after it.
-
-— Matt, Gravel God Cycling
+— Matti, Gravel God Cycling
 gravelgodcycling.com
 """
 
@@ -2312,9 +2310,8 @@ gravelgodcycling.com
 
     <p style="font-size: 14px; line-height: 1.6;">Questions at any point? Just reply to this email.</p>
 
-    <p style="font-size: 15px; line-height: 1.6; margin-top: 20px;">Let's get after it.</p>
 
-    <p style="font-size: 14px; margin-top: 24px; color: #666;">— Matt, Gravel God Cycling<br>
+    <p style="font-size: 14px; margin-top: 24px; color: #666;">— Matti, Gravel God Cycling<br>
     <a href="https://gravelgodcycling.com" style="color: #1A8A82;">gravelgodcycling.com</a></p>
   </div>
 </div>"""
@@ -2898,7 +2895,7 @@ def _send_recovery_email(email: str, name: str, product_type: str,
             f"{recovery_url}\n\n"
             f"Your race is coming up. The sooner you start structured training, "
             f"the stronger you'll be on race day.\n\n"
-            f"— Matt, Gravel God Cycling\n"
+            f"— Matti, Gravel God Cycling\n"
             f"gravelgodcycling.com"
         )
     elif product_type == 'coaching':
@@ -2912,7 +2909,7 @@ def _send_recovery_email(email: str, name: str, product_type: str,
             f"{recovery_url}\n\n"
             f"Athletes who work with a coach see measurable gains within "
             f"the first few weeks. Let's get started.\n\n"
-            f"— Matt, Gravel God Cycling\n"
+            f"— Matti, Gravel God Cycling\n"
             f"gravelgodcycling.com"
         )
     else:  # consulting
@@ -2924,7 +2921,7 @@ def _send_recovery_email(email: str, name: str, product_type: str,
             f"still interested?\n\n"
             f"Complete your booking:\n"
             f"{recovery_url}\n\n"
-            f"— Matt, Gravel God Cycling\n"
+            f"— Matti, Gravel God Cycling\n"
             f"gravelgodcycling.com"
         )
 
@@ -3198,67 +3195,9 @@ def test_webhook():
 
 # Day offsets and email templates for training plan follow-ups.
 # Coaching and consulting follow-ups are manual (high-touch).
-FOLLOWUP_SEQUENCE = [
-    {
-        'day': 1,
-        'subject': 'Getting started with your training plan',
-        'template': (
-            "Hey {first_name},\n\n"
-            "Your training plan was delivered yesterday. Here's how to get "
-            "the most out of it:\n\n"
-            "1. Import the .zwo files into TrainingPeaks, Zwift, or Wahoo\n"
-            "2. Read the training guide — especially the phase overview\n"
-            "3. Do today's workout. Don't overthink it.\n\n"
-            "Week 1 is calibration. The workouts might feel easy. That's "
-            "intentional. Trust the process.\n\n"
-            "If you have questions, reply to this email.\n\n"
-            "— Matt, Gravel God Cycling\n"
-            "gravelgodcycling.com"
-        ),
-    },
-    {
-        'day': 3,
-        'subject': 'Quick check-in — how\'s week 1?',
-        'template': (
-            "Hey {first_name},\n\n"
-            "You're a few days into your plan. A couple things:\n\n"
-            "- If your FTP was estimated, the zones might feel off. That's "
-            "normal. Week 1 includes a test protocol to dial it in.\n"
-            "- If you missed a workout, don't double up. Just pick up where "
-            "the plan says to go next.\n"
-            "- The strength sessions are optional but they matter. Even 20 "
-            "minutes twice a week makes a difference by race day.\n\n"
-            "Your free race prep kit has packing lists, race-day checklists, "
-            "and course intel for your target event:\n"
-            "https://gravelgodcycling.com/gravel-races/\n\n"
-            "— Matt\n"
-            "gravelgodcycling.com"
-        ),
-    },
-    {
-        'day': 7,
-        'subject': 'Week 1 done — what to expect next',
-        'template': (
-            "Hey {first_name},\n\n"
-            "You've finished your first week. The real training starts now.\n\n"
-            "Week 2+ is where the workouts start building. The efforts get "
-            "harder, the long rides get longer, and the plan starts earning "
-            "its keep.\n\n"
-            "Two things that matter most from here:\n"
-            "1. Consistency > intensity. Showing up 5 days matters more than "
-            "one hero session.\n"
-            "2. Sleep and fueling are training. The plan assumes you're "
-            "recovering between sessions.\n\n"
-            "If you want a human in your corner — weekly adjustments, "
-            "race-day strategy, and real accountability — coaching starts at "
-            "$199 every 4 weeks:\n"
-            "https://gravelgodcycling.com/coaching/\n\n"
-            "Train hard.\n\n"
-            "— Matt\n"
-            "gravelgodcycling.com"
-        ),
-    },
-]
+# Canonical copy lives in webhook/email_templates.py (zero-dep module,
+# voice rules + tests in webhook/tests/test_email_templates.py).
+from email_templates import FOLLOWUP_SEQUENCE  # noqa: E402
 
 
 def _get_followup_log_path():
