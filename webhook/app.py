@@ -2848,6 +2848,17 @@ def _handle_checkout_expired(data: dict):
         athlete_name = metadata.get('athlete_name', '')
         consent = session.get('consent', {})
 
+        # Health monitors create never-paid sessions that expire hourly —
+        # without this guard, enabling checkout.session.expired turns them
+        # into a recovery-email firehose (guard added when the event
+        # subscription was finally enabled, Jul 2026).
+        MONITOR_EMAILS = ('checkout-monitor@', 'healthcheck@', 'monitor@',
+                          'gravelgodcoaching@gmail.com')
+        if email and any(email.lower().startswith(m) or m in email.lower()
+                         for m in MONITOR_EMAILS):
+            logger.info(f"Expired checkout {session_id} — monitor session, skipping recovery")
+            return jsonify({'status': 'ignored', 'reason': 'Monitor session'})
+
         # Stripe provides a recovery URL when after_expiration.recovery is enabled
         recovery = session.get('after_expiration', {}).get('recovery', {})
         recovery_url = recovery.get('url', '')

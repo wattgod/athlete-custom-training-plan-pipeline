@@ -71,7 +71,7 @@ railway.json       <- Railway deploy config (root, NOT webhook/)
 - **Setup fee waiver**: Coupon "Waive Setup Fee" + promo code `NOSETUP` ($99 off, applies to setup fee product only)
 - **Consulting**: 1 per-hour price ($150/hr, quantity=hours)
 - **Price IDs**: Hardcoded in `app.py` lines 73-108, created by `scripts/create_stripe_products.py`
-- **Webhook endpoint**: `we_1T2gDcLoaHDbEqSqb5sp6Tfj`, listens for `checkout.session.completed` + `checkout.session.expired`
+- **Webhook endpoint**: `we_1T2gDcLoaHDbEqSqb5sp6Tfj`. NOTE (Jul 2026): it was subscribed to `checkout.session.completed` ONLY for its entire life — the expired-event subscription this doc claimed was never real, so zero recovery emails ever sent. `checkout.session.expired` added Jul 2 2026 via API; verify with `stripe webhook_endpoints` if recovery emails go quiet again
 
 ## Checkout Features
 - **Apple Pay / Google Pay**: Auto-enabled (no `payment_method_types` restriction)
