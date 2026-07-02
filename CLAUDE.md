@@ -78,7 +78,7 @@ railway.json       <- Railway deploy config (root, NOT webhook/)
 - **Abandoned cart recovery**: 60-min expiry, Stripe-native recovery URL, consent collection, recovery email on `checkout.session.expired`
 - **Session tracking**: Success URLs include `?session_id={CHECKOUT_SESSION_ID}` for GA4 attribution
 - **GA4 funnel**: `begin_checkout` -> Stripe -> `purchase` (with dedup via sessionStorage)
-- **Post-purchase emails**: Day 1 (getting started), Day 3 (check-in), Day 7 (coaching cross-sell). Triggered via `/api/cron/followup-emails` daily endpoint.
+- **Post-purchase emails**: Day 1 (getting started), Day 3 (check-in), Day 7 (coaching bridge). Triggered via `/api/cron/followup-emails` daily endpoint, fired by `.github/workflows/daily-followup-emails.yml`. Canonical copy lives in `webhook/email_templates.py` — app.py should import `FOLLOWUP_SEQUENCE` from there, not fork it inline.
 
 ## Known Pitfalls
 
@@ -150,7 +150,8 @@ python3 -m pytest webhook/tests/test_webhook.py -v
 - [x] Set up SMTP env vars in Railway — NOTIFICATION_EMAIL, SMTP_HOST, SMTP_PORT, SMTP_USER, CRON_SECRET all configured
 - [x] Email notifications confirmed working via Resend API (tested 2026-03-31)
 - [x] Removed unauthenticated `/api/test-notification` endpoint (2026-03-31)
-- [ ] Set up daily cron to call `/api/cron/followup-emails` (needs external service — Railway cron restarts entire container)
+- [x] Daily cron for `/api/cron/followup-emails` — `.github/workflows/daily-followup-emails.yml` (15:00 UTC + manual dispatch, `CRON_SECRET` repo secret set, fails red on non-ok response). Running green since 2026-06-10.
+- [ ] Swap app.py inline `FOLLOWUP_SEQUENCE` for `from email_templates import FOLLOWUP_SEQUENCE` (rewritten copy in `webhook/email_templates.py`)
 - [ ] Enable `ENABLE_AUTOMATIC_TAX=true` in Railway (requires Stripe Tax account setup first)
 - [ ] Set up Stripe Customer Portal for subscription management
 - [ ] Custom domain (replace long Railway subdomain)

@@ -2586,13 +2586,12 @@ def generate_personal_email(
         ack_parts.append(f"an {first_strength}" if first_strength[0] in 'aeiou' else f"a {first_strength}")
 
     if ack_parts:
-        lines.append(f"First — I can see you're coming in with {', '.join(ack_parts[:2])}. ")
-    if isinstance(age, (int, float)) and int(age) >= 50:
-        lines[-1] = lines[-1].rstrip() + f" At {int(age)}, you know what it takes.\n"
-    elif race_goal:
-        lines[-1] = lines[-1].rstrip() + f" Your goal — {race_goal.lower().rstrip('.')} — is clear and achievable.\n"
+        lines.append(f"You're coming in with {', '.join(ack_parts[:2])}. "
+                     "The plan accounts for that. ")
+    if race_goal:
+        lines[-1] = lines[-1].rstrip() + f" Everything in it points at one goal: {race_goal.lower().rstrip('.')}.\n"
     else:
-        lines[-1] = lines[-1].rstrip() + " That tells me a lot about who you are as an athlete.\n"
+        lines[-1] = lines[-1].rstrip() + "\n"
 
     lines.append("A few things specific to your plan:\n")
 
@@ -2717,7 +2716,7 @@ def generate_personal_email(
                      "and we're rolling.\n")
 
     lines.append("Questions anytime — just reply to this email.\n")
-    lines.append("— Matt")
+    lines.append("— Matti\nGravel God Coaching\ngravelgodcycling.com")
 
     return '\n'.join(lines)
 
