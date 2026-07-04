@@ -513,3 +513,56 @@ class TestBuildCalendarWeek:
         for n in (1, 2, 3):
             sat = _day(_week(plan, n), 'Sat')
             assert sat['name'] not in ('OFF', 'Rest Day')
+
+
+class TestSelectionBiasSeam:
+    """Phase 2 seam: _pick_option ranks/rotates within an EXISTING slot pool.
+    Baseline path (no weights, no avoid) must be byte-identical to the old
+    block-number rotation so /engine/block stays backward compatible."""
+
+    def test_baseline_matches_block_rotation(self):
+        from workout_selector import _pick_option
+        opts = ['A', 'B', 'C']
+        # Old behavior: options[(block_number - 1) % len(options)]
+        for bn in range(1, 8):
+            assert _pick_option(opts, bn) == opts[(bn - 1) % len(opts)]
+
+    def test_category_weights_pick_highest_scored(self):
+        from workout_selector import _pick_option
+        # Endurance with Surges → Durability; NP/IF Target → Race_Simulation.
+        opts = ['NP/IF Target', 'Endurance with Surges', 'Endurance Blocks']
+        weights = {'Durability': 100, 'Race_Simulation': 10, 'HVLI_Extended': 5}
+        assert _pick_option(opts, 1, category_weights=weights) == \
+            'Endurance with Surges'
+
+    def test_weight_ties_keep_config_order(self):
+        from workout_selector import _pick_option
+        opts = ['Threshold Steady', 'Threshold Progressive']  # both threshold
+        weights = {'TT_Threshold': 50}
+        assert _pick_option(opts, 3, category_weights=weights) == opts[0]
+
+    def test_avoid_series_rotates_away(self):
+        from workout_selector import _pick_option
+        opts = ['A', 'B', 'C']
+        assert _pick_option(opts, 1, avoid_series={'A'}) in ('B', 'C')
+
+    def test_avoid_series_exhausted_reuses(self):
+        from workout_selector import _pick_option
+        opts = ['A', 'B']
+        # Every option avoided → pool restored, no crash, returns a valid name.
+        assert _pick_option(opts, 1, avoid_series={'A', 'B'}) in opts
+
+    def test_keep_within_protects_vo2(self):
+        from workout_selector import _pick_option
+        opts = ['VO2max 40/20', 'Threshold Steady']
+        # keep_within filters to VO2 first, so even a threshold-weighted race
+        # cannot swap the VO2 slot out (R02 protection).
+        weights = {'TT_Threshold': 100, 'VO2max': 1}
+        got = _pick_option(opts, 1, category_weights=weights,
+                           keep_within={'VO2max 40/20'})
+        assert got == 'VO2max 40/20'
+
+    def test_empty_options_raises(self):
+        from workout_selector import _pick_option
+        with pytest.raises(ValueError):
+            _pick_option([], 1)

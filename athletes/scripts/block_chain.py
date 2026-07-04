@@ -73,6 +73,8 @@ def build_plan_from_calendar(
     day_caps: Dict[str, int] = None,
     methodology: str = 'polarized_80_20',
     phase_block_start: int = 1,
+    category_weights: Dict[str, float] = None,
+    avoid_series: set = None,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -93,6 +95,12 @@ def build_plan_from_calendar(
             pass the athlete's progression here so consecutive externally
             chained blocks pull different alternatives instead of repeating
             block 1's selections. Full-season plans keep the default (1).
+        category_weights: Optional race-demand category scores biasing which
+            names fill intensity/long-ride slots (see workout_selector).
+        avoid_series: Optional set of series names the previous externally
+            chained block used (/engine/block previous.seriesUsed) — slots
+            prefer alternatives outside this set. Both default None →
+            selection byte-identical to historical behavior.
 
     Returns:
         Plan dict shaped like chain_blocks() output: {'weeks': [...], ...}
@@ -155,6 +163,8 @@ def build_plan_from_calendar(
             discipline=discipline,
             day_caps=day_caps,
             methodology=methodology,
+            category_weights=category_weights,
+            avoid_series=avoid_series,
         )
         week['plan_week'] = plan_week
         week['block_number'] = block_number

@@ -35,6 +35,90 @@ _DISCIPLINE_INTENSITY = {
     'Microbursts', 'Mixed Climbing', 'Mixed Climbing Variations', 'Stomps',
 }
 
+# ---------------------------------------------------------------------------
+# Race-demand bias (Phase 2, /engine/block): bridge workout_library.yaml
+# categories to the archetype categories scored by race_category_scorer.py,
+# so a race demand vector can rank the options inside a slot's EXISTING pool.
+# The bias only ever chooses among names the rotation could already pick —
+# it can re-order a pool, never widen it, so compliance-safe by construction.
+# ---------------------------------------------------------------------------
+_SCORER_CATEGORY_BY_LIBRARY = {
+    'vo2max': 'VO2max',
+    'threshold': 'TT_Threshold',
+    'tempo': 'Tempo',
+    'race_sim': 'Race_Simulation',
+    'climbing': 'Mixed_Climbing',
+    'blended': 'Blended',
+    'neuromuscular': 'Sprint_Neuromuscular',
+    'sfr': 'SFR_Muscle_Force',
+    'durability': 'Durability',
+    'endurance': 'Endurance',
+}
+# Name-level refinements where the library category is coarser than the
+# scorer's taxonomy (e.g. all long rides are library-'endurance', but they
+# train meaningfully different race demands).
+_SCORER_CATEGORY_BY_NAME = {
+    'Cadence Work': 'Cadence_Work',            # technical/skills emphasis
+    'G-Spot': 'G_Spot',
+    'Microbursts': 'Gravel_Specific',          # gravel surge signature work
+    'Endurance Blocks': 'HVLI_Extended',       # extended low-intensity volume
+    'Endurance with Surges': 'Durability',     # surges under fatigue
+    'NP/IF Target': 'Race_Simulation',         # race-pace target ride
+}
+
+
+def _demand_category(name: str) -> Optional[str]:
+    """race_category_scorer category for a library workout name (None if
+    unmapped — unmapped names score 0 under any demand vector)."""
+    if name in _SCORER_CATEGORY_BY_NAME:
+        return _SCORER_CATEGORY_BY_NAME[name]
+    workout = _load_library().get('workouts', {}).get(name) or {}
+    return _SCORER_CATEGORY_BY_LIBRARY.get(workout.get('category'))
+
+
+def _pick_option(
+    options: List[str],
+    block_number: int,
+    category_weights: Optional[Dict[str, float]] = None,
+    avoid_series: Optional[set] = None,
+    keep_within: Optional[set] = None,
+) -> str:
+    """Deterministic choice from an ordered slot option list.
+
+    Baseline (category_weights and avoid_series both None): rotation by the
+    phase-local block number — BYTE-IDENTICAL to the original selection
+    logic; this fast path must never change.
+
+    New /engine/block paths:
+    - keep_within: hard safety filter applied first (e.g. a VO2 slot may only
+      swap within VO2MAX_TYPES so R02 can never break); skipped if it would
+      empty the pool.
+    - avoid_series: names used by the previous block are filtered out (series
+      rotation across blocks); if every option was used, the full pool is
+      kept — small pools reuse rather than crash.
+    - category_weights: pick the highest race-demand-scored option (ties
+      resolve to the earliest option, i.e. config order); without weights,
+      rotate by block number within the filtered pool.
+    """
+    if not options:
+        raise ValueError('_pick_option requires a non-empty option list')
+    if category_weights is None and avoid_series is None:
+        return options[(block_number - 1) % len(options)]
+    pool = list(options)
+    if keep_within:
+        kept = [n for n in pool if n in keep_within]
+        if kept:
+            pool = kept
+    if avoid_series:
+        fresh = [n for n in pool if n not in avoid_series]
+        if fresh:
+            pool = fresh
+    if category_weights:
+        # max() returns the FIRST maximal element → ties keep config order.
+        return max(pool, key=lambda n: category_weights.get(
+            _demand_category(n), 0))
+    return pool[(block_number - 1) % len(pool)]
+
 
 @functools.lru_cache(maxsize=None)
 def _load_config(filename: str) -> dict:
@@ -78,6 +162,8 @@ def select_workouts_for_week(
     block_number: int = 1,
     discipline: str = 'gravel',
     methodology: str = 'polarized_80_20',
+    category_weights: Optional[Dict[str, float]] = None,
+    avoid_series: Optional[set] = None,
 ) -> List[Dict[str, Any]]:
     """Select workouts for a single week.
 
@@ -92,6 +178,16 @@ def select_workouts_for_week(
         block_number: 1-based block sequence number. Drives rotation through
             intensity/long-ride alternatives so adjacent blocks never repeat
             the same workout names, and the filler level ladder.
+        category_weights: Optional race-demand category scores (0-100 per
+            race_category_scorer category). When present, intensity and
+            long-ride slots pick the highest-scored name from their EXISTING
+            pools instead of rotating. Never widens a pool; week structure,
+            recovery/taper/race templates and fillers are untouched.
+        avoid_series: Optional set of series names used by the previous block
+            (/engine/block previous.seriesUsed). Intensity and long-ride
+            slots prefer pool options NOT in this set; exhausted pools fall
+            back to reuse. Both default to None → selection is byte-identical
+            to the historical rotation behavior.
 
     Returns:
         List of workout dicts: [{'slot': str, 'name': str, 'level': int, 'role': str}]
@@ -178,7 +274,13 @@ def select_workouts_for_week(
                 alternatives.insert(pos, extra)
         if alternatives:
             all_options = [name] + alternatives
-            name = all_options[(block_number - 1) % len(all_options)]
+            # VO2 slots may only swap within VO2 stimulus types on the new
+            # bias/rotation paths — R02 (VO2 every 14 days) must hold no
+            # matter what the race demands or the previous block used.
+            keep = _VO2 if name in _VO2 else None
+            name = _pick_option(all_options, block_number,
+                                category_weights, avoid_series,
+                                keep_within=keep)
 
         workouts.append({
             'slot': slot_name,
@@ -200,7 +302,9 @@ def select_workouts_for_week(
     pool = _METHODOLOGY_SECONDARY.get(methodology)
     if pool:
         from block_compliance import VO2MAX_TYPES
-        pick = pool[(block_number - 1) % len(pool)]  # rotate by block → variety
+        # rotate by block → variety; race demands / previous seriesUsed bias
+        # the pick within the SAME methodology pool (baseline path unchanged)
+        pick = _pick_option(pool, block_number, category_weights, avoid_series)
         for w in workouts:
             if (w['role'] == 'intensity'
                     and w['name'] not in VO2MAX_TYPES
@@ -216,7 +320,8 @@ def select_workouts_for_week(
     long_alternatives = long_slot.get('alternatives', [])
     if long_name and long_alternatives and archetype not in long_slot.get('overrides', {}):
         long_options = [long_name] + long_alternatives
-        long_name = long_options[(block_number - 1) % len(long_options)]
+        long_name = _pick_option(long_options, block_number,
+                                 category_weights, avoid_series)
     if long_name:
         long_level_range = _get_level_range(long_slot, archetype)
         long_level = min(max(level, long_level_range[0]), long_level_range[1])

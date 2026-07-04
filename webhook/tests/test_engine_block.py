@@ -757,6 +757,190 @@ class TestStructuredStrength:
                [w['strength'] for w in r2['weeks']]
 
 
+# =============================================================================
+# RACE DEMAND VECTOR — event-specific selection bias (Phase 2)
+# =============================================================================
+
+class TestRaceDemandVector:
+    """The race{} object is now WIRED: a conservative 8-dim demand vector
+    derived from distance/elevation/discipline biases which archetypes fill
+    the intensity + long-ride slots. No race → byte-identical to before."""
+
+    def test_demand_heuristic_table(self):
+        from engine_adapter import derive_race_demands
+        # Ultra-distance → max durability; unknown dims sit neutral (5).
+        d = derive_race_demands(200, 11000, 'gravel')
+        assert d['durability'] == 10
+        assert d['technical'] == 5   # gravel
+        assert d['vo2_power'] == 5   # no wire signal → neutral
+        assert d['heat_resilience'] == d['altitude'] == 5
+        # Short crit → low durability, road technical floor.
+        d = derive_race_demands(30, 500, 'road')
+        assert d['durability'] == 1
+        assert d['technical'] == 2
+        # MTB is technical-heavy.
+        assert derive_race_demands(40, 4000, 'mtb')['technical'] == 8
+        # Distance bands (race_demand_analyzer parity).
+        assert derive_race_demands(150, 0, 'gravel')['durability'] == 8
+        assert derive_race_demands(100, 0, 'gravel')['durability'] == 6
+        assert derive_race_demands(75, 0, 'gravel')['durability'] == 4
+        assert derive_race_demands(50, 0, 'gravel')['durability'] == 2
+        assert derive_race_demands(10, 0, 'gravel')['durability'] == 1
+
+    def test_demand_climbing_ratio(self):
+        from engine_adapter import derive_race_demands
+        # High ft/mi → steep climbing demand; flat → low.
+        steep = derive_race_demands(60, 12000, 'gravel')   # 200 ft/mi
+        flat = derive_race_demands(100, 1000, 'gravel')    # 10 ft/mi
+        assert steep['climbing'] > flat['climbing']
+        assert steep['climbing'] >= 9
+        assert flat['climbing'] <= 2
+
+    def test_demand_all_dims_clamped_0_10(self):
+        from engine_adapter import derive_race_demands
+        from race_category_scorer import DEMAND_DIMENSIONS
+        for dist, elev, disc in [(350, 90000, 'mtb'), (1, 0, 'road'),
+                                 (None, None, 'gravel'), (131, 11000, 'gravel')]:
+            d = derive_race_demands(dist, elev, disc)
+            assert set(d.keys()) == set(DEMAND_DIMENSIONS)
+            assert all(0 <= v <= 10 for v in d.values())
+
+    def test_no_race_is_byte_identical(self, client):
+        """The determinism-diff pin: adding NO race must not change a byte."""
+        without = _post(client, _payload()).get_json()
+        # Same request, race key absent (default payload has none).
+        again = _post(client, _payload()).get_json()
+        without.pop('engine'); again.pop('engine')
+        assert without == again
+
+    def test_long_distance_race_biases_selection(self, client):
+        """A 131mi durability race changes the intensity/long-ride series vs
+        the identical request with no race (observable selection bias)."""
+        body = _payload()
+        body['athlete'].update({'hours_per_week': 12, 'experience_years': 5})
+        body['block'] = {'phase': 'base', 'weeks': 4,
+                         'start_date': '2026-07-06'}
+        no_race = _post(client, body).get_json()
+        assert no_race['compliance']['passed']
+
+        raced = dict(body)
+        raced['race'] = {'name': 'Big Sugar', 'distance_mi': 131,
+                         'elevation_ft': 11000, 'discipline': 'gravel'}
+        with_race = _post(client, raced).get_json()
+        assert with_race['compliance']['passed']
+        assert with_race['seriesUsed'] != no_race['seriesUsed']
+
+    def test_elevation_ft_field_accepted(self, client):
+        resp = _post(client, _payload(race={
+            'name': 'Steep', 'distance_mi': 80, 'elevation_ft': 14000,
+            'discipline': 'gravel'}))
+        assert resp.status_code == 200
+
+    def test_race_bias_is_deterministic(self, client):
+        body = _payload(race={'name': 'X', 'distance_mi': 200,
+                              'elevation_ft': 11000, 'discipline': 'gravel'})
+        r1 = _post(client, body).get_json()
+        r2 = _post(client, body).get_json()
+        r1.pop('engine'); r2.pop('engine')
+        assert r1 == r2
+
+    def test_garbage_race_fields_do_not_400(self, client):
+        """distance_mi/elevation_ft were always free-form on the frozen
+        contract — bad types are treated as UNKNOWN, never a validation error."""
+        resp = _post(client, _payload(race={
+            'name': 'X', 'distance_mi': 'lots', 'elevation_ft': None,
+            'discipline': 'gravel'}))
+        assert resp.status_code == 200
+
+    def test_extreme_race_never_breaks_compliance(self, client):
+        """Race bias must NEVER violate the R01-R11 gate — sweep extremes
+        across every phase/weeks combination."""
+        for phase in VALID_PHASES:
+            for weeks in (2, 3, 4):
+                for dist, elev in [(1, 0), (350, 90000), (131, 11000)]:
+                    body = _payload()
+                    body['athlete'].update({'hours_per_week': 12,
+                                            'experience_years': 5})
+                    body['block'] = {'phase': phase, 'weeks': weeks,
+                                     'start_date': '2026-07-06'}
+                    body['race'] = {'name': 'X', 'distance_mi': dist,
+                                    'elevation_ft': elev, 'discipline': 'mtb'}
+                    resp = _post(client, body)
+                    assert resp.status_code == 200, (phase, weeks, dist, elev,
+                                                     resp.get_json())
+
+
+# =============================================================================
+# SERIES ROTATION ACROSS BLOCKS (previous.seriesUsed)
+# =============================================================================
+
+class TestSeriesRotation:
+    """previous.seriesUsed is now WIRED: consecutive blocks rotate to
+    alternatives NOT in the previous block's series (intensity + long-ride
+    slots). Exhausted pools reuse rather than crash."""
+
+    def _big(self, **extra):
+        body = _payload()
+        body['athlete'].update({'hours_per_week': 12, 'experience_years': 5})
+        body['block'] = {'phase': 'base', 'weeks': 4,
+                         'start_date': '2026-07-06'}
+        body.update(extra)
+        return body
+
+    def test_rotation_changes_series(self, client):
+        first = _post(client, self._big()).get_json()
+        assert first['compliance']['passed']
+        second = _post(client, self._big(
+            previous={'seriesUsed': first['seriesUsed']})).get_json()
+        assert second['compliance']['passed']
+        # At least one intensity/long-ride series rotates to an alternative.
+        assert second['seriesUsed'] != first['seriesUsed']
+
+    def test_rotation_is_deterministic(self, client):
+        body = self._big(previous={'seriesUsed': [
+            'Threshold Accumulation', 'Endurance with Surges']})
+        r1 = _post(client, body).get_json()
+        r2 = _post(client, body).get_json()
+        r1.pop('engine'); r2.pop('engine')
+        assert r1 == r2
+
+    def test_small_pool_exhaustion_reuses_no_crash(self, client):
+        """When previous.seriesUsed names EVERY option in a slot's pool, the
+        slot reuses (small pools must not raise)."""
+        # Feed a huge exhaustive avoid-list of every intensity/long name.
+        exhaustive = [
+            'VO2max 30/30', 'VO2max 40/20', 'VO2max Extended',
+            'VO2max Steady Intervals', 'VO2 Bookend', 'Threshold Accumulation',
+            'Threshold Progressive', 'Threshold Steady', 'Threshold Touch',
+            'G-Spot', 'Tempo with Accelerations', 'Tempo with Sprints',
+            'Cadence Work', 'Mixed Intervals', 'Mixed Climbing',
+            'Mixed Climbing Variations', 'SFR', 'Microbursts', 'Stomps',
+            'Race Simulation', 'Blended VO2max and G Spot', 'NP/IF Target',
+            'Endurance', 'Endurance Blocks', 'Endurance with Surges',
+        ]
+        resp = _post(client, self._big(previous={'seriesUsed': exhaustive}))
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['compliance']['passed']
+        assert data['seriesUsed']  # still produced a full block
+
+    def test_rotation_preserves_within_block_coherence(self, client):
+        """Rotating in a new series must not break series coherence WITHIN the
+        block (compliance R09 still passes)."""
+        first = _post(client, self._big()).get_json()
+        second = _post(client, self._big(
+            previous={'seriesUsed': first['seriesUsed']})).get_json()
+        assert second['compliance'] == {'passed': True, 'violations': []}
+
+    def test_empty_series_used_is_byte_identical(self, client):
+        """previous with empty seriesUsed == no rotation signal → identical."""
+        base = _post(client, self._big()).get_json()
+        empty = _post(client, self._big(
+            previous={'seriesUsed': []})).get_json()
+        base.pop('engine'); empty.pop('engine')
+        assert base == empty
+
+
 def test_null_methodology_uses_default(client):
     """Explicit null methodology means 'default', not a validation error
     (clients that JSON-serialize optional fields send null — Endure adapter)."""
