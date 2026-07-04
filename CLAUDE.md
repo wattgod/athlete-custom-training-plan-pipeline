@@ -78,7 +78,7 @@ railway.json       <- Railway deploy config (root, NOT webhook/)
 - **Abandoned cart recovery**: 60-min expiry, Stripe-native recovery URL, consent collection, recovery email on `checkout.session.expired`
 - **Session tracking**: Success URLs include `?session_id={CHECKOUT_SESSION_ID}` for GA4 attribution
 - **GA4 funnel**: `begin_checkout` -> Stripe -> `purchase` (with dedup via sessionStorage)
-- **Post-purchase emails**: Day 1 (getting started), Day 3 (check-in), Day 7 (coaching bridge). Triggered via `/api/cron/followup-emails` daily endpoint, fired by `.github/workflows/daily-followup-emails.yml`. Canonical copy lives in `webhook/email_templates.py` — app.py should import `FOLLOWUP_SEQUENCE` from there, not fork it inline.
+- **Post-purchase emails**: Day 1 (getting started), Day 3 (check-in), Day 7 (coaching cross-sell). Triggered via `/api/cron/followup-emails` daily endpoint.
 
 ## Known Pitfalls
 
@@ -97,8 +97,8 @@ The webhook secret doesn't exist until after the webhook endpoint is registered 
 ### PII in logs
 Never log raw email addresses. Use `_mask_email()` for all log output. Railway logs persist and are accessible to anyone with project access.
 
-### Stripe Checkout timeout → async pipeline jobs (July 2026)
-The pipeline takes up to 5 minutes; Stripe expects 2xx within 20 seconds. The webhook now writes a durable job record to `DATA_DIR/jobs/{athlete_id}.json` (queued|running|succeeded|failed, attempt count, error), spawns the pipeline in a background thread, and returns 200 immediately. Job records live on the Railway persistent volume, so `sweep_stuck_jobs()` (runs on startup, hourly via before_request, and via authenticated `POST /api/jobs/sweep`) retries jobs orphaned by a restart mid-generation — max 2 attempts, then status=failed + loud operator email. Customer-facing status: `GET /api/order-status/<session_id-or-athlete_id>` returns ready|processing|unknown and never exposes errors (a failed job reads as "finishing your plan"). `SYNC_PIPELINE=1` restores the old inline path for tests/local debugging. External cron for the sweep endpoint can be wired later (send `X-Cron-Secret`).
+### Stripe Checkout timeout
+The pipeline runs synchronously and takes up to 5 minutes. Stripe expects 2xx within 20 seconds. The response will be late, and Stripe will mark it as "failed" and retry. Retries are caught by idempotency, so processing is correct. But the Stripe dashboard will show failed delivery attempts. Future improvement: run pipeline in a background thread or job queue.
 
 ### Price parity timezone edge case
 JS `new Date()` uses browser timezone, Python `date.today()` uses server timezone (UTC on Railway). At midnight boundaries, week counts can differ by 1. The parity test runs both in the same timezone so it doesn't catch this. Real-world impact is low ($15 difference at week boundaries).
@@ -150,13 +150,11 @@ python3 -m pytest webhook/tests/test_webhook.py -v
 - [x] Set up SMTP env vars in Railway — NOTIFICATION_EMAIL, SMTP_HOST, SMTP_PORT, SMTP_USER, CRON_SECRET all configured
 - [x] Email notifications confirmed working via Resend API (tested 2026-03-31)
 - [x] Removed unauthenticated `/api/test-notification` endpoint (2026-03-31)
-- [x] Daily cron for `/api/cron/followup-emails` — `.github/workflows/daily-followup-emails.yml` (15:00 UTC + manual dispatch, `CRON_SECRET` repo secret set, fails red on non-ok response). Running green since 2026-06-10.
-- [ ] Swap app.py inline `FOLLOWUP_SEQUENCE` for `from email_templates import FOLLOWUP_SEQUENCE` (rewritten copy in `webhook/email_templates.py`)
+- [ ] Set up daily cron to call `/api/cron/followup-emails` (needs external service — Railway cron restarts entire container)
 - [ ] Enable `ENABLE_AUTOMATIC_TAX=true` in Railway (requires Stripe Tax account setup first)
 - [ ] Set up Stripe Customer Portal for subscription management
 - [ ] Custom domain (replace long Railway subdomain)
-- [x] Async pipeline execution (July 2026) — background thread + durable job records + startup/hourly/cron sweep; see "Stripe Checkout timeout" section
-- [ ] Optionally point external cron at `POST /api/jobs/sweep` (X-Cron-Secret) as a third safety net
+- [ ] Consider async pipeline execution to avoid Stripe timeout retries
 - [ ] Rotate Stripe secret key (current key was exposed in Playwriter session)
 
 ## Block-Builder Coaching Engine (April 2026)
@@ -372,9 +370,6 @@ pages counted by `/Type /Page` OBJECTS — the outline `/Count` lies).
 
 #### KNOWN_RACES must come from `known_races.py` (single source of truth)
 Race data was duplicated in `intake_to_plan.py`, `test_athlete_integrity.py`, and race JSON files. When Unbound moved from June 6 to May 30, only one copy was updated. Now: `known_races.py` is the sole source. NEVER define race dates locally.
-
-#### Unknown races must NEVER default to a real race
-`create_profile_from_form.py` once hardcoded `race_id: 'unbound_gravel_200'` — a fondo rider could silently get a 200-mile-gravel-shaped plan. Resolution is `match_race_scored()` (exact/alias/substring, then conservative stdlib fuzzy: score >= 0.85 AND >= 0.05 margin over the runner-up; near-ties like "Unbound Gravel 150" stay UNMATCHED). Unmatched → generic profile from the athlete's own intake (`build_generic_race_profile`), `race_match: {method: none, near_misses}` in profile.yaml, 🚨 UNMATCHED RACE block in coaching_brief.md + pre-delivery checklist. Loud to the coach, invisible to the athlete (verbatim race name, no "not in database" copy in the guide). Tests: `test_race_matching.py`.
 
 #### FTP_Test is an assessment, not a training session
 FTP tests are periodic assessments that skew zone distribution counts. They're excluded from distribution validation via `EXCLUDED_PREFIXES` in `validate_workout_distribution.py` (alongside RACE_DAY and Strength). If you add a new non-training workout type, add it to `EXCLUDED_PREFIXES`.

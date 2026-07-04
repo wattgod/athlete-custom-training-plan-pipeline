@@ -14,26 +14,6 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).parent))
 from constants import DAY_ORDER_FULL, get_athlete_dir
-from known_races import match_race_scored
-
-
-def resolve_race_id(race_name: str) -> tuple:
-    """Resolve a race name to (race_id, race_match_meta).
-
-    Confident match (exact/alias/substring/conservative fuzzy) → the
-    database slug. No confident match → a slug derived from the athlete's
-    own race name, NEVER a default real race (this used to hardcode
-    'unbound_gravel_200', silently shaping every unmatched athlete's plan
-    around a 200-mile gravel ultra). race_match metadata is persisted for
-    the coach-side audit trail (coaching brief + pre-delivery checklist).
-    """
-    if not race_name:
-        return '', None
-    matched, meta = match_race_scored(race_name)
-    if matched:
-        return matched[0].split(':', 1)[-1], meta
-    fallback = re.sub(r'[^a-z0-9]+', '_', race_name.lower()).strip('_')
-    return fallback, meta
 
 
 def generate_athlete_id(name: str) -> str:
@@ -419,11 +399,6 @@ def create_profile_from_form(athlete_id: str, form_data: Dict) -> Dict:
     if not age and form_data.get('age'):
         age = int(form_data['age'])
     
-    # Resolve the target race against the race database — no silent default.
-    _primary_race_name = (primary_race.get('name', '') if primary_race
-                          else form_data.get('race_name', ''))
-    _race_id, _race_match = resolve_race_id(_primary_race_name)
-
     # Generate profile
     profile = {
         'name': form_data.get('name', ''),
@@ -441,8 +416,7 @@ def create_profile_from_form(athlete_id: str, form_data: Dict) -> Dict:
         
         'target_race': {
             'name': primary_race.get('name', '') if primary_race else form_data.get('race_name', ''),
-            'race_id': _race_id,  # matched slug, or slugified athlete name — NEVER a default race
-            'race_match': _race_match,
+            'race_id': 'unbound_gravel_200',  # Default, could be enhanced with race matching
             'date': primary_race.get('date', '') if primary_race else form_data.get('race_date', ''),
             'distance_miles': primary_race.get('distance_miles', 0) if primary_race else (int(form_data.get('race_distance', 0)) if form_data.get('race_distance_unit') == 'miles' else int(form_data.get('race_distance', 0)) * 0.621371 if form_data.get('race_distance') else 0),
             'goal_type': 'compete',  # Default, could parse from success_looks_like

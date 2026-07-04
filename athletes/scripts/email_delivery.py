@@ -32,7 +32,6 @@ class EmailDelivery:
 
     DEFAULT_FROM_EMAIL = "coach@gravelgod.com"
     DEFAULT_FROM_NAME = "Gravel God Coaching"
-    SUBJECT = "Your custom training plan is ready"
 
     def __init__(self):
         self.provider = self._get_provider()
@@ -87,35 +86,33 @@ class EmailDelivery:
         """Build email body (plain text and HTML versions)."""
         first_name = athlete_name.split()[0] if athlete_name else "Athlete"
 
-        plain_text = f"""Hey {first_name},
+        plain_text = f"""Hi {first_name},
 
-Your custom training plan is ready.
+Your custom training plan is ready!
 
 """
         if guide_url:
-            plain_text += f"""Training guide: {guide_url}
+            plain_text += f"""📖 Training Guide: {guide_url}
 
 """
         if has_attachment:
-            plain_text += """Your training guide PDF and workout files are attached.
+            plain_text += """📎 Your training guide PDF and workout files are attached.
 
 """
 
-        plain_text += """The guide covers:
-- Your training philosophy and why it fits you
-- Week-by-week structure
+        plain_text += """The guide includes:
+- Your personalized training philosophy
+- Week-by-week training structure
 - Fueling strategy for race day
-- Race-specific preparation
+- Race-specific preparation tips
 
-One thing to do first: read the phase overview in the guide. Five minutes. It explains why the weeks are built the way they are.
+The ZWO workout files can be imported into Zwift. Simply copy them to your Zwift workouts folder.
 
-The .zwo workout files import into Zwift — copy them to your Zwift workouts folder.
+Let me know if you have any questions!
 
-Questions? Reply to this email. A person reads it.
-
-— Matti
+Best,
+Coach Matt
 Gravel God Coaching
-gravelgodcycling.com
 
 ---
 This email was sent automatically by the Gravel God Training System.
@@ -138,11 +135,11 @@ This email was sent automatically by the Gravel God Training System.
 </head>
 <body>
     <div class="container">
-        <h1>Your training plan is ready</h1>
+        <h1>Your Training Plan is Ready! 🚴</h1>
 
-        <p>Hey {first_name},</p>
+        <p>Hi {first_name},</p>
 
-        <p>Your custom training plan is built and ready.</p>
+        <p>Your custom training plan has been generated and is ready for you.</p>
 """
 
         if guide_url:
@@ -152,27 +149,26 @@ This email was sent automatically by the Gravel God Training System.
 
         if has_attachment:
             html += """
-        <p>Your training guide PDF and workout files are attached to this email.</p>
+        <p>📎 Your training guide PDF and workout files are attached to this email.</p>
 """
 
         html += """
         <div class="features">
-            <strong>The guide covers:</strong>
+            <strong>Your guide includes:</strong>
             <ul>
-                <li>Your training philosophy and why it fits you</li>
-                <li>Week-by-week structure</li>
+                <li>Personalized training philosophy</li>
+                <li>Week-by-week training structure</li>
                 <li>Fueling strategy for race day</li>
-                <li>Race-specific preparation</li>
+                <li>Race-specific preparation tips</li>
             </ul>
         </div>
 
-        <p><strong>Do this first:</strong> read the phase overview in the guide. Five minutes. It explains why the weeks are built the way they are.</p>
+        <p><strong>ZWO Workout Files:</strong> Copy the attached .zwo files to your Zwift workouts folder to use them on the trainer.</p>
 
-        <p><strong>Workout files:</strong> copy the attached .zwo files to your Zwift workouts folder to use them on the trainer.</p>
+        <p>Let me know if you have any questions!</p>
 
-        <p>Questions? Reply to this email. A person reads it.</p>
-
-        <p>— <strong>Matti</strong><br>
+        <p>Best,<br>
+        <strong>Coach Matt</strong><br>
         Gravel God Coaching</p>
 
         <div class="footer">
@@ -217,7 +213,7 @@ This email was sent automatically by the Gravel God Training System.
         message = Mail(
             from_email=from_email,
             to_emails=to_email,
-            subject=self.SUBJECT,
+            subject=f"Your Custom Training Plan is Ready!",
             plain_text_content=plain_text,
             html_content=html
         )
@@ -305,7 +301,7 @@ This email was sent automatically by the Gravel God Training System.
         plain_text, html = self._build_email_body(athlete_name, guide_url)
 
         msg = MIMEMultipart('alternative')
-        msg['Subject'] = self.SUBJECT
+        msg['Subject'] = "Your Custom Training Plan is Ready!"
         msg['From'] = f"{self.DEFAULT_FROM_NAME} <{smtp_user}>"
         msg['To'] = to_email
 
@@ -382,7 +378,7 @@ This email was sent automatically by the Gravel God Training System.
         txt_path = output_dir / f"{timestamp}_{athlete_id}_email.txt"
         with open(txt_path, 'w') as f:
             f.write(f"To: {to_email}\n")
-            f.write(f"Subject: {self.SUBJECT}\n")
+            f.write(f"Subject: Your Custom Training Plan is Ready!\n")
             f.write(f"---\n\n")
             f.write(plain_text)
 

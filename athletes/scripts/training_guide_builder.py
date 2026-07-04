@@ -752,14 +752,9 @@ def _date_verification_card(derived, date_xref) -> str:
                     verify_color = "#8c7568"
                     verify_text = "Race found in database but date could not be cross-referenced"
                 else:
-                    # Unmatched race: neutral, athlete-facing copy — never
-                    # "unknown race" / "not in database" (that reads as "we
-                    # don't know your event"; the coach-side flag lives in
-                    # the coaching brief + pre-delivery checklist).
                     verify_icon = "&#8505;"  # info
                     verify_color = "#8c7568"
-                    verify_text = ("Date from your questionnaire — confirm it "
-                                   "against the official race website")
+                    verify_text = "Race not in database — please verify your date independently"
 
                 date_verification_html = f"""
   <div class="data-card" style="border-left: 4px solid {'#22c55e' if xref.get('date_match') else '#f59e0b'}; margin-top: 16px;">
