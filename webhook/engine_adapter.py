@@ -22,10 +22,16 @@ Design constraints honored here:
   `strengthProtocol` field instead — satisfied by construction, never a
   hard-fail. R08 (fuel tags) likewise auto-passes at plan level; fuelTag is
   emitted on every workout here.
+- ADDITIVE July 2026: each week also carries a structured `strength` object
+  (sessions with day/name/focus/durationMinutes/exercises + avoidSameDayAs)
+  derived from the same strength_periodization.yaml entry that composes the
+  `strengthProtocol` string. Purely additive — no existing field or request
+  validation changed. Shape documented at _structured_strength below.
 - `rationale` is ALWAYS "" — the caller's LLM writes prose later.
 """
 
 import os
+import re
 import sys
 import time
 import functools
@@ -167,9 +173,16 @@ _STRENGTH_PHASE_KEY = {
 }
 
 
-def _strength_protocol(request_phase: str, week_type: str) -> str:
-    key = 'deload' if week_type in ('recovery',) else _STRENGTH_PHASE_KEY.get(
+def _strength_phase_key(request_phase: str, week_type: str) -> str:
+    """Strength periodization phase key for a week (shared by the legacy
+    prose `strengthProtocol` and the structured `strength` object — both
+    MUST derive from the same key so they can never disagree)."""
+    return 'deload' if week_type in ('recovery',) else _STRENGTH_PHASE_KEY.get(
         request_phase, 'maintenance')
+
+
+def _strength_protocol(request_phase: str, week_type: str) -> str:
+    key = _strength_phase_key(request_phase, week_type)
     cfg = _strength_phases().get(key, {})
     label = key.replace('_', ' ').title()
     sets_reps = cfg.get('sets_reps', '')
@@ -180,6 +193,151 @@ def _strength_protocol(request_phase: str, week_type: str) -> str:
     if load and load != 'none':
         return f"{label} — {sets_reps} @ {load}, {freq}"
     return f"{label} — {sets_reps}, {freq}"
+
+
+# ---------------------------------------------------------------------------
+# Structured strength (ADDITIVE contract field, July 2026)
+#
+# Each week additionally carries a machine-readable `strength` object derived
+# from the SAME strength_periodization.yaml phase entry that composes the
+# `strengthProtocol` prose string (which is unchanged for backward compat):
+#
+#     "strength": {
+#       "sessions": [
+#         {"day": "tue" | null,          # contract day key; null = consumer places it
+#          "name": "Maintenance A",       # phase label + session letter
+#          "focus": "maintenance",        # strength periodization phase key
+#          "durationMinutes": 40,         # deterministic estimate
+#          "exercises": [
+#            {"name": "Back Squat",
+#             "sets": 3,                  # null for bodyweight (deload) work
+#             "reps": 5,                  # null for bodyweight (deload) work
+#             "intensityPct": 75}         # %1RM; null when load is "none"
+#          ]}
+#       ],
+#       "avoidSameDayAs": ["threshold", "vo2max"]
+#     }
+#
+# Deterministic parsing rules (ranges in the YAML are prescriptions like
+# "2-3 × 15-20" @ "50-60% 1RM", "2-3x/week"): take the LOWER bound of every
+# range — strength is a parallel track and the engine errs conservative.
+# Day placement: sessions land only on 'filler' days (easy rides / Rest Day)
+# — never on athlete off-days (unavailable), intensity days (YAML rule
+# never_pair_with_key_interval), or the long ride. Sessions are spaced >=2
+# days apart when possible (>=1 otherwise); if the layout can't absorb a
+# session, its day is null and the consumer places it.
+# ---------------------------------------------------------------------------
+
+_STRENGTH_AVOID_SAME_DAY_AS = ['threshold', 'vo2max']
+_SESSION_LETTERS = ['A', 'B', 'C']
+
+
+def _range_low(text: str) -> Optional[int]:
+    """Leading integer of '3' / '2-3' / '15-20'; None if non-numeric."""
+    m = re.match(r'\s*(\d+)', text or '')
+    return int(m.group(1)) if m else None
+
+
+def _parse_sets_reps(sets_reps: str) -> Tuple[Optional[int], Optional[int]]:
+    """'3 × 5' → (3, 5); '2-3 × 15-20' → (2, 15); 'bodyweight only' → (None, None)."""
+    parts = (sets_reps or '').replace('x', '×').split('×')
+    if len(parts) != 2:
+        return None, None
+    return _range_low(parts[0]), _range_low(parts[1])
+
+
+def _parse_intensity_pct(load: str) -> Optional[int]:
+    """'75% 1RM' → 75; '50-60% 1RM' → 50; 'none'/'' → None."""
+    if not load or load == 'none':
+        return None
+    return _range_low(load)
+
+
+def _parse_frequency(freq: str) -> int:
+    """'2-3x/week' → 2; '1x/week' → 1; unparseable → 1."""
+    return _range_low(freq) or 1
+
+
+def _strength_session_days(week_days: List[dict], n: int) -> List[Optional[str]]:
+    """Pick n contract day keys for strength sessions from a built week.
+
+    Candidates are 'filler'-role days only: off days are athlete-unavailable,
+    intensity days are vetoed (never_pair_with_key_interval), and the long
+    ride is the week's key endurance session. Greedy earliest-first with a
+    >=2-day gap, relaxed to >=1 if the week is too tight; unplaceable
+    sessions get day=None (consumer schedules them).
+    """
+    candidate_idx = sorted(
+        DAY_KEYS.index(_ABBREV_DAY[d['day']])
+        for d in week_days if d.get('role') == 'filler'
+    )
+    picked: List[int] = []
+    for gap in (2, 1):
+        picked = []
+        last = -10
+        for idx in candidate_idx:
+            if idx - last >= gap:
+                picked.append(idx)
+                last = idx
+                if len(picked) == n:
+                    break
+        if len(picked) == n:
+            break
+    return [DAY_KEYS[i] for i in picked] + [None] * (n - len(picked))
+
+
+def _structured_strength(request_phase: str, week_type: str,
+                         week_days: List[dict]) -> Dict[str, Any]:
+    """Machine-readable strength prescription for one week (see block comment
+    above for the shape). Derived from the same strength_periodization.yaml
+    entry as the `strengthProtocol` string."""
+    key = _strength_phase_key(request_phase, week_type)
+    cfg = _strength_phases().get(key, {})
+    label = key.replace('_', ' ').title()
+
+    sets, reps = _parse_sets_reps(cfg.get('sets_reps', ''))
+    pct = _parse_intensity_pct(cfg.get('load', ''))
+    n_sessions = _parse_frequency(cfg.get('frequency', ''))
+
+    ex_cfg = cfg.get('exercises') or {}
+    primary = list(ex_cfg.get('primary') or [])
+    secondary = list(ex_cfg.get('secondary') or [])
+    supplementary = list(ex_cfg.get('supplementary') or [])
+
+    days = _strength_session_days(week_days, n_sessions)
+
+    sessions = []
+    for i in range(n_sessions):
+        # Session A: primary lifts + supplementary (core); B: primary +
+        # secondary (accessories); C+: primary only. Deterministic.
+        if i == 0:
+            names = primary + supplementary
+        elif i == 1:
+            names = primary + secondary
+        else:
+            names = list(primary)
+        if not names:  # config gap — still emit an honest empty session
+            names = list(primary)
+        if sets is None:
+            duration = 20  # bodyweight circuit (deload)
+        else:
+            # 10min warmup + ~2.5min per working set, rounded up to 5.
+            raw = 10 + len(names) * sets * 2.5
+            duration = int(-(-raw // 5) * 5)
+        sessions.append({
+            'day': days[i],
+            'name': f"{label} {_SESSION_LETTERS[min(i, len(_SESSION_LETTERS) - 1)]}",
+            'focus': key,
+            'durationMinutes': duration,
+            'exercises': [
+                {'name': nm, 'sets': sets, 'reps': reps, 'intensityPct': pct}
+                for nm in names
+            ],
+        })
+    return {
+        'sessions': sessions,
+        'avoidSameDayAs': list(_STRENGTH_AVOID_SAME_DAY_AS),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -500,6 +658,10 @@ def _map_week(week: dict, number: int, total_weeks: int,
         'type': out_type,
         'workouts': workouts,
         'strengthProtocol': _strength_protocol(request_phase, week_type),
+        # ADDITIVE (July 2026): structured twin of strengthProtocol — same
+        # YAML source, machine-readable. See _structured_strength.
+        'strength': _structured_strength(
+            request_phase, week_type, week.get('days', [])),
         'blockNote': (
             f"{request_phase.capitalize()} block, week {number} of "
             f"{total_weeks} — {out_type} week."

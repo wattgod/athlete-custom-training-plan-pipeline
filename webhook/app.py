@@ -3634,6 +3634,11 @@ def engine_block():
     - 400 invalid request (with field errors)
     - 422 compliance gate CRITICAL failure
     - 500 unexpected
+
+    ADDITIVE July 2026: each response week carries a structured `strength`
+    object (sessions + avoidSameDayAs) alongside the unchanged
+    `strengthProtocol` prose string — see engine_adapter._structured_strength
+    for the shape. No existing fields or request validation changed.
     """
     secret = request.headers.get('X-Engine-Secret', '')
     expected = os.environ.get('ENGINE_SHARED_SECRET', '')
