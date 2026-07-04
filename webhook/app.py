@@ -3594,6 +3594,83 @@ def process_touchpoint_emails():
     return stats
 
 
+@app.route('/api/intel-stats', methods=['GET'])
+@limiter.limit("10/minute")
+def intel_stats():
+    """Last-24h commerce ground truth for the Morning Intel report.
+
+    The report previously inferred orders from GA4 events; this endpoint
+    exposes the actual ledger (/data/.logs) — orders WITH fulfillment
+    outcomes, cart-recovery sends, and questionnaire starts — so a paying
+    customer whose pipeline failed is never invisible.
+
+    Secured by the same X-Cron-Secret as the cron endpoints.
+    """
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not hmac.compare_digest(secret, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    from datetime import timedelta as _td
+    now = datetime.now()
+    cutoff = (now - _td(hours=24)).isoformat()
+    log_dir = Path(DATA_DIR) / '.logs'
+    months = {now.strftime('%Y-%m'),
+              (now.replace(day=1) - _td(days=1)).strftime('%Y-%m')}
+
+    def _monitor(email):
+        e = (email or '').lower()
+        return (not e or 'monitor' in e or 'healthcheck' in e
+                or 'gravelgodcoaching@' in e or 'example.com' in e)
+
+    orders, recoveries = [], []
+    for m in sorted(months):
+        f = log_dir / f'{m}.jsonl'
+        if not f.exists():
+            continue
+        for line in f.read_text().splitlines():
+            try:
+                e = json.loads(line)
+            except (ValueError, TypeError):
+                continue
+            if (e.get('timestamp') or '') < cutoff or _monitor(e.get('email')):
+                continue
+            if e.get('product_type') == 'cart_recovery' or 'recovery_url_sent' in e:
+                recoveries.append({'timestamp': e.get('timestamp'),
+                                   'email': e.get('email'),
+                                   'product': e.get('original_product')})
+            else:
+                orders.append({'timestamp': e.get('timestamp'),
+                               'product_type': e.get('product_type'),
+                               'email': e.get('email'),
+                               'name': e.get('name'),
+                               'success': e.get('success'),
+                               'error': (e.get('error') or '')[:200] or None})
+
+    q_starts = 0
+    for m in sorted(months):
+        f = log_dir / f'questionnaire-starts-{m}.jsonl'
+        if not f.exists():
+            continue
+        for line in f.read_text().splitlines():
+            try:
+                e = json.loads(line)
+            except (ValueError, TypeError):
+                continue
+            if (e.get('timestamp') or e.get('ts') or '') >= cutoff and \
+                    not _monitor(e.get('email')) and e.get('src') != 'health-check':
+                q_starts += 1
+
+    return jsonify({
+        'window_hours': 24,
+        'orders': orders,
+        'failed_orders': [o for o in orders if o.get('success') is False],
+        'recoveries': recoveries,
+        'questionnaire_starts': q_starts,
+    })
+
+
 @app.route('/api/cron/followup-emails', methods=['POST'])
 @limiter.limit("5/minute")
 def cron_followup_emails():
