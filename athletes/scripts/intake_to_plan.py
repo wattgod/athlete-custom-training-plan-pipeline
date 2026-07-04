@@ -2957,11 +2957,7 @@ def copy_to_downloads(athlete_id: str, coaching_brief_md: str) -> Path:
     # If the compliance checks flagged the plan, the order STILL delivered, but
     # emit a machine-readable marker so the webhook can tell the coach "needs
     # review" (vs a clean delivery) and so the coach reviews it first.
-    _review = Path(ATHLETES_DIR) / athlete_id / 'NEEDS_REVIEW.txt' \
-        if 'ATHLETES_DIR' in globals() else None
-    if _review is None:
-        from pathlib import Path as _P
-        _review = _P(__file__).resolve().parent.parent / athlete_id / 'NEEDS_REVIEW.txt'
+    _review = Path(__file__).resolve().parent.parent / athlete_id / 'NEEDS_REVIEW.txt'
     if _review.exists():
         print(f"\n  {YELLOW}{BOLD}NEEDS_REVIEW: plan delivered but flagged by "
               f"auto-checks — review coaching_brief.md before sending.{RESET}")

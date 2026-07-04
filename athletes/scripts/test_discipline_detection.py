@@ -42,6 +42,11 @@ import intake_to_plan
 # --------------------------------------------------------------------------- #
 def _load_webhook_app():
     """Import webhook/app.py (its _questionnaire_to_markdown) by path."""
+    # app.py does `from email_templates import ...` — resolvable only with
+    # the webhook dir on sys.path (it runs with CWD=webhook/ in production).
+    webhook_dir = os.path.join(REPO_ROOT, "webhook")
+    if webhook_dir not in sys.path:
+        sys.path.insert(0, webhook_dir)
     spec = importlib.util.spec_from_file_location(
         "webhook_app_for_test", os.path.join(REPO_ROOT, "webhook", "app.py")
     )

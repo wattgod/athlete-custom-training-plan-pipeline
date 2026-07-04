@@ -578,6 +578,185 @@ class TestAdapterUnits:
         assert 0 <= result['engine']['generated_ms'] < 500
 
 
+# =============================================================================
+# STRUCTURED STRENGTH — additive `strength` field (July 2026)
+# =============================================================================
+
+class TestStructuredStrength:
+    """Additive per-week `strength` object — structured twin of the
+    `strengthProtocol` prose string (same strength_periodization.yaml
+    source). Backward compat: nothing pre-existing may change."""
+
+    OLD_WEEK_KEYS = {'number', 'type', 'workouts', 'strengthProtocol',
+                     'blockNote', 'targetTss', 'targetHours'}
+
+    def _weeks(self, client, **overrides):
+        resp = _post(client, _payload(**overrides))
+        assert resp.status_code == 200, resp.get_json()
+        return resp.get_json()['weeks']
+
+    def test_strength_present_on_every_week_with_protocol(self, client):
+        for phase in VALID_PHASES:
+            for weeks in (2, 3, 4):
+                body = _payload()
+                body['block'].update({'phase': phase, 'weeks': weeks})
+                resp = _post(client, body)
+                assert resp.status_code == 200, (phase, weeks)
+                for week in resp.get_json()['weeks']:
+                    assert week['strengthProtocol']  # every week has one
+                    strength = week['strength']
+                    assert isinstance(strength, dict), (phase, weeks)
+                    assert strength['sessions'], (phase, weeks)
+                    assert strength['avoidSameDayAs'] == [
+                        'threshold', 'vo2max']
+
+    def test_schema_shape(self, client):
+        for week in self._weeks(client):
+            strength = week['strength']
+            assert set(strength.keys()) == {'sessions', 'avoidSameDayAs'}
+            for sess in strength['sessions']:
+                assert set(sess.keys()) == {
+                    'day', 'name', 'focus', 'durationMinutes', 'exercises'}
+                assert sess['day'] is None or sess['day'] in VALID_DAYS
+                assert isinstance(sess['name'], str) and sess['name']
+                assert isinstance(sess['focus'], str) and sess['focus']
+                assert isinstance(sess['durationMinutes'], int)
+                assert sess['durationMinutes'] > 0
+                assert isinstance(sess['exercises'], list)
+                assert sess['exercises']
+                for ex in sess['exercises']:
+                    assert set(ex.keys()) == {
+                        'name', 'sets', 'reps', 'intensityPct'}
+                    assert isinstance(ex['name'], str) and ex['name']
+                    for k in ('sets', 'reps'):
+                        assert ex[k] is None or (
+                            isinstance(ex[k], int) and ex[k] > 0)
+                    assert ex['intensityPct'] is None or (
+                        isinstance(ex['intensityPct'], int)
+                        and 1 <= ex['intensityPct'] <= 100)
+
+    def test_days_avoid_intensity_and_off_days(self, client):
+        """Placed sessions never share a day with an intensity workout, the
+        long ride, or an athlete off-day (off days carry no workout, so a
+        valid day must belong to a non-intensity, non-long-ride workout)."""
+        for phase in VALID_PHASES:
+            body = _payload()
+            body['block']['phase'] = phase
+            resp = _post(client, body)
+            assert resp.status_code == 200, phase
+            for week in resp.get_json()['weeks']:
+                easy_days = {
+                    w['day'] for w in week['workouts']
+                    if not w['isIntensity']
+                    and 'long ride' not in w.get('notes', '')
+                }
+                for sess in week['strength']['sessions']:
+                    if sess['day'] is not None:
+                        assert sess['day'] in easy_days, (
+                            phase, week['number'], sess['day'])
+                        assert sess['day'] != 'mon'  # default off day
+
+    def test_days_respect_custom_off_days(self, client):
+        body = _payload()
+        body['athlete']['availability'] = {
+            'wed': {'available': False},
+            'fri': {'available': False},
+        }
+        resp = _post(client, body)
+        assert resp.status_code == 200
+        for week in resp.get_json()['weeks']:
+            for sess in week['strength']['sessions']:
+                assert sess['day'] not in ('wed', 'fri')
+
+    def test_sessions_spaced_apart(self, client):
+        """When 2+ sessions are placed they never land back-to-back-same-day
+        and keep at least 1 day between them (2 preferred)."""
+        day_idx = {d: i for i, d in enumerate(
+            ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'])}
+        for week in self._weeks(client):
+            placed = sorted(day_idx[s['day']]
+                            for s in week['strength']['sessions']
+                            if s['day'] is not None)
+            assert len(placed) == len(set(placed))  # no double-day
+            for a, b in zip(placed, placed[1:]):
+                assert b - a >= 1
+
+    def test_matches_protocol_phase(self, client):
+        """The structured focus must agree with the prose protocol — both
+        derive from the same YAML phase key."""
+        cases = {
+            'base': 'anatomical_adaptation',
+            'build': 'maintenance',
+            'peak': 'race_prep',
+            'race': 'racing',
+            'recovery': 'deload',
+        }
+        for phase, expected_focus in cases.items():
+            body = _payload()
+            body['block']['phase'] = phase
+            resp = _post(client, body)
+            assert resp.status_code == 200, phase
+            weeks = resp.get_json()['weeks']
+            first = weeks[0]
+            assert all(s['focus'] == expected_focus
+                       for s in first['strength']['sessions']), phase
+            label = expected_focus.replace('_', ' ').title()
+            assert first['strengthProtocol'].startswith(label)
+            # Recovery week inside a load-bearing block always deloads —
+            # string and structure together.
+            for week in weeks:
+                if week['type'] == 'recovery':
+                    assert all(s['focus'] == 'deload'
+                               for s in week['strength']['sessions'])
+                    assert week['strengthProtocol'].startswith('Deload')
+
+    def test_deload_is_bodyweight(self, client):
+        weeks = self._weeks(client, block={'phase': 'recovery', 'weeks': 3,
+                                           'start_date': '2026-07-06'})
+        for week in weeks:
+            for sess in week['strength']['sessions']:
+                for ex in sess['exercises']:
+                    assert ex['sets'] is None
+                    assert ex['reps'] is None
+                    assert ex['intensityPct'] is None
+
+    def test_maintenance_numbers_match_yaml(self, client):
+        """build → maintenance: 3 × 5 @ 75% 1RM, 2x/week (exact YAML pin)."""
+        weeks = self._weeks(client)
+        load_week = weeks[0]
+        sessions = load_week['strength']['sessions']
+        assert len(sessions) == 2  # 2x/week
+        for ex in sessions[0]['exercises']:
+            assert ex['sets'] == 3
+            assert ex['reps'] == 5
+            assert ex['intensityPct'] == 75
+        assert any(ex['name'] == 'Back Squat'
+                   for ex in sessions[0]['exercises'])
+
+    def test_backward_compat_old_fields_untouched(self, client):
+        """`strength` is purely additive: every pre-existing week field is
+        still present with its pre-existing shape, and the top level is
+        unchanged apart from nothing (strength lives inside weeks)."""
+        resp = _post(client, _payload())
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert set(data.keys()) == {
+            'weeks', 'seriesUsed', 'rationale', 'compliance', 'engine'}
+        for week in data['weeks']:
+            assert set(week.keys()) == self.OLD_WEEK_KEYS | {'strength'}
+            assert isinstance(week['strengthProtocol'], str)
+            assert week['strengthProtocol']
+            assert isinstance(week['workouts'], list)
+            assert isinstance(week['targetTss'], int)
+            assert isinstance(week['targetHours'], float)
+
+    def test_deterministic(self, client):
+        r1 = _post(client, _payload()).get_json()
+        r2 = _post(client, _payload()).get_json()
+        assert [w['strength'] for w in r1['weeks']] == \
+               [w['strength'] for w in r2['weeks']]
+
+
 def test_null_methodology_uses_default(client):
     """Explicit null methodology means 'default', not a validation error
     (clients that JSON-serialize optional fields send null — Endure adapter)."""
