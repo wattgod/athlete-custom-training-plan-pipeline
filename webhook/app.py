@@ -3712,6 +3712,11 @@ def engine_block():
     - 422 compliance gate CRITICAL failure
     - 500 unexpected
 
+    The {phase, weeks, start_date} for each block comes from POST
+    /engine/season (see engine_season.py): it types a whole season off
+    calculate_plan_dates and emits a `blocks` array whose entries feed
+    straight into this endpoint.
+
     ADDITIVE July 2026: each response week carries a structured `strength`
     object (sessions + avoidSameDayAs) alongside the unchanged
     `strengthProtocol` prose string — see engine_adapter._structured_strength
@@ -3757,6 +3762,64 @@ def engine_block():
     logger.info(
         f"Engine block generated: phase={params['phase']} weeks={params['weeks']} "
         f"archetype={params['archetype']} methodology={params['methodology']} "
+        f"in {result['engine']['generated_ms']}ms")
+    return jsonify(result)
+
+
+@app.route('/engine/season', methods=['POST'])
+@limiter.limit("60/minute")
+def engine_season():
+    """POST /engine/season — deterministic season/periodization planning.
+
+    Exposes the pipeline's season-planning brain (calculate_plan_dates, the
+    SINGLE SOURCE OF TRUTH for phases, recovery weeks, taper, race week, and
+    the B/C-race mini-taper overlay). Given an athlete, a race schedule (>=1
+    A-race), and a start date, it returns a week-by-week season with phases
+    and 2-4-week blocks that feed straight into /engine/block. Contract is
+    FROZEN (see engine_season.py):
+    - Auth: X-Engine-Secret vs ENGINE_SHARED_SECRET (503 unset, 401 mismatch)
+    - 400 invalid request (with field errors)
+    - 500 unexpected
+    """
+    secret = request.headers.get('X-Engine-Secret', '')
+    expected = os.environ.get('ENGINE_SHARED_SECRET', '')
+    if not expected:
+        return jsonify({'error': 'ENGINE_SHARED_SECRET not configured'}), 503
+    if not hmac.compare_digest(secret, expected):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    payload = request.get_json(silent=True)
+    if payload is None:
+        return jsonify({'error': 'invalid_request',
+                        'fields': {'body': 'Request body must be JSON'}}), 400
+
+    try:
+        from engine_season import (
+            validate_request as season_validate,
+            generate_season as season_generate,
+            SeasonBuildError,
+        )
+    except Exception as e:
+        logger.exception(f"Engine season import failed: {e}")
+        return jsonify({'error': 'Internal error'}), 500
+
+    params, field_errors = season_validate(payload)
+    if field_errors:
+        return jsonify({'error': 'invalid_request', 'fields': field_errors}), 400
+
+    try:
+        result = season_generate(params)
+    except SeasonBuildError as sbe:
+        logger.warning(f"Engine season build rejected: {sbe.fields}")
+        return jsonify({'error': 'invalid_request', 'fields': sbe.fields}), 400
+    except Exception as e:
+        logger.exception(f"Engine season generation failed: {e}")
+        return jsonify({'error': 'Internal error'}), 500
+
+    logger.info(
+        f"Engine season generated: weeks={len(result['weeks'])} "
+        f"blocks={len(result['blocks'])} anchor={params['anchor']['name']} "
+        f"methodology={params['methodology']} "
         f"in {result['engine']['generated_ms']}ms")
     return jsonify(result)
 
