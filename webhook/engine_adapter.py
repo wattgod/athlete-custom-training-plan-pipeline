@@ -64,6 +64,7 @@ from block_compliance import (  # noqa: E402
     validate_plan,
     INTENSITY_TYPES,
 )
+from race_category_scorer import calculate_category_scores  # noqa: E402
 
 import yaml  # noqa: E402
 
@@ -137,6 +138,146 @@ MAX_HOURS_BY_LEVEL = {1: 14, 2: 14, 3: 14, 4: 16, 5: 17, 6: 19}
 # Names that are rest-ish → fuelTag 'none' (mirrors the keyword veto in
 # generate_athlete_package._get_fuel_tag_for_type).
 _NO_FUEL_KEYWORDS = ('recovery', 'easy', 'shakeout', 'rest', 'openers', 'off')
+
+
+# ---------------------------------------------------------------------------
+# Race demand vector (Phase 2) — event-specific selection bias
+#
+# /engine/block receives race METADATA (name/date/distance_mi/discipline and,
+# new, elevation_ft) rather than a known-race slug, so the 8-dim demand
+# vector is derived from conservative heuristics instead of the full
+# gravel-race-automation race_demand_analyzer (whose distance/threshold bands
+# are mirrored here — consumer-copy parity notes in race_pack_generator.py).
+# Dimensions with no wire signal sit at the NEUTRAL midpoint 5, so unknown
+# data never pushes selection anywhere.
+#
+# HEURISTIC TABLE (all values clamped to 0-10 integers):
+#
+#   dimension        | source                     | rule
+#   -----------------|----------------------------|--------------------------
+#   durability       | distance_mi                | >=200 -> 10, >=150 -> 8,
+#                    |  (race_demand_analyzer     | >=100 -> 6, >=75 -> 4,
+#                    |   parity bands)            | >=50 -> 2, >0 -> 1;
+#                    |                            | unknown -> 5
+#   climbing         | elevation_ft / distance_mi | ft/mi >=175 -> 9,
+#                    |                            | >=125 -> 8, >=90 -> 6,
+#                    |                            | >=60 -> 5, >=35 -> 3,
+#                    |                            | else 2; elevation without
+#                    |                            | distance -> round(ft/2500)
+#                    |                            | clamped 1-8; unknown -> 5
+#   vo2_power        | (no wire signal)           | 5
+#   threshold        | distance_mi (+climbing)    | 75-150 -> 7, 50-<75 -> 5,
+#                    |  (analyzer parity bands)   | >150 -> 4, <50 -> 3;
+#                    |                            | +1 if climbing >= 6;
+#                    |                            | unknown -> 5
+#   technical        | discipline                 | mtb -> 8, gravel -> 5,
+#                    |                            | road -> 2
+#   heat_resilience  | (no wire signal)           | 5
+#   altitude         | (no wire signal)           | 5
+#   race_specificity | (no wire signal)           | 5
+#
+# The vector maps to workout-category weights via the existing
+# race_category_scorer weight matrix; those weights bias which names fill
+# the intensity/long-ride slots (workout_selector._pick_option). The bias
+# only re-orders EXISTING slot pools — it never widens a pool, never touches
+# week structure, and the R01-R11 compliance gate still runs unchanged.
+# ---------------------------------------------------------------------------
+
+_DEMAND_NEUTRAL = 5
+
+
+def _clamp10(v: float) -> int:
+    return max(0, min(10, int(round(v))))
+
+
+def derive_race_demands(distance_mi: Optional[float],
+                        elevation_ft: Optional[float],
+                        discipline: str) -> Dict[str, int]:
+    """Conservative 8-dim demand vector from race metadata (table above)."""
+    demands: Dict[str, int] = {
+        'vo2_power': _DEMAND_NEUTRAL,
+        'heat_resilience': _DEMAND_NEUTRAL,
+        'altitude': _DEMAND_NEUTRAL,
+        'race_specificity': _DEMAND_NEUTRAL,
+    }
+
+    # durability — race_demand_analyzer distance bands
+    if distance_mi is None:
+        demands['durability'] = _DEMAND_NEUTRAL
+    elif distance_mi >= 200:
+        demands['durability'] = 10
+    elif distance_mi >= 150:
+        demands['durability'] = 8
+    elif distance_mi >= 100:
+        demands['durability'] = 6
+    elif distance_mi >= 75:
+        demands['durability'] = 4
+    elif distance_mi >= 50:
+        demands['durability'] = 2
+    else:
+        demands['durability'] = 1
+
+    # climbing — elevation/distance ratio (ft per mile)
+    if elevation_ft is None:
+        demands['climbing'] = _DEMAND_NEUTRAL
+    elif distance_mi:
+        ratio = elevation_ft / distance_mi
+        if ratio >= 175:
+            demands['climbing'] = 9
+        elif ratio >= 125:
+            demands['climbing'] = 8
+        elif ratio >= 90:
+            demands['climbing'] = 6
+        elif ratio >= 60:
+            demands['climbing'] = 5
+        elif ratio >= 35:
+            demands['climbing'] = 3
+        else:
+            demands['climbing'] = 2
+    else:
+        demands['climbing'] = max(1, min(8, _clamp10(elevation_ft / 2500)))
+
+    # threshold — analyzer distance bands + climbing boost
+    if distance_mi is None:
+        demands['threshold'] = _DEMAND_NEUTRAL
+    else:
+        if 75 <= distance_mi <= 150:
+            thr = 7
+        elif 50 <= distance_mi < 75:
+            thr = 5
+        elif distance_mi > 150:
+            thr = 4
+        else:
+            thr = 3
+        if demands['climbing'] >= 6:
+            thr += 1
+        demands['threshold'] = _clamp10(thr)
+
+    # technical — discipline heuristic
+    demands['technical'] = {'mtb': 8, 'gravel': 5, 'road': 2}.get(
+        discipline, _DEMAND_NEUTRAL)
+
+    return demands
+
+
+def _race_category_weights(race: Optional[Dict[str, Any]],
+                           discipline: str) -> Optional[Dict[str, int]]:
+    """race request object → workout-category weights (None when no race).
+
+    LENIENT on field types: the race object always accepted arbitrary shapes
+    (the contract is frozen; distance_mi was read-but-unused before Phase 2),
+    so a non-numeric distance/elevation is treated as UNKNOWN — never a 400.
+    """
+    if not isinstance(race, dict):
+        return None
+
+    dist = race.get('distance_mi')
+    dist = float(dist) if (_is_num(dist) and dist > 0) else None
+    elev = race.get('elevation_ft')
+    elev = float(elev) if (_is_num(elev) and elev >= 0) else None
+
+    demands = derive_race_demands(dist, elev, discipline)
+    return calculate_category_scores(demands) or None
 
 
 class ComplianceFailure(Exception):
@@ -488,6 +629,7 @@ def validate_request(payload: Any) -> Tuple[Dict[str, Any], Dict[str, str]]:
     # ---- previous (optional progression seed) ------------------------------
     previous = payload.get('previous')
     prev_levels: List[int] = []
+    prev_series: List[str] = []
     if previous is not None:
         if not isinstance(previous, dict):
             errors['previous'] = 'Must be an object when provided'
@@ -497,6 +639,8 @@ def validate_request(payload: Any) -> Tuple[Dict[str, Any], Dict[str, str]]:
                     not isinstance(series_used, list)
                     or not all(isinstance(s, str) for s in series_used)):
                 errors['previous.seriesUsed'] = 'Must be a list of strings'
+            elif series_used:
+                prev_series = [s for s in series_used if s]
             levels = previous.get('levels')
             if levels is not None:
                 if not isinstance(levels, dict) or not all(
@@ -550,6 +694,10 @@ def validate_request(payload: Any) -> Tuple[Dict[str, Any], Dict[str, str]]:
     # recovery ratio to pass R03 at high volume).
     phase_block_start = max(2, starting_level)
 
+    # Race demand vector → workout-category weights (None when no race →
+    # selection byte-identical to today). Never raises for odd race fields.
+    category_weights = _race_category_weights(race, discipline)
+
     params.update({
         'phase': phase,
         'weeks': weeks,
@@ -565,6 +713,9 @@ def validate_request(payload: Any) -> Tuple[Dict[str, Any], Dict[str, str]]:
         'long_ride_day': long_ride_day,
         'starting_level': starting_level,
         'phase_block_start': phase_block_start,
+        # Phase 2 selection bias (both None/empty → historical behavior):
+        'category_weights': category_weights,
+        'avoid_series': set(prev_series) or None,
     })
     return params, errors
 
@@ -694,6 +845,8 @@ def _build_and_gate(params: Dict[str, Any],
         day_caps=params['day_caps'],
         methodology=params['methodology'],
         phase_block_start=max(2, starting_level),
+        category_weights=params.get('category_weights'),
+        avoid_series=params.get('avoid_series'),
     )
 
     compliance_raw = validate_plan(
