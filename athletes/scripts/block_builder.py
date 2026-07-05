@@ -161,6 +161,7 @@ def build_calendar_week(
     methodology: str = 'polarized_80_20',
     category_weights: Dict[str, float] = None,
     avoid_series: set = None,
+    methodology_profile: Dict[str, Any] = None,
 ) -> Dict[str, Any]:
     """Build one week whose type and phase come from the calendar (plan_dates).
 
@@ -168,9 +169,9 @@ def build_calendar_week(
     the caller (build_plan_from_calendar) supplies week_type per week from
     plan_dates.yaml, the single source of scheduling truth.
 
-    category_weights / avoid_series (both optional, default None → behavior
-    unchanged) bias WHICH names fill the intensity/long-ride slots — see
-    workout_selector.select_workouts_for_week.
+    category_weights / avoid_series / methodology_profile (all optional,
+    default None → behavior unchanged) bias WHICH names fill the
+    intensity/long-ride slots — see workout_selector.select_workouts_for_week.
     """
     if off_days is None:
         off_days = ['Mon']
@@ -198,6 +199,7 @@ def build_calendar_week(
         methodology=methodology,
         category_weights=category_weights,
         avoid_series=avoid_series,
+        methodology_profile=methodology_profile,
     )
     week['block_number'] = block_number
     return week
@@ -298,6 +300,7 @@ def _build_week(
     methodology: str = 'polarized_80_20',
     category_weights: Dict[str, float] = None,
     avoid_series: set = None,
+    methodology_profile: Dict[str, Any] = None,
 ) -> Dict[str, Any]:
     """Build a single week with day-by-day workout assignments."""
 
@@ -316,6 +319,7 @@ def _build_week(
         methodology=methodology,
         category_weights=category_weights,
         avoid_series=avoid_series,
+        methodology_profile=methodology_profile,
     )
 
     # Organize menu by role

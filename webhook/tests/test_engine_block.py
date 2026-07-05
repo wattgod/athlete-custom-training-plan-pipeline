@@ -187,10 +187,11 @@ class TestHappyPath:
         assert resp.status_code == 200
 
     def test_methodology_variants_all_generate(self, client):
-        # NOTE: methodology emphasis only swaps the secondary (non-VO2,
-        # non-discipline) intensity slot; in configs where both slots are
-        # protected the selections legitimately coincide. All four must
-        # generate and be individually deterministic.
+        # NOTE: an explicit methodology engages its selection profile
+        # (methodology_profiles.yaml) so the four methods deliver different
+        # zone/intensity mixes — distribution assertions live in
+        # TestMethodologyDifferentiation. Here: all four must generate and
+        # be individually deterministic.
         for m in ['polarized_80_20', 'time_crunched', 'g_spot',
                   'traditional_pyramidal']:
             r1 = _post(client, _payload(methodology=m))
@@ -946,3 +947,164 @@ def test_null_methodology_uses_default(client):
     (clients that JSON-serialize optional fields send null — Endure adapter)."""
     resp = _post(client, _payload(methodology=None))
     assert resp.status_code == 200, resp.get_json()
+
+
+# =============================================================================
+# METHODOLOGY DIFFERENTIATION (convergence Phase 2, decision B)
+# =============================================================================
+
+class TestMethodologyDifferentiation:
+    """An EXPLICIT request methodology engages its selection profile
+    (athletes/config/methodology_profiles.yaml): category-weight multipliers
+    that combine (multiply) with race-demand weights at the _pick_option
+    seam. Two methodologies must produce measurably different zone/intensity
+    distributions for the same athlete request, every methodology must pass
+    the compliance gate, and methodology absent/null must stay byte-identical
+    to the historical default selection."""
+
+    ALL_METHODOLOGIES = ['polarized_80_20', 'time_crunched', 'g_spot',
+                         'traditional_pyramidal']
+    # Name→family sets mirror workout_library categories via the scorer
+    # taxonomy: sweet-spot family = category ∈ {G_Spot, Tempo, TT_Threshold};
+    # VO2 family = category ∈ {VO2max, Anaerobic_Capacity} (the library's
+    # anaerobic stimulus lives inside the VO2-classed names).
+    SWEET_SPOT_FAMILY = {
+        'G-Spot', 'Threshold Touch', 'Threshold Steady',
+        'Threshold Accumulation', 'Threshold Progressive',
+        'Tempo', 'Tempo with Accelerations', 'Tempo with Sprints',
+    }
+    VO2_FAMILY = {
+        'VO2max 30/30', 'VO2max 40/20', 'VO2max Extended',
+        'VO2max Steady Intervals',
+    }
+
+    def _block(self, client, methodology, phase='build', weeks=4, **extra):
+        body = _payload(methodology=methodology)
+        body['block'] = {'phase': phase, 'weeks': weeks,
+                         'start_date': '2026-07-06'}
+        body.update(extra)
+        resp = _post(client, body)
+        assert resp.status_code == 200, (methodology, phase, resp.get_json())
+        return resp.get_json()
+
+    def _family_counts(self, data):
+        names = [wo['coachName'] for wk in data['weeks']
+                 for wo in wk['workouts'] if wo['isIntensity']]
+        sweet = sum(1 for n in names if n in self.SWEET_SPOT_FAMILY)
+        vo2 = sum(1 for n in names if n in self.VO2_FAMILY)
+        return sweet, vo2
+
+    # ---- THE acceptance assertion ------------------------------------------
+
+    def test_gspot_vs_polarized_measurably_different(self, client):
+        """Same athlete request under g_spot vs polarized_80_20: g_spot has
+        STRICTLY more sweet-spot-family selections, polarized STRICTLY more
+        VO2-family, zero compliance violations in both."""
+        for phase in ('base', 'build', 'peak'):
+            pol = self._block(client, 'polarized_80_20', phase=phase)
+            gsp = self._block(client, 'g_spot', phase=phase)
+            assert pol['compliance'] == {'passed': True, 'violations': []}
+            assert gsp['compliance'] == {'passed': True, 'violations': []}
+            pol_sweet, pol_vo2 = self._family_counts(pol)
+            gsp_sweet, gsp_vo2 = self._family_counts(gsp)
+            assert gsp_sweet > pol_sweet, (
+                f"{phase}: g_spot sweet {gsp_sweet} <= polarized {pol_sweet}")
+            assert pol_vo2 > gsp_vo2, (
+                f"{phase}: polarized vo2 {pol_vo2} <= g_spot {gsp_vo2}")
+
+    def test_pyramidal_delivers_tempo(self, client):
+        data = self._block(client, 'traditional_pyramidal')
+        names = {wo['coachName'] for wk in data['weeks']
+                 for wo in wk['workouts'] if wo['isIntensity']}
+        assert any('Tempo' in n for n in names), names
+
+    def test_time_crunched_intensity_stays_short(self, client):
+        """Duration-capped picks: even seeded at a high progression level,
+        time_crunched never selects the long-form intensity names the cap
+        excludes (VO2 Bookend 109-197min, big blended rides 104-216min)."""
+        long_forms = {'VO2 Bookend', 'Blended 30/30 and SFR',
+                      'Blended Endurance, Threshold, and Sprints',
+                      'Buffer Workout'}
+        for prev in (None, {'levels': {'a': 3}}, {'levels': {'a': 5}}):
+            extra = {'previous': prev} if prev else {}
+            data = self._block(client, 'time_crunched', **extra)
+            names = {wo['coachName'] for wk in data['weeks']
+                     for wo in wk['workouts'] if wo['isIntensity']}
+            assert not (names & long_forms), (prev, names)
+
+    # ---- compliance gate holds for every methodology × phase × weeks -------
+
+    def test_every_methodology_phase_weeks_combo_passes_gate(self, client):
+        for m in self.ALL_METHODOLOGIES:
+            for phase in VALID_PHASES:
+                for weeks in (2, 3, 4):
+                    data = self._block(client, m, phase=phase, weeks=weeks)
+                    assert data['compliance'] == {
+                        'passed': True, 'violations': []}, (m, phase, weeks)
+
+    def test_profiles_and_race_demands_combine_compliantly(self, client):
+        race = {'name': 'X', 'distance_mi': 131, 'elevation_ft': 11000,
+                'discipline': 'gravel'}
+        for m in self.ALL_METHODOLOGIES:
+            data = self._block(client, m, race=race)
+            assert data['compliance'] == {'passed': True, 'violations': []}, m
+
+    # ---- pinning: absent/null methodology is the historical default --------
+
+    def test_absent_and_null_methodology_byte_identical(self, client):
+        body_absent = _payload()
+        body_null = _payload(methodology=None)
+        r1 = _post(client, body_absent).get_json()
+        r2 = _post(client, body_null).get_json()
+        r1.pop('engine'); r2.pop('engine')
+        assert r1 == r2
+
+    def test_absent_methodology_engages_no_profile(self, client):
+        """Unit pin: no request methodology → methodology_profile None →
+        the selection code path is the pre-profile fast path (byte-identical
+        default behavior). Explicit methodology → profile engaged."""
+        import engine_adapter
+        params, errors = engine_adapter.validate_request(_payload())
+        assert not errors
+        assert params['methodology'] == 'polarized_80_20'
+        assert params['methodology_profile'] is None
+        params, errors = engine_adapter.validate_request(
+            _payload(methodology=None))
+        assert not errors
+        assert params['methodology_profile'] is None
+        params, errors = engine_adapter.validate_request(
+            _payload(methodology='g_spot'))
+        assert not errors
+        assert params['methodology_profile'] is not None
+        assert params['methodology_profile']['category_weights']['G_Spot'] == 3.0
+
+    def test_explicit_methodology_changes_selection_vs_default(self, client):
+        """Decision B in one assertion: naming a methodology changes the
+        delivered names for the same request (it is not just copy)."""
+        base = _post(client, _payload()).get_json()
+        gsp = _post(client, _payload(methodology='g_spot')).get_json()
+        assert base['seriesUsed'] != gsp['seriesUsed']
+
+    def test_methodology_response_shape_unchanged(self, client):
+        """Selection-level only: the contract response shape is identical
+        with and without an explicit methodology."""
+        base = _post(client, _payload()).get_json()
+        gsp = _post(client, _payload(methodology='g_spot')).get_json()
+        assert set(base.keys()) == set(gsp.keys())
+        for wk_b, wk_g in zip(base['weeks'], gsp['weeks']):
+            assert set(wk_b.keys()) == set(wk_g.keys())
+            for wo in wk_g['workouts']:
+                assert {'day', 'coachName', 'durationMinutes', 'estimatedTss',
+                        'fuelTag', 'isIntensity'} <= set(wo.keys())
+
+    def test_unhashable_methodology_is_field_error_not_500(self, client):
+        resp = _post(client, _payload(methodology={'name': 'polarized'}))
+        assert resp.status_code == 400
+        assert 'methodology' in resp.get_json()['fields']
+
+    def test_explicit_methodology_is_deterministic(self, client):
+        for m in self.ALL_METHODOLOGIES:
+            r1 = _post(client, _payload(methodology=m)).get_json()
+            r2 = _post(client, _payload(methodology=m)).get_json()
+            r1.pop('engine'); r2.pop('engine')
+            assert r1 == r2, m

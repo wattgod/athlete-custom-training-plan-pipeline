@@ -1,0 +1,147 @@
+# Methodology Profiles — per-methodology selection bias for /engine/block
+# (convergence Phase 2, decision B: methods change the DELIVERED plan).
+#
+# Each profile contributes category-weight MULTIPLIERS over the same
+# race_category_scorer categories that race-demand weights use. They bias
+# which names fill the intensity / long-ride slots via
+# workout_selector._pick_option — the same seam race demands use.
+#
+# COMBINATION RULE (with race-demand weights): MULTIPLY.
+#     combined[cat] = race_weight.get(cat, 0) * profile_weight.get(cat, 1.0)
+# Why multiply, not sum:
+#   - race weights are normalized 0-100, profile weights are relative
+#     multipliers around 1.0 — summing would need scale normalization and a
+#     large race score would swamp a deliberate methodology de-emphasis.
+#   - multiplying preserves BOTH orderings: among categories the methodology
+#     favors, the race still differentiates; a near-zero profile weight acts
+#     as a soft methodology veto that event demands cannot override
+#     (philosophy > event, matching the render-time methodology veto).
+#   - a category the race scored 0 stays 0 (event demand is a hard prior);
+#     with no race in the request, the profile weights apply alone.
+#
+# GUARANTEES (enforced by construction + the compliance gate):
+#   - Profiles only RE-ORDER existing slot pools. They never widen a pool,
+#     never touch week rhythm, off days, budgets, or the long-ride slot's
+#     existence/duration logic.
+#   - VO2 slots keep their keep_within=VO2MAX_TYPES hard filter, so R02
+#     (VO2 stimulus every 14 days) holds under every profile.
+#   - Profiles are engaged ONLY when the request names a methodology
+#     explicitly. methodology absent/null keeps the historical default
+#     selection byte-identical.
+#
+# Weight semantics: 1.0 = neutral (unlisted categories default to 1.0),
+# >1.0 = methodology signature work, <1.0 = de-emphasized, ~0.1 = soft veto.
+#
+# max_intensity_duration_min (time_crunched): intensity-slot picks drop pool
+# options whose library duration at the block's base level exceeds the cap
+# (filter is skipped if it would empty the pool). Evaluated at the block's
+# BASE level so every load week of a block picks the same name (R14 series
+# coherence). Long rides are exempt — structure must not change.
+
+profiles:
+  # 80/20 polarized: the hard days are HARD (VO2 / anaerobic), everything
+  # else is strictly Z1-Z2. Tempo and sweet-spot are the "moderate trap"
+  # this methodology exists to avoid — soft-vetoed.
+  polarized_80_20:
+    category_weights:
+      VO2max: 3.0
+      Anaerobic_Capacity: 2.5
+      Sprint_Neuromuscular: 1.5
+      # microbursts are VO2-range surges but count as discipline signature
+      # work — kept below Blended so the swap-eligible pick wins the slot
+      Gravel_Specific: 1.2
+      Critical_Power: 1.5
+      Blended: 1.4              # Mixed Intervals etc. carry VO2 stimulus
+      HVLI_Extended: 1.3
+      LT1_MAF: 1.3
+      Endurance: 1.2
+      Cadence_Work: 1.0
+      Durability: 1.0
+      Mixed_Climbing: 0.8
+      SFR_Muscle_Force: 0.8
+      Race_Simulation: 0.7
+      Norwegian_Double: 0.5
+      TT_Threshold: 0.5
+      Over_Under: 0.4
+      Tempo: 0.15
+      G_Spot: 0.15
+
+  # Sweet-spot ("g spot"): signature work is G-Spot / tempo / threshold;
+  # the long ride may carry a race-pace/tempo target (NP/IF Target is the
+  # library's tempo-carrying long ride). VO2 stays for compliance but is
+  # de-emphasized everywhere a pool allows a sweet-spot-family swap.
+  g_spot:
+    category_weights:
+      G_Spot: 3.0
+      TT_Threshold: 2.5
+      Tempo: 2.2
+      Over_Under: 2.0
+      Race_Simulation: 1.6      # NP/IF Target long rides (tempo segments)
+      Norwegian_Double: 1.5
+      Blended: 1.2
+      SFR_Muscle_Force: 1.2
+      Mixed_Climbing: 1.1
+      Cadence_Work: 0.9
+      Endurance: 0.9
+      VO2max: 0.8
+      Critical_Power: 0.8
+      Gravel_Specific: 0.8
+      Durability: 0.7
+      HVLI_Extended: 0.7
+      LT1_MAF: 0.6
+      Anaerobic_Capacity: 0.5
+      Sprint_Neuromuscular: 0.5
+
+  # Time-crunched: shorter, denser sessions. High intensity share within the
+  # compliance rules; long extensive work (HVLI, big blended durability
+  # rides) is de-emphasized AND intensity picks are duration-capped.
+  time_crunched:
+    max_intensity_duration_min: 75
+    category_weights:
+      VO2max: 2.2
+      Anaerobic_Capacity: 1.8
+      Blended: 1.6
+      TT_Threshold: 1.6
+      G_Spot: 1.4
+      Gravel_Specific: 1.3
+      Race_Simulation: 1.2
+      Sprint_Neuromuscular: 1.2
+      Critical_Power: 1.2
+      Over_Under: 1.0
+      Mixed_Climbing: 0.9
+      SFR_Muscle_Force: 0.9
+      Tempo: 0.8
+      Cadence_Work: 0.8
+      Norwegian_Double: 0.8
+      Endurance: 0.8
+      Durability: 0.5
+      LT1_MAF: 0.4
+      HVLI_Extended: 0.3
+
+  # Traditional pyramidal: broad spread with a threshold-heavy middle —
+  # tempo present, threshold emphasized, less VO2 than polarized (the VO2
+  # compliance slot still fires, but nothing else drifts VO2-ward).
+  traditional_pyramidal:
+    category_weights:
+      Tempo: 2.5
+      TT_Threshold: 2.2
+      Over_Under: 1.6
+      SFR_Muscle_Force: 1.4
+      # kept at neutral: Mixed Climbing Variations is discipline signature
+      # work (swap-protected) — outranking Race Simulation with it would
+      # block the tempo swap from landing
+      Mixed_Climbing: 1.0
+      G_Spot: 1.2
+      Durability: 1.2
+      Endurance: 1.2
+      Race_Simulation: 1.1
+      Cadence_Work: 1.0
+      HVLI_Extended: 1.0
+      Norwegian_Double: 1.0
+      Blended: 0.9
+      Gravel_Specific: 0.9
+      LT1_MAF: 0.9
+      Critical_Power: 0.8
+      VO2max: 0.6
+      Sprint_Neuromuscular: 0.6
+      Anaerobic_Capacity: 0.4

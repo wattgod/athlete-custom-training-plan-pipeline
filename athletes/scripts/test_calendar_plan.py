@@ -566,3 +566,202 @@ class TestSelectionBiasSeam:
         from workout_selector import _pick_option
         with pytest.raises(ValueError):
             _pick_option([], 1)
+
+
+class TestMethodologyProfiles:
+    """Phase 2 decision B: methodology profiles (methodology_profiles.yaml)
+    contribute category-weight multipliers that COMBINE (multiply) with
+    race-demand weights at the _pick_option seam, so an explicit methodology
+    changes the DELIVERED zone/intensity mix — not just copy. Profile None
+    (the default, and the legacy full-season path) is byte-identical to the
+    historical selection."""
+
+    ENGINE_METHODOLOGIES = ('polarized_80_20', 'time_crunched', 'g_spot',
+                            'traditional_pyramidal')
+    SWEET_FAMILY = {'G_Spot', 'Tempo', 'TT_Threshold'}
+    VO2_FAMILY = {'VO2max', 'Anaerobic_Capacity'}
+
+    def _plan(self, methodology, with_profile=True, **overrides):
+        from workout_selector import load_methodology_profile
+        kwargs = dict(
+            week_descriptors=_jesse_descriptors(), archetype='specialist',
+            max_level=6, max_intensity=3, off_days=['Sun'],
+            long_ride_day='Sat', hours_per_week=8, methodology=methodology)
+        if with_profile:
+            kwargs['methodology_profile'] = load_methodology_profile(methodology)
+        kwargs.update(overrides)
+        return build_plan_from_calendar(**kwargs)
+
+    def _family_counts(self, plan):
+        from workout_selector import _demand_category
+        sweet = vo2 = 0
+        for w in plan['weeks']:
+            if w.get('week_type') != 'load':
+                continue
+            for d in w['days']:
+                if d.get('role') != 'intensity':
+                    continue
+                cat = _demand_category(d['name'])
+                if cat in self.SWEET_FAMILY:
+                    sweet += 1
+                elif cat in self.VO2_FAMILY:
+                    vo2 += 1
+        return sweet, vo2
+
+    # ---- config sanity ----------------------------------------------------
+
+    def test_profiles_exist_for_all_engine_methodologies(self):
+        from workout_selector import load_methodology_profile
+        for m in self.ENGINE_METHODOLOGIES:
+            profile = load_methodology_profile(m)
+            assert profile and profile.get('category_weights'), m
+
+    def test_unknown_methodology_has_no_profile(self):
+        from workout_selector import load_methodology_profile
+        assert load_methodology_profile('crossfit_only') is None
+
+    def test_profile_categories_are_known_scorer_categories(self):
+        """A typo'd category would silently never bias anything — every
+        profile key must exist in the race_category_scorer taxonomy."""
+        from workout_selector import load_methodology_profile
+        from race_category_scorer import DEMAND_TO_CATEGORY_WEIGHTS
+        known = set()
+        for cats in DEMAND_TO_CATEGORY_WEIGHTS.values():
+            known.update(cats)
+        for m in self.ENGINE_METHODOLOGIES:
+            weights = load_methodology_profile(m)['category_weights']
+            unknown = set(weights) - known
+            assert not unknown, f"{m}: unknown categories {unknown}"
+
+    # ---- combination rule (multiply) ---------------------------------------
+
+    def test_combine_both_none_is_none(self):
+        from workout_selector import _combine_weights
+        assert _combine_weights(None, None) is None
+
+    def test_combine_race_only_passes_through(self):
+        from workout_selector import _combine_weights
+        race = {'VO2max': 80, 'Tempo': 20}
+        assert _combine_weights(race, None) is race
+
+    def test_combine_methodology_only_uses_multipliers(self):
+        from workout_selector import _combine_weights
+        meth = {'VO2max': 3.0, 'Tempo': 0.15}
+        assert _combine_weights(None, meth) == meth
+
+    def test_combine_multiplies_and_defaults_neutral(self):
+        from workout_selector import _combine_weights
+        race = {'VO2max': 80, 'Tempo': 40, 'Endurance': 50}
+        meth = {'VO2max': 3.0, 'Tempo': 0.15}
+        got = _combine_weights(race, meth)
+        assert got == {'VO2max': 240.0, 'Tempo': 6.0, 'Endurance': 50.0}
+
+    def test_combine_race_zero_stays_zero(self):
+        """Event demand is a hard prior — a methodology multiplier cannot
+        resurrect a category the race scored 0."""
+        from workout_selector import _combine_weights
+        got = _combine_weights({'VO2max': 0}, {'VO2max': 3.0, 'G_Spot': 3.0})
+        assert got['VO2max'] == 0.0
+        assert got['G_Spot'] == 0.0  # absent from race weights → race 0
+
+    # ---- duration cap (time_crunched) --------------------------------------
+
+    def test_duration_filter_drops_over_cap(self):
+        from workout_selector import _filter_by_duration
+        # At L1: VO2 Bookend=109min, VO2max Extended=45min
+        got = _filter_by_duration(['VO2 Bookend', 'VO2max Extended'], 75, 1)
+        assert got == ['VO2max Extended']
+
+    def test_duration_filter_never_empties_pool(self):
+        from workout_selector import _filter_by_duration
+        opts = ['VO2 Bookend', 'Buffer Workout']  # both >75min at L1
+        assert _filter_by_duration(opts, 75, 1) == opts
+
+    def test_duration_filter_disabled_without_cap(self):
+        from workout_selector import _filter_by_duration
+        opts = ['VO2 Bookend', 'VO2max Extended']
+        assert _filter_by_duration(opts, None, 1) is opts
+
+    # ---- delivered-plan differentiation ------------------------------------
+
+    def test_gspot_vs_polarized_distributions_differ_materially(self):
+        pol_sweet, pol_vo2 = self._family_counts(self._plan('polarized_80_20'))
+        gsp_sweet, gsp_vo2 = self._family_counts(self._plan('g_spot'))
+        assert gsp_sweet > pol_sweet, (
+            f"g_spot sweet-spot family ({gsp_sweet}) not > polarized ({pol_sweet})")
+        assert pol_vo2 > gsp_vo2, (
+            f"polarized VO2 family ({pol_vo2}) not > g_spot ({gsp_vo2})")
+
+    def test_pyramidal_has_tempo_and_less_vo2_than_polarized(self):
+        pyr = self._plan('traditional_pyramidal')
+        names = {d['name'] for w in pyr['weeks'] if w.get('week_type') == 'load'
+                 for d in w['days'] if d.get('role') == 'intensity'}
+        assert any('Tempo' in n for n in names), names
+        _, pyr_vo2 = self._family_counts(pyr)
+        _, pol_vo2 = self._family_counts(self._plan('polarized_80_20'))
+        assert pol_vo2 > pyr_vo2
+
+    def test_all_profiles_stay_compliant(self):
+        from block_compliance import validate_plan
+        for m in self.ENGINE_METHODOLOGIES:
+            plan = self._plan(m)
+            r = validate_plan(plan, target_hours=8, off_days=['Sun'],
+                              max_intensity=3)
+            failed = [k for k, v in r['rules'].items()
+                      if v['severity'] == 'CRITICAL' and not v['passed']]
+            assert r['critical_pass'], f"{m}: failed {failed}"
+
+    def test_profiles_combine_with_race_weights_and_stay_compliant(self):
+        from block_compliance import validate_plan
+        # SBT-GRVL-ish demand weights (threshold/durability leaning)
+        race_weights = {'TT_Threshold': 100, 'Durability': 90, 'G_Spot': 85,
+                        'Endurance': 70, 'VO2max': 60, 'Tempo': 55,
+                        'Race_Simulation': 50, 'Mixed_Climbing': 45,
+                        'Blended': 40, 'Gravel_Specific': 65}
+        for m in self.ENGINE_METHODOLOGIES:
+            plan = self._plan(m, category_weights=race_weights)
+            r = validate_plan(plan, target_hours=8, off_days=['Sun'],
+                              max_intensity=3)
+            assert r['critical_pass'], m
+
+    def test_vo2_anchor_survives_every_profile(self):
+        """R02 mechanics: the anchor VO2 slot stays locked to VO2 stimulus
+        types under every profile, so base/build load weeks always carry
+        VO2 work no matter how anti-VO2 the methodology weights are."""
+        from block_compliance import VO2MAX_TYPES, r02_vo2max_frequency
+        for m in self.ENGINE_METHODOLOGIES:
+            plan = self._plan(m)
+            ok, msg = r02_vo2max_frequency(plan['weeks'])
+            assert ok, f"{m}: {msg}"
+            for w in plan['weeks']:
+                if w.get('week_type') != 'load' or w.get('phase') == 'racing':
+                    continue
+                names = [d['name'] for d in w['days']
+                         if d.get('role') == 'intensity']
+                assert any(n in VO2MAX_TYPES for n in names), (
+                    f"{m} W{w.get('plan_week')}: no VO2 anchor in {names}")
+
+    def test_profile_none_keeps_series_coherence_and_structure(self):
+        """Structure invariants under every profile: same week rhythm,
+        long ride every load week, off days respected, zero series
+        violations (same name +1 level across a block's load weeks)."""
+        base = self._plan('polarized_80_20', with_profile=False)
+        for m in self.ENGINE_METHODOLOGIES:
+            plan = self._plan(m)
+            assert plan['all_violations'] == [], (m, plan['all_violations'])
+            assert [w['week_type'] for w in plan['weeks']] == \
+                [w['week_type'] for w in base['weeks']]
+            for w in plan['weeks']:
+                for d in w['days']:
+                    if d['day'] == 'Sun':
+                        assert d['role'] == 'off'
+                if w['week_type'] == 'load':
+                    assert any(d['role'] == 'long_ride' for d in w['days'])
+
+    def test_omitted_profile_equals_explicit_none(self):
+        """methodology_profile=None (explicit) == omitted — the legacy
+        full-season path (which never passes the kwarg) is untouched."""
+        explicit = self._plan('g_spot', with_profile=False,
+                              methodology_profile=None)
+        omitted = self._plan('g_spot', with_profile=False)
+        assert explicit == omitted
