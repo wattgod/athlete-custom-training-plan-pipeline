@@ -418,7 +418,99 @@ class TestZWOPowerSanity:
     4. Recovery rides = Z1 high (0.50-0.55)
     5. Endurance rides = Z2 (0.56-0.75)
     6. Main set power must always be >= warmup end power for easy workouts
+
+    The warmup/Z2 rules run against a FRESH plan generated at test time with
+    a frozen reference date (see fresh_sample_workouts), NOT the tracked
+    benjy-duke artifacts. The tracked fixtures predate the generator's
+    easy-workout warmup cap and go stale by calendar (issue #35) — asserting
+    against them tests history, not the generator.
     """
+
+    @pytest.fixture(scope='class')
+    def fresh_sample_workouts(self, tmp_path_factory):
+        """Generate a small deterministic plan at test time.
+
+        Freezes "today" inside calculate_plan_dates (its only clock use is
+        the past-start clamp) so the calendar is identical on every machine
+        on every date. The frozen plan_start is permanently in the past, so
+        generate_zwo_files' pre-plan-week path (its only clock use) never
+        fires — the emitted ZWO set is fully deterministic.
+        """
+        import datetime as _datetime_mod
+        import calculate_plan_dates as cpd
+        from generate_athlete_package import generate_zwo_files
+
+        class _FrozenDatetime(_datetime_mod.datetime):
+            """datetime with now() pinned to the frozen reference date."""
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 1, 1)
+
+        # B-race in the peak week: its "easy 2 days before" overlay is the
+        # path that still emits Easy-named ZWOs (block-builder easy days are
+        # named Endurance), so the Z2-not-Z1 rule has real files to check.
+        b_events = [{'name': 'Sanity Tune-Up', 'date': '2026-03-07'}]
+
+        mp = pytest.MonkeyPatch()
+        mp.setattr(cpd, 'datetime', _FrozenDatetime)
+        try:
+            # Race Saturday 2026-03-21, 8 weeks out from frozen 2026-01-01
+            # (shortest golden-athlete plan length): week 1 starts Monday
+            # 2026-01-26 — after frozen today, so no past-start reslide.
+            plan_dates = cpd.calculate_plan_dates('2026-03-21', plan_weeks=8,
+                                                  b_events=b_events)
+        finally:
+            mp.undo()
+
+        assert plan_dates['plan_start'] == '2026-01-26', \
+            "frozen calendar drifted — past-start clamp fired despite freeze"
+
+        profile = {
+            'name': 'Sanity Sample',
+            'athlete_id': 'zwo-sanity-sample',
+            'target_race': {
+                'name': 'Sanity Gravel Race',
+                'date': '2026-03-21',
+                'distance_miles': 60,
+                'discipline': 'gravel',
+            },
+            'b_events': [{'name': 'Sanity Tune-Up', 'date': '2026-03-07',
+                          'priority': 'B'}],
+            'fitness_markers': {'ftp_watts': 250, 'weight_kg': 75},
+            'weekly_availability': {'cycling_hours_target': 6},
+            'schedule_constraints': {
+                'preferred_long_day': 'saturday',
+                'preferred_off_days': ['monday'],
+            },
+            'preferred_days': {
+                'monday': {'availability': 'rest'},
+                'tuesday': {'availability': 'available', 'is_key_day_ok': True,
+                            'max_duration_min': 90},
+                'wednesday': {'availability': 'available', 'is_key_day_ok': False,
+                              'max_duration_min': 75},
+                'thursday': {'availability': 'available', 'is_key_day_ok': True,
+                             'max_duration_min': 90},
+                'friday': {'availability': 'available', 'is_key_day_ok': False,
+                           'max_duration_min': 75},
+                'saturday': {'availability': 'available', 'is_key_day_ok': True,
+                             'is_long_day': True, 'max_duration_min': 240},
+                'sunday': {'availability': 'available', 'is_key_day_ok': True,
+                           'max_duration_min': 150},
+            },
+        }
+        derived = {'plan_weeks': 8, 'ability_level': 'Intermediate'}
+        methodology = {
+            'methodology_id': 'polarized_80_20',
+            'configuration': {
+                'intensity_distribution': {'z2': 0.80, 'z4': 0.15, 'z5': 0.05},
+            },
+        }
+
+        athlete_dir = tmp_path_factory.mktemp('zwo-sanity-athlete')
+        files = generate_zwo_files(athlete_dir, plan_dates, methodology,
+                                   derived, profile)
+        assert files, "generate_zwo_files produced no workouts"
+        return athlete_dir / 'workouts'
 
     def _parse_blocks(self, zwo_content: str) -> list:
         """Parse ZWO content into list of (tag, attrs) tuples."""
@@ -429,24 +521,17 @@ class TestZWOPowerSanity:
             return []
         return [(elem.tag, elem.attrib) for elem in workout]
 
-    def test_easy_warmup_never_exceeds_main_set(self):
+    def test_easy_warmup_never_exceeds_main_set(self, fresh_sample_workouts):
         """For Easy/Recovery workouts, warmup end power <= main set power."""
-        sys.path.insert(0, str(Path(__file__).parent))
-        from generate_athlete_package import generate_zwo_files
-
-        # Test create_workout_blocks directly via its enclosing function
-        # We'll test the principle by generating a sample
-        workout_dir = Path(__file__).parent.parent / 'benjy-duke' / 'workouts'
-        if not workout_dir.exists():
-            pytest.skip("benjy-duke workouts not found")
-
         errors = []
-        for zwo_file in sorted(workout_dir.glob('*.zwo')):
+        checked = 0
+        for zwo_file in sorted(fresh_sample_workouts.glob('*.zwo')):
             name = zwo_file.stem
             # Only check Easy/Endurance/Recovery workouts (not intensity)
             is_easy = any(t in name for t in ['Easy', 'Endurance', 'Pre_Plan_Easy', 'Shakeout'])
             if not is_easy:
                 continue
+            checked += 1
 
             blocks = self._parse_blocks(zwo_file.read_text())
             if not blocks:
@@ -476,20 +561,20 @@ class TestZWOPowerSanity:
                         f"(warmup should NOT ramp above main set for easy workouts)"
                     )
 
+        assert checked > 0, \
+            "Fresh sample contains no Easy/Endurance workouts — filter is vacuous"
         assert not errors, "Warmup > main set violations:\n" + "\n".join(errors)
 
-    def test_easy_power_is_zone2_not_zone1(self):
+    def test_easy_power_is_zone2_not_zone1(self, fresh_sample_workouts):
         """Easy workout main set must be Z2 (>=0.56), not Z1 recovery."""
-        workout_dir = Path(__file__).parent.parent / 'benjy-duke' / 'workouts'
-        if not workout_dir.exists():
-            pytest.skip("benjy-duke workouts not found")
-
         errors = []
-        for zwo_file in sorted(workout_dir.glob('*.zwo')):
+        checked = 0
+        for zwo_file in sorted(fresh_sample_workouts.glob('*.zwo')):
             name = zwo_file.stem
             is_easy = any(t in name for t in ['Easy', 'Pre_Plan_Easy'])
             if not is_easy or 'Strength' in name:
                 continue
+            checked += 1
 
             blocks = self._parse_blocks(zwo_file.read_text())
             for tag, attrs in blocks:
@@ -502,6 +587,8 @@ class TestZWOPowerSanity:
                         )
                     break  # Only check first SteadyState
 
+        assert checked > 0, \
+            "Fresh sample contains no Easy workouts — filter is vacuous"
         assert not errors, "Easy rides in Z1 (should be Z2):\n" + "\n".join(errors)
 
     def test_endurance_power_is_zone2(self):
