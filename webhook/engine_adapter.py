@@ -65,6 +65,7 @@ from block_compliance import (  # noqa: E402
     INTENSITY_TYPES,
 )
 from race_category_scorer import calculate_category_scores  # noqa: E402
+from workout_selector import load_methodology_profile  # noqa: E402
 
 import yaml  # noqa: E402
 
@@ -621,10 +622,24 @@ def validate_request(payload: Any) -> Tuple[Dict[str, Any], Dict[str, str]]:
     # ---- methodology (optional) --------------------------------------------
     # None/absent both mean "use the default" — clients that JSON-serialize
     # optional fields send explicit null (observed: Endure adapter 2026-07-02).
-    methodology = payload.get('methodology') or 'polarized_80_20'
-    if methodology not in METHODOLOGIES:
+    #
+    # Phase 2 decision B: an EXPLICIT methodology engages its selection
+    # profile (methodology_profiles.yaml) so the four methods deliver
+    # measurably different zone/intensity mixes. Absent/null stays on the
+    # historical default selection — byte-identical to pre-profile behavior
+    # (pinned by tests), so existing Endure requests never shift under a
+    # deploy.
+    methodology_raw = payload.get('methodology')
+    methodology = methodology_raw or 'polarized_80_20'
+    # isinstance guard: a non-string (e.g. object) is unhashable for the set
+    # membership test — report a field error instead of a 500.
+    if not isinstance(methodology, str) or methodology not in METHODOLOGIES:
         errors['methodology'] = f"Must be one of {sorted(METHODOLOGIES)}"
         methodology = 'polarized_80_20'
+    methodology_profile = (
+        load_methodology_profile(methodology)
+        if isinstance(methodology_raw, str) and methodology_raw in METHODOLOGIES
+        else None)
 
     # ---- previous (optional progression seed) ------------------------------
     previous = payload.get('previous')
@@ -713,9 +728,12 @@ def validate_request(payload: Any) -> Tuple[Dict[str, Any], Dict[str, str]]:
         'long_ride_day': long_ride_day,
         'starting_level': starting_level,
         'phase_block_start': phase_block_start,
-        # Phase 2 selection bias (both None/empty → historical behavior):
+        # Phase 2 selection bias (all None/empty → historical behavior):
         'category_weights': category_weights,
         'avoid_series': set(prev_series) or None,
+        # Non-None ONLY for an explicit request methodology — decision B
+        # differentiation is selection-level and opt-in per request.
+        'methodology_profile': methodology_profile,
     })
     return params, errors
 
@@ -847,6 +865,7 @@ def _build_and_gate(params: Dict[str, Any],
         phase_block_start=max(2, starting_level),
         category_weights=params.get('category_weights'),
         avoid_series=params.get('avoid_series'),
+        methodology_profile=params.get('methodology_profile'),
     )
 
     compliance_raw = validate_plan(

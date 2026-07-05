@@ -76,6 +76,66 @@ def _demand_category(name: str) -> Optional[str]:
     return _SCORER_CATEGORY_BY_LIBRARY.get(workout.get('category'))
 
 
+# ---------------------------------------------------------------------------
+# Methodology profiles (Phase 2, decision B): config-driven category-weight
+# multipliers that make each methodology bias the SAME _pick_option seam the
+# race-demand weights use. See athletes/config/methodology_profiles.yaml for
+# the weight tables and the multiply combination rationale.
+# ---------------------------------------------------------------------------
+
+def load_methodology_profile(methodology: str) -> Optional[Dict[str, Any]]:
+    """Profile dict for a methodology ({'category_weights': {...},
+    'max_intensity_duration_min': int?}) or None if unknown.
+
+    Returned dict is shared cached config — callers must NOT mutate it.
+    """
+    profiles = _load_config('methodology_profiles.yaml').get('profiles') or {}
+    return profiles.get(methodology)
+
+
+def _combine_weights(
+    category_weights: Optional[Dict[str, float]],
+    methodology_weights: Optional[Dict[str, float]],
+) -> Optional[Dict[str, float]]:
+    """Combine race-demand weights with methodology multipliers (MULTIPLY).
+
+        combined[cat] = race.get(cat, 0) * methodology.get(cat, 1.0)
+
+    - both None → None (rotation fast path — byte-identical baseline)
+    - race only → race weights unchanged (historical Phase 2 behavior)
+    - methodology only → the multipliers alone (relative order is all
+      _pick_option's max() uses)
+    - both → multiply. Race weights are normalized 0-100; profile weights
+      are multipliers around 1.0. Multiplying preserves both orderings:
+      the race differentiates within what the methodology favors, while a
+      near-zero profile weight is a soft methodology veto that event
+      demands cannot override. A category the race scored 0 stays 0.
+    """
+    if methodology_weights is None:
+        return category_weights
+    if category_weights is None:
+        return dict(methodology_weights)
+    return {
+        cat: category_weights.get(cat, 0.0) * methodology_weights.get(cat, 1.0)
+        for cat in set(category_weights) | set(methodology_weights)
+    }
+
+
+def _filter_by_duration(options: List[str], cap: Optional[int],
+                        ref_level: int) -> List[str]:
+    """Drop options whose library duration at ref_level exceeds cap
+    (time_crunched max_intensity_duration_min). Skipped entirely if it
+    would empty the pool — a duration preference must never make a slot
+    unfillable. ref_level is the block's BASE level so every load week of
+    a block filters identically (R14 series coherence needs the same name
+    across the block's load weeks)."""
+    if not cap:
+        return options
+    kept = [n for n in options
+            if 0 < get_workout_duration(n, ref_level) <= cap]
+    return kept if kept else options
+
+
 def _pick_option(
     options: List[str],
     block_number: int,
@@ -164,6 +224,7 @@ def select_workouts_for_week(
     methodology: str = 'polarized_80_20',
     category_weights: Optional[Dict[str, float]] = None,
     avoid_series: Optional[set] = None,
+    methodology_profile: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Select workouts for a single week.
 
@@ -188,6 +249,13 @@ def select_workouts_for_week(
             slots prefer pool options NOT in this set; exhausted pools fall
             back to reuse. Both default to None → selection is byte-identical
             to the historical rotation behavior.
+        methodology_profile: Optional profile dict from
+            load_methodology_profile() ({'category_weights': multipliers,
+            'max_intensity_duration_min': int?}). Its weights MULTIPLY with
+            category_weights (see _combine_weights) so the methodology and
+            the race demands bias the same _pick_option seam; the duration
+            cap filters intensity pools only. None (the default, and the
+            legacy full-season path) → selection unchanged.
 
     Returns:
         List of workout dicts: [{'slot': str, 'name': str, 'level': int, 'role': str}]
@@ -217,6 +285,14 @@ def select_workouts_for_week(
     if not phase_config:
         phase_config = config['phases']['base']  # fallback
 
+    # Methodology profile (explicit /engine/block methodology only): its
+    # multipliers combine with the race-demand weights at the same
+    # _pick_option seam; profile None → weights/caps pass through unchanged.
+    category_weights = _combine_weights(
+        category_weights, (methodology_profile or {}).get('category_weights'))
+    intensity_duration_cap = (methodology_profile or {}).get(
+        'max_intensity_duration_min')
+
     slots = phase_config.get('slots', {})
     level = min(base_level + (week_in_block - 1), max_level)
 
@@ -241,6 +317,18 @@ def select_workouts_for_week(
 
     intensity_slots = sorted(['intensity_1', 'intensity_2', 'intensity_3'],
                              key=lambda sn: 0 if _is_vo2_slot(sn) else 1)
+
+    # The VO2 ANCHOR slot: the first (sorted-first) VO2 slot. It always fills
+    # first, so it lands on the first intensity day whenever the week has one
+    # — that alone satisfies R02. When a methodology profile is engaged, ONLY
+    # the anchor keeps the keep_within=VO2 hard lock; other VO2-default slots
+    # may swap by combined weights (a phase like build defines two VO2-family
+    # slots, and locking both left the methodology nothing to steer). The
+    # profile-less paths keep the historical every-VO2-slot lock unchanged.
+    anchor_slot = (intensity_slots[0]
+                   if intensity_slots and _is_vo2_slot(intensity_slots[0])
+                   else None)
+    profile_engaged = methodology_profile is not None
 
     # Intensity slots
     for slot_name in intensity_slots:
@@ -274,10 +362,18 @@ def select_workouts_for_week(
                 alternatives.insert(pos, extra)
         if alternatives:
             all_options = [name] + alternatives
+            # time_crunched duration cap: prefer options that fit the cap at
+            # the block's BASE level (stable across the block's load weeks).
+            all_options = _filter_by_duration(
+                all_options, intensity_duration_cap, base_level)
             # VO2 slots may only swap within VO2 stimulus types on the new
             # bias/rotation paths — R02 (VO2 every 14 days) must hold no
             # matter what the race demands or the previous block used.
-            keep = _VO2 if name in _VO2 else None
+            # Profile path: only the anchor slot is locked (see above).
+            if profile_engaged:
+                keep = _VO2 if slot_name == anchor_slot else None
+            else:
+                keep = _VO2 if name in _VO2 else None
             name = _pick_option(all_options, block_number,
                                 category_weights, avoid_series,
                                 keep_within=keep)
@@ -302,15 +398,33 @@ def select_workouts_for_week(
     pool = _METHODOLOGY_SECONDARY.get(methodology)
     if pool:
         from block_compliance import VO2MAX_TYPES
-        # rotate by block → variety; race demands / previous seriesUsed bias
-        # the pick within the SAME methodology pool (baseline path unchanged)
+        # rotate by block → variety; race demands / previous seriesUsed /
+        # methodology profile bias the pick within the SAME methodology pool
+        # (baseline path unchanged; combined weights computed above)
+        pool = _filter_by_duration(pool, intensity_duration_cap, base_level)
         pick = _pick_option(pool, block_number, category_weights, avoid_series)
-        for w in workouts:
-            if (w['role'] == 'intensity'
-                    and w['name'] not in VO2MAX_TYPES
-                    and w['name'] not in _DISCIPLINE_INTENSITY):
-                w['name'] = pick
-                break
+        if profile_engaged:
+            # Profile path: the signature swap must actually LAND. Menu order
+            # is landing order (the week builder assigns entries to intensity
+            # days first-to-last, and a training-age budget of 2 days drops
+            # the tail), so target the FIRST entry that isn't the protected
+            # VO2 anchor or discipline signature work. The historical
+            # skip-all-VO2-names rule often pointed at the dropped tail entry,
+            # making methodologies invisible in phases with two VO2 slots.
+            for w in workouts:
+                if (w['role'] == 'intensity'
+                        and w['slot'] != anchor_slot
+                        and w['name'] != 'Openers'
+                        and w['name'] not in _DISCIPLINE_INTENSITY):
+                    w['name'] = pick
+                    break
+        else:
+            for w in workouts:
+                if (w['role'] == 'intensity'
+                        and w['name'] not in VO2MAX_TYPES
+                        and w['name'] not in _DISCIPLINE_INTENSITY):
+                    w['name'] = pick
+                    break
 
     # Long ride — level must fit within weekly hour budget
     long_slot = slots.get('long_ride', {})

@@ -75,6 +75,7 @@ def build_plan_from_calendar(
     phase_block_start: int = 1,
     category_weights: Dict[str, float] = None,
     avoid_series: set = None,
+    methodology_profile: Dict[str, Any] = None,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -101,6 +102,11 @@ def build_plan_from_calendar(
             chained block used (/engine/block previous.seriesUsed) — slots
             prefer alternatives outside this set. Both default None →
             selection byte-identical to historical behavior.
+        methodology_profile: Optional methodology profile
+            (workout_selector.load_methodology_profile) whose category
+            multipliers combine with category_weights and whose duration cap
+            filters intensity pools. None (default, and the legacy
+            full-season path) → selection unchanged.
 
     Returns:
         Plan dict shaped like chain_blocks() output: {'weeks': [...], ...}
@@ -165,6 +171,7 @@ def build_plan_from_calendar(
             methodology=methodology,
             category_weights=category_weights,
             avoid_series=avoid_series,
+            methodology_profile=methodology_profile,
         )
         week['plan_week'] = plan_week
         week['block_number'] = block_number
