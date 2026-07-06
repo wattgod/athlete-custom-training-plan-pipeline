@@ -30,6 +30,8 @@ from flask_limiter import Limiter
 import stripe
 import yaml
 
+import endure_delivery
+
 app = Flask(__name__)
 
 
@@ -361,6 +363,16 @@ def _build_training_plan_email(details: dict) -> tuple:
     error_msg = details.get('error', '')
     download_token = details.get('download_token', '')
 
+    # Phase 4b delivery branching: endure-target orders that delivered get
+    # the Endure review checklist; a failed Endure push falls back to the
+    # unchanged TrainingPeaks checklist with a loud flag.
+    delivery_target = details.get('delivery_target', 'trainingpeaks')
+    endure = details.get('endure_delivery') or {}
+    endure_ok = (delivery_target == 'endure'
+                 and endure.get('status') in ('delivered', 'already_delivered'))
+    endure_failed = delivery_target == 'endure' and not endure_ok
+    endure_review_url = endure.get('review_url', '')
+
     base_url = 'https://athlete-custom-training-plan-pipeline-production.up.railway.app'
     download_full = f'{base_url}/api/download/{athlete_id}?type=full&token={download_token}' if download_token else ''
 
@@ -393,6 +405,15 @@ def _build_training_plan_email(details: dict) -> tuple:
     if details.get('risk_factors'):
         review_flags.append(
             'Risk factors: ' + ', '.join(str(r) for r in details['risk_factors']))
+
+    # A failed Endure push is loud to the coach, invisible to the customer:
+    # the ZWO package below is complete, deliver via TrainingPeaks as usual.
+    if pipeline_ok and endure_failed:
+        review_flags.insert(0,
+            'ENDURE DELIVERY FAILED ('
+            + str(endure.get('error') or 'no response') + ') — '
+            'full ZWO package is intact; deliver via TrainingPeaks below. '
+            'Streak reset.')
 
     # Strongest flag: the plan DELIVERED but an automatic compliance check
     # failed. The order is NOT lost — it just needs a human pass before sending.
@@ -428,6 +449,34 @@ def _build_training_plan_email(details: dict) -> tuple:
       {'<tr><td style="padding: 4px 12px 4px 0; color: #888;">Methodology</td><td style="padding: 4px 0;">' + methodology + '</td></tr>' if methodology else ''}
     </table>"""
 
+    # Delivery steps (checklist items 5-6) + confirm wording branch on the
+    # order's delivery target. TP path is byte-for-byte unchanged.
+    if endure_ok:
+        platform_label = 'Endure'
+        review_link_html = (f'<a href="{endure_review_url}">open the plan in Endure</a>'
+                           if endure_review_url else 'open the plan in Endure')
+        delivery_steps_html = f"""<li><strong>Review block 1 in Endure</strong> — {review_link_html} and check week 1 against the package above</li>
+      <li><strong>Approve the block in Endure</strong> — approval writes the activities to {name}'s calendar; Endure then sends their invitation email</li>"""
+        delivery_steps_text = (
+            f"5. Review block 1 in Endure: {endure_review_url or 'open the plan in Endure'}\n"
+            f"6. Approve the block in Endure — approval writes the activities "
+            f"to {name}'s calendar; Endure sends their invitation email\n")
+        endure_ids_html = (
+            '<p style="font-size: 12px; color: #999; margin: 8px 0 0;">Endure: '
+            + ' &middot; '.join(
+                f'{k} <code>{endure.get(k)}</code>'
+                for k in ('athlete_id', 'plan_id', 'block_id', 'invitation_id')
+                if endure.get(k))
+            + '</p>') if endure else ''
+    else:
+        platform_label = 'TrainingPeaks'
+        delivery_steps_html = f"""<li><strong>Create athlete in TrainingPeaks</strong> — add <a href="mailto:{email}">{name}</a> to your coach account</li>
+      <li><strong>Import ZWO files</strong> — drag workouts into their TP calendar, starting week 1</li>"""
+        delivery_steps_text = (
+            f"5. Create {name} in TrainingPeaks, add to coach account\n"
+            f"6. Import ZWO files into their TP calendar\n")
+        endure_ids_html = ''
+
     if pipeline_ok:
         html = f"""
 <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
@@ -449,11 +498,11 @@ def _build_training_plan_email(details: dict) -> tuple:
       <li><strong>Review quality</strong> — open <code>plan_preview.html</code>, check the week grid and quality gates</li>
       <li><strong>Read coaching brief</strong> — <code>coaching_brief.md</code> maps questionnaire answers to plan decisions</li>
       <li><strong>Spot-check workouts</strong> — open <code>training_guide.html</code>, check weeks 1, mid, and final</li>
-      <li><strong>Create athlete in TrainingPeaks</strong> — add <a href="mailto:{email}">{name}</a> to your coach account</li>
-      <li><strong>Import ZWO files</strong> — drag workouts into their TP calendar, starting week 1</li>
-      <li><strong>Send confirmation email</strong> — let them know the plan is live on TrainingPeaks:<br>
+      {delivery_steps_html}
+      <li><strong>Send confirmation email</strong> — let them know the plan is live on {platform_label}:<br>
         <code style="font-size: 12px; background: #f0ede8; padding: 4px 8px; border-radius: 3px; display: inline-block; margin-top: 4px;">curl -X POST {base_url}/api/confirm/{athlete_id} -H "X-Cron-Secret: $CRON_SECRET"</code></li>
     </ol>
+    {endure_ids_html}
 
     <div style="margin: 20px 0; padding: 12px 16px; background: #fff; border-left: 3px solid #B7950B;">
       <p style="margin: 0; font-size: 13px; color: #666;">
@@ -515,9 +564,7 @@ Order: {order_id} | Athlete ID: {athlete_id}
 2. Review plan_preview.html — check week grid and quality gates
 3. Read coaching_brief.md — questionnaire-to-decision trace
 4. Spot-check training_guide.html (weeks 1, mid, final)
-5. Create {name} in TrainingPeaks, add to coach account
-6. Import ZWO files into their TP calendar
-7. Send confirmation: curl -X POST {base_url}/api/confirm/{athlete_id} -H "X-Cron-Secret: $CRON_SECRET"
+{delivery_steps_text}7. Send confirmation: curl -X POST {base_url}/api/confirm/{athlete_id} -H "X-Cron-Secret: $CRON_SECRET"
 
 Timeline: Customer got payment confirmation. They expect the plan within 24h.
 """
@@ -1268,6 +1315,11 @@ def extract_stripe_data(data: dict) -> dict:
         'athlete_id': athlete_id,
         'order_id': session.get('id', ''),
         'tier': tier,
+        # Phase 4b coexistence flag — "trainingpeaks" (default) or "endure".
+        # Per-order override via Stripe metadata['delivery_target']; default
+        # via DELIVERY_TARGET_DEFAULT env. Always "trainingpeaks" while the
+        # Endure delivery env vars are unset (feature off).
+        'delivery_target': endure_delivery.resolve_delivery_target(metadata),
         'profile': profile,
     }
 
@@ -1776,6 +1828,80 @@ def _update_job(athlete_id: str, **fields) -> dict:
     return job
 
 
+def _load_profile_yaml(athlete_id: str) -> dict:
+    """Load the pipeline's profile.yaml (build_profile output) for an athlete.
+
+    Checks the persistent deliveries dir first (persist_deliverables copies
+    profile.yaml there), then the ephemeral athlete dir — including the
+    hyphen/underscore variant intake_to_plan.py uses. Returns {} if absent.
+    """
+    candidates = [
+        Path(DELIVERIES_DIR) / athlete_id / 'profile.yaml',
+        Path(ATHLETES_DIR) / athlete_id / 'profile.yaml',
+        Path(ATHLETES_DIR) / athlete_id.replace('_', '-') / 'profile.yaml',
+    ]
+    for path in candidates:
+        if path.exists():
+            try:
+                with open(path) as f:
+                    return yaml.safe_load(f) or {}
+            except Exception as e:
+                logger.warning(f"Unreadable profile.yaml at {path}: {e}")
+    return {}
+
+
+def _attempt_endure_delivery(athlete_id: str, order_data: dict,
+                             intake_data: dict = None) -> dict:
+    """Push a generated plan to Endure. NEVER raises, never fails the order.
+
+    Returns the delivery record (also persisted on the job record):
+    status delivered/already_delivered → coach email switches to the
+    Endure review checklist; status failed → coach email keeps the full
+    TrainingPeaks checklist and flags the failure loudly
+    (order-killer-prevention: loud to the coach, invisible to the customer).
+    """
+    order_id = order_data.get('order_id', '')
+    try:
+        profile = _load_profile_yaml(athlete_id)
+        if not profile:
+            record = {'ok': False, 'status': 'failed', 'attempts': 0,
+                      'error': 'profile.yaml not found for Endure mapping'}
+        else:
+            payload = endure_delivery.build_delivery_payload(
+                profile, order_id, intake=intake_data or {})
+            record = endure_delivery.deliver_purchased_plan(payload)
+    except endure_delivery.EndureMappingError as e:
+        record = {'ok': False, 'status': 'failed', 'attempts': 0,
+                  'error': f'mapping error: {e}'}
+    except Exception as e:
+        logger.exception(f"Unexpected Endure delivery error for {athlete_id}")
+        record = {'ok': False, 'status': 'failed', 'attempts': 0,
+                  'error': str(e)[:300]}
+
+    success = record.get('status') in ('delivered', 'already_delivered')
+    try:
+        streak = endure_delivery.record_delivery_result(
+            success, order_id, data_dir=DATA_DIR)
+        record['streak'] = streak.get('consecutive_successes')
+    except Exception:
+        logger.exception("Failed to record Endure delivery streak")
+
+    try:
+        _update_job(athlete_id, endure_delivery=record)
+    except Exception:
+        logger.exception(f"Failed to record Endure delivery on job {athlete_id}")
+
+    if success:
+        logger.info(f"Endure delivery OK for {athlete_id} "
+                    f"(plan {record.get('plan_id', '?')}, "
+                    f"streak {record.get('streak', '?')})")
+    else:
+        logger.error(f"ENDURE DELIVERY FAILED for {athlete_id} "
+                     f"(order {order_id or '?'}): {record.get('error')} — "
+                     f"falling back to TrainingPeaks delivery")
+    return record
+
+
 def _execute_plan_job(job: dict, intake_data: dict = None):
     """Run the full generation flow for one job and keep its record updated.
 
@@ -1806,8 +1932,23 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
             except Exception as e:
                 logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
 
+        # Phase 4b: push to Endure when this order opted in. The full ZWO
+        # package above is ALWAYS generated regardless of target (fallback
+        # guarantee). A failed push never fails the order — it's recorded
+        # on the job, flagged loudly in the coach email, and the coach
+        # delivers via TrainingPeaks as usual.
+        endure_record = None
+        if (result['success']
+                and order_data.get('delivery_target') == 'endure'):
+            endure_record = _attempt_endure_delivery(
+                athlete_id, order_data, intake_data or None)
+
         details = _build_plan_notification_details(order_data, result,
                                                    intake_data or None)
+        details['delivery_target'] = order_data.get('delivery_target',
+                                                    'trainingpeaks')
+        if endure_record is not None:
+            details['endure_delivery'] = endure_record
         if result['success']:
             details['download_token'] = _generate_download_token(athlete_id)
             _notify_new_order('training_plan', details)
@@ -1881,6 +2022,9 @@ def _spawn_plan_job(order_data: dict, intake_id: str = '',
         'athlete_id': athlete_id,
         'order_id': order_data.get('order_id', ''),
         'intake_id': intake_id or '',
+        # Coexistence flag (Phase 4b) — resolved at checkout, recorded here
+        # so /api/confirm and the sweep can branch on it after a restart.
+        'delivery_target': order_data.get('delivery_target', 'trainingpeaks'),
         'status': 'queued',
         'attempts': 1,
         'max_attempts': JOB_MAX_ATTEMPTS,
@@ -1991,6 +2135,20 @@ def health():
 
     if not checks['athletes_dir'] or not checks['scripts_dir']:
         checks['status'] = 'degraded'
+
+    # Endure delivery ops status (Decision 2 streak) — only present when the
+    # feature is configured, so env-off means a byte-identical health payload.
+    if endure_delivery.is_enabled():
+        streak = endure_delivery.read_streak(DATA_DIR)
+        checks['endure_delivery'] = {
+            'enabled': True,
+            'default_target': endure_delivery.resolve_delivery_target({}),
+            'consecutive_successes': streak['consecutive_successes'],
+            'total_successes': streak['total_successes'],
+            'total_failures': streak['total_failures'],
+            'last_status': streak['last_status'],
+            'updated_at': streak['updated_at'],
+        }
 
     status_code = 200 if checks['status'] == 'ok' else 503
     return jsonify(checks), status_code
@@ -2204,6 +2362,88 @@ def confirm_plan_ready(athlete_id):
         if guide_path.exists():
             guide_attachments.append((guide_name, str(guide_path)))
             break
+
+    # Phase 4c: endure-target orders that actually delivered on Endure get
+    # the Endure "plan is live" email. The invitation email itself is sent
+    # by Endure's invitation machinery on approval (spec §1) — this email
+    # points the athlete at it rather than embedding a link the pipeline
+    # can't construct (the response carries invitation_id, not the token).
+    _job = _read_job(norm_id) or {}
+    _endure = _job.get('endure_delivery') or {}
+    if (_job.get('delivery_target') == 'endure'
+            and _endure.get('status') in ('delivered', 'already_delivered')):
+        subject = f'Your training plan{race_mention} is live on Endure'
+
+        text_body = f"""Hey {first_name},
+
+Your custom training plan{race_mention} is built, reviewed, and live on Endure.
+
+Here's what to do:
+1. Accept your Endure invitation — check your inbox for an email from Endure Labs and follow the link to set up your account.
+2. Log in. Week 1 is already on your calendar, day by day.
+3. Each workout has target power zones, duration, and structure — just follow the plan.
+4. Questions about why a week looks the way it does? Ask David, the coach inside Endure — he knows your plan.
+
+A few things to know:
+- Week 1 is calibration. It may feel easy. That's intentional.
+- If life gets in the way and you miss a day, skip it and move on. Don't double up.
+- I can see your completed workouts in Endure. I'm watching — in a good way.
+
+If you have questions at any point, just reply to this email.
+
+— Matti, Gravel God Cycling
+gravelgodcycling.com
+"""
+
+        html_body = f"""
+<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+  <div style="background: #59473c; color: white; padding: 24px; border-radius: 4px 4px 0 0;">
+    <h1 style="margin: 0; font-size: 22px;">Your plan is live on Endure</h1>
+    {f'<p style="margin: 6px 0 0; opacity: 0.9; font-size: 15px;">{race_name}</p>' if race_name else ''}
+  </div>
+
+  <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
+    <p style="font-size: 15px; line-height: 1.6;">Hey {first_name},</p>
+
+    <p style="font-size: 15px; line-height: 1.6;">Your custom training plan{race_mention} is built, reviewed, and <strong>live on Endure</strong>.</p>
+
+    <h3 style="margin: 24px 0 12px; font-size: 16px; color: #59473c;">Get started</h3>
+    <ol style="font-size: 14px; padding-left: 20px; line-height: 2.2;">
+      <li><strong>Accept your Endure invitation</strong> — check your inbox for an email from Endure Labs and follow the link to set up your account.</li>
+      <li><strong>Log in</strong> — week 1 is already on your calendar, day by day.</li>
+      <li><strong>Follow the structure</strong> — each workout has target power zones, duration, and intervals.</li>
+      <li><strong>Ask David</strong> — the coach inside Endure knows your plan and can explain any week.</li>
+    </ol>
+
+    <div style="margin: 24px 0; padding: 16px; background: #fff; border-left: 3px solid #59473c;">
+      <p style="margin: 0 0 8px; font-size: 14px; color: #555;"><strong>Good to know:</strong></p>
+      <ul style="font-size: 14px; padding-left: 18px; line-height: 1.8; color: #555; margin: 0;">
+        <li>Week 1 is calibration. It may feel easy. That's intentional.</li>
+        <li>If life gets in the way, skip the day and move on. Don't double up.</li>
+        <li>I can see your completed workouts in Endure. I'm watching — in a good way.</li>
+      </ul>
+    </div>
+
+    <p style="font-size: 14px; line-height: 1.6;">Questions at any point? Just reply to this email.</p>
+
+    <p style="font-size: 14px; margin-top: 24px; color: #666;">— Matti, Gravel God Cycling<br>
+    <a href="https://gravelgodcycling.com" style="color: #1A8A82;">gravelgodcycling.com</a></p>
+  </div>
+</div>"""
+
+        ok = _send_email(customer_email, subject, text_body, html=html_body,
+                         reply_to=NOTIFICATION_EMAIL,
+                         attachments=guide_attachments)
+        if ok:
+            logger.info(f"Sent Endure plan confirmation to "
+                        f"{_mask_email(customer_email)} for {norm_id}")
+            return jsonify({
+                'status': 'confirmed',
+                'athlete_id': norm_id,
+                'email': _mask_email(customer_email),
+                'delivery_target': 'endure',
+            })
+        return jsonify({'error': 'Failed to send confirmation email'}), 502
 
     # Check for personalized email generated by the pipeline
     personal_email_path = delivery_dir / 'personal_email.md'
