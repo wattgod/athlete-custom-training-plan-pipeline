@@ -1,0 +1,41 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>T8_Descending-Cadence_Torque-Ladder</name>
+  <description>[TORQUE 8/8: Descending-Cadence Ladder - Gear &amp; Grit / CTS. Same watts, torque climbs each rep]
+
+WARM-UP:
+-15min building Z1-&gt;Z2
+
+MAIN SET:
+-4x 5min ALL at 85% FTP, but cadence steps DOWN each rep: 70 -&gt; 60 -&gt; 50 -&gt; 45rpm
+-Torque rises every rung because power is held flat as rpm drops
+-3min easy spin between rungs
+
+PURPOSE:
+Trains force application across a range of recruitment patterns. Because watts stay constant, only torque changes - a clean progressive overload of pedal force.
+
+EXECUTION:
+-Seated, smooth, keep power flat - shift to a bigger gear each rung, don't push harder. Watch the knees on the 45rpm rung; bail if they protest.
+
+SOURCE:
+-Gear &amp; Grit, 'Big Gear, Big Gains'; CTS cadence material.
+
+NUTRITION:
+-40-60g carbs/hr.
+
+HYDRATION:
+-500-750ml/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.72" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="0.85" PowerLow="0.82" PowerHigh="0.88" CadenceLow="68" CadenceHigh="72"/>
+    <SteadyState Duration="180" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="0.85" PowerLow="0.82" PowerHigh="0.88" CadenceLow="58" CadenceHigh="62"/>
+    <SteadyState Duration="180" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="0.85" PowerLow="0.82" PowerHigh="0.88" CadenceLow="48" CadenceHigh="52"/>
+    <SteadyState Duration="180" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="0.85" PowerLow="0.82" PowerHigh="0.88" CadenceLow="43" CadenceHigh="47"/>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

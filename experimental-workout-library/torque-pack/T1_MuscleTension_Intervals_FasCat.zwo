@@ -1,0 +1,38 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>T1_MuscleTension_Intervals_FasCat</name>
+  <description>[TORQUE 1/8: Muscle Tension Intervals - FasCat. Strength-endurance, power-AGNOSTIC]
+
+WARM-UP:
+-15min easy building to endurance pace
+
+MAIN SET:
+-4x 8min in a BIG GEAR at 50-55rpm, seated
+-Power is capped ~85% FTP on purpose - the limiter is TORQUE per stroke, not watts. Don't chase power.
+-4min easy spin (self-selected cadence) between
+-Push quads, pull hamstrings, consciously engage glutes
+
+PURPOSE:
+Force-endurance / fast-twitch recruitment with full aerobic control. The off-season big-gear masher base. Builds the platform TorqueMax (T3) progresses beyond.
+
+EXECUTION:
+-Stay seated, quiet upper body, no bar-pulling. If you can spin &gt;60rpm the gear's too small. Progress reps/length over a 5-week block (3x7 -&gt; 5x9 -&gt; 4x10).
+
+SOURCE:
+-FasCat Coaching, 'Muscle Tension Intervals' (fascatcoaching.com). Oct-Feb, 1-2x/wk. CAUTION: ease in with any knee-injury history.
+
+NUTRITION:
+-40-60g carbs/hr.
+
+HYDRATION:
+-500-750ml/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.70" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="4" OnDuration="480" OnPower="0.85" OnPowerLow="0.82" OnPowerHigh="0.88" OffDuration="240" OffPower="0.50" OffPowerLow="0.45" OffPowerHigh="0.55" CadenceLow="50" CadenceHigh="55">
+      <textevent timeoffset="0" message="4x8min @50-55rpm BIG GEAR. Torque, not watts. Off: spin easy."/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

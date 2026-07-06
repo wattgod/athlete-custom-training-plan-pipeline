@@ -1,0 +1,40 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>06_Durability_L2_2.9hr</name>
+  <description>[Fatigue resistance / durability - power AFTER fatigue]
+PROGRESSION: Level 2/4
+
+WARM-UP:
+-10min easing to Z2
+
+MAIN SET:
+-FRESH: 2x10min @95%, 5min @55% between
+-BRIDGE: 90min @60% FTP (accumulate kJ)
+-FATIGUED: 2x12min @96%, 6min @55% between
+-Cadence: 85-95rpm
+
+PURPOSE:
+Durability. Identical efforts before and after a long Z2 block train the late-ride power fade that decides long events.
+
+EXECUTION:
+-Compare fresh vs fatigued honestly. If the fatigued block craters, fix fueling first - it's usually the limiter, not fitness.
+
+NUTRITION:
+-HIGH FUEL: 80-100g carbs/hr. Eat early, eat often.
+
+HYDRATION:
+-750ml/hr+ with electrolytes.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.50" PowerHigh="0.65" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="2" OnDuration="600" OnPower="0.95" OnPowerLow="0.92" OnPowerHigh="0.98" OffDuration="300" OffPower="0.55" OffPowerLow="0.50" OffPowerHigh="0.60" CadenceLow="85" CadenceHigh="95">
+      <textevent timeoffset="0" message="FRESH block: 2x10min @95% - note the feel"/>
+    </IntervalsT>
+    <SteadyState Duration="5400" Power="0.60" PowerLow="0.55" PowerHigh="0.65" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="2" OnDuration="720" OnPower="0.96" OnPowerLow="0.93" OnPowerHigh="0.99" OffDuration="360" OffPower="0.55" OffPowerLow="0.50" OffPowerHigh="0.60" CadenceLow="85" CadenceHigh="95">
+      <textevent timeoffset="0" message="FATIGUED block: 2x12min @96% after the long Z2. The point of the session."/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.65" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Endurance - 3x15 Tempo - 2 - 86min - RPE3-4</name>
+  <description>3x15 Tempo — level 2
+
+WARM-UP:
+-10min ramp 50%-&gt;65% FTP (RPE 2-3)
+
+MAIN SET:
+-3x 17min @ 79%-85% FTP (Z3, RPE 3-4, 90-100rpm) / 5min @ 50%-60% (Z1, RPE 1-2)
+
+COOL-DOWN:
+-10min spin-down 70%-&gt;50% FTP (RPE 2-3)
+
+HOW TO RIDE IT:
+-Steady and comfortable — hold the power, relax the upper body.
+
+DIMENSIONS:
+-zones Z1-Z3 · normal cadence · seated · rolling · intervals
+
+FUEL:
+-40-60g carbs/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.50" PowerHigh="0.65" CadenceLow="85" CadenceHigh="92"/>
+    <IntervalsT Repeat="3" OnDuration="1020" OnPower="0.82" OnPowerLow="0.79" OnPowerHigh="0.85" OffDuration="300" OffPower="0.55" OffPowerLow="0.50" OffPowerHigh="0.60" CadenceLow="90" CadenceHigh="100">
+      <textevent timeoffset="0" message="3x main set"/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

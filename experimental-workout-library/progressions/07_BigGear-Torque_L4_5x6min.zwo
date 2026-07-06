@@ -1,0 +1,35 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>07_BigGear-Torque_L4_5x6min</name>
+  <description>[Strength endurance / force - low-cadence torque]
+PROGRESSION: Level 4/4
+
+WARM-UP:
+-15min building Z1-&gt;Z2 at normal cadence
+
+MAIN SET:
+-5x 6min @95% FTP at 48-52rpm (big gear)
+-3min @55% at free cadence between
+-NOTE: .zwo can't enforce rpm - shift to a big gear yourself
+
+PURPOSE:
+Strength endurance / force production. Bridges gym to bike; doing the intervals at low cadence drives bigger FTP gains.
+
+EXECUTION:
+-Seated, smooth, no rocking. Engage glutes/core. Stop a rep if knees complain - high joint load.
+
+NUTRITION:
+-40-60g carbs/hr.
+
+HYDRATION:
+-500-750ml/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.70" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="5" OnDuration="360" OnPower="0.95" OnPowerLow="0.92" OnPowerHigh="0.98" OffDuration="180" OffPower="0.55" OffPowerLow="0.50" OffPowerHigh="0.60" CadenceLow="48" CadenceHigh="52">
+      <textevent timeoffset="0" message="5x6min @95% at 48-52rpm BIG GEAR. Off: spin ~90rpm."/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

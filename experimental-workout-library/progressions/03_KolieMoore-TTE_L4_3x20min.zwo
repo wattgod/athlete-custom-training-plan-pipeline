@@ -1,0 +1,37 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>03_KolieMoore-TTE_L4_3x20min</name>
+  <description>[Threshold / Time-to-Exhaustion - Kolie Moore, Empirical Cycling]
+PROGRESSION: Level 4/4
+
+WARM-UP:
+-15min building Z1-&gt;Z2
+
+MAIN SET:
+-3x 20min @98% FTP (self-paced: start ~96%, float to 100-102% late)
+-10min @55% between
+-Cadence: 85-95rpm, relaxed
+
+PURPOSE:
+Threshold / TTE at MLSS. Extends how LONG you hold FTP. Total time-at-threshold climbs each level.
+
+EXECUTION:
+-Ride on feel, let power drift up at the end. Accumulating time near threshold matters more than a flat line.
+
+NUTRITION:
+-60-80g carbs/hr from 30-45min.
+
+HYDRATION:
+-500-750ml/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="1200" Power="0.98" PowerLow="0.95" PowerHigh="1.01" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="600" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="1200" Power="0.98" PowerLow="0.95" PowerHigh="1.01" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="600" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="1200" Power="0.98" PowerLow="0.95" PowerHigh="1.01" CadenceLow="85" CadenceHigh="95"/>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

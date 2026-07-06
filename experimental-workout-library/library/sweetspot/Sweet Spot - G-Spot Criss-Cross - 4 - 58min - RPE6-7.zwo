@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Sweet Spot - G-Spot Criss-Cross - 4 - 58min - RPE6-7</name>
+  <description>G-Spot Criss-Cross — level 4
+
+WARM-UP:
+-6min ramp 50%-&gt;75% FTP (RPE 2-3)
+-1:30 @ 87%-93% FTP (Z3, RPE 5-6, 90-95rpm)
+-30s @ 50%-60% FTP (Z1, RPE 1-2, 95-100rpm)
+-1:30 @ 92%-98% FTP (Z4, RPE 6-7, 90-95rpm)
+-30s @ 50%-60% FTP (Z1, RPE 1-2, 95-100rpm)
+-2min @ 55%-65% FTP (Z2, RPE 2-3, 90-95rpm)
+
+MAIN SET:
+-4x 2min @ 85%-91% FTP (Z3, RPE 5-6, 85-95rpm) / 2min @ 101%-107% (Z4, RPE 6-7)
+-4min @ 50%-60% FTP (Z1, RPE 1-2, 85-95rpm)
+-4x 2min @ 85%-91% FTP (Z3, RPE 5-6, 85-95rpm) / 2min @ 101%-107% (Z4, RPE 6-7)
+
+COOL-DOWN:
+-10min spin-down 70%-&gt;50% FTP (RPE 2-3)
+
+HOW TO RIDE IT:
+-Stay smooth across the under/over change; keep pressure on the pedals on the unders.
+
+DIMENSIONS:
+-zones Z1-Z4 · normal cadence · seated · climbing · over/under surges
+
+FUEL:
+-Hydrate well; light fuel.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="360" PowerLow="0.50" PowerHigh="0.75" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="90" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="30" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="95" CadenceHigh="100"/>
+    <SteadyState Duration="90" Power="0.95" PowerLow="0.92" PowerHigh="0.98" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="30" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="95" CadenceHigh="100"/>
+    <SteadyState Duration="120" Power="0.60" PowerLow="0.55" PowerHigh="0.65" CadenceLow="90" CadenceHigh="95"/>
+    <IntervalsT Repeat="4" OnDuration="120" OnPower="0.88" OnPowerLow="0.85" OnPowerHigh="0.91" OffDuration="120" OffPower="1.04" OffPowerLow="1.01" OffPowerHigh="1.07" CadenceLow="85" CadenceHigh="95">
+      <textevent timeoffset="0" message="Over-under (set 1/2): under 88% / over 104%"/>
+    </IntervalsT>
+    <SteadyState Duration="240" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="4" OnDuration="120" OnPower="0.88" OnPowerLow="0.85" OnPowerHigh="0.91" OffDuration="120" OffPower="1.04" OffPowerLow="1.01" OffPowerHigh="1.07" CadenceLow="85" CadenceHigh="95">
+      <textevent timeoffset="0" message="Over-under (set 2/2): under 88% / over 104%"/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

@@ -1,0 +1,43 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>04_Over-Unders_L1_3x8min</name>
+  <description>[Lactate clearance / tolerance - over-unders]
+PROGRESSION: Level 1/4
+
+WARM-UP:
+-15min building Z1-&gt;Z2
+
+MAIN SET:
+-3 blocks of 8min: 2min @95% (under) / 2min @103% (over), x2
+-5min @55% between blocks
+-Cadence: 90-100rpm
+
+PURPOSE:
+Lactate clearance + threshold tolerance. Trains reprocessing lactate while still working hard.
+
+EXECUTION:
+-Ramp into the over, don't surge. The unders are working recoveries - keep pressure on the pedals.
+
+NUTRITION:
+-60g carbs/hr.
+
+HYDRATION:
+-500-750ml/hr with electrolytes.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.80" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="2" OnDuration="120" OnPower="0.95" OnPowerLow="0.92" OnPowerHigh="0.98" OffDuration="120" OffPower="1.03" OffPowerLow="1.00" OffPowerHigh="1.06" CadenceLow="90" CadenceHigh="100">
+      <textevent timeoffset="0" message="Block 1/3: under 95% -&gt; over 103%, x2"/>
+    </IntervalsT>
+    <SteadyState Duration="300" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="2" OnDuration="120" OnPower="0.95" OnPowerLow="0.92" OnPowerHigh="0.98" OffDuration="120" OffPower="1.03" OffPowerLow="1.00" OffPowerHigh="1.06" CadenceLow="90" CadenceHigh="100">
+      <textevent timeoffset="0" message="Block 2/3: under 95% -&gt; over 103%, x2"/>
+    </IntervalsT>
+    <SteadyState Duration="300" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="2" OnDuration="120" OnPower="0.95" OnPowerLow="0.92" OnPowerHigh="0.98" OffDuration="120" OffPower="1.03" OffPowerLow="1.00" OffPowerHigh="1.06" CadenceLow="90" CadenceHigh="100">
+      <textevent timeoffset="0" message="Block 3/3: under 95% -&gt; over 103%, x2"/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

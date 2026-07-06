@@ -1,0 +1,45 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>T6_ForceReps-Stomps_L1_6x8s</name>
+  <description>[Stomps / Standing-Start Force Reps - CTS / PezCycling. Neuromuscular, alactic]
+PROGRESSION: Level 1/4
+
+WARM-UP:
+-15-20min progressing Z1-&gt;Z2
+-1x10min high-cadence Z3 @100-120rpm (wake up leg speed before the grind)
+-then 2-3x30s spin-up openers
+
+MAIN SET:
+-6x ~8s MAX-torque drives from near-standstill in a HUGE gear (53x12/14)
+-Seated, cadence climbs 0 -&gt; ~100rpm as you spin the gear out
+-5min easy (~50%) FULL recovery between - rest matters
+
+PURPOSE:
+Maximal fast-twitch recruitment / acceleration-torque from low speed. Pre-season explosive primer.
+
+EXECUTION:
+-Stomp the downstroke, pull through the bottom, upper body dead still. Low volume, long rests. Stop if knees complain.
+
+SOURCE:
+-CTS / trainright.com (Stomps &amp; PowerStarts); PezCycling 'On-Bike Strength'.
+
+NUTRITION:
+-40-70g carbs/hr.
+
+HYDRATION:
+-500-750ml/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="1200" PowerLow="0.50" PowerHigh="0.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="600" Power="0.80" PowerLow="0.77" PowerHigh="0.83" CadenceLow="100" CadenceHigh="120"/>
+    <IntervalsT Repeat="3" OnDuration="30" OnPower="1.10" OnPowerLow="1.07" OnPowerHigh="1.13" OffDuration="60" OffPower="0.50" OffPowerLow="0.45" OffPowerHigh="0.55" CadenceLow="100" CadenceHigh="110">
+      <textevent timeoffset="0" message="3x30s high-cadence spin-ups to prime the legs"/>
+    </IntervalsT>
+    <SteadyState Duration="120" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="90" CadenceHigh="100"/>
+    <IntervalsT Repeat="6" OnDuration="8" OnPower="1.70" OffDuration="300" OffPower="0.50" OffPowerLow="0.45" OffPowerHigh="0.55" CadenceLow="60" CadenceHigh="90">
+      <textevent timeoffset="0" message="6x 8s MAX stomp, huge gear, near-standstill. 5min FULL recovery."/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

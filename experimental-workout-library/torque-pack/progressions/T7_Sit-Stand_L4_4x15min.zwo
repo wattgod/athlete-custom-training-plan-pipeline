@@ -1,0 +1,80 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>T7_Sit-Stand_L4_4x15min</name>
+  <description>[Sit-Stand Efforts (SSE) - Rouleur. Seated/standing contrast at CONSTANT watts]
+PROGRESSION: Level 4/4
+
+WARM-UP:
+-15-20min progressing Z1-&gt;Z2
+-1x10min high-cadence Z3 @100-120rpm (wake up leg speed before the grind)
+
+MAIN SET:
+-4x 15min, each repeating: 2min SEATED big-gear @46-50rpm / 1min OUT-OF-SADDLE @86-92rpm
+-Hold ~92% FTP CONSTANT across both
+-5min easy between intervals
+
+PURPOSE:
+Bridges strength and high-cadence power: seated big-gear torque vs standing rapid recruitment (attack response).
+
+EXECUTION:
+-Keep WATTS flat while only cadence/posture change. No power spike standing up. After 6-8wk base.
+
+SOURCE:
+-Rouleur Performance, 'Sit-Stand Efforts'.
+
+NUTRITION:
+-40-70g carbs/hr.
+
+HYDRATION:
+-500-750ml/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="600" Power="0.80" PowerLow="0.77" PowerHigh="0.83" CadenceLow="100" CadenceHigh="120"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="300" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="300" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="300" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <SteadyState Duration="120" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="46" CadenceHigh="50"/>
+    <SteadyState Duration="60" Power="0.92" PowerLow="0.89" PowerHigh="0.95" CadenceLow="86" CadenceHigh="92"/>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

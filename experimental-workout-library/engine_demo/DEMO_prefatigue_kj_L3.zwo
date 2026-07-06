@@ -1,0 +1,24 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>DEMO_prefatigue_kj_L3</name>
+  <description>[ENGINE DEMO] axis=prefatigue_kj level=3/4 step=300
+Base 4x4min VO2max @106%. Warm-up: vo2_primer.
+TSS 101 | kJ 1264 | T@VO2max-proxy 17min | W'bal nadir 17.1kJ.
+Only the 'prefatigue_kj' axis is advanced; all other levers held constant.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.70" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="360" Power="0.88" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="180" Power="0.50" CadenceLow="95" CadenceHigh="100"/>
+    <IntervalsT Repeat="3" OnDuration="20" OnPower="1.25" OffDuration="40" OffPower="0.50" CadenceLow="100" CadenceHigh="105">
+      <textevent timeoffset="0" message="Potentiation bursts: 3x20s, speeds VO2 on-kinetics"/>
+    </IntervalsT>
+    <SteadyState Duration="120" Power="0.50" CadenceLow="95" CadenceHigh="100"/>
+    <SteadyState Duration="3900" Power="0.62" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="4" OnDuration="240" OnPower="1.06" OffDuration="240" OffPower="0.50" CadenceLow="90" CadenceHigh="100">
+      <textevent timeoffset="0" message="4x main set"/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

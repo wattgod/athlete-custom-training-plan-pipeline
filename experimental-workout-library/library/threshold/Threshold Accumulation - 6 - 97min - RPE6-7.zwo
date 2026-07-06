@@ -1,0 +1,42 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Threshold Accumulation - 6 - 97min - RPE6-7</name>
+  <description>Threshold Accumulation — level 6
+
+WARM-UP:
+-6min ramp 50%-&gt;75% FTP (RPE 2-3)
+-1:30 @ 87%-93% FTP (Z3, RPE 5-6, 90-95rpm)
+-30s @ 50%-60% FTP (Z1, RPE 1-2, 95-100rpm)
+-1:30 @ 92%-98% FTP (Z4, RPE 6-7, 90-95rpm)
+-30s @ 50%-60% FTP (Z1, RPE 1-2, 95-100rpm)
+-2min @ 55%-65% FTP (Z2, RPE 2-3, 90-95rpm)
+
+MAIN SET:
+-3x 20min @ 95%-101% FTP (Z4, RPE 6-7, 85-95rpm) / 5min @ 50%-60% (Z1, RPE 1-2)
+
+COOL-DOWN:
+-10min spin-down 70%-&gt;50% FTP (RPE 2-3)
+
+HOW TO RIDE IT:
+-Pace it so the last rep matches the first. Controlled, not heroic.
+
+DIMENSIONS:
+-zones Z1-Z4 · normal cadence · seated/aero · climbing · intervals
+
+FUEL:
+-60-90g carbs/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="360" PowerLow="0.50" PowerHigh="0.75" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="90" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="30" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="95" CadenceHigh="100"/>
+    <SteadyState Duration="90" Power="0.95" PowerLow="0.92" PowerHigh="0.98" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="30" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="95" CadenceHigh="100"/>
+    <SteadyState Duration="120" Power="0.60" PowerLow="0.55" PowerHigh="0.65" CadenceLow="90" CadenceHigh="95"/>
+    <IntervalsT Repeat="3" OnDuration="1200" OnPower="0.98" OnPowerLow="0.95" OnPowerHigh="1.01" OffDuration="300" OffPower="0.55" OffPowerLow="0.50" OffPowerHigh="0.60" CadenceLow="85" CadenceHigh="95">
+      <textevent timeoffset="0" message="3x main set"/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

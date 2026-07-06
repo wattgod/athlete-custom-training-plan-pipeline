@@ -1,0 +1,34 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>03_KolieMoore_Threshold_TTE</name>
+  <description>[TREND: Kolie Moore / Empirical Cycling - FTP as a DURATION (TTE), not a 20min number]
+
+WARM-UP:
+-15min building Z1-&gt;Z2
+
+MAIN SET:
+-2x 20min @ 98% FTP (self-paced: start ~96%, let it float to 100-102% in the final third)
+-10min @55% FTP between
+-Cadence: 85-95rpm, relaxed upper body
+
+PURPOSE:
+Threshold / Time-to-Exhaustion at MLSS. Extends how LONG you can hold FTP, not just the number. Progress weekly toward 25-30min reps and 40-60min total TTE.
+
+EXECUTION:
+-Resist ERG lock if you can - ride it on feel and let power drift up at the end. The goal is accumulating time at/near threshold, not a perfect flat line.
+
+NUTRITION:
+-60-80g carbs/hr. Start at 30-45min, mix gels and drink mix.
+
+HYDRATION:
+-500-750ml/hr. Adjust for heat.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="1200" Power="0.98" PowerLow="0.95" PowerHigh="1.01" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="600" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="1200" Power="0.98" PowerLow="0.95" PowerHigh="1.01" CadenceLow="85" CadenceHigh="95"/>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

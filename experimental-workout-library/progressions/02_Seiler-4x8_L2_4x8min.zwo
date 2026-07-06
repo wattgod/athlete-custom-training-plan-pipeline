@@ -1,0 +1,38 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>02_Seiler-4x8_L2_4x8min</name>
+  <description>[Upper threshold / VO2max - Stephen Seiler 4x8]
+PROGRESSION: Level 2/4
+
+WARM-UP:
+-15min building Z1-&gt;Z2, with 2x30s openers @110%
+
+MAIN SET:
+-4x 8min @ highest sustainable power (~107% FTP)
+-2min @50% recovery between
+-Cadence: 90-100rpm
+
+PURPOSE:
+Upper threshold + VO2max ceiling. The flagship single HIT session of polarized 80/20.
+
+EXECUTION:
+-Paced by FEEL, not a fixed watt. If the last rep collapses you went too hard; if it was easy, go harder next time.
+
+NUTRITION:
+-60g carbs/hr from minute 20.
+
+HYDRATION:
+-500-750ml/hr with electrolytes.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="2" OnDuration="30" OnPower="1.10" OnPowerLow="1.07" OnPowerHigh="1.13" OffDuration="60" OffPower="0.50" OffPowerLow="0.45" OffPowerHigh="0.55" CadenceLow="95" CadenceHigh="105">
+      <textevent timeoffset="0" message="Openers: 2x30s to prime"/>
+    </IntervalsT>
+    <IntervalsT Repeat="4" OnDuration="480" OnPower="1.07" OnPowerLow="1.04" OnPowerHigh="1.10" OffDuration="120" OffPower="0.50" OffPowerLow="0.45" OffPowerHigh="0.55" CadenceLow="90" CadenceHigh="100">
+      <textevent timeoffset="0" message="4x8min @ MAX SUSTAINABLE (~107%). Pace so all hold."/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

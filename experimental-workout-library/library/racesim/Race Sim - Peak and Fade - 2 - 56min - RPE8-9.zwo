@@ -1,0 +1,56 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Race Sim - Peak and Fade - 2 - 56min - RPE8-9</name>
+  <description>Peak and Fade — level 2
+
+WARM-UP:
+-6min ramp 50%-&gt;75% FTP (RPE 2-3)
+-1:30 @ 87%-93% FTP (Z3, RPE 5-6, 90-95rpm)
+-30s @ 50%-60% FTP (Z1, RPE 1-2, 95-100rpm)
+-1:30 @ 92%-98% FTP (Z4, RPE 6-7, 90-95rpm)
+-30s @ 50%-60% FTP (Z1, RPE 1-2, 95-100rpm)
+-2min @ 55%-65% FTP (Z2, RPE 2-3, 90-95rpm)
+
+MAIN SET:
+-4:30 @ 107%-113% FTP (Z5, RPE 8-9, 85-95rpm)
+-3min @ 50%-60% FTP (Z1, RPE 1-2, 85-95rpm)
+-4:30 @ 103%-109% FTP (Z5, RPE 8-9, 85-95rpm)
+-3min @ 50%-60% FTP (Z1, RPE 1-2, 85-95rpm)
+-4:30 @ 99%-105% FTP (Z4, RPE 6-7, 85-95rpm)
+-3min @ 50%-60% FTP (Z1, RPE 1-2, 85-95rpm)
+-4:30 @ 95%-101% FTP (Z4, RPE 6-7, 85-95rpm)
+-3min @ 50%-60% FTP (Z1, RPE 1-2, 85-95rpm)
+-4:30 @ 91%-97% FTP (Z4, RPE 5-6, 85-95rpm)
+
+COOL-DOWN:
+-10min spin-down 70%-&gt;50% FTP (RPE 2-3)
+
+HOW TO RIDE IT:
+-Pace it so the last rep matches the first. Controlled, not heroic.
+
+DIMENSIONS:
+-zones Z1-Z5 · normal cadence · seated/aero · climbing · descending
+
+FUEL:
+-Hydrate well; light fuel.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="360" PowerLow="0.50" PowerHigh="0.75" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="90" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="30" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="95" CadenceHigh="100"/>
+    <SteadyState Duration="90" Power="0.95" PowerLow="0.92" PowerHigh="0.98" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="30" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="95" CadenceHigh="100"/>
+    <SteadyState Duration="120" Power="0.60" PowerLow="0.55" PowerHigh="0.65" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="270" Power="1.10" PowerLow="1.07" PowerHigh="1.13" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="180" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="270" Power="1.06" PowerLow="1.03" PowerHigh="1.09" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="180" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="270" Power="1.02" PowerLow="0.99" PowerHigh="1.05" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="180" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="270" Power="0.98" PowerLow="0.95" PowerHigh="1.01" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="180" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="270" Power="0.94" PowerLow="0.91" PowerHigh="0.97" CadenceLow="85" CadenceHigh="95"/>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

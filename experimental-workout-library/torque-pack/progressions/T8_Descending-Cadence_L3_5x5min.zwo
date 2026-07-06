@@ -1,0 +1,46 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>T8_Descending-Cadence_L3_5x5min</name>
+  <description>[Descending-Cadence Ladder - Gear &amp; Grit / CTS. Same watts, torque climbs each rep]
+PROGRESSION: Level 3/4
+
+WARM-UP:
+-15-20min progressing Z1-&gt;Z2
+-1x10min high-cadence Z3 @100-120rpm (wake up leg speed before the grind)
+
+MAIN SET:
+-5x 5min ALL at 87% FTP, cadence steps DOWN: 70-&gt;60-&gt;52-&gt;47-&gt;43rpm
+-Torque rises every rung because power stays flat as rpm drops
+-3min easy spin between rungs
+
+PURPOSE:
+Force application across recruitment patterns. Watts constant, so only torque changes - clean progressive overload.
+
+EXECUTION:
+-Seated, smooth, keep power flat - shift to a bigger gear each rung, don't push harder. Watch knees on the lowest rung.
+
+SOURCE:
+-Gear &amp; Grit 'Big Gear Big Gains'; CTS cadence material.
+
+NUTRITION:
+-40-70g carbs/hr.
+
+HYDRATION:
+-500-750ml/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.70" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="600" Power="0.80" PowerLow="0.77" PowerHigh="0.83" CadenceLow="100" CadenceHigh="120"/>
+    <SteadyState Duration="300" Power="0.87" PowerLow="0.84" PowerHigh="0.90" CadenceLow="68" CadenceHigh="72"/>
+    <SteadyState Duration="180" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="0.87" PowerLow="0.84" PowerHigh="0.90" CadenceLow="58" CadenceHigh="62"/>
+    <SteadyState Duration="180" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="0.87" PowerLow="0.84" PowerHigh="0.90" CadenceLow="50" CadenceHigh="54"/>
+    <SteadyState Duration="180" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="0.87" PowerLow="0.84" PowerHigh="0.90" CadenceLow="45" CadenceHigh="49"/>
+    <SteadyState Duration="180" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="0.87" PowerLow="0.84" PowerHigh="0.90" CadenceLow="41" CadenceHigh="45"/>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

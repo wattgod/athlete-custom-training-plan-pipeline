@@ -1,0 +1,46 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>01_Ronnestad-30-15_L2_3x11reps</name>
+  <description>[VO2max micro-intervals - Bent Ronnestad 30/15s]
+PROGRESSION: Level 2/4
+
+WARM-UP:
+-12min ramp Z1-&gt;Z2, then 2x1min @113% with 1min easy
+
+MAIN SET:
+-3 sets of 11x (30s @110% FTP / 15s @50%)
+-3min @50% between sets
+-Cadence: 90-110rpm, seated and smooth
+
+PURPOSE:
+VO2max. The 15s float keeps O2 uptake near max for far more total time at &gt;90% VO2max.
+
+EXECUTION:
+-Hit target on every 30s. The float is a true easy spin. End a set if you can't hold the 30s power in its back third.
+
+NUTRITION:
+-30-60g carbs/hr.
+
+HYDRATION:
+-500-750ml/hr with electrolytes.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="720" PowerLow="0.50" PowerHigh="0.70" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="2" OnDuration="60" OnPower="1.13" OnPowerLow="1.10" OnPowerHigh="1.16" OffDuration="60" OffPower="0.50" OffPowerLow="0.45" OffPowerHigh="0.55" CadenceLow="95" CadenceHigh="105">
+      <textevent timeoffset="0" message="Primers: 2x1min to open the legs"/>
+    </IntervalsT>
+    <IntervalsT Repeat="11" OnDuration="30" OnPower="1.10" OnPowerLow="1.07" OnPowerHigh="1.13" OffDuration="15" OffPower="0.50" OffPowerLow="0.45" OffPowerHigh="0.55" CadenceLow="95" CadenceHigh="110">
+      <textevent timeoffset="0" message="Set 1/3: 11x 30s@110% / 15s float"/>
+    </IntervalsT>
+    <SteadyState Duration="180" Power="0.50" PowerLow="0.45" PowerHigh="0.55" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="11" OnDuration="30" OnPower="1.10" OnPowerLow="1.07" OnPowerHigh="1.13" OffDuration="15" OffPower="0.50" OffPowerLow="0.45" OffPowerHigh="0.55" CadenceLow="95" CadenceHigh="110">
+      <textevent timeoffset="0" message="Set 2/3: 11x 30s@110% / 15s float"/>
+    </IntervalsT>
+    <SteadyState Duration="180" Power="0.50" PowerLow="0.45" PowerHigh="0.55" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="11" OnDuration="30" OnPower="1.10" OnPowerLow="1.07" OnPowerHigh="1.13" OffDuration="15" OffPower="0.50" OffPowerLow="0.45" OffPowerHigh="0.55" CadenceLow="95" CadenceHigh="110">
+      <textevent timeoffset="0" message="Set 3/3: 11x 30s@110% / 15s float"/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

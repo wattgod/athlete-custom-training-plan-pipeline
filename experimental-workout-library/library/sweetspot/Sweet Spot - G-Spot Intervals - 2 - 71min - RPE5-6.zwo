@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Sweet Spot - G-Spot Intervals - 2 - 71min - RPE5-6</name>
+  <description>G-Spot Intervals — level 2
+
+WARM-UP:
+-10min ramp 50%-&gt;65% FTP (RPE 2-3)
+
+MAIN SET:
+-3x 12min @ 87%-93% FTP (Z3, RPE 5-6, 85-95rpm) / 5min @ 50%-60% (Z1, RPE 1-2)
+
+COOL-DOWN:
+-10min spin-down 70%-&gt;50% FTP (RPE 2-3)
+
+HOW TO RIDE IT:
+-Comfortably hard. Settle in, stay smooth.
+
+DIMENSIONS:
+-zones Z1-Z3 · normal cadence · seated · climbing · intervals
+
+FUEL:
+-40-60g carbs/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.50" PowerHigh="0.65" CadenceLow="85" CadenceHigh="92"/>
+    <IntervalsT Repeat="3" OnDuration="720" OnPower="0.90" OnPowerLow="0.87" OnPowerHigh="0.93" OffDuration="300" OffPower="0.55" OffPowerLow="0.50" OffPowerHigh="0.60" CadenceLow="85" CadenceHigh="95">
+      <textevent timeoffset="0" message="3x main set"/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

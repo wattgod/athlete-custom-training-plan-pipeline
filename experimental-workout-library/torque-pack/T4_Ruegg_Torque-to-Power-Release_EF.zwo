@@ -1,0 +1,46 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>T4_Ruegg_Torque-to-Power-Release_EF</name>
+  <description>[TORQUE 4/8: Noemi Ruegg Torque-&gt;Power - EF Pro Cycling. Build torque, then SPIN it into power]
+
+WARM-UP:
+-20min building, 2-3 short openers
+
+MAIN SET:
+-4 rounds, each = 5min @~115% FTP at 50-58rpm (big gear, ideally a climb)
+  -&gt; IMMEDIATELY shift to a lighter gear and 1min MAX effort, high cadence (the 'release')
+-Full recovery (5min easy) between rounds
+
+PURPOSE:
+Sprint/bunch-finish strength: push the big gear (torque) then spin it up (velocity). Trains transferring built-up torque into actual leg speed.
+
+EXECUTION:
+-Seated for the 5min torque block; the 1min release is all-out, free/high cadence. Target a fixed Nm number on the torque block so it stays even over undulations.
+
+SOURCE:
+-EF Pro Cycling, 'Pro Workouts: Torque Efforts with Noemi Ruegg'.
+
+NUTRITION:
+-50-70g carbs/hr.
+
+HYDRATION:
+-500-750ml/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="1200" PowerLow="0.50" PowerHigh="0.75" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="1.15" PowerLow="1.12" PowerHigh="1.18" CadenceLow="50" CadenceHigh="58"/>
+    <SteadyState Duration="60" Power="1.40" CadenceLow="95" CadenceHigh="110"/>
+    <SteadyState Duration="300" Power="0.50" PowerLow="0.45" PowerHigh="0.55" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="1.15" PowerLow="1.12" PowerHigh="1.18" CadenceLow="50" CadenceHigh="58"/>
+    <SteadyState Duration="60" Power="1.40" CadenceLow="95" CadenceHigh="110"/>
+    <SteadyState Duration="300" Power="0.50" PowerLow="0.45" PowerHigh="0.55" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="1.15" PowerLow="1.12" PowerHigh="1.18" CadenceLow="50" CadenceHigh="58"/>
+    <SteadyState Duration="60" Power="1.40" CadenceLow="95" CadenceHigh="110"/>
+    <SteadyState Duration="300" Power="0.50" PowerLow="0.45" PowerHigh="0.55" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="300" Power="1.15" PowerLow="1.12" PowerHigh="1.18" CadenceLow="50" CadenceHigh="58"/>
+    <SteadyState Duration="60" Power="1.40" CadenceLow="95" CadenceHigh="110"/>
+    <SteadyState Duration="300" Power="0.50" PowerLow="0.45" PowerHigh="0.55" CadenceLow="85" CadenceHigh="95"/>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

@@ -1,0 +1,40 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Durability - Tired 30-30s - 3 - 115min - RPE8-9</name>
+  <description>Tired 30/30s — level 3
+
+WARM-UP:
+-10min ramp 50%-&gt;65% FTP (RPE 2-3)
+
+MAIN SET:
+-80min @ 57%-67% FTP (Z2, RPE 2-3, 85-95rpm)
+-6x 30s @ 109%-115% FTP (Z5, RPE 8-9, 90-100rpm) / 30s @ 45%-55% (Z1, RPE 1-2)
+-3min @ 50%-60% FTP (Z1, RPE 1-2, 85-95rpm)
+-6x 30s @ 109%-115% FTP (Z5, RPE 8-9, 90-100rpm) / 30s @ 45%-55% (Z1, RPE 1-2)
+
+COOL-DOWN:
+-10min spin-down 70%-&gt;50% FTP (RPE 2-3)
+
+HOW TO RIDE IT:
+-Hold target on the efforts even on tired legs. Keep eating.
+
+DIMENSIONS:
+-zones Z1-Z5 · normal cadence · seated · rolling/mixed · micro-bursts
+
+FUEL:
+-60-90g carbs/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.50" PowerHigh="0.65" CadenceLow="85" CadenceHigh="92"/>
+    <SteadyState Duration="4800" Power="0.62" PowerLow="0.57" PowerHigh="0.67" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="6" OnDuration="30" OnPower="1.12" OnPowerLow="1.09" OnPowerHigh="1.15" OffDuration="30" OffPower="0.50" OffPowerLow="0.45" OffPowerHigh="0.55" CadenceLow="90" CadenceHigh="100">
+      <textevent timeoffset="0" message="6x main set (set 1/2)"/>
+    </IntervalsT>
+    <SteadyState Duration="180" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <IntervalsT Repeat="6" OnDuration="30" OnPower="1.12" OnPowerLow="1.09" OnPowerHigh="1.15" OffDuration="30" OffPower="0.50" OffPowerLow="0.45" OffPowerHigh="0.55" CadenceLow="90" CadenceHigh="100">
+      <textevent timeoffset="0" message="6x main set (set 2/2)"/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

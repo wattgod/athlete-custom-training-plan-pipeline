@@ -1,0 +1,56 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>T5_Pogacar-UAE_Torque-VO2-Sprint-Stack</name>
+  <description>[TORQUE 5/8: UAE / Pogacar Torque-VO2 + Sprint. Three demands, incomplete recovery]
+
+WARM-UP:
+-20min building, 2-3 openers
+
+MAIN SET:
+-7 reps, each = 2.5min at ~110% FTP at 48-55rpm (torque, steep climb)
+  -&gt; straight into a 15s ALL-OUT sprint
+-Recovery = HIGH Zone 2 (~70% FTP), NOT full rest, 3min
+-Team baseline variant: 8x4min @40-50rpm @90-100% FTP
+
+PURPOSE:
+Stacks high torque + VO2 power + a neuromuscular spike, with incomplete recovery. Trains explosive transfer under accumulating fatigue. Advanced only.
+
+EXECUTION:
+-Seated for the torque portion, stand into the sprint. The short Z2 'recovery' is part of the stimulus - keep pedalling. Build phase, experienced riders.
+
+SOURCE:
+-UAE Team Emirates-XRG (perf. head Jeroen Swart); Cycling Weekly / Cinch Cycling.
+
+NUTRITION:
+-60-90g carbs/hr.
+
+HYDRATION:
+-500-750ml/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="1200" PowerLow="0.50" PowerHigh="0.75" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="150" Power="1.10" PowerLow="1.07" PowerHigh="1.13" CadenceLow="48" CadenceHigh="55"/>
+    <SteadyState Duration="15" Power="1.80" CadenceLow="95" CadenceHigh="110"/>
+    <SteadyState Duration="180" Power="0.70" PowerLow="0.65" PowerHigh="0.75" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="150" Power="1.10" PowerLow="1.07" PowerHigh="1.13" CadenceLow="48" CadenceHigh="55"/>
+    <SteadyState Duration="15" Power="1.80" CadenceLow="95" CadenceHigh="110"/>
+    <SteadyState Duration="180" Power="0.70" PowerLow="0.65" PowerHigh="0.75" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="150" Power="1.10" PowerLow="1.07" PowerHigh="1.13" CadenceLow="48" CadenceHigh="55"/>
+    <SteadyState Duration="15" Power="1.80" CadenceLow="95" CadenceHigh="110"/>
+    <SteadyState Duration="180" Power="0.70" PowerLow="0.65" PowerHigh="0.75" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="150" Power="1.10" PowerLow="1.07" PowerHigh="1.13" CadenceLow="48" CadenceHigh="55"/>
+    <SteadyState Duration="15" Power="1.80" CadenceLow="95" CadenceHigh="110"/>
+    <SteadyState Duration="180" Power="0.70" PowerLow="0.65" PowerHigh="0.75" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="150" Power="1.10" PowerLow="1.07" PowerHigh="1.13" CadenceLow="48" CadenceHigh="55"/>
+    <SteadyState Duration="15" Power="1.80" CadenceLow="95" CadenceHigh="110"/>
+    <SteadyState Duration="180" Power="0.70" PowerLow="0.65" PowerHigh="0.75" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="150" Power="1.10" PowerLow="1.07" PowerHigh="1.13" CadenceLow="48" CadenceHigh="55"/>
+    <SteadyState Duration="15" Power="1.80" CadenceLow="95" CadenceHigh="110"/>
+    <SteadyState Duration="180" Power="0.70" PowerLow="0.65" PowerHigh="0.75" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="150" Power="1.10" PowerLow="1.07" PowerHigh="1.13" CadenceLow="48" CadenceHigh="55"/>
+    <SteadyState Duration="15" Power="1.80" CadenceLow="95" CadenceHigh="110"/>
+    <SteadyState Duration="180" Power="0.70" PowerLow="0.65" PowerHigh="0.75" CadenceLow="85" CadenceHigh="95"/>
+    <Cooldown Duration="900" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

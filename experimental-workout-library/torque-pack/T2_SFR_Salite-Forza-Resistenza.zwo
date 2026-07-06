@@ -1,0 +1,38 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>T2_SFR_Salite-Forza-Resistenza</name>
+  <description>[TORQUE 2/8: SFR / Salite Forza Resistenza - Italian tradition (Sassi/Moser)]
+
+WARM-UP:
+-20min building, a couple of cadence ramps
+
+MAIN SET:
+-6x 4min at 45-50rpm, 80-90% FTP (mid-upper Zone 3), seated
+-NEVER below 40rpm
+-4min easy spin between (self-selected cadence)
+-On a 5-8% climb or trainer in a big gear
+
+PURPOSE:
+Aerobic strength: trains the torque demand of high-power efforts WITHOUT the aerobic strain. Shorter/higher-rep than MTI - 'feel the chain'.
+
+EXECUTION:
+-Seated only, hands on the tops, DO NOT pull with the arms. Smooth, even pressure. Build from 4 toward 6-8 reps across the block.
+
+SOURCE:
+-Catalyst Coaching / Hero Dolomites SFR guides. Classic Italian off-season strength climbs.
+
+NUTRITION:
+-40-60g carbs/hr.
+
+HYDRATION:
+-500-750ml/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="1200" PowerLow="0.50" PowerHigh="0.72" CadenceLow="80" CadenceHigh="90"/>
+    <IntervalsT Repeat="6" OnDuration="240" OnPower="0.88" OnPowerLow="0.85" OnPowerHigh="0.91" OffDuration="240" OffPower="0.50" OffPowerLow="0.45" OffPowerHigh="0.55" CadenceLow="45" CadenceHigh="50">
+      <textevent timeoffset="0" message="6x4min @45-50rpm @88%. Seated, hands on tops, don't pull bars."/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

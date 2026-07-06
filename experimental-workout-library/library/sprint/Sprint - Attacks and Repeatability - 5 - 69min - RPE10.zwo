@@ -1,0 +1,104 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Sprint - Attacks and Repeatability - 5 - 69min - RPE10</name>
+  <description>Attacks and Repeatability — level 5
+
+WARM-UP:
+-5min ramp 50%-&gt;70% FTP (RPE 2-3)
+-6min @ 85%-91% FTP (Z3, RPE 5-6, 90-95rpm)
+-3min @ 45%-55% FTP (Z1, RPE 1-2, 95-100rpm)
+-3x 20s @ 125% FTP (Z6, RPE 9-10, 100-105rpm) / 40s @ 45%-55% (Z1, RPE 1-2)
+-2min @ 45%-55% FTP (Z1, RPE 1-2, 95-100rpm)
+
+MAIN SET:
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+-20s @ 160% FTP (Z7, RPE 10, 90-100rpm)
+-2:02 @ 75%-81% FTP (Z3, RPE 3-4, 90-100rpm)
+
+COOL-DOWN:
+-10min spin-down 70%-&gt;50% FTP (RPE 2-3)
+
+HOW TO RIDE IT:
+-Commit to each effort, rest fully between.
+
+DIMENSIONS:
+-zones Z3-Z7 · normal cadence · seated/standing · rolling · attack/recover surges
+
+FUEL:
+-40-60g carbs/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.70" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="360" Power="0.88" PowerLow="0.85" PowerHigh="0.91" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="180" Power="0.50" PowerLow="0.45" PowerHigh="0.55" CadenceLow="95" CadenceHigh="100"/>
+    <IntervalsT Repeat="3" OnDuration="20" OnPower="1.25" OffDuration="40" OffPower="0.50" OffPowerLow="0.45" OffPowerHigh="0.55" CadenceLow="100" CadenceHigh="105">
+      <textevent timeoffset="0" message="Potentiation bursts: 3x20s, speeds VO2 on-kinetics"/>
+    </IntervalsT>
+    <SteadyState Duration="120" Power="0.50" PowerLow="0.45" PowerHigh="0.55" CadenceLow="95" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="20" Power="1.60" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="122" Power="0.78" PowerLow="0.75" PowerHigh="0.81" CadenceLow="90" CadenceHigh="100"/>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

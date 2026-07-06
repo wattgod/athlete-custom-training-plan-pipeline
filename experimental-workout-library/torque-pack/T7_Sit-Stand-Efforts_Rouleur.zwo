@@ -1,0 +1,60 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>T7_Sit-Stand-Efforts_Rouleur</name>
+  <description>[TORQUE 7/8: Sit-Stand Efforts (SSE) - Rouleur. Seated/standing contrast at CONSTANT watts]
+
+WARM-UP:
+-15min building Z1-&gt;Z2
+
+MAIN SET:
+-3x 12min intervals, each repeating: 2min SEATED big-gear @48-52rpm / 1min OUT-OF-SADDLE @82-90rpm
+-Hold ~90% FTP CONSTANT across both seated and standing portions
+-5min easy between intervals
+
+PURPOSE:
+Bridges strength and high-cadence power: seated = big-gear torque, standing-at-higher-cadence = rapid motor-unit recruitment (the attack response).
+
+EXECUTION:
+-The trick is keeping WATTS flat while only cadence/posture change. Smooth transitions, no power spike standing up. Introduce after 6-8wk base.
+
+SOURCE:
+-Rouleur Performance, 'Sit-Stand Efforts: the best way to build functional bike strength?'
+
+NUTRITION:
+-50-70g carbs/hr.
+
+HYDRATION:
+-500-750ml/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.72" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="120" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="48" CadenceHigh="52"/>
+    <SteadyState Duration="60" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="82" CadenceHigh="90"/>
+    <SteadyState Duration="120" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="48" CadenceHigh="52"/>
+    <SteadyState Duration="60" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="82" CadenceHigh="90"/>
+    <SteadyState Duration="120" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="48" CadenceHigh="52"/>
+    <SteadyState Duration="60" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="82" CadenceHigh="90"/>
+    <SteadyState Duration="120" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="48" CadenceHigh="52"/>
+    <SteadyState Duration="60" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="82" CadenceHigh="90"/>
+    <SteadyState Duration="300" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="120" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="48" CadenceHigh="52"/>
+    <SteadyState Duration="60" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="82" CadenceHigh="90"/>
+    <SteadyState Duration="120" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="48" CadenceHigh="52"/>
+    <SteadyState Duration="60" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="82" CadenceHigh="90"/>
+    <SteadyState Duration="120" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="48" CadenceHigh="52"/>
+    <SteadyState Duration="60" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="82" CadenceHigh="90"/>
+    <SteadyState Duration="120" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="48" CadenceHigh="52"/>
+    <SteadyState Duration="60" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="82" CadenceHigh="90"/>
+    <SteadyState Duration="300" Power="0.55" PowerLow="0.50" PowerHigh="0.60" CadenceLow="85" CadenceHigh="95"/>
+    <SteadyState Duration="120" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="48" CadenceHigh="52"/>
+    <SteadyState Duration="60" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="82" CadenceHigh="90"/>
+    <SteadyState Duration="120" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="48" CadenceHigh="52"/>
+    <SteadyState Duration="60" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="82" CadenceHigh="90"/>
+    <SteadyState Duration="120" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="48" CadenceHigh="52"/>
+    <SteadyState Duration="60" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="82" CadenceHigh="90"/>
+    <SteadyState Duration="120" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="48" CadenceHigh="52"/>
+    <SteadyState Duration="60" Power="0.90" PowerLow="0.87" PowerHigh="0.93" CadenceLow="82" CadenceHigh="90"/>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>

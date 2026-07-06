@@ -1,0 +1,42 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Anaerobic - Glycolytic Power - 6 - 84min - RPE9-10</name>
+  <description>Glycolytic Power — level 6
+
+WARM-UP:
+-5min ramp 50%-&gt;70% FTP (RPE 2-3)
+-6min @ 85%-91% FTP (Z3, RPE 5-6, 90-95rpm)
+-3min @ 45%-55% FTP (Z1, RPE 1-2, 95-100rpm)
+-3x 20s @ 125% FTP (Z6, RPE 9-10, 100-105rpm) / 40s @ 45%-55% (Z1, RPE 1-2)
+-2min @ 45%-55% FTP (Z1, RPE 1-2, 95-100rpm)
+
+MAIN SET:
+-11x 1min @ 145% FTP (Z6, RPE 9-10, 90-100rpm) / 4min @ 40%-50% (Z1, RPE 1-2)
+
+COOL-DOWN:
+-10min spin-down 70%-&gt;50% FTP (RPE 2-3)
+
+HOW TO RIDE IT:
+-Commit to each effort, rest fully between.
+
+DIMENSIONS:
+-zones Z1-Z6 · normal cadence · seated/standing · rolling · intervals
+
+FUEL:
+-40-60g carbs/hr.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.70" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="360" Power="0.88" PowerLow="0.85" PowerHigh="0.91" CadenceLow="90" CadenceHigh="95"/>
+    <SteadyState Duration="180" Power="0.50" PowerLow="0.45" PowerHigh="0.55" CadenceLow="95" CadenceHigh="100"/>
+    <IntervalsT Repeat="3" OnDuration="20" OnPower="1.25" OffDuration="40" OffPower="0.50" OffPowerLow="0.45" OffPowerHigh="0.55" CadenceLow="100" CadenceHigh="105">
+      <textevent timeoffset="0" message="Potentiation bursts: 3x20s, speeds VO2 on-kinetics"/>
+    </IntervalsT>
+    <SteadyState Duration="120" Power="0.50" PowerLow="0.45" PowerHigh="0.55" CadenceLow="95" CadenceHigh="100"/>
+    <IntervalsT Repeat="11" OnDuration="60" OnPower="1.45" OffDuration="240" OffPower="0.45" OffPowerLow="0.40" OffPowerHigh="0.50" CadenceLow="90" CadenceHigh="100">
+      <textevent timeoffset="0" message="11x main set"/>
+    </IntervalsT>
+    <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
+  </workout>
+</workout_file>
