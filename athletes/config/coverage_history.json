@@ -48,5 +48,26 @@
    "gravel": 0.692,
    "road": 0.725
   }
+ },
+ {
+  "date": "2026-07-06",
+  "n": 200,
+  "pass": 135,
+  "needs_review": 60,
+  "failed": 5,
+  "delivered": 195,
+  "delivered_rate": 0.975,
+  "pass_rate": 0.675,
+  "by_persona": {
+   "masters_returner": 0.65,
+   "ambitious_first_timer": 0.75,
+   "time_crunched_parent": 0.675,
+   "veteran_podium_chaser": 0.675,
+   "weekend_warrior": 0.625
+  },
+  "by_discipline": {
+   "gravel": 0.65,
+   "road": 0.713
+  }
  }
 ]
