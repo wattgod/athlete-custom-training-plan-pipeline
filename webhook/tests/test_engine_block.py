@@ -1108,3 +1108,407 @@ class TestMethodologyDifferentiation:
             r2 = _post(client, _payload(methodology=m)).get_json()
             r1.pop('engine'); r2.pop('engine')
             assert r1 == r2, m
+
+
+# =============================================================================
+# WEEK DESCRIPTORS — calendar-truth typing + races (block.week_descriptors)
+# =============================================================================
+
+class TestWeekDescriptors:
+    """block.week_descriptors: the /engine/season weeks[] shapes slice
+    straight into /engine/block, so the calendar (types + races, incl. the
+    B-race mini-taper overlay) is the source of truth — the block builder
+    consumes descriptors instead of inventing its own load/recovery rhythm.
+    Omitted → byte-identical to the internal rhythm."""
+
+    def _body(self, phase='build', weeks=3, start='2026-07-06',
+              descriptors=None):
+        body = _payload()
+        body['block'] = {'phase': phase, 'weeks': weeks, 'start_date': start}
+        if descriptors is not None:
+            body['block']['week_descriptors'] = descriptors
+        return body
+
+    def _default_descriptors(self, phase, weeks):
+        """The request-shape twin of the engine's internal rhythm."""
+        if phase in ('base', 'build', 'stabilize', 'peak'):
+            types = (['load'] * weeks if weeks == 2
+                     else ['load'] * (weeks - 1) + ['recovery'])
+        elif phase == 'taper':
+            types = ['taper'] * weeks
+        elif phase == 'race':
+            types = ['taper'] * (weeks - 1) + ['race']
+        else:
+            types = ['recovery'] * weeks
+        return [{'number': i + 1, 'type': t} for i, t in enumerate(types)]
+
+    def _ned_gravel_body(self, **race_overrides):
+        """The real failure case: season week 1 (Jul 6-12) carries B-race
+        Ned Gravel on Sunday Jul 12 with a mini-taper overlay."""
+        race = {'name': 'Ned Gravel', 'date': '2026-07-12', 'priority': 'B'}
+        race.update(race_overrides)
+        return self._body(descriptors=[
+            {'number': 1, 'type': 'load', 'races': [race]},
+            {'number': 2, 'type': 'load'},
+            {'number': 3, 'type': 'recovery'},
+        ])
+
+    # ---- omitted → byte-identical (determinism pin) -------------------------
+
+    def test_omitted_descriptors_byte_identical(self, client):
+        """No descriptors → two identical requests, identical bytes (the
+        pre-descriptor code path is untouched)."""
+        r1 = _post(client, self._body()).get_json()
+        r2 = _post(client, self._body()).get_json()
+        r1.pop('engine'); r2.pop('engine')
+        assert r1 == r2
+
+    def test_default_shaped_descriptors_match_omitted(self, client):
+        """Descriptors that spell out the internal rhythm (no races) are
+        byte-identical to omitting them — same consumption path, not a
+        second week-typing mechanism. Pinned across every phase."""
+        for phase in VALID_PHASES:
+            for weeks in (2, 3, 4):
+                omitted = _post(client, self._body(phase, weeks)).get_json()
+                explicit = _post(client, self._body(
+                    phase, weeks,
+                    descriptors=self._default_descriptors(phase, weeks),
+                )).get_json()
+                omitted.pop('engine'); explicit.pop('engine')
+                assert omitted == explicit, (phase, weeks)
+
+    def test_race_overlay_leaves_other_weeks_untouched(self, client):
+        """A race in week 1 changes ONLY week 1 — weeks 2-3 stay
+        byte-identical to the omitted-descriptors block."""
+        omitted = _post(client, self._body()).get_json()
+        raced = _post(client, self._ned_gravel_body()).get_json()
+        assert raced['weeks'][1] == omitted['weeks'][1]
+        assert raced['weeks'][2] == omitted['weeks'][2]
+
+    # ---- validation 400s ----------------------------------------------------
+
+    def test_not_an_array_400(self, client):
+        resp = _post(client, self._body(descriptors={'number': 1}))
+        assert resp.status_code == 400
+        assert 'block.week_descriptors' in resp.get_json()['fields']
+
+    def test_length_mismatch_400(self, client):
+        for n in (1, 2, 4):
+            desc = [{'number': i + 1, 'type': 'load'} for i in range(n)]
+            resp = _post(client, self._body(weeks=3, descriptors=desc))
+            assert resp.status_code == 400, n
+            fields = resp.get_json()['fields']
+            assert 'block.week_descriptors' in fields
+            assert 'expected 3' in fields['block.week_descriptors']
+
+    def test_bad_type_enum_400(self, client):
+        for bad in ('loading', 'medium', 'testing', None, 3):
+            desc = self._default_descriptors('build', 3)
+            desc[1]['type'] = bad
+            resp = _post(client, self._body(descriptors=desc))
+            assert resp.status_code == 400, bad
+            assert ('block.week_descriptors[1].type'
+                    in resp.get_json()['fields'])
+
+    def test_non_object_entry_400(self, client):
+        resp = _post(client, self._body(
+            descriptors=[{'number': 1, 'type': 'load'}, 'load', None]))
+        assert resp.status_code == 400
+        fields = resp.get_json()['fields']
+        assert 'block.week_descriptors[1]' in fields
+        assert 'block.week_descriptors[2]' in fields
+
+    def test_bad_number_400(self, client):
+        for bad in (0, -1, 'one', None, True):
+            desc = self._default_descriptors('build', 3)
+            desc[0]['number'] = bad
+            resp = _post(client, self._body(descriptors=desc))
+            assert resp.status_code == 400, bad
+            assert ('block.week_descriptors[0].number'
+                    in resp.get_json()['fields'])
+
+    def test_race_outside_window_400(self, client):
+        """Block window is Monday-aligned: 3 weeks from 2026-07-06 covers
+        Jul 6 - Jul 26. A race outside that is a 400."""
+        for bad_date in ('2026-07-05', '2026-07-27', '2026-08-15'):
+            resp = _post(client, self._ned_gravel_body(date=bad_date))
+            assert resp.status_code == 400, bad_date
+            fields = resp.get_json()['fields']
+            assert 'block.week_descriptors[0].races[0].date' in fields, fields
+            assert 'outside the block window' in \
+                fields['block.week_descriptors[0].races[0].date']
+
+    def test_race_bad_date_format_400(self, client):
+        for bad in ('July 12', '2026-13-40', 20260712, None):
+            resp = _post(client, self._ned_gravel_body(date=bad))
+            assert resp.status_code == 400, bad
+            assert ('block.week_descriptors[0].races[0].date'
+                    in resp.get_json()['fields'])
+
+    def test_race_bad_priority_400(self, client):
+        for bad in ('D', 'b', None, 1):
+            resp = _post(client, self._ned_gravel_body(priority=bad))
+            assert resp.status_code == 400, bad
+            assert ('block.week_descriptors[0].races[0].priority'
+                    in resp.get_json()['fields'])
+
+    def test_race_missing_name_400(self, client):
+        for bad in ('', '   ', None, 42):
+            resp = _post(client, self._ned_gravel_body(name=bad))
+            assert resp.status_code == 400, bad
+            assert ('block.week_descriptors[0].races[0].name'
+                    in resp.get_json()['fields'])
+
+    def test_races_not_a_list_400(self, client):
+        desc = self._default_descriptors('build', 3)
+        desc[0]['races'] = {'name': 'X'}
+        resp = _post(client, self._body(descriptors=desc))
+        assert resp.status_code == 400
+        assert ('block.week_descriptors[0].races'
+                in resp.get_json()['fields'])
+
+    # ---- season-slice tolerance ---------------------------------------------
+
+    def test_extra_season_keys_tolerated(self, client):
+        """A slice of /engine/season weeks[] validates as-is: extra keys
+        (start_date, end_date, phase, block, note) are ignored and `number`
+        may keep season-absolute numbering."""
+        desc = [
+            {'number': 14, 'type': 'load', 'start_date': '2026-07-06',
+             'end_date': '2026-07-12', 'phase': 'build',
+             'block': {'index': 4, 'position': 1, 'length': 3},
+             'races': [{'name': 'Ned Gravel', 'date': '2026-07-12',
+                        'priority': 'B'}],
+             'note': 'Ned Gravel on 2026-07-12 — mini-taper overlay'},
+            {'number': 15, 'type': 'load', 'phase': 'build', 'races': []},
+            {'number': 16, 'type': 'recovery', 'phase': 'build',
+             'note': 'Recovery week'},
+        ]
+        resp = _post(client, self._body(descriptors=desc))
+        assert resp.status_code == 200, resp.get_json()
+        data = resp.get_json()
+        assert [w['type'] for w in data['weeks']] == [
+            'load', 'load', 'recovery']
+        assert data['compliance'] == {'passed': True, 'violations': []}
+        # Response weeks renumber 1..N within the block (contract unchanged).
+        assert [w['number'] for w in data['weeks']] == [1, 2, 3]
+
+    # ---- types override the internal rhythm ----------------------------------
+
+    def test_descriptor_types_override_rhythm(self, client):
+        """Recovery lands where the CALENDAR says, not where block rotation
+        would put it (rotation says load/load/recovery)."""
+        desc = [{'number': 1, 'type': 'load'},
+                {'number': 2, 'type': 'recovery'},
+                {'number': 3, 'type': 'load'}]
+        resp = _post(client, self._body(descriptors=desc))
+        assert resp.status_code == 200, resp.get_json()
+        data = resp.get_json()
+        assert [w['type'] for w in data['weeks']] == [
+            'load', 'recovery', 'load']
+        assert data['compliance'] == {'passed': True, 'violations': []}
+        # The recovery week actually unloads (openers-level work only).
+        rec = data['weeks'][1]
+        assert all(not wo['isIntensity'] or wo['coachName'] == 'Openers'
+                   for wo in rec['workouts'])
+
+    def test_all_load_no_recovery_honored(self, client):
+        desc = [{'number': i + 1, 'type': 'load'} for i in range(4)]
+        resp = _post(client, self._body(weeks=4, descriptors=desc))
+        assert resp.status_code == 200, resp.get_json()
+        assert [w['type'] for w in resp.get_json()['weeks']] == ['load'] * 4
+
+    def test_taper_and_race_types_map_to_contract_enum(self, client):
+        """Descriptor 'taper' ships as contract 'medium' (same as the taper
+        phase today); 'race' ships as 'race'."""
+        desc = [{'number': 1, 'type': 'taper'}, {'number': 2, 'type': 'race'}]
+        resp = _post(client, self._body(phase='race', weeks=2,
+                                        descriptors=desc))
+        assert resp.status_code == 200, resp.get_json()
+        assert [w['type'] for w in resp.get_json()['weeks']] == [
+            'medium', 'race']
+
+    # ---- B-race mini-taper overlay (the Ned Gravel case) ---------------------
+
+    def test_b_race_mid_block_race_day_and_openers(self, client):
+        resp = _post(client, self._ned_gravel_body())
+        assert resp.status_code == 200, resp.get_json()
+        data = resp.get_json()
+        assert data['compliance'] == {'passed': True, 'violations': []}
+
+        week1 = data['weeks'][0]
+        by_day = {wo['day']: wo for wo in week1['workouts']}
+
+        # Race day (Sunday Jul 12): named plan, race-day fueling, intensity.
+        race_day = by_day['sun']
+        assert race_day['coachName'] == 'Race Day — Ned Gravel'
+        assert race_day['fuelTag'] == 'practice'
+        assert race_day['isIntensity'] is True
+        assert race_day['durationMinutes'] >= 120  # a race, not a workout
+        assert 'B priority' in race_day.get('notes', '')
+
+        # Day before (Saturday): Openers, capped ~40min, easy fueling.
+        openers = by_day['sat']
+        assert openers['coachName'] == 'Openers'
+        assert openers['durationMinutes'] <= 40
+        assert openers['fuelTag'] == 'none'
+        assert openers['isIntensity'] is False
+
+        # Build block: 2 days before (Friday) is an easy spin <= 45min.
+        easy = by_day['fri']
+        assert easy['coachName'] == 'Endurance'
+        assert easy['durationMinutes'] <= 45
+
+        # Week totals reflect the overlay.
+        assert week1['targetTss'] == sum(
+            wo['estimatedTss'] for wo in week1['workouts'])
+
+    def test_b_race_week_type_stays_load(self, client):
+        """The season types a B-race week 'load' (mini-taper overlay, phase
+        preserved) — the block honors that, no silent recovery demotion."""
+        resp = _post(client, self._ned_gravel_body())
+        assert resp.get_json()['weeks'][0]['type'] == 'load'
+
+    def test_no_easy_two_days_out_in_base(self, client):
+        """The 2-days-before easy spin is build/peak only (legacy parity)."""
+        body = self._ned_gravel_body()
+        body['block']['phase'] = 'base'
+        resp = _post(client, body)
+        assert resp.status_code == 200, resp.get_json()
+        week1 = resp.get_json()['weeks'][0]
+        by_day = {wo['day']: wo for wo in week1['workouts']}
+        assert by_day['sat']['coachName'] == 'Openers'  # day before still set
+        # Friday keeps whatever the base week scheduled (no forced easy cap).
+        assert by_day['fri']['coachName'] != 'Openers'
+
+    def test_race_on_off_day_still_emitted(self, client):
+        """A race on the athlete's off day is ridden anyway (the legacy
+        pipeline writes the race plan before the off-day skip)."""
+        desc = [{'number': 1, 'type': 'load',
+                 'races': [{'name': 'Monday Crit', 'date': '2026-07-06',
+                            'priority': 'C'}]},
+                {'number': 2, 'type': 'load'}]
+        resp = _post(client, self._body(weeks=2, descriptors=desc))
+        assert resp.status_code == 200, resp.get_json()
+        data = resp.get_json()
+        assert data['compliance'] == {'passed': True, 'violations': []}
+        mons = [wo for wo in data['weeks'][0]['workouts']
+                if wo['day'] == 'mon']
+        assert mons and mons[0]['coachName'] == 'Race Day — Monday Crit'
+        # Week 2's Monday is still the off day.
+        assert all(wo['day'] != 'mon' for wo in data['weeks'][1]['workouts'])
+
+    def test_strength_avoids_pre_race_days(self, client):
+        """Strength sessions never land on the race day or the mini-taper
+        days before it."""
+        resp = _post(client, self._ned_gravel_body())
+        week1 = resp.get_json()['weeks'][0]
+        for sess in week1['strength']['sessions']:
+            assert sess['day'] not in ('fri', 'sat', 'sun')
+
+    # ---- A-race week behaves like the engine's race phase --------------------
+
+    def test_a_race_week_matches_race_phase_shape(self, client):
+        """A 'race'-typed descriptor week is built exactly like the final
+        week of a phase='race' block, plus the dated race-day overlay."""
+        desc = [{'number': 1, 'type': 'taper'},
+                {'number': 2, 'type': 'race',
+                 'races': [{'name': 'Unbound 200', 'date': '2026-07-19',
+                            'priority': 'A'}]}]
+        resp = _post(client, self._body(phase='race', weeks=2,
+                                        descriptors=desc))
+        assert resp.status_code == 200, resp.get_json()
+        data = resp.get_json()
+        assert data['compliance'] == {'passed': True, 'violations': []}
+        race_week = data['weeks'][1]
+        assert race_week['type'] == 'race'
+        by_day = {wo['day']: wo for wo in race_week['workouts']}
+        assert by_day['sun']['coachName'] == 'Race Day — Unbound 200'
+        assert by_day['sun']['fuelTag'] == 'practice'
+        assert by_day['sat']['coachName'] == 'Openers'
+        # Race-week template: mostly rest around the race.
+        names = {wo['coachName'] for wo in race_week['workouts']}
+        assert 'Rest Day' in names
+
+        # Same phase='race' request WITHOUT descriptors: identical week
+        # rhythm (the descriptor path adds only the dated race overlay).
+        plain = _post(client, self._body(phase='race', weeks=2)).get_json()
+        assert [w['type'] for w in plain['weeks']] == [
+            w['type'] for w in data['weeks']]
+
+    # ---- compliance sweep + determinism ---------------------------------------
+
+    def test_full_compliance_sweep_with_descriptors(self, client):
+        """Every phase × weeks with calendar descriptors carrying a
+        mid-block Saturday B-race: 200 + compliance green."""
+        from datetime import date, timedelta
+        for phase in VALID_PHASES:
+            for weeks in (2, 3, 4):
+                desc = self._default_descriptors(phase, weeks)
+                mid = weeks // 2
+                race_date = (date(2026, 7, 6)
+                             + timedelta(days=mid * 7 + 5)).isoformat()
+                desc[mid]['races'] = [{'name': 'Sweep Race',
+                                       'date': race_date, 'priority': 'B'}]
+                resp = _post(client, self._body(phase, weeks,
+                                                descriptors=desc))
+                assert resp.status_code == 200, (phase, weeks,
+                                                 resp.get_json())
+                data = resp.get_json()
+                assert data['compliance'] == {
+                    'passed': True, 'violations': []}, (phase, weeks)
+                # The race day made it into the delivered week.
+                assert any(wo['coachName'] == 'Race Day — Sweep Race'
+                           for wk in data['weeks']
+                           for wo in wk['workouts']), (phase, weeks)
+
+    def test_descriptors_deterministic(self, client):
+        body = self._ned_gravel_body()
+        r1 = _post(client, body).get_json()
+        r2 = _post(client, body).get_json()
+        r1.pop('engine'); r2.pop('engine')
+        assert r1 == r2
+
+    def test_two_races_same_week_both_placed(self, client):
+        """Stage-race weekend: Saturday and Sunday races both emit race
+        days (no double-overlay of the same date, race day wins over the
+        other race's opener)."""
+        desc = [{'number': 1, 'type': 'load',
+                 'races': [
+                     {'name': 'Stage 1', 'date': '2026-07-11',
+                      'priority': 'B'},
+                     {'name': 'Stage 2', 'date': '2026-07-12',
+                      'priority': 'B'},
+                 ]},
+                {'number': 2, 'type': 'load'},
+                {'number': 3, 'type': 'recovery'}]
+        resp = _post(client, self._body(descriptors=desc))
+        assert resp.status_code == 200, resp.get_json()
+        data = resp.get_json()
+        assert data['compliance'] == {'passed': True, 'violations': []}
+        by_day = {wo['day']: wo for wo in data['weeks'][0]['workouts']}
+        assert by_day['sat']['coachName'] == 'Race Day — Stage 1'
+        assert by_day['sun']['coachName'] == 'Race Day — Stage 2'
+        assert by_day['fri']['coachName'] == 'Openers'  # before stage 1
+
+    # ---- unit: request descriptors → calendar shape ---------------------------
+
+    def test_descriptors_from_request_mapping(self):
+        from engine_adapter import descriptors_from_request
+        out = descriptors_from_request('build', [
+            {'number': 14, 'type': 'load', 'races': []},
+            {'number': 15, 'type': 'recovery', 'races': []},
+            {'number': 16, 'type': 'taper', 'races': []},
+            {'number': 17, 'type': 'race', 'races': []},
+        ])
+        assert out == [
+            {'plan_week': 1, 'phase': 'build', 'week_type': 'load'},
+            {'plan_week': 2, 'phase': 'build', 'week_type': 'recovery'},
+            {'plan_week': 3, 'phase': 'taper', 'week_type': 'taper'},
+            {'plan_week': 4, 'phase': 'race', 'week_type': 'race'},
+        ]
+        # stabilize rides the maintenance calendar mapping, exactly like
+        # the internal rhythm does.
+        out = descriptors_from_request('stabilize', [
+            {'number': 1, 'type': 'load', 'races': []}])
+        assert out[0]['phase'] == 'maintenance'

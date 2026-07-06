@@ -68,6 +68,21 @@ def _day_is_intensity(day_data: dict) -> bool:
     return day_data.get('name', '') in INTENSITY_TYPES
 
 
+def _week_has_race_day(week: dict) -> bool:
+    """True when a week carries an in-week race-day overlay (role 'race').
+
+    Only /engine/block's calendar-descriptor path sets role 'race' (a B/C
+    race inside a training week, or the A-race day of a race-typed week).
+    The full pipeline never sets it — race days there defer to the legacy
+    ZWO overlay AFTER this gate runs — so every exemption keyed on this
+    helper is a no-op for legacy plans. A race legitimately changes a
+    week's expectations the same way the racing phase does (R02/R05):
+    the race displaces intensity, supplies the long hard ride, and sets
+    the week's hours.
+    """
+    return any(d.get('role') == 'race' for d in week.get('days', []))
+
+
 def r01_no_back_to_back_intensity(weeks: List[dict]) -> Tuple[bool, str]:
     """R01 [CRITICAL]: No back-to-back intensity days."""
     violations = []
@@ -94,7 +109,8 @@ def r02_vo2max_frequency(weeks: List[dict]) -> Tuple[bool, str]:
     # Check if entire plan is racing/taper (exempt)
     non_racing_weeks = [w for w in weeks
                         if w.get('phase') not in ('racing', 'taper')
-                        and w.get('week_type') not in ('race', 'recovery')]
+                        and w.get('week_type') not in ('race', 'recovery')
+                        and not _week_has_race_day(w)]
     if not non_racing_weeks:
         return True, "Racing phase — VO2max rule exempt"
 
@@ -104,6 +120,8 @@ def r02_vo2max_frequency(weeks: List[dict]) -> Tuple[bool, str]:
             continue
         if week.get('phase') in ('racing', 'taper'):
             continue  # Exempt
+        if _week_has_race_day(week):
+            continue  # Race-day overlay displaces training — exempt like racing
         for day_data in week.get('days', []):
             if day_data.get('name', '') in VO2MAX_TYPES:
                 vo2_weeks.append(week.get('plan_week', 0))
@@ -138,6 +156,8 @@ def r03_recovery_tss_ceiling(weeks: List[dict]) -> Tuple[bool, str]:
 
     for week in weeks:
         tss = week.get('total_tss', 0)
+        if _week_has_race_day(week):
+            continue  # Race-day TSS is race-shaped, not a load/recovery signal
         if week.get('week_type') == 'recovery':
             # Only check recovery weeks in non-racing phases
             if week.get('phase') not in ('racing', 'taper'):
@@ -200,6 +220,10 @@ def r05_intensity_count(weeks: List[dict], max_per_week: int = 3) -> Tuple[bool,
         # Racing/taper exempt from minimum
         if week.get('phase') in ('racing', 'taper'):
             continue
+        # A race inside the week displaces scheduled intensity (mini-taper
+        # overlay) — exempt exactly like the racing phase above.
+        if _week_has_race_day(week):
+            continue
         # Count by role (pipeline-assigned), not by workout name
         count = sum(1 for d in week.get('days', []) if d.get('role') == 'intensity')
         min_intensity = min(2, max_per_week)  # Beginners: min=1 if max=1
@@ -219,6 +243,8 @@ def r06_long_ride_present(weeks: List[dict], target_hours: float = 0) -> Tuple[b
     for week in weeks:
         if week.get('week_type') != 'load':
             continue
+        if _week_has_race_day(week):
+            continue  # The race IS the week's key long/hard ride
         long_rides = [d for d in week.get('days', []) if d.get('role') == 'long_ride']
         if not long_rides:
             violations.append(f"W{week.get('plan_week')}")
@@ -272,6 +298,8 @@ def r19_hours_fit(weeks: List[dict], target_hours: float) -> Tuple[bool, str]:
         wtype = week.get('week_type')
         if wtype == 'recovery':
             continue
+        if _week_has_race_day(week):
+            continue  # Race duration is set by the event, not availability
         total_min = week.get('total_duration', 0)
         if total_min > max_hours:
             violations.append(
@@ -295,7 +323,11 @@ def r20_off_days_respected(weeks: List[dict], off_days: List[str]) -> Tuple[bool
     violations = []
     for week in weeks:
         for day_data in week.get('days', []):
-            if day_data.get('day') in off_days and day_data.get('role') != 'off':
+            # Role 'race' overrides an off day: the athlete races on race
+            # day regardless of their weekly rest-day preference (mirrors
+            # the legacy pipeline, where the B-race day plan is written
+            # before the unavailable-day skip).
+            if day_data.get('day') in off_days and day_data.get('role') not in ('off', 'race'):
                 violations.append(
                     f"W{week.get('plan_week')} {day_data['day']}: {day_data.get('name')}"
                 )
