@@ -27,6 +27,11 @@ Design constraints honored here:
   derived from the same strength_periodization.yaml entry that composes the
   `strengthProtocol` string. Purely additive — no existing field or request
   validation changed. Shape documented at _structured_strength below.
+- ADDITIVE July 2026 (calendar truth): optional `block.week_descriptors`
+  slices /engine/season weeks straight in — descriptor TYPES override the
+  internal load/recovery rhythm and races inside a week get the pipeline's
+  B-race mini-taper overlay (race day / openers / pre-race easy). Omitted →
+  byte-identical to before. See the DESCRIPTOR_WEEK_TYPES block comment.
 - `rationale` is ALWAYS "" — the caller's LLM writes prose later.
 """
 
@@ -35,7 +40,7 @@ import re
 import sys
 import time
 import functools
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -65,7 +70,11 @@ from block_compliance import (  # noqa: E402
     INTENSITY_TYPES,
 )
 from race_category_scorer import calculate_category_scores  # noqa: E402
-from workout_selector import load_methodology_profile  # noqa: E402
+from workout_selector import (  # noqa: E402
+    get_workout_duration,
+    get_workout_tss,
+    load_methodology_profile,
+)
 
 import yaml  # noqa: E402
 
@@ -119,6 +128,40 @@ _PHASE_TO_CALENDAR = {
 }
 
 FUEL_TAG_VALUES = {'high', 'moderate', 'practice', 'none'}
+
+# ---------------------------------------------------------------------------
+# block.week_descriptors (optional, July 2026) — calendar-truth week typing
+#
+# /engine/season emits week descriptors (types + races, incl. the B-race
+# mini-taper overlay computed by calculate_plan_dates). Without them,
+# /engine/block re-derives its own load/recovery rhythm and knows NOTHING
+# about races inside the block — a normal load week delivered over a race
+# day (the Jesse Couch failure mode, in miniature). The caller may now pass
+# the season's weeks straight in:
+#
+#   block.week_descriptors: exactly block.weeks entries, each
+#     {"number": 1-based int,          # season-absolute numbering accepted
+#      "type": "load"|"recovery"|"taper"|"race",
+#      "races"?: [{"name": str, "date": "YYYY-MM-DD",
+#                  "priority": "A"|"B"|"C"}]}
+#   Extra keys (start_date, end_date, phase, block, note, ...) are tolerated
+#   and ignored — a slice of /engine/season weeks[] validates as-is. Array
+#   ORDER maps entries onto block weeks 1..N.
+#
+# Validation (400): length != block.weeks, bad type enum, race date outside
+# the block's Monday-aligned window. Omitted → behavior byte-identical to
+# the internal rhythm (pinned by tests).
+# ---------------------------------------------------------------------------
+DESCRIPTOR_WEEK_TYPES = {'load', 'recovery', 'taper', 'race'}
+RACE_PRIORITIES = {'A', 'B', 'C'}
+
+# Race-day overlay emission — mirrors the legacy pipeline's B-race handling
+# (generate_athlete_package: 3h FreeRide race plan; day before → Openers
+# capped at 40min; build/peak only, 2 days before → easy spin capped 45min).
+RACE_DAY_DURATION_MIN = 180
+RACE_DAY_TSS = 190  # ~3h at race intensity (IF ~0.80)
+OPENERS_CAP_MIN = 40
+PRE_RACE_EASY_CAP_MIN = 45
 
 # ---------------------------------------------------------------------------
 # Input domain bounds (empirical, from a 7,680-combination compliance sweep
@@ -411,7 +454,10 @@ def _strength_session_days(week_days: List[dict], n: int) -> List[Optional[str]]
     """
     candidate_idx = sorted(
         DAY_KEYS.index(_ABBREV_DAY[d['day']])
-        for d in week_days if d.get('role') == 'filler'
+        for d in week_days
+        # Race-overlay fillers (pre-race Openers / easy spin) are part of a
+        # mini-taper — no strength the day(s) before a race.
+        if d.get('role') == 'filler' and not d.get('race_overlay')
     )
     picked: List[int] = []
     for gap in (2, 1):
@@ -611,13 +657,22 @@ def validate_request(payload: Any) -> Tuple[Dict[str, Any], Dict[str, str]]:
         weeks = 3
 
     start_date = block.get('start_date')
+    start_dt: Optional[datetime] = None
     if not isinstance(start_date, str):
         errors['block.start_date'] = 'Required string YYYY-MM-DD'
     else:
         try:
-            datetime.strptime(start_date, '%Y-%m-%d')
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
         except ValueError:
             errors['block.start_date'] = 'Must be a valid YYYY-MM-DD date'
+
+    # ---- block.week_descriptors (optional calendar-truth typing) -----------
+    # Skipped entirely when block.weeks is invalid — the request is already a
+    # 400 and a length check against the defaulted weeks would just mislead.
+    week_descriptors: Optional[List[Dict[str, Any]]] = None
+    if block.get('week_descriptors') is not None and 'block.weeks' not in errors:
+        week_descriptors = _validate_week_descriptors(
+            block['week_descriptors'], weeks, start_dt, errors)
 
     # ---- methodology (optional) --------------------------------------------
     # None/absent both mean "use the default" — clients that JSON-serialize
@@ -717,6 +772,8 @@ def validate_request(payload: Any) -> Tuple[Dict[str, Any], Dict[str, str]]:
         'phase': phase,
         'weeks': weeks,
         'start_date': start_date if isinstance(start_date, str) else '',
+        # None → internal rhythm (byte-identical to pre-descriptor behavior)
+        'week_descriptors': week_descriptors,
         'hours_per_week': effective_hours,
         'discipline': discipline,
         'methodology': methodology,
@@ -770,6 +827,219 @@ def build_week_descriptors(phase: str, weeks: int) -> List[Dict[str, Any]]:
     ]
 
 
+def _validate_week_descriptors(
+        raw: Any, weeks: int, start_dt: Optional[datetime],
+        errors: Dict[str, str]) -> Optional[List[Dict[str, Any]]]:
+    """block.week_descriptors → normalized [{'number','type','races'}].
+
+    Entries are the same shapes /engine/season emits in its weeks[] — extra
+    keys are tolerated (a caller slices season weeks straight in) and
+    `number` may keep season-absolute numbering. Returns None (with field
+    errors recorded) on any validation failure.
+    """
+    field = 'block.week_descriptors'
+    if not isinstance(raw, list):
+        errors[field] = 'Must be an array when provided'
+        return None
+    if len(raw) != weeks:
+        errors[field] = (f'Must contain exactly block.weeks entries '
+                         f'(expected {weeks}, got {len(raw)})')
+        return None
+
+    window_start = window_end = None
+    if start_dt is not None:
+        window_start = start_dt - timedelta(days=start_dt.weekday())
+        window_end = window_start + timedelta(days=weeks * 7 - 1)
+
+    out: List[Dict[str, Any]] = []
+    ok = True
+    for i, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            errors[f'{field}[{i}]'] = 'Must be an object'
+            ok = False
+            continue
+
+        number = entry.get('number')
+        if not isinstance(number, int) or isinstance(number, bool) or number < 1:
+            errors[f'{field}[{i}].number'] = 'Must be a positive integer'
+            ok = False
+
+        wtype = entry.get('type')
+        if wtype not in DESCRIPTOR_WEEK_TYPES:
+            errors[f'{field}[{i}].type'] = (
+                f"Must be one of {sorted(DESCRIPTOR_WEEK_TYPES)}")
+            ok = False
+
+        races_raw = entry.get('races')
+        races: List[Dict[str, str]] = []
+        if races_raw is not None:
+            if not isinstance(races_raw, list):
+                errors[f'{field}[{i}].races'] = 'Must be an array when provided'
+                ok = False
+                races_raw = []
+            for j, race in enumerate(races_raw):
+                rf = f'{field}[{i}].races[{j}]'
+                if not isinstance(race, dict):
+                    errors[rf] = 'Must be an object'
+                    ok = False
+                    continue
+                name = race.get('name')
+                if not isinstance(name, str) or not name.strip():
+                    errors[f'{rf}.name'] = 'Required non-empty string'
+                    ok = False
+                date_raw = race.get('date')
+                race_dt = None
+                if isinstance(date_raw, str):
+                    try:
+                        race_dt = datetime.strptime(date_raw, '%Y-%m-%d')
+                    except ValueError:
+                        race_dt = None
+                if race_dt is None:
+                    errors[f'{rf}.date'] = 'Required string YYYY-MM-DD'
+                    ok = False
+                elif window_start is not None and not (
+                        window_start <= race_dt <= window_end):
+                    errors[f'{rf}.date'] = (
+                        f'Race date is outside the block window '
+                        f'({window_start:%Y-%m-%d} to {window_end:%Y-%m-%d})')
+                    ok = False
+                priority = race.get('priority')
+                if priority not in RACE_PRIORITIES:
+                    errors[f'{rf}.priority'] = "Must be 'A', 'B', or 'C'"
+                    ok = False
+                if ok:
+                    races.append({'name': name.strip(), 'date': date_raw,
+                                  'priority': priority})
+
+        out.append({'number': number, 'type': wtype, 'races': races})
+    return out if ok else None
+
+
+def descriptors_from_request(
+        phase: str,
+        week_descriptors: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Request week_descriptors → the derive_week_descriptors() SHAPE that
+    build_plan_from_calendar consumes.
+
+    This is the SAME consumption path the full pipeline uses for
+    plan_dates.yaml calendar truth — no second week-typing mechanism.
+    Descriptor week TYPES override the standalone-block rhythm; each week's
+    calendar phase follows its type the way the season types weeks
+    (race → 'race', taper → 'taper', load/recovery ride the block phase).
+    An A-race week typed 'race' therefore behaves exactly like the final
+    week of the engine's existing phase='race' block.
+    """
+    cal_phase = _PHASE_TO_CALENDAR[phase]
+    out = []
+    for i, wd in enumerate(week_descriptors):
+        wtype = wd['type']
+        if wtype == 'race':
+            p = 'race'
+        elif wtype == 'taper':
+            p = 'taper'
+        else:
+            p = cal_phase
+        out.append({'plan_week': i + 1, 'phase': p, 'week_type': wtype})
+    return out
+
+
+def _apply_race_overlays(plan: Dict[str, Any],
+                         params: Dict[str, Any]) -> None:
+    """Overlay race days onto the built plan weeks, in place.
+
+    Mirrors the pipeline's existing B-race mini-taper semantics
+    (calculate_plan_dates day markers + the generate_athlete_package
+    `_defer_to_legacy` overlay path):
+      - race day       → 'Race Day — {name}', role 'race' (overrides an off
+                         day: the athlete races regardless of rest-day
+                         preference, exactly like the legacy path where the
+                         B-race plan is written before the off-day skip)
+      - day before     → Openers (library L1, capped at OPENERS_CAP_MIN)
+      - 2 days before  → easy Endurance capped at PRE_RACE_EASY_CAP_MIN,
+                         build/peak blocks only
+    Pre-race days never replace an off day or another race day, and stay
+    inside the race's own Mon-Sun week (legacy parity: a Monday race gets
+    no in-plan opener). The week a race lands in derives from its DATE
+    against the block's Monday-aligned window — the calendar decides, not
+    the descriptor entry it was listed under. Week totals are recomputed so
+    targetTss/targetHours stay honest.
+
+    Compliance: role 'race' engages the race-week exemptions in
+    block_compliance (R02/R03/R05/R06/R19 skip race-carrying weeks, R20
+    allows the race itself on an off day) — the same way the racing phase
+    is already exempted.
+    """
+    start_dt = datetime.strptime(params['start_date'], '%Y-%m-%d')
+    block_monday = start_dt - timedelta(days=start_dt.weekday())
+
+    races = [r for wd in params['week_descriptors']
+             for r in wd.get('races', [])]
+    races.sort(key=lambda r: (r['date'], r['name']))
+
+    weeks = plan.get('weeks', [])
+    touched = set()
+    for race in races:
+        race_dt = datetime.strptime(race['date'], '%Y-%m-%d')
+        offset = (race_dt - block_monday).days
+        widx, dow = divmod(offset, 7)
+        if not (0 <= widx < len(weeks)):  # pragma: no cover — 400 upstream
+            continue
+        days = weeks[widx]['days']  # always Mon..Sun, one entry per day
+        if days[dow].get('role') == 'race':
+            continue  # first race on a date wins (deterministic sort)
+        days[dow] = {
+            'day': days[dow]['day'],
+            'name': f"Race Day — {race['name']}",
+            'level': 0,
+            'tss': RACE_DAY_TSS,
+            'duration': RACE_DAY_DURATION_MIN,
+            'role': 'race',
+            'race_priority': race['priority'],
+        }
+        touched.add(widx)
+
+        # Day before: Openers — never on an off day, another race day, or a
+        # day an earlier race (date-sorted) already overlaid.
+        if (dow >= 1 and days[dow - 1].get('role') not in ('off', 'race')
+                and not days[dow - 1].get('race_overlay')):
+            lib_dur = get_workout_duration('Openers', 1) or OPENERS_CAP_MIN
+            days[dow - 1] = {
+                'day': days[dow - 1]['day'],
+                'name': 'Openers',
+                'level': 1,
+                'tss': get_workout_tss('Openers', 1) or 22,
+                'duration': min(lib_dur, OPENERS_CAP_MIN),
+                'role': 'filler',
+                'race_overlay': True,
+            }
+
+        # 2 days before (build/peak blocks only — legacy parity): easy spin.
+        # A stage-race weekend keeps the earlier race's Openers (a pre-race
+        # overlay never downgrades another pre-race overlay).
+        if (params['phase'] in ('build', 'peak') and dow >= 2
+                and days[dow - 2].get('role') not in ('off', 'race')
+                and not days[dow - 2].get('race_overlay')):
+            lib_dur = get_workout_duration('Endurance', 1) or PRE_RACE_EASY_CAP_MIN
+            lib_tss = get_workout_tss('Endurance', 1) or 40
+            dur = min(lib_dur, PRE_RACE_EASY_CAP_MIN)
+            days[dow - 2] = {
+                'day': days[dow - 2]['day'],
+                'name': 'Endurance',
+                'level': 1,
+                'tss': (lib_tss if lib_dur <= PRE_RACE_EASY_CAP_MIN
+                        else int(round(lib_tss * dur / lib_dur))),
+                'duration': dur,
+                'role': 'filler',
+                'race_overlay': True,
+            }
+
+    for widx in touched:
+        week = weeks[widx]
+        week['total_tss'] = sum(d.get('tss', 0) for d in week['days'])
+        week['total_duration'] = sum(d.get('duration', 0)
+                                     for d in week['days'])
+
+
 # ---------------------------------------------------------------------------
 # Contract mapping
 # ---------------------------------------------------------------------------
@@ -784,6 +1054,10 @@ def _fuel_tag(name: str, role: str) -> str:
     lower = name.lower()
     if role == 'off':
         return 'none'
+    if role == 'race':
+        # Race day runs the athlete's race-day fueling plan — the same
+        # convention as race simulations (constants.FUEL_TAGS['race_sim']).
+        return 'practice'
     if 'race sim' in lower or 'race simulation' in lower:
         return 'practice'
     if any(k in lower for k in _NO_FUEL_KEYWORDS):
@@ -811,10 +1085,16 @@ def _map_week(week: dict, number: int, total_weeks: int,
             'durationMinutes': int(day.get('duration', 0)),
             'estimatedTss': int(day.get('tss', 0)),
             'fuelTag': _fuel_tag(name, role),
-            'isIntensity': role == 'intensity',
+            # Race day IS an intensity day for the consumer's purposes
+            # (hard effort badge); the compliance gate classifies by the
+            # internal role, so this flag never trips R01/R05.
+            'isIntensity': role in ('intensity', 'race'),
         }
         notes_bits = []
-        if level and name not in ('Rest Day', 'OFF'):
+        if role == 'race':
+            notes_bits.append(
+                f"race day — {day.get('race_priority', 'B')} priority")
+        elif level and name not in ('Rest Day', 'OFF'):
             notes_bits.append(f"Level {level}")
         if role == 'long_ride':
             notes_bits.append('long ride')
@@ -847,8 +1127,18 @@ def _build_and_gate(params: Dict[str, Any],
     phase_block_start tracks starting_level (block index and base level
     advance together in a chained plan), floored at 2 so standalone blocks
     keep the grow-to-floor volume logic (see validate_request).
+
+    Week typing: request week_descriptors (calendar truth from
+    /engine/season) override the internal standalone-block rhythm; absent,
+    the internal rhythm is byte-identical to pre-descriptor behavior.
+    Races inside descriptor weeks are overlaid AFTER the build and BEFORE
+    the gate, so compliance validates the delivered weeks.
     """
-    descriptors = build_week_descriptors(params['phase'], params['weeks'])
+    if params.get('week_descriptors'):
+        descriptors = descriptors_from_request(
+            params['phase'], params['week_descriptors'])
+    else:
+        descriptors = build_week_descriptors(params['phase'], params['weeks'])
 
     plan = build_plan_from_calendar(
         descriptors,
@@ -867,6 +1157,9 @@ def _build_and_gate(params: Dict[str, Any],
         avoid_series=params.get('avoid_series'),
         methodology_profile=params.get('methodology_profile'),
     )
+
+    if params.get('week_descriptors'):
+        _apply_race_overlays(plan, params)
 
     compliance_raw = validate_plan(
         plan,

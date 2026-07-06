@@ -3721,6 +3721,13 @@ def engine_block():
     object (sessions + avoidSameDayAs) alongside the unchanged
     `strengthProtocol` prose string — see engine_adapter._structured_strength
     for the shape. No existing fields or request validation changed.
+
+    ADDITIVE July 2026 (calendar truth): optional `block.week_descriptors`
+    lets the caller pass /engine/season week shapes (types + races) straight
+    in — descriptor types override the internal load/recovery rhythm and
+    races get the pipeline's B-race mini-taper overlay (race day + openers).
+    Omitted → byte-identical to before. See the week-descriptors block
+    comment in engine_adapter.py.
     """
     secret = request.headers.get('X-Engine-Secret', '')
     expected = os.environ.get('ENGINE_SHARED_SECRET', '')
