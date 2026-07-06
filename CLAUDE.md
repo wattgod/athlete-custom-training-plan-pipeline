@@ -63,6 +63,12 @@ railway.json       <- Railway deploy config (root, NOT webhook/)
 - `FLASK_ENV=production` -- Set in Dockerfile, enables production guards
 - `CRON_SECRET` -- Secret for `/api/cron/followup-emails` endpoint
 - Optional: `NOTIFICATION_EMAIL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` -- for email notifications + follow-up sequence
+- Optional (Endure delivery, Phase 4b — feature entirely OFF when unset):
+  - `ENDURE_DELIVERY_URL` -- Endure base URL; pipeline POSTs `{url}/api/delivery/purchased-plan`. Unsetting this is the kill switch (silent revert to TP-only).
+  - `ENDURE_DELIVERY_SECRET` -- shared secret sent as `X-Delivery-Secret`
+  - `DELIVERY_TARGET_DEFAULT` -- `trainingpeaks` (default) or `endure`. Flip is MANUAL, after 5 consecutive successful Endure deliveries (streak visible in `/health`). Per-order override: Stripe metadata `delivery_target`.
+  - `ENDURE_APP_URL` -- Endure web app for coach review links (default `https://endurelabs.app`)
+  - `ENDURE_DELIVERY_TIMEOUT` -- POST timeout seconds (default 20; one retry on 5xx/transport errors)
 
 ## Stripe Products
 - **Training plans**: 14 pre-built prices ($60-$249, keyed by weeks 4-17+)
