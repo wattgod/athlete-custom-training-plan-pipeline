@@ -21,13 +21,62 @@ from constants import (
 )
 
 
+# Tier keywords checked (in order) against a pre-built marketplace SKU's
+# `plan_tier` label. Most specific/least-ambiguous tokens first.
+_PLAN_TIER_KEYWORDS = [
+    ("podium", "podium"),
+    ("compete", "compete"),
+    ("ayahuasca", "ayahuasca"),
+    ("finisher", "finisher"),
+]
+
+
+def _normalize_plan_tier(plan_tier_raw) -> str:
+    """Map a store-SKU `plan_tier` label to the internal tier bucket
+    (ayahuasca/finisher/compete/podium) used by derive_tier(),
+    determine_strength_frequency(), and the guide builder.
+
+    Labels that name a tier directly ("Finisher", "Compete", "Ayahuasca",
+    "Podium") map 1:1. Level-only labels that don't name a tier on their
+    own ("Masters", "Time-Crunched", "Save My Race", "Beginner",
+    "Intermediate", "Advanced", "GOAT"...) default to "finisher" — the
+    accessible/moderate tier these products are built around. Returns ""
+    when plan_tier is absent/blank so callers fall back to the hours-based
+    derivation untouched.
+    """
+    normalized = str(plan_tier_raw or "").strip().lower()
+    if not normalized:
+        return ""
+    for keyword, tier in _PLAN_TIER_KEYWORDS:
+        if keyword in normalized:
+            return tier
+    # Level-only label — no tier keyword present.
+    return "finisher"
+
+
 def derive_tier(profile: Dict) -> str:
     """
     Classify athlete into tier based on responses.
 
     Primary factor: available cycling hours
     Modifiers: goal type, training history
+
+    Pre-built marketplace SKU intakes (e.g. the Big Sugar "Finisher" /
+    "Compete" / "Masters" / "Time-Crunched" / "Save My Race" store plans)
+    carry an explicit `profile['plan_tier']` label set by the store
+    adapter. This wins over the hours-based bucketing below: the base
+    intake's placeholder profile uses a flat ~12h/week regardless of
+    which SKU it seeds, so every non-Compete SKU derived "compete" tier
+    off the fake hours number and the guide described Compete-tier
+    methodology/expectations under a Finisher/Masters/etc. label. Real
+    1:1 customer intakes never carry plan_tier, so this is a no-op for
+    them — they fall straight through to the existing hours-based
+    derivation, unchanged.
     """
+    explicit_tier = _normalize_plan_tier(profile.get("plan_tier"))
+    if explicit_tier:
+        return explicit_tier
+
     hours = profile.get("weekly_availability", {}).get("cycling_hours_target", 0)
     goal = profile.get("target_race", {}).get("goal_type", "finish")
     history = profile.get("training_history", {}).get("years_structured", 0)
@@ -60,7 +109,28 @@ def derive_tier(profile: Dict) -> str:
 
 
 def calculate_plan_weeks(profile: Dict) -> int:
-    """Calculate plan duration in weeks."""
+    """Calculate plan duration in weeks.
+
+    Supports an explicit fixed-length override via
+    `profile['plan_duration_weeks_override']` — used for pre-built
+    TrainingPeaks SKUs, where the plan's length is a fixed product
+    attribute (e.g. "12-week Finisher plan") independent of how far away
+    the athlete's own race date happens to be. When present and a valid
+    positive integer, it is returned verbatim (clamped 4-26 as a sanity
+    guard), bypassing BOTH the date-derived computation below AND its
+    8-week floor. Gated strictly on the field being present so behavior
+    for every existing athlete (no such field in their profile) is
+    byte-for-byte unchanged.
+    """
+    override = profile.get("plan_duration_weeks_override")
+    if override is not None:
+        try:
+            override_weeks = int(override)
+        except (TypeError, ValueError):
+            override_weeks = None
+        if override_weeks is not None and override_weeks > 0:
+            return max(4, min(26, override_weeks))
+
     target_race = profile.get("target_race")
     if not target_race or not target_race.get("date"):
         # No race date - default to 12 weeks

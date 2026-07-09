@@ -43,6 +43,7 @@ from intake_to_plan import (
     parse_race_line,
     _parse_ftp_with_unknown_handling,
 )
+from derive_classifications import calculate_plan_weeks, derive_tier
 from known_races import match_race, KNOWN_RACES, RACE_ALIASES
 from constants import (
     FTP_MIN_WATTS,
@@ -1798,6 +1799,213 @@ class TestPlanWeeksClamping:
         # 52 weeks should work
         result_52 = calculate_plan_dates('2028-06-01', plan_weeks=52)
         assert result_52 is not None
+
+
+# ===========================================================================
+# TestPlanDurationWeeksOverride
+# ===========================================================================
+
+class TestPlanDurationWeeksOverride:
+    """Tests for the fixed plan-length override used by pre-built TrainingPeaks
+    SKUs (derive_classifications.calculate_plan_weeks). The override must be
+    returned verbatim when present — bypassing both the date-derived
+    computation and its 8-week floor — and must not affect any profile that
+    doesn't carry it."""
+
+    def _profile(self, race_date, **extra):
+        profile = {'target_race': {'date': race_date}}
+        profile.update(extra)
+        return profile
+
+    def test_override_returned_verbatim_bypassing_floor(self):
+        """A fixed 6-week override must win even though the date-derived
+        computation (and its 8-week floor) would otherwise apply."""
+        # Race date far enough away that date-derived weeks would be > 8
+        # (and thus normally floor-clamped away from 6 without the override).
+        profile = self._profile('2026-12-31', plan_duration_weeks_override=6)
+        assert calculate_plan_weeks(profile) == 6
+
+    def test_no_override_matches_prior_date_derived_behavior(self):
+        """Without the override field, behavior is byte-for-byte unchanged:
+        weeks are still computed from the race date and clamped to 8-24."""
+        from datetime import date, timedelta
+
+        today = date.today()
+        days_until_monday = (7 - today.weekday()) % 7
+        if days_until_monday == 0:
+            days_until_monday = 7
+        plan_start = today + timedelta(days=days_until_monday)
+
+        # +1 day buffer: calculate_plan_weeks uses datetime.now() (with a
+        # time-of-day component) as the start, while the race date parses to
+        # midnight — an exact N-week delta can truncate to N-1 via // 7
+        # depending on what time of day the test runs. The buffer keeps the
+        # assertion robust without weakening what it's actually checking.
+        race_date = (plan_start + timedelta(weeks=13, days=1)).isoformat()
+        with_override_absent = self._profile(race_date)
+        assert 'plan_duration_weeks_override' not in with_override_absent
+        assert calculate_plan_weeks(with_override_absent) == 13
+
+        # Same profile, still no override key at all — floor/ceiling intact.
+        close_race = (plan_start + timedelta(weeks=2)).isoformat()
+        assert calculate_plan_weeks(self._profile(close_race)) == 8  # floor
+        far_race = (plan_start + timedelta(weeks=40)).isoformat()
+        assert calculate_plan_weeks(self._profile(far_race)) == 24  # ceiling
+
+    def test_override_clamped_to_sane_bounds(self):
+        """A wildly out-of-range override is still clamped (4-26 guard),
+        not passed through unbounded."""
+        profile = self._profile('2026-12-31', plan_duration_weeks_override=200)
+        assert calculate_plan_weeks(profile) == 26
+        profile_low = self._profile('2026-12-31', plan_duration_weeks_override=1)
+        assert calculate_plan_weeks(profile_low) == 4
+
+    def test_invalid_override_falls_back_to_date_derived(self):
+        """A non-positive or non-numeric override is rejected; the function
+        falls back to the normal date-derived computation instead of raising."""
+        from datetime import date, timedelta
+
+        today = date.today()
+        days_until_monday = (7 - today.weekday()) % 7
+        if days_until_monday == 0:
+            days_until_monday = 7
+        plan_start = today + timedelta(days=days_until_monday)
+        race_date = (plan_start + timedelta(weeks=13, days=1)).isoformat()
+
+        for bad_value in (0, -5, 'not-a-number', None):
+            profile = self._profile(race_date, plan_duration_weeks_override=bad_value)
+            assert calculate_plan_weeks(profile) == 13, (
+                f"bad override {bad_value!r} should fall back to date-derived weeks"
+            )
+
+    def test_build_profile_threads_plan_duration_weeks_override(self):
+        """The '- Plan Duration Weeks: N' markdown line (as emitted by the
+        Big Sugar JSON-to-markdown adapter) must land in
+        profile['plan_duration_weeks_override'] as an int."""
+        parsed = {
+            'athlete_name': 'Test SKU',
+            '__header__': {'email': 'test@example.com'},
+            'basic_info': {'age': '40', 'weight': '165 lbs', 'sex': 'male'},
+            'goals': {
+                'primary_goal': 'specific_race',
+                'races': 'Big Sugar Gravel (2026-10-17, 100, priority A)',
+                'plan_duration_weeks': '6',
+            },
+            'current_fitness': {'ftp': '230 W', 'years_structured': '2'},
+            'schedule': {'weekly_hours_available': '8-10', 'long_ride_days': 'saturday'},
+            'recovery': {'resting_hr': '55 bpm', 'typical_sleep': '7 hrs',
+                         'sleep_quality': 'good', 'recovery_speed': 'normal'},
+            'equipment': {'devices': 'garmin', 'platform': 'trainingpeaks'},
+            'work_life': {'work_hours': '40', 'job_stress': 'moderate', 'life_stress': 'moderate'},
+            'health': {},
+            'strength': {'current': 'none', 'include': 'no'},
+            'coaching': {'autonomy': 'guided'},
+            'mental_game': {},
+            'additional': {},
+        }
+        profile = build_profile(parsed)
+        assert profile['plan_duration_weeks_override'] == 6
+        assert isinstance(profile['plan_duration_weeks_override'], int)
+
+    def test_build_profile_omits_override_when_absent(self):
+        """Intakes without a 'Plan Duration Weeks' line must not have the
+        override key at all, so calculate_plan_weeks falls through to its
+        normal date-derived path for every existing athlete."""
+        parsed = {
+            'athlete_name': 'Test No Override',
+            '__header__': {'email': 'test2@example.com'},
+            'basic_info': {'age': '40', 'weight': '165 lbs', 'sex': 'male'},
+            'goals': {
+                'primary_goal': 'specific_race',
+                'races': 'Unbound 200',
+            },
+            'current_fitness': {'ftp': '230 W', 'years_structured': '2'},
+            'schedule': {'weekly_hours_available': '8-10', 'long_ride_days': 'saturday'},
+            'recovery': {'resting_hr': '55 bpm', 'typical_sleep': '7 hrs',
+                         'sleep_quality': 'good', 'recovery_speed': 'normal'},
+            'equipment': {'devices': 'garmin', 'platform': 'trainingpeaks'},
+            'work_life': {'work_hours': '40', 'job_stress': 'moderate', 'life_stress': 'moderate'},
+            'health': {},
+            'strength': {'current': 'none', 'include': 'no'},
+            'coaching': {'autonomy': 'guided'},
+            'mental_game': {},
+            'additional': {},
+        }
+        profile = build_profile(parsed)
+        assert 'plan_duration_weeks_override' not in profile
+
+
+# ===========================================================================
+# TestPlanTierDerivation
+# ===========================================================================
+
+class TestPlanTierDerivation:
+    """Tests for derive_tier() preferring the explicit `profile['plan_tier']`
+    label (set by pre-built marketplace SKU adapters, e.g. Big Sugar) over
+    the hours-based bucketing. The base intake for these SKUs carries a flat
+    ~12h/week placeholder regardless of which SKU it seeds, which used to
+    make every non-Compete SKU derive "compete" tier — describing Compete
+    methodology/expectations under a Finisher/Masters/etc. label. Real 1:1
+    customer profiles never carry plan_tier, so their behavior must stay
+    byte-for-byte unchanged."""
+
+    def test_finisher_plan_tier_wins_over_high_placeholder_hours(self):
+        """A plan_tier=Finisher SKU with a fake 12h/week placeholder (which
+        alone would bucket to 'compete') must derive 'finisher'."""
+        profile = {
+            'plan_tier': 'Finisher',
+            'weekly_availability': {'cycling_hours_target': 12},
+        }
+        assert derive_tier(profile) == 'finisher'
+
+    def test_compete_plan_tier_derives_compete(self):
+        profile = {
+            'plan_tier': 'Compete',
+            'weekly_availability': {'cycling_hours_target': 15},
+        }
+        assert derive_tier(profile) == 'compete'
+
+    def test_masters_plan_tier_derives_finisher_not_compete(self):
+        """Masters is a level modifier, not a tier — it must not fall
+        through to the hours-based 'compete' bucket on fake placeholder
+        hours."""
+        profile = {
+            'plan_tier': 'Masters',
+            'weekly_availability': {'cycling_hours_target': 12},
+        }
+        assert derive_tier(profile) == 'finisher'
+
+    def test_time_crunched_plan_tier_derives_finisher(self):
+        profile = {
+            'plan_tier': 'Time-Crunched',
+            'weekly_availability': {'cycling_hours_target': 7},
+        }
+        assert derive_tier(profile) == 'finisher'
+
+    def test_save_my_race_plan_tier_derives_finisher(self):
+        profile = {
+            'plan_tier': 'Save My Race',
+            'weekly_availability': {'cycling_hours_target': 10},
+        }
+        assert derive_tier(profile) == 'finisher'
+
+    def test_real_customer_without_plan_tier_uses_hours_unchanged(self):
+        """No plan_tier key at all (every real 1:1 questionnaire) must fall
+        straight through to the pre-existing hours-based derivation."""
+        profile = {'weekly_availability': {'cycling_hours_target': 12}}
+        assert derive_tier(profile) == 'compete'
+
+        profile_low = {'weekly_availability': {'cycling_hours_target': 3}}
+        assert derive_tier(profile_low) == 'ayahuasca'
+
+    def test_blank_plan_tier_falls_back_to_hours(self):
+        """An empty-string plan_tier (field present but unset) is treated
+        as absent, not as an unrecognized label."""
+        profile = {
+            'plan_tier': '',
+            'weekly_availability': {'cycling_hours_target': 12},
+        }
+        assert derive_tier(profile) == 'compete'
 
 
 # ===========================================================================
