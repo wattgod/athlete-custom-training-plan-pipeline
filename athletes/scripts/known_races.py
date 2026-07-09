@@ -136,8 +136,13 @@ KNOWN_RACES: Dict[str, Dict[str, Any]] = {
     'big_sugar': {
         'date': '2026-10-17',
         'name': 'Big Sugar Gravel',
-        'distance_miles': 104,
-        'elevation_ft': 6000,
+        # Course length changes year to year (104mi in 2023, 99.6mi in
+        # 2025). 100 matches race-data/big-sugar.json (this repo's source
+        # of truth, corroborated by the 1,184-race snapshot) and the
+        # current course. The old 104 was a stale 2023 figure — caught by
+        # gravel-race-automation/scripts/validate_race_data.py.
+        'distance_miles': 100,
+        'elevation_ft': 9500,
     },
     'boulder_roubaix': {
         'date': '2026-04-11',

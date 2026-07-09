@@ -1199,6 +1199,28 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     _disc_hint = (goals.get('discipline', '') or '').strip().lower()
     _disc_hint = _disc_hint if _disc_hint in ('road', 'gravel', 'mtb') else ''
 
+    # Explicit fixed plan-length override (e.g. a pre-built TrainingPeaks SKU
+    # questionnaire carries "- Plan Duration Weeks: 12"). Threaded through to
+    # derive_classifications.calculate_plan_weeks(), which returns it verbatim
+    # (bypassing the date-derived computation and its 8-week floor — see that
+    # function's docstring) instead of computing weeks from the race date.
+    # Only set when present and a valid positive integer, so every intake
+    # without this field builds a profile identical to before.
+    plan_duration_weeks_override = None
+    _plan_duration_raw = (goals.get('plan_duration_weeks', '') or '').strip()
+    if _plan_duration_raw:
+        _plan_duration_match = re.search(r'\d+', _plan_duration_raw)
+        if _plan_duration_match:
+            plan_duration_weeks_override = int(_plan_duration_match.group(0))
+
+    # Explicit tier/persona label (e.g. a pre-built TrainingPeaks SKU
+    # questionnaire carries "- Plan Tier: Masters"). Threaded through to
+    # training_guide_builder._conditional_triggers(), which gates the guide's
+    # Masters section on this label when present, instead of falling back to
+    # a raw age check. Only set when present, so every intake without this
+    # field builds a profile identical to before.
+    plan_tier_label = (goals.get('plan_tier', '') or '').strip()
+
     # Calculate weeks to target race (with clamping to 4-26 range)
     MIN_PLAN_WEEKS = 4
     MAX_PLAN_WEEKS = 26
@@ -1440,6 +1462,12 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'notes': plan_notes,
         },
     }
+
+    if plan_duration_weeks_override is not None:
+        profile['plan_duration_weeks_override'] = plan_duration_weeks_override
+
+    if plan_tier_label:
+        profile['plan_tier'] = plan_tier_label
 
     return profile
 

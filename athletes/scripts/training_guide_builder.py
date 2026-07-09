@@ -243,8 +243,23 @@ def _conditional_triggers(profile: Dict, race_data: Dict) -> Dict:
     sex = profile.get("demographics", {}).get("sex", "")
     show_women = bool(sex and sex.lower() == "female")
 
-    age = profile.get("demographics", {}).get("age")
-    show_masters = bool(age and int(age) >= 40)
+    # Masters gates on an explicit tier/persona signal first — e.g. a
+    # pre-built "Masters" SKU intake carries profile['plan_tier'] == "Masters"
+    # (or "Masters 50+"). This must win over age, because non-Masters base
+    # intakes (Finisher/Time-Crunched/Save-My-Race "punchy" personas) share a
+    # representative age of 40+ that used to trip an age>=40 gate regardless
+    # of tier — the Finisher guide once shipped a "Masters Training
+    # Considerations" section it had no business having. Falls back to age
+    # >= 50 (matching the "Masters 50+" product name, not the old 40
+    # threshold) only when no explicit plan_tier is present — e.g. a real
+    # customer questionnaire, which has no notion of "plan_tier" at all and
+    # where age is the only legitimate masters signal available.
+    plan_tier = str(profile.get("plan_tier") or "").strip().lower()
+    if plan_tier:
+        show_masters = plan_tier.startswith("masters")
+    else:
+        age = profile.get("demographics", {}).get("age")
+        show_masters = bool(age and int(age) >= 50)
 
     return {"altitude": show_altitude, "women": show_women, "masters": show_masters}
 
@@ -3484,6 +3499,52 @@ def _resolve_race_data(race_name, race_data_dirs):
     return race_data, verified_location
 
 
+def _flatten_race_data(race_data: Dict) -> Dict:
+    """Unwrap raw race-data JSON ({"race": {...}}) into the flat shape the
+    guide builder (and step_07/select_methodology) expect.
+
+    CRITICAL: vitals["elevation_ft"] is total CLIMBING GAIN, not altitude
+    above sea level (Big Sugar's 9500 is feet climbed; Bentonville itself
+    sits at ~1,300ft ASL). The altitude trigger in `_conditional_triggers`
+    reads `race_metadata["avg_elevation_feet"]` / `["start_elevation_feet"]`
+    — those MUST be sourced from the schema's distinct `*_elevation_asl_ft`
+    fields, never from elevation_ft/elevation_gain_ft. Before this function
+    existed, race_metadata never carried avg/start_elevation_feet at all, so
+    the altitude section silently never fired for any race, mountain or not.
+    """
+    if 'race' in race_data and isinstance(race_data['race'], dict):
+        inner = race_data['race']
+        # Merge race-level fields to top level for step_07 compatibility
+        race_data = {**race_data, **inner}
+        # Also flatten vitals to top level
+        vitals = inner.get('vitals', {})
+        race_data.setdefault('distance_miles', vitals.get('distance_mi'))
+        race_data.setdefault('elevation_feet', vitals.get('elevation_ft'))
+        race_data.setdefault('elevation_gain_feet', vitals.get('elevation_ft'))
+        race_data.setdefault('location', vitals.get('location'))
+        race_data.setdefault('city', vitals.get('location', '').split(',')[0].strip() if vitals.get('location') else '')
+        race_data.setdefault('state', vitals.get('location', '').split(',')[-1].strip() if vitals.get('location') else '')
+        # Create race_metadata for step_07 compatibility. avg/start_elevation_feet
+        # are ASL figures sourced ONLY from vitals.*_elevation_asl_ft — never
+        # from the gain field above.
+        start_asl = vitals.get('start_elevation_asl_ft', 0) or 0
+        avg_asl = vitals.get('avg_elevation_asl_ft', 0) or start_asl or 0
+        race_data.setdefault('race_metadata', {
+            'location': vitals.get('location', ''),
+            'elevation_feet': vitals.get('elevation_ft', 0),
+            'start_elevation_feet': start_asl,
+            'avg_elevation_feet': avg_asl,
+        })
+        # Create race_characteristics for terrain/climate
+        terrain = inner.get('terrain', {})
+        climate = inner.get('climate', {})
+        race_data.setdefault('race_characteristics', {
+            'terrain': terrain.get('primary', ''),
+            'climate': climate.get('summary', '') if isinstance(climate, dict) else str(climate),
+        })
+    return race_data
+
+
 def generate_training_guide(athlete_id: str, output_path=None):
     """
     CURRENT GUIDE BUILDER — produces the branded training guide with:
@@ -3670,31 +3731,7 @@ def generate_training_guide(athlete_id: str, output_path=None):
         Path.home() / 'Documents' / 'GravelGod' / 'gravel-race-automation' / 'race-data',
     ])
 
-    # Unwrap race data: raw JSON has {"race": {...}}, step_07 expects flat dict
-    if 'race' in race_data and isinstance(race_data['race'], dict):
-        inner = race_data['race']
-        # Merge race-level fields to top level for step_07 compatibility
-        race_data = {**race_data, **inner}
-        # Also flatten vitals to top level
-        vitals = inner.get('vitals', {})
-        race_data.setdefault('distance_miles', vitals.get('distance_mi'))
-        race_data.setdefault('elevation_feet', vitals.get('elevation_ft'))
-        race_data.setdefault('elevation_gain_feet', vitals.get('elevation_ft'))
-        race_data.setdefault('location', vitals.get('location'))
-        race_data.setdefault('city', vitals.get('location', '').split(',')[0].strip() if vitals.get('location') else '')
-        race_data.setdefault('state', vitals.get('location', '').split(',')[-1].strip() if vitals.get('location') else '')
-        # Create race_metadata for step_07 compatibility
-        race_data.setdefault('race_metadata', {
-            'location': vitals.get('location', ''),
-            'elevation_feet': vitals.get('elevation_ft', 0),
-        })
-        # Create race_characteristics for terrain/climate
-        terrain = inner.get('terrain', {})
-        climate = inner.get('climate', {})
-        race_data.setdefault('race_characteristics', {
-            'terrain': terrain.get('primary', ''),
-            'climate': climate.get('summary', '') if isinstance(climate, dict) else str(climate),
-        })
+    race_data = _flatten_race_data(race_data)
 
     # Overlay the verified venue from the race DB so a missing JSON file
     # still renders the CORRECT location (matched to race_name) rather than

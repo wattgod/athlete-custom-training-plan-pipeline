@@ -138,6 +138,109 @@ class TestAltitudeIsNotClimbing:
         assert "At 7000 feet" in html
 
 
+class TestAltitudeIngestionFromRaceData:
+    """The trigger function itself was always correct (see
+    TestAltitudeIsNotClimbing above) — the bug was one layer up: the
+    race-data JSON -> race_metadata adapter (_flatten_race_data) never
+    populated avg/start_elevation_feet at all, so altitude never fired for
+    ANY race, mountain or not. These tests exercise that adapter directly
+    against race-data-shaped fixtures (raw {"race": {"vitals": {...}}} JSON,
+    matching gravel-race-automation/race-data/*.json), not the trigger
+    function in isolation.
+    """
+
+    def _raw(self, vitals):
+        return {"race": {"name": "Test Race", "vitals": vitals, "terrain": {}, "climate": {}}}
+
+    def test_mountain_race_fires(self):
+        """Leadville-shaped vitals: real ASL fields present -> altitude fires."""
+        from training_guide_builder import _flatten_race_data, _conditional_triggers
+
+        raw = self._raw({
+            "distance_mi": 100,
+            "elevation_ft": 11900,  # climbing GAIN — must NOT be used
+            "start_elevation_asl_ft": 10200,
+            "avg_elevation_asl_ft": 11000,
+            "location": "Leadville, Colorado",
+        })
+        flattened = _flatten_race_data(raw)
+        assert flattened["race_metadata"]["start_elevation_feet"] == 10200
+        assert flattened["race_metadata"]["avg_elevation_feet"] == 11000
+        assert _conditional_triggers({}, flattened)["altitude"] is True
+
+    def test_big_sugar_does_not_fire(self):
+        """Big Sugar-shaped vitals: 9500 is climbing gain, ASL is ~1300ft —
+        altitude must NOT fire despite the large gain figure."""
+        from training_guide_builder import _flatten_race_data, _conditional_triggers
+
+        raw = self._raw({
+            "distance_mi": 100,
+            "elevation_ft": 9500,  # climbing GAIN, not altitude
+            "start_elevation_asl_ft": 1300,
+            "avg_elevation_asl_ft": 1300,
+            "location": "Bentonville, Arkansas",
+        })
+        flattened = _flatten_race_data(raw)
+        assert flattened["race_metadata"]["start_elevation_feet"] == 1300
+        assert flattened["race_metadata"]["avg_elevation_feet"] == 1300
+        assert _conditional_triggers({}, flattened)["altitude"] is False
+
+    def test_race_with_no_asl_data_does_not_fire(self):
+        """A race-data file with no *_elevation_asl_ft fields at all (the
+        pre-fix state for every race in the DB) must not fire altitude,
+        even with a huge gain figure — no real altitude claim without data."""
+        from training_guide_builder import _flatten_race_data, _conditional_triggers
+
+        raw = self._raw({
+            "distance_mi": 200,
+            "elevation_ft": 19000,
+            "location": "Emporia, Kansas",
+        })
+        flattened = _flatten_race_data(raw)
+        assert flattened["race_metadata"].get("start_elevation_feet", 0) == 0
+        assert flattened["race_metadata"].get("avg_elevation_feet", 0) == 0
+        assert _conditional_triggers({}, flattened)["altitude"] is False
+
+
+class TestMastersGateIsTierCorrect:
+    """The Masters guide section must fire on tier/persona, not a raw shared
+    age field. Base-library "punchy" intakes (Finisher/Time-Crunched/
+    Save-My-Race) share a representative age of 40+ — an age>=40 gate once
+    made the Finisher guide ship a "Masters Training Considerations"
+    section it had no business having (Big Sugar pilot bug)."""
+
+    def test_masters_plan_tier_fires_regardless_of_age(self):
+        from training_guide_builder import _conditional_triggers
+        profile = {"plan_tier": "Masters", "demographics": {"age": 33}}
+        assert _conditional_triggers(profile, {})["masters"] is True
+
+    def test_masters_50plus_label_also_fires(self):
+        from training_guide_builder import _conditional_triggers
+        profile = {"plan_tier": "Masters 50+", "demographics": {"age": 33}}
+        assert _conditional_triggers(profile, {})["masters"] is True
+
+    def test_non_masters_tier_never_fires_on_shared_persona_age(self):
+        from training_guide_builder import _conditional_triggers
+        # Finisher/Time-Crunched/Save-My-Race base intakes all carry age 40+
+        # as a representative persona age — this must NOT trip masters.
+        for tier, age in (("Finisher", 40), ("Time-Crunched", 42),
+                          ("Save My Race", 40), ("Compete", 33)):
+            profile = {"plan_tier": tier, "demographics": {"age": age}}
+            assert _conditional_triggers(profile, {})["masters"] is False, tier
+
+    def test_no_plan_tier_falls_back_to_age_50(self):
+        # Real customer questionnaires never carry plan_tier — age is the
+        # only legitimate signal there, but the threshold is 50 (matching
+        # the "Masters 50+" product), not the old buggy 40.
+        from training_guide_builder import _conditional_triggers
+        assert _conditional_triggers({"demographics": {"age": 49}}, {})["masters"] is False
+        assert _conditional_triggers({"demographics": {"age": 50}}, {})["masters"] is True
+
+    def test_no_plan_tier_no_age_never_fires(self):
+        from training_guide_builder import _conditional_triggers
+        assert _conditional_triggers({}, {})["masters"] is False
+
+
 class TestFuelingDurationByDiscipline:
     """Race-duration estimate must reflect discipline — a road event is far
     faster than gravel. (Judge caught an 8h estimate for a 96mi road race.)"""
