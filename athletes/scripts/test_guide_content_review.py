@@ -13,6 +13,7 @@ tests pin every decision so the content cannot regress:
 """
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -627,3 +628,113 @@ class TestRoadLabsBrand:
         body = re.sub(r'--gg-color-[a-z-]+: #[0-9A-Fa-f]{6};', '', body)
         leaks = re.findall(r'(?:solid |:)#(?:59473c|B7950B|1A8A82|c0392b)', body)
         assert not leaks, f"inline brand hex bypasses the token swap: {leaks}"
+
+
+class TestStoreMode:
+    """The Big Sugar marketplace pilot shipped in 1:1-custom mode: a fake
+    "Age 40, 165 lbs, 230W FTP, 12h/week" YOUR PROFILE block and "built
+    entirely from your questionnaire responses" language, for a base
+    intake no real buyer ever filled out. store_mode suppresses the
+    personal profile block, reframes 1:1-questionnaire phrasing, and
+    degrades zones/nutrition/recovery to the same non-personalized path a
+    real customer sees before they've entered any data — never a fake
+    wattage or body weight. Custom (1:1) guides are the default and must
+    render byte-identical to before this sprint.
+    """
+
+    FIXTURE_ID = "_test_store_mode_fixture"
+
+    @pytest.fixture
+    def fixture_athlete_dir(self):
+        """A base-intake-shaped profile — same shape used by the real Big
+        Sugar SKU pilot (fitness_markers/weekly_availability/health_factors
+        + plan_tier), planted as an ephemeral athletes/ dir and torn down
+        after the test."""
+        import shutil
+        import yaml
+
+        athletes_dir = Path(__file__).parent.parent
+        athlete_dir = athletes_dir / self.FIXTURE_ID
+        athlete_dir.mkdir(exist_ok=True)
+
+        profile = {
+            "name": "Finisher Gravel Punchy",
+            "email": "base@gravelgod.internal",
+            "plan_tier": "Finisher",
+            "primary_goal": "specific_race",
+            "target_race": {
+                "name": "Big Sugar Gravel", "race_id": "big_sugar",
+                "date": "2026-10-17", "distance_miles": 100,
+                "elevation_ft": 9500, "goal_type": "finish",
+                "goal_description": "Finish Big Sugar Gravel strong and healthy.",
+            },
+            "racing": {"success_metrics": "Finish Big Sugar Gravel strong and healthy.", "obstacles": ""},
+            "training_history": {"years_cycling": 0, "years_structured": 1,
+                                  "strengths": "", "weaknesses": ""},
+            "fitness_markers": {"ftp_watts": 230, "weight_kg": 74.8, "sex": "male"},
+            "weekly_availability": {"cycling_hours_target": 12},
+            "health_factors": {"age": 40, "sleep_quality": "good", "stress_level": "moderate"},
+            "schedule_constraints": {"preferred_off_days": ["monday"], "preferred_long_day": "saturday"},
+            "strength_equipment": [],
+        }
+        derived = {"tier": "finisher", "level": "intermediate", "plan_weeks": 12}
+
+        with open(athlete_dir / "profile.yaml", "w") as f:
+            yaml.safe_dump(profile, f)
+        with open(athlete_dir / "derived.yaml", "w") as f:
+            yaml.safe_dump(derived, f)
+
+        yield self.FIXTURE_ID
+
+        shutil.rmtree(athlete_dir, ignore_errors=True)
+
+    def test_store_mode_has_no_fake_profile_or_questionnaire_language(self, fixture_athlete_dir, tmp_path):
+        from training_guide_builder import generate_training_guide
+
+        out = tmp_path / "store_guide.html"
+        generate_training_guide(fixture_athlete_dir, output_path=out, store_mode=True)
+        html = out.read_text()
+
+        # No profile-PII block
+        assert "Your Profile" not in html
+        assert ">40<" not in html                    # fake age never surfaced as a stat
+        assert "165 lbs" not in html                  # fake weight never surfaced
+        assert "230W" not in html                     # never a fake FTP wattage
+        assert "12h</div>" not in html                # fake weekly-hours stat card gone
+        assert "Custom Plan for" not in html
+        assert "Finisher Gravel Punchy" not in html   # tier label never worn as a person's name
+        # No 1:1-questionnaire framing
+        assert "your questionnaire" not in html
+        assert "From your questionnaire" not in html
+        assert "You reported high stress levels" not in html
+        assert "HEALTH NOTES" not in html
+        assert "Personalized Fueling Targets" not in html
+        assert "Personalized" not in html
+        # Zones/execution degrade store-appropriately: %FTP + test-in-week-1,
+        # never a fake wattage
+        assert "% FTP" in html
+        assert "FTP TEST REQUIRED" in html
+        # Honest tier framing present, sourced from plan_tier not a fake name
+        assert "The Finisher" in html
+        assert "Built For" in html
+        # Everything else stays intact
+        assert "Nutrition Strategy" in html
+        assert "Equipment Checklist" in html
+        assert "Masters Training Considerations" not in html   # Finisher tier, not Masters
+        assert "Altitude Training" not in html                 # Big Sugar is low-ASL
+
+    def test_custom_mode_default_is_unaffected(self, fixture_athlete_dir, tmp_path):
+        """store_mode defaults False — the exact same fixture data must
+        render the original 1:1-custom guide, unchanged by this sprint."""
+        from training_guide_builder import generate_training_guide
+
+        out = tmp_path / "custom_guide.html"
+        generate_training_guide(fixture_athlete_dir, output_path=out)
+        html = out.read_text()
+
+        assert "Your Profile" in html
+        assert "built\n  entirely from your questionnaire responses" in html or \
+            "entirely from your questionnaire responses" in html
+        assert "230W" in html
+        assert "165 lbs" in html
+        assert "Custom Plan for Finisher Gravel Punchy" in html

@@ -305,8 +305,16 @@ def generate_guide(
     schedule: Dict,
     output_path: Path,
     base_dir: Path,
+    store_mode: bool = False,
 ):
-    """Generate a complete HTML training guide. Must be 50KB+."""
+    """Generate a complete HTML training guide. Must be 50KB+.
+
+    store_mode: True for marketplace/store SKU guides built from a generic
+    base intake (no real athlete behind the numbers). Suppresses the
+    personal YOUR PROFILE block (fake age/weight/FTP/height/years/hours)
+    and reframes 1:1-questionnaire language. Real 1:1 customer guides
+    (the default) are completely unaffected.
+    """
     race_name = derived.get("race_name", "Your Race")
     race_distance = derived.get("race_distance_miles", "")
     tier = derived["tier"]
@@ -349,6 +357,7 @@ def generate_guide(
         plan_config=plan_config,
         race_data=race_data,
         date_xref=date_xref,
+        store_mode=store_mode,
     )
 
     output_path.write_text(html, encoding="utf-8")
@@ -367,12 +376,20 @@ def _build_full_guide(
     plan_config: Dict,
     race_data: Dict,
     date_xref: Dict = None,
+    store_mode: bool = False,
 ) -> str:
     """Build the complete HTML document with all sections using Gravel God brand system."""
 
     tier_display = tier.replace("_", " ").title()
     level_display = level.title()
     ftp = profile["fitness"].get("ftp_watts")
+
+    # store_mode: the honest persona label for a marketplace SKU is the
+    # product's own plan_tier ("Finisher", "Masters", "Save My Race"...),
+    # not the internally-derived tier (which can disagree with the SKU
+    # name) and never the fake base-intake "name" (e.g. "Finisher Gravel
+    # Punchy") — that's a tier label wearing a person's name.
+    persona_label = (profile.get("plan_tier") or tier_display) if store_mode else None
 
     # Brand by discipline — a road athlete gets ROADIE LABS + road skills,
     # never a GRAVEL GOD footer or gravel-cornering drills.
@@ -407,11 +424,16 @@ def _build_full_guide(
     # Build all sections
     sections = []
 
+    # store_mode: no real athlete behind these numbers — never show a fake
+    # FTP as if it were a real test result. Zones/execution degrade to the
+    # same "%FTP + test in Week 1" path a real customer sees before testing.
+    effective_ftp = None if store_mode else ftp
+
     # 1. Training Plan Brief (hardcoded from questionnaire)
     sections.append(_section_training_plan_brief(
         athlete_name, race_name, race_distance, tier, tier_display,
         level_display, plan_duration, profile, derived, schedule, plan_config,
-        date_xref=date_xref or {},
+        date_xref=date_xref or {}, store_mode=store_mode,
     ))
 
     # Race Profile section REMOVED per coach review (Jun 2026) — it mostly
@@ -424,14 +446,14 @@ def _build_full_guide(
     # the guide). Do not re-add calendar/schedule content to the guide.
     _fit = profile.get("fitness", {})
     sections.append(_section_training_zones(
-        ftp, tier, lthr=_fit.get("lthr"), max_hr=_fit.get("max_hr")))
+        effective_ftp, tier, lthr=_fit.get("lthr"), max_hr=_fit.get("max_hr")))
     sections.append(_section_adaptation())
     sections.append(_section_weekly_structure(schedule, tier_display, weekly_hours, est_race_hrs))
     sections.append(_section_phase_progression(plan_duration, tier, ride_realism))
-    sections.append(_section_workout_execution(tier, ftp))
-    sections.append(_section_recovery_protocol(tier, profile))
+    sections.append(_section_workout_execution(tier, effective_ftp))
+    sections.append(_section_recovery_protocol(tier, profile, store_mode=store_mode))
     sections.append(_section_equipment_checklist(profile, race_data))
-    sections.append(_section_nutrition(race_data, tier, race_distance, profile, plan_duration))
+    sections.append(_section_nutrition(race_data, tier, race_distance, profile, plan_duration, store_mode=store_mode))
     sections.append(_section_mental_preparation(race_data, race_distance, tier))
     sections.append(_section_race_week(race_data, tier, race_name, derived))
     sections.append(_section_race_day(race_data, tier, race_distance, race_name, weekly_hours))
@@ -461,12 +483,22 @@ def _build_full_guide(
     # Duration estimate
     duration_est = race_data.get("duration_estimate", "")
 
+    # store_mode: the <title> and <h1> must never present the fake base-
+    # intake "name" as if it belonged to the buyer. Title by tier/persona
+    # instead of by (fake) athlete name.
+    page_title = (f"The {persona_label} Plan - {_race_display(race_name, race_distance)} Training Guide"
+                  if store_mode else
+                  f"{athlete_name} - {_race_display(race_name, race_distance)} Training Guide")
+    page_h1 = (f"{_race_display(race_name, race_distance)} &ndash; The {persona_label} Plan ({plan_duration} weeks)"
+               if store_mode else
+               f"{_race_display(race_name, race_distance)} &ndash; Custom Plan for {athlete_name} ({plan_duration} weeks)")
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{athlete_name} - {_race_display(race_name, race_distance)} Training Guide</title>
+    <title>{page_title}</title>
 
     <!-- Fonts: Source Serif 4 (editorial) + Sometype Mono (data) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -480,7 +512,7 @@ def _build_full_guide(
     <div class="gg-guide-layout">
 
       <header class="guide-header">
-        <h1>{_race_display(race_name, race_distance)} &ndash; Custom Plan for {athlete_name} ({plan_duration} weeks)</h1>
+        <h1>{page_h1}</h1>
         <div class="guide-meta">
 {_meta_badges(race_name, race_distance, elevation, duration_est, plan_duration, location)}
         </div>
@@ -520,9 +552,15 @@ def _build_full_guide(
 def _section_training_plan_brief(
     athlete_name, race_name, race_distance, tier, tier_display,
     level_display, plan_duration, profile, derived, schedule, plan_config,
-    date_xref=None,
+    date_xref=None, store_mode=False,
 ):
-    """Section 1: Hardcoded athlete-specific overview from questionnaire data."""
+    """Section 1: Hardcoded athlete-specific overview from questionnaire data.
+
+    store_mode: suppresses the personal YOUR PROFILE block (fake age/weight/
+    FTP/height/years/hours from a generic base intake) and reframes
+    1:1-questionnaire language for marketplace/store SKU guides.
+    """
+    persona_label = (profile.get("plan_tier") or tier_display) if store_mode else None
     demo = profile.get("demographics", {})
     fitness = profile.get("fitness", {})
     sched = profile.get("schedule", {})
@@ -655,10 +693,42 @@ def _section_training_plan_brief(
     days_info = schedule.get("days", {})
     date_card = _date_verification_card(derived, date_xref or {})
 
-    return f"""<section id="section-1" class="gg-section">
-  <h2>1 &middot; Training Plan Brief</h2>
+    if store_mode:
+        # No real athlete behind these numbers — a store buyer never filled
+        # a questionnaire, so nothing here may claim personalization. The
+        # fake age/weight/height/years/hours/FTP are suppressed entirely
+        # (never shown as if they belonged to the buyer) and replaced with
+        # an honest tier/persona description built from real plan config.
+        _goal_description = (profile.get("target_race", {}).get("goal_description")
+                             or f"Finish {_race_display(race_name, race_distance)} strong and healthy.")
+        intro_html = f"""<p>This is the <strong>{_race_display(race_name, race_distance)}</strong> training plan built for
+  the <strong>{persona_label}</strong> tier. Every phase, workout, and recommendation is calibrated
+  to the demands of this race and this tier &mdash; set your own zones from your own FTP test and
+  follow it exactly as written.</p>
 
-  <p>Welcome to your <strong>{_race_display(race_name, race_distance)}</strong> training plan. This guide is built
+  <h3>Built For</h3>
+  <div class="data-card">
+    <div class="data-card__header">THE {persona_label.upper()} ATHLETE</div>
+    <div class="data-card__content">
+      <p>{_goal_description}</p>
+      <p>This {plan_duration}-week plan is structured for the {persona_label} tier &mdash; {meth['name']}
+      training, scaled to this tier's typical availability and this race's demands.</p>
+    </div>
+  </div>"""
+
+        methodology_reasons_html = f"""<h4>Why This Methodology Fits This Tier</h4>
+      <ul>
+        <li><strong>{meth['name']}</strong> is the proven approach for the {persona_label} tier</li>
+        <li>{level_display}-level training distribution, built around this race's demands</li>
+      </ul>"""
+
+        health_notes_html = ""  # fake sleep/stress/injuries never shown as the buyer's own
+
+        performance_html = f"""<p>Over {plan_duration} weeks, this plan builds race-specific fitness for the
+  {persona_label} tier using the {meth['name']} approach. Execute consistently, fuel properly,
+  and trust the process.</p>"""
+    else:
+        intro_html = f"""<p>Welcome to your <strong>{_race_display(race_name, race_distance)}</strong> training plan. This guide is built
   entirely from your questionnaire responses. Every number, every schedule, every recommendation
   is calibrated to your specific situation.</p>
 
@@ -688,7 +758,29 @@ def _section_training_plan_brief(
       <div class="stat-card__value">{ftp if ftp else 'TBD'}{'W' if ftp else ''}</div>
       <div class="stat-card__label">FTP{' (test in Week 1)' if not ftp else ''}</div>
     </div>
-  </div>
+  </div>"""
+
+        methodology_reasons_html = f"""<h4>Why This Methodology Was Selected</h4>
+      <ul>
+        <li><strong>{weekly_hours} hours/week</strong> matches the {meth['name']} approach</li>
+        <li><strong>{years} years</strong> of cycling experience at <strong>{level_display}</strong> level</li>
+        <li><strong>{meth['name']}</strong> training distribution (based on your available hours)</li>
+      </ul>"""
+
+        health_notes_html = (
+            f'<div class="gg-module gg-info"><div class="gg-label">HEALTH NOTES</div>'
+            f'<p><strong>Sleep:</strong> {sleep} &mdash; <strong>Stress:</strong> {stress}'
+            f'{f" &mdash; <strong>Injuries/Limitations:</strong> {injuries}" if injuries and injuries.lower() not in ("na", "none", "n/a", "") else ""}</p></div>'
+        ) if sleep or stress else ""
+
+        performance_html = f"""<p>With {weekly_hours} hours per week over {plan_duration} weeks, you're building race-specific fitness
+  using the {meth['name']} approach. This plan is calibrated to your available time and experience level.
+  Execute consistently, fuel properly, and trust the process.</p>"""
+
+    return f"""<section id="section-1" class="gg-section">
+  <h2>1 &middot; Training Plan Brief</h2>
+
+  {intro_html}
 
 {date_card}
 
@@ -711,12 +803,7 @@ def _section_training_plan_brief(
     <div class="data-card__content">
       <p>{meth['description']}</p>
 
-      <h4>Why This Methodology Was Selected</h4>
-      <ul>
-        <li><strong>{weekly_hours} hours/week</strong> matches the {meth['name']} approach</li>
-        <li><strong>{years} years</strong> of cycling experience at <strong>{level_display}</strong> level</li>
-        <li><strong>{meth['name']}</strong> training distribution (based on your available hours)</li>
-      </ul>
+      {methodology_reasons_html}
     </div>
   </div>
 
@@ -725,12 +812,10 @@ def _section_training_plan_brief(
 
   {calendar_html}
 
-  {f'<div class="gg-module gg-info"><div class="gg-label">HEALTH NOTES</div><p><strong>Sleep:</strong> {sleep} &mdash; <strong>Stress:</strong> {stress}{f" &mdash; <strong>Injuries/Limitations:</strong> {injuries}" if injuries and injuries.lower() not in ("na", "none", "n/a", "") else ""}</p></div>' if sleep or stress else ''}
+  {health_notes_html}
 
   <h3>Performance Expectations</h3>
-  <p>With {weekly_hours} hours per week over {plan_duration} weeks, you're building race-specific fitness
-  using the {meth['name']} approach. This plan is calibrated to your available time and experience level.
-  Execute consistently, fuel properly, and trust the process.</p>
+  {performance_html}
 </section>"""
 
 
@@ -1302,12 +1387,14 @@ def _section_workout_execution(tier: str, ftp: Optional[int] = None):
 </section>"""
 
 
-def _section_recovery_protocol(tier: str, profile: Dict):
+def _section_recovery_protocol(tier: str, profile: Dict, store_mode: bool = False):
     sleep = profile.get("health", {}).get("sleep_quality", "moderate")
     stress = profile.get("health", {}).get("stress_level", "moderate")
 
-    # Personalized post-workout targets from body weight
-    weight_lbs = profile.get("demographics", {}).get("weight_lbs")
+    # Personalized post-workout targets from body weight — store_mode has no
+    # real athlete behind the profile's weight, so it always takes the
+    # generic (already-existing) fallback below instead of a fake number.
+    weight_lbs = None if store_mode else profile.get("demographics", {}).get("weight_lbs")
     if weight_lbs:
         try:
             weight_kg = float(weight_lbs) / 2.205
@@ -1320,8 +1407,10 @@ def _section_recovery_protocol(tier: str, profile: Dict):
     else:
         recovery_line = "30g protein + 60-90g carbs within 30 minutes"
 
+    # store_mode: never present fake health-questionnaire data ("You
+    # reported...") as if a real buyer answered it.
     stress_note = ""
-    if stress in ("high", "very_high"):
+    if not store_mode and stress in ("high", "very_high"):
         stress_note = """<div class="gg-module gg-alert">
     <div class="gg-label">HIGH LIFE STRESS DETECTED</div>
     <p>You reported high stress levels. Life stress and training stress use the same recovery systems.
@@ -1465,7 +1554,8 @@ def _section_equipment_checklist(profile: Dict, race_data: Dict):
 </section>"""
 
 
-def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict = None, plan_duration: int = 12):
+def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict = None, plan_duration: int = 12,
+                       store_mode: bool = False):
     if profile is None:
         profile = {}
     mods = race_data.get("workout_modifications", {})
@@ -1486,7 +1576,10 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
 
     personalized_html = ""
     daily_macros_html = ""
-    weight_lbs = profile.get("demographics", {}).get("weight_lbs")
+    # store_mode has no real athlete behind the profile's weight — always
+    # take the generic (already-existing) per-kg guidance below rather than
+    # presenting a fake individual's numbers as "personalized".
+    weight_lbs = None if store_mode else profile.get("demographics", {}).get("weight_lbs")
     weight_kg = 0
     if weight_lbs and compute_fueling_for_guide:
         try:
@@ -3545,7 +3638,7 @@ def _flatten_race_data(race_data: Dict) -> Dict:
     return race_data
 
 
-def generate_training_guide(athlete_id: str, output_path=None):
+def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool = False):
     """
     CURRENT GUIDE BUILDER — produces the branded training guide with:
     - Radar chart, non-negotiables, phase badges
@@ -3556,6 +3649,12 @@ def generate_training_guide(athlete_id: str, output_path=None):
     - Race-specific content (from race database)
 
     This is the production guide builder. It replaces generate_html_guide.py.
+
+    store_mode: True for marketplace/store SKU guides generated from a
+    generic base intake (no real athlete behind the numbers, e.g. the Big
+    Sugar pilot SKUs). Suppresses the personal YOUR PROFILE block and
+    1:1-questionnaire framing throughout. Real 1:1 customer guides (the
+    default, called from generate_athlete_package.py) are unaffected.
     """
     import yaml
     import json
@@ -3759,6 +3858,7 @@ def generate_training_guide(athlete_id: str, output_path=None):
         # Verify the athlete's date against the real race DB (was hardcoded
         # empty here, so every guide showed "not in database").
         date_xref=_cross_reference_race_date(race_name, derived.get('race_date', '')),
+        store_mode=store_mode,
     )
 
     # ── Post-process: inject coaching-pipeline-specific sections ──
@@ -3768,7 +3868,7 @@ def generate_training_guide(athlete_id: str, output_path=None):
     # the schedule lives in the training plan, not the guide. Do not re-add.
 
     # 2. Inject Goals & Blindspots AFTER section 1 (Training Plan Brief)
-    goals_html = _build_goals_section(profile)
+    goals_html = _build_goals_section(profile, store_mode=store_mode)
     if goals_html:
         html = html.replace('</section>\n\n  <section id="section-2"',
                            f'</section>\n\n{goals_html}\n\n  <section id="section-2"', 1)
@@ -3780,8 +3880,9 @@ def generate_training_guide(athlete_id: str, output_path=None):
     # 3. Inject personalized fueling.yaml targets INTO the nutrition section
     # (section-10). Previously this REPLACED the entire science-rich section
     # with a 3-stat card — customers lost the fueling framework. Now the
-    # personalized card leads and the framework follows.
-    nutrition_html = _build_nutrition_section(fueling, profile)
+    # personalized card leads and the framework follows. store_mode
+    # suppresses this entirely (see _build_nutrition_section docstring).
+    nutrition_html = _build_nutrition_section(fueling, profile, store_mode=store_mode)
     if nutrition_html and fueling:
         nutrition_anchor = '<h2>9 &middot; Nutrition Strategy</h2>'
         if nutrition_anchor in html:
@@ -3802,15 +3903,22 @@ def generate_training_guide(athlete_id: str, output_path=None):
     return output_path
 
 
-def _build_goals_section(profile) -> str:
-    """Build goals + blindspots from questionnaire data."""
+def _build_goals_section(profile, store_mode: bool = False) -> str:
+    """Build goals + blindspots from questionnaire data.
+
+    store_mode: no real athlete filled a questionnaire, so self-assessed
+    "strengths"/"blindspots" (a personal training-history judgment) are
+    dropped and the framing sentence stops claiming this came from the
+    buyer's own answers. The goal/obstacle text is tier-level race framing
+    and is kept.
+    """
     racing = profile.get('racing', {})
     success = racing.get('success_metrics', '')
     obstacles = racing.get('obstacles', '')
 
     training_hist = profile.get('training_history', {})
-    strengths = training_hist.get('strengths', '')
-    weaknesses = training_hist.get('weaknesses', '')
+    strengths = '' if store_mode else training_hist.get('strengths', '')
+    weaknesses = '' if store_mode else training_hist.get('weaknesses', '')
 
     if not any([success, obstacles, strengths, weaknesses]):
         return ''
@@ -3825,18 +3933,30 @@ def _build_goals_section(profile) -> str:
     if weaknesses:
         items.append(f'<div style="margin:12px 0;padding:12px 16px;background:#fff;border-left:3px solid var(--gg-color-error)"><strong>Your blindspots:</strong> {weaknesses}</div>')
 
+    heading = "Goals &amp; Watch-Outs" if store_mode else "Your Goals &amp; Blindspots"
+    framing = ("What this plan is built toward, and what it watches out for." if store_mode
+               else "From your questionnaire — this is what we're building toward and what we're watching out for.")
+
     return f'''
     <section style="margin:40px 0">
       <h2 style="font-family:'Sometype Mono',monospace;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:var(--gg-color-primary-brown);border-bottom:2px solid var(--gg-color-primary-brown);padding-bottom:8px">
-        Your Goals &amp; Blindspots
+        {heading}
       </h2>
-      <p style="font-family:'Source Serif 4',Georgia,serif;color:#555">From your questionnaire — this is what we're building toward and what we're watching out for.</p>
+      <p style="font-family:'Source Serif 4',Georgia,serif;color:#555">{framing}</p>
       {"".join(items)}
     </section>'''
 
 
-def _build_nutrition_section(fueling, profile) -> str:
-    """Build nutrition targets from fueling.yaml."""
+def _build_nutrition_section(fueling, profile, store_mode: bool = False) -> str:
+    """Build nutrition targets from fueling.yaml.
+
+    store_mode: fueling.yaml numbers for a store SKU are computed from the
+    fake base-intake body weight (identical for every buyer of that tier),
+    so they are never shown as "Your Personalized Targets" — suppressed
+    entirely rather than presented as if unique to the buyer.
+    """
+    if store_mode:
+        return ''
     if not fueling:
         return ''
 
@@ -3881,10 +4001,12 @@ def _build_nutrition_section(fueling, profile) -> str:
 # ── Entry point when called as script ──
 if __name__ == '__main__':
     import sys
-    if len(sys.argv) < 2:
-        print("Usage: python3 training_guide_builder.py <athlete_id> [output_path]")
+    args = [a for a in sys.argv[1:] if a != '--store-mode']
+    store_mode = '--store-mode' in sys.argv[1:]
+    if len(args) < 1:
+        print("Usage: python3 training_guide_builder.py <athlete_id> [output_path] [--store-mode]")
         sys.exit(1)
-    athlete_id = sys.argv[1]
-    output = sys.argv[2] if len(sys.argv) > 2 else None
-    path = generate_training_guide(athlete_id, output)
+    athlete_id = args[0]
+    output = args[1] if len(args) > 1 else None
+    path = generate_training_guide(athlete_id, output, store_mode=store_mode)
     print(f"✅ Training guide: {path}")
