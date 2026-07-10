@@ -86,6 +86,14 @@ railway.json       <- Railway deploy config (root, NOT webhook/)
 - **GA4 funnel**: `begin_checkout` -> Stripe -> `purchase` (with dedup via sessionStorage)
 - **Post-purchase emails**: Day 1 (getting started), Day 3 (check-in), Day 7 (coaching bridge). Triggered via `/api/cron/followup-emails` daily endpoint, fired by `.github/workflows/daily-followup-emails.yml`. Canonical copy lives in `webhook/email_templates.py` — app.py should import `FOLLOWUP_SEQUENCE` from there, not fork it inline.
 
+## Handover Skills (load by task)
+
+| Task | Read first |
+|------|-----------|
+| Intake validation, checkout, delivery, failure paths | `.claude/skills/order-safety/SKILL.md` |
+| Archetypes, race mapping, plan catalog | `.claude/skills/archetype-and-catalog/SKILL.md` |
+| Workout/plan generation, scheduling, compliance | `.claude/skills/generator-conventions/SKILL.md` |
+
 ## Known Pitfalls
 
 ### Idempotency: mark BEFORE long operations
