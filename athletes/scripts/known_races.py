@@ -127,7 +127,7 @@ KNOWN_RACES: Dict[str, Dict[str, Any]] = {
         'date': '2026-08-22',
         'name': 'Gravel Worlds',
         'distance_miles': 150,
-        'elevation_ft': 7500,
+        'elevation_ft': 10000,
     },
     'mid_south': {
         'date': '2026-03-14',
