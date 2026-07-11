@@ -4272,7 +4272,7 @@
    "slug": "milano-sanremo-gran-fondo"
   },
   "gravel:monaco-gravel-race": {
-   "date": null,
+   "date": "2026-04-19",
    "discipline": "gravel",
    "distance_mi": 68,
    "elevation_ft": 8202,
@@ -4470,7 +4470,7 @@
    "slug": "northcape-4000"
   },
   "gravel:nova-eroica": {
-   "date": null,
+   "date": "2026-04-10",
    "discipline": "gravel",
    "distance_mi": 84,
    "elevation_ft": 9186,
