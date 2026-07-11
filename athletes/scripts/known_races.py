@@ -86,10 +86,11 @@ KNOWN_RACES: Dict[str, Dict[str, Any]] = {
         'elevation_ft': 19000,
     },
     'sbt_grvl': {
+        # 2026 course is shorter -- 141mi was the old distance (Matti, Jul 10 2026)
         'date': '2026-06-28',
         'name': 'SBT GRVL',
-        'distance_miles': 141,
-        'elevation_ft': 9000,
+        'distance_miles': 108,
+        'elevation_ft': 8189,
     },
     'sbt_grvl_75': {
         'date': '2026-06-28',
