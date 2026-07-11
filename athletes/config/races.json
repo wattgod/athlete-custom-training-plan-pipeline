@@ -3,13 +3,13 @@
   "gravel": 757,
   "road": 427
  },
- "_generated": "2026-06-16",
+ "_generated": "2026-07-11",
  "races": {
   "gravel:114-gravel-race": {
    "date": "2026-03-28",
    "discipline": "gravel",
-   "distance_mi": 70,
-   "elevation_ft": 4000,
+   "distance_mi": 85,
+   "elevation_ft": 3386,
    "location": "Portugal",
    "name": "114 Gravel Race",
    "slug": "114-gravel-race"
@@ -26,8 +26,8 @@
   "gravel:3rides-aachen": {
    "date": "2026-07-19",
    "discipline": "gravel",
-   "distance_mi": 65,
-   "elevation_ft": 4500,
+   "distance_mi": 75,
+   "elevation_ft": 5183,
    "location": "Winterberg/Aachen, Germany",
    "name": "3Rides Aachen",
    "slug": "3rides-aachen"
@@ -44,8 +44,8 @@
   "gravel:5-mila-marche-gran-fondo": {
    "date": "2026-09-20",
    "discipline": "gravel",
-   "distance_mi": 82,
-   "elevation_ft": 5446,
+   "distance_mi": 50,
+   "elevation_ft": 4003,
    "location": "Porto Recanati, Marche, Italy",
    "name": "5 Mila Marche Gran Fondo",
    "slug": "5-mila-marche-gran-fondo"
@@ -126,7 +126,7 @@
    "date": "2026-07-18",
    "discipline": "gravel",
    "distance_mi": 60,
-   "elevation_ft": 2500,
+   "elevation_ft": 3258,
    "location": "Albia, Iowa",
    "name": "Albia Holy Cow",
    "slug": "albia-holy-cow"
@@ -134,8 +134,8 @@
   "gravel:alentejo-gravel": {
    "date": "2026-10-25",
    "discipline": "gravel",
-   "distance_mi": 80,
-   "elevation_ft": 4500,
+   "distance_mi": 73,
+   "elevation_ft": 5741,
    "location": "Alentejo, Portugal",
    "name": "Alentejo Gravel",
    "slug": "alentejo-gravel"
@@ -207,7 +207,7 @@
    "date": "2026-04-18",
    "discipline": "gravel",
    "distance_mi": 149,
-   "elevation_ft": 10410,
+   "elevation_ft": 7170,
    "location": "Valkenburg, South Limburg, Netherlands",
    "name": "Amstel Gold Race Toerversie",
    "slug": "amstel-gold-race-toerversie"
@@ -224,8 +224,8 @@
   "gravel:ardenne-gravel-stages": {
    "date": "2026-09-25",
    "discipline": "gravel",
-   "distance_mi": 180,
-   "elevation_ft": 12000,
+   "distance_mi": 168,
+   "elevation_ft": 17982,
    "location": "Vielsalm/Engreux, Belgian Ardennes",
    "name": "Ardenne Gravel Stages",
    "slug": "ardenne-gravel-stages"
@@ -260,8 +260,8 @@
   "gravel:atlas-gran-fondo": {
    "date": "2026-11-21",
    "discipline": "gravel",
-   "distance_mi": 99,
-   "elevation_ft": 5906,
+   "distance_mi": 62,
+   "elevation_ft": 4898,
    "location": "Taroudant, Morocco",
    "name": "Atlas Gran Fondo",
    "slug": "atlas-gran-fondo"
@@ -269,7 +269,7 @@
   "gravel:atlas-mountain-race": {
    "date": "2026-02-06",
    "discipline": "gravel",
-   "distance_mi": 750,
+   "distance_mi": 839,
    "elevation_ft": 80000,
    "location": "Morocco",
    "name": "Atlas Mountain Race",
@@ -305,7 +305,7 @@
   "gravel:balatonfondo": {
    "date": "2026-05-01",
    "discipline": "gravel",
-   "distance_mi": 75,
+   "distance_mi": 55,
    "elevation_ft": 2000,
    "location": "Lake Balaton, Hungary",
    "name": "BalatonFondo",
@@ -332,7 +332,7 @@
   "gravel:barry-roubaix": {
    "date": "2026-04-18",
    "discipline": "gravel",
-   "distance_mi": 100,
+   "distance_mi": 62,
    "elevation_ft": 3500,
    "location": "Hastings, Michigan",
    "name": "Barry-Roubaix Killer Gravel Road Race",
@@ -369,7 +369,7 @@
    "date": "2026-04-29",
    "discipline": "gravel",
    "distance_mi": 60,
-   "elevation_ft": 4000,
+   "elevation_ft": 6000,
    "location": "Flagstaff, Arizona",
    "name": "Bear Howard Gravel",
    "slug": "bear-howard-gravel"
@@ -404,7 +404,7 @@
   "gravel:bend-dirt-fest": {
    "date": "2026-07-11",
    "discipline": "gravel",
-   "distance_mi": 50,
+   "distance_mi": 39,
    "elevation_ft": 3000,
    "location": "Bend, Oregon",
    "name": "Bend Dirt Fest",
@@ -422,8 +422,8 @@
   "gravel:berryman-epic": {
    "date": "2025-10-18",
    "discipline": "gravel",
-   "distance_mi": 65,
-   "elevation_ft": 4500,
+   "distance_mi": 50,
+   "elevation_ft": 5400,
    "location": "Potosi, Missouri",
    "name": "Berryman Epic",
    "slug": "berryman-epic"
@@ -1968,7 +1968,7 @@
    "slug": "giro-ride-like-a-pro-usa"
   },
   "gravel:giro-sardegna-gravel": {
-   "date": null,
+   "date": "2026-05-01",
    "discipline": "gravel",
    "distance_mi": 81,
    "elevation_ft": 8530,
@@ -3041,8 +3041,8 @@
   "gravel:grinduro-california": {
    "date": "2026-09-12",
    "discipline": "gravel",
-   "distance_mi": 60,
-   "elevation_ft": 6500,
+   "distance_mi": 51,
+   "elevation_ft": 7200,
    "location": "Quincy, California (Plumas County)",
    "name": "Grinduro California",
    "slug": "grinduro-california"
