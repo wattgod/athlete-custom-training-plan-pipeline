@@ -68,10 +68,11 @@ KNOWN_RACES: Dict[str, Dict[str, Any]] = {
         'elevation_ft': 11000,
     },
     'unbound_gravel_100': {
+        # reconciled to race-data/unbound-100.json (Opus, Jul 11 2026)
         'date': '2026-05-30',
         'name': 'Unbound Gravel 100',
-        'distance_miles': 100,
-        'elevation_ft': 5500,
+        'distance_miles': 104,
+        'elevation_ft': 4000,
     },
     'unbound_gravel_50': {
         'date': '2026-05-30',
