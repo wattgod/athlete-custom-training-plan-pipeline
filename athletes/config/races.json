@@ -2805,7 +2805,7 @@
    "slug": "gravel-bogota"
   },
   "gravel:gravel-brazil": {
-   "date": null,
+   "date": "2026-03-08",
    "discipline": "gravel",
    "distance_mi": 62,
    "elevation_ft": 6562,
@@ -5496,10 +5496,10 @@
    "slug": "soldier-cutoff-hillduro"
   },
   "gravel:southern-cross-gravel": {
-   "date": "2026-03-01",
+   "date": "2026-03-07",
    "discipline": "gravel",
-   "distance_mi": 100,
-   "elevation_ft": 5000,
+   "distance_mi": 50,
+   "elevation_ft": 6200,
    "location": "Dahlonega, Georgia",
    "name": "Southern Cross Gravel",
    "slug": "southern-cross-gravel"
@@ -6594,7 +6594,7 @@
    "slug": "vermont-gran-fondo"
   },
   "gravel:vermont-overland": {
-   "date": "2026-08-30",
+   "date": "2026-08-15",
    "discipline": "gravel",
    "distance_mi": 54,
    "elevation_ft": 7000,
