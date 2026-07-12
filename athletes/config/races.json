@@ -3,7 +3,7 @@
   "gravel": 757,
   "road": 427
  },
- "_generated": "2026-07-11",
+ "_generated": "2026-07-12",
  "races": {
   "gravel:114-gravel-race": {
    "date": "2026-03-28",
@@ -404,7 +404,7 @@
   "gravel:bend-dirt-fest": {
    "date": "2026-07-11",
    "discipline": "gravel",
-   "distance_mi": 39,
+   "distance_mi": 55,
    "elevation_ft": 3000,
    "location": "Bend, Oregon",
    "name": "Bend Dirt Fest",
@@ -555,7 +555,7 @@
    "slug": "boone-gran-fondo"
   },
   "gravel:bootlegger-100": {
-   "date": null,
+   "date": "2026-04-18",
    "discipline": "gravel",
    "distance_mi": 100,
    "elevation_ft": 10000,
@@ -2778,7 +2778,7 @@
    "slug": "gravel-and-granite"
   },
   "gravel:gravel-and-tar-classic": {
-   "date": null,
+   "date": "2027-01-16",
    "discipline": "gravel",
    "distance_mi": 99,
    "elevation_ft": 6562,
@@ -5028,7 +5028,7 @@
    "slug": "rad-dirt-fest"
   },
   "gravel:radl-grvl": {
-   "date": null,
+   "date": "2026-01-23",
    "discipline": "gravel",
    "distance_mi": 81,
    "elevation_ft": 8202,
@@ -5244,7 +5244,7 @@
    "slug": "river-city-gravel-fondo"
   },
   "gravel:rock-cobbler": {
-   "date": "2026-02-01",
+   "date": "2026-02-07",
    "discipline": "gravel",
    "distance_mi": 100,
    "elevation_ft": 5000,
