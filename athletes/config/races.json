@@ -5073,11 +5073,11 @@
    "slug": "ramrod"
   },
   "gravel:rasputitsa": {
-   "date": "2026-04-26",
+   "date": "2027-03-27",
    "discipline": "gravel",
-   "distance_mi": 46,
-   "elevation_ft": 5000,
-   "location": "Burke, Vermont",
+   "distance_mi": 53,
+   "elevation_ft": 5300,
+   "location": "Jay, Vermont",
    "name": "Rasputitsa",
    "slug": "rasputitsa"
   },
@@ -5327,7 +5327,7 @@
   "gravel:sagan-fondo": {
    "date": "2026-06-27",
    "discipline": "gravel",
-   "distance_mi": 75,
+   "distance_mi": 70,
    "elevation_ft": 7000,
    "location": "Truckee, California",
    "name": "Sagan Fondo",
@@ -5775,10 +5775,10 @@
    "slug": "the-divide"
   },
   "gravel:the-equalizer": {
-   "date": "2026-07-26",
+   "date": "2026-11-07",
    "discipline": "gravel",
-   "distance_mi": 100,
-   "elevation_ft": 5000,
+   "distance_mi": 62,
+   "elevation_ft": 3786,
    "location": "Marthasville, Missouri",
    "name": "THE EQUALIZER",
    "slug": "the-equalizer"
@@ -6621,10 +6621,10 @@
    "slug": "vietnam-cycling-challenge"
   },
   "gravel:vuelta-altas-cumbres": {
-   "date": "2026-03-29",
+   "date": "2027-03-21",
    "discipline": "gravel",
-   "distance_mi": 100,
-   "elevation_ft": 12000,
+   "distance_mi": 75,
+   "elevation_ft": 6330,
    "location": "C\u00f3rdoba, Argentina",
    "name": "Vuelta Altas Cumbres",
    "slug": "vuelta-altas-cumbres"
@@ -6668,9 +6668,9 @@
   "gravel:wasatch-all-road": {
    "date": "2026-08-29",
    "discipline": "gravel",
-   "distance_mi": 62,
-   "elevation_ft": 6000,
-   "location": "Francis, Utah",
+   "distance_mi": 82,
+   "elevation_ft": 10560,
+   "location": "Heber City, Utah",
    "name": "Wasatch All-Road",
    "slug": "wasatch-all-road"
   },
