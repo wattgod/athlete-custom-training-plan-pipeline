@@ -384,10 +384,10 @@
    "slug": "beaver-dam-gravel-grinder"
   },
   "gravel:belgian-waffle-ride-kansas": {
-   "date": "2025-10-14",
+   "date": "2026-10-31",
    "discipline": "gravel",
-   "distance_mi": 80,
-   "elevation_ft": 4000,
+   "distance_mi": 111,
+   "elevation_ft": 8000,
    "location": "Lawrence, Kansas",
    "name": "Belgian Waffle Ride Kansas",
    "slug": "belgian-waffle-ride-kansas"
@@ -1007,8 +1007,8 @@
   "gravel:crooked-gravel": {
    "date": "2026-08-01",
    "discipline": "gravel",
-   "distance_mi": 62,
-   "elevation_ft": 6000,
+   "distance_mi": 67,
+   "elevation_ft": 5600,
    "location": "Winter Park, Colorado",
    "name": "Crooked Gravel",
    "slug": "crooked-gravel"
@@ -1089,7 +1089,7 @@
    "date": "2026-08-22",
    "discipline": "gravel",
    "distance_mi": 112,
-   "elevation_ft": 7000,
+   "elevation_ft": 13000,
    "location": "Deerfield, Massachusetts",
    "name": "D2R2",
    "slug": "d2r2"
@@ -3606,11 +3606,11 @@
    "slug": "la-marmotte"
   },
   "gravel:la-resistance": {
-   "date": null,
+   "date": "2026-09-19",
    "discipline": "gravel",
-   "distance_mi": 65,
-   "elevation_ft": 5500,
-   "location": "French Alps",
+   "distance_mi": 81,
+   "elevation_ft": 7100,
+   "location": "Talloires, France",
    "name": "La Resistance",
    "slug": "la-resistance"
   },
@@ -4101,10 +4101,10 @@
    "slug": "lowell-classic"
   },
   "gravel:maap-beechworth-granite-classic": {
-   "date": "2026-04-17",
+   "date": "2026-04-18",
    "discipline": "gravel",
-   "distance_mi": 93,
-   "elevation_ft": 8000,
+   "distance_mi": 71,
+   "elevation_ft": 4600,
    "location": "Beechworth, Victoria",
    "name": "MAAP Beechworth Granite Classic",
    "slug": "maap-beechworth-granite-classic"
