@@ -217,7 +217,7 @@ coaching_style:
   communication_style: flexible
 motivation:
   primary_driver: achievement
-  what_excites_you: Podium at Nova Eroica.
+  what_excites_you: Podium at Lauf True Grit.
   what_scares_you: ''
   past_quit_reasons: ''
   accountability_style: self
@@ -245,6 +245,6 @@ communication:
 plan_start:
   preferred_start: ''
   current_commitments: ''
-  notes: Weeks to Gravel Worlds computed by the pipeline.
+  notes: Weeks to Lauf True Grit computed by the pipeline.
 plan_duration_weeks_override: 12
 plan_tier: Compete
