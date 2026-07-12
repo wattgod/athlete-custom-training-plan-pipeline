@@ -4373,8 +4373,8 @@
   "gravel:ned-gravel": {
    "date": "2026-07-12",
    "discipline": "gravel",
-   "distance_mi": 75,
-   "elevation_ft": 6000,
+   "distance_mi": 66,
+   "elevation_ft": 7500,
    "location": "Nederland, Colorado",
    "name": "Ned Gravel",
    "slug": "ned-gravel"
@@ -6488,7 +6488,7 @@
   "gravel:usa-cycling-gravel-nationals": {
    "date": "2026-09-12",
    "discipline": "gravel",
-   "distance_mi": 131,
+   "distance_mi": 110,
    "elevation_ft": 7000,
    "location": "La Crescent, Minnesota (2025-26); previously Gering, Nebraska (2023-24)",
    "name": "USA CYCLING GRAVEL NATIONAL CHAMPIONSHIPS",
