@@ -134,7 +134,7 @@
     "gravel:alentejo-gravel": {
       "date": "2026-10-25",
       "discipline": "gravel",
-      "distance_mi": 73,
+      "distance_mi": 74,
       "elevation_ft": 5741,
       "location": "Alentejo, Portugal",
       "name": "Alentejo Gravel",
@@ -6756,20 +6756,20 @@
       "slug": "wild-gravel"
     },
     "gravel:wild-horse-gravel": {
-      "date": "2026-05-17",
+      "date": "2027-05-15",
       "discipline": "gravel",
-      "distance_mi": 62,
-      "elevation_ft": 3500,
-      "location": "De Beque, Colorado",
+      "distance_mi": 65,
+      "elevation_ft": 5500,
+      "location": "De Beque, Colorado (High Lonesome Ranch Basecamp)",
       "name": "Wild Horse Gravel",
       "slug": "wild-horse-gravel"
     },
     "gravel:wish-one-millau": {
-      "date": "2026-06-14",
+      "date": "2027-06-13",
       "discipline": "gravel",
-      "distance_mi": 70,
-      "elevation_ft": 4500,
-      "location": "Millau Grands Causses, France",
+      "distance_mi": 81,
+      "elevation_ft": 8200,
+      "location": "Millau, Aveyron, France (Grands Causses)",
       "name": "Wish One Millau",
       "slug": "wish-one-millau"
     },

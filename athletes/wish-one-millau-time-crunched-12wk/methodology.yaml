@@ -1,0 +1,37 @@
+selected_methodology: Time-Crunched
+methodology_id: time_crunched
+score: 90.0
+reasons:
+- Ideal hours match (7h in 4-7h sweet spot)
+- Beginner-friendly methodology
+- Appropriate for finish-focused goal
+- Past success with this approach
+warnings: []
+configuration:
+  methodology: Time-Crunched
+  intensity_distribution:
+    z1_z2: 0.7
+    z3: 0.1
+    z4_z5: 0.2
+  emphasis: "a protected long ride plus short, intensity-dense sessions \u2014 every\
+    \ ride earns its place, no junk miles"
+  strength_approach: optional_short_efficient
+  key_workouts:
+  - protected_long_ride
+  - vo2max_intervals
+  - threshold_repeats
+  progression_style: increase_density
+  testing_frequency: 4_6_weeks
+alternatives:
+- name: Traditional (Pyramidal)
+  score: 82.0
+  key_reason: Acceptable hours (7h within 7-30h range)
+- name: G Spot (Read the Room)
+  score: 80.0
+  key_reason: Ideal hours match (7h in 6-10h sweet spot)
+- name: Polarized (80/20)
+  score: 50.0
+  key_reason: Appropriate for finish-focused goal
+selection_date: '2026-07-13 13:16:06'
+confidence: high
+confidence_note: Strong match for athlete profile
