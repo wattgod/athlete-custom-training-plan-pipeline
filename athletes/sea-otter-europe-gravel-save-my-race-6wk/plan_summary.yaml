@@ -1,0 +1,23 @@
+athlete_id: sea-otter-europe-gravel-save-my-race-6wk
+athlete_name: Save My Race Gravel Punchy (Sea Otter Europe Gravel) 6wk
+generated_date: '2026-07-13T06:18:44.413477'
+race:
+  name: Sea Otter Europe Gravel
+  date: '2026-09-19'
+  distance_miles: 68
+plan:
+  weeks: 6
+  start_date: '2026-08-10'
+  end_date: '2026-09-20'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 92.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 399
+  estimated_duration_hours: 5.7
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/sea-otter-europe-gravel-save-my-race-6wk/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/sea-otter-europe-gravel-save-my-race-6wk/workouts
+  workout_count: 30
