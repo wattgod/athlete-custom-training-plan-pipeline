@@ -1,0 +1,50 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W09_Thu_Jul15_Blended_VO2__G-Spot_1</name>
+  <description>[HIGH FUEL: Target 60-90g carbs/hr. Eat early, eat often.]
+
+Finisher - Week 9/12 - 4 weeks to Little Apple 100
+Phase: PEAK
+
+WARM-UP:
+-15min building from Z1 to Z2
+
+MAIN SET:
+-6x0:30 @ 121-150% FTP, RPE 10 (0min recovery); 6x0:30 @ 121-150% FTP, RPE 10 (0min recovery); 6x0:30 @ 121-150% FTP, RPE 10 (0min recovery); 5min @ 76-87% FTP, RPE 5-6; 5min @ 76-87% FTP, RPE 5-6; 10min @ 88-92% FTP, RPE 6-7; 10min @ 88-92% FTP, RPE 6-7; 10min @ 88-92% FTP, RPE 6-7; Cadence: 90-100rpm (VO2), 85-95rpm (SS) (high turnover for VO2, sustainable for SS); Position: Seated, hoods
+-Cadence: 90-100rpm (high cadence for VO2max efficiency)
+-Position: Drops for efforts, hoods for recovery
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 3/6: Development - Standard training load, building consistency
+-Blended VO2max and G Spot. Combines 30/30 VO2 intervals with sweet spot work in the same session. This format builds both max aerobic power and sustainable race pace in one efficient workout. Level 3: Cadence and position focus. Same structure—now refine the execution.
+
+PURPOSE:
+VO2max development. Maximum aerobic power—the engine that drives race-winning attacks.
+
+EXECUTION:
+-Hit target from the start, but don't hero interval 1. Full recovery between (4-5min Z1).
+
+NUTRITION:
+-60-80g carbs/hr. Practice race nutrition - multi-zone demands steady fueling.
+
+HYDRATION:
+-500-750ml/hr with electrolytes. Start hydrated.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.50" PowerHigh="0.75"/>
+    <SteadyState Duration="300" Power="0.85" CadenceLow="95" CadenceHigh="105"/>
+    <IntervalsT Repeat="6" OnDuration="30" OnPower="1.25" CadenceLow="90" CadenceHigh="100" OffDuration="30" OffPower="0.50"/>
+    <SteadyState Duration="2520" Power="0.90" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="300" Power="0.55" CadenceLow="90" CadenceHigh="100"/>
+    <IntervalsT Repeat="6" OnDuration="30" OnPower="1.25" CadenceLow="90" CadenceHigh="100" OffDuration="30" OffPower="0.50"/>
+    <SteadyState Duration="600" Power="0.90" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="300" Power="0.55" CadenceLow="90" CadenceHigh="100"/>
+    <IntervalsT Repeat="6" OnDuration="30" OnPower="1.25" CadenceLow="90" CadenceHigh="100" OffDuration="30" OffPower="0.50"/>
+    <SteadyState Duration="600" Power="0.90" CadenceLow="90" CadenceHigh="100"/>
+    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
+  </workout>
+</workout_file>

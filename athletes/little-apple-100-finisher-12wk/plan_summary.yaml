@@ -1,0 +1,23 @@
+athlete_id: little-apple-100-finisher-12wk
+athlete_name: Finisher Gravel All-Rounder (Little Apple 100) 12wk
+generated_date: '2026-07-13T05:46:21.078492'
+race:
+  name: Little Apple 100
+  date: '2027-08-08'
+  distance_miles: 62
+plan:
+  weeks: 12
+  start_date: '2027-05-17'
+  end_date: '2027-08-08'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 92.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 364
+  estimated_duration_hours: 5.2
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/little-apple-100-finisher-12wk/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/little-apple-100-finisher-12wk/workouts
+  workout_count: 67
