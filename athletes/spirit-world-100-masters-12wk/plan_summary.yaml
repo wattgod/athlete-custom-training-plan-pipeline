@@ -1,0 +1,23 @@
+athlete_id: spirit-world-100-masters-12wk
+athlete_name: Masters Gravel All-Rounder (Spirit World 100) 12wk
+generated_date: '2026-07-13T09:53:10.112450'
+race:
+  name: Spirit World 100
+  date: '2026-11-07'
+  distance_miles: 102
+plan:
+  weeks: 12
+  start_date: '2026-08-17'
+  end_date: '2026-11-08'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 92.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 69
+  total_carbs: 583
+  estimated_duration_hours: 8.5
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/spirit-world-100-masters-12wk/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/spirit-world-100-masters-12wk/workouts
+  workout_count: 67

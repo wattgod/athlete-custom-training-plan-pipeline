@@ -1,0 +1,46 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W02_Thu_Aug27_3x15_Tempo_1</name>
+  <description>[HIGH FUEL: Target 60-90g carbs/hr. Eat early, eat often.]
+
+Masters - Week 2/12 - 11 weeks to Spirit World 100
+Phase: BASE
+
+WARM-UP:
+-15min building from Z1 to Z2
+
+MAIN SET:
+-3x8min @ 90% FTP with 5min recovery
+-Cadence: Self-selected
+-Position: Seated, hoods
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 1/6: Introductory - Focus on form and learning the workout pattern
+-
+
+PURPOSE:
+Tempo training. Sustainable race pace work.
+
+EXECUTION:
+-Focus on consistent effort and good form throughout.
+
+NUTRITION:
+-40-60g carbs/hr for efforts over 60min.
+
+HYDRATION:
+-500-750ml/hr. Adjust for heat and humidity.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="848" PowerLow="0.50" PowerHigh="0.75" />
+    <SteadyState Duration="169" Power="0.55" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="169" Power="0.70" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="169" Power="0.87" CadenceLow="100" CadenceHigh="120" />
+    <SteadyState Duration="56" Power="0.98" CadenceLow="85" CadenceHigh="95" />
+    <IntervalsT Repeat="3" OnDuration="480" OnPower="0.90" CadenceLow="85" CadenceHigh="95" OffDuration="180" OffPower="0.55" />
+    <Cooldown Duration="565" PowerLow="0.75" PowerHigh="0.50" />
+  </workout>
+</workout_file>

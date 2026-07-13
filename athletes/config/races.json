@@ -5337,7 +5337,7 @@
       "date": "2026-09-19",
       "discipline": "gravel",
       "distance_mi": 76,
-      "elevation_ft": 6000,
+      "elevation_ft": 7000,
       "location": "Salida, CO",
       "name": "Salida 76",
       "slug": "salida-76"
@@ -5523,11 +5523,11 @@
       "slug": "spinneys-dubai-92"
     },
     "gravel:spirit-world-100": {
-      "date": "2026-11-05",
+      "date": "2026-11-07",
       "discipline": "gravel",
-      "distance_mi": 100,
-      "elevation_ft": 3500,
-      "location": "Arizona",
+      "distance_mi": 102,
+      "elevation_ft": 6392,
+      "location": "Patagonia, Arizona",
       "name": "Spirit World 100",
       "slug": "spirit-world-100"
     },
