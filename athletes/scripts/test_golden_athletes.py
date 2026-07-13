@@ -85,6 +85,38 @@ def golden_plans():
     return {name: (_build(spec), spec) for name, spec in GOLDEN_ATHLETES.items()}
 
 
+class TestVolumeFloors:
+    """B9/B10: load weeks hit their periodized floor; peak is never below build."""
+
+    def test_peak_not_below_build(self, golden_plans):
+        # B9: the peak floor lived under a bare 'peak' key, but CALENDAR_PHASE_MAP
+        # renames peak->race_prep, so it was dead and peak fell to the 0.72
+        # else-branch — BELOW build's 0.82. A GOAT athlete's peak ran ~74% (under
+        # build ~85%), inverting periodization. Now peak >= build.
+        plan, spec = golden_plans['goat_mtb_16wk']
+        tgt = spec['hours'] * 60
+        def avg(ph):
+            loads = [w['total_duration'] for w in plan['weeks']
+                     if w.get('phase') == ph and w.get('week_type') == 'load']
+            return sum(loads) / len(loads) if loads else 0
+        build_avg, peak_avg = avg('build'), avg('race_prep')
+        assert build_avg > 0 and peak_avg > 0
+        assert peak_avg >= build_avg, f"peak {peak_avg/tgt:.0%} < build {build_avg/tgt:.0%}"
+        assert peak_avg / tgt >= 0.80, f"peak only {peak_avg/tgt:.0%} of target"
+
+    def test_base_load_weeks_past_rampin_meet_floor(self, golden_plans):
+        # B10: base load weeks past the ramp-in window (global plan_week>4, matching
+        # R19's exemption) must be grown to the base floor, not left silently under
+        # it by the old phase-local block_number exemption.
+        plan, spec = golden_plans['goat_mtb_16wk']
+        tgt = spec['hours'] * 60
+        for w in plan['weeks']:
+            if (w.get('phase') == 'base' and w.get('week_type') == 'load'
+                    and w.get('plan_week', 0) > 4):
+                assert w['total_duration'] / tgt >= 0.62, \
+                    f"base W{w['plan_week']} at {w['total_duration']/tgt:.0%} < 0.62 floor"
+
+
 class TestGoldenCompliance:
     """Every golden athlete passes ALL critical compliance rules."""
 
