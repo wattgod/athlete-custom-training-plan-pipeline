@@ -1,0 +1,23 @@
+athlete_id: race-to-valhalla-compete-12wk
+athlete_name: Compete Gravel Climber (Race to Valhalla) 12wk
+generated_date: '2026-07-13T06:17:13.193028'
+race:
+  name: Race to Valhalla
+  date: '2027-04-24'
+  distance_miles: 72
+plan:
+  weeks: 12
+  start_date: '2027-02-01'
+  end_date: '2027-04-25'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 75.0
+  tier: COMPETE
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 90
+  total_carbs: 405
+  estimated_duration_hours: 4.5
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/race-to-valhalla-compete-12wk/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/race-to-valhalla-compete-12wk/workouts
+  workout_count: 67
