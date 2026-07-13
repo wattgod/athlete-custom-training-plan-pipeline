@@ -3622,10 +3622,20 @@ def _resolve_race_data(race_name, race_data_dirs):
     except Exception:
         pass
 
+    # Known canonical-slug → race-data-filename mismatches (matcher key and
+    # the gravel-race-automation filename diverged historically).
+    _slug_aliases = {
+        'sbt-grvl': 'steamboat-gravel',
+        'sbt_grvl': 'steamboat-gravel',
+        'big-horn-gravel': 'bighorn-gravel',
+    }
     candidate_slugs = [s for s in [
         canonical_slug,
         canonical_slug.replace('_', '-') if canonical_slug else None,
+        _slug_aliases.get(canonical_slug or ''),
+        _slug_aliases.get((canonical_slug or '').replace('_', '-')),
         name_slug,
+        _slug_aliases.get(name_slug),
         name_slug.replace('-gravel', ''),
     ] if s]
 
