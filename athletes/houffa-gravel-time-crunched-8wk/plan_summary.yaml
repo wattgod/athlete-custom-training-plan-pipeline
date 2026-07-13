@@ -1,0 +1,23 @@
+athlete_id: houffa-gravel-time-crunched-8wk
+athlete_name: Time-Crunched Gravel Punchy (Houffa Gravel) 8wk
+generated_date: '2026-07-13T14:53:06.231992'
+race:
+  name: Houffa Gravel
+  date: '2027-08-29'
+  distance_miles: 88
+plan:
+  weeks: 8
+  start_date: '2027-07-05'
+  end_date: '2027-08-29'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 82.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 511
+  estimated_duration_hours: 7.3
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/houffa-gravel-time-crunched-8wk/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/houffa-gravel-time-crunched-8wk/workouts
+  workout_count: 38
