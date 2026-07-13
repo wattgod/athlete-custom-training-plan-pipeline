@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W11_Thu_Jun3_Openers</name>
+  <description>Compete - Week 11/12 - 2 weeks to Gravel Battle of Sumter Forest
+Phase: TAPER
+
+WARM-UP:
+-20min building from Z1 to Z2
+
+MAIN SET:
+-20min Z1-Z2 easy, 2x30sec @ 110% FTP with 2min easy, 5min Z1 cooldown
+-Cadence: 90-100rpm on efforts
+-Position: Seated, relaxed
+
+COOL-DOWN:
+-5min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 1/6: Introductory - Focus on form and learning the workout pattern
+-Day before race - wake up the legs without creating fatigue
+
+PURPOSE:
+Pre-race activation. Wake up the legs without creating fatigue.
+
+EXECUTION:
+-Simulate race intensity. Practice fueling and pacing under pressure.
+
+NUTRITION:
+-70-80g carbs/hr. Practice race-day nutrition exactly as you'll execute it.
+
+HYDRATION:
+-500-750ml/hr. Adjust for heat and humidity.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <SteadyState Duration="1620" Power="0.65" CadenceLow="90" CadenceHigh="100">
+      <textevent timeoffset="0" message="Easy warmup for openers"/>
+    </SteadyState>
+    <SteadyState Duration="30" Power="1.10" CadenceLow="90" CadenceHigh="100">
+      <textevent timeoffset="0" message="Opener 1 of 2"/>
+    </SteadyState>
+    <SteadyState Duration="120" Power="0.55" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="30" Power="1.10" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="300" Power="0.50" CadenceLow="90" CadenceHigh="100">
+      <textevent timeoffset="0" message="Spin out"/>
+    </SteadyState>
+  </workout>
+</workout_file>
