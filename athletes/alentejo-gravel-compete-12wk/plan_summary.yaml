@@ -1,0 +1,23 @@
+athlete_id: alentejo-gravel-compete-12wk
+athlete_name: Compete Gravel All-Rounder (Alentejo Gravel) 12wk
+generated_date: '2026-07-13T13:12:33.504750'
+race:
+  name: Alentejo Gravel
+  date: '2026-10-25'
+  distance_miles: 74
+plan:
+  weeks: 12
+  start_date: '2026-08-03'
+  end_date: '2026-10-25'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 92.0
+  tier: COMPETE
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 434
+  estimated_duration_hours: 6.2
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/alentejo-gravel-compete-12wk/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/alentejo-gravel-compete-12wk/workouts
+  workout_count: 67

@@ -1,0 +1,42 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W05_Tue_Sep1_Norwegian_4x8_1</name>
+  <description>[HIGH FUEL: Target 60-90g carbs/hr. Eat early, eat often.]
+
+Compete - Week 5/12 - 8 weeks to Alentejo Gravel
+Phase: BASE
+
+WARM-UP:
+-20min building from Z1 to Z2
+
+MAIN SET:
+-15min warmup Z2, 4x8min @ 88-90% HRmax (~107-110% FTP), 4min recovery between
+-Cadence: 90-100rpm (building turnover)
+-Position: Seated, hoods or drops
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 2/6: Foundation - Building base fitness with moderate challenge
+-Classic Seiler format - research-backed optimal duration for masters
+
+PURPOSE:
+VO2max development. Research-backed Seiler format for masters athletes.
+
+EXECUTION:
+-Stay just below threshold - you should be able to talk in short sentences.
+
+NUTRITION:
+-60-80g carbs/hr. Start fueling at 30-45min. Mix gels and drink mix.
+
+HYDRATION:
+-500-750ml/hr. Adjust for heat and humidity.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="360" PowerLow="0.50" PowerHigh="0.75" />
+    <IntervalsT Repeat="4" OnDuration="480" OnPower="1.08" CadenceLow="85" CadenceHigh="90" OffDuration="480" OffPower="0.55" />
+    <Cooldown Duration="180" PowerLow="0.75" PowerHigh="0.50" />
+  </workout>
+</workout_file>

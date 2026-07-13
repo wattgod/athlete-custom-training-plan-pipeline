@@ -1,0 +1,23 @@
+athlete_id: alentejo-gravel-finisher-12wk
+athlete_name: Finisher Gravel All-Rounder (Alentejo Gravel) 12wk
+generated_date: '2026-07-13T13:11:32.199079'
+race:
+  name: Alentejo Gravel
+  date: '2026-10-25'
+  distance_miles: 74
+plan:
+  weeks: 12
+  start_date: '2026-08-03'
+  end_date: '2026-10-25'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 92.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 434
+  estimated_duration_hours: 6.2
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/alentejo-gravel-finisher-12wk/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/alentejo-gravel-finisher-12wk/workouts
+  workout_count: 67

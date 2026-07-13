@@ -1,0 +1,23 @@
+athlete_id: alentejo-gravel-time-crunched-8wk
+athlete_name: Time-Crunched Gravel All-Rounder (Alentejo Gravel) 8wk
+generated_date: '2026-07-13T13:12:47.498551'
+race:
+  name: Alentejo Gravel
+  date: '2026-10-25'
+  distance_miles: 74
+plan:
+  weeks: 8
+  start_date: '2026-08-31'
+  end_date: '2026-10-25'
+  methodology: Time-Crunched
+  methodology_score: 90.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 434
+  estimated_duration_hours: 6.2
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/alentejo-gravel-time-crunched-8wk/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/alentejo-gravel-time-crunched-8wk/workouts
+  workout_count: 38
