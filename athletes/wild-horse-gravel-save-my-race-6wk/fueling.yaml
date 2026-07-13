@@ -1,0 +1,179 @@
+athlete:
+  weight_kg: 74.8
+  sex: male
+race:
+  distance_miles: 65
+  elevation_feet: 0
+  duration_hours: 5.4
+  goal_type: finish
+calories:
+  total_calories: 3912
+  calories_per_hour: 725
+  rate_kcal_kg_km: 0.5
+  duration_hours: 5.4
+  distance_km: 104.6
+  weight_kg: 74.8
+  breakdown:
+    base_rate: 0.5
+    elevation_adjustment: 0.0
+    duration_factor: 1.0
+    final_rate: 0.5
+carbohydrates:
+  hourly_target: 70
+  hourly_range:
+  - 60
+  - 80
+  total_grams: 378
+  total_range:
+  - 324
+  - 432
+  duration_hours: 5.4
+  goal_type: finish
+  effectiveness_factor: 1.0
+gut_training:
+  phases:
+    base:
+      weeks: 1-6
+      target_range: &id001
+      - 40
+      - 50
+      description: Build tolerance - start conservative
+      guidance: Practice fueling on ALL rides over 90 minutes. Start with familiar
+        products.
+    build:
+      weeks: 7-14
+      target_range: &id002
+      - 50
+      - 70
+      description: Increase absorption capacity
+      guidance: Gradually increase carb intake on long rides. Test race-day products.
+    peak:
+      weeks: 15-18
+      target_range: &id003
+      - 60
+      - 80
+      description: Race-rate practice
+      guidance: Simulate race fueling on long rides. Lock in your race-day products.
+    race:
+      weeks: Race day
+      target_range: &id004
+      - 70
+      - 90
+      description: Execute your fueling plan
+      guidance: Stick to the plan. Nothing new on race day.
+  weekly_progression:
+  - weeks: 1-6
+    target_range: *id001
+    description: Build tolerance - start conservative
+    guidance: Practice fueling on ALL rides over 90 minutes. Start with familiar products.
+    current_week: 1
+    plan_weeks: 6
+    phase_name: base
+  - weeks: 1-6
+    target_range: *id001
+    description: Build tolerance - start conservative
+    guidance: Practice fueling on ALL rides over 90 minutes. Start with familiar products.
+    current_week: 2
+    plan_weeks: 6
+    phase_name: base
+  - weeks: 7-14
+    target_range: *id002
+    description: Increase absorption capacity
+    guidance: Gradually increase carb intake on long rides. Test race-day products.
+    current_week: 3
+    plan_weeks: 6
+    phase_name: build
+  - weeks: 7-14
+    target_range: *id002
+    description: Increase absorption capacity
+    guidance: Gradually increase carb intake on long rides. Test race-day products.
+    current_week: 4
+    plan_weeks: 6
+    phase_name: build
+  - weeks: 15-18
+    target_range: *id003
+    description: Race-rate practice
+    guidance: Simulate race fueling on long rides. Lock in your race-day products.
+    current_week: 5
+    plan_weeks: 6
+    phase_name: peak
+  - weeks: Race day
+    target_range: *id004
+    description: Execute your fueling plan
+    guidance: Stick to the plan. Nothing new on race day.
+    current_week: 6
+    plan_weeks: 6
+    phase_name: race
+fueling_timeline:
+- hour: 0
+  mile: 0
+  action: START
+  carbs_target: 0
+  cumulative_carbs: 0
+  notes: Top off with 30-50g in final 30min before start
+- hour: 1
+  mile: 12
+  action: FUEL
+  carbs_target: 70
+  cumulative_carbs: 70
+  notes: 'Target: 70g carbs this hour | Early race: establish rhythm, don''t fall
+    behind'
+- hour: 2
+  mile: 24
+  action: FUEL
+  carbs_target: 70
+  cumulative_carbs: 140
+  notes: 'Target: 70g carbs this hour | Early race: establish rhythm, don''t fall
+    behind'
+- hour: 3
+  mile: 36
+  action: FUEL
+  carbs_target: 70
+  cumulative_carbs: 210
+  notes: 'Target: 70g carbs this hour'
+- hour: 4
+  mile: 48
+  action: FUEL
+  carbs_target: 70
+  cumulative_carbs: 280
+  notes: 'Target: 70g carbs this hour | Final push: maintain intake even if appetite
+    drops'
+- hour: 5
+  mile: 60
+  action: FUEL
+  carbs_target: 70
+  cumulative_carbs: 350
+  notes: 'Target: 70g carbs this hour | Final push: maintain intake even if appetite
+    drops'
+recommendations:
+  hourly_target: 70g/hr
+  total_target: 378g total
+  example_products:
+    gels_only:
+      quantity: 15
+      frequency: 1 gel every 24min
+      notes: Simple but can cause palate fatigue
+    mixed_approach:
+      gels: 6
+      chews_packs: 3
+      drink_mix_bottles: 2
+      notes: 'Recommended: variety prevents palate fatigue'
+    real_food_hybrid:
+      gels: 4
+      rice_cakes_bars: 4
+      drink_mix: 2
+      notes: 'Good for ultra-distance: solid food + liquid carbs'
+  hydration:
+    target_ml_per_hour: 500
+    electrolytes: 500-1000mg sodium per hour depending on sweat rate
+    notes: Sip consistently. Don't wait until thirsty.
+  pre_race:
+    meal_timing: 3-4 hours before start
+    meal_composition: High carb, moderate protein, low fat/fiber
+    example: Oatmeal with banana, honey, and nut butter (avoid large amounts of fiber)
+    final_top_off: 30-50g carbs 30min before start (gel or sports drink)
+  post_race:
+    timing: Within 30-60 minutes
+    composition: 1.2g/kg carbs + 0.3g/kg protein
+    example: Chocolate milk, recovery shake, or real food meal
+generated_date: '2026-07-13 13:10:40'
