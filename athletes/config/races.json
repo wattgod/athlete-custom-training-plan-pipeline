@@ -38,7 +38,7 @@
       "distance_mi": 62,
       "elevation_ft": 1969,
       "location": "Porte des Vins Allemands (German Wine Gate), Schweigen-Rechtenbach, Rhineland-Palatinate, Germany",
-      "name": "3RIDES Gran Fondo S\u00fcdliche Weinstrasse",
+      "name": "3RIDES Gran Fondo Südliche Weinstrasse",
       "slug": "3rides-gran-fondo"
     },
     "gravel:5-mila-marche-gran-fondo": {
@@ -65,7 +65,7 @@
       "distance_mi": 116.8,
       "elevation_ft": 7546,
       "location": "Canet-en-Roussillon, France",
-      "name": "66 Degr\u00e9s Sud",
+      "name": "66 Degrés Sud",
       "slug": "66-degres-sud"
     },
     "gravel:66-south-pyrenees": {
@@ -73,8 +73,8 @@
       "discipline": "gravel",
       "distance_mi": 62,
       "elevation_ft": 7500,
-      "location": "Font-Romeu, Pyr\u00e9n\u00e9es-Orientales, France",
-      "name": "66\u00b0 South Pyr\u00e9n\u00e9es",
+      "location": "Font-Romeu, Pyrénées-Orientales, France",
+      "name": "66° South Pyrénées",
       "slug": "66-south-pyrenees"
     },
     "gravel:947-ride-joburg": {
@@ -118,7 +118,7 @@
       "discipline": "gravel",
       "distance_mi": 103,
       "elevation_ft": 10991,
-      "location": "Callosa d'en Sarri\u00e0, Alicante, Spain",
+      "location": "Callosa d'en Sarrià, Alicante, Spain",
       "name": "Aitana Tour Gran Fondo",
       "slug": "aitana-tour"
     },
@@ -172,7 +172,7 @@
       "discipline": "gravel",
       "distance_mi": 117,
       "elevation_ft": 14364,
-      "location": "Lenzerheide, Graub\u00fcnden, Switzerland",
+      "location": "Lenzerheide, Graubünden, Switzerland",
       "name": "Alpen Challenge Lenzerheide",
       "slug": "alpen-challenge-lenzerheide"
     },
@@ -353,7 +353,7 @@
       "distance_mi": 44.7,
       "elevation_ft": 2625,
       "location": "Shieldaig, Applecross Peninsula, Scottish Highlands, Scotland",
-      "name": "Bealach M\u00f3r",
+      "name": "Bealach Mór",
       "slug": "bealach-mor"
     },
     "gravel:bear-100": {
@@ -757,7 +757,7 @@
       "discipline": "gravel",
       "distance_mi": 68,
       "elevation_ft": 4921,
-      "location": "Nev\u015fehir/G\u00f6reme, Cappadocia, Turkey",
+      "location": "Nevşehir/Göreme, Cappadocia, Turkey",
       "name": "Cappadocia Gran Fondo",
       "slug": "cappadocia-gran-fondo"
     },
@@ -856,7 +856,7 @@
       "discipline": "gravel",
       "distance_mi": 90,
       "elevation_ft": 8770,
-      "location": "Puigcerd\u00e0, Catalonia, Spain",
+      "location": "Puigcerdà, Catalonia, Spain",
       "name": "La Cicloturista Internacional de la Cerdanya",
       "slug": "cicloturista-cerdanya"
     },
@@ -865,8 +865,8 @@
       "discipline": "gravel",
       "distance_mi": 85,
       "elevation_ft": 14436,
-      "location": "B\u00e9doin, Vaucluse, Provence, France",
-      "name": "Les Cingl\u00e9s du Mont Ventoux",
+      "location": "Bédoin, Vaucluse, Provence, France",
+      "name": "Les Cinglés du Mont Ventoux",
       "slug": "cingles-du-mont-ventoux"
     },
     "gravel:cinturon-ciclista-mallorca": {
@@ -875,7 +875,7 @@
       "distance_mi": 106,
       "elevation_ft": null,
       "location": "Mallorca, Spain",
-      "name": "Cintur\u00f3n Ciclista a Mallorca",
+      "name": "Cinturón Ciclista a Mallorca",
       "slug": "cinturon-ciclista-mallorca"
     },
     "gravel:cirrem": {
@@ -937,7 +937,7 @@
       "discipline": "gravel",
       "distance_mi": 84,
       "elevation_ft": 10318,
-      "location": "Vaison-la-Romaine, Vaucluse, Provence-Alpes-C\u00f4te d'Azur, France",
+      "location": "Vaison-la-Romaine, Vaucluse, Provence-Alpes-Côte d'Azur, France",
       "name": "Colnago GF Mont Ventoux",
       "slug": "colnago-cycling-festival"
     },
@@ -991,7 +991,7 @@
       "discipline": "gravel",
       "distance_mi": 87.6,
       "elevation_ft": 2759,
-      "location": "Jac\u00f3, Garabito, Puntarenas Province, Costa Rica",
+      "location": "Jacó, Garabito, Puntarenas Province, Costa Rica",
       "name": "CRC 506 Gran Fondo Costa Rica",
       "slug": "crc-506-gran-fondo-costa-rica"
     },
@@ -1045,7 +1045,7 @@
       "discipline": "gravel",
       "distance_mi": 300,
       "elevation_ft": 17000,
-      "location": "Southern Oregon \u2014 Grants Pass and Jacksonville basecamps (2026). Route and region change annually.",
+      "location": "Southern Oregon — Grants Pass and Jacksonville basecamps (2026). Route and region change annually.",
       "name": "Cycle Oregon",
       "slug": "cycle-oregon"
     },
@@ -1064,7 +1064,7 @@
       "distance_mi": 109,
       "elevation_ft": 2920,
       "location": "Lausanne, Switzerland",
-      "name": "Cyclotour du L\u00e9man",
+      "name": "Cyclotour du Léman",
       "slug": "cyclotour-du-leman"
     },
     "gravel:cykelvasan": {
@@ -1072,7 +1072,7 @@
       "discipline": "gravel",
       "distance_mi": 59,
       "elevation_ft": null,
-      "location": "S\u00e4len to Mora, Sweden",
+      "location": "Sälen to Mora, Sweden",
       "name": "Cykelvasan",
       "slug": "cykelvasan"
     },
@@ -1133,8 +1133,8 @@
     "gravel:dead-swede-gravel": {
       "date": "2026-06-06",
       "discipline": "gravel",
-      "distance_mi": 62,
-      "elevation_ft": 3500,
+      "distance_mi": 100,
+      "elevation_ft": 7671,
       "location": "Sheridan, Wyoming",
       "name": "Dead Swede Gravel",
       "slug": "dead-swede-gravel"
@@ -1243,7 +1243,7 @@
       "discipline": "gravel",
       "distance_mi": 94,
       "elevation_ft": 7460,
-      "location": "Peso da R\u00e9gua, Douro Valley, Portugal",
+      "location": "Peso da Régua, Douro Valley, Portugal",
       "name": "Love Tiles Douro Granfondo",
       "slug": "douro-gran-fondo"
     },
@@ -1262,7 +1262,7 @@
       "distance_mi": 103,
       "elevation_ft": 9843,
       "location": "Nauders, Tirol, Austria",
-      "name": "Dreil\u00e4ndergiro",
+      "name": "Dreiländergiro",
       "slug": "dreilaendergiro"
     },
     "gravel:dreilander-giro": {
@@ -1320,10 +1320,10 @@
       "slug": "edition-zero"
     },
     "gravel:eislek-gravel": {
-      "date": "2026-06-20",
+      "date": "2027-06-20",
       "discipline": "gravel",
-      "distance_mi": 70,
-      "elevation_ft": 5500,
+      "distance_mi": 68,
+      "elevation_ft": 8760,
       "location": "Luxembourg",
       "name": "Eislek Gravel",
       "slug": "eislek-gravel"
@@ -1442,7 +1442,7 @@
       "distance_mi": 106,
       "elevation_ft": 10500,
       "location": "Settle, North Yorkshire, England",
-      "name": "\u00c9tape du Dales",
+      "name": "Étape du Dales",
       "slug": "etape-du-dales"
     },
     "gravel:etape-loch-ness": {
@@ -1666,8 +1666,8 @@
       "discipline": "gravel",
       "distance_mi": 108,
       "elevation_ft": 16404,
-      "location": "Samo\u00ebns, Haute-Savoie, France",
-      "name": "Gran Fondo & Ultra Raid Samo\u00ebns",
+      "location": "Samoëns, Haute-Savoie, France",
+      "name": "Gran Fondo & Ultra Raid Samoëns",
       "slug": "gf-samoens-ultra-raid"
     },
     "gravel:gfny-aguascalientes": {
@@ -1702,8 +1702,8 @@
       "discipline": "gravel",
       "distance_mi": 106,
       "elevation_ft": 8202,
-      "location": "Bento Gon\u00e7alves, Rio Grande do Sul, Brazil",
-      "name": "GFNY Bento Gon\u00e7alves",
+      "location": "Bento Gonçalves, Rio Grande do Sul, Brazil",
+      "name": "GFNY Bento Gonçalves",
       "slug": "gfny-bento-goncalves"
     },
     "gravel:gfny-bremen": {
@@ -1729,7 +1729,7 @@
       "discipline": "gravel",
       "distance_mi": 79.5,
       "elevation_ft": 6007,
-      "location": "Casablanca, Valpara\u00edso Region, Chile",
+      "location": "Casablanca, Valparaíso Region, Chile",
       "name": "GFNY Chile",
       "slug": "gfny-chile"
     },
@@ -1757,7 +1757,7 @@
       "distance_mi": 62,
       "elevation_ft": 3500,
       "location": "Punta Cana, Dominican Republic",
-      "name": "GFNY Rep\u00fablica Dominicana",
+      "name": "GFNY República Dominicana",
       "slug": "gfny-dominican-republic"
     },
     "gravel:gfny-florida-sebring": {
@@ -1801,7 +1801,7 @@
       "discipline": "gravel",
       "distance_mi": 97.6,
       "elevation_ft": 13333,
-      "location": "Lourdes, Hautes-Pyr\u00e9n\u00e9es, France",
+      "location": "Lourdes, Hautes-Pyrénées, France",
       "name": "GFNY Lourdes Tourmalet",
       "slug": "gfny-lourdes-tourmalet"
     },
@@ -2000,7 +2000,7 @@
       "distance_mi": 87,
       "elevation_ft": null,
       "location": "Gothenburg, Sweden",
-      "name": "G\u00f6teborgsgirot",
+      "name": "Göteborgsgirot",
       "slug": "goteborgsgirot"
     },
     "gravel:grafton-to-inverell-classic": {
@@ -2045,7 +2045,7 @@
       "distance_mi": 62,
       "elevation_ft": null,
       "location": "Ankara, Turkey",
-      "name": "Gran Fondo Ba\u015fkent",
+      "name": "Gran Fondo Başkent",
       "slug": "gran-fondo-baskent"
     },
     "gravel:gran-fondo-chile-uci": {
@@ -2161,7 +2161,7 @@
       "discipline": "gravel",
       "distance_mi": 66.5,
       "elevation_ft": 5906,
-      "location": "Qiandao Lake, Chun\u2019an County, Hangzhou, Zhejiang Province, China",
+      "location": "Qiandao Lake, Chun’an County, Hangzhou, Zhejiang Province, China",
       "name": "UCI Gran Fondo Hangzhou Qiandao Lake",
       "slug": "gran-fondo-hangzhou"
     },
@@ -2251,8 +2251,8 @@
       "discipline": "gravel",
       "distance_mi": 87,
       "elevation_ft": 7776,
-      "location": "Medell\u00edn, Antioquia, Colombia",
-      "name": "Gran Fondo Medell\u00edn",
+      "location": "Medellín, Antioquia, Colombia",
+      "name": "Gran Fondo Medellín",
       "slug": "gran-fondo-medellin"
     },
     "gravel:gran-fondo-mont-tremblant": {
@@ -2413,7 +2413,7 @@
       "discipline": "gravel",
       "distance_mi": 68.8,
       "elevation_ft": 7451,
-      "location": "Mondov\u00ec, Piedmont, Italy",
+      "location": "Mondovì, Piedmont, Italy",
       "name": "Granfondo Alpi del Mare",
       "slug": "granfondo-alpi-del-mare"
     },
@@ -2440,8 +2440,8 @@
       "discipline": "gravel",
       "distance_mi": 68,
       "elevation_ft": 4921,
-      "location": "Bogot\u00e1, Colombia",
-      "name": "Granfondo Bogot\u00e1",
+      "location": "Bogotá, Colombia",
+      "name": "Granfondo Bogotá",
       "slug": "granfondo-bogota"
     },
     "gravel:granfondo-bratislava": {
@@ -2486,7 +2486,7 @@
       "distance_mi": 87,
       "elevation_ft": 6594,
       "location": "Desenzano del Garda, Lombardy, Italy",
-      "name": "Granfondo Colnago \u2014 Colnago Cycling Festival",
+      "name": "Granfondo Colnago — Colnago Cycling Festival",
       "slug": "granfondo-colnago"
     },
     "gravel:granfondo-ecuador": {
@@ -2567,7 +2567,7 @@
       "distance_mi": 92,
       "elevation_ft": 6500,
       "location": "Pombal, Portugal",
-      "name": "Granfondo Leiria Region \u2013 Sico Lands",
+      "name": "Granfondo Leiria Region – Sico Lands",
       "slug": "granfondo-leiria"
     },
     "gravel:granfondo-livigno-ale": {
@@ -2576,7 +2576,7 @@
       "distance_mi": 104,
       "elevation_ft": 14108,
       "location": "Livigno, Italy",
-      "name": "Granfondo Livigno Al\u00e8",
+      "name": "Granfondo Livigno Alè",
       "slug": "granfondo-livigno-ale"
     },
     "gravel:granfondo-matildica": {
@@ -2593,7 +2593,7 @@
       "discipline": "gravel",
       "distance_mi": 81,
       "elevation_ft": 5906,
-      "location": "Beaupr\u00e9, Quebec, Canada",
+      "location": "Beaupré, Quebec, Canada",
       "name": "GranFondo Mont Sainte-Anne",
       "slug": "granfondo-mont-sainte-anne"
     },
@@ -2630,7 +2630,7 @@
       "distance_mi": 98,
       "elevation_ft": 8200,
       "location": "Treviso, Veneto, Italy",
-      "name": "Granfondo Pinarello \u2014 La Pina",
+      "name": "Granfondo Pinarello — La Pina",
       "slug": "granfondo-pinarello"
     },
     "gravel:granfondo-pomerode": {
@@ -2639,7 +2639,7 @@
       "distance_mi": 68,
       "elevation_ft": 4265,
       "location": "Pomerode, Santa Catarina, Brazil",
-      "name": "UCI Gran Fondo Brasil \u2013 Pomerode",
+      "name": "UCI Gran Fondo Brasil – Pomerode",
       "slug": "granfondo-pomerode"
     },
     "gravel:granfondo-riviera-nayarit": {
@@ -2656,8 +2656,8 @@
       "discipline": "gravel",
       "distance_mi": 106,
       "elevation_ft": 9843,
-      "location": "San Sebasti\u00e1n (Donostia), Basque Country, Spain",
-      "name": "GranFondo Klasika San Sebasti\u00e1n",
+      "location": "San Sebastián (Donostia), Basque Country, Spain",
+      "name": "GranFondo Klasika San Sebastián",
       "slug": "granfondo-san-sebastian"
     },
     "gravel:granfondo-serra-da-estrela": {
@@ -2683,7 +2683,7 @@
       "discipline": "gravel",
       "distance_mi": 62,
       "elevation_ft": 4920,
-      "location": "San Mart\u00edn de los Andes, Neuqu\u00e9n, Argentina",
+      "location": "San Martín de los Andes, Neuquén, Argentina",
       "name": "Gran Fondo Siete Lagos",
       "slug": "granfondo-siete-lagos"
     },
@@ -2782,7 +2782,7 @@
       "discipline": "gravel",
       "distance_mi": 99,
       "elevation_ft": 6562,
-      "location": "Manawat\u016b-Whanganui, New Zealand",
+      "location": "Manawatū-Whanganui, New Zealand",
       "name": "Gravel and Tar Classic",
       "slug": "gravel-and-tar-classic"
     },
@@ -2800,8 +2800,8 @@
       "discipline": "gravel",
       "distance_mi": 80,
       "elevation_ft": 8000,
-      "location": "Bogot\u00e1, Colombia",
-      "name": "Gravel Bogot\u00e1",
+      "location": "Bogotá, Colombia",
+      "name": "Gravel Bogotá",
       "slug": "gravel-bogota"
     },
     "gravel:gravel-brazil": {
@@ -2809,7 +2809,7 @@
       "discipline": "gravel",
       "distance_mi": 70,
       "elevation_ft": 5833,
-      "location": "Balne\u00e1rio Cambori\u00fa, Santa Catarina, Brazil",
+      "location": "Balneário Camboriú, Santa Catarina, Brazil",
       "name": "Gravel Brazil",
       "slug": "gravel-brazil"
     },
@@ -2854,7 +2854,7 @@
       "discipline": "gravel",
       "distance_mi": 65,
       "elevation_ft": 3500,
-      "location": "Ch\u00e2tellerault, France",
+      "location": "Châtellerault, France",
       "name": "Gravel Fever",
       "slug": "gravel-fever"
     },
@@ -2899,8 +2899,8 @@
       "discipline": "gravel",
       "distance_mi": 75,
       "elevation_ft": 7500,
-      "location": "Medell\u00edn, Colombia",
-      "name": "Gravel Medell\u00edn",
+      "location": "Medellín, Colombia",
+      "name": "Gravel Medellín",
       "slug": "gravel-medellin"
     },
     "gravel:gravel-one-fifty": {
@@ -3097,8 +3097,8 @@
       "discipline": "gravel",
       "distance_mi": 81,
       "elevation_ft": 9180,
-      "location": "Gruy\u00e8res, Fribourg, Switzerland",
-      "name": "Gruy\u00e8re Cycling Tour",
+      "location": "Gruyères, Fribourg, Switzerland",
+      "name": "Gruyère Cycling Tour",
       "slug": "gruyere-cycling-tour"
     },
     "gravel:gun-flint-44": {
@@ -3125,7 +3125,7 @@
       "distance_mi": 186,
       "elevation_ft": 3300,
       "location": "Flensburg, Germany to Viborg, Denmark",
-      "name": "H\u00e6rvejsl\u00f8bet \u2014 The Viking Gran Fondo",
+      "name": "Hærvejsløbet — The Viking Gran Fondo",
       "slug": "haervejslobet"
     },
     "gravel:haldon-heroic": {
@@ -3152,7 +3152,7 @@
       "distance_mi": 93,
       "elevation_ft": 5000,
       "location": "Motala, Sweden",
-      "name": "HalvV\u00e4ttern",
+      "name": "HalvVättern",
       "slug": "halvvattern"
     },
     "gravel:hardwood-hustle": {
@@ -3448,8 +3448,8 @@
       "discipline": "gravel",
       "distance_mi": 152,
       "elevation_ft": 5000,
-      "location": "\u00d6stersund, Sweden",
-      "name": "J\u00e4mtlandspilen",
+      "location": "Östersund, Sweden",
+      "name": "Jämtlandspilen",
       "slug": "jamtlandspilen"
     },
     "gravel:jedermann-rennen-koln": {
@@ -3458,7 +3458,7 @@
       "distance_mi": 62,
       "elevation_ft": 4921,
       "location": "Cologne, Germany",
-      "name": "Jedermann-Rennen Rund um K\u00f6ln",
+      "name": "Jedermann-Rennen Rund um Köln",
       "slug": "jedermann-rennen-koln"
     },
     "gravel:jeroboam": {
@@ -3583,8 +3583,8 @@
       "discipline": "gravel",
       "distance_mi": 62,
       "elevation_ft": 5500,
-      "location": "Dr\u00f4me, France",
-      "name": "La Dr\u00f4moise Gravel",
+      "location": "Drôme, France",
+      "name": "La Drômoise Gravel",
       "slug": "la-dromoise-gravel"
     },
     "gravel:la-leggendaria-charly-gaul": {
@@ -3619,7 +3619,7 @@
       "discipline": "gravel",
       "distance_mi": 162,
       "elevation_ft": 32300,
-      "location": "San Jos\u00e9 to Lim\u00f3n, Costa Rica",
+      "location": "San José to Limón, Costa Rica",
       "name": "La Ruta de los Conquistadores",
       "slug": "la-ruta-de-los-conquistadores"
     },
@@ -3637,7 +3637,7 @@
       "discipline": "gravel",
       "distance_mi": 106,
       "elevation_ft": 13000,
-      "location": "Vaujany, Is\u00e8re, France",
+      "location": "Vaujany, Isère, France",
       "name": "La Vaujany Cyclosportive",
       "slug": "la-vaujany"
     },
@@ -3655,7 +3655,7 @@
       "discipline": "gravel",
       "distance_mi": 99.4,
       "elevation_ft": 6407,
-      "location": "Taup\u014d, Waikato, New Zealand",
+      "location": "Taupō, Waikato, New Zealand",
       "name": "Lake Taupo Cycle Challenge",
       "slug": "lake-taupo-cycle-challenge"
     },
@@ -3664,8 +3664,8 @@
       "discipline": "gravel",
       "distance_mi": 172,
       "elevation_ft": 17618,
-      "location": "Saint-F\u00e9licien, Ard\u00e8che, France",
-      "name": "L'Ard\u00e9choise",
+      "location": "Saint-Félicien, Ardèche, France",
+      "name": "L'Ardéchoise",
       "slug": "lardechoise"
     },
     "gravel:lariegeoise-cyclosportive": {
@@ -3673,8 +3673,8 @@
       "discipline": "gravel",
       "distance_mi": 110,
       "elevation_ft": 16000,
-      "location": "Tarascon-sur-Ari\u00e8ge, France",
-      "name": "L'Ari\u00e9geoise Cyclosportive",
+      "location": "Tarascon-sur-Ariège, France",
+      "name": "L'Ariégeoise Cyclosportive",
       "slug": "lariegeoise-cyclosportive"
     },
     "gravel:lauf-gritfest": {
@@ -3745,7 +3745,7 @@
       "discipline": "gravel",
       "distance_mi": 112,
       "elevation_ft": 13186,
-      "location": "Ronchamp, Haute-Sa\u00f4ne, France",
+      "location": "Ronchamp, Haute-Saône, France",
       "name": "Les Trois Ballons",
       "slug": "les-trois-ballons"
     },
@@ -3782,7 +3782,7 @@
       "distance_mi": 63.4,
       "elevation_ft": 8202,
       "location": "Peshtera, Bulgaria",
-      "name": "L'\u00c9tape Bulgaria by Tour de France",
+      "name": "L'Étape Bulgaria by Tour de France",
       "slug": "letape-bulgaria"
     },
     "gravel:letape-cancun": {
@@ -3826,7 +3826,7 @@
       "discipline": "gravel",
       "distance_mi": 186,
       "elevation_ft": 4593,
-      "location": "Various start points across Jutland, Denmark \u2014 all routes finish in Viborg",
+      "location": "Various start points across Jutland, Denmark — all routes finish in Viborg",
       "name": "L'Etape Denmark by Tour de France",
       "slug": "letape-denmark"
     },
@@ -3872,7 +3872,7 @@
       "distance_mi": 87,
       "elevation_ft": null,
       "location": "Mandalika, Lombok, Indonesia",
-      "name": "L'\u00c9tape Indonesia",
+      "name": "L'Étape Indonesia",
       "slug": "letape-indonesia"
     },
     "gravel:letape-ireland": {
@@ -3899,7 +3899,7 @@
       "distance_mi": 68.35,
       "elevation_ft": 4900,
       "location": "Mexico City, Mexico",
-      "name": "L'\u00c9tape Ciudad de M\u00e9xico by Tour de France",
+      "name": "L'Étape Ciudad de México by Tour de France",
       "slug": "letape-mexico-city"
     },
     "gravel:letape-norway": {
@@ -3907,7 +3907,7 @@
       "discipline": "gravel",
       "distance_mi": 80.8,
       "elevation_ft": 4921,
-      "location": "Trondheim, Tr\u00f8ndelag, Norway",
+      "location": "Trondheim, Trøndelag, Norway",
       "name": "L'Etape Norway by Tour de France",
       "slug": "letape-norway"
     },
@@ -3917,7 +3917,7 @@
       "distance_mi": 83,
       "elevation_ft": 9186,
       "location": "Parma, Emilia-Romagna, Italy",
-      "name": "L'\u00c9tape Parma",
+      "name": "L'Étape Parma",
       "slug": "letape-parma"
     },
     "gravel:letape-piemonte": {
@@ -3953,7 +3953,7 @@
       "distance_mi": 50,
       "elevation_ft": 500,
       "location": "Bucharest, Romania",
-      "name": "L'\u00c9tape Romania by Tour de France",
+      "name": "L'Étape Romania by Tour de France",
       "slug": "letape-romania"
     },
     "gravel:letape-slovakia": {
@@ -3971,7 +3971,7 @@
       "distance_mi": 75,
       "elevation_ft": 5900,
       "location": "Kranj, Slovenia",
-      "name": "L'\u00c9tape Slovenia by Tour de France",
+      "name": "L'Étape Slovenia by Tour de France",
       "slug": "letape-slovenia"
     },
     "gravel:letape-taiwan": {
@@ -4016,7 +4016,7 @@
       "distance_mi": 160,
       "elevation_ft": 14764,
       "location": "Banneux, Belgium",
-      "name": "Li\u00e8ge-Bastogne-Li\u00e8ge Challenge",
+      "name": "Liège-Bastogne-Liège Challenge",
       "slug": "liege-bastogne-liege-challenge"
     },
     "gravel:little-apple-100": {
@@ -4204,7 +4204,7 @@
       "discipline": "gravel",
       "distance_mi": 110,
       "elevation_ft": 18701,
-      "location": "Argel\u00e8s-Gazost / Luz-Saint-Sauveur, Hautes-Pyr\u00e9n\u00e9es, France",
+      "location": "Argelès-Gazost / Luz-Saint-Sauveur, Hautes-Pyrénées, France",
       "name": "Marmotte Granfondo Pyrenees",
       "slug": "marmotte-pyrenees"
     },
@@ -4249,8 +4249,8 @@
       "discipline": "gravel",
       "distance_mi": 754,
       "elevation_ft": 46900,
-      "location": "Br\u00e4nnland Inn near Ume\u00e5, Sweden to Scandic Plaza hotel in Ume\u00e5 (loop into Norway to Mo i Rana and Norwegian Sea fjords)",
-      "name": "Midnight Sun Randonn\u00e9e",
+      "location": "Brännland Inn near Umeå, Sweden to Scandic Plaza hotel in Umeå (loop into Norway to Mo i Rana and Norwegian Sea fjords)",
+      "name": "Midnight Sun Randonnée",
       "slug": "midnight-sun-randonnee"
     },
     "gravel:migration-gravel-race": {
@@ -4384,7 +4384,7 @@
       "discipline": "gravel",
       "distance_mi": 78.9,
       "elevation_ft": 1969,
-      "location": "M\u00f6rbisch am See, Burgenland, Austria",
+      "location": "Mörbisch am See, Burgenland, Austria",
       "name": "Neusiedlersee Radmarathon",
       "slug": "neusiedlersee-radmarathon"
     },
@@ -4448,7 +4448,7 @@
       "distance_mi": 96,
       "elevation_ft": 4900,
       "location": "Egersund to Sandnes, Norway",
-      "name": "Nordsj\u00f8rittet",
+      "name": "Nordsjørittet",
       "slug": "nordsjorittet"
     },
     "gravel:north-wales-gravel-x": {
@@ -4501,7 +4501,7 @@
       "discipline": "gravel",
       "distance_mi": 100,
       "elevation_ft": 3000,
-      "location": "New York City, New York, USA \u2014 Meatpacking District start/finish, four-borough route through Manhattan, Brooklyn, Queens, and the Bronx",
+      "location": "New York City, New York, USA — Meatpacking District start/finish, four-borough route through Manhattan, Brooklyn, Queens, and the Bronx",
       "name": "NYC Century Bike Tour",
       "slug": "nyc-century"
     },
@@ -4519,8 +4519,8 @@
       "discipline": "gravel",
       "distance_mi": 143,
       "elevation_ft": 18045,
-      "location": "S\u00f6lden, Tirol, Austria",
-      "name": "\u00d6tztaler Radmarathon",
+      "location": "Sölden, Tirol, Austria",
+      "name": "Ötztaler Radmarathon",
       "slug": "oetztaler-radmarathon"
     },
     "gravel:old-fashioned-gravel": {
@@ -4798,7 +4798,7 @@
       "discipline": "gravel",
       "distance_mi": 65,
       "elevation_ft": 3500,
-      "location": "Krak\u00f3w, Poland",
+      "location": "Kraków, Poland",
       "name": "Polish Gravel",
       "slug": "polish-gravel"
     },
@@ -4907,7 +4907,7 @@
       "distance_mi": 683,
       "elevation_ft": 24606,
       "location": "Flensburg to Garmisch-Partenkirchen, Germany",
-      "name": "Race Across Germany North\u2013South",
+      "name": "Race Across Germany North–South",
       "slug": "race-across-germany"
     },
     "gravel:race-across-italy-300": {
@@ -5014,7 +5014,7 @@
       "discipline": "gravel",
       "distance_mi": 62,
       "elevation_ft": 4000,
-      "location": "N\u00fcrburg, Germany",
+      "location": "Nürburg, Germany",
       "name": "Rad am Ring Gravel",
       "slug": "rad-am-ring-gravel"
     },
@@ -5069,7 +5069,7 @@
       "distance_mi": 154,
       "elevation_ft": 10000,
       "location": "Enumclaw, Washington, USA",
-      "name": "RAMROD \u2014 Ride Around Mount Rainier in One Day",
+      "name": "RAMROD — Ride Around Mount Rainier in One Day",
       "slug": "ramrod"
     },
     "gravel:rasputitsa": {
@@ -5095,7 +5095,7 @@
       "discipline": "gravel",
       "distance_mi": 68,
       "elevation_ft": null,
-      "location": "Oaxaca de Ju\u00e1rez, Oaxaca, Mexico",
+      "location": "Oaxaca de Juárez, Oaxaca, Mexico",
       "name": "Raul Alcala Challenge Oaxaca",
       "slug": "raul-alcala-challenge-oaxaca"
     },
@@ -5222,7 +5222,7 @@
       "distance_mi": 100,
       "elevation_ft": 5000,
       "location": "Ennis, County Clare, Ireland",
-      "name": "\u0160koda Ring of Clare Sportive",
+      "name": "Škoda Ring of Clare Sportive",
       "slug": "ring-of-clare"
     },
     "gravel:ring-of-kerry-charity-cycle": {
@@ -5357,7 +5357,7 @@
       "distance_mi": 54,
       "elevation_ft": 2850,
       "location": "Rowe Mesa, Santa Fe National Forest, New Mexico",
-      "name": "Santa Fe Century Gravel\u00f3n",
+      "name": "Santa Fe Century Gravelón",
       "slug": "santa-fe-century-gravelon"
     },
     "gravel:sasquatch-duro": {
@@ -5410,7 +5410,7 @@
       "discipline": "gravel",
       "distance_mi": 68,
       "elevation_ft": 3084,
-      "location": "Jui\u00e0 / Girona, Catalonia, Spain",
+      "location": "Juià / Girona, Catalonia, Spain",
       "name": "Sea Otter Europe Gravel",
       "slug": "sea-otter-europe-gravel"
     },
@@ -5474,7 +5474,7 @@
       "distance_mi": 91,
       "elevation_ft": 11000,
       "location": "Cenes de la Vega, Granada, Spain",
-      "name": "Sierra Nevada L\u00edmite Gran Fondo",
+      "name": "Sierra Nevada Límite Gran Fondo",
       "slug": "sierra-nevada-limite"
     },
     "gravel:silver-city-century": {
@@ -5833,7 +5833,7 @@
       "discipline": "gravel",
       "distance_mi": 98.8,
       "elevation_ft": 7260,
-      "location": "Castell\u00f3n de la Plana, Castell\u00f3n Province, Spain",
+      "location": "Castellón de la Plana, Castellón Province, Spain",
       "name": "The Millars Gran Fondo",
       "slug": "the-millars-gran-fondo"
     },
@@ -5860,7 +5860,7 @@
       "discipline": "gravel",
       "distance_mi": 124,
       "elevation_ft": 6400,
-      "location": "Hvolsv\u00f6llur, Southern Iceland",
+      "location": "Hvolsvöllur, Southern Iceland",
       "name": "The Rift",
       "slug": "the-rift"
     },
@@ -5897,7 +5897,7 @@
       "distance_mi": 62,
       "elevation_ft": null,
       "location": "Motala, Sweden",
-      "name": "TjejV\u00e4ttern",
+      "name": "TjejVättern",
       "slug": "tjejvattern"
     },
     "gravel:tor-divide": {
@@ -5996,7 +5996,7 @@
       "distance_mi": 31,
       "elevation_ft": 500,
       "location": "Montreal, Quebec, Canada",
-      "name": "Tour de l'\u00cele de Montr\u00e9al",
+      "name": "Tour de l'Île de Montréal",
       "slug": "tour-de-lile-de-montreal"
     },
     "gravel:tour-de-matra": {
@@ -6004,8 +6004,8 @@
       "discipline": "gravel",
       "distance_mi": 100.3,
       "elevation_ft": 7567,
-      "location": "Gy\u00f6ngy\u00f6s, Hungary",
-      "name": "Tour de M\u00e1tra",
+      "location": "Gyöngyös, Hungary",
+      "name": "Tour de Mátra",
       "slug": "tour-de-matra"
     },
     "gravel:tour-de-nebraska": {
@@ -6040,8 +6040,8 @@
       "discipline": "gravel",
       "distance_mi": 87,
       "elevation_ft": 7200,
-      "location": "Southern Poland (route varies \u2014 typically Krakow area / Tatra Mountain foothills)",
-      "name": "Tour de Pologne Amator\u00f3w",
+      "location": "Southern Poland (route varies — typically Krakow area / Tatra Mountain foothills)",
+      "name": "Tour de Pologne Amatorów",
       "slug": "tour-de-pologne-amatorow"
     },
     "gravel:tour-de-romandie-cyclosportive": {
@@ -6230,7 +6230,7 @@
       "distance_mi": 90,
       "elevation_ft": 9800,
       "location": "Kottayam to Thekkady, Kerala, India",
-      "name": "Tour of Thekkady \u2014 Kerala Gran Fondo",
+      "name": "Tour of Thekkady — Kerala Gran Fondo",
       "slug": "tour-of-thekkady"
     },
     "gravel:tour-of-wessex": {
@@ -6535,7 +6535,7 @@
       "discipline": "gravel",
       "distance_mi": 196,
       "elevation_ft": 4593,
-      "location": "Motala, \u00d6sterg\u00f6tland, Sweden",
+      "location": "Motala, Östergötland, Sweden",
       "name": "Vatternrundan",
       "slug": "vatternrundan"
     },
@@ -6554,7 +6554,7 @@
       "distance_mi": 103,
       "elevation_ft": 11712,
       "location": "La Roche-en-Ardenne, Belgium",
-      "name": "V\u00e9lomediane Claudy Criquielion",
+      "name": "Vélomediane Claudy Criquielion",
       "slug": "velomediane-criquielion"
     },
     "gravel:velothon-berlin": {
@@ -6625,7 +6625,7 @@
       "discipline": "gravel",
       "distance_mi": 75,
       "elevation_ft": 6330,
-      "location": "C\u00f3rdoba, Argentina",
+      "location": "Córdoba, Argentina",
       "name": "Vuelta Altas Cumbres",
       "slug": "vuelta-altas-cumbres"
     },
@@ -6787,8 +6787,8 @@
       "discipline": "gravel",
       "distance_mi": 93,
       "elevation_ft": 5620,
-      "location": "Velden am W\u00f6rthersee, Austria",
-      "name": "W\u00f6rthersee Gravel Race",
+      "location": "Velden am Wörthersee, Austria",
+      "name": "Wörthersee Gravel Race",
       "slug": "worthersee-gravel-race"
     },
     "gravel:wyo-131": {
@@ -6824,7 +6824,7 @@
       "distance_mi": 62.0,
       "elevation_ft": 1969.0,
       "location": "Porte des Vins Allemands (German Wine Gate), Schweigen-Rechtenbach, Rhineland-Palatinate, Germany",
-      "name": "3RIDES Gran Fondo S\u00fcdliche Weinstrasse",
+      "name": "3RIDES Gran Fondo Südliche Weinstrasse",
       "slug": "3rides-gran-fondo"
     },
     "road:5-mila-marche-gran-fondo": {
@@ -6842,7 +6842,7 @@
       "distance_mi": 116.8,
       "elevation_ft": 7546.0,
       "location": "Canet-en-Roussillon, France",
-      "name": "66 Degr\u00e9s Sud",
+      "name": "66 Degrés Sud",
       "slug": "66-degres-sud"
     },
     "road:947-ride-joburg": {
@@ -6886,7 +6886,7 @@
       "discipline": "road",
       "distance_mi": 103.0,
       "elevation_ft": 10991.0,
-      "location": "Callosa d'en Sarri\u00e0, Alicante, Spain",
+      "location": "Callosa d'en Sarrià, Alicante, Spain",
       "name": "Aitana Tour Gran Fondo",
       "slug": "aitana-tour"
     },
@@ -6913,7 +6913,7 @@
       "discipline": "road",
       "distance_mi": 117.0,
       "elevation_ft": 14364.0,
-      "location": "Lenzerheide, Graub\u00fcnden, Switzerland",
+      "location": "Lenzerheide, Graubünden, Switzerland",
       "name": "Alpen Challenge Lenzerheide",
       "slug": "alpen-challenge-lenzerheide"
     },
@@ -7022,7 +7022,7 @@
       "distance_mi": 44.7,
       "elevation_ft": 2625.0,
       "location": "Shieldaig, Applecross Peninsula, Scottish Highlands, Scotland",
-      "name": "Bealach M\u00f3r",
+      "name": "Bealach Mór",
       "slug": "bealach-mor"
     },
     "road:belgrade-gran-fondo": {
@@ -7165,7 +7165,7 @@
       "discipline": "road",
       "distance_mi": 67.7,
       "elevation_ft": 3937,
-      "location": "Grand Parade, Cape Town \u2192 Green Point",
+      "location": "Grand Parade, Cape Town → Green Point",
       "name": "Cape Town Cycle Tour",
       "slug": "cape-town-cycle-tour"
     },
@@ -7174,7 +7174,7 @@
       "discipline": "road",
       "distance_mi": 68.0,
       "elevation_ft": 4921.0,
-      "location": "Nev\u015fehir/G\u00f6reme, Cappadocia, Turkey",
+      "location": "Nevşehir/Göreme, Cappadocia, Turkey",
       "name": "Cappadocia Gran Fondo",
       "slug": "cappadocia-gran-fondo"
     },
@@ -7219,7 +7219,7 @@
       "discipline": "road",
       "distance_mi": 90.0,
       "elevation_ft": 8770.0,
-      "location": "Puigcerd\u00e0, Catalonia, Spain",
+      "location": "Puigcerdà, Catalonia, Spain",
       "name": "La Cicloturista Internacional de la Cerdanya",
       "slug": "cicloturista-cerdanya"
     },
@@ -7228,8 +7228,8 @@
       "discipline": "road",
       "distance_mi": 85.0,
       "elevation_ft": 14436.0,
-      "location": "B\u00e9doin, Vaucluse, Provence, France",
-      "name": "Les Cingl\u00e9s du Mont Ventoux",
+      "location": "Bédoin, Vaucluse, Provence, France",
+      "name": "Les Cinglés du Mont Ventoux",
       "slug": "cingles-du-mont-ventoux"
     },
     "road:cinturon-ciclista-mallorca": {
@@ -7238,7 +7238,7 @@
       "distance_mi": 106.0,
       "elevation_ft": null,
       "location": "Mallorca, Spain",
-      "name": "Cintur\u00f3n Ciclista a Mallorca",
+      "name": "Cinturón Ciclista a Mallorca",
       "slug": "cinturon-ciclista-mallorca"
     },
     "road:clare-classic": {
@@ -7255,7 +7255,7 @@
       "discipline": "road",
       "distance_mi": 84.0,
       "elevation_ft": 10318.0,
-      "location": "Vaison-la-Romaine, Vaucluse, Provence-Alpes-C\u00f4te d'Azur, France",
+      "location": "Vaison-la-Romaine, Vaucluse, Provence-Alpes-Côte d'Azur, France",
       "name": "Colnago GF Mont Ventoux",
       "slug": "colnago-cycling-festival"
     },
@@ -7273,7 +7273,7 @@
       "discipline": "road",
       "distance_mi": 87.6,
       "elevation_ft": 2759.0,
-      "location": "Jac\u00f3, Garabito, Puntarenas Province, Costa Rica",
+      "location": "Jacó, Garabito, Puntarenas Province, Costa Rica",
       "name": "CRC 506 Gran Fondo Costa Rica",
       "slug": "crc-506-gran-fondo-costa-rica"
     },
@@ -7291,7 +7291,7 @@
       "discipline": "road",
       "distance_mi": 300.0,
       "elevation_ft": 17000.0,
-      "location": "Southern Oregon \u2014 Grants Pass and Jacksonville basecamps (2026). Route and region change annually.",
+      "location": "Southern Oregon — Grants Pass and Jacksonville basecamps (2026). Route and region change annually.",
       "name": "Cycle Oregon",
       "slug": "cycle-oregon"
     },
@@ -7310,7 +7310,7 @@
       "distance_mi": 109.0,
       "elevation_ft": 2920.0,
       "location": "Lausanne, Switzerland",
-      "name": "Cyclotour du L\u00e9man",
+      "name": "Cyclotour du Léman",
       "slug": "cyclotour-du-leman"
     },
     "road:cykelvasan": {
@@ -7318,7 +7318,7 @@
       "discipline": "road",
       "distance_mi": 59.0,
       "elevation_ft": null,
-      "location": "S\u00e4len to Mora, Sweden",
+      "location": "Sälen to Mora, Sweden",
       "name": "Cykelvasan",
       "slug": "cykelvasan"
     },
@@ -7381,7 +7381,7 @@
       "discipline": "road",
       "distance_mi": 94.0,
       "elevation_ft": 7460.0,
-      "location": "Peso da R\u00e9gua, Douro Valley, Portugal",
+      "location": "Peso da Régua, Douro Valley, Portugal",
       "name": "Love Tiles Douro Granfondo",
       "slug": "douro-gran-fondo"
     },
@@ -7400,7 +7400,7 @@
       "distance_mi": 103.0,
       "elevation_ft": 9843.0,
       "location": "Nauders, Tirol, Austria",
-      "name": "Dreil\u00e4ndergiro",
+      "name": "Dreiländergiro",
       "slug": "dreilaendergiro"
     },
     "road:dreilander-giro": {
@@ -7517,7 +7517,7 @@
       "distance_mi": 106.0,
       "elevation_ft": 10500.0,
       "location": "Settle, North Yorkshire, England",
-      "name": "\u00c9tape du Dales",
+      "name": "Étape du Dales",
       "slug": "etape-du-dales"
     },
     "road:etape-loch-ness": {
@@ -7624,8 +7624,8 @@
       "discipline": "road",
       "distance_mi": 108.0,
       "elevation_ft": 16404.0,
-      "location": "Samo\u00ebns, Haute-Savoie, France",
-      "name": "Gran Fondo & Ultra Raid Samo\u00ebns",
+      "location": "Samoëns, Haute-Savoie, France",
+      "name": "Gran Fondo & Ultra Raid Samoëns",
       "slug": "gf-samoens-ultra-raid"
     },
     "road:gfny-aguascalientes": {
@@ -7660,8 +7660,8 @@
       "discipline": "road",
       "distance_mi": 106.0,
       "elevation_ft": 8202.0,
-      "location": "Bento Gon\u00e7alves, Rio Grande do Sul, Brazil",
-      "name": "GFNY Bento Gon\u00e7alves",
+      "location": "Bento Gonçalves, Rio Grande do Sul, Brazil",
+      "name": "GFNY Bento Gonçalves",
       "slug": "gfny-bento-goncalves"
     },
     "road:gfny-bremen": {
@@ -7687,7 +7687,7 @@
       "discipline": "road",
       "distance_mi": 79.5,
       "elevation_ft": 6007.0,
-      "location": "Casablanca, Valpara\u00edso Region, Chile",
+      "location": "Casablanca, Valparaíso Region, Chile",
       "name": "GFNY Chile",
       "slug": "gfny-chile"
     },
@@ -7715,7 +7715,7 @@
       "distance_mi": 62.0,
       "elevation_ft": 3500.0,
       "location": "Punta Cana, Dominican Republic",
-      "name": "GFNY Rep\u00fablica Dominicana",
+      "name": "GFNY República Dominicana",
       "slug": "gfny-dominican-republic"
     },
     "road:gfny-florida-sebring": {
@@ -7759,7 +7759,7 @@
       "discipline": "road",
       "distance_mi": 97.6,
       "elevation_ft": 13333.0,
-      "location": "Lourdes, Hautes-Pyr\u00e9n\u00e9es, France",
+      "location": "Lourdes, Hautes-Pyrénées, France",
       "name": "GFNY Lourdes Tourmalet",
       "slug": "gfny-lourdes-tourmalet"
     },
@@ -7922,7 +7922,7 @@
       "distance_mi": 87.0,
       "elevation_ft": null,
       "location": "Gothenburg, Sweden",
-      "name": "G\u00f6teborgsgirot",
+      "name": "Göteborgsgirot",
       "slug": "goteborgsgirot"
     },
     "road:grafton-to-inverell-classic": {
@@ -7967,7 +7967,7 @@
       "distance_mi": 62.0,
       "elevation_ft": null,
       "location": "Ankara, Turkey",
-      "name": "Gran Fondo Ba\u015fkent",
+      "name": "Gran Fondo Başkent",
       "slug": "gran-fondo-baskent"
     },
     "road:gran-fondo-chile-uci": {
@@ -8083,7 +8083,7 @@
       "discipline": "road",
       "distance_mi": 66.5,
       "elevation_ft": 5906.0,
-      "location": "Qiandao Lake, Chun\u2019an County, Hangzhou, Zhejiang Province, China",
+      "location": "Qiandao Lake, Chun’an County, Hangzhou, Zhejiang Province, China",
       "name": "UCI Gran Fondo Hangzhou Qiandao Lake",
       "slug": "gran-fondo-hangzhou"
     },
@@ -8173,8 +8173,8 @@
       "discipline": "road",
       "distance_mi": 87.0,
       "elevation_ft": 7776.0,
-      "location": "Medell\u00edn, Antioquia, Colombia",
-      "name": "Gran Fondo Medell\u00edn",
+      "location": "Medellín, Antioquia, Colombia",
+      "name": "Gran Fondo Medellín",
       "slug": "gran-fondo-medellin"
     },
     "road:gran-fondo-mont-tremblant": {
@@ -8263,7 +8263,7 @@
       "discipline": "road",
       "distance_mi": 80.8,
       "elevation_ft": 14009,
-      "location": "Bormio \u2192 Summit of Passo dello Stelvio",
+      "location": "Bormio → Summit of Passo dello Stelvio",
       "name": "Gran Fondo Stelvio",
       "slug": "gran-fondo-stelvio"
     },
@@ -8335,7 +8335,7 @@
       "discipline": "road",
       "distance_mi": 68.8,
       "elevation_ft": 7451.0,
-      "location": "Mondov\u00ec, Piedmont, Italy",
+      "location": "Mondovì, Piedmont, Italy",
       "name": "Granfondo Alpi del Mare",
       "slug": "granfondo-alpi-del-mare"
     },
@@ -8362,8 +8362,8 @@
       "discipline": "road",
       "distance_mi": 68.0,
       "elevation_ft": 4921.0,
-      "location": "Bogot\u00e1, Colombia",
-      "name": "Granfondo Bogot\u00e1",
+      "location": "Bogotá, Colombia",
+      "name": "Granfondo Bogotá",
       "slug": "granfondo-bogota"
     },
     "road:granfondo-bratislava": {
@@ -8408,7 +8408,7 @@
       "distance_mi": 87.0,
       "elevation_ft": 6594.0,
       "location": "Desenzano del Garda, Lombardy, Italy",
-      "name": "Granfondo Colnago \u2014 Colnago Cycling Festival",
+      "name": "Granfondo Colnago — Colnago Cycling Festival",
       "slug": "granfondo-colnago"
     },
     "road:granfondo-ecuador": {
@@ -8489,7 +8489,7 @@
       "distance_mi": 92.0,
       "elevation_ft": 6500.0,
       "location": "Pombal, Portugal",
-      "name": "Granfondo Leiria Region \u2013 Sico Lands",
+      "name": "Granfondo Leiria Region – Sico Lands",
       "slug": "granfondo-leiria"
     },
     "road:granfondo-livigno-ale": {
@@ -8498,7 +8498,7 @@
       "distance_mi": 104.0,
       "elevation_ft": 14108.0,
       "location": "Livigno, Italy",
-      "name": "Granfondo Livigno Al\u00e8",
+      "name": "Granfondo Livigno Alè",
       "slug": "granfondo-livigno-ale"
     },
     "road:granfondo-matildica": {
@@ -8515,7 +8515,7 @@
       "discipline": "road",
       "distance_mi": 81.0,
       "elevation_ft": 5906.0,
-      "location": "Beaupr\u00e9, Quebec, Canada",
+      "location": "Beaupré, Quebec, Canada",
       "name": "GranFondo Mont Sainte-Anne",
       "slug": "granfondo-mont-sainte-anne"
     },
@@ -8552,7 +8552,7 @@
       "distance_mi": 98.0,
       "elevation_ft": 8200.0,
       "location": "Treviso, Veneto, Italy",
-      "name": "Granfondo Pinarello \u2014 La Pina",
+      "name": "Granfondo Pinarello — La Pina",
       "slug": "granfondo-pinarello"
     },
     "road:granfondo-pomerode": {
@@ -8561,7 +8561,7 @@
       "distance_mi": 68.0,
       "elevation_ft": 4265.0,
       "location": "Pomerode, Santa Catarina, Brazil",
-      "name": "UCI Gran Fondo Brasil \u2013 Pomerode",
+      "name": "UCI Gran Fondo Brasil – Pomerode",
       "slug": "granfondo-pomerode"
     },
     "road:granfondo-riviera-nayarit": {
@@ -8578,8 +8578,8 @@
       "discipline": "road",
       "distance_mi": 106.0,
       "elevation_ft": 9843.0,
-      "location": "San Sebasti\u00e1n (Donostia), Basque Country, Spain",
-      "name": "GranFondo Klasika San Sebasti\u00e1n",
+      "location": "San Sebastián (Donostia), Basque Country, Spain",
+      "name": "GranFondo Klasika San Sebastián",
       "slug": "granfondo-san-sebastian"
     },
     "road:granfondo-serra-da-estrela": {
@@ -8605,7 +8605,7 @@
       "discipline": "road",
       "distance_mi": 62.0,
       "elevation_ft": 4920.0,
-      "location": "San Mart\u00edn de los Andes, Neuqu\u00e9n, Argentina",
+      "location": "San Martín de los Andes, Neuquén, Argentina",
       "name": "Gran Fondo Siete Lagos",
       "slug": "granfondo-siete-lagos"
     },
@@ -8668,8 +8668,8 @@
       "discipline": "road",
       "distance_mi": 81.0,
       "elevation_ft": 9180.0,
-      "location": "Gruy\u00e8res, Fribourg, Switzerland",
-      "name": "Gruy\u00e8re Cycling Tour",
+      "location": "Gruyères, Fribourg, Switzerland",
+      "name": "Gruyère Cycling Tour",
       "slug": "gruyere-cycling-tour"
     },
     "road:haervejslobet": {
@@ -8678,7 +8678,7 @@
       "distance_mi": 186.0,
       "elevation_ft": 3300.0,
       "location": "Flensburg, Germany to Viborg, Denmark",
-      "name": "H\u00e6rvejsl\u00f8bet \u2014 The Viking Gran Fondo",
+      "name": "Hærvejsløbet — The Viking Gran Fondo",
       "slug": "haervejslobet"
     },
     "road:haleakala-cycle-to-the-sun": {
@@ -8696,7 +8696,7 @@
       "distance_mi": 93.0,
       "elevation_ft": 5000.0,
       "location": "Motala, Sweden",
-      "name": "HalvV\u00e4ttern",
+      "name": "HalvVättern",
       "slug": "halvvattern"
     },
     "road:haute-route-alps": {
@@ -8704,7 +8704,7 @@
       "discipline": "road",
       "distance_mi": 502,
       "elevation_ft": 63173,
-      "location": "Nice \u2192 Thonon-les-Bains (2026 route)",
+      "location": "Nice → Thonon-les-Bains (2026 route)",
       "name": "Haute Route Alps",
       "slug": "haute-route-alps"
     },
@@ -8812,8 +8812,8 @@
       "discipline": "road",
       "distance_mi": 152.0,
       "elevation_ft": 5000.0,
-      "location": "\u00d6stersund, Sweden",
-      "name": "J\u00e4mtlandspilen",
+      "location": "Östersund, Sweden",
+      "name": "Jämtlandspilen",
       "slug": "jamtlandspilen"
     },
     "road:jedermann-rennen-koln": {
@@ -8822,7 +8822,7 @@
       "distance_mi": 62.0,
       "elevation_ft": 4921.0,
       "location": "Cologne, Germany",
-      "name": "Jedermann-Rennen Rund um K\u00f6ln",
+      "name": "Jedermann-Rennen Rund um Köln",
       "slug": "jedermann-rennen-koln"
     },
     "road:k2-road-ride": {
@@ -8884,7 +8884,7 @@
       "discipline": "road",
       "distance_mi": 162.0,
       "elevation_ft": 32300.0,
-      "location": "San Jos\u00e9 to Lim\u00f3n, Costa Rica",
+      "location": "San José to Limón, Costa Rica",
       "name": "La Ruta de los Conquistadores",
       "slug": "la-ruta-de-los-conquistadores"
     },
@@ -8902,7 +8902,7 @@
       "discipline": "road",
       "distance_mi": 106.0,
       "elevation_ft": 13000.0,
-      "location": "Vaujany, Is\u00e8re, France",
+      "location": "Vaujany, Isère, France",
       "name": "La Vaujany Cyclosportive",
       "slug": "la-vaujany"
     },
@@ -8911,7 +8911,7 @@
       "discipline": "road",
       "distance_mi": 99.4,
       "elevation_ft": 6407.0,
-      "location": "Taup\u014d, Waikato, New Zealand",
+      "location": "Taupō, Waikato, New Zealand",
       "name": "Lake Taupo Cycle Challenge",
       "slug": "lake-taupo-cycle-challenge"
     },
@@ -8920,8 +8920,8 @@
       "discipline": "road",
       "distance_mi": 172.0,
       "elevation_ft": 17618.0,
-      "location": "Saint-F\u00e9licien, Ard\u00e8che, France",
-      "name": "L'Ard\u00e9choise",
+      "location": "Saint-Félicien, Ardèche, France",
+      "name": "L'Ardéchoise",
       "slug": "lardechoise"
     },
     "road:lariegeoise-cyclosportive": {
@@ -8929,8 +8929,8 @@
       "discipline": "road",
       "distance_mi": 110.0,
       "elevation_ft": 16000.0,
-      "location": "Tarascon-sur-Ari\u00e8ge, France",
-      "name": "L'Ari\u00e9geoise Cyclosportive",
+      "location": "Tarascon-sur-Ariège, France",
+      "name": "L'Ariégeoise Cyclosportive",
       "slug": "lariegeoise-cyclosportive"
     },
     "road:le-loop": {
@@ -8965,7 +8965,7 @@
       "discipline": "road",
       "distance_mi": 112.0,
       "elevation_ft": 13186.0,
-      "location": "Ronchamp, Haute-Sa\u00f4ne, France",
+      "location": "Ronchamp, Haute-Saône, France",
       "name": "Les Trois Ballons",
       "slug": "les-trois-ballons"
     },
@@ -9002,7 +9002,7 @@
       "distance_mi": 63.4,
       "elevation_ft": 8202.0,
       "location": "Peshtera, Bulgaria",
-      "name": "L'\u00c9tape Bulgaria by Tour de France",
+      "name": "L'Étape Bulgaria by Tour de France",
       "slug": "letape-bulgaria"
     },
     "road:letape-cancun": {
@@ -9046,7 +9046,7 @@
       "discipline": "road",
       "distance_mi": 186.0,
       "elevation_ft": 4593.0,
-      "location": "Various start points across Jutland, Denmark \u2014 all routes finish in Viborg",
+      "location": "Various start points across Jutland, Denmark — all routes finish in Viborg",
       "name": "L'Etape Denmark by Tour de France",
       "slug": "letape-denmark"
     },
@@ -9055,7 +9055,7 @@
       "discipline": "road",
       "distance_mi": 105.6,
       "elevation_ft": 17717,
-      "location": "Bourg d'Oisans \u2192 Alpe d'Huez (via Col de Sarenne)",
+      "location": "Bourg d'Oisans → Alpe d'Huez (via Col de Sarenne)",
       "name": "L'Etape du Tour",
       "slug": "letape-du-tour"
     },
@@ -9092,7 +9092,7 @@
       "distance_mi": 87.0,
       "elevation_ft": null,
       "location": "Mandalika, Lombok, Indonesia",
-      "name": "L'\u00c9tape Indonesia",
+      "name": "L'Étape Indonesia",
       "slug": "letape-indonesia"
     },
     "road:letape-ireland": {
@@ -9119,7 +9119,7 @@
       "distance_mi": 68.35,
       "elevation_ft": 4900.0,
       "location": "Mexico City, Mexico",
-      "name": "L'\u00c9tape Ciudad de M\u00e9xico by Tour de France",
+      "name": "L'Étape Ciudad de México by Tour de France",
       "slug": "letape-mexico-city"
     },
     "road:letape-norway": {
@@ -9127,7 +9127,7 @@
       "discipline": "road",
       "distance_mi": 80.8,
       "elevation_ft": 4921.0,
-      "location": "Trondheim, Tr\u00f8ndelag, Norway",
+      "location": "Trondheim, Trøndelag, Norway",
       "name": "L'Etape Norway by Tour de France",
       "slug": "letape-norway"
     },
@@ -9137,7 +9137,7 @@
       "distance_mi": 83.0,
       "elevation_ft": 9186.0,
       "location": "Parma, Emilia-Romagna, Italy",
-      "name": "L'\u00c9tape Parma",
+      "name": "L'Étape Parma",
       "slug": "letape-parma"
     },
     "road:letape-piemonte": {
@@ -9173,7 +9173,7 @@
       "distance_mi": 50.0,
       "elevation_ft": 500.0,
       "location": "Bucharest, Romania",
-      "name": "L'\u00c9tape Romania by Tour de France",
+      "name": "L'Étape Romania by Tour de France",
       "slug": "letape-romania"
     },
     "road:letape-slovakia": {
@@ -9191,7 +9191,7 @@
       "distance_mi": 75.0,
       "elevation_ft": 5900.0,
       "location": "Kranj, Slovenia",
-      "name": "L'\u00c9tape Slovenia by Tour de France",
+      "name": "L'Étape Slovenia by Tour de France",
       "slug": "letape-slovenia"
     },
     "road:letape-taiwan": {
@@ -9236,7 +9236,7 @@
       "distance_mi": 160.0,
       "elevation_ft": 14764.0,
       "location": "Banneux, Belgium",
-      "name": "Li\u00e8ge-Bastogne-Li\u00e8ge Challenge",
+      "name": "Liège-Bastogne-Liège Challenge",
       "slug": "liege-bastogne-liege-challenge"
     },
     "road:london-edinburgh-london": {
@@ -9307,7 +9307,7 @@
       "discipline": "road",
       "distance_mi": 85.7,
       "elevation_ft": 13878,
-      "location": "La Villa \u2192 Corvara, Alta Badia, South Tyrol",
+      "location": "La Villa → Corvara, Alta Badia, South Tyrol",
       "name": "Maratona dles Dolomites",
       "slug": "maratona-dles-dolomites"
     },
@@ -9325,7 +9325,7 @@
       "discipline": "road",
       "distance_mi": 110.0,
       "elevation_ft": 18701.0,
-      "location": "Argel\u00e8s-Gazost / Luz-Saint-Sauveur, Hautes-Pyr\u00e9n\u00e9es, France",
+      "location": "Argelès-Gazost / Luz-Saint-Sauveur, Hautes-Pyrénées, France",
       "name": "Marmotte Granfondo Pyrenees",
       "slug": "marmotte-pyrenees"
     },
@@ -9334,8 +9334,8 @@
       "discipline": "road",
       "distance_mi": 754.0,
       "elevation_ft": 46900.0,
-      "location": "Br\u00e4nnland Inn near Ume\u00e5, Sweden to Scandic Plaza hotel in Ume\u00e5 (loop into Norway to Mo i Rana and Norwegian Sea fjords)",
-      "name": "Midnight Sun Randonn\u00e9e",
+      "location": "Brännland Inn near Umeå, Sweden to Scandic Plaza hotel in Umeå (loop into Norway to Mo i Rana and Norwegian Sea fjords)",
+      "name": "Midnight Sun Randonnée",
       "slug": "midnight-sun-randonnee"
     },
     "road:milano-sanremo-gran-fondo": {
@@ -9361,7 +9361,7 @@
       "discipline": "road",
       "distance_mi": 7.6,
       "elevation_ft": 4678,
-      "location": "Mt. Washington Auto Road, Pinkham Notch, NH \u2192 Summit of Mt. Washington (6,288ft)",
+      "location": "Mt. Washington Auto Road, Pinkham Notch, NH → Summit of Mt. Washington (6,288ft)",
       "name": "Mt. Washington Auto Road Bicycle Hillclimb",
       "slug": "mount-washington-hillclimb"
     },
@@ -9415,7 +9415,7 @@
       "discipline": "road",
       "distance_mi": 78.9,
       "elevation_ft": 1969.0,
-      "location": "M\u00f6rbisch am See, Burgenland, Austria",
+      "location": "Mörbisch am See, Burgenland, Austria",
       "name": "Neusiedlersee Radmarathon",
       "slug": "neusiedlersee-radmarathon"
     },
@@ -9443,7 +9443,7 @@
       "distance_mi": 96.0,
       "elevation_ft": 4900.0,
       "location": "Egersund to Sandnes, Norway",
-      "name": "Nordsj\u00f8rittet",
+      "name": "Nordsjørittet",
       "slug": "nordsjorittet"
     },
     "road:nove-colli": {
@@ -9469,7 +9469,7 @@
       "discipline": "road",
       "distance_mi": 100.0,
       "elevation_ft": 3000.0,
-      "location": "New York City, New York, USA \u2014 Meatpacking District start/finish, four-borough route through Manhattan, Brooklyn, Queens, and the Bronx",
+      "location": "New York City, New York, USA — Meatpacking District start/finish, four-borough route through Manhattan, Brooklyn, Queens, and the Bronx",
       "name": "NYC Century Bike Tour",
       "slug": "nyc-century"
     },
@@ -9487,8 +9487,8 @@
       "discipline": "road",
       "distance_mi": 143.0,
       "elevation_ft": 18045.0,
-      "location": "S\u00f6lden, Tirol, Austria",
-      "name": "\u00d6tztaler Radmarathon",
+      "location": "Sölden, Tirol, Austria",
+      "name": "Ötztaler Radmarathon",
       "slug": "oetztaler-radmarathon"
     },
     "road:old-mutual-wealth-double-century": {
@@ -9668,7 +9668,7 @@
       "distance_mi": 683.0,
       "elevation_ft": 24606.0,
       "location": "Flensburg to Garmisch-Partenkirchen, Germany",
-      "name": "Race Across Germany North\u2013South",
+      "name": "Race Across Germany North–South",
       "slug": "race-across-germany"
     },
     "road:race-across-italy-300": {
@@ -9776,7 +9776,7 @@
       "distance_mi": 154.0,
       "elevation_ft": 10000.0,
       "location": "Enumclaw, Washington, USA",
-      "name": "RAMROD \u2014 Ride Around Mount Rainier in One Day",
+      "name": "RAMROD — Ride Around Mount Rainier in One Day",
       "slug": "ramrod"
     },
     "road:raul-alcala-challenge-oaxaca": {
@@ -9784,7 +9784,7 @@
       "discipline": "road",
       "distance_mi": 68.0,
       "elevation_ft": null,
-      "location": "Oaxaca de Ju\u00e1rez, Oaxaca, Mexico",
+      "location": "Oaxaca de Juárez, Oaxaca, Mexico",
       "name": "Raul Alcala Challenge Oaxaca",
       "slug": "raul-alcala-challenge-oaxaca"
     },
@@ -9802,7 +9802,7 @@
       "discipline": "road",
       "distance_mi": 76,
       "elevation_ft": 7500,
-      "location": "Stanley Park, Vancouver \u2192 Whistler Village",
+      "location": "Stanley Park, Vancouver → Whistler Village",
       "name": "RBC GranFondo Whistler",
       "slug": "rbc-granfondo-whistler"
     },
@@ -9866,7 +9866,7 @@
       "distance_mi": 100.0,
       "elevation_ft": 5000.0,
       "location": "Ennis, County Clare, Ireland",
-      "name": "\u0160koda Ring of Clare Sportive",
+      "name": "Škoda Ring of Clare Sportive",
       "slug": "ring-of-clare"
     },
     "road:ring-of-kerry-charity-cycle": {
@@ -9956,7 +9956,7 @@
       "distance_mi": 91.0,
       "elevation_ft": 11000.0,
       "location": "Cenes de la Vega, Granada, Spain",
-      "name": "Sierra Nevada L\u00edmite Gran Fondo",
+      "name": "Sierra Nevada Límite Gran Fondo",
       "slug": "sierra-nevada-limite"
     },
     "road:sovev-jerusalem": {
@@ -10117,7 +10117,7 @@
       "discipline": "road",
       "distance_mi": 98.8,
       "elevation_ft": 7260.0,
-      "location": "Castell\u00f3n de la Plana, Castell\u00f3n Province, Spain",
+      "location": "Castellón de la Plana, Castellón Province, Spain",
       "name": "The Millars Gran Fondo",
       "slug": "the-millars-gran-fondo"
     },
@@ -10127,7 +10127,7 @@
       "distance_mi": 62.0,
       "elevation_ft": null,
       "location": "Motala, Sweden",
-      "name": "TjejV\u00e4ttern",
+      "name": "TjejVättern",
       "slug": "tjejvattern"
     },
     "road:tortour": {
@@ -10181,7 +10181,7 @@
       "distance_mi": 31.0,
       "elevation_ft": 500.0,
       "location": "Montreal, Quebec, Canada",
-      "name": "Tour de l'\u00cele de Montr\u00e9al",
+      "name": "Tour de l'Île de Montréal",
       "slug": "tour-de-lile-de-montreal"
     },
     "road:tour-de-matra": {
@@ -10189,8 +10189,8 @@
       "discipline": "road",
       "distance_mi": 100.3,
       "elevation_ft": 7567.0,
-      "location": "Gy\u00f6ngy\u00f6s, Hungary",
-      "name": "Tour de M\u00e1tra",
+      "location": "Gyöngyös, Hungary",
+      "name": "Tour de Mátra",
       "slug": "tour-de-matra"
     },
     "road:tour-de-okinawa": {
@@ -10216,8 +10216,8 @@
       "discipline": "road",
       "distance_mi": 87.0,
       "elevation_ft": 7200.0,
-      "location": "Southern Poland (route varies \u2014 typically Krakow area / Tatra Mountain foothills)",
-      "name": "Tour de Pologne Amator\u00f3w",
+      "location": "Southern Poland (route varies — typically Krakow area / Tatra Mountain foothills)",
+      "name": "Tour de Pologne Amatorów",
       "slug": "tour-de-pologne-amatorow"
     },
     "road:tour-de-romandie-cyclosportive": {
@@ -10397,7 +10397,7 @@
       "distance_mi": 90.0,
       "elevation_ft": 9800.0,
       "location": "Kottayam to Thekkady, Kerala, India",
-      "name": "Tour of Thekkady \u2014 Kerala Gran Fondo",
+      "name": "Tour of Thekkady — Kerala Gran Fondo",
       "slug": "tour-of-thekkady"
     },
     "road:tour-of-wessex": {
@@ -10522,7 +10522,7 @@
       "discipline": "road",
       "distance_mi": 196.0,
       "elevation_ft": 4593.0,
-      "location": "Motala, \u00d6sterg\u00f6tland, Sweden",
+      "location": "Motala, Östergötland, Sweden",
       "name": "Vatternrundan",
       "slug": "vatternrundan"
     },
@@ -10541,7 +10541,7 @@
       "distance_mi": 103.0,
       "elevation_ft": 11712.0,
       "location": "La Roche-en-Ardenne, Belgium",
-      "name": "V\u00e9lomediane Claudy Criquielion",
+      "name": "Vélomediane Claudy Criquielion",
       "slug": "velomediane-criquielion"
     },
     "road:velothon-berlin": {
