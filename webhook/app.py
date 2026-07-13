@@ -2125,6 +2125,7 @@ def health():
 
 @app.route('/api/download/<athlete_id>', methods=['GET'])
 @app.route('/api/download/<athlete_id>/<token>', methods=['GET'])
+@limiter.limit("30/minute")
 def download_deliverables(athlete_id, token=None):
     """Download an athlete's deliverables zip.
 
@@ -2268,6 +2269,7 @@ def jobs_sweep():
 
 
 @app.route('/api/confirm/<athlete_id>', methods=['POST'])
+@limiter.limit("10/minute")
 def confirm_plan_ready(athlete_id):
     """Send "your plan is live on TrainingPeaks" email to customer.
 
@@ -3225,6 +3227,7 @@ def _handle_consulting_webhook(session: dict, metadata: dict, order_id: str):
 # Secured by CRON_SECRET header. Requires intake_id with stored questionnaire.
 # =============================================================================
 @app.route('/webhook/test', methods=['POST'])
+@limiter.limit("10/minute")
 def test_webhook():
     """Simulate a real customer checkout → pipeline → notification flow.
 

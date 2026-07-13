@@ -155,6 +155,19 @@ class TestDownloadTokenInPath:
         assert resp.status_code == 404  # backward compatible: auth still passes
 
 
+class TestOpenEndpointsRateLimited:
+    """A9: the previously-unguarded download / confirm / test endpoints now
+    carry rate-limit decorators (WooCommerce route was removed in A5)."""
+
+    def test_download_confirm_test_have_limits(self):
+        import inspect
+        import app
+        src = inspect.getsource(app)
+        for func in ("def download_deliverables", "def confirm_plan_ready", "def test_webhook"):
+            i = src.index(func)
+            assert "@limiter.limit" in src[max(0, i - 160):i], f"{func} missing rate limit"
+
+
 class TestNeedsReviewInZip:
     """A10: NEEDS_REVIEW.txt is a coach deliverable -> it rides in the full
     package zip but is excluded from the customer zip (which drops
