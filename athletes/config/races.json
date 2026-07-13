@@ -1196,8 +1196,8 @@
   "gravel:dirty-hector": {
    "date": "2026-05-24",
    "discipline": "gravel",
-   "distance_mi": 62,
-   "elevation_ft": 5000,
+   "distance_mi": 40,
+   "elevation_ft": 3500,
    "location": "Trumansburg, New York",
    "name": "Dirty Hector",
    "slug": "dirty-hector"
