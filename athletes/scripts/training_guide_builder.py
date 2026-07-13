@@ -691,7 +691,7 @@ def _section_training_plan_brief(
     # Day-by-day schedule table removed per coach review (Jun 2026) — the
     # plan calendar owns the schedule; the brief shows only the shape
     days_info = schedule.get("days", {})
-    date_card = _date_verification_card(derived, date_xref or {})
+    date_card = _date_verification_card(derived, date_xref or {}, store_mode=store_mode)
 
     if store_mode:
         # No real athlete behind these numbers — a store buyer never filled
@@ -819,10 +819,18 @@ def _section_training_plan_brief(
 </section>"""
 
 
-def _date_verification_card(derived, date_xref) -> str:
+def _date_verification_card(derived, date_xref, store_mode: bool = False) -> str:
     """Race-date verification card — lives in section 1 since the Race
     Profile section was removed per coach review (Jun 2026). A wrong
-    race date wrecks the taper; this stays."""
+    race date wrecks the taper; this stays.
+
+    store_mode: no real athlete filled a questionnaire, so the QC
+    "Date mismatch" warning (which compares a generic base-intake plan date
+    against race-data's recorded date) is an internal authoring signal, not
+    a real discrepancy the buyer needs to see — suppress it entirely. Also
+    drop the "N days from today" countdown, which goes stale the day after
+    the guide is generated; show the plan's target race date plainly instead.
+    """
     # Build race date verification callout
     date_verification_html = ""
     if derived:
@@ -832,6 +840,17 @@ def _date_verification_card(derived, date_xref) -> str:
                 rd = datetime.strptime(str(race_date_str), "%Y-%m-%d")
                 day_of_week = rd.strftime("%A")
                 date_display = rd.strftime("%B %d, %Y")
+
+                if store_mode:
+                    date_verification_html = f"""
+  <div class="data-card" style="margin-top: 16px;">
+    <div class="data-card__header">RACE DAY</div>
+    <div class="data-card__content">
+      <p><strong>{day_of_week}, {date_display}</strong></p>
+    </div>
+  </div>"""
+                    return date_verification_html
+
                 days_until = (rd.date() - date.today()).days
 
                 # Determine verification status
