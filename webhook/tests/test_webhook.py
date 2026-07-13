@@ -155,6 +155,29 @@ class TestDownloadTokenInPath:
         assert resp.status_code == 404  # backward compatible: auth still passes
 
 
+class TestPackageIncompleteGuard:
+    """A4: a plan whose downloadable package failed to persist must not go out as
+    a clean 'READY FOR REVIEW' with a dead download link."""
+
+    def test_persist_incomplete_reasons(self):
+        from app import _persist_incomplete
+        assert _persist_incomplete(None)
+        assert _persist_incomplete({'error': 'boom'})
+        assert _persist_incomplete({'full_zip_size': 0})
+        assert _persist_incomplete({'full_zip_size': 5, 'missing': ['workouts/']})
+        assert _persist_incomplete({'full_zip_size': 1234, 'missing': [], 'copied': ['x']}) == ''
+
+    def test_email_flags_incomplete_and_drops_link(self):
+        from app import _build_training_plan_email
+        parts = _build_training_plan_email({
+            'athlete_id': 'x', 'name': 'X', 'pipeline_success': True,
+            'package_incomplete': 'package zip is empty or missing',
+        })
+        blob = ' '.join(str(p) for p in parts)
+        assert 'PACKAGE INCOMPLETE' in blob
+        assert '/api/download/' not in blob  # no download button when incomplete
+
+
 class TestOpenEndpointsRateLimited:
     """A9: the previously-unguarded download / confirm / test endpoints now
     carry rate-limit decorators (WooCommerce route was removed in A5)."""
@@ -2912,6 +2935,10 @@ class TestAsyncPipelineJobs:
              patch('app._notify_new_order') as mock_notify, \
              patch('app.log_order') as mock_log:
             mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
+            # A4: the coach notification now inspects the persist return, so the
+            # happy-path mock must model a complete, persisted package.
+            mock_persist.return_value = {'full_zip_size': 12345,
+                                         'copied': ['plan_summary.yaml'], 'missing': []}
             response = client.post('/webhook/stripe',
                                    json=_stripe_event('cs_async_ok'),
                                    content_type='application/json')

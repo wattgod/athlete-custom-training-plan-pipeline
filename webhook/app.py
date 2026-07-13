@@ -425,8 +425,19 @@ def _build_training_plan_email(details: dict) -> tuple:
             'AUTO-CHECK FAILED — plan delivered but a compliance rule was '
             'flagged. Review coaching_brief.md and adjust before sending.')
 
+    # Strongest flag of all: the plan generated but its downloadable package did
+    # not persist, so the download link is unavailable. Do not send yet. (A4)
+    package_incomplete = details.get('package_incomplete', '')
+    if package_incomplete:
+        review_flags.insert(0,
+            'PACKAGE INCOMPLETE (' + str(package_incomplete) + ') — the plan '
+            'generated but its package failed to persist; the download link is '
+            'unavailable. Investigate before sending.')
+
     subject = f"[GG] {'New order' if pipeline_ok else 'FAILED'}: {name} — {race_name or 'training plan'}"
-    if pipeline_ok and needs_review:
+    if pipeline_ok and package_incomplete:
+        subject = subject.replace('[GG] New order', '[GG] ⚠ PACKAGE INCOMPLETE')
+    elif pipeline_ok and needs_review:
         subject = subject.replace('[GG] New order', '[GG] ⚠ NEEDS REVIEW')
     elif pipeline_ok and review_flags:
         subject = subject.replace('[GG] New order', '[GG] New order ⚠ REVIEW')
@@ -1643,6 +1654,25 @@ def persist_deliverables(athlete_id: str) -> dict:
     }
 
 
+def _persist_incomplete(persist_result) -> str:
+    """Return a human reason if the persisted package is broken/missing, else ''. A4.
+
+    Guards against emailing a clean "READY FOR REVIEW" with a download link that
+    404s because the zip never got written.
+    """
+    if not persist_result:
+        return 'persist step did not run'
+    if persist_result.get('error'):
+        return f"persist failed: {persist_result['error']}"
+    if not persist_result.get('full_zip_size'):
+        return 'package zip is empty or missing'
+    critical = [m for m in (persist_result.get('missing') or [])
+                if m in ('workouts/', 'training_guide.html')]
+    if critical:
+        return 'missing critical files: ' + ', '.join(critical)
+    return ''
+
+
 def _create_zip(source_dir: Path, zip_path: Path, exclude_zip: bool = True,
                 exclude_files: set = None):
     """Create a zip file from source_dir contents."""
@@ -1891,11 +1921,13 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
                               intake_data=intake_data or None)
         log_order(order_data, result)
 
+        persist_result = None
         if result['success']:
             try:
-                persist_deliverables(athlete_id)
+                persist_result = persist_deliverables(athlete_id)
             except Exception as e:
-                logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
+                logger.critical(f"Failed to persist deliverables for {athlete_id}: {e}")
+                persist_result = {'error': str(e)}
 
         # Phase 4b: push to Endure when this order opted in. The full ZWO
         # package above is ALWAYS generated regardless of target (fallback
@@ -1915,7 +1947,12 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
         if endure_record is not None:
             details['endure_delivery'] = endure_record
         if result['success']:
-            details['download_token'] = _generate_download_token(athlete_id)
+            _incomplete = _persist_incomplete(persist_result)
+            if _incomplete:
+                details['package_incomplete'] = _incomplete
+                logger.critical(f"Package incomplete for {athlete_id}: {_incomplete}")
+            else:
+                details['download_token'] = _generate_download_token(athlete_id)
             _notify_new_order('training_plan', details)
             _update_job(athlete_id, status='succeeded',
                         finished_at=datetime.now().isoformat(), error=None)
@@ -3312,16 +3349,23 @@ def test_webhook():
     log_order(order_data, result)
 
     # Persist deliverables to volume + create zip (same as real flow)
+    persist_result = None
     if result['success']:
         try:
-            persist_deliverables(athlete_id)
+            persist_result = persist_deliverables(athlete_id)
         except Exception as e:
-            logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
+            logger.critical(f"Failed to persist deliverables for {athlete_id}: {e}")
+            persist_result = {'error': str(e)}
 
     # Send notification email (same as real flow)
     details = _build_plan_notification_details(order_data, result, intake_data)
     if result['success']:
-        details['download_token'] = _generate_download_token(athlete_id)
+        _incomplete = _persist_incomplete(persist_result)
+        if _incomplete:
+            details['package_incomplete'] = _incomplete
+            logger.critical(f"Package incomplete for {athlete_id}: {_incomplete}")
+        else:
+            details['download_token'] = _generate_download_token(athlete_id)
         _notify_new_order('training_plan', details)
         return jsonify({
             'status': 'success',
