@@ -1,0 +1,37 @@
+selected_methodology: Traditional (Pyramidal)
+methodology_id: traditional_pyramidal
+score: 92.0
+reasons:
+- Ideal hours match (12h in 10-18h sweet spot)
+- Beginner-friendly methodology
+- Appropriate for finish-focused goal
+- Base-heavy build suits a first-timer finish goal
+warnings: []
+configuration:
+  methodology: Traditional (Pyramidal)
+  intensity_distribution:
+    z1_z2: 0.75
+    z3: 0.15
+    z4_z5: 0.1
+  emphasis: a big aerobic base first, sharpened with tempo and threshold progressions
+    as the race nears
+  strength_approach: heavy_base_maintenance_build
+  key_workouts:
+  - long_z2
+  - tempo_progression
+  - threshold_intervals
+  progression_style: volume_then_intensity
+  testing_frequency: phase_end
+alternatives:
+- name: Polarized (80/20)
+  score: 85.0
+  key_reason: Ideal hours match (12h in 10-16h sweet spot)
+- name: G Spot (Read the Room)
+  score: 70.0
+  key_reason: Acceptable hours (12h within 5-13h range)
+- name: Time-Crunched
+  score: 51.0
+  key_reason: Beginner-friendly methodology
+selection_date: '2026-07-13 08:32:32'
+confidence: high
+confidence_note: Strong match for athlete profile
