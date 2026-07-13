@@ -12,7 +12,7 @@ primary_goal: specific_race
 target_race:
   name: Gunni Grinder
   race_id: gunni-grinder
-  date: '2026-09-06'
+  date: '2026-09-12'
   distance_miles: 120
   elevation_ft: 10000
   goal_type: finish
@@ -21,7 +21,7 @@ target_race:
 discipline_default: gravel
 a_events:
 - name: Gunni Grinder
-  date: '2026-09-06'
+  date: '2026-09-12'
   distance_miles: 120
   goal: finish
   priority: A
@@ -30,7 +30,7 @@ c_events: []
 secondary_races: []
 racing:
   has_goals: true
-  race_list: Gunni Grinder (2026-09-06, 120mi, priority A)
+  race_list: Gunni Grinder (2026-09-12, 120mi, priority A)
   success_metrics: Finish Gunni Grinder strong and healthy.
   obstacles: ''
   training_goals: Build durability through base volume.
