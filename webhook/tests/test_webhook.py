@@ -156,6 +156,30 @@ class TestDownloadTokenInPath:
         assert resp.status_code == 404  # backward compatible: auth still passes
 
 
+class TestNotificationLogMasksPII:
+    """A6: the Resend-unavailable CRITICAL log fallback must not leak raw emails."""
+
+    def test_helper_masks_emails_in_blob(self):
+        from app import _mask_emails_in_text
+        out = _mask_emails_in_text("contact a.b@example.com and c@d.org now")
+        assert "a.b@example.com" not in out
+        assert "c@d.org" not in out
+        assert "example.com" in out or "***" in out  # something was rendered
+
+    def test_fallback_log_masks_customer_email(self, monkeypatch):
+        import app
+        from unittest.mock import MagicMock
+        # Force the fallback (no Resend configured) log path.
+        monkeypatch.setattr(app, 'NOTIFICATION_EMAIL', '')
+        monkeypatch.setattr(app, 'RESEND_API_KEY', '')
+        mock_crit = MagicMock()
+        monkeypatch.setattr(app.logger, 'critical', mock_crit)
+        app._notify_new_order('TEST', {'name': 'Jane', 'email': 'jane.doe@example.com'})
+        logged = ' '.join(str(a) for c in mock_crit.call_args_list for a in c.args)
+        assert 'NEW ORDER' in logged            # it did log
+        assert 'jane.doe@example.com' not in logged  # but not the raw email
+
+
 class TestInputValidation:
     """Tests for input validation functions."""
 

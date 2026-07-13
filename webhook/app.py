@@ -701,6 +701,19 @@ def _send_ga4_purchase(order_id: str, value_cents, product_type: str,
         logger.warning(f"GA4 MP purchase failed (non-fatal): {e}")
 
 
+_EMAIL_RE = re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
+
+
+def _mask_emails_in_text(text: str) -> str:
+    """Mask every email address in a free-text blob before logging it (PII). A6.
+
+    The Resend-unavailable fallback logs the full notification text at CRITICAL;
+    coaching/consulting/unknown notifications embed the raw customer email there.
+    Railway logs persist, so mask before writing.
+    """
+    return _EMAIL_RE.sub(lambda m: _mask_email(m.group(0)), text or '')
+
+
 def _notify_new_order(product_type: str, details: dict):
     """Send rich notification for new order. Falls back to CRITICAL log if Resend not configured."""
     if product_type in ('training_plan', 'training_plan_FAILED'):
@@ -718,9 +731,9 @@ def _notify_new_order(product_type: str, details: dict):
 
     if NOTIFICATION_EMAIL and RESEND_API_KEY:
         if not _send_email(NOTIFICATION_EMAIL, subject, text, html=html):
-            logger.critical(f"NEW ORDER: {subject}\n{text}")
+            logger.critical(f"NEW ORDER: {subject}\n{_mask_emails_in_text(text)}")
     else:
-        logger.critical(f"NEW ORDER: {subject}\n{text}")
+        logger.critical(f"NEW ORDER: {subject}\n{_mask_emails_in_text(text)}")
 
 
 def _send_payment_confirmation(customer_email: str, customer_name: str,
