@@ -342,7 +342,7 @@
    "date": "2026-05-09",
    "discipline": "gravel",
    "distance_mi": 65,
-   "elevation_ft": 5000,
+   "elevation_ft": 5500,
    "location": "Cambridge, New York",
    "name": "Battenkill",
    "slug": "battenkill"
@@ -982,7 +982,7 @@
    "discipline": "gravel",
    "distance_mi": 75,
    "elevation_ft": 4500,
-   "location": "Lake Cowichan, British Columbia",
+   "location": "Mesachie Lake, British Columbia",
    "name": "Cowichan Crusher Gravel Fondo",
    "slug": "cowichan-crusher-gravel-fondo"
   },
@@ -1160,9 +1160,9 @@
   "gravel:devils-cardigan": {
    "date": "2026-06-20",
    "discipline": "gravel",
-   "distance_mi": 120,
-   "elevation_ft": 12000,
-   "location": "Tasmania, Australia",
+   "distance_mi": 66,
+   "elevation_ft": 7545,
+   "location": "Derby, Tasmania",
    "name": "Devils Cardigan",
    "slug": "devils-cardigan"
   },
@@ -1311,11 +1311,11 @@
    "slug": "dusty-gravel-series-andenne"
   },
   "gravel:edition-zero": {
-   "date": "2026-01-28",
+   "date": "2026-11-28",
    "discipline": "gravel",
-   "distance_mi": 100,
-   "elevation_ft": 8000,
-   "location": "South Island, New Zealand",
+   "distance_mi": 154,
+   "elevation_ft": 11500,
+   "location": "Waimate, New Zealand",
    "name": "Edition Zero",
    "slug": "edition-zero"
   },
@@ -1482,11 +1482,11 @@
    "slug": "fast-fitty"
   },
   "gravel:filthy-50": {
-   "date": null,
+   "date": "2026-10-10",
    "discipline": "gravel",
    "distance_mi": 50,
-   "elevation_ft": 3000,
-   "location": "Northern Minnesota (route varies)",
+   "elevation_ft": 2000,
+   "location": "Lanesboro, Minnesota",
    "name": "Filthy 50",
    "slug": "filthy-50"
   },
@@ -4427,8 +4427,8 @@
   "gravel:noosa-gravel-enduro": {
    "date": "2026-06-21",
    "discipline": "gravel",
-   "distance_mi": 62,
-   "elevation_ft": 5000,
+   "distance_mi": 56,
+   "elevation_ft": 4100,
    "location": "Noosa Hinterland, Queensland",
    "name": "Noosa Gravel Enduro",
    "slug": "noosa-gravel-enduro"
@@ -5363,7 +5363,7 @@
   "gravel:sasquatch-duro": {
    "date": "2026-04-11",
    "discipline": "gravel",
-   "distance_mi": 62,
+   "distance_mi": 67,
    "elevation_ft": 5000,
    "location": "Carlton, Oregon",
    "name": "Sasquatch Duro",
