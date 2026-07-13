@@ -1,0 +1,296 @@
+race_date: '2027-04-11'
+race_weekday: Sunday
+plan_weeks: 6
+plan_start: '2027-03-01'
+plan_start_short: Mar1
+plan_end: '2027-04-11'
+week1_monday: '2027-03-01'
+race_week_monday: '2027-04-05'
+weeks:
+- week: 1
+  monday: '2027-03-01'
+  monday_short: Mar1
+  sunday: '2027-03-07'
+  sunday_short: Mar7
+  phase: base
+  is_race_week: false
+  days:
+  - day: Mon
+    date: '2027-03-01'
+    date_short: Mar1
+    workout_prefix: W01_Mon_Mar1
+    is_race_day: false
+  - day: Tue
+    date: '2027-03-02'
+    date_short: Mar2
+    workout_prefix: W01_Tue_Mar2
+    is_race_day: false
+  - day: Wed
+    date: '2027-03-03'
+    date_short: Mar3
+    workout_prefix: W01_Wed_Mar3
+    is_race_day: false
+  - day: Thu
+    date: '2027-03-04'
+    date_short: Mar4
+    workout_prefix: W01_Thu_Mar4
+    is_race_day: false
+  - day: Fri
+    date: '2027-03-05'
+    date_short: Mar5
+    workout_prefix: W01_Fri_Mar5
+    is_race_day: false
+  - day: Sat
+    date: '2027-03-06'
+    date_short: Mar6
+    workout_prefix: W01_Sat_Mar6
+    is_race_day: false
+  - day: Sun
+    date: '2027-03-07'
+    date_short: Mar7
+    workout_prefix: W01_Sun_Mar7
+    is_race_day: false
+  is_recovery_week: false
+- week: 2
+  monday: '2027-03-08'
+  monday_short: Mar8
+  sunday: '2027-03-14'
+  sunday_short: Mar14
+  phase: base
+  is_race_week: false
+  days:
+  - day: Mon
+    date: '2027-03-08'
+    date_short: Mar8
+    workout_prefix: W02_Mon_Mar8
+    is_race_day: false
+  - day: Tue
+    date: '2027-03-09'
+    date_short: Mar9
+    workout_prefix: W02_Tue_Mar9
+    is_race_day: false
+  - day: Wed
+    date: '2027-03-10'
+    date_short: Mar10
+    workout_prefix: W02_Wed_Mar10
+    is_race_day: false
+  - day: Thu
+    date: '2027-03-11'
+    date_short: Mar11
+    workout_prefix: W02_Thu_Mar11
+    is_race_day: false
+  - day: Fri
+    date: '2027-03-12'
+    date_short: Mar12
+    workout_prefix: W02_Fri_Mar12
+    is_race_day: false
+  - day: Sat
+    date: '2027-03-13'
+    date_short: Mar13
+    workout_prefix: W02_Sat_Mar13
+    is_race_day: false
+  - day: Sun
+    date: '2027-03-14'
+    date_short: Mar14
+    workout_prefix: W02_Sun_Mar14
+    is_race_day: false
+  is_recovery_week: false
+- week: 3
+  monday: '2027-03-15'
+  monday_short: Mar15
+  sunday: '2027-03-21'
+  sunday_short: Mar21
+  phase: build
+  is_race_week: false
+  days:
+  - day: Mon
+    date: '2027-03-15'
+    date_short: Mar15
+    workout_prefix: W03_Mon_Mar15
+    is_race_day: false
+  - day: Tue
+    date: '2027-03-16'
+    date_short: Mar16
+    workout_prefix: W03_Tue_Mar16
+    is_race_day: false
+  - day: Wed
+    date: '2027-03-17'
+    date_short: Mar17
+    workout_prefix: W03_Wed_Mar17
+    is_race_day: false
+  - day: Thu
+    date: '2027-03-18'
+    date_short: Mar18
+    workout_prefix: W03_Thu_Mar18
+    is_race_day: false
+  - day: Fri
+    date: '2027-03-19'
+    date_short: Mar19
+    workout_prefix: W03_Fri_Mar19
+    is_race_day: false
+  - day: Sat
+    date: '2027-03-20'
+    date_short: Mar20
+    workout_prefix: W03_Sat_Mar20
+    is_race_day: false
+  - day: Sun
+    date: '2027-03-21'
+    date_short: Mar21
+    workout_prefix: W03_Sun_Mar21
+    is_race_day: false
+  is_recovery_week: false
+- week: 4
+  monday: '2027-03-22'
+  monday_short: Mar22
+  sunday: '2027-03-28'
+  sunday_short: Mar28
+  phase: build
+  is_race_week: false
+  days:
+  - day: Mon
+    date: '2027-03-22'
+    date_short: Mar22
+    workout_prefix: W04_Mon_Mar22
+    is_race_day: false
+  - day: Tue
+    date: '2027-03-23'
+    date_short: Mar23
+    workout_prefix: W04_Tue_Mar23
+    is_race_day: false
+  - day: Wed
+    date: '2027-03-24'
+    date_short: Mar24
+    workout_prefix: W04_Wed_Mar24
+    is_race_day: false
+  - day: Thu
+    date: '2027-03-25'
+    date_short: Mar25
+    workout_prefix: W04_Thu_Mar25
+    is_race_day: false
+  - day: Fri
+    date: '2027-03-26'
+    date_short: Mar26
+    workout_prefix: W04_Fri_Mar26
+    is_race_day: false
+  - day: Sat
+    date: '2027-03-27'
+    date_short: Mar27
+    workout_prefix: W04_Sat_Mar27
+    is_race_day: false
+  - day: Sun
+    date: '2027-03-28'
+    date_short: Mar28
+    workout_prefix: W04_Sun_Mar28
+    is_race_day: false
+  is_recovery_week: true
+- week: 5
+  monday: '2027-03-29'
+  monday_short: Mar29
+  sunday: '2027-04-04'
+  sunday_short: Apr4
+  phase: taper
+  is_race_week: false
+  days:
+  - day: Mon
+    date: '2027-03-29'
+    date_short: Mar29
+    workout_prefix: W05_Mon_Mar29
+    is_race_day: false
+  - day: Tue
+    date: '2027-03-30'
+    date_short: Mar30
+    workout_prefix: W05_Tue_Mar30
+    is_race_day: false
+  - day: Wed
+    date: '2027-03-31'
+    date_short: Mar31
+    workout_prefix: W05_Wed_Mar31
+    is_race_day: false
+  - day: Thu
+    date: '2027-04-01'
+    date_short: Apr1
+    workout_prefix: W05_Thu_Apr1
+    is_race_day: false
+  - day: Fri
+    date: '2027-04-02'
+    date_short: Apr2
+    workout_prefix: W05_Fri_Apr2
+    is_race_day: false
+  - day: Sat
+    date: '2027-04-03'
+    date_short: Apr3
+    workout_prefix: W05_Sat_Apr3
+    is_race_day: false
+  - day: Sun
+    date: '2027-04-04'
+    date_short: Apr4
+    workout_prefix: W05_Sun_Apr4
+    is_race_day: false
+  is_recovery_week: false
+- week: 6
+  monday: '2027-04-05'
+  monday_short: Apr5
+  sunday: '2027-04-11'
+  sunday_short: Apr11
+  phase: race
+  is_race_week: true
+  days:
+  - day: Mon
+    date: '2027-04-05'
+    date_short: Apr5
+    workout_prefix: W06_Mon_Apr5
+    is_race_day: false
+  - day: Tue
+    date: '2027-04-06'
+    date_short: Apr6
+    workout_prefix: W06_Tue_Apr6
+    is_race_day: false
+  - day: Wed
+    date: '2027-04-07'
+    date_short: Apr7
+    workout_prefix: W06_Wed_Apr7
+    is_race_day: false
+  - day: Thu
+    date: '2027-04-08'
+    date_short: Apr8
+    workout_prefix: W06_Thu_Apr8
+    is_race_day: false
+  - day: Fri
+    date: '2027-04-09'
+    date_short: Apr9
+    workout_prefix: W06_Fri_Apr9
+    is_race_day: false
+  - day: Sat
+    date: '2027-04-10'
+    date_short: Apr10
+    workout_prefix: W06_Sat_Apr10
+    is_race_day: false
+  - day: Sun
+    date: '2027-04-11'
+    date_short: Apr11
+    workout_prefix: W06_Sun_Apr11
+    is_race_day: true
+  is_recovery_week: false
+workout_naming_convention: W{week:02d}_{day}_{month}{day}_{name}.zwo
+workout_example: W01_Mon_Mar1_Endurance.zwo
+day_abbreviations:
+  monday: Mon
+  tuesday: Tue
+  wednesday: Wed
+  thursday: Thu
+  friday: Fri
+  saturday: Sat
+  sunday: Sun
+month_abbreviations:
+  1: Jan
+  2: Feb
+  3: Mar
+  4: Apr
+  5: May
+  6: Jun
+  7: Jul
+  8: Aug
+  9: Sep
+  10: Oct
+  11: Nov
+  12: Dec
