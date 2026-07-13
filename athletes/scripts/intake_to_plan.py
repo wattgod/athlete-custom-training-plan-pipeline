@@ -612,6 +612,18 @@ _RACE_DATE_RE = re.compile(r'\b(\d{4}-\d{2}-\d{2})\b')
 _COMPETITIVE_GOAL_KEYWORDS = (
     'podium', 'win', 'victory', 'top 3', 'top-3', 'top 5', 'top-5',
     'top 10', 'top-10', 'compete', 'competitive', 'qualify', 'age group',
+    # B4: championship / selection / front-of-race language a competitive
+    # athlete naturally uses but the old list missed (all resolved to 'finish').
+    'worlds', 'world championship', 'world champs', 'nationals',
+    'national championship', 'national champs', 'team usa', 'make the team',
+    'selection race', 'first place', '1st place', 'defend', 'title',
+    'elite field', 'race the front', 'front group', 'beat my rivals',
+)
+
+# B4: explicit non-competitive framing overrides a stray competitive keyword.
+_NONCOMPETITIVE_GOAL_PHRASES = (
+    'just finish', 'just want to finish', 'just complete', 'not competitive',
+    'no pressure', 'finish comfortably', 'finish healthy',
 )
 
 _TRAVEL_RANGE_RE = re.compile(
@@ -661,6 +673,10 @@ def derive_goal_type(success_text: str) -> str:
     finish-focused beginner (MAF / Low-HR selected over Polarized).
     """
     text = (success_text or '').lower()
+    # B4: explicit non-competitive framing wins even if a competitive keyword
+    # also appears ("I'm not competitive, just want to finish").
+    if any(p in text for p in _NONCOMPETITIVE_GOAL_PHRASES):
+        return 'finish'
     if any(k in text for k in _COMPETITIVE_GOAL_KEYWORDS):
         return 'podium'
     return 'finish'

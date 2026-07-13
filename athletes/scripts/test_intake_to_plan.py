@@ -1079,6 +1079,25 @@ class TestEdgeCases:
         assert result['basic_info']['age'] == '30'
 
 
+class TestGoalTypeKeywords:
+    """B4: championship / selection phrasing reads as competitive; explicit
+    non-competitive framing stays 'finish'."""
+
+    @pytest.mark.parametrize("text,expected", [
+        ("Make Team USA and race at the World Championship", "podium"),
+        ("Be the best in my age group at Nationals", "podium"),
+        ("Stand on the podium at Worlds", "podium"),
+        ("Qualify for the elite field and race the front", "podium"),
+        ("I just want to finish healthy", "finish"),
+        ("Not competitive, just complete the distance", "finish"),
+        ("Finish comfortably and enjoy the day", "finish"),
+        ("", "finish"),
+    ])
+    def test_derive_goal_type(self, text, expected):
+        from intake_to_plan import derive_goal_type
+        assert derive_goal_type(text) == expected
+
+
 class TestMethodologySelection:
     """Test that methodology selection is driven by objective data, not free text."""
 
