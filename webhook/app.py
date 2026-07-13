@@ -1546,6 +1546,7 @@ CUSTOMER_DELIVERABLES = [
 ]
 # Coach-only files (not sent to customer)
 COACH_DELIVERABLES = [
+    'NEEDS_REVIEW.txt',   # only present when the compliance gate flagged the plan (A10)
     'coaching_brief.md',
     'personal_email.md',
     'plan_summary.yaml',
@@ -1611,8 +1612,10 @@ def persist_deliverables(athlete_id: str) -> dict:
         if src.exists():
             shutil.copy2(src, delivery_dir / fname)
             copied.append(fname)
-        elif fname in ('training_guide.pdf',):
-            pass  # PDF is optional (no Chrome on Railway)
+        elif fname in ('training_guide.pdf', 'NEEDS_REVIEW.txt'):
+            # PDF optional (no Chrome on Railway); NEEDS_REVIEW.txt only exists
+            # when the compliance gate flagged the plan — absence is normal. (A10)
+            pass
         else:
             missing.append(fname)
 

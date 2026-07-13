@@ -155,6 +155,25 @@ class TestDownloadTokenInPath:
         assert resp.status_code == 404  # backward compatible: auth still passes
 
 
+class TestNeedsReviewInZip:
+    """A10: NEEDS_REVIEW.txt is a coach deliverable -> it rides in the full
+    package zip but is excluded from the customer zip (which drops
+    COACH_DELIVERABLES), and its absence on a clean plan is not 'missing'."""
+
+    def test_needs_review_is_coach_only_deliverable(self):
+        from app import COACH_DELIVERABLES, CUSTOMER_DELIVERABLES
+        assert 'NEEDS_REVIEW.txt' in COACH_DELIVERABLES
+        assert 'NEEDS_REVIEW.txt' not in CUSTOMER_DELIVERABLES
+
+    def test_needs_review_treated_as_optional(self):
+        # It must share the optional-skip branch with the PDF so a clean plan
+        # (no flag file) does not report it 'missing'.
+        import inspect
+        from app import persist_deliverables
+        src = inspect.getsource(persist_deliverables)
+        assert "'NEEDS_REVIEW.txt'" in src and "training_guide.pdf" in src
+
+
 class TestNotificationLogMasksPII:
     """A6: the Resend-unavailable CRITICAL log fallback must not leak raw emails."""
 
