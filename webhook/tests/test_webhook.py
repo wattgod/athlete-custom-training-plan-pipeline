@@ -23,7 +23,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Set test environment before importing app
 os.environ['FLASK_ENV'] = 'test'
-os.environ['WOOCOMMERCE_SECRET'] = ''  # Disable signature check in tests
 os.environ['STRIPE_WEBHOOK_SECRET'] = ''
 os.environ['STRIPE_SECRET_KEY'] = ''  # Disable in tests
 # Legacy tests assert the original synchronous webhook contract (pipeline
@@ -327,89 +326,6 @@ class TestOrderDataValidation:
         assert 'weight' in error.lower()
 
 
-class TestWooCommerceWebhook:
-    """Tests for WooCommerce webhook endpoint."""
-
-    def test_woocommerce_ignores_pending_orders(self, client):
-        """Pending orders are ignored."""
-        response = client.post(
-            '/webhook/woocommerce',
-            json={'status': 'pending'},
-            content_type='application/json'
-        )
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data['status'] == 'ignored'
-
-    def test_woocommerce_processes_completed_orders(self, client, temp_athletes_dir):
-        """Completed orders are processed."""
-        order_data = {
-            'id': 12345,
-            'status': 'completed',
-            'billing': {
-                'first_name': 'John',
-                'last_name': 'Doe',
-                'email': 'john@example.com',
-            },
-            'meta_data': [
-                {'key': 'race_name', 'value': 'Test Race'},
-                {'key': 'race_date', 'value': '2025-06-01'},
-            ],
-            'line_items': [
-                {'name': 'Custom Training Plan - Race Ready', 'sku': 'training-race-ready'}
-            ]
-        }
-
-        with patch('app.run_pipeline') as mock_pipeline:
-            mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
-
-            response = client.post(
-                '/webhook/woocommerce',
-                json=order_data,
-                content_type='application/json'
-            )
-
-            assert response.status_code == 200
-            data = response.get_json()
-            assert data['status'] == 'success'
-            assert data['athlete_id'] == 'john_doe'
-
-    def test_woocommerce_idempotency(self, client, temp_athletes_dir):
-        """Duplicate orders are rejected."""
-        order_data = {
-            'id': 99999,
-            'status': 'completed',
-            'billing': {
-                'first_name': 'Jane',
-                'last_name': 'Doe',
-                'email': 'jane@example.com',
-            },
-            'meta_data': [],
-            'line_items': []
-        }
-
-        with patch('app.run_pipeline') as mock_pipeline:
-            mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
-
-            # First request
-            response1 = client.post(
-                '/webhook/woocommerce',
-                json=order_data,
-                content_type='application/json'
-            )
-            assert response1.status_code == 200
-
-            # Second request (duplicate)
-            response2 = client.post(
-                '/webhook/woocommerce',
-                json=order_data,
-                content_type='application/json'
-            )
-            assert response2.status_code == 200
-            data = response2.get_json()
-            assert data['status'] == 'duplicate'
-
-
 class TestStripeWebhook:
     """Tests for Stripe webhook endpoint."""
 
@@ -461,29 +377,6 @@ class TestStripeWebhook:
 
 class TestDataExtraction:
     """Tests for data extraction functions."""
-
-    def test_extract_woocommerce_tier_from_sku(self):
-        """Tier is correctly determined from product SKU."""
-        from app import extract_woocommerce_data
-
-        # Starter
-        data = {
-            'billing': {'first_name': 'Test', 'last_name': 'User', 'email': 'test@test.com'},
-            'meta_data': [],
-            'line_items': [{'sku': 'training-starter', 'name': 'anything'}]
-        }
-        result = extract_woocommerce_data(data)
-        assert result['tier'] == 'starter'
-
-        # Full Build
-        data['line_items'] = [{'sku': 'training-full-build', 'name': 'anything'}]
-        result = extract_woocommerce_data(data)
-        assert result['tier'] == 'full_build'
-
-        # Race Ready
-        data['line_items'] = [{'sku': 'training-race-ready', 'name': 'anything'}]
-        result = extract_woocommerce_data(data)
-        assert result['tier'] == 'race_ready'
 
     def test_extract_stripe_tier_from_metadata(self):
         """Tier is correctly extracted from metadata."""

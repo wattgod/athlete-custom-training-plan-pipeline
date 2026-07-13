@@ -66,7 +66,6 @@ logger = logging.getLogger('gravel-god-webhook')
 
 IS_PRODUCTION = os.environ.get('FLASK_ENV') == 'production'
 
-WOOCOMMERCE_SECRET = os.environ.get('WOOCOMMERCE_SECRET', '')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
 ATHLETES_DIR = os.environ.get('ATHLETES_DIR', '/app/athletes')
@@ -953,32 +952,6 @@ def validate_order_data(order_data: dict) -> tuple:
 # SIGNATURE VERIFICATION
 # =============================================================================
 
-def verify_woocommerce_signature(payload: bytes, signature: str) -> bool:
-    """Verify WooCommerce webhook signature."""
-    if not WOOCOMMERCE_SECRET:
-        if IS_PRODUCTION:
-            logger.error("WOOCOMMERCE_SECRET not configured in production")
-            return False
-        logger.warning("WOOCOMMERCE_SECRET not set - skipping verification (dev mode)")
-        return True
-
-    expected = hmac.new(
-        WOOCOMMERCE_SECRET.encode(),
-        payload,
-        hashlib.sha256
-    ).hexdigest()
-
-    # WooCommerce sends base64 encoded signature, not hex
-    import base64
-    try:
-        sig_bytes = base64.b64decode(signature)
-        sig_hex = sig_bytes.hex()
-    except Exception:
-        sig_hex = signature  # Fallback to raw comparison
-
-    return hmac.compare_digest(expected, sig_hex)
-
-
 def verify_stripe_signature(payload: bytes, signature: str) -> bool:
     """Verify Stripe webhook signature."""
     if not STRIPE_WEBHOOK_SECRET:
@@ -1151,68 +1124,6 @@ def compute_plan_price(race_date_str: str) -> dict:
 # =============================================================================
 # DATA EXTRACTION
 # =============================================================================
-
-def extract_woocommerce_data(data: dict) -> dict:
-    """Extract athlete info from WooCommerce order."""
-    billing = data.get('billing', {})
-    meta = {item['key']: item['value'] for item in data.get('meta_data', [])}
-    line_items = data.get('line_items', [])
-
-    # Determine tier from product SKU (more reliable than name)
-    tier = 'race_ready'  # default
-    for item in line_items:
-        sku = item.get('sku', '').lower()
-        if sku == 'training-starter':
-            tier = 'starter'
-        elif sku == 'training-full-build':
-            tier = 'full_build'
-        elif sku == 'training-race-ready':
-            tier = 'race_ready'
-        else:
-            # Fallback to name matching
-            product_name = item.get('name', '').lower()
-            if 'starter' in product_name:
-                tier = 'starter'
-            elif 'full' in product_name and 'build' in product_name:
-                tier = 'full_build'
-
-    # Generate athlete ID from name
-    first_name = billing.get('first_name', '').strip()
-    last_name = billing.get('last_name', '').strip()
-    name = f"{first_name} {last_name}".strip()
-    athlete_id = sanitize_athlete_id(name)
-
-    return {
-        'athlete_id': athlete_id,
-        'order_id': str(data.get('id', '')),
-        'tier': tier,
-        'profile': {
-            'name': name,
-            'email': billing.get('email', '').strip().lower(),
-            'age': safe_int(meta.get('age')),
-            'fitness_markers': {
-                'weight_kg': safe_float(meta.get('weight_kg')),
-                'ftp_watts': safe_int(meta.get('ftp_watts')),
-            },
-            'target_race': {
-                'name': meta.get('race_name', ''),
-                'date': meta.get('race_date', ''),
-                'distance_miles': safe_float(meta.get('race_distance_miles')),
-                'elevation_gain_ft': safe_int(meta.get('race_elevation_ft')),
-                'terrain': meta.get('race_terrain', 'gravel'),
-            },
-            'weekly_schedule': {
-                'cycling_hours_target': safe_float(meta.get('cycling_hours', 10)),
-                'strength_hours': safe_float(meta.get('strength_hours', 2)),
-                'preferred_long_day': meta.get('preferred_long_day', 'saturday'),
-            },
-            'experience_level': meta.get('experience_level', 'intermediate'),
-            'race_goal': meta.get('race_goal', 'finish'),
-            'limiters': meta.get('limiters', ''),
-            'notes': meta.get('notes', ''),
-        }
-    }
-
 
 def extract_stripe_data(data: dict) -> dict:
     """Extract athlete info from Stripe checkout session.
@@ -1556,7 +1467,11 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
         cmd = ['python3', str(script_path), athlete_id]
         if deliver:
             cmd.append('--deliver')
-        logger.info(f"Running legacy pipeline for {athlete_id}")
+        # No structured intake: the legacy generate_full_package path does NOT
+        # emit the NEEDS_REVIEW flag or a coaching brief, so a compliance-failing
+        # plan could ship unflagged. WooCommerce (the old caller) is gone; this
+        # now only fires on a Stripe intake-lookup failure. Alert loudly. (A5)
+        logger.critical(f"LEGACY PIPELINE (no intake_data) for {athlete_id} - plan lacks NEEDS_REVIEW flag + coaching brief; review manually before sending.")
     else:
         if not script_path.exists():
             return {
@@ -2991,76 +2906,6 @@ def create_consulting_checkout():
         return jsonify({'error': 'Internal server error'}), 500
 
 
-@app.route('/webhook/woocommerce', methods=['POST'])
-def woocommerce_webhook():
-    """Handle WooCommerce order webhook."""
-    signature = request.headers.get('X-WC-Webhook-Signature', '')
-
-    if not verify_woocommerce_signature(request.data, signature):
-        logger.warning("Invalid WooCommerce signature")
-        return jsonify({'error': 'Invalid signature'}), 401
-
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'Invalid JSON'}), 400
-
-    # Only process completed orders
-    if data.get('status') not in ['completed', 'processing']:
-        return jsonify({'status': 'ignored', 'reason': 'Order not completed'})
-
-    try:
-        order_data = extract_woocommerce_data(data)
-
-        # Idempotency check
-        if check_idempotency(order_data['order_id']):
-            return jsonify({
-                'status': 'duplicate',
-                'message': 'Order already processed'
-            })
-
-        # Validate order data
-        is_valid, error_msg = validate_order_data(order_data)
-        if not is_valid:
-            logger.error(f"Invalid order data: {error_msg}")
-            return jsonify({'error': error_msg}), 400
-
-        athlete_id, profile_path = create_athlete_profile(order_data)
-
-        # Mark as processed BEFORE pipeline to prevent TOCTOU race with
-        # webhook retries. Stripe/WooCommerce retry if we don't respond within
-        # ~20s, and the pipeline takes up to 5 minutes. Without this, retries
-        # pass the idempotency check and start duplicate pipelines.
-        mark_order_processed(order_data['order_id'], athlete_id)
-
-        # Queue generation, return immediately (same async path as Stripe).
-        job, sync_result = _spawn_plan_job(order_data)
-
-        if sync_result is not None:
-            # SYNC_PIPELINE=1 — legacy inline path (tests / local debugging)
-            if sync_result['success']:
-                return jsonify({
-                    'status': 'success',
-                    'athlete_id': athlete_id,
-                    'message': 'Training plan generated and delivered'
-                })
-            return jsonify({
-                'status': 'pipeline_failed',
-                'athlete_id': athlete_id,
-                'message': 'Order received but pipeline failed. Manual intervention required.'
-            })
-
-        return jsonify({
-            'status': 'accepted',
-            'athlete_id': athlete_id,
-            'job_status': job.get('status', 'queued'),
-            'message': 'Training plan generation queued'
-        })
-
-    except Exception as e:
-        logger.exception(f"WooCommerce webhook error: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
-
-
 @app.route('/webhook/stripe', methods=['POST'])
 @limiter.limit("60/minute")
 def stripe_webhook():
@@ -3266,7 +3111,7 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
         except Exception as e:
             logger.warning(f"Failed to backup intake data: {e}")
 
-    # Mark BEFORE pipeline — see WooCommerce handler comment for rationale
+    # Mark BEFORE pipeline — Stripe retries after ~20s; marking after the ~5-min pipeline would let a retry start a duplicate run
     mark_order_processed(order_data['order_id'], athlete_id)
 
     # Record purchase in GA4 (server-side, consent-independent)
