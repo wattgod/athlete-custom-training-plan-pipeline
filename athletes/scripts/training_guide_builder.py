@@ -410,6 +410,13 @@ def _build_full_guide(
     meta = race_data.get("race_metadata", {})
     location = meta.get("location", "")
     elevation = race_data.get("elevation_feet", meta.get("elevation_feet", ""))
+    # store_mode + vitals.gain_display: some races' total climbing gain is
+    # unverified or only a partial (named-climbs) sum — gain_display
+    # overrides the numeric elevation_ft ONLY for the cover badge (see
+    # _meta_badges). The numeric elevation above is untouched and keeps
+    # feeding internal estimates (ride-hours, altitude trigger) as before.
+    # Athlete (1:1) mode never honors this override.
+    gain_display = race_data.get("gain_display") if store_mode else None
     mods = race_data.get("workout_modifications", {})
     non_negs = race_data.get("non_negotiables", {})
     race_specific = race_data.get("race_specific", {})
@@ -514,7 +521,7 @@ def _build_full_guide(
       <header class="guide-header">
         <h1>{page_h1}</h1>
         <div class="guide-meta">
-{_meta_badges(race_name, race_distance, elevation, duration_est, plan_duration, location)}
+{_meta_badges(race_name, race_distance, elevation, duration_est, plan_duration, location, gain_display=gain_display)}
         </div>
       </header>
 
@@ -3511,16 +3518,25 @@ def _methodology_display(methodology_yaml: dict) -> dict:
 
 
 def _meta_badges(race_name, race_distance, elevation, duration_est,
-                 plan_duration, location) -> str:
+                 plan_duration, location, gain_display=None) -> str:
     """Cover badges — empty values are dropped, never rendered as bare
-    units ('FT') or empty chips."""
+    units ('FT') or empty chips.
+
+    gain_display: optional override (store_mode only, from
+    vitals.gain_display) for races whose total climbing gain is unverified
+    or only a partial sum — e.g. "Varies" or "7,100+ ft (named climbs)".
+    Rendered verbatim (no " ft" appended) instead of the numeric elevation
+    badge when present. Athlete-mode guides never pass this.
+    """
     def has(v) -> bool:
         return v not in (None, '', 0, '0') and str(v).strip() not in ('', '—', '-', 'TBD', 'None')
 
     badges = [race_name if has(race_name) else None]
     if has(race_distance):
         badges.append(f"{race_distance} miles")
-    if has(elevation):
+    if has(gain_display):
+        badges.append(str(gain_display))
+    elif has(elevation):
         badges.append(f"{elevation} ft")
     badges.append(duration_est if has(duration_est) else f"{plan_duration}-week plan")
     if has(location):
@@ -3633,6 +3649,10 @@ def _flatten_race_data(race_data: Dict) -> Dict:
         race_data.setdefault('distance_miles', vitals.get('distance_mi'))
         race_data.setdefault('elevation_feet', vitals.get('elevation_ft'))
         race_data.setdefault('elevation_gain_feet', vitals.get('elevation_ft'))
+        # gain_display: optional vitals override for races whose total
+        # climbing gain is unverified or only a partial (named-climbs) sum
+        # — see _meta_badges. Never touched unless the JSON sets it.
+        race_data.setdefault('gain_display', vitals.get('gain_display'))
         race_data.setdefault('location', vitals.get('location'))
         race_data.setdefault('city', vitals.get('location', '').split(',')[0].strip() if vitals.get('location') else '')
         race_data.setdefault('state', vitals.get('location', '').split(',')[-1].strip() if vitals.get('location') else '')
