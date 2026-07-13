@@ -1,0 +1,58 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W07_Thu_May13_Blended_EnduranceThresholdSprints_2</name>
+  <description>[HIGH FUEL: Target 60-90g carbs/hr. Eat early, eat often.]
+
+Masters - Week 7/12 - 6 weeks to Eislek Gravel
+Phase: BUILD
+
+WARM-UP:
+-20min building from Z1 to Z2
+
+MAIN SET:
+-5min @ 76-87% FTP, RPE 5-6; 60min @ 56-75% FTP, RPE 3-4; 20min @ 88-92% FTP, RPE 6-7; 15min @ 56-75% FTP, RPE 3-4; 20min @ 88-92% FTP, RPE 6-7; 15min @ 56-75% FTP, RPE 3-4; 20min @ 88-92% FTP, RPE 6-7; 5min @ 56-75% FTP, RPE 3-4; 0min @ &gt;150% FTP, RPE 10; 0min @ &gt;150% FTP, RPE 10; 0min @ &gt;150% FTP, RPE 10; 0min @ &gt;150% FTP, RPE 10; 0min @ &gt;150% FTP, RPE 10; Position: Alternating - Alternate every 30 min: 30 min drops (aero) → 30 min hoods (power); Cadence: self-selected - Comfortable endurance cadence
+-Cadence: 88-95rpm (efficient threshold cadence)
+-Position: Drops for efforts, hoods for recovery
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 3/6: Development - Standard training load, building consistency
+-Aerobic base building. Easy riding builds mitochondrial density and fat oxidation—the foundation everything else rests on.
+
+PURPOSE:
+Threshold development. The power you can sustain for 20-60 minutes.
+
+EXECUTION:
+-Find your rhythm early. Break long efforts into mental thirds.
+
+NUTRITION:
+-60-80g carbs/hr. Practice race nutrition - multi-zone demands steady fueling.
+
+HYDRATION:
+-500-750ml/hr with electrolytes. Start hydrated.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="757" PowerLow="0.50" PowerHigh="0.75" />
+    <SteadyState Duration="2273" Power="0.68" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="757" Power="0.91" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="568" Power="0.70" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="757" Power="0.91" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="568" Power="0.70" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="757" Power="0.91" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="189" Power="0.70" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="12" Power="2.00" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="25" Power="0.50" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="12" Power="2.00" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="25" Power="0.50" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="12" Power="2.00" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="25" Power="0.50" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="12" Power="2.00" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="25" Power="0.50" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="12" Power="2.00" CadenceLow="105" CadenceHigh="115" />
+    <SteadyState Duration="25" Power="0.50" CadenceLow="105" CadenceHigh="115" />
+    <Cooldown Duration="378" PowerLow="0.75" PowerHigh="0.50" />
+  </workout>
+</workout_file>

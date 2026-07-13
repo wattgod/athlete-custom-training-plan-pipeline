@@ -1,0 +1,23 @@
+athlete_id: eislek-gravel-finisher-12wk
+athlete_name: Finisher Gravel Climber (Eislek Gravel) 12wk
+generated_date: '2026-07-13T15:18:48.270830'
+race:
+  name: Eislek Gravel
+  date: '2027-06-20'
+  distance_miles: 68
+plan:
+  weeks: 12
+  start_date: '2027-03-29'
+  end_date: '2027-06-20'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 92.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 399
+  estimated_duration_hours: 5.7
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/eislek-gravel-finisher-12wk/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/eislek-gravel-finisher-12wk/workouts
+  workout_count: 67
