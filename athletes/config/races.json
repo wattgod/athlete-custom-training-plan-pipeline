@@ -3338,7 +3338,7 @@
     "gravel:hot-springs-gravel-gauntlet": {
       "date": "2026-05-16",
       "discipline": "gravel",
-      "distance_mi": 75,
+      "distance_mi": 61,
       "elevation_ft": 6000,
       "location": "Hot Springs, North Carolina",
       "name": "Hot Springs Gravel Gauntlet",
@@ -4020,9 +4020,9 @@
       "slug": "liege-bastogne-liege-challenge"
     },
     "gravel:little-apple-100": {
-      "date": "2025-08-03",
+      "date": "2027-08-08",
       "discipline": "gravel",
-      "distance_mi": 100,
+      "distance_mi": 62,
       "elevation_ft": 3000,
       "location": "Manhattan, Illinois",
       "name": "Little Apple 100",
@@ -4065,9 +4065,9 @@
       "slug": "lone-wolf-gravel"
     },
     "gravel:lost-and-found-gravel": {
-      "date": "2026-06-13",
+      "date": "2027-06-12",
       "discipline": "gravel",
-      "distance_mi": 65,
+      "distance_mi": 100,
       "elevation_ft": 6000,
       "location": "Portola, California",
       "name": "Lost and Found Gravel",

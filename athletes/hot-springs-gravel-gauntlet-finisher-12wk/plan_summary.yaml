@@ -1,0 +1,23 @@
+athlete_id: hot-springs-gravel-gauntlet-finisher-12wk
+athlete_name: Finisher Gravel All-Rounder (Hot Springs Gravel Gauntlet) 12wk
+generated_date: '2026-07-13T05:37:19.896573'
+race:
+  name: Hot Springs Gravel Gauntlet
+  date: '2027-05-15'
+  distance_miles: 61
+plan:
+  weeks: 12
+  start_date: '2027-02-22'
+  end_date: '2027-05-16'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 92.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 357
+  estimated_duration_hours: 5.1
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/hot-springs-gravel-gauntlet-finisher-12wk/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/hot-springs-gravel-gauntlet-finisher-12wk/workouts
+  workout_count: 67

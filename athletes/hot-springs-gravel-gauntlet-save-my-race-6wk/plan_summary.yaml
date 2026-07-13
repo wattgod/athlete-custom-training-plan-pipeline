@@ -1,0 +1,23 @@
+athlete_id: hot-springs-gravel-gauntlet-save-my-race-6wk
+athlete_name: Save My Race Gravel All-Rounder (Hot Springs Gravel Gauntlet) 6wk
+generated_date: '2026-07-13T05:38:49.435759'
+race:
+  name: Hot Springs Gravel Gauntlet
+  date: '2027-05-15'
+  distance_miles: 61
+plan:
+  weeks: 6
+  start_date: '2027-04-05'
+  end_date: '2027-05-16'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 92.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 357
+  estimated_duration_hours: 5.1
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/hot-springs-gravel-gauntlet-save-my-race-6wk/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/hot-springs-gravel-gauntlet-save-my-race-6wk/workouts
+  workout_count: 30

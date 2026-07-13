@@ -1,0 +1,23 @@
+athlete_id: lost-and-found-gravel-masters-12wk
+athlete_name: Masters Gravel All-Rounder (Lost and Found Gravel) 12wk
+generated_date: '2026-07-13T05:39:15.525776'
+race:
+  name: Lost and Found Gravel
+  date: '2027-06-12'
+  distance_miles: 100
+plan:
+  weeks: 12
+  start_date: '2027-03-22'
+  end_date: '2027-06-13'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 92.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 69
+  total_carbs: 569
+  estimated_duration_hours: 8.3
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/lost-and-found-gravel-masters-12wk/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/lost-and-found-gravel-masters-12wk/workouts
+  workout_count: 67

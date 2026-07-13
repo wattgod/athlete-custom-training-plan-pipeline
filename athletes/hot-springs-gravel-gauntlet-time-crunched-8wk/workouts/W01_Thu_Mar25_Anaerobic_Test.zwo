@@ -1,0 +1,43 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W01_Thu_Mar25_Anaerobic_Test</name>
+  <description>[HIGH FUEL: Target 60-90g carbs/hr. Eat early, eat often.]
+
+Time-Crunched - Week 1/8 - 8 weeks to Hot Springs Gravel Gauntlet
+Phase: BASE
+
+WARM-UP:
+-20min building from Z1 to Z2
+
+MAIN SET:
+-3-minute all-out test after warmup. Establishes CP and W'.
+-Cadence: 100-110rpm - high turnover
+-Position: Drops, aggressive
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 1/6: Introductory - Focus on form and learning the workout pattern
+-3-minute all-out test - go hard from the start, hold on
+
+PURPOSE:
+Fitness assessment. Establish baseline metrics for training zones.
+
+EXECUTION:
+-Focus on consistent effort and good form throughout.
+
+NUTRITION:
+-40-60g carbs/hr for efforts over 60min.
+
+HYDRATION:
+-500-750ml/hr. Adjust for heat and humidity.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="1200" PowerLow="0.50" PowerHigh="0.75"/>
+    <SteadyState Duration="1740" Power="0.55" CadenceLow="100" CadenceHigh="110"/>
+    <FreeRide Duration="180" FlatRoad="1"/>
+    <Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.50"/>
+  </workout>
+</workout_file>

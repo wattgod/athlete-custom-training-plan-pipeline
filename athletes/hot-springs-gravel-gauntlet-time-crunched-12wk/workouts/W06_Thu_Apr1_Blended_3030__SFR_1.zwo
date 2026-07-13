@@ -1,0 +1,57 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W06_Thu_Apr1_Blended_3030__SFR_1</name>
+  <description>[HIGH FUEL: Target 60-90g carbs/hr. Eat early, eat often.]
+
+Time-Crunched - Week 6/12 - 7 weeks to Hot Springs Gravel Gauntlet
+Phase: BUILD
+
+WARM-UP:
+-15min building from Z1 to Z2
+
+MAIN SET:
+-1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype
+-Cadence: 50-60rpm (building torque tolerance)
+-Position: Seated, hoods or tops, smooth circles
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 2/6: Foundation - Building base fitness with moderate challenge
+-Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you'll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 2:  2: Building volume. Same pattern, more work. The fitness is in the accumulation.
+
+PURPOSE:
+Structured training. Building fitness through progressive overload.
+
+EXECUTION:
+-Focus on consistent effort and good form throughout.
+
+NUTRITION:
+-40-60g carbs/hr. Moderate intensity, focus on recovery nutrition.
+
+HYDRATION:
+-500ml/hr with electrolytes. Lower intensity but sustained effort.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="412" PowerLow="0.50" PowerHigh="0.75" />
+    <SteadyState Duration="824" Power="0.70" CadenceLow="85" CadenceHigh="95" />
+    <IntervalsT Repeat="1" OnDuration="30" OnPower="1.25" CadenceLow="85" CadenceHigh="95" OffDuration="30" OffPower="0.50" />
+    <SteadyState Duration="109" Power="0.86" CadenceLow="60" CadenceHigh="60" />
+    <SteadyState Duration="82" Power="0.55" CadenceLow="85" CadenceHigh="95" />
+    <IntervalsT Repeat="1" OnDuration="30" OnPower="1.25" CadenceLow="85" CadenceHigh="95" OffDuration="30" OffPower="0.50" />
+    <SteadyState Duration="109" Power="0.86" CadenceLow="60" CadenceHigh="60" />
+    <SteadyState Duration="82" Power="0.55" CadenceLow="85" CadenceHigh="95" />
+    <IntervalsT Repeat="1" OnDuration="30" OnPower="1.25" CadenceLow="85" CadenceHigh="95" OffDuration="30" OffPower="0.50" />
+    <SteadyState Duration="109" Power="0.86" CadenceLow="60" CadenceHigh="60" />
+    <SteadyState Duration="82" Power="0.55" CadenceLow="85" CadenceHigh="95" />
+    <IntervalsT Repeat="1" OnDuration="30" OnPower="1.25" CadenceLow="85" CadenceHigh="95" OffDuration="30" OffPower="0.50" />
+    <SteadyState Duration="109" Power="0.86" CadenceLow="60" CadenceHigh="60" />
+    <SteadyState Duration="82" Power="0.55" CadenceLow="85" CadenceHigh="95" />
+    <IntervalsT Repeat="1" OnDuration="30" OnPower="1.25" CadenceLow="85" CadenceHigh="95" OffDuration="30" OffPower="0.50" />
+    <SteadyState Duration="109" Power="0.86" CadenceLow="60" CadenceHigh="60" />
+    <SteadyState Duration="549" Power="0.85" CadenceLow="85" CadenceHigh="95" />
+    <Cooldown Duration="274" PowerLow="0.75" PowerHigh="0.50" />
+  </workout>
+</workout_file>
