@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W07_Sat_Sep19_Endurance</name>
+  <description>[MODERATE FUEL: Target 30-60g carbs/hr. Stay topped up.]
+
+Time-Crunched - Week 7/8 - 2 weeks to 66° South Pyrénées
+Phase: TAPER
+
+MAIN SET:
+- 80min @ 66-75% FTP (RPE 3-4)
+- Position: Alternate every 30 min: drops (aero) → hoods (power)
+- Cadence: self-selected, comfortable endurance cadence
+
+COOL-DOWN:
+- 10min easy spin Z1-Z2 (RPE 2-3)
+
+PURPOSE:
+Aerobic base building. Easy riding builds mitochondrial density and fat oxidation — the foundation everything else rests on.
+
+Level 2: Cadence and position focus. Same structure — refine the execution.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.50" PowerHigh="0.69"/>
+    <SteadyState Duration="4800" Power="0.69"/>
+    <Cooldown Duration="600" PowerLow="0.69" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

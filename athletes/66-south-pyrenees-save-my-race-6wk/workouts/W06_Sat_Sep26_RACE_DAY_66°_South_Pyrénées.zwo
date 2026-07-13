@@ -1,0 +1,52 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>W06_Sat_Sep26_RACE_DAY_66°_South_Pyrénées</name>
+  <description>RACE DAY: 66° South Pyrénées
+Date: 2026-09-26
+
+TARGET METRICS:
+- Distance: 62 miles
+- Expected Duration: 5.2 hours
+- Estimated TSS: 338
+
+FUELING PLAN:
+- Carbs/hour: 70g (range: [60, 80])
+- Total carbs: 364g over race
+- Start fueling at 20 min, every 20-30 min thereafter
+- Pre-race: 100-150g carbs 2-3 hours before start
+
+PACING STRATEGY:
+- First 30 min: EASY. Let others burn matches. You're playing the long game.
+- Mile 10-40: Find your rhythm. Target G SPOT zone (88-94% FTP) on climbs.
+- Final third: This is where you pass people. Increase effort as others fade.
+- Technical sections: Smooth > Fast. Avoid mechanicals.
+
+HYDRATION:
+- 500-750ml/hour depending on heat
+- Start hydrated (clear urine morning of race)
+- Don't wait until thirsty
+
+PRE-RACE CHECKLIST:
+- [ ] Bike mechanically sound
+- [ ] Tires appropriate pressure for conditions
+- [ ] Bottles filled with fuel mix
+- [ ] Pockets loaded (gels, bars, tool)
+- [ ] Electronics charged (computer, lights if needed)
+- [ ] Spare tube, CO2, multi-tool
+- [ ] Race number attached
+- [ ] Drop bags ready (if applicable)
+
+RACE MORNING:
+- Wake 3 hours before start
+- Breakfast: familiar foods, high carb, low fiber
+- Arrive 1 hour early for warmup
+- 15 min easy spin warmup with 2-3 openers
+
+GO GET IT, SAVE!
+</description>
+  <sportType>bike</sportType>
+  <workout>
+    <FreeRide Duration="18600"/>
+  </workout>
+</workout_file>

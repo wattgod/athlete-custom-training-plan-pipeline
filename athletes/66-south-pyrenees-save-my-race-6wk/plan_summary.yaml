@@ -1,0 +1,23 @@
+athlete_id: 66-south-pyrenees-save-my-race-6wk
+athlete_name: "Save My Race Gravel Climber (66\xB0 South Pyr\xE9n\xE9es) 6wk"
+generated_date: '2026-07-13T04:44:33.237164'
+race:
+  name: "66\xB0 South Pyr\xE9n\xE9es"
+  date: '2026-09-26'
+  distance_miles: 62
+plan:
+  weeks: 6
+  start_date: '2026-08-17'
+  end_date: '2026-09-27'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 92.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 364
+  estimated_duration_hours: 5.2
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/66-south-pyrenees-save-my-race-6wk/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/athletes/66-south-pyrenees-save-my-race-6wk/workouts
+  workout_count: 30
