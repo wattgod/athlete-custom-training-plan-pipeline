@@ -3366,7 +3366,7 @@
       "date": "2026-05-09",
       "discipline": "gravel",
       "distance_mi": 100,
-      "elevation_ft": 4500,
+      "elevation_ft": 5000,
       "location": "Cable, Wisconsin",
       "name": "Hungry Bear 100",
       "slug": "hungry-bear-100"
@@ -5318,9 +5318,9 @@
     "gravel:safari-gravel-race": {
       "date": "2026-06-13",
       "discipline": "gravel",
-      "distance_mi": 100,
-      "elevation_ft": 5000,
-      "location": "Kenya",
+      "distance_mi": 69,
+      "elevation_ft": 8202,
+      "location": "Sulmac Village, Lake Naivasha, Kenya",
       "name": "Safari Gravel Race",
       "slug": "safari-gravel-race"
     },
