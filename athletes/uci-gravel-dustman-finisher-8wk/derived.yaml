@@ -10,6 +10,6 @@ key_day_candidates:
 - sunday
 strength_day_candidates: []
 derived_date: '2026-07-13 00:00:00'
-plan_start: '2027-03-15'
-plan_end: '2027-05-09'
+plan_start: '2026-09-21'
+plan_end: '2026-11-15'
 race_weekday: Saturday
