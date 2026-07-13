@@ -712,7 +712,12 @@ def _section_training_plan_brief(
     days_info = schedule.get("days", {})
     _tr = profile.get("target_race", {}) or {}
     _race_has_provenance = bool(_tr.get("verified_at")) and not _tr.get("race_provenance_issue")
-    date_card = _date_verification_card(derived, date_xref or {}, _race_has_provenance)
+    date_card = _date_verification_card(
+        derived,
+        date_xref or {},
+        _race_has_provenance,
+        store_mode=store_mode,
+    )
 
     if store_mode:
         # No real athlete behind these numbers — a store buyer never filled
@@ -840,7 +845,12 @@ def _section_training_plan_brief(
 </section>"""
 
 
-def _date_verification_card(derived, date_xref, has_provenance=True) -> str:
+def _date_verification_card(
+    derived,
+    date_xref,
+    has_provenance=True,
+    store_mode: bool = False,
+) -> str:
     """Race-date verification card — lives in section 1 since the Race
     Profile section was removed per coach review (Jun 2026). A wrong
     race date wrecks the taper; this stays.
@@ -848,7 +858,15 @@ def _date_verification_card(derived, date_xref, has_provenance=True) -> str:
     has_provenance gates the green "Verified against race database" claim: the
     date matching our records is not the same as the race facts being sourced
     and verified. When provenance is missing (the fulfillment gate raises
-    RACE_STALE), the card must not assert verification."""
+    RACE_STALE), the card must not assert verification.
+
+    store_mode: no real athlete filled a questionnaire, so the QC
+    "Date mismatch" warning (which compares a generic base-intake plan date
+    against race-data's recorded date) is an internal authoring signal, not
+    a real discrepancy the buyer needs to see — suppress it entirely. Also
+    drop the "N days from today" countdown, which goes stale the day after
+    the guide is generated; show the plan's target race date plainly instead.
+    """
     # Build race date verification callout
     date_verification_html = ""
     if derived:
@@ -858,6 +876,17 @@ def _date_verification_card(derived, date_xref, has_provenance=True) -> str:
                 rd = datetime.strptime(str(race_date_str), "%Y-%m-%d")
                 day_of_week = rd.strftime("%A")
                 date_display = rd.strftime("%B %d, %Y")
+
+                if store_mode:
+                    date_verification_html = f"""
+  <div class="data-card" style="margin-top: 16px;">
+    <div class="data-card__header">RACE DAY</div>
+    <div class="data-card__content">
+      <p><strong>{day_of_week}, {date_display}</strong></p>
+    </div>
+  </div>"""
+                    return date_verification_html
+
                 days_until = (rd.date() - date.today()).days
 
                 # Determine verification status
