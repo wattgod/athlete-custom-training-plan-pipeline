@@ -69,11 +69,11 @@
    "slug": "66-degres-sud"
   },
   "gravel:66-south-pyrenees": {
-   "date": "2026-04-23",
+   "date": "2026-09-26",
    "discipline": "gravel",
-   "distance_mi": 65,
-   "elevation_ft": 5500,
-   "location": "Pyr\u00e9n\u00e9es, France",
+   "distance_mi": 62,
+   "elevation_ft": 7500,
+   "location": "Font-Romeu, Pyr\u00e9n\u00e9es-Orientales, France",
    "name": "66\u00b0 South Pyr\u00e9n\u00e9es",
    "slug": "66-south-pyrenees"
   },
