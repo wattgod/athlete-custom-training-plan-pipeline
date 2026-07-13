@@ -1195,6 +1195,34 @@ class TestMethodologySelection:
         # a first-timer/finisher with hours belongs on the base-heavy path
         assert 'Pyramidal' in self._selected(self._fit_profile(10, 1, 'finish'))
 
+    def test_experienced_podium_gets_polarized_not_pyramidal(self):
+        # B1+B2: an experienced podium athlete lands on the intensity-forward
+        # method, not Traditional Pyramidal via a false "beginner-friendly" bonus
+        # plus inert podium scoring (the old coin-flip tie).
+        for hours in (12, 14, 16):
+            name = self._selected(self._fit_profile(hours, 10, 'podium'))
+            assert 'Polarized' in name, f"{hours}h/10yr podium -> {name}"
+
+    def test_experienced_compete_favors_intensity(self):
+        # B2 (compete now carries weight) + B3 (deterministic tiebreak).
+        assert 'Polarized' in self._selected(self._fit_profile(13, 8, 'compete'))
+
+    def test_goal_type_shifts_score(self):
+        # B2: a more competitive goal raises the score of the intensity-forward
+        # methodology (podium > compete > finish) — goal type is no longer inert
+        # (the old podium branch was dead code against the 4-method roster).
+        from select_methodology import select_methodology
+        def score(g):
+            return select_methodology(self._fit_profile(12, 6, g),
+                                      {'plan_weeks': 16}, None)['score']
+        assert score('podium') > score('finish')
+        assert score('podium') >= score('compete') >= score('finish')
+
+    def test_true_beginner_still_base_heavy(self):
+        # B1 must not harm genuine beginners: a low-experience finisher stays on
+        # the base-heavy Traditional path.
+        assert 'Pyramidal' in self._selected(self._fit_profile(10, 1, 'finish'))
+
     def test_no_deleted_methodology_can_be_selected(self):
         # sweet spot / MAF / HIIT / Norwegian / etc. must never surface again
         banned = ('Sweet Spot', 'HIIT', 'MAF', 'Norwegian', 'INSCYD',

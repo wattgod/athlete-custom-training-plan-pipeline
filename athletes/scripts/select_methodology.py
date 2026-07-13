@@ -203,7 +203,11 @@ def calculate_methodology_score(
     elif exp_required == "intermediate" and years_structured < 1:
         score -= 10
         warnings.append(f"Requires intermediate experience (new to structured training)")
-    elif exp_required == "beginner":
+    elif exp_required == "beginner" and years_structured < 3:
+        # B1: only a genuine beginner earns the "beginner-friendly" bonus. An
+        # experienced athlete falls through to the "exceeds requirements" branch
+        # below instead of the old unconditional +5 that mislabeled a 10yr racer
+        # "beginner-friendly" and flipped methodology on a false tie.
         score += 5
         reasons.append("Beginner-friendly methodology")
     elif years_structured >= 3 and exp_required != "advanced":
@@ -298,25 +302,27 @@ def calculate_methodology_score(
     # ==========================================================================
     goal_type = profile.get("target_race", {}).get("goal_type", "finish")
 
-    if goal_type == "podium":
-        if methodology["experience_required"] == "advanced":
-            score += 5
-            reasons.append("Advanced methodology for podium goals")
-        elif "time_crunched" in best_for:
+    if goal_type in ("podium", "compete"):
+        if "time_crunched" in best_for:
             score -= 10
-            warnings.append("Time-crunched approach may limit podium potential")
-        # Zero high-intensity allocation cannot produce podium fitness.
-        # Without this, a podium-chasing Cat 3 scored MAF / Low-HR at 100
-        # ("beginner-friendly", "finish-focused") over Polarized.
-        # (intensity_distribution is a free-text string for some
-        # methodologies — only dicts carry a usable z4_z5 number.)
+            warnings.append("Time-crunched approach may limit competitive potential")
+        # B2: competitive/podium fitness needs real high-intensity work, so reward
+        # the methodology's z4/z5 allocation — intensity-forward methods (Polarized,
+        # 0.20) outscore base-heavy ones (Traditional Pyramidal, 0.10). The old code
+        # only penalized a zero-z4z5 methodology, but none survive the 4-method
+        # roster, so podium/compete had NO differentiating pull and Polarized vs
+        # Traditional came down to a coin-flip tie.
+        # (intensity_distribution is a free-text string for some methodologies —
+        # only dicts carry a usable z4_z5 number.)
         _dist = methodology.get("intensity_distribution", {})
         z4_z5 = _dist.get("z4_z5", 0.1) if isinstance(_dist, dict) else 0.1
         if z4_z5 <= 0.0:
             score -= 20
-            warnings.append(
-                "Zero-intensity methodology conflicts with podium goal"
-            )
+            warnings.append("Zero-intensity methodology conflicts with a competitive goal")
+        else:
+            _bonus = round(z4_z5 * (50 if goal_type == "podium" else 35))
+            score += _bonus
+            reasons.append(f"{int(z4_z5 * 100)}% Z4/Z5 allocation suits a {goal_type} goal")
     elif goal_type == "finish":
         if "recovery_friendly" in best_for or "beginner" in methodology["experience_required"]:
             score += 5
@@ -491,8 +497,14 @@ def select_methodology(
         )
         candidates.append((method_id, candidate))
 
-    # Sort by score descending
-    candidates.sort(key=lambda x: x[1].score, reverse=True)
+    # Sort by score descending, with a deterministic tiebreak: on an exact score
+    # tie, prefer the more intensity-capable methodology (higher z4/z5) rather
+    # than relying on dict insertion order — a real tie between e.g. Polarized and
+    # Traditional Pyramidal must not be settled by YAML ordering. (B3)
+    def _z4z5(mid):
+        d = METHODOLOGIES.get(mid, {}).get("intensity_distribution", {})
+        return d.get("z4_z5", 0.0) if isinstance(d, dict) else 0.0
+    candidates.sort(key=lambda x: (x[1].score, _z4z5(x[0])), reverse=True)
 
     # Select top methodology
     selected_id, selected = candidates[0]
