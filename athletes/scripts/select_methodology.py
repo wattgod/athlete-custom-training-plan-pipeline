@@ -501,10 +501,16 @@ def select_methodology(
     # tie, prefer the more intensity-capable methodology (higher z4/z5) rather
     # than relying on dict insertion order — a real tie between e.g. Polarized and
     # Traditional Pyramidal must not be settled by YAML ordering. (B3)
-    def _z4z5(mid):
+    # GOAL-AWARE: a competitive goal prefers the more intensity-capable method
+    # (higher z4/z5) on a tie; a finish goal prefers the base-heavy fit. The old
+    # tiebreak favored z4/z5 for everyone, over-nudging finishers toward intensity
+    # (review P2). Never settle a tie by YAML insertion order.
+    _goal = profile.get("target_race", {}).get("goal_type", "finish")
+    def _tiebreak(mid):
         d = METHODOLOGIES.get(mid, {}).get("intensity_distribution", {})
-        return d.get("z4_z5", 0.0) if isinstance(d, dict) else 0.0
-    candidates.sort(key=lambda x: (x[1].score, _z4z5(x[0])), reverse=True)
+        z = d.get("z4_z5", 0.0) if isinstance(d, dict) else 0.0
+        return z if _goal in ("podium", "compete") else -z
+    candidates.sort(key=lambda x: (x[1].score, _tiebreak(x[0])), reverse=True)
 
     # Select top methodology
     selected_id, selected = candidates[0]

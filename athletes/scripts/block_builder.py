@@ -511,7 +511,10 @@ def _build_week(
         # (lower floor, rising per block) while build/peak fill near target.
         # A flat 0.80 floor made W1 as big as W19.
         if phase == 'base':
-            floor_pct = min(0.62 + 0.05 * max(block_number - 1, 0), 0.75)
+            # Floor the base minimum at 0.65 to match R19's compliance floor
+            # (target*0.65). At 0.62 a first-block base load week could grow to
+            # only 62% yet still fail R19 at 65% (review P2). Still ramps per block.
+            floor_pct = min(0.65 + 0.05 * max(block_number - 1, 0), 0.75)
         elif phase == 'build':
             floor_pct = 0.82
         elif phase in ('peak', 'race_prep'):

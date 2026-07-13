@@ -113,8 +113,8 @@ class TestVolumeFloors:
         for w in plan['weeks']:
             if (w.get('phase') == 'base' and w.get('week_type') == 'load'
                     and w.get('plan_week', 0) > 4):
-                assert w['total_duration'] / tgt >= 0.62, \
-                    f"base W{w['plan_week']} at {w['total_duration']/tgt:.0%} < 0.62 floor"
+                assert w['total_duration'] / tgt >= 0.65, \
+                    f"base W{w['plan_week']} at {w['total_duration']/tgt:.0%} < 0.65 R19 floor"
 
 
 class TestGoldenCompliance:

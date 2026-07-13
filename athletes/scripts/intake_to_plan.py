@@ -612,18 +612,31 @@ _RACE_DATE_RE = re.compile(r'\b(\d{4}-\d{2}-\d{2})\b')
 _COMPETITIVE_GOAL_KEYWORDS = (
     'podium', 'win', 'victory', 'top 3', 'top-3', 'top 5', 'top-5',
     'top 10', 'top-10', 'compete', 'competitive', 'qualify', 'age group',
-    # B4: championship / selection / front-of-race language a competitive
-    # athlete naturally uses but the old list missed (all resolved to 'finish').
+    # B4: unambiguous championship / selection language. Generic words that
+    # collide with everyday phrasing ('defend', 'title', 'first place',
+    # 'front group', 'beat my rivals') were DROPPED after the review — they
+    # produced false podium matches ("in the first place", "defend against injury").
     'worlds', 'world championship', 'world champs', 'nationals',
     'national championship', 'national champs', 'team usa', 'make the team',
-    'selection race', 'first place', '1st place', 'defend', 'title',
-    'elite field', 'race the front', 'front group', 'beat my rivals',
+    'selection race', 'elite field',
 )
 
-# B4: explicit non-competitive framing overrides a stray competitive keyword.
+# Whole-word matching so 'win' doesn't fire on 'winter', etc. (review P2).
+_COMPETITIVE_GOAL_RE = re.compile(
+    r'\b(' + '|'.join(re.escape(k) for k in _COMPETITIVE_GOAL_KEYWORDS) + r')\b')
+
+# Explicit non-competitive framing overrides an incidental competitive keyword.
 _NONCOMPETITIVE_GOAL_PHRASES = (
     'just finish', 'just want to finish', 'just complete', 'not competitive',
-    'no pressure', 'finish comfortably', 'finish healthy',
+    'non-competitive', 'no pressure', 'finish comfortably', 'finish healthy',
+)
+
+# A negated finish ("not just finish", "more than finishing") is a COMPETITIVE
+# signal that must beat both the override and an incidental keyword (review P1).
+_NEGATED_FINISH_PHRASES = (
+    'not just finish', "don't just finish", 'do not just finish',
+    'not just to finish', 'more than just finish', 'more than finishing',
+    'not only finish', 'beyond just finish',
 )
 
 _TRAVEL_RANGE_RE = re.compile(
@@ -673,12 +686,22 @@ def derive_goal_type(success_text: str) -> str:
     finish-focused beginner (MAF / Low-HR selected over Polarized).
     """
     text = (success_text or '').lower()
-    # B4: explicit non-competitive framing wins even if a competitive keyword
-    # also appears ("I'm not competitive, just want to finish").
-    if any(p in text for p in _NONCOMPETITIVE_GOAL_PHRASES):
-        return 'finish'
-    if any(k in text for k in _COMPETITIVE_GOAL_KEYWORDS):
+    # A negated finish ("I don't want to just finish, I want to win") is a
+    # competitive signal that beats both the override and any incidental keyword.
+    if any(n in text for n in _NEGATED_FINISH_PHRASES):
         return 'podium'
+    hits = _COMPETITIVE_GOAL_RE.findall(text)
+    noncompetitive = any(p in text for p in _NONCOMPETITIVE_GOAL_PHRASES)
+    if hits:
+        # If the ONLY competitive hit is a negated 'compete/competitive'
+        # ("not competitive, just want to finish"), honor the finish framing.
+        if noncompetitive and ('not competitive' in text or 'non-competitive' in text):
+            others = [h for h in hits if h not in ('compete', 'competitive')]
+            if not others:
+                return 'finish'
+        return 'podium'
+    if noncompetitive:
+        return 'finish'
     return 'finish'
 
 

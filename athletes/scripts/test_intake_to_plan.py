@@ -1092,6 +1092,12 @@ class TestGoalTypeKeywords:
         ("Not competitive, just complete the distance", "finish"),
         ("Finish comfortably and enjoy the day", "finish"),
         ("", "finish"),
+        # review P1/P2: negation beats the override; dropped/ambiguous words and
+        # substrings no longer false-positive.
+        ("I don't want to just finish; I want to win at Nationals", "podium"),
+        ("In the first place, I want to complete the ride", "finish"),
+        ("Build base and defend against another knee injury", "finish"),
+        ("Winter training to build fitness", "finish"),
     ])
     def test_derive_goal_type(self, text, expected):
         from intake_to_plan import derive_goal_type
@@ -1241,6 +1247,14 @@ class TestMethodologySelection:
         # B1 must not harm genuine beginners: a low-experience finisher stays on
         # the base-heavy Traditional path.
         assert 'Pyramidal' in self._selected(self._fit_profile(10, 1, 'finish'))
+
+    def test_low_hours_podium_stays_hours_fit(self):
+        # Review P2 (accepted): at 7-9h a podium goal does NOT override the strong
+        # hours-fit advantage — documents the boundary honestly. B2's z4/z5 nudge
+        # only tips selection once volume can support polarized training (12h+).
+        for hours in (7, 8, 9):
+            name = self._selected(self._fit_profile(hours, 10, 'podium'))
+            assert 'Polarized' not in name, f"{hours}h podium unexpectedly -> {name}"
 
     def test_no_deleted_methodology_can_be_selected(self):
         # sweet spot / MAF / HIIT / Norwegian / etc. must never surface again
