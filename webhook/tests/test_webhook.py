@@ -234,6 +234,57 @@ class TestNotificationLogMasksPII:
         assert 'jane.doe@example.com' not in logged  # but not the raw email
 
 
+class TestCodexReviewFixes:
+    """Fixes from the Codex 5.6 sol adversarial review of PR #51."""
+
+    def test_blank_camel_field_falls_back_to_legacy(self):
+        from app import _years_structured_from_intake
+        assert _years_structured_from_intake(
+            {'priorPlanExperience': '', 'prior_plan_experience': '5'}) == 5
+
+    def test_zero_workout_package_is_incomplete(self):
+        from app import _persist_incomplete
+        assert _persist_incomplete({'full_zip_size': 5000, 'zwo_count': 0})
+        assert _persist_incomplete(
+            {'full_zip_size': 5000, 'zwo_count': 12, 'missing': []}) == ''
+
+    def test_persist_flags_zero_workouts(self, tmp_path, monkeypatch):
+        import app
+        aid = 'zero_rider'
+        ath = tmp_path / 'athletes' / aid
+        (ath / 'workouts').mkdir(parents=True)  # exists but EMPTY
+        (ath / 'training_guide.html').write_text('<html>x</html>')
+        deliv = tmp_path / 'deliveries'; deliv.mkdir()
+        monkeypatch.setattr(app, 'ATHLETES_DIR', str(ath.parent))
+        monkeypatch.setattr(app, 'DELIVERIES_DIR', str(deliv))
+        res = app.persist_deliverables(aid)
+        assert res['zwo_count'] == 0
+        assert app._persist_incomplete(res)  # guard now catches an empty package
+
+    def test_persist_clears_stale_needs_review(self, tmp_path, monkeypatch):
+        import app
+        aid = 'repeat_rider'
+        ath = tmp_path / 'athletes' / aid
+        (ath / 'workouts').mkdir(parents=True)
+        (ath / 'workouts' / 'w1.zwo').write_text('<x/>')
+        (ath / 'training_guide.html').write_text('<html>x</html>')
+        deliv = tmp_path / 'deliveries'
+        (deliv / aid).mkdir(parents=True)
+        (deliv / aid / 'NEEDS_REVIEW.txt').write_text('STALE FLAG')  # prior run
+        monkeypatch.setattr(app, 'ATHLETES_DIR', str(ath.parent))
+        monkeypatch.setattr(app, 'DELIVERIES_DIR', str(deliv))
+        app.persist_deliverables(aid)  # clean run, no NEEDS_REVIEW in source
+        assert not (deliv / aid / 'NEEDS_REVIEW.txt').exists()
+
+    def test_legacy_no_intake_email_is_flagged(self):
+        from app import _build_training_plan_email
+        parts = _build_training_plan_email(
+            {'athlete_id': 'x', 'name': 'X', 'pipeline_success': True,
+             'legacy_no_intake': True, 'download_token': 'a' * 32})
+        blob = ' '.join(str(p) for p in parts)
+        assert 'NO INTAKE' in blob  # flagged, not a clean 'New order'
+
+
 class TestInputValidation:
     """Tests for input validation functions."""
 

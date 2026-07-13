@@ -379,7 +379,9 @@ def _build_training_plan_email(details: dict) -> tuple:
     download_full = f'{base_url}/api/download/{athlete_id}/{download_token}?type=full' if download_token else ''
 
     status_color = '#1A8A82' if pipeline_ok else '#c0392b'
-    status_label = 'READY FOR REVIEW' if pipeline_ok else 'PIPELINE FAILED'
+    status_label = ('PACKAGE INCOMPLETE — DO NOT SEND'
+                    if (pipeline_ok and details.get('package_incomplete'))
+                    else 'READY FOR REVIEW' if pipeline_ok else 'PIPELINE FAILED')
 
     # Edge-case review flags — profiles where automation is most likely to
     # need a human eye before delivery. The plan still generated and passed
@@ -434,9 +436,20 @@ def _build_training_plan_email(details: dict) -> tuple:
             'generated but its package failed to persist; the download link is '
             'unavailable. Investigate before sending.')
 
+    # Legacy (no-intake) plans lack the NEEDS_REVIEW compliance flag AND the
+    # coaching brief entirely — flag loudly but keep the (valid) download. (A5 review)
+    legacy_no_intake = bool(details.get('legacy_no_intake'))
+    if legacy_no_intake:
+        review_flags.insert(0,
+            'NO INTAKE ON FILE — the legacy generator ran, so this plan has NO '
+            'compliance flag and NO coaching brief. Review the whole plan manually '
+            'before sending.')
+
     subject = f"[GG] {'New order' if pipeline_ok else 'FAILED'}: {name} — {race_name or 'training plan'}"
     if pipeline_ok and package_incomplete:
         subject = subject.replace('[GG] New order', '[GG] ⚠ PACKAGE INCOMPLETE')
+    elif pipeline_ok and legacy_no_intake:
+        subject = subject.replace('[GG] New order', '[GG] ⚠ NO INTAKE — REVIEW')
     elif pipeline_ok and needs_review:
         subject = subject.replace('[GG] New order', '[GG] ⚠ NEEDS REVIEW')
     elif pipeline_ok and review_flags:
@@ -507,7 +520,7 @@ def _build_training_plan_email(details: dict) -> tuple:
 
     <h3 style="margin: 24px 0 12px; font-size: 15px; color: #59473c;">Fulfillment checklist</h3>
     <ol style="font-size: 14px; padding-left: 20px; line-height: 2.0;">
-      <li><strong>Download the package</strong> (button above)</li>
+      <li><strong>Download the package</strong> {'(button above)' if download_full else '— <em>link withheld: package incomplete, see flag above</em>'}</li>
       <li><strong>Review quality</strong> — open <code>plan_preview.html</code>, check the week grid and quality gates</li>
       <li><strong>Read coaching brief</strong> — <code>coaching_brief.md</code> maps questionnaire answers to plan decisions</li>
       <li><strong>Spot-check workouts</strong> — open <code>training_guide.html</code>, check weeks 1, mid, and final</li>
@@ -573,7 +586,7 @@ Order: {order_id} | Athlete ID: {athlete_id}
 {'Fulfillment checklist:' if pipeline_ok else 'Recovery steps:'}
 """
     if pipeline_ok:
-        text += f"""1. Download the package (link above)
+        text += f"""1. Download the package {'(link above)' if download_full else '(link withheld — package incomplete)'}
 2. Review plan_preview.html — check week grid and quality gates
 3. Read coaching_brief.md — questionnaire-to-decision trace
 4. Spot-check training_guide.html (weeks 1, mid, final)
@@ -902,6 +915,7 @@ def _build_plan_notification_details(order_data: dict, result: dict,
         # The plan delivered, but the automatic coach checks flagged it — review
         # coaching_brief.md before sending. Distinct from a clean delivery.
         'needs_review': 'GG_NEEDS_REVIEW=1' in stdout,
+        'legacy_no_intake': bool(result.get('legacy_no_intake')),
     }
 
 
@@ -1350,8 +1364,10 @@ def _years_structured_from_intake(intake_data: dict) -> int:
     field is absent. Previously the code read a non-existent snake_case key and
     defaulted EVERY athlete to 1yr (beginner) — spec ticket A1.
     """
-    raw = intake_data.get('priorPlanExperience',
-                          intake_data.get('prior_plan_experience'))
+    # A blank camelCase value must fall through to the legacy key, not win as ""
+    # (A1 review): `.get(key, fallback)` only uses the fallback when the key is
+    # ABSENT, so `or` is required to treat an empty string as absent.
+    raw = intake_data.get('priorPlanExperience') or intake_data.get('prior_plan_experience')
     if raw is None or str(raw).strip() == '':
         return 1
     key = str(raw).strip().lower()
@@ -1466,6 +1482,15 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
     """Run the full training plan pipeline via intake_to_plan.py."""
     script_path = Path(SCRIPTS_DIR) / 'intake_to_plan.py'
 
+    # Clear any stale NEEDS_REVIEW.txt before regenerating, so a flag from a prior
+    # run (reused name-derived athlete dir on a repeat purchase) can't leak into a
+    # later clean plan's package. (A4/A10 review: the flag was sticky.)
+    for _aid in (athlete_id, athlete_id.replace('_', '-')):
+        try:
+            (Path(ATHLETES_DIR) / _aid / 'NEEDS_REVIEW.txt').unlink(missing_ok=True)
+        except OSError:
+            pass
+
     # Fallback to generate_full_package.py if no intake data (legacy path)
     if not intake_data:
         script_path = Path(SCRIPTS_DIR) / 'generate_full_package.py'
@@ -1525,6 +1550,10 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
             'success': success,
             'stdout': result.stdout,
             'stderr': result.stderr,
+            # No structured intake -> legacy generator ran; the plan has no
+            # NEEDS_REVIEW flag and no coaching brief, so the coach email must
+            # flag it instead of reading as a clean order. (A5 review)
+            'legacy_no_intake': not intake_data,
         }
 
     except subprocess.TimeoutExpired:
@@ -1591,6 +1620,12 @@ def persist_deliverables(athlete_id: str) -> dict:
 
     delivery_dir = Path(DELIVERIES_DIR) / athlete_id
     delivery_dir.mkdir(parents=True, exist_ok=True)
+    # Drop a stale NEEDS_REVIEW.txt from a prior delivery — it is re-copied below
+    # only if the current run actually produced one. (A4/A10 review: sticky flag.)
+    try:
+        (delivery_dir / 'NEEDS_REVIEW.txt').unlink(missing_ok=True)
+    except OSError:
+        pass
 
     copied = []
     missing = []
@@ -1605,6 +1640,7 @@ def persist_deliverables(athlete_id: str) -> dict:
     workouts_src = source_dir / 'workouts'
     if not workouts_src.exists():
         workouts_src = athlete_dir / 'workouts'
+    zwo_count = 0
     if workouts_src.exists():
         workouts_dst = delivery_dir / 'workouts'
         if workouts_dst.exists():
@@ -1612,6 +1648,10 @@ def persist_deliverables(athlete_id: str) -> dict:
         shutil.copytree(workouts_src, workouts_dst)
         zwo_count = len(list(workouts_dst.glob('*.zwo')))
         copied.append(f'workouts/ ({zwo_count} .zwo files)')
+        if zwo_count == 0:
+            # Directory present but no importable workouts — a broken render, not
+            # a deliverable. (A4 review: zero-workout packages passed the guard.)
+            missing.append('workouts/')
     else:
         missing.append('workouts/')
 
@@ -1620,7 +1660,9 @@ def persist_deliverables(athlete_id: str) -> dict:
         src = source_dir / fname
         if not src.exists():
             src = athlete_dir / fname  # Fallback to raw athlete dir
-        if src.exists():
+        if src.exists() and src.stat().st_size == 0 and fname == 'training_guide.html':
+            missing.append(fname)  # present but empty = broken render (A4 review)
+        elif src.exists():
             shutil.copy2(src, delivery_dir / fname)
             copied.append(fname)
         elif fname in ('training_guide.pdf', 'NEEDS_REVIEW.txt'):
@@ -1651,6 +1693,7 @@ def persist_deliverables(athlete_id: str) -> dict:
         'customer_zip_size': customer_zip.stat().st_size,
         'copied': copied,
         'missing': missing,
+        'zwo_count': zwo_count,
     }
 
 
@@ -1666,6 +1709,8 @@ def _persist_incomplete(persist_result) -> str:
         return f"persist failed: {persist_result['error']}"
     if not persist_result.get('full_zip_size'):
         return 'package zip is empty or missing'
+    if persist_result.get('zwo_count', 1) == 0:
+        return 'no importable workouts (0 .zwo files)'
     critical = [m for m in (persist_result.get('missing') or [])
                 if m in ('workouts/', 'training_guide.html')]
     if critical:

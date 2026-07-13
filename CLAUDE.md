@@ -38,7 +38,7 @@ Questionnaire → Block-Builder Engine → ZWO Workouts → HTML Guide → PDF �
 ## Project Structure
 ```
 webhook/
-  app.py           <- Flask webhook server (Stripe + WooCommerce)
+  app.py           <- Flask webhook server (Stripe; WooCommerce retired 2026-07)
   Dockerfile       <- Docker build (expects repo root as context)
   requirements.txt
   tests/
