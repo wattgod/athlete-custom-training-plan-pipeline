@@ -2587,6 +2587,11 @@ def _section_masters_training(profile: Dict, derived: Dict, section_num: int = 1
     <p>Don't chase numbers from 10 years ago. Today's FTP is your training anchor. Progress is progress,
     regardless of absolute watts. The athlete who trains consistently at their current level will always
     beat the one who overreaches trying to recapture past glory.</p>
+    <p>And you can't wing it anymore &mdash; that's the real change. At 25 you could skip sleep, skip the
+    warm-up, ride hard three days straight, and get away with it. Past 50 the margin is gone: repair runs
+    slower, and one careless week compounds. The riders who stay fast aren't the most talented &mdash;
+    they're the ones who stopped improvising. This plan is the not-winging-it. Run the system;
+    don't negotiate with it.</p>
   </div>
 
   <h3>What Changes After 40</h3>
@@ -2635,6 +2640,25 @@ def _section_masters_training(profile: Dict, derived: Dict, section_num: int = 1
     </div>
   </div>
 
+  <div class="data-card">
+    <div class="data-card__header">FUELING, ALCOHOL &amp; HEAT</div>
+    <div class="data-card__content">
+      <p>Recovery past 50 isn't just spacing and sleep &mdash; it's what you give the repair process to work with.</p>
+      <ul>
+        <li><strong>Protein, spread out:</strong> aim for 1.6&ndash;2.0 g per kg of bodyweight daily, split across
+        meals rather than crammed at dinner. Older muscle responds less to small doses &mdash; each meal needs a
+        real serving. Prioritize it after strength days and long rides.</li>
+        <li><strong>Drink less. Blunt on purpose:</strong> alcohol hits masters athletes twice &mdash; it wrecks the
+        deep sleep recovery depends on and blunts the overnight repair you now need more of, not less. You don't
+        have to be a monk, but the nightly-glasses habit quietly taxes every hard session you do. Race-month
+        sobriety is the cheapest upgrade in this guide.</li>
+        <li><strong>Respect heat more than you used to:</strong> thermoregulation declines quietly with age. On hot
+        training days and hot races, drink earlier, ease pace sooner, and treat cooling as part of the workout
+        &mdash; not an admission of anything.</li>
+      </ul>
+    </div>
+  </div>
+
   <h3>Training Approach: HRV-Guided Polarized</h3>
   <p>The recommended approach for masters athletes is polarized training with HRV-guided intensity:
   80% easy, 20% hard, with recovery driving the schedule.</p>
@@ -2670,6 +2694,8 @@ def _section_masters_training(profile: Dict, derived: Dict, section_num: int = 1
   <tr><td><strong>Cadence on intervals</strong></td><td>Self-selected</td><td>High (95-105 rpm)</td></tr>
   <tr><td><strong>Zone 3 usage</strong></td><td>Moderate</td><td>Minimal (recovery-expensive)</td></tr>
   <tr><td><strong>Warmup duration</strong></td><td>10-15 min</td><td>15-20 min (longer warmup, better performance)</td></tr>
+  <tr><td><strong>Daily protein</strong></td><td>Whatever happens</td><td>1.6-2.0 g/kg, spread across meals</td></tr>
+  <tr><td><strong>Alcohol</strong></td><td>Costs you a little</td><td>Costs you double &mdash; minimal in training, near-zero race month</td></tr>
   </tbody>
   </table>
   </div>
