@@ -3,7 +3,7 @@
   "gravel": 757,
   "road": 427
  },
- "_generated": "2026-07-12",
+ "_generated": "2026-07-13",
  "races": {
   "gravel:114-gravel-race": {
    "date": "2026-03-28",
@@ -4572,7 +4572,7 @@
    "date": "2026-05-02",
    "discipline": "gravel",
    "distance_mi": 60,
-   "elevation_ft": 5000,
+   "elevation_ft": 6677,
    "location": "Waldport, Oregon",
    "name": "Oregon Coast Gravel Epic",
    "slug": "oregon-coast-gravel-epic"
@@ -5283,7 +5283,7 @@
    "date": "2026-06-27",
    "discipline": "gravel",
    "distance_mi": 62,
-   "elevation_ft": 5000,
+   "elevation_ft": 4365,
    "location": "Lamoille, Nevada",
    "name": "Ruby Roubaix",
    "slug": "ruby-roubaix"
@@ -5850,7 +5850,7 @@
    "date": "2026-07-11",
    "discipline": "gravel",
    "distance_mi": 76,
-   "elevation_ft": 8000,
+   "elevation_ft": 5269,
    "location": "Claresholm, Alberta",
    "name": "The Range",
    "slug": "the-range"
