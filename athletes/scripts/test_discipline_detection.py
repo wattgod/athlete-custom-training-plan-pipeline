@@ -74,7 +74,7 @@ def _profile_for_race(race_name, *, date="2027-09-12", distance="100 miles"):
         "height_in": 10,
         "ftp": 250,
         "years_cycling": "5",
-        "prior_plan_experience": "2",
+        "priorPlanExperience": "2",
         "hours_per_week": "10",
         "trainer_access": "smart trainer",
         "long_ride_days": ["Saturday"],

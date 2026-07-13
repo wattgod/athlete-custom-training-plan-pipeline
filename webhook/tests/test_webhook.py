@@ -87,6 +87,75 @@ class TestHealthEndpoint:
             assert response.status_code in [200, 503]
 
 
+class TestExperienceFieldMapping:
+    """A1: the live questionnaire sends `priorPlanExperience` (camelCase); the
+    code used to read a non-existent `prior_plan_experience` and default EVERY
+    athlete to 1yr (beginner)."""
+
+    @pytest.mark.parametrize("value,expected", [
+        ("none", 0), ("generic", 1), ("app", 3), ("coached", 5), ("custom", 4),
+        ("NONE", 0), ("Coached", 5),
+    ])
+    def test_categorical_maps_to_years(self, value, expected):
+        from app import _years_structured_from_intake
+        assert _years_structured_from_intake({"priorPlanExperience": value}) == expected
+
+    def test_numeric_value_accepted(self):
+        from app import _years_structured_from_intake
+        assert _years_structured_from_intake({"priorPlanExperience": "4"}) == 4
+
+    def test_legacy_snake_case_fallback(self):
+        from app import _years_structured_from_intake
+        assert _years_structured_from_intake({"prior_plan_experience": "2"}) == 2
+
+    def test_missing_defaults_to_one(self):
+        from app import _years_structured_from_intake
+        assert _years_structured_from_intake({}) == 1
+
+    def test_markdown_reflects_experienced_athlete(self):
+        # An athlete who was coached must NOT render as a 1yr beginner.
+        from app import _questionnaire_to_markdown
+        md = _questionnaire_to_markdown({"priorPlanExperience": "coached", "name": "Vet"})
+        assert "Years Structured: 5" in md
+        assert "Years Structured: 1" not in md
+
+
+class TestDownloadTokenInPath:
+    """A2: the signed token travels in the URL PATH, not `?token=<hex>` — a hex
+    token right after `=` is a valid quoted-printable escape and gets corrupted
+    in email transit (`=28`->`(`)."""
+
+    def test_email_url_puts_token_in_path(self):
+        from app import _build_training_plan_email
+        token = "289071686b14ef68ac9fafed3df133cc"
+        parts = _build_training_plan_email({
+            "athlete_id": "test_rider", "download_token": token,
+            "name": "T", "email": "t@example.com",
+        })
+        blob = " ".join(str(p) for p in parts)
+        assert f"/api/download/test_rider/{token}?type=full" in blob
+        assert f"token={token}" not in blob            # old query form is gone
+        assert "?type=full&token=" not in blob
+
+    def test_path_token_authorizes(self, client):
+        from app import _generate_download_token
+        token = _generate_download_token("test_rider")
+        # Valid token in the path -> auth passes; 404 (no zip in test) proves the
+        # route exists and authorized (it would be 401 if the token were rejected).
+        resp = client.get(f"/api/download/test_rider/{token}")
+        assert resp.status_code == 404
+
+    def test_bad_path_token_rejected(self, client):
+        resp = client.get("/api/download/test_rider/deadbeefdeadbeefdeadbeefdeadbeef")
+        assert resp.status_code == 401
+
+    def test_legacy_query_token_still_works(self, client):
+        from app import _generate_download_token
+        token = _generate_download_token("test_rider")
+        resp = client.get(f"/api/download/test_rider?token={token}")
+        assert resp.status_code == 404  # backward compatible: auth still passes
+
+
 class TestInputValidation:
     """Tests for input validation functions."""
 

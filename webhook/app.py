@@ -374,7 +374,10 @@ def _build_training_plan_email(details: dict) -> tuple:
     endure_review_url = endure.get('review_url', '')
 
     base_url = 'https://athlete-custom-training-plan-pipeline-production.up.railway.app'
-    download_full = f'{base_url}/api/download/{athlete_id}?type=full&token={download_token}' if download_token else ''
+    # Token goes in the URL PATH, not `?token=<hex>` — a hex token right after
+    # `=` forms a valid quoted-printable escape (`=28`->`(`) and gets corrupted
+    # in transit through email. `?type=full` is safe (`=fu` is not a QP escape). A1/A2.
+    download_full = f'{base_url}/api/download/{athlete_id}/{download_token}?type=full' if download_token else ''
 
     status_color = '#1A8A82' if pipeline_ok else '#c0392b'
     status_label = 'READY FOR REVIEW' if pipeline_ok else 'PIPELINE FAILED'
@@ -1394,6 +1397,37 @@ def create_athlete_profile(order_data: dict) -> tuple:
 # PIPELINE EXECUTION
 # =============================================================================
 
+# Live questionnaire experience field is `priorPlanExperience` (camelCase) with
+# these categorical options. Older/test payloads may send a numeric
+# `prior_plan_experience`. Map categorical -> years of structured training.
+# The downstream threshold that matters is >=3yr == "experienced".
+_PRIOR_PLAN_EXPERIENCE_YEARS = {
+    'none': 0, 'generic': 1, 'app': 3, 'coached': 5, 'custom': 4,
+}
+
+
+def _years_structured_from_intake(intake_data: dict) -> int:
+    """Derive years of structured training from the questionnaire payload.
+
+    Reads the live `priorPlanExperience` select first (falling back to a legacy
+    numeric `prior_plan_experience`), maps a categorical option to a years
+    estimate, accepts an already-numeric value as-is, and defaults to 1 when the
+    field is absent. Previously the code read a non-existent snake_case key and
+    defaulted EVERY athlete to 1yr (beginner) — spec ticket A1.
+    """
+    raw = intake_data.get('priorPlanExperience',
+                          intake_data.get('prior_plan_experience'))
+    if raw is None or str(raw).strip() == '':
+        return 1
+    key = str(raw).strip().lower()
+    if key in _PRIOR_PLAN_EXPERIENCE_YEARS:
+        return _PRIOR_PLAN_EXPERIENCE_YEARS[key]
+    try:
+        return int(float(raw))
+    except (ValueError, TypeError):
+        return 1
+
+
 def _questionnaire_to_markdown(intake_data: dict, name: str = '', email: str = '') -> str:
     """Convert web questionnaire JSON into the markdown format intake_to_plan.py expects."""
     name = name or intake_data.get('name', 'Unknown Athlete')
@@ -1456,7 +1490,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 - HR Threshold: {intake_data.get('hr_threshold', '')}
 - W/kg: {intake_data.get('pwRatio', '')}
 - Years Cycling: {intake_data.get('years_cycling', '3')}
-- Years Structured: {intake_data.get('prior_plan_experience', '1')}
+- Years Structured: {_years_structured_from_intake(intake_data)}
 - Longest Recent Ride: {intake_data.get('longest_ride', '3-4 hrs')}
 
 ## Recovery & Baselines
@@ -2159,7 +2193,8 @@ def health():
 # =============================================================================
 
 @app.route('/api/download/<athlete_id>', methods=['GET'])
-def download_deliverables(athlete_id):
+@app.route('/api/download/<athlete_id>/<token>', methods=['GET'])
+def download_deliverables(athlete_id, token=None):
     """Download an athlete's deliverables zip.
 
     Auth: either X-Cron-Secret header OR ?token= signed URL parameter.
@@ -2169,7 +2204,9 @@ def download_deliverables(athlete_id):
     """
     # Auth: header secret or signed token
     secret = request.headers.get('X-Cron-Secret', '')
-    token = request.args.get('token', '')
+    # Token may arrive in the URL path (preferred — avoids quoted-printable
+    # corruption of ?token=<hex> in emails) or the legacy ?token= query param.
+    token = token or request.args.get('token', '')
     has_secret = secret and hmac.compare_digest(secret, os.environ.get('CRON_SECRET', ''))
     has_token = token and _verify_download_token(athlete_id, token)
 
