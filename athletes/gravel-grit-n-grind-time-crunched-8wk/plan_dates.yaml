@@ -1,0 +1,31 @@
+race_date: '2026-09-26'
+race_weekday: Saturday
+plan_weeks: 8
+plan_start: '2026-08-03'
+plan_start_short: Aug3
+plan_end: '2026-09-27'
+week1_monday: '2026-08-03'
+race_week_monday: '2026-09-21'
+workout_naming_convention: W{week:02d}_{day}_{month}{day}_{name}.zwo
+workout_example: W01_Mon_Jul27_Endurance.zwo
+day_abbreviations:
+  monday: Mon
+  tuesday: Tue
+  wednesday: Wed
+  thursday: Thu
+  friday: Fri
+  saturday: Sat
+  sunday: Sun
+month_abbreviations:
+  1: Jan
+  2: Feb
+  3: Mar
+  4: Apr
+  5: May
+  6: Jun
+  7: Jul
+  8: Aug
+  9: Sep
+  10: Oct
+  11: Nov
+  12: Dec

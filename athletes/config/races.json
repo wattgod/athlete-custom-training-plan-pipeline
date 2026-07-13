@@ -1520,10 +1520,10 @@
     "gravel:flanders-legacy-gravel": {
       "date": "2026-10-18",
       "discipline": "gravel",
-      "distance_mi": 75,
-      "elevation_ft": 4000,
-      "location": "Flanders, Belgium",
-      "name": "Flanders Legacy Gravel",
+      "distance_mi": 91,
+      "elevation_ft": 3117,
+      "location": "Leuven / Heverlee, Belgium",
+      "name": "Leuven Legacy Gravel",
       "slug": "flanders-legacy-gravel"
     },
     "gravel:flandrien-ride": {
@@ -2879,7 +2879,7 @@
     "gravel:gravel-grit-n-grind": {
       "date": "2026-08-14",
       "discipline": "gravel",
-      "distance_mi": 50,
+      "distance_mi": 93,
       "elevation_ft": 2000,
       "location": "Halmstad, Sweden",
       "name": "Gravel Grit 'n Grind",
@@ -3356,8 +3356,8 @@
     "gravel:houffa-gravel": {
       "date": "2026-08-30",
       "discipline": "gravel",
-      "distance_mi": 65,
-      "elevation_ft": 4500,
+      "distance_mi": 88,
+      "elevation_ft": 6890,
       "location": "Houffalize, Belgian Ardennes",
       "name": "Houffa Gravel",
       "slug": "houffa-gravel"
