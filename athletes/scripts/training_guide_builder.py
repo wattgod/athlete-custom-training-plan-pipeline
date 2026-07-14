@@ -3628,6 +3628,7 @@ def _resolve_race_data(race_name, race_data_dirs):
         'sbt-grvl': 'steamboat-gravel',
         'sbt_grvl': 'steamboat-gravel',
         'big-horn-gravel': 'bighorn-gravel',
+        'the-traka-200': 'the-traka',
     }
     candidate_slugs = [s for s in [
         canonical_slug,
