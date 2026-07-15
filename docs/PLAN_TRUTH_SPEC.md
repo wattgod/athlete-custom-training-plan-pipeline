@@ -178,11 +178,28 @@ page reload.)
 creates nothing, a partial failure resumes safely, read-back mismatch blocks
 `APPLIED`. A real-sandbox acceptance test is separately gated.
 
-## Build-first order (hand to executor now)
-1. **J1** — stop shipping known-bad packages as "ready".
-2. **G1 + G2** — canonical personalized fueling + kill duplicate fuel literals.
-3. **G3** — segment-first descriptions (kills athlete-visible contradictions).
-4. **G4** — recurring-session ledger (largest, but plans must reflect real load).
-5. **G5** — semantic consistency gate (locks 1-4 together).
-Then H1, I1, G6, I2. Do NOT put Endure work or more volume-floor tuning ahead of
-these.
+### G0 · PlanIR v0 skeleton — `P0` · M  *(NEW — do BEFORE G3/G4, per the sol review)*
+Files: new `athletes/scripts/plan_ir.py`, a builder that assembles it from
+existing outputs, orchestrator, `test_plan_ir.py`.
+Rationale (sol): G3 and G4 must project ONE canonical object, else they create
+more adjacent models before G5 has anything to validate against. Land the object
+first as a **reflection/aggregation v0** (non-breaking): define the versioned
+`PlanIR` (athlete, `race_snapshot` w/ provenance, the `FuelingPrescription` from
+G1, `weeks[] → sessions[] → segments[]`, `notes[]`, `entitlements[]`,
+`attachments[]`, `fulfillment`), and ASSEMBLE it from what the pipeline already
+computes (profile, race data, `fueling.yaml` prescription, `plan_dates`,
+`weekly_structure`, the generated ZWO parsed into segments). Emit `plan_ir.json`.
+It does NOT drive generation yet — G3/G4 migrate generation to populate it, and
+G5 validates every serializer against it.
+**Test:** a Heather-like fixture yields a coherent `PlanIR` (race facts w/
+provenance, the fueling prescription, weekly sessions with segments, notes);
+`PlanIR` round-trips to/from JSON; the fueling in `PlanIR` equals `fueling.yaml`.
+
+## Build-first order (updated per coach decisions 2026-07-14)
+- **DONE** (branch `plan-truth-fixes`, HOLD cleared): G1 + G2 + G6 + duration guard.
+- **NEXT:** **G0 (PlanIR v0)** → **G3** (segment-first descriptions, now projecting
+  PlanIR) → **G4** (recurring-session ledger) → **G5** (consistency gate vs PlanIR).
+- **READY TO DISPATCH ANYTIME (independent):** **J1** (enforced review state
+  machine — executor contract already written; stops shipping known-bad plans).
+- **THEN:** H1 (race provenance), I1 (fulfillment manifest), I2 (TP adapter).
+- Do NOT put Endure work or more volume-floor tuning ahead of these.
