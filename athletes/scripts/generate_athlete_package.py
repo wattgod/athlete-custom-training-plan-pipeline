@@ -2654,6 +2654,17 @@ def generate_athlete_package(athlete_id: str) -> dict:
 
     detail(f"Saved: {summary_path}")
 
+    # G0 reflection only: aggregate the artifacts just generated.  PlanIR is
+    # deliberately advisory until later tickets make serializers project it;
+    # a malformed historical/optional artifact must never block delivery.
+    step(6, "Assembling PlanIR...")
+    try:
+        from plan_ir import build_plan_ir
+        build_plan_ir(athlete_id)
+        detail("Saved: plan_ir.json")
+    except Exception as exc:
+        warning(f"PlanIR aggregation failed (package delivery continues): {exc}")
+
     # Final summary
     header("PACKAGE GENERATION COMPLETE")
     log.info(f"Output directory: {athlete_dir}")

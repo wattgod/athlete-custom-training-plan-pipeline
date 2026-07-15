@@ -42,6 +42,28 @@
 
 Only G1, G2, and G6 were changed. J1, G3–G5, H1, and I1–I2 remain untouched.
 
+## G0 — PlanIR v0 skeleton
+
+- Added a versioned `PlanIR` (`plan_ir_version: "0.1"`) with typed athlete,
+  race snapshot, canonical `FuelingPrescription`, weeks/sessions/segments,
+  fulfillment, and typed empty `notes`, `entitlements`, and `attachments`
+  lists. It is a reflection of completed package artifacts, not a generator
+  input: ZWO, fueling, and guide generation remain unchanged.
+- `build_plan_ir(athlete_id)` reads `profile.yaml`, `fueling.yaml`,
+  `plan_dates.yaml`, `weekly_structure.yaml`, generated `workouts/*.zwo`, and
+  (when present) `fulfillment_status.json`; it writes `plan_ir.json` beside
+  those artifacts. Missing or unreadable optional artifacts emit warnings and
+  produce a partial IR instead of raising.
+- Race provenance fields (`source`, `verified_at`, `event_year`, and
+  `course_variant`) are copied only when present in current race data; H1 owns
+  provenance completeness and freshness. Calendar notes, entitlements, and
+  attachments are intentionally empty until G3/G4/I1 populate them. J1 remains
+  the owner of `fulfillment_status.json`; G0 only reads its status.
+- Extracted the preview's ZWO parser into `zwo_parser.py`. Its existing
+  flattened power samples and TSS behavior are retained for the preview, while
+  `parse_zwo_structure()` preserves top-level ZWO blocks as typed segments and
+  retains `IntervalsT` repetitions rather than unrolling them in PlanIR.
+
 ## Verification
 
 `pytest athletes/scripts/ -q -p no:cacheprovider` passed after the Sol review

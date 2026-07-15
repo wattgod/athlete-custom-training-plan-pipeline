@@ -16,129 +16,18 @@ Usage:
 import sys
 import os
 import yaml
-import xml.etree.ElementTree as ET
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 
 SCRIPTS_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPTS_DIR))
+from zwo_parser import parse_zwo
 
 
 # ===========================================================================
 # ZWO Parsing + TSS Calculation
 # ===========================================================================
-
-def parse_zwo(zwo_path: Path, ftp: float) -> Dict[str, Any]:
-    """Parse a ZWO file and extract workout metrics.
-
-    Returns dict with: name, duration_sec, duration_min, avg_power_ratio,
-    normalized_power, intensity_factor, tss, zone, intervals_summary, description.
-    """
-    tree = ET.parse(zwo_path)
-    root = tree.getroot()
-
-    name_el = root.find('name')
-    name = name_el.text if name_el is not None else zwo_path.stem
-    desc_el = root.find('description')
-    description = desc_el.text if desc_el is not None else ''
-
-    workout = root.find('workout')
-    if workout is None:
-        return _empty_workout(name, description)
-
-    segments = []
-    intervals_summary = []
-
-    for element in workout:
-        tag = element.tag
-        if tag == 'Warmup':
-            dur = float(element.get('Duration', 0))
-            low = float(element.get('PowerLow', 0.5))
-            high = float(element.get('PowerHigh', 0.7))
-            avg_power = (low + high) / 2
-            segments.append((dur, avg_power))
-
-        elif tag == 'Cooldown':
-            dur = float(element.get('Duration', 0))
-            low = float(element.get('PowerLow', 0.5))
-            high = float(element.get('PowerHigh', 0.4))
-            avg_power = (low + high) / 2
-            segments.append((dur, avg_power))
-
-        elif tag == 'SteadyState':
-            dur = float(element.get('Duration', 0))
-            power = float(element.get('Power', 0.6))
-            segments.append((dur, power))
-
-        elif tag == 'IntervalsT':
-            repeats = int(element.get('Repeat', 1))
-            on_dur = float(element.get('OnDuration', 0))
-            on_power = float(element.get('OnPower', 1.0))
-            off_dur = float(element.get('OffDuration', 0))
-            off_power = float(element.get('OffPower', 0.5))
-
-            for _ in range(repeats):
-                segments.append((on_dur, on_power))
-                segments.append((off_dur, off_power))
-
-            intervals_summary.append(
-                f"{repeats}x{int(on_dur/60)}min @ {int(on_power*100)}% FTP"
-            )
-
-        elif tag == 'FreeRide':
-            dur = float(element.get('Duration', 0))
-            # FreeRide has no power target — estimate Z2 for long, Z1 for short
-            est_power = 0.65 if dur > 3600 else 0.55
-            segments.append((dur, est_power))
-
-        elif tag == 'Ramp':
-            dur = float(element.get('Duration', 0))
-            low = float(element.get('PowerLow', 0.5))
-            high = float(element.get('PowerHigh', 0.8))
-            avg_power = (low + high) / 2
-            segments.append((dur, avg_power))
-
-    if not segments:
-        return _empty_workout(name, description)
-
-    # Calculate metrics
-    total_duration = sum(dur for dur, _ in segments)
-    weighted_power_sum = sum(dur * (power ** 4) for dur, power in segments)
-    np_ratio = (weighted_power_sum / total_duration) ** 0.25 if total_duration > 0 else 0
-
-    normalized_power = np_ratio * ftp
-    intensity_factor = np_ratio
-    tss = (total_duration / 3600) * (intensity_factor ** 2) * 100 if total_duration > 0 else 0
-
-    # Determine zone from IF
-    zone = _if_to_zone(intensity_factor)
-
-    return {
-        'name': name,
-        'file': zwo_path.name,
-        'duration_sec': total_duration,
-        'duration_min': round(total_duration / 60, 1),
-        'duration_hrs': round(total_duration / 3600, 2),
-        'avg_power_ratio': round(np_ratio, 2),
-        'normalized_power': round(normalized_power),
-        'intensity_factor': round(intensity_factor, 2),
-        'tss': round(tss),
-        'zone': zone,
-        'intervals_summary': ', '.join(intervals_summary) if intervals_summary else '',
-        'description': description,
-        'segments': [(dur, round(p, 2)) for dur, p in segments],
-    }
-
-
-def _empty_workout(name: str, description: str) -> Dict[str, Any]:
-    return {
-        'name': name, 'file': '', 'duration_sec': 0, 'duration_min': 0,
-        'duration_hrs': 0, 'avg_power_ratio': 0, 'normalized_power': 0,
-        'intensity_factor': 0, 'tss': 0, 'zone': 'REST',
-        'intervals_summary': '', 'description': description, 'segments': [],
-    }
-
 
 def _if_to_zone(if_val: float) -> str:
     """Map intensity factor to training zone."""
