@@ -3,8 +3,21 @@ from dataclasses import asdict, dataclass
 import re
 from typing import Any, Dict, List, Optional
 
-POLICY_VERSION = "2026-07-14.1"
+POLICY_VERSION = "2026-07-14.2"
 _DEFAULT_IF = {"survival": .62, "finish": .68, "compete": .75, "podium": .80}
+
+
+def _duration_ceiling(hours: float) -> float:
+    """Hourly-carb ceiling that steps DOWN for very long events (fat oxidation
+    rises, GI risk climbs). Never raises a shorter-race target. Sub-8h races (the
+    common gravel band) are uncapped here and governed by the work-rate model."""
+    if hours <= 8:
+        return 90.0
+    if hours <= 12:
+        return 70.0
+    if hours <= 16:
+        return 60.0
+    return 50.0
 
 
 @dataclass
@@ -110,6 +123,13 @@ def build_fueling_prescription(*, duration_hours: float, weight_kg: float,
     if gut_phase in ("base", "early"):
         target = min(target, 65)
         assumptions.append("Early gut-training phase: race-rate practice should progress gradually.")
+    duration_cap = _duration_ceiling(duration_hours)
+    if target > duration_cap:
+        target = duration_cap
+        assumptions.append(
+            f"Long-duration event (~{duration_hours:.0f}h): hourly carbs capped at "
+            f"{int(duration_cap)} g/hr — fuel scales DOWN with race length, not up."
+        )
     if str(sex).lower() == "female":
         assumptions.append("Energy-availability check: avoid chronic under-fueling; sex does not reduce carbohydrate target.")
 

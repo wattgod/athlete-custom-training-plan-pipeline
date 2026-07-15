@@ -58,3 +58,23 @@ def test_missing_tolerance_caps_large_untrained_athlete():
         duration_hours=4, weight_kg=100, ftp_watts=600, goal_type="podium",
     ).to_dict()
     assert prescription["race_target_g_per_hour"] <= 80
+
+
+def test_duration_guard_scales_carbs_down_for_ultra_events():
+    """Hourly carbs must step DOWN for very long events, never up (fat oxidation
+    rises, GI risk climbs). Sub-8h races are uncapped by duration."""
+    kw = dict(weight_kg=80, ftp_watts=320, goal_type="podium", tolerated_g_per_hour=90)
+    short = build_fueling_prescription(duration_hours=5.0, **kw)
+    ultra16 = build_fueling_prescription(duration_hours=16.0, **kw)
+    ultra19 = build_fueling_prescription(duration_hours=19.0, **kw)
+    ultra = ultra16
+    assert ultra16.race_target_g_per_hour < short.race_target_g_per_hour
+    assert ultra16.race_target_g_per_hour <= 60          # 12-16h band
+    assert ultra19.race_target_g_per_hour <= 50          # >16h band
+    assert ultra19.race_target_g_per_hour <= ultra16.race_target_g_per_hour
+    # a normal 4-8h gravel race is NOT reduced by the duration cap
+    band = build_fueling_prescription(duration_hours=6.0, **kw)
+    assert band.race_target_g_per_hour == short.race_target_g_per_hour
+    assert any("scales DOWN" in a for a in ultra.assumptions)
+    # target stays inside its range after the cap
+    assert ultra.race_range_g_per_hour[0] <= ultra.race_target_g_per_hour <= ultra.race_range_g_per_hour[1]
