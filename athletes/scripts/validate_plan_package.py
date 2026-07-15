@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 import yaml
 
+from workout_spec import _mins  # renderer's canonical minute formatter — single source
 from zwo_parser import parse_zwo_structure
 
 
@@ -24,6 +25,14 @@ def _load(path: Path, loader):
         return None
     with path.open() as handle:
         return loader(handle) or {}
+
+
+def _canon_segments(segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Drop None-valued keys so a PlanIR ``Segment`` (all fields present, most
+    None) compares equal to a freshly parsed ZWO segment (only populated keys).
+    Any real value difference — power, seconds, kind, repeat — still mismatches.
+    """
+    return [{k: v for k, v in (seg or {}).items() if v is not None} for seg in segments]
 
 
 def _main_set_text(description: str) -> str:
@@ -69,16 +78,22 @@ def validate_plan_package(athlete_dir: Path | str) -> List[Dict[str, str]]:
                 issues.append(_issue('zwo', f'{filename}.file', 'present', 'missing'))
                 continue
             parsed = parse_zwo_structure(path)
-            if parsed['segments'] != session.get('segments', []):
+            if _canon_segments(parsed['segments']) != _canon_segments(session.get('segments', [])):
                 issues.append(_issue('zwo', f'{filename}.segments', session.get('segments', []), parsed['segments']))
             main_set = _main_set_text(parsed.get('description', ''))
             for segment in parsed['segments']:
                 if segment['kind'] == 'intervals':
-                    required = (f"{segment['repeat']}x{segment['on_seconds'] // 60}min",
-                                f"{round(segment['on_power'] * 100)}% FTP",
-                                f"{segment['off_seconds'] // 60}min recovery")
-                    if any(value not in main_set for value in required):
-                        issues.append(_issue('zwo', f'{filename}.main_set', required, main_set))
+                    # Reconstruct the WHOLE rendered interval line (same template and
+                    # ``_mins`` formatter the description uses) and require it verbatim.
+                    # Substring-per-fragment let a wrong "11.5min recovery" satisfy a
+                    # required "1.5min recovery"; a full-line match closes that.
+                    expected_line = (
+                        f"{segment['repeat']}x{_mins(segment['on_seconds'])} @ "
+                        f"{round(segment['on_power'] * 100)}% FTP, "
+                        f"{_mins(segment['off_seconds'])} recovery @ "
+                        f"{round(segment['off_power'] * 100)}% FTP")
+                    if expected_line not in main_set:
+                        issues.append(_issue('zwo', f'{filename}.main_set', expected_line, main_set))
                         break
 
     guide_path = athlete_dir / 'training_guide.html'
