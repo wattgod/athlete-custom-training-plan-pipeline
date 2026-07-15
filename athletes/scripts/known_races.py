@@ -55,6 +55,12 @@ def _snapshot_races() -> Dict[str, Dict[str, Any]]:
             "elevation_ft": e.get("elevation_ft") or 0,
             "discipline": disc,
             "location": e.get("location", ""),
+            "source_urls": e.get("source_urls") or [],
+            "source_type": e.get("source_type"),
+            "verified_at": e.get("verified_at"),
+            "event_year": e.get("event_year"),
+            "course_variant": e.get("course_variant"),
+            "category": e.get("category"),
         }
     return out
 

@@ -68,6 +68,8 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
+from workout_spec import normalize_zwo_blocks, replace_main_set
+
 # =============================================================================
 # PATH SETUP - Must be before local imports
 # =============================================================================
@@ -3229,11 +3231,15 @@ def generate_nate_workout(
     # Generate name
     name = workout_name or f"{archetype['name']} {level}"
 
-    # Generate description
-    description = generate_description(archetype, level, methodology)
-
     # Generate blocks
     blocks = generate_blocks_from_archetype(archetype, level)
+
+    # Coaching context remains archetype-authored, while the MAIN SET is a
+    # projection of the executable intervals that the XML will carry.
+    description = replace_main_set(
+        generate_description(archetype, level, methodology),
+        normalize_zwo_blocks(blocks),
+    )
 
     # Refuse to ship a TOO-SHORT render — that's the broken-handler bug
     # (NP/IF once shipped a cooldown-only 10-minute long ride). A too-LONG
@@ -3252,6 +3258,9 @@ def generate_nate_workout(
             return None, None, None
         if total_seconds > ValidationLimits.MAX_WORKOUT_DURATION:
             blocks = _clamp_blocks_to_max(blocks, ValidationLimits.MAX_WORKOUT_DURATION)
+
+    if blocks:
+        description = replace_main_set(description, normalize_zwo_blocks(blocks))
 
     return name, description, blocks
 

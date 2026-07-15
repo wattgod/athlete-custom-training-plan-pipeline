@@ -19,6 +19,11 @@ from datetime import datetime
 
 # Add script path for local imports
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'webhook'))
+
+from fulfillment_state import write_generation
+from workout_spec import rewrite_zwo_description
+from availability_ledger import AvailabilityLedgerError, build_ledger
 
 # Local imports - use centralized modules
 from config_loader import get_config
@@ -475,6 +480,10 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     max_weekly_minutes = cycling_hours_target * 60 * WEEKLY_HOUR_BUDGET_TOLERANCE
     week_total_minutes = 0
 
+    # Structured failures are carried to the package-level fulfillment state
+    # only after all required artifacts have rendered successfully.
+    _fulfillment_issues = []
+
     # ===================================================================
     # BLOCK-BUILDER PLAN: pre-compute workout assignments for all weeks.
     # The CALENDAR (plan_dates.yaml) is the single source of truth for
@@ -519,6 +528,23 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 _avail = get_day_availability(_abbrev)
                 _bb_day_caps[_abbrev] = _avail.get('max_duration_min', 0) or 0
 
+        # G4: locked athlete/event sessions consume the same day and weekly
+        # budget as prescribed work. A fixed hard day has no residual workout
+        # slot; compliance can then count/flag the true total distribution.
+        _fixed_sessions = (profile or {}).get('recurring_sessions', []) or []
+        try:
+            _ledger = build_ledger(_fixed_sessions, _bb_day_caps)
+            _fixed_minutes = sum(day['fixed_min'] for day in _ledger.values())
+            _bb_day_caps = {day: max(0, entry['residual_min']) for day, entry in _ledger.items()}
+            _fixed_hard_days = {day for day, entry in _ledger.items() if entry['hard']}
+            _bb_off_days = sorted(set(_bb_off_days) | _fixed_hard_days)
+            _builder_hours = max(0.0, cycling_hours_target - _fixed_minutes / 60)
+        except AvailabilityLedgerError as exc:
+            _fulfillment_issues.append({'id': 'AVAILABILITY_CAP_IMPOSSIBLE',
+                                        'source': 'availability_ledger', 'severity': 'CRITICAL',
+                                        'message': str(exc)})
+            _builder_hours = cycling_hours_target
+
         _bb_plan = build_plan_from_calendar(
             week_descriptors=_bb_descriptors,
             archetype=_bb_archetype,
@@ -527,7 +553,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             off_days=_bb_off_days,
             long_ride_day=long_day_abbrev,
             starting_level=1,
-            hours_per_week=cycling_hours_target,
+            hours_per_week=_builder_hours,
             discipline=_bb_discipline,
             day_caps=_bb_day_caps or None,
             methodology=methodology_id,
@@ -606,6 +632,13 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                     + report + "\n")
             except Exception:
                 pass
+            _fulfillment_issues.extend({
+                'id': rule_id,
+                'source': 'block_compliance',
+                'severity': rule.get('severity', 'CRITICAL'),
+                'message': rule.get('message', 'Compliance rule failed'),
+            } for rule_id, rule in _compliance['rules'].items()
+              if rule.get('severity') == 'CRITICAL' and not rule.get('passed'))
         else:
             log.info(f"Compliance gate: {_compliance['critical_score']} critical, "
                      f"score {_compliance['score']}%")
@@ -1930,6 +1963,10 @@ TIPS:
                         f'<description>{fuel_prefix}{personal_header}',
                         1
                     )
+                    zwo_content = rewrite_zwo_description(
+                        zwo_content, plan_week=week_num,
+                        session_date=day_info.get('date'), event_date=race_date,
+                    )
 
                     filepath = zwo_dir / f"{workout_name}.zwo"
                     with open(filepath, 'w') as f:
@@ -2160,7 +2197,8 @@ Trust the process, {athlete_name}."""
                     and ftp_day_candidates and not week.get('is_recovery_week', False)):
                 if day_abbrev == ftp_day_candidates[0] and is_day_available_for_ftp(day_abbrev):
                     workout_type = 'FTP_Test'
-                    description = ftp_descriptions.get(week_num, 'The Assessment - Functional Threshold. Retest to update training zones.')
+                    description = (f"Week {week_num}: " + ftp_descriptions.get(
+                        week_num, 'The Assessment - Functional Threshold. Retest to update training zones.'))
                     duration = FTP_TEST_DURATION_MIN
                     power = 0.82
                     ftp_tests_added.add(week_num)
@@ -2349,6 +2387,11 @@ GO GET IT, {athlete_name.upper()}!
                         if heat_reminder and 'EXECUTION:' in zwo_content:
                             zwo_content = zwo_content.replace('EXECUTION:', f'{heat_reminder}EXECUTION:')
 
+                        zwo_content = rewrite_zwo_description(
+                            zwo_content, plan_week=week_num,
+                            session_date=day_info.get('date'), event_date=race_date,
+                        )
+
                         # Write the personalized content
                         filepath = zwo_dir / f"{workout_name}.zwo"
                         with open(filepath, 'w') as f:
@@ -2407,6 +2450,10 @@ GO GET IT, {athlete_name.upper()}!
 
             # Round durations to nearest 10 minutes (fixes int() truncation drift)
             zwo_content = round_zwo_durations(zwo_content)
+            zwo_content = rewrite_zwo_description(
+                zwo_content, plan_week=week_num,
+                session_date=day_info.get('date'), event_date=race_date,
+            )
 
             # Write file
             filepath = zwo_dir / filename
@@ -2519,6 +2566,10 @@ GO GET IT, {athlete_name.upper()}!
 
                 generated_files.append(filepath)
 
+    # The caller owns the final write once guide/summary generation succeeds.
+    # Keep this on the function rather than changing the long-standing return
+    # shape used by existing generator callers.
+    generate_zwo_files.last_fulfillment_issues = _fulfillment_issues
     return generated_files
 
 
@@ -2654,6 +2705,19 @@ def generate_athlete_package(athlete_id: str) -> dict:
 
     detail(f"Saved: {summary_path}")
 
+    # J1: package generation has now completed its three required artifacts.
+    # This is deliberately non-fatal: an inability to record review state must
+    # never make the customer lose a complete package, but it will fail closed
+    # at confirmation until an operator repairs persistent storage.
+    try:
+        write_generation(
+            athlete_dir / 'fulfillment_status.json', athlete_id,
+            getattr(generate_zwo_files, 'last_fulfillment_issues', []),
+        )
+        detail("Saved: fulfillment_status.json")
+    except Exception as exc:
+        warning(f"Could not write fulfillment state (confirmation will fail closed): {exc}")
+
     # G0 reflection only: aggregate the artifacts just generated.  PlanIR is
     # deliberately advisory until later tickets make serializers project it;
     # a malformed historical/optional artifact must never block delivery.
@@ -2662,6 +2726,21 @@ def generate_athlete_package(athlete_id: str) -> dict:
         from plan_ir import build_plan_ir
         build_plan_ir(athlete_id)
         detail("Saved: plan_ir.json")
+        # G5: serializers are checked against the just-assembled PlanIR.  A
+        # mismatch is a blocking review issue, not an order-killing exception.
+        from validate_plan_package import validate_plan_package
+        semantic_issues = validate_plan_package(athlete_dir)
+        if semantic_issues:
+            from fulfillment_state import load as load_fulfillment_state, set_generation_blockers
+            current = load_fulfillment_state(athlete_dir / 'fulfillment_status.json')
+            blockers = {issue['id']: issue for issue in current['blocking_issues']}
+            blockers.update({issue['id']: issue for issue in semantic_issues})
+            set_generation_blockers(athlete_dir / 'fulfillment_status.json', list(blockers.values()))
+            build_plan_ir(athlete_id)  # PlanIR's fulfillment projection follows the gate.
+            warning(f"Package consistency gate flagged {len(semantic_issues)} issue(s)")
+        from fulfillment_manifest import build_fulfillment_manifest
+        build_fulfillment_manifest(athlete_dir)
+        detail("Saved: fulfillment_manifest.json")
     except Exception as exc:
         warning(f"PlanIR aggregation failed (package delivery continues): {exc}")
 

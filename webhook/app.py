@@ -30,6 +30,10 @@ from flask_limiter import Limiter
 import stripe
 import yaml
 
+from fulfillment_state import (APPLIED, CONFIRMED, FulfillmentStateError,
+                               confirm_after_send, load as load_fulfillment_state,
+                               transition as transition_fulfillment)
+
 import endure_delivery
 
 app = Flask(__name__)
@@ -377,7 +381,7 @@ def _build_training_plan_email(details: dict) -> tuple:
     download_full = f'{base_url}/api/download/{athlete_id}?type=full&token={download_token}' if download_token else ''
 
     status_color = '#1A8A82' if pipeline_ok else '#c0392b'
-    status_label = 'READY FOR REVIEW' if pipeline_ok else 'PIPELINE FAILED'
+    status_label = 'REVIEW REQUIRED' if pipeline_ok else 'PIPELINE FAILED'
 
     # Edge-case review flags — profiles where automation is most likely to
     # need a human eye before delivery. The plan still generated and passed
@@ -425,7 +429,8 @@ def _build_training_plan_email(details: dict) -> tuple:
 
     subject = f"[GG] {'New order' if pipeline_ok else 'FAILED'}: {name} — {race_name or 'training plan'}"
     if pipeline_ok and needs_review:
-        subject = subject.replace('[GG] New order', '[GG] ⚠ NEEDS REVIEW')
+        status_label = 'ACTION REQUIRED'
+        subject = subject.replace('[GG] New order', '[GG] ⚠ ACTION REQUIRED')
     elif pipeline_ok and review_flags:
         subject = subject.replace('[GG] New order', '[GG] New order ⚠ REVIEW')
 
@@ -549,7 +554,7 @@ def _build_training_plan_email(details: dict) -> tuple:
 </div>"""
 
     # Plain text fallback
-    text = f"""{'READY FOR REVIEW' if pipeline_ok else 'PIPELINE FAILED'}: {name}
+    text = f"""{'ACTION REQUIRED' if pipeline_ok and needs_review else ('REVIEW REQUIRED' if pipeline_ok else 'PIPELINE FAILED')}: {name}
 Race: {race_name} ({race_date})
 Tier: {tier} | FTP: {ftp}W | Hours: {hours}/wk
 Plan: {weeks} weeks, {workouts} workouts
@@ -1594,6 +1599,7 @@ COACH_DELIVERABLES = [
     'methodology.yaml',
     'derived.yaml',
     'intake_backup.json',
+    'fulfillment_manifest.json',
 ]
 
 
@@ -1657,14 +1663,25 @@ def persist_deliverables(athlete_id: str) -> dict:
         else:
             missing.append(fname)
 
+    # The persistent delivery copy is the authority for operator transitions.
+    # It is intentionally not a customer/coach package artifact: a zip is a
+    # snapshot, while the status changes after review and application.
+    status_src = athlete_dir / 'fulfillment_status.json'
+    if status_src.exists():
+        shutil.copy2(status_src, delivery_dir / 'fulfillment_status.json')
+        copied.append('fulfillment_status.json (state authority)')
+    else:
+        missing.append('fulfillment_status.json')
+
     # Create FULL zip (coach — everything)
     full_zip = delivery_dir / f'{athlete_id}-full-package.zip'
-    _create_zip(delivery_dir, full_zip, exclude_zip=True)
+    _create_zip(delivery_dir, full_zip, exclude_zip=True,
+                exclude_files={'fulfillment_status.json'})
 
     # Create CUSTOMER zip (no coach-only files)
     customer_zip = delivery_dir / f'{athlete_id}-training-plan.zip'
     _create_zip(delivery_dir, customer_zip, exclude_zip=True,
-                exclude_files=set(COACH_DELIVERABLES))
+                exclude_files=set(COACH_DELIVERABLES) | {'fulfillment_status.json'})
 
     logger.info(f"Persisted deliverables for {athlete_id}: "
                 f"{len(copied)} files, full={full_zip.stat().st_size // 1024}KB, "
@@ -2302,6 +2319,43 @@ def jobs_sweep():
         return jsonify({'error': 'Internal error'}), 500
 
 
+def _fulfillment_status_path(athlete_id: str) -> Path:
+    return Path(DELIVERIES_DIR) / athlete_id / 'fulfillment_status.json'
+
+
+def _has_client_timestamp(value) -> bool:
+    if isinstance(value, dict):
+        return any('timestamp' in str(key).lower() or _has_client_timestamp(item)
+                   for key, item in value.items())
+    if isinstance(value, list):
+        return any(_has_client_timestamp(item) for item in value)
+    return False
+
+
+@app.route('/api/fulfillment/<athlete_id>/transition', methods=['POST'])
+def transition_fulfillment_state(athlete_id):
+    """Record the coach's authenticated review/application transition."""
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
+        return jsonify({'error': 'Unauthorized'}), 401
+    norm_id = _normalize_athlete_id(athlete_id)
+    if not validate_athlete_id(norm_id):
+        return jsonify({'error': 'Invalid athlete ID'}), 400
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or _has_client_timestamp(data):
+        return jsonify({'error': 'JSON body without client timestamps is required'}), 400
+    try:
+        state = transition_fulfillment(
+            _fulfillment_status_path(norm_id), str(data.get('to', '')),
+            str(data.get('coach', '')), waiver=data.get('waiver'),
+            platform=str(data.get('platform', '')), evidence=str(data.get('evidence', '')),
+        )
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 409
+    return jsonify({'athlete_id': norm_id, 'status': state['status'],
+                    'generation_revision': state['generation_revision']}), 200
+
+
 @app.route('/api/confirm/<athlete_id>', methods=['POST'])
 def confirm_plan_ready(athlete_id):
     """Send "your plan is live on TrainingPeaks" email to customer.
@@ -2316,6 +2370,15 @@ def confirm_plan_ready(athlete_id):
     norm_id = _normalize_athlete_id(athlete_id)
     if not validate_athlete_id(norm_id):
         return jsonify({'error': 'Invalid athlete ID'}), 400
+
+    # Fail closed before looking up an order or constructing/sending mail.
+    # The actual send+transition below is also serialized for exactly-once mail.
+    try:
+        state = load_fulfillment_state(_fulfillment_status_path(norm_id))
+    except FulfillmentStateError:
+        return jsonify({'error': 'Fulfillment state unavailable'}), 409
+    if state['status'] not in (APPLIED, CONFIRMED):
+        return jsonify({'error': 'Plan must be APPLIED before confirmation'}), 409
 
     # Find customer email and race from order logs
     log_dir = Path(DATA_DIR) / '.logs'
@@ -2365,6 +2428,19 @@ def confirm_plan_ready(athlete_id):
         if guide_path.exists():
             guide_attachments.append((guide_name, str(guide_path)))
             break
+
+    def _send_and_mark(send):
+        """Keep mail send and CONFIRMED transition in one athlete lock."""
+        try:
+            action, _ = confirm_after_send(
+                _fulfillment_status_path(norm_id), send,
+                metadata={'provider': 'resend'},
+            )
+            return action != 'idempotent' or True, None
+        except RuntimeError:
+            return False, ('email', 502)
+        except FulfillmentStateError:
+            return False, ('state', 409)
 
     # Phase 4c: endure-target orders that actually delivered on Endure get
     # the Endure "plan is live" email. The invitation email itself is sent
@@ -2434,9 +2510,9 @@ gravelgodcycling.com
   </div>
 </div>"""
 
-        ok = _send_email(customer_email, subject, text_body, html=html_body,
-                         reply_to=NOTIFICATION_EMAIL,
-                         attachments=guide_attachments)
+        ok, failure = _send_and_mark(lambda: _send_email(
+            customer_email, subject, text_body, html=html_body,
+            reply_to=NOTIFICATION_EMAIL, attachments=guide_attachments))
         if ok:
             logger.info(f"Sent Endure plan confirmation to "
                         f"{_mask_email(customer_email)} for {norm_id}")
@@ -2446,7 +2522,7 @@ gravelgodcycling.com
                 'email': _mask_email(customer_email),
                 'delivery_target': 'endure',
             })
-        return jsonify({'error': 'Failed to send confirmation email'}), 502
+        return jsonify({'error': 'Failed to send confirmation email' if failure and failure[0] == 'email' else 'Fulfillment state unavailable'}), failure[1]
 
     # Check for personalized email generated by the pipeline
     personal_email_path = delivery_dir / 'personal_email.md'
@@ -2482,9 +2558,9 @@ gravelgodcycling.com
   </div>
 </div>"""
 
-            ok = _send_email(customer_email, subject, text_body, html=html_body,
-                             reply_to=NOTIFICATION_EMAIL,
-                             attachments=guide_attachments)
+            ok, failure = _send_and_mark(lambda: _send_email(
+                customer_email, subject, text_body, html=html_body,
+                reply_to=NOTIFICATION_EMAIL, attachments=guide_attachments))
             if ok:
                 logger.info(f"Sent personal email to {_mask_email(customer_email)} for {norm_id}")
                 return jsonify({
@@ -2494,7 +2570,7 @@ gravelgodcycling.com
                     'source': 'personal_email.md',
                 })
             else:
-                return jsonify({'error': 'Failed to send personal email'}), 502
+                return jsonify({'error': 'Failed to send personal email' if failure and failure[0] == 'email' else 'Fulfillment state unavailable'}), failure[1]
         except Exception as e:
             logger.warning(f"Failed to load personal_email.md, falling back to generic: {e}")
 
@@ -2559,9 +2635,9 @@ gravelgodcycling.com
   </div>
 </div>"""
 
-    ok = _send_email(customer_email, subject, text_body, html=html_body,
-                     reply_to=NOTIFICATION_EMAIL,
-                     attachments=guide_attachments)
+    ok, failure = _send_and_mark(lambda: _send_email(
+        customer_email, subject, text_body, html=html_body,
+        reply_to=NOTIFICATION_EMAIL, attachments=guide_attachments))
     if ok:
         logger.info(f"Sent plan confirmation to {_mask_email(customer_email)} for {norm_id}")
         return jsonify({
@@ -2570,7 +2646,7 @@ gravelgodcycling.com
             'email': _mask_email(customer_email),
         })
     else:
-        return jsonify({'error': 'Failed to send confirmation email'}), 502
+        return jsonify({'error': 'Failed to send confirmation email' if failure and failure[0] == 'email' else 'Fulfillment state unavailable'}), failure[1]
 
 
 @app.route('/api/questionnaire-started', methods=['POST', 'OPTIONS'])

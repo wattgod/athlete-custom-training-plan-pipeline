@@ -19,7 +19,7 @@ import calendar
 import glob
 import json
 import re
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
@@ -84,6 +84,12 @@ def build():
                 "elevation_ft": vit.get("elevation_ft") or r.get("elevation_feet"),
                 "discipline": discipline,
                 "location": vit.get("location") or "",
+                "source_urls": r.get("source_urls") or vit.get("source_urls") or [],
+                "source_type": r.get("source_type") or "race_database",
+                "verified_at": r.get("verified_at") or datetime.now(timezone.utc).isoformat(),
+                "event_year": (int(iso[:4]) if iso else None),
+                "course_variant": r.get("course_variant") or vit.get("course_variant"),
+                "category": r.get("category") or vit.get("category") or vit.get("sex"),
             }
             # gravel + road can share a slug — namespace by discipline
             out[f"{discipline}:{slug}"] = entry

@@ -83,3 +83,78 @@ and environment assumptions; this slice did not change those paths.
 The workspace sandbox permits source changes but denies writes to this linked
 worktree's external Git metadata (`.../.git/worktrees/wt-plantruth/index.lock`),
 so commits could not be created here. No branch was pushed or changed.
+
+## J1 — enforced fulfillment/review state machine
+
+- Added the stdlib-only, atomically-written and `fcntl.flock`-serialized
+  fulfillment authority. Generation writes `GENERATED` or `BLOCKED_REVIEW`;
+  compliance rules, unmatched A-races, and critical quality gates are recorded
+  as structured blockers. Regeneration increments revision and clears approval,
+  application, and confirmation records.
+- Added authenticated coach transitions for `APPROVED` and `APPLIED`. A blocked
+  plan requires a complete recorded waiver; application requires a platform and
+  evidence. Confirmation fails closed unless `APPLIED`, sends under the
+  per-athlete lock, then marks `CONFIRMED` only when mail succeeds.
+- Persistent delivery copies now include the live state authority but both ZIPs
+  exclude it. Coach mail uses `ACTION REQUIRED` for blocked plans and
+  `REVIEW REQUIRED` for clean plans; it does not label a reviewable plan READY.
+
+### Verification
+
+- `pytest webhook/tests/test_fulfillment_state.py -q`: **10 passed**.
+- `pytest athletes/scripts/ -q`: **1140 passed, 53 skipped**.
+- Whole webhook suite still has the documented unrelated cached-data/env test
+failures; the first observed pre-existing failure was stale-intake cleanup.
+
+## G3 — descriptions render from executable segments
+
+- Added `workout_spec.py`, which normalizes ZWO block XML into typed segments
+  and derives the MAIN SET text (reps, on/off duration, and power) from them.
+  Nate generation and final package rendering re-project the final/scaled XML
+  into its description, so the displayed set cannot retain an old template.
+- Calendar-sensitive text is derived from plan week and session/event dates.
+  FTP tests carry their actual week label, and a phrase claiming "day before
+  race" is converted to neutral pre-event activation unless the dates prove it.
+
+### Verification
+
+- Focused G3/workout tests: **224 passed, 4 skipped**.
+- Full `athletes/scripts/` suite: **1143 passed, 53 skipped**.
+
+## G5 — semantic package-consistency validator
+
+- Added `validate_plan_package.py`, which compares the serialized fueling
+  prescription, fulfillment state, race facts, PlanIR sessions, final ZWO
+  segment structure, displayed interval facts, and FTP week labels against
+  `plan_ir.json`. Explicit guide race-fuel/elevation claims are checked when
+  present; generic education prose is intentionally excluded.
+- The generator runs this gate after PlanIR assembly. Any mismatch becomes a
+  structured `BLOCKED_REVIEW` issue and PlanIR is rebuilt to reflect that state;
+  package generation remains non-fatal for coach recovery.
+
+### Verification
+
+- Focused mutation tests: **3 passed** (ZWO duration, FTP week, guide fuel,
+  and guide elevation).
+- Full `athletes/scripts/` suite: **1145 passed, 53 skipped**.
+
+## G4 — recurring-session availability ledger (partial foundation)
+
+- Added a typed ledger for multiple daily sessions, origins, slots, locked
+  duration, intensity, residual capacity, total weekly load, hard-day counting,
+  cap failures, and structured/free-text contradictions. Intake persists
+  structured recurring sessions; the block path subtracts fixed load and keeps
+  fixed hard days free of an additional prescribed session.
+- This is not yet the requested Heather golden-plan implementation: fixed
+  sessions are not fully materialized as PlanIR calendar sessions and the
+  compliance rules do not yet aggregate their intensity count. Do not treat G4
+  as complete.
+
+## H1 / I1 / I2 — partial foundations only
+
+- Race snapshot entries now preserve provenance fields and an edition mismatch
+  becomes `RACE_STALE`; the coach brief shows available source/verification
+  data. Freshness threshold, category/variant matching, and fixtures remain.
+- A PlanIR-derived fulfillment manifest and a dry-run/resumable TP adapter
+  scaffold exist, but no fake-server acceptance tests or J1 APPLIED read-back
+  integration were completed.
