@@ -18,6 +18,7 @@ Covers:
 import sys
 import copy
 from pathlib import Path
+from datetime import date
 
 import pytest
 
@@ -33,6 +34,7 @@ from known_races import (
     fuzzy_score,
     build_generic_race_profile,
     generic_race_demands,
+    race_provenance_issue,
 )
 from intake_to_plan import build_profile, generate_coaching_brief
 from create_profile_from_form import resolve_race_id
@@ -79,6 +81,31 @@ UNKNOWN_RACE = "Joe's Backyard Fondo"
 # ===========================================================================
 
 class TestMatchRaceScored:
+
+    def test_edition_mismatch_blocks_even_when_identity_matched(self):
+        # Regression fixture for the Heather failure: an old source record
+        # cannot become facts for a later requested event merely by name match.
+        issue = race_provenance_issue({
+            'name': 'Nannup', 'date': '2024-03-01', 'event_year': 2024,
+            'source_urls': ['https://example.test/heerlen-2024'],
+            'source_type': 'official', 'verified_at': '2026-06-01T00:00:00+00:00',
+        }, '2026-03-01', today=date(2026, 7, 14))
+        assert issue and 'edition 2024' in issue
+
+    def test_fresh_sourced_womens_course_passes_and_brief_shows_provenance(self):
+        facts = {
+            'name': 'Nannup', 'date': '2026-03-01', 'event_year': 2026,
+            'course_variant': 'championship', 'category': 'elite', 'sex': 'women',
+            'source_urls': ['https://example.test/nannup-women-2026'],
+            'source_type': 'official', 'verified_at': '2026-06-01T00:00:00+00:00',
+        }
+        assert race_provenance_issue(facts, '2026-03-01', 'elite', 'female', today=date(2026, 7, 14)) is None
+        profile = build_profile(_make_parsed_with_race('Unbound Gravel 200 (2026-05-30, 200, priority A)'))
+        profile['target_race'].update(facts)
+        profile['target_race']['race_match'] = {'method': 'exact'}
+        brief = generate_coaching_brief(profile, _make_parsed_with_race('Unbound Gravel 200'))
+        assert facts['source_urls'][0] in brief
+        assert facts['verified_at'] in brief
 
     def test_exact_alias_unchanged(self):
         matched, meta = match_race_scored('Unbound 200')

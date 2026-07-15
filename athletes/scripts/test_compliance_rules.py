@@ -52,10 +52,8 @@ class TestComplianceConstants:
         assert not overlap, f"Overlap: {overlap}"
 
     def test_fuel_tag_keys(self):
-        """All three fuel tag categories present."""
-        assert 'intensity' in FUEL_TAGS
-        assert 'endurance' in FUEL_TAGS
-        assert 'race_sim' in FUEL_TAGS
+        """Constants cannot be an alternate personalized fuel source."""
+        assert FUEL_TAGS == {}
 
     def test_recovery_volume_range(self):
         """Recovery volume factor is between 0 and 1."""
@@ -216,20 +214,9 @@ class TestVO2maxGapConstants:
 # ============================================================
 
 class TestFuelTags:
-    def test_intensity_fuel_tag_content(self):
-        """Intensity fuel tag mentions carbs/hr."""
-        assert 'carbs/hr' in FUEL_TAGS['intensity']
-        assert '60-90g' in FUEL_TAGS['intensity']
-
-    def test_endurance_fuel_tag_content(self):
-        """Endurance fuel tag is moderate."""
-        assert 'carbs/hr' in FUEL_TAGS['endurance']
-        assert '30-60g' in FUEL_TAGS['endurance']
-
-    def test_race_sim_fuel_tag_content(self):
-        """Race sim fuel tag practices race-day fueling."""
-        assert 'carbs/hr' in FUEL_TAGS['race_sim']
-        assert '80-100g' in FUEL_TAGS['race_sim']
+    def test_fuel_tags_are_not_independent_personalized_literals(self):
+        """Fuel tags now render from FuelingPrescription, not constants."""
+        assert FUEL_TAGS == {}
 
     def test_race_sim_types(self):
         """Race_Sim and Gravel_Specific get practice fuel."""
@@ -242,25 +229,32 @@ class TestFuelTags:
 # ============================================================
 
 class TestFuelTagHelper:
+    @staticmethod
+    def _fueling():
+        from fueling_policy import build_fueling_prescription
+        return {'prescription': build_fueling_prescription(
+            duration_hours=5, weight_kg=70, ftp_watts=250, goal_type='finish'
+        ).to_dict()}
+
     def test_vo2max_gets_high_fuel(self):
         from generate_athlete_package import _get_fuel_tag_for_type
-        tag = _get_fuel_tag_for_type('VO2max')
+        tag = _get_fuel_tag_for_type('VO2max', self._fueling())
         assert 'HIGH FUEL' in tag
 
     def test_endurance_gets_moderate_fuel(self):
         from generate_athlete_package import _get_fuel_tag_for_type
-        tag = _get_fuel_tag_for_type('Endurance')
-        assert 'MODERATE FUEL' in tag
+        tag = _get_fuel_tag_for_type('Endurance', self._fueling())
+        assert 'LONG-RIDE FUEL' in tag
 
     def test_race_sim_gets_practice_fuel(self):
         from generate_athlete_package import _get_fuel_tag_for_type
-        tag = _get_fuel_tag_for_type('Race_Sim')
-        assert 'PRACTICE FUEL' in tag
+        tag = _get_fuel_tag_for_type('Race_Sim', self._fueling())
+        assert 'RACE FUEL' in tag
 
     def test_long_ride_gets_moderate_fuel(self):
         from generate_athlete_package import _get_fuel_tag_for_type
-        tag = _get_fuel_tag_for_type('Long_Ride')
-        assert 'MODERATE FUEL' in tag
+        tag = _get_fuel_tag_for_type('Long_Ride', self._fueling())
+        assert 'LONG-RIDE FUEL' in tag
 
     def test_recovery_gets_no_tag(self):
         from generate_athlete_package import _get_fuel_tag_for_type

@@ -33,6 +33,7 @@ Usage:
 import sys
 import os
 import re
+import json
 import argparse
 import shutil
 import subprocess
@@ -43,6 +44,11 @@ from typing import Dict, List, Optional, Tuple, Any
 # Ensure scripts dir is on path
 SCRIPTS_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPTS_DIR))
+sys.path.insert(0, str(SCRIPTS_DIR.parent.parent / 'webhook'))
+
+from fulfillment_state import (FulfillmentStateError, load as load_fulfillment_state,
+                               set_generation_blockers, write_generation)
+from availability_ledger import AvailabilityLedgerError, contradiction_issues, normalize_sessions
 
 from constants import (
     ATHLETES_BASE_DIR,
@@ -60,7 +66,7 @@ from constants import (
 )
 from known_races import (KNOWN_RACES, RACE_ALIASES, match_race,
                          match_race_scored, lookup_by_slug,
-                         build_generic_race_profile)
+                         build_generic_race_profile, race_provenance_issue)
 
 # ---------------------------------------------------------------------------
 # ANSI colors for terminal output
@@ -764,6 +770,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     coaching = parsed.get('coaching', {})
     mental = parsed.get('mental_game', {})
     additional = parsed.get('additional', {})
+    nutrition_intake = parsed.get('nutrition', {})
 
     email = header.get('email', basic.get('email', ''))
     submitted = header.get('submitted', '')
@@ -934,7 +941,22 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                     # How the race was resolved — audited by the coach brief
                     # and the pre-delivery checklist.
                     'race_match': match_meta,
+                    'source_urls': info.get('source_urls') or [],
+                    'source_type': info.get('source_type'),
+                    'verified_at': info.get('verified_at'),
+                    'event_year': info.get('event_year'),
+                    'course_variant': info.get('course_variant'),
+                    'category': info.get('category'),
                 }
+                # A name match is not permission to reuse a prior edition's
+                # course facts. H1 keeps the plan build recoverable but forces
+                # a coach review when requested and sourced edition disagree.
+                issue = race_provenance_issue(
+                    info, event['date'], goals.get('race_category', ''),
+                    basic.get('sex', ''),
+                )
+                if issue:
+                    target_race_info['race_provenance_issue'] = issue
                 # Verified venue from the DB (used by the guide, and lets the
                 # integrity check trust the date instead of re-deriving it).
                 if info.get('location'):
@@ -1009,6 +1031,21 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     long_ride_days = parse_day_list(schedule.get('long_ride_days', 'saturday'))
     interval_days = parse_day_list(schedule.get('interval_days', ''))
     off_days = parse_day_list(schedule.get('off_days', ''))
+
+    # Structured recurring sessions are authoritative over ambiguous free text.
+    # Accept already-decoded questionnaire JSON as well as a JSON string so the
+    # webhook and manual intake paths share one schema.
+    raw_recurring = schedule.get('recurring_sessions', [])
+    if isinstance(raw_recurring, str):
+        try:
+            raw_recurring = json.loads(raw_recurring) if raw_recurring.strip() else []
+        except json.JSONDecodeError:
+            raw_recurring = []
+    try:
+        recurring_sessions = normalize_sessions(raw_recurring)
+    except AvailabilityLedgerError as exc:
+        recurring_sessions = []
+        print(f"{YELLOW}WARNING: recurring sessions need coach review: {exc}{RESET}")
 
     preferred_long_day = long_ride_days[0] if long_ride_days else 'saturday'
 
@@ -1324,6 +1361,9 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'volume_warning': volume_warning,
         },
         'preferred_days': preferred_days,
+        'recurring_sessions': recurring_sessions,
+        'availability_review_issues': contradiction_issues(
+            recurring_sessions, schedule.get('notes', '') or additional.get('notes', '')),
         'travel_dates': parse_travel_dates(
             schedule.get('travel_dates', '') or additional.get('travel_dates', '')
         ),
@@ -1391,7 +1431,12 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'diet_styles': [],
             'fluid_intake_rating': None,
             'restrictions': '',
-            'training_fuel': '',
+            # Preserve the athlete's demonstrated carbohydrate intake when the
+            # questionnaire supplies it. Fueling policy parses numeric g/hr;
+            # blank/free-text remains a documented unknown rather than a block.
+            'training_fuel': nutrition_intake.get('training_fuel',
+                nutrition_intake.get('current_carbs_g_per_hour',
+                additional.get('training_fuel', ''))),
             'post_workout': '',
             'notes': '',
         },
@@ -1876,6 +1921,10 @@ def generate_coaching_brief(
     md += f"| Tier | {tier} |\n"
     md += f"| Starting Phase | {starting_phase} |\n"
     md += f"| Target Race | {race_name} ({race_date}) |\n"
+    if _rm.get('method') != 'none':
+        _sources = target.get('source_urls') or []
+        md += f"| Race facts verified | {target.get('verified_at') or 'not recorded'} |\n"
+        md += f"| Race sources | {', '.join(_sources) if _sources else 'not recorded'} |\n"
     md += f"| Goal | {goal_type} |\n"
     md += f"| FTP | {ftp}W ({w_kg} W/kg) at {weight_kg}kg |\n"
     md += f"| Age | {profile.get('health_factors', {}).get('age', '?')} |\n"
@@ -2210,18 +2259,21 @@ def generate_coaching_brief(
     # =====================================================================
     md += f"## 6. Fueling Plan\n"
     if fueling_data:
+        from fueling_policy import prescription_from_fueling
+        prescription = prescription_from_fueling(fueling_data)
         carbs = fueling_data.get('carbohydrates', {})
         cals = fueling_data.get('calories', {})
-        hydration = fueling_data.get('recommendations', {}).get('hydration', {})
+        hydration = prescription.get('hydration', fueling_data.get('recommendations', {}).get('hydration', {}))
 
         md += f"| Field | Value |\n"
         md += f"|-------|-------|\n"
         md += f"| Race Duration | {cals.get('duration_hours', '?')} hrs |\n"
         md += f"| Total Calories | {cals.get('total_calories', '?')} kcal |\n"
         md += f"| Calories/Hour | {cals.get('calories_per_hour', '?')} kcal/hr |\n"
-        md += f"| Carb Target | {carbs.get('hourly_target', '?')}g/hr |\n"
-        md += f"| Carb Range | {carbs.get('hourly_range', ['?','?'])[0]}-{carbs.get('hourly_range', ['?','?'])[1]}g/hr |\n"
-        md += f"| Total Carbs | {carbs.get('total_grams', '?')}g |\n"
+        carb_range = prescription.get('race_range_g_per_hour', carbs.get('hourly_range', ['?','?']))
+        md += f"| Carb Target | {prescription.get('race_target_g_per_hour', carbs.get('hourly_target', '?'))}g/hr |\n"
+        md += f"| Carb Range | {carb_range[0]}-{carb_range[1]}g/hr |\n"
+        md += f"| Total Carbs | {prescription.get('total_g', carbs.get('total_grams', '?'))}g |\n"
         md += f"| Hydration | {hydration.get('target_ml_per_hour', '?')}ml/hr |\n"
         md += f"| Electrolytes | {hydration.get('electrolytes', '?')} |\n"
         md += f"\n"
@@ -2524,6 +2576,7 @@ def run_quality_gates(athlete_id: str) -> bool:
             else:
                 print(f"{YELLOW}WARN{RESET}")  # non-critical advisory only
 
+    run_quality_gates.last_critical_issues = []
     if flagged:
         try:
             from constants import get_athlete_file
@@ -2537,6 +2590,15 @@ def run_quality_gates(athlete_id: str) -> bool:
             review.write_text("\n".join(lines).lstrip() + "\n")
         except Exception:
             pass
+        run_quality_gates.last_critical_issues = [
+            {
+                'id': 'QUALITY_GATE_' + re.sub(r'[^A-Z0-9]+', '_', name.upper()).strip('_'),
+                'source': 'quality_gate',
+                'severity': 'CRITICAL',
+                'message': '; '.join(crit) or f'{name} reported a critical failure',
+            }
+            for name, crit in flagged
+        ]
         # CI / debugging can restore hard-blocking.
         if os.environ.get('GG_STRICT_QUALITY') == '1':
             print(f"\n{RED}GG_STRICT_QUALITY: quality gate flagged — blocking.{RESET}")
@@ -3119,6 +3181,37 @@ def main():
         if not run_quality_gates(athlete_id):
             # Only reachable under GG_STRICT_QUALITY=1 (CI/debugging).
             sys.exit(1)
+
+    # J1: add intake and post-generation quality blockers to the state created
+    # by generate_athlete_package before any delivery copy is made.  The plan is
+    # still complete and deliverable for coach review; confirmation is gated.
+    state_path = athlete_dir / 'fulfillment_status.json'
+    try:
+        state = load_fulfillment_state(state_path)
+        blockers = list(state.get('blocking_issues', []))
+        target_match = (profile.get('target_race') or {}).get('race_match') or {}
+        if target_match.get('method') == 'none':
+            blockers.append({
+                'id': 'RACE_UNMATCHED',
+                'source': 'intake_to_plan',
+                'severity': 'CRITICAL',
+                'message': 'A-race did not match a known race; coach verification is required.',
+            })
+        blockers.extend((profile.get('availability_review_issues') or []))
+        provenance_issue = (profile.get('target_race') or {}).get('race_provenance_issue')
+        if provenance_issue:
+            blockers.append({'id': 'RACE_STALE', 'source': 'race_provenance',
+                             'severity': 'CRITICAL', 'message': provenance_issue})
+        blockers.extend(getattr(run_quality_gates, 'last_critical_issues', []))
+        # Preserve one record per rule across a rerun of the final pipeline steps.
+        deduped = {issue['id']: issue for issue in blockers}
+        set_generation_blockers(state_path, list(deduped.values()))
+    except FulfillmentStateError as exc:
+        # A state write failure is intentionally not an order-killer.  The
+        # webhook treats missing/malformed state as a closed confirmation gate.
+        print(f"  {YELLOW}[WARN]{RESET} Fulfillment state unavailable: {exc}")
+    except Exception as exc:
+        print(f"  {YELLOW}[WARN]{RESET} Could not update fulfillment blockers: {exc}")
 
     # -- Step 4: Generate coaching brief --
     print(f"\n{BOLD}Step 4: Generating coaching brief...{RESET}")

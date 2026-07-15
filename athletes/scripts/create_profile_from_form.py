@@ -15,6 +15,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent))
 from constants import DAY_ORDER_FULL, get_athlete_dir
 from known_races import match_race_scored
+from availability_ledger import AvailabilityLedgerError, contradiction_issues, normalize_sessions
 
 
 def resolve_race_id(race_name: str) -> tuple:
@@ -424,6 +425,14 @@ def create_profile_from_form(athlete_id: str, form_data: Dict) -> Dict:
                           else form_data.get('race_name', ''))
     _race_id, _race_match = resolve_race_id(_primary_race_name)
 
+    # The form/API schema accepts an array of immutable recurring sessions;
+    # retain every leg (e.g. AM/PM commute), rather than flattening it into a
+    # single availability flag.
+    try:
+        recurring_sessions = normalize_sessions(form_data.get('recurring_sessions') or [])
+    except AvailabilityLedgerError:
+        recurring_sessions = []
+
     # Generate profile
     profile = {
         'name': form_data.get('name', ''),
@@ -506,6 +515,9 @@ def create_profile_from_form(athlete_id: str, form_data: Dict) -> Dict:
                 else 0
             )
         },
+        'recurring_sessions': recurring_sessions,
+        'availability_review_issues': contradiction_issues(
+            recurring_sessions, form_data.get('schedule_notes', '') or form_data.get('availability_notes', '')),
         
         'preferred_days': {
             day: convert_day_availability(form_data, day)

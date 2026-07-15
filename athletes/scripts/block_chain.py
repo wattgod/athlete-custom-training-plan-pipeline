@@ -76,6 +76,7 @@ def build_plan_from_calendar(
     category_weights: Dict[str, float] = None,
     avoid_series: set = None,
     methodology_profile: Dict[str, Any] = None,
+    fixed_minutes: int = 0,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -107,6 +108,9 @@ def build_plan_from_calendar(
             multipliers combine with category_weights and whose duration cap
             filters intensity pools. None (default, and the legacy
             full-season path) → selection unchanged.
+        fixed_minutes: Immutable recurring load present in every week. The
+            prescribed budget is reduced from *each week type's total target*,
+            so recovery ratios operate on prescribed + external load.
 
     Returns:
         Plan dict shaped like chain_blocks() output: {'weeks': [...], ...}
@@ -153,6 +157,16 @@ def build_plan_from_calendar(
         else:  # recovery, race
             wk_intensity = 1
 
+        # build_calendar_week owns the multipliers below.  Reverse that
+        # multiplier to give it a prescribed budget whose final total (after
+        # G4 materializes fixed sessions) is the calendar's TOTAL target.
+        target_multiplier = {
+            'load': 1.10 if hours_per_week >= 6 else 1.15,
+            'testing': 1.10 if hours_per_week >= 6 else 1.15,
+            'recovery': 0.55, 'taper': 0.70, 'race': 0.60,
+        }.get(week_type, 1.0)
+        prescribed_hours = max(0.0, hours_per_week - fixed_minutes / (60 * target_multiplier))
+
         week = build_calendar_week(
             week_type=week_type,
             phase=bb_phase,
@@ -164,7 +178,7 @@ def build_plan_from_calendar(
             max_intensity=wk_intensity,
             off_days=off_days,
             long_ride_day=long_ride_day,
-            hours_per_week=hours_per_week,
+            hours_per_week=prescribed_hours,
             series_tracker=tracker,
             discipline=discipline,
             day_caps=day_caps,

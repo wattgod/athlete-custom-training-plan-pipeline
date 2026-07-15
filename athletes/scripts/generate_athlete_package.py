@@ -19,6 +19,12 @@ from datetime import datetime
 
 # Add script path for local imports
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'webhook'))
+
+from fulfillment_state import write_generation
+from workout_spec import rewrite_zwo_description
+from availability_ledger import (AvailabilityLedgerError, build_ledger,
+                                 materialize_fixed_sessions)
 
 # Local imports - use centralized modules
 from config_loader import get_config
@@ -28,7 +34,6 @@ from constants import (
     DAY_ORDER,
     FTP_TEST_DURATION_MIN,
     STRENGTH_PHASES,
-    FUEL_TAGS,
     INTENSITY_WORKOUT_TYPES,
     RACE_SIM_WORKOUT_TYPES,
     MASTERS_AGE_THRESHOLD,
@@ -51,21 +56,23 @@ from workout_templates import (
     scale_zwo_to_target_duration,
 )
 
-def _get_fuel_tag_for_type(workout_type: str) -> str:
+def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None) -> str:
     """Return fuel guidance string for a workout type, or empty string."""
     wt_lower = workout_type.lower()
+    from fueling_policy import prescription_from_fueling, render_workout_fueling
+    prescription = prescription_from_fueling(fueling or {})
     if workout_type in RACE_SIM_WORKOUT_TYPES or 'race_sim' in wt_lower or 'race simulation' in wt_lower:
-        return FUEL_TAGS['race_sim']
+        return render_workout_fueling(prescription, 'race_sim')
     elif workout_type in INTENSITY_WORKOUT_TYPES or any(k in wt_lower for k in [
         'vo2max', 'threshold', 'sprint', 'anaerobic', 'kitchen sink', 'drain cleaner',
         'la balanguera', 'hyttevask', 'blended', 'mixed', 'sfr', 'thunder quads',
         'blood pistons', 'cadence work', 'tempo', 'stomps', 'microbursts', 'buffer',
     ]):
-        return FUEL_TAGS['intensity']
+        return render_workout_fueling(prescription, 'quality')
     elif any(k in wt_lower for k in ['recovery', 'easy', 'shakeout', 'rest', 'openers', 'off']):
         return ''
     else:
-        return FUEL_TAGS['endurance']
+        return render_workout_fueling(prescription, 'long_ride')
 
 
 # Get config and set up paths
@@ -372,7 +379,7 @@ def select_strength_days(is_available, strength_only_abbrevs=None) -> list:
     return avail[:2]
 
 
-def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, derived: dict, profile: dict = None) -> list:
+def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, derived: dict, profile: dict = None, fueling: dict = None) -> list:
     """
     Generate ZWO workout files based on plan_dates, methodology, and athlete schedule preferences.
 
@@ -474,6 +481,10 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     max_weekly_minutes = cycling_hours_target * 60 * WEEKLY_HOUR_BUDGET_TOLERANCE
     week_total_minutes = 0
 
+    # Structured failures are carried to the package-level fulfillment state
+    # only after all required artifacts have rendered successfully.
+    _fulfillment_issues = []
+
     # ===================================================================
     # BLOCK-BUILDER PLAN: pre-compute workout assignments for all weeks.
     # The CALENDAR (plan_dates.yaml) is the single source of truth for
@@ -518,19 +529,42 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 _avail = get_day_availability(_abbrev)
                 _bb_day_caps[_abbrev] = _avail.get('max_duration_min', 0) or 0
 
+        # G4: locked athlete/event sessions consume the same day and weekly
+        # budget as prescribed work. A fixed hard day has no residual workout
+        # slot; compliance can then count/flag the true total distribution.
+        _fixed_sessions = (profile or {}).get('recurring_sessions', []) or []
+        try:
+            _ledger = build_ledger(_fixed_sessions, _bb_day_caps)
+            _fixed_minutes = sum(day['fixed_min'] for day in _ledger.values())
+            _bb_day_caps = {day: max(0, entry['residual_min']) for day, entry in _ledger.items()}
+            _fixed_hard_days = {day for day, entry in _ledger.items() if entry['hard']}
+            # Do not mark external-hard days as off days: fixed work must
+            # remain visible to R01/R05.  A zero residual cap prevents a
+            # second prescribed workout on that date.
+            _effective_max_intensity = max(0, max_intensity_per_week - len(_fixed_hard_days))
+            _builder_hours = cycling_hours_target
+        except AvailabilityLedgerError as exc:
+            _fulfillment_issues.append({'id': 'AVAILABILITY_CAP_IMPOSSIBLE',
+                                        'source': 'availability_ledger', 'severity': 'CRITICAL',
+                                        'message': str(exc)})
+            _builder_hours = cycling_hours_target
+
         _bb_plan = build_plan_from_calendar(
             week_descriptors=_bb_descriptors,
             archetype=_bb_archetype,
             max_level=max_workout_level,
-            max_intensity=max_intensity_per_week,
+            max_intensity=locals().get('_effective_max_intensity', max_intensity_per_week),
             off_days=_bb_off_days,
             long_ride_day=long_day_abbrev,
             starting_level=1,
-            hours_per_week=cycling_hours_target,
+            hours_per_week=_builder_hours,
             discipline=_bb_discipline,
             day_caps=_bb_day_caps or None,
             methodology=methodology_id,
+            fixed_minutes=_fixed_minutes if '_fixed_minutes' in locals() else 0,
         )
+        if '_ledger' in locals():
+            materialize_fixed_sessions(_bb_plan, _ledger)
 
         # Build lookup: (plan_week, day_abbrev) → block plan day data.
         # week_in_block rides along for series numbering in workout titles
@@ -605,6 +639,13 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                     + report + "\n")
             except Exception:
                 pass
+            _fulfillment_issues.extend({
+                'id': rule_id,
+                'source': 'block_compliance',
+                'severity': rule.get('severity', 'CRITICAL'),
+                'message': rule.get('message', 'Compliance rule failed'),
+            } for rule_id, rule in _compliance['rules'].items()
+              if rule.get('severity') == 'CRITICAL' and not rule.get('passed'))
         else:
             log.info(f"Compliance gate: {_compliance['critical_score']} critical, "
                      f"score {_compliance['score']}%")
@@ -1554,6 +1595,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 workout_type = 'Pre_Plan_Endurance'
                 duration = 80
                 power = 0.65
+                preplan_fuel = _get_fuel_tag_for_type('Endurance', fueling)
                 description = f"""PRE-PLAN WEEK: Endurance Ride
 {athlete_name} - {days_to_plan_start} days until plan starts
 
@@ -1562,7 +1604,7 @@ Longer easy ride to build aerobic base and test nutrition.
 
 WORKOUT:
 - 75-90 min at Z2 (60-70% FTP)
-- Practice fueling: aim for 40-60g carbs/hour
+- Practice fueling: {preplan_fuel or 'use the personalized target in your guide'}
 - Stay hydrated
 
 OUTDOOR STRONGLY ENCOURAGED:
@@ -1921,12 +1963,16 @@ TIPS:
                         f"{weeks_to_race} weeks to {race_name}\n"
                         f"Phase: {phase.upper()}\n\n"
                     )
-                    fuel_tag = _get_fuel_tag_for_type(bb_name)
+                    fuel_tag = _get_fuel_tag_for_type(bb_name, fueling)
                     fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
                     zwo_content = zwo_content.replace(
                         '<description>',
                         f'<description>{fuel_prefix}{personal_header}',
                         1
+                    )
+                    zwo_content = rewrite_zwo_description(
+                        zwo_content, plan_week=week_num,
+                        session_date=day_info.get('date'), event_date=race_date,
                     )
 
                     filepath = zwo_dir / f"{workout_name}.zwo"
@@ -2158,7 +2204,8 @@ Trust the process, {athlete_name}."""
                     and ftp_day_candidates and not week.get('is_recovery_week', False)):
                 if day_abbrev == ftp_day_candidates[0] and is_day_available_for_ftp(day_abbrev):
                     workout_type = 'FTP_Test'
-                    description = ftp_descriptions.get(week_num, 'The Assessment - Functional Threshold. Retest to update training zones.')
+                    description = (f"Week {week_num}: " + ftp_descriptions.get(
+                        week_num, 'The Assessment - Functional Threshold. Retest to update training zones.'))
                     duration = FTP_TEST_DURATION_MIN
                     power = 0.82
                     ftp_tests_added.add(week_num)
@@ -2177,12 +2224,15 @@ Trust the process, {athlete_name}."""
                         fueling_data = yaml.safe_load(f) or {}
 
                 race_info = fueling_data.get('race', {})
-                carb_info = fueling_data.get('carbohydrates', {})
+                from fueling_policy import prescription_from_fueling
+                prescription = prescription_from_fueling(fueling_data)
 
                 duration_hours = race_info.get('duration_hours', 5)
                 distance_miles = race_info.get('distance_miles', profile.get('target_race', {}).get('distance_miles', 75))
-                hourly_carbs = carb_info.get('hourly_target', 80)
-                total_carbs = carb_info.get('total_grams', 400)
+                hourly_carbs = prescription.get('race_target_g_per_hour')
+                total_carbs = prescription.get('total_g')
+                hourly_range = prescription.get('race_range_g_per_hour', [])
+                hydration = prescription.get('hydration', {})
 
                 # Estimate TSS (rough: ~60-70 TSS/hour for a hard gravel race)
                 estimated_tss = int(duration_hours * 65)
@@ -2197,7 +2247,7 @@ TARGET METRICS:
 - Estimated TSS: {estimated_tss}
 
 FUELING PLAN:
-- Carbs/hour: {hourly_carbs}g (range: {carb_info.get('hourly_range', [70, 90])})
+- Carbs/hour: {hourly_carbs}g (range: {hourly_range})
 - Total carbs: {total_carbs}g over race
 - Start fueling at 20 min, every 20-30 min thereafter
 - Pre-race: 100-150g carbs 2-3 hours before start
@@ -2209,7 +2259,8 @@ PACING STRATEGY:
 - Technical sections: Smooth > Fast. Avoid mechanicals.
 
 HYDRATION:
-- 500-750ml/hour depending on heat
+- {hydration.get('target_ml_per_hour', 'Use guide target')}ml/hour baseline; adjust from measured sweat rate and conditions
+- {hydration.get('electrolytes', 'Use the personalized electrolyte guidance')}
 - Start hydrated (clear urine morning of race)
 - Don't wait until thirsty
 
@@ -2332,7 +2383,7 @@ GO GET IT, {athlete_name.upper()}!
                             heat_reminder = "\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance\n\n"
 
                         # Insert fuel tag + header after <description> tag
-                        fuel_tag = _get_fuel_tag_for_type(workout_type)
+                        fuel_tag = _get_fuel_tag_for_type(workout_type, fueling)
                         fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
                         zwo_content = zwo_content.replace(
                             '<description>',
@@ -2342,6 +2393,11 @@ GO GET IT, {athlete_name.upper()}!
                         # Insert heat reminder before EXECUTION if applicable
                         if heat_reminder and 'EXECUTION:' in zwo_content:
                             zwo_content = zwo_content.replace('EXECUTION:', f'{heat_reminder}EXECUTION:')
+
+                        zwo_content = rewrite_zwo_description(
+                            zwo_content, plan_week=week_num,
+                            session_date=day_info.get('date'), event_date=race_date,
+                        )
 
                         # Write the personalized content
                         filepath = zwo_dir / f"{workout_name}.zwo"
@@ -2387,7 +2443,7 @@ GO GET IT, {athlete_name.upper()}!
                 heat_reminder = "\n\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance"
 
             # Add fuel tag
-            fuel_tag = _get_fuel_tag_for_type(workout_type)
+            fuel_tag = _get_fuel_tag_for_type(workout_type, fueling)
             fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
 
             full_description = fuel_prefix + personal_header + full_description + heat_reminder
@@ -2401,6 +2457,10 @@ GO GET IT, {athlete_name.upper()}!
 
             # Round durations to nearest 10 minutes (fixes int() truncation drift)
             zwo_content = round_zwo_durations(zwo_content)
+            zwo_content = rewrite_zwo_description(
+                zwo_content, plan_week=week_num,
+                session_date=day_info.get('date'), event_date=race_date,
+            )
 
             # Write file
             filepath = zwo_dir / filename
@@ -2513,6 +2573,10 @@ GO GET IT, {athlete_name.upper()}!
 
                 generated_files.append(filepath)
 
+    # The caller owns the final write once guide/summary generation succeeds.
+    # Keep this on the function rather than changing the long-standing return
+    # shape used by existing generator callers.
+    generate_zwo_files.last_fulfillment_issues = _fulfillment_issues
     return generated_files
 
 
@@ -2599,7 +2663,7 @@ def generate_athlete_package(athlete_id: str) -> dict:
 
     # Generate ZWO workout files FIRST (guide reads from workouts dir)
     step(3, "Generating ZWO workout files...")
-    zwo_files = generate_zwo_files(athlete_dir, plan_dates, methodology, derived, profile)
+    zwo_files = generate_zwo_files(athlete_dir, plan_dates, methodology, derived, profile, fueling)
     detail(f"Generated {len(zwo_files)} workout files")
 
     # Generate training guide AFTER workouts (reads ZWO filenames for ATP table)
@@ -2647,6 +2711,45 @@ def generate_athlete_package(athlete_id: str) -> dict:
         yaml.dump(summary, f, default_flow_style=False, sort_keys=False)
 
     detail(f"Saved: {summary_path}")
+
+    # J1: package generation has now completed its three required artifacts.
+    # This is deliberately non-fatal: an inability to record review state must
+    # never make the customer lose a complete package, but it will fail closed
+    # at confirmation until an operator repairs persistent storage.
+    try:
+        write_generation(
+            athlete_dir / 'fulfillment_status.json', athlete_id,
+            getattr(generate_zwo_files, 'last_fulfillment_issues', []),
+        )
+        detail("Saved: fulfillment_status.json")
+    except Exception as exc:
+        warning(f"Could not write fulfillment state (confirmation will fail closed): {exc}")
+
+    # G0 reflection only: aggregate the artifacts just generated.  PlanIR is
+    # deliberately advisory until later tickets make serializers project it;
+    # a malformed historical/optional artifact must never block delivery.
+    step(6, "Assembling PlanIR...")
+    try:
+        from plan_ir import build_plan_ir
+        build_plan_ir(athlete_id)
+        detail("Saved: plan_ir.json")
+        # G5: serializers are checked against the just-assembled PlanIR.  A
+        # mismatch is a blocking review issue, not an order-killing exception.
+        from validate_plan_package import validate_plan_package
+        semantic_issues = validate_plan_package(athlete_dir)
+        if semantic_issues:
+            from fulfillment_state import load as load_fulfillment_state, set_generation_blockers
+            current = load_fulfillment_state(athlete_dir / 'fulfillment_status.json')
+            blockers = {issue['id']: issue for issue in current['blocking_issues']}
+            blockers.update({issue['id']: issue for issue in semantic_issues})
+            set_generation_blockers(athlete_dir / 'fulfillment_status.json', list(blockers.values()))
+            build_plan_ir(athlete_id)  # PlanIR's fulfillment projection follows the gate.
+            warning(f"Package consistency gate flagged {len(semantic_issues)} issue(s)")
+        from fulfillment_manifest import build_fulfillment_manifest
+        build_fulfillment_manifest(athlete_dir)
+        detail("Saved: fulfillment_manifest.json")
+    except Exception as exc:
+        warning(f"PlanIR aggregation failed (package delivery continues): {exc}")
 
     # Final summary
     header("PACKAGE GENERATION COMPLETE")
