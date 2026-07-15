@@ -23,7 +23,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Set test environment before importing app
 os.environ['FLASK_ENV'] = 'test'
-os.environ['WOOCOMMERCE_SECRET'] = ''  # Disable signature check in tests
 os.environ['STRIPE_WEBHOOK_SECRET'] = ''
 os.environ['STRIPE_SECRET_KEY'] = ''  # Disable in tests
 # Legacy tests assert the original synchronous webhook contract (pipeline
@@ -85,6 +84,205 @@ class TestHealthEndpoint:
             response = client.get('/health')
             # Note: This test may pass with 200 if app caches the path
             assert response.status_code in [200, 503]
+
+
+class TestExperienceFieldMapping:
+    """A1: the live questionnaire sends `priorPlanExperience` (camelCase); the
+    code used to read a non-existent `prior_plan_experience` and default EVERY
+    athlete to 1yr (beginner)."""
+
+    @pytest.mark.parametrize("value,expected", [
+        ("none", 0), ("generic", 1), ("app", 3), ("coached", 5), ("custom", 4),
+        ("NONE", 0), ("Coached", 5),
+    ])
+    def test_categorical_maps_to_years(self, value, expected):
+        from app import _years_structured_from_intake
+        assert _years_structured_from_intake({"priorPlanExperience": value}) == expected
+
+    def test_numeric_value_accepted(self):
+        from app import _years_structured_from_intake
+        assert _years_structured_from_intake({"priorPlanExperience": "4"}) == 4
+
+    def test_legacy_snake_case_fallback(self):
+        from app import _years_structured_from_intake
+        assert _years_structured_from_intake({"prior_plan_experience": "2"}) == 2
+
+    def test_missing_defaults_to_one(self):
+        from app import _years_structured_from_intake
+        assert _years_structured_from_intake({}) == 1
+
+    def test_markdown_reflects_experienced_athlete(self):
+        # An athlete who was coached must NOT render as a 1yr beginner.
+        from app import _questionnaire_to_markdown
+        md = _questionnaire_to_markdown({"priorPlanExperience": "coached", "name": "Vet"})
+        assert "Years Structured: 5" in md
+        assert "Years Structured: 1" not in md
+
+
+class TestDownloadTokenInPath:
+    """A2: the signed token travels in the URL PATH, not `?token=<hex>` — a hex
+    token right after `=` is a valid quoted-printable escape and gets corrupted
+    in email transit (`=28`->`(`)."""
+
+    def test_email_url_puts_token_in_path(self):
+        from app import _build_training_plan_email
+        token = "289071686b14ef68ac9fafed3df133cc"
+        parts = _build_training_plan_email({
+            "athlete_id": "test_rider", "download_token": token,
+            "name": "T", "email": "t@example.com",
+        })
+        blob = " ".join(str(p) for p in parts)
+        assert f"/api/download/test_rider/{token}?type=full" in blob
+        assert f"token={token}" not in blob            # old query form is gone
+        assert "?type=full&token=" not in blob
+
+    def test_path_token_authorizes(self, client):
+        from app import _generate_download_token
+        token = _generate_download_token("test_rider")
+        # Valid token in the path -> auth passes; 404 (no zip in test) proves the
+        # route exists and authorized (it would be 401 if the token were rejected).
+        resp = client.get(f"/api/download/test_rider/{token}")
+        assert resp.status_code == 404
+
+    def test_bad_path_token_rejected(self, client):
+        resp = client.get("/api/download/test_rider/deadbeefdeadbeefdeadbeefdeadbeef")
+        assert resp.status_code == 401
+
+    def test_legacy_query_token_still_works(self, client):
+        from app import _generate_download_token
+        token = _generate_download_token("test_rider")
+        resp = client.get(f"/api/download/test_rider?token={token}")
+        assert resp.status_code == 404  # backward compatible: auth still passes
+
+
+class TestPackageIncompleteGuard:
+    """A4: a plan whose downloadable package failed to persist must not go out as
+    a clean 'READY FOR REVIEW' with a dead download link."""
+
+    def test_persist_incomplete_reasons(self):
+        from app import _persist_incomplete
+        assert _persist_incomplete(None)
+        assert _persist_incomplete({'error': 'boom'})
+        assert _persist_incomplete({'full_zip_size': 0})
+        assert _persist_incomplete({'full_zip_size': 5, 'missing': ['workouts/']})
+        assert _persist_incomplete({'full_zip_size': 1234, 'missing': [], 'copied': ['x']}) == ''
+
+    def test_email_flags_incomplete_and_drops_link(self):
+        from app import _build_training_plan_email
+        parts = _build_training_plan_email({
+            'athlete_id': 'x', 'name': 'X', 'pipeline_success': True,
+            'package_incomplete': 'package zip is empty or missing',
+        })
+        blob = ' '.join(str(p) for p in parts)
+        assert 'PACKAGE INCOMPLETE' in blob
+        assert '/api/download/' not in blob  # no download button when incomplete
+
+
+class TestOpenEndpointsRateLimited:
+    """A9: the previously-unguarded download / confirm / test endpoints now
+    carry rate-limit decorators (WooCommerce route was removed in A5)."""
+
+    def test_download_confirm_test_have_limits(self):
+        import inspect
+        import app
+        src = inspect.getsource(app)
+        for func in ("def download_deliverables", "def confirm_plan_ready", "def test_webhook"):
+            i = src.index(func)
+            assert "@limiter.limit" in src[max(0, i - 160):i], f"{func} missing rate limit"
+
+
+class TestNeedsReviewInZip:
+    """A10: NEEDS_REVIEW.txt is a coach deliverable -> it rides in the full
+    package zip but is excluded from the customer zip (which drops
+    COACH_DELIVERABLES), and its absence on a clean plan is not 'missing'."""
+
+    def test_needs_review_is_coach_only_deliverable(self):
+        from app import COACH_DELIVERABLES, CUSTOMER_DELIVERABLES
+        assert 'NEEDS_REVIEW.txt' in COACH_DELIVERABLES
+        assert 'NEEDS_REVIEW.txt' not in CUSTOMER_DELIVERABLES
+
+    def test_needs_review_treated_as_optional(self):
+        # It must share the optional-skip branch with the PDF so a clean plan
+        # (no flag file) does not report it 'missing'.
+        import inspect
+        from app import persist_deliverables
+        src = inspect.getsource(persist_deliverables)
+        assert "'NEEDS_REVIEW.txt'" in src and "training_guide.pdf" in src
+
+
+class TestNotificationLogMasksPII:
+    """A6: the Resend-unavailable CRITICAL log fallback must not leak raw emails."""
+
+    def test_helper_masks_emails_in_blob(self):
+        from app import _mask_emails_in_text
+        out = _mask_emails_in_text("contact a.b@example.com and c@d.org now")
+        assert "a.b@example.com" not in out
+        assert "c@d.org" not in out
+        assert "example.com" in out or "***" in out  # something was rendered
+
+    def test_fallback_log_masks_customer_email(self, monkeypatch):
+        import app
+        from unittest.mock import MagicMock
+        # Force the fallback (no Resend configured) log path.
+        monkeypatch.setattr(app, 'NOTIFICATION_EMAIL', '')
+        monkeypatch.setattr(app, 'RESEND_API_KEY', '')
+        mock_crit = MagicMock()
+        monkeypatch.setattr(app.logger, 'critical', mock_crit)
+        app._notify_new_order('TEST', {'name': 'Jane', 'email': 'jane.doe@example.com'})
+        logged = ' '.join(str(a) for c in mock_crit.call_args_list for a in c.args)
+        assert 'NEW ORDER' in logged            # it did log
+        assert 'jane.doe@example.com' not in logged  # but not the raw email
+
+
+class TestCodexReviewFixes:
+    """Fixes from the Codex 5.6 sol adversarial review of PR #51."""
+
+    def test_blank_camel_field_falls_back_to_legacy(self):
+        from app import _years_structured_from_intake
+        assert _years_structured_from_intake(
+            {'priorPlanExperience': '', 'prior_plan_experience': '5'}) == 5
+
+    def test_zero_workout_package_is_incomplete(self):
+        from app import _persist_incomplete
+        assert _persist_incomplete({'full_zip_size': 5000, 'zwo_count': 0})
+        assert _persist_incomplete(
+            {'full_zip_size': 5000, 'zwo_count': 12, 'missing': []}) == ''
+
+    def test_persist_flags_zero_workouts(self, tmp_path, monkeypatch):
+        import app
+        aid = 'zero_rider'
+        ath = tmp_path / 'athletes' / aid
+        (ath / 'workouts').mkdir(parents=True)  # exists but EMPTY
+        (ath / 'training_guide.html').write_text('<html>x</html>')
+        deliv = tmp_path / 'deliveries'; deliv.mkdir()
+        monkeypatch.setattr(app, 'ATHLETES_DIR', str(ath.parent))
+        monkeypatch.setattr(app, 'DELIVERIES_DIR', str(deliv))
+        res = app.persist_deliverables(aid)
+        assert res['zwo_count'] == 0
+        assert app._persist_incomplete(res)  # guard now catches an empty package
+
+    def test_persist_clears_stale_needs_review(self, tmp_path, monkeypatch):
+        import app
+        aid = 'repeat_rider'
+        ath = tmp_path / 'athletes' / aid
+        (ath / 'workouts').mkdir(parents=True)
+        (ath / 'workouts' / 'w1.zwo').write_text('<x/>')
+        (ath / 'training_guide.html').write_text('<html>x</html>')
+        deliv = tmp_path / 'deliveries'
+        (deliv / aid).mkdir(parents=True)
+        (deliv / aid / 'NEEDS_REVIEW.txt').write_text('STALE FLAG')  # prior run
+        monkeypatch.setattr(app, 'ATHLETES_DIR', str(ath.parent))
+        monkeypatch.setattr(app, 'DELIVERIES_DIR', str(deliv))
+        app.persist_deliverables(aid)  # clean run, no NEEDS_REVIEW in source
+        assert not (deliv / aid / 'NEEDS_REVIEW.txt').exists()
+
+    def test_legacy_no_intake_email_is_flagged(self):
+        from app import _build_training_plan_email
+        parts = _build_training_plan_email(
+            {'athlete_id': 'x', 'name': 'X', 'pipeline_success': True,
+             'legacy_no_intake': True, 'download_token': 'a' * 32})
+        blob = ' '.join(str(p) for p in parts)
+        assert 'NO INTAKE' in blob  # flagged, not a clean 'New order'
 
 
 class TestInputValidation:
@@ -234,89 +432,6 @@ class TestOrderDataValidation:
         assert 'weight' in error.lower()
 
 
-class TestWooCommerceWebhook:
-    """Tests for WooCommerce webhook endpoint."""
-
-    def test_woocommerce_ignores_pending_orders(self, client):
-        """Pending orders are ignored."""
-        response = client.post(
-            '/webhook/woocommerce',
-            json={'status': 'pending'},
-            content_type='application/json'
-        )
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data['status'] == 'ignored'
-
-    def test_woocommerce_processes_completed_orders(self, client, temp_athletes_dir):
-        """Completed orders are processed."""
-        order_data = {
-            'id': 12345,
-            'status': 'completed',
-            'billing': {
-                'first_name': 'John',
-                'last_name': 'Doe',
-                'email': 'john@example.com',
-            },
-            'meta_data': [
-                {'key': 'race_name', 'value': 'Test Race'},
-                {'key': 'race_date', 'value': '2025-06-01'},
-            ],
-            'line_items': [
-                {'name': 'Custom Training Plan - Race Ready', 'sku': 'training-race-ready'}
-            ]
-        }
-
-        with patch('app.run_pipeline') as mock_pipeline:
-            mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
-
-            response = client.post(
-                '/webhook/woocommerce',
-                json=order_data,
-                content_type='application/json'
-            )
-
-            assert response.status_code == 200
-            data = response.get_json()
-            assert data['status'] == 'success'
-            assert data['athlete_id'] == 'john_doe'
-
-    def test_woocommerce_idempotency(self, client, temp_athletes_dir):
-        """Duplicate orders are rejected."""
-        order_data = {
-            'id': 99999,
-            'status': 'completed',
-            'billing': {
-                'first_name': 'Jane',
-                'last_name': 'Doe',
-                'email': 'jane@example.com',
-            },
-            'meta_data': [],
-            'line_items': []
-        }
-
-        with patch('app.run_pipeline') as mock_pipeline:
-            mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
-
-            # First request
-            response1 = client.post(
-                '/webhook/woocommerce',
-                json=order_data,
-                content_type='application/json'
-            )
-            assert response1.status_code == 200
-
-            # Second request (duplicate)
-            response2 = client.post(
-                '/webhook/woocommerce',
-                json=order_data,
-                content_type='application/json'
-            )
-            assert response2.status_code == 200
-            data = response2.get_json()
-            assert data['status'] == 'duplicate'
-
-
 class TestStripeWebhook:
     """Tests for Stripe webhook endpoint."""
 
@@ -368,29 +483,6 @@ class TestStripeWebhook:
 
 class TestDataExtraction:
     """Tests for data extraction functions."""
-
-    def test_extract_woocommerce_tier_from_sku(self):
-        """Tier is correctly determined from product SKU."""
-        from app import extract_woocommerce_data
-
-        # Starter
-        data = {
-            'billing': {'first_name': 'Test', 'last_name': 'User', 'email': 'test@test.com'},
-            'meta_data': [],
-            'line_items': [{'sku': 'training-starter', 'name': 'anything'}]
-        }
-        result = extract_woocommerce_data(data)
-        assert result['tier'] == 'starter'
-
-        # Full Build
-        data['line_items'] = [{'sku': 'training-full-build', 'name': 'anything'}]
-        result = extract_woocommerce_data(data)
-        assert result['tier'] == 'full_build'
-
-        # Race Ready
-        data['line_items'] = [{'sku': 'training-race-ready', 'name': 'anything'}]
-        result = extract_woocommerce_data(data)
-        assert result['tier'] == 'race_ready'
 
     def test_extract_stripe_tier_from_metadata(self):
         """Tier is correctly extracted from metadata."""
@@ -2894,6 +2986,10 @@ class TestAsyncPipelineJobs:
              patch('app._notify_new_order') as mock_notify, \
              patch('app.log_order') as mock_log:
             mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
+            # A4: the coach notification now inspects the persist return, so the
+            # happy-path mock must model a complete, persisted package.
+            mock_persist.return_value = {'full_zip_size': 12345,
+                                         'copied': ['plan_summary.yaml'], 'missing': []}
             response = client.post('/webhook/stripe',
                                    json=_stripe_event('cs_async_ok'),
                                    content_type='application/json')

@@ -82,7 +82,7 @@ GOLDEN_ORDERS = [
         "intake": {
             "name": "Acc Test Gravelrider", "email": "acc-gravel@test.local",
             "sex": "Male", "age": 41, "weight": 165, "height_ft": 5, "height_in": 11,
-            "ftp": 240, "years_cycling": "7", "prior_plan_experience": "3",
+            "ftp": 240, "years_cycling": "7", "priorPlanExperience": "3",
             "hours_per_week": "9", "trainer_access": "smart trainer",
             "long_ride_days": ["Saturday"], "interval_days": ["Tuesday", "Thursday"],
             "off_days": ["Monday"],
@@ -105,7 +105,7 @@ GOLDEN_ORDERS = [
         "intake": {
             "name": "Acc Test Mastersrider", "email": "acc-masters@test.local",
             "sex": "Female", "age": 54, "weight": 138, "height_ft": 5, "height_in": 6,
-            "ftp": 165, "years_cycling": "10", "prior_plan_experience": "2",
+            "ftp": 165, "years_cycling": "10", "priorPlanExperience": "2",
             "hours_per_week": "7", "trainer_access": "smart trainer",
             "long_ride_days": ["Sunday"], "interval_days": ["Tuesday", "Thursday"],
             "off_days": ["Monday", "Friday"],

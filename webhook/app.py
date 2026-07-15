@@ -66,7 +66,6 @@ logger = logging.getLogger('gravel-god-webhook')
 
 IS_PRODUCTION = os.environ.get('FLASK_ENV') == 'production'
 
-WOOCOMMERCE_SECRET = os.environ.get('WOOCOMMERCE_SECRET', '')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
 STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY', '')
 ATHLETES_DIR = os.environ.get('ATHLETES_DIR', '/app/athletes')
@@ -374,10 +373,15 @@ def _build_training_plan_email(details: dict) -> tuple:
     endure_review_url = endure.get('review_url', '')
 
     base_url = 'https://athlete-custom-training-plan-pipeline-production.up.railway.app'
-    download_full = f'{base_url}/api/download/{athlete_id}?type=full&token={download_token}' if download_token else ''
+    # Token goes in the URL PATH, not `?token=<hex>` — a hex token right after
+    # `=` forms a valid quoted-printable escape (`=28`->`(`) and gets corrupted
+    # in transit through email. `?type=full` is safe (`=fu` is not a QP escape). A1/A2.
+    download_full = f'{base_url}/api/download/{athlete_id}/{download_token}?type=full' if download_token else ''
 
     status_color = '#1A8A82' if pipeline_ok else '#c0392b'
-    status_label = 'READY FOR REVIEW' if pipeline_ok else 'PIPELINE FAILED'
+    status_label = ('PACKAGE INCOMPLETE — DO NOT SEND'
+                    if (pipeline_ok and details.get('package_incomplete'))
+                    else 'READY FOR REVIEW' if pipeline_ok else 'PIPELINE FAILED')
 
     # Edge-case review flags — profiles where automation is most likely to
     # need a human eye before delivery. The plan still generated and passed
@@ -423,8 +427,30 @@ def _build_training_plan_email(details: dict) -> tuple:
             'AUTO-CHECK FAILED — plan delivered but a compliance rule was '
             'flagged. Review coaching_brief.md and adjust before sending.')
 
+    # Strongest flag of all: the plan generated but its downloadable package did
+    # not persist, so the download link is unavailable. Do not send yet. (A4)
+    package_incomplete = details.get('package_incomplete', '')
+    if package_incomplete:
+        review_flags.insert(0,
+            'PACKAGE INCOMPLETE (' + str(package_incomplete) + ') — the plan '
+            'generated but its package failed to persist; the download link is '
+            'unavailable. Investigate before sending.')
+
+    # Legacy (no-intake) plans lack the NEEDS_REVIEW compliance flag AND the
+    # coaching brief entirely — flag loudly but keep the (valid) download. (A5 review)
+    legacy_no_intake = bool(details.get('legacy_no_intake'))
+    if legacy_no_intake:
+        review_flags.insert(0,
+            'NO INTAKE ON FILE — the legacy generator ran, so this plan has NO '
+            'compliance flag and NO coaching brief. Review the whole plan manually '
+            'before sending.')
+
     subject = f"[GG] {'New order' if pipeline_ok else 'FAILED'}: {name} — {race_name or 'training plan'}"
-    if pipeline_ok and needs_review:
+    if pipeline_ok and package_incomplete:
+        subject = subject.replace('[GG] New order', '[GG] ⚠ PACKAGE INCOMPLETE')
+    elif pipeline_ok and legacy_no_intake:
+        subject = subject.replace('[GG] New order', '[GG] ⚠ NO INTAKE — REVIEW')
+    elif pipeline_ok and needs_review:
         subject = subject.replace('[GG] New order', '[GG] ⚠ NEEDS REVIEW')
     elif pipeline_ok and review_flags:
         subject = subject.replace('[GG] New order', '[GG] New order ⚠ REVIEW')
@@ -494,7 +520,7 @@ def _build_training_plan_email(details: dict) -> tuple:
 
     <h3 style="margin: 24px 0 12px; font-size: 15px; color: #59473c;">Fulfillment checklist</h3>
     <ol style="font-size: 14px; padding-left: 20px; line-height: 2.0;">
-      <li><strong>Download the package</strong> (button above)</li>
+      <li><strong>Download the package</strong> {'(button above)' if download_full else '— <em>link withheld: package incomplete, see flag above</em>'}</li>
       <li><strong>Review quality</strong> — open <code>plan_preview.html</code>, check the week grid and quality gates</li>
       <li><strong>Read coaching brief</strong> — <code>coaching_brief.md</code> maps questionnaire answers to plan decisions</li>
       <li><strong>Spot-check workouts</strong> — open <code>training_guide.html</code>, check weeks 1, mid, and final</li>
@@ -560,7 +586,7 @@ Order: {order_id} | Athlete ID: {athlete_id}
 {'Fulfillment checklist:' if pipeline_ok else 'Recovery steps:'}
 """
     if pipeline_ok:
-        text += f"""1. Download the package (link above)
+        text += f"""1. Download the package {'(link above)' if download_full else '(link withheld — package incomplete)'}
 2. Review plan_preview.html — check week grid and quality gates
 3. Read coaching_brief.md — questionnaire-to-decision trace
 4. Spot-check training_guide.html (weeks 1, mid, final)
@@ -698,6 +724,19 @@ def _send_ga4_purchase(order_id: str, value_cents, product_type: str,
         logger.warning(f"GA4 MP purchase failed (non-fatal): {e}")
 
 
+_EMAIL_RE = re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
+
+
+def _mask_emails_in_text(text: str) -> str:
+    """Mask every email address in a free-text blob before logging it (PII). A6.
+
+    The Resend-unavailable fallback logs the full notification text at CRITICAL;
+    coaching/consulting/unknown notifications embed the raw customer email there.
+    Railway logs persist, so mask before writing.
+    """
+    return _EMAIL_RE.sub(lambda m: _mask_email(m.group(0)), text or '')
+
+
 def _notify_new_order(product_type: str, details: dict):
     """Send rich notification for new order. Falls back to CRITICAL log if Resend not configured."""
     if product_type in ('training_plan', 'training_plan_FAILED'):
@@ -715,9 +754,9 @@ def _notify_new_order(product_type: str, details: dict):
 
     if NOTIFICATION_EMAIL and RESEND_API_KEY:
         if not _send_email(NOTIFICATION_EMAIL, subject, text, html=html):
-            logger.critical(f"NEW ORDER: {subject}\n{text}")
+            logger.critical(f"NEW ORDER: {subject}\n{_mask_emails_in_text(text)}")
     else:
-        logger.critical(f"NEW ORDER: {subject}\n{text}")
+        logger.critical(f"NEW ORDER: {subject}\n{_mask_emails_in_text(text)}")
 
 
 def _send_payment_confirmation(customer_email: str, customer_name: str,
@@ -876,6 +915,7 @@ def _build_plan_notification_details(order_data: dict, result: dict,
         # The plan delivered, but the automatic coach checks flagged it — review
         # coaching_brief.md before sending. Distinct from a clean delivery.
         'needs_review': 'GG_NEEDS_REVIEW=1' in stdout,
+        'legacy_no_intake': bool(result.get('legacy_no_intake')),
     }
 
 
@@ -936,32 +976,6 @@ def validate_order_data(order_data: dict) -> tuple:
 # =============================================================================
 # SIGNATURE VERIFICATION
 # =============================================================================
-
-def verify_woocommerce_signature(payload: bytes, signature: str) -> bool:
-    """Verify WooCommerce webhook signature."""
-    if not WOOCOMMERCE_SECRET:
-        if IS_PRODUCTION:
-            logger.error("WOOCOMMERCE_SECRET not configured in production")
-            return False
-        logger.warning("WOOCOMMERCE_SECRET not set - skipping verification (dev mode)")
-        return True
-
-    expected = hmac.new(
-        WOOCOMMERCE_SECRET.encode(),
-        payload,
-        hashlib.sha256
-    ).hexdigest()
-
-    # WooCommerce sends base64 encoded signature, not hex
-    import base64
-    try:
-        sig_bytes = base64.b64decode(signature)
-        sig_hex = sig_bytes.hex()
-    except Exception:
-        sig_hex = signature  # Fallback to raw comparison
-
-    return hmac.compare_digest(expected, sig_hex)
-
 
 def verify_stripe_signature(payload: bytes, signature: str) -> bool:
     """Verify Stripe webhook signature."""
@@ -1135,68 +1149,6 @@ def compute_plan_price(race_date_str: str) -> dict:
 # =============================================================================
 # DATA EXTRACTION
 # =============================================================================
-
-def extract_woocommerce_data(data: dict) -> dict:
-    """Extract athlete info from WooCommerce order."""
-    billing = data.get('billing', {})
-    meta = {item['key']: item['value'] for item in data.get('meta_data', [])}
-    line_items = data.get('line_items', [])
-
-    # Determine tier from product SKU (more reliable than name)
-    tier = 'race_ready'  # default
-    for item in line_items:
-        sku = item.get('sku', '').lower()
-        if sku == 'training-starter':
-            tier = 'starter'
-        elif sku == 'training-full-build':
-            tier = 'full_build'
-        elif sku == 'training-race-ready':
-            tier = 'race_ready'
-        else:
-            # Fallback to name matching
-            product_name = item.get('name', '').lower()
-            if 'starter' in product_name:
-                tier = 'starter'
-            elif 'full' in product_name and 'build' in product_name:
-                tier = 'full_build'
-
-    # Generate athlete ID from name
-    first_name = billing.get('first_name', '').strip()
-    last_name = billing.get('last_name', '').strip()
-    name = f"{first_name} {last_name}".strip()
-    athlete_id = sanitize_athlete_id(name)
-
-    return {
-        'athlete_id': athlete_id,
-        'order_id': str(data.get('id', '')),
-        'tier': tier,
-        'profile': {
-            'name': name,
-            'email': billing.get('email', '').strip().lower(),
-            'age': safe_int(meta.get('age')),
-            'fitness_markers': {
-                'weight_kg': safe_float(meta.get('weight_kg')),
-                'ftp_watts': safe_int(meta.get('ftp_watts')),
-            },
-            'target_race': {
-                'name': meta.get('race_name', ''),
-                'date': meta.get('race_date', ''),
-                'distance_miles': safe_float(meta.get('race_distance_miles')),
-                'elevation_gain_ft': safe_int(meta.get('race_elevation_ft')),
-                'terrain': meta.get('race_terrain', 'gravel'),
-            },
-            'weekly_schedule': {
-                'cycling_hours_target': safe_float(meta.get('cycling_hours', 10)),
-                'strength_hours': safe_float(meta.get('strength_hours', 2)),
-                'preferred_long_day': meta.get('preferred_long_day', 'saturday'),
-            },
-            'experience_level': meta.get('experience_level', 'intermediate'),
-            'race_goal': meta.get('race_goal', 'finish'),
-            'limiters': meta.get('limiters', ''),
-            'notes': meta.get('notes', ''),
-        }
-    }
-
 
 def extract_stripe_data(data: dict) -> dict:
     """Extract athlete info from Stripe checkout session.
@@ -1394,6 +1346,39 @@ def create_athlete_profile(order_data: dict) -> tuple:
 # PIPELINE EXECUTION
 # =============================================================================
 
+# Live questionnaire experience field is `priorPlanExperience` (camelCase) with
+# these categorical options. Older/test payloads may send a numeric
+# `prior_plan_experience`. Map categorical -> years of structured training.
+# The downstream threshold that matters is >=3yr == "experienced".
+_PRIOR_PLAN_EXPERIENCE_YEARS = {
+    'none': 0, 'generic': 1, 'app': 3, 'coached': 5, 'custom': 4,
+}
+
+
+def _years_structured_from_intake(intake_data: dict) -> int:
+    """Derive years of structured training from the questionnaire payload.
+
+    Reads the live `priorPlanExperience` select first (falling back to a legacy
+    numeric `prior_plan_experience`), maps a categorical option to a years
+    estimate, accepts an already-numeric value as-is, and defaults to 1 when the
+    field is absent. Previously the code read a non-existent snake_case key and
+    defaulted EVERY athlete to 1yr (beginner) — spec ticket A1.
+    """
+    # A blank camelCase value must fall through to the legacy key, not win as ""
+    # (A1 review): `.get(key, fallback)` only uses the fallback when the key is
+    # ABSENT, so `or` is required to treat an empty string as absent.
+    raw = intake_data.get('priorPlanExperience') or intake_data.get('prior_plan_experience')
+    if raw is None or str(raw).strip() == '':
+        return 1
+    key = str(raw).strip().lower()
+    if key in _PRIOR_PLAN_EXPERIENCE_YEARS:
+        return _PRIOR_PLAN_EXPERIENCE_YEARS[key]
+    try:
+        return int(float(raw))
+    except (ValueError, TypeError):
+        return 1
+
+
 def _questionnaire_to_markdown(intake_data: dict, name: str = '', email: str = '') -> str:
     """Convert web questionnaire JSON into the markdown format intake_to_plan.py expects."""
     name = name or intake_data.get('name', 'Unknown Athlete')
@@ -1456,7 +1441,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 - HR Threshold: {intake_data.get('hr_threshold', '')}
 - W/kg: {intake_data.get('pwRatio', '')}
 - Years Cycling: {intake_data.get('years_cycling', '3')}
-- Years Structured: {intake_data.get('prior_plan_experience', '1')}
+- Years Structured: {_years_structured_from_intake(intake_data)}
 - Longest Recent Ride: {intake_data.get('longest_ride', '3-4 hrs')}
 
 ## Recovery & Baselines
@@ -1497,6 +1482,15 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
     """Run the full training plan pipeline via intake_to_plan.py."""
     script_path = Path(SCRIPTS_DIR) / 'intake_to_plan.py'
 
+    # Clear any stale NEEDS_REVIEW.txt before regenerating, so a flag from a prior
+    # run (reused name-derived athlete dir on a repeat purchase) can't leak into a
+    # later clean plan's package. (A4/A10 review: the flag was sticky.)
+    for _aid in (athlete_id, athlete_id.replace('_', '-')):
+        try:
+            (Path(ATHLETES_DIR) / _aid / 'NEEDS_REVIEW.txt').unlink(missing_ok=True)
+        except OSError:
+            pass
+
     # Fallback to generate_full_package.py if no intake data (legacy path)
     if not intake_data:
         script_path = Path(SCRIPTS_DIR) / 'generate_full_package.py'
@@ -1509,7 +1503,11 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
         cmd = ['python3', str(script_path), athlete_id]
         if deliver:
             cmd.append('--deliver')
-        logger.info(f"Running legacy pipeline for {athlete_id}")
+        # No structured intake: the legacy generate_full_package path does NOT
+        # emit the NEEDS_REVIEW flag or a coaching brief, so a compliance-failing
+        # plan could ship unflagged. WooCommerce (the old caller) is gone; this
+        # now only fires on a Stripe intake-lookup failure. Alert loudly. (A5)
+        logger.critical(f"LEGACY PIPELINE (no intake_data) for {athlete_id} - plan lacks NEEDS_REVIEW flag + coaching brief; review manually before sending.")
     else:
         if not script_path.exists():
             return {
@@ -1552,6 +1550,10 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
             'success': success,
             'stdout': result.stdout,
             'stderr': result.stderr,
+            # No structured intake -> legacy generator ran; the plan has no
+            # NEEDS_REVIEW flag and no coaching brief, so the coach email must
+            # flag it instead of reading as a clean order. (A5 review)
+            'legacy_no_intake': not intake_data,
         }
 
     except subprocess.TimeoutExpired:
@@ -1584,6 +1586,7 @@ CUSTOMER_DELIVERABLES = [
 ]
 # Coach-only files (not sent to customer)
 COACH_DELIVERABLES = [
+    'NEEDS_REVIEW.txt',   # only present when the compliance gate flagged the plan (A10)
     'coaching_brief.md',
     'personal_email.md',
     'plan_summary.yaml',
@@ -1617,6 +1620,12 @@ def persist_deliverables(athlete_id: str) -> dict:
 
     delivery_dir = Path(DELIVERIES_DIR) / athlete_id
     delivery_dir.mkdir(parents=True, exist_ok=True)
+    # Drop a stale NEEDS_REVIEW.txt from a prior delivery — it is re-copied below
+    # only if the current run actually produced one. (A4/A10 review: sticky flag.)
+    try:
+        (delivery_dir / 'NEEDS_REVIEW.txt').unlink(missing_ok=True)
+    except OSError:
+        pass
 
     copied = []
     missing = []
@@ -1631,6 +1640,7 @@ def persist_deliverables(athlete_id: str) -> dict:
     workouts_src = source_dir / 'workouts'
     if not workouts_src.exists():
         workouts_src = athlete_dir / 'workouts'
+    zwo_count = 0
     if workouts_src.exists():
         workouts_dst = delivery_dir / 'workouts'
         if workouts_dst.exists():
@@ -1638,6 +1648,10 @@ def persist_deliverables(athlete_id: str) -> dict:
         shutil.copytree(workouts_src, workouts_dst)
         zwo_count = len(list(workouts_dst.glob('*.zwo')))
         copied.append(f'workouts/ ({zwo_count} .zwo files)')
+        if zwo_count == 0:
+            # Directory present but no importable workouts — a broken render, not
+            # a deliverable. (A4 review: zero-workout packages passed the guard.)
+            missing.append('workouts/')
     else:
         missing.append('workouts/')
 
@@ -1646,11 +1660,15 @@ def persist_deliverables(athlete_id: str) -> dict:
         src = source_dir / fname
         if not src.exists():
             src = athlete_dir / fname  # Fallback to raw athlete dir
-        if src.exists():
+        if src.exists() and src.stat().st_size == 0 and fname == 'training_guide.html':
+            missing.append(fname)  # present but empty = broken render (A4 review)
+        elif src.exists():
             shutil.copy2(src, delivery_dir / fname)
             copied.append(fname)
-        elif fname in ('training_guide.pdf',):
-            pass  # PDF is optional (no Chrome on Railway)
+        elif fname in ('training_guide.pdf', 'NEEDS_REVIEW.txt'):
+            # PDF optional (no Chrome on Railway); NEEDS_REVIEW.txt only exists
+            # when the compliance gate flagged the plan — absence is normal. (A10)
+            pass
         else:
             missing.append(fname)
 
@@ -1675,7 +1693,29 @@ def persist_deliverables(athlete_id: str) -> dict:
         'customer_zip_size': customer_zip.stat().st_size,
         'copied': copied,
         'missing': missing,
+        'zwo_count': zwo_count,
     }
+
+
+def _persist_incomplete(persist_result) -> str:
+    """Return a human reason if the persisted package is broken/missing, else ''. A4.
+
+    Guards against emailing a clean "READY FOR REVIEW" with a download link that
+    404s because the zip never got written.
+    """
+    if not persist_result:
+        return 'persist step did not run'
+    if persist_result.get('error'):
+        return f"persist failed: {persist_result['error']}"
+    if not persist_result.get('full_zip_size'):
+        return 'package zip is empty or missing'
+    if persist_result.get('zwo_count', 1) == 0:
+        return 'no importable workouts (0 .zwo files)'
+    critical = [m for m in (persist_result.get('missing') or [])
+                if m in ('workouts/', 'training_guide.html')]
+    if critical:
+        return 'missing critical files: ' + ', '.join(critical)
+    return ''
 
 
 def _create_zip(source_dir: Path, zip_path: Path, exclude_zip: bool = True,
@@ -1926,11 +1966,13 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
                               intake_data=intake_data or None)
         log_order(order_data, result)
 
+        persist_result = None
         if result['success']:
             try:
-                persist_deliverables(athlete_id)
+                persist_result = persist_deliverables(athlete_id)
             except Exception as e:
-                logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
+                logger.critical(f"Failed to persist deliverables for {athlete_id}: {e}")
+                persist_result = {'error': str(e)}
 
         # Phase 4b: push to Endure when this order opted in. The full ZWO
         # package above is ALWAYS generated regardless of target (fallback
@@ -1950,7 +1992,12 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
         if endure_record is not None:
             details['endure_delivery'] = endure_record
         if result['success']:
-            details['download_token'] = _generate_download_token(athlete_id)
+            _incomplete = _persist_incomplete(persist_result)
+            if _incomplete:
+                details['package_incomplete'] = _incomplete
+                logger.critical(f"Package incomplete for {athlete_id}: {_incomplete}")
+            else:
+                details['download_token'] = _generate_download_token(athlete_id)
             _notify_new_order('training_plan', details)
             _update_job(athlete_id, status='succeeded',
                         finished_at=datetime.now().isoformat(), error=None)
@@ -2159,7 +2206,9 @@ def health():
 # =============================================================================
 
 @app.route('/api/download/<athlete_id>', methods=['GET'])
-def download_deliverables(athlete_id):
+@app.route('/api/download/<athlete_id>/<token>', methods=['GET'])
+@limiter.limit("30/minute")
+def download_deliverables(athlete_id, token=None):
     """Download an athlete's deliverables zip.
 
     Auth: either X-Cron-Secret header OR ?token= signed URL parameter.
@@ -2169,7 +2218,9 @@ def download_deliverables(athlete_id):
     """
     # Auth: header secret or signed token
     secret = request.headers.get('X-Cron-Secret', '')
-    token = request.args.get('token', '')
+    # Token may arrive in the URL path (preferred — avoids quoted-printable
+    # corruption of ?token=<hex> in emails) or the legacy ?token= query param.
+    token = token or request.args.get('token', '')
     has_secret = secret and hmac.compare_digest(secret, os.environ.get('CRON_SECRET', ''))
     has_token = token and _verify_download_token(athlete_id, token)
 
@@ -2300,6 +2351,7 @@ def jobs_sweep():
 
 
 @app.route('/api/confirm/<athlete_id>', methods=['POST'])
+@limiter.limit("10/minute")
 def confirm_plan_ready(athlete_id):
     """Send "your plan is live on TrainingPeaks" email to customer.
 
@@ -2941,76 +2993,6 @@ def create_consulting_checkout():
         return jsonify({'error': 'Internal server error'}), 500
 
 
-@app.route('/webhook/woocommerce', methods=['POST'])
-def woocommerce_webhook():
-    """Handle WooCommerce order webhook."""
-    signature = request.headers.get('X-WC-Webhook-Signature', '')
-
-    if not verify_woocommerce_signature(request.data, signature):
-        logger.warning("Invalid WooCommerce signature")
-        return jsonify({'error': 'Invalid signature'}), 401
-
-    data = request.get_json()
-    if not data:
-        return jsonify({'error': 'Invalid JSON'}), 400
-
-    # Only process completed orders
-    if data.get('status') not in ['completed', 'processing']:
-        return jsonify({'status': 'ignored', 'reason': 'Order not completed'})
-
-    try:
-        order_data = extract_woocommerce_data(data)
-
-        # Idempotency check
-        if check_idempotency(order_data['order_id']):
-            return jsonify({
-                'status': 'duplicate',
-                'message': 'Order already processed'
-            })
-
-        # Validate order data
-        is_valid, error_msg = validate_order_data(order_data)
-        if not is_valid:
-            logger.error(f"Invalid order data: {error_msg}")
-            return jsonify({'error': error_msg}), 400
-
-        athlete_id, profile_path = create_athlete_profile(order_data)
-
-        # Mark as processed BEFORE pipeline to prevent TOCTOU race with
-        # webhook retries. Stripe/WooCommerce retry if we don't respond within
-        # ~20s, and the pipeline takes up to 5 minutes. Without this, retries
-        # pass the idempotency check and start duplicate pipelines.
-        mark_order_processed(order_data['order_id'], athlete_id)
-
-        # Queue generation, return immediately (same async path as Stripe).
-        job, sync_result = _spawn_plan_job(order_data)
-
-        if sync_result is not None:
-            # SYNC_PIPELINE=1 — legacy inline path (tests / local debugging)
-            if sync_result['success']:
-                return jsonify({
-                    'status': 'success',
-                    'athlete_id': athlete_id,
-                    'message': 'Training plan generated and delivered'
-                })
-            return jsonify({
-                'status': 'pipeline_failed',
-                'athlete_id': athlete_id,
-                'message': 'Order received but pipeline failed. Manual intervention required.'
-            })
-
-        return jsonify({
-            'status': 'accepted',
-            'athlete_id': athlete_id,
-            'job_status': job.get('status', 'queued'),
-            'message': 'Training plan generation queued'
-        })
-
-    except Exception as e:
-        logger.exception(f"WooCommerce webhook error: {e}")
-        return jsonify({'error': 'Internal server error'}), 500
-
-
 @app.route('/webhook/stripe', methods=['POST'])
 @limiter.limit("60/minute")
 def stripe_webhook():
@@ -3216,7 +3198,7 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
         except Exception as e:
             logger.warning(f"Failed to backup intake data: {e}")
 
-    # Mark BEFORE pipeline — see WooCommerce handler comment for rationale
+    # Mark BEFORE pipeline — Stripe retries after ~20s; marking after the ~5-min pipeline would let a retry start a duplicate run
     mark_order_processed(order_data['order_id'], athlete_id)
 
     # Record purchase in GA4 (server-side, consent-independent)
@@ -3327,6 +3309,7 @@ def _handle_consulting_webhook(session: dict, metadata: dict, order_id: str):
 # Secured by CRON_SECRET header. Requires intake_id with stored questionnaire.
 # =============================================================================
 @app.route('/webhook/test', methods=['POST'])
+@limiter.limit("10/minute")
 def test_webhook():
     """Simulate a real customer checkout → pipeline → notification flow.
 
@@ -3411,16 +3394,23 @@ def test_webhook():
     log_order(order_data, result)
 
     # Persist deliverables to volume + create zip (same as real flow)
+    persist_result = None
     if result['success']:
         try:
-            persist_deliverables(athlete_id)
+            persist_result = persist_deliverables(athlete_id)
         except Exception as e:
-            logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
+            logger.critical(f"Failed to persist deliverables for {athlete_id}: {e}")
+            persist_result = {'error': str(e)}
 
     # Send notification email (same as real flow)
     details = _build_plan_notification_details(order_data, result, intake_data)
     if result['success']:
-        details['download_token'] = _generate_download_token(athlete_id)
+        _incomplete = _persist_incomplete(persist_result)
+        if _incomplete:
+            details['package_incomplete'] = _incomplete
+            logger.critical(f"Package incomplete for {athlete_id}: {_incomplete}")
+        else:
+            details['download_token'] = _generate_download_token(athlete_id)
         _notify_new_order('training_plan', details)
         return jsonify({
             'status': 'success',
