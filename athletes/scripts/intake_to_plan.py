@@ -2216,18 +2216,21 @@ def generate_coaching_brief(
     # =====================================================================
     md += f"## 6. Fueling Plan\n"
     if fueling_data:
+        from fueling_policy import prescription_from_fueling
+        prescription = prescription_from_fueling(fueling_data)
         carbs = fueling_data.get('carbohydrates', {})
         cals = fueling_data.get('calories', {})
-        hydration = fueling_data.get('recommendations', {}).get('hydration', {})
+        hydration = prescription.get('hydration', fueling_data.get('recommendations', {}).get('hydration', {}))
 
         md += f"| Field | Value |\n"
         md += f"|-------|-------|\n"
         md += f"| Race Duration | {cals.get('duration_hours', '?')} hrs |\n"
         md += f"| Total Calories | {cals.get('total_calories', '?')} kcal |\n"
         md += f"| Calories/Hour | {cals.get('calories_per_hour', '?')} kcal/hr |\n"
-        md += f"| Carb Target | {carbs.get('hourly_target', '?')}g/hr |\n"
-        md += f"| Carb Range | {carbs.get('hourly_range', ['?','?'])[0]}-{carbs.get('hourly_range', ['?','?'])[1]}g/hr |\n"
-        md += f"| Total Carbs | {carbs.get('total_grams', '?')}g |\n"
+        carb_range = prescription.get('race_range_g_per_hour', carbs.get('hourly_range', ['?','?']))
+        md += f"| Carb Target | {prescription.get('race_target_g_per_hour', carbs.get('hourly_target', '?'))}g/hr |\n"
+        md += f"| Carb Range | {carb_range[0]}-{carb_range[1]}g/hr |\n"
+        md += f"| Total Carbs | {prescription.get('total_g', carbs.get('total_grams', '?'))}g |\n"
         md += f"| Hydration | {hydration.get('target_ml_per_hour', '?')}ml/hr |\n"
         md += f"| Electrolytes | {hydration.get('electrolytes', '?')} |\n"
         md += f"\n"

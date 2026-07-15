@@ -1487,6 +1487,9 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 ## Work & Life
 - Life Stress: {intake_data.get('stress_level', 'moderate')}
 
+## Nutrition
+- Training Fuel: {intake_data.get('training_fuel', intake_data.get('current_carbs_g_per_hour', ''))}
+
 ## Additional
 - Other: {intake_data.get('notes', '')}
 """

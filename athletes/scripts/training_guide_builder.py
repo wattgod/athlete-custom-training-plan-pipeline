@@ -1466,85 +1466,13 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
         aggressive_note = f"""<div class="gg-module gg-alert"><div class="gg-label">AGGRESSIVE FUELING REQUIRED</div>
 <p>{fuel.get('note', 'Practice race-day nutrition weekly during long rides.')}</p></div>"""
 
-    # Duration-scaled fueling targets — deterministic from questionnaire data.
-    # Source: gravel-god-nutrition framework (Jeukendrup 2014, van Loon 2001, GSSI).
-    # No AI mediation. Pure math.
-    try:
-        from pipeline.nutrition import compute_fueling_for_guide
-    except ImportError:
-        compute_fueling_for_guide = None  # Coaching pipeline provides nutrition via fueling.yaml
-
+    # Personalized exercise-fueling numbers are injected later by
+    # _build_nutrition_section() from fueling.yaml's FuelingPrescription. Do not
+    # calculate a second target in this otherwise-static education section.
     personalized_html = ""
     daily_macros_html = ""
     weight_lbs = profile.get("demographics", {}).get("weight_lbs")
-    weight_kg = 0
-    if weight_lbs and compute_fueling_for_guide:
-        try:
-            fueling = compute_fueling_for_guide(race_distance, race_data, profile)
-            weight_kg = fueling.get("weight_kg", float(weight_lbs) / 2.205)
-            carb_lo = fueling["carb_rate_lo"]
-            carb_hi = fueling["carb_rate_hi"]
-            est_hours = fueling["hours"]
-            total_lo = fueling["carbs_total_lo"]
-            total_hi = fueling["carbs_total_hi"]
-            bracket_label = fueling["label"]
-            gut_weeks = fueling["gut_training_weeks"]
-            dist = int(race_distance) if race_distance else 0
-            fluid_target = 600 if dist >= 100 else 500
-            sodium_target = 500
-
-            # Gut training builds from conservative to race rate
-            gut_base_hi = min(50, carb_lo)
-            gut_build_lo = gut_base_hi
-            gut_build_hi = min(carb_lo + 10, carb_hi)
-
-            total_html = ""
-            if est_hours > 0:
-                total_html = f"""
-        <div class="stat-card">
-          <div class="stat-card__value">{total_lo}-{total_hi}g</div>
-          <div class="stat-card__label">Total Race Carbs</div>
-        </div>"""
-
-            personalized_html = f"""
-  <div class="data-card">
-    <div class="data-card__header">YOUR PERSONALIZED FUELING TARGETS</div>
-    <div class="data-card__content">
-      <p>Based on your body weight ({weight_lbs} lbs / {weight_kg:.0f} kg), race distance ({f"{race_distance} miles" if race_distance else "unknown"}),
-      and estimated duration (~{est_hours} hours &mdash; {bracket_label}).</p>
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-card__value">{carb_lo}-{carb_hi}g/hr</div>
-          <div class="stat-card__label">Hourly Carbs</div>
-        </div>{total_html}
-        <div class="stat-card">
-          <div class="stat-card__value">{fluid_target}ml/hr</div>
-          <div class="stat-card__label">Hourly Fluid</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card__value">{sodium_target}mg/hr</div>
-          <div class="stat-card__label">Hourly Sodium</div>
-        </div>
-      </div>
-      <h4>Gut Training Progression</h4>
-      <p>Gut training starts from Week 1 and ramps through your plan phases. SGLT1 transporters double
-      in ~2 weeks (GSSI), but full adaptation to your race-day carb rate takes 6-12 weeks.
-      Start conservative, build steadily.</p>
-      <table>
-      <thead><tr><th>Plan Phase</th><th>Target</th><th>Focus</th></tr></thead>
-      <tbody>
-      <tr><td><strong>Base</strong></td><td>40-{gut_base_hi}g/hr</td><td>Build tolerance &mdash; real food on easy rides</td></tr>
-      <tr><td><strong>Build</strong></td><td>{gut_build_lo}-{gut_build_hi}g/hr</td><td>Increase absorption &mdash; mix liquids and solids at tempo</td></tr>
-      <tr><td><strong>Peak</strong></td><td>{carb_lo}-{carb_hi}g/hr</td><td>Race-rate practice with race-day products only</td></tr>
-      <tr class="race-day-row"><td><strong>Race</strong></td><td>{carb_lo}-{carb_hi}g/hr</td><td>Execute your fueling plan &mdash; nothing new</td></tr>
-      </tbody>
-      </table>
-      <p><strong>Based on your {carb_lo}-{carb_hi}g/hr target:</strong> ~{round(carb_lo / 25, 1)}-{round(carb_hi / 25, 1)} gels per hour
-      (or equivalent liquid/solid carbs). Practice this exact strategy during long training rides.</p>
-    </div>
-  </div>"""
-        except (ValueError, TypeError):
-            pass
+    weight_kg = float(weight_lbs) / 2.205 if weight_lbs else 0
 
     # Personalized daily macro targets (all from body weight — no AI)
     if weight_kg:
@@ -1669,7 +1597,9 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
     </div>
   </div>
 
-  <h3>Fueling During Workouts</h3>
+  <h3>Fueling During Workouts — General Guidance</h3>
+  <p><strong>General guidance only:</strong> the personalized card above is your target.
+  The ranges below explain common starting points and must not override it.</p>
   <p>This is where races are won or lost.</p>
   <p>For any ride over 90 minutes at moderate-to-high intensity (Z3+), you need 60-80g of
   carbohydrates per hour. Your gut can absorb approximately 60g of glucose per hour through
@@ -1697,7 +1627,7 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
     </div>
   </div>
 
-  <h3>Duration-Scaled Race Fueling</h3>
+  <h3>Duration-Scaled Race Fueling — General Guidance</h3>
   <p>This is the key insight most nutrition advice gets wrong: <strong>carb intake should scale DOWN
   with race duration, not up.</strong> At lower intensities (longer races), your body shifts toward fat oxidation.
   Forcing 90g/hr of carbs into a system running at 44% VO2max exceeds physiological absorption
@@ -1732,7 +1662,7 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
     might help by changing neuromuscular excitability, but the real fix is better pacing and better training.</p>
   </div>
 
-  <h3>Training Your Gut</h3>
+  <h3>Training Your Gut — General Guidance</h3>
   <p>Your gut is trainable just like your muscles. If you never eat during training rides,
   your gut won't tolerate eating during races. SGLT1 transporters double in ~2 weeks of
   training (GSSI), but full adaptation takes 6-12 weeks.</p>
@@ -1743,7 +1673,7 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
     <li><strong>Race week:</strong> Stick with what worked in training. No new products. Trust your gut (literally).</li>
   </ul>
 
-  <h3>Race-Day Nutrition Execution</h3>
+  <h3>Race-Day Nutrition Execution — General Guidance</h3>
   <p>Everything you practiced in training gets executed under stress.</p>
 
   <div class="data-card">
@@ -2772,7 +2702,7 @@ def _section_women_specific(profile: Dict, race_data: Dict, race_name: str, sect
       </ul>
       <p><strong>Your training day target:</strong> {carb_training} carbs ({f'{weight_kg}kg x 6-7g/kg' if weight_kg else '5-7g per kg body weight'}).
       More on long ride days: {carb_long} ({f'{weight_kg}kg x 8-10g/kg' if weight_kg else '8-10g per kg body weight'}).</p>
-      <p><strong>Racing target:</strong> 60-80g carbs per hour for rides over 90 minutes at moderate-to-high intensity
+      <p><strong>General guidance, not your target:</strong> 60-80g carbs per hour for rides over 90 minutes at moderate-to-high intensity
       (scaled down for longer durations &mdash; see Nutrition Strategy section). Don't under-fuel trying to "stay lean" &mdash;
       that strategy kills performance AND health.</p>
     </div>

@@ -3,9 +3,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from fueling_policy import build_fueling_prescription, render_workout_fueling
+from archetype_registry import get_archetype
+from fueling_policy import (
+    build_fueling_prescription,
+    prescription_from_fueling,
+    render_workout_fueling,
+)
 from generate_athlete_package import _get_fuel_tag_for_type
-from training_guide_builder import _build_nutrition_section
+from nate_workout_generator import generate_description
+from training_guide_builder import _build_nutrition_section, _section_nutrition
 
 
 def test_personalized_fuel_artifacts_project_the_serialized_prescription():
@@ -20,3 +26,27 @@ def test_personalized_fuel_artifacts_project_the_serialized_prescription():
     assert f">{prescription['race_target_g_per_hour']}g/hr<" in guide
     assert f">{prescription['total_g']}g<" in guide
     assert "90g/hr" not in guide
+
+
+def test_legacy_fueling_yaml_still_renders_workout_tags():
+    legacy = {
+        "carbohydrates": {"hourly_target": 72, "hourly_range": [65, 79], "total_grams": 360},
+        "recommendations": {"hydration": {"target_ml_per_hour": 500}},
+    }
+    adapted = prescription_from_fueling(legacy)
+    assert adapted["race_target_g_per_hour"] == 72
+    assert "62g carbs/hr" in _get_fuel_tag_for_type("Threshold", legacy)
+
+
+def test_shipping_archetype_description_has_no_independent_personalized_rate():
+    _, archetype = get_archetype("Gravel Race Simulation")
+    description = generate_description(archetype, 3)
+    assert "80-90g" not in description
+    assert "personalized race prescription" in description
+
+
+def test_static_guide_ranges_are_explicitly_general_guidance():
+    section = _section_nutrition({}, "compete", 90, {})
+    assert "General Guidance" in section
+    assert "General guidance only" in section
+    assert "YOUR PERSONALIZED FUELING TARGETS" not in section

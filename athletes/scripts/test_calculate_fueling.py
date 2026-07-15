@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from calculate_fueling import generate_fueling_context
+from fueling_policy import build_fueling_prescription, tolerated_intake_from_profile
 
 
 def _profile(weight, ftp, goal="podium"):
@@ -31,3 +32,29 @@ def test_heavier_higher_absolute_work_resolves_higher_and_goal_cannot_jump_to_90
     assert heavy["race_target_g_per_hour"] > heather["race_target_g_per_hour"]
     assert podium_only["race_target_g_per_hour"] < 90
     assert podium_only["race_target_g_per_hour"] - heather["race_target_g_per_hour"] <= 6
+
+
+def test_explicit_profile_tolerance_reaches_policy_and_ambiguous_servings_do_not():
+    assert tolerated_intake_from_profile({"nutrition": {"training_fuel": "55g/hr"}}) == 55
+    assert tolerated_intake_from_profile({"nutrition": {"training_fuel": "2 gels per hour"}}) is None
+    profile = _profile(80, 450)
+    profile["nutrition"] = {"training_fuel": "50 grams per hour"}
+    prescription = generate_fueling_context(profile)["prescription"]
+    assert prescription["inputs"]["tolerated_g_per_hour"] == 50
+    assert prescription["race_target_g_per_hour"] <= 60
+
+
+def test_low_tolerance_never_produces_target_outside_range():
+    prescription = build_fueling_prescription(
+        duration_hours=6, weight_kg=70, ftp_watts=300, goal_type="compete",
+        tolerated_g_per_hour=20,
+    ).to_dict()
+    low, high = prescription["race_range_g_per_hour"]
+    assert low <= prescription["race_target_g_per_hour"] <= high
+
+
+def test_missing_tolerance_caps_large_untrained_athlete():
+    prescription = build_fueling_prescription(
+        duration_hours=4, weight_kg=100, ftp_watts=600, goal_type="podium",
+    ).to_dict()
+    assert prescription["race_target_g_per_hour"] <= 80

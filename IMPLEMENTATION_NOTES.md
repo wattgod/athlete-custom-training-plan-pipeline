@@ -9,10 +9,14 @@
   `prescription`, while retaining the legacy `carbohydrates` fields for existing
   callers.
 - The policy uses duration, body mass, FTP × goal-specific intensity factor,
-  goal, and tolerance. Missing tolerance is explicitly flagged and caps a
-  sub-65 kg athlete at 70 g/hr. Sex only creates an energy-availability warning;
-  it is not a carbohydrate discount.
-- The profile builder preserves intake-provided `training_fuel` where available.
+  goal, and tolerance. Missing tolerance is explicitly flagged and caps an
+  athlete at 70 g/hr below 65 kg or 80 g/hr otherwise. Sex only creates an
+  energy-availability warning; it is not a carbohydrate discount.
+- The profile builder preserves intake-provided `training_fuel`, the live web
+  JSON-to-markdown adapter now carries it, and the policy consumes only explicit
+  plausible g/hr values (not ambiguous serving counts such as "2 gels/hour").
+- Legacy `fueling.yaml` files are adapted into a prescription projection so
+  regenerating an older athlete package still produces workout fuel tags.
 
 ## G2
 
@@ -20,14 +24,19 @@
   nutrition prose. Package tags are now rendered from the serialized
   prescription tiers; the guide card reads the same prescription.
 - Existing `carbohydrates` fields remain only as compatibility projections of
-  the prescription. Generic education elsewhere in the guide was left alone.
+  the prescription. The pre-plan workout, race-day workout, coaching brief,
+  guide card, and rendered archetype prose no longer originate independent
+  personalized g/hr values. Static education ranges are explicitly labelled
+  general guidance and cannot present themselves as the athlete's target.
 
 ## G6
 
-- Steady endurance/recovery construction now caps warm-up end power at the main
-  steady power, normalizes legacy cooldown attribute ordering to monotonic down,
-  and provides a validator for warm-up, cooldown, and nonzero-main-set checks.
-- Interval warm-ups are not changed.
+- Pure steady endurance/recovery construction caps warm-up end power at the main
+  steady power and enforces the repo's ZWO cooldown convention:
+  `PowerHigh(end) <= PowerLow(start) <= main power`.
+- Variable endurance, terrain, surge, FatMax-with-sprints, and blended sessions
+  are structurally excluded, so their activation/variable segments are not
+  rewritten.
 
 ## Follow-up deliberately left out
 
@@ -35,10 +44,17 @@ Only G1, G2, and G6 were changed. J1, G3–G5, H1, and I1–I2 remain untouched.
 
 ## Verification
 
-`pytest athletes/scripts/ -q` passed: **1126 passed, 53 skipped**. One
+`pytest athletes/scripts/ -q -p no:cacheprovider` passed after the Sol review
+fixes: **1136 passed, 53 skipped**. One
 pre-existing pytest warning remains in `test_custom_guide.py` because that test
 returns a boolean instead of asserting; no tests failed before or after this
 slice.
+
+Focused merge-gate verification: **74 passed, 4 skipped** across fueling,
+artifact, compliance, steady-invariant, and ZWO-format tests. The new webhook
+intake-fuel passthrough test also passes. The whole webhook module currently has
+15 unrelated pre-existing failures caused by cached module-level data-directory
+and environment assumptions; this slice did not change those paths.
 
 ## Commit note
 

@@ -966,7 +966,7 @@ GRAVEL_ADVANCED = [
             },
             '3': {
                 'structure': '15min warmup Z2, 3hr ride: Z2 @ 65% FTP with 5 sectors @ 108% (4min), 3 surges @ 84% (5min)',
-                'execution': 'Three-hour race simulation. Nail the fueling — 80-90g CHO/hr throughout',
+                'execution': 'Three-hour race simulation. Nail the personalized race prescription throughout',
                 'segments': _base_with_efforts(
                     10800,
                     _gravel_sim_efforts(5, 240, 1.08, 3, 300, 0.84),

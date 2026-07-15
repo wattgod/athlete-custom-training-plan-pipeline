@@ -1555,6 +1555,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 workout_type = 'Pre_Plan_Endurance'
                 duration = 80
                 power = 0.65
+                preplan_fuel = _get_fuel_tag_for_type('Endurance', fueling)
                 description = f"""PRE-PLAN WEEK: Endurance Ride
 {athlete_name} - {days_to_plan_start} days until plan starts
 
@@ -1563,7 +1564,7 @@ Longer easy ride to build aerobic base and test nutrition.
 
 WORKOUT:
 - 75-90 min at Z2 (60-70% FTP)
-- Practice fueling: aim for 40-60g carbs/hour
+- Practice fueling: {preplan_fuel or 'use the personalized target in your guide'}
 - Stay hydrated
 
 OUTDOOR STRONGLY ENCOURAGED:
@@ -2178,12 +2179,15 @@ Trust the process, {athlete_name}."""
                         fueling_data = yaml.safe_load(f) or {}
 
                 race_info = fueling_data.get('race', {})
-                carb_info = fueling_data.get('carbohydrates', {})
+                from fueling_policy import prescription_from_fueling
+                prescription = prescription_from_fueling(fueling_data)
 
                 duration_hours = race_info.get('duration_hours', 5)
                 distance_miles = race_info.get('distance_miles', profile.get('target_race', {}).get('distance_miles', 75))
-                hourly_carbs = carb_info.get('hourly_target', 80)
-                total_carbs = carb_info.get('total_grams', 400)
+                hourly_carbs = prescription.get('race_target_g_per_hour')
+                total_carbs = prescription.get('total_g')
+                hourly_range = prescription.get('race_range_g_per_hour', [])
+                hydration = prescription.get('hydration', {})
 
                 # Estimate TSS (rough: ~60-70 TSS/hour for a hard gravel race)
                 estimated_tss = int(duration_hours * 65)
@@ -2198,7 +2202,7 @@ TARGET METRICS:
 - Estimated TSS: {estimated_tss}
 
 FUELING PLAN:
-- Carbs/hour: {hourly_carbs}g (range: {carb_info.get('hourly_range', [70, 90])})
+- Carbs/hour: {hourly_carbs}g (range: {hourly_range})
 - Total carbs: {total_carbs}g over race
 - Start fueling at 20 min, every 20-30 min thereafter
 - Pre-race: 100-150g carbs 2-3 hours before start
@@ -2210,7 +2214,8 @@ PACING STRATEGY:
 - Technical sections: Smooth > Fast. Avoid mechanicals.
 
 HYDRATION:
-- 500-750ml/hour depending on heat
+- {hydration.get('target_ml_per_hour', 'Use guide target')}ml/hour baseline; adjust from measured sweat rate and conditions
+- {hydration.get('electrolytes', 'Use the personalized electrolyte guidance')}
 - Start hydrated (clear urine morning of race)
 - Don't wait until thirsty
 

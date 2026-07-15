@@ -2715,6 +2715,13 @@ class TestTravelDatesPassthrough:
         md = _questionnaire_to_markdown({}, name='T', email='t@e.com')
         assert 'Travel Dates: None' in md
 
+    def test_markdown_includes_demonstrated_training_fuel(self):
+        from app import _questionnaire_to_markdown
+        md = _questionnaire_to_markdown(
+            {'training_fuel': '55g/hr'}, name='T', email='t@e.com')
+        assert '## Nutrition' in md
+        assert 'Training Fuel: 55g/hr' in md
+
 
 class TestComplianceNeedsReview:
     """A plan that delivers but fails an auto-compliance check must reach the

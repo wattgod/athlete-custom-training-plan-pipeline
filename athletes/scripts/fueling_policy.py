@@ -34,18 +34,43 @@ def _number(value: Any) -> Optional[float]:
         return None
 
 
-def _tolerated_intake(profile: Dict[str, Any]) -> Optional[float]:
-    """Accept both current profile fields and future intake aliases."""
+def _plausible_g_per_hour(value: Any, *, units_implied: bool) -> Optional[float]:
+    """Parse an explicit, physiologically plausible carbohydrate rate.
+
+    Free text such as ``2 gels per hour`` must not become ``2 g/hr``. Numeric
+    values are accepted only for fields whose key already declares g/hr;
+    otherwise the value itself must include grams-per-hour units.
+    """
+    if isinstance(value, (int, float)):
+        parsed = float(value) if units_implied else None
+    else:
+        text = str(value or "").strip().lower()
+        if units_implied and re.fullmatch(r"\d+(?:\.\d+)?", text):
+            parsed = float(text)
+        else:
+            match = re.search(
+                r"(\d+(?:\.\d+)?)\s*(?:g|grams?)\s*(?:/|per)\s*(?:h|hr|hrs|hour|hours)\b",
+                text,
+            )
+            parsed = float(match.group(1)) if match else None
+    return parsed if parsed is not None and 15 <= parsed <= 150 else None
+
+
+def tolerated_intake_from_profile(profile: Dict[str, Any]) -> Optional[float]:
+    """Read demonstrated g/hr tolerance from current and future profile aliases."""
     sources = (
         profile.get("fueling", {}), profile.get("nutrition", {}),
         profile.get("workout_preferences", {}), profile.get("fitness_markers", {}),
     )
     for source in sources:
         for key in ("tolerated_carbs_g_per_hour", "current_carbs_g_per_hour",
-                    "training_fuel_g_per_hour", "training_fuel"):
-            value = _number(source.get(key))
-            if value and value > 0:
+                    "training_fuel_g_per_hour"):
+            value = _plausible_g_per_hour(source.get(key), units_implied=True)
+            if value is not None:
                 return value
+        value = _plausible_g_per_hour(source.get("training_fuel"), units_implied=False)
+        if value is not None:
+            return value
     return None
 
 
@@ -70,14 +95,18 @@ def build_fueling_prescription(*, duration_hours: float, weight_kg: float,
     goal_adjustment = {"survival": -5, "finish": 0, "compete": 3, "podium": 5}[goal]
     target = 48 + .055 * absolute_work + .10 * (weight_kg - 60) + goal_adjustment
     target = max(45, min(90, target))
-    tolerated = _number(tolerated_g_per_hour)
+    modeled_target = target
+    tolerated = _plausible_g_per_hour(tolerated_g_per_hour, units_implied=True)
     if tolerated is None:
         assumptions.append("Current carbohydrate tolerance was not captured; conservative ceiling applied.")
-        if weight_kg < 65:
-            target = min(target, 70)
+        target = min(target, 70 if weight_kg < 65 else 80)
     else:
         # Do not prescribe a large untrained jump above demonstrated tolerance.
         target = min(target, tolerated + 10)
+        if target < modeled_target:
+            assumptions.append(
+                "Race requirement exceeds demonstrated tolerance; progress gut training and review with the coach."
+            )
     if gut_phase in ("base", "early"):
         target = min(target, 65)
         assumptions.append("Early gut-training phase: race-rate practice should progress gradually.")
@@ -85,7 +114,9 @@ def build_fueling_prescription(*, duration_hours: float, weight_kg: float,
         assumptions.append("Energy-availability check: avoid chronic under-fueling; sex does not reduce carbohydrate target.")
 
     target_i = int(round(target))
-    race_range = [max(35, target_i - 7), min(90, target_i + 7)]
+    race_range = [max(20, target_i - 7), min(90, target_i + 7)]
+    race_range[0] = min(race_range[0], target_i)
+    race_range[1] = max(race_range[1], target_i)
     # Training tiers are projections of this prescription, not separate policy.
     tiers = {
         "quality": {"target_g_per_hour": max(30, target_i - 10), "range_g_per_hour": [max(25, target_i - 17), max(35, target_i - 3)]},
@@ -106,7 +137,33 @@ def build_fueling_prescription(*, duration_hours: float, weight_kg: float,
 
 
 def prescription_from_fueling(fueling: Dict[str, Any]) -> Dict[str, Any]:
-    return fueling.get("prescription", fueling)
+    """Return the canonical prescription, adapting pre-policy fueling files."""
+    if fueling.get("prescription"):
+        return fueling["prescription"]
+    carbs = fueling.get("carbohydrates", {})
+    target = _number(carbs.get("hourly_target"))
+    if not target:
+        return fueling
+    target_i = int(round(target))
+    race_range = carbs.get("hourly_range") or [max(20, target_i - 7), min(90, target_i + 7)]
+    hydration = fueling.get("recommendations", {}).get("hydration") or {}
+    return {
+        "race_target_g_per_hour": target_i,
+        "race_range_g_per_hour": list(race_range),
+        "total_g": carbs.get("total_grams"),
+        "training_tiers": {
+            "quality": {"target_g_per_hour": max(30, target_i - 10),
+                        "range_g_per_hour": [max(25, target_i - 17), max(35, target_i - 3)]},
+            "long_ride": {"target_g_per_hour": max(35, target_i - 5),
+                          "range_g_per_hour": [max(30, target_i - 12), target_i]},
+            "race_sim": {"target_g_per_hour": target_i,
+                         "range_g_per_hour": list(race_range)},
+        },
+        "hydration": hydration,
+        "assumptions": ["Adapted from legacy carbohydrates fields."],
+        "inputs": {"source": "legacy_carbohydrates"},
+        "policy_version": "legacy-adapter",
+    }
 
 
 def render_workout_fueling(prescription: Dict[str, Any], tier: str) -> str:

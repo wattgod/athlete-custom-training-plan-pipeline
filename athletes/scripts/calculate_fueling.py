@@ -28,7 +28,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).parent))
 from constants import get_athlete_file
-from fueling_policy import build_fueling_prescription
+from fueling_policy import build_fueling_prescription, tolerated_intake_from_profile
 
 
 # =============================================================================
@@ -410,7 +410,8 @@ def generate_fueling_context(
         weight_kg=float(weight_kg),
         ftp_watts=fitness.get("ftp_watts"),
         goal_type=goal_type,
-        gut_phase="build",
+        gut_phase=profile.get("nutrition", {}).get("gut_training_phase", "build"),
+        tolerated_g_per_hour=tolerated_intake_from_profile(profile),
         sex=sex,
     )
     p = prescription.to_dict()

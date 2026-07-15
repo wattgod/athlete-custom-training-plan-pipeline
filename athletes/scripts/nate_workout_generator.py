@@ -1064,10 +1064,18 @@ def generate_warmup_block(
     return block
 
 
-def _is_steady_endurance_or_recovery(archetype: Dict) -> bool:
+def _is_steady_endurance_or_recovery(archetype: Dict, blocks: str = "") -> bool:
+    """True only for simple, single-body steady endurance/recovery sessions."""
     name = archetype.get("name", "").lower()
-    return (any(k in name for k in ("endurance", "recovery", "hvli", "fatmax", "lt1"))
-            and "loaded recovery" not in name)
+    named_steady = (any(k in name for k in ("endurance", "recovery", "hvli", "fatmax", "lt1"))
+                    and "loaded recovery" not in name)
+    if not named_steady or not blocks:
+        return named_steady
+    # Variable endurance, terrain simulations, and blended sessions can contain
+    # activation/surge segments. G6 must not rewrite those interval-like files.
+    steady_bodies = re.findall(r'<SteadyState\b[^>]*\bDuration="[1-9]\d*"', blocks)
+    has_variable_blocks = any(tag in blocks for tag in ('<IntervalsT', '<Ramp', '<FreeRide'))
+    return len(steady_bodies) == 1 and not has_variable_blocks
 
 
 def enforce_steady_workout_invariants(blocks: str) -> str:
@@ -1083,10 +1091,11 @@ def enforce_steady_workout_invariants(blocks: str) -> str:
     cooldown = re.search(r'(<Cooldown\b[^>]*\bPowerLow=")([0-9.]+)("\s+PowerHigh=")([0-9.]+)(")', blocks)
     if cooldown:
         low, high = float(cooldown.group(2)), float(cooldown.group(4))
-        # Some legacy builders wrote the attributes backwards. Normalize them
-        # to ZWO's start-high/end-low convention rather than shipping a ramp up.
-        end_power, start_power = min(low, high), min(main_high, max(low, high))
-        replacement = f'{cooldown.group(1)}{end_power:.2f}{cooldown.group(3)}{start_power:.2f}{cooldown.group(5)}'
+        # In this repo's ZWO convention PowerLow is the cooldown START and
+        # PowerHigh is the END. Keep start >= end while never starting above
+        # the steady ride body.
+        start_power, end_power = min(main_high, max(low, high)), min(low, high)
+        replacement = f'{cooldown.group(1)}{start_power:.2f}{cooldown.group(3)}{end_power:.2f}{cooldown.group(5)}'
         blocks = blocks[:cooldown.start()] + replacement + blocks[cooldown.end():]
     return blocks
 
@@ -1101,7 +1110,7 @@ def validate_steady_workout_invariants(blocks: str) -> bool:
     warmup = re.search(r'<Warmup\b[^>]*\bPowerHigh="([0-9.]+)"', blocks)
     cooldown = re.search(r'<Cooldown\b[^>]*\bPowerLow="([0-9.]+)"\s+PowerHigh="([0-9.]+)"', blocks)
     return ((not warmup or float(warmup.group(1)) <= main_high)
-            and (not cooldown or (float(cooldown.group(1)) <= float(cooldown.group(2)) <= main_high)))
+            and (not cooldown or (float(cooldown.group(2)) <= float(cooldown.group(1)) <= main_high)))
 
 
 def generate_cooldown_block(
@@ -2556,7 +2565,7 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
         blocks.append(generate_cooldown_block(cooldown_duration))
 
     rendered = "".join(blocks)
-    if _is_steady_endurance_or_recovery(archetype):
+    if _is_steady_endurance_or_recovery(archetype, rendered):
         rendered = enforce_steady_workout_invariants(rendered)
     return rendered
 
