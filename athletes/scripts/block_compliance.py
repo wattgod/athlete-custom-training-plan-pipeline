@@ -62,6 +62,13 @@ def _day_is_intensity(day_data: dict) -> bool:
     pipeline's role assignment is the intent. Name-based classification is
     the fallback for plans without roles (legacy dicts).
     """
+    # G4: a day can contain an immutable external commute/race in addition to
+    # its prescribed row.  Hard fixed work is athlete load and must count for
+    # R01/R05 just like a generated intensity session.
+    if any(str(s.get('intensity', '')).lower() in
+           {'hard', 'threshold', 'vo2', 'anaerobic', 'race'}
+           for s in day_data.get('sessions', [])):
+        return True
     role = day_data.get('role')
     if role is not None:
         return role == 'intensity'
@@ -200,7 +207,7 @@ def r04_recovery_intensity_ceiling(weeks: List[dict]) -> Tuple[bool, str]:
             continue
         for day_data in week.get('days', []):
             name = day_data.get('name', '')
-            if name in INTENSITY_TYPES and name != 'Openers':
+            if _day_is_intensity(day_data) and name != 'Openers':
                 violations.append(f"W{week.get('plan_week')}: {name}")
 
     if violations:
@@ -225,7 +232,7 @@ def r05_intensity_count(weeks: List[dict], max_per_week: int = 3) -> Tuple[bool,
         if _week_has_race_day(week):
             continue
         # Count by role (pipeline-assigned), not by workout name
-        count = sum(1 for d in week.get('days', []) if d.get('role') == 'intensity')
+        count = sum(1 for d in week.get('days', []) if _day_is_intensity(d))
         min_intensity = min(2, max_per_week)  # Beginners: min=1 if max=1
         if count < min_intensity or count > max_per_week:
             violations.append(f"W{week.get('plan_week')}: {count} intensity (need {min_intensity}-{max_per_week})")

@@ -23,7 +23,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'webhook'))
 
 from fulfillment_state import write_generation
 from workout_spec import rewrite_zwo_description
-from availability_ledger import AvailabilityLedgerError, build_ledger
+from availability_ledger import (AvailabilityLedgerError, build_ledger,
+                                 materialize_fixed_sessions)
 
 # Local imports - use centralized modules
 from config_loader import get_config
@@ -537,8 +538,11 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             _fixed_minutes = sum(day['fixed_min'] for day in _ledger.values())
             _bb_day_caps = {day: max(0, entry['residual_min']) for day, entry in _ledger.items()}
             _fixed_hard_days = {day for day, entry in _ledger.items() if entry['hard']}
-            _bb_off_days = sorted(set(_bb_off_days) | _fixed_hard_days)
-            _builder_hours = max(0.0, cycling_hours_target - _fixed_minutes / 60)
+            # Do not mark external-hard days as off days: fixed work must
+            # remain visible to R01/R05.  A zero residual cap prevents a
+            # second prescribed workout on that date.
+            _effective_max_intensity = max(0, max_intensity_per_week - len(_fixed_hard_days))
+            _builder_hours = cycling_hours_target
         except AvailabilityLedgerError as exc:
             _fulfillment_issues.append({'id': 'AVAILABILITY_CAP_IMPOSSIBLE',
                                         'source': 'availability_ledger', 'severity': 'CRITICAL',
@@ -549,7 +553,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             week_descriptors=_bb_descriptors,
             archetype=_bb_archetype,
             max_level=max_workout_level,
-            max_intensity=max_intensity_per_week,
+            max_intensity=locals().get('_effective_max_intensity', max_intensity_per_week),
             off_days=_bb_off_days,
             long_ride_day=long_day_abbrev,
             starting_level=1,
@@ -557,7 +561,10 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             discipline=_bb_discipline,
             day_caps=_bb_day_caps or None,
             methodology=methodology_id,
+            fixed_minutes=_fixed_minutes if '_fixed_minutes' in locals() else 0,
         )
+        if '_ledger' in locals():
+            materialize_fixed_sessions(_bb_plan, _ledger)
 
         # Build lookup: (plan_week, day_abbrev) → block plan day data.
         # week_in_block rides along for series numbering in workout titles

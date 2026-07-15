@@ -66,7 +66,7 @@ from constants import (
 )
 from known_races import (KNOWN_RACES, RACE_ALIASES, match_race,
                          match_race_scored, lookup_by_slug,
-                         build_generic_race_profile)
+                         build_generic_race_profile, race_provenance_issue)
 
 # ---------------------------------------------------------------------------
 # ANSI colors for terminal output
@@ -951,11 +951,12 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 # A name match is not permission to reuse a prior edition's
                 # course facts. H1 keeps the plan build recoverable but forces
                 # a coach review when requested and sourced edition disagree.
-                requested_year = str(event['date'] or '')[:4]
-                fact_year = str(info.get('event_year') or str(info.get('date') or '')[:4])
-                if requested_year and fact_year and requested_year != fact_year:
-                    target_race_info['race_provenance_issue'] = (
-                        f'Requested {requested_year} but race facts are edition {fact_year}.')
+                issue = race_provenance_issue(
+                    info, event['date'], goals.get('race_category', ''),
+                    basic.get('sex', ''),
+                )
+                if issue:
+                    target_race_info['race_provenance_issue'] = issue
                 # Verified venue from the DB (used by the guide, and lets the
                 # integrity check trust the date instead of re-deriving it).
                 if info.get('location'):

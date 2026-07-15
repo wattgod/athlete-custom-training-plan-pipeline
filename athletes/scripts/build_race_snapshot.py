@@ -86,13 +86,24 @@ def build():
                 "location": vit.get("location") or "",
                 "source_urls": r.get("source_urls") or vit.get("source_urls") or [],
                 "source_type": r.get("source_type") or "race_database",
-                "verified_at": r.get("verified_at") or datetime.now(timezone.utc).isoformat(),
+                # A snapshot build time is NOT fact verification time.  Leaving
+                # this null forces the provenance gate to ask a coach rather
+                # than laundering an old course record into a fresh one.
+                "verified_at": r.get("verified_at") or vit.get("verified_at") or r.get("last_verified"),
                 "event_year": (int(iso[:4]) if iso else None),
                 "course_variant": r.get("course_variant") or vit.get("course_variant"),
-                "category": r.get("category") or vit.get("category") or vit.get("sex"),
+                "category": r.get("category") or vit.get("category"),
+                "sex": r.get("sex") or vit.get("sex"),
             }
             # gravel + road can share a slug — namespace by discipline
-            out[f"{discipline}:{slug}"] = entry
+            key = f"{discipline}:{slug}"
+            # Championship records may legitimately share a slug while having
+            # distinct men's/women's or route facts.  Never overwrite one
+            # into an unqualified event record.
+            if key in out:
+                qualifier = re.sub(r"[^a-z0-9]+", "-", str(entry.get("category") or entry.get("sex") or entry.get("course_variant") or "variant").lower()).strip("-")
+                key = f"{key}:{qualifier or 'variant'}"
+            out[key] = entry
             counts[discipline] += 1
 
     SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)

@@ -9,6 +9,7 @@ Other scripts import from this module rather than duplicating the data.
 import difflib
 import json
 import re
+from datetime import date, datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
@@ -18,6 +19,7 @@ from typing import Dict, List, Optional, Tuple, Any
 # (config/races.json, built by build_race_snapshot.py) so a real customer's
 # race validates against the actual database, not just this hand-list.
 _SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "config" / "races.json"
+MAX_FACT_AGE_DAYS = 365
 
 
 @lru_cache(maxsize=1)
@@ -61,6 +63,7 @@ def _snapshot_races() -> Dict[str, Dict[str, Any]]:
             "event_year": e.get("event_year"),
             "course_variant": e.get("course_variant"),
             "category": e.get("category"),
+            "sex": e.get("sex"),
         }
     return out
 
@@ -282,6 +285,43 @@ def _race_info_for_id(race_id: str) -> Optional[Dict[str, Any]]:
     if race_id in KNOWN_RACES:
         return KNOWN_RACES[race_id]
     return _snapshot_races().get(race_id)
+
+
+def race_provenance_issue(info: Dict[str, Any], requested_date: str = '',
+                          requested_category: str = '', requested_sex: str = '',
+                          *, today: date | None = None) -> Optional[str]:
+    """Return a coach-blocking provenance defect, or ``None`` for usable facts.
+
+    This is deliberately separate from fuzzy identity matching: a confidently
+    matched name still cannot authorize facts from another edition/course.
+    """
+    sources = info.get('source_urls') or []
+    if not sources or not info.get('source_type'):
+        return 'Race facts have no recorded source URL and source type.'
+    verified = info.get('verified_at')
+    if not verified:
+        return 'Race facts have no recorded verification date.'
+    try:
+        verified_day = datetime.fromisoformat(str(verified).replace('Z', '+00:00')).date()
+    except ValueError:
+        return f'Race facts have an invalid verification date: {verified!r}.'
+    if ((today or date.today()) - verified_day).days > MAX_FACT_AGE_DAYS:
+        return f'Race facts were verified {verified_day.isoformat()}, older than {MAX_FACT_AGE_DAYS} days.'
+    requested_year = str(requested_date or '')[:4]
+    fact_year = str(info.get('event_year') or str(info.get('date') or '')[:4])
+    if requested_year and fact_year and requested_year != fact_year:
+        return f'Requested {requested_year} but race facts are edition {fact_year}.'
+    def normalized(value: str) -> str:
+        return re.sub(r'[^a-z0-9]+', '', str(value or '').lower())
+    if requested_category and info.get('category') and normalized(requested_category) != normalized(info['category']):
+        return f"Requested category {requested_category!r} does not match sourced course category {info['category']!r}."
+    if requested_sex and info.get('sex'):
+        aliases = {'female': 'women', 'f': 'women', 'male': 'men', 'm': 'men'}
+        asked = aliases.get(normalized(requested_sex), normalized(requested_sex))
+        facts = aliases.get(normalized(info['sex']), normalized(info['sex']))
+        if asked != facts:
+            return f"Requested sex {requested_sex!r} does not match sourced course sex {info['sex']!r}."
+    return None
 
 
 def lookup_by_slug(slug: str) -> Optional[Tuple[str, Dict[str, Any]]]:

@@ -158,3 +158,47 @@ failures; the first observed pre-existing failure was stale-intake cleanup.
 - A PlanIR-derived fulfillment manifest and a dry-run/resumable TP adapter
   scaffold exist, but no fake-server acceptance tests or J1 APPLIED read-back
   integration were completed.
+
+## G4 — completed
+
+- Locked recurring sessions now materialize into weekly total duration/TSS and
+  multi-session day rows before compliance runs. R01/R05 count fixed hard work;
+  residual per-day capacity prevents an extra prescribed workout on that day.
+- PlanIR reflects locked external sessions (`origin: athlete_fixed`), and the
+  ledger rejects cap impossibilities before a builder can run. Structured/free
+  text conflicts produce the J1 critical review issue.
+- Per-week prescribed budgets are calculated from the target *after that
+  week's fixed load* (including recovery/taper multipliers), so recovery-ratio
+  checks use total athlete load rather than a residual-only approximation.
+- Focused acceptance: `test_availability_ledger.py` (4 passed).
+
+## H1 — completed
+
+- Snapshot refreshes no longer treat snapshot-build time as fact-verification
+  time; provenance includes source URL/type, verification time, edition,
+  variant, category and sex without overwriting same-slug championship routes.
+- The race provenance gate blocks missing/stale sources, edition mismatch, and
+  incompatible course category/sex. Coaching briefs show source and verification
+  data for accepted records.
+- Focused acceptance: race matching + ledger tests (44 passed).
+
+## I1 — completed
+
+- `fulfillment_manifest.json` is now a side-effect-free PlanIR projection:
+  stable workout IDs/calendar dates/sport type (MTB=8), native notes, guide
+  attachment, mental tasks, course entitlement, and explicit read-back counts.
+- The Heather-like manifest fixture verifies the manifest without importing or
+  contacting the TrainingPeaks adapter.
+
+## I2 — completed
+
+- The versioned TrainingPeaks adapter performs checkpointed external-ID UPSERT
+  operations for workouts, notes, guide attachments, and entitlements; it sets
+  sport type, supports dry-run, resumes after a failed operation, and verifies
+  all objects by calendar read-back before it can transition J1 to `APPLIED`.
+- Fake in-process TP-server contracts cover first apply/idempotence, resume,
+  and a read-back mismatch retaining `APPROVED`. This workspace denies loopback
+  socket binding, so those three tests are skipped locally rather than touching
+  any live endpoint; they execute on socket-enabled CI.
+
+STATUS: COMPLETED: G4, H1, I1, I2 | INCOMPLETE: none

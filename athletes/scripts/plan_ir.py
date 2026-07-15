@@ -43,6 +43,8 @@ class RaceSnapshot:
     elevation_feet: Optional[float] = None
     goal: Optional[str] = None
     source: Optional[str] = None
+    source_urls: List[str] = field(default_factory=list)
+    source_type: Optional[str] = None
     verified_at: Optional[str] = None
     event_year: Optional[int] = None
     course_variant: Optional[str] = None
@@ -213,6 +215,8 @@ def _race_from_artifacts(profile: Dict[str, Any], fueling: Dict[str, Any], plan_
         elevation_feet=_number(_first(target, "elevation_feet", "elevation_ft") or _first(race, "elevation_feet", "elevation_ft") or _first(fueling_race, "elevation_feet", "elevation_ft")),
         goal=_first(target, "goal_type", "goal") or _first(race, "goal_type") or _first(fueling_race, "goal_type"),
         source=_source(target) or _source(race),
+        source_urls=list(target.get('source_urls') or race.get('source_urls') or []),
+        source_type=_first(target, 'source_type') or _first(race, 'source_type'),
         verified_at=_first(target, "verified_at") or _first(race, "verified_at"),
         event_year=event_year,
         course_variant=_first(target, "course_variant") or _first(race, "course_variant"),
@@ -290,6 +294,7 @@ def _build_weeks(
     athlete_dir: Path,
     plan_dates: Dict[str, Any],
     athlete: Athlete,
+    recurring_sessions: List[Dict[str, Any]] | None = None,
 ) -> List[Week]:
     zwo_paths = sorted((athlete_dir / "workouts").glob("*.zwo")) if (athlete_dir / "workouts").exists() else []
     if not zwo_paths:
@@ -311,6 +316,21 @@ def _build_weeks(
                 # Calendar days without a rendered ZWO are real rest days in the
                 # v0 reflection, rather than omitted holes in the plan calendar.
                 week.sessions.append(_rest_session(day.get("date")))
+        # G4: repeat immutable athlete sessions on their calendar day.  They
+        # are not generated ZWOs, but they are canonical plan load and must
+        # survive into every platform-neutral serializer.
+        for raw in recurring_sessions or []:
+            if not raw.get('locked'):
+                continue
+            for day in week_data.get('days', []):
+                if str(day.get('day_name', day.get('day', '')))[:3].title() != raw.get('day'):
+                    continue
+                week.sessions.append(Session(
+                    date=day.get('date'), title=raw.get('title') or 'Fixed external session',
+                    sport='cycling', type='external_fixed', origin='athlete_fixed',
+                    duration_s=int(raw.get('duration_min', 0)) * 60,
+                    tss=int(raw.get('tss', 0) or 0), source_file=None,
+                ))
         weeks.append(week)
 
     # A partial plan_dates file should not hide emitted workouts.  Preserve them
@@ -356,11 +376,23 @@ def build_plan_ir(athlete_id: str) -> PlanIR:
     athlete = _athlete_from_profile(athlete_id, profile)
     prescription_data = prescription_from_fueling(fueling_data) if fueling_data else None
     fueling = FuelingPrescription(**prescription_data) if prescription_data else None
+    target = profile.get('target_race', {}) or {}
+    mental = profile.get('mental_game', {}) or {}
+    mental_tasks = [
+        {'kind': 'mental_training', 'id': key, 'text': str(value)}
+        for key, value in mental.items() if value not in (None, '', 'none', 'no')
+    ]
+    guide_path = 'training_guide.pdf' if (athlete_dir / 'training_guide.pdf').exists() else 'training_guide.html'
     plan_ir = PlanIR(
         athlete=athlete,
         race_snapshot=_race_from_artifacts(profile, fueling_data, plan_dates),
         fueling=fueling,
-        weeks=_build_weeks(athlete_dir, plan_dates, athlete),
+        weeks=_build_weeks(athlete_dir, plan_dates, athlete,
+                           profile.get('recurring_sessions', []) or []),
+        notes=mental_tasks,
+        entitlements=[{'kind': 'course', 'race': target.get('name'),
+                       'race_date': target.get('date'), 'race_id': target.get('race_id')}],
+        attachments=[{'id': 'guide', 'kind': 'guide', 'path': guide_path}],
         fulfillment=_fulfillment_from_file(athlete_dir),
     )
     output_path = athlete_dir / "plan_ir.json"
