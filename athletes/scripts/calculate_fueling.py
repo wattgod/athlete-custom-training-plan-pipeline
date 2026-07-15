@@ -28,6 +28,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).parent))
 from constants import get_athlete_file
+from fueling_policy import build_fueling_prescription
 
 
 # =============================================================================
@@ -255,6 +256,7 @@ def get_hourly_carb_target(goal_type: str = "finish") -> Dict:
     Returns:
         Dict with target, range, and description
     """
+    # Legacy compatibility only. New callers must use FuelingPrescription.
     return HOURLY_CARB_TARGETS.get(goal_type, HOURLY_CARB_TARGETS["finish"])
 
 
@@ -401,8 +403,26 @@ def generate_fueling_context(
         discipline=discipline
     )
 
-    # Calculate carb targets
-    carb_data = calculate_total_carb_target(duration_hours, goal_type)
+    # One personalized prescription drives every serialized carb value.
+    fitness = profile.get("fitness_markers", {})
+    prescription = build_fueling_prescription(
+        duration_hours=duration_hours,
+        weight_kg=float(weight_kg),
+        ftp_watts=fitness.get("ftp_watts"),
+        goal_type=goal_type,
+        gut_phase="build",
+        sex=sex,
+    )
+    p = prescription.to_dict()
+    carb_data = {
+        "hourly_target": p["race_target_g_per_hour"],
+        "hourly_range": p["race_range_g_per_hour"],
+        "total_grams": p["total_g"],
+        "total_range": [round(p["race_range_g_per_hour"][0] * duration_hours),
+                        round(p["race_range_g_per_hour"][1] * duration_hours)],
+        "duration_hours": duration_hours,
+        "goal_type": goal_type,
+    }
 
     # Get gut training progression
     gut_training = []
@@ -434,11 +454,12 @@ def generate_fueling_context(
             "weekly_progression": gut_training
         },
         "fueling_timeline": fueling_timeline,
+        "prescription": p,
         "recommendations": generate_fueling_recommendations(
             duration_hours=duration_hours,
             hourly_carbs=carb_data["hourly_target"],
             total_carbs=carb_data["total_grams"]
-        ),
+        ) | {"hydration": p["hydration"]},
         "generated_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
 

@@ -1032,7 +1032,8 @@ def generate_text_event(offset: int, message: str) -> str:
 
 def generate_warmup_block(
     duration: int = Durations.WARMUP_EXTENDED,
-    include_text: bool = False  # TP doesn't support textevent
+    include_text: bool = False,  # TP doesn't support textevent
+    power_high: Optional[float] = None,
 ) -> str:
     """
     Generate warmup block with optional coaching text.
@@ -1050,7 +1051,7 @@ def generate_warmup_block(
     block = (
         f'    <Warmup Duration="{duration}" '
         f'PowerLow="{ZWODefaults.WARMUP_POWER_LOW:.2f}" '
-        f'PowerHigh="{ZWODefaults.WARMUP_POWER_HIGH:.2f}"'
+        f'PowerHigh="{(power_high if power_high is not None else ZWODefaults.WARMUP_POWER_HIGH):.2f}"'
     )
 
     if include_text and duration >= 300:  # Only add text for warmups >= 5 min
@@ -1061,6 +1062,46 @@ def generate_warmup_block(
         block += '/>\n'
 
     return block
+
+
+def _is_steady_endurance_or_recovery(archetype: Dict) -> bool:
+    name = archetype.get("name", "").lower()
+    return (any(k in name for k in ("endurance", "recovery", "hvli", "fatmax", "lt1"))
+            and "loaded recovery" not in name)
+
+
+def enforce_steady_workout_invariants(blocks: str) -> str:
+    """Keep easy rides physically monotonic: warm up into, never above, body."""
+    import re
+    steady = re.search(r'<SteadyState\b[^>]*\bDuration="([1-9]\d*)"[^>]*\bPower="([0-9.]+)"', blocks)
+    if not steady:
+        raise ValueError("steady workout has no nonzero main set")
+    main_high = float(steady.group(2))
+    warmup = re.search(r'(<Warmup\b[^>]*\bPowerHigh=")([0-9.]+)(")', blocks)
+    if warmup and float(warmup.group(2)) > main_high:
+        blocks = blocks[:warmup.start(2)] + f"{main_high:.2f}" + blocks[warmup.end(2):]
+    cooldown = re.search(r'(<Cooldown\b[^>]*\bPowerLow=")([0-9.]+)("\s+PowerHigh=")([0-9.]+)(")', blocks)
+    if cooldown:
+        low, high = float(cooldown.group(2)), float(cooldown.group(4))
+        # Some legacy builders wrote the attributes backwards. Normalize them
+        # to ZWO's start-high/end-low convention rather than shipping a ramp up.
+        end_power, start_power = min(low, high), min(main_high, max(low, high))
+        replacement = f'{cooldown.group(1)}{end_power:.2f}{cooldown.group(3)}{start_power:.2f}{cooldown.group(5)}'
+        blocks = blocks[:cooldown.start()] + replacement + blocks[cooldown.end():]
+    return blocks
+
+
+def validate_steady_workout_invariants(blocks: str) -> bool:
+    """Validation hook for generated files and tests; does not repair input."""
+    import re
+    steady = re.search(r'<SteadyState\b[^>]*\bDuration="([1-9]\d*)"[^>]*\bPower="([0-9.]+)"', blocks)
+    if not steady:
+        return False
+    main_high = float(steady.group(2))
+    warmup = re.search(r'<Warmup\b[^>]*\bPowerHigh="([0-9.]+)"', blocks)
+    cooldown = re.search(r'<Cooldown\b[^>]*\bPowerLow="([0-9.]+)"\s+PowerHigh="([0-9.]+)"', blocks)
+    return ((not warmup or float(warmup.group(1)) <= main_high)
+            and (not cooldown or (float(cooldown.group(1)) <= float(cooldown.group(2)) <= main_high)))
 
 
 def generate_cooldown_block(
@@ -2393,7 +2434,7 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
             main_duration, power, cadence_range=cadence_range
         ))
         blocks.append(generate_cooldown_block(cooldown_duration))
-        return "".join(blocks)
+        return enforce_steady_workout_invariants("".join(blocks))
 
     # =====================================================================
     # REST DAY (No blocks - just placeholder)
@@ -2514,7 +2555,10 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
         blocks.append(generate_warmup_block(warmup_duration))
         blocks.append(generate_cooldown_block(cooldown_duration))
 
-    return "".join(blocks)
+    rendered = "".join(blocks)
+    if _is_steady_endurance_or_recovery(archetype):
+        rendered = enforce_steady_workout_invariants(rendered)
+    return rendered
 
 
 # =============================================================================
@@ -2542,61 +2586,10 @@ def get_nutrition_guidelines(archetype: Dict, level_data: Dict) -> str:
     - 40-60g carbs/hr for Z2 endurance
     - Short high-intensity (<90min): pre-workout meal sufficient
     """
-    archetype_name = archetype.get("name", "").lower()
-    duration = level_data.get("duration", 3600)
-
-    # Race simulation workouts - highest fueling requirement
-    if any(x in archetype_name for x in ["breakaway", "race", "chaos", "sector"]):
-        return "70-80g carbs/hr. Practice race-day nutrition exactly as you'll execute it."
-
-    # Gravel-specific workouts - race fueling practice
-    if any(x in archetype_name for x in ["surge", "settle", "microburst", "gravel grind", "late race"]):
-        return "60-80g carbs/hr. Practice race nutrition - eating while the power varies."
-
-    # SFR / Force workouts - moderate fueling
-    if any(x in archetype_name for x in ["sfr", "force", "stomp"]):
-        return "40-60g carbs/hr. Moderate intensity, focus on recovery nutrition."
-
-    # Over/Under and Climbing - high fueling
-    if any(x in archetype_name for x in ["over", "under", "climbing", "mixed climb"]):
-        return "60-80g carbs/hr. Variable intensity demands consistent fueling."
-
-    # Blended multi-system - race fueling
-    if any(x in archetype_name for x in ["blended", "buffer"]):
-        return "60-80g carbs/hr. Practice race nutrition - multi-zone demands steady fueling."
-
-    # Tired/Durability imported - race fueling practice
-    if any(x in archetype_name for x in ["tired 30", "tired 40", "tired threshold", "tired tempo", "simulation combo", "bookend"]):
-        return "60-80g carbs/hr. Fueling under fatigue is a skill to practice."
-
-    # Threshold/tempo/G-Spot workouts - guide says 60-80g for moderate-to-high intensity
-    if any(x in archetype_name for x in ["threshold", "g-spot", "norwegian", "tt", "sustained"]):
-        return "60-80g carbs/hr. Start fueling at 30-45min. Mix gels and drink mix."
-
-    # Short high-intensity workouts (<90min) - guide says pre-workout meal sufficient
-    if any(x in archetype_name for x in ["vo2", "anaerobic", "sprint", "attack"]):
-        if duration < 5400:  # Under 90 minutes
-            return "30-60g carbs/hr. Easily digestible. Nothing heavy 2hrs before."
-        return "60-80g carbs/hr for longer sessions. Start fueling early."
-
-    # Z2 endurance workouts - guide says 40-60g carbs/hr
-    if any(x in archetype_name for x in ["endurance", "z2", "aerobic", "maf", "lt1"]):
-        return "40-60g carbs/hr. Real food works well - PB&J, bananas, bars."
-
-    # Long HVLI/extended workouts - match race fueling
-    if any(x in archetype_name for x in ["hvli", "extended", "terrain"]) or duration > 5400:
-        return "60-80g carbs/hr. Mix of liquid and solid. Practice race nutrition."
-
-    # Recovery workouts
-    if any(x in archetype_name for x in ["recovery", "flush", "opener"]):
-        return "Optional - light snack if needed. Focus on post-ride recovery meal."
-
-    # Durability workouts - race-like fueling
-    if any(x in archetype_name for x in ["durability", "tired", "fatigue"]):
-        return "60-80g carbs/hr. Fueling under fatigue is a skill to practice."
-
-    # Default for unmatched workouts
-    return "40-60g carbs/hr for efforts over 60min."
+    # Athlete-specific grams/hr are injected by the package renderer from the
+    # canonical FuelingPrescription.  This remains deliberately number-free so
+    # a standalone workout cannot create a conflicting personal target.
+    return "Use the personalized fueling target in your plan; practice products and timing before race day."
 
 
 def get_hydration_guidelines(archetype: Dict, level_data: Dict) -> str:

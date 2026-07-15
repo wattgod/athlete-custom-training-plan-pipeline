@@ -764,6 +764,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     coaching = parsed.get('coaching', {})
     mental = parsed.get('mental_game', {})
     additional = parsed.get('additional', {})
+    nutrition_intake = parsed.get('nutrition', {})
 
     email = header.get('email', basic.get('email', ''))
     submitted = header.get('submitted', '')
@@ -1391,7 +1392,12 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'diet_styles': [],
             'fluid_intake_rating': None,
             'restrictions': '',
-            'training_fuel': '',
+            # Preserve the athlete's demonstrated carbohydrate intake when the
+            # questionnaire supplies it. Fueling policy parses numeric g/hr;
+            # blank/free-text remains a documented unknown rather than a block.
+            'training_fuel': nutrition_intake.get('training_fuel',
+                nutrition_intake.get('current_carbs_g_per_hour',
+                additional.get('training_fuel', ''))),
             'post_workout': '',
             'notes': '',
         },

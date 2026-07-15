@@ -228,12 +228,10 @@ WEEKLY_HOUR_BUDGET_TOLERANCE: float = 1.10  # 110% of cycling_hours_target
 # VO2max continuity
 VO2MAX_GAP_MAX_DAYS: int = 16  # Max calendar days between VO2max sessions
 
-# Per-workout fuel tags (injected as <textevent> in ZWO files)
-FUEL_TAGS: Dict[str, str] = {
-    'intensity': 'HIGH FUEL: Target 60-90g carbs/hr. Eat early, eat often.',
-    'endurance': 'MODERATE FUEL: Target 30-60g carbs/hr. Stay topped up.',
-    'race_sim': 'PRACTICE FUEL: Race-day fueling 80-100g carbs/hr. Practice your plan.',
-}
+# Per-workout fuel tags are rendered from FuelingPrescription in
+# fueling_policy.py.  Keep this empty compatibility sentinel for callers that
+# imported the old constant; hardcoded athlete-specific ranges are forbidden.
+FUEL_TAGS: Dict[str, str] = {}
 
 # Workout types that get PRACTICE FUEL instead of HIGH FUEL
 RACE_SIM_WORKOUT_TYPES: List[str] = ['Race_Sim', 'Gravel_Specific']

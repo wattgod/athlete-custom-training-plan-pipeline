@@ -3808,13 +3808,16 @@ def _build_nutrition_section(fueling, profile) -> str:
     if not fueling:
         return ''
 
+    # The card is a projection of the canonical prescription, never a second
+    # calculation. Legacy keys keep older saved athlete directories readable.
+    prescription = fueling.get('prescription', {})
     carbs = fueling.get('carbohydrates', {})
-    hourly = carbs.get('hourly_target', 0)
-    hourly_range = carbs.get('hourly_range', [])
-    total = carbs.get('total_grams', 0)
+    hourly = prescription.get('race_target_g_per_hour', carbs.get('hourly_target', 0))
+    hourly_range = prescription.get('race_range_g_per_hour', carbs.get('hourly_range', []))
+    total = prescription.get('total_g', carbs.get('total_grams', 0))
 
     recs = fueling.get('recommendations', {})
-    hydration = recs.get('hydration', {})
+    hydration = prescription.get('hydration', recs.get('hydration', {}))
 
     if not hourly:
         return ''

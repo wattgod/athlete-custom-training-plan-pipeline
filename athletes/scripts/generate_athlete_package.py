@@ -28,7 +28,6 @@ from constants import (
     DAY_ORDER,
     FTP_TEST_DURATION_MIN,
     STRENGTH_PHASES,
-    FUEL_TAGS,
     INTENSITY_WORKOUT_TYPES,
     RACE_SIM_WORKOUT_TYPES,
     MASTERS_AGE_THRESHOLD,
@@ -51,21 +50,23 @@ from workout_templates import (
     scale_zwo_to_target_duration,
 )
 
-def _get_fuel_tag_for_type(workout_type: str) -> str:
+def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None) -> str:
     """Return fuel guidance string for a workout type, or empty string."""
     wt_lower = workout_type.lower()
+    from fueling_policy import prescription_from_fueling, render_workout_fueling
+    prescription = prescription_from_fueling(fueling or {})
     if workout_type in RACE_SIM_WORKOUT_TYPES or 'race_sim' in wt_lower or 'race simulation' in wt_lower:
-        return FUEL_TAGS['race_sim']
+        return render_workout_fueling(prescription, 'race_sim')
     elif workout_type in INTENSITY_WORKOUT_TYPES or any(k in wt_lower for k in [
         'vo2max', 'threshold', 'sprint', 'anaerobic', 'kitchen sink', 'drain cleaner',
         'la balanguera', 'hyttevask', 'blended', 'mixed', 'sfr', 'thunder quads',
         'blood pistons', 'cadence work', 'tempo', 'stomps', 'microbursts', 'buffer',
     ]):
-        return FUEL_TAGS['intensity']
+        return render_workout_fueling(prescription, 'quality')
     elif any(k in wt_lower for k in ['recovery', 'easy', 'shakeout', 'rest', 'openers', 'off']):
         return ''
     else:
-        return FUEL_TAGS['endurance']
+        return render_workout_fueling(prescription, 'long_ride')
 
 
 # Get config and set up paths
@@ -372,7 +373,7 @@ def select_strength_days(is_available, strength_only_abbrevs=None) -> list:
     return avail[:2]
 
 
-def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, derived: dict, profile: dict = None) -> list:
+def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, derived: dict, profile: dict = None, fueling: dict = None) -> list:
     """
     Generate ZWO workout files based on plan_dates, methodology, and athlete schedule preferences.
 
@@ -1921,7 +1922,7 @@ TIPS:
                         f"{weeks_to_race} weeks to {race_name}\n"
                         f"Phase: {phase.upper()}\n\n"
                     )
-                    fuel_tag = _get_fuel_tag_for_type(bb_name)
+                    fuel_tag = _get_fuel_tag_for_type(bb_name, fueling)
                     fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
                     zwo_content = zwo_content.replace(
                         '<description>',
@@ -2332,7 +2333,7 @@ GO GET IT, {athlete_name.upper()}!
                             heat_reminder = "\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance\n\n"
 
                         # Insert fuel tag + header after <description> tag
-                        fuel_tag = _get_fuel_tag_for_type(workout_type)
+                        fuel_tag = _get_fuel_tag_for_type(workout_type, fueling)
                         fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
                         zwo_content = zwo_content.replace(
                             '<description>',
@@ -2387,7 +2388,7 @@ GO GET IT, {athlete_name.upper()}!
                 heat_reminder = "\n\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance"
 
             # Add fuel tag
-            fuel_tag = _get_fuel_tag_for_type(workout_type)
+            fuel_tag = _get_fuel_tag_for_type(workout_type, fueling)
             fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
 
             full_description = fuel_prefix + personal_header + full_description + heat_reminder
@@ -2599,7 +2600,7 @@ def generate_athlete_package(athlete_id: str) -> dict:
 
     # Generate ZWO workout files FIRST (guide reads from workouts dir)
     step(3, "Generating ZWO workout files...")
-    zwo_files = generate_zwo_files(athlete_dir, plan_dates, methodology, derived, profile)
+    zwo_files = generate_zwo_files(athlete_dir, plan_dates, methodology, derived, profile, fueling)
     detail(f"Generated {len(zwo_files)} workout files")
 
     # Generate training guide AFTER workouts (reads ZWO filenames for ATP table)
