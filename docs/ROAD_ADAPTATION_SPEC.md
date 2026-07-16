@@ -34,17 +34,22 @@ the shared engine in `athlete-custom-training-plan-pipeline`.
 
 ## Product context (settles the depth question)
 
-**Roadie Labs is a 100% gran-fondo / endurance brand** — 388 gran_fondo + 16 sportive +
-10 hillclimb + 2 multi-stage + 1 century; **zero criteriums, road races, or time trials**.
-Gran-fondo training philosophy is **close to gravel**: long aerobic-endurance, durability,
-sustained tempo/threshold, big volume, multi-hour fueling. The genuine road differences that
-matter for fondos — faster/draft speeds (fueling), more sustained climbing, pack/descending
-skills — are largely already handled (fueling speeds, the road workout overlay's
-Threshold/G-Spot flavoring, the real Road Skills chapter). Therefore:
+**Roadie Labs is overwhelmingly a gran-fondo / endurance brand** — the road catalog is
+dominated by gran fondo / sportive / century / hillclimb / stage events, with only a
+**handful of true mass-start road races** (e.g. Superior Morgul Road Race, Purgatory Road
+Race) — a tiny minority (`athletes/config/races.json`; `archetype.py:183` does recognize
+`road race`/`criterium`). Gran-fondo training philosophy is **close to gravel**: long
+aerobic-endurance, durability, sustained tempo/threshold, big volume, multi-hour fueling. The
+genuine road differences that matter for fondos — faster/draft speeds (fueling), more
+sustained climbing, pack/descending skills — are largely already handled (fueling speeds, the
+road workout overlay's Threshold/G-Spot flavoring, the real Road Skills chapter). Therefore:
 - **"Solid & shipping" is the right scope** — correct branding/discipline/fueling/prose on
   the shared endurance engine, not a road-training rebuild.
-- **Format-aware road training (crit=anaerobic, TT=threshold, sprint) is not deferred so
-  much as UNNECESSARY** for a fondo brand. Only revisit if Roadie ever adds mass-start racing.
+- **Format-aware road training (crit=anaerobic, TT=threshold, sprint) stays OUT of scope.**
+  The rare true road races in the catalog will be served by the shared endurance engine — an
+  imperfect but acceptable fit given their rarity; they are NOT flagged as errors. Format-aware
+  depth would improve them and becomes worth revisiting only if Roadie leans into mass-start
+  racing as a real segment.
 
 Keep the full suite green (baseline: `pytest athletes/scripts/ -q` → 1163 passed, 53 skipped;
 full collection 1216). Add named tests per workstream; do NOT weaken existing tests; do NOT
@@ -88,22 +93,30 @@ so a Roadie order for a gravel-keyword race silently builds a gravel plan.
 1. **Carry explicit `brand` through the whole chain** — Stripe metadata → the JSON/markdown
    questionnaire → the parsed profile (`intake_to_plan.py` build path) → persisted in
    `profile.yaml`. It is currently lost at the rewrite (:3151-3159).
-2. **Make brand authoritative for discipline** where the brand is single-discipline: a
-   `roadielabs` order resolves `road` regardless of race-name keyword (Roadie has no gravel
-   events). Keep `allowed_disciplines` so `gravelgod` (which legitimately serves gravel + MTB)
-   is unaffected — do NOT do a symmetric "gravel brand must be gravel" rule (it would break
-   supported Gravel God MTB orders, `archetype.py:157-170`).
-3. **Loud guard:** after final discipline resolution, if the resolved discipline is not in the
-   brand's `allowed_disciplines`, raise a blocking review issue — and make it **loud in the
-   coach email**. A J1-only blocker is NOT surfaced: the webhook infers review state solely
-   from `GG_NEEDS_REVIEW=1` in stdout, emitted only when `NEEDS_REVIEW.txt` exists
-   (`webhook/app.py:881-883`). So write `NEEDS_REVIEW.txt` / emit the marker in addition to
-   the J1 blocker; do not just throw.
+2. **Detect the conflict on the CANDIDATE, then force + flag** (order matters — do not force
+   first, or the guard is unreachable):
+   a. Resolve discipline normally (explicit → race-name keyword → hint) — call this the
+      *candidate* (`archetype.derive_discipline`).
+   b. If the candidate is NOT in the ordering brand's `allowed_disciplines` (e.g. a
+      `roadielabs` order whose race keyword-resolved to `gravel`, or a bad/ambiguous race),
+      that is the conflict: **flag it loud** (below), THEN override the output to the brand's
+      configured discipline (`road`) so the athlete still gets a correctly-disciplined plan.
+   c. For a single-discipline brand (`roadielabs`), the override guarantees `road`; for a
+      multi-discipline brand (`gravelgod`: gravel + MTB) a candidate within `allowed_disciplines`
+      passes untouched — do NOT force a symmetric "gravel brand must be gravel" rule (it would
+      break supported Gravel God MTB orders, `archetype.py:157-170`).
+3. **Loud, coach-visible flag** (a J1-only blocker is NOT surfaced — the webhook infers review
+   state solely from `GG_NEEDS_REVIEW=1` in stdout, emitted only when `NEEDS_REVIEW.txt`
+   exists, `webhook/app.py:881-883`): on a candidate↔brand conflict, write `NEEDS_REVIEW.txt`
+   AND add the J1 blocker AND emit the stdout marker — do not just throw. The plan still ships
+   (road), but the coach is told the race data resolved to the wrong discipline.
 
 **Acceptance:** extend `test_discipline_detection.py`: (a) a `roadielabs` order whose race
-keyword-matches gravel still resolves `road`; (b) a brand↔discipline conflict produces a
-coach-visible review flag (NEEDS_REVIEW surfaced), not a silent gravel plan; (c) a
-`gravelgod` MTB order still builds an MTB plan; (d) existing gravel cases green.
+keyword-resolves to gravel BOTH ships a `road` plan AND surfaces the coach-visible review
+flag (`NEEDS_REVIEW.txt` + stdout marker) — never a silent gravel plan; (b) a clean
+`roadielabs` fondo order ships `road` with NO false review flag (the guard must not fire on
+non-conflicts); (c) a `gravelgod` MTB order still builds an MTB plan with no flag; (d)
+existing gravel cases green.
 
 ---
 
@@ -135,19 +148,28 @@ items are filed as tracked tickets, not attempted here.
 
 ## R4 — Purge gravel prose/author leaks for road athletes (male AND female guides)
 
-Reachable on the road branch today, outside discipline conditionals:
+**The single worst leak is the confirmation EMAIL, not the guide.** `personal_email.md` is
+generated with a hardcoded Gravel God signature ("— Matti / Gravel God Coaching /
+gravelgodcycling.com", `intake_to_plan.py:2866`) and `/api/confirm` sends it preferentially
+(`webhook/app.py:2527-2531`); the fallback TP and Endure confirmation emails are also
+hardcoded (`webhook/app.py:2473`, `:2597`). So a Roadie athlete currently receives a
+**Gravel-God-signed email**. Make the signature/sender brand-aware from R1.
+
+Guide/ZWO leaks reachable on the road branch, outside discipline conditionals:
 - `training_guide_builder.py:1450` packing "Bike — gravel or similar" → discipline wording.
 - `training_guide_builder.py:1900` "Tire pressure ... lower for gravel: 30-40 PSI" → road (or gate).
-- Surface-hazards section (gravel-framed) → gate/reword for road.
-- **Female road guide leaks** (sol-confirmed): gravel references at `training_guide_builder.py`
+- **Female road guide leaks** (confirmed): gravel refs at `training_guide_builder.py`
   :2680, :2744, :2763, :2817, :2835 — test the FEMALE road guide, not just male.
-- `nate_workout_generator.py:173` ZWO `<author>Gravel God Training</author>` → brand author
-  from R1, through ALL ZWO rendering paths.
+- ZWO `<author>Gravel God Training</author>` — brand author from R1 through **all** emitters:
+  `nate_workout_generator.py:173` AND `workout_mapper.py:276` (do not miss the second path).
 - Sweep `grep -ni gravel athletes/scripts/training_guide_builder.py` for anything reachable on road.
+- NOTE (do not "fix"): the surface-hazards rendering is already discipline-neutral and gravel
+  surface hazards are already gated (`training_guide_builder.py:1438`, `:2006`) — leave it.
 
-**Acceptance:** generate BOTH a male and a female Roadie plan; `grep -i gravel` over
-`training_guide.html` + `workouts/*.zwo` returns zero athlete-visible gravel references (race
-name excepted). Gravel fixture unchanged.
+**Acceptance:** generate BOTH a male and a female Roadie plan AND render the confirmation
+email path; `grep -i gravel` (case-insensitive) over `training_guide.html`, `workouts/*.zwo`,
+AND `personal_email.md` + the sent confirmation payload returns zero athlete-visible gravel
+references / no Gravel God signature (race name excepted). Gravel fixture unchanged.
 
 ---
 
@@ -157,9 +179,10 @@ name excepted). Gravel fixture unchanged.
 value):**
 - `calculate_fueling.py:131` `_SPEED_BY_DISCIPLINE` (fueling — already road-aware).
 - `training_guide_builder.py:21-27` `_TIER_AVG_SPEED` — **explicitly gravel**, drives the
-  guide's long-ride prose (:135-145, :385-390). Make it discipline-aware and reuse the SAME
-  resolved race-duration/speed value the fueling code uses, so the guide and fueling never
-  disagree for road.
+  guide's long-ride prose. Make it discipline-aware and reuse the SAME resolved
+  race-duration/speed value the fueling code uses, so the guide and fueling never disagree for
+  road. Cover ALL of its call sites: `training_guide_builder.py:135-145`, `:385-390`, `:569`,
+  and `generate_athlete_package.py:1056` — do not miss one and leave a road plan half-converted.
 
 **Sanity (the "solid" bar, not format-aware depth):** road overlay
 (`config/workout_selection.yaml disciplines.road`) rotates sanely; road fueling durations are
