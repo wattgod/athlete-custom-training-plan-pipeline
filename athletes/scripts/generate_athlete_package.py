@@ -56,8 +56,14 @@ from workout_templates import (
     scale_zwo_to_target_duration,
 )
 
-def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None) -> str:
-    """Return fuel guidance string for a workout type, or empty string."""
+def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min: float = None) -> str:
+    """Return fuel guidance string for a workout type, or empty string.
+
+    ``duration_min`` gates the long-ride banner: an aerobic ride under 90 min
+    gets no fuel banner, matching the guide's "short rides (<90 min): water is
+    fine". Without it, short Endurance rides (which fall through to the catch-all
+    below) were mislabelled as long rides.
+    """
     wt_lower = workout_type.lower()
     from fueling_policy import prescription_from_fueling, render_workout_fueling
     prescription = prescription_from_fueling(fueling or {})
@@ -67,11 +73,17 @@ def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None) -> str:
         'vo2max', 'threshold', 'sprint', 'anaerobic', 'kitchen sink', 'drain cleaner',
         'la balanguera', 'hyttevask', 'blended', 'mixed', 'sfr', 'thunder quads',
         'blood pistons', 'cadence work', 'tempo', 'stomps', 'microbursts', 'buffer',
+        'ftp',
     ]):
+        # FTP tests are quality efforts (57 g/hr), not long rides (62 g/hr).
         return render_workout_fueling(prescription, 'quality')
     elif any(k in wt_lower for k in ['recovery', 'easy', 'shakeout', 'rest', 'openers', 'off']):
         return ''
     else:
+        # Aerobic/endurance rides carry the long-ride banner only when actually
+        # long (>=90 min); shorter ones need no in-workout fuelling.
+        if duration_min is not None and duration_min < 90:
+            return ''
         return render_workout_fueling(prescription, 'long_ride')
 
 
@@ -1451,7 +1463,12 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         return avail.get('max_duration_min', 120) >= FTP_TEST_DURATION_MIN
 
     if use_custom_schedule:
-        _ftp_key_days, _ftp_other_days = [], []
+        # An FTP test the day AFTER the long ride is not a fresh test. Demote
+        # that day below every other viable day so it is only ever a last resort.
+        _WEEK_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        _day_after_long = (_WEEK_ORDER[(_WEEK_ORDER.index(long_day_abbrev) + 1) % 7]
+                           if long_day_abbrev in _WEEK_ORDER else None)
+        _ftp_key_days, _ftp_other_days, _ftp_post_long = [], [], []
         # Tue/Thu first — tests replace the quality session on a hard day.
         # Iteration order MUST match get_ftp_day_candidates() below.
         for _d in ['Tue', 'Thu', 'Mon', 'Wed', 'Fri', 'Sat', 'Sun']:
@@ -1459,14 +1476,18 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 continue
             _avail = get_day_availability(_d)
             _entry = (_d, _avail.get('max_duration_min', 120))
-            if _avail.get('is_key_day_ok', False):
+            if _d == _day_after_long:
+                _ftp_post_long.append(_entry)
+            elif _avail.get('is_key_day_ok', False):
                 _ftp_key_days.append(_entry)
             else:
                 _ftp_other_days.append(_entry)
         _ftp_key_days.sort(key=lambda x: x[1], reverse=True)
         _ftp_other_days.sort(key=lambda x: x[1], reverse=True)
+        _ftp_post_long.sort(key=lambda x: x[1], reverse=True)
         _ftp_candidates_precomputed = ([d for d, _ in _ftp_key_days]
-                                       + [d for d, _ in _ftp_other_days])
+                                       + [d for d, _ in _ftp_other_days]
+                                       + [d for d, _ in _ftp_post_long])
     else:
         _ftp_candidates_precomputed = ['Sat', 'Thu', 'Sun']
     _ftp_slot_day = _ftp_candidates_precomputed[0] if _ftp_candidates_precomputed else None
@@ -1595,7 +1616,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 workout_type = 'Pre_Plan_Endurance'
                 duration = 80
                 power = 0.65
-                preplan_fuel = _get_fuel_tag_for_type('Endurance', fueling)
+                preplan_fuel = _get_fuel_tag_for_type('Endurance', fueling, duration)
                 description = f"""PRE-PLAN WEEK: Endurance Ride
 {athlete_name} - {days_to_plan_start} days until plan starts
 
@@ -1963,7 +1984,7 @@ TIPS:
                         f"{weeks_to_race} weeks to {race_name}\n"
                         f"Phase: {phase.upper()}\n\n"
                     )
-                    fuel_tag = _get_fuel_tag_for_type(bb_name, fueling)
+                    fuel_tag = _get_fuel_tag_for_type(bb_name, fueling, bb_duration)
                     fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
                     zwo_content = zwo_content.replace(
                         '<description>',
@@ -2163,6 +2184,12 @@ Trust the process, {athlete_name}."""
 
                 key_days = []
                 other_days = []
+                post_long_days = []
+                # An FTP test the day AFTER the long ride is not a fresh test;
+                # demote it below every other viable day (last resort only).
+                _wk = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                day_after_long = (_wk[(_wk.index(long_day_abbrev) + 1) % 7]
+                                  if long_day_abbrev in _wk else None)
                 # Tue/Thu first: tests replace the quality session on a
                 # normal hard day (coach testing-week pattern) instead of
                 # adding a hard day. MUST match the hoisted _ftp_slot_day
@@ -2174,7 +2201,9 @@ Trust the process, {athlete_name}."""
                         continue
                     avail = get_day_availability(d)
                     dur = avail.get('max_duration_min', 120)
-                    if avail.get('is_key_day_ok', False):
+                    if d == day_after_long:
+                        post_long_days.append((d, dur))
+                    elif avail.get('is_key_day_ok', False):
                         key_days.append((d, dur))
                     else:
                         other_days.append((d, dur))
@@ -2182,7 +2211,9 @@ Trust the process, {athlete_name}."""
                 # preference among equal-duration days
                 key_days.sort(key=lambda x: x[1], reverse=True)
                 other_days.sort(key=lambda x: x[1], reverse=True)
-                return [d for d, _ in key_days] + [d for d, _ in other_days]
+                post_long_days.sort(key=lambda x: x[1], reverse=True)
+                return ([d for d, _ in key_days] + [d for d, _ in other_days]
+                        + [d for d, _ in post_long_days])
 
             ftp_day_candidates = get_ftp_day_candidates()
 
@@ -2234,8 +2265,12 @@ Trust the process, {athlete_name}."""
                 hourly_range = prescription.get('race_range_g_per_hour', [])
                 hydration = prescription.get('hydration', {})
 
-                # Estimate TSS (rough: ~60-70 TSS/hour for a hard gravel race)
-                estimated_tss = int(duration_hours * 65)
+                # Estimate TSS consistently with how zwo_parser scores this
+                # race-day FreeRide (no power target) — otherwise the header
+                # (65 TSS/hr) and the parsed value in plan_ir/preview (IF 0.65)
+                # disagree by ~50%.
+                _race_if = 0.65 if duration_hours * 3600 > 3600 else 0.55
+                estimated_tss = round(duration_hours * (_race_if ** 2) * 100)
 
                 # Build race day plan description
                 race_description = f"""RACE DAY: {race_name}
@@ -2383,7 +2418,7 @@ GO GET IT, {athlete_name.upper()}!
                             heat_reminder = "\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance\n\n"
 
                         # Insert fuel tag + header after <description> tag
-                        fuel_tag = _get_fuel_tag_for_type(workout_type, fueling)
+                        fuel_tag = _get_fuel_tag_for_type(workout_type, fueling, duration)
                         fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
                         zwo_content = zwo_content.replace(
                             '<description>',
@@ -2443,7 +2478,7 @@ GO GET IT, {athlete_name.upper()}!
                 heat_reminder = "\n\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance"
 
             # Add fuel tag
-            fuel_tag = _get_fuel_tag_for_type(workout_type, fueling)
+            fuel_tag = _get_fuel_tag_for_type(workout_type, fueling, duration)
             fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
 
             full_description = fuel_prefix + personal_header + full_description + heat_reminder

@@ -22,6 +22,24 @@ def test_personalized_fuel_artifacts_project_the_serialized_prescription():
     assert f"{prescription['training_tiers']['quality']['target_g_per_hour']}g carbs/hr" in _get_fuel_tag_for_type("Threshold", fueling)
     assert f"{prescription['training_tiers']['long_ride']['target_g_per_hour']}g carbs/hr" in _get_fuel_tag_for_type("Endurance", fueling)
     assert f"{prescription['race_target_g_per_hour']}g carbs/hr" in _get_fuel_tag_for_type("Race_Sim", fueling)
+
+
+def test_fuel_tag_gates_on_duration_and_routes_ftp_to_quality():
+    """Short aerobic rides get no in-workout fuel banner (<90 min = water is
+    fine); FTP tests fuel as quality efforts, not long rides."""
+    prescription = build_fueling_prescription(
+        duration_hours=5.6, weight_kg=61, ftp_watts=230, goal_type="podium", sex="female"
+    ).to_dict()
+    fueling = {"prescription": prescription}
+    quality = f"{prescription['training_tiers']['quality']['target_g_per_hour']}g carbs/hr"
+    long_ride = f"{prescription['training_tiers']['long_ride']['target_g_per_hour']}g carbs/hr"
+    # A short endurance ride carries no banner...
+    assert _get_fuel_tag_for_type("Endurance", fueling, duration_min=60) == ""
+    # ...but a genuinely long one still does.
+    assert long_ride in _get_fuel_tag_for_type("Endurance", fueling, duration_min=180)
+    # FTP tests fuel as quality, never as a long ride.
+    ftp_tag = _get_fuel_tag_for_type("FTP_Test", fueling, duration_min=60)
+    assert quality in ftp_tag and long_ride not in ftp_tag
     guide = _build_nutrition_section(fueling, {})
     assert f">{prescription['race_target_g_per_hour']}g/hr<" in guide
     assert f">{prescription['total_g']}g<" in guide
