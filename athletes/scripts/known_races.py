@@ -147,8 +147,8 @@ KNOWN_RACES: Dict[str, Dict[str, Any]] = {
     'big_sugar': {
         'date': '2026-10-17',
         'name': 'Big Sugar Gravel',
-        'distance_miles': 104,
-        'elevation_ft': 6000,
+        'distance_miles': 100,
+        'elevation_ft': 6200,
     },
     'boulder_roubaix': {
         'date': '2026-04-11',

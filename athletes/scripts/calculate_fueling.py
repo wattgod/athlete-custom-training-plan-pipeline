@@ -384,10 +384,16 @@ def generate_fueling_context(
     except Exception:
         discipline = "gravel"
 
-    if race_data:
-        elevation_feet = race_data.get("elevation_feet", 0) or race_data.get("race_metadata", {}).get("elevation_feet", 0)
-    else:
-        elevation_feet = 0
+    # Elevation, like distance above, must come from the athlete's target_race
+    # first — the __main__ pipeline path passes no race_data, so reading only
+    # race_data silently anchored fueling to 0 ft (understating race duration,
+    # energy, and total carbs). Fall back to race_data, then 0.
+    elevation_feet = target_race.get("elevation_ft") or target_race.get("elevation_feet")
+    if not elevation_feet or float(elevation_feet) <= 0:
+        rd = race_data or {}
+        elevation_feet = (rd.get("elevation_feet", 0)
+                          or rd.get("race_metadata", {}).get("elevation_feet", 0)
+                          or 0)
 
     # Calculate duration (discipline-aware — road is much faster than gravel)
     duration_hours = estimate_race_duration(distance_miles, goal_type, elevation_feet, discipline)

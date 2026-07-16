@@ -14,6 +14,23 @@ def _profile(weight, ftp, goal="podium"):
     }
 
 
+def test_race_elevation_from_target_race_extends_duration_and_energy():
+    """Elevation must come from the profile's target_race (the __main__ path
+    passes no race_data). Anchoring it to 0 ft understated race duration/energy."""
+    flat = dict(_profile(75, 285))
+    flat["target_race"] = {"distance_miles": 100, "goal_type": "podium", "elevation_ft": 0}
+    climby = dict(_profile(75, 285))
+    climby["target_race"] = {"distance_miles": 100, "goal_type": "podium", "elevation_ft": 6200}
+    f0 = generate_fueling_context(flat)
+    f6 = generate_fueling_context(climby)
+    # Elevation is actually read from target_race (not silently 0)...
+    assert f6["race"]["elevation_feet"] == 6200
+    # ...so the climb-aware race is longer and needs more total carbs/energy.
+    assert f6["race"]["duration_hours"] > f0["race"]["duration_hours"]
+    assert f6["prescription"]["total_g"] > f0["prescription"]["total_g"]
+    assert f6["prescription"]["race_target_g_per_hour"] == f0["prescription"]["race_target_g_per_hour"]
+
+
 def test_heather_scale_podium_is_not_flat_90g_per_hour():
     fueling = generate_fueling_context(_profile(61, 230))
     prescription = fueling["prescription"]

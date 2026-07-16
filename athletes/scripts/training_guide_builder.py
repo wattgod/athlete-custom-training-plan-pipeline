@@ -638,7 +638,9 @@ def _section_training_plan_brief(
     # Day-by-day schedule table removed per coach review (Jun 2026) — the
     # plan calendar owns the schedule; the brief shows only the shape
     days_info = schedule.get("days", {})
-    date_card = _date_verification_card(derived, date_xref or {})
+    _tr = profile.get("target_race", {}) or {}
+    _race_has_provenance = bool(_tr.get("verified_at")) and not _tr.get("race_provenance_issue")
+    date_card = _date_verification_card(derived, date_xref or {}, _race_has_provenance)
 
     return f"""<section id="section-1" class="gg-section">
   <h2>1 &middot; Training Plan Brief</h2>
@@ -719,10 +721,15 @@ def _section_training_plan_brief(
 </section>"""
 
 
-def _date_verification_card(derived, date_xref) -> str:
+def _date_verification_card(derived, date_xref, has_provenance=True) -> str:
     """Race-date verification card — lives in section 1 since the Race
     Profile section was removed per coach review (Jun 2026). A wrong
-    race date wrecks the taper; this stays."""
+    race date wrecks the taper; this stays.
+
+    has_provenance gates the green "Verified against race database" claim: the
+    date matching our records is not the same as the race facts being sourced
+    and verified. When provenance is missing (the fulfillment gate raises
+    RACE_STALE), the card must not assert verification."""
     # Build race date verification callout
     date_verification_html = ""
     if derived:
@@ -736,10 +743,20 @@ def _date_verification_card(derived, date_xref) -> str:
 
                 # Determine verification status
                 xref = date_xref or {}
-                if xref.get("date_match") is True:
+                if xref.get("date_match") is True and has_provenance:
                     verify_icon = "&#10003;"  # checkmark
                     verify_color = "#1A8A82"
                     verify_text = f"Verified against race database ({xref.get('date_specific', '')})"
+                elif xref.get("date_match") is True:
+                    # Date agrees with our records, but the race facts lack
+                    # recorded provenance (source/verified date) — claim only
+                    # the date, never "verified against database".
+                    verify_icon = "&#8505;"  # info
+                    verify_color = "#8c7568"
+                    verify_text = (
+                        f"Race date matches our records ({xref.get('date_specific', '')}) "
+                        f"&mdash; confirm distance and elevation on the official race page."
+                    )
                 elif xref.get("date_match") is False:
                     verify_icon = "&#9888;"  # warning
                     verify_color = "#B7950B"
@@ -1171,7 +1188,7 @@ def _section_phase_progression(plan_duration: int, tier: str, ride_realism: floa
 
   <div class="gg-module gg-tactical">
     <div class="gg-label">RECOVERY WEEKS</div>
-    <p>Your plan schedules regular recovery weeks &mdash; volume drops 30-40%, intensity drops to easy
+    <p>Your plan schedules regular recovery weeks &mdash; volume drops sharply (typically 40-50%), intensity drops to easy
     riding only. These weeks are where adaptation actually happens. Skipping them is the fastest path
     to overtraining and stalled progress. They are not optional.</p>
   </div>
@@ -1368,7 +1385,7 @@ def _section_recovery_protocol(tier: str, profile: Dict):
     <div class="data-card__header">RECOVERY WEEKS</div>
     <div class="data-card__content">
       <ul>
-        <li>Volume drops 30-40%</li>
+        <li>Volume drops sharply (40-50%)</li>
         <li>No Zone 4+ intensity</li>
         <li>Extra sleep if possible</li>
         <li>This is where fitness consolidates</li>
@@ -2369,7 +2386,7 @@ def _section_masters_training(profile: Dict, derived: Dict, section_num: int = 1
         muscle_loss = f"~{int(age) - 39}% cumulative since age 40"
     else:
         hard_spacing = "48 hours minimum"
-        recovery_freq = "every 3 weeks (rather than the standard 4)"
+        recovery_freq = "every 4 weeks"
         muscle_loss = "beginning to accelerate"
 
     hrmax_est = round(211 - (0.64 * int(age)))
