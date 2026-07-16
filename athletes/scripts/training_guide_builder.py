@@ -411,8 +411,16 @@ def _build_full_guide(
     sections.append(_section_training_zones(
         ftp, tier, lthr=_fit.get("lthr"), max_hr=_fit.get("max_hr")))
     sections.append(_section_adaptation())
-    sections.append(_section_weekly_structure(schedule, tier_display, weekly_hours, est_race_hrs))
-    sections.append(_section_phase_progression(plan_duration, tier, ride_realism))
+    # Only claim strength work when the athlete actually opted in — otherwise the
+    # guide asserted strength every week for athletes with zero strength sessions.
+    _str_cfg = profile.get("strength", {}) or {}
+    _str_inc = _str_cfg.get("include_in_plan")
+    _strength_included = (_str_inc is True) or (
+        isinstance(_str_inc, str) and _str_inc.strip().lower() in ("yes", "true"))
+    sections.append(_section_weekly_structure(schedule, tier_display, weekly_hours, est_race_hrs,
+                                              strength_included=_strength_included))
+    sections.append(_section_phase_progression(plan_duration, tier, ride_realism,
+                                               strength_included=_strength_included))
     sections.append(_section_workout_execution(tier, ftp))
     sections.append(_section_recovery_protocol(tier, profile))
     sections.append(_section_equipment_checklist(profile, race_data))
@@ -1010,8 +1018,21 @@ def _section_adaptation():
 
 
 def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: str = "",
-                              est_race_hrs: float = 0):
+                              est_race_hrs: float = 0, strength_included: bool = True):
     days = schedule.get("days", {})
+    _ingredients = ("a long ride, interval sessions, easy rides, and strength work"
+                    if strength_included else
+                    "a long ride, interval sessions, and easy rides")
+    _n_ingredients = "four" if strength_included else "three"
+    _strength_card = ("""
+  <div class="data-card">
+    <div class="data-card__header">STRENGTH</div>
+    <div class="data-card__content">
+      <p>Cycling-specific strength work. Focus on single-leg exercises, core stability, and hip strength.
+      Keep it under 60 minutes. Heavy enough to be challenging, light enough to not wreck your legs
+      for the next bike session.</p>
+    </div>
+  </div>""" if strength_included else "")
     all_days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
     # Calculate long ride duration from available hours
@@ -1084,8 +1105,8 @@ def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: s
     return f"""<section id="section-4" class="gg-section">
   <h2>4 &middot; Weekly Structure</h2>
 
-  <p>Every week of your plan is built from the same four ingredients: a long ride, interval sessions,
-  easy rides, and strength work. Your plan places them on specific days &mdash; follow the calendar.
+  <p>Every week of your plan is built from the same {_n_ingredients} ingredients: {_ingredients}.
+  Your plan places them on specific days &mdash; follow the calendar.
   What matters here is understanding what each session type is <em>for</em>, because riders who
   understand the purpose execute better than riders who just follow orders.</p>
 
@@ -1120,14 +1141,7 @@ def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: s
     </div>
   </div>
 
-  <div class="data-card">
-    <div class="data-card__header">STRENGTH</div>
-    <div class="data-card__content">
-      <p>Cycling-specific strength work. Focus on single-leg exercises, core stability, and hip strength.
-      Keep it under 60 minutes. Heavy enough to be challenging, light enough to not wreck your legs
-      for the next bike session.</p>
-    </div>
-  </div>
+  {_strength_card}
 
   <h3>When Life Interferes</h3>
   <p>The plan owns the schedule. When real life collides with it, these principles keep the
@@ -1140,7 +1154,8 @@ def _section_weekly_structure(schedule: Dict, tier_display: str, weekly_hours: s
 </section>"""
 
 
-def _section_phase_progression(plan_duration: int, tier: str, ride_realism: float = 1.0):
+def _section_phase_progression(plan_duration: int, tier: str, ride_realism: float = 1.0,
+                               strength_included: bool = True):
     # Long ride description adapts to what the athlete can actually do
     if ride_realism >= 0.6:
         base_lr_desc = "Long rides build from current fitness toward 60-70% of expected race duration."
@@ -1154,7 +1169,7 @@ def _section_phase_progression(plan_duration: int, tier: str, ride_realism: floa
     # explains what each phase is for so the athlete trusts the shape.
     phases = [
         ("Base", "base",
-         f"The foundation. Mostly easy aerobic riding with progressive volume, plus strength work. "
+         f"The foundation. Mostly easy aerobic riding with progressive volume{', plus strength work' if strength_included else ''}. "
          f"This phase feels too easy &mdash; that's the point. Aerobic base determines your ceiling; "
          f"there is no shortcut around it. {base_lr_desc}"),
         ("Build", "build",
@@ -1635,8 +1650,8 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
         <td>Start fueling at 30-45 min, not 90. Mix liquids and solids.</td></tr>
       <tr><td><strong>Threshold / VO2max</strong></td><td>60-90 min</td><td>Pre-meal sufficient</td>
         <td>Not depleting glycogen in 60 min. Maybe one gel mid-session.</td></tr>
-      <tr><td><strong>Race Simulation</strong></td><td>4-6 hours</td><td>70-80g</td>
-        <td>Practice your exact race-day fueling. Test products, timing, combinations.</td></tr>
+      <tr><td><strong>Race Simulation</strong></td><td>4-6 hours</td><td>Your race target (see card)</td>
+        <td>Practice your exact race-day fueling at your personalized target. Test products, timing, combinations.</td></tr>
       </tbody>
       </table>
       <p><strong>The rule:</strong> The longer and harder the ride, the more critical fueling becomes.

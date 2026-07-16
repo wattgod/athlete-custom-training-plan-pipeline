@@ -152,8 +152,10 @@ def build_plan_from_calendar(
 
         if week_type == 'load':
             wk_intensity = max_intensity
-        elif week_type in ('taper', 'testing'):
-            wk_intensity = 2  # openers / assessment battery
+        elif week_type == 'testing':
+            wk_intensity = 2  # assessment battery (e.g. FTP + a second test)
+        elif week_type == 'taper':
+            wk_intensity = 1  # a single opener, matching the recovery-week cap
         else:  # recovery, race
             wk_intensity = 1
 

@@ -186,11 +186,19 @@ def prescription_from_fueling(fueling: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def render_workout_fueling(prescription: Dict[str, Any], tier: str) -> str:
-    """The only personalized per-workout fuel renderer."""
+def render_workout_fueling(prescription: Dict[str, Any], tier: str, phase_ceiling=None) -> str:
+    """The only personalized per-workout fuel renderer.
+
+    phase_ceiling (from the week's gut-training target range) clamps the target
+    DOWN so early-plan workouts don't prescribe more than the athlete's gut is
+    trained for that week — the guide teaches a week-by-week gut progression, so
+    a base-phase long ride must not tag 62 g/hr while the athlete is told 40-50.
+    """
     tier_data = prescription.get("training_tiers", {}).get(tier, {})
     target = tier_data.get("target_g_per_hour", prescription.get("race_target_g_per_hour"))
     if not target:
         return ""
+    if phase_ceiling:
+        target = min(target, phase_ceiling)
     label = {"quality": "HIGH FUEL", "long_ride": "LONG-RIDE FUEL", "race_sim": "RACE FUEL"}.get(tier, "FUEL")
     return f"{label}: Target {target}g carbs/hr. Practice this prescription."
