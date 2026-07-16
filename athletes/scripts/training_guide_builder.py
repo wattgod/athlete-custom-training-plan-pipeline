@@ -440,7 +440,8 @@ def _build_full_guide(
         sections.append(_section_women_specific(profile, race_data, race_name, section_num=next_section))
         next_section += 1
     if triggers["masters"]:
-        sections.append(_section_masters_training(profile, derived, section_num=next_section))
+        sections.append(_section_masters_training(profile, derived, section_num=next_section,
+                                                   strength_included=_strength_included))
 
     body = "\n\n".join(sections)
 
@@ -2383,12 +2384,36 @@ def _section_gravel_skills(race_data: Dict) -> str:
 
 
 
-def _section_masters_training(profile: Dict, derived: Dict, section_num: int = 17) -> str:
+def _section_masters_training(profile: Dict, derived: Dict, section_num: int = 17,
+                              strength_included: bool = True) -> str:
     """Masters training — conditional on age >= 40.
     Content sourced from gravel-plans-experimental Compete Masters template
     and existing masters plan guides. Section number is dynamic."""
     age = profile.get("demographics", {}).get("age", 50)
     is_masters = derived.get("is_masters", False)  # age >= 50
+    # When the athlete opted out of structured strength, the guide must not
+    # assert their plan mandates it (they have zero strength sessions) — reframe
+    # as a recommendation instead of a false plan-claim.
+    if strength_included:
+        _strength_block = """      <p><strong>Strength training is not optional for masters athletes &mdash; it's mandatory.</strong></p>
+      <ul>
+        <li>2x/week minimum during base phase, 1x/week during build/peak</li>
+        <li>Focus on: single-leg work (lunges, step-ups), deadlifts, squats, core stability</li>
+        <li>Heavy enough to challenge (6-10 rep range), not bodyweight circuits</li>
+        <li>Benefits beyond power: improved hormone regulation, insulin sensitivity, bone density, body composition</li>
+      </ul>
+      <p>If you're 40+, strength training isn't optional &mdash; it's mandatory for long-term athletic health.
+      Your future self &mdash; the one still racing at 50, 60, 70 &mdash; will thank you.</p>"""
+        _strength_row = "Mandatory (2x/week)"
+    else:
+        _strength_block = """      <p><strong>You opted out of structured strength, so it isn't in your plan.</strong> For 40+ athletes,
+      though, strength work is one of the highest-return additions you can make &mdash; consider adding 1-2 short
+      sessions (single-leg work, deadlifts, squats, core) when time allows.</p>
+      <ul>
+        <li>Slows the ~1%/year muscle-mass decline after 40 &mdash; protects power, bone density, and injury resilience.</li>
+        <li>Even one session a week is meaningfully better than none.</li>
+      </ul>"""
+        _strength_row = "Recommended (not in your plan &mdash; you opted out)"
 
     # Recovery spacing recommendation based on age
     if int(age) >= 55:
@@ -2442,15 +2467,7 @@ def _section_masters_training(profile: Dict, derived: Dict, section_num: int = 1
     <div class="data-card__content">
       <p>Muscle mass declines approximately 1% per year after age 40. At {age}, that's {muscle_loss}.
       This affects power output, bone density, metabolic rate, and injury resilience.</p>
-      <p><strong>Strength training is not optional for masters athletes &mdash; it's mandatory.</strong></p>
-      <ul>
-        <li>2x/week minimum during base phase, 1x/week during build/peak</li>
-        <li>Focus on: single-leg work (lunges, step-ups), deadlifts, squats, core stability</li>
-        <li>Heavy enough to challenge (6-10 rep range), not bodyweight circuits</li>
-        <li>Benefits beyond power: improved hormone regulation, insulin sensitivity, bone density, body composition</li>
-      </ul>
-      <p>If you're 40+, strength training isn't optional &mdash; it's mandatory for long-term athletic health.
-      Your future self &mdash; the one still racing at 50, 60, 70 &mdash; will thank you.</p>
+{_strength_block}
     </div>
   </div>
 
@@ -2497,9 +2514,9 @@ def _section_masters_training(profile: Dict, derived: Dict, section_num: int = 1
   <tbody>
   <tr><td><strong>Hard sessions/week</strong></td><td>3-4</td><td>2 (occasionally 3 if well-recovered)</td></tr>
   <tr><td><strong>Days between hard sessions</strong></td><td>1-2</td><td>2-3</td></tr>
-  <tr><td><strong>Recovery week frequency</strong></td><td>Every 4 weeks</td><td>Every 3 weeks</td></tr>
+  <tr><td><strong>Recovery week frequency</strong></td><td>Every 4 weeks</td><td>{recovery_freq.capitalize()}</td></tr>
   <tr><td><strong>Sleep requirement</strong></td><td>7-8 hours</td><td>8+ hours (non-negotiable)</td></tr>
-  <tr><td><strong>Strength training</strong></td><td>Recommended</td><td>Mandatory (2x/week)</td></tr>
+  <tr><td><strong>Strength training</strong></td><td>Recommended</td><td>{_strength_row}</td></tr>
   <tr><td><strong>Cadence on intervals</strong></td><td>Self-selected</td><td>High (95-105 rpm)</td></tr>
   <tr><td><strong>Zone 3 usage</strong></td><td>Moderate</td><td>Minimal (recovery-expensive)</td></tr>
   <tr><td><strong>Warmup duration</strong></td><td>10-15 min</td><td>15-20 min (longer warmup, better performance)</td></tr>
