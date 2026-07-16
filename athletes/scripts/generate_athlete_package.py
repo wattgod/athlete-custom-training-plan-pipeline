@@ -2298,7 +2298,7 @@ FUELING PLAN:
 - Carbs/hour: {hourly_carbs}g (range: {hourly_range})
 - Total carbs: {total_carbs}g over race
 - Start fueling at 20 min, every 20-30 min thereafter
-- Pre-race: 100-150g carbs 2-3 hours before start
+- Pre-race: 100-150g carbs 3-4 hours before start
 
 PACING STRATEGY:
 - First 30 min: EASY. Let others burn matches. You're playing the long game.
