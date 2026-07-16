@@ -3206,6 +3206,15 @@ def main():
         # Preserve one record per rule across a rerun of the final pipeline steps.
         deduped = {issue['id']: issue for issue in blockers}
         set_generation_blockers(state_path, list(deduped.values()))
+        # PlanIR's fulfillment projection must follow this final gate. These
+        # intake/quality blockers land AFTER generate_athlete_package's own
+        # build_plan_ir, so without this re-sync plan_ir.json reports the stale
+        # pre-blocker status (GENERATED) and G5 flags the disagreement.
+        try:
+            from plan_ir import build_plan_ir
+            build_plan_ir(athlete_id)
+        except Exception as exc:
+            print(f"  {YELLOW}[WARN]{RESET} Could not re-sync PlanIR after blockers: {exc}")
     except FulfillmentStateError as exc:
         # A state write failure is intentionally not an order-killer.  The
         # webhook treats missing/malformed state as a closed confirmation gate.

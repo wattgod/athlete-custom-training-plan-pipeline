@@ -132,3 +132,37 @@ def test_missing_optional_artifact_warns_and_returns_partial_object(fixture_athl
 
     assert ir.fueling is None
     assert ir.weeks
+
+
+def test_plan_ir_projects_blocked_review_status(fixture_athlete):
+    """PlanIR must project the LIVE fulfillment status. intake_to_plan sets its
+    final RACE_STALE/quality blockers after generate_athlete_package's own
+    build_plan_ir, then re-runs build_plan_ir so plan_ir.json follows the gate;
+    without that re-sync plan_ir reports stale GENERATED and G5 flags a
+    disagreement with fulfillment_status.json."""
+    import json
+    (fixture_athlete / "fulfillment_status.json").write_text(json.dumps({
+        "status": "BLOCKED_REVIEW",
+        "blocking_issues": [{"id": "RACE_STALE", "severity": "CRITICAL",
+                             "source": "race_provenance", "message": "no source url"}],
+    }))
+    ir = build_plan_ir("fixture-athlete")
+    assert ir.fulfillment.status == "BLOCKED_REVIEW"
+
+
+def test_plan_ir_write_is_atomic_on_failure(fixture_athlete, monkeypatch):
+    """A write failure must leave an already-valid plan_ir.json intact and leave
+    no temp file behind (build_plan_ir runs several times per package)."""
+    import os
+    import plan_ir
+    good = fixture_athlete / "plan_ir.json"
+    good.write_text('{"sentinel": true}\n')
+
+    def _boom(*args, **kwargs):
+        raise OSError("simulated disk full")
+
+    monkeypatch.setattr(plan_ir.os, "replace", _boom)
+    build_plan_ir("fixture-athlete")  # swallows OSError -> RuntimeWarning, non-fatal
+
+    assert good.read_text() == '{"sentinel": true}\n'  # untouched
+    assert not any(f.startswith(".plan_ir.") for f in os.listdir(fixture_athlete))

@@ -9,7 +9,9 @@ those serializers to project this object instead.
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 import warnings
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -396,8 +398,25 @@ def build_plan_ir(athlete_id: str) -> PlanIR:
         fulfillment=_fulfillment_from_file(athlete_dir),
     )
     output_path = athlete_dir / "plan_ir.json"
+    payload = json.dumps(plan_ir.to_dict(), indent=2, sort_keys=True) + "\n"
+    # Atomic write: a sibling temp file then os.replace, so an I/O failure or a
+    # kill never truncates an already-valid plan_ir.json. build_plan_ir runs
+    # several times per package (the last re-projects the final fulfillment
+    # state), so a partial write would otherwise corrupt a good artifact.
     try:
-        output_path.write_text(json.dumps(plan_ir.to_dict(), indent=2, sort_keys=True) + "\n")
+        fd, tmp = tempfile.mkstemp(dir=str(athlete_dir), prefix=".plan_ir.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, output_path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
     except OSError as exc:
         warnings.warn(f"PlanIR: could not write plan_ir.json: {exc}", RuntimeWarning, stacklevel=2)
     return plan_ir
