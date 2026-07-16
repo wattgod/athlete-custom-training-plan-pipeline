@@ -132,3 +132,19 @@ def test_missing_optional_artifact_warns_and_returns_partial_object(fixture_athl
 
     assert ir.fueling is None
     assert ir.weeks
+
+
+def test_plan_ir_projects_blocked_review_status(fixture_athlete):
+    """PlanIR must project the LIVE fulfillment status. intake_to_plan sets its
+    final RACE_STALE/quality blockers after generate_athlete_package's own
+    build_plan_ir, then re-runs build_plan_ir so plan_ir.json follows the gate;
+    without that re-sync plan_ir reports stale GENERATED and G5 flags a
+    disagreement with fulfillment_status.json."""
+    import json
+    (fixture_athlete / "fulfillment_status.json").write_text(json.dumps({
+        "status": "BLOCKED_REVIEW",
+        "blocking_issues": [{"id": "RACE_STALE", "severity": "CRITICAL",
+                             "source": "race_provenance", "message": "no source url"}],
+    }))
+    ir = build_plan_ir("fixture-athlete")
+    assert ir.fulfillment.status == "BLOCKED_REVIEW"
