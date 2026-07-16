@@ -320,6 +320,23 @@ def scale_template_duration(template: WorkoutTemplate, max_duration: int,
     return template
 
 
+def _sync_description_durations(zwo_xml: str) -> str:
+    """Rewrite the description's WARM-UP/COOL-DOWN minute figures to match the
+    (possibly scaled) Warmup/Cooldown XML durations, which are authoritative and
+    what Zwift/TP execute. The description is built from the pre-scale template,
+    so without this it can claim '15min warmup' while the XML runs 6.6.
+    """
+    import re
+    for tag, label in (('Warmup', 'WARM-UP'), ('Cooldown', 'COOL-DOWN')):
+        m = re.search(rf'<{tag}\s[^>]*?Duration="(\d+)"', zwo_xml)
+        if not m:
+            continue
+        mins = max(1, round(int(m.group(1)) / 60))
+        zwo_xml = re.sub(rf'({label}:\s*\n?\s*-?\s*)\d+(\s*min)',
+                         lambda mm: f'{mm.group(1)}{mins}{mm.group(2)}', zwo_xml, count=1)
+    return zwo_xml
+
+
 def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
                                  workout_type: str) -> str:
     """Post-process ZWO XML to scale workout to target duration.
@@ -404,7 +421,7 @@ def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
         # Rebuild ZWO string preserving the original XML declaration format
         # (ET.tostring produces wrong encoding declaration)
         output = ET.tostring(root, encoding='unicode')
-        return "<?xml version='1.0' encoding='UTF-8'?>\n" + output
+        return _sync_description_durations("<?xml version='1.0' encoding='UTF-8'?>\n" + output)
 
     # Strategy depends on workout type
     if workout_type in _INTERVAL_TYPES and interval_seconds > 0:
@@ -460,4 +477,4 @@ def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
                        + str(new_dur)
                        + zwo_xml[largest_ss.end(2):])
 
-    return zwo_xml
+    return _sync_description_durations(zwo_xml)

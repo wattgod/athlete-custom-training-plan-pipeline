@@ -149,6 +149,10 @@ KNOWN_RACES: Dict[str, Dict[str, Any]] = {
         'name': 'Big Sugar Gravel',
         'distance_miles': 100,
         'elevation_ft': 6200,
+        'source_urls': ['https://www.bigsugargravel.com/'],
+        'source_type': 'organizer',
+        'verified_at': '2026-07-16',
+        'event_year': 2026,
     },
     'boulder_roubaix': {
         'date': '2026-04-11',

@@ -3069,16 +3069,12 @@ def generate_description(
     # EXECUTION
     lines.append("EXECUTION:")
     lines.append(f"-{get_execution_tips(archetype, level_data)}")
-    lines.append("")
 
-    # NUTRITION
-    lines.append("NUTRITION:")
-    lines.append(f"-{get_nutrition_guidelines(archetype, level_data)}")
-    lines.append("")
-
-    # HYDRATION
-    lines.append("HYDRATION:")
-    lines.append(f"-{get_hydration_guidelines(archetype, level_data)}")
+    # Fuelling is owned by the single personalized [...FUEL...] banner injected
+    # at package assembly (scaled to the athlete + workout duration). The old
+    # generic NUTRITION:/HYDRATION: blocks here duplicated it — and used a
+    # different lookup table, so the two disagreed (e.g. banner 57g vs block
+    # 30-60g) in the same file. Dropped to keep one canonical prescription.
 
     return "\n".join(lines)
 
@@ -3124,9 +3120,10 @@ def get_category_purpose(archetype_name: str) -> str:
         "LT1": "Aerobic efficiency. Training the fat-burning system for long-duration events.",
         "MAF": "Aerobic efficiency. Building the aerobic base while staying below LT1.",
         "Fatmax": "Fat oxidation training. Maximizing the aerobic engine at low intensity.",
-        # Pre-race / Openers
-        "Opener": "Pre-race activation. Wake up the legs without creating fatigue.",
-        "Pre-Race": "Pre-race activation. Wake up the legs without creating fatigue.",
+        # Openers — used mid-block (recovery-week sharpeners) and pre-race, so
+        # the copy stays placement-neutral rather than always claiming "pre-race".
+        "Opener": "Leg-opener: short, sharp efforts to activate the legs without creating fatigue.",
+        "Pre-Race": "Leg-opener: short, sharp efforts to activate the legs without creating fatigue.",
         # Recovery
         "Recovery": "Active recovery. Promote blood flow and adaptation without adding stress.",
         "Active Recovery": "Active recovery. Promote blood flow and adaptation without adding stress.",

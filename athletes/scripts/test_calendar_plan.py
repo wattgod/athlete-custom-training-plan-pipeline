@@ -117,7 +117,7 @@ class TestTaperWeekSelection:
     def test_taper_returns_openers_and_short_ride(self):
         menu = _select_taper_week(hours_per_week=12)
         roles = [w['role'] for w in menu]
-        assert roles.count('intensity') == 2  # two openers
+        assert roles.count('intensity') == 1  # a single taper opener (matches recovery-week cap)
         assert 'long_ride' in roles
         names = [w['name'] for w in menu if w['role'] == 'intensity']
         assert all(n == 'Openers' for n in names)

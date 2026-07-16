@@ -558,14 +558,14 @@ def _select_recovery_week(config: dict, hours_per_week: float = 10) -> List[Dict
 
 
 def _select_taper_week(hours_per_week: float = 10) -> List[Dict[str, Any]]:
-    """Taper week: 1-2 openers, short Z2 rides, reduced long ride.
+    """Taper week: a single opener, short Z2 rides, reduced long ride.
 
-    ~60% volume of a load week, intensity limited to openers, and a
-    final medium ride on the long-ride day for equipment/fueling rehearsal.
+    ~60% volume of a load week, intensity limited to one opener (matching the
+    recovery-week cap), and a final medium ride on the long-ride day for
+    equipment/fueling rehearsal.
     """
     return [
         {'slot': 'openers', 'name': 'Openers', 'level': 2, 'role': 'intensity'},
-        {'slot': 'openers_2', 'name': 'Openers', 'level': 1, 'role': 'intensity'},
         {'slot': 'long_ride', 'name': 'Endurance', 'level': 2, 'role': 'long_ride'},
         {'slot': 'filler', 'name': 'Endurance', 'level': 1, 'role': 'filler'},
     ]

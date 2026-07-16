@@ -1234,7 +1234,7 @@ ENDURANCE_NEW = [
         'levels': {
             '1': {
                 'structure': '20min Z1-Z2 easy, 2x30sec @ 110% FTP with 2min easy, 5min Z1 cooldown',
-                'execution': 'Day before race - wake up the legs without creating fatigue',
+                'execution': 'Short openers - a couple of brief efforts to wake up the legs without creating fatigue',
                 'cadence_prescription': '90-100rpm on efforts',
                 'cadence': 95,
                 'position_prescription': 'Seated, relaxed',

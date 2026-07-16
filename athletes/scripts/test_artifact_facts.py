@@ -24,6 +24,26 @@ def test_personalized_fuel_artifacts_project_the_serialized_prescription():
     assert f"{prescription['race_target_g_per_hour']}g carbs/hr" in _get_fuel_tag_for_type("Race_Sim", fueling)
 
 
+def test_fuel_banner_respects_weekly_gut_ceiling():
+    """A base-phase long ride must not tag above the week's gut-training ceiling
+    (the plan teaches a week-by-week progression); later weeks are unclamped."""
+    prescription = build_fueling_prescription(
+        duration_hours=6.8, weight_kg=75, ftp_watts=285, goal_type="podium", sex="male"
+    ).to_dict()
+    fueling = {"prescription": prescription, "gut_training": {"weekly_progression": [
+        {"week": 1, "phase_name": "base", "target_range": [40, 50]},
+        {"week": 2, "phase_name": "base", "target_range": [40, 50]},
+        {"week": 10, "phase_name": "peak", "target_range": [60, 80]},
+    ]}}
+    long_ride = prescription["training_tiers"]["long_ride"]["target_g_per_hour"]  # e.g. 62
+    # Week 1 (base, ceiling 50): a long ride is clamped down to 50.
+    wk1 = _get_fuel_tag_for_type("Endurance", fueling, duration_min=180, week_num=1)
+    assert "50g carbs/hr" in wk1 and f"{long_ride}g" not in wk1
+    # Week 3 (peak, ceiling 80 >= tier): unclamped, tier value stands.
+    wk3 = _get_fuel_tag_for_type("Endurance", fueling, duration_min=180, week_num=3)
+    assert f"{long_ride}g carbs/hr" in wk3
+
+
 def test_fuel_tag_gates_on_duration_and_routes_ftp_to_quality():
     """Short aerobic rides get no in-workout fuel banner (<90 min = water is
     fine); FTP tests fuel as quality efforts, not long rides."""

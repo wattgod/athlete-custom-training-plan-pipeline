@@ -56,19 +56,32 @@ from workout_templates import (
     scale_zwo_to_target_duration,
 )
 
-def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min: float = None) -> str:
+def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min: float = None,
+                           week_num: int = None) -> str:
     """Return fuel guidance string for a workout type, or empty string.
 
     ``duration_min`` gates the long-ride banner: an aerobic ride under 90 min
     gets no fuel banner, matching the guide's "short rides (<90 min): water is
     fine". Without it, short Endurance rides (which fall through to the catch-all
     below) were mislabelled as long rides.
+
+    ``week_num`` applies the week's gut-training ceiling so per-workout targets
+    follow the plan's gut progression instead of a flat tier value.
     """
     wt_lower = workout_type.lower()
     from fueling_policy import prescription_from_fueling, render_workout_fueling
     prescription = prescription_from_fueling(fueling or {})
+    # This week's gut-training ceiling (g/hr) — clamps early-plan targets down.
+    phase_ceiling = None
+    if week_num:
+        gut = (fueling or {}).get('gut_training') or prescription.get('gut_training') or {}
+        wp = gut.get('weekly_progression') or []
+        if 1 <= week_num <= len(wp):
+            tr = (wp[week_num - 1] or {}).get('target_range') or []
+            if len(tr) == 2:
+                phase_ceiling = tr[1]
     if workout_type in RACE_SIM_WORKOUT_TYPES or 'race_sim' in wt_lower or 'race simulation' in wt_lower:
-        return render_workout_fueling(prescription, 'race_sim')
+        return render_workout_fueling(prescription, 'race_sim', phase_ceiling)
     elif workout_type in INTENSITY_WORKOUT_TYPES or any(k in wt_lower for k in [
         'vo2max', 'threshold', 'sprint', 'anaerobic', 'kitchen sink', 'drain cleaner',
         'la balanguera', 'hyttevask', 'blended', 'mixed', 'sfr', 'thunder quads',
@@ -76,7 +89,7 @@ def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min
         'ftp',
     ]):
         # FTP tests are quality efforts (57 g/hr), not long rides (62 g/hr).
-        return render_workout_fueling(prescription, 'quality')
+        return render_workout_fueling(prescription, 'quality', phase_ceiling)
     elif any(k in wt_lower for k in ['recovery', 'easy', 'shakeout', 'rest', 'openers', 'off']):
         return ''
     else:
@@ -84,7 +97,7 @@ def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min
         # long (>=90 min); shorter ones need no in-workout fuelling.
         if duration_min is not None and duration_min < 90:
             return ''
-        return render_workout_fueling(prescription, 'long_ride')
+        return render_workout_fueling(prescription, 'long_ride', phase_ceiling)
 
 
 # Get config and set up paths
@@ -1984,7 +1997,7 @@ TIPS:
                         f"{weeks_to_race} weeks to {race_name}\n"
                         f"Phase: {phase.upper()}\n\n"
                     )
-                    fuel_tag = _get_fuel_tag_for_type(bb_name, fueling, bb_duration)
+                    fuel_tag = _get_fuel_tag_for_type(bb_name, fueling, bb_duration, week_num)
                     fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
                     zwo_content = zwo_content.replace(
                         '<description>',
@@ -2418,7 +2431,7 @@ GO GET IT, {athlete_name.upper()}!
                             heat_reminder = "\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance\n\n"
 
                         # Insert fuel tag + header after <description> tag
-                        fuel_tag = _get_fuel_tag_for_type(workout_type, fueling, duration)
+                        fuel_tag = _get_fuel_tag_for_type(workout_type, fueling, duration, week_num)
                         fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
                         zwo_content = zwo_content.replace(
                             '<description>',
@@ -2478,7 +2491,7 @@ GO GET IT, {athlete_name.upper()}!
                 heat_reminder = "\n\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance"
 
             # Add fuel tag
-            fuel_tag = _get_fuel_tag_for_type(workout_type, fueling, duration)
+            fuel_tag = _get_fuel_tag_for_type(workout_type, fueling, duration, week_num)
             fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
 
             full_description = fuel_prefix + personal_header + full_description + heat_reminder
