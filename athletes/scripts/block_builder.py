@@ -162,6 +162,7 @@ def build_calendar_week(
     category_weights: Dict[str, float] = None,
     avoid_series: set = None,
     methodology_profile: Dict[str, Any] = None,
+    plan_week: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Build one week whose type and phase come from the calendar (plan_dates).
 
@@ -194,6 +195,7 @@ def build_calendar_week(
         week_in_block=week_in_block,
         hours_per_week=hours_per_week,
         block_number=block_number,
+        plan_week=plan_week,
         discipline=discipline,
         day_caps=day_caps,
         methodology=methodology,
@@ -301,6 +303,7 @@ def _build_week(
     category_weights: Dict[str, float] = None,
     avoid_series: set = None,
     methodology_profile: Dict[str, Any] = None,
+    plan_week: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Build a single week with day-by-day workout assignments."""
 
@@ -495,17 +498,30 @@ def _build_week(
     # 16h GOAT got 8.2h base weeks). Level UP until the week reaches the
     # floor — long ride first (cheapest quality volume), then fillers —
     # respecting per-day caps and the level ceiling.
-    # The first base block is the deliberate ramp-in — no floor there.
-    if (max_minutes is not None and week_type == 'load'
-            and not (phase == 'base' and block_number <= 1)):
+    # The deliberate ramp-in weeks get no floor. Prefer the GLOBAL plan_week
+    # (matching R19's `plan_week <= 4` compliance exemption) when the calendar
+    # supplies it, so the builder's ramp exemption and R19's can't drift apart
+    # under a non-default meso pattern — which kept the phase-local block_number
+    # stuck at 1 across the whole opening base run and left weeks 5+ silently
+    # under-floor. Fall back to block_number for legacy callers. (B10)
+    _ramp_in = (phase == 'base' and (
+        plan_week <= 4 if plan_week is not None else block_number <= 1))
+    if (max_minutes is not None and week_type == 'load' and not _ramp_in):
         # Phase-aware floor preserves periodized PROGRESSION: base ramps
         # (lower floor, rising per block) while build/peak fill near target.
         # A flat 0.80 floor made W1 as big as W19.
         if phase == 'base':
-            floor_pct = min(0.62 + 0.05 * max(block_number - 1, 0), 0.75)
+            # Floor the base minimum at 0.65 to match R19's compliance floor
+            # (target*0.65). At 0.62 a first-block base load week could grow to
+            # only 62% yet still fail R19 at 65% (review P2). Still ramps per block.
+            floor_pct = min(0.65 + 0.05 * max(block_number - 1, 0), 0.75)
         elif phase == 'build':
             floor_pct = 0.82
-        elif phase == 'peak':
+        elif phase in ('peak', 'race_prep'):
+            # 'race_prep' is what CALENDAR_PHASE_MAP translates 'peak' into, so a
+            # bare 'peak' check never matched on the calendar path and every peak
+            # load week silently fell to the 0.72 else-branch — BELOW build's 0.82.
+            # That is the "~75% of stated hours" bug for GOAT-tier athletes. (B9)
             floor_pct = 0.86
         else:
             floor_pct = 0.72

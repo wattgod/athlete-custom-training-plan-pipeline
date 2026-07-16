@@ -172,6 +172,7 @@ def build_plan_from_calendar(
             phase=bb_phase,
             archetype=archetype,
             block_number=phase_block_index,
+            plan_week=plan_week,
             week_in_block=week_in_block,
             base_level=block_base_level,
             max_level=max_level,
