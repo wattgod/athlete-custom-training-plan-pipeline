@@ -161,14 +161,20 @@ def test_reachable_road_rotations_have_no_gravel_copy(name, level):
     assert "gravel" not in zwo.lower()
 
 
-def test_every_reachable_road_rotation_is_brand_clean_at_every_level():
+@pytest.mark.parametrize("event_format", [
+    None, "generic_road", "criterium", "hill_climb", "time_trial",
+    "stage_race", "fondo",
+])
+def test_every_reachable_road_rotation_is_brand_clean_at_every_level(
+        event_format):
     names = set()
     for phase in ("base", "build", "race_prep", "racing"):
         for archetype in ("time_crunched", "specialist", "volume", "goat"):
             for block in range(1, 7):
                 selected = select_workouts_for_week(
                     phase, archetype, "load", 1, 3,
-                    block_number=block, discipline="road")
+                    block_number=block, discipline="road",
+                    event_format=event_format)
                 names.update(w["name"] for w in selected if w.get("name"))
 
     assert names, "road selection matrix produced no reachable workouts"
