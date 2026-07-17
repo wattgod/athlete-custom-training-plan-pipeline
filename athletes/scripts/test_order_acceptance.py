@@ -423,14 +423,23 @@ def test_roadie_package_is_brand_clean_and_semantically_valid(built_order):
     assert profile["event_format"] == exp["event_format"]
     assert profile["road_category"] == exp["road_category"]
 
-    visible = [athlete_dir / "training_guide.html",
-               athlete_dir / "personal_email.md",
-               athlete_dir / "plan_preview.html"]
-    visible.extend(sorted((athlete_dir / "workouts").glob("*.zwo")))
-    for path in visible:
-        text = path.read_text()
-        assert "gravel" not in text.lower(), f"road brand leak in {path.name}"
-        assert "Gravel God" not in text, f"Gravel God leak in {path.name}"
+    # Treat brand separation as a release-blocking invariant across both the
+    # source athlete package and the exact staged customer package. Checking
+    # filenames catches gravel-only workout families even when their internal
+    # display copy happens to be neutral.
+    for root in (athlete_dir, built_order["delivery_dir"]):
+        visible = [root / "training_guide.html", root / "personal_email.md",
+                   root / "plan_preview.html", root / "fueling.yaml"]
+        visible.extend(sorted((root / "workouts").glob("*.zwo")))
+        for path in visible:
+            if not path.exists():
+                continue
+            assert "gravel" not in path.name.lower(), (
+                f"road workout/artifact filename leak in {path}")
+            text = path.read_text()
+            assert "gravel" not in text.lower(), (
+                f"road athlete-facing language leak in {path}")
+            assert "Gravel God" not in text, f"Gravel God leak in {path}"
     assert "ROADIE LABS" in (athlete_dir / "training_guide.html").read_text()
     guide = (athlete_dir / "training_guide.html").read_text()
     assert "Road Skills" in guide
