@@ -3157,7 +3157,8 @@ def generate_nate_workout(
     level: int = 3,
     methodology: str = "POLARIZED",
     variation: int = 0,
-    workout_name: Optional[str] = None
+    workout_name: Optional[str] = None,
+    display_name: Optional[str] = None,
 ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
     Generate a complete Nate workout.
@@ -3187,6 +3188,10 @@ def generate_nate_workout(
             Defaults to 0 (primary archetype).
         workout_name: Optional custom name for the workout. If None, generates
             a name from the archetype name and level.
+        display_name: Optional clean, coach-facing name for the ZWO <name>
+            element (no filename/date prefix). Takes priority over
+            workout_name when both are given -- workout_name is often the
+            dated filename stem, which must never leak into <name>.
 
     Returns:
         Tuple of (name, description, blocks) where:
@@ -3225,8 +3230,9 @@ def generate_nate_workout(
         )
         return None, None, None
 
-    # Generate name
-    name = workout_name or f"{archetype['name']} {level}"
+    # Generate name. display_name (clean, no date/filename prefix) wins over
+    # workout_name (often the dated filename stem) when both are supplied.
+    name = display_name or workout_name or f"{archetype['name']} {level}"
 
     # Generate blocks
     blocks = generate_blocks_from_archetype(archetype, level)
@@ -3270,6 +3276,7 @@ def generate_nate_zwo(
     workout_name: Optional[str] = None,
     author: str = "Gravel God Training",
     discipline: str = "gravel",
+    display_name: Optional[str] = None,
 ) -> Optional[str]:
     """
     Generate a complete ZWO file from a Nate archetype.
@@ -3284,6 +3291,9 @@ def generate_nate_zwo(
             Defaults to 'POLARIZED'.
         variation: Which archetype variation to use (0-indexed). Defaults to 0.
         workout_name: Optional custom name for the workout.
+        display_name: Optional clean, coach-facing name for the ZWO <name>
+            element. See generate_nate_workout -- takes priority over
+            workout_name when both are given.
 
     Returns:
         Complete ZWO XML content as a string, ready to save to a .zwo file.
@@ -3300,7 +3310,8 @@ def generate_nate_zwo(
         ...     f.write(generate_nate_zwo('threshold', 3, 'PYRAMIDAL'))
     """
     name, description, blocks = generate_nate_workout(
-        workout_type, level, methodology, variation, workout_name
+        workout_type, level, methodology, variation, workout_name,
+        display_name=display_name,
     )
 
     if name is None or blocks is None:

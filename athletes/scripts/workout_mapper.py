@@ -181,6 +181,7 @@ def render_workout(
     variation_offset: int = 0,
     author: str = 'Gravel God Training',
     discipline: str = 'gravel',
+    display_name: Optional[str] = None,
 ) -> Optional[str]:
     """Render a block-builder workout name to ZWO XML.
 
@@ -191,6 +192,9 @@ def render_workout(
         workout_name: Optional ZWO file name override
         variation_offset: Added to base variation to cycle through archetypes
             within a category. Caller increments per workout to get variety.
+        display_name: Optional clean, coach-facing name for the ZWO <name>
+            element (no filename/date prefix). Takes priority over
+            workout_name for <name> when both are given.
 
     Returns:
         ZWO XML string, or None if the workout can't be rendered.
@@ -208,7 +212,7 @@ def render_workout(
     # This is what a real coach prescribes for easy days.
     # ----------------------------------------------------------------
     if name == 'Endurance':
-        return _render_simple_endurance(level, workout_name, author)
+        return _render_simple_endurance(level, workout_name, author, display_name=display_name)
 
     # Pin certain workout types to their exact archetype — no variation cycling.
     PINNED_TYPES = {'Openers', 'FTP Test', 'Rest Day', 'Endurance with Surges', 'NP/IF Target',
@@ -226,6 +230,7 @@ def render_workout(
         workout_name=workout_name,
         author=author,
         discipline=discipline,
+        display_name=display_name,
     )
     if zwo:
         return zwo
@@ -243,6 +248,7 @@ def render_workout(
             workout_name=workout_name,
             author=author,
             discipline=discipline,
+            display_name=display_name,
         )
     return None
 
@@ -258,7 +264,8 @@ _ENDURANCE_LEVELS = {
 }
 
 def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
-                             author: str = 'Gravel God Training') -> str:
+                             author: str = 'Gravel God Training',
+                             display_name: Optional[str] = None) -> str:
     """Render a simple endurance workout matching the TP library.
 
     Structure: Warmup → Steady Z2 → Cooldown.
@@ -278,7 +285,7 @@ def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
         warmup_sec = 300
         cooldown_sec = 300
 
-    name = workout_name or f'Endurance_L{level}'
+    name = display_name or workout_name or f'Endurance_L{level}'
     desc = (
         f"MAIN SET:\n"
         f"- {main_sec // 60}min @ 66-75% FTP (RPE 3-4)\n"
