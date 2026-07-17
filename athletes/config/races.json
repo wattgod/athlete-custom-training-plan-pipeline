@@ -1,6 +1,6 @@
 {
  "_counts": {
-  "gravel": 746,
+  "gravel": 745,
   "road": 427
  },
  "_generated": "2026-07-16",
@@ -153,7 +153,7 @@
    "date": "2026-05-16",
    "discipline": "gravel",
    "distance_mi": 100,
-   "elevation_ft": 6500,
+   "elevation_ft": "~6,000 (not officially published by current organizer)",
    "location": "Spring Valley, Minnesota",
    "name": "ALMANZO 100",
    "slug": "almanzo-100"
@@ -341,8 +341,8 @@
   "gravel:battenkill": {
    "date": "2026-05-09",
    "discipline": "gravel",
-   "distance_mi": 65,
-   "elevation_ft": 5500,
+   "distance_mi": 63,
+   "elevation_ft": "~4,900-5,500 (Varies by course option; single official figure not published)",
    "location": "Cambridge, New York",
    "name": "Battenkill",
    "slug": "battenkill"
@@ -384,7 +384,7 @@
    "slug": "beaver-dam-gravel-grinder"
   },
   "gravel:belgian-waffle-ride-kansas": {
-   "date": "2026-10-31",
+   "date": null,
    "discipline": "gravel",
    "distance_mi": 111,
    "elevation_ft": 8000,
@@ -672,10 +672,10 @@
    "slug": "bwr-montana"
   },
   "gravel:bwr-north-carolina": {
-   "date": "2026-10-03",
+   "date": null,
    "discipline": "gravel",
-   "distance_mi": 131,
-   "elevation_ft": 13000,
+   "distance_mi": 100,
+   "elevation_ft": 8000,
    "location": "Hendersonville, North Carolina",
    "name": "BELGIAN WAFFLE RIDE NORTH CAROLINA",
    "slug": "bwr-north-carolina"
@@ -683,17 +683,17 @@
   "gravel:bwr-san-diego": {
    "date": "2026-05-02",
    "discipline": "gravel",
-   "distance_mi": 131,
-   "elevation_ft": 12000,
+   "distance_mi": 106.5,
+   "elevation_ft": 7500,
    "location": "Del Mar, California",
    "name": "BELGIAN WAFFLE RIDE SAN DIEGO",
    "slug": "bwr-san-diego"
   },
   "gravel:bwr-utah": {
-   "date": null,
+   "date": "2026-06-12",
    "discipline": "gravel",
-   "distance_mi": 84,
-   "elevation_ft": 9843,
+   "distance_mi": 117,
+   "elevation_ft": 5940,
    "location": "Cedar City, Utah",
    "name": "BWR Utah",
    "slug": "bwr-utah"
@@ -1005,9 +1005,9 @@
    "slug": "crooked-gravel"
   },
   "gravel:crusher-in-the-tushar": {
-   "date": "2026-07-11",
+   "date": null,
    "discipline": "gravel",
-   "distance_mi": 69,
+   "distance_mi": 69.9,
    "elevation_ft": 10000,
    "location": "Beaver, Utah",
    "name": "Crusher in the Tushar",
@@ -1205,7 +1205,7 @@
   "gravel:dirty-reiver": {
    "date": "2026-04-24",
    "discipline": "gravel",
-   "distance_mi": 130,
+   "distance_mi": 124,
    "elevation_ft": 14100,
    "location": "Kielder, Northumberland, England",
    "name": "Dirty Reiver",
@@ -1466,8 +1466,8 @@
   "gravel:filthy-50": {
    "date": "2026-10-10",
    "discipline": "gravel",
-   "distance_mi": 50,
-   "elevation_ft": 2000,
+   "distance_mi": 50.9,
+   "elevation_ft": 3251,
    "location": "Lanesboro, Minnesota",
    "name": "Filthy 50",
    "slug": "filthy-50"
@@ -1482,7 +1482,7 @@
    "slug": "final-frontier-patagonia"
   },
   "gravel:finnish-gravel": {
-   "date": "2026-08-08",
+   "date": null,
    "discipline": "gravel",
    "distance_mi": 110,
    "elevation_ft": 2129,
@@ -2706,10 +2706,10 @@
    "slug": "gravel-and-granite"
   },
   "gravel:gravel-and-tar-classic": {
-   "date": "2027-01-16",
+   "date": "2027-01-24",
    "discipline": "gravel",
-   "distance_mi": 99,
-   "elevation_ft": 6562,
+   "distance_mi": 75,
+   "elevation_ft": 6175,
    "location": "Manawat\u016b-Whanganui, New Zealand",
    "name": "Gravel and Tar Classic",
    "slug": "gravel-and-tar-classic"
@@ -2794,15 +2794,6 @@
    "location": "St. Francisville, Louisiana",
    "name": "Gravel Fondo Louisiana",
    "slug": "gravel-fondo-louisiana"
-  },
-  "gravel:gravel-fondo-switzerland": {
-   "date": "2027-07-11",
-   "discipline": "gravel",
-   "distance_mi": 66,
-   "elevation_ft": 8200,
-   "location": "Aigle / Villars-sur-Ollon, Switzerland",
-   "name": "THE MAJESTICS (formerly UCI Gravel Suisse)",
-   "slug": "gravel-fondo-switzerland"
   },
   "gravel:gravel-grit-n-grind": {
    "date": "2026-09-26",
@@ -2985,7 +2976,7 @@
    "slug": "grinduro-canada"
   },
   "gravel:grinduro-france": {
-   "date": "2026-06-28",
+   "date": null,
    "discipline": "gravel",
    "distance_mi": 62,
    "elevation_ft": 6562,
@@ -2994,7 +2985,7 @@
    "slug": "grinduro-france"
   },
   "gravel:grinduro-germany": {
-   "date": "2026-05-23",
+   "date": null,
    "discipline": "gravel",
    "distance_mi": 62,
    "elevation_ft": 6562,
@@ -3525,7 +3516,7 @@
    "slug": "la-marmotte"
   },
   "gravel:la-resistance": {
-   "date": "2026-09-19",
+   "date": null,
    "discipline": "gravel",
    "distance_mi": 81,
    "elevation_ft": 7100,
@@ -4020,7 +4011,7 @@
    "slug": "lowell-classic"
   },
   "gravel:maap-beechworth-granite-classic": {
-   "date": "2026-04-18",
+   "date": "2026-04-17",
    "discipline": "gravel",
    "distance_mi": 71,
    "elevation_ft": 4600,
@@ -4940,8 +4931,8 @@
   "gravel:radl-grvl": {
    "date": "2026-01-23",
    "discipline": "gravel",
-   "distance_mi": 81,
-   "elevation_ft": 8202,
+   "distance_mi": 79,
+   "elevation_ft": 7218,
    "location": "Adelaide Hills, South Australia",
    "name": "RADL GRVL",
    "slug": "radl-grvl"
@@ -4983,7 +4974,7 @@
    "slug": "ramrod"
   },
   "gravel:rasputitsa": {
-   "date": "2027-03-27",
+   "date": null,
    "discipline": "gravel",
    "distance_mi": 53,
    "elevation_ft": 5300,
@@ -5233,15 +5224,6 @@
    "location": "Sulmac Village, Lake Naivasha, Kenya",
    "name": "Safari Gravel Race",
    "slug": "safari-gravel-race"
-  },
-  "gravel:sagan-fondo": {
-   "date": "2026-06-27",
-   "discipline": "gravel",
-   "distance_mi": 66,
-   "elevation_ft": 4439,
-   "location": "Truckee, California",
-   "name": "Sagan Fondo",
-   "slug": "sagan-fondo"
   },
   "gravel:salida-76": {
    "date": "2026-09-19",
@@ -5766,10 +5748,10 @@
    "slug": "the-range"
   },
   "gravel:the-rift": {
-   "date": "2026-07-04",
+   "date": "2026-07-17",
    "discipline": "gravel",
    "distance_mi": 124,
-   "elevation_ft": 6400,
+   "elevation_ft": 8530,
    "location": "Hvolsv\u00f6llur, Southern Iceland",
    "name": "The Rift",
    "slug": "the-rift"
@@ -6269,6 +6251,15 @@
    "name": "Trough Creek Gravel Grinder",
    "slug": "trough-creek-gravel-grinder"
   },
+  "gravel:truckee-tahoe-gravel": {
+   "date": "2026-06-27",
+   "discipline": "gravel",
+   "distance_mi": 66,
+   "elevation_ft": 4439,
+   "location": "Truckee, California",
+   "name": "Truckee Tahoe Gravel",
+   "slug": "truckee-tahoe-gravel"
+  },
   "gravel:turkcell-granfondo-izmir": {
    "date": "2026-10-04",
    "discipline": "gravel",
@@ -6659,8 +6650,8 @@
   "gravel:wild-horse-gravel": {
    "date": "2027-05-15",
    "discipline": "gravel",
-   "distance_mi": 65,
-   "elevation_ft": 5500,
+   "distance_mi": 100,
+   "elevation_ft": "Varies",
    "location": "De Beque, Colorado (High Lonesome Ranch Basecamp)",
    "name": "Wild Horse Gravel",
    "slug": "wild-horse-gravel"
