@@ -1616,26 +1616,55 @@ COACH_DELIVERABLES = [
 ]
 
 
+def _resolve_generated_athlete_dir(athlete_id: str) -> Path:
+    """Return the directory containing generated plan artifacts.
+
+    The webhook creates an underscore ID (``example_athlete``), while
+    ``intake_to_plan.py`` normalizes the generated package to a hyphenated ID
+    (``example-athlete``).  When both exist, the directory with generation
+    markers is authoritative; otherwise persistence can silently copy the
+    webhook's pre-generation ``profile.yaml`` into the coach package.
+    """
+    athletes_root = Path(ATHLETES_DIR)
+    exact = athletes_root / athlete_id
+    alternate = athletes_root / athlete_id.replace('_', '-')
+    candidates = [exact]
+    if alternate != exact:
+        candidates.append(alternate)
+
+    generation_markers = (
+        'workouts', 'derived.yaml', 'plan_summary.yaml', 'training_guide.html',
+    )
+    generated = [
+        directory for directory in candidates
+        if directory.is_dir()
+        and any((directory / marker).exists() for marker in generation_markers)
+    ]
+    if generated:
+        return generated[0]
+
+    for directory in candidates:
+        if directory.is_dir():
+            return directory
+
+    for directory in athletes_root.iterdir():
+        if (directory.is_dir()
+                and directory.name.replace('-', '_')
+                == athlete_id.replace('-', '_')):
+            return directory
+    return exact
+
+
 def persist_deliverables(athlete_id: str) -> dict:
     """Copy deliverables from ephemeral athlete dir to persistent volume and create zip.
 
     Returns dict with delivery_dir, zip_path, customer_zip_path, and file counts.
     Customer zip excludes coach-only files (coaching_brief, profile, methodology).
     """
-    # Handle underscore/hyphen mismatch between webhook (sam_delgado) and
-    # intake_to_plan.py (sam-delgado). Check both conventions.
-    athlete_dir = Path(ATHLETES_DIR) / athlete_id
+    # Prefer the directory that contains generated plan artifacts when both
+    # webhook (underscore) and intake pipeline (hyphen) IDs exist.
+    athlete_dir = _resolve_generated_athlete_dir(athlete_id)
     alt_id = athlete_id.replace('_', '-')
-    alt_dir = Path(ATHLETES_DIR) / alt_id
-
-    if not athlete_dir.exists() and alt_dir.exists():
-        athlete_dir = alt_dir
-    elif not athlete_dir.exists():
-        # Try finding any matching directory
-        for d in Path(ATHLETES_DIR).iterdir():
-            if d.is_dir() and d.name.replace('-', '_') == athlete_id.replace('-', '_'):
-                athlete_dir = d
-                break
 
     delivery_dir = Path(DELIVERIES_DIR) / athlete_id
     delivery_dir.mkdir(parents=True, exist_ok=True)

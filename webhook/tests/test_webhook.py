@@ -87,6 +87,33 @@ class TestHealthEndpoint:
             assert response.status_code in [200, 503]
 
 
+class TestDeliveryArtifactResolution:
+    """Coach packages must use the generated profile, not webhook scaffolding."""
+
+    def test_prefers_hyphenated_directory_with_generated_artifacts(
+            self, tmp_path, monkeypatch):
+        import app as app_module
+
+        webhook_dir = tmp_path / 'example_athlete'
+        webhook_dir.mkdir()
+        (webhook_dir / 'profile.yaml').write_text('brand: roadielabs\n')
+
+        generated_dir = tmp_path / 'example-athlete'
+        generated_dir.mkdir()
+        (generated_dir / 'workouts').mkdir()
+        (generated_dir / 'profile.yaml').write_text(
+            'event_format: criterium\nroad_category: cat_4\n')
+
+        monkeypatch.setattr(app_module, 'ATHLETES_DIR', str(tmp_path))
+
+        resolved = app_module._resolve_generated_athlete_dir(
+            'example_athlete')
+
+        assert resolved == generated_dir
+        assert 'event_format: criterium' in (
+            resolved / 'profile.yaml').read_text()
+
+
 class TestInputValidation:
     """Tests for input validation functions."""
 
