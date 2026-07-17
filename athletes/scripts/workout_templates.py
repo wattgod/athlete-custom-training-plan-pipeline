@@ -337,8 +337,19 @@ def _sync_description_durations(zwo_xml: str) -> str:
     return zwo_xml
 
 
+def _snap_seconds(seconds: float, snap_to: int) -> int:
+    """Round a duration (seconds) to the nearest multiple of ``snap_to`` seconds.
+
+    Never snaps below one ``snap_to`` unit -- a block should shrink to zero
+    only if it was already zero.
+    """
+    if snap_to <= 0 or seconds <= 0:
+        return int(round(seconds))
+    return max(snap_to, int(round(seconds / snap_to)) * snap_to)
+
+
 def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
-                                 workout_type: str) -> str:
+                                 workout_type: str, snap_to: int = 0) -> str:
     """Post-process ZWO XML to scale workout to target duration.
 
     For interval workouts: keeps interval sets fixed, scales warmup and cooldown.
@@ -351,6 +362,11 @@ def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
         zwo_xml: Complete ZWO XML string
         target_duration_min: Target total duration in minutes
         workout_type: Type of workout for scaling strategy
+        snap_to: When > 0 (e.g. 60), round each block duration this function
+            adjusts to the nearest multiple of ``snap_to`` seconds, so scaled
+            warmup/cooldown/steady-state blocks land on whole minutes where
+            physiologically free. Fixed interval sets are never snapped.
+            Off by default (0) -- callers opt in explicitly.
 
     Returns:
         ZWO XML string with adjusted durations
@@ -410,14 +426,16 @@ def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
             for elem in workout:
                 if elem.tag in ('Warmup', 'Cooldown', 'SteadyState') and elem.tag != 'IntervalsT':
                     dur = float(elem.get('Duration', 0))
-                    elem.set('Duration', str(int(dur * scale)))
+                    new_dur = dur * scale
+                    elem.set('Duration', str(_snap_seconds(new_dur, snap_to) if snap_to else int(new_dur)))
         else:
             # Endurance: scale all SteadyState blocks proportionally
             scale = target_seconds / total_seconds
             for elem in workout:
                 if elem.tag in ('Warmup', 'Cooldown', 'SteadyState'):
                     dur = float(elem.get('Duration', 0))
-                    elem.set('Duration', str(int(dur * scale)))
+                    new_dur = dur * scale
+                    elem.set('Duration', str(_snap_seconds(new_dur, snap_to) if snap_to else int(new_dur)))
         # Rebuild ZWO string preserving the original XML declaration format
         # (ET.tostring produces wrong encoding declaration)
         output = ET.tostring(root, encoding='unicode')
@@ -436,6 +454,9 @@ def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
         # Minimum 10 min (600s) each
         warmup_target = max(600, int(remaining * 0.55))
         cooldown_target = max(600, remaining - warmup_target)
+        if snap_to:
+            warmup_target = max(600, _snap_seconds(warmup_target, snap_to))
+            cooldown_target = max(600, _snap_seconds(cooldown_target, snap_to))
 
         # Apply via regex on the XML string to preserve formatting
         # Scale warmup
@@ -473,6 +494,8 @@ def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
         if largest_ss:
             old_dur = int(largest_ss.group(2))
             new_dur = old_dur + int(diff)
+            if snap_to:
+                new_dur = _snap_seconds(new_dur, snap_to)
             zwo_xml = (zwo_xml[:largest_ss.start(2)]
                        + str(new_dur)
                        + zwo_xml[largest_ss.end(2):])
