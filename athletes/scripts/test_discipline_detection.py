@@ -58,7 +58,8 @@ def _load_webhook_app():
 _WEBHOOK = _load_webhook_app()
 
 
-def _profile_for_race(race_name, *, date="2027-09-12", distance="100 miles"):
+def _profile_for_race(race_name, *, date="2027-09-12", distance="100 miles",
+                      brand=None):
     """Build a profile through the REAL intake path for a single A-race.
 
     Mirrors production: web questionnaire JSON -> _questionnaire_to_markdown ->
@@ -92,6 +93,8 @@ def _profile_for_race(race_name, *, date="2027-09-12", distance="100 miles"):
              "priority": "A", "goal": "Finish Strong"},
         ],
     }
+    if brand:
+        intake["brand"] = brand
     md = _WEBHOOK._questionnaire_to_markdown(
         intake, name=intake["name"], email=intake["email"])
     parsed = intake_to_plan.parse_intake_markdown(md)
@@ -185,6 +188,61 @@ class TestGravelStaysGravel:
                    "target_race": {"name": "Gran Fondo Stelvio"}}
         # explicit profile discipline beats any keyword/DB inference
         assert derive_discipline(profile) == "gravel"
+
+
+class TestBrandAuthority:
+    """Brand is retained, authoritative, and conflict-aware."""
+
+    def test_roadie_gravel_race_forces_road_and_surfaces_review(self, tmp_path,
+                                                               capsys):
+        profile = _profile_for_race(
+            "Unbound Gravel 200", brand="roadielabs", date="2027-05-29",
+            distance="200 miles")
+
+        assert profile["brand"] == "roadielabs"
+        assert profile["discipline"] == "road"
+        conflict = profile["brand_discipline_conflict"]
+        assert conflict["candidate_discipline"] == "gravel"
+        assert conflict["forced_discipline"] == "road"
+
+        athlete_dir = tmp_path / "roadie-conflict"
+        athlete_dir.mkdir()
+        assert intake_to_plan.materialize_brand_discipline_review(
+            profile, athlete_dir)
+        review = (athlete_dir / "NEEDS_REVIEW.txt").read_text()
+        assert intake_to_plan.BRAND_DISCIPLINE_BLOCKER_ID in review
+        blocker = intake_to_plan.brand_discipline_blocker(profile)
+        assert blocker["id"] == intake_to_plan.BRAND_DISCIPLINE_BLOCKER_ID
+        assert intake_to_plan.emit_review_marker(athlete_dir)
+        assert "GG_NEEDS_REVIEW=1" in capsys.readouterr().out
+
+    def test_clean_roadie_fondo_stays_road_without_review(self, tmp_path):
+        profile = _profile_for_race(
+            "Gran Fondo Maryland", brand="roadielabs", date="2027-09-12")
+
+        assert profile["brand"] == "roadielabs"
+        assert profile["discipline"] == "road"
+        assert "brand_discipline_conflict" not in profile
+        assert intake_to_plan.brand_discipline_blocker(profile) is None
+        athlete_dir = tmp_path / "clean-roadie"
+        athlete_dir.mkdir()
+        assert not intake_to_plan.materialize_brand_discipline_review(
+            profile, athlete_dir)
+        assert not (athlete_dir / "NEEDS_REVIEW.txt").exists()
+
+    def test_gravelgod_mtb_remains_mtb_without_review(self, tmp_path):
+        profile = _profile_for_race(
+            "Pine Ridge MTB Challenge", brand="gravelgod", date="2027-11-06",
+            distance="30 miles")
+
+        assert profile["brand"] == "gravelgod"
+        assert profile["discipline"] == "mtb"
+        assert "brand_discipline_conflict" not in profile
+        assert intake_to_plan.brand_discipline_blocker(profile) is None
+        athlete_dir = tmp_path / "gravelgod-mtb"
+        athlete_dir.mkdir()
+        assert not intake_to_plan.materialize_brand_discipline_review(
+            profile, athlete_dir)
 
 
 # --------------------------------------------------------------------------- #

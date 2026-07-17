@@ -9,6 +9,7 @@ Deploy to: Railway
 """
 
 import os
+import sys
 import re
 import json
 import hmac
@@ -35,6 +36,14 @@ from fulfillment_state import (APPLIED, CONFIRMED, FulfillmentStateError,
                                transition as transition_fulfillment)
 
 import endure_delivery
+
+# The shared registry lives under athletes/config because that directory is
+# copied into the Railway image. Import its loader from the adjacent scripts
+# directory in both repo and /app layouts.
+_ATHLETE_SCRIPTS = Path(__file__).resolve().parent.parent / 'athletes' / 'scripts'
+if str(_ATHLETE_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_ATHLETE_SCRIPTS))
+from brand_config import default_brand, load_brands, normalize_brand
 
 app = Flask(__name__)
 
@@ -78,48 +87,39 @@ SCRIPTS_DIR = os.environ.get('SCRIPTS_DIR', '/app/athletes/scripts')
 DATA_DIR = os.environ.get('DATA_DIR', ATHLETES_DIR)  # Persistent volume for intake/logs
 DELIVERIES_DIR = os.path.join(DATA_DIR, 'deliveries')  # Persistent: zipped plans for download
 
-# CORS — only allow requests from our brand sites
-ALLOWED_ORIGINS = [
-    'https://gravelgodcycling.com', 'https://www.gravelgodcycling.com',
-    'https://roadielabs.com', 'https://www.roadielabs.com',
-]
-
 # Multi-brand support — this webhook serves all brand sites. Brand is derived
 # from the request Origin at checkout creation, stored in Stripe metadata,
 # and read back in the webhook handlers (success URLs, GA4 routing, emails).
-BRANDS = {
-    'gravelgod': {
-        'name': 'Gravel God Cycling',
-        'site': 'https://gravelgodcycling.com',
-        'questionnaire_path': '/training-plans/questionnaire/',
-        'ga4_measurement_id': os.environ.get('GA4_MEASUREMENT_ID', 'G-EJJZ9T6M52'),
-        'ga4_mp_api_secret': os.environ.get('GA4_MP_API_SECRET', ''),
-    },
-    'roadielabs': {
-        'name': 'Roadie Labs',
-        'site': 'https://roadielabs.com',
-        'questionnaire_path': '/questionnaire/',
-        'ga4_measurement_id': os.environ.get('GA4_MEASUREMENT_ID_RL', ''),
-        'ga4_mp_api_secret': os.environ.get('GA4_MP_API_SECRET_RL', ''),
-    },
-}
-DEFAULT_BRAND = 'gravelgod'
+BRANDS = load_brands(resolve_env=True)
+DEFAULT_BRAND = default_brand()
+
+# CORS derives from the same source of truth as checkout routing.
+ALLOWED_ORIGINS = sorted({
+    origin
+    for cfg in BRANDS.values()
+    for origin in (cfg['site'], cfg['site'].replace('://', '://www.'))
+})
 
 
 def _brand_from_origin(origin: str) -> str:
     """Map a request Origin header to a brand key."""
-    if 'roadielabs.com' in (origin or '').lower():
-        return 'roadielabs'
+    origin = (origin or '').lower()
+    for key, cfg in BRANDS.items():
+        host = cfg.get('site', '').lower().replace('https://', '').replace('http://', '')
+        if host and host in origin:
+            return key
     return DEFAULT_BRAND
 
 
 def _brand_config(brand: str) -> dict:
-    return BRANDS.get(brand or DEFAULT_BRAND, BRANDS[DEFAULT_BRAND])
+    return BRANDS.get(normalize_brand(brand), BRANDS[DEFAULT_BRAND])
 
 # Email notifications for new orders
 NOTIFICATION_EMAIL = os.environ.get('NOTIFICATION_EMAIL', '')
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
-RESEND_FROM = os.environ.get('RESEND_FROM', 'Gravel God <noreply@gravelgodcycling.com>')
+# Compatibility alias used by existing tests/deploy env. Brand-aware sends use
+# the registry's email.resend_from (which resolves RESEND_FROM for gravelgod).
+RESEND_FROM = _brand_config(DEFAULT_BRAND)['email']['resend_from']
 
 # Configure Stripe
 if STRIPE_SECRET_KEY:
@@ -296,7 +296,7 @@ def _mask_email(email: str) -> str:
 
 
 def _send_email(to: str, subject: str, body: str, html: str = None, reply_to: str = None,
-                attachments: list = None):
+                attachments: list = None, brand: str = DEFAULT_BRAND):
     """Send email via Resend HTTP API. Returns True on success.
 
     attachments: list of (filename, path) tuples; files are base64-encoded.
@@ -307,7 +307,7 @@ def _send_email(to: str, subject: str, body: str, html: str = None, reply_to: st
         return False
 
     payload = {
-        'from': RESEND_FROM,
+        'from': _brand_config(brand).get('email', {}).get('resend_from') or RESEND_FROM,
         'to': [to],
         'subject': subject,
         'text': body,
@@ -366,6 +366,8 @@ def _build_training_plan_email(details: dict) -> tuple:
     pipeline_ok = details.get('pipeline_success', True)
     error_msg = details.get('error', '')
     download_token = details.get('download_token', '')
+    brand = normalize_brand(details.get('brand'))
+    subject_prefix = _brand_config(brand).get('subject_prefix', '[GG]')
 
     # Phase 4b delivery branching: endure-target orders that delivered get
     # the Endure review checklist; a failed Endure push falls back to the
@@ -427,12 +429,14 @@ def _build_training_plan_email(details: dict) -> tuple:
             'AUTO-CHECK FAILED — plan delivered but a compliance rule was '
             'flagged. Review coaching_brief.md and adjust before sending.')
 
-    subject = f"[GG] {'New order' if pipeline_ok else 'FAILED'}: {name} — {race_name or 'training plan'}"
+    subject = f"{subject_prefix} {'New order' if pipeline_ok else 'FAILED'}: {name} — {race_name or 'training plan'}"
     if pipeline_ok and needs_review:
         status_label = 'ACTION REQUIRED'
-        subject = subject.replace('[GG] New order', '[GG] ⚠ ACTION REQUIRED')
+        subject = subject.replace(f'{subject_prefix} New order',
+                                  f'{subject_prefix} ⚠ ACTION REQUIRED')
     elif pipeline_ok and review_flags:
-        subject = subject.replace('[GG] New order', '[GG] New order ⚠ REVIEW')
+        subject = subject.replace(f'{subject_prefix} New order',
+                                  f'{subject_prefix} New order ⚠ REVIEW')
 
     # Shared athlete + plan info block
     info_html = f"""
@@ -718,8 +722,9 @@ def _notify_new_order(product_type: str, details: dict):
         text = '\n'.join(f"  {k}: {v}" for k, v in details.items())
         html = None
 
+    brand = normalize_brand(details.get('brand'))
     if NOTIFICATION_EMAIL and RESEND_API_KEY:
-        if not _send_email(NOTIFICATION_EMAIL, subject, text, html=html):
+        if not _send_email(NOTIFICATION_EMAIL, subject, text, html=html, brand=brand):
             logger.critical(f"NEW ORDER: {subject}\n{text}")
     else:
         logger.critical(f"NEW ORDER: {subject}\n{text}")
@@ -812,7 +817,8 @@ Questions? Reply to this email.
   </div>
 </div>"""
 
-    ok = _send_email(customer_email, subject, text, html=html, reply_to=NOTIFICATION_EMAIL)
+    ok = _send_email(customer_email, subject, text, html=html,
+                     reply_to=NOTIFICATION_EMAIL, brand=brand)
     if ok:
         logger.info(f"Payment confirmation sent to {_mask_email(customer_email)}")
     else:
@@ -877,6 +883,7 @@ def _build_plan_notification_details(order_data: dict, result: dict,
         'plan_weeks': plan_weeks,
         'workout_count': workout_count,
         'methodology': methodology,
+        'brand': normalize_brand(order_data.get('brand') or profile.get('brand')),
         'error': _pipeline_error_excerpt(result) if not result.get('success') else '',
         # The plan delivered, but the automatic coach checks flagged it — review
         # coaching_brief.md before sending. Distinct from a clean delivery.
@@ -1306,20 +1313,18 @@ def extract_stripe_data(data: dict) -> dict:
             'notes': metadata.get('notes', ''),
         }
 
-    # Brand is the strongest discipline signal: a Roadie Labs customer is a
-    # ROAD athlete. derive_discipline checks profile['discipline'] first, so
-    # without this a road order with an unknown race name fell through to the
-    # gravel default and got gravel archetypes + a Gravel God guide.
-    _brand = (metadata.get('brand') or '').lower()
-    if _brand == 'roadielabs':
-        profile['discipline'] = 'road'
-    elif _brand == 'gravelgod':
-        profile.setdefault('discipline', 'gravel')
+    # Carry brand as data. intake_to_plan resolves the race-derived candidate
+    # before applying brand authority; forcing discipline here would make the
+    # conflict detector unreachable.
+    _brand = normalize_brand(metadata.get('brand') or intake_data.get('brand'))
+    profile['brand'] = _brand
+    profile['discipline_default'] = _brand_config(_brand)['discipline']
 
     return {
         'athlete_id': athlete_id,
         'order_id': session.get('id', ''),
         'tier': tier,
+        'brand': _brand,
         # Phase 4b coexistence flag — "trainingpeaks" (default) or "endure".
         # Per-order override via Stripe metadata['delivery_target']; default
         # via DELIVERY_TARGET_DEFAULT env. Always "trainingpeaks" while the
@@ -1431,11 +1436,11 @@ def _questionnaire_to_markdown(intake_data: dict, name: str = '', email: str = '
     # resolves the target race by this ID (exact), skipping fuzzy name-matching.
     target_slug = intake_data.get('race_slug') or a_race.get('slug', '') or ''
 
-    # Brand is the strongest discipline signal: a Roadie Labs order is a ROAD
-    # athlete. Carry it so an UNKNOWN race name doesn't fall through to the
-    # gravel default (and a road customer gets a gravel plan + Gravel God guide).
-    _brand = (intake_data.get('brand') or '').lower()
-    _discipline_hint = {'roadielabs': 'road', 'gravelgod': 'gravel'}.get(_brand, '')
+    # Carry brand separately from its discipline fallback so intake_to_plan can
+    # inspect a conflicting race-derived candidate before it forces the output.
+    _brand_raw = (intake_data.get('brand') or '').strip().lower()
+    _brand = _brand_raw if _brand_raw in BRANDS else ''
+    _discipline_hint = _brand_config(_brand)['discipline'] if _brand else ''
 
     md = f"""# Athlete Intake: {name}
 Email: {email}
@@ -1449,6 +1454,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 
 ## Goals
 - Primary Goal: specific_race
+- Brand: {_brand}
 - Race Slug: {target_slug}
 - Discipline: {_discipline_hint}
 - Races:
@@ -1763,6 +1769,8 @@ def log_order(order_data: dict, result: dict):
         'athlete_id': order_data['athlete_id'],
         'order_id': order_data['order_id'],
         'tier': order_data['tier'],
+        'brand': normalize_brand(order_data.get('brand')
+                                 or order_data.get('profile', {}).get('brand')),
         'email': order_data.get('profile', {}).get('email', ''),
         'name': order_data.get('profile', {}).get('name', ''),
         'success': result['success'],
@@ -2386,6 +2394,7 @@ def confirm_plan_ready(athlete_id):
     customer_name = None
     race_name = None
     plan_weeks = None
+    brand = DEFAULT_BRAND
 
     for log_file in sorted(log_dir.glob('*.jsonl'), reverse=True):
         try:
@@ -2396,6 +2405,7 @@ def confirm_plan_ready(athlete_id):
                             and entry.get('success')):
                         customer_email = entry.get('email', '')
                         customer_name = entry.get('name', '')
+                        brand = normalize_brand(entry.get('brand'))
                         break
         except (json.JSONDecodeError, IOError):
             continue
@@ -2413,11 +2423,17 @@ def confirm_plan_ready(athlete_id):
             with open(intake_backup) as f:
                 backup = json.load(f)
                 race_name = backup.get('race_name', '')
+                brand = normalize_brand(backup.get('brand') or brand)
         except Exception:
             pass
 
     first_name = customer_name.split()[0] if customer_name else 'there'
     race_mention = f' for {race_name}' if race_name else ''
+    brand_cfg = _brand_config(brand)
+    signature = brand_cfg.get('email', {})
+    signature_name = signature.get('signature_name', 'Matti')
+    signature_org = signature.get('signature_organization', brand_cfg['name'])
+    signature_site = signature.get('signature_site', brand_cfg['site'].replace('https://', ''))
 
     # The intake email promises the training guide — attach it. PDF when
     # the pipeline produced one, HTML otherwise (Railway has no Chrome,
@@ -2470,8 +2486,8 @@ A few things to know:
 
 If you have questions at any point, just reply to this email.
 
-— Matti, Gravel God Cycling
-gravelgodcycling.com
+— {signature_name}, {signature_org}
+{signature_site}
 """
 
         html_body = f"""
@@ -2505,14 +2521,15 @@ gravelgodcycling.com
 
     <p style="font-size: 14px; line-height: 1.6;">Questions at any point? Just reply to this email.</p>
 
-    <p style="font-size: 14px; margin-top: 24px; color: #666;">— Matti, Gravel God Cycling<br>
-    <a href="https://gravelgodcycling.com" style="color: #1A8A82;">gravelgodcycling.com</a></p>
+    <p style="font-size: 14px; margin-top: 24px; color: #666;">— {signature_name}, {signature_org}<br>
+    <a href="{brand_cfg['site']}" style="color: #1A8A82;">{signature_site}</a></p>
   </div>
 </div>"""
 
         ok, failure = _send_and_mark(lambda: _send_email(
             customer_email, subject, text_body, html=html_body,
-            reply_to=NOTIFICATION_EMAIL, attachments=guide_attachments))
+            reply_to=NOTIFICATION_EMAIL, attachments=guide_attachments,
+            brand=brand))
         if ok:
             logger.info(f"Sent Endure plan confirmation to "
                         f"{_mask_email(customer_email)} for {norm_id}")
@@ -2560,7 +2577,8 @@ gravelgodcycling.com
 
             ok, failure = _send_and_mark(lambda: _send_email(
                 customer_email, subject, text_body, html=html_body,
-                reply_to=NOTIFICATION_EMAIL, attachments=guide_attachments))
+                reply_to=NOTIFICATION_EMAIL, attachments=guide_attachments,
+                brand=brand))
             if ok:
                 logger.info(f"Sent personal email to {_mask_email(customer_email)} for {norm_id}")
                 return jsonify({
@@ -2594,8 +2612,8 @@ A few things to know:
 
 If you have questions at any point, just reply to this email.
 
-— Matti, Gravel God Cycling
-gravelgodcycling.com
+— {signature_name}, {signature_org}
+{signature_site}
 """
 
     html_body = f"""
@@ -2630,14 +2648,15 @@ gravelgodcycling.com
     <p style="font-size: 14px; line-height: 1.6;">Questions at any point? Just reply to this email.</p>
 
 
-    <p style="font-size: 14px; margin-top: 24px; color: #666;">— Matti, Gravel God Cycling<br>
-    <a href="https://gravelgodcycling.com" style="color: #1A8A82;">gravelgodcycling.com</a></p>
+    <p style="font-size: 14px; margin-top: 24px; color: #666;">— {signature_name}, {signature_org}<br>
+    <a href="{brand_cfg['site']}" style="color: #1A8A82;">{signature_site}</a></p>
   </div>
 </div>"""
 
     ok, failure = _send_and_mark(lambda: _send_email(
         customer_email, subject, text_body, html=html_body,
-        reply_to=NOTIFICATION_EMAIL, attachments=guide_attachments))
+        reply_to=NOTIFICATION_EMAIL, attachments=guide_attachments,
+        brand=brand))
     if ok:
         logger.info(f"Sent plan confirmation to {_mask_email(customer_email)} for {norm_id}")
         return jsonify({
@@ -3213,6 +3232,12 @@ def _send_recovery_email(email: str, name: str, product_type: str,
                          metadata: dict, recovery_url: str):
     """Send a recovery email for an abandoned checkout."""
     first_name = name.split()[0] if name else 'there'
+    brand = normalize_brand(metadata.get('brand'))
+    brand_cfg = _brand_config(brand)
+    signature = brand_cfg.get('email', {})
+    signature_name = signature.get('signature_name', 'Matti')
+    signature_org = signature.get('signature_organization', brand_cfg['name'])
+    signature_site = signature.get('signature_site', brand_cfg['site'].replace('https://', ''))
 
     if product_type == 'training_plan':
         weeks = metadata.get('weeks', '')
@@ -3225,8 +3250,8 @@ def _send_recovery_email(email: str, name: str, product_type: str,
             f"{recovery_url}\n\n"
             f"Your race is coming up. The sooner you start structured training, "
             f"the stronger you'll be on race day.\n\n"
-            f"— Matti, Gravel God Cycling\n"
-            f"gravelgodcycling.com"
+            f"— {signature_name}, {signature_org}\n"
+            f"{signature_site}"
         )
     elif product_type == 'coaching':
         tier = metadata.get('tier', '')
@@ -3257,7 +3282,7 @@ def _send_recovery_email(email: str, name: str, product_type: str,
 
     reply_to = NOTIFICATION_EMAIL or None
     if RESEND_API_KEY:
-        if not _send_email(email, subject, body, reply_to=reply_to):
+        if not _send_email(email, subject, body, reply_to=reply_to, brand=brand):
             logger.critical(
                 f"ABANDONED CART — email failed\n"
                 f"  Email: {_mask_email(email)}\n  Product: {product_type}\n"
@@ -3568,14 +3593,15 @@ def _mark_followup_sent(order_id: str, day: int, email: str):
         fcntl.flock(f, fcntl.LOCK_UN)
 
 
-def _send_followup_email(email: str, subject: str, body: str):
+def _send_followup_email(email: str, subject: str, body: str,
+                         brand: str = DEFAULT_BRAND):
     """Send a follow-up email via Resend. Returns True on success."""
     if not RESEND_API_KEY:
         logger.warning(f"Resend not configured — skipping followup to {_mask_email(email)}")
         return False
 
     reply_to = NOTIFICATION_EMAIL or None
-    return _send_email(email, subject, body, reply_to=reply_to)
+    return _send_email(email, subject, body, reply_to=reply_to, brand=brand)
 
 
 def process_followup_emails():
@@ -3615,6 +3641,7 @@ def process_followup_emails():
             order_id = order.get('order_id', '')
             email = order.get('email', '')
             name = order.get('name', order.get('customer_name', ''))
+            brand = normalize_brand(order.get('brand'))
             order_time = order.get('timestamp', order.get('processed_at', ''))
 
             if not email or not order_time or not order_id:
@@ -3637,9 +3664,18 @@ def process_followup_emails():
 
                 first_name = name.split()[0] if name else 'there'
                 body = followup['template'].format(first_name=first_name)
+                if brand != DEFAULT_BRAND:
+                    brand_cfg = _brand_config(brand)
+                    signature = brand_cfg.get('email', {})
+                    body = body.replace(
+                        '— Matti\nGravel God Coaching\ngravelgodcycling.com',
+                        f"— {signature.get('signature_name', 'Matti')}\n"
+                        f"{signature.get('signature_organization', brand_cfg['name'])}\n"
+                        f"{signature.get('signature_site', brand_cfg['site'].replace('https://', ''))}",
+                    ).replace('https://gravelgodcycling.com', brand_cfg['site'])
                 subject = followup['subject']
 
-                if _send_followup_email(email, subject, body):
+                if _send_followup_email(email, subject, body, brand=brand):
                     _mark_followup_sent(order_id, day, email)
                     sent_followups.add((order_id, day))
                     stats['sent'] += 1

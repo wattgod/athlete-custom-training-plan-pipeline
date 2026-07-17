@@ -30,6 +30,7 @@ import os
 import re
 import subprocess
 import sys
+from types import SimpleNamespace
 from html import unescape
 from pathlib import Path
 
@@ -70,8 +71,36 @@ def _real_gravel_race():
             "distance_mi": 104, "elevation_ft": 6000}
 
 
+def _real_road_race(*, hillclimb=False):
+    """Pick stable, future, provenanced Roadie fondo/hill-climb fixtures."""
+    import random
+    from datetime import date as _date
+    try:
+        from real_races import pick
+        bounds = {"min_mi": 1, "max_mi": 40} if hillclimb else {
+            "min_mi": 40, "max_mi": 140}
+        race = pick(
+            random.Random("acceptance-road-hill-v1" if hillclimb
+                          else "acceptance-road-fondo-v1"),
+            discipline="road", min_weeks=8, max_weeks=60,
+            today=_date.today().isoformat(), **bounds)
+        if race:
+            return race
+    except Exception:
+        pass
+    if hillclimb:
+        return {"name": "Mount Baker Hill Climb", "date": "2026-09-13",
+                "distance_mi": 22, "elevation_ft": 4462,
+                "slug": "mount-baker-hill-climb"}
+    return {"name": "RBC GranFondo Whistler", "date": "2026-09-12",
+            "distance_mi": 76, "elevation_ft": 7500,
+            "slug": "rbc-granfondo-whistler"}
+
+
 _RACE = _real_gravel_race()
 _RACE_DIST = f"{int(round(float(_RACE['distance_mi'])))} miles"
+_ROAD_FONDO = _real_road_race()
+_ROAD_HILL = _real_road_race(hillclimb=True)
 
 GOLDEN_ORDERS = [
     {
@@ -120,6 +149,63 @@ GOLDEN_ORDERS = [
             "strength_equipment": "dumbbells", "target_hours": 7.0,
         },
     },
+    {
+        "id": "acctest-roadie-fondo",
+        "label": "Roadie Labs real gran fondo through shared webhook runner",
+        "via_webhook": True,
+        "intake": {
+            "name": "Acc Test Roadiefondo", "email": "acc-road@test.local",
+            "brand": "roadielabs", "race_slug": _ROAD_FONDO.get("slug", ""),
+            "sex": "Male", "age": 38, "weight": 160,
+            "height_ft": 5, "height_in": 10, "ftp": 255,
+            "years_cycling": "6", "prior_plan_experience": "3",
+            "hours_per_week": "9", "trainer_access": "smart trainer",
+            "long_ride_days": ["Saturday"],
+            "interval_days": ["Tuesday", "Thursday"], "off_days": ["Monday"],
+            "strength_current": "none", "strength_want": "no",
+            "strength_equipment": "minimal", "sleep_quality": "good",
+            "stress_level": "moderate", "injuries": "None",
+            "races": [{"name": _ROAD_FONDO["name"],
+                       "date": _ROAD_FONDO["date"],
+                       "distance": f"{int(round(float(_ROAD_FONDO['distance_mi'])))} miles",
+                       "priority": "A", "goal": "Finish Strong",
+                       "slug": _ROAD_FONDO.get("slug", "")}],
+        },
+        "expect": {
+            "ftp": "255", "race": _ROAD_FONDO["name"],
+            "race_date": _ROAD_FONDO["date"], "strength_equipment": None,
+            "target_hours": 9.0, "brand": "roadielabs", "discipline": "road",
+            "pdf_optional": True,
+        },
+    },
+    {
+        "id": "acctest-roadie-hillclimb",
+        "label": "Roadie Labs real hill climb through shared webhook runner",
+        "via_webhook": True,
+        "intake": {
+            "name": "Acc Test Roadieclimber", "email": "acc-climb@test.local",
+            "brand": "roadielabs", "race_slug": _ROAD_HILL.get("slug", ""),
+            "sex": "Male", "age": 44, "weight": 150,
+            "height_ft": 5, "height_in": 9, "ftp": 270,
+            "years_cycling": "9", "prior_plan_experience": "4",
+            "hours_per_week": "8", "trainer_access": "smart trainer",
+            "long_ride_days": ["Sunday"],
+            "interval_days": ["Tuesday", "Thursday"], "off_days": ["Monday"],
+            "strength_current": "none", "strength_want": "no",
+            "strength_equipment": "minimal", "sleep_quality": "good",
+            "stress_level": "moderate", "injuries": "None",
+            "races": [{"name": _ROAD_HILL["name"], "date": _ROAD_HILL["date"],
+                       "distance": f"{int(round(float(_ROAD_HILL['distance_mi'])))} miles",
+                       "priority": "A", "goal": "Compete",
+                       "slug": _ROAD_HILL.get("slug", "")}],
+        },
+        "expect": {
+            "ftp": "270", "race": _ROAD_HILL["name"],
+            "race_date": _ROAD_HILL["date"], "strength_equipment": None,
+            "target_hours": 8.0, "brand": "roadielabs", "discipline": "road",
+            "pdf_optional": True,
+        },
+    },
 ]
 
 
@@ -147,12 +233,29 @@ def _run_order(tmp_path, order):
 
     env = dict(os.environ)
     env["GG_DELIVERY_DIR"] = str(delivery_root)
+    env["GG_GUIDES_DIR"] = str(delivery_root / "gravel-god-guides")
+    env["ROADIE_GUIDES_DIR"] = str(delivery_root / "roadie-labs-guides")
     env["PYTHONPATH"] = str(REPO_ROOT)
 
-    proc = subprocess.run(
-        [sys.executable, "intake_to_plan.py", "--file", str(md_file)],
-        cwd=str(SCRIPTS_DIR), env=env, capture_output=True, text=True, timeout=600,
-    )
+    if order.get("via_webhook"):
+        # Exercise the production shared runner (including its questionnaire
+        # conversion) without touching Stripe or TrainingPeaks.
+        from unittest.mock import patch
+        sys.path.insert(0, str(WEBHOOK_DIR))
+        import app as webhook_app
+        with patch.object(webhook_app, "SCRIPTS_DIR", str(SCRIPTS_DIR)), \
+             patch.object(webhook_app, "PIPELINE_TIMEOUT", 600), \
+             patch.dict(os.environ, env, clear=False):
+            result = webhook_app.run_pipeline(
+                order["id"], deliver=True, intake_data=order["intake"])
+        proc = SimpleNamespace(
+            returncode=0 if result["success"] else 1,
+            stdout=result.get("stdout", ""), stderr=result.get("stderr", ""))
+    else:
+        proc = subprocess.run(
+            [sys.executable, "intake_to_plan.py", "--file", str(md_file)],
+            cwd=str(SCRIPTS_DIR), env=env, capture_output=True, text=True, timeout=600,
+        )
     # The pipeline derives the athlete id from the NAME (e.g. "Acc Test
     # Gravelrider" -> "acc-gravelrider") and prints it; parse rather than guess.
     m = re.search(r"\bID:\s*(\S+)", proc.stdout)
@@ -194,7 +297,8 @@ def test_pipeline_exits_clean(built_order):
 def test_all_deliverables_present(built_order):
     d = built_order["delivery_dir"]
     assert (d / "training_guide.html").exists(), "guide HTML missing"
-    assert (d / "training_guide.pdf").exists(), "guide PDF missing"
+    if not built_order["order"]["expect"].get("pdf_optional"):
+        assert (d / "training_guide.pdf").exists(), "guide PDF missing"
     assert (d / "fueling.yaml").exists(), "fueling.yaml missing"
     workouts = d / "workouts"
     assert workouts.exists() and len(list(workouts.glob("*.zwo"))) >= 20, \
@@ -204,6 +308,8 @@ def test_all_deliverables_present(built_order):
 def test_pdf_is_structurally_valid(built_order):
     from pdf_generator import validate_pdf
     pdf = built_order["delivery_dir"] / "training_guide.pdf"
+    if not pdf.exists() and built_order["order"]["expect"].get("pdf_optional"):
+        pytest.skip("production contract permits HTML guide when PDF engine is unavailable")
     ok, msg = validate_pdf(pdf)
     assert ok, f"PDF invalid: {msg}"
 
@@ -252,9 +358,10 @@ def test_guide_facts_match_profile(built_order):
     human_date = datetime.strptime(exp["race_date"], "%Y-%m-%d").strftime("%B")
     assert human_date in text, f"race month '{human_date}' not in guide"
     # strength equipment — the Jesse bug
-    assert exp["strength_equipment"].lower() in text.lower(), (
-        f"strength equipment '{exp['strength_equipment']}' not reflected "
-        f"(guide may claim the wrong setup)")
+    if exp.get("strength_equipment"):
+        assert exp["strength_equipment"].lower() in text.lower(), (
+            f"strength equipment '{exp['strength_equipment']}' not reflected "
+            f"(guide may claim the wrong setup)")
 
 
 def test_removed_sections_stay_removed(built_order):
@@ -296,3 +403,33 @@ def test_compliance_is_perfect(built_order):
     assert not review.exists(), (
         "golden order was FLAGGED for review — a compliance or quality gate "
         f"failed on a known-good athlete:\n{review.read_text() if review.exists() else ''}")
+
+
+def test_roadie_package_is_brand_clean_and_semantically_valid(built_order):
+    exp = built_order["order"]["expect"]
+    if exp.get("brand") != "roadielabs":
+        pytest.skip("Roadie-only package contract")
+
+    athlete_dir = built_order["athlete_dir"]
+    profile = yaml.safe_load((athlete_dir / "profile.yaml").read_text())
+    assert profile["brand"] == "roadielabs"
+    assert profile["discipline"] == "road"
+
+    visible = [athlete_dir / "training_guide.html",
+               athlete_dir / "personal_email.md",
+               athlete_dir / "plan_preview.html"]
+    visible.extend(sorted((athlete_dir / "workouts").glob("*.zwo")))
+    for path in visible:
+        text = path.read_text()
+        assert "gravel" not in text.lower(), f"road brand leak in {path.name}"
+        assert "Gravel God" not in text, f"Gravel God leak in {path.name}"
+    assert "ROADIE LABS" in (athlete_dir / "training_guide.html").read_text()
+    assert "Road Skills" in (athlete_dir / "training_guide.html").read_text()
+
+    staged_guide = (built_order["delivery_dir"].parent /
+                    "roadie-labs-guides" / "athletes" /
+                    built_order["athlete_id"] / "index.html")
+    assert staged_guide.exists(), "Roadie guide was not staged in its configured repo"
+
+    from validate_plan_package import validate_plan_package
+    assert validate_plan_package(athlete_dir) == []

@@ -796,6 +796,50 @@ class TestConfirmEndureVariant:
         (args, kwargs) = sent[0]
         assert 'live on TrainingPeaks' in args[1]
 
+    def test_roadie_personal_confirmation_payload_has_no_gravel_leak(self,
+                                                                    confirm_env):
+        app_module = confirm_env
+        log_dir = Path(app_module.DATA_DIR) / '.logs'
+        (log_dir / '2026-07.jsonl').write_text(json.dumps({
+            'athlete_id': 'jane_doe', 'success': True,
+            'email': 'jane@example.com', 'name': 'Jane Doe',
+            'brand': 'roadielabs',
+        }) + '\n')
+        delivery_dir = Path(app_module.DELIVERIES_DIR) / 'jane_doe'
+        delivery_dir.mkdir(parents=True, exist_ok=True)
+
+        from intake_to_plan import generate_personal_email
+        personal = generate_personal_email({
+            'name': 'Jane Doe', 'brand': 'roadielabs', 'discipline': 'road',
+            'target_race': {'name': 'Gran Fondo Maryland',
+                            'goal_description': 'Finish strong'},
+            'fitness_markers': {'ftp_watts': 230},
+            'weekly_availability': {'cycling_hours_target': 8},
+            'training_history': {'years_cycling': 5},
+            'health_factors': {}, 'injury_history': {'current_injuries': []},
+            'strength': {'include_in_plan': False}, 'preferred_days': {},
+            'schedule_constraints': {}, 'blindspots': [], 'notes': '',
+        }, {'basic_info': {}, 'health': {}})
+        (delivery_dir / 'personal_email.md').write_text(personal)
+        from fulfillment_state import APPROVED, APPLIED, transition, write_generation
+        state_path = delivery_dir / 'fulfillment_status.json'
+        write_generation(state_path, 'jane_doe')
+        transition(state_path, APPROVED, 'coach@test.local')
+        transition(state_path, APPLIED, 'coach@test.local',
+                   platform='trainingpeaks', evidence='fake TP import 123')
+        app_module._update_job('jane_doe', delivery_target='trainingpeaks',
+                               status='succeeded')
+
+        sent = []
+        resp = self._confirm(app_module, sent)
+        assert resp.status_code == 200
+        (args, kwargs) = sent[0]
+        payload = '\n'.join([args[1], args[2], kwargs.get('html', '')])
+        assert kwargs['brand'] == 'roadielabs'
+        assert 'Roadie Labs' in payload
+        assert 'gravel' not in payload.lower()
+        assert 'Gravel God' not in payload
+
 
 # =============================================================================
 # JOB RECORD FLAG

@@ -67,6 +67,8 @@ from constants import (
 from known_races import (KNOWN_RACES, RACE_ALIASES, match_race,
                          match_race_scored, lookup_by_slug,
                          build_generic_race_profile, race_provenance_issue)
+from brand_config import (brand_for_discipline, email_signature,
+                          get_brand_config, load_brands, normalize_brand)
 
 # ---------------------------------------------------------------------------
 # ANSI colors for terminal output
@@ -1259,13 +1261,14 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     plan_start = today + __import__('datetime').timedelta(days=days_until_monday)
     plan_start_str = plan_start.isoformat()
 
-    # Brand discipline hint (from the questionnaire's `- Discipline:` line, set
-    # by the webhook from the buying brand). This is the LOWEST-priority signal:
-    # derive_discipline uses the race's own DB discipline, then the race-name
-    # keyword, and only falls back to this hint instead of the gravel default —
-    # so an unknown race on Roadie Labs builds a ROAD plan, but a known gravel
-    # race a road customer picked still resolves gravel.
-    _disc_hint = (goals.get('discipline', '') or '').strip().lower()
+    # Preserve brand independently from the discipline fallback. The candidate
+    # is resolved later from explicit race data/name keywords/hint, then checked
+    # against the ordering brand before any override is applied.
+    _brand_raw = (goals.get('brand', '') or '').strip().lower()
+    _brand_explicit = _brand_raw in load_brands(resolve_env=False)
+    _brand_key = normalize_brand(_brand_raw) if _brand_explicit else ''
+    _disc_hint = (get_brand_config(_brand_key)['discipline'] if _brand_explicit
+                  else (goals.get('discipline', '') or '').strip().lower())
     _disc_hint = _disc_hint if _disc_hint in ('road', 'gravel', 'mtb') else ''
 
     # Calculate weeks to target race (with clamping to 4-26 range)
@@ -1309,6 +1312,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         'weight_kg': weight_kg,
         'primary_goal': primary_goal.replace(' ', '_'),
         'target_race': target_race_info,
+        'brand': _brand_key,
         # lowest-priority discipline fallback (brand hint); see derive_discipline
         'discipline_default': _disc_hint,
         # (generic_demands for an unmatched race are refined with the derived
@@ -1520,12 +1524,40 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         },
     }
 
+    # Resolve the candidate BEFORE applying brand authority. A single-brand
+    # Roadie order always ships road, but a conflicting gravel/ambiguous race is
+    # retained as an explicit review issue for the coach. Gravel God's supported
+    # MTB path remains untouched because mtb is in its allowed disciplines.
+    from archetype import derive_discipline
+    candidate_discipline = derive_discipline(profile)
+    if not _brand_explicit:
+        _brand_key = brand_for_discipline(candidate_discipline)
+        profile['brand'] = _brand_key
+    brand_cfg = get_brand_config(_brand_key)
+    allowed = set(brand_cfg.get('allowed_disciplines') or [])
+    if _brand_explicit and candidate_discipline not in allowed:
+        forced = brand_cfg['discipline']
+        profile['brand_discipline_conflict'] = {
+            'candidate_discipline': candidate_discipline,
+            'forced_discipline': forced,
+            'candidate': candidate_discipline,
+            'forced': forced,
+            'brand': _brand_key,
+            'message': (
+                f"Race data resolved {candidate_discipline!r}, outside "
+                f"{_brand_key}'s allowed disciplines {sorted(allowed)}; "
+                f"plan forced to {forced!r}."
+            ),
+        }
+        profile['discipline'] = forced
+    else:
+        profile['discipline'] = candidate_discipline
+
     # Unmatched race: refine the neutral demand assumptions with the DERIVED
     # discipline (race-name keywords + brand hint) — a "fondo" in the name or
     # a Roadie Labs order shapes the generic profile as road, not gravel.
     if target_race_info.get('generic_profile'):
         try:
-            from archetype import derive_discipline
             from known_races import generic_race_demands
             disc = derive_discipline(profile)
             target_race_info['generic_discipline'] = disc
@@ -1759,6 +1791,59 @@ def write_profile_yaml(profile: Dict[str, Any], output_path: Path) -> None:
                   sort_keys=False, allow_unicode=True, width=120)
 
     print(f"  {GREEN}Written:{RESET} {output_path}")
+
+
+BRAND_DISCIPLINE_BLOCKER_ID = 'BRAND_DISCIPLINE_CONFLICT'
+
+
+def brand_discipline_blocker(profile: Dict[str, Any]) -> Optional[Dict[str, str]]:
+    conflict = profile.get('brand_discipline_conflict') or {}
+    if not conflict:
+        return None
+    return {
+        'id': BRAND_DISCIPLINE_BLOCKER_ID,
+        'source': 'brand_config',
+        'severity': 'CRITICAL',
+        'message': conflict.get('message',
+                                'Ordering brand conflicted with race discipline.'),
+    }
+
+
+def materialize_brand_discipline_review(profile: Dict[str, Any], athlete_dir: Path) -> bool:
+    """Persist a loud, idempotent coach flag for a brand/candidate conflict."""
+    conflict = profile.get('brand_discipline_conflict') or {}
+    if not conflict:
+        return False
+    review = Path(athlete_dir) / 'NEEDS_REVIEW.txt'
+    existing = review.read_text() if review.exists() else ''
+    marker = f"{BRAND_DISCIPLINE_BLOCKER_ID}:"
+    if marker not in existing:
+        detail = conflict.get('message') or (
+            f"Candidate {conflict.get('candidate')} forced to {conflict.get('forced')} "
+            f"for {conflict.get('brand')}."
+        )
+        with review.open('a', encoding='utf-8') as handle:
+            if existing and not existing.endswith('\n'):
+                handle.write('\n')
+            handle.write(
+                "\nBRAND / DISCIPLINE CONFLICT — REVIEW RACE DATA\n"
+                "=================================================\n"
+                f"{marker} {detail}\n"
+                "The generated plan uses the ordering brand's discipline, but "
+                "the race mapping must be verified before confirmation.\n"
+            )
+    return True
+
+
+def emit_review_marker(athlete_dir: Path) -> bool:
+    """Emit the webhook's machine-readable coach-review signal if flagged."""
+    review = Path(athlete_dir) / 'NEEDS_REVIEW.txt'
+    if not review.exists():
+        return False
+    print(f"\n  {YELLOW}{BOLD}NEEDS_REVIEW: plan delivered but flagged by "
+          f"auto-checks — review coaching_brief.md before sending.{RESET}")
+    print("GG_NEEDS_REVIEW=1")
+    return True
 
 
 # ===========================================================================
@@ -2638,6 +2723,7 @@ def generate_personal_email(
     cycling_hours = profile.get('weekly_availability', {}).get('cycling_hours_target', '')
     age = profile.get('age', profile.get('health_factors', {}).get('age', ''))
     years_cycling = profile.get('training_history', {}).get('years_cycling', '')
+    signature = email_signature(profile)
 
     # Load plan output for plan-specific details
     plan_weeks = None
@@ -2863,7 +2949,9 @@ def generate_personal_email(
                      "and we're rolling.\n")
 
     lines.append("Questions anytime — just reply to this email.\n")
-    lines.append("— Matti\nGravel God Coaching\ngravelgodcycling.com")
+    lines.append(
+        f"— {signature['name']}\n{signature['organization']}\n{signature['site']}"
+    )
 
     return '\n'.join(lines)
 
@@ -2991,15 +3079,21 @@ def copy_to_downloads(athlete_id: str, coaching_brief_md: str) -> Path:
     try:
         from config_loader import get_config
         cfg = get_config()
-        delivery_base = cfg.get_path('delivery_dir') or (athlete_dir.parent.parent / 'delivery')
-        guides_dir = delivery_base / 'guides' / 'athletes' / athlete_id
+        with open(athlete_dir / 'profile.yaml') as handle:
+            delivery_profile = __import__('yaml').safe_load(handle) or {}
+        brand_cfg = cfg.get_brand_for_profile(delivery_profile)
+        guides_repo_dir = cfg.get_guides_dir(delivery_profile.get('brand'))
+        if not guides_repo_dir:
+            raise RuntimeError('Configured brand guide repository is unavailable')
+        guides_dir = guides_repo_dir / 'athletes' / athlete_id
         guides_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(guide_html, guides_dir / 'index.html')
-        github_pages_base = cfg.get('hosting.github_pages_base', 'https://wattgod.github.io')
-        guides_repo = cfg.get('hosting.guides_repo_name', 'gravel-god-guides')
+        brand_paths = brand_cfg.get('paths', {})
+        github_pages_base = brand_paths.get('github_pages_base', 'https://wattgod.github.io')
+        guides_repo = brand_paths.get('guides_repo_name', 'gravel-god-guides')
         guide_url = f"{github_pages_base}/{guides_repo}/athletes/{athlete_id}/"
         print(f"  {GREEN}Staged:{RESET} guide for hosting at {guide_url}")
-        print(f"  {DIM}(Push delivery/ repo to deploy){RESET}")
+        print(f"  {DIM}(Push {guides_repo_dir} to deploy){RESET}")
     except (ImportError, Exception) as e:
         guide_url = None
         print(f"  {YELLOW}[WARN]{RESET} Could not stage guide for hosting: {e}")
@@ -3019,11 +3113,8 @@ def copy_to_downloads(athlete_id: str, coaching_brief_md: str) -> Path:
     # If the compliance checks flagged the plan, the order STILL delivered, but
     # emit a machine-readable marker so the webhook can tell the coach "needs
     # review" (vs a clean delivery) and so the coach reviews it first.
-    _review = Path(__file__).resolve().parent.parent / athlete_id / 'NEEDS_REVIEW.txt'
-    if _review.exists():
-        print(f"\n  {YELLOW}{BOLD}NEEDS_REVIEW: plan delivered but flagged by "
-              f"auto-checks — review coaching_brief.md before sending.{RESET}")
-        print("GG_NEEDS_REVIEW=1")  # machine marker for the webhook
+    _review_dir = Path(__file__).resolve().parent.parent / athlete_id
+    emit_review_marker(_review_dir)
 
     return downloads_dir
 
@@ -3157,6 +3248,7 @@ def main():
         print(f"  Overwriting with new intake data.")
 
     write_profile_yaml(profile, profile_path)
+    materialize_brand_discipline_review(profile, athlete_dir)
 
     if args.skip_pipeline:
         print(f"\n{GREEN}Profile written. Pipeline skipped (--skip-pipeline).{RESET}")
@@ -3182,6 +3274,10 @@ def main():
             # Only reachable under GG_STRICT_QUALITY=1 (CI/debugging).
             sys.exit(1)
 
+    # A compliance gate may rewrite NEEDS_REVIEW.txt. Re-append the brand
+    # conflict idempotently so both reasons remain visible to the coach.
+    materialize_brand_discipline_review(profile, athlete_dir)
+
     # J1: add intake and post-generation quality blockers to the state created
     # by generate_athlete_package before any delivery copy is made.  The plan is
     # still complete and deliverable for coach review; confirmation is gated.
@@ -3202,6 +3298,9 @@ def main():
         if provenance_issue:
             blockers.append({'id': 'RACE_STALE', 'source': 'race_provenance',
                              'severity': 'CRITICAL', 'message': provenance_issue})
+        brand_blocker = brand_discipline_blocker(profile)
+        if brand_blocker:
+            blockers.append(brand_blocker)
         blockers.extend(getattr(run_quality_gates, 'last_critical_issues', []))
         # Preserve one record per rule across a rerun of the final pipeline steps.
         deduped = {issue['id']: issue for issue in blockers}

@@ -28,6 +28,12 @@ config = get_config()
 log = get_logger()
 
 
+def _email_delivery_for_profile(profile: dict):
+    """Build the legacy delivery client with the athlete's authoritative brand."""
+    from email_delivery import EmailDelivery
+    return EmailDelivery(brand=(profile or {}).get('brand'))
+
+
 def deliver_package(athlete_id: str) -> dict:
     """Prepare athlete package for delivery."""
 
@@ -36,7 +42,6 @@ def deliver_package(athlete_id: str) -> dict:
 
     # Use config for paths where possible
     delivery_base = config.get_path('delivery_dir') or (athletes_dir.parent / 'delivery')
-    delivery_dir = delivery_base / 'guides'
     downloads_base = config.get_path('downloads_dir') or Path.home() / 'Downloads'
     downloads_dir = downloads_base / f'{athlete_id}-package'
 
@@ -51,6 +56,10 @@ def deliver_package(athlete_id: str) -> dict:
     # Load profile for athlete name
     profile = load_yaml_safe(athlete_dir / 'profile.yaml')
     athlete_name = profile.get('name', athlete_id) if profile else athlete_id
+    brand_config = config.get_brand_for_profile(profile or {})
+    brand_guides_repo = config.get_guides_dir((profile or {}).get('brand'))
+    delivery_dir = ((brand_guides_repo / 'athletes') if brand_guides_repo
+                    else (delivery_base / 'guides'))
 
     # === STEP 1: Run QC ===
     print("\n1. Running quality control checks...")
@@ -84,8 +93,9 @@ def deliver_package(athlete_id: str) -> dict:
     print("\n3. Copying to delivery folder...")
     delivery_dir.mkdir(parents=True, exist_ok=True)
 
-    # Use athlete_id as filename for hosted guide
-    hosted_guide_path = delivery_dir / f'{athlete_id}.html'
+    # Every configured guide repository publishes athletes/<id>/index.html.
+    hosted_guide_path = delivery_dir / athlete_id / 'index.html'
+    hosted_guide_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(guide_path, hosted_guide_path)
     print(f"   ✓ Copied to: {hosted_guide_path}")
 
@@ -152,15 +162,23 @@ def deliver_package(athlete_id: str) -> dict:
     print(f"   • Workouts Folder: ~/Downloads/{athlete_id}-package/workouts/")
 
     print("\n🌐 FOR HOSTED URL:")
-    # Get base URL from config
-    github_pages_base = config.get('hosting.github_pages_base', 'https://wattgod.github.io')
-    guides_repo_name = config.get('hosting.guides_repo_name', 'gravel-god-guides')
+    # Hosting identity follows the order brand; Gravel God retains its current
+    # defaults while Roadie packages never advertise a Gravel God guide URL.
+    brand_paths = brand_config.get('paths', {})
+    github_pages_base = brand_paths.get(
+        'github_pages_base',
+        config.get('hosting.github_pages_base', 'https://wattgod.github.io'),
+    )
+    guides_repo_name = brand_paths.get(
+        'guides_repo_name',
+        config.get('hosting.guides_repo_name', 'gravel-god-guides'),
+    )
 
-    print(f"   1. Push delivery/guides/{athlete_id}.html to your hosting repo")
+    print(f"   1. Push {hosted_guide_path} to your hosting repo")
     print(f"   2. URL will be: {github_pages_base}/{guides_repo_name}/athletes/{athlete_id}/")
     print(f"   ")
     print(f"   Or use GitHub Pages:")
-    print(f"   cd {delivery_base}")
+    print(f"   cd {brand_guides_repo or delivery_base}")
     print(f"   git add . && git commit -m 'Add {athlete_name} guide' && git push")
 
     # === STEP 7: Email delivery (if enabled) ===
@@ -172,8 +190,7 @@ def deliver_package(athlete_id: str) -> dict:
         print(f"   Athlete email: {athlete_email}")
 
         try:
-            from email_delivery import EmailDelivery
-            delivery = EmailDelivery()
+            delivery = _email_delivery_for_profile(profile)
 
             if delivery.provider != 'none':
                 print(f"   Provider: {delivery.provider}")

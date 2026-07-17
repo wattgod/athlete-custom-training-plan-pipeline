@@ -9,6 +9,7 @@ import os
 import re
 import threading
 import yaml
+from brand_config import brand_from_profile, get_brand_config, normalize_brand
 from pathlib import Path
 from typing import Any, Dict, Optional, Set
 
@@ -16,6 +17,7 @@ from typing import Any, Dict, Optional, Set
 # Allowlist of environment variables that can be substituted
 ALLOWED_ENV_VARS: Set[str] = {
     'GG_GUIDES_DIR',
+    'ROADIE_GUIDES_DIR',
     'GG_BRAND_DIR',
     'GG_DELIVERY_DIR',
     'GG_DOWNLOADS_DIR',
@@ -26,6 +28,8 @@ ALLOWED_ENV_VARS: Set[str] = {
     'SMTP_PORT',
     'SMTP_USER',
     'SMTP_PASS',
+    'RESEND_FROM',
+    'RESEND_FROM_ROADIELABS',
 }
 
 
@@ -217,8 +221,39 @@ class Config:
         except ValueError:
             return False
 
-    def get_guides_dir(self) -> Path:
-        """Get the gravel-god-guides directory."""
+    def get_brand(self, brand: str = None) -> Dict:
+        """Return one brand's production configuration from brands.yaml."""
+        return get_brand_config(normalize_brand(brand))
+
+    def get_brand_for_profile(self, profile: dict = None) -> Dict:
+        return self.get_brand(brand_from_profile(profile or {}))
+
+    def get_brand_path(self, key: str, brand: str = None) -> Optional[Path]:
+        """Resolve a brand-owned path with the same boundary checks as paths.*."""
+        brand_paths = self.get_brand(brand).get('paths', {})
+        raw_path = brand_paths.get(key, '')
+        env_name = brand_paths.get(f'{key}_env', '')
+        if env_name in ALLOWED_ENV_VARS and os.environ.get(env_name):
+            raw_path = os.environ[env_name]
+        if not raw_path:
+            return None
+        expanded = os.path.expanduser(str(raw_path))
+        path = Path(expanded)
+        base = Path(__file__).parent.parent.parent
+        if not path.is_absolute():
+            path = base / path
+        resolved = path.resolve()
+        allowed_roots = [base.parent.resolve(), Path.home().resolve()]
+        if not any(self._is_path_under(resolved, root) for root in allowed_roots):
+            print(f"WARNING: Brand path for '{key}' is outside allowed directories",
+                  file=__import__('sys').stderr)
+            return None
+        return resolved
+
+    def get_guides_dir(self, brand: str = None) -> Path:
+        """Get the brand-specific guides repository directory."""
+        if brand:
+            return self.get_brand_path('guides_repo', brand)
         return self.get_path('guides_repo')
 
     def get_chrome_path(self) -> Optional[str]:

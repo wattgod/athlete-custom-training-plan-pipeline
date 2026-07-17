@@ -2257,7 +2257,8 @@ class TestDeliverableTrim:
 class TestBrandDisciplineHint:
     """A Roadie Labs order is a ROAD athlete — even when the race name is
     unknown (no slug, no road keyword), the brand discipline hint must keep it
-    off the gravel default. The race's own discipline (DB) still wins when known."""
+    off the gravel default. Brand authority forces a conflicting candidate to
+    the configured discipline while preserving the conflict for coach review."""
 
     def _disc(self, brand, race_name, slug=None):
         import intake_to_plan as itp
@@ -2272,6 +2273,7 @@ class TestBrandDisciplineHint:
 
 ## Goals
 - Primary Goal: specific_race
+- Brand: {brand}
 {slug_line}- Discipline: {hint}
 - Races:
   {race_name} (2026-11-01, 80 miles, priority A)
@@ -2279,15 +2281,20 @@ class TestBrandDisciplineHint:
 ## Schedule
 - Weekly Hours Available: 8
 """
-        return derive_discipline(itp.build_profile(itp.parse_intake_markdown(md)))
+        return itp.build_profile(itp.parse_intake_markdown(md))
 
     def test_roadielabs_unknown_race_is_road(self):
-        assert self._disc('roadielabs', 'My Local Sufferfest 80') == 'road'
+        profile = self._disc('roadielabs', 'My Local Sufferfest 80')
+        assert profile['brand'] == 'roadielabs'
+        assert profile['discipline'] == 'road'
 
     def test_gravelgod_unknown_race_stays_gravel(self):
-        assert self._disc('gravelgod', 'My Local Sufferfest 80') == 'gravel'
+        profile = self._disc('gravelgod', 'My Local Sufferfest 80')
+        assert profile['brand'] == 'gravelgod'
+        assert profile['discipline'] == 'gravel'
 
-    def test_known_race_discipline_wins_over_brand_hint(self):
-        # a roadielabs customer who picked a real GRAVEL race gets gravel (the
-        # race's own discipline is more specific than the brand hint)
-        assert self._disc('roadielabs', 'Unbound Gravel 200', slug='unbound_gravel_200') == 'gravel'
+    def test_known_conflicting_race_is_forced_and_flagged(self):
+        profile = self._disc(
+            'roadielabs', 'Unbound Gravel 200', slug='unbound_gravel_200')
+        assert profile['discipline'] == 'road'
+        assert profile['brand_discipline_conflict']['candidate_discipline'] == 'gravel'

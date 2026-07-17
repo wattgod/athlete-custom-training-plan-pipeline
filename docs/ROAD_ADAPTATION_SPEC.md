@@ -221,3 +221,38 @@ centralization + prose/duration de-gravelling**, not intake plumbing.
 - **XC Ski Labs** — NOT a config port; a near-new vertical (watts→pace/HR intensity model,
   classic-vs-skate technique split = two workout tracks, upper-body/double-poling, roller-ski/
   on-snow dual-season, non-power file format). Own finding-unknowns pass + own spec after road.
+
+---
+
+## Implementation record — 2026-07-16
+
+R1–R6 are implemented on `spec/road-adaptation` and ready for handoff:
+
+- `athletes/config/brands.yaml` is the production-copied source of truth for both brands.
+- Roadie brand authority, candidate-discipline conflict detection, `NEEDS_REVIEW.txt`, J1
+  blocker, and `GG_NEEDS_REVIEW=1` coach marker are wired end to end without hard-failing an
+  order; Gravel God MTB remains allowed.
+- Athlete-facing guide, ZWO author, personal email, confirmation, fallback confirmation,
+  follow-up, and legacy delivery-CLI surfaces resolve the order brand.
+- Guide and fueling use the shared discipline-aware race-duration estimate, and Roadie guides
+  render road equipment, tire, skills, and female-athlete copy.
+- Real Roadie fondo and hillclimb fixtures exercise the shared `webhook.app.run_pipeline`
+  path, package validation, branding/leak checks, compliance, quality, preview, and the
+  existing coach-review fulfillment contract.
+- The intentionally separate work is tracked in
+  `docs/followups/ROADIE_WORKER_RETIREMENT_TICKET.md` and
+  `docs/followups/AUTOMATED_TRAININGPEAKS_FULFILLMENT_TICKET.md`; neither was built here.
+
+Verification at handoff:
+
+- `pytest athletes/scripts/ -q` — 1180 passed, 77 skipped.
+- `GG_RUN_ACCEPTANCE=1 pytest -q athletes/scripts/test_order_acceptance.py -k roadie` —
+  20 passed, 4 skipped (PDF checks skip when the sandbox cannot launch Chrome; HTML remains
+  required and package validation passes).
+- Focused brand/road/email regression set — 25 passed, including every road-reachable
+  workout rotation at every progression level.
+- Two GPT-5.6-sol adversarial review passes found and closed the legacy delivery-CLI brand
+  propagation gap plus five broader edges: MTB tagline preservation, rotated ZWO narrative,
+  customer preview branding, profile-elevation duration parity, and brand-repository guide
+  staging. Each is covered by focused or Roadie E2E regression checks.
+- The pre-existing unrelated webhook failures remain outside this spec, as directed above.
