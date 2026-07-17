@@ -162,6 +162,7 @@ def build_calendar_week(
     category_weights: Dict[str, float] = None,
     avoid_series: set = None,
     methodology_profile: Dict[str, Any] = None,
+    event_format: str = None,
 ) -> Dict[str, Any]:
     """Build one week whose type and phase come from the calendar (plan_dates).
 
@@ -200,6 +201,7 @@ def build_calendar_week(
         category_weights=category_weights,
         avoid_series=avoid_series,
         methodology_profile=methodology_profile,
+        event_format=event_format,
     )
     week['block_number'] = block_number
     return week
@@ -301,6 +303,7 @@ def _build_week(
     category_weights: Dict[str, float] = None,
     avoid_series: set = None,
     methodology_profile: Dict[str, Any] = None,
+    event_format: str = None,
 ) -> Dict[str, Any]:
     """Build a single week with day-by-day workout assignments."""
 
@@ -320,6 +323,7 @@ def _build_week(
         category_weights=category_weights,
         avoid_series=avoid_series,
         methodology_profile=methodology_profile,
+        event_format=event_format,
     )
 
     # Organize menu by role

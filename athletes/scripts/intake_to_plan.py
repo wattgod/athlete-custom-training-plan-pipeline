@@ -1246,6 +1246,10 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     years_structured = parse_years(fitness.get('years_structured', '0'))
     longest_recent = fitness.get('longest_recent_ride', '')
     estimated_cat = fitness.get('estimated_category', '')
+    from road_racing import normalize_road_category
+    road_category = normalize_road_category(
+        goals.get('road_category') or fitness.get('road_category')
+    )
 
     # -- Training history summary --
     strengths = fitness.get('strengths', '')
@@ -1313,6 +1317,9 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         'primary_goal': primary_goal.replace(' ', '_'),
         'target_race': target_race_info,
         'brand': _brand_key,
+        # USA Cycling license category is distinct from the W/kg estimate.
+        # It is optional coaching context, never a zone or order gate.
+        'road_category': road_category,
         # lowest-priority discipline fallback (brand hint); see derive_discipline
         'discipline_default': _disc_hint,
         # (generic_demands for an unmatched race are refined with the derived
@@ -1565,6 +1572,21 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 target_race_info.get('distance_miles', 0), disc)
         except ImportError:
             pass  # keep the discipline-neutral demands already set
+
+    # Road format is also optional. Explicit intake wins; otherwise a narrow
+    # race-name matcher resolves known formats and leaves everything else as
+    # generic_road with a coach-visible review marker.
+    if profile.get('discipline') == 'road':
+        from road_racing import resolve_event_format
+        explicit_format = goals.get('race_format') or goals.get('event_format')
+        if explicit_format:
+            profile['event_format'] = explicit_format
+        resolution = resolve_event_format(profile)
+        profile['event_format'] = resolution['event_format']
+        target_race_info['event_format'] = resolution['event_format']
+        target_race_info['event_format_source'] = resolution['source']
+        if resolution['needs_review']:
+            target_race_info['event_format_needs_review'] = True
 
     return profile
 

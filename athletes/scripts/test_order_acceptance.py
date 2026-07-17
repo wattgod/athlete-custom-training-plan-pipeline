@@ -156,6 +156,7 @@ GOLDEN_ORDERS = [
         "intake": {
             "name": "Acc Test Roadiefondo", "email": "acc-road@test.local",
             "brand": "roadielabs", "race_slug": _ROAD_FONDO.get("slug", ""),
+            "road_category": "cat_5",
             "sex": "Male", "age": 38, "weight": 160,
             "height_ft": 5, "height_in": 10, "ftp": 255,
             "years_cycling": "6", "prior_plan_experience": "3",
@@ -169,12 +170,14 @@ GOLDEN_ORDERS = [
                        "date": _ROAD_FONDO["date"],
                        "distance": f"{int(round(float(_ROAD_FONDO['distance_mi'])))} miles",
                        "priority": "A", "goal": "Finish Strong",
+                       "race_format": "fondo",
                        "slug": _ROAD_FONDO.get("slug", "")}],
         },
         "expect": {
             "ftp": "255", "race": _ROAD_FONDO["name"],
             "race_date": _ROAD_FONDO["date"], "strength_equipment": None,
             "target_hours": 9.0, "brand": "roadielabs", "discipline": "road",
+            "event_format": "fondo", "road_category": "cat_5",
             "pdf_optional": True,
         },
     },
@@ -185,6 +188,7 @@ GOLDEN_ORDERS = [
         "intake": {
             "name": "Acc Test Roadieclimber", "email": "acc-climb@test.local",
             "brand": "roadielabs", "race_slug": _ROAD_HILL.get("slug", ""),
+            "road_category": "cat_4",
             "sex": "Male", "age": 44, "weight": 150,
             "height_ft": 5, "height_in": 9, "ftp": 270,
             "years_cycling": "9", "prior_plan_experience": "4",
@@ -197,12 +201,14 @@ GOLDEN_ORDERS = [
             "races": [{"name": _ROAD_HILL["name"], "date": _ROAD_HILL["date"],
                        "distance": f"{int(round(float(_ROAD_HILL['distance_mi'])))} miles",
                        "priority": "A", "goal": "Compete",
+                       "race_format": "hill_climb",
                        "slug": _ROAD_HILL.get("slug", "")}],
         },
         "expect": {
             "ftp": "270", "race": _ROAD_HILL["name"],
             "race_date": _ROAD_HILL["date"], "strength_equipment": None,
             "target_hours": 8.0, "brand": "roadielabs", "discipline": "road",
+            "event_format": "hill_climb", "road_category": "cat_4",
             "pdf_optional": True,
         },
     },
@@ -414,6 +420,8 @@ def test_roadie_package_is_brand_clean_and_semantically_valid(built_order):
     profile = yaml.safe_load((athlete_dir / "profile.yaml").read_text())
     assert profile["brand"] == "roadielabs"
     assert profile["discipline"] == "road"
+    assert profile["event_format"] == exp["event_format"]
+    assert profile["road_category"] == exp["road_category"]
 
     visible = [athlete_dir / "training_guide.html",
                athlete_dir / "personal_email.md",
@@ -424,7 +432,15 @@ def test_roadie_package_is_brand_clean_and_semantically_valid(built_order):
         assert "gravel" not in text.lower(), f"road brand leak in {path.name}"
         assert "Gravel God" not in text, f"Gravel God leak in {path.name}"
     assert "ROADIE LABS" in (athlete_dir / "training_guide.html").read_text()
-    assert "Road Skills" in (athlete_dir / "training_guide.html").read_text()
+    guide = (athlete_dir / "training_guide.html").read_text()
+    assert "Road Skills" in guide
+    assert "Category 5 to Category 1 Pathway" in guide
+    assert "USA Cycling Policy VIII" in guide
+    expected_strategy = {
+        "fondo": "Gran fondo / sportive Strategy",
+        "hill_climb": "Hill climb Strategy",
+    }[exp["event_format"]]
+    assert expected_strategy in guide
 
     staged_guide = (built_order["delivery_dir"].parent /
                     "roadie-labs-guides" / "athletes" /

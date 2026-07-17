@@ -252,8 +252,10 @@ def _build_section_titles(profile: Dict, race_data: Dict):
     """Build section titles with sequential numbering (no ID gaps)."""
     try:
         from archetype import derive_discipline
-        skills_title = _brand(derive_discipline(profile or {}))["skills_title"]
+        discipline = derive_discipline(profile or {})
+        skills_title = _brand(discipline)["skills_title"]
     except Exception:
+        discipline = "gravel"
         skills_title = "Gravel Skills"
     titles = [
         "Training Plan Brief",
@@ -270,6 +272,8 @@ def _build_section_titles(profile: Dict, race_data: Dict):
         "Race Day",
         skills_title,
     ]
+    if discipline == "road":
+        titles.extend(["Road Race Strategy", "Category 5 to Category 1 Pathway"])
 
     triggers = _conditional_triggers(profile, race_data)
     if triggers["altitude"]:
@@ -440,10 +444,13 @@ def _build_full_guide(
     sections.append(_section_race_week(race_data, tier, race_name, derived, _discipline))
     sections.append(_section_race_day(race_data, tier, race_distance, race_name, weekly_hours))
     sections.append(_section_skills(race_data, _discipline))
+    if _discipline == "road":
+        sections.append(_section_road_format_strategy(profile, section_num=14))
+        sections.append(_section_road_category_progression(profile, section_num=15))
 
     # Conditional sections — uses shared trigger logic (no duplication)
     triggers = _conditional_triggers(profile, race_data)
-    next_section = 14  # first conditional is always after section 13
+    next_section = 16 if _discipline == "road" else 14
     if triggers["altitude"]:
         sections.append(_section_altitude_training(race_data, race_name, elevation, section_num=next_section))
         next_section += 1
@@ -2185,6 +2192,143 @@ def _section_road_skills(race_data: Dict) -> str:
     <li><strong>Cornering laps:</strong> a quiet bend, increasing entry speed each lap until you find the limit. No traffic, no heroics.</li>
     <li><strong>Paceline rotation:</strong> with a small group, practise smooth through-and-off so pulls are even and seamless.</li>
   </ul>
+</section>"""
+
+
+def _section_road_format_strategy(profile: Dict, section_num: int = 14) -> str:
+    """Road-format race strategy sourced from the dated road-racing config."""
+    from road_racing import event_format_profile, resolve_event_format
+
+    resolution = resolve_event_format(profile or {})
+    fmt = event_format_profile(resolution["event_format"])
+    label = fmt.get("label", "Road race")
+    demands = "".join(f"<li>{item}</li>" for item in fmt.get("demands", []))
+    execution = "".join(f"<li>{item}</li>" for item in fmt.get("execution", []))
+    rehearsals = "".join(f"<li>{item}</li>" for item in fmt.get("rehearsals", []))
+    review = ""
+    if resolution.get("needs_review"):
+        review = (
+            '<div class="gg-module gg-info"><div class="gg-label">FORMAT CHECK</div>'
+            '<p>This intake did not identify a specific road format, so the plan uses '
+            'the all-purpose road-race model. Confirm the format with your coach before '
+            'the race-specific block.</p></div>'
+        )
+    evidence = ""
+    if resolution["event_format"] == "criterium":
+        evidence = """<div class="gg-module gg-tactical">
+  <div class="gg-label">WHY THE PLAN REPEATS SHORT SURGES</div>
+  <p>Measured criteriums produced the highest mean and most variable power of the
+  road formats studied, with roughly 70 efforts above maximal aerobic power and
+  most lasting 6&ndash;10 seconds. Separate laboratory work shows that stochastic
+  riding reduces the finishing sprint. That is why your plan pairs aerobic and
+  VO2 development with corner-exit repeats and sprinting under fatigue.</p>
+  <p><a href="https://pubmed.ncbi.nlm.nih.gov/19124890/">Race-demand study</a>
+  &middot; <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC6383108/">Sprint-under-fatigue study</a></p>
+</div>"""
+
+    return f"""<section id="section-{section_num}" class="gg-section">
+  <h2>{section_num} &middot; {label} Strategy</h2>
+  <p><strong>Your governing idea:</strong> {fmt.get("strategy", "")}</p>
+  {review}
+  <h3>What Decides This Format</h3>
+  <ul>{demands}</ul>
+  <h3>Race Execution</h3>
+  <ol>{execution}</ol>
+  <h3>Practice Before Race Week</h3>
+  <ul>{rehearsals}</ul>
+  {evidence}
+  <div class="gg-module gg-info"><div class="gg-label">DECISION REVIEW</div>
+    <p>After every race, record where you lost position, which efforts were
+    unavoidable, which efforts were optional, whether fueling stayed on plan,
+    and what you would do one lap or one kilometer earlier next time.</p>
+  </div>
+</section>"""
+
+
+def _section_road_category_progression(profile: Dict, section_num: int = 15) -> str:
+    """Dated USA Cycling category pathway plus a personalized next step."""
+    from road_racing import load_road_racing_config, road_category_profile
+
+    cfg = load_road_racing_config()
+    progression = cfg.get("category_progression", {})
+    current = road_category_profile((profile or {}).get("road_category"))
+    personalized = ""
+    if current:
+        priorities = "".join(
+            f"<li>{item}</li>" for item in current.get("development_priorities", []))
+        series = " &rarr; ".join(current.get("plan_series", []))
+        personalized = f"""<div class="data-card">
+  <div class="data-card__header">YOUR CURRENT PATH: {current["label"]} &rarr; {current["next"]}</div>
+  <div class="data-card__content">
+    <p><strong>Planning horizon:</strong> approximately {current["planning_horizon_weeks"]} weeks before reassessment.</p>
+    <p><strong>Current rule summary:</strong> {current["current_rule_summary"]}</p>
+    <h4>Development priorities</h4><ul>{priorities}</ul>
+    <p><strong>Plan series:</strong> {series}</p>
+  </div>
+</div>"""
+    else:
+        personalized = """<div class="gg-module gg-info">
+  <div class="gg-label">ADD YOUR LICENSE CATEGORY</div>
+  <p>No current road category was supplied. The training plan still builds,
+  but category-specific race-calendar guidance should be confirmed with your coach.</p>
+</div>"""
+
+    rows = []
+    for data in progression.get("categories", {}).values():
+        rows.append(
+            f"<tr><td><strong>{data['label']}</strong></td>"
+            f"<td>{data['next']}</td><td>{data['current_rule_summary']}</td>"
+            f"<td>{', '.join(data['development_priorities'][:3])}</td></tr>")
+    points = progression.get("mass_start_points", {})
+    bands = points.get("starter_bands", [])
+    point_header = "".join(f"<th>{band}</th>" for band in bands)
+    point_rows = []
+    for place, values in points.get("places", {}).items():
+        cells = "".join(
+            f"<td>{value if value is not None else '&mdash;'}</td>"
+            for value in values)
+        point_rows.append(f"<tr><td><strong>{place}</strong></td>{cells}</tr>")
+
+    return f"""<section id="section-{section_num}" class="gg-section">
+  <h2>{section_num} &middot; Category 5 to Category 1 Pathway</h2>
+  <p>License category is a record of eligible racing experience and results,
+  not a W/kg label. Power matters, but upgrades also demand pack safety,
+  positioning, tactical judgment, consistency, and the right race calendar.</p>
+  {personalized}
+  <h3>How to Run an Upgrade Campaign</h3>
+  <ol>
+    <li><strong>Verify the rules.</strong> Confirm eligible events, field-size
+    requirements, points, finishes, and the rolling time window.</li>
+    <li><strong>Choose races that match the rider.</strong> Use a balanced
+    calendar: skill-building races, realistic result opportunities, and a few
+    stretch events. More starts are not automatically better.</li>
+    <li><strong>Train the limiter and preserve the strength.</strong> Reassess
+    aerobic power, threshold, repeatability, sprint-under-fatigue, durability,
+    handling, and tactical execution after each block.</li>
+    <li><strong>Review the race, not only the result.</strong> Track position
+    at decisive moments, matches spent, role execution, fueling, and the first
+    decision that changed the outcome.</li>
+    <li><strong>Recover enough to improve.</strong> An upgrade chase fails when
+    travel and frequent racing replace the training and recovery that produced
+    the results.</li>
+  </ol>
+  <h3>The Full Development Ladder</h3>
+  <div style="overflow-x:auto;"><table>
+    <thead><tr><th>Current</th><th>Next</th><th>Rule snapshot</th><th>Training focus</th></tr></thead>
+    <tbody>{''.join(rows)}</tbody>
+  </table></div>
+  <h3>Mass-Start Upgrade Points Snapshot</h3>
+  <p>{progression.get("points_note", "")}</p>
+  <div style="overflow-x:auto;"><table>
+    <thead><tr><th>Place</th>{point_header}</tr></thead>
+    <tbody>{''.join(point_rows)}</tbody>
+  </table></div>
+  <div class="gg-module gg-tactical"><div class="gg-label">RULES ARE DATED</div>
+    <p>{progression.get("disclaimer", "")}</p>
+    <p>Checked {cfg.get("rules_checked_at", "")}:
+    <a href="{progression.get("policy_url", "")}">USA Cycling Policy VIII</a>
+    &middot; <a href="{progression.get("chart_url", "")}">road upgrade chart</a>.</p>
+  </div>
 </section>"""
 
 

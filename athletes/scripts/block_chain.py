@@ -77,6 +77,7 @@ def build_plan_from_calendar(
     avoid_series: set = None,
     methodology_profile: Dict[str, Any] = None,
     fixed_minutes: int = 0,
+    event_format: str = None,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -188,6 +189,7 @@ def build_plan_from_calendar(
             category_weights=category_weights,
             avoid_series=avoid_series,
             methodology_profile=methodology_profile,
+            event_format=event_format,
         )
         week['plan_week'] = plan_week
         week['block_number'] = block_number

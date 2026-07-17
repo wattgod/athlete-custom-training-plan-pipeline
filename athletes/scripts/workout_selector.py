@@ -225,6 +225,7 @@ def select_workouts_for_week(
     category_weights: Optional[Dict[str, float]] = None,
     avoid_series: Optional[set] = None,
     methodology_profile: Optional[Dict[str, Any]] = None,
+    event_format: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Select workouts for a single week.
 
@@ -256,6 +257,9 @@ def select_workouts_for_week(
             the race demands bias the same _pick_option seam; the duration
             cap filters intensity pools only. None (the default, and the
             legacy full-season path) → selection unchanged.
+        event_format: Optional normalized road format. When supplied for a road
+            plan, the secondary intensity and long-ride signatures come from
+            road_racing.yaml. The protected VO2 anchor is never replaced.
 
     Returns:
         List of workout dicts: [{'slot': str, 'name': str, 'level': int, 'role': str}]
@@ -426,6 +430,27 @@ def select_workouts_for_week(
                     w['name'] = pick
                     break
 
+    # Road-format signature lands AFTER methodology steering so a criterium,
+    # hill climb, TT, stage race or fondo genuinely changes the prescribed
+    # work. It may replace only a secondary intensity session; the anchor VO2
+    # slot remains protected, and a one-intensity-day athlete keeps that anchor.
+    format_workouts = {}
+    if discipline == 'road' and event_format:
+        try:
+            from road_racing import event_format_profile
+            format_workouts = (event_format_profile(event_format)
+                               .get('format_workouts', {}).get(phase, {}))
+        except (ImportError, KeyError, TypeError):
+            format_workouts = {}
+    format_secondary = format_workouts.get('secondary')
+    if format_secondary:
+        for w in workouts:
+            if (w['role'] == 'intensity'
+                    and w['slot'] != anchor_slot
+                    and w['name'] != 'Openers'):
+                w['name'] = format_secondary
+                break
+
     # Long ride — level must fit within weekly hour budget
     long_slot = slots.get('long_ride', {})
     long_name = _get_slot_workout(long_slot, archetype)
@@ -436,6 +461,10 @@ def select_workouts_for_week(
         long_options = [long_name] + long_alternatives
         long_name = _pick_option(long_options, block_number,
                                  category_weights, avoid_series)
+    # Format authority lands after the generic long-ride rotation, for the
+    # same reason secondary intensity lands after methodology steering.
+    if long_name and format_workouts.get('long_ride'):
+        long_name = format_workouts['long_ride']
     if long_name:
         long_level_range = _get_level_range(long_slot, archetype)
         long_level = min(max(level, long_level_range[0]), long_level_range[1])

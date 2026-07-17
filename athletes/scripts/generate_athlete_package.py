@@ -536,6 +536,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
         _bb_archetype = determine_archetype(cycling_hours_target)
         _bb_discipline = derive_discipline(profile or {})
+        _bb_event_format = (profile or {}).get('event_format') or (
+            (profile or {}).get('target_race', {}) or {}).get('event_format')
         # Empty off-days list must still yield a rest day — nobody trains
         # 7 days/week. (An empty list bypasses dict.get's default.)
         _bb_off_days = [DAY_FULL_TO_ABBREV.get(d.lower(), d)
@@ -599,6 +601,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             day_caps=_bb_day_caps or None,
             methodology=methodology_id,
             fixed_minutes=_fixed_minutes if '_fixed_minutes' in locals() else 0,
+            event_format=_bb_event_format,
         )
         if '_ledger' in locals():
             materialize_fixed_sessions(_bb_plan, _ledger)
@@ -620,6 +623,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         _use_block_builder = True
         log.info(f"Block-builder plan (calendar-driven): {_bb_archetype}, "
                  f"discipline={_bb_discipline}, "
+                 f"event_format={_bb_event_format or 'unspecified'}, "
                  f"{len(_bb_plan.get('weeks',[]))} weeks, "
                  f"{_bb_plan.get('num_blocks',0)} blocks")
     except Exception as e:
@@ -1974,6 +1978,7 @@ TIPS:
                     display_name = resolve_display_name(
                         bb_name, methodology=nate_methodology,
                         variation_offset=var_offset,
+                        discipline=_bb_discipline,
                     )
                     series_no = bb_day.get('_week_in_block', 0)
                     if series_no and series_no > 0:
