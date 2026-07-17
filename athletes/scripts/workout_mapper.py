@@ -159,6 +159,20 @@ def resolve_workout(name: str) -> Optional[Tuple[str, int]]:
     return None
 
 
+def _resolve_for_discipline(name: str, discipline: str) -> Optional[Tuple[str, int]]:
+    """Discipline-safe renderer mapping.
+
+    The canonical Microbursts selector historically points at the
+    Gravel_Specific archetype family. That is correct for Gravel God, but a
+    Roadie criterium plan then rotates into athlete-visible names such as
+    "Gravel Race Simulation." Road plans use the equivalent Burst Intervals
+    family instead.
+    """
+    if (discipline or "").lower() == "road" and name == "Microbursts":
+        return ("sprint", 5)  # Burst Intervals
+    return resolve_workout(name)
+
+
 def render_workout(
     name: str,
     level: int = 3,
@@ -181,7 +195,7 @@ def render_workout(
     Returns:
         ZWO XML string, or None if the workout can't be rendered.
     """
-    mapping = resolve_workout(name)
+    mapping = _resolve_for_discipline(name, discipline)
     if mapping is None:
         return None
 
@@ -296,6 +310,7 @@ def resolve_display_name(
     name: str,
     methodology: str = 'POLARIZED',
     variation_offset: int = 0,
+    discipline: str = 'gravel',
 ) -> str:
     """Resolve the personality name of the archetype a workout renders as.
 
@@ -307,7 +322,7 @@ def resolve_display_name(
     if name == 'Endurance':
         return 'Endurance'
 
-    mapping = resolve_workout(name)
+    mapping = _resolve_for_discipline(name, discipline)
     if mapping is None:
         return name
 

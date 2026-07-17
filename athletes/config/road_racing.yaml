@@ -1,0 +1,168 @@
+version: 1
+rules_checked_at: "2026-07-16"
+
+event_formats:
+  generic_road:
+    label: Road race
+    aliases: [road, road_race, mass_start, circuit_race]
+    keywords: [road race, circuit race]
+    demands: [aerobic durability, repeated attacks, positioning, sprinting under fatigue]
+    strategy: Build position before decisive terrain, spend energy only when the race can split, and preserve a finishing option.
+    execution:
+      - Move into the front third before climbs, crosswinds, narrow roads, and the final five kilometers.
+      - Follow moves that contain the strongest teams or fit your role; do not tow the field across every gap.
+      - Fuel while the race is calm and finish each technical section already positioned for the next acceleration.
+    rehearsals: [position before effort, attack-cover-counter sequences, sprint after race simulation]
+    format_workouts:
+      base: {secondary: Tempo with Accelerations, long_ride: Endurance with Surges}
+      build: {secondary: Race Simulation, long_ride: Endurance with Surges}
+      race_prep: {secondary: "Blended Endurance, Threshold, and Sprints", long_ride: NP/IF Target}
+
+  criterium:
+    label: Criterium
+    aliases: [criterium, crit]
+    keywords: [criterium, crit]
+    demands: [frequent 6-10 second surges, corner exits, repeated sprint ability, final sprint under fatigue]
+    strategy: Protect position before corners, accelerate smoothly out of them, avoid closing avoidable gaps, and rehearse the final two laps.
+    execution:
+      - Recon corner radius, surface, wind direction, lap count, pit location, and the final 500 meters before warming up.
+      - Enter corners near the front, brake before turn-in, hold a predictable line, and accelerate with the group instead of from a gap.
+      - With five laps remaining, stop drifting back; with two to go, know the wheel and lane you want for the final corner.
+      - A break must earn separation quickly and contain enough horsepower; otherwise preserve matches for positioning and the finish.
+    rehearsals: [corner-exit microbursts, repeated 6-10 second sprints, one-hour variable ride plus final sprint, final-two-lap simulation]
+    format_workouts:
+      base: {secondary: Tempo with Sprints, long_ride: Endurance with Surges}
+      build: {secondary: Microbursts, long_ride: Endurance with Surges}
+      race_prep: {secondary: Race Simulation, long_ride: NP/IF Target}
+
+  hill_climb:
+    label: Hill climb
+    aliases: [hill_climb, hillclimb, uphill_tt, uphill_time_trial]
+    keywords: [hill climb, hillclimb, uphill time trial, uphill tt]
+    demands: [power to weight, sustained threshold, VO2 power, pacing on changing gradient]
+    strategy: Start below the power that feels free, settle at a sustainable ceiling, and reserve the final rise in effort for the closing segment.
+    execution:
+      - Warm up progressively and finish the final opener early enough to start calm rather than breathless.
+      - Pace by sustainable power and perceived exertion, not the speed changes caused by gradient or wind.
+      - Stay seated for economy where practical, stand deliberately to change muscle recruitment, and avoid early spikes above target.
+    rehearsals: [sustained climbing threshold, gradient-change over-unders, course-duration uphill effort]
+    format_workouts:
+      base: {secondary: SFR, long_ride: Endurance Blocks}
+      build: {secondary: Mixed Climbing Variations, long_ride: Endurance Blocks}
+      race_prep: {secondary: Threshold Steady, long_ride: NP/IF Target}
+
+  time_trial:
+    label: Time trial
+    aliases: [time_trial, tt, individual_time_trial, itt]
+    keywords: [time trial, individual tt, itt]
+    demands: [sustained threshold power, aerodynamic position durability, even pacing, controlled warmup]
+    strategy: Pace the opening minutes conservatively, hold the fastest repeatable aerodynamic position, and lift effort only after halfway.
+    execution:
+      - Validate the position in training; the lowest position is not fastest if it costs sustainable power or forces repeated sitting up.
+      - Use a controlled opening, settle onto target, and adjust for wind and gradient without chasing instantaneous speed.
+      - Rehearse the exact warmup, start procedure, turnarounds, equipment, and pacing display.
+    rehearsals: [aero-position tempo, sustained threshold, negative-split time trial, start and turnaround practice]
+    format_workouts:
+      base: {secondary: Tempo, long_ride: NP/IF Target}
+      build: {secondary: Threshold Steady, long_ride: NP/IF Target}
+      race_prep: {secondary: Threshold Accumulation, long_ride: NP/IF Target}
+
+  stage_race:
+    label: Stage race
+    aliases: [stage_race, multi_stage, multistage]
+    keywords: [stage race, stage-race, multi-stage, multistage]
+    demands: [durability across consecutive days, repeated high intensity, fueling, rapid recovery]
+    strategy: Race the general classification selectively, fuel before deficits appear, and begin recovery immediately after every stage.
+    execution:
+      - Define the objective for each stage before the start; not every stage deserves the same risk or energy expenditure.
+      - Protect position at decisive moments while minimizing unnecessary pulls, attacks, and time in the wind.
+      - Begin carbohydrate, fluid, cooling, and recovery immediately after finishing, then prepare equipment and sleep for the next stage.
+    rehearsals: [back-to-back quality days, long ride followed by stage simulation, post-stage recovery routine]
+    format_workouts:
+      base: {secondary: Tempo with Accelerations, long_ride: Endurance Blocks}
+      build: {secondary: "Blended Endurance, Threshold, and Sprints", long_ride: Endurance with Surges}
+      race_prep: {secondary: Race Simulation, long_ride: Endurance Blocks}
+
+  fondo:
+    label: Gran fondo / sportive
+    aliases: [fondo, gran_fondo, sportive, century]
+    keywords: [gran fondo, fondo, sportive, century]
+    demands: [long-duration aerobic durability, climbing economy, pacing, fueling and hydration]
+    strategy: Cap early effort, ride climbs below the level that compromises fueling, use groups efficiently, and eat from the first hour.
+    execution:
+      - Start feeding early, use a practiced hourly carbohydrate and fluid target, and separate fueling from the feeling of hunger.
+      - Ride the first major climb below the effort you could produce fresh; the goal is to preserve power and digestion late.
+      - Use compatible groups, contribute measured pulls, and avoid repeated surges that buy no meaningful time.
+    rehearsals: [long ride fueling, sustained tempo climbing, late-ride pace lift, equipment and aid-station routine]
+    format_workouts:
+      base: {secondary: Tempo, long_ride: Endurance Blocks}
+      build: {secondary: Tempo with Accelerations, long_ride: Endurance with Surges}
+      race_prep: {secondary: NP/IF Target, long_ride: Endurance Blocks}
+
+category_progression:
+  disclaimer: License upgrades are earned through eligible finishes, results, points, and governing-body approval. Training supports performance but does not guarantee an upgrade. Verify the current policy before planning a race calendar.
+  policy_url: https://usacycling.org/about-us/governance/policy-viii
+  chart_url: https://assets.usacycling.org/prod/documents/050726_Road.png
+  points_note: Mass-start points depend on placing and starter count. Stage-race general-classification points apply only to Cat 3 to Cat 2 and Cat 2 to Cat 1 upgrades under the checked chart.
+  mass_start_points:
+    starter_bands: ["5-10", "11-20", "21-49", "50-69", "70+"]
+    places:
+      1:  [3, 7, 8, 10, 11]
+      2:  [2, 5, 6, 8, 10]
+      3:  [1, 4, 5, 7, 9]
+      4:  [null, 3, 4, 6, 8]
+      5:  [null, 2, 3, 5, 7]
+      6:  [null, 1, 2, 4, 6]
+      7:  [null, null, 1, 3, 5]
+      8:  [null, null, null, 2, 4]
+      9:  [null, null, null, 1, 3]
+      10: [null, null, null, null, 2]
+      11: [null, null, null, null, 1]
+  categories:
+    cat_5:
+      label: Novice / Cat 5
+      next: Cat 4
+      planning_horizon_weeks: 8
+      current_rule_summary: Eligible after 5 finishes in road races, criteriums, or clinics; mandatory at 10 points in 12 months.
+      development_priorities: [pack safety, predictable lines, cornering, starts and clipping in, aerobic consistency, finishing races]
+      plan_series: [Group Skills Foundation, Corner-and-Accelerate, First Five Finishes, Race Review Loop]
+    cat_4:
+      label: Cat 4
+      next: Cat 3
+      planning_horizon_weeks: 12
+      current_rule_summary: Eligible at 20 points in 36 months or 20 pack finishes (up to 3 may be eligible gran fondos or qualifying off-road events; verify the current policy); mandatory at 30 points in 12 months or 3 qualifying wins.
+      development_priorities: [repeatability, threshold and VO2 development, positioning, selective race calendar, sprint under fatigue]
+      plan_series: [Repeatability Build, Position Before Power, Finish Conversion, Race Review Loop]
+    cat_3:
+      label: Cat 3
+      next: Cat 2
+      planning_horizon_weeks: 16
+      current_rule_summary: Eligible at 30 points in 36 months; mandatory at 40 points in 12 months or 3 qualifying wins.
+      development_priorities: [durability, high-intensity repeatability, tactical role clarity, points-race selection, recovery]
+      plan_series: [Durability Under Fire, Team Role Execution, Selective Peak, Race Review Loop]
+    cat_2:
+      label: Cat 2
+      next: Cat 1
+      planning_horizon_weeks: 20
+      current_rule_summary: Eligible at 35 points in 36 months; mandatory at 50 points in 12 months or 3 qualifying wins.
+      development_priorities: [specialization, elite durability, race-winning repeatability, travel and recovery, selective peak execution]
+      plan_series: [Specialist Build, Elite Durability, Points Campaign, Peak and Recover]
+    cat_1:
+      label: Cat 1
+      next: Maintain / elite pathway
+      planning_horizon_weeks: 20
+      current_rule_summary: Category 1 is the top USA Cycling amateur road category; team and UCI eligibility depends on current rules and team status.
+      development_priorities: [event specialization, team contribution, selective racing, sustainable health and recovery]
+      plan_series: [Specialist Maintenance, Team Campaign, Championship Peak]
+
+evidence:
+  - {title: "Power output during a professional men's road-cycling tour", url: "https://pubmed.ncbi.nlm.nih.gov/19124890/"}
+  - {title: "Sprinting After Having Sprinted", url: "https://pmc.ncbi.nlm.nih.gov/articles/PMC6383108/"}
+  - {title: "Repeated 30-s sprints in elite cyclists", url: "https://pubmed.ncbi.nlm.nih.gov/34122152/"}
+  - {title: "Block periodization in trained cyclists", url: "https://pubmed.ncbi.nlm.nih.gov/22646668/"}
+  - {title: "Aerobic interval format comparison", url: "https://pubmed.ncbi.nlm.nih.gov/21812820/"}
+  - {title: "Physiological profile of an uphill time trial", url: "https://pubmed.ncbi.nlm.nih.gov/28657804/"}
+  - {title: "Flat and uphill performance correlates", url: "https://pubmed.ncbi.nlm.nih.gov/24453532/"}
+  - {title: "Professional road-cyclist characteristics", url: "https://pubmed.ncbi.nlm.nih.gov/11428685/"}
+  - {title: "Off- and on-bike resistance training", url: "https://pubmed.ncbi.nlm.nih.gov/39231694/"}
+  - {title: "Short-sprint versus heavy strength training", url: "https://pubmed.ncbi.nlm.nih.gov/31555153/"}
