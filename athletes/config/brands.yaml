@@ -1,0 +1,80 @@
+# Shared brand registry for the production plan pipeline.
+#
+# This file is copied into the Railway image with athletes/, so webhook and
+# generator consumers resolve the same values in production and in the repo.
+default_brand: gravelgod
+
+brands:
+  gravelgod:
+    discipline: gravel
+    allowed_disciplines: [gravel, mtb]
+    name: Gravel God Cycling
+    coaching_name: Gravel God Coaching
+    site: https://gravelgodcycling.com
+    questionnaire_path: /training-plans/questionnaire/
+    subject_prefix: "[GG]"
+    workout_author: Gravel God Training
+    system_name: Gravel God Training System
+    guide:
+      logo: GRAVEL GOD
+      tagline: Custom training plans for gravel racing
+      taglines:
+        gravel: Custom training plans for gravel racing
+        mtb: Custom training plans for off-road racing
+      skills_titles:
+        gravel: Gravel Skills
+        mtb: Mountain Bike Skills
+    paths:
+      guides_repo: ../guides/gravel-god-guides
+      guides_repo_env: GG_GUIDES_DIR
+      brand_repo: ../gravel-god-brand
+      guides_repo_name: gravel-god-guides
+      github_pages_base: https://wattgod.github.io
+    email:
+      from_email: coach@gravelgod.com
+      from_name: Gravel God Coaching
+      resend_from: Gravel God <noreply@gravelgodcycling.com>
+      resend_from_env: RESEND_FROM
+      signature_name: Matti
+      signature_organization: Gravel God Coaching
+      signature_site: gravelgodcycling.com
+    analytics:
+      measurement_id: G-EJJZ9T6M52
+      measurement_id_env: GA4_MEASUREMENT_ID
+      api_secret_env: GA4_MP_API_SECRET
+
+  roadielabs:
+    discipline: road
+    allowed_disciplines: [road]
+    name: Roadie Labs
+    coaching_name: Roadie Labs
+    site: https://roadielabs.com
+    questionnaire_path: /questionnaire/
+    subject_prefix: "[RL]"
+    workout_author: Roadie Labs Training
+    system_name: Roadie Labs Training System
+    guide:
+      logo: ROADIE LABS
+      tagline: Custom training plans for road racing
+      taglines:
+        road: Custom training plans for road racing
+      skills_titles:
+        road: Road Skills
+    paths:
+      guides_repo: ../guides/roadie-labs-guides
+      guides_repo_env: ROADIE_GUIDES_DIR
+      brand_repo: ../roadie-labs-brand
+      guides_repo_name: roadie-labs-guides
+      github_pages_base: https://wattgod.github.io
+    email:
+      from_email: coach@roadielabs.com
+      from_name: Roadie Labs
+      resend_from: Roadie Labs <noreply@roadielabs.com>
+      resend_from_env: RESEND_FROM_ROADIELABS
+      signature_name: Matti
+      signature_organization: Roadie Labs
+      signature_site: roadielabs.com
+    analytics:
+      measurement_id: ""
+      measurement_id_env: GA4_MEASUREMENT_ID_RL
+      api_secret_env: GA4_MP_API_SECRET_RL

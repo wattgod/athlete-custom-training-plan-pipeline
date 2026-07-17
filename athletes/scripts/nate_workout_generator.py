@@ -170,7 +170,7 @@ from new_archetypes import NEW_ARCHETYPES
 
 ZWO_TEMPLATE = """<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
-  <author>Gravel God Training</author>
+  <author>{author}</author>
   <name>{name}</name>
   <description>{description}</description>
   <sportType>bike</sportType>
@@ -3267,7 +3267,9 @@ def generate_nate_zwo(
     level: int = 3,
     methodology: str = "POLARIZED",
     variation: int = 0,
-    workout_name: Optional[str] = None
+    workout_name: Optional[str] = None,
+    author: str = "Gravel God Training",
+    discipline: str = "gravel",
 ) -> Optional[str]:
     """
     Generate a complete ZWO file from a Nate archetype.
@@ -3308,11 +3310,23 @@ def generate_nate_zwo(
         )
         return None
 
+    # Nate's shared archetype library contains gravel-specific narrative in a
+    # few otherwise discipline-neutral workouts (durability, mixed intervals,
+    # terrain simulation). Adapt the rendered copy at the serializer boundary
+    # so every Roadie rotation is brand-clean without mutating Gravel God/MTB.
+    if (discipline or "gravel").lower() == "road":
+        name = re.sub(r"\bgravel\b", "road", name, flags=re.IGNORECASE)
+        description = re.sub(
+            r"\bgravel\b", "road", description, flags=re.IGNORECASE)
+        description = description.replace("Gravel God", "Roadie Labs")
+
     # Escape XML
     name_escaped = html.escape(name, quote=False)
     desc_escaped = html.escape(description, quote=False)
+    author_escaped = html.escape(author or "Gravel God Training", quote=False)
 
     return ZWO_TEMPLATE.format(
+        author=author_escaped,
         name=name_escaped,
         description=desc_escaped,
         blocks=blocks

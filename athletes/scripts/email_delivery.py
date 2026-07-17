@@ -26,6 +26,8 @@ try:
 except ImportError:
     config = None
 
+from brand_config import get_brand_config, normalize_brand
+
 
 class EmailDelivery:
     """Handles email delivery of training packages."""
@@ -34,7 +36,16 @@ class EmailDelivery:
     DEFAULT_FROM_NAME = "Gravel God Coaching"
     SUBJECT = "Your custom training plan is ready"
 
-    def __init__(self):
+    def __init__(self, brand: str = 'gravelgod'):
+        self.brand = normalize_brand(brand)
+        self.brand_config = get_brand_config(self.brand)
+        email = self.brand_config.get('email', {})
+        self.from_email = email.get('from_email', self.DEFAULT_FROM_EMAIL)
+        self.from_name = email.get('from_name', self.DEFAULT_FROM_NAME)
+        self.signature_name = email.get('signature_name', 'Matti')
+        self.signature_org = email.get('signature_organization', self.from_name)
+        self.signature_site = email.get('signature_site', '')
+        self.system_name = self.brand_config.get('system_name', 'Training System')
         self.provider = self._get_provider()
 
     def _get_provider(self) -> str:
@@ -101,7 +112,7 @@ Your custom training plan is ready.
 
 """
 
-        plain_text += """The guide covers:
+        plain_text += f"""The guide covers:
 - Your training philosophy and why it fits you
 - Week-by-week structure
 - Fueling strategy for race day
@@ -113,12 +124,12 @@ The .zwo workout files import into Zwift — copy them to your Zwift workouts fo
 
 Questions? Reply to this email. A person reads it.
 
-— Matti
-Gravel God Coaching
-gravelgodcycling.com
+— {self.signature_name}
+{self.signature_org}
+{self.signature_site}
 
 ---
-This email was sent automatically by the Gravel God Training System.
+This email was sent automatically by the {self.system_name}.
 """
 
         # HTML version
@@ -155,7 +166,7 @@ This email was sent automatically by the Gravel God Training System.
         <p>Your training guide PDF and workout files are attached to this email.</p>
 """
 
-        html += """
+        html += f"""
         <div class="features">
             <strong>The guide covers:</strong>
             <ul>
@@ -172,11 +183,11 @@ This email was sent automatically by the Gravel God Training System.
 
         <p>Questions? Reply to this email. A person reads it.</p>
 
-        <p>— <strong>Matti</strong><br>
-        Gravel God Coaching</p>
+        <p>— <strong>{self.signature_name}</strong><br>
+        {self.signature_org}</p>
 
         <div class="footer">
-            This email was sent automatically by the Gravel God Training System.
+            This email was sent automatically by the {self.system_name}.
         </div>
     </div>
 </body>
@@ -208,8 +219,8 @@ This email was sent automatically by the Gravel God Training System.
         if not api_key:
             return False, "SENDGRID_API_KEY not set"
 
-        from_email = os.environ.get('SENDGRID_FROM_EMAIL', self.DEFAULT_FROM_EMAIL)
-        if config:
+        from_email = os.environ.get('SENDGRID_FROM_EMAIL', self.from_email)
+        if config and self.brand == 'gravelgod':
             from_email = config.get('email.sendgrid.from_email', from_email)
 
         plain_text, html = self._build_email_body(athlete_name, guide_url)
@@ -306,7 +317,7 @@ This email was sent automatically by the Gravel God Training System.
 
         msg = MIMEMultipart('alternative')
         msg['Subject'] = self.SUBJECT
-        msg['From'] = f"{self.DEFAULT_FROM_NAME} <{smtp_user}>"
+        msg['From'] = f"{self.from_name} <{smtp_user}>"
         msg['To'] = to_email
 
         msg.attach(MIMEText(plain_text, 'plain'))
@@ -441,7 +452,7 @@ def send_training_package(
         return False, f"Guide not found: {guide_path}"
 
     # Send
-    delivery = EmailDelivery()
+    delivery = EmailDelivery(profile.get('brand', 'gravelgod'))
     return delivery.send_package(
         to_email=to_email,
         athlete_name=athlete_name,

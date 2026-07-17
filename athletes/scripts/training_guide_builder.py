@@ -15,15 +15,17 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from brand_config import brand_from_profile, get_brand_config
+from calculate_fueling import estimate_race_duration
+
 
 # ── Race duration estimation ─────────────────────────────────
 
-# Average gravel speeds (mph) by tier — accounts for rest stops, navigation, terrain
-_TIER_AVG_SPEED = {
-    "time_crunched": 12.0,
-    "finisher": 13.5,
-    "compete": 15.5,
-    "podium": 17.0,
+_TIER_GOAL_TYPE = {
+    "time_crunched": "finish",
+    "finisher": "finish",
+    "compete": "compete",
+    "podium": "podium",
 }
 
 
@@ -132,17 +134,15 @@ def _week_phase(wnum: int, plan_duration: int) -> tuple:
     return ("TAPER", "taper")
 
 
-def _estimate_race_hours(distance_miles: float, elevation_ft: float, tier: str) -> float:
-    """Estimate race duration from distance, elevation, and athlete tier.
-
-    Uses tier-specific average speed + elevation penalty.
-    Returns estimated hours (e.g., 8.5).
-    """
-    speed = _TIER_AVG_SPEED.get(tier, 13.5)
-    base_hours = distance_miles / speed
-    # Elevation penalty: ~18min per 1000ft of climbing
-    elev_penalty = (elevation_ft / 1000) * 0.3
-    return round(base_hours + elev_penalty, 1)
+def _estimate_race_hours(distance_miles: float, elevation_ft: float, tier: str,
+                         discipline: str = "gravel", goal_type: str = None) -> float:
+    """Use the fueling module's one discipline-aware race-duration model."""
+    return estimate_race_duration(
+        distance_miles,
+        goal_type or _TIER_GOAL_TYPE.get(tier, "finish"),
+        elevation_ft,
+        discipline,
+    )
 
 
 # ── Required guide sections (Gate 7 checks for these) ────────
@@ -153,18 +153,17 @@ def _estimate_race_hours(distance_miles: float, elevation_ft: float, tier: str) 
 # or a gravel-cornering chapter. (Full Roadie Labs design-token/font port is
 # a separate task; this fixes the visible brand + the discipline-specific
 # skills chapter so the deliverable is correct for the athlete's sport.)
-BRANDS = {
-    "gravel": {"logo": "GRAVEL GOD", "tagline": "Custom training plans for gravel racing",
-               "skills_title": "Gravel Skills"},
-    "mtb": {"logo": "GRAVEL GOD", "tagline": "Custom training plans for off-road racing",
-            "skills_title": "Mountain Bike Skills"},
-    "road": {"logo": "ROADIE LABS", "tagline": "Custom training plans for road racing",
-             "skills_title": "Road Skills"},
-}
-
-
-def _brand(discipline):
-    return BRANDS.get((discipline or "gravel").lower(), BRANDS["gravel"])
+def _brand(discipline, profile=None):
+    disc = (discipline or "gravel").lower()
+    cfg = get_brand_config(brand_from_profile(profile or {}, disc))
+    guide = cfg.get("guide", {})
+    return {
+        "logo": guide.get("logo", cfg.get("name", "")),
+        "tagline": (guide.get("taglines", {}).get(disc)
+                    or guide.get("tagline", "Custom training plan")),
+        "skills_title": (guide.get("skills_titles", {}).get(disc)
+                         or f"{disc.title()} Skills"),
+    }
 
 
 REQUIRED_SECTIONS = [
@@ -366,7 +365,7 @@ def _build_full_guide(
         _discipline = derive_discipline(profile or {})
     except Exception:
         _discipline = "gravel"
-    brand = _brand(_discipline)
+    brand = _brand(_discipline, profile)
 
     # Note: redundant "200 200mi" cleaned up in post-processing by generate_training_guide()
     template = plan_config.get("template", {})
@@ -377,7 +376,14 @@ def _build_full_guide(
     race_chars = race_data.get("race_characteristics", {})
     meta = race_data.get("race_metadata", {})
     location = meta.get("location", "")
-    elevation = race_data.get("elevation_feet", meta.get("elevation_feet", ""))
+    target_race = profile.get("target_race", {})
+    # Match fueling's authority order: the athlete's selected target race,
+    # then derived profile data, then optional sibling-repo race data.
+    elevation = (target_race.get("elevation_ft")
+                 or target_race.get("elevation_feet")
+                 or derived.get("elevation_feet")
+                 or race_data.get("elevation_feet")
+                 or meta.get("elevation_feet", ""))
     mods = race_data.get("workout_modifications", {})
     non_negs = race_data.get("non_negotiables", {})
     race_specific = race_data.get("race_specific", {})
@@ -385,7 +391,12 @@ def _build_full_guide(
     # Ride realism index — drives all long ride target language
     _, max_weekly = _parse_hours_range(weekly_hours)
     elev_ft = float(elevation) if elevation else 0
-    est_race_hrs = _estimate_race_hours(float(race_distance), elev_ft, tier) if race_distance else 0
+    _goal_type = (profile.get("target_race", {}).get("goal_type")
+                  or profile.get("target_race", {}).get("goal")
+                  or None)
+    est_race_hrs = _estimate_race_hours(
+        float(race_distance), elev_ft, tier, _discipline, _goal_type
+    ) if race_distance else 0
     lr_ceiling = max_weekly * 0.4 if max_weekly > 0 else 0
     ride_realism = (lr_ceiling / est_race_hrs) if est_race_hrs > 0 else 1.0
 
@@ -423,10 +434,10 @@ def _build_full_guide(
                                                strength_included=_strength_included))
     sections.append(_section_workout_execution(tier, ftp))
     sections.append(_section_recovery_protocol(tier, profile))
-    sections.append(_section_equipment_checklist(profile, race_data))
+    sections.append(_section_equipment_checklist(profile, race_data, _discipline))
     sections.append(_section_nutrition(race_data, tier, race_distance, profile, plan_duration))
     sections.append(_section_mental_preparation(race_data, race_distance, tier))
-    sections.append(_section_race_week(race_data, tier, race_name, derived))
+    sections.append(_section_race_week(race_data, tier, race_name, derived, _discipline))
     sections.append(_section_race_day(race_data, tier, race_distance, race_name, weekly_hours))
     sections.append(_section_skills(race_data, _discipline))
 
@@ -437,7 +448,9 @@ def _build_full_guide(
         sections.append(_section_altitude_training(race_data, race_name, elevation, section_num=next_section))
         next_section += 1
     if triggers["women"]:
-        sections.append(_section_women_specific(profile, race_data, race_name, section_num=next_section))
+        sections.append(_section_women_specific(
+            profile, race_data, race_name, section_num=next_section,
+            discipline=_discipline))
         next_section += 1
     if triggers["masters"]:
         sections.append(_section_masters_training(profile, derived, section_num=next_section,
@@ -566,7 +579,11 @@ def _section_training_plan_brief(
     # Compute long ride target text based on ride realism index
     race_dist = derived.get("race_distance_miles", 0)
     race_elev = derived.get("elevation_feet", 0) or 0
-    est_race_hrs = _estimate_race_hours(race_dist, race_elev, tier) if race_dist else 0
+    _disc = profile.get('discipline') or profile.get('target_race', {}).get('discipline') or 'gravel'
+    _goal = profile.get('target_race', {}).get('goal_type') or profile.get('target_race', {}).get('goal')
+    est_race_hrs = _estimate_race_hours(
+        race_dist, race_elev, tier, _disc, _goal
+    ) if race_dist else 0
     _, max_hrs = _parse_hours_range(weekly_hours)
     # Rough long ride ceiling: ~40% of weekly budget (2 long rides in a 6-session week)
     lr_ceiling = max_hrs * 0.4 if max_hrs > 0 else 0
@@ -1431,12 +1448,18 @@ def _section_recovery_protocol(tier: str, profile: Dict):
 </section>"""
 
 
-def _section_equipment_checklist(profile: Dict, race_data: Dict):
+def _section_equipment_checklist(profile: Dict, race_data: Dict,
+                                 discipline: str = "gravel"):
     trainer = profile.get("equipment", {}).get("trainer_type", "")
     has_trainer = trainer and trainer != "no"
 
     surface_hazards = race_data.get("race_specific", {}).get("surface_hazards", [])
     hazard_items = "\n".join(f"<li>{h}</li>" for h in surface_hazards) if surface_hazards else ""
+    bike_wording = {
+        'road': 'road bike, in good working order',
+        'mtb': 'mountain bike, in good working order',
+    }.get((discipline or 'gravel').lower(),
+          'gravel or similar, in good working order')
 
     return f"""<section id="section-8" class="gg-section">
   <h2>8 &middot; Equipment Checklist</h2>
@@ -1447,7 +1470,7 @@ def _section_equipment_checklist(profile: Dict, race_data: Dict):
     <div class="data-card__header">MANDATORY</div>
     <div class="data-card__content">
       <ul>
-        <li><strong>Bike</strong> &mdash; gravel or similar, in good working order</li>
+        <li><strong>Bike</strong> &mdash; {bike_wording}</li>
         <li><strong>Helmet</strong> &mdash; every outdoor ride, no exceptions</li>
         {'<li><strong>Indoor trainer</strong> &mdash; for interval sessions and bad weather days</li>' if has_trainer else ''}
         <li><strong>Water bottles / hydration pack</strong> &mdash; two bottles for anything over 90 minutes outdoors; one within reach on the trainer</li>
@@ -1874,10 +1897,16 @@ def _section_mental_preparation(race_data: Dict, race_distance, tier: str):
 </section>"""
 
 
-def _section_race_week(race_data: Dict, tier: str, race_name: str, derived: Dict = None):
+def _section_race_week(race_data: Dict, tier: str, race_name: str,
+                       derived: Dict = None, discipline: str = "gravel"):
     # Coach review (Jun 2026): NO day-by-day race-week schedule here — the
     # taper schedule lives in the training plan. This section is the
     # checklist and the principles.
+    tire_pressure = (
+        "lower for gravel: 30-40 PSI depending on tire width"
+        if (discipline or 'gravel').lower() == 'gravel'
+        else "use the tested pressure appropriate for your tire width and conditions"
+    )
     return f"""<section id="section-11" class="gg-section">
   <h2>11 &middot; Race Week</h2>
 
@@ -1897,7 +1926,7 @@ def _section_race_week(race_data: Dict, tier: str, race_name: str, derived: Dict
   <h3>Pre-Race Checklist</h3>
   <ul>
   <li>Bike serviced and in race-ready condition (do this by mid-week, not the night before)</li>
-  <li>Tire pressure set for conditions (lower for gravel: 30-40 PSI depending on tire width)</li>
+  <li>Tire pressure set for conditions ({tire_pressure})</li>
   <li>Nutrition packed and tested (same brands/products used in training)</li>
   <li>Bottles filled with your tested hydration mix</li>
   <li>Drop bags prepared (if applicable)</li>
@@ -2664,7 +2693,9 @@ def _section_altitude_training(race_data: Dict, race_name: str, elevation, secti
 </section>"""
 
 
-def _section_women_specific(profile: Dict, race_data: Dict, race_name: str, section_num: int = 16) -> str:
+def _section_women_specific(profile: Dict, race_data: Dict, race_name: str,
+                            section_num: int = 16,
+                            discipline: str = "gravel") -> str:
     """Women-specific training considerations — conditional on sex == female. Section number is dynamic."""
     demo = profile.get("demographics", {})
     weight_lbs = demo.get("weight_lbs", "")
@@ -2673,11 +2704,22 @@ def _section_women_specific(profile: Dict, race_data: Dict, race_name: str, sect
     # Carb targets based on body weight
     carb_training = f"{round(weight_kg * 6)}-{round(weight_kg * 7)}g" if weight_kg else "5-7g/kg"
     carb_long = f"{round(weight_kg * 8)}-{round(weight_kg * 10)}g" if weight_kg else "8-10g/kg"
+    disc = (discipline or 'gravel').lower()
+    sport_phrase = 'gravel racing' if disc == 'gravel' else (
+        'road racing' if disc == 'road' else 'mountain-bike racing')
+    intensity_phrase = ('which is most of gravel racing' if disc == 'gravel'
+                        else 'which decides hard climbs and race selections')
+    heat_phrase = ('gravel events' if disc == 'gravel' else
+                   ('long road events' if disc == 'road' else 'mountain-bike events'))
+    support_phrase = ('you\'re bouncing on gravel for hours' if disc == 'gravel'
+                      else 'you\'re in the saddle for hours')
+    bottom_phrase = ('Racing gravel' if disc == 'gravel' else
+                     ('Road racing' if disc == 'road' else 'Mountain-bike racing'))
 
     return f"""<section id="section-{section_num}" class="gg-section">
   <h2>{section_num} &middot; Women-Specific Considerations</h2>
 
-  <p>If you're a woman training for gravel racing, your physiology is different from men's in ways that
+  <p>If you're a woman training for {sport_phrase}, your physiology is different from men's in ways that
   actually affect training and performance. This isn't patronizing &mdash; it's honest acknowledgment of
   real differences that matter.</p>
   <p>The good news: these differences are trainable and manageable. The bad news: if you ignore them,
@@ -2741,7 +2783,7 @@ def _section_women_specific(profile: Dict, race_data: Dict, race_name: str, sect
       <p><strong>Women need MORE carbs relative to body weight than men.</strong> Despite often being told to eat less,
       female athletes actually need aggressive carbohydrate intake to support training and maintain hormonal health.</p>
       <p><strong>Why:</strong> Women's bodies preferentially spare carbohydrate and burn more fat at rest. Sounds great,
-      except during high-intensity efforts (which is most of gravel racing), you NEED carbs. If you're
+      except during high-intensity efforts ({intensity_phrase}), you NEED carbs. If you're
       chronically under-fueling carbs, your body will:</p>
       <ul>
         <li>Downregulate thyroid function (slower metabolism, more fatigue)</li>
@@ -2760,7 +2802,7 @@ def _section_women_specific(profile: Dict, race_data: Dict, race_name: str, sect
   <div class="data-card">
     <div class="data-card__header">HEAT &amp; HYDRATION</div>
     <div class="data-card__content">
-      <p>Women thermoregulate differently than men. This matters for gravel events.</p>
+      <p>Women thermoregulate differently than men. This matters for {heat_phrase}.</p>
       <p><strong>Women sweat less than men</strong> at the same relative intensity. Sounds like an advantage (less fluid
       loss), but it's not &mdash; it means core temperature rises faster because evaporative cooling is less efficient.</p>
       <p><strong>The result:</strong> Women reach critical core temperature thresholds earlier in hot conditions, leading to
@@ -2814,7 +2856,7 @@ def _section_women_specific(profile: Dict, race_data: Dict, race_name: str, sect
   <ul>
     <li><strong>Sports bra:</strong> Non-negotiable. Test on long rides, not just in the store. If it's uncomfortable
     for 30 minutes, it'll be unbearable at mile {race_data.get("distance_miles", 100)}. High-impact support is
-    essential &mdash; you're bouncing on gravel for hours.</li>
+    essential &mdash; {support_phrase}.</li>
     <li><strong>Chamois:</strong> Women's anatomy requires women-specific design. This is not marketing &mdash; the padding
     placement and shape are different. A men's chamois will cause problems. Test multiple brands if needed.
     Numbness, chafing, or pain means wrong fit.</li>
@@ -2832,7 +2874,7 @@ def _section_women_specific(profile: Dict, race_data: Dict, race_name: str, sect
     <li>Prioritize recovery. You might need more than male training partners.</li>
     <li>Get proper equipment. Generic gear won't cut it.</li>
   </ul>
-  <p>Racing gravel is hard for everyone. Being a woman doesn't make it harder &mdash; but ignoring female
+  <p>{bottom_phrase} is hard for everyone. Being a woman doesn't make it harder &mdash; but ignoring female
   physiology makes it unnecessarily difficult. Do the work. Respect your body's signals. Show up prepared.</p>
 </section>"""
 

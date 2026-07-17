@@ -165,6 +165,8 @@ def render_workout(
     methodology: str = 'POLARIZED',
     workout_name: Optional[str] = None,
     variation_offset: int = 0,
+    author: str = 'Gravel God Training',
+    discipline: str = 'gravel',
 ) -> Optional[str]:
     """Render a block-builder workout name to ZWO XML.
 
@@ -192,7 +194,7 @@ def render_workout(
     # This is what a real coach prescribes for easy days.
     # ----------------------------------------------------------------
     if name == 'Endurance':
-        return _render_simple_endurance(level, workout_name)
+        return _render_simple_endurance(level, workout_name, author)
 
     # Pin certain workout types to their exact archetype — no variation cycling.
     PINNED_TYPES = {'Openers', 'FTP Test', 'Rest Day', 'Endurance with Surges', 'NP/IF Target',
@@ -208,6 +210,8 @@ def render_workout(
         methodology=methodology,
         variation=effective_variation,
         workout_name=workout_name,
+        author=author,
+        discipline=discipline,
     )
     if zwo:
         return zwo
@@ -223,6 +227,8 @@ def render_workout(
             methodology='POLARIZED',
             variation=effective_variation,
             workout_name=workout_name,
+            author=author,
+            discipline=discipline,
         )
     return None
 
@@ -237,7 +243,8 @@ _ENDURANCE_LEVELS = {
     6: {'duration_min': 250, 'power': 0.70},
 }
 
-def _render_simple_endurance(level: int, workout_name: Optional[str] = None) -> str:
+def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
+                             author: str = 'Gravel God Training') -> str:
     """Render a simple endurance workout matching the TP library.
 
     Structure: Warmup → Steady Z2 → Cooldown.
@@ -273,7 +280,7 @@ def _render_simple_endurance(level: int, workout_name: Optional[str] = None) -> 
 
     return f"""<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
-  <author>Gravel God Training</author>
+  <author>{author}</author>
   <name>{name}</name>
   <description>{desc}</description>
   <sportType>bike</sportType>

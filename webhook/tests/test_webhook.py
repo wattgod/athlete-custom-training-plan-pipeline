@@ -2555,6 +2555,19 @@ class TestMultiBrand:
         assert _brand_config('nonsense') == BRANDS[DEFAULT_BRAND]
         assert _brand_config('') == BRANDS[DEFAULT_BRAND]
 
+    def test_registry_is_the_authoritative_brand_source(self):
+        from app import BRANDS
+        assert set(BRANDS) == {'gravelgod', 'roadielabs'}
+        assert BRANDS['roadielabs']['discipline'] == 'road'
+        assert BRANDS['roadielabs']['allowed_disciplines'] == ['road']
+        assert BRANDS['roadielabs']['subject_prefix'] == '[RL]'
+        assert BRANDS['roadielabs']['email']['from_email'] == 'coach@roadielabs.com'
+        assert set(BRANDS['gravelgod']['allowed_disciplines']) == {'gravel', 'mtb'}
+
+    def test_railway_image_copies_registry_parent_directory(self):
+        dockerfile = (Path(__file__).parents[1] / 'Dockerfile').read_text()
+        assert 'COPY athletes/ ./athletes/' in dockerfile
+
     def test_checkout_uses_brand_success_url(self, client, tmp_path):
         """A checkout created from roadielabs.com sends the customer back
         to roadielabs.com, with brand recorded in metadata."""

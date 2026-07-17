@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from intake_to_plan import generate_personal_email
 from email_delivery import EmailDelivery
+from deliver_package import _email_delivery_for_profile
 
 
 BANNED_PHRASES = [
@@ -135,6 +136,16 @@ class TestGeneratePersonalEmail:
         email = generate_personal_email(profile, parsed)
         _assert_voice(email, 'personal delivery email (no goal)')
 
+    def test_roadie_signature_has_no_gravel_brand_leak(self, profile, parsed):
+        profile['brand'] = 'roadielabs'
+        profile['discipline'] = 'road'
+        profile['target_race']['name'] = 'Gran Fondo Maryland'
+        email = generate_personal_email(profile, parsed)
+        assert 'Roadie Labs' in email
+        assert 'roadielabs.com' in email
+        assert 'Gravel God' not in email
+        assert 'gravelgodcycling.com' not in email
+
 
 class TestEmailDeliveryCopy:
     def test_subject_no_exclamation(self):
@@ -162,3 +173,20 @@ class TestEmailDeliveryCopy:
         assert 'guide' in plain.lower()
         assert 'read the phase overview' in plain.lower()
         assert 'reply to this email' in plain.lower()
+
+    def test_roadie_sender_and_signature_have_no_gravel_brand_leak(self):
+        delivery = EmailDelivery(brand='roadielabs')
+        plain, html = delivery._build_email_body('Jesse Couch')
+        assert delivery.from_email == 'coach@roadielabs.com'
+        for body in (plain, html):
+            assert 'Roadie Labs' in body
+            assert 'Gravel God' not in body
+
+    def test_delivery_cli_propagates_profile_brand(self):
+        delivery = _email_delivery_for_profile({'brand': 'roadielabs'})
+        plain, html = delivery._build_email_body('Jesse Couch')
+        assert delivery.brand == 'roadielabs'
+        assert delivery.from_email == 'coach@roadielabs.com'
+        for body in (plain, html):
+            assert 'Roadie Labs' in body
+            assert 'Gravel God' not in body

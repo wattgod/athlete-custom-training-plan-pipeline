@@ -332,7 +332,9 @@ WORKOUT_DESCRIPTIONS = {
 }
 
 
-def format_workout_description(workout_type: str, duration: int, phase: str, week_num: int, day_abbrev: str) -> str:
+def format_workout_description(workout_type: str, duration: int, phase: str,
+                               week_num: int, day_abbrev: str,
+                               discipline: str = 'gravel') -> str:
     """
     Format workout description following v6.0 spec with STRUCTURE, PURPOSE, EXECUTION, RPE sections.
     """
@@ -354,6 +356,14 @@ EXECUTION:
 
 RPE:
 {rpe}"""
+
+    if (discipline or 'gravel').lower() == 'road':
+        description = (description
+                       .replace('The Gravel God efficiency zone',
+                                'A high-value efficiency zone')
+                       .replace('gravel where pace constantly changes',
+                                'road events where pace constantly changes')
+                       .replace('Real gravel demands', 'Road racing demands'))
 
     return description
 
@@ -418,6 +428,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     zwo_dir.mkdir(exist_ok=True)
 
     generated_files = []
+    from brand_config import workout_author
+    _workout_author = workout_author(profile or {})
 
     # Get methodology config
     methodology_config = methodology.get('configuration', {})
@@ -1053,7 +1065,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     # Reference: Drop_Down_1_Updated.zwo (confirmed working)
     ZWO_TEMPLATE = """<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
-  <author>Gravel God Training</author>
+  <author>{author}</author>
   <name>{name}</name>
   <description>{description}</description>
   <sportType>bike</sportType>
@@ -1630,6 +1642,13 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 duration = 80
                 power = 0.65
                 preplan_fuel = _get_fuel_tag_for_type('Endurance', fueling, duration)
+                terrain_confidence = (
+                    'Build confidence riding smoothly in traffic and groups'
+                    if _bb_discipline == 'road'
+                    else ('Build confidence on technical trail terrain'
+                          if _bb_discipline == 'mtb'
+                          else 'Build confidence on gravel/mixed terrain')
+                )
                 description = f"""PRE-PLAN WEEK: Endurance Ride
 {athlete_name} - {days_to_plan_start} days until plan starts
 
@@ -1642,7 +1661,7 @@ WORKOUT:
 - Stay hydrated
 
 OUTDOOR STRONGLY ENCOURAGED:
-- Build confidence on gravel/mixed terrain
+- {terrain_confidence}
 - Practice reading the road ahead
 - Test your nutrition strategy
 
@@ -1744,6 +1763,7 @@ Stay loose, {athlete_name}!"""
                 blocks = "    <FreeRide Duration=\"60\"/>\n"
 
             zwo_content = ZWO_TEMPLATE.format(
+                author=_workout_author,
                 name=filename.replace('.zwo', ''),
                 description=description,
                 blocks=blocks
@@ -1833,7 +1853,7 @@ GO RACE SMART, {athlete_name.upper()}!
 
                 b_race_zwo = f"""<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
-  <author>Gravel God Training</author>
+  <author>{_workout_author}</author>
   <name>{b_race_plan_name}</name>
   <description>{b_race_description}</description>
   <sportType>bike</sportType>
@@ -1869,7 +1889,7 @@ GO RACE SMART, {athlete_name.upper()}!
                 travel_plan_name = f"{workout_prefix}_Travel_Day_Shakeout"
                 travel_zwo = f"""<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
-  <author>Gravel God Training</author>
+  <author>{_workout_author}</author>
   <name>{travel_plan_name}</name>
   <description>TRAVEL DAY — optional shakeout.
 
@@ -1969,6 +1989,8 @@ TIPS:
                     methodology=nate_methodology,
                     workout_name=workout_name,
                     variation_offset=var_offset,
+                    author=_workout_author,
+                    discipline=_bb_discipline,
                 )
 
                 if not zwo_content:
@@ -2159,6 +2181,7 @@ Trust the process, {athlete_name}."""
 
                 rest_blocks = '    <SteadyState Duration="60" Power="0.30"/>\n'
                 rest_content = ZWO_TEMPLATE.format(
+                    author=_workout_author,
                     name=f"{workout_prefix}_Rest",
                     description=rest_description,
                     blocks=rest_blocks
@@ -2334,7 +2357,7 @@ GO GET IT, {athlete_name.upper()}!
                 # Create a minimal ZWO (TrainingPeaks needs it to be a workout file)
                 race_zwo = f"""<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
-  <author>Gravel God Training</author>
+  <author>{_workout_author}</author>
   <name>{race_plan_name}</name>
   <description>{race_description}</description>
   <sportType>bike</sportType>
@@ -2362,7 +2385,9 @@ GO GET IT, {athlete_name.upper()}!
             week_in_phase = week_in_phase_cache.get(week_num, 1)
 
             # Build description using v6.0 format with STRUCTURE, PURPOSE, EXECUTION, RPE
-            full_description = format_workout_description(workout_type, duration, phase, week_num, day_abbrev)
+            full_description = format_workout_description(
+                workout_type, duration, phase, week_num, day_abbrev,
+                _bb_discipline)
 
             # Generate blocks - use Nate generator for key workouts
             # Calculate progression level based on week in plan
@@ -2411,7 +2436,9 @@ GO GET IT, {athlete_name.upper()}!
                         level=level,
                         methodology=nate_methodology,
                         variation=variation,
-                        workout_name=workout_name
+                        workout_name=workout_name,
+                        author=_workout_author,
+                        discipline=_bb_discipline,
                     )
                     if zwo_content:
                         # Round Nate generator durations to nearest 10 minutes
@@ -2498,6 +2525,7 @@ GO GET IT, {athlete_name.upper()}!
 
             # Create ZWO content
             zwo_content = ZWO_TEMPLATE.format(
+                author=_workout_author,
                 name=workout_name,
                 description=full_description,
                 blocks=blocks
@@ -2610,6 +2638,7 @@ GO GET IT, {athlete_name.upper()}!
                 full_description = f"FOCUS: {strength_workout['focus']}\n\nEXERCISES:\n{exercises_text}\n\nEXECUTION:\nComplete all sets with good form. Rest 60-90 sec between sets."
 
                 zwo_content = ZWO_TEMPLATE.format(
+                    author=_workout_author,
                     name=workout_name,
                     description=full_description,
                     blocks=strength_blocks
@@ -2663,6 +2692,8 @@ def generate_athlete_package(athlete_id: str) -> dict:
     methodology = load_yaml(athlete_dir / 'methodology.yaml')
     fueling = load_yaml(athlete_dir / 'fueling.yaml')
     plan_dates = load_yaml(athlete_dir / 'plan_dates.yaml')
+    from brand_config import brand_from_profile
+    brand_guides_dir = config.get_guides_dir(brand_from_profile(profile))
 
     # Validate required files (already done by pre-generation, but double-check)
     missing = []
@@ -2692,8 +2723,8 @@ def generate_athlete_package(athlete_id: str) -> dict:
 
     # Try to load race data if available, but don't fail if missing
     race_data = None
-    if GUIDES_DIR:
-        race_data_path = GUIDES_DIR / 'race_data' / f'{race_id}.json'
+    if brand_guides_dir:
+        race_data_path = brand_guides_dir / 'race_data' / f'{race_id}.json'
         if race_data_path.exists():
             race_data = load_json(race_data_path)
             detail(f"Loaded: {race_data_path.name}")
