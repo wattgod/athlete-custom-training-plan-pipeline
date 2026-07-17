@@ -53,7 +53,7 @@ def _sub_minute_package(tmp_path: Path):
     zwo = tmp_path / 'workouts' / 'W05_Tue_VO2_3030.zwo'
     zwo.write_text(
         "<?xml version='1.0' encoding='UTF-8'?><workout_file><name>W05 VO2 30/30</name>"
-        "<description>Week 5 VO2\n\nMAIN SET:\n- 9x0.5min @ 110% FTP, 0.25min recovery @ 55% FTP"
+        "<description>Week 5 VO2\n\nMAIN SET:\n- 9x0:30 @ 110% FTP, 0:15 recovery @ 55% FTP"
         "</description><workout>"
         "<IntervalsT Repeat=\"9\" OnDuration=\"30\" OnPower=\"1.1\" OffDuration=\"15\" OffPower=\"0.55\" />"
         "</workout></workout_file>")
@@ -80,12 +80,12 @@ def test_clean_package_with_sub_minute_intervals_has_zero_issues(tmp_path):
 
 
 def _interval_package(tmp_path: Path):
-    """Clean package with a 90/90 interval whose recovery renders '1.5min'."""
+    """Clean package with a 90/90 interval whose recovery renders '1:30'."""
     (tmp_path / 'workouts').mkdir()
     zwo = tmp_path / 'workouts' / 'W03_Tue_Threshold.zwo'
     zwo.write_text(
         "<?xml version='1.0' encoding='UTF-8'?><workout_file><name>W03 Threshold</name>"
-        "<description>Week 3 threshold\n\nMAIN SET:\n- 4x1.5min @ 120% FTP, 1.5min recovery @ 50% FTP"
+        "<description>Week 3 threshold\n\nMAIN SET:\n- 4x1:30 @ 120% FTP, 1:30 recovery @ 50% FTP"
         "</description><workout>"
         "<IntervalsT Repeat=\"4\" OnDuration=\"90\" OnPower=\"1.2\" OffDuration=\"90\" OffPower=\"0.5\" />"
         "</workout></workout_file>")
@@ -104,9 +104,9 @@ def _interval_package(tmp_path: Path):
 
 
 def test_superstring_recovery_duration_is_flagged(tmp_path):
-    """A wrong '11.5min recovery' must NOT satisfy a required '1.5min recovery'.
+    """A wrong '11:30 recovery' must NOT satisfy a required '1:30 recovery'.
     Substring-per-fragment matching passed this; whole-line matching flags it."""
     zwo = _interval_package(tmp_path)
     assert validate_plan_package(tmp_path) == []  # clean baseline
-    zwo.write_text(zwo.read_text().replace('1.5min recovery', '11.5min recovery'))
+    zwo.write_text(zwo.read_text().replace('1:30 recovery', '11:30 recovery'))
     assert any('main_set' in i['message'] for i in validate_plan_package(tmp_path))
