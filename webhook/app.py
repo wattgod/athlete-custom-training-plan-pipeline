@@ -1613,6 +1613,7 @@ COACH_DELIVERABLES = [
     'derived.yaml',
     'intake_backup.json',
     'fulfillment_manifest.json',
+    'tp_manifest.json',
 ]
 
 

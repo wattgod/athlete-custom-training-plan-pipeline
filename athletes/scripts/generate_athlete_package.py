@@ -17,6 +17,7 @@ import json
 import yaml
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 # Add script path for local imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -74,6 +75,51 @@ GENERIC_NO_SUFFIX = {
     'Endurance', 'Recovery', 'Race Day', 'Rest Day', 'Openers',
     'FTP Test', 'Anaerobic Test', 'Easy',
 }
+
+
+# =============================================================================
+# TP PROJECTION (D1/D3): deterministic tp_kind -> TP workoutTypeValueId and
+# phase -> strength-template-family mapping. Consumed by _record_tp_session
+# below and read back by plan_ir.py via the naming_manifest.json sidecar.
+# =============================================================================
+
+TP_WORKOUT_TYPE_VALUE_ID = {
+    'bike': 2,
+    'race': 2,   # A-race is a FreeRide-equivalent bike workout in TP terms
+    'strength': 9,
+    'day_off': 7,
+}
+
+# Engine phase -> strength template family (spec decision 5). "maintenance"
+# has only one reference session (no B variant); taper/race additionally
+# caps at ONE session/week (see _strength_template_key).
+_STRENGTH_FAMILY_BY_PHASE = {
+    'base': 'foundation',
+    'build': 'max_strength',
+    'peak': 'power',
+    'maintenance': 'maintenance',
+    'taper': 'maintenance',
+    'race': 'maintenance',
+}
+
+
+def _strength_template_key(phase: str, ab_ordinal: int) -> Optional[str]:
+    """Deterministic strength-template KEY for a session (key only -- rx
+    content/API is out of scope for this workstream).
+
+    ``ab_ordinal`` is the session's 0-indexed position among a WEEK's
+    emitted strength sessions, sorted chronologically after FTP-conflict
+    displacement -- never the raw per-render ``session`` loop variable
+    (assigned before conflict-skipping, not guaranteed chronological).
+    """
+    family = _STRENGTH_FAMILY_BY_PHASE.get(phase)
+    if family is None:
+        return None
+    if family == 'maintenance':
+        if phase in ('taper', 'race') and ab_ordinal > 0:
+            return None  # capped at one session/week
+        return 'maintenance_a'
+    return f"{family}_{'a' if ab_ordinal == 0 else 'b'}"
 
 
 def _display_words(raw: str) -> str:
@@ -475,6 +521,29 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     generated_files = []
     from brand_config import workout_author
     _workout_author = workout_author(profile or {})
+
+    # ===================================================================
+    # TP PROJECTION (D1/D5): per-ZWO metadata that PlanIR can't re-derive
+    # from a rendered ZWO file alone (tp_kind, series identity, strength
+    # template, archetype id, ...). Recorded here at emission time and
+    # persisted to a naming_manifest.json sidecar once the whole plan has
+    # been emitted (order_on_day and strength A/B assignment need every
+    # session's date, so they're finalized in a post-pass below).
+    # ===================================================================
+    _tp_manifest_records = []
+
+    def _record_tp_session(filepath: Path, date: Optional[str], week_num: int,
+                            phase: Optional[str], tp_kind: str, **extra) -> None:
+        record = {
+            'filename_stem': filepath.stem,
+            'date': date,
+            'week_num': week_num,
+            'phase': phase,
+            'tp_kind': tp_kind,
+            'workout_type_value_id': TP_WORKOUT_TYPE_VALUE_ID.get(tp_kind),
+        }
+        record.update(extra)
+        _tp_manifest_records.append(record)
 
     # Get methodology config
     methodology_config = methodology.get('configuration', {})
@@ -1651,12 +1720,20 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     # This ensures athletes have guidance from day 1, not just from plan_start
     # =========================================================================
     def generate_pre_plan_week():
-        """Generate pre-plan week workouts (W00) for days before official plan start."""
+        """Generate pre-plan week workouts (W00) for days before official plan start.
+
+        Returns (pre_plan_files, w00_week_entry). w00_week_entry mirrors the
+        shape of a normal plan_dates week entry (week/phase/days) so PlanIR's
+        existing stem.startswith(workout_prefix) matching finds W00 ZWOs like
+        any other calendar day, once the caller merges it into plan_dates
+        (see the pre_plan_week persistence in generate_athlete_package()).
+        w00_week_entry is None when no pre-plan days are generated.
+        """
         from datetime import datetime, timedelta
 
         plan_start_str = plan_dates.get('plan_start', '')
         if not plan_start_str:
-            return []
+            return [], None
 
         plan_start = datetime.strptime(plan_start_str, '%Y-%m-%d')
 
@@ -1666,9 +1743,10 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
         # Only generate pre-plan if plan starts in the future (1-7 days out)
         if days_until_start <= 0 or days_until_start > 7:
-            return []
+            return [], None
 
         pre_plan_files = []
+        _w00_days = []
         days_to_race = (datetime.strptime(race_date, '%Y-%m-%d') - today).days if race_date else 0
 
         # Generate workouts for each day from today until plan start
@@ -1825,10 +1903,38 @@ Stay loose, {athlete_name}!"""
                 f.write(zwo_content)
             pre_plan_files.append(zwo_path)
 
-        return pre_plan_files
+            workout_prefix = f"W00_{day_abbrev}_{date_short}"
+            _w00_days.append({
+                'day': day_abbrev,
+                'date': current_date.strftime('%Y-%m-%d'),
+                'date_short': date_short,
+                'workout_prefix': workout_prefix,
+                'is_race_day': False,
+            })
+            _tp_kind = 'day_off' if workout_type == 'Pre_Plan_Rest' else 'bike'
+            _record_tp_session(zwo_path, current_date.strftime('%Y-%m-%d'), 0, 'pre_plan',
+                                _tp_kind, display_name=display_name)
 
-    # Generate pre-plan week
-    pre_plan_files = generate_pre_plan_week()
+        w00_week_entry = None
+        if _w00_days:
+            w00_week_entry = {
+                'week': 0,
+                'phase': 'pre_plan',
+                'pre_plan': True,
+                'is_race_week': False,
+                'is_recovery_week': False,
+                'days': _w00_days,
+            }
+        return pre_plan_files, w00_week_entry
+
+    # Generate pre-plan week. The W00 week entry is exposed on the function
+    # object (generate_zwo_files.last_pre_plan_week) rather than written into
+    # plan_dates.yaml here: guide/dashboard generation (steps 4-5 in
+    # generate_athlete_package) re-read plan_dates.yaml from disk, and an
+    # extra week=0 entry is untested territory for those consumers. The
+    # caller persists it to disk only after those steps have already run,
+    # immediately before build_plan_ir() -- see generate_athlete_package().
+    pre_plan_files, _w00_week_entry = generate_pre_plan_week()
     generated_files.extend(pre_plan_files)
 
     # Series coherence: within a mesocycle (3 load weeks in 3:1), same day+type
@@ -1925,6 +2031,8 @@ GO RACE SMART, {athlete_name.upper()}!
                 with open(filepath, 'w') as f:
                     f.write(b_race_zwo)
                 generated_files.append(filepath)
+                _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
+                                    display_name=b_race_display_name, race={'priority': 'B'})
                 # B-race is intensity — update compliance trackers
                 plan_last_intensity_day = day_abbrev
                 week_intensity_count += 1
@@ -1973,6 +2081,8 @@ TIPS:
                 with open(filepath, 'w') as f:
                     f.write(travel_zwo)
                 generated_files.append(filepath)
+                _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
+                                    display_name=travel_display_name)
                 continue  # Travel day handled
 
             # Skip ZWO generation for unavailable days (integrity checker rejects them)
@@ -2124,6 +2234,12 @@ TIPS:
                             'rank_hint': _series_rank_hint,
                             'base_name': display_name,
                         })
+                    _record_tp_session(
+                        filepath, day_info.get('date'), week_num, phase, 'bike',
+                        display_name=display_name, archetype_id=bb_name,
+                        series_id=('|'.join(str(x) for x in _series_id) if _series_id else None),
+                        series_index=_series_rank_hint,
+                    )
                     continue  # Skip legacy path entirely
 
             # LEGACY PATH: Use old template system
@@ -2279,6 +2395,8 @@ Trust the process, {athlete_name}."""
                 with open(filepath, 'w') as f:
                     f.write(rest_content)
                 generated_files.append(filepath)
+                _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'day_off',
+                                    display_name='Rest Day')
                 continue
 
             # FTP TEST INJECTION:
@@ -2460,6 +2578,8 @@ GO GET IT, {athlete_name.upper()}!
                 with open(filepath, 'w') as f:
                     f.write(race_zwo)
                 generated_files.append(filepath)
+                _record_tp_session(filepath, day_info['date'], week_num, phase, 'race',
+                                    display_name=race_display_name, race={'priority': 'A'})
                 continue  # Done with race day
 
             # Round duration to nearest 10 minutes for clean workout lengths
@@ -2574,6 +2694,8 @@ GO GET IT, {athlete_name.upper()}!
                         with open(filepath, 'w') as f:
                             f.write(zwo_content)
                         generated_files.append(filepath)
+                        _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
+                                            display_name=display_name)
                         continue  # Skip the standard generation below
                 except Exception as e:
                     # Fall back to standard generation if Nate generator fails
@@ -2641,6 +2763,8 @@ GO GET IT, {athlete_name.upper()}!
                 f.write(zwo_content)
 
             generated_files.append(filepath)
+            _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
+                                display_name=display_name)
 
     # ===================================================================
     # SERIES SUFFIX PATCH (D2): block-builder intensity days that belong
@@ -2737,9 +2861,11 @@ GO GET IT, {athlete_name.upper()}!
 
                 # Get the date for this strength day from the week's days list
                 date_short = ""
+                date_full = None
                 for day_info in week.get('days', []):
                     if day_info['day'] == strength_day:
                         date_short = day_info['date_short']
+                        date_full = day_info['date']
                         break
 
                 workout_name = f"W{week_num:02d}_{strength_day}_{date_short}_Strength_{strength_workout['name'].replace(' ', '_')}"
@@ -2769,11 +2895,62 @@ GO GET IT, {athlete_name.upper()}!
                     f.write(zwo_content)
 
                 generated_files.append(filepath)
+                _record_tp_session(filepath, date_full, week_num, phase, 'strength',
+                                    display_name=display_name)
+
+    # ===================================================================
+    # TP PROJECTION POST-PASS (D1/D3): order_on_day + strength A/B template
+    # assignment can only be finalized once every session in the plan has
+    # been recorded -- mirrors the SERIES SUFFIX PATCH's "totals only
+    # knowable after full emission" reasoning above.
+    #   - order_on_day: 0 = strength first (finalize_plan.py:93-95
+    #     convention); everything else on that calendar date keeps emission
+    #     order after it.
+    #   - strength A/B: per week, sort that week's EMITTED strength records
+    #     (FTP-conflict-skipped days never reach this list, so displacement
+    #     is already applied) chronologically, then assign the template by
+    #     that ordinal -- never the raw per-render `session` value.
+    #   - series_total: count of emitted sessions sharing a series_id.
+    # ===================================================================
+    if _tp_manifest_records:
+        from collections import defaultdict
+
+        _by_date = defaultdict(list)
+        for _rec in _tp_manifest_records:
+            _by_date[_rec['date']].append(_rec)
+        for _day_records in _by_date.values():
+            _strength_first = sorted(
+                _day_records, key=lambda r: 0 if r['tp_kind'] == 'strength' else 1)
+            for _idx, _rec in enumerate(_strength_first):
+                _rec['order_on_day'] = _idx
+
+        _strength_by_week = defaultdict(list)
+        for _rec in _tp_manifest_records:
+            if _rec['tp_kind'] == 'strength':
+                _strength_by_week[_rec['week_num']].append(_rec)
+        for _week_recs in _strength_by_week.values():
+            _week_recs.sort(key=lambda r: r['date'] or '')
+            for _ordinal, _rec in enumerate(_week_recs):
+                _rec['strength_template'] = _strength_template_key(_rec['phase'], _ordinal)
+
+        _series_counts = defaultdict(int)
+        for _rec in _tp_manifest_records:
+            if _rec.get('series_id'):
+                _series_counts[_rec['series_id']] += 1
+        for _rec in _tp_manifest_records:
+            if _rec.get('series_id'):
+                _rec['series_total'] = _series_counts[_rec['series_id']]
+
+        _manifest_path = zwo_dir / 'naming_manifest.json'
+        _manifest_by_stem = {_rec['filename_stem']: _rec for _rec in _tp_manifest_records}
+        _manifest_path.write_text(
+            json.dumps(_manifest_by_stem, indent=2, sort_keys=True) + '\n')
 
     # The caller owns the final write once guide/summary generation succeeds.
     # Keep this on the function rather than changing the long-standing return
     # shape used by existing generator callers.
     generate_zwo_files.last_fulfillment_issues = _fulfillment_issues
+    generate_zwo_files.last_pre_plan_week = _w00_week_entry
     return generated_files
 
 
@@ -2924,6 +3101,22 @@ def generate_athlete_package(athlete_id: str) -> dict:
     except Exception as exc:
         warning(f"Could not write fulfillment state (confirmation will fail closed): {exc}")
 
+    # W00 (D1/D2): persist the pre-plan week into plan_dates.yaml on disk so
+    # PlanIR can match W00 ZWOs by calendar-day workout_prefix like any other
+    # session. Deferred until AFTER guide (step 4) and summary (step 5) have
+    # already read plan_dates.yaml from disk -- an extra week=0 entry is
+    # untested territory for those consumers, so it must not be visible to
+    # them. Uses the SAME in-memory plan_dates object already loaded above.
+    _pre_plan_week = getattr(generate_zwo_files, 'last_pre_plan_week', None)
+    if _pre_plan_week and not any(w.get('week') == 0 for w in plan_dates.get('weeks', [])):
+        plan_dates.setdefault('weeks', []).insert(0, _pre_plan_week)
+        try:
+            with open(athlete_dir / 'plan_dates.yaml', 'w') as f:
+                yaml.dump(plan_dates, f, default_flow_style=False, sort_keys=False)
+            detail("Saved: plan_dates.yaml (W00 pre-plan week)")
+        except Exception as exc:
+            warning(f"Could not persist W00 pre-plan week to plan_dates.yaml: {exc}")
+
     # G0 reflection only: aggregate the artifacts just generated.  PlanIR is
     # deliberately advisory until later tickets make serializers project it;
     # a malformed historical/optional artifact must never block delivery.
@@ -2947,6 +3140,11 @@ def generate_athlete_package(athlete_id: str) -> dict:
         from fulfillment_manifest import build_fulfillment_manifest
         build_fulfillment_manifest(athlete_dir)
         detail("Saved: fulfillment_manifest.json")
+        # Architecture rule #1: tp_manifest is a versioned PROJECTION of the
+        # PlanIR just assembled above -- never a parallel truth.
+        from plan_ir import build_tp_manifest
+        build_tp_manifest(athlete_id)
+        detail("Saved: tp_manifest.json")
     except Exception as exc:
         warning(f"PlanIR aggregation failed (package delivery continues): {exc}")
 

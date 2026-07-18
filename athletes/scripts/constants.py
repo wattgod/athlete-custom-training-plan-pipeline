@@ -134,7 +134,22 @@ TRAINING_PHASES: List[str] = [
 ]
 
 # Phases where strength training is included
+# NOTE: legacy ZWO/strength-day selection (generate_zwo_files) reads this
+# constant and must keep excluding taper/race -- that behavior is out of
+# scope for the TP-native projection work (WS-B) and is deliberately left
+# unchanged here. The TP projection enables a capped taper/race strength
+# session (Maintenance A only, one/week) via TP_PROJECTION_STRENGTH_PHASES
+# below -- see generate_athlete_package._strength_template_key. Because
+# STRENGTH_PHASES itself is unchanged, no legacy strength ZWO is ever
+# rendered in a taper/race week, so that capped mapping is presently only
+# reachable if a future change adds a taper/race strength ZWO -- documented
+# limitation, not silently wrong.
 STRENGTH_PHASES: List[str] = ['base', 'build', 'peak', 'maintenance']
+
+# Phases eligible for a strength *session in the TP projection* (D1/D3
+# decision 5) -- superset of STRENGTH_PHASES, adds taper/race capped at one
+# Maintenance (A) session/week. Never read by the legacy ZWO strength path.
+TP_PROJECTION_STRENGTH_PHASES: List[str] = STRENGTH_PHASES + ['taper', 'race']
 
 
 # === VALIDATION BOUNDS ===

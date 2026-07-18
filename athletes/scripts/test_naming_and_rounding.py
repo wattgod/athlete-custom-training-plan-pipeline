@@ -192,6 +192,15 @@ def _build_w00_plan(tmp_path):
     files = generate_zwo_files(athlete_dir, plan_dates, methodology, derived, profile)
     w00_files = [f for f in files if f.name.startswith('W00_')]
     assert w00_files, "test setup did not trigger the W00 pre-plan branch"
+
+    # D1 W00 fix: generate_athlete_package() merges the W00 week entry into
+    # plan_dates['weeks'] (from generate_zwo_files.last_pre_plan_week) before
+    # PlanIR ever runs -- replicate that merge here since this fixture calls
+    # generate_zwo_files directly, not the full package function.
+    pre_plan_week = getattr(generate_zwo_files, 'last_pre_plan_week', None)
+    assert pre_plan_week, "test setup did not capture a W00 week entry"
+    plan_dates.setdefault('weeks', []).insert(0, pre_plan_week)
+
     return athlete_dir, plan_dates, profile, files
 
 
@@ -331,13 +340,12 @@ def test_plan_ir_matches_every_zwo_in_full_plan(full_plan, monkeypatch):
 
 
 def test_plan_ir_matches_every_zwo_in_w00_plan(w00_plan, monkeypatch):
-    """W00_ files are allowed to land in PlanIR's orphan-bucket fallback --
-    see allow_unmatched_date_prefixes docstring above (pre-existing, D1
-    scope, not a filename_stem regression). Every non-W00 file must still
-    match the primary calendar-day path."""
+    """D1 fix landed (WS-B): plan_dates now carries a real week=0 W00 entry
+    (see _build_w00_plan), so W00 ZWOs match PlanIR's primary
+    stem.startswith(workout_prefix) path like any other calendar day -- the
+    former allow_unmatched_date_prefixes=('W00_',) exemption is removed."""
     athlete_dir, plan_dates, profile, _ = w00_plan
-    _plan_ir_matches_every_zwo(athlete_dir, plan_dates, profile, 'w00-athlete', monkeypatch,
-                               allow_unmatched_date_prefixes=('W00_',))
+    _plan_ir_matches_every_zwo(athlete_dir, plan_dates, profile, 'w00-athlete', monkeypatch)
 
 
 # ===========================================================================
