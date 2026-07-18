@@ -640,9 +640,13 @@ def _block_coach_notes(block: _RawBlock, sets_is_range: bool) -> Optional[str]:
 def _make_reps_sets(uuid_factory: Callable[[], str], value: str, count: int) -> List[Dict[str, object]]:
     """Sets for a Reps-type prescription. `value` is kept VERBATIM -- an
     integer or a "low-high" range string -- per the findings doc (no
-    low-end truncation). Shape matches the live capture:
-    `{id, parameter:"Reps", category:"Reps", prescribedValue, executedValue:
-    null, inputFormat:null}`."""
+    low-end truncation). Shape matches the SAVE endpoint's stricter
+    requirement (findings doc, "SOLVED -- rx plan-attach save call"):
+    `{parameter:"Reps", inputFormat:"Integer", prescribedValue,
+    executedValue:null, id:<uuid>}` -- NO `category` key on parameterValues
+    (unlike the exercise-level/prescription-level Reps parameter DEFS, which
+    keep `category`), and `inputFormat:"Integer"` (not null) verified 200 for
+    plain ints, ranges ("6-8"), and per-side surrogates ("10")."""
     sets = []
     for _ in range(count):
         sets.append(
@@ -654,10 +658,9 @@ def _make_reps_sets(uuid_factory: Callable[[], str], value: str, count: int) -> 
                     {
                         "id": uuid_factory(),
                         "parameter": "Reps",
-                        "category": "Reps",
+                        "inputFormat": "Integer",
                         "prescribedValue": value,
                         "executedValue": None,
-                        "inputFormat": None,
                     }
                 ],
             }
@@ -676,7 +679,8 @@ def _make_prescription(
     `parameters: []` returned HTTP 200 but 3 field errors ("A Prescription
     must include at least 1 Parameter"). `value` is either a verbatim Reps
     value ("6-8") or a surrogate for a per-side/timed movement (the leading
-    number, or "1") -- see _parse_param."""
+    number, or "1") -- see _parse_param. `compliancePercent`/`complianceState`
+    are required by the SAVE endpoint (same as blocks already carry)."""
     return {
         "id": uuid_factory(),
         "exercise": exercise_ref,
@@ -684,6 +688,8 @@ def _make_prescription(
         "coachNotes": coach_notes,
         "setSummaryTemplate": "{Reps}",
         "sets": _make_reps_sets(uuid_factory, value, count),
+        "compliancePercent": 0,
+        "complianceState": "NoCompletion",
     }
 
 

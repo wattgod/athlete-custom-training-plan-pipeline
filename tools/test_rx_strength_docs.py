@@ -35,9 +35,16 @@ REQUIRED_BLOCK_KEYS = {
     "prescriptions", "blockType", "title", "coachNotes", "parameters",
     "isComplete", "compliancePercent", "complianceState", "id",
 }
-REQUIRED_PRESCRIPTION_KEYS = {"id", "exercise", "parameters", "coachNotes", "setSummaryTemplate", "sets"}
+REQUIRED_PRESCRIPTION_KEYS = {
+    "id", "exercise", "parameters", "coachNotes", "setSummaryTemplate", "sets",
+    "compliancePercent", "complianceState",
+}
 REQUIRED_SET_KEYS = {"id", "isComplete", "setOrigin", "parameterValues"}
-REQUIRED_PARAM_VALUE_KEYS = {"id", "parameter", "category", "executedValue", "inputFormat", "prescribedValue"}
+# NOTE: the SAVE endpoint (stricter than the standalone PUT) rejects a
+# `category` key on per-set parameterValues -- it must NOT be present here,
+# even though the exercise-level/prescription-level Reps parameter DEFS keep
+# `category`. See TestSaveEndpointShape.test_parameter_values_have_no_category_key.
+REQUIRED_PARAM_VALUE_KEYS = {"id", "parameter", "executedValue", "inputFormat", "prescribedValue"}
 REQUIRED_CUSTOM_EXERCISE_KEYS = {
     "id", "ownerId", "title", "videoUrl", "instructions", "primaryMuscleGroups",
     "secondaryMuscleGroups", "canEdit", "parameters",
@@ -516,3 +523,94 @@ class TestRepsAndParamless:
                     elif "Rx:" not in (presc["coachNotes"] or ""):
                         saw_plain_reps_no_note = True
         assert saw_forced_note_surrogate and saw_plain_reps_no_note
+
+
+# ---------------------------------------------------------------------------
+# rx SAVE-endpoint shape (findings doc, "SOLVED -- rx plan-attach save call",
+# 2026-07-17): stricter than the standalone PUT. parameterValues drop
+# `category` and use `inputFormat:"Integer"` (not null); every block AND
+# every prescription carries `compliancePercent:0`/`complianceState:
+# "NoCompletion"`; SingleExercise blocks take the exercise's own title.
+# ---------------------------------------------------------------------------
+class TestSaveEndpointShape:
+    @pytest.mark.parametrize("template_key", sorted(rxdocs.TEMPLATE_KEYS))
+    def test_parameter_values_have_no_category_key(self, template_key):
+        doc = _build(template_key)
+        for block in doc["blocks"]:
+            for presc in block["prescriptions"]:
+                for s in presc["sets"]:
+                    for pv in s["parameterValues"]:
+                        assert "category" not in pv, pv
+
+    @pytest.mark.parametrize("template_key", sorted(rxdocs.TEMPLATE_KEYS))
+    def test_parameter_values_input_format_is_integer(self, template_key):
+        doc = _build(template_key)
+        for block in doc["blocks"]:
+            for presc in block["prescriptions"]:
+                for s in presc["sets"]:
+                    for pv in s["parameterValues"]:
+                        assert pv["inputFormat"] == "Integer", pv
+
+    @pytest.mark.parametrize("template_key", sorted(rxdocs.TEMPLATE_KEYS))
+    def test_parameter_values_still_match_required_shape_exactly(self, template_key):
+        doc = _build(template_key)
+        for block in doc["blocks"]:
+            for presc in block["prescriptions"]:
+                for s in presc["sets"]:
+                    for pv in s["parameterValues"]:
+                        assert set(pv.keys()) == {
+                            "id", "parameter", "inputFormat", "prescribedValue", "executedValue",
+                        }
+                        assert pv["parameter"] == "Reps"
+                        assert pv["executedValue"] is None
+
+    @pytest.mark.parametrize("template_key", sorted(rxdocs.TEMPLATE_KEYS))
+    def test_prescription_level_and_exercise_level_params_keep_category(self, template_key):
+        # Only the per-set parameterValues drop category -- the prescription's
+        # own parameters[] param DEF and the exercise object's parameters[]
+        # still carry it.
+        doc = _build(template_key)
+        for block in doc["blocks"]:
+            for presc in block["prescriptions"]:
+                for pdef in presc["parameters"]:
+                    assert pdef["category"] == "Reps"
+                for pdef in presc["exercise"]["parameters"]:
+                    assert pdef["category"] == "Reps"
+
+    @pytest.mark.parametrize("template_key", sorted(rxdocs.TEMPLATE_KEYS))
+    def test_every_prescription_has_compliance_fields(self, template_key):
+        doc = _build(template_key)
+        for block in doc["blocks"]:
+            for presc in block["prescriptions"]:
+                assert presc["compliancePercent"] == 0
+                assert presc["complianceState"] == "NoCompletion"
+
+    @pytest.mark.parametrize("template_key", sorted(rxdocs.TEMPLATE_KEYS))
+    def test_every_block_has_compliance_fields(self, template_key):
+        doc = _build(template_key)
+        for block in doc["blocks"]:
+            assert block["compliancePercent"] == 0
+            assert block["complianceState"] == "NoCompletion"
+
+    def test_single_exercise_block_title_is_the_exercise_title(self):
+        # None of the 7 real templates happen to produce a SingleExercise
+        # block (every MAIN section has >=2 movements) -- exercise the
+        # mapping rule directly against a synthetic single-movement MAIN
+        # block, same as _build_block sees from the real parser.
+        block = rxdocs._RawBlock(
+            name="MAIN", num=1, subtitle=None, duration=None, meta=["3 sets", "90s rest"],
+            movements=[rxdocs._RawMovement(slot="A1", raw_name="Goblet Squat", presc_text="8 reps")],
+        )
+        block_dict, n_presc, n_sets = rxdocs._build_block(block, _counting_uuid_factory())
+        assert block_dict["blockType"] == "SingleExercise"
+        assert block_dict["title"] == "Goblet Squat"
+        assert block_dict["title"] == block_dict["prescriptions"][0]["exercise"]["title"]
+        assert n_presc == 1 and n_sets == 3
+
+    def test_multi_exercise_blocks_keep_block_type_title_not_exercise_title(self):
+        # Superset/Circuit/WarmUp/CoolDown block titles stay the generic
+        # block-type title (or coachNotes-only), never an exercise title.
+        doc = _build("foundation_a")
+        for block in doc["blocks"]:
+            if block["blockType"] in ("Superset", "Circuit"):
+                assert block["title"] == block["blockType"]

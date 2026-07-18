@@ -251,20 +251,36 @@
   // One-shot authoring (findings doc, 2026-07-17 live probes): there is NO
   // separate custom-exercise endpoint -- the "Create Custom Exercise" UI
   // action fires zero network calls, and custom exercises persist inline
-  // only via the workout PUT that contains them. No per-block/per-exercise
-  // scaffold calls are required either: POST creates a doc shell (id +
-  // calendarId), then a single PUT with the FULL prebuilt doc (blocks,
-  // prescriptions, inline exercises, sets) persists everything in one call.
-  // job.strength[i].doc is already fully built by tools/rx_strength_docs.py
-  // (catalog exercises embed a trimmed real object; custom movements embed a
-  // full inline exercise object) -- the driver only needs to merge the
-  // server-issued id/calendarId onto it before the PUT.
+  // only via the workout PUT/save that contains them. No per-block/per-
+  // exercise scaffold calls are required either. job.strength[i].doc is
+  // already fully built by tools/rx_strength_docs.py (catalog exercises
+  // embed a trimmed real object; custom movements embed a full inline
+  // exercise object).
   async function existingStrengthDoc(planPersonId, date) {
     // Detect an existing same-day strength doc before any retry (sol F8).
     const r = await rxFetch(`/rx/activity/v1/workouts?calendarId=${planPersonId}&date=${date}`);
     if (!r.ok || !r.body) return null;
     const rows = Array.isArray(r.body) ? r.body : [r.body];
     return rows.find(row => row && row.prescribedDate && row.prescribedDate.slice(0, 10) === date) || null;
+  }
+
+  // SOLVED 2026-07-17 ("rx plan-attach save call"): POST
+  // /rx/activity/v1/plans/{planId}/workouts/save is stricter than the
+  // standalone PUT to /workouts -- the shell response from the create POST
+  // carries ~30 nullable fields the save needs (lastUpdatedAt,
+  // prescribedStartTime, isLocked, workoutSubTypeId, prescribedTss, etc.).
+  // Only overlay the authored content onto the shell; the shell owns
+  // everything else.
+  const STRENGTH_DOC_OVERLAY_KEYS = [
+    'blocks', 'title', 'snapshot', 'prescribedDate', 'prescribedDurationInSeconds',
+    'workoutType', 'instructions',
+  ];
+  function mergeDocOntoShell(shell, doc, overrides) {
+    const merged = Object.assign({}, shell);
+    for (const key of STRENGTH_DOC_OVERLAY_KEYS) {
+      if (doc && Object.prototype.hasOwnProperty.call(doc, key)) merged[key] = doc[key];
+    }
+    return Object.assign(merged, overrides);
   }
 
   async function applyStrengthDay(s, ctx) {
@@ -276,23 +292,30 @@
       body: JSON.stringify({ date: s.date, calendarId: planPersonId, workoutType: 9, prescribedDate: s.date }),
     });
     if (!created.ok) throw new Error('rx create failed: ' + created.status + ' ' + JSON.stringify(created.raw).slice(0, 200));
-    const docId = created.body && created.body.id;
+    const shell = created.body;
+    const docId = shell && shell.id;
     if (docId == null) throw new Error('rx create returned no shell id: ' + JSON.stringify(created.raw).slice(0, 200));
 
-    // 2. merge the shell's id + calendarId onto the prebuilt doc, then PUT
-    // the whole thing in one shot.
+    if (planId) {
+      // Plan flow: overlay the authored doc onto the shell, then POST
+      // straight to save -- it persists AND attaches to the plan in one
+      // call. No intermediate PUT to /workouts for this case.
+      const mergedDoc = mergeDocOntoShell(shell, s.doc, {
+        id: docId, calendarId: planPersonId, prescribedDate: s.date,
+      });
+      const saved = await rxFetch(`/rx/activity/v1/plans/${planId}/workouts/save`, {
+        method: 'POST', body: JSON.stringify(mergedDoc),
+      });
+      if (!saved.ok) throw new Error('rx plan workouts/save failed: ' + saved.status + ' ' + JSON.stringify(saved.raw).slice(0, 200));
+      return (saved.body && saved.body.id) || docId;
+    }
+
+    // Raw-athlete flow (no plan context): the standalone PUT persists
+    // directly -- verified live (findings doc, "Strength-doc validity:
+    // PROVEN LIVE").
     const finalDoc = Object.assign({}, s.doc, { id: docId, calendarId: planPersonId, prescribedDate: s.date });
     const put = await rxFetch('/rx/activity/v1/workouts', { method: 'PUT', body: JSON.stringify(finalDoc) });
     if (!put.ok) throw new Error('rx PUT failed: ' + put.status + ' ' + JSON.stringify(put.raw).slice(0, 200));
-
-    // 3. plan context: attach the workout to the plan being built.
-    if (planId) {
-      const saved = await rxFetch(`/rx/activity/v1/plans/${planId}/workouts/save`, {
-        method: 'POST', body: JSON.stringify(put.body || finalDoc),
-      });
-      if (!saved.ok) throw new Error('rx plan workouts/save failed: ' + saved.status + ' ' + JSON.stringify(saved.raw).slice(0, 200));
-    }
-
     return (put.body && put.body.id) || docId;
   }
 
