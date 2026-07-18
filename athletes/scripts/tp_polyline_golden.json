@@ -1,0 +1,695 @@
+{
+ "inputs": {
+  "warmup_steady_cooldown": [
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 900,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 50,
+        "maxValue": 75
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 1200,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 88
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 600,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 50,
+        "maxValue": 40
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "vo2_intervals_unrolled": [
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 900,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 50,
+        "maxValue": 75
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 30,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 125
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 30,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 50
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 30,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 125
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 30,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 50
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 30,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 125
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 30,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 50
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 30,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 125
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 30,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 50
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 30,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 125
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 30,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 50
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 600,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 50
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "ftp_test": [
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 300,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 80
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 300,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 50
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 300,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 105
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 300,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 50
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 1200,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 100
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 600,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 50
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "single_freeride": [
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "s",
+      "length": {
+       "value": 8400,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 0
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "expected": {
+  "warmup_steady_cooldown": [
+   [
+    0,
+    0
+   ],
+   [
+    0.0,
+    0.852
+   ],
+   [
+    0.333,
+    0.852
+   ],
+   [
+    0.333,
+    1.0
+   ],
+   [
+    0.777,
+    1.0
+   ],
+   [
+    0.777,
+    0.455
+   ],
+   [
+    0.999,
+    0.455
+   ],
+   [
+    1,
+    0
+   ]
+  ],
+  "vo2_intervals_unrolled": [
+   [
+    0,
+    0
+   ],
+   [
+    0.0,
+    0.6
+   ],
+   [
+    0.5,
+    0.6
+   ],
+   [
+    0.5,
+    1.0
+   ],
+   [
+    0.517,
+    1.0
+   ],
+   [
+    0.517,
+    0.4
+   ],
+   [
+    0.534,
+    0.4
+   ],
+   [
+    0.534,
+    1.0
+   ],
+   [
+    0.551,
+    1.0
+   ],
+   [
+    0.551,
+    0.4
+   ],
+   [
+    0.568,
+    0.4
+   ],
+   [
+    0.568,
+    1.0
+   ],
+   [
+    0.585,
+    1.0
+   ],
+   [
+    0.585,
+    0.4
+   ],
+   [
+    0.602,
+    0.4
+   ],
+   [
+    0.602,
+    1.0
+   ],
+   [
+    0.619,
+    1.0
+   ],
+   [
+    0.619,
+    0.4
+   ],
+   [
+    0.636,
+    0.4
+   ],
+   [
+    0.636,
+    1.0
+   ],
+   [
+    0.653,
+    1.0
+   ],
+   [
+    0.653,
+    0.4
+   ],
+   [
+    0.67,
+    0.4
+   ],
+   [
+    0.67,
+    0.4
+   ],
+   [
+    1.003,
+    0.4
+   ],
+   [
+    1,
+    0
+   ]
+  ],
+  "ftp_test": [
+   [
+    0,
+    0
+   ],
+   [
+    0.0,
+    0.762
+   ],
+   [
+    0.1,
+    0.762
+   ],
+   [
+    0.1,
+    0.476
+   ],
+   [
+    0.2,
+    0.476
+   ],
+   [
+    0.2,
+    1.0
+   ],
+   [
+    0.3,
+    1.0
+   ],
+   [
+    0.3,
+    0.476
+   ],
+   [
+    0.4,
+    0.476
+   ],
+   [
+    0.4,
+    0.952
+   ],
+   [
+    0.8,
+    0.952
+   ],
+   [
+    0.8,
+    0.476
+   ],
+   [
+    1.0,
+    0.476
+   ],
+   [
+    1,
+    0
+   ]
+  ],
+  "single_freeride": [
+   [
+    0,
+    0
+   ],
+   [
+    0.0,
+    0.0
+   ],
+   [
+    1.0,
+    0.0
+   ],
+   [
+    1,
+    0
+   ]
+  ]
+ }
+}
