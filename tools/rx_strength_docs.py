@@ -813,7 +813,18 @@ def _build_instructions(
     # templates actually contain one here; this guards future template edits).
     text = re.sub(r"https?://(?!gravelgodcycling\.com)\S+", "", text)
     text = re.sub(r"[ \t]+\n", "\n", text)
-    return text.strip()
+    text = text.strip()
+    # The rx plan-save endpoint hard-caps `instructions` at 1000 chars (live:
+    # 400 "Instructions can be a maximum of 1000 characters." on the longer
+    # Max Strength / Power sessions once WARMUP/COOLDOWN were folded in). Cut on
+    # a newline boundary so a section isn't sliced mid-line; per-movement detail
+    # still lives in each prescription's coachNotes, so the tail loss is benign.
+    if len(text) > 1000:
+        cut = text.rfind("\n", 0, 999)
+        if cut < 500:  # no good boundary near the limit -- hard cut
+            cut = 999
+        text = text[:cut].rstrip() + "\n…"
+    return text
 
 
 def _parse_duration_seconds(preamble: List[str]) -> int:
