@@ -28,10 +28,16 @@ _METHODOLOGY_SECONDARY = {
     'g_spot':                ['G-Spot', 'Threshold Touch', 'Threshold Steady'],
     'traditional_pyramidal': ['Tempo with Accelerations', 'Tempo with Sprints', 'Threshold Steady'],
 }
-# Discipline-specific intensity work — never overwritten, so a gravel/mtb plan
-# keeps its signature work alongside the methodology emphasis.
+# Discipline-specific intensity work — never overwritten, so a gravel/mtb/road
+# plan keeps its signature work alongside the methodology emphasis. Road names
+# come from the road extra_alternatives pool (config/workout_selection.yaml
+# disciplines.road) — without this, a road plan's Tempo/Threshold Progressive/
+# Blended VO2max and G Spot/G-Spot selection survives the discipline overlay
+# insert but is then silently overwritten by the methodology-emphasis pass
+# below, since none of these names were previously protected.
 _DISCIPLINE_INTENSITY = {
     'Microbursts', 'Mixed Climbing', 'Mixed Climbing Variations', 'Stomps',
+    'Tempo', 'Threshold Progressive', 'Blended VO2max and G Spot', 'G-Spot',
 }
 
 

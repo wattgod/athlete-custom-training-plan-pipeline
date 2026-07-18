@@ -382,6 +382,100 @@ class TestMethodologyDifferentiatesThePlan:
             assert r['critical_pass'], f"{m} not compliant: {r.get('critical_score')}"
 
 
+class TestRoadSelectionSurvivesMethodology:
+    """R2 selector-survival fix: the road discipline overlay
+    (config/workout_selection.yaml disciplines.road) inserts Tempo /
+    Threshold Progressive / Blended VO2max and G Spot / G-Spot into the
+    intensity alternatives pool. Before the fix, only gravel/mtb names
+    (_DISCIPLINE_INTENSITY) were protected from the methodology-emphasis
+    pass in workout_selector.select_workouts_for_week, so once a road name
+    won the block rotation, an unrelated methodology's secondary-pool pick
+    silently overwrote it. traditional_pyramidal is the sharpest probe: its
+    pool (Tempo with Accelerations / Tempo with Sprints / Threshold Steady)
+    shares no name with the road overlay, so a survival failure is visible
+    immediately as a name mismatch."""
+
+    _METHODOLOGIES = ('polarized_80_20', 'time_crunched', 'g_spot', 'traditional_pyramidal')
+
+    # (phase, road overlay name). Which block_number actually selects the
+    # name (pre-emphasis) shifts by methodology, because the emphasis pass
+    # may already have claimed an earlier, unprotected slot in the same
+    # week — so this searches a block range per methodology rather than
+    # assuming one fixed block_number works everywhere.
+    _CASES = [
+        ('base', 'Tempo'),
+        ('build', 'Threshold Progressive'),
+        ('build', 'Blended VO2max and G Spot'),
+    ]
+    # NOTE: race_prep/'G-Spot' (disciplines.road.race_prep.intensity_3 in
+    # workout_selection.yaml) is NOT covered here — that slot's own
+    # `default` is None in config/workout_selection.yaml (phases.race_prep
+    # .slots.intensity_3), so `_get_slot_workout` returns None and the slot
+    # is skipped by `select_workouts_for_week` before the discipline overlay
+    # ever runs. The overlay entry is dead code today, independent of the
+    # methodology-overwrite bug this fix addresses — out of scope for R2's
+    # selector-survival fix (flagged in the closing report, not fixed here).
+
+    def test_road_names_are_discipline_protected(self):
+        from workout_selector import _DISCIPLINE_INTENSITY
+        for _, name in self._CASES:
+            assert name in _DISCIPLINE_INTENSITY, (
+                f"{name!r} not in _DISCIPLINE_INTENSITY — road selection is "
+                f"exposed to methodology overwrite again")
+
+    def test_road_overlay_selection_survives_every_methodology(self):
+        """Direct unit-level proof: for every methodology, find a block
+        where the road-overlay name wins the intensity rotation, and
+        confirm the methodology-emphasis pass leaves it unchanged."""
+        for phase, target in self._CASES:
+            for methodology in self._METHODOLOGIES:
+                survived = False
+                for block_number in range(1, 13):
+                    menu = select_workouts_for_week(
+                        phase=phase, archetype='specialist', week_type='load',
+                        week_in_block=1, base_level=3, max_level=6,
+                        max_intensity=3, hours_per_week=10,
+                        block_number=block_number, discipline='road',
+                        methodology=methodology,
+                    )
+                    names = [w['name'] for w in menu if w.get('role') == 'intensity']
+                    if target in names:
+                        survived = True
+                        break
+                assert survived, (
+                    f"{phase}/{methodology}: road selection {target!r} never "
+                    f"survived across blocks 1-12")
+
+    def test_road_overlay_survives_across_a_full_generated_plan(self):
+        """Generated-plan level: build the full Jesse-shaped calendar with
+        discipline='road' under each methodology and confirm the road
+        overlay names actually surface intact somewhere in base/build load
+        weeks (not just in the isolated unit call above)."""
+        for methodology in self._METHODOLOGIES:
+            plan = build_plan_from_calendar(
+                week_descriptors=_jesse_descriptors(), archetype='specialist',
+                max_level=6, max_intensity=3, off_days=['Sun'],
+                long_ride_day='Sat', hours_per_week=10, discipline='road',
+                methodology=methodology,
+            )
+            names_by_phase = {'base': set(), 'build': set()}
+            for w in plan['weeks']:
+                phase = w.get('phase')
+                if phase not in names_by_phase or w.get('week_type') != 'load':
+                    continue
+                for d in w['days']:
+                    if d.get('role') == 'intensity':
+                        names_by_phase[phase].add(d['name'])
+            assert 'Tempo' in names_by_phase['base'], (
+                f"{methodology}: road 'Tempo' never surfaced in a base load "
+                f"week — {names_by_phase['base']}")
+            assert names_by_phase['build'] & {
+                'Threshold Progressive', 'Blended VO2max and G Spot'
+            }, (
+                f"{methodology}: no road build-phase overlay name surfaced — "
+                f"{names_by_phase['build']}")
+
+
 class TestVO2GapWithLowIntensityBudget:
     """A low-training-age athlete gets max_intensity=1. The build-phase VO2
     slot is intensity_2, so a fixed slot order would fill only intensity_1
