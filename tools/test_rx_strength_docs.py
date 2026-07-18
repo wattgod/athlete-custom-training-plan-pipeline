@@ -296,7 +296,10 @@ class TestBlockFolding:
         assert "COOLDOWN:" in doc["instructions"]
         assert "Downward Dog Lunge + Rotation" in doc["instructions"]
         assert "Deep Squat Sit" in doc["instructions"]
-        assert "(demos: gravelgodcycling.com/demos)" in doc["instructions"]
+        # Brand separation: gravelgodcycling.com demo links are stripped (they
+        # leaked the Gravel God brand onto Roadie plans -- caught in the live
+        # acceptance run). The movement text stays; the URL goes.
+        assert "gravelgodcycling.com" not in doc["instructions"]
 
     @pytest.mark.parametrize("template_key", sorted(rxdocs.TEMPLATE_KEYS))
     def test_every_template_folds_warmup_and_cooldown(self, template_key):
@@ -402,9 +405,17 @@ class TestMinimalSchema:
             for presc in block["prescriptions"]:
                 assert str(presc["exercise"]["id"]).isdigit()
 
-    def test_instructions_keeps_real_gravelgodcycling_links(self):
-        doc = _build("foundation_a")
-        assert "gravelgodcycling.com/strength" in doc["instructions"]
+    def test_instructions_strip_all_brand_urls(self):
+        # Brand separation: NO gravelgodcycling.com (or any URL) may survive in
+        # strength instructions -- the shared Gravel God templates would
+        # otherwise leak the Gravel God brand onto a Roadie Labs plan (caught
+        # live in the acceptance run). Per-movement demo videos ride on each
+        # catalog exercise's own videoUrl instead.
+        for key in sorted(rxdocs.TEMPLATE_KEYS):
+            instr = _build(key)["instructions"]
+            assert "gravelgodcycling.com" not in instr
+            assert "http://" not in instr and "https://" not in instr
+            assert ".com" not in instr
 
     def test_calendar_id_and_doc_id_pass_through(self):
         doc = _build("foundation_a", calendar_id=999, doc_id="custom-doc-id")

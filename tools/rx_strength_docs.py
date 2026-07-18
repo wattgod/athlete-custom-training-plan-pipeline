@@ -809,10 +809,19 @@ def _build_instructions(
         body = "\n".join(l.rstrip() for l in notes_block.raw_lines).strip("\n")
         parts.append("NOTES" + ("\n" + body if body else ""))
     text = "\n\n".join(parts)
-    # Defensive: strip any non-gravelgodcycling.com link (none of the 7
-    # templates actually contain one here; this guards future template edits).
-    text = re.sub(r"https?://(?!gravelgodcycling\.com)\S+", "", text)
+    # Brand separation (Roadie acceptance caught this live): the shared Gravel
+    # God session templates embed gravelgodcycling.com demo/guide links, which
+    # leak the Gravel God brand onto a Roadie Labs plan. Strip ALL promotional
+    # URLs and bare brand-domain references from strength instructions -- the
+    # real per-movement demo videos ride on each catalog exercise's own
+    # videoUrl, so these instruction-level links are redundant anyway. This is
+    # brand-safe for every discipline (no brand should surface another's URL).
+    text = re.sub(r"https?://\S+", "", text)          # any URL
+    text = re.sub(r"\b[\w.-]+\.com\S*", "", text)      # bare domains (gravelgodcycling.com...)
+    text = re.sub(r"\(\s*demos:\s*\)", "", text, flags=re.IGNORECASE)  # orphaned "(demos: )"
+    text = re.sub(r"→\s*Full guide:\s*$", "", text, flags=re.IGNORECASE | re.MULTILINE)
     text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     text = text.strip()
     # The rx plan-save endpoint hard-caps `instructions` at 1000 chars (live:
     # 400 "Instructions can be a maximum of 1000 characters." on the longer
