@@ -21,6 +21,7 @@ import yaml
 
 from fueling_policy import FuelingPrescription, prescription_from_fueling
 from zwo_parser import parse_zwo, parse_zwo_structure
+from tp_polyline import compute_polyline
 
 
 PLAN_IR_VERSION = "0.1"
@@ -322,54 +323,6 @@ def _tp_step(name: str, seconds: int, low: Optional[float], high: Optional[float
     }
 
 
-def _compute_polyline(structure: List[Dict[str, Any]]) -> List[List[float]]:
-    """Compute the TP calendar-tile power-profile polyline from a `structure`
-    array (the same list that goes in body["structure"]["structure"]).
-
-    The calendar tile draws its mini power-profile graph from this polyline,
-    NOT from the structure steps (those drive the popup builder's graph). An
-    empty polyline => a blank tile. Ported point-for-point from the reference
-    build (gravel-god-training-plans/tools/build_tp_bodies.py::compute_polyline),
-    itself reverse-engineered from Matti's working OG TrainingPeaks workouts:
-    per step a vertical rise then a horizontal hold (x = fraction of total
-    duration, y = fraction of peak intensity), bookended by [0,0] and [1,0].
-    Each step's duration fraction is rounded to 3 decimals BEFORE accumulating
-    into the running cumulative fraction (matching the source data exactly, so
-    rounding drift can push the last cumulative point slightly past 1 before
-    the explicit closing [1,0]).
-    """
-    flat: List[Dict[str, Any]] = []
-    for block in structure:
-        length = block.get("length", {})
-        inner = block.get("steps", [])
-        if length.get("unit") == "repetition":
-            for _ in range(int(length.get("value", 1))):
-                flat.extend(inner)
-        else:
-            flat.extend(inner)
-
-    durations, intensities = [], []
-    for step in flat:
-        durations.append(step.get("length", {}).get("value", 0))
-        t0 = (step.get("targets") or [{}])[0]
-        maxv = t0.get("maxValue")
-        intensities.append(maxv if maxv is not None else t0.get("minValue", 0))
-
-    total = sum(durations)
-    peak = max(intensities + [1])
-    polyline: List[List[float]] = [[0, 0]]
-    if total > 0:
-        cum = 0.0
-        for dur, intensity in zip(durations, intensities):
-            y = round(intensity / peak, 3)
-            t_begin = round(cum, 3)
-            cum = round(cum + round(dur / total, 3), 3)
-            polyline.append([t_begin, y])
-            polyline.append([cum, y])
-    polyline.append([1, 0])
-    return polyline
-
-
 def _tp_structure_from_segments(segments: List[Segment]) -> Optional[Dict[str, Any]]:
     """Convert already-typed Segments into a TP structure dict. Intervals are
     unrolled -- each on/off gets its own step, per the reference build."""
@@ -408,7 +361,7 @@ def _tp_structure_from_segments(segments: List[Segment]) -> Optional[Dict[str, A
         "primaryLengthMetric": "duration",
         "primaryIntensityMetric": "percentOfFtp",
         "primaryIntensityTargetOrRange": "target",
-        "polyline": _compute_polyline(steps),
+        "polyline": compute_polyline(steps),
     }
 
 
