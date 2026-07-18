@@ -106,7 +106,8 @@
     let body = null; try { body = await r.json(); } catch (_) { /* some 200s are empty */ }
     // Live rx responses are wrapped {data, errors} — unwrap; non-empty errors are a failure.
     const errors = body && body.errors;
-    const hasErrors = Array.isArray(errors) ? errors.length > 0 : !!errors;
+    // errors can be [], {}, or a populated array/object — only non-empty means failure
+    const hasErrors = !!errors && (Array.isArray(errors) ? errors.length > 0 : Object.keys(errors).length > 0);
     const ok = (r.status === 200 || r.status === 201) && !hasErrors;
     const data = body && typeof body === 'object' && 'data' in body ? body.data : body;
     return { status: r.status, ok, body: data, raw: body };
