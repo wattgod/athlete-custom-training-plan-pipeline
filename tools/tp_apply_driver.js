@@ -24,9 +24,10 @@
  *     workouts:[{date, order_on_day, title, workoutTypeValueId, tssPlanned,
  *                totalTimePlanned, description, structure, race}],
  *     strength:[{date, order_on_day, title, template_key, doc|pending_module}],
- *     custom_exercises:[...] (INFORMATIONAL ONLY -- custom exercises are
- *       embedded inline in each strength[i].doc; this driver never creates
- *       them via a separate call), apply:{targetDate, startType, enabled},
+ *     custom_exercises:[...] (NO-OP, always [] -- Matti's final ALL-CATALOG
+ *       decision means every movement resolves to a real catalog exercise;
+ *       there is no more inline-custom-exercise concept for this driver to
+ *       handle), apply:{targetDate, startType, enabled},
  *     verify:{expected:{bike,strength,day_off,race,total}, date_range:{start,end}},
  *     rollback:{snapshot_range:{start,end}} }
  *
@@ -248,14 +249,15 @@
   }
 
   // ---- Stage 3: strength via rx -------------------------------------------
-  // One-shot authoring (findings doc, 2026-07-17 live probes): there is NO
-  // separate custom-exercise endpoint -- the "Create Custom Exercise" UI
-  // action fires zero network calls, and custom exercises persist inline
-  // only via the workout PUT/save that contains them. No per-block/per-
-  // exercise scaffold calls are required either. job.strength[i].doc is
-  // already fully built by tools/rx_strength_docs.py (catalog exercises
-  // embed a trimmed real object; custom movements embed a full inline
-  // exercise object).
+  // One-shot authoring (findings doc, 2026-07-17 live probes, ALL-CATALOG
+  // final decision): every movement resolves to a real catalog exercise --
+  // there is no more inline-custom-exercise concept, and no exercise-
+  // fetching call is needed here either (job.strength[i].doc already embeds
+  // each exercise's FULL live object, verbatim from
+  // tools/rx_exercise_catalog_full.json, built by tools/rx_strength_docs.py).
+  // No per-block/per-exercise scaffold calls are required: POST creates a
+  // doc shell, then a single PUT/save with the FULL prebuilt doc persists
+  // everything in one call.
   async function existingStrengthDoc(planPersonId, date) {
     // Detect an existing same-day strength doc before any retry (sol F8).
     const r = await rxFetch(`/rx/activity/v1/workouts?calendarId=${planPersonId}&date=${date}`);
