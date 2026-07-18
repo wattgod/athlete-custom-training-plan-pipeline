@@ -70,10 +70,18 @@ _HEAT_CUE_BODY = {
         "- Conditions can run warm on race day — this block builds a buffer\n"
         "- Hydrate deliberately: weigh before/after, replace fluid losses"
     ),
+    'low': (
+        "HEAT ACCLIMATION (RECOMMENDED):\n"
+        "- Add 15-20 min sauna or hot bath post-workout\n"
+        "- Your race likely runs cool, but heat work still builds plasma volume\n"
+        "  and aerobic headroom — recommended, not required\n"
+        "- Hydrate deliberately: weigh before/after, replace fluid losses"
+    ),
     'unknown': (
-        "HEAT ACCLIMATION (IF YOUR RACE RUNS HOT):\n"
-        "- Check your race's forecast/typical conditions on its race page\n"
-        "- If it runs hot, add 15-20 min sauna or hot bath post-workout\n"
+        "HEAT ACCLIMATION (RECOMMENDED):\n"
+        "- The aerobic carryover is worth it whatever race day brings\n"
+        "- If your race runs hot (check its race page), treat this as required\n"
+        "- Add 15-20 min sauna or hot bath post-workout\n"
         "- Hydrate deliberately: weigh before/after, replace fluid losses"
     ),
 }
@@ -103,9 +111,10 @@ def _heat_cue_eligible(workout_type: str, heat_risk: str, week_num: int, total_w
     """Whether this specific workout should carry a heat cue: register keeps
     cues, week falls in the 2-week window, AND the workout itself isn't a
     hard/intensity day or an assessment."""
+    # Matti ruling 2026-07-18: every register keeps cues (heat helps hot or
+    # cold); framing varies. Window + hard-day exclusion still gate.
     return (
-        heat_risk != 'low'
-        and _in_heat_cue_window(week_num, total_weeks)
+        _in_heat_cue_window(week_num, total_weeks)
         and workout_type not in _HEAT_CUE_EXCLUDED_TYPES
     )
 

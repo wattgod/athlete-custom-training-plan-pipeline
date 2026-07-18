@@ -2782,20 +2782,23 @@ def _section_heat_training(race_name: str, heat_risk: str, plan_duration: int, s
         evidence_note = ("Conditions here don't guarantee heat stress, but warm/humid signals in the race "
                           "profile make this worth doing.")
     elif heat_risk == "low":
-        framing_label = "OPTIONAL"
-        lede = (f"{race_name}'s typical conditions run cool. Heat training here is optional &mdash; do it "
-                f"for a small extra edge, not because it's required prep.")
-        evidence_note = ("Heat acclimation reliably helps performance IN THE HEAT. Its benefit in cool "
-                          "conditions is genuinely mixed in the research &mdash; some studies show a small "
-                          "aerobic gain (plasma volume expansion, hemoglobin mass), others show none. Skip "
-                          "this section without guilt if you'd rather spend the time elsewhere.")
+        framing_label = "RECOMMENDED"
+        lede = (f"{race_name}'s typical conditions run cool, so this isn't survival prep &mdash; but our "
+                f"coaching read is the block is still worth it: plasma volume and aerobic headroom carry "
+                f"over to any race-day weather.")
+        evidence_note = ("Heat acclimation reliably helps performance IN THE HEAT. The cool-condition "
+                          "evidence is genuinely split in the research &mdash; some studies show a small "
+                          "aerobic gain (plasma volume expansion, hemoglobin mass), others show none &mdash; "
+                          "which is why we call this recommended, not required. Skip it only if recovery "
+                          "is already stretched thin.")
     else:
-        framing_label = "CHECK YOUR RACE"
-        lede = (f"We don't have confirmed climate data for {race_name}. Check its race page for typical "
-                f"conditions before deciding how seriously to take this.")
-        evidence_note = ("If your race runs hot, treat the block below as required prep (see the hot-"
-                          "condition evidence above). If it runs cool, treat it as optional &mdash; the "
-                          "cool-condition evidence for a performance benefit is mixed, not settled.")
+        framing_label = "RECOMMENDED"
+        lede = (f"We don't have confirmed climate data for {race_name} &mdash; and our coaching read is "
+                f"the block below is worth running either way: the aerobic carryover travels.")
+        evidence_note = ("If your race runs hot (check its race page), treat the block as required prep "
+                          "(see the hot-condition evidence above). If it runs cool, it's recommended, not "
+                          "required &mdash; the cool-condition evidence for a performance benefit is split, "
+                          "not settled, and we say so.")
 
     return f"""<section id="section-{section_num}" class="gg-section">
   <h2>{section_num} &middot; Heat Training</h2>

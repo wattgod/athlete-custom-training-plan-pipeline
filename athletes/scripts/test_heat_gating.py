@@ -237,10 +237,13 @@ def _generate(monkeypatch, heat_risk, exclude_hard_types=True):
 
 
 class TestCueInjectionRegisters:
-    def test_low_risk_produces_zero_heat_cues(self, monkeypatch):
+    def test_low_risk_keeps_recommended_cues(self, monkeypatch):
+        # Matti ruling 2026-07-18: all registers keep cues; low = recommended.
         bodies = _generate(monkeypatch, "low", exclude_hard_types=False)
-        hits = [name for name, body in bodies.items() if "HEAT" in body]
-        assert hits == [], f"'low' register must drop cues entirely, found in: {hits}"
+        hits = [body for body in bodies.values() if "HEAT ACCLIMATION" in body]
+        assert hits, "'low' register must keep cues (recommended framing)"
+        assert any("RECOMMENDED" in body for body in hits)
+        assert not any("REQUIRED RACE PREP" in body for body in hits)
 
     def test_high_risk_produces_required_framing(self, monkeypatch):
         bodies = _generate(monkeypatch, "high", exclude_hard_types=False)
@@ -259,7 +262,8 @@ class TestCueInjectionRegisters:
         bodies = _generate(monkeypatch, "unknown", exclude_hard_types=False)
         hits = [body for body in bodies.values() if "HEAT ACCLIMATION" in body]
         assert hits, "expected at least one heat cue for 'unknown' register"
-        assert any("IF YOUR RACE RUNS HOT" in body for body in hits)
+        assert any("RECOMMENDED" in body for body in hits)
+        assert any("race page" in body for body in hits)
 
     def test_absent_field_falls_back_to_unknown_register(self, monkeypatch):
         """A malformed/absent classification result must degrade to the
@@ -273,7 +277,7 @@ class TestCueInjectionRegisters:
             files = gap.generate_zwo_files(athlete_dir, plan_dates, methodology, derived, profile)
             bodies = [Path(f).read_text() for f in files]
         hits = [b for b in bodies if "HEAT ACCLIMATION" in b]
-        assert hits and any("IF YOUR RACE RUNS HOT" in b for b in hits)
+        assert hits and any("RECOMMENDED" in b for b in hits)
 
     def test_ftp_test_day_never_gets_a_heat_cue_in_real_plan(self, monkeypatch):
         """Regression for the sol-flagged safety contradiction: the ONE day
@@ -302,8 +306,10 @@ class TestHeatCueHardDayExclusion:
     def test_easy_and_normal_types_eligible_when_register_and_window_allow(self, workout_type):
         assert gap._heat_cue_eligible(workout_type, "high", 9, 12) is True
 
-    def test_low_register_vetoes_regardless_of_type(self):
-        assert gap._heat_cue_eligible("Endurance", "low", 9, 12) is False
+    def test_low_register_no_longer_vetoes(self):
+        # Ruling 2026-07-18: low keeps cues; window + hard-day gates remain.
+        assert gap._heat_cue_eligible("Endurance", "low", 9, 12) is True
+        assert gap._heat_cue_eligible("Endurance", "low", 3, 12) is False
 
     def test_outside_window_vetoes_regardless_of_type(self):
         assert gap._heat_cue_eligible("Endurance", "high", 1, 12) is False
@@ -338,8 +344,8 @@ class TestGuideHeatSection:
         expectations = {
             "high": "REQUIRED",
             "moderate": "RECOMMENDED",
-            "low": "OPTIONAL",
-            "unknown": "CHECK YOUR RACE",
+            "low": "RECOMMENDED",
+            "unknown": "RECOMMENDED",
         }
         for register, label in expectations.items():
             html = _section_heat_training("Test Race", register, plan_duration=12, section_num=14)
@@ -349,7 +355,7 @@ class TestGuideHeatSection:
     def test_low_register_uses_mixed_evidence_framing_not_free_fitness(self):
         from training_guide_builder import _section_heat_training
         html = _section_heat_training("Test Race", "low", plan_duration=12, section_num=14)
-        assert "mixed" in html.lower()
+        assert "split" in html.lower()
         assert "free fitness" not in html.lower()
         assert "5-8%" not in html  # the retired universal-benefit claim
 
