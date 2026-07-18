@@ -245,6 +245,27 @@ def test_bike_sessions_have_unrolled_structure_with_int_percent_targets(structur
     assert saw_a_structure, "no bike session produced a structure -- conversion not exercised"
 
 
+def test_bike_structures_carry_a_populated_polyline(structure_plan):
+    """The TP calendar tile draws its mini power-profile from structure.polyline
+    (NOT the steps). An empty polyline => a blank tile -- a trust-killer that
+    shipped once (all bike workouts rendered blank). Every structured bike
+    workout must carry a non-empty polyline that opens at [0,0] and closes at
+    [1,0]."""
+    _, _, manifest, _ = structure_plan
+    checked = 0
+    for s in manifest['sessions']:
+        if s['tp_kind'] != 'bike' or not s.get('structure'):
+            continue
+        poly = s['structure'].get('polyline')
+        stem = s['filename_stem']
+        assert poly, f"bike session {stem} has an EMPTY polyline -- blank calendar tile"
+        assert len(poly) >= 3, f"{stem} polyline too short to be a real profile: {poly}"
+        assert list(poly[0]) == [0, 0], f"{stem} polyline must open at [0,0], got {poly[0]}"
+        assert list(poly[-1]) == [1, 0], f"{stem} polyline must close at [1,0], got {poly[-1]}"
+        checked += 1
+    assert checked, "no bike session with a structure -- polyline path not exercised"
+
+
 def test_strength_race_day_off_never_carry_structure(structure_plan):
     _, _, manifest, _ = structure_plan
     for s in manifest['sessions']:
