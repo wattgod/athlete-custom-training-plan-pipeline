@@ -35,7 +35,14 @@ def normalize_zwo_blocks(blocks: str) -> List[Dict[str, Any]]:
 
 
 def _mins(seconds: int) -> str:
-    return f'{seconds // 60:g}min' if seconds % 60 == 0 else f'{seconds / 60:g}min'
+    """Whole minutes render as ``Nmin``; anything else renders as ``M:SS``.
+
+    Never emit a decimal-minute token (e.g. ``7.41667min``) -- descriptions
+    must be coach-readable and machine-parseable at whole-second precision.
+    """
+    if seconds % 60 == 0:
+        return f'{seconds // 60}min'
+    return f'{seconds // 60}:{seconds % 60:02d}'
 
 
 def render_main_set(segments: Iterable[Dict[str, Any]]) -> str:

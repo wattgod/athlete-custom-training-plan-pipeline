@@ -78,6 +78,29 @@ class Session:
     tss: int
     segments: List[Segment] = field(default_factory=list)
     source_file: Optional[str] = None
+    # -- D1 TP-native projection extensions (Architecture rule #1: the TP
+    # output is a versioned projection of PlanIR, never a parallel truth).
+    # All optional/default-None so existing consumers of Session keep
+    # working unchanged against historical/partial packages.
+    description: Optional[str] = None
+    tp_kind: Optional[str] = None  # 'bike' | 'strength' | 'race' | 'day_off'
+    workout_type_value_id: Optional[int] = None  # TP numeric type: 2/9/7
+    tss_planned: Optional[float] = None
+    total_time_planned: Optional[float] = None  # hours
+    structure: Optional[Dict[str, Any]] = None
+    series_id: Optional[str] = None
+    series_index: Optional[int] = None
+    series_total: Optional[int] = None
+    order_on_day: Optional[int] = None
+    strength_template: Optional[str] = None
+    archetype_id: Optional[str] = None
+    display_name: Optional[str] = None
+    filename_stem: Optional[str] = None
+    # Not in the original D1 field list, but required by the Session-kind
+    # semantics section ("B-race days are bike workouts flagged
+    # race: {priority: 'B'}"): carries {'priority': 'A'|'B'} for race/
+    # B-race sessions, None otherwise.
+    race: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -229,6 +252,118 @@ def _segment_from_dict(segment: Dict[str, Any]) -> Segment:
     return Segment(**segment)
 
 
+# =============================================================================
+# TP PROJECTION (D1): tp_kind -> TP numeric workoutTypeValueId, and a
+# typed-segment -> TP `structure` converter. The converter reuses the
+# already-parsed Segment list (itself produced by zwo_parser's shared typed
+# parser) rather than re-parsing ZWO XML -- see build_tp_bodies.py in
+# gravel-god-training-plans/tools/ for the captured TP structure convention
+# this mirrors (step/targets/intensityClass shape, FreeRide -> minValue 0).
+# =============================================================================
+
+TP_WORKOUT_TYPE_VALUE_ID = {
+    'bike': 2,
+    'race': 2,   # A-race is a FreeRide-equivalent bike workout in TP terms
+    'strength': 9,
+    'day_off': 7,
+}
+
+
+def _default_tp_kind(session_type: str) -> str:
+    """Fallback tp_kind when no naming_manifest.json entry exists (older
+    packages, or a session PlanIR synthesized itself, e.g. rest days)."""
+    if session_type == "rest":
+        return "day_off"
+    if session_type == "strength":
+        return "strength"
+    if session_type == "race":
+        return "race"
+    return "bike"
+
+
+def _load_naming_manifest(athlete_dir: Path) -> Dict[str, Any]:
+    """Read the naming_manifest.json sidecar generate_athlete_package.py
+    writes next to the ZWOs -- carries per-session TP-projection metadata
+    that can't be re-derived from a rendered ZWO file alone (tp_kind,
+    series identity, strength template, archetype id, ...)."""
+    path = athlete_dir / "workouts" / "naming_manifest.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        warnings.warn(f"PlanIR: could not read naming_manifest.json: {exc}", RuntimeWarning, stacklevel=2)
+        return {}
+
+
+def _pct(value: Optional[float]) -> int:
+    return int(round((value or 0.0) * 100))
+
+
+def _tp_step(name: str, seconds: int, low: Optional[float], high: Optional[float],
+             flat: Optional[float], intensity_class: str, begin: int) -> Dict[str, Any]:
+    seconds = int(seconds)
+    if low is not None and high is not None and _pct(high) > _pct(low):
+        targets = [{"minValue": _pct(low), "maxValue": _pct(high)}]
+    else:
+        target_value = flat if flat is not None else (high if high is not None else low)
+        targets = [{"minValue": _pct(target_value)}]
+    return {
+        "type": "step",
+        "length": {"value": 1, "unit": "repetition"},
+        "steps": [{
+            "name": name,
+            "length": {"value": seconds, "unit": "second"},
+            "targets": targets,
+            "intensityClass": intensity_class,
+        }],
+        "begin": begin,
+        "end": begin + seconds,
+    }
+
+
+def _tp_structure_from_segments(segments: List[Segment]) -> Optional[Dict[str, Any]]:
+    """Convert already-typed Segments into a TP structure dict. Intervals are
+    unrolled -- each on/off gets its own step, per the reference build."""
+    steps: List[Dict[str, Any]] = []
+    t = 0
+    for seg in segments:
+        if seg.kind == "warmup":
+            mid = (seg.power_low + seg.power_high) / 2 if seg.power_low is not None and seg.power_high is not None else seg.power_high
+            steps.append(_tp_step("Warm Up", seg.seconds, seg.power_low, seg.power_high, mid, "warmUp", t))
+        elif seg.kind == "cooldown":
+            mid = (seg.power_low + seg.power_high) / 2 if seg.power_low is not None and seg.power_high is not None else seg.power_low
+            steps.append(_tp_step("Cool Down", seg.seconds, seg.power_low, seg.power_high, mid, "coolDown", t))
+        elif seg.kind == "ramp":
+            mid = (seg.power_low + seg.power_high) / 2 if seg.power_low is not None and seg.power_high is not None else seg.power_high
+            steps.append(_tp_step("Ramp", seg.seconds, seg.power_low, seg.power_high, mid, "active", t))
+        elif seg.kind == "steady_state":
+            steps.append(_tp_step("Steady State", seg.seconds, None, None, seg.power_target, "active", t))
+        elif seg.kind == "intervals":
+            for _ in range(seg.repeat or 1):
+                on_step = _tp_step("Steady State", seg.on_seconds, None, None, seg.on_power, "active", t)
+                steps.append(on_step)
+                t = on_step["end"]
+                off_step = _tp_step("Steady State", seg.off_seconds, None, None, seg.off_power, "rest", t)
+                steps.append(off_step)
+                t = off_step["end"]
+            continue  # begin/end already advanced per on/off step above
+        elif seg.kind == "free_ride":
+            steps.append(_tp_step("Free Ride", seg.seconds, None, None, 0.0, "active", t))
+        else:
+            continue
+        t = steps[-1]["end"]
+    if not steps:
+        return None
+    return {
+        "structure": steps,
+        "primaryLengthMetric": "duration",
+        "primaryIntensityMetric": "percentOfFtp",
+        "primaryIntensityTargetOrRange": "target",
+        "polyline": [],
+    }
+
+
 def _session_type(title: str, is_race_day: bool) -> str:
     normalized = title.upper().replace(" ", "_")
     if is_race_day or "RACE_DAY" in normalized:
@@ -254,24 +389,52 @@ def _sport_for_type(session_type: str) -> str:
     return "strength" if session_type == "strength" else "cycling"
 
 
-def _session_from_zwo(zwo_path: Path, date: Optional[str], is_race_day: bool, ftp: Optional[float]) -> Session:
-    structure = parse_zwo_structure(zwo_path)
+def _session_from_zwo(zwo_path: Path, date: Optional[str], is_race_day: bool, ftp: Optional[float],
+                       manifest: Optional[Dict[str, Any]] = None) -> Session:
+    zwo_structure = parse_zwo_structure(zwo_path)
     # TSS is relative to power ratios, but the shared preview parser needs a
     # numeric FTP to retain its established result shape.  This fallback is
     # calculation-only and is never written back to athlete facts.
     metrics = parse_zwo(zwo_path, ftp or 200.0)
-    title = structure["name"].replace("_", " ")
+    title = zwo_structure["name"].replace("_", " ")
     session_type = _session_type(title, is_race_day)
+    segments = [_segment_from_dict(segment) for segment in zwo_structure["segments"]]
+
+    entry = (manifest or {}).get(zwo_path.stem, {})
+    tp_kind = entry.get("tp_kind") or _default_tp_kind(session_type)
+    workout_type_value_id = entry.get("workout_type_value_id")
+    if workout_type_value_id is None:
+        workout_type_value_id = TP_WORKOUT_TYPE_VALUE_ID.get(tp_kind)
+    # structure absent for strength/race/day_off (D1) -- only bike sessions
+    # carry executable TP targets.
+    structure = _tp_structure_from_segments(segments) if tp_kind == "bike" else None
+    duration_sec = metrics["duration_sec"]
+
     return Session(
         date=date,
         title=title,
         sport=_sport_for_type(session_type),
         type=session_type,
         origin=_session_origin(session_type),
-        duration_s=int(metrics["duration_sec"]),
+        duration_s=int(duration_sec),
         tss=int(metrics["tss"]),
-        segments=[_segment_from_dict(segment) for segment in structure["segments"]],
+        segments=segments,
         source_file=zwo_path.name,
+        description=zwo_structure.get("description"),
+        tp_kind=tp_kind,
+        workout_type_value_id=workout_type_value_id,
+        tss_planned=round(float(metrics["tss"]), 1),
+        total_time_planned=round(duration_sec / 3600, 4) if duration_sec else 0.0,
+        structure=structure,
+        series_id=entry.get("series_id"),
+        series_index=entry.get("series_index"),
+        series_total=entry.get("series_total"),
+        order_on_day=entry.get("order_on_day"),
+        strength_template=entry.get("strength_template"),
+        archetype_id=entry.get("archetype_id"),
+        display_name=entry.get("display_name") or title,
+        filename_stem=zwo_path.stem,
+        race=entry.get("race"),
     )
 
 
@@ -284,6 +447,11 @@ def _rest_session(date: Optional[str]) -> Session:
         origin="rest",
         duration_s=0,
         tss=0,
+        tp_kind="day_off",
+        workout_type_value_id=TP_WORKOUT_TYPE_VALUE_ID["day_off"],
+        tss_planned=0.0,
+        total_time_planned=0.0,
+        display_name="Rest Day",
     )
 
 
@@ -302,6 +470,7 @@ def _build_weeks(
     if not zwo_paths:
         warnings.warn("PlanIR: optional artifact missing: workouts/*.zwo", RuntimeWarning, stacklevel=2)
 
+    manifest = _load_naming_manifest(athlete_dir)
     remaining = set(zwo_paths)
     weeks: List[Week] = []
     for week_data in plan_dates.get("weeks", []):
@@ -313,7 +482,7 @@ def _build_weeks(
             if matches:
                 for match in matches:
                     remaining.remove(match)
-                    week.sessions.append(_session_from_zwo(match, day.get("date"), is_race_day, athlete.ftp))
+                    week.sessions.append(_session_from_zwo(match, day.get("date"), is_race_day, athlete.ftp, manifest))
             else:
                 # Calendar days without a rendered ZWO are real rest days in the
                 # v0 reflection, rather than omitted holes in the plan calendar.
@@ -345,7 +514,7 @@ def _build_weeks(
             week = Week(number=number)
             by_number[number] = week
             weeks.append(week)
-        week.sessions.append(_session_from_zwo(zwo_path, None, "RACE_DAY" in zwo_path.name.upper(), athlete.ftp))
+        week.sessions.append(_session_from_zwo(zwo_path, None, "RACE_DAY" in zwo_path.name.upper(), athlete.ftp, manifest))
     return sorted(weeks, key=lambda week: week.number)
 
 
@@ -420,6 +589,99 @@ def build_plan_ir(athlete_id: str) -> PlanIR:
     except OSError as exc:
         warnings.warn(f"PlanIR: could not write plan_ir.json: {exc}", RuntimeWarning, stacklevel=2)
     return plan_ir
+
+
+_TP_MANIFEST_VERSION = 1
+
+
+def project_tp_manifest(plan_ir: PlanIR) -> Dict[str, Any]:
+    """Project ``tp_manifest.json`` from an already-built PlanIR.
+
+    Architecture rule #1: the TP output is a versioned PROJECTION of
+    PlanIR, never a parallel truth -- this function reads PlanIR.Session's
+    D1 extension fields only; it never re-derives plan facts.
+    """
+    counts = {"bike": 0, "strength": 0, "day_off": 0, "race": 0}
+    sessions: List[Dict[str, Any]] = []
+    for week in plan_ir.weeks:
+        for session in week.sessions:
+            if session.tp_kind in counts:
+                counts[session.tp_kind] += 1
+            sessions.append({
+                "date": session.date,
+                "title": session.title,
+                "display_name": session.display_name,
+                "filename_stem": session.filename_stem,
+                "description": session.description,
+                "tp_kind": session.tp_kind,
+                "workout_type_value_id": session.workout_type_value_id,
+                "tss_planned": session.tss_planned,
+                "total_time_planned": session.total_time_planned,
+                "structure": session.structure,
+                "series_id": session.series_id,
+                "series_index": session.series_index,
+                "series_total": session.series_total,
+                "order_on_day": session.order_on_day,
+                "strength_template": session.strength_template,
+                "archetype_id": session.archetype_id,
+                "race": session.race,
+            })
+
+    plan_weeks = max((w.number for w in plan_ir.weeks if w.number and w.number > 0), default=0)
+    athlete_name = plan_ir.athlete.name or "Athlete"
+    race_name = plan_ir.race_snapshot.name or "Race"
+    return {
+        "version": _TP_MANIFEST_VERSION,
+        "plan_title": f"{athlete_name} · {race_name} · {plan_weeks}wk [CUSTOM]",
+        "athlete": athlete_name,
+        "race": {
+            "name": plan_ir.race_snapshot.name,
+            "date": plan_ir.race_snapshot.date,
+            "priority": "A",
+        },
+        "expected": {
+            "bike": counts["bike"],
+            "strength": counts["strength"],
+            "day_off": counts["day_off"],
+            "race": counts["race"],
+            "total": sum(counts.values()),
+        },
+        "sessions": sessions,
+    }
+
+
+def build_tp_manifest(athlete_id: str) -> Dict[str, Any]:
+    """Build + atomically write ``tp_manifest.json`` from the athlete's
+    already-assembled ``plan_ir.json``. Callers run this after
+    ``build_plan_ir`` (see generate_athlete_package.py step 6)."""
+    athlete_dir = ATHLETES_DIR / athlete_id
+    plan_ir_path = athlete_dir / "plan_ir.json"
+    try:
+        plan_ir = PlanIR.from_dict(json.loads(plan_ir_path.read_text()))
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        warnings.warn(f"tp_manifest: could not read plan_ir.json: {exc}", RuntimeWarning, stacklevel=2)
+        return {}
+
+    manifest = project_tp_manifest(plan_ir)
+    output_path = athlete_dir / "tp_manifest.json"
+    payload = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    try:
+        fd, tmp = tempfile.mkstemp(dir=str(athlete_dir), prefix=".tp_manifest.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, output_path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+    except OSError as exc:
+        warnings.warn(f"tp_manifest: could not write tp_manifest.json: {exc}", RuntimeWarning, stacklevel=2)
+    return manifest
 
 
 if __name__ == "__main__":

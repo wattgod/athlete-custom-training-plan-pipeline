@@ -1,0 +1,70 @@
+{
+ "Hip Rails": {
+  "catalog_id": "884",
+  "catalog_title": "Straight Legged Hip Raise"
+ },
+ "MiniBand Marches": {
+  "catalog_id": "942",
+  "catalog_title": "X Band Walk"
+ },
+ "MiniBand Lateral Walks": {
+  "catalog_id": "942",
+  "catalog_title": "X Band Walk"
+ },
+ "Dead Bug": {
+  "catalog_id": "528",
+  "catalog_title": "DeadBug"
+ },
+ "Suitcase Carry": {
+  "catalog_id": "921",
+  "catalog_title": "Waiter's Carry"
+ },
+ "Hollow Body Hold": {
+  "catalog_id": "892",
+  "catalog_title": "Superman Hold"
+ },
+ "Hollow Body Rock": {
+  "catalog_id": "892",
+  "catalog_title": "Superman Hold"
+ },
+ "KB/DB RDL": {
+  "catalog_id": "733",
+  "catalog_title": "RDL to Shrug"
+ },
+ "Dead Hang": {
+  "catalog_id": "890",
+  "catalog_title": "Sumo Deadlift Block Pull"
+ },
+ "Single-Leg RDL": {
+  "catalog_id": "898",
+  "catalog_title": "Swiss Ball Single Leg Curl"
+ },
+ "Band Chop": {
+  "catalog_id": "942",
+  "catalog_title": "X Band Walk"
+ },
+ "Med Ball Slam": {
+  "catalog_id": "64",
+  "catalog_title": "Medicine Ball Slam"
+ },
+ "Med Ball Chest Pass": {
+  "catalog_id": "64",
+  "catalog_title": "Medicine Ball Slam"
+ },
+ "Med Ball Rotational Throw": {
+  "catalog_id": "155",
+  "catalog_title": "Medicine Ball Russian Twist"
+ },
+ "Explosive Row": {
+  "catalog_id": "914",
+  "catalog_title": "Two Arm KB Row"
+ },
+ "KB Swing to Goblet Catch": {
+  "catalog_id": "77",
+  "catalog_title": "Russian KB swing"
+ },
+ "Ab Wheel": {
+  "catalog_id": "690",
+  "catalog_title": "Medicine Ball Plank"
+ }
+}

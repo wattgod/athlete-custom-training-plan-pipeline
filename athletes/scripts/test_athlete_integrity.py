@@ -255,8 +255,11 @@ def validate_athlete_integrity(athlete_dir: Path) -> list:
             errors.append(IntegrityError("ERROR",
                 f"Plan weeks mismatch: derived={derived_weeks}, plan_dates={plan_weeks}"))
 
-        # Check weeks list length matches plan_weeks
-        weeks_list = plan_dates.get('weeks', [])
+        # Check weeks list length matches plan_weeks. The pre-plan week (W00,
+        # days before the plan officially starts) is a real entry in the weeks
+        # list -- PlanIR matches its ZWOs like any other calendar day -- but it
+        # is NOT one of the official plan_weeks, so exclude it from the count.
+        weeks_list = [w for w in plan_dates.get('weeks', []) if not w.get('pre_plan')]
         if len(weeks_list) != plan_weeks:
             errors.append(IntegrityError("CRITICAL",
                 f"Weeks list length ({len(weeks_list)}) != plan_weeks ({plan_weeks})"))

@@ -79,6 +79,11 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
         parsed = parse_zwo(zwo, ftp)
         # Extract week prefix: W01_Mon_Mar9 -> use as key
         prefix = zwo.stem  # e.g. W01_Mon_Mar9_Endurance
+        # Keep the filename stem on the workout: it reliably encodes the
+        # workout TYPE (FTP_Test, Long_Ride, ...) in the original underscore
+        # form even now that the ZWO <name> carries a clean coach-style
+        # display name ("FTP Test") that type-detection can't pattern-match.
+        parsed['_stem'] = zwo.stem
         workouts_by_prefix[prefix] = parsed
 
     # Build week-by-week data
@@ -233,7 +238,7 @@ def _run_verification_checks(
     for w in weeks_data:
         for d in w['days']:
             wo = d.get('workout')
-            if wo and 'Long_Ride' in wo.get('name', ''):
+            if wo and 'Long_Ride' in wo.get('_stem', wo.get('name', '')):
                 if d['day'] != long_day_abbrev and not d['is_race'] and not d['is_b_race']:
                     misplaced.append(f"W{w['week']:02d} {d['day']}")
     checks.append({
@@ -375,7 +380,7 @@ def _run_verification_checks(
     for w in weeks_data:
         for d in w['days']:
             wo = d.get('workout')
-            if wo and 'FTP_Test' in wo.get('name', ''):
+            if wo and 'FTP_Test' in wo.get('_stem', wo.get('name', '')):
                 ftp_tests.append(f"W{w['week']:02d} {d['day']}")
     checks.append({
         'name': 'FTP Tests',

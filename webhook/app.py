@@ -1613,6 +1613,7 @@ COACH_DELIVERABLES = [
     'derived.yaml',
     'intake_backup.json',
     'fulfillment_manifest.json',
+    'tp_manifest.json',
 ]
 
 
@@ -2398,6 +2399,39 @@ def transition_fulfillment_state(athlete_id):
         return jsonify({'error': str(exc)}), 409
     return jsonify({'athlete_id': norm_id, 'status': state['status'],
                     'generation_revision': state['generation_revision']}), 200
+
+
+@app.route('/api/fulfillment/<athlete_id>/status', methods=['GET'])
+def fulfillment_status(athlete_id):
+    """Authoritative fulfillment state for the athlete — status, timestamps,
+    and an evidence summary (approval/waiver/application/confirmation).
+
+    This is the source of truth the TP apply CLI polls for its APPROVED
+    preflight gate; ``fulfillment_status.json`` is deliberately excluded from
+    downloaded packages, so a stale local snapshot can never satisfy that
+    gate (spec sol r2 F1). Same auth as the transition endpoint.
+    """
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
+        return jsonify({'error': 'Unauthorized'}), 401
+    norm_id = _normalize_athlete_id(athlete_id)
+    if not validate_athlete_id(norm_id):
+        return jsonify({'error': 'Invalid athlete ID'}), 400
+    try:
+        state = load_fulfillment_state(_fulfillment_status_path(norm_id))
+    except FulfillmentStateError:
+        return jsonify({'error': 'Fulfillment state not found'}), 404
+    return jsonify({
+        'athlete_id': norm_id,
+        'status': state['status'],
+        'generation_revision': state['generation_revision'],
+        'updated_at': state['updated_at'],
+        'blocking_issues': state['blocking_issues'],
+        'approval': state['approval'],
+        'waiver': state['waiver'],
+        'application': state['application'],
+        'confirmation': state['confirmation'],
+    }), 200
 
 
 @app.route('/api/confirm/<athlete_id>', methods=['POST'])
