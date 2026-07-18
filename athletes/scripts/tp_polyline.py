@@ -7,12 +7,13 @@ polyline, NOT from the structure steps -- an empty polyline is a blank tile
 (a trust-killer that shipped once; see docs/TP_API_REVERSE_ENGINEERING.md).
 
 Reverse-engineered point-for-point from Matti's working OG TrainingPeaks
-workouts. This module is intentionally standalone (stdlib only) so it can be
-vendored byte-identically into any repo that builds TP structures. The
-CANONICAL SIBLING is `gravel-god-training-plans/tools/build_tp_bodies.py::
-compute_polyline` (the masters/marketplace pipeline) -- keep the algorithm in
-lockstep; `tests/`... the golden-fixture test in this repo
-(test_tp_polyline.py) pins the exact output so drift is caught here.
+workouts. This module is intentionally standalone (stdlib only) and is VENDORED
+byte-identically into both TP-building repos:
+  - gravel-god-training-plans/tools/tp_polyline.py       (masters/marketplace)
+  - athlete-custom-training-plan-pipeline/.../tp_polyline.py (custom plans)
+Keep the two copies identical. Each repo's golden-fixture test
+(test_tp_polyline.py, tp_polyline_golden.json) pins the exact output, so a
+copy that drifts fails its own suite.
 """
 from typing import Any, Dict, List
 
