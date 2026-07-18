@@ -13,10 +13,17 @@ a live TP calendar screenshot, all on the "Endurance with Surges" workout
   surge never gets rescaled up to a full minute.
 
   Bug 2 -- MAIN SET description unrolls rep-by-rep: 15x[steady + surge]
-  rendered as 30 separate bullets (the "shit instructions" wall). Fixed by
-  workout_spec.render_main_set / _collapse_repeated_lines, which collapses a
-  consecutive run that is itself K>=2 repeats of a shorter unit into one
-  "K x (unit)" line.
+  rendered as 30 separate bullets (the "shit instructions" wall) -- and,
+  found on a second pass against a live-regenerated plan, "Tempo Sprints"
+  shipped the same wall in a harder shape: a non-repeating lead-in bullet
+  followed by a period-3 group (85% / 200% sprint / 50% recovery) repeated
+  4 times, a mid-set recovery break, then the same period-3 group again.
+  Fixed by workout_spec.render_main_set / _collapse_repeated_lines /
+  _find_best_repeat_run, which finds ANY contiguous run anywhere in the
+  bullet list that is a period-K block (K>=1) repeated M>=2 times --
+  leaving a lead-in, a mid-set break, and a trailing partial repeat exactly
+  as they were -- and recurses on what's left so multiple independent
+  repeat groups in one description all collapse, not just the first.
 
   Bug 3 -- ragged total duration ("4:09:44"): plan_ir.Session.total_time_planned
   summed raw segment seconds straight to hours. Fixed by
@@ -47,6 +54,31 @@ from workout_spec import normalize_zwo_blocks, render_main_set
 from workout_templates import scale_zwo_to_target_duration
 
 from test_naming_and_rounding import full_plan, w00_plan  # noqa: F401 (fixtures)
+
+
+def _max_group_repeat(lines, max_k=4):
+    """Return the largest number of consecutive back-to-back repeats found
+    for any group size K in 1..max_k within `lines`.
+
+    A "wall" is any group of K bullets repeated >=3 times with nothing
+    collapsing it -- this catches BOTH the period-2 shape (a steady+surge
+    pair unrolled rep-by-rep) AND the period-3+ shape (a work/sprint/
+    recovery group unrolled rep-by-rep, the "Tempo Sprints" regression) --
+    unlike a naive "consecutive IDENTICAL bullets" check, which only
+    catches K=1 and misses group-repeats of DIFFERENT lines entirely.
+    Independent of render_main_set's own algorithm, so it also catches a
+    regression where collapse is skipped/bypassed for some code path.
+    """
+    n = len(lines)
+    worst = 0
+    for k in range(1, max_k + 1):
+        for start in range(0, max(0, n - 2 * k + 1)):
+            reps = 1
+            while (start + (reps + 1) * k <= n
+                   and lines[start + reps * k:start + (reps + 1) * k] == lines[start:start + k]):
+                reps += 1
+            worst = max(worst, reps)
+    return worst
 
 
 # ===========================================================================
@@ -144,6 +176,40 @@ class TestRenderMainSetCollapse:
         lines = rendered.strip().split('\n')
         assert len(lines) <= 3, f"real archetype MAIN SET should collapse, got: {lines}"
 
+    def test_synthetic_lead_in_plus_period_3_group_collapses_to_single_line(self):
+        """The exact shape that regressed on 'Tempo Sprints': a one-line
+        lead-in followed by a period-3 group (work / sprint / recovery)
+        repeated N>=2 times, with NO mid-set break -- must collapse to one
+        "N x (unit)" line, leaving the lead-in as its own bullet."""
+        segments = [{'kind': 'steady', 'seconds': 600, 'power': 0.70}]
+        for _ in range(5):
+            segments.append({'kind': 'steady', 'seconds': 120, 'power': 0.85})
+            segments.append({'kind': 'steady', 'seconds': 10, 'power': 2.00})
+            segments.append({'kind': 'steady', 'seconds': 50, 'power': 0.50})
+        rendered = render_main_set(segments)
+        lines = rendered.strip().split('\n')
+        assert lines[0] == '- 10min @ 70% FTP', f"lead-in should stay its own bullet, got: {lines}"
+        assert len(lines) == 2, f"period-3 group should collapse to 1 line after the lead-in, got: {lines}"
+        assert lines[1] == '- 5 x (2min @ 85% FTP + 0:10 @ 200% FTP + 0:50 @ 50% FTP)'
+
+    def test_real_tempo_sprints_archetype_collapses_both_repeat_groups(self):
+        """End-to-end through the real 'Tempo Sprints' archetype (the exact
+        workout the coordinator flagged as still shipping a wall): a
+        lead-in, a period-3 group x4, a mid-set recovery break, then the
+        same period-3 group x4 again. Both repeat groups must collapse --
+        no group of size K in 1..4 may repeat >=3 times uncollapsed
+        anywhere in the rendered MAIN SET, regardless of the mid-set break
+        splitting them into two separate runs."""
+        _, archetype = get_archetype('Tempo Sprints')
+        blocks = generate_blocks_from_archetype(archetype, 1)
+        rendered = render_main_set(normalize_zwo_blocks(blocks))
+        lines = [l[2:] for l in rendered.strip().split('\n')]  # strip "- " prefix
+        assert _max_group_repeat(lines) < 3, (
+            f"Tempo Sprints MAIN SET still has an uncollapsed repeat wall: {lines}")
+        assert sum(1 for l in lines if 'x (' in l or re.match(r'\d+x ', l)) >= 2, (
+            f"expected both period-3 repeat groups to collapse to their own "
+            f"'M x (...)' line, got: {lines}")
+
 
 # ===========================================================================
 # Bug 3: total_time_planned always projects a whole number of minutes.
@@ -190,19 +256,19 @@ def golden_files(full_plan, w00_plan):
 
 
 def test_no_description_has_a_rep_by_rep_wall(golden_files):
-    """No generated ZWO <description> contains more than 3 consecutive
-    near-identical (byte-identical) bullet lines -- the rep-wall guard."""
+    """No generated ZWO <description> contains an uncollapsed group of K
+    bullets (K in 1..4) repeated >=3 times back-to-back -- the general
+    rep-wall guard. Checking only consecutive IDENTICAL bullets (K=1) would
+    catch the "Endurance with Surges" period-2 surge wall but miss
+    "Tempo Sprints"-shaped period-3+ group-repeats of DIFFERENT lines."""
     offenders = []
     for f in golden_files:
         lines = [line for line in _zwo_description(f).split('\n') if line.strip().startswith('-')]
-        run = max_run = 1 if lines else 0
-        for i in range(1, len(lines)):
-            run = run + 1 if lines[i] == lines[i - 1] else 1
-            max_run = max(max_run, run)
-        if max_run > 3:
-            offenders.append((f.name, max_run))
+        worst = _max_group_repeat(lines)
+        if worst >= 3:
+            offenders.append((f.name, worst))
     assert offenders == [], (
-        f"description(s) with a >3-run rep-wall (fname, run length): {offenders}")
+        f"description(s) with an uncollapsed repeat wall (fname, repeat count): {offenders}")
 
 
 def test_no_long_segment_renders_with_ragged_seconds(golden_files):

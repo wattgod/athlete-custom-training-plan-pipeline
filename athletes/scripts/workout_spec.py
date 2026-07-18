@@ -5,11 +5,10 @@ renderer can derive its MAIN SET wording from the same executable segments.
 """
 from __future__ import annotations
 
-import math
 import re
 import xml.etree.ElementTree as ET
 from datetime import date, timedelta
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
 def normalize_zwo_blocks(blocks: str) -> List[Dict[str, Any]]:
@@ -60,28 +59,63 @@ def _line_for_segment(segment: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def _collapse_repeated_lines(lines: List[str]) -> List[str]:
-    """Collapse a run of lines that is itself K>=2 repeats of a shorter unit
-    into a single ``K x (unit)`` line.
+def _find_best_repeat_run(lines: List[str]) -> Optional[Tuple[int, int, int, int]]:
+    """Find the contiguous run ``[start, start+covered)`` that is a
+    period-``p`` block (``p``>=1) repeated ``m``>=2 times back-to-back,
+    ANYWHERE in ``lines`` -- a non-repeating lead-in and/or tail need not
+    participate. Only full periods count toward ``m``; a final partial
+    repeat is left out of the run (and so stays expanded) rather than
+    forcing an inexact "K x" count.
 
-    Mirrors the period-detection ("Shape A") semantics of the reference
-    gravel-god-training-plans/engine/collapse_description.py::collapse_description
-    -- smallest period p such that the whole list is p repeated (a trailing
-    partial repeat is allowed, same as the reference) -- but operates on
-    already-rendered, already-clean segment text, so no annotation-stripping
-    or ladder-detection is needed here. A single, non-repeated segment (or
-    any list with no consistent period) is returned unchanged.
+    Among all qualifying runs, prefers the one covering the most lines
+    (the biggest wall-reduction); ties broken by earliest start, then by
+    the smallest (tightest) period. Returns ``None`` if no run repeats.
     """
     n = len(lines)
-    for p in range(1, n // 2 + 1):
-        if all(lines[i] == lines[i - p] for i in range(p, n)):
-            k = math.ceil(n / p)
-            unit = lines[:p]
-            unit_text = ' + '.join(unit) if len(unit) > 1 else unit[0]
-            if len(unit) > 1:
-                return [f"{k} x ({unit_text})"]
-            return [f"{k}x {unit_text}"]
-    return lines
+    best = None  # (covered, start, period, repeats)
+    for start in range(n):
+        max_p = (n - start) // 2
+        for p in range(1, max_p + 1):
+            m = 1
+            while (start + (m + 1) * p <= n
+                   and lines[start + m * p:start + (m + 1) * p] == lines[start:start + p]):
+                m += 1
+            if m < 2:
+                continue
+            covered = m * p
+            candidate = (covered, start, p, m)
+            if best is None or (candidate[0], -candidate[1], -candidate[2]) > (best[0], -best[1], -best[2]):
+                best = candidate
+    return best
+
+
+def _collapse_repeated_lines(lines: List[str]) -> List[str]:
+    """Collapse every contiguous repeat run in ``lines`` -- a period-``p``
+    block repeated ``m``>=2 times -- into a single ``m x (unit)`` line,
+    leaving any non-repeating lead-in/tail bullets (and a trailing partial
+    repeat) exactly as they were.
+
+    General, period-K, run-anywhere-in-the-list version of the reference
+    gravel-god-training-plans/engine/collapse_description.py::collapse_description
+    period-detection ("Shape A": a p-line block repeated K times). The
+    reference only detects a period spanning an ENTIRE bullet section; this
+    extends that to find the run wherever it sits (e.g. a workout that
+    opens with a one-line lead-in before a repeating interval group, or
+    that has a mid-set recovery break splitting two separate repeat
+    groups), recursing on whatever's left before/after each collapsed run
+    so multiple independent repeat groups in one list all collapse. A list
+    with no repeating run (or a single segment) is returned unchanged.
+    """
+    best = _find_best_repeat_run(lines)
+    if best is None:
+        return lines
+    covered, start, p, m = best
+    unit = lines[start:start + p]
+    unit_text = ' + '.join(unit) if len(unit) > 1 else unit[0]
+    collapsed = f"{m} x ({unit_text})" if len(unit) > 1 else f"{m}x {unit_text}"
+    pre = _collapse_repeated_lines(lines[:start])
+    post = _collapse_repeated_lines(lines[start + covered:])
+    return pre + [collapsed] + post
 
 
 def render_main_set(segments: Iterable[Dict[str, Any]]) -> str:
