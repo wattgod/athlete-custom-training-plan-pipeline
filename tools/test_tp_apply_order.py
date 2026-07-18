@@ -240,6 +240,26 @@ class TestBuildApplyJob:
                                    "prescribedDate": "2026-08-05", "id": "fixed-uuid"}
         assert "pending_module" not in strength
 
+    def test_total_time_planned_passes_through_unrounded_and_stays_whole_minutes(self):
+        """Regression guard for the "4:09:44" ragged-duration bug: PlanIR
+        (plan_ir.py::_round_time_planned_hours) is the single place
+        total_time_planned is computed -- tp_apply_order._workout_entry must
+        be a pure passthrough (session.get("total_time_planned"), no
+        re-derivation) so a whole-minute value entering the apply-job body
+        stays whole-minute, byte-for-byte. 4.1333h == 248min exactly (the
+        value a real "Endurance with Surges" session projects to)."""
+        manifest = golden_manifest()
+        manifest["sessions"][0]["total_time_planned"] = 4.1333
+        job = tao.build_apply_job(manifest, athlete_tp_id="2000302",
+                                  target_date=None, start_type=1, strength_module=None)
+        entry = next(w for w in job["workouts"] if w["title"] == "Endurance Ride")
+        assert entry["totalTimePlanned"] == 4.1333, (
+            "totalTimePlanned was re-derived instead of passed through unchanged")
+        reconstructed_sec = round(entry["totalTimePlanned"] * 3600)
+        assert reconstructed_sec % 60 == 0, (
+            f"totalTimePlanned {entry['totalTimePlanned']} is not a whole number of minutes "
+            f"({reconstructed_sec}s)")
+
 
 # ---------------------------------------------------------------------------
 # Receipt validation

@@ -2199,10 +2199,13 @@ TIPS:
                     # Scale ZWO duration to match the block-builder's target duration.
                     # The Nate generator produces archetype-native durations which may
                     # differ from the workout library's TSS-calibrated durations.
+                    # snap_to=60 lands scaled blocks on whole minutes (14:03 -> 14min)
+                    # instead of the raw proportional-scale second count; segments
+                    # already under one minute (e.g. a surge) are left exact.
                     if bb_duration > 0:
                         from workout_templates import scale_zwo_to_target_duration
                         zwo_content = scale_zwo_to_target_duration(
-                            zwo_content, bb_duration, bb_name
+                            zwo_content, bb_duration, bb_name, snap_to=60
                         )
                     # Inject personalized header
                     weeks_to_race = total_weeks - week_num + 1
@@ -2659,9 +2662,10 @@ GO GET IT, {athlete_name.upper()}!
                         # Round Nate generator durations to nearest 10 minutes
                         zwo_content = round_zwo_durations(zwo_content)
                         # Scale warmup/cooldown to fill available time
-                        # (duration already holds the scaled target from template)
+                        # (duration already holds the scaled target from template).
+                        # snap_to=60: whole-minute blocks, exact sub-minute segments.
                         zwo_content = scale_zwo_to_target_duration(
-                            zwo_content, duration, workout_type
+                            zwo_content, duration, workout_type, snap_to=60
                         )
                         # Inject personalized header into description
                         weeks_to_race = total_weeks - week_num + 1

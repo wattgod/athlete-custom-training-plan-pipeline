@@ -322,6 +322,54 @@ def _tp_step(name: str, seconds: int, low: Optional[float], high: Optional[float
     }
 
 
+def _compute_polyline(structure: List[Dict[str, Any]]) -> List[List[float]]:
+    """Compute the TP calendar-tile power-profile polyline from a `structure`
+    array (the same list that goes in body["structure"]["structure"]).
+
+    The calendar tile draws its mini power-profile graph from this polyline,
+    NOT from the structure steps (those drive the popup builder's graph). An
+    empty polyline => a blank tile. Ported point-for-point from the reference
+    build (gravel-god-training-plans/tools/build_tp_bodies.py::compute_polyline),
+    itself reverse-engineered from Matti's working OG TrainingPeaks workouts:
+    per step a vertical rise then a horizontal hold (x = fraction of total
+    duration, y = fraction of peak intensity), bookended by [0,0] and [1,0].
+    Each step's duration fraction is rounded to 3 decimals BEFORE accumulating
+    into the running cumulative fraction (matching the source data exactly, so
+    rounding drift can push the last cumulative point slightly past 1 before
+    the explicit closing [1,0]).
+    """
+    flat: List[Dict[str, Any]] = []
+    for block in structure:
+        length = block.get("length", {})
+        inner = block.get("steps", [])
+        if length.get("unit") == "repetition":
+            for _ in range(int(length.get("value", 1))):
+                flat.extend(inner)
+        else:
+            flat.extend(inner)
+
+    durations, intensities = [], []
+    for step in flat:
+        durations.append(step.get("length", {}).get("value", 0))
+        t0 = (step.get("targets") or [{}])[0]
+        maxv = t0.get("maxValue")
+        intensities.append(maxv if maxv is not None else t0.get("minValue", 0))
+
+    total = sum(durations)
+    peak = max(intensities + [1])
+    polyline: List[List[float]] = [[0, 0]]
+    if total > 0:
+        cum = 0.0
+        for dur, intensity in zip(durations, intensities):
+            y = round(intensity / peak, 3)
+            t_begin = round(cum, 3)
+            cum = round(cum + round(dur / total, 3), 3)
+            polyline.append([t_begin, y])
+            polyline.append([cum, y])
+    polyline.append([1, 0])
+    return polyline
+
+
 def _tp_structure_from_segments(segments: List[Segment]) -> Optional[Dict[str, Any]]:
     """Convert already-typed Segments into a TP structure dict. Intervals are
     unrolled -- each on/off gets its own step, per the reference build."""
@@ -360,7 +408,7 @@ def _tp_structure_from_segments(segments: List[Segment]) -> Optional[Dict[str, A
         "primaryLengthMetric": "duration",
         "primaryIntensityMetric": "percentOfFtp",
         "primaryIntensityTargetOrRange": "target",
-        "polyline": [],
+        "polyline": _compute_polyline(steps),
     }
 
 
@@ -387,6 +435,19 @@ def _session_origin(session_type: str) -> str:
 
 def _sport_for_type(session_type: str) -> str:
     return "strength" if session_type == "strength" else "cycling"
+
+
+def _round_time_planned_hours(duration_sec: float) -> float:
+    """Round a session's planned duration to the nearest whole minute before
+    projecting it to hours, so the delivered TP `totalTimePlanned` -- and any
+    H:MM:SS clock TP renders from it -- reads "4:10:00" instead of a ragged
+    "4:09:44" built straight from the raw segment-second sum. `tssPlanned`
+    is left as round(tss, 1), unaffected by this.
+    """
+    if not duration_sec:
+        return 0.0
+    whole_minutes = round(duration_sec / 60)
+    return round((whole_minutes * 60) / 3600, 4)
 
 
 def _session_from_zwo(zwo_path: Path, date: Optional[str], is_race_day: bool, ftp: Optional[float],
@@ -424,7 +485,7 @@ def _session_from_zwo(zwo_path: Path, date: Optional[str], is_race_day: bool, ft
         tp_kind=tp_kind,
         workout_type_value_id=workout_type_value_id,
         tss_planned=round(float(metrics["tss"]), 1),
-        total_time_planned=round(duration_sec / 3600, 4) if duration_sec else 0.0,
+        total_time_planned=_round_time_planned_hours(duration_sec),
         structure=structure,
         series_id=entry.get("series_id"),
         series_index=entry.get("series_index"),

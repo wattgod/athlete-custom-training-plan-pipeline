@@ -426,14 +426,24 @@ def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
             for elem in workout:
                 if elem.tag in ('Warmup', 'Cooldown', 'SteadyState') and elem.tag != 'IntervalsT':
                     dur = float(elem.get('Duration', 0))
+                    if snap_to and dur < snap_to:
+                        continue  # short accent segment (e.g. a surge) -- keep exact
                     new_dur = dur * scale
                     elem.set('Duration', str(_snap_seconds(new_dur, snap_to) if snap_to else int(new_dur)))
         else:
-            # Endurance: scale all SteadyState blocks proportionally
+            # Endurance: scale all SteadyState blocks proportionally.
+            # Segments already shorter than one snap unit (e.g. a 5-10s
+            # surge sitting between long steady blocks) are athletic
+            # accents, not aerobic volume being trimmed -- scaling AND
+            # snapping them the same way as the long blocks is how a 6s
+            # surge became "5s" and a 15min block became "14:03". Leave
+            # them exact; the ratio still gets absorbed by the long blocks.
             scale = target_seconds / total_seconds
             for elem in workout:
                 if elem.tag in ('Warmup', 'Cooldown', 'SteadyState'):
                     dur = float(elem.get('Duration', 0))
+                    if snap_to and dur < snap_to:
+                        continue
                     new_dur = dur * scale
                     elem.set('Duration', str(_snap_seconds(new_dur, snap_to) if snap_to else int(new_dur)))
         # Rebuild ZWO string preserving the original XML declaration format
