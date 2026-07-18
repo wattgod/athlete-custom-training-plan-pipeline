@@ -24,7 +24,9 @@
  *     workouts:[{date, order_on_day, title, workoutTypeValueId, tssPlanned,
  *                totalTimePlanned, description, structure, race}],
  *     strength:[{date, order_on_day, title, template_key, doc|pending_module}],
- *     custom_exercises:[...], apply:{targetDate, startType, enabled},
+ *     custom_exercises:[...] (INFORMATIONAL ONLY -- custom exercises are
+ *       embedded inline in each strength[i].doc; this driver never creates
+ *       them via a separate call), apply:{targetDate, startType, enabled},
  *     verify:{expected:{bike,strength,day_off,race,total}, date_range:{start,end}},
  *     rollback:{snapshot_range:{start,end}} }
  *
@@ -246,84 +248,17 @@
   }
 
   // ---- Stage 3: strength via rx -------------------------------------------
-  // NOTE on the block/prescription scaffold calls: bodies are derived from
-  // the captured chain (gravel-god-training-plans/strength_builder/
-  // plan_day_capture_netlog.json) — an accumulate/respond protocol (each
-  // call sends the current server-accumulated `workout` doc plus a
-  // `libraryContent` descriptor of what to add next; the response is the
-  // new accumulated doc). This is UNVERIFIED against a live probe for the
-  // multi-block/multi-exercise case (spec open item 4) — ship as the
-  // documented default, probe-verify before relying on it at scale.
-  function blockTypeTitle(blockType) {
-    return ({ WarmUp: 'Warm Up', Circuit: 'Circuit', Superset: 'Superset',
-             SingleExercise: 'Single Exercise', CoolDown: 'Cool Down' })[blockType] || blockType;
-  }
-
-  function resolveExerciseId(exercise, customIds) {
-    if (!exercise) return null;
-    if (exercise.custom_key && customIds[exercise.custom_key] != null) return customIds[exercise.custom_key];
-    return exercise.id;
-  }
-
-  function mergeAuthoredDoc(serverDoc, authoredDoc, overrides) {
-    const merged = JSON.parse(JSON.stringify(serverDoc));
-    if (authoredDoc) {
-      if (authoredDoc.title) merged.title = authoredDoc.title;
-      if (authoredDoc.instructions != null) merged.instructions = authoredDoc.instructions;
-      if (authoredDoc.prescribedTss != null) merged.prescribedTss = authoredDoc.prescribedTss;
-      if (authoredDoc.prescribedDurationInSeconds != null) {
-        merged.prescribedDurationInSeconds = authoredDoc.prescribedDurationInSeconds;
-      }
-      (authoredDoc.blocks || []).forEach((authoredBlock, bi) => {
-        const serverBlock = merged.blocks && merged.blocks[bi];
-        if (!serverBlock) return;
-        if (authoredBlock.title != null) serverBlock.title = authoredBlock.title;
-        if (authoredBlock.coachNotes != null) serverBlock.coachNotes = authoredBlock.coachNotes;
-        (authoredBlock.prescriptions || []).forEach((authoredPrescription, pi) => {
-          const serverPrescription = serverBlock.prescriptions && serverBlock.prescriptions[pi];
-          if (!serverPrescription) return;
-          if (authoredPrescription.coachNotes != null) serverPrescription.coachNotes = authoredPrescription.coachNotes;
-          if (Array.isArray(authoredPrescription.parameters)) serverPrescription.parameters = authoredPrescription.parameters;
-          if (Array.isArray(authoredPrescription.sets) && Array.isArray(serverPrescription.sets)) {
-            authoredPrescription.sets.forEach((authoredSet, si) => {
-              const serverSet = serverPrescription.sets[si];
-              if (serverSet && Array.isArray(authoredSet.parameterValues)) {
-                serverSet.parameterValues = authoredSet.parameterValues;
-              }
-            });
-          }
-        });
-      });
-    }
-    return Object.assign(merged, overrides);
-  }
-
-  async function ensureCustomExercisesOnce(customExercises) {
-    const ids = {};
-    if (!customExercises || !customExercises.length) return ids;
-    // Verify the exercise doc shape from a GET of an existing catalog exercise first.
-    const sample = await rxFetch(`/rx/activity/v1/exercises/${BACK_SQUAT_CATALOG_ID}`);
-    if (!sample.ok) throw new Error('rx custom-exercise shape probe failed: ' + sample.status);
-
-    for (const ex of customExercises) {
-      const scaffold = await rxFetch('/rx/activity/v1/exercises', { method: 'POST', body: JSON.stringify({}) });
-      if (!scaffold.ok) throw new Error('rx custom exercise scaffold failed: ' + scaffold.status);
-      const draftId = scaffold.body && scaffold.body.id;
-      const put = await rxFetch(`/rx/activity/v1/exercises/${draftId}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          ...sample.body, id: draftId, title: ex.title,
-          videoUrl: ex.videoUrl || null, instructions: ex.instructions || ex.coachNotes || '',
-          ownerId: ex.ownerId != null ? ex.ownerId : (sample.body && sample.body.ownerId) || null,
-        }),
-      });
-      if (!put.ok) throw new Error('rx custom exercise PUT failed: ' + put.status);
-      ids[ex.key || ex.title] = draftId;
-      await sleep(150);
-    }
-    return ids;
-  }
-
+  // One-shot authoring (findings doc, 2026-07-17 live probes): there is NO
+  // separate custom-exercise endpoint -- the "Create Custom Exercise" UI
+  // action fires zero network calls, and custom exercises persist inline
+  // only via the workout PUT that contains them. No per-block/per-exercise
+  // scaffold calls are required either: POST creates a doc shell (id +
+  // calendarId), then a single PUT with the FULL prebuilt doc (blocks,
+  // prescriptions, inline exercises, sets) persists everything in one call.
+  // job.strength[i].doc is already fully built by tools/rx_strength_docs.py
+  // (catalog exercises embed a trimmed real object; custom movements embed a
+  // full inline exercise object) -- the driver only needs to merge the
+  // server-issued id/calendarId onto it before the PUT.
   async function existingStrengthDoc(planPersonId, date) {
     // Detect an existing same-day strength doc before any retry (sol F8).
     const r = await rxFetch(`/rx/activity/v1/workouts?calendarId=${planPersonId}&date=${date}`);
@@ -333,68 +268,30 @@
   }
 
   async function applyStrengthDay(s, ctx) {
-    const { planId, planPersonId, customIds } = ctx;
+    const { planId, planPersonId } = ctx;
 
-    // 1. create
+    // 1. create the doc shell.
     const created = await rxFetch('/rx/activity/v1/workouts', {
       method: 'POST',
-      body: JSON.stringify({ date: s.date, calendarId: planPersonId, workoutType: 9, prescribedDate: s.date, prescribedStartTime: null }),
+      body: JSON.stringify({ date: s.date, calendarId: planPersonId, workoutType: 9, prescribedDate: s.date }),
     });
     if (!created.ok) throw new Error('rx create failed: ' + created.status + ' ' + JSON.stringify(created.raw).slice(0, 200));
-    let doc = created.body;
-    const docId = doc && doc.id;
+    const docId = created.body && created.body.id;
+    if (docId == null) throw new Error('rx create returned no shell id: ' + JSON.stringify(created.raw).slice(0, 200));
 
-    const targetBlocks = (s.doc && s.doc.blocks) || [];
-    for (const targetBlock of targetBlocks) {
-      // 2. block scaffold
-      const blockAdd = await rxFetch('/rx/activity/v1/workouts/add/libraryContent', {
-        method: 'POST',
-        body: JSON.stringify({
-          workout: doc,
-          libraryContent: { blockType: targetBlock.blockType, isDisabled: false,
-                            title: targetBlock.title || blockTypeTitle(targetBlock.blockType) },
-        }),
-      });
-      if (!blockAdd.ok) throw new Error('rx block scaffold failed: ' + blockAdd.status + ' ' + JSON.stringify(blockAdd.raw).slice(0, 200));
-      doc = blockAdd.body;
-      const serverBlock = doc.blocks[doc.blocks.length - 1];
-
-      // 3. per-exercise prescription scaffold
-      for (const targetPrescription of (targetBlock.prescriptions || [])) {
-        const exercise = targetPrescription.exercise || {};
-        const exerciseId = resolveExerciseId(exercise, customIds);
-        const defaultPrescriptionId = serverBlock.prescriptions && serverBlock.prescriptions[0] && serverBlock.prescriptions[0].id;
-        const prescriptionAdd = await rxFetch('/rx/activity/v1/workouts/blocks/prescriptions/add/libraryContent', {
-          method: 'POST',
-          body: JSON.stringify({
-            workout: doc,
-            libraryContent: {
-              exerciseId: exerciseId != null ? String(exerciseId) : null,
-              canEdit: !!exercise.canEdit, searchText: exercise.searchText || exercise.title || '',
-              searchAttributes: exercise.searchAttributes || {}, ownerId: exercise.ownerId || null,
-              title: exercise.title || '',
-            },
-            prescriptionId: defaultPrescriptionId,
-          }),
-        });
-        if (!prescriptionAdd.ok) {
-          throw new Error('rx prescription scaffold failed: ' + prescriptionAdd.status + ' ' + JSON.stringify(prescriptionAdd.raw).slice(0, 200));
-        }
-        doc = prescriptionAdd.body;
-      }
-    }
-
-    // 4. full StructuredStrength doc (authored content merged onto the
-    // server-accumulated doc, which owns the real block/prescription/set ids)
-    const finalDoc = mergeAuthoredDoc(doc, s.doc, { calendarId: planPersonId, id: docId, prescribedDate: s.date });
+    // 2. merge the shell's id + calendarId onto the prebuilt doc, then PUT
+    // the whole thing in one shot.
+    const finalDoc = Object.assign({}, s.doc, { id: docId, calendarId: planPersonId, prescribedDate: s.date });
     const put = await rxFetch('/rx/activity/v1/workouts', { method: 'PUT', body: JSON.stringify(finalDoc) });
     if (!put.ok) throw new Error('rx PUT failed: ' + put.status + ' ' + JSON.stringify(put.raw).slice(0, 200));
 
-    // 5. plan workouts/save — the chain's captured final call.
-    const saved = await rxFetch(`/rx/activity/v1/plans/${planId}/workouts/save`, {
-      method: 'POST', body: JSON.stringify(put.body || finalDoc),
-    });
-    if (!saved.ok) throw new Error('rx plan workouts/save failed: ' + saved.status + ' ' + JSON.stringify(saved.raw).slice(0, 200));
+    // 3. plan context: attach the workout to the plan being built.
+    if (planId) {
+      const saved = await rxFetch(`/rx/activity/v1/plans/${planId}/workouts/save`, {
+        method: 'POST', body: JSON.stringify(put.body || finalDoc),
+      });
+      if (!saved.ok) throw new Error('rx plan workouts/save failed: ' + saved.status + ' ' + JSON.stringify(saved.raw).slice(0, 200));
+    }
 
     return (put.body && put.body.id) || docId;
   }
@@ -414,8 +311,6 @@
     }
     if (!probe.ok) throw new Error('rx auth validation GET failed: ' + probe.status);
 
-    const customIds = await ensureCustomExercisesOnce(job.custom_exercises || []);
-
     for (const s of job.strength) {
       const dayKey = s.date + '|' + (s.order_on_day || 0);
       if (receipt.rxDone.some(d => d.key === dayKey && (d.status === 'ok' || d.status === 'ok_existing'))) continue;
@@ -430,7 +325,7 @@
           receipt.rxDone.push({ key: dayKey, date: s.date, template_key: s.template_key, status: 'ok_existing', docId: already.id });
           continue;
         }
-        const docId = await applyStrengthDay(s, { planId, planPersonId, customIds });
+        const docId = await applyStrengthDay(s, { planId, planPersonId });
         receipt.rxDone.push({ key: dayKey, date: s.date, template_key: s.template_key, status: 'ok', docId });
       } catch (e) {
         if (e.is401) throw e; // propagate — applyJob() decides resumable-halt policy

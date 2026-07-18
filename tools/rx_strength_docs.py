@@ -14,16 +14,33 @@ captured in `plan_day_capture_netlog.json` -- that flat shape is what
 `build_strength_doc()` returns (the PUT request body IS the raw doc; there is
 no outer library-item wrapper).
 
-Catalog-gap policy (Matti-approved, 2026-07-17): "nearest equivalent + notes".
-    - exact catalog title match            -> that exercise id
-    - fuzzy (best available candidate)      -> chosen id + original text/cues
-                                                in the prescription's coachNotes
+Catalog-gap policy (Matti-approved, 2026-07-17; INLINE MODEL per
+outputs/rx_strength_capture_findings.md, 2026-07-17 live probes): "nearest
+equivalent + notes".
+    - exact catalog title match            -> embed a trimmed real exercise
+                                                object (id/title/ownerId/
+                                                videoUrl) from
+                                                rx_exercise_catalog.json
+    - fuzzy (best available candidate)      -> same, chosen id + original
+                                                text/cues in the
+                                                prescription's coachNotes
     - truly absent from the 690-exercise
-      catalog dump                          -> `{"custom": "<canonical title>"}`
-                                                placeholder; the CLI (a separate
-                                                workstream) creates the custom
-                                                exercise once and resolves the
-                                                placeholder to a real id.
+      catalog dump                          -> embed a FULL inline custom
+                                                exercise object (client uuid,
+                                                ownerId 2000301, title,
+                                                videoUrl, canEdit: true, a
+                                                Reps parameter) directly in
+                                                the prescription -- there is
+                                                NO separate custom-exercise
+                                                endpoint (live probe: the
+                                                "Create Custom Exercise" UI
+                                                action fires zero network
+                                                calls; the exercise persists
+                                                inline on the workout PUT).
+                                                `custom_exercises_needed()`
+                                                is now INFORMATIONAL ONLY --
+                                                nothing downstream depends on
+                                                it to resolve a placeholder.
 
 WARMUP/COOLDOWN blocks never carry prescriptions (Matti policy: prefer
 coachNotes for warmup/cooldown mobility work even where a catalog id exists);
@@ -31,16 +48,32 @@ their movement list becomes the block's coachNotes text. ZERO EQUIPMENT and
 NOTES are not blocks at all -- their text folds into the doc-level
 `instructions` field, verbatim, minus any non-gravelgodcycling.com link.
 
+Rep/parameter rules (empirically bounded, see the findings doc): `Reps`
+accepts integers AND range strings verbatim ("8", "6-8", "10-12" all valid --
+no low-end truncation). Per-side ("10/side") and timed ("60 sec") values are
+NOT valid Reps parameterValues (structural reject) -- those movements get a
+param-less prescription (`parameters: []`, each set
+`{id, isComplete: false, setOrigin: "Prescribed", parameterValues: []}`) with
+the full raw prescription text in the prescription's `coachNotes` as
+`Rx: <text>`.
+
 See the bottom of this file for the reviewable movement -> catalog MAPPING
 tables (EXACT_MAP / FUZZY_MAP / CUSTOM_CANONICAL) called out by the spec.
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-__all__ = ["build_strength_doc", "custom_exercises_needed", "TEMPLATE_KEYS"]
+__all__ = ["build_strength_doc", "custom_exercises_needed", "TEMPLATE_KEYS", "CATALOG_DUMP"]
+
+# The coach's rx exercise-owner id -- same value the live API returns for
+# custom exercises created through the coach account (findings doc: "ownerId
+# 2000301 = the coach's exercise-owner id (same as catalog exercises)").
+COACH_OWNER_ID = 2000301
 
 # ---------------------------------------------------------------------------
 # 1. Source templates -- verbatim copy of session_templates_text.json values
@@ -69,38 +102,17 @@ TEMPLATE_KEYS: Dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
-# 2. Catalog reference data -- subset of outputs/rx_exercise_catalog.json
-#    (690 exercises) actually referenced by EXACT_MAP/FUZZY_MAP below.
-#    {catalog id: {title, videoUrl}}.
+# 2. Catalog reference data -- the full 690-exercise rx catalog dump, checked
+#    into this repo at tools/rx_exercise_catalog.json (copy of
+#    outputs/rx_exercise_catalog.json from the 2026-07-17 live-capture
+#    handoff) so this module has NO external-path dependency. Keyed by
+#    catalog id (string) -> {title, video, owner} exactly as captured from
+#    the live rx API. EXACT_MAP/FUZZY_MAP below reference a subset of these
+#    ids; _catalog_exercise_obj() looks up the rest of the fields at build
+#    time.
 # ---------------------------------------------------------------------------
-CATALOG: Dict[int, Dict[str, str]] = {
-    144: {"title": "Goblet Squat", "videoUrl": "https://youtu.be/xQrRzGYsiyo"},
-    786: {"title": "Shoulder Tap", "videoUrl": "https://youtu.be/mlgGw5t-Tz8"},
-    422: {"title": "Banded Monster Walk", "videoUrl": "https://youtu.be/eVIX8dqtqTA"},
-    579: {"title": "Glute Bridge", "videoUrl": "https://youtu.be/gR-RLIoLCDw"},
-    7: {"title": "Band Pull Apart", "videoUrl": "https://youtu.be/2Tf_E4cYmD4"},
-    145: {"title": "Good Morning", "videoUrl": "https://youtu.be/49rgzdBWWj4"},
-    151: {"title": "Single Arm DB Row", "videoUrl": "https://youtu.be/efcUQe-Hhi8"},
-    81: {"title": "Single Leg Glute Bridge", "videoUrl": "https://youtu.be/ZUtrQ8EU5t0"},
-    358: {"title": "Pallof Press", "videoUrl": "https://www.youtube.com/watch?v=f_D0GByfZh0"},
-    79: {"title": "Side Plank", "videoUrl": "https://youtu.be/rrrxDvyfYN0"},
-    256: {"title": "Bird Dog", "videoUrl": "https://www.youtube.com/watch?v=-LRjkbEy-qU"},
-    29: {"title": "Close Grip Push Up", "videoUrl": "https://youtu.be/W_jcsoo-mKM"},
-    24: {"title": "Barbell Bulgarian Split Squat", "videoUrl": "https://youtu.be/s_xmy9gt37U"},
-    569: {"title": "Floor Press", "videoUrl": "https://youtu.be/qakAJIXeV1Y"},
-    516: {"title": "DB Row", "videoUrl": "https://youtu.be/VZXUUnQP_5Q"},
-    32: {"title": "DB Deadlift", "videoUrl": "https://youtu.be/zjyvtMvVrUc"},
-    617: {"title": "Inverted Row", "videoUrl": "https://youtu.be/bpEndSF0L70"},
-    21: {"title": "Box Jump", "videoUrl": "https://youtu.be/8tO-FC0l720"},
-    23: {"title": "Broad Jump", "videoUrl": "https://youtu.be/QbQVZdJ7XfI"},
-    508: {"title": "DB Jump Squat", "videoUrl": "https://youtu.be/yaQzkLorww4"},
-    718: {"title": "Plyo Push Up", "videoUrl": "https://youtu.be/biWXRJ4vo9U"},
-    598: {"title": "High Plank Shoulder Tap", "videoUrl": "https://youtu.be/5pdWy6pY2uo"},
-    77: {"title": "Russian KB swing", "videoUrl": "https://youtu.be/PvdVVJ--DH8"},
-    73: {"title": "Pull Up", "videoUrl": "https://youtu.be/d3IlZYzLeaI"},
-    71: {"title": "Plank", "videoUrl": "https://youtu.be/l8EaE5zMENQ"},
-    63: {"title": "Body Weight Lateral Lunge", "videoUrl": "https://youtu.be/WFJjREH6AsU"},
-}
+_CATALOG_DUMP_PATH = Path(__file__).resolve().parent / "rx_exercise_catalog.json"
+CATALOG_DUMP: Dict[str, Dict[str, object]] = json.loads(_CATALOG_DUMP_PATH.read_text(encoding="utf-8"))
 
 # ---------------------------------------------------------------------------
 # 3. MAPPING TABLES (reviewable) -- Matti-approved "nearest equivalent + notes"
@@ -190,13 +202,14 @@ CUSTOM_CANONICAL: Dict[str, str] = {
 }
 
 # Prescription parameter catalog stub. Reps is captured verbatim in
-# plan_day_capture_netlog.json / structured_strength_PUT_payload.json. Time
-# is NOT captured anywhere in the provided references -- this shape is a
-# best-effort inference mirroring Reps' structure and is flagged as an
-# assumption pending a live capture.
+# plan_day_capture_netlog.json / structured_strength_PUT_payload.json and
+# confirmed live (2026-07-17 findings doc): Reps accepts integers AND range
+# strings unmodified. Per-side/timed values are NOT valid Reps
+# parameterValues (structural reject) -- there is no "Time"/"RepsPerSide"
+# parameter type; those movements get a param-less prescription instead (see
+# _make_prescription).
 PARAM_DEFS: Dict[str, Dict[str, object]] = {
     "Reps": {"title": "Reps", "unit": {"title": "Reps", "abbreviation": "", "unit": "Reps"}, "category": "Reps"},
-    "Time": {"title": "Time", "unit": {"title": "Seconds", "abbreviation": "sec", "unit": "Seconds"}, "category": "Time"},
 }
 
 _BLOCK_TYPE_ONLY_NAMES = ("PREP", "CORE", "CORE/CARRY", "FINISHER")
@@ -217,8 +230,13 @@ _BLOCK_NAMES = (
 
 _URL_RE = re.compile(r"https?://\S+")
 _DURATION_RE = re.compile(r"~(\d+)\s*min")
-_TIME_RE = re.compile(r"^(\d+)(?:-\d+)?\s*(sec|min)\b", re.IGNORECASE)
 _NUM_RE = re.compile(r"^(\d+)")
+# A plain Reps value: an integer or a "low-high" range, immediately followed
+# by the literal word "reps" (e.g. "8 reps", "6-8 reps", "3-5 reps
+# (explosive)"). Kept VERBATIM per the findings doc -- no low-end truncation.
+# Anything that doesn't match this (per-side "10/side", timed "60 sec",
+# "10 steps/direction", etc.) is param-less; see _parse_param.
+_REPS_RE = re.compile(r"^(\d+(?:-\d+)?)\s*reps\b", re.IGNORECASE)
 _SETS_ROUNDS_RE = re.compile(r"^(\d+)(?:-(\d+))?\s*(sets?|rounds?)\b", re.IGNORECASE)
 _RPE_RE = re.compile(r"^RPE\s*([\d\-]+)$", re.IGNORECASE)
 
@@ -373,24 +391,75 @@ def _split_cues(text: str) -> Tuple[str, List[str]]:
     return core, cues
 
 
-def _resolve_exercise(primary_name: str) -> Tuple[str, Dict[str, str], str]:
-    """Returns (match_kind, exercise_ref, canonical_title).
+def _reps_param(uuid_factory: Callable[[], str]) -> Dict[str, object]:
+    """A single Reps parameter definition, embedded on both the exercise
+    object (its declared parameters) and, separately, on any Reps-type
+    prescription. Shape mirrors the live `GET /rx/activity/v1/exercises/{id}`
+    capture (`{id, parameter, category, title, unit}`)."""
+    pdef = PARAM_DEFS["Reps"]
+    return {
+        "id": uuid_factory(),
+        "parameter": "Reps",
+        "title": pdef["title"],
+        "unit": pdef["unit"],
+        "category": pdef["category"],
+    }
 
-    match_kind in {'exact', 'fuzzy', 'custom'}. exercise_ref is either a
-    catalog stub {id, title, videoUrl} or a {custom: title} placeholder.
+
+def _catalog_exercise_obj(catalog_id: int, uuid_factory: Callable[[], str]) -> Dict[str, object]:
+    """A trimmed real exercise object embedded inline in a prescription, per
+    the findings doc's verified catalog-exercise shape. `ownerId` is taken
+    from the catalog dump's own `owner` field for this id -- the dump
+    carries two distinct real owner ids (2000301 = the coach account, and
+    1248813 for a handful of stock-library exercises like Pallof Press/Bird
+    Dog); the dump's own value is the live-verified one, not a hardcoded
+    constant."""
+    entry = CATALOG_DUMP[str(catalog_id)]
+    return {
+        "id": str(catalog_id),
+        "title": entry["title"],
+        "ownerId": entry.get("owner", COACH_OWNER_ID),
+        "videoUrl": entry.get("video", ""),
+        "instructions": "",
+        "parameters": [_reps_param(uuid_factory)],
+    }
+
+
+def _custom_exercise_obj(title: str, video_url: Optional[str], uuid_factory: Callable[[], str]) -> Dict[str, object]:
+    """A full inline custom-exercise object embedded directly in a
+    prescription. There is NO separate custom-exercise endpoint (live probe,
+    2026-07-17): the "Create Custom Exercise" UI action fires zero network
+    calls -- the exercise persists only via the workout PUT that contains
+    it."""
+    return {
+        "id": uuid_factory(),
+        "ownerId": COACH_OWNER_ID,
+        "title": title,
+        "videoUrl": video_url or "",
+        "instructions": "",
+        "primaryMuscleGroups": None,
+        "secondaryMuscleGroups": None,
+        "canEdit": True,
+        "parameters": [_reps_param(uuid_factory)],
+    }
+
+
+def _resolve_match(primary_name: str) -> Tuple[str, Optional[int], str]:
+    """Returns (match_kind, catalog_id, canonical_title).
+
+    match_kind in {'exact', 'fuzzy', 'custom'}. catalog_id is the rx catalog
+    id (int) for 'exact'/'fuzzy' matches, None for 'custom'.
     """
     core, _cues = _split_cues(primary_name)
     if core in EXACT_MAP:
         cid = EXACT_MAP[core]
-        c = CATALOG[cid]
-        return "exact", {"id": str(cid), "title": c["title"], "videoUrl": c["videoUrl"]}, c["title"]
+        return "exact", cid, CATALOG_DUMP[str(cid)]["title"]
     if primary_name in FUZZY_MAP:
         cid = FUZZY_MAP[primary_name]
-        c = CATALOG[cid]
-        return "fuzzy", {"id": str(cid), "title": c["title"], "videoUrl": c["videoUrl"]}, c["title"]
+        return "fuzzy", cid, CATALOG_DUMP[str(cid)]["title"]
     if primary_name in CUSTOM_CANONICAL:
         canonical = CUSTOM_CANONICAL[primary_name]
-        return "custom", {"custom": canonical}, canonical
+        return "custom", None, canonical
     raise ValueError(
         f"No catalog mapping for movement {primary_name!r} -- add it to "
         "EXACT_MAP, FUZZY_MAP, or CUSTOM_CANONICAL."
@@ -406,23 +475,28 @@ def _movement_prescription(raw_name: str, presc_text: Optional[str]):
 
 
 def _parse_param(presc_text: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """Returns (param_type, value).
+
+    param_type is 'Reps' for a plain integer/range Reps value (kept
+    VERBATIM, e.g. "6-8"), 'paramless' for anything else that carries a
+    prescription (per-side "10/side", timed "60 sec", "10 steps/direction",
+    etc. -- none of these are valid Reps parameterValues per the findings
+    doc's live probes), or (None, None) if there is no prescription text at
+    all.
+    """
     if not presc_text:
         return None, None
     presc_text = presc_text.strip()
-    m = _TIME_RE.match(presc_text)
-    if m:
-        low, unit = int(m.group(1)), m.group(2).lower()
-        seconds = low * 60 if unit == "min" else low
-        return "Time", str(seconds)
-    m = _NUM_RE.match(presc_text)
+    m = _REPS_RE.match(presc_text)
     if m:
         return "Reps", m.group(1)
-    return None, None
+    return "paramless", presc_text
 
 
 def _movement_notes(
     primary_name: str,
     presc_text: Optional[str],
+    param_type: Optional[str],
     match_kind: str,
     canonical_title: str,
     alt_text: Optional[str],
@@ -447,7 +521,12 @@ def _movement_notes(
         elif inner:
             frags.append(f"Cue: {inner}")
 
-    if presc_text and re.search(r"-\d+|/|\(", presc_text):
+    if param_type == "paramless":
+        # Param-less prescriptions carry the full raw prescription text in
+        # coachNotes unconditionally -- it's the only place that value lives.
+        if presc_text:
+            frags.append(f"Rx: {presc_text}")
+    elif presc_text and re.search(r"-\d+|/|\(", presc_text):
         frags.append(f"Rx: {presc_text}")
     if alt_text:
         frags.append(f"or {alt_text}")
@@ -522,20 +601,27 @@ def _block_coach_notes(block: _RawBlock, sets_is_range: bool) -> Optional[str]:
     return " · ".join(frags) if frags else None
 
 
-def _make_sets(uuid_factory: Callable[[], str], param_type: str, value: str, count: int) -> List[Dict[str, object]]:
+def _make_reps_sets(uuid_factory: Callable[[], str], value: str, count: int) -> List[Dict[str, object]]:
+    """Sets for a Reps-type prescription. `value` is kept VERBATIM -- an
+    integer or a "low-high" range string -- per the findings doc (no
+    low-end truncation). Shape matches the live capture:
+    `{id, parameter:"Reps", category:"Reps", prescribedValue, executedValue:
+    null, inputFormat:null}`."""
     sets = []
     for _ in range(count):
         sets.append(
             {
                 "id": uuid_factory(),
                 "isComplete": False,
+                "setOrigin": "Prescribed",
                 "parameterValues": [
                     {
                         "id": uuid_factory(),
-                        "parameter": param_type,
-                        "executedValue": None,
-                        "inputFormat": "Integer",
+                        "parameter": "Reps",
+                        "category": "Reps",
                         "prescribedValue": value,
+                        "executedValue": None,
+                        "inputFormat": None,
                     }
                 ],
             }
@@ -543,31 +629,40 @@ def _make_sets(uuid_factory: Callable[[], str], param_type: str, value: str, cou
     return sets
 
 
+def _make_paramless_sets(uuid_factory: Callable[[], str], count: int) -> List[Dict[str, object]]:
+    """Sets for a param-less prescription (per-side/timed movements). Live
+    probe confirmed valid: `parameters:[], sets:[{parameterValues:[],
+    isComplete:false, setOrigin:"Prescribed", id:<uuid>}]`."""
+    return [
+        {"id": uuid_factory(), "isComplete": False, "setOrigin": "Prescribed", "parameterValues": []}
+        for _ in range(count)
+    ]
+
+
 def _make_prescription(
     uuid_factory: Callable[[], str],
-    exercise_ref: Dict[str, str],
+    exercise_ref: Dict[str, object],
     param_type: str,
-    value: str,
+    value: Optional[str],
     count: int,
     coach_notes: Optional[str],
 ) -> Dict[str, object]:
-    pdef = PARAM_DEFS[param_type]
-    summary = "{Reps} reps" if param_type == "Reps" else "{Time} sec"
+    if param_type == "paramless":
+        return {
+            "id": uuid_factory(),
+            "exercise": exercise_ref,
+            "parameters": [],
+            "coachNotes": coach_notes,
+            "setSummaryTemplate": None,
+            "sets": _make_paramless_sets(uuid_factory, count),
+        }
     return {
         "id": uuid_factory(),
         "exercise": exercise_ref,
-        "parameters": [
-            {
-                "parameter": param_type,
-                "title": pdef["title"],
-                "unit": pdef["unit"],
-                "category": pdef["category"],
-                "id": uuid_factory(),
-            }
-        ],
+        "parameters": [_reps_param(uuid_factory)],
         "coachNotes": coach_notes,
-        "setSummaryTemplate": summary,
-        "sets": _make_sets(uuid_factory, param_type, value, count),
+        "setSummaryTemplate": "{Reps}",
+        "sets": _make_reps_sets(uuid_factory, value, count),
     }
 
 
@@ -606,11 +701,16 @@ def _build_block(block: _RawBlock, uuid_factory: Callable[[], str]) -> Tuple[Dic
         param_type, value = _parse_param(primary_presc)
         if param_type is None:
             raise ValueError(f"Could not parse prescription text {mv.presc_text!r} for {mv.raw_name!r}")
-        match_kind, exercise_ref, canonical_title = _resolve_exercise(primary_name)
+        match_kind, catalog_id, canonical_title = _resolve_match(primary_name)
+        if match_kind == "custom":
+            video_url = _select_primary_url(mv.details, primary_name, alt_name)
+            exercise_ref = _custom_exercise_obj(canonical_title, video_url, uuid_factory)
+        else:
+            exercise_ref = _catalog_exercise_obj(catalog_id, uuid_factory)
         alt_text = None
         if alt_name:
             alt_text = f"{alt_name} ({alt_presc})" if alt_presc else alt_name
-        coach_notes = _movement_notes(primary_name, primary_presc, match_kind, canonical_title, alt_text)
+        coach_notes = _movement_notes(primary_name, primary_presc, param_type, match_kind, canonical_title, alt_text)
         # Free-text detail lines that aren't a demo link (e.g. "Default:
         # Inverted Row. Pull-Up only if you own 5+ strict reps.") carry real
         # coaching guidance -- fold them in rather than silently drop them.
@@ -768,16 +868,18 @@ def _iter_all_custom_movements():
                 continue
             for mv in rb.movements:
                 primary_name, alt_name, _primary_presc, _alt_presc = _movement_prescription(mv.raw_name, mv.presc_text)
-                match_kind, _exercise_ref, canonical = _resolve_exercise(primary_name)
+                match_kind, _catalog_id, canonical = _resolve_match(primary_name)
                 if match_kind == "custom":
                     yield canonical, primary_name, mv.details, alt_name
 
 
 def custom_exercises_needed() -> List[Dict[str, object]]:
-    """The pre-pass manifest of custom exercises the CLI must create once,
-    across all 7 templates, before any strength doc referencing them can be
-    fully resolved (their prescriptions carry a {custom: title} placeholder
-    until then).
+    """INFORMATIONAL ONLY (2026-07-17 findings doc): custom exercises are now
+    embedded as full inline objects directly in the prescriptions returned by
+    build_strength_doc() -- there is no separate custom-exercise endpoint and
+    nothing downstream depends on this manifest to resolve a placeholder.
+    This just lists, across all 7 templates, which canonical movements get
+    inlined as a custom exercise (vs. a catalog match), for operator review.
 
     Returns a list of {title, videoUrl, movements_covered} sorted by title.
     """

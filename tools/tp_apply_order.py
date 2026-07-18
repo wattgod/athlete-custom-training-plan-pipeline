@@ -285,6 +285,13 @@ def build_apply_job(manifest: Dict[str, Any], *, athlete_tp_id: str, target_date
     non_strength = [s for s in sessions if s.get("tp_kind") != "strength"]
     strength = [s for s in sessions if s.get("tp_kind") == "strength"]
 
+    # INFORMATIONAL ONLY (2026-07-17 findings doc): custom exercises are
+    # embedded as full inline objects directly in each strength session's
+    # prebuilt doc (rx_strength_docs.build_strength_doc()) -- there is no
+    # separate custom-exercise endpoint and the driver does not create
+    # anything from this list. It's carried through purely for operator
+    # visibility into which movements got mapped to an inline custom
+    # exercise vs. a catalog match.
     custom_exercises: List[Dict[str, Any]] = []
     pending_module = strength_module is None
     if strength_module is not None and hasattr(strength_module, "custom_exercises_needed"):

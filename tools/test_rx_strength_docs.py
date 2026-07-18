@@ -4,7 +4,6 @@
 Run: python3 -m pytest tools/test_rx_strength_docs.py -q
 """
 import itertools
-import json
 import re
 import sys
 from pathlib import Path
@@ -15,11 +14,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import rx_strength_docs as rxdocs
 
-CATALOG_DUMP_PATH = Path(
-    "/Users/mattirowe/Documents/Codex/2026-07-17/roadie-pipeline-modernization-handoff"
-    "/outputs/rx_exercise_catalog.json"
-)
-
+# Findings doc top-level shape (outputs/rx_strength_capture_findings.md,
+# 2026-07-17 live probes): the minimal set of keys a real captured PUT body
+# carries. This module's return value is a superset (it also carries the
+# fuller structured_strength_PUT_payload.json fields) -- both are checked.
+FINDINGS_DOC_TOP_LEVEL_KEYS = {
+    "id", "workoutType", "calendarId", "prescribedDate", "title", "instructions",
+    "prescribedDurationInSeconds", "orderOnDay", "blocks", "files", "snapshot",
+}
 REQUIRED_DOC_KEYS = {
     "workoutType", "lastUpdatedAt", "compliancePercent", "complianceState",
     "structureCompliancePercent", "durationCompliancePercent", "tssCompliancePercent",
@@ -34,10 +36,21 @@ REQUIRED_BLOCK_KEYS = {
     "isComplete", "compliancePercent", "complianceState", "id",
 }
 REQUIRED_PRESCRIPTION_KEYS = {"id", "exercise", "parameters", "coachNotes", "setSummaryTemplate", "sets"}
-REQUIRED_SET_KEYS = {"id", "isComplete", "parameterValues"}
-REQUIRED_PARAM_VALUE_KEYS = {"id", "parameter", "executedValue", "inputFormat", "prescribedValue"}
+REQUIRED_SET_KEYS = {"id", "isComplete", "setOrigin", "parameterValues"}
+REQUIRED_PARAM_VALUE_KEYS = {"id", "parameter", "category", "executedValue", "inputFormat", "prescribedValue"}
+REQUIRED_CUSTOM_EXERCISE_KEYS = {
+    "id", "ownerId", "title", "videoUrl", "instructions", "primaryMuscleGroups",
+    "secondaryMuscleGroups", "canEdit", "parameters",
+}
+REQUIRED_CATALOG_EXERCISE_KEYS = {"id", "title", "ownerId", "videoUrl", "instructions", "parameters"}
 
 _DECIMAL_MINUTE_RE = re.compile(r"\d+\.\d+ ?min")
+
+
+def _is_custom_exercise(exercise: dict) -> bool:
+    """Custom exercises carry a client uuid id (not a bare digit string);
+    catalog exercises carry the real numeric catalog id as a string."""
+    return not str(exercise["id"]).isdigit()
 
 
 def _counting_uuid_factory(prefix="id"):
@@ -66,13 +79,6 @@ def _all_strings(obj):
     elif isinstance(obj, list):
         for v in obj:
             yield from _all_strings(v)
-
-
-@pytest.fixture(scope="module")
-def catalog_dump():
-    if not CATALOG_DUMP_PATH.exists():
-        pytest.skip(f"catalog dump not available at {CATALOG_DUMP_PATH}")
-    return json.loads(CATALOG_DUMP_PATH.read_text())
 
 
 # ---------------------------------------------------------------------------
@@ -110,30 +116,80 @@ class TestAllTemplatesBuild:
 
 
 # ---------------------------------------------------------------------------
-# Every non-custom exercise id exists in the live catalog dump; every custom
-# placeholder appears in custom_exercises_needed().
+# Inline exercise model (2026-07-17 findings doc): catalog movements embed
+# the real string catalog id + fields sourced from tools/rx_exercise_catalog
+# .json (checked into this repo -- no external-path dependency); custom
+# movements embed a FULL inline exercise object (client uuid id, ownerId
+# 2000301, canEdit: true) -- never a `{custom: title}` placeholder.
+# custom_exercises_needed() is informational only; it no longer gates
+# anything the driver does.
 # ---------------------------------------------------------------------------
 class TestCatalogConsistency:
     @pytest.mark.parametrize("template_key", sorted(rxdocs.TEMPLATE_KEYS))
-    def test_non_custom_ids_exist_in_catalog_dump(self, template_key, catalog_dump):
+    def test_catalog_movements_embed_real_string_id_from_the_dump(self, template_key):
         doc = _build(template_key)
         for block in doc["blocks"]:
             for presc in block["prescriptions"]:
                 exercise = presc["exercise"]
-                if "custom" in exercise:
+                if _is_custom_exercise(exercise):
                     continue
-                assert exercise["id"] in catalog_dump, f"catalog id {exercise['id']!r} not in dump"
-                assert catalog_dump[exercise["id"]]["title"] == exercise["title"]
+                assert exercise["id"] in rxdocs.CATALOG_DUMP, f"catalog id {exercise['id']!r} not in dump"
+                dump_entry = rxdocs.CATALOG_DUMP[exercise["id"]]
+                assert exercise["title"] == dump_entry["title"]
+                assert exercise["videoUrl"] == dump_entry.get("video", "")
+                assert exercise["ownerId"] == dump_entry.get("owner")
+                assert set(exercise.keys()) == REQUIRED_CATALOG_EXERCISE_KEYS
 
-    def test_every_custom_placeholder_is_in_manifest(self):
+    @pytest.mark.parametrize("template_key", sorted(rxdocs.TEMPLATE_KEYS))
+    def test_custom_movements_embed_full_inline_exercise_object(self, template_key):
+        doc = _build(template_key)
+        found_custom = False
+        for block in doc["blocks"]:
+            for presc in block["prescriptions"]:
+                exercise = presc["exercise"]
+                if not _is_custom_exercise(exercise):
+                    continue
+                found_custom = True
+                assert "custom" not in exercise, "no more {custom: title} placeholders"
+                assert set(exercise.keys()) == REQUIRED_CUSTOM_EXERCISE_KEYS
+                assert exercise["ownerId"] == 2000301
+                assert exercise["canEdit"] is True
+                assert exercise["primaryMuscleGroups"] is None
+                assert exercise["secondaryMuscleGroups"] is None
+                assert exercise["title"]
+                assert isinstance(exercise["videoUrl"], str)
+                assert isinstance(exercise["instructions"], str)
+                # id is a client-generated uuid-ish token, not a bare digit
+                # string (which would collide with a catalog id).
+                assert not str(exercise["id"]).isdigit()
+                assert len(exercise["parameters"]) == 1
+                assert exercise["parameters"][0]["parameter"] == "Reps"
+        # every template has at least one custom-mapped movement
+        assert found_custom
+
+    def test_all_exercises_carry_a_reps_parameter_definition(self):
+        for template_key in rxdocs.TEMPLATE_KEYS:
+            doc = _build(template_key)
+            for block in doc["blocks"]:
+                for presc in block["prescriptions"]:
+                    params = presc["exercise"]["parameters"]
+                    assert len(params) == 1
+                    assert params[0]["parameter"] == "Reps"
+                    assert params[0]["category"] == "Reps"
+
+    def test_custom_exercises_needed_is_informational_and_matches_inline_titles(self):
+        """The manifest still lists which canonical movements are inlined as
+        custom exercises, but nothing in build_strength_doc()'s output
+        depends on it -- every custom exercise is already fully resolved
+        inline."""
         manifest_titles = {c["title"] for c in rxdocs.custom_exercises_needed()}
         for template_key in rxdocs.TEMPLATE_KEYS:
             doc = _build(template_key)
             for block in doc["blocks"]:
                 for presc in block["prescriptions"]:
                     exercise = presc["exercise"]
-                    if "custom" in exercise:
-                        assert exercise["custom"] in manifest_titles
+                    if _is_custom_exercise(exercise):
+                        assert exercise["title"] in manifest_titles
 
     def test_manifest_entries_have_required_fields(self):
         manifest = rxdocs.custom_exercises_needed()
@@ -250,7 +306,7 @@ class TestTextHygiene:
                 assert not re.search(r"\bor\b", block["title"], re.IGNORECASE), block["title"]
             for presc in block["prescriptions"]:
                 exercise = presc["exercise"]
-                title = exercise.get("title") or exercise.get("custom")
+                title = exercise["title"]
                 assert title, exercise
                 assert not re.search(r"\bor\b", title, re.IGNORECASE), title
 
@@ -306,6 +362,14 @@ class TestMinimalSchema:
             ids.append(block["id"])
             for presc in block["prescriptions"]:
                 ids.append(presc["id"])
+                exercise = presc["exercise"]
+                # custom exercises carry a uuid_factory-generated id too;
+                # catalog exercises carry a fixed real string id (not from
+                # uuid_factory) so it's excluded from the uniqueness check.
+                if _is_custom_exercise(exercise):
+                    ids.append(exercise["id"])
+                for param in exercise["parameters"]:
+                    ids.append(param["id"])
                 for param in presc["parameters"]:
                     ids.append(param["id"])
                 for s in presc["sets"]:
@@ -322,3 +386,111 @@ class TestMinimalSchema:
         doc = _build("foundation_a", calendar_id=999, doc_id="custom-doc-id")
         assert doc["calendarId"] == 999
         assert doc["id"] == "custom-doc-id"
+
+    @pytest.mark.parametrize("template_key", sorted(rxdocs.TEMPLATE_KEYS))
+    def test_matches_findings_doc_top_level_shape(self, template_key):
+        """JSON-shape assertion against outputs/rx_strength_capture_
+        findings.md's verified top-level doc shape (id, workoutType,
+        calendarId, prescribedDate, title, instructions,
+        prescribedDurationInSeconds, orderOnDay, blocks, files, snapshot)."""
+        doc = _build(template_key, calendar_id=6496835)
+        missing = FINDINGS_DOC_TOP_LEVEL_KEYS - set(doc.keys())
+        assert not missing, f"missing findings-doc top-level keys: {missing}"
+        assert doc["workoutType"] == "StructuredStrength"
+        assert doc["calendarId"] == 6496835
+        assert isinstance(doc["blocks"], list)
+        assert isinstance(doc["files"], list) and doc["files"] == []
+        assert isinstance(doc["snapshot"], dict)
+        for block in doc["blocks"]:
+            assert block["blockType"] in (
+                "WarmUp", "Superset", "Circuit", "SingleExercise", "CoolDown",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Reps values kept verbatim (ranges NOT truncated to the low end); per-side
+# and timed movements emit a param-less prescription with the raw text in
+# coachNotes. Per outputs/rx_strength_capture_findings.md's rep/parameter
+# rules.
+# ---------------------------------------------------------------------------
+class TestRepsAndParamless:
+    def test_rep_ranges_preserved_verbatim_not_truncated(self):
+        # Max Strength (A) MAIN 1: "Goblet Squat ─ 6-8 reps" -- old behavior
+        # truncated this to "6"; the live-verified behavior keeps "6-8".
+        doc = _build("max_strength_a")
+        found = False
+        for block in doc["blocks"]:
+            for presc in block["prescriptions"]:
+                if presc["exercise"]["title"] != "Goblet Squat":
+                    continue
+                for s in presc["sets"]:
+                    for pv in s["parameterValues"]:
+                        if pv["parameter"] == "Reps":
+                            assert pv["prescribedValue"] == "6-8"
+                            found = True
+        assert found, "expected a Goblet Squat Reps prescription in max_strength_a"
+
+    def test_reps_parameter_value_never_truncated_to_low_end_anywhere(self):
+        for template_key in rxdocs.TEMPLATE_KEYS:
+            doc = _build(template_key)
+            for block in doc["blocks"]:
+                for presc in block["prescriptions"]:
+                    for s in presc["sets"]:
+                        for pv in s["parameterValues"]:
+                            assert pv["parameter"] == "Reps"
+                            # a bare int or a "low-high" range, never mangled
+                            assert re.fullmatch(r"\d+(-\d+)?", pv["prescribedValue"]), pv["prescribedValue"]
+
+    def test_per_side_reps_are_paramless_with_rx_in_coach_notes(self):
+        # Foundation (A) PREP: "Hip Rails ─ 10/side"
+        doc = _build("foundation_a")
+        presc = next(
+            p
+            for b in doc["blocks"]
+            for p in b["prescriptions"]
+            if p["exercise"]["title"] == "Hip Rails"
+        )
+        assert presc["parameters"] == []
+        assert presc["setSummaryTemplate"] is None
+        assert "Rx: 10/side" in presc["coachNotes"]
+        for s in presc["sets"]:
+            assert s["parameterValues"] == []
+            assert s["setOrigin"] == "Prescribed"
+            assert s["isComplete"] is False
+
+    def test_timed_movements_are_paramless_with_rx_in_coach_notes(self):
+        # Max Strength (A) CORE/CARRY: "Hollow Body Hold ─ 20 sec"
+        doc = _build("max_strength_a")
+        presc = next(
+            p
+            for b in doc["blocks"]
+            for p in b["prescriptions"]
+            if p["exercise"]["title"] == "Hollow Body Hold"
+        )
+        assert presc["parameters"] == []
+        assert presc["setSummaryTemplate"] is None
+        assert "Rx: 20 sec" in presc["coachNotes"]
+        for s in presc["sets"]:
+            assert s["parameterValues"] == []
+
+    def test_reps_prescriptions_have_reps_summary_template(self):
+        doc = _build("foundation_a")
+        for block in doc["blocks"]:
+            for presc in block["prescriptions"]:
+                if presc["parameters"]:
+                    assert presc["setSummaryTemplate"] == "{Reps}"
+                else:
+                    assert presc["setSummaryTemplate"] is None
+
+    def test_paramless_and_reps_prescriptions_both_present_across_templates(self):
+        saw_paramless = False
+        saw_reps = False
+        for template_key in rxdocs.TEMPLATE_KEYS:
+            doc = _build(template_key)
+            for block in doc["blocks"]:
+                for presc in block["prescriptions"]:
+                    if presc["parameters"]:
+                        saw_reps = True
+                    else:
+                        saw_paramless = True
+        assert saw_paramless and saw_reps
