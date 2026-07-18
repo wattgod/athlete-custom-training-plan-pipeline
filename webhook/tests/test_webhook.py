@@ -3101,6 +3101,63 @@ class TestJobSweep:
         assert r_ok.get_json()['status'] == 'ok'
 
 
+class TestFulfillmentStatusEndpoint:
+    """GET /api/fulfillment/<athlete_id>/status — same auth as the transition
+    endpoint. This is the Railway-authoritative status the TP apply CLI polls
+    for its APPROVED preflight gate; fulfillment_status.json is deliberately
+    excluded from downloaded packages, so a stale local snapshot can never
+    satisfy that gate (spec sol r2 F1)."""
+
+    def test_rejects_missing_secret(self, client, monkeypatch):
+        monkeypatch.setenv('CRON_SECRET', 'real-secret')
+        response = client.get('/api/fulfillment/status_rider/status')
+        assert response.status_code == 401
+
+    def test_rejects_wrong_secret(self, client, monkeypatch):
+        monkeypatch.setenv('CRON_SECRET', 'real-secret')
+        response = client.get('/api/fulfillment/status_rider/status',
+                              headers={'X-Cron-Secret': 'wrong-secret'})
+        assert response.status_code == 401
+
+    def test_rejects_invalid_athlete_id(self, client, monkeypatch):
+        monkeypatch.setenv('CRON_SECRET', 'test-secret')
+        response = client.get('/api/fulfillment/UPPERCASE!/status',
+                              headers={'X-Cron-Secret': 'test-secret'})
+        assert response.status_code == 400
+
+    def test_unknown_athlete_returns_404(self, client, monkeypatch):
+        monkeypatch.setenv('CRON_SECRET', 'test-secret')
+        response = client.get('/api/fulfillment/no_such_status_athlete/status',
+                              headers={'X-Cron-Secret': 'test-secret'})
+        assert response.status_code == 404
+
+    def test_returns_current_state_with_evidence(self, client, monkeypatch):
+        import shutil
+        import app as app_module
+        from fulfillment_state import APPROVED, transition, write_generation
+
+        monkeypatch.setenv('CRON_SECRET', 'test-secret')
+        athlete_id = 'status_ready_rider'
+        state_path = Path(app_module.DELIVERIES_DIR) / athlete_id / 'fulfillment_status.json'
+        try:
+            write_generation(state_path, athlete_id)
+            transition(state_path, APPROVED, 'coach_lee')
+
+            response = client.get(f'/api/fulfillment/{athlete_id}/status',
+                                  headers={'X-Cron-Secret': 'test-secret'})
+            assert response.status_code == 200
+            data = response.get_json()
+            assert data['athlete_id'] == athlete_id
+            assert data['status'] == 'APPROVED'
+            assert data['generation_revision'] == 1
+            assert data['approval']['coach'] == 'coach_lee'
+            assert data['application'] is None
+            assert 'updated_at' in data
+            assert 'blocking_issues' in data
+        finally:
+            shutil.rmtree(state_path.parent, ignore_errors=True)
+
+
 class TestOrderStatus:
     """Customer-facing /api/order-status — honest, gentle, never an error."""
 
