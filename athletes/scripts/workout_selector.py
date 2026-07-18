@@ -31,13 +31,26 @@ _METHODOLOGY_SECONDARY = {
 # Discipline-specific intensity work — never overwritten, so a gravel/mtb/road
 # plan keeps its signature work alongside the methodology emphasis. Road names
 # come from the road extra_alternatives pool (config/workout_selection.yaml
-# disciplines.road) — without this, a road plan's Tempo/Threshold Progressive/
-# Blended VO2max and G Spot/G-Spot selection survives the discipline overlay
-# insert but is then silently overwritten by the methodology-emphasis pass
-# below, since none of these names were previously protected.
+# disciplines.road) — without this, a road plan's Tempo with Sprints/
+# Microbursts selection survives the discipline overlay insert but is then
+# silently overwritten by the methodology-emphasis pass below, since none of
+# these names were previously protected.
+#
+# NOT protected here even though newly road-selectable: "Race Simulation"
+# (race_prep.intensity_3's new discipline default) and "Cadence Work" (a
+# road base.intensity_2 extra). Both are shared, non-exclusive names used
+# generically elsewhere (Race Simulation is every discipline's race_prep.
+# intensity_1 default; Cadence Work is every discipline's base.intensity_2
+# alternative) — protecting them here would shield gravel/mtb selections
+# from the methodology-emphasis pass too, an unintended cross-discipline
+# side effect. race_prep.intensity_3's "Race Simulation" doesn't need
+# protection here anyway: it's already in block_compliance.VO2MAX_TYPES
+# (along with "Blended VO2max and G Spot"), so the methodology-emphasis
+# pass's own `w['name'] not in VO2MAX_TYPES` check skips it regardless of
+# iteration order.
 _DISCIPLINE_INTENSITY = {
     'Microbursts', 'Mixed Climbing', 'Mixed Climbing Variations', 'Stomps',
-    'Tempo', 'Threshold Progressive', 'Blended VO2max and G Spot', 'G-Spot',
+    'Tempo with Sprints',
 }
 
 
@@ -151,8 +164,21 @@ def select_workouts_for_week(
         if not slot:
             continue
 
+        # Discipline overlay for this slot — computed BEFORE the archetype-
+        # override null-check so a discipline can activate an otherwise-null
+        # generic slot (e.g. road race_prep.intensity_3, whose generic
+        # default is null and would previously be skipped before the
+        # overlay was ever consulted — the "unreachable" bug from the
+        # philosophy critique) by supplying its own `default`.
+        discipline_overlay = (config.get('disciplines', {})
+                              .get(discipline, {})
+                              .get(phase, {})
+                              .get(slot_name, {}))
+
         # Check archetype override
         name = _get_slot_workout(slot, archetype)
+        if name is None:
+            name = discipline_overlay.get('default')
         if name is None:
             continue  # Skip (e.g., time_crunched skips intensity_3)
 
@@ -161,14 +187,11 @@ def select_workouts_for_week(
         # different names from the alternatives list while series
         # coherence (same name within a block) is preserved.
         # Discipline overlays widen the pool (gravel → Microbursts /
-        # Mixed Climbing, road → threshold variants, mtb → sprints).
+        # Mixed Climbing, road → Tempo with Sprints / Microbursts / Race
+        # Simulation, mtb → sprints).
         # Extras are inserted at the FRONT of the alternatives so the
         # second block in a phase already hits discipline-specific work.
         alternatives = list(slot.get('alternatives', []))
-        discipline_overlay = (config.get('disciplines', {})
-                              .get(discipline, {})
-                              .get(phase, {})
-                              .get(slot_name, {}))
         for pos, extra in enumerate(discipline_overlay.get('extra_alternatives', [])):
             if extra != name and extra not in alternatives:
                 alternatives.insert(pos, extra)

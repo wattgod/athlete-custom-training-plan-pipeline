@@ -2627,13 +2627,15 @@ def generate_personal_email(
     # --- FTP status ---
     if ftp_estimated:
         lines.append(f"**FTP test in Week 1.** Your FTP is estimated right now ({ftp}W) since "
-                     "we don't have test data yet. The plan has a test scheduled early so we "
-                     "establish your real zones. Everything after that will be calibrated to your "
-                     "actual numbers.\n")
+                     "we don't have test data yet. The plan has a test scheduled early so you "
+                     "can measure your real numbers — the guide shows you how to update your "
+                     "FTP and zones from the results. Every workout after that is written as a "
+                     "percentage of FTP, so once you update it, the plan calibrates to you, not "
+                     "the estimate.\n")
     elif ftp:
         lines.append(f"**Your zones are set.** FTP of {ftp}W gives us clean power targets "
-                     "across every workout. The plan includes a retest mid-plan to adjust as "
-                     "you get fitter.\n")
+                     "across every workout. The plan includes a retest mid-plan — update your "
+                     "FTP from that number and the workouts scale with you as you get fitter.\n")
 
     # --- Intensity cap explanation ---
     is_masters = isinstance(age, (int, float)) and int(age) >= 50

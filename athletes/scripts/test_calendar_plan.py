@@ -307,9 +307,21 @@ class TestDisciplineGating:
             f"Gravel plan missing gravel-specific work: {sorted(menu)}"
         )
 
-    def test_road_does_not_get_microbursts(self):
+    def test_road_gets_microbursts_too(self):
+        """UPDATED (ROADIE_PHILOSOPHY_CRITIQUE.md fix #1, Matti-approved
+        2026-07-19): Microbursts is no longer gravel/mtb-exclusive. This
+        test used to assert the opposite ("road does not get microbursts"),
+        encoding the old design where Microbursts was terrain-specific
+        gravel/mtb work. The approved road-overlay rebuild adds Microbursts
+        to disciplines.road.build.intensity_3 as road's stochastic-surge
+        work, replacing the old dead "Blended VO2max and G Spot" duplicate
+        overlay (workout_selection.yaml). Discipline separation is still
+        proven by test_disciplines_produce_different_menus below — road and
+        gravel share this one name now but the rest of their menus differ."""
         menu = self._intensity_menu('road')
-        assert 'Microbursts' not in menu
+        assert 'Microbursts' in menu, (
+            f"road build.intensity_3 overlay should surface Microbursts: {sorted(menu)}"
+        )
 
     def test_mtb_gets_neuromuscular_work(self):
         menu = self._intensity_menu('mtb')
@@ -383,17 +395,22 @@ class TestMethodologyDifferentiatesThePlan:
 
 
 class TestRoadSelectionSurvivesMethodology:
-    """R2 selector-survival fix: the road discipline overlay
-    (config/workout_selection.yaml disciplines.road) inserts Tempo /
-    Threshold Progressive / Blended VO2max and G Spot / G-Spot into the
-    intensity alternatives pool. Before the fix, only gravel/mtb names
-    (_DISCIPLINE_INTENSITY) were protected from the methodology-emphasis
-    pass in workout_selector.select_workouts_for_week, so once a road name
-    won the block rotation, an unrelated methodology's secondary-pool pick
-    silently overwrote it. traditional_pyramidal is the sharpest probe: its
-    pool (Tempo with Accelerations / Tempo with Sprints / Threshold Steady)
-    shares no name with the road overlay, so a survival failure is visible
-    immediately as a name mismatch."""
+    """R2 selector-survival fix, updated for the philosophy-critique road
+    overlay rebuild (ROADIE_PHILOSOPHY_CRITIQUE.md fix #1): the road
+    discipline overlay (config/workout_selection.yaml disciplines.road) now
+    inserts "Tempo with Sprints" (base.intensity_2) and "Microbursts"
+    (build.intensity_3) into the intensity alternatives pool — replacing the
+    old Tempo/Threshold Progressive/Blended VO2max and G Spot names, which
+    were either dead duplicates of the generic default/alternatives or
+    (G-Spot on race_prep.intensity_3) genuinely unreachable. Before the R2
+    fix, only gravel/mtb names (_DISCIPLINE_INTENSITY) were protected from
+    the methodology-emphasis pass in workout_selector.select_workouts_for_week,
+    so once a road name won the block rotation, an unrelated methodology's
+    secondary-pool pick silently overwrote it. traditional_pyramidal is the
+    sharpest probe: its pool (Tempo with Accelerations / Tempo with Sprints /
+    Threshold Steady) shares a name with the road overlay ("Tempo with
+    Sprints"), so this also proves the protection guard doesn't accidentally
+    block the methodology pass from picking that same name deliberately."""
 
     _METHODOLOGIES = ('polarized_80_20', 'time_crunched', 'g_spot', 'traditional_pyramidal')
 
@@ -403,18 +420,15 @@ class TestRoadSelectionSurvivesMethodology:
     # week — so this searches a block range per methodology rather than
     # assuming one fixed block_number works everywhere.
     _CASES = [
-        ('base', 'Tempo'),
-        ('build', 'Threshold Progressive'),
-        ('build', 'Blended VO2max and G Spot'),
+        ('base', 'Tempo with Sprints'),
+        ('build', 'Microbursts'),
     ]
-    # NOTE: race_prep/'G-Spot' (disciplines.road.race_prep.intensity_3 in
-    # workout_selection.yaml) is NOT covered here — that slot's own
-    # `default` is None in config/workout_selection.yaml (phases.race_prep
-    # .slots.intensity_3), so `_get_slot_workout` returns None and the slot
-    # is skipped by `select_workouts_for_week` before the discipline overlay
-    # ever runs. The overlay entry is dead code today, independent of the
-    # methodology-overwrite bug this fix addresses — out of scope for R2's
-    # selector-survival fix (flagged in the closing report, not fixed here).
+    # NOTE: build.intensity_1 has no road-specific overlay entry anymore —
+    # the old "Threshold Progressive" addition was a no-op (already in the
+    # generic build.intensity_1 alternatives) and no other non-duplicate,
+    # non-phantom canonical workout type exists in the 31-type vocabulary
+    # for that slot. See workout_selection.yaml disciplines.road.build
+    # comment and the fix #1 executor report for the residual gap.
 
     def test_road_names_are_discipline_protected(self):
         from workout_selector import _DISCIPLINE_INTENSITY
@@ -466,14 +480,48 @@ class TestRoadSelectionSurvivesMethodology:
                 for d in w['days']:
                     if d.get('role') == 'intensity':
                         names_by_phase[phase].add(d['name'])
-            assert 'Tempo' in names_by_phase['base'], (
-                f"{methodology}: road 'Tempo' never surfaced in a base load "
-                f"week — {names_by_phase['base']}")
-            assert names_by_phase['build'] & {
-                'Threshold Progressive', 'Blended VO2max and G Spot'
-            }, (
-                f"{methodology}: no road build-phase overlay name surfaced — "
-                f"{names_by_phase['build']}")
+            assert 'Tempo with Sprints' in names_by_phase['base'], (
+                f"{methodology}: road 'Tempo with Sprints' never surfaced in "
+                f"a base load week — {names_by_phase['base']}")
+            assert 'Microbursts' in names_by_phase['build'], (
+                f"{methodology}: road 'Microbursts' never surfaced in a "
+                f"build load week — {names_by_phase['build']}")
+
+    def test_race_prep_intensity_3_now_active_for_road(self):
+        """Fix #1 follow-up: race_prep.intensity_3 was genuinely unreachable
+        (generic default: null skipped the slot in select_workouts_for_week
+        before the discipline overlay ever ran). workout_selector.py now
+        checks the discipline overlay's own `default` before that null
+        check, and disciplines.road.race_prep.intensity_3.default =
+        "Race Simulation" activates it. Confirm road reaches 3 intensity
+        slots in race_prep (not 2) with intensity_3 = Race Simulation, while
+        gravel (whose race_prep.intensity_3 overlay has only
+        extra_alternatives, no `default`) still gets 2 — proving the
+        activation is road-scoped and doesn't leak into other disciplines."""
+        for methodology in self._METHODOLOGIES:
+            road_menu = select_workouts_for_week(
+                phase='race_prep', archetype='specialist', week_type='load',
+                week_in_block=1, base_level=3, max_level=6,
+                max_intensity=3, hours_per_week=10,
+                block_number=1, discipline='road', methodology=methodology,
+            )
+            road_by_slot = {w['slot']: w for w in road_menu if w.get('role') == 'intensity'}
+            assert 'intensity_3' in road_by_slot, (
+                f"{methodology}: road race_prep.intensity_3 still inert — "
+                f"{list(road_by_slot)}")
+            assert road_by_slot['intensity_3']['name'] == 'Race Simulation'
+
+            gravel_menu = select_workouts_for_week(
+                phase='race_prep', archetype='specialist', week_type='load',
+                week_in_block=1, base_level=3, max_level=6,
+                max_intensity=3, hours_per_week=10,
+                block_number=1, discipline='gravel', methodology=methodology,
+            )
+            gravel_by_slot = {w['slot']: w for w in gravel_menu if w.get('role') == 'intensity'}
+            assert 'intensity_3' not in gravel_by_slot, (
+                f"{methodology}: gravel race_prep.intensity_3 should still "
+                f"be inert (no `default` in its overlay) — got "
+                f"{gravel_by_slot.get('intensity_3')}")
 
 
 class TestVO2GapWithLowIntensityBudget:

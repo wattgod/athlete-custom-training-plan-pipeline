@@ -163,16 +163,40 @@ disciplines:
         extra_alternatives: ["Microbursts"]
   road:
     base:
+      # "Tempo with Sprints" is a genuine addition (not already in the base
+      # intensity_2 pool: Cadence Work/Mixed Intervals/Mixed Climbing) — the
+      # road headline differentiator. Cadence Work is listed too (matches
+      # the approved menu) but is already generic, so it's a documented
+      # no-op via the workout_selector dedup guard.
       intensity_2:
-        extra_alternatives: ["Tempo"]
+        extra_alternatives: ["Tempo with Sprints", "Cadence Work"]
     build:
-      intensity_1:
-        extra_alternatives: ["Threshold Progressive"]
+      # NOTE: no road-specific intensity_1 addition. The 31-canonical-type
+      # vocabulary has only 3 Threshold-family types (Accumulation/
+      # Progressive/Steady) and the generic pool already rotates through
+      # all 3 — there is no non-duplicate, non-phantom name left to add
+      # here. The old "Threshold Progressive" overlay was a no-op (already
+      # in the generic alternatives), same bug as intensity_3 below; removed
+      # rather than left as misleading dead config. See
+      # ROADIE_PHILOSOPHY_CRITIQUE.md fix #1 report for the residual gap.
       intensity_3:
-        extra_alternatives: ["Blended VO2max and G Spot"]
+        # "Microbursts" is a genuine addition — true stochastic/punchy road
+        # work, not in the generic pool (Race Simulation/Mixed Intervals).
+        # Replaces the old "Blended VO2max and G Spot" overlay, which was a
+        # no-op (already the generic default).
+        extra_alternatives: ["Microbursts"]
     race_prep:
+      # Was genuinely unreachable before (generic default: null skips the
+      # slot in workout_selector.py before the overlay is ever applied).
+      # `default` here activates the slot for road via the discipline
+      # overlay (see workout_selector.py's discipline-default-before-null-
+      # check). "Race Simulation" renders through the merged Race_Simulation
+      # archetype pool (new_archetypes.py/advanced_archetypes.py/
+      # imported_archetypes.py), which includes Attacks and Repeatability,
+      # Breakaway Simulation, Variable Pace Chaos, Hard Starts, and
+      # Structured Fartlek — genuine race-demand/attack-simulation work.
       intensity_3:
-        extra_alternatives: ["G-Spot"]
+        default: "Race Simulation"
   mtb:
     base:
       intensity_2:
