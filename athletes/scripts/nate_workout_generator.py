@@ -1651,6 +1651,21 @@ def _clamp_blocks_to_max(blocks: str, max_seconds: int) -> str:
     return blocks
 
 
+def _snap_long_segment_seconds(seconds) -> int:
+    """Round a segment duration to the nearest whole minute once it's long
+    enough to read as "minutes" (>=60s) -- so a segments-based archetype's
+    raw 843s/894s steady block renders as a clean "14min" instead of "14:03"
+    in both the ZWO <SteadyState Duration> and the projected description.
+
+    Durations under 60s (e.g. a 5-10s surge) are returned exact and
+    untouched -- they must never get snapped UP to a full minute.
+    """
+    seconds = int(round(seconds))
+    if seconds >= 60:
+        return max(60, int(round(seconds / 60)) * 60)
+    return seconds
+
+
 def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
     """
     Generate ZWO XML blocks from a Nate archetype level.
@@ -1712,7 +1727,7 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
                 seg_cadence = (max(60, c - 5), c + 5)
 
             if seg_type == "steady":
-                seg_dur = seg.get("duration", 300)
+                seg_dur = _snap_long_segment_seconds(seg.get("duration", 300))
                 seg_power = seg.get("power", 0.65)
                 blocks.append(generate_steady_state_block(
                     seg_dur, seg_power,
@@ -1728,7 +1743,7 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
                     cadence_range=seg_cadence or cadence_range
                 ))
             elif seg_type == "freeride":
-                seg_dur = seg.get("duration", 600)
+                seg_dur = _snap_long_segment_seconds(seg.get("duration", 600))
                 blocks.append(f'    <FreeRide Duration="{seg_dur}"/>')
             elif seg_type == "ramp":
                 seg_dur = seg.get("duration", 600)
@@ -1742,7 +1757,7 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
                     f"Unknown segment type '{seg_type}' in archetype — "
                     f"rendering as steady state"
                 )
-                seg_dur = seg.get("duration", 300)
+                seg_dur = _snap_long_segment_seconds(seg.get("duration", 300))
                 seg_power = seg.get("power", 0.65)
                 blocks.append(generate_steady_state_block(
                     seg_dur, seg_power,

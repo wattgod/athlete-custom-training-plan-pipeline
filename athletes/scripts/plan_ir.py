@@ -437,6 +437,19 @@ def _sport_for_type(session_type: str) -> str:
     return "strength" if session_type == "strength" else "cycling"
 
 
+def _round_time_planned_hours(duration_sec: float) -> float:
+    """Round a session's planned duration to the nearest whole minute before
+    projecting it to hours, so the delivered TP `totalTimePlanned` -- and any
+    H:MM:SS clock TP renders from it -- reads "4:10:00" instead of a ragged
+    "4:09:44" built straight from the raw segment-second sum. `tssPlanned`
+    is left as round(tss, 1), unaffected by this.
+    """
+    if not duration_sec:
+        return 0.0
+    whole_minutes = round(duration_sec / 60)
+    return round((whole_minutes * 60) / 3600, 4)
+
+
 def _session_from_zwo(zwo_path: Path, date: Optional[str], is_race_day: bool, ftp: Optional[float],
                        manifest: Optional[Dict[str, Any]] = None) -> Session:
     zwo_structure = parse_zwo_structure(zwo_path)
@@ -472,7 +485,7 @@ def _session_from_zwo(zwo_path: Path, date: Optional[str], is_race_day: bool, ft
         tp_kind=tp_kind,
         workout_type_value_id=workout_type_value_id,
         tss_planned=round(float(metrics["tss"]), 1),
-        total_time_planned=round(duration_sec / 3600, 4) if duration_sec else 0.0,
+        total_time_planned=_round_time_planned_hours(duration_sec),
         structure=structure,
         series_id=entry.get("series_id"),
         series_index=entry.get("series_index"),

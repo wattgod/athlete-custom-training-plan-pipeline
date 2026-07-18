@@ -5,6 +5,7 @@ renderer can derive its MAIN SET wording from the same executable segments.
 """
 from __future__ import annotations
 
+import math
 import re
 import xml.etree.ElementTree as ET
 from datetime import date, timedelta
@@ -45,20 +46,55 @@ def _mins(seconds: int) -> str:
     return f'{seconds // 60}:{seconds % 60:02d}'
 
 
+def _line_for_segment(segment: Dict[str, Any]) -> Optional[str]:
+    """Render a single executable segment as training-work prose (no bullet
+    prefix). Returns ``None`` for anything render_main_set doesn't cover."""
+    kind = segment['kind']
+    if kind == 'intervals':
+        return (f"{segment['repeat']}x{_mins(segment['on_seconds'])} @ {round(segment['on_power'] * 100)}% FTP, "
+                f"{_mins(segment['off_seconds'])} recovery @ {round(segment['off_power'] * 100)}% FTP")
+    if kind == 'steady':
+        return f"{_mins(segment['seconds'])} @ {round(segment['power'] * 100)}% FTP"
+    if kind == 'free_ride':
+        return f"{_mins(segment['seconds'])} free ride"
+    return None
+
+
+def _collapse_repeated_lines(lines: List[str]) -> List[str]:
+    """Collapse a run of lines that is itself K>=2 repeats of a shorter unit
+    into a single ``K x (unit)`` line.
+
+    Mirrors the period-detection ("Shape A") semantics of the reference
+    gravel-god-training-plans/engine/collapse_description.py::collapse_description
+    -- smallest period p such that the whole list is p repeated (a trailing
+    partial repeat is allowed, same as the reference) -- but operates on
+    already-rendered, already-clean segment text, so no annotation-stripping
+    or ladder-detection is needed here. A single, non-repeated segment (or
+    any list with no consistent period) is returned unchanged.
+    """
+    n = len(lines)
+    for p in range(1, n // 2 + 1):
+        if all(lines[i] == lines[i - p] for i in range(p, n)):
+            k = math.ceil(n / p)
+            unit = lines[:p]
+            unit_text = ' + '.join(unit) if len(unit) > 1 else unit[0]
+            if len(unit) > 1:
+                return [f"{k} x ({unit_text})"]
+            return [f"{k}x {unit_text}"]
+    return lines
+
+
 def render_main_set(segments: Iterable[Dict[str, Any]]) -> str:
-    """Render only training work, never infer reps/duration from prose."""
-    lines = []
-    for segment in segments:
-        if segment['kind'] in ('warmup', 'cooldown', 'ramp'):
-            continue
-        if segment['kind'] == 'intervals':
-            lines.append(f"- {segment['repeat']}x{_mins(segment['on_seconds'])} @ {round(segment['on_power'] * 100)}% FTP, "
-                         f"{_mins(segment['off_seconds'])} recovery @ {round(segment['off_power'] * 100)}% FTP")
-        elif segment['kind'] == 'steady':
-            lines.append(f"- {_mins(segment['seconds'])} @ {round(segment['power'] * 100)}% FTP")
-        elif segment['kind'] == 'free_ride':
-            lines.append(f"- {_mins(segment['seconds'])} free ride")
-    return '\n'.join(lines) or '- Recovery / rest as scheduled'
+    """Render only training work, never infer reps/duration from prose.
+
+    Consecutive segments that form a repeated unit (e.g. 15x[steady + surge])
+    collapse into one ``K x (unit)`` line instead of unrolling every rep as
+    its own bullet -- see _collapse_repeated_lines.
+    """
+    lines = [line for line in (_line_for_segment(segment) for segment in segments)
+              if line is not None]
+    lines = _collapse_repeated_lines(lines)
+    return '\n'.join(f'- {line}' for line in lines) or '- Recovery / rest as scheduled'
 
 
 def replace_main_set(description: str, segments: Iterable[Dict[str, Any]]) -> str:
