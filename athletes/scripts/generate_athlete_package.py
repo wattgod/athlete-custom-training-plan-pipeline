@@ -50,6 +50,76 @@ from workout_templates import (
     calculate_target_duration,
     scale_zwo_to_target_duration,
 )
+from heat_classifier import classify_heat_risk
+
+# Heat cue body text by register (research doc §3 policy). 'low' is never
+# looked up here — cue injection drops entirely for that register (see
+# generate_zwo_files). 'unknown' is also the fallback for any unrecognized
+# register value, so an absent/misclassified race never silently loses its
+# conditional heat framing.
+_HEAT_CUE_BODY = {
+    'high': (
+        "HEAT ACCLIMATION (REQUIRED RACE PREP):\n"
+        "- Add 15-20 min sauna or hot bath post-workout\n"
+        "- This race runs hot — heat prep is part of race-day readiness, not optional\n"
+        "- Hydrate deliberately: weigh before/after, replace fluid losses"
+    ),
+    'moderate': (
+        "HEAT ACCLIMATION (RECOMMENDED):\n"
+        "- Add 15-20 min sauna or hot bath post-workout\n"
+        "- Conditions can run warm on race day — this block builds a buffer\n"
+        "- Hydrate deliberately: weigh before/after, replace fluid losses"
+    ),
+    'unknown': (
+        "HEAT ACCLIMATION (IF YOUR RACE RUNS HOT):\n"
+        "- Check your race's forecast/typical conditions on its race page\n"
+        "- If it runs hot, add 15-20 min sauna or hot bath post-workout\n"
+        "- Hydrate deliberately: weigh before/after, replace fluid losses"
+    ),
+}
+
+
+def _heat_cue_body(heat_risk: str) -> str:
+    """Cue text by register. Never called for 'low' (cues drop entirely)."""
+    return _HEAT_CUE_BODY.get(heat_risk, _HEAT_CUE_BODY['unknown'])
+
+
+# Workout types the heat cue must NEVER land on — every nate_workout_types
+# key (VO2max, Anaerobic, Sprints, Threshold, SFR, Over_Under,
+# Mixed_Climbing, Cadence_Work, Blended, Tempo, Race_Sim, Durability, plus
+# Gravel_Specific) is a hard/intensity session by construction (that's why
+# it routes to the Nate generator), and FTP_Test is a max-effort assessment,
+# not a training session (see CLAUDE.md). The guide's own Heat Safety line
+# says "never stack a heat session on a hard training day" — the cue
+# mechanism must honor that, not just recommend it.
+_HEAT_CUE_EXCLUDED_TYPES = {
+    'VO2max', 'Anaerobic', 'Sprints', 'Threshold', 'Gravel_Specific', 'SFR',
+    'Over_Under', 'Mixed_Climbing', 'Cadence_Work', 'Blended', 'Tempo',
+    'Race_Sim', 'Durability', 'FTP_Test',
+}
+
+
+def _heat_cue_eligible(workout_type: str, heat_risk: str, week_num: int, total_weeks: int) -> bool:
+    """Whether this specific workout should carry a heat cue: register keeps
+    cues, week falls in the 2-week window, AND the workout itself isn't a
+    hard/intensity day or an assessment."""
+    return (
+        heat_risk != 'low'
+        and _in_heat_cue_window(week_num, total_weeks)
+        and workout_type not in _HEAT_CUE_EXCLUDED_TYPES
+    )
+
+
+def _in_heat_cue_window(week_num: int, total_weeks: int) -> bool:
+    """Concentrated 2-week window ending 2 weeks before race (total-3 ..
+    total-2 week numbers) — the research-doc timing correction (5-6 sessions
+    genuinely ~every other day, ending close to race week per Daanen decay
+    data), matching the SPEC's total-3...total-2 principle. Clamped so short
+    plans (< 5 weeks) still get a valid 2-week window near the end."""
+    window_start = max(1, total_weeks - 3)
+    window_end = max(1, total_weeks - 2)
+    return window_start <= week_num <= window_end
+
 
 def _get_fuel_tag_for_type(workout_type: str) -> str:
     """Return fuel guidance string for a workout type, or empty string."""
@@ -402,8 +472,19 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     target_race = profile.get('target_race', {}) if profile else {}
     race_name = target_race.get('name', 'A Event')
     race_date = plan_dates.get('race_date', '')
-    # Heat acclimation benefits ALL athletes regardless of race elevation
-    needs_heat_training = True
+
+    # Heat risk is climate-classified per race, never a blanket True (research
+    # doc: docs/research/heat-training-gating.md §3; SPEC: heat-gating H5).
+    # 'low' drops cues entirely; 'high'/'moderate'/'unknown' keep them with
+    # register-specific framing (see _heat_cue_body below).
+    try:
+        from archetype import derive_discipline
+        _heat_discipline = derive_discipline(profile or {})
+    except Exception:
+        _heat_discipline = None
+    heat_risk = classify_heat_risk(
+        target_race.get('race_id'), discipline=_heat_discipline
+    ).get('heat_risk', 'unknown')
 
     weeks = plan_dates.get('weeks', [])
 
@@ -2326,10 +2407,11 @@ GO GET IT, {athlete_name.upper()}!
                         weeks_to_race = total_weeks - week_num + 1
                         personal_header = f"{athlete_name} - Week {week_num}/{total_weeks} - {weeks_to_race} weeks to {race_name}\nPhase: {phase.upper()}\n\n"
 
-                        # Add heat training reminder (weeks 4-8 before race)
+                        # Add heat training reminder (concentrated 2-week
+                        # window, register-gated — 'low' drops it entirely)
                         heat_reminder = ""
-                        if needs_heat_training and 4 <= weeks_to_race <= 8:
-                            heat_reminder = "\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance\n\n"
+                        if _heat_cue_eligible(workout_type, heat_risk, week_num, total_weeks):
+                            heat_reminder = f"\n{_heat_cue_body(heat_risk)}\n\n"
 
                         # Insert fuel tag + header after <description> tag
                         fuel_tag = _get_fuel_tag_for_type(workout_type)
@@ -2381,10 +2463,11 @@ GO GET IT, {athlete_name.upper()}!
             weeks_to_race = total_weeks - week_num + 1
             personal_header = f"{athlete_name} - Week {week_num}/{total_weeks} - {weeks_to_race} weeks to {race_name}\nPhase: {phase.upper()}\n\n"
 
-            # Add heat training reminder (weeks 4-8 before race)
+            # Add heat training reminder (concentrated 2-week window,
+            # register-gated — 'low' drops it entirely)
             heat_reminder = ""
-            if needs_heat_training and 4 <= weeks_to_race <= 8:
-                heat_reminder = "\n\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance"
+            if _heat_cue_eligible(workout_type, heat_risk, week_num, total_weeks):
+                heat_reminder = f"\n\n{_heat_cue_body(heat_risk)}"
 
             # Add fuel tag
             fuel_tag = _get_fuel_tag_for_type(workout_type)

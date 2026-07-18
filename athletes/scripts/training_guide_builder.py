@@ -285,6 +285,7 @@ def _build_section_titles(profile: Dict, race_data: Dict):
         "Race Week",
         "Race Day",
         skills_title,
+        "Heat Training",
     ]
 
     triggers = _conditional_triggers(profile, race_data)
@@ -400,6 +401,21 @@ def _build_full_guide(
         _discipline = "gravel"
     brand = _brand(_discipline)
 
+    # Heat risk register — climate-classified per race (research doc:
+    # docs/research/heat-training-gating.md §3), never a blanket claim.
+    # Drives the standalone Heat Training section below and the Altitude
+    # section's crossover mention. Decoupled from race_data's shape (which
+    # varies between the two _build_full_guide callers) — resolves its own
+    # race-data profile straight from target_race.race_id + discipline.
+    try:
+        from heat_classifier import classify_heat_risk
+        _heat_risk = classify_heat_risk(
+            (profile.get("target_race", {}) or {}).get("race_id"),
+            discipline=_discipline,
+        ).get("heat_risk", "unknown")
+    except Exception:
+        _heat_risk = "unknown"
+
     # Note: redundant "200 200mi" cleaned up in post-processing by generate_training_guide()
     template = plan_config.get("template", {})
     sched = profile.get("schedule", {})
@@ -466,11 +482,17 @@ def _build_full_guide(
     sections.append(_section_race_day(race_data, tier, race_distance, race_name, weekly_hours))
     sections.append(_section_skills(race_data, _discipline))
 
+    # 14. Heat Training — ALWAYS renders (unlike Altitude/Women/Masters,
+    # this is never conditional-off; only the register changes). Standalone
+    # per the heat-gating policy — a hot low-altitude race must get the
+    # protocol even when Altitude Training never fires.
+    sections.append(_section_heat_training(race_name, _heat_risk, plan_duration, section_num=14))
+
     # Conditional sections — uses shared trigger logic (no duplication)
     triggers = _conditional_triggers(profile, race_data)
-    next_section = 14  # first conditional is always after section 13
+    next_section = 15  # first conditional is always after section 14 (heat)
     if triggers["altitude"]:
-        sections.append(_section_altitude_training(race_data, race_name, elevation, section_num=next_section))
+        sections.append(_section_altitude_training(race_data, race_name, elevation, _heat_risk, section_num=next_section))
         next_section += 1
     if triggers["women"]:
         sections.append(_section_women_specific(profile, race_data, race_name, section_num=next_section, discipline=_discipline))
@@ -2732,8 +2754,95 @@ def _section_masters_training(profile: Dict, derived: Dict, section_num: int = 1
 </section>"""
 
 
-def _section_altitude_training(race_data: Dict, race_name: str, elevation, section_num: int = 15) -> str:
-    """Altitude training — conditional on elevation > 5000ft. Section number is dynamic."""
+def _section_heat_training(race_name: str, heat_risk: str, plan_duration: int, section_num: int = 14) -> str:
+    """Heat training — STANDALONE section, ALWAYS renders (unlike Altitude/
+    Women/Masters, this is never conditional-off; only the register
+    changes). Climate-gated per docs/research/heat-training-gating.md §3:
+    'high' -> required framing, 'moderate' -> recommended, 'low' -> optional
+    with honest mixed-evidence framing (§1.2 — hot-condition benefit is
+    strong/consensus, cool-condition benefit is genuinely mixed), 'unknown'
+    -> conditional wording pointing at the race page. The protocol form and
+    safety lines stay constant across all four registers; only the framing
+    and required-ness change. 'Free fitness' / universal-benefit language is
+    retired everywhere.
+    """
+    window_start = max(1, plan_duration - 3)
+    window_end = max(1, plan_duration - 2)
+
+    if heat_risk == "high":
+        framing_label = "REQUIRED"
+        lede = (f"{race_name} runs hot. Heat acclimation isn't optional prep here &mdash; treat the block "
+                f"below the same way you'd treat your taper: part of race-day readiness, not a nice-to-have.")
+        evidence_note = ("The evidence for hot-condition racing is strong and consensus-level: a short "
+                          "acclimation block reliably improves performance in the heat.")
+    elif heat_risk == "moderate":
+        framing_label = "RECOMMENDED"
+        lede = (f"{race_name} can run warm. A short heat block builds a buffer without demanding a full "
+                f"acclimation commitment.")
+        evidence_note = ("Conditions here don't guarantee heat stress, but warm/humid signals in the race "
+                          "profile make this worth doing.")
+    elif heat_risk == "low":
+        framing_label = "OPTIONAL"
+        lede = (f"{race_name}'s typical conditions run cool. Heat training here is optional &mdash; do it "
+                f"for a small extra edge, not because it's required prep.")
+        evidence_note = ("Heat acclimation reliably helps performance IN THE HEAT. Its benefit in cool "
+                          "conditions is genuinely mixed in the research &mdash; some studies show a small "
+                          "aerobic gain (plasma volume expansion, hemoglobin mass), others show none. Skip "
+                          "this section without guilt if you'd rather spend the time elsewhere.")
+    else:
+        framing_label = "CHECK YOUR RACE"
+        lede = (f"We don't have confirmed climate data for {race_name}. Check its race page for typical "
+                f"conditions before deciding how seriously to take this.")
+        evidence_note = ("If your race runs hot, treat the block below as required prep (see the hot-"
+                          "condition evidence above). If it runs cool, treat it as optional &mdash; the "
+                          "cool-condition evidence for a performance benefit is mixed, not settled.")
+
+    return f"""<section id="section-{section_num}" class="gg-section">
+  <h2>{section_num} &middot; Heat Training</h2>
+
+  <p>{lede}</p>
+
+  <div class="gg-module gg-blackpill">
+    <div class="gg-label">HEAT TRAINING: {framing_label}</div>
+    <p>{evidence_note}</p>
+  </div>
+
+  <h3>The Protocol</h3>
+  <div class="data-card">
+    <div class="data-card__header">HEAT PROTOCOL (WEEKS {window_start}-{window_end} OF YOUR PLAN)</div>
+    <div class="data-card__content">
+      <p>A concentrated 2-week block, ending close to race week so the adaptations don't fade before you
+      need them &mdash; they decay at roughly 2.5% per day once you stop.</p>
+      <ul>
+        <li><strong>5-6 sessions across the 2 weeks</strong> &mdash; roughly every other day, not daily.</li>
+        <li><strong>Post-exercise passive heat:</strong> 15-20 min sauna, hot bath, or extra layers during/after
+        a normal training session. Add duration gradually.</li>
+        <li><strong>What adapts first:</strong> plasma volume expansion and earlier sweat onset show up in the
+        first few sessions; sweat-rate and core-temperature adaptations mature by the end of the block.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="gg-module gg-alert">
+    <div class="gg-label">HEAT SAFETY</div>
+    <ul>
+      <li>Weigh yourself before and after &mdash; replace fluid losses, don't guess</li>
+      <li>Never stack a heat session on a hard training day or when you're sick</li>
+      <li>Stop immediately for dizziness, nausea, confusion, or goosebumps in the heat</li>
+      <li>Get medical clearance first if you're on cardiovascular medication or pregnant</li>
+    </ul>
+  </div>
+</section>"""
+
+
+def _section_altitude_training(race_data: Dict, race_name: str, elevation, heat_risk: str = "unknown", section_num: int = 15) -> str:
+    """Altitude training — conditional on elevation > 5000ft. Section number is dynamic.
+
+    heat_risk: the race's climate register (see _section_heat_training). Used
+    ONLY for the short crossover mention below — the full heat protocol lives
+    in the standalone Heat Training section so a hot low-altitude race still
+    gets it even when this section never fires.
+    """
     meta = race_data.get("race_metadata", {})
     start_elev = meta.get("start_elevation_feet", 0) or 0
     avg_elev = meta.get("avg_elevation_feet", start_elev) or start_elev
@@ -2743,6 +2852,20 @@ def _section_altitude_training(race_data: Dict, race_name: str, elevation, secti
 
     # Power loss formula: ~1% per 1,000 feet above 3,000ft
     power_loss = round(max(0, (max(start_elev, avg_elev) - 3000) / 1000) * 1.0, 1)
+
+    if heat_risk in ("high", "moderate"):
+        crossover_text = (
+            "Your Heat Training block (see the standalone Heat Training section) does double duty here "
+            "&mdash; the plasma volume expansion and thermoregulatory adaptations from heat exposure "
+            "partially transfer to altitude, on top of the direct benefit for race-day heat."
+        )
+    else:
+        crossover_text = (
+            "Heat training isn't required prep for this race (see the Heat Training section for the honest "
+            "framing on that), but if you do it anyway, some of the same adaptations &mdash; plasma volume "
+            "expansion in particular &mdash; partially transfer to altitude too. The evidence for a benefit "
+            "outside hot conditions is genuinely mixed, not settled."
+        )
 
     return f"""<section id="section-{section_num}" class="gg-section">
   <h2>{section_num} &middot; Altitude Training</h2>
@@ -2808,28 +2931,15 @@ def _section_altitude_training(race_data: Dict, race_name: str, elevation, secti
       <p>Most athletes can't take 2 weeks off before a race. Here's how to mitigate:</p>
       <ul>
         <li><strong>Arrive as late as possible</strong> &mdash; 24-48 hours before is better than 3-5 days. The worst window is 2-5 days at altitude (past the adrenaline boost, before any adaptation).</li>
-        <li><strong>Heat training provides crossover benefits:</strong> 10-14 days of heat exposure increases plasma volume and hemoglobin, partially mimicking altitude adaptation.</li>
+        <li><strong>Heat training offers partial crossover:</strong> see the Heat Training section &mdash; some of its adaptations (plasma volume expansion, earlier sweat onset) partially transfer to altitude too.</li>
         <li><strong>Pace conservatively:</strong> Start 10% below target power. Altitude punishes going too hard early more than sea-level racing does.</li>
         <li><strong>Hydrate aggressively:</strong> Start hydrating 48 hours before the race. Drink 500ml+ more than normal daily.</li>
       </ul>
     </div>
   </div>
 
-  <h3>Heat Acclimatization Protocol (Altitude Crossover)</h3>
-  <p>Heat acclimatization delivers <strong>5-8% performance improvements</strong> through plasma volume expansion,
-  enhanced sweating, and reduced cardiovascular strain. Some of these adaptations directly help at altitude.</p>
-
-  <div class="data-card">
-    <div class="data-card__header">10-14 DAY HEAT PROTOCOL (WEEKS 6-10 OF YOUR PLAN)</div>
-    <div class="data-card__content">
-      <ul>
-        <li><strong>Days 1-5:</strong> Fastest cardiovascular adaptations &mdash; plasma volume expands 4-15%, heart rate drops 8-20 bpm, sweating begins earlier.</li>
-        <li><strong>Days 6-10:</strong> Thermoregulatory adaptations mature &mdash; sweat rate increases 10-25%, core temp drops 0.2-0.5&deg;C during exercise.</li>
-        <li><strong>Beyond 10-14 days:</strong> Hemoglobin mass may increase 3-4%, similar to altitude training benefits.</li>
-      </ul>
-      <p><strong>How to do it:</strong> Train indoors with the fan off or reduced. Wear extra layers. Sauna post-ride (15-20 min, working up gradually). These adaptations decay at ~2.5% per day without exposure.</p>
-    </div>
-  </div>
+  <h3>Heat Crossover</h3>
+  <p>{crossover_text}</p>
 
   <h3>Race Day at Altitude</h3>
   <div class="gg-module gg-alert">
@@ -2963,7 +3073,7 @@ def _section_women_specific(profile: Dict, race_data: Dict, race_name: str, sect
       <ul>
         <li><strong>Pre-cooling is critical:</strong> Cold water immersion, ice vests, cold drinks before start</li>
         <li><strong>Aggressive cooling during race:</strong> Ice in jersey pockets, cold water over head/neck at aid stations</li>
-        <li><strong>Heat acclimatization training:</strong> See the Altitude Training section &mdash; heat protocol provides critical benefits</li>
+        <li><strong>Heat acclimatization training:</strong> See the Heat Training section for the full protocol and whether it's required, recommended, or optional for your race</li>
         <li><strong>Monitor core temp signals:</strong> Goosebumps, chills, confusion, nausea = pull back immediately</li>
       </ul>
     </div>
