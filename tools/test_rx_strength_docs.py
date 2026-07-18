@@ -408,10 +408,15 @@ class TestMinimalSchema:
 
 
 # ---------------------------------------------------------------------------
-# Reps values kept verbatim (ranges NOT truncated to the low end); per-side
-# and timed movements emit a param-less prescription with the raw text in
-# coachNotes. Per outputs/rx_strength_capture_findings.md's rep/parameter
-# rules.
+# Reps values kept verbatim (ranges NOT truncated to the low end). EVERY
+# prescription carries exactly 1 Reps parameter -- a second live probe
+# (2026-07-17) found that param-less prescriptions (`parameters: []`) return
+# HTTP 200 but 3 field errors ("A Prescription must include at least 1
+# Parameter"); the findings doc's earlier "param-less is valid" claim was
+# based on a probe that never actually persisted. Per-side ("10/side") and
+# timed ("60 sec") movements now get a Reps SURROGATE value (the leading
+# number, or "1" for a pure duration/no-count text) plus the full raw text
+# unconditionally echoed into coachNotes as "Rx: <text>".
 # ---------------------------------------------------------------------------
 class TestRepsAndParamless:
     def test_rep_ranges_preserved_verbatim_not_truncated(self):
@@ -441,7 +446,18 @@ class TestRepsAndParamless:
                             # a bare int or a "low-high" range, never mangled
                             assert re.fullmatch(r"\d+(-\d+)?", pv["prescribedValue"]), pv["prescribedValue"]
 
-    def test_per_side_reps_are_paramless_with_rx_in_coach_notes(self):
+    def test_every_prescription_carries_at_least_one_parameter(self):
+        # The core regression this class guards: "A Prescription must
+        # include at least 1 Parameter" (live field error on parameters:[]).
+        for template_key in rxdocs.TEMPLATE_KEYS:
+            doc = _build(template_key)
+            for block in doc["blocks"]:
+                for presc in block["prescriptions"]:
+                    assert len(presc["parameters"]) >= 1, presc
+                    for s in presc["sets"]:
+                        assert len(s["parameterValues"]) >= 1, s
+
+    def test_per_side_reps_get_a_reps_surrogate_with_rx_in_coach_notes(self):
         # Foundation (A) PREP: "Hip Rails ─ 10/side"
         doc = _build("foundation_a")
         presc = next(
@@ -450,15 +466,17 @@ class TestRepsAndParamless:
             for p in b["prescriptions"]
             if p["exercise"]["title"] == "Hip Rails"
         )
-        assert presc["parameters"] == []
-        assert presc["setSummaryTemplate"] is None
+        assert presc["parameters"][0]["parameter"] == "Reps"
+        assert presc["setSummaryTemplate"] == "{Reps}"
         assert "Rx: 10/side" in presc["coachNotes"]
         for s in presc["sets"]:
-            assert s["parameterValues"] == []
+            assert s["parameterValues"][0]["parameter"] == "Reps"
+            # "10/side" -> the leading number "10", NOT the per-side detail
+            assert s["parameterValues"][0]["prescribedValue"] == "10"
             assert s["setOrigin"] == "Prescribed"
             assert s["isComplete"] is False
 
-    def test_timed_movements_are_paramless_with_rx_in_coach_notes(self):
+    def test_timed_movements_get_reps_one_with_rx_in_coach_notes(self):
         # Max Strength (A) CORE/CARRY: "Hollow Body Hold ─ 20 sec"
         doc = _build("max_strength_a")
         presc = next(
@@ -467,30 +485,34 @@ class TestRepsAndParamless:
             for p in b["prescriptions"]
             if p["exercise"]["title"] == "Hollow Body Hold"
         )
-        assert presc["parameters"] == []
-        assert presc["setSummaryTemplate"] is None
+        assert presc["parameters"][0]["parameter"] == "Reps"
+        assert presc["setSummaryTemplate"] == "{Reps}"
         assert "Rx: 20 sec" in presc["coachNotes"]
         for s in presc["sets"]:
-            assert s["parameterValues"] == []
+            # NEVER "20" -- that would misread as 20 reps of a hold.
+            assert s["parameterValues"][0]["prescribedValue"] == "1"
 
-    def test_reps_prescriptions_have_reps_summary_template(self):
-        doc = _build("foundation_a")
-        for block in doc["blocks"]:
-            for presc in block["prescriptions"]:
-                if presc["parameters"]:
-                    assert presc["setSummaryTemplate"] == "{Reps}"
-                else:
-                    assert presc["setSummaryTemplate"] is None
-
-    def test_paramless_and_reps_prescriptions_both_present_across_templates(self):
-        saw_paramless = False
-        saw_reps = False
+    def test_all_prescriptions_have_reps_summary_template(self):
         for template_key in rxdocs.TEMPLATE_KEYS:
             doc = _build(template_key)
             for block in doc["blocks"]:
                 for presc in block["prescriptions"]:
-                    if presc["parameters"]:
-                        saw_reps = True
-                    else:
-                        saw_paramless = True
-        assert saw_paramless and saw_reps
+                    assert presc["setSummaryTemplate"] == "{Reps}"
+
+    def test_forced_note_surrogate_and_plain_reps_prescriptions_both_present(self):
+        # "1" only ever comes from the reps_forced_note timed/no-count path
+        # (never a real Reps prescription -- nobody prescribes literally 1
+        # rep); a multi-digit value with no "Rx:" note is a plain Reps
+        # prescription whose raw text didn't need echoing.
+        saw_forced_note_surrogate = False
+        saw_plain_reps_no_note = False
+        for template_key in rxdocs.TEMPLATE_KEYS:
+            doc = _build(template_key)
+            for block in doc["blocks"]:
+                for presc in block["prescriptions"]:
+                    value = presc["sets"][0]["parameterValues"][0]["prescribedValue"]
+                    if value == "1":
+                        saw_forced_note_surrogate = True
+                    elif "Rx:" not in (presc["coachNotes"] or ""):
+                        saw_plain_reps_no_note = True
+        assert saw_forced_note_surrogate and saw_plain_reps_no_note

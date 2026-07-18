@@ -48,14 +48,25 @@ their movement list becomes the block's coachNotes text. ZERO EQUIPMENT and
 NOTES are not blocks at all -- their text folds into the doc-level
 `instructions` field, verbatim, minus any non-gravelgodcycling.com link.
 
-Rep/parameter rules (empirically bounded, see the findings doc): `Reps`
-accepts integers AND range strings verbatim ("8", "6-8", "10-12" all valid --
-no low-end truncation). Per-side ("10/side") and timed ("60 sec") values are
-NOT valid Reps parameterValues (structural reject) -- those movements get a
-param-less prescription (`parameters: []`, each set
-`{id, isComplete: false, setOrigin: "Prescribed", parameterValues: []}`) with
-the full raw prescription text in the prescription's `coachNotes` as
-`Rx: <text>`.
+Rep/parameter rules (empirically bounded, see the findings doc -- CORRECTED
+2026-07-17 after a second live probe): `Reps` accepts integers AND range
+strings verbatim ("8", "6-8", "10-12" all valid -- no low-end truncation).
+EVERY prescription must carry at least 1 parameter -- a live PUT of a doc
+with param-less prescriptions (`parameters: []`) returned HTTP 200 but 3
+field errors (`"A Prescription must include at least 1 Parameter"`); the
+first probe that seemed to accept param-less prescriptions never actually
+persisted (it 404'd on delete, so it wasn't a real save). So every
+prescription -- including per-side ("10/side") and timed ("60 sec") ones --
+gets a Reps parameter:
+  - "N reps" / "N-M reps"                    -> Reps = "N" / "N-M" (verbatim)
+  - leading number/range, no time unit       -> Reps = that leading number/
+    ("10/side", "8 each side", "10 steps/direction")  range; full original
+                                                text ALSO goes in coachNotes
+                                                as "Rx: <text>"
+  - time unit, or no leading rep count       -> Reps = "1" (never the
+    ("60 sec", "AMRAP", "hold")                seconds value -- that would
+                                                read as reps); full text in
+                                                coachNotes as "Rx: <text>"
 
 See the bottom of this file for the reviewable movement -> catalog MAPPING
 tables (EXACT_MAP / FUZZY_MAP / CUSTOM_CANONICAL) called out by the spec.
@@ -203,10 +214,12 @@ CUSTOM_CANONICAL: Dict[str, str] = {
 
 # Prescription parameter catalog stub. Reps is captured verbatim in
 # plan_day_capture_netlog.json / structured_strength_PUT_payload.json and
-# confirmed live (2026-07-17 findings doc): Reps accepts integers AND range
-# strings unmodified. Per-side/timed values are NOT valid Reps
-# parameterValues (structural reject) -- there is no "Time"/"RepsPerSide"
-# parameter type; those movements get a param-less prescription instead (see
+# confirmed live (2026-07-17 findings doc, corrected same day after a second
+# probe): Reps accepts integers AND range strings unmodified. There is no
+# "Time"/"RepsPerSide" parameter type, and EVERY prescription must carry a
+# parameter -- a param-less prescription (`parameters: []`) is a field-error
+# reject ("A Prescription must include at least 1 Parameter"). Per-side/timed
+# movements get a Reps surrogate value instead (see _parse_param /
 # _make_prescription).
 PARAM_DEFS: Dict[str, Dict[str, object]] = {
     "Reps": {"title": "Reps", "unit": {"title": "Reps", "abbreviation": "", "unit": "Reps"}, "category": "Reps"},
@@ -234,9 +247,15 @@ _NUM_RE = re.compile(r"^(\d+)")
 # A plain Reps value: an integer or a "low-high" range, immediately followed
 # by the literal word "reps" (e.g. "8 reps", "6-8 reps", "3-5 reps
 # (explosive)"). Kept VERBATIM per the findings doc -- no low-end truncation.
-# Anything that doesn't match this (per-side "10/side", timed "60 sec",
-# "10 steps/direction", etc.) is param-less; see _parse_param.
 _REPS_RE = re.compile(r"^(\d+(?:-\d+)?)\s*reps\b", re.IGNORECASE)
+# A bare leading number/range NOT anchored to the word "reps" (e.g. "10/side",
+# "10-12/side", "8 each side", "10 steps/direction", "60 sec"). Used to pull
+# a Reps surrogate value out of these -- see _parse_param.
+_LEADING_NUM_RANGE_RE = re.compile(r"^(\d+(?:-\d+)?)\b")
+# A time unit immediately following a leading number (e.g. "60 sec", "20 sec
+# hold", "2 min"). When this matches, the leading number is a DURATION, not a
+# rep count -- must not be echoed into Reps (see _parse_param).
+_TIME_UNIT_RE = re.compile(r"^(sec|secs|second|seconds|min|mins|minute|minutes)\b", re.IGNORECASE)
 _SETS_ROUNDS_RE = re.compile(r"^(\d+)(?:-(\d+))?\s*(sets?|rounds?)\b", re.IGNORECASE)
 _RPE_RE = re.compile(r"^RPE\s*([\d\-]+)$", re.IGNORECASE)
 
@@ -474,23 +493,38 @@ def _movement_prescription(raw_name: str, presc_text: Optional[str]):
     return primary_name, alt_name, primary_presc, alt_presc
 
 
-def _parse_param(presc_text: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
-    """Returns (param_type, value).
+def _parse_param(presc_text: Optional[str]) -> Tuple[str, str]:
+    """Returns (kind, value). EVERY prescription gets a Reps parameter now --
+    a live PUT with param-less prescriptions (`parameters: []`) returned
+    HTTP 200 but 3 field errors ("A Prescription must include at least 1
+    Parameter"); param-less is invalid (the findings doc's earlier claim to
+    the contrary was based on a probe that never actually persisted).
 
-    param_type is 'Reps' for a plain integer/range Reps value (kept
-    VERBATIM, e.g. "6-8"), 'paramless' for anything else that carries a
-    prescription (per-side "10/side", timed "60 sec", "10 steps/direction",
-    etc. -- none of these are valid Reps parameterValues per the findings
-    doc's live probes), or (None, None) if there is no prescription text at
-    all.
+    kind is 'reps' for a plain "N reps" / "N-M reps" value (Reps = that
+    value verbatim, and the existing conditional coachNotes-echo logic in
+    _movement_notes applies), or 'reps_forced_note' for everything else that
+    carries a prescription -- the Reps value is a SURROGATE (the leading
+    number/range for "10/side"-style text, or "1" when the text starts with
+    a time unit or has no leading rep count at all) and the FULL original
+    text is unconditionally echoed into coachNotes as "Rx: <text>".
     """
     if not presc_text:
-        return None, None
+        # No prescription text at all -- never zero parameters; fall back to
+        # a single default Reps set with nothing to echo into coachNotes.
+        return "reps_forced_note", "1"
     presc_text = presc_text.strip()
     m = _REPS_RE.match(presc_text)
     if m:
-        return "Reps", m.group(1)
-    return "paramless", presc_text
+        return "reps", m.group(1)
+    m2 = _LEADING_NUM_RANGE_RE.match(presc_text)
+    if m2:
+        rest = presc_text[m2.end():].lstrip()
+        if _TIME_UNIT_RE.match(rest):
+            # A duration, not a rep count -- "60 sec" must NOT become Reps=60.
+            return "reps_forced_note", "1"
+        return "reps_forced_note", m2.group(1)
+    # No leading number at all (e.g. "AMRAP", "hold").
+    return "reps_forced_note", "1"
 
 
 def _movement_notes(
@@ -521,9 +555,11 @@ def _movement_notes(
         elif inner:
             frags.append(f"Cue: {inner}")
 
-    if param_type == "paramless":
-        # Param-less prescriptions carry the full raw prescription text in
-        # coachNotes unconditionally -- it's the only place that value lives.
+    if param_type == "reps_forced_note":
+        # The Reps value here is a surrogate (leading number, or "1" for a
+        # timed/no-count movement) -- the full raw prescription text is
+        # unconditionally echoed into coachNotes since it's the only place
+        # the real prescription (e.g. "10/side", "60 sec") lives.
         if presc_text:
             frags.append(f"Rx: {presc_text}")
     elif presc_text and re.search(r"-\d+|/|\(", presc_text):
@@ -629,33 +665,18 @@ def _make_reps_sets(uuid_factory: Callable[[], str], value: str, count: int) -> 
     return sets
 
 
-def _make_paramless_sets(uuid_factory: Callable[[], str], count: int) -> List[Dict[str, object]]:
-    """Sets for a param-less prescription (per-side/timed movements). Live
-    probe confirmed valid: `parameters:[], sets:[{parameterValues:[],
-    isComplete:false, setOrigin:"Prescribed", id:<uuid>}]`."""
-    return [
-        {"id": uuid_factory(), "isComplete": False, "setOrigin": "Prescribed", "parameterValues": []}
-        for _ in range(count)
-    ]
-
-
 def _make_prescription(
     uuid_factory: Callable[[], str],
     exercise_ref: Dict[str, object],
-    param_type: str,
-    value: Optional[str],
+    value: str,
     count: int,
     coach_notes: Optional[str],
 ) -> Dict[str, object]:
-    if param_type == "paramless":
-        return {
-            "id": uuid_factory(),
-            "exercise": exercise_ref,
-            "parameters": [],
-            "coachNotes": coach_notes,
-            "setSummaryTemplate": None,
-            "sets": _make_paramless_sets(uuid_factory, count),
-        }
+    """Every prescription carries exactly 1 Reps parameter -- a live PUT with
+    `parameters: []` returned HTTP 200 but 3 field errors ("A Prescription
+    must include at least 1 Parameter"). `value` is either a verbatim Reps
+    value ("6-8") or a surrogate for a per-side/timed movement (the leading
+    number, or "1") -- see _parse_param."""
     return {
         "id": uuid_factory(),
         "exercise": exercise_ref,
@@ -699,8 +720,6 @@ def _build_block(block: _RawBlock, uuid_factory: Callable[[], str]) -> Tuple[Dic
     for mv in block.movements:
         primary_name, alt_name, primary_presc, alt_presc = _movement_prescription(mv.raw_name, mv.presc_text)
         param_type, value = _parse_param(primary_presc)
-        if param_type is None:
-            raise ValueError(f"Could not parse prescription text {mv.presc_text!r} for {mv.raw_name!r}")
         match_kind, catalog_id, canonical_title = _resolve_match(primary_name)
         if match_kind == "custom":
             video_url = _select_primary_url(mv.details, primary_name, alt_name)
@@ -718,7 +737,7 @@ def _build_block(block: _RawBlock, uuid_factory: Callable[[], str]) -> Tuple[Dic
         if non_url_notes:
             extra = " · ".join(f"Note: {d}" for d in non_url_notes)
             coach_notes = f"{coach_notes} · {extra}" if coach_notes else extra
-        prescriptions.append(_make_prescription(uuid_factory, exercise_ref, param_type, value, count, coach_notes))
+        prescriptions.append(_make_prescription(uuid_factory, exercise_ref, value, count, coach_notes))
         total_sets += count
         last_title = canonical_title
 
