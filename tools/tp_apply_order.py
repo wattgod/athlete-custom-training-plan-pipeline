@@ -389,14 +389,14 @@ def validate_receipt(receipt: Dict[str, Any], manifest: Dict[str, Any], *, apply
 def print_registry_commands(*, plan_title: str, plan_id: Optional[int], status: str = "applied") -> None:
     """Print (never run) the cross-repo registry commands. The registry lives
     in ``gravel-god-training-plans``, a different repo — this CLI must not
-    write there. Assumes the ``register`` subcommand + custom-key support
-    from the spec's "Registry extension" workstream has landed; if it has
-    not yet, these commands are the documented target, not a live guarantee.
+    write there. Signature matches that repo's ``register`` subcommand
+    (gravel-god-training-plans#3): the title is a POSITIONAL arg and the kind
+    is derived from it (``[CUSTOM]`` → custom) — there is no ``--kind`` flag.
     """
     plan_id_arg = str(plan_id) if plan_id is not None else "<planId>"
     print("\nCross-repo registry (run from the gravel-god-training-plans checkout, NOT here):")
-    print("  python3 tools/plan_registry.py register --kind custom "
-          f"--title {shlex.quote(plan_title)} --plan-id {plan_id_arg} --status {status}")
+    print(f"  python3 tools/plan_registry.py register {shlex.quote(plan_title)} "
+          f"--plan-id {plan_id_arg} --status {status}")
     print("  python3 tools/plan_registry.py check")
 
 
