@@ -439,8 +439,14 @@ def _build_full_guide(
 
     # Ride realism index — drives all long ride target language
     _, max_weekly = _parse_hours_range(weekly_hours)
-    elev_ft = float(elevation) if elevation else 0
-    est_race_hrs = _estimate_race_hours(float(race_distance), elev_ft, tier) if race_distance else 0
+    try:
+        elev_ft = float(elevation) if elevation else 0
+    except (TypeError, ValueError):
+        elev_ft = 0  # race-data uses "Varies" when climbing is unpublished
+    try:
+        est_race_hrs = _estimate_race_hours(float(race_distance), elev_ft, tier) if race_distance else 0
+    except (TypeError, ValueError):
+        est_race_hrs = 0
     lr_ceiling = max_weekly * 0.4 if max_weekly > 0 else 0
     ride_realism = (lr_ceiling / est_race_hrs) if est_race_hrs > 0 else 1.0
 
