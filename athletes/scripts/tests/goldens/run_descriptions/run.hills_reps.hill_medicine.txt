@@ -2,8 +2,9 @@ WARM-UP:
 -12min warm-up @ RPE 2-3.
 
 MAIN SET:
--32min Easy running before and after reps @ RPE 2-3.
--8x [1.25min Strong uphill rep @ RPE 6-7 + 2.25min Walk down @ RPE 1-2].
+-16min Easy running before reps @ RPE 2-3.
+-8x [1:15 Uphill rep — run strong @ RPE 6-7 + 2:15 Walk down @ RPE 1-2].
+-16min Easy running after reps @ RPE 2-3.
 -Cadence: Powerful arms and quick feet uphill; walk-down recovery is deliberate.
 -Terrain: Short, steep hill with safe walking descent.
 
@@ -26,4 +27,4 @@ HYDRATION:
 -500-750ml/hr to thirst; start hydrated and use electrolytes in warm conditions.
 
 RPE:
--2-3/10 easy running, 6-7/10 power-hiking, 1-2/10 easy running.
+-2-3/10 running, 6-7/10 running, 1-2/10 running.

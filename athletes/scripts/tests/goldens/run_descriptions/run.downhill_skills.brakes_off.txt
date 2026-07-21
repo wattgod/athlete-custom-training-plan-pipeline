@@ -3,7 +3,7 @@ WARM-UP:
 
 MAIN SET:
 -10min Easy running @ RPE 2-3.
--5x [2min Controlled downhill @ RPE 5-6 + 3min Walk back up @ RPE 2-3].
+-4x [2min Controlled downhill @ RPE 5-6 + 3min Walk back up @ RPE 2-3].
 -Cadence: Fast, light feet; increase cadence rather than overstriding.
 -Terrain: Smooth, moderate downhill with a safe walk-up return.
 
@@ -26,4 +26,4 @@ HYDRATION:
 -500-750ml/hr to thirst; start hydrated and use electrolytes in warm conditions.
 
 RPE:
--2-3/10 easy running/power-hiking, 5-6/10 race effort.
+-2-3/10 running/power-hiking, 5-6/10 race effort.

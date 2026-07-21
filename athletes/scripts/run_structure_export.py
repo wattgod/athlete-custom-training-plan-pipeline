@@ -22,7 +22,6 @@ _TYPE_NAMES = {
     "race": "Race effort",
     "cooldown": "Cool down",
 }
-_RECOVERY_LABELS = ("recover", "easy jog", "easy reset", "walk down", "walk back")
 
 
 def _unroll_segments(segments: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -42,22 +41,18 @@ def _unroll_segments(segments: Iterable[Mapping[str, Any]]) -> list[dict[str, An
     return leaves
 
 
-def _is_recovery(segment: Mapping[str, Any], previous_type: str | None) -> bool:
-    """Recognize authored recovery leaves whose type remains ``steady`` in Format R."""
-    if previous_type in {"stride", "pickup"} and segment.get("type") == "steady":
-        return True
-    label = str(segment.get("label", "")).lower()
-    return any(marker in label for marker in _RECOVERY_LABELS)
-
-
-def _intensity_class(segment: Mapping[str, Any], previous_type: str | None) -> str:
+def _intensity_class(segment: Mapping[str, Any]) -> str:
+    """Use authored intensity classification; labels never affect export semantics."""
+    explicit = segment.get("intensity_class")
+    if explicit is not None:
+        if explicit not in _TP_INTENSITY_CLASSES:
+            raise ValueError(f"Invalid explicit intensity class: {explicit!r}")
+        return str(explicit)
     segment_type = str(segment.get("type", ""))
     if segment_type == "warmup":
         return "warmUp"
     if segment_type == "cooldown":
         return "coolDown"
-    if _is_recovery(segment, previous_type):
-        return "rest"
     return "active"
 
 
@@ -106,14 +101,13 @@ def _build_structure(segments: Iterable[Mapping[str, Any]], total_seconds: float
     durations[-1] = total_seconds - sum(durations[:-1])
     elements: list[dict[str, Any]] = []
     begin: float | int = 0
-    previous_type: str | None = None
     for index, (segment, seconds) in enumerate(zip(leaves, durations)):
         end = total_seconds if index == len(leaves) - 1 else begin + seconds
         step = {
             "name": _segment_name(segment),
             "length": {"value": seconds, "unit": "second"},
             "targets": [_target(segment)],
-            "intensityClass": _intensity_class(segment, previous_type),
+            "intensityClass": _intensity_class(segment),
             "openDuration": False,
         }
         elements.append({
@@ -124,7 +118,6 @@ def _build_structure(segments: Iterable[Mapping[str, Any]], total_seconds: float
             "end": end,
         })
         begin = end
-        previous_type = str(segment.get("type", ""))
 
     return {
         "structure": elements,
@@ -173,9 +166,11 @@ def _workout_title(archetype: Mapping[str, Any], level: int | str) -> str:
 
 def export_tp_workout(
     archetype_id: str,
-    level: int | str,
-    workout_day: date | datetime | str,
+    level: int | str | None = None,
+    workout_day: date | datetime | str | None = None,
     athlete: Mapping[str, Any] | None = None,
+    *,
+    planned_hours: float | int | None = None,
 ) -> dict[str, Any]:
     """Export the complete POST body for a generic or athlete-specific run workout."""
     archetype = get_run_archetype(archetype_id)
@@ -184,7 +179,9 @@ def export_tp_workout(
 
     structure_exempt = bool(archetype.get("structure_exempt"))
     if structure_exempt:
-        total_seconds = 0
+        if not isinstance(planned_hours, (int, float)) or isinstance(planned_hours, bool) or planned_hours <= 0:
+            raise ValueError("structure-exempt run briefs require positive planned_hours")
+        total_seconds = float(planned_hours) * 3600
         tss = archetype.get("tss")
     else:
         level_data = get_run_level(archetype_id, level)
@@ -197,7 +194,11 @@ def export_tp_workout(
         "workoutTypeValueId": 3,
         "workoutDay": _workout_day_value(workout_day),
         "title": _workout_title(archetype, level),
-        "description": render_run_description(archetype_id, int(level), athlete),
+        "description": render_run_description(
+            archetype_id,
+            1 if structure_exempt else int(level),
+            athlete,
+        ),
         "totalTimePlanned": total_seconds / 3600,
         "tssPlanned": tss,
     }

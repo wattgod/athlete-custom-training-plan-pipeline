@@ -100,6 +100,52 @@ def test_validator_catches_duplicate_ids_and_display_names():
     assert any("Duplicate display name" in issue for issue in violations)
 
 
+def test_validator_requires_nonempty_display_name_and_complete_brief_data():
+    bad = _bad_library()
+    bad["run.endurance_z2.bread_and_butter"]["display_name"] = ""
+    brief = bad["run.race_day.a_race_brief"]
+    brief["description_brief"] = ""
+    brief["tss"] = 0
+    violations = validate_library(bad)
+    assert any("display_name must be non-empty" in issue for issue in violations)
+    assert any("non-empty description_brief" in issue for issue in violations)
+    assert any("positive tss" in issue for issue in violations)
+
+
+def test_validator_collects_unknown_type_and_malformed_repeat_errors():
+    bad = _bad_library()
+    level = bad["run.endurance_z2.bread_and_butter"]["levels"]["1"]
+    level["segments"][0]["type"] = "teleport"
+    level["segments"].append({"type": "repeat", "count": "three"})
+    violations = validate_library(bad)
+    assert any("unknown segment type" in issue for issue in violations)
+    assert any("malformed repeat" in issue for issue in violations)
+
+
+def test_validator_rejects_duplicate_and_mixed_axis_adjacent_levels():
+    bad = _bad_library()
+    levels = bad["run.strides.quick_feet"]["levels"]
+    levels["2"] = copy.deepcopy(levels["1"])
+    violations = validate_library(bad)
+    assert any("adjacent levels must differ" in issue for issue in violations)
+
+    bad = _bad_library()
+    level = bad["run.strides.quick_feet"]["levels"]["2"]
+    level["duration"] += 180
+    level["segments"][1]["count"] += 1
+    violations = validate_library(bad)
+    assert any("change both duration and density" in issue for issue in violations)
+
+
+def test_validator_requires_fueling_tier_and_duration_consistency():
+    bad = _bad_library()
+    del bad["run.endurance_z2.bread_and_butter"]["levels"]["1"]["fueling_tier"]
+    bad["run.endurance_z2.bread_and_butter"]["levels"]["6"]["fueling_tier"] = "optional"
+    violations = validate_library(bad)
+    assert any("missing fueling_tier" in issue for issue in violations)
+    assert any("90 minutes or longer" in issue for issue in violations)
+
+
 def test_validator_catches_long_run_cap():
     bad = _bad_library()
     level = bad["run.long_run.time_on_feet"]["levels"]["6"]

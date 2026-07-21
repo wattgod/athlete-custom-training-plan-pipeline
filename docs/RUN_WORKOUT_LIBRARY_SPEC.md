@@ -50,6 +50,10 @@ New files:
   `get_level_data` L998 behavior.
 - TSS key is `tss` (library convention), computed per the rTSS section and
   stored.
+- Each leveled definition carries `fueling_tier: none | optional | z2_long |
+  dress_rehearsal`; the renderer uses this authored field, not category or
+  display-name inference. Validation rejects duplicate display names as an
+  intentional stricter catalog-integrity rule.
 
 **Format R (segments)** — block-style YAML (v1's flow-style example did not
 parse; sol finding 1):
@@ -88,7 +92,9 @@ run_workouts:
 ```
 
 Segment `type` enum: `warmup | steady | stride | pickup | tempo | hike | race |
-cooldown | repeat`. Intensity is **RPE (canonical)**; optional `hr_pct_lthr`
+cooldown | repeat`. Between-repetition recovery leaves may explicitly carry
+`intensity_class: rest` for TP export; labels never determine intensity class.
+Intensity is **RPE (canonical)**; optional `hr_pct_lthr`
 and `pace_pct_threshold` ranges are allowed but render as PROSE lines only in
 v1 (never as TP targets — sol finding 4). Library-generic text uses RPE and
 %LTHR; absolute BPM appears only at athlete placement time, rendered from the
@@ -98,7 +104,8 @@ athlete's LTHR (fallback: if LTHR absent, RPE-only rendering — no invented HR)
 Peak). Progression axes per category: duration first (Endurance/Long), then
 density (Hills/Tempo), never both in one level step. Long Run caps at 3:15
 regardless of level. `race_day` briefs are the one exception to Format R:
-`structure: null`, description-only (stated exception; sol finding 4d).
+`structure_exempt: true`, description-only. Brief placement requires explicit
+positive `planned_hours` (stated exception; sol finding 4d).
 
 ## Categories & seed archetypes
 
@@ -160,7 +167,8 @@ touched (sol finding 9). Tier table (aligned with existing bike tiers + ISSN):
 - `hr_pct_lthr` / `pace_pct_threshold` are NOT emitted as targets in v1 — prose
   only.
 - Run workout type: `workoutTypeValueId: 3` (walk = 13). Race-day briefs:
-  no `structure` field.
+  no `structure` field; their explicit placement `planned_hours` becomes
+  `totalTimePlanned` and level is ignored.
 - **Fixture (R3):** commit `tests/fixtures/tp_run_structure_fixture.json` — an
   anonymized copy of a live-accepted payload from the 2026-07-20 Anthony builds
   (athleteId scrubbed). Round-trip test: export → compare to fixture shape →

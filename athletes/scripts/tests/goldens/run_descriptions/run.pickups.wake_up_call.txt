@@ -2,8 +2,8 @@ WARM-UP:
 -10min warm-up @ RPE 2-3.
 
 MAIN SET:
--9min Easy running @ RPE 2-3.
--6x [1min 1min pickup @ RPE 6-7 + 1min Easy jog @ RPE 2-3].
+-8min Easy running @ RPE 2-3.
+-5x [1min Pickup @ RPE 6-7 + 1min Easy jog @ RPE 2-3].
 -Cadence: Quick feet and relaxed shoulders through every pickup.
 -Terrain: Flat trail, track, or road with no traffic interruptions.
 
@@ -26,4 +26,4 @@ HYDRATION:
 -Drink to thirst; carry water when conditions or access require it.
 
 RPE:
--2-3/10 easy running, 6-7/10 pickups.
+-2-3/10 running, 6-7/10 pickups.

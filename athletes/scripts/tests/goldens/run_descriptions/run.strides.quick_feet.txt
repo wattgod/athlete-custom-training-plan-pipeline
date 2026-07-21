@@ -2,8 +2,8 @@ WARM-UP:
 -10min warm-up @ RPE 2-3.
 
 MAIN SET:
--6x [20sec 20sec smooth fast stride @ RPE 6-7 + 1min Easy jog @ RPE 2-3].
--17min easy run @ RPE 2-3.
+-5x [20sec Stride @ RPE 6-7 + 1min Easy jog @ RPE 2-3].
+-13:20 easy run @ RPE 2-3.
 -Cadence: Quick, elastic turnover; do not force a long stride.
 -Terrain: Flat grass, track, or smooth dirt with clear footing.
 
@@ -26,4 +26,4 @@ HYDRATION:
 -Drink to thirst; carry water when conditions or access require it.
 
 RPE:
--6-7/10 strides, 2-3/10 easy running.
+-6-7/10 strides, 2-3/10 running.

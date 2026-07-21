@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from run_archetypes import RUN_ARCHETYPES, get_run_level  # noqa: E402
 from run_structure_export import (  # noqa: E402
+    _build_structure,
     export_tp_structure,
     export_tp_workout,
     validate_tp_structure,
@@ -30,9 +31,21 @@ def _total_seconds(structure: dict) -> float:
     return structure["structure"][-1]["end"]
 
 
-def test_live_fixture_round_trips_through_the_same_shape_validator():
+def test_live_fixture_round_trips_through_the_same_shape_validator_and_real_export_shape():
     fixture = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
     validate_tp_structure(fixture["structure"])
+    exported = export_tp_workout("run.race_pace.loop_one_rehearsal", 3, "2026-07-21")
+
+    assert set(fixture) - {"_comment"} == set(exported) - {"workoutDay", "description"}
+    assert set(fixture["structure"]) == set(exported["structure"])
+    assert fixture["structure"]["structure"] and exported["structure"]["structure"]
+    assert all(
+        set(expected_element) == set(actual_element)
+        and set(expected_element["steps"][0]) == set(actual_element["steps"][0])
+        for expected_element, actual_element in zip(
+            fixture["structure"]["structure"], exported["structure"]["structure"]
+        )
+    )
 
 
 @pytest.mark.parametrize("archetype_id", LEVELED_ARCHETYPES)
@@ -62,10 +75,19 @@ def test_leveled_workout_payload_uses_library_duration_and_tss(archetype_id, lev
 
 @pytest.mark.parametrize("archetype_id", ["run.race_day.a_race_brief", "run.race_day.b_race_brief"])
 def test_race_brief_payload_omits_structure(archetype_id):
-    payload = export_tp_workout(archetype_id, 1, "2026-07-21")
+    payload = export_tp_workout(archetype_id, workout_day="2026-07-21", planned_hours=6.5)
 
     assert payload["workoutTypeValueId"] == 3
     assert "structure" not in payload
+    assert payload["totalTimePlanned"] == 6.5
+    assert payload["tssPlanned"] == RUN_ARCHETYPES[archetype_id]["tss"]
+
+
+def test_race_brief_requires_positive_planned_hours():
+    with pytest.raises(ValueError, match="planned_hours"):
+        export_tp_workout("run.race_day.a_race_brief", workout_day="2026-07-21")
+    with pytest.raises(ValueError, match="planned_hours"):
+        export_tp_workout("run.race_day.a_race_brief", workout_day="2026-07-21", planned_hours=0)
 
 
 def test_structure_export_is_deterministic():
@@ -85,6 +107,14 @@ def test_intensity_classes_distinguish_warmup_cooldown_and_stride_recoveries():
         for step in steps
         if step["name"] == "Easy jog"
     )
+
+
+def test_label_text_cannot_turn_an_unclassified_segment_into_rest():
+    structure = _build_structure(
+        [{"type": "steady", "duration": 60, "rpe": [2, 3], "label": "easy jog"}],
+        60,
+    )
+    assert structure["structure"][0]["steps"][0]["intensityClass"] == "active"
 
 
 def test_fixture_validator_rejects_non_integer_rpe_targets():

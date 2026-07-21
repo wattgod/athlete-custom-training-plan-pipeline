@@ -16,6 +16,10 @@ from run_tss import RPE_IF_TABLE, _expanded_segments, _unrounded_tss, band_for, 
 
 LIBRARY_PATH = Path(__file__).resolve().parents[1] / "config" / "run_workout_library.yaml"
 LEVEL_KEYS = {"1", "2", "3", "4", "5", "6"}
+SEGMENT_TYPES = {
+    "warmup", "steady", "stride", "pickup", "tempo", "hike", "race", "cooldown", "repeat",
+}
+FUELING_TIERS = {"none", "optional", "z2_long", "dress_rehearsal"}
 # Backwards-compatible lookup retained for existing registry consumers.
 RPE_TO_IF = dict(RPE_IF_TABLE)
 _ID_PATTERN = re.compile(r"^run\.([a-z0-9]+(?:_[a-z0-9]+)*)\.([a-z0-9]+(?:_[a-z0-9]+)*)$")
@@ -139,9 +143,11 @@ def validate_library(
             continue
 
         display_name = workout.get("display_name")
-        if display_name in seen_names:
+        if not isinstance(display_name, str) or not display_name.strip():
+            violations.append(f"{archetype_id}: display_name must be non-empty")
+        elif display_name in seen_names:
             violations.append(f"Duplicate display name: {display_name}")
-        if isinstance(display_name, str):
+        elif isinstance(display_name, str):
             seen_names.add(display_name)
 
         match = _ID_PATTERN.fullmatch(archetype_id)
@@ -154,20 +160,33 @@ def validate_library(
         if levels is None:
             if not workout.get("structure_exempt"):
                 violations.append(f"{archetype_id}: unleveled item must be structure_exempt")
+            if not isinstance(workout.get("description_brief"), str) or not workout["description_brief"].strip():
+                violations.append(f"{archetype_id}: brief requires non-empty description_brief")
+            if not isinstance(workout.get("tss"), (int, float)) or workout["tss"] <= 0:
+                violations.append(f"{archetype_id}: brief requires positive tss")
             continue
         if not isinstance(levels, Mapping) or set(map(str, levels)) != LEVEL_KEYS:
             violations.append(f"{archetype_id}: leveled item must contain exactly levels 1-6")
             continue
 
+        ordered_levels: list[Mapping[str, Any]] = []
         for level_key, level in levels.items():
             if not isinstance(level, Mapping):
                 violations.append(f"{archetype_id} L{level_key}: level must be a mapping")
                 continue
+            ordered_levels.append(level)
             segments = level.get("segments", [])
             if not isinstance(segments, list):
                 violations.append(f"{archetype_id} L{level_key}: segments must be a list")
                 continue
-            leaves = _expanded_segments(segments)
+            malformed_repeat = _validate_segment_schema(segments, archetype_id, str(level_key), violations)
+            if malformed_repeat:
+                continue
+            try:
+                leaves = _expanded_segments(segments)
+            except ValueError as exc:
+                violations.append(f"{archetype_id} L{level_key}: malformed repeat ({exc})")
+                continue
             for segment in leaves:
                 try:
                     band_for(segment.get("rpe"))
@@ -197,4 +216,59 @@ def validate_library(
             if workout.get("category") == "long_run" and actual_duration and actual_duration > 195 * 60:
                 violations.append(f"{archetype_id} L{level_key}: long run exceeds 195 minutes")
 
+            fueling_tier = level.get("fueling_tier")
+            if fueling_tier not in FUELING_TIERS:
+                violations.append(f"{archetype_id} L{level_key}: invalid or missing fueling_tier")
+            elif isinstance(actual_duration, (int, float)):
+                duration_min = actual_duration / 60
+                if duration_min < 60 and fueling_tier != "none":
+                    violations.append(f"{archetype_id} L{level_key}: workouts under 60 minutes require fueling_tier none")
+                if duration_min >= 90 and fueling_tier in {"none", "optional"}:
+                    violations.append(f"{archetype_id} L{level_key}: workouts 90 minutes or longer require long fueling")
+
+        for index, (previous, current) in enumerate(zip(ordered_levels, ordered_levels[1:]), start=1):
+            if previous == current:
+                violations.append(f"{archetype_id} L{index}/L{index + 1}: adjacent levels must differ")
+                continue
+            previous_duration = previous.get("duration")
+            current_duration = current.get("duration")
+            try:
+                duration_changed = abs(float(current_duration) - float(previous_duration)) > 120
+                work_count_changed = _work_segment_count(previous.get("segments", [])) != _work_segment_count(current.get("segments", []))
+            except (TypeError, ValueError):
+                continue
+            if duration_changed and work_count_changed:
+                violations.append(f"{archetype_id} L{index}/L{index + 1}: adjacent levels change both duration and density")
+
     return violations
+
+
+def _validate_segment_schema(
+    segments: Iterable[Any], archetype_id: str, level_key: str, violations: list[str],
+) -> bool:
+    """Collect segment-type and repeat errors without letting malformed YAML abort validation."""
+    malformed_repeat = False
+    for segment in segments:
+        if not isinstance(segment, Mapping):
+            violations.append(f"{archetype_id} L{level_key}: segment must be a mapping")
+            continue
+        segment_type = segment.get("type")
+        if segment_type not in SEGMENT_TYPES:
+            violations.append(f"{archetype_id} L{level_key}: unknown segment type {segment_type!r}")
+        if segment_type != "repeat":
+            continue
+        count, children = segment.get("count"), segment.get("of")
+        if not isinstance(count, int) or isinstance(count, bool) or count <= 0 or not isinstance(children, list):
+            violations.append(f"{archetype_id} L{level_key}: malformed repeat")
+            malformed_repeat = True
+            continue
+        malformed_repeat = _validate_segment_schema(children, archetype_id, level_key, violations) or malformed_repeat
+    return malformed_repeat
+
+
+def _work_segment_count(segments: Iterable[Mapping[str, Any]]) -> int:
+    """Count expanded non-warm-up/cool-down work leaves for progression checks."""
+    return sum(
+        segment.get("type") not in {"warmup", "cooldown"}
+        for segment in _expanded_segments(segments)
+    )

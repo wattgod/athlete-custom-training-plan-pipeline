@@ -105,17 +105,18 @@ def get_run_execution(category_id: str, level_data: Mapping[str, Any]) -> str:
     ))
 
 
-def get_run_nutrition(category_id: str, duration_min: float) -> str:
-    """Return run-specific fueling copy for a minutes-based workout duration."""
-    if duration_min < 60:
+def get_run_nutrition(fueling_tier: str, duration_min: float) -> str:
+    """Return nutrition copy from the authored level tier, never category heuristics."""
+    if fueling_tier == "none":
         return "None needed at this duration."
-    if duration_min <= 90:
+    if fueling_tier == "optional":
         return "Optional: carry carbs if you are practicing race fueling or starting under-fueled."
-
-    if category_id in {"long_run", "race_pace", "race_day"}:
+    if fueling_tier == "dress_rehearsal":
         guidance = "Dress rehearsal: 50-60g/hr; practice race products and timing."
-    else:
+    elif fueling_tier == "z2_long":
         guidance = "40-60g/hr for Z2 endurance."
+    else:
+        raise ValueError(f"Unknown fueling tier: {fueling_tier!r}")
     if duration_min > 120:
         guidance += " Include sodium, especially in heat or heavy sweat conditions."
     return guidance
@@ -146,10 +147,11 @@ def _get_default_terrain(category_id: str, level: int) -> str:
 
 def _format_duration(seconds: float) -> str:
     seconds = round(seconds)
-    if seconds >= 60:
-        minutes = seconds / 60
-        return f"{minutes:g}min"
-    return f"{seconds}sec"
+    if seconds < 60:
+        return f"{seconds}sec"
+    if seconds % 60 == 0:
+        return f"{seconds // 60}min"
+    return f"{seconds // 60}:{seconds % 60:02d}"
 
 
 def _rpe_text(segment: Mapping[str, Any]) -> str:
@@ -185,29 +187,32 @@ def _as_fraction(value: Any) -> float:
     return value / 100 if value > 1 else value
 
 
-def _hr_line(segment: Mapping[str, Any], lthr: Any) -> str | None:
+def _hr_line(segment: Mapping[str, Any], lthr: Any | None = None) -> str | None:
     values = segment.get("hr_pct_lthr")
     if not isinstance(values, (list, tuple)) or len(values) != 2:
         return None
     try:
         low, high = (_as_fraction(value) for value in values)
-        lthr_value = float(lthr)
+        lthr_value = None if lthr is None else float(lthr)
     except (TypeError, ValueError):
         return None
     label = _segment_label(segment)
+    percent_text = f"{round(low * 100)}-{round(high * 100)}% LTHR"
+    if lthr_value is None:
+        return f"-{label}: {percent_text}."
     bpm_low = int(lthr_value * low + 0.5)
     bpm_high = int(lthr_value * high + 0.5)
-    return f"-{label}: {bpm_low}-{bpm_high} BPM ({round(low * 100)}-{round(high * 100)}% LTHR)."
+    return f"-{label}: {bpm_low}-{bpm_high} BPM ({percent_text})."
 
 
 def _rpe_descriptor(segment_type: str) -> str:
     return {
         "stride": "strides",
         "pickup": "pickups",
-        "tempo": "steady running",
+        "tempo": "running",
         "hike": "power-hiking",
         "race": "race effort",
-        "steady": "easy running",
+        "steady": "running",
     }.get(segment_type, "running")
 
 
@@ -258,7 +263,7 @@ def render_run_description(archetype_id: str, level: int, athlete: Mapping[str, 
         ("PROGRESSION:", [f"-Level {level_number}/6: {_PROGRESSION_CONTEXT.get(level_number, 'Progressive development')}"]),
         ("PURPOSE:", [get_run_purpose(category_id)]),
         ("EXECUTION:", [f"-{get_run_execution(category_id, level_data)}"]),
-        ("NUTRITION:", [f"-{get_run_nutrition(category_id, duration_min)}"]),
+        ("NUTRITION:", [f"-{get_run_nutrition(str(level_data['fueling_tier']), duration_min)}"]),
         ("HYDRATION:", [f"-{get_run_hydration(category_id, duration_min)}"]),
         ("RPE:", [_render_rpe(segments)]),
     ]
@@ -266,10 +271,10 @@ def render_run_description(archetype_id: str, level: int, athlete: Mapping[str, 
     cadence = level_data.get("cadence_prescription") or _get_default_run_cadence(category_id, level_number)
     terrain = level_data.get("terrain_prescription") or _get_default_terrain(category_id, level_number)
     sections[1][1].extend((f"-Cadence: {cadence}", f"-Terrain: {terrain}"))
-    if athlete and athlete.get("lthr") is not None:
-        sections[1][1].extend(
-            line for line in (_hr_line(segment, athlete["lthr"]) for segment in _leaf_segments(main_segments))
-            if line is not None
-        )
+    lthr = athlete.get("lthr") if athlete else None
+    sections[1][1].extend(
+        line for line in (_hr_line(segment, lthr) for segment in _leaf_segments(main_segments))
+        if line is not None
+    )
 
     return "\n\n".join("\n".join([header, *body]) for header, body in sections)

@@ -41,32 +41,31 @@ def test_leveled_descriptions_have_all_sections_in_contract_order():
 
 
 def test_no_bpm_is_rendered_without_an_athlete():
-    assert "BPM" not in render_run_description("run.tempo_steady.steady_finish", 3)
+    rendered = render_run_description("run.endurance_z2.bread_and_butter", 3)
+    assert "BPM" not in rendered
+    assert "70-83% LTHR" in rendered
 
 
-def test_bpm_is_rendered_only_when_an_athlete_lthr_and_hr_segment_are_present():
-    archetype_id = "run.tempo_steady.steady_finish"
-    level = RUN_ARCHETYPES[archetype_id]["levels"]["3"]
-    segment = next(segment for segment in level["segments"] if segment["type"] == "tempo")
-    original = segment.get("hr_pct_lthr")
-    try:
-        segment["hr_pct_lthr"] = [85, 90]
-        assert "BPM" not in render_run_description(archetype_id, 3)
-        rendered = render_run_description(archetype_id, 3, athlete={"lthr": 170})
-        assert "145-153 BPM (85-90% LTHR)." in rendered
-    finally:
-        if original is None:
-            segment.pop("hr_pct_lthr", None)
-        else:
-            segment["hr_pct_lthr"] = original
+def test_bpm_is_rendered_from_shipped_hr_data_only_when_lthr_is_available():
+    rendered = render_run_description(
+        "run.endurance_z2.bread_and_butter", 3, athlete={"lthr": 170}
+    )
+    assert "119-141 BPM (70-83% LTHR)." in rendered
 
 
 def test_nutrition_tier_boundaries():
-    assert get_run_nutrition("endurance_z2", 59) == "None needed at this duration."
-    assert get_run_nutrition("endurance_z2", 60).startswith("Optional:")
-    assert get_run_nutrition("endurance_z2", 90).startswith("Optional:")
-    assert get_run_nutrition("endurance_z2", 91).startswith("40-60g/hr")
-    assert "sodium" in get_run_nutrition("endurance_z2", 121).lower()
+    assert get_run_nutrition("none", 59) == "None needed at this duration."
+    assert get_run_nutrition("optional", 60).startswith("Optional:")
+    assert get_run_nutrition("z2_long", 90).startswith("40-60g/hr")
+    assert get_run_nutrition("dress_rehearsal", 90).startswith("Dress rehearsal:")
+    assert "sodium" in get_run_nutrition("z2_long", 121).lower()
+
+
+def test_hill_medicine_rpe_calls_uphill_reps_running_not_power_hiking():
+    rendered = render_run_description("run.hills_reps.hill_medicine", 3)
+    rpe_section = rendered.split("RPE:\n", 1)[1]
+    assert "running" in rpe_section
+    assert "power-hiking" not in rpe_section
 
 
 def test_category_dispatch_is_independent_of_display_name():

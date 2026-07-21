@@ -25,4 +25,4 @@ HYDRATION:
 -Drink to thirst; rehydrate normally after the run.
 
 RPE:
--2-3/10 easy running.
+-2-3/10 running.
