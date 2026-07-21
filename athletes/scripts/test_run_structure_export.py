@@ -13,6 +13,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent))
 
 from run_archetypes import RUN_ARCHETYPES, get_run_level  # noqa: E402
+from run_renderer import render_run_description  # noqa: E402
 from run_structure_export import (  # noqa: E402
     _build_structure,
     export_tp_structure,
@@ -31,21 +32,25 @@ def _total_seconds(structure: dict) -> float:
     return structure["structure"][-1]["end"]
 
 
-def test_live_fixture_round_trips_through_the_same_shape_validator_and_real_export_shape():
+def test_live_fixture_and_export_are_independently_internally_consistent():
     fixture = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
     validate_tp_structure(fixture["structure"])
     exported = export_tp_workout("run.race_pace.loop_one_rehearsal", 3, "2026-07-21")
+    exported_structure = exported["structure"]
+    exported_segments = get_run_level("run.race_pace.loop_one_rehearsal", 3)["segments"]
 
     assert set(fixture) - {"_comment"} == set(exported) - {"workoutDay", "description"}
     assert set(fixture["structure"]) == set(exported["structure"])
-    assert fixture["structure"]["structure"] and exported["structure"]["structure"]
+    assert len(fixture["structure"]["structure"]) == 8
     assert all(
-        set(expected_element) == set(actual_element)
-        and set(expected_element["steps"][0]) == set(actual_element["steps"][0])
-        for expected_element, actual_element in zip(
-            fixture["structure"]["structure"], exported["structure"]["structure"]
-        )
+        element["begin"] < element["end"]
+        and (index == 0 or element["begin"] == fixture["structure"]["structure"][index - 1]["end"])
+        for index, element in enumerate(fixture["structure"]["structure"])
     )
+    assert len(exported_structure["structure"]) == len(_unrolled_segments(exported_segments))
+    assert sum(
+        element["steps"][0]["length"]["value"] for element in exported_structure["structure"]
+    ) == get_run_level("run.race_pace.loop_one_rehearsal", 3)["duration"]
 
 
 @pytest.mark.parametrize("archetype_id", LEVELED_ARCHETYPES)
@@ -81,6 +86,7 @@ def test_race_brief_payload_omits_structure(archetype_id):
     assert "structure" not in payload
     assert payload["totalTimePlanned"] == 6.5
     assert payload["tssPlanned"] == RUN_ARCHETYPES[archetype_id]["tss"]
+    assert payload["description"] == render_run_description(archetype_id, None)
 
 
 def test_race_brief_requires_positive_planned_hours():
@@ -124,3 +130,14 @@ def test_fixture_validator_rejects_non_integer_rpe_targets():
 
     with pytest.raises(ValueError, match="integer RPE"):
         validate_tp_structure(invalid)
+
+
+def _unrolled_segments(segments):
+    result = []
+    for segment in segments:
+        if segment["type"] == "repeat":
+            for _ in range(segment["count"]):
+                result.extend(_unrolled_segments(segment["of"]))
+        else:
+            result.append(segment)
+    return result

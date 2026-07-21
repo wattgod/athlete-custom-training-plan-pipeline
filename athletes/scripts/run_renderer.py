@@ -122,10 +122,14 @@ def get_run_nutrition(fueling_tier: str, duration_min: float) -> str:
     return guidance
 
 
-def get_run_hydration(category_id: str, duration_min: float) -> str:
+def get_run_hydration(
+    category_id: str, duration_min: float, fueling_tier: str | None = None,
+) -> str:
     """Return category- and duration-aware hydration guidance in minutes."""
     if category_id == "recovery_easy":
         return "Drink to thirst; rehydrate normally after the run."
+    if category_id == "long_run" or fueling_tier == "dress_rehearsal":
+        return "500-750ml/hr to thirst; add sodium beyond 2 hours."
     if duration_min > 120:
         return "500-750ml/hr to thirst; include electrolytes and sodium for heat or heavy sweat loss."
     if category_id in {"hills_powerhike", "hills_reps", "tempo_steady", "race_pace", "downhill_skills"}:
@@ -205,7 +209,12 @@ def _hr_line(segment: Mapping[str, Any], lthr: Any | None = None) -> str | None:
     return f"-{label}: {bpm_low}-{bpm_high} BPM ({percent_text})."
 
 
-def _rpe_descriptor(segment_type: str) -> str:
+def _rpe_descriptor(segment: Mapping[str, Any]) -> str:
+    """Describe RPE by authored effort semantics, never label guesswork alone."""
+    segment_type = str(segment.get("type"))
+    label = str(segment.get("label", "")).lower()
+    if segment.get("intensity_class") == "rest" or segment_type in {"warmup", "cooldown"}:
+        return "walking" if "walk" in label else "recovery"
     return {
         "stride": "strides",
         "pickup": "pickups",
@@ -219,12 +228,10 @@ def _rpe_descriptor(segment_type: str) -> str:
 def _render_rpe(segments: Iterable[Mapping[str, Any]]) -> str:
     bands: dict[tuple[Any, Any], list[str]] = {}
     for segment in _leaf_segments(segments):
-        if segment.get("type") in {"warmup", "cooldown"}:
-            continue
         rpe = tuple(segment.get("rpe", ()))
         if len(rpe) != 2:
             continue
-        descriptor = _rpe_descriptor(str(segment.get("type")))
+        descriptor = _rpe_descriptor(segment)
         if descriptor not in bands.setdefault(rpe, []):
             bands[rpe].append(descriptor)
     if not bands:
@@ -234,7 +241,9 @@ def _render_rpe(segments: Iterable[Mapping[str, Any]]) -> str:
     ) + "."
 
 
-def render_run_description(archetype_id: str, level: int, athlete: Mapping[str, Any] | None = None) -> str:
+def render_run_description(
+    archetype_id: str, level: int | None, athlete: Mapping[str, Any] | None = None,
+) -> str:
     """Render one RUN-LIB workout as the canonical nine-section description."""
     archetype = get_run_archetype(archetype_id)
     if archetype is None:
@@ -264,7 +273,7 @@ def render_run_description(archetype_id: str, level: int, athlete: Mapping[str, 
         ("PURPOSE:", [get_run_purpose(category_id)]),
         ("EXECUTION:", [f"-{get_run_execution(category_id, level_data)}"]),
         ("NUTRITION:", [f"-{get_run_nutrition(str(level_data['fueling_tier']), duration_min)}"]),
-        ("HYDRATION:", [f"-{get_run_hydration(category_id, duration_min)}"]),
+        ("HYDRATION:", [f"-{get_run_hydration(category_id, duration_min, str(level_data['fueling_tier']))}"]),
         ("RPE:", [_render_rpe(segments)]),
     ]
 

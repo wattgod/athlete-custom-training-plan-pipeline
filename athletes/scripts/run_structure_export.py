@@ -196,7 +196,7 @@ def export_tp_workout(
         "title": _workout_title(archetype, level),
         "description": render_run_description(
             archetype_id,
-            1 if structure_exempt else int(level),
+            None if structure_exempt else int(level),
             athlete,
         ),
         "totalTimePlanned": total_seconds / 3600,

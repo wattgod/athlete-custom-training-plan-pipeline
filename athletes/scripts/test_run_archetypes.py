@@ -137,6 +137,16 @@ def test_validator_rejects_duplicate_and_mixed_axis_adjacent_levels():
     assert any("change both duration and density" in issue for issue in violations)
 
 
+def test_validator_catches_changed_work_interval_length_with_changed_duration():
+    """Regression: 3x7min -> 3x8min must not evade the single-axis check."""
+    bad = _bad_library()
+    levels = bad["run.race_pace.loop_one_rehearsal"]["levels"]
+    levels["3"] = copy.deepcopy(levels["2"])
+    levels["3"]["duration"] += 5 * 60
+    levels["3"]["segments"][1]["of"][0]["duration"] = 8 * 60
+    assert any("change both duration and density" in issue for issue in validate_library(bad))
+
+
 def test_validator_requires_fueling_tier_and_duration_consistency():
     bad = _bad_library()
     del bad["run.endurance_z2.bread_and_butter"]["levels"]["1"]["fueling_tier"]
@@ -151,6 +161,17 @@ def test_validator_catches_long_run_cap():
     level = bad["run.long_run.time_on_feet"]["levels"]["6"]
     level["duration"] = 196 * 60
     assert any("long run exceeds 195" in issue for issue in validate_library(bad))
+
+
+def test_validator_requires_coherent_structure_exempt_definitions():
+    bad = _bad_library()
+    bad["run.endurance_z2.bread_and_butter"]["structure_exempt"] = True
+    bad["run.race_day.a_race_brief"]["category"] = "recovery_easy"
+    del bad["run.race_day.b_race_brief"]["structure_exempt"]
+    violations = validate_library(bad)
+    assert any("leveled item cannot be structure_exempt" in issue for issue in violations)
+    assert any("unleveled item must use category race_day" in issue for issue in violations)
+    assert any("unleveled item must be structure_exempt" in issue for issue in violations)
 
 
 def test_rpe_lookup_is_complete_for_authored_segments():

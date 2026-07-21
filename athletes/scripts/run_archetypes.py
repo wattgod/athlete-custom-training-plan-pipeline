@@ -157,9 +157,13 @@ def validate_library(
             violations.append(f"{archetype_id}: sport must be 'run'")
 
         levels = workout.get("levels")
+        if "levels" in workout and workout.get("structure_exempt"):
+            violations.append(f"{archetype_id}: leveled item cannot be structure_exempt")
         if levels is None:
             if not workout.get("structure_exempt"):
                 violations.append(f"{archetype_id}: unleveled item must be structure_exempt")
+            if workout.get("category") != "race_day":
+                violations.append(f"{archetype_id}: unleveled item must use category race_day")
             if not isinstance(workout.get("description_brief"), str) or not workout["description_brief"].strip():
                 violations.append(f"{archetype_id}: brief requires non-empty description_brief")
             if not isinstance(workout.get("tss"), (int, float)) or workout["tss"] <= 0:
@@ -223,7 +227,9 @@ def validate_library(
                 duration_min = actual_duration / 60
                 if duration_min < 60 and fueling_tier != "none":
                     violations.append(f"{archetype_id} L{level_key}: workouts under 60 minutes require fueling_tier none")
-                if duration_min >= 90 and fueling_tier in {"none", "optional"}:
+                elif duration_min < 90 and fueling_tier != "optional":
+                    violations.append(f"{archetype_id} L{level_key}: workouts 60-89 minutes require fueling_tier optional")
+                elif duration_min >= 90 and fueling_tier not in {"z2_long", "dress_rehearsal"}:
                     violations.append(f"{archetype_id} L{level_key}: workouts 90 minutes or longer require long fueling")
 
         for index, (previous, current) in enumerate(zip(ordered_levels, ordered_levels[1:]), start=1):
@@ -234,10 +240,15 @@ def validate_library(
             current_duration = current.get("duration")
             try:
                 duration_changed = abs(float(current_duration) - float(previous_duration)) > 120
-                work_count_changed = _work_segment_count(previous.get("segments", [])) != _work_segment_count(current.get("segments", []))
+                previous_work_count, previous_work_per_rep = _work_signature(previous.get("segments", []))
+                current_work_count, current_work_per_rep = _work_signature(current.get("segments", []))
+                work_changed = (
+                    previous_work_count != current_work_count
+                    or abs(previous_work_per_rep - current_work_per_rep) > 0.01
+                )
             except (TypeError, ValueError):
                 continue
-            if duration_changed and work_count_changed:
+            if duration_changed and work_changed:
                 violations.append(f"{archetype_id} L{index}/L{index + 1}: adjacent levels change both duration and density")
 
     return violations
@@ -266,9 +277,20 @@ def _validate_segment_schema(
     return malformed_repeat
 
 
-def _work_segment_count(segments: Iterable[Mapping[str, Any]]) -> int:
-    """Count expanded non-warm-up/cool-down work leaves for progression checks."""
-    return sum(
-        segment.get("type") not in {"warmup", "cooldown"}
+def _work_signature(segments: Iterable[Mapping[str, Any]]) -> tuple[int, float]:
+    """Return active work-rep count and mean work duration for ladder checks.
+
+    Explicit ``rest`` leaves are recovery padding, not work. Comparing the
+    per-rep duration catches ladders that hide a work-interval change behind an
+    unchanged expanded leaf count (for example, 3x7min becoming 3x8min).
+    """
+    work_leaves = [
+        segment
         for segment in _expanded_segments(segments)
-    )
+        if segment.get("type") not in {"warmup", "cooldown"}
+        and segment.get("intensity_class") != "rest"
+    ]
+    if not work_leaves:
+        return 0, 0.0
+    durations = [float(segment["duration"]) for segment in work_leaves]
+    return len(durations), sum(durations) / len(durations)

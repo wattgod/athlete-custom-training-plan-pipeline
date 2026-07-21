@@ -728,7 +728,7 @@ run_workouts:
         cadence_prescription: 170-180spm running; purposeful hiking on every planned climb.
         terrain_prescription: Race-like trail; include the terrain and elevation you expect to face.
         execution: 'Dress rehearsal: use your race kit, fueling plan, and foot-care checklist before leaving.'
-        fueling_tier: dress_rehearsal
+        fueling_tier: optional
       2:
         duration: 90
         tss: 70
@@ -1844,49 +1844,6 @@ run_workouts:
     category: race_pace
     levels:
       1:
-        duration: 40
-        tss: 34
-        segments:
-        - type: warmup
-          duration: 10
-          rpe:
-          - 2
-          - 3
-        - type: steady
-          duration: 5
-          rpe:
-          - 3
-          - 4
-          label: Easy running
-        - type: repeat
-          count: 2
-          of:
-          - type: race
-            duration: 8
-            rpe:
-            - 5
-            - 6
-            label: All-day ultra effort
-            hr_pct_lthr:
-            - 0.79
-            - 0.84
-          - type: steady
-            duration: 2
-            rpe:
-            - 2
-            - 3
-            label: Easy reset
-            intensity_class: rest
-        - type: cooldown
-          duration: 5
-          rpe:
-          - 1
-          - 2
-        cadence_prescription: Economical cadence; shorten stride before effort rises.
-        terrain_prescription: Race-like rolling trail or loop with controlled climbs.
-        execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
-        fueling_tier: none
-      2:
         duration: 45
         tss: 38
         segments:
@@ -1929,9 +1886,9 @@ run_workouts:
         terrain_prescription: Race-like rolling trail or loop with controlled climbs.
         execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
         fueling_tier: none
-      3:
+      2:
         duration: 45
-        tss: 39
+        tss: 40
         segments:
         - type: warmup
           duration: 10
@@ -1942,7 +1899,7 @@ run_workouts:
           count: 3
           of:
           - type: race
-            duration: 7
+            duration: 8
             rpe:
             - 5
             - 6
@@ -1951,20 +1908,51 @@ run_workouts:
             - 0.79
             - 0.84
           - type: steady
-            duration: 1.3333333333333333
+            duration: 2
             rpe:
             - 2
             - 3
             label: Easy reset
             intensity_class: rest
-        - type: steady
+        - type: cooldown
           duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Economical cadence; shorten stride before effort rises.
+        terrain_prescription: Race-like rolling trail or loop with controlled climbs.
+        execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
+        fueling_tier: none
+      3:
+        duration: 50
+        tss: 44
+        segments:
+        - type: warmup
+          duration: 10
           rpe:
           - 2
           - 3
-          label: Easy running
+        - type: repeat
+          count: 3
+          of:
+          - type: race
+            duration: 8
+            rpe:
+            - 5
+            - 6
+            label: All-day ultra effort
+            hr_pct_lthr:
+            - 0.79
+            - 0.84
+          - type: steady
+            duration: 4
+            rpe:
+            - 2
+            - 3
+            label: Easy reset
+            intensity_class: rest
         - type: cooldown
-          duration: 5
+          duration: 4
           rpe:
           - 1
           - 2
@@ -1973,22 +1961,16 @@ run_workouts:
         execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
         fueling_tier: none
       4:
-        duration: 55
+        duration: 50
         tss: 48
         segments:
         - type: warmup
-          duration: 10
+          duration: 8
           rpe:
           - 2
           - 3
-        - type: steady
-          duration: 10
-          rpe:
-          - 3
-          - 4
-          label: Easy running
         - type: repeat
-          count: 3
+          count: 4
           of:
           - type: race
             duration: 8
@@ -2000,14 +1982,14 @@ run_workouts:
             - 0.79
             - 0.84
           - type: steady
-            duration: 2
+            duration: 1.5
             rpe:
             - 2
             - 3
             label: Easy reset
             intensity_class: rest
         - type: cooldown
-          duration: 5
+          duration: 4
           rpe:
           - 1
           - 2
@@ -2016,63 +1998,14 @@ run_workouts:
         execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
         fueling_tier: none
       5:
-        duration: 55
-        tss: 49
+        duration: 90
+        tss: 73
         segments:
         - type: warmup
-          duration: 10
+          duration: 20
           rpe:
           - 2
           - 3
-        - type: repeat
-          count: 4
-          of:
-          - type: race
-            duration: 7
-            rpe:
-            - 5
-            - 6
-            label: All-day ultra effort
-            hr_pct_lthr:
-            - 0.79
-            - 0.84
-          - type: steady
-            duration: 1.75
-            rpe:
-            - 2
-            - 3
-            label: Easy reset
-            intensity_class: rest
-        - type: steady
-          duration: 5
-          rpe:
-          - 2
-          - 3
-          label: Easy running
-        - type: cooldown
-          duration: 5
-          rpe:
-          - 1
-          - 2
-        cadence_prescription: Economical cadence; shorten stride before effort rises.
-        terrain_prescription: Race-like rolling trail or loop with controlled climbs.
-        execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
-        fueling_tier: none
-      6:
-        duration: 60
-        tss: 55
-        segments:
-        - type: warmup
-          duration: 10
-          rpe:
-          - 2
-          - 3
-        - type: steady
-          duration: 5
-          rpe:
-          - 3
-          - 4
-          label: Easy running
         - type: repeat
           count: 4
           of:
@@ -2086,14 +2019,51 @@ run_workouts:
             - 0.79
             - 0.84
           - type: steady
-            duration: 2
+            duration: 5
             rpe:
             - 2
             - 3
             label: Easy reset
             intensity_class: rest
         - type: cooldown
-          duration: 5
+          duration: 18
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Economical cadence; shorten stride before effort rises.
+        terrain_prescription: Race-like rolling trail or loop with controlled climbs.
+        execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
+        fueling_tier: z2_long
+      6:
+        duration: 90
+        tss: 77
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 5
+          of:
+          - type: race
+            duration: 8
+            rpe:
+            - 5
+            - 6
+            label: All-day ultra effort
+            hr_pct_lthr:
+            - 0.79
+            - 0.84
+          - type: steady
+            duration: 6
+            rpe:
+            - 2
+            - 3
+            label: Easy reset
+            intensity_class: rest
+        - type: cooldown
+          duration: 10
           rpe:
           - 1
           - 2

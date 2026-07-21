@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from run_archetypes import RUN_ARCHETYPES  # noqa: E402
-from run_renderer import get_run_nutrition, render_run_description  # noqa: E402
+from run_renderer import get_run_hydration, get_run_nutrition, render_run_description  # noqa: E402
 
 
 GOLDEN_DIR = Path(__file__).parent / "tests" / "goldens" / "run_descriptions"
@@ -66,6 +66,13 @@ def test_hill_medicine_rpe_calls_uphill_reps_running_not_power_hiking():
     rpe_section = rendered.split("RPE:\n", 1)[1]
     assert "running" in rpe_section
     assert "power-hiking" not in rpe_section
+    assert "1-2/10 running" not in rpe_section
+    assert "walking" in rpe_section or "recovery" in rpe_section
+
+
+def test_long_runs_and_dress_rehearsals_get_hourly_hydration_below_two_hours():
+    assert "500-750ml/hr" in get_run_hydration("long_run", 75, "optional")
+    assert "sodium beyond 2 hours" in get_run_hydration("race_pace", 90, "dress_rehearsal")
 
 
 def test_category_dispatch_is_independent_of_display_name():
