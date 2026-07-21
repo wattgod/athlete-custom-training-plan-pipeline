@@ -11,20 +11,13 @@ from typing import Any
 
 import yaml
 
+from run_tss import RPE_IF_TABLE, _expanded_segments, _unrounded_tss, band_for, estimate_tss
+
 
 LIBRARY_PATH = Path(__file__).resolve().parents[1] / "config" / "run_workout_library.yaml"
 LEVEL_KEYS = {"1", "2", "3", "4", "5", "6"}
-RPE_TO_IF = {
-    (1, 2): 0.55,
-    (2, 3): 0.62,
-    (3, 4): 0.70,
-    (4, 5): 0.78,
-    (5, 6): 0.83,
-    (6, 7): 0.88,
-    (7, 8): 0.93,
-    (8, 9): 1.00,
-    (9, 10): 1.05,
-}
+# Backwards-compatible lookup retained for existing registry consumers.
+RPE_TO_IF = dict(RPE_IF_TABLE)
 _ID_PATTERN = re.compile(r"^run\.([a-z0-9]+(?:_[a-z0-9]+)*)\.([a-z0-9]+(?:_[a-z0-9]+)*)$")
 
 
@@ -115,32 +108,9 @@ def get_run_level(archetype_id: str, level: int | str) -> dict[str, Any] | None:
     return archetype.get("levels", {}).get(str(level))
 
 
-def _expanded_segments(segments: Iterable[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
-    """Unroll nested repeat blocks into leaf segments."""
-    expanded = []
-    for segment in segments:
-        if segment.get("type") == "repeat":
-            count = segment.get("count", 0)
-            children = segment.get("of", [])
-            if isinstance(count, int) and count >= 0 and isinstance(children, list):
-                for _ in range(count):
-                    expanded.extend(_expanded_segments(children))
-            continue
-        expanded.append(segment)
-    return expanded
-
-
 def calculate_tss(segments: Iterable[Mapping[str, Any]]) -> float:
     """Calculate rTSS from normalized, seconds-based leaf or repeat segments."""
-    total = 0.0
-    for segment in _expanded_segments(segments):
-        rpe = tuple(segment.get("rpe", ()))
-        intensity_factor = RPE_TO_IF.get(rpe)
-        duration = segment.get("duration")
-        if intensity_factor is None or not isinstance(duration, (int, float)):
-            continue
-        total += (duration / 3600) * intensity_factor ** 2 * 100
-    return total
+    return _unrounded_tss(segments)
 
 
 def _item_pairs(library: Mapping[str, Any] | Iterable[tuple[str, Any]]) -> list[tuple[str, Any]]:
@@ -199,7 +169,9 @@ def validate_library(
                 continue
             leaves = _expanded_segments(segments)
             for segment in leaves:
-                if tuple(segment.get("rpe", ())) not in RPE_TO_IF:
+                try:
+                    band_for(segment.get("rpe"))
+                except ValueError:
                     violations.append(f"{archetype_id} L{level_key}: invalid RPE band {segment.get('rpe')}")
                     break
             expected_duration = sum(
@@ -211,8 +183,15 @@ def validate_library(
             if not isinstance(actual_duration, (int, float)) or abs(actual_duration - expected_duration) > 0.01:
                 violations.append(f"{archetype_id} L{level_key}: duration does not equal expanded segments")
             stored_tss = level.get("tss")
-            calculated_tss = calculate_tss(segments)
-            if not isinstance(stored_tss, (int, float)) or abs(stored_tss - calculated_tss) > calculated_tss * 0.15:
+            try:
+                calculated_tss = estimate_tss(segments)
+            except ValueError:
+                calculated_tss = None
+            if (
+                not isinstance(stored_tss, (int, float))
+                or calculated_tss is None
+                or abs(stored_tss - calculated_tss) > calculated_tss * 0.15
+            ):
                 violations.append(f"{archetype_id} L{level_key}: tss is outside ±15% of formula")
 
             if workout.get("category") == "long_run" and actual_duration and actual_duration > 195 * 60:
