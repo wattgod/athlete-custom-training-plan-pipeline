@@ -1,0 +1,2588 @@
+run_workouts:
+  run.recovery_easy.shakeout:
+    display_name: Shakeout
+    sport: run
+    category: recovery_easy
+    levels:
+      1:
+        duration: 20
+        tss: 11
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Relaxed, natural turnover; no cadence target.
+        terrain_prescription: Flat, forgiving surface or treadmill.
+        execution: Keep this genuinely easy; finish feeling better than when you started.
+      2:
+        duration: 25
+        tss: 15
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 15
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Relaxed, natural turnover; no cadence target.
+        terrain_prescription: Flat, forgiving surface or treadmill.
+        execution: Keep this genuinely easy; finish feeling better than when you started.
+      3:
+        duration: 30
+        tss: 18
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 20
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Relaxed, natural turnover; no cadence target.
+        terrain_prescription: Flat, forgiving surface or treadmill.
+        execution: Keep this genuinely easy; finish feeling better than when you started.
+      4:
+        duration: 30
+        tss: 18
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 20
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Relaxed, natural turnover; no cadence target.
+        terrain_prescription: Flat, forgiving surface or treadmill.
+        execution: Keep this genuinely easy; finish feeling better than when you started.
+      5:
+        duration: 35
+        tss: 21
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 25
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Relaxed, natural turnover; no cadence target.
+        terrain_prescription: Flat, forgiving surface or treadmill.
+        execution: Keep this genuinely easy; finish feeling better than when you started.
+      6:
+        duration: 40
+        tss: 24
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 30
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Relaxed, natural turnover; no cadence target.
+        terrain_prescription: Flat, forgiving surface or treadmill.
+        execution: Keep this genuinely easy; finish feeling better than when you started.
+  run.recovery_easy.day_after_antidote:
+    display_name: Day-After Antidote
+    sport: run
+    category: recovery_easy
+    levels:
+      1:
+        duration: 20
+        tss: 11
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Light, quiet steps; walk briefly if form deteriorates.
+        terrain_prescription: Flat route with no technical descents.
+        execution: 'Use the stairs test first: if normal stairs hurt, walk or rest instead.'
+      2:
+        duration: 25
+        tss: 15
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 15
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Light, quiet steps; walk briefly if form deteriorates.
+        terrain_prescription: Flat route with no technical descents.
+        execution: 'Use the stairs test first: if normal stairs hurt, walk or rest instead.'
+      3:
+        duration: 30
+        tss: 18
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 20
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Light, quiet steps; walk briefly if form deteriorates.
+        terrain_prescription: Flat route with no technical descents.
+        execution: 'Use the stairs test first: if normal stairs hurt, walk or rest instead.'
+      4:
+        duration: 35
+        tss: 21
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 25
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Light, quiet steps; walk briefly if form deteriorates.
+        terrain_prescription: Flat route with no technical descents.
+        execution: 'Use the stairs test first: if normal stairs hurt, walk or rest instead.'
+      5:
+        duration: 35
+        tss: 21
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 25
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Light, quiet steps; walk briefly if form deteriorates.
+        terrain_prescription: Flat route with no technical descents.
+        execution: 'Use the stairs test first: if normal stairs hurt, walk or rest instead.'
+      6:
+        duration: 40
+        tss: 24
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 30
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Light, quiet steps; walk briefly if form deteriorates.
+        terrain_prescription: Flat route with no technical descents.
+        execution: 'Use the stairs test first: if normal stairs hurt, walk or rest instead.'
+  run.endurance_z2.bread_and_butter:
+    display_name: Bread & Butter
+    sport: run
+    category: endurance_z2
+    levels:
+      1:
+        duration: 30
+        tss: 21
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 20
+          rpe:
+          - 3
+          - 4
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm, conversational and relaxed.
+        terrain_prescription: Rolling dirt or road; keep climbs below the aerobic cap.
+        execution: Stay conversational throughout; back off immediately if effort drifts above RPE 4.
+      2:
+        duration: 45
+        tss: 34
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 35
+          rpe:
+          - 3
+          - 4
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm, conversational and relaxed.
+        terrain_prescription: Rolling dirt or road; keep climbs below the aerobic cap.
+        execution: Stay conversational throughout; back off immediately if effort drifts above RPE 4.
+      3:
+        duration: 60
+        tss: 46
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 50
+          rpe:
+          - 3
+          - 4
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm, conversational and relaxed.
+        terrain_prescription: Rolling dirt or road; keep climbs below the aerobic cap.
+        execution: Stay conversational throughout; back off immediately if effort drifts above RPE 4.
+      4:
+        duration: 70
+        tss: 54
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 60
+          rpe:
+          - 3
+          - 4
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm, conversational and relaxed.
+        terrain_prescription: Rolling dirt or road; keep climbs below the aerobic cap.
+        execution: Stay conversational throughout; back off immediately if effort drifts above RPE 4.
+      5:
+        duration: 80
+        tss: 62
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 70
+          rpe:
+          - 3
+          - 4
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm, conversational and relaxed.
+        terrain_prescription: Rolling dirt or road; keep climbs below the aerobic cap.
+        execution: Stay conversational throughout; back off immediately if effort drifts above RPE 4.
+      6:
+        duration: 90
+        tss: 70
+        segments:
+        - type: warmup
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        - type: steady
+          duration: 80
+          rpe:
+          - 3
+          - 4
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm, conversational and relaxed.
+        terrain_prescription: Rolling dirt or road; keep climbs below the aerobic cap.
+        execution: Stay conversational throughout; back off immediately if effort drifts above RPE 4.
+  run.long_run.time_on_feet:
+    display_name: Time on Feet
+    sport: run
+    category: long_run
+    levels:
+      1:
+        duration: 75
+        tss: 58
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 3
+          of:
+          - type: steady
+            duration: 15.0
+            rpe:
+            - 3
+            - 4
+            label: Easy run
+          - type: hike
+            duration: 5.0
+            rpe:
+            - 3
+            - 4
+            label: Purposeful hike
+        - type: cooldown
+          duration: 7
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm on runnable ground; shorten stride on climbs.
+        terrain_prescription: Trail or rolling route with sustained climbs; practice the run/hike rhythm.
+        execution: Hold the same all-day rhythm from the first climb; no late-race surge.
+      2:
+        duration: 99
+        tss: 77
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 3
+          of:
+          - type: steady
+            duration: 21.0
+            rpe:
+            - 3
+            - 4
+            label: Easy run
+          - type: hike
+            duration: 7.0
+            rpe:
+            - 3
+            - 4
+            label: Purposeful hike
+        - type: cooldown
+          duration: 7
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm on runnable ground; shorten stride on climbs.
+        terrain_prescription: Trail or rolling route with sustained climbs; practice the run/hike rhythm.
+        execution: Hold the same all-day rhythm from the first climb; no late-race surge.
+      3:
+        duration: 126
+        tss: 99
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 3
+          of:
+          - type: steady
+            duration: 27.75
+            rpe:
+            - 3
+            - 4
+            label: Easy run
+          - type: hike
+            duration: 9.25
+            rpe:
+            - 3
+            - 4
+            label: Purposeful hike
+        - type: cooldown
+          duration: 7
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm on runnable ground; shorten stride on climbs.
+        terrain_prescription: Trail or rolling route with sustained climbs; practice the run/hike rhythm.
+        execution: Hold the same all-day rhythm from the first climb; no late-race surge.
+      4:
+        duration: 150
+        tss: 119
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 3
+          of:
+          - type: steady
+            duration: 33.75
+            rpe:
+            - 3
+            - 4
+            label: Easy run
+          - type: hike
+            duration: 11.25
+            rpe:
+            - 3
+            - 4
+            label: Purposeful hike
+        - type: cooldown
+          duration: 7
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm on runnable ground; shorten stride on climbs.
+        terrain_prescription: Trail or rolling route with sustained climbs; practice the run/hike rhythm.
+        execution: Hold the same all-day rhythm from the first climb; no late-race surge.
+      5:
+        duration: 174
+        tss: 139
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 3
+          of:
+          - type: steady
+            duration: 39.75
+            rpe:
+            - 3
+            - 4
+            label: Easy run
+          - type: hike
+            duration: 13.25
+            rpe:
+            - 3
+            - 4
+            label: Purposeful hike
+        - type: cooldown
+          duration: 7
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm on runnable ground; shorten stride on climbs.
+        terrain_prescription: Trail or rolling route with sustained climbs; practice the run/hike rhythm.
+        execution: Hold the same all-day rhythm from the first climb; no late-race surge.
+      6:
+        duration: 195
+        tss: 156
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 3
+          of:
+          - type: steady
+            duration: 45.0
+            rpe:
+            - 3
+            - 4
+            label: Easy run
+          - type: hike
+            duration: 15.0
+            rpe:
+            - 3
+            - 4
+            label: Purposeful hike
+        - type: cooldown
+          duration: 7
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm on runnable ground; shorten stride on climbs.
+        terrain_prescription: Trail or rolling route with sustained climbs; practice the run/hike rhythm.
+        execution: Hold the same all-day rhythm from the first climb; no late-race surge.
+  run.long_run.barn_builder:
+    display_name: Barn Builder
+    sport: run
+    category: long_run
+    levels:
+      1:
+        duration: 75
+        tss: 58
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 3
+          of:
+          - type: steady
+            duration: 15.0
+            rpe:
+            - 3
+            - 4
+            label: Easy run
+          - type: hike
+            duration: 5.0
+            rpe:
+            - 3
+            - 4
+            label: Purposeful hike
+        - type: cooldown
+          duration: 7
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm running; purposeful hiking on every planned climb.
+        terrain_prescription: Race-like trail; include the terrain and elevation you expect to face.
+        execution: 'Dress rehearsal: use your race kit, fueling plan, and foot-care checklist before leaving.'
+      2:
+        duration: 99
+        tss: 77
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 3
+          of:
+          - type: steady
+            duration: 21.0
+            rpe:
+            - 3
+            - 4
+            label: Easy run
+          - type: hike
+            duration: 7.0
+            rpe:
+            - 3
+            - 4
+            label: Purposeful hike
+        - type: cooldown
+          duration: 7
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm running; purposeful hiking on every planned climb.
+        terrain_prescription: Race-like trail; include the terrain and elevation you expect to face.
+        execution: 'Dress rehearsal: use your race kit, fueling plan, and foot-care checklist before leaving.'
+      3:
+        duration: 126
+        tss: 99
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 3
+          of:
+          - type: steady
+            duration: 27.75
+            rpe:
+            - 3
+            - 4
+            label: Easy run
+          - type: hike
+            duration: 9.25
+            rpe:
+            - 3
+            - 4
+            label: Purposeful hike
+        - type: cooldown
+          duration: 7
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm running; purposeful hiking on every planned climb.
+        terrain_prescription: Race-like trail; include the terrain and elevation you expect to face.
+        execution: 'Dress rehearsal: use your race kit, fueling plan, and foot-care checklist before leaving.'
+      4:
+        duration: 150
+        tss: 119
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 3
+          of:
+          - type: steady
+            duration: 33.75
+            rpe:
+            - 3
+            - 4
+            label: Easy run
+          - type: hike
+            duration: 11.25
+            rpe:
+            - 3
+            - 4
+            label: Purposeful hike
+        - type: cooldown
+          duration: 7
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm running; purposeful hiking on every planned climb.
+        terrain_prescription: Race-like trail; include the terrain and elevation you expect to face.
+        execution: 'Dress rehearsal: use your race kit, fueling plan, and foot-care checklist before leaving.'
+      5:
+        duration: 174
+        tss: 139
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 3
+          of:
+          - type: steady
+            duration: 39.75
+            rpe:
+            - 3
+            - 4
+            label: Easy run
+          - type: hike
+            duration: 13.25
+            rpe:
+            - 3
+            - 4
+            label: Purposeful hike
+        - type: cooldown
+          duration: 7
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm running; purposeful hiking on every planned climb.
+        terrain_prescription: Race-like trail; include the terrain and elevation you expect to face.
+        execution: 'Dress rehearsal: use your race kit, fueling plan, and foot-care checklist before leaving.'
+      6:
+        duration: 195
+        tss: 156
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 3
+          of:
+          - type: steady
+            duration: 45.0
+            rpe:
+            - 3
+            - 4
+            label: Easy run
+          - type: hike
+            duration: 15.0
+            rpe:
+            - 3
+            - 4
+            label: Purposeful hike
+        - type: cooldown
+          duration: 7
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm running; purposeful hiking on every planned climb.
+        terrain_prescription: Race-like trail; include the terrain and elevation you expect to face.
+        execution: 'Dress rehearsal: use your race kit, fueling plan, and foot-care checklist before leaving.'
+  run.strides.quick_feet:
+    display_name: Quick Feet
+    sport: run
+    category: strides
+    levels:
+      1:
+        duration: 30
+        tss: 19
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 4
+          of:
+          - type: stride
+            duration: 0.3333333333333333
+            rpe:
+            - 6
+            - 7
+            label: 20sec smooth fast stride
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: steady
+          duration: 9.666666666666668
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick, elastic turnover; do not force a long stride.
+        terrain_prescription: Flat grass, track, or smooth dirt with clear footing.
+        execution: Build each stride smoothly, stay relaxed, and stop before mechanics get ragged.
+      2:
+        duration: 35
+        tss: 23
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 5
+          of:
+          - type: stride
+            duration: 0.3333333333333333
+            rpe:
+            - 6
+            - 7
+            label: 20sec smooth fast stride
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: steady
+          duration: 13.333333333333334
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick, elastic turnover; do not force a long stride.
+        terrain_prescription: Flat grass, track, or smooth dirt with clear footing.
+        execution: Build each stride smoothly, stay relaxed, and stop before mechanics get ragged.
+      3:
+        duration: 40
+        tss: 26
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 6
+          of:
+          - type: stride
+            duration: 0.3333333333333333
+            rpe:
+            - 6
+            - 7
+            label: 20sec smooth fast stride
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: steady
+          duration: 17.0
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick, elastic turnover; do not force a long stride.
+        terrain_prescription: Flat grass, track, or smooth dirt with clear footing.
+        execution: Build each stride smoothly, stay relaxed, and stop before mechanics get ragged.
+      4:
+        duration: 45
+        tss: 29
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 6
+          of:
+          - type: stride
+            duration: 0.3333333333333333
+            rpe:
+            - 6
+            - 7
+            label: 20sec smooth fast stride
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: steady
+          duration: 22.0
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick, elastic turnover; do not force a long stride.
+        terrain_prescription: Flat grass, track, or smooth dirt with clear footing.
+        execution: Build each stride smoothly, stay relaxed, and stop before mechanics get ragged.
+      5:
+        duration: 45
+        tss: 30
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 7
+          of:
+          - type: stride
+            duration: 0.3333333333333333
+            rpe:
+            - 6
+            - 7
+            label: 20sec smooth fast stride
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: steady
+          duration: 20.666666666666668
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick, elastic turnover; do not force a long stride.
+        terrain_prescription: Flat grass, track, or smooth dirt with clear footing.
+        execution: Build each stride smoothly, stay relaxed, and stop before mechanics get ragged.
+      6:
+        duration: 50
+        tss: 33
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 8
+          of:
+          - type: stride
+            duration: 0.3333333333333333
+            rpe:
+            - 6
+            - 7
+            label: 20sec smooth fast stride
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: steady
+          duration: 24.333333333333336
+          rpe:
+          - 2
+          - 3
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick, elastic turnover; do not force a long stride.
+        terrain_prescription: Flat grass, track, or smooth dirt with clear footing.
+        execution: Build each stride smoothly, stay relaxed, and stop before mechanics get ragged.
+  run.hills_powerhike.hike_the_damn_hill:
+    display_name: Hike the Damn Hill
+    sport: run
+    category: hills_powerhike
+    levels:
+      1:
+        duration: 60
+        tss: 49
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 3
+          of:
+          - type: steady
+            duration: 12.0
+            rpe:
+            - 3
+            - 4
+            label: Easy run between climbs
+          - type: hike
+            duration: 3
+            rpe:
+            - 5
+            - 6
+            label: POWER-HIKE climb
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm running; hike with short, strong steps and active arms.
+        terrain_prescription: Rolling trail with a sustained, runnable-to-hikeable climb.
+        execution: Hike hard enough that running would only be marginally faster; recover fully on the easy run.
+      2:
+        duration: 60
+        tss: 50
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 4
+          of:
+          - type: steady
+            duration: 8.25
+            rpe:
+            - 3
+            - 4
+            label: Easy run between climbs
+          - type: hike
+            duration: 3
+            rpe:
+            - 5
+            - 6
+            label: POWER-HIKE climb
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm running; hike with short, strong steps and active arms.
+        terrain_prescription: Rolling trail with a sustained, runnable-to-hikeable climb.
+        execution: Hike hard enough that running would only be marginally faster; recover fully on the easy run.
+      3:
+        duration: 60
+        tss: 51
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 5
+          of:
+          - type: steady
+            duration: 6.0
+            rpe:
+            - 3
+            - 4
+            label: Easy run between climbs
+          - type: hike
+            duration: 3
+            rpe:
+            - 5
+            - 6
+            label: POWER-HIKE climb
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm running; hike with short, strong steps and active arms.
+        terrain_prescription: Rolling trail with a sustained, runnable-to-hikeable climb.
+        execution: Hike hard enough that running would only be marginally faster; recover fully on the easy run.
+      4:
+        duration: 60
+        tss: 52
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 6
+          of:
+          - type: steady
+            duration: 4.5
+            rpe:
+            - 3
+            - 4
+            label: Easy run between climbs
+          - type: hike
+            duration: 3
+            rpe:
+            - 5
+            - 6
+            label: POWER-HIKE climb
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm running; hike with short, strong steps and active arms.
+        terrain_prescription: Rolling trail with a sustained, runnable-to-hikeable climb.
+        execution: Hike hard enough that running would only be marginally faster; recover fully on the easy run.
+      5:
+        duration: 60
+        tss: 53
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 7
+          of:
+          - type: steady
+            duration: 3.428571428571429
+            rpe:
+            - 3
+            - 4
+            label: Easy run between climbs
+          - type: hike
+            duration: 3
+            rpe:
+            - 5
+            - 6
+            label: POWER-HIKE climb
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm running; hike with short, strong steps and active arms.
+        terrain_prescription: Rolling trail with a sustained, runnable-to-hikeable climb.
+        execution: Hike hard enough that running would only be marginally faster; recover fully on the easy run.
+      6:
+        duration: 60
+        tss: 54
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: repeat
+          count: 8
+          of:
+          - type: steady
+            duration: 2.625
+            rpe:
+            - 3
+            - 4
+            label: Easy run between climbs
+          - type: hike
+            duration: 3
+            rpe:
+            - 5
+            - 6
+            label: POWER-HIKE climb
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm running; hike with short, strong steps and active arms.
+        terrain_prescription: Rolling trail with a sustained, runnable-to-hikeable climb.
+        execution: Hike hard enough that running would only be marginally faster; recover fully on the easy run.
+  run.hills_reps.hill_medicine:
+    display_name: Hill Medicine
+    sport: run
+    category: hills_reps
+    levels:
+      1:
+        duration: 75
+        tss: 51
+        segments:
+        - type: warmup
+          duration: 12
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 39.0
+          rpe:
+          - 2
+          - 3
+          label: Easy running before and after reps
+        - type: repeat
+          count: 6
+          of:
+          - type: hike
+            duration: 1.25
+            rpe:
+            - 6
+            - 7
+            label: Strong uphill rep
+          - type: steady
+            duration: 2.25
+            rpe:
+            - 1
+            - 2
+            label: Walk down
+        - type: cooldown
+          duration: 3
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Powerful arms and quick feet uphill; walk-down recovery is deliberate.
+        terrain_prescription: Short, steep hill with safe walking descent.
+        execution: Run strong but controlled uphill; take every walk-down recovery so quality stays high.
+      2:
+        duration: 75
+        tss: 51
+        segments:
+        - type: warmup
+          duration: 12
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 35.5
+          rpe:
+          - 2
+          - 3
+          label: Easy running before and after reps
+        - type: repeat
+          count: 7
+          of:
+          - type: hike
+            duration: 1.25
+            rpe:
+            - 6
+            - 7
+            label: Strong uphill rep
+          - type: steady
+            duration: 2.25
+            rpe:
+            - 1
+            - 2
+            label: Walk down
+        - type: cooldown
+          duration: 3
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Powerful arms and quick feet uphill; walk-down recovery is deliberate.
+        terrain_prescription: Short, steep hill with safe walking descent.
+        execution: Run strong but controlled uphill; take every walk-down recovery so quality stays high.
+      3:
+        duration: 75
+        tss: 52
+        segments:
+        - type: warmup
+          duration: 12
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 32.0
+          rpe:
+          - 2
+          - 3
+          label: Easy running before and after reps
+        - type: repeat
+          count: 8
+          of:
+          - type: hike
+            duration: 1.25
+            rpe:
+            - 6
+            - 7
+            label: Strong uphill rep
+          - type: steady
+            duration: 2.25
+            rpe:
+            - 1
+            - 2
+            label: Walk down
+        - type: cooldown
+          duration: 3
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Powerful arms and quick feet uphill; walk-down recovery is deliberate.
+        terrain_prescription: Short, steep hill with safe walking descent.
+        execution: Run strong but controlled uphill; take every walk-down recovery so quality stays high.
+      4:
+        duration: 75
+        tss: 52
+        segments:
+        - type: warmup
+          duration: 12
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 32.0
+          rpe:
+          - 2
+          - 3
+          label: Easy running before and after reps
+        - type: repeat
+          count: 8
+          of:
+          - type: hike
+            duration: 1.25
+            rpe:
+            - 6
+            - 7
+            label: Strong uphill rep
+          - type: steady
+            duration: 2.25
+            rpe:
+            - 1
+            - 2
+            label: Walk down
+        - type: cooldown
+          duration: 3
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Powerful arms and quick feet uphill; walk-down recovery is deliberate.
+        terrain_prescription: Short, steep hill with safe walking descent.
+        execution: Run strong but controlled uphill; take every walk-down recovery so quality stays high.
+      5:
+        duration: 75
+        tss: 52
+        segments:
+        - type: warmup
+          duration: 12
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 28.5
+          rpe:
+          - 2
+          - 3
+          label: Easy running before and after reps
+        - type: repeat
+          count: 9
+          of:
+          - type: hike
+            duration: 1.25
+            rpe:
+            - 6
+            - 7
+            label: Strong uphill rep
+          - type: steady
+            duration: 2.25
+            rpe:
+            - 1
+            - 2
+            label: Walk down
+        - type: cooldown
+          duration: 3
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Powerful arms and quick feet uphill; walk-down recovery is deliberate.
+        terrain_prescription: Short, steep hill with safe walking descent.
+        execution: Run strong but controlled uphill; take every walk-down recovery so quality stays high.
+      6:
+        duration: 75
+        tss: 53
+        segments:
+        - type: warmup
+          duration: 12
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 25.0
+          rpe:
+          - 2
+          - 3
+          label: Easy running before and after reps
+        - type: repeat
+          count: 10
+          of:
+          - type: hike
+            duration: 1.25
+            rpe:
+            - 6
+            - 7
+            label: Strong uphill rep
+          - type: steady
+            duration: 2.25
+            rpe:
+            - 1
+            - 2
+            label: Walk down
+        - type: cooldown
+          duration: 3
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Powerful arms and quick feet uphill; walk-down recovery is deliberate.
+        terrain_prescription: Short, steep hill with safe walking descent.
+        execution: Run strong but controlled uphill; take every walk-down recovery so quality stays high.
+  run.tempo_steady.steady_finish:
+    display_name: Steady Finish
+    sport: run
+    category: tempo_steady
+    levels:
+      1:
+        duration: 60
+        tss: 49
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 35
+          rpe:
+          - 3
+          - 4
+          label: Easy aerobic running
+        - type: tempo
+          duration: 10
+          rpe:
+          - 5
+          - 6
+          label: Steady finish
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm; keep cadence steady as the effort rises.
+        terrain_prescription: Rolling, nontechnical route with uninterrupted final running.
+        execution: Let effort rise only in the final block; finish controlled, never sprinting.
+      2:
+        duration: 60
+        tss: 50
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 32
+          rpe:
+          - 3
+          - 4
+          label: Easy aerobic running
+        - type: tempo
+          duration: 13
+          rpe:
+          - 5
+          - 6
+          label: Steady finish
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm; keep cadence steady as the effort rises.
+        terrain_prescription: Rolling, nontechnical route with uninterrupted final running.
+        execution: Let effort rise only in the final block; finish controlled, never sprinting.
+      3:
+        duration: 60
+        tss: 51
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 29
+          rpe:
+          - 3
+          - 4
+          label: Easy aerobic running
+        - type: tempo
+          duration: 16
+          rpe:
+          - 5
+          - 6
+          label: Steady finish
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm; keep cadence steady as the effort rises.
+        terrain_prescription: Rolling, nontechnical route with uninterrupted final running.
+        execution: Let effort rise only in the final block; finish controlled, never sprinting.
+      4:
+        duration: 60
+        tss: 52
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 26
+          rpe:
+          - 3
+          - 4
+          label: Easy aerobic running
+        - type: tempo
+          duration: 19
+          rpe:
+          - 5
+          - 6
+          label: Steady finish
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm; keep cadence steady as the effort rises.
+        terrain_prescription: Rolling, nontechnical route with uninterrupted final running.
+        execution: Let effort rise only in the final block; finish controlled, never sprinting.
+      5:
+        duration: 60
+        tss: 53
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 23
+          rpe:
+          - 3
+          - 4
+          label: Easy aerobic running
+        - type: tempo
+          duration: 22
+          rpe:
+          - 5
+          - 6
+          label: Steady finish
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm; keep cadence steady as the effort rises.
+        terrain_prescription: Rolling, nontechnical route with uninterrupted final running.
+        execution: Let effort rise only in the final block; finish controlled, never sprinting.
+      6:
+        duration: 60
+        tss: 54
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 20
+          rpe:
+          - 3
+          - 4
+          label: Easy aerobic running
+        - type: tempo
+          duration: 25
+          rpe:
+          - 5
+          - 6
+          label: Steady finish
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: 170-180spm; keep cadence steady as the effort rises.
+        terrain_prescription: Rolling, nontechnical route with uninterrupted final running.
+        execution: Let effort rise only in the final block; finish controlled, never sprinting.
+  run.race_pace.loop_one_rehearsal:
+    display_name: Loop One Rehearsal
+    sport: run
+    category: race_pace
+    levels:
+      1:
+        duration: 40
+        tss: 34
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 5
+          rpe:
+          - 3
+          - 4
+          label: Easy running
+        - type: repeat
+          count: 2
+          of:
+          - type: race
+            duration: 8
+            rpe:
+            - 5
+            - 6
+            label: All-day ultra effort
+          - type: steady
+            duration: 2
+            rpe:
+            - 2
+            - 3
+            label: Easy reset
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Economical cadence; shorten stride before effort rises.
+        terrain_prescription: Race-like rolling trail or loop with controlled climbs.
+        execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
+      2:
+        duration: 45
+        tss: 38
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 10
+          rpe:
+          - 3
+          - 4
+          label: Easy running
+        - type: repeat
+          count: 2
+          of:
+          - type: race
+            duration: 8
+            rpe:
+            - 5
+            - 6
+            label: All-day ultra effort
+          - type: steady
+            duration: 2
+            rpe:
+            - 2
+            - 3
+            label: Easy reset
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Economical cadence; shorten stride before effort rises.
+        terrain_prescription: Race-like rolling trail or loop with controlled climbs.
+        execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
+      3:
+        duration: 50
+        tss: 44
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 5
+          rpe:
+          - 3
+          - 4
+          label: Easy running
+        - type: repeat
+          count: 3
+          of:
+          - type: race
+            duration: 8
+            rpe:
+            - 5
+            - 6
+            label: All-day ultra effort
+          - type: steady
+            duration: 2
+            rpe:
+            - 2
+            - 3
+            label: Easy reset
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Economical cadence; shorten stride before effort rises.
+        terrain_prescription: Race-like rolling trail or loop with controlled climbs.
+        execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
+      4:
+        duration: 55
+        tss: 48
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 10
+          rpe:
+          - 3
+          - 4
+          label: Easy running
+        - type: repeat
+          count: 3
+          of:
+          - type: race
+            duration: 8
+            rpe:
+            - 5
+            - 6
+            label: All-day ultra effort
+          - type: steady
+            duration: 2
+            rpe:
+            - 2
+            - 3
+            label: Easy reset
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Economical cadence; shorten stride before effort rises.
+        terrain_prescription: Race-like rolling trail or loop with controlled climbs.
+        execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
+      5:
+        duration: 60
+        tss: 55
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 5
+          rpe:
+          - 3
+          - 4
+          label: Easy running
+        - type: repeat
+          count: 4
+          of:
+          - type: race
+            duration: 8
+            rpe:
+            - 5
+            - 6
+            label: All-day ultra effort
+          - type: steady
+            duration: 2
+            rpe:
+            - 2
+            - 3
+            label: Easy reset
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Economical cadence; shorten stride before effort rises.
+        terrain_prescription: Race-like rolling trail or loop with controlled climbs.
+        execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
+      6:
+        duration: 60
+        tss: 55
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 5
+          rpe:
+          - 3
+          - 4
+          label: Easy running
+        - type: repeat
+          count: 4
+          of:
+          - type: race
+            duration: 8
+            rpe:
+            - 5
+            - 6
+            label: All-day ultra effort
+          - type: steady
+            duration: 2
+            rpe:
+            - 2
+            - 3
+            label: Easy reset
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Economical cadence; shorten stride before effort rises.
+        terrain_prescription: Race-like rolling trail or loop with controlled climbs.
+        execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
+  run.downhill_skills.brakes_off:
+    display_name: Brakes Off
+    sport: run
+    category: downhill_skills
+    levels:
+      1:
+        duration: 40
+        tss: 28
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 10
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 3
+          of:
+          - type: race
+            duration: 2
+            rpe:
+            - 5
+            - 6
+            label: Controlled downhill
+          - type: hike
+            duration: 3
+            rpe:
+            - 2
+            - 3
+            label: Walk back up
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Fast, light feet; increase cadence rather than overstriding.
+        terrain_prescription: Smooth, moderate downhill with a safe walk-up return.
+        execution: 'Release the brakes gradually: stay in control, eyes ahead, and stop if form or footing degrades.'
+      2:
+        duration: 45
+        tss: 32
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 10
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 4
+          of:
+          - type: race
+            duration: 2
+            rpe:
+            - 5
+            - 6
+            label: Controlled downhill
+          - type: hike
+            duration: 3
+            rpe:
+            - 2
+            - 3
+            label: Walk back up
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Fast, light feet; increase cadence rather than overstriding.
+        terrain_prescription: Smooth, moderate downhill with a safe walk-up return.
+        execution: 'Release the brakes gradually: stay in control, eyes ahead, and stop if form or footing degrades.'
+      3:
+        duration: 50
+        tss: 36
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 10
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 5
+          of:
+          - type: race
+            duration: 2
+            rpe:
+            - 5
+            - 6
+            label: Controlled downhill
+          - type: hike
+            duration: 3
+            rpe:
+            - 2
+            - 3
+            label: Walk back up
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Fast, light feet; increase cadence rather than overstriding.
+        terrain_prescription: Smooth, moderate downhill with a safe walk-up return.
+        execution: 'Release the brakes gradually: stay in control, eyes ahead, and stop if form or footing degrades.'
+      4:
+        duration: 55
+        tss: 40
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 15
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 5
+          of:
+          - type: race
+            duration: 2
+            rpe:
+            - 5
+            - 6
+            label: Controlled downhill
+          - type: hike
+            duration: 3
+            rpe:
+            - 2
+            - 3
+            label: Walk back up
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Fast, light feet; increase cadence rather than overstriding.
+        terrain_prescription: Smooth, moderate downhill with a safe walk-up return.
+        execution: 'Release the brakes gradually: stay in control, eyes ahead, and stop if form or footing degrades.'
+      5:
+        duration: 60
+        tss: 44
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 15
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 6
+          of:
+          - type: race
+            duration: 2
+            rpe:
+            - 5
+            - 6
+            label: Controlled downhill
+          - type: hike
+            duration: 3
+            rpe:
+            - 2
+            - 3
+            label: Walk back up
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Fast, light feet; increase cadence rather than overstriding.
+        terrain_prescription: Smooth, moderate downhill with a safe walk-up return.
+        execution: 'Release the brakes gradually: stay in control, eyes ahead, and stop if form or footing degrades.'
+      6:
+        duration: 70
+        tss: 51
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 20
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 7
+          of:
+          - type: race
+            duration: 2
+            rpe:
+            - 5
+            - 6
+            label: Controlled downhill
+          - type: hike
+            duration: 3
+            rpe:
+            - 2
+            - 3
+            label: Walk back up
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Fast, light feet; increase cadence rather than overstriding.
+        terrain_prescription: Smooth, moderate downhill with a safe walk-up return.
+        execution: 'Release the brakes gradually: stay in control, eyes ahead, and stop if form or footing degrades.'
+  run.openers.race_eve:
+    display_name: Race Eve
+    sport: run
+    category: openers
+    levels:
+      1:
+        duration: 20
+        tss: 13
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 4.0
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 3
+          of:
+          - type: pickup
+            duration: 0.3333333333333333
+            rpe:
+            - 6
+            - 7
+            label: 20sec pickup
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: cooldown
+          duration: 4
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick, relaxed turnover; stay well below a sprint.
+        terrain_prescription: Flat, familiar route with perfect footing.
+        execution: Finish sharper, not tired; cut a pickup if it feels forced.
+      2:
+        duration: 25
+        tss: 16
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 7.666666666666667
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 4
+          of:
+          - type: pickup
+            duration: 0.3333333333333333
+            rpe:
+            - 6
+            - 7
+            label: 20sec pickup
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: cooldown
+          duration: 4
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick, relaxed turnover; stay well below a sprint.
+        terrain_prescription: Flat, familiar route with perfect footing.
+        execution: Finish sharper, not tired; cut a pickup if it feels forced.
+      3:
+        duration: 30
+        tss: 20
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 11.333333333333334
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 5
+          of:
+          - type: pickup
+            duration: 0.3333333333333333
+            rpe:
+            - 6
+            - 7
+            label: 20sec pickup
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: cooldown
+          duration: 4
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick, relaxed turnover; stay well below a sprint.
+        terrain_prescription: Flat, familiar route with perfect footing.
+        execution: Finish sharper, not tired; cut a pickup if it feels forced.
+      4:
+        duration: 30
+        tss: 20
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 11.333333333333334
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 5
+          of:
+          - type: pickup
+            duration: 0.3333333333333333
+            rpe:
+            - 6
+            - 7
+            label: 20sec pickup
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: cooldown
+          duration: 4
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick, relaxed turnover; stay well below a sprint.
+        terrain_prescription: Flat, familiar route with perfect footing.
+        execution: Finish sharper, not tired; cut a pickup if it feels forced.
+      5:
+        duration: 35
+        tss: 23
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 15.0
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 6
+          of:
+          - type: pickup
+            duration: 0.3333333333333333
+            rpe:
+            - 6
+            - 7
+            label: 20sec pickup
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: cooldown
+          duration: 4
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick, relaxed turnover; stay well below a sprint.
+        terrain_prescription: Flat, familiar route with perfect footing.
+        execution: Finish sharper, not tired; cut a pickup if it feels forced.
+      6:
+        duration: 40
+        tss: 27
+        segments:
+        - type: warmup
+          duration: 8
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 18.666666666666668
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 7
+          of:
+          - type: pickup
+            duration: 0.3333333333333333
+            rpe:
+            - 6
+            - 7
+            label: 20sec pickup
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: cooldown
+          duration: 4
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick, relaxed turnover; stay well below a sprint.
+        terrain_prescription: Flat, familiar route with perfect footing.
+        execution: Finish sharper, not tired; cut a pickup if it feels forced.
+  run.pickups.wake_up_call:
+    display_name: Wake-Up Call
+    sport: run
+    category: pickups
+    levels:
+      1:
+        duration: 30
+        tss: 21
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 7
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 4
+          of:
+          - type: pickup
+            duration: 1
+            rpe:
+            - 6
+            - 7
+            label: 1min pickup
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick feet and relaxed shoulders through every pickup.
+        terrain_prescription: Flat trail, track, or road with no traffic interruptions.
+        execution: Make the minutes brisk but smooth; recover completely before the next one.
+      2:
+        duration: 33
+        tss: 24
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 8
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 5
+          of:
+          - type: pickup
+            duration: 1
+            rpe:
+            - 6
+            - 7
+            label: 1min pickup
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick feet and relaxed shoulders through every pickup.
+        terrain_prescription: Flat trail, track, or road with no traffic interruptions.
+        execution: Make the minutes brisk but smooth; recover completely before the next one.
+      3:
+        duration: 36
+        tss: 26
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 9
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 6
+          of:
+          - type: pickup
+            duration: 1
+            rpe:
+            - 6
+            - 7
+            label: 1min pickup
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick feet and relaxed shoulders through every pickup.
+        terrain_prescription: Flat trail, track, or road with no traffic interruptions.
+        execution: Make the minutes brisk but smooth; recover completely before the next one.
+      4:
+        duration: 39
+        tss: 29
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 10
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 7
+          of:
+          - type: pickup
+            duration: 1
+            rpe:
+            - 6
+            - 7
+            label: 1min pickup
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick feet and relaxed shoulders through every pickup.
+        terrain_prescription: Flat trail, track, or road with no traffic interruptions.
+        execution: Make the minutes brisk but smooth; recover completely before the next one.
+      5:
+        duration: 42
+        tss: 31
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 11
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 8
+          of:
+          - type: pickup
+            duration: 1
+            rpe:
+            - 6
+            - 7
+            label: 1min pickup
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick feet and relaxed shoulders through every pickup.
+        terrain_prescription: Flat trail, track, or road with no traffic interruptions.
+        execution: Make the minutes brisk but smooth; recover completely before the next one.
+      6:
+        duration: 45
+        tss: 33
+        segments:
+        - type: warmup
+          duration: 10
+          rpe:
+          - 2
+          - 3
+        - type: steady
+          duration: 14
+          rpe:
+          - 2
+          - 3
+          label: Easy running
+        - type: repeat
+          count: 8
+          of:
+          - type: pickup
+            duration: 1
+            rpe:
+            - 6
+            - 7
+            label: 1min pickup
+          - type: steady
+            duration: 1
+            rpe:
+            - 2
+            - 3
+            label: Easy jog
+        - type: cooldown
+          duration: 5
+          rpe:
+          - 1
+          - 2
+        cadence_prescription: Quick feet and relaxed shoulders through every pickup.
+        terrain_prescription: Flat trail, track, or road with no traffic interruptions.
+        execution: Make the minutes brisk but smooth; recover completely before the next one.
+  run.race_day.a_race_brief:
+    display_name: A-Race Brief
+    sport: run
+    category: race_day
+    structure_exempt: true
+    description_brief: 'A-priority race: execute the practiced run/hike, fueling, and pacing plan. Start conservatively, protect the downhill legs, and make decisions by effort rather than watch pace.'
+    tss: 250
+  run.race_day.b_race_brief:
+    display_name: B-Race Brief
+    sport: run
+    category: race_day
+    structure_exempt: true
+    description_brief: 'B-priority race: treat this as supported race-specific practice. Race with control, rehearse fueling and kit, and finish with enough left to resume training on schedule.'
+    tss: 140
