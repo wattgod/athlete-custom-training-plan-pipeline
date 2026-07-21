@@ -1,0 +1,223 @@
+{
+ "_comment": "Anonymized live-accepted TP run structure payload (POST fitness/v6/athletes/{id}/workouts), captured 2026-07-21. Athlete/workout ids scrubbed.",
+ "title": "Run 50min — 3x8min at 50k effort",
+ "workoutTypeValueId": 3,
+ "totalTimePlanned": 0.83,
+ "tssPlanned": 50,
+ "structure": {
+  "structure": [
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "Warm up",
+      "length": {
+       "value": 600,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 2,
+        "maxValue": 3
+       }
+      ],
+      "intensityClass": "warmUp",
+      "openDuration": false
+     }
+    ],
+    "begin": 0,
+    "end": 600
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "50k effort 1 of 3",
+      "length": {
+       "value": 480,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 4,
+        "maxValue": 5
+       }
+      ],
+      "intensityClass": "active",
+      "openDuration": false
+     }
+    ],
+    "begin": 600,
+    "end": 1080
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "Easy",
+      "length": {
+       "value": 240,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 2,
+        "maxValue": 3
+       }
+      ],
+      "intensityClass": "rest",
+      "openDuration": false
+     }
+    ],
+    "begin": 1080,
+    "end": 1320
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "50k effort 2 of 3",
+      "length": {
+       "value": 480,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 4,
+        "maxValue": 5
+       }
+      ],
+      "intensityClass": "active",
+      "openDuration": false
+     }
+    ],
+    "begin": 1320,
+    "end": 1800
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "Easy",
+      "length": {
+       "value": 240,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 2,
+        "maxValue": 3
+       }
+      ],
+      "intensityClass": "rest",
+      "openDuration": false
+     }
+    ],
+    "begin": 1800,
+    "end": 2040
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "50k effort 3 of 3",
+      "length": {
+       "value": 480,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 4,
+        "maxValue": 5
+       }
+      ],
+      "intensityClass": "active",
+      "openDuration": false
+     }
+    ],
+    "begin": 2040,
+    "end": 2520
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "Easy",
+      "length": {
+       "value": 240,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 2,
+        "maxValue": 3
+       }
+      ],
+      "intensityClass": "rest",
+      "openDuration": false
+     }
+    ],
+    "begin": 2520,
+    "end": 2760
+   },
+   {
+    "type": "step",
+    "length": {
+     "value": 1,
+     "unit": "repetition"
+    },
+    "steps": [
+     {
+      "name": "Cool down",
+      "length": {
+       "value": 240,
+       "unit": "second"
+      },
+      "targets": [
+       {
+        "minValue": 1,
+        "maxValue": 2
+       }
+      ],
+      "intensityClass": "coolDown",
+      "openDuration": false
+     }
+    ],
+    "begin": 2760,
+    "end": 3000
+   }
+  ],
+  "primaryLengthMetric": "duration",
+  "primaryIntensityMetric": "rpe",
+  "primaryIntensityTargetOrRange": "range",
+  "polyline": []
+ }
+}
