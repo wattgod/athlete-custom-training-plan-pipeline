@@ -1998,11 +1998,11 @@ run_workouts:
         execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
         fueling_tier: none
       5:
-        duration: 90
-        tss: 71
+        duration: 60
+        tss: 54
         segments:
         - type: warmup
-          duration: 20
+          duration: 5
           rpe:
           - 2
           - 3
@@ -2026,20 +2026,20 @@ run_workouts:
             label: Easy reset
             intensity_class: rest
         - type: cooldown
-          duration: 18
+          duration: 3
           rpe:
           - 1
           - 2
         cadence_prescription: Economical cadence; shorten stride before effort rises.
         terrain_prescription: Race-like rolling trail or loop with controlled climbs.
         execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
-        fueling_tier: z2_long
+        fueling_tier: optional
       6:
-        duration: 90
-        tss: 77
+        duration: 60
+        tss: 58
         segments:
         - type: warmup
-          duration: 10
+          duration: 5
           rpe:
           - 2
           - 3
@@ -2056,21 +2056,21 @@ run_workouts:
             - 0.79
             - 0.84
           - type: steady
-            duration: 6
+            duration: 2
             rpe:
             - 2
             - 3
             label: Easy reset
             intensity_class: rest
         - type: cooldown
-          duration: 10
+          duration: 5
           rpe:
           - 1
           - 2
         cadence_prescription: Economical cadence; shorten stride before effort rises.
         terrain_prescription: Race-like rolling trail or loop with controlled climbs.
         execution: Cap the race blocks at all-day effort and use the recoveries to rehearse fueling and reset.
-        fueling_tier: dress_rehearsal
+        fueling_tier: optional
   run.downhill_skills.brakes_off:
     display_name: Brakes Off
     sport: run

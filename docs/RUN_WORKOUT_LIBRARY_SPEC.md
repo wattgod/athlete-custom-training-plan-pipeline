@@ -119,7 +119,7 @@ count and R1's scope).
 | recovery_easy | "Shakeout", "Day-After Antidote" | 20–45min, RPE 2-3 |
 | endurance_z2 | "Bread & Butter" | 30–90min, HR-capped |
 | long_run | "Time on Feet", "Barn Builder" (dress-rehearsal w/ kit checklist) | run/hike rhythm in ALL levels |
-| strides | "Quick Feet" | easy run + 4–8×20s |
+| strides | "Quick Feet" | easy run + 4–6×20s |
 | hills_powerhike | "Hike the Damn Hill" | run/hike intervals |
 | hills_reps | "Hill Medicine" | 6–10×60-90s strong up, walk down |
 | tempo_steady | "Steady Finish" | easy + last 10–25min steady |
