@@ -3761,12 +3761,41 @@ def _resolve_race_data(race_name, race_data_dirs):
         pass
 
     # Known canonical-slug → race-data-filename mismatches (matcher key and
-    # the gravel-race-automation filename diverged historically).
+    # the gravel-race-automation filename diverged historically). Also
+    # consulted directly via name_slug below (wave-A remediation,
+    # 2026-07-22, comment corrected 2026-07-22 after an adversarial review
+    # caught the original version of this note wrongly claiming the
+    # config/races.json snapshot was absent — it exists, at
+    # athletes/config/races.json, 1,172 races): match_race() still fails for
+    # these two names for two DIFFERENT reasons. "L'Étape Mexico City" isn't
+    # in the snapshot (or KNOWN_RACES) at all under any spelling. "LoToJa
+    # Classic — Logan to Jackson" IS represented in the snapshot as "LoToJa
+    # Classic", but match_race()'s discriminative-token-overlap fallback
+    # (step 5) requires overlap > 1 and "classic" is itself a stop word
+    # (_MATCH_STOP_WORDS), so only "lotoja" overlaps — one token, not enough
+    # to clear the threshold. Both end up with canonical_slug = None either
+    # way. Compounding this, name_slug's naive
+    # `.lower().replace(' ', '-').replace("'", '')` doesn't strip accents or
+    # convert dashes either — e.g. "L'Étape Mexico City" -> "létape-mexico-
+    # city" (accented é kept literal, no hyphen after "l") and "LoToJa
+    # Classic — Logan to Jackson" -> "lotoja-classic-—-logan-to-jackson" (em
+    # dash kept literal). Both miss road-race-automation's actual filenames
+    # (letape-mexico-city.json, lotoja-classic.json), so with BOTH the
+    # matcher and the direct-file guess failing, race_data resolves empty and
+    # the guide's location/elevation badges silently disappear (_meta_badges'
+    # `has()` check drops empty fields rather than erroring). Aliased by the
+    # literal broken name_slug string rather than fixing the normalization or
+    # the match_race() token-overlap threshold generally, to keep this a
+    # targeted, low-risk fix — a general fix risks changing resolution for
+    # other races that currently work (e.g. a lower overlap threshold could
+    # produce a wrong-race false match elsewhere).
     _slug_aliases = {
         'sbt-grvl': 'steamboat-gravel',
         'sbt_grvl': 'steamboat-gravel',
         'big-horn-gravel': 'bighorn-gravel',
         'the-traka-200': 'the-traka',
+        'létape-mexico-city': 'letape-mexico-city',
+        'lotoja-classic-—-logan-to-jackson': 'lotoja-classic',
     }
     candidate_slugs = [s for s in [
         canonical_slug,
