@@ -368,5 +368,15 @@
   "weighted_problem_load": 10.5,
   "critical_count": 8,
   "distinct_issues": 36
+ },
+ {
+  "date": "2026-07-22",
+  "quality": 2.26,
+  "n": 8,
+  "avg_score": 6.5,
+  "contract_pass_rate": 0.88,
+  "weighted_problem_load": 12.5,
+  "critical_count": 8,
+  "distinct_issues": 46
  }
 ]
