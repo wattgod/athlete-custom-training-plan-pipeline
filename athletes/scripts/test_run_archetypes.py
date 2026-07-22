@@ -138,12 +138,12 @@ def test_validator_rejects_duplicate_and_mixed_axis_adjacent_levels():
 
 
 def test_validator_catches_changed_work_interval_length_with_changed_duration():
-    """Regression: 3x7min -> 3x8min must not evade the single-axis check."""
+    """Regression: fixed 8min reps may not grow while duration also rises."""
     bad = _bad_library()
     levels = bad["run.race_pace.loop_one_rehearsal"]["levels"]
     levels["3"] = copy.deepcopy(levels["2"])
     levels["3"]["duration"] += 5 * 60
-    levels["3"]["segments"][1]["of"][0]["duration"] = 8 * 60
+    levels["3"]["segments"][1]["of"][0]["duration"] = 9 * 60
     assert any("change both duration and density" in issue for issue in validate_library(bad))
 
 

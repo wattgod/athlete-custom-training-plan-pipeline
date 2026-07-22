@@ -26,4 +26,4 @@ HYDRATION:
 -Drink to thirst; carry water when conditions or access require it.
 
 RPE:
--2-3/10 running, 6-7/10 pickups.
+-2-3/10 recovery/running, 6-7/10 pickups, 1-2/10 recovery.

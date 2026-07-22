@@ -27,4 +27,4 @@ HYDRATION:
 -500-750ml/hr to thirst; start hydrated and use electrolytes in warm conditions.
 
 RPE:
--2-3/10 running, 6-7/10 running, 1-2/10 running.
+-2-3/10 recovery/running, 6-7/10 running, 1-2/10 walking/recovery.

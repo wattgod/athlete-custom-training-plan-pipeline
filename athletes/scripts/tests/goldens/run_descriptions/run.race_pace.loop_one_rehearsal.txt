@@ -2,14 +2,13 @@ WARM-UP:
 -10min warm-up @ RPE 2-3.
 
 MAIN SET:
--3x [7min All-day ultra effort @ RPE 5-6 + 1:20 Easy reset @ RPE 2-3].
--5min Easy running @ RPE 2-3.
+-3x [8min All-day ultra effort @ RPE 5-6 + 4min Easy reset @ RPE 2-3].
 -Cadence: Economical cadence; shorten stride before effort rises.
 -Terrain: Race-like rolling trail or loop with controlled climbs.
 -All-day ultra effort: 79-84% LTHR.
 
 COOL-DOWN:
--5min cool-down @ RPE 1-2.
+-4min cool-down @ RPE 1-2.
 
 PROGRESSION:
 -Level 3/6: Development - Standard training load, building consistency
@@ -27,4 +26,4 @@ HYDRATION:
 -500-750ml/hr to thirst; start hydrated and use electrolytes in warm conditions.
 
 RPE:
--5-6/10 race effort, 2-3/10 running.
+-2-3/10 recovery, 5-6/10 race effort, 1-2/10 recovery.

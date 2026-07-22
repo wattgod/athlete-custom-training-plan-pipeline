@@ -225,11 +225,13 @@ def validate_library(
                 violations.append(f"{archetype_id} L{level_key}: invalid or missing fueling_tier")
             elif isinstance(actual_duration, (int, float)):
                 duration_min = actual_duration / 60
-                if duration_min < 60 and fueling_tier != "none":
-                    violations.append(f"{archetype_id} L{level_key}: workouts under 60 minutes require fueling_tier none")
-                elif duration_min < 90 and fueling_tier != "optional":
-                    violations.append(f"{archetype_id} L{level_key}: workouts 60-89 minutes require fueling_tier optional")
-                elif duration_min >= 90 and fueling_tier not in {"z2_long", "dress_rehearsal"}:
+                if duration_min < 60:
+                    if fueling_tier != "none":
+                        violations.append(f"{archetype_id} L{level_key}: workouts under 60 minutes require fueling_tier none")
+                elif duration_min < 90:
+                    if fueling_tier != "optional":
+                        violations.append(f"{archetype_id} L{level_key}: workouts 60-89 minutes require fueling_tier optional")
+                elif fueling_tier not in {"z2_long", "dress_rehearsal"}:
                     violations.append(f"{archetype_id} L{level_key}: workouts 90 minutes or longer require long fueling")
 
         for index, (previous, current) in enumerate(zip(ordered_levels, ordered_levels[1:]), start=1):
@@ -278,17 +280,21 @@ def _validate_segment_schema(
 
 
 def _work_signature(segments: Iterable[Mapping[str, Any]]) -> tuple[int, float]:
-    """Return active work-rep count and mean work duration for ladder checks.
+    """Return the high-intensity work-rep signature for ladder checks.
 
-    Explicit ``rest`` leaves are recovery padding, not work. Comparing the
-    per-rep duration catches ladders that hide a work-interval change behind an
-    unchanged expanded leaf count (for example, 3x7min becoming 3x8min).
+    Easy running added for time-on-feet is a duration-axis change, not an
+    interval-density change.  ``work`` therefore means the authored quality
+    leaves (RPE 5+), excluding explicit recovery.  Comparing their count and
+    mean duration still catches a hidden change such as 3x7min becoming
+    3x8min while total duration also rises.
     """
     work_leaves = [
         segment
         for segment in _expanded_segments(segments)
-        if segment.get("type") not in {"warmup", "cooldown"}
-        and segment.get("intensity_class") != "rest"
+        if segment.get("intensity_class") != "rest"
+        and isinstance(segment.get("rpe"), (list, tuple))
+        and len(segment["rpe"]) == 2
+        and segment["rpe"][0] >= 5
     ]
     if not work_leaves:
         return 0, 0.0

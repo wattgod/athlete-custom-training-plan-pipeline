@@ -1999,7 +1999,7 @@ run_workouts:
         fueling_tier: none
       5:
         duration: 90
-        tss: 73
+        tss: 71
         segments:
         - type: warmup
           duration: 20

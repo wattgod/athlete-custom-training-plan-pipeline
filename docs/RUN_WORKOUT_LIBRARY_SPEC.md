@@ -96,13 +96,14 @@ cooldown | repeat`. Between-repetition recovery leaves may explicitly carry
 `intensity_class: rest` for TP export; labels never determine intensity class.
 Intensity is **RPE (canonical)**; optional `hr_pct_lthr`
 and `pace_pct_threshold` ranges are allowed but render as PROSE lines only in
-v1 (never as TP targets — sol finding 4). Library-generic text uses RPE and
-%LTHR; absolute BPM appears only at athlete placement time, rendered from the
-athlete's LTHR (fallback: if LTHR absent, RPE-only rendering — no invented HR).
+v1 (never as TP targets — sol finding 4). Library-generic text may use RPE and
+%LTHR; absolute BPM appears only when the placing athlete supplies LTHR. When
+LTHR is absent, retain the %LTHR prose and never invent a BPM target.
 
 **Six levels** follow `get_progression_context` semantics (1 Introductory → 6
-Peak). Progression axes per category: duration first (Endurance/Long), then
-density (Hills/Tempo), never both in one level step. Long Run caps at 3:15
+Peak). Adjacent levels may change either total duration by more than two
+minutes or high-intensity interval density (count or per-rep duration), never
+both. Easy time-on-feet is duration work, not interval density. Long Run caps at 3:15
 regardless of level. `race_day` briefs are the one exception to Format R:
 `structure_exempt: true`, description-only. Brief placement requires explicit
 positive `planned_hours` (stated exception; sol finding 4d).
@@ -115,7 +116,7 @@ count and R1's scope).
 
 | category_id | Archetypes (display names) | Notes |
 |---|---|---|
-| recovery_easy | "Shakeout", "Day-After Antidote" | 20–40min, RPE 2-3 |
+| recovery_easy | "Shakeout", "Day-After Antidote" | 20–45min, RPE 2-3 |
 | endurance_z2 | "Bread & Butter" | 30–90min, HR-capped |
 | long_run | "Time on Feet", "Barn Builder" (dress-rehearsal w/ kit checklist) | run/hike rhythm in ALL levels |
 | strides | "Quick Feet" | easy run + 4–8×20s |
@@ -149,11 +150,14 @@ Run dimension lines in MAIN SET: `-Cadence: <spm prescription>` and
 `-Terrain: <prescription>`. New helpers `_get_default_run_cadence(category_id,
 level)` and `_get_default_terrain(category_id, level)` dispatch on
 `category_id`. Run nutrition/hydration come from NEW run-specific functions
-(`get_run_nutrition`, `get_run_hydration`) keyed on category_id + duration —
+(`get_run_nutrition`, `get_run_hydration`) keyed on authored `fueling_tier`
+and category/duration —
 the existing bike helpers classify by display-name substrings and are not
-touched (sol finding 9). Tier table (aligned with existing bike tiers + ISSN):
-<60min → "None needed at this duration."; 60–90min → optional; ≥90min Z2 →
-40-60g/hr; dress rehearsal / race → 50-60g/hr; sodium noted >2hr.
+touched (sol finding 9). Tier boundaries do not overlap: <60min → `none`;
+60–89min → `optional`; ≥90min → `z2_long` or `dress_rehearsal`. `z2_long`
+uses 40-60g/hr and dress rehearsal/race uses 50-60g/hr; sodium is noted beyond
+two hours. Long runs and race-pace dress rehearsals always include hourly
+drinking and sodium-aware hydration language, even below two hours.
 
 ## TP structure export (sol finding 4 — full contract)
 
