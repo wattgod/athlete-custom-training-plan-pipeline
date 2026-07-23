@@ -277,6 +277,41 @@ athletes/config/
 ### Fallback
 If block-builder modules fail to load, the old `get_workout_for_day()` template system is still present and handles workout selection as before. The block-builder path is tried first; fallback is automatic.
 
+## Run Workout Library (RUN-LIB v1)
+
+### File Map
+```
+athletes/config/run_workout_library.yaml     ← authored run library
+athletes/scripts/run_archetypes.py           ← loader, registry, schema/progression validation
+athletes/scripts/run_renderer.py             ← library description renderer
+athletes/scripts/run_structure_export.py     ← Format R → TP structure/payload
+athletes/scripts/run_tss.py                  ← canonical RPE → IF rTSS calculation
+athletes/scripts/dual_sport_selector.py      ← dual-sport weekly-template selector
+athletes/scripts/run_compliance.py           ← run/cross-sport compliance gate
+athletes/scripts/build_run_tp_library.py     ← offline TP-library payload builder/reconciler
+athletes/scripts/test_run_*.py               ← contract tests
+athletes/scripts/tests/goldens/run_descriptions/*.txt ← rendered-description goldens
+athletes/scripts/tests/fixtures/tp_run_structure_fixture.json ← live-accepted TP fixture
+```
+
+### Pipeline
+```
+run_workout_library.yaml → dual_sport_selector.py → run_renderer.py /
+run_structure_export.py → run_compliance.py → TrainingPeaks payload
+```
+
+### Known Pitfalls
+- **Schema:** root `run_workouts:` mapping; minutes in YAML, seconds in memory; normalize integer level keys to strings at load.
+- **NEVER** dispatch on display-name substrings — use `sport`, `category`, or ID only. A substring regression shipped once and was caught in review.
+- BPM is athlete-placement-only from LTHR; library/generic text uses RPE + %LTHR.
+- Race briefs are `structure_exempt: true`, description-only; placement **REQUIRES** explicit `planned_hours`.
+- The validator enforces single-axis level progression: duration **OR** work-density per step, never both; it also rejects adjacent duplicates.
+- Optional sessions are excluded from compliance hour floors (counted toward the cap only) and must never contain RPE ≥5.
+- rTSS = Σ(segment_hours × IF² × 100) from `run_tss.RPE_IF_TABLE`; stored values must match within ±15% (the library ships exact values).
+- TP export truth is `athletes/scripts/tests/fixtures/tp_run_structure_fixture.json`: a live-accepted payload. Repeats **UNROLL** and targets are 0-10 integer RPE.
+- No TP API credentials belong in this repo: `build_run_tp_library.py` generates payloads; live placement happens from the coach's browser session.
+- R9 (regenerating a live athlete from the library) is **DEFERRED** by coach decision — never run it against an athlete calendar without an explicit coach go.
+
 ## Intake-to-Plan Pipeline
 
 ### Architecture Overview
