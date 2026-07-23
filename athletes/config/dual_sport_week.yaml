@@ -1,0 +1,57 @@
+# RUN-LIB R5: authoritative weekly overlay for coached dual-sport athletes.
+# This config deliberately carries policy, while dual_sport_selector.py applies
+# calendar-dependent overlays and validates selected library items.
+slots:
+  monday:
+    day: Mon
+    kind: rest
+  tuesday:
+    day: Tue
+    kind: run_workout
+  wednesday:
+    day: Wed
+    kind: optional_run
+    categories: [recovery_easy, endurance_z2]
+    title_prefix: "OPTIONAL:"
+    max_duration_minutes: 40
+    maximum_rpe: 4
+  friday:
+    day: Fri
+    kind: bike_placeholder
+    note: "bike day — existing GG bike libraries"
+  saturday:
+    day: Sat
+    kind: long_run_or_race
+  sunday:
+    day: Sun
+    kind: athlete_own
+
+tuesday_phase_mapping:
+  base: [strides, hills_powerhike]
+  build: [tempo_steady, hills_reps]
+  peak: [race_pace]
+  taper: [openers] # The descriptor's taper phase is the race-week mapping.
+
+race_overlay:
+  saturday_race:
+    saturday: "Race replaces the long run."
+    friday_note: "bike openers — existing GG bike libraries"
+  sunday_race:
+    saturday: "Optional shakeout replaces the long run."
+    sunday: "Race slot replaces athlete-owned Sunday."
+    friday_note: "bike openers — existing GG bike libraries"
+  a_race_week:
+    wednesday_max_duration_minutes: 20
+
+post_race:
+  no_run_segment_rpe_at_least: 5
+  protected_calendar_days: 2
+  first_run_categories: [recovery_easy, endurance_z2]
+  preferred_tuesday_categories: [endurance_z2]
+  stairs_gate_required: true
+  stairs_gate_note: "STAIRS GATE: If normal stairs hurt, walk or rest instead."
+
+progression:
+  minimum_level: 1
+  maximum_level: 6
+  max_long_run_level_increase: 1
