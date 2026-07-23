@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 import re
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from build_run_tp_library import (  # noqa: E402
     FOLDER_NAME,
-    expected_reconciliation_items,
     generate_library_payload,
     main,
     reconcile_library_dump,
@@ -24,6 +26,16 @@ LEVELED_NAME = re.compile(
     r"^Run [A-Z][A-Za-z0-9 ]* - .+ - [1-6] - [1-9][0-9]*min - RPE[1-9]-[1-9]$"
 )
 BRIEF_NAME = re.compile(r"^Run Race Day - .+ - brief$")
+
+
+def independent_dump_projection(item):
+    """Model a browser-folder export without using the builder's reconciler projection."""
+    fields = ("itemName", "workoutTypeValueId", "totalTimePlanned", "tssPlanned", "description", "structure")
+    return {field: deepcopy(item[field]) for field in fields if field in item}
+
+
+def faithful_dump():
+    return [independent_dump_projection(item) for item in generate_library_payload()["items"]]
 
 
 def test_payload_has_all_80_unique_conventionally_named_items():
@@ -46,11 +58,11 @@ def test_leveled_items_preserve_library_time_tss_and_valid_structure():
         assert "BPM" not in item["description"]
         validate_tp_structure(item["structure"])
 
-    expected = expected_reconciliation_items()
-    assert [item["totalTimePlanned"] for item in expected if item["hasStructure"]] == [
+    expected = [item for item in generate_library_payload()["items"] if "structure" in item]
+    assert [item["totalTimePlanned"] for item in expected] == [
         item["totalTimePlanned"] for item in leveled_items
     ]
-    assert [item["tssPlanned"] for item in expected if item["hasStructure"]] == [
+    assert [item["tssPlanned"] for item in expected] == [
         item["tssPlanned"] for item in leveled_items
     ]
 
@@ -68,21 +80,23 @@ def test_briefs_are_description_only_with_library_tss():
 
 
 def test_reconciler_accepts_a_faithful_dump():
-    report = reconcile_library_dump(expected_reconciliation_items())
+    report = reconcile_library_dump(faithful_dump())
 
     assert report == {"missing": [], "extra": [], "mismatched": []}
 
 
 def test_reconciler_detects_seeded_missing_extra_and_mismatch():
-    dump = expected_reconciliation_items()
+    dump = faithful_dump()
     missing_name = dump.pop()["itemName"]
     mismatch_name = dump[0]["itemName"]
     dump[0] = {**dump[0], "tssPlanned": dump[0]["tssPlanned"] + 1}
     dump.append({
         "itemName": "Run Other - Unexpected - 1 - 30min - RPE2-3",
+        "workoutTypeValueId": 3,
         "totalTimePlanned": 0.5,
         "tssPlanned": 18,
-        "hasStructure": True,
+        "description": "Unexpected.",
+        "structure": generate_library_payload()["items"][0]["structure"],
     })
 
     report = reconcile_library_dump(dump)
@@ -95,17 +109,37 @@ def test_reconciler_detects_seeded_missing_extra_and_mismatch():
     }]
 
 
+@pytest.mark.parametrize("corruption", ["type", "description", "target", "structure"])
+def test_reconciler_detects_all_faithful_body_corruption(corruption):
+    dump = faithful_dump()
+    item = next(item for item in dump if "structure" in item)
+    item_name = item["itemName"]
+    if corruption == "type":
+        item["workoutTypeValueId"] = 13
+    elif corruption == "description":
+        item["description"] += " altered"
+    elif corruption == "target":
+        item["structure"]["structure"][0]["steps"][0]["targets"][0]["maxValue"] += 1
+    else:
+        item.pop("structure")
+
+    report = reconcile_library_dump(dump)
+
+    mismatch = next(entry for entry in report["mismatched"] if entry["itemName"] == item_name)
+    assert mismatch["fields"]
+
+
 def test_cli_writes_payload_and_returns_reconciliation_status(tmp_path, capsys):
     output_path = tmp_path / "payload.json"
     assert main(["--out", str(output_path)]) == 0
     assert json.loads(output_path.read_text(encoding="utf-8")) == generate_library_payload()
 
     dump_path = tmp_path / "faithful-dump.json"
-    dump_path.write_text(json.dumps(expected_reconciliation_items()), encoding="utf-8")
+    dump_path.write_text(json.dumps(faithful_dump()), encoding="utf-8")
     assert main(["--reconcile", str(dump_path)]) == 0
     assert "missing:\n  none" in capsys.readouterr().out
 
-    incomplete_dump = expected_reconciliation_items()[1:]
+    incomplete_dump = faithful_dump()[1:]
     dump_path.write_text(json.dumps(incomplete_dump), encoding="utf-8")
     assert main(["--reconcile", str(dump_path)]) == 1
     assert "missing:\n  Run " in capsys.readouterr().out

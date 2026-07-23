@@ -1,32 +1,26 @@
 #!/usr/bin/env python3
-"""Compliance gate for RUN-LIB placements (R6).
+"""Compliance gate for real RUN-LIB ``WeekPlan`` placements (R6).
 
-``validate_run_plan`` returns violations rather than raising.  The coached-
-athlete dispatch must raise on a non-empty result, outside any builder
-``try``/``except``; that hard-fail belongs in the CALLER, not this module.
-
-R5's public ``WeekPlan`` deliberately contains only ``sessions``.  Callers
-which need calendar-sensitive validation may supply WeekPlan-like objects (or
-mappings) with ``week_start`` and, when known, ``week_type`` and
-``template_run_hours``.  Plain R5 WeekPlans remain valid: they are treated as
-load weeks and their required placed sessions provide the template-hours
-fallback.  This preserves the R5 interface while allowing the dispatch layer
-to retain the calendar descriptor that it already owns.
+``validate_run_plan`` returns violations rather than raising.  The sanctioned
+coached-athlete dispatcher raises them outside any builder ``try``/``except``.
+All calendar, race, and template metadata comes from ``WeekPlan`` itself.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta
+import re
 from typing import Any
 
+from dual_sport_selector import WeekPlan
 from run_archetypes import get_run_archetype, get_run_level
 from run_renderer import render_run_description
 
 
 _DAY_OFFSETS = {day: offset for offset, day in enumerate(("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"))}
 _EASY_CATEGORIES = {"recovery_easy", "endurance_z2"}
-_METADATA_TEMPLATE_KEYS = ("template_run_hours", "template_hours", "run_template_hours")
+_SECTION_HEADING = re.compile(r"^[A-Z][A-Z _-]*:\s*$", re.MULTILINE)
 
 
 def _value(record: Any, key: str, default: Any = None) -> Any:
@@ -118,11 +112,11 @@ def _race_dates(races: Sequence[Any]) -> list[date]:
     return sorted(set(dates))
 
 
-def _is_race_week(week: Any, races: Sequence[Any]) -> bool:
+def _is_race_week(week: Any) -> bool:
     if _value(week, "week_type", "load") == "race":
         return True
     start = _week_start(week)
-    if start is not None and any(start <= race_date <= start + timedelta(days=6) for race_date in _race_dates(races)):
+    if start is not None and any(start <= race_date <= start + timedelta(days=6) for race_date in _race_dates(_value(week, "races", []))):
         return True
     # R5 expresses run races as structure-exempt race-day sessions.
     return any(
@@ -132,19 +126,10 @@ def _is_race_week(week: Any, races: Sequence[Any]) -> bool:
 
 
 def _template_hours(week: Any) -> float:
-    for key in _METADATA_TEMPLATE_KEYS:
-        candidate = _value(week, key)
-        if isinstance(candidate, (int, float)) and not isinstance(candidate, bool) and candidate >= 0:
-            return float(candidate)
-
-    # R5 intentionally has no volume field.  Its required selected sessions
-    # are the only authored template volume available to a bare WeekPlan.
-    total = 0.0
-    for session in _sessions(week).values():
-        if _is_run(session) and not _value(session, "optional", False):
-            _, level_data = _workout(session)
-            total += _duration_hours(level_data)
-    return total
+    candidate = _value(week, "template_required_hours")
+    if not isinstance(candidate, (int, float)) or isinstance(candidate, bool) or candidate < 0:
+        raise ValueError("WeekPlan.template_required_hours must be a non-negative number")
+    return float(candidate)
 
 
 def _placed_runs(weeks: Sequence[Any]) -> list[tuple[date, int, Any, Any, Mapping[str, Any], Mapping[str, Any] | None]]:
@@ -161,15 +146,41 @@ def _placed_runs(weeks: Sequence[Any]) -> list[tuple[date, int, Any, Any, Mappin
     return sorted(placed, key=lambda item: item[0])
 
 
-def validate_run_plan(weeks: list[Any], races: list[Any]) -> list[str]:
-    """Return all R-C1..R-C6 violations for R5 WeekPlan-like placements.
+def _nutrition_body(rendered: str) -> str:
+    """Return only NUTRITION's body, never a following heading's content."""
+    match = re.search(r"^NUTRITION:\s*$", rendered, flags=re.MULTILINE)
+    if match is None:
+        return ""
+    following = _SECTION_HEADING.search(rendered, match.end())
+    return rendered[match.end():following.start() if following else len(rendered)].strip()
 
-    ``races`` is deliberately sport-agnostic: every dated bike or run race
-    protects subsequent run sessions.  All duration, category, segment, and
-    nutrition decisions resolve through the shipped run library and renderer.
-    """
+
+def _has_weekend_race(week: Any) -> bool:
+    start = _week_start(week)
+    if start is None:
+        return False
+    return any(
+        race_date in {start + timedelta(days=5), start + timedelta(days=6)}
+        for race_date in _race_dates(_value(week, "races", []))
+    )
+
+
+def _normalized_level(session: Any) -> int | None:
+    level = _value(session, "level")
+    if isinstance(level, bool):
+        return None
+    try:
+        return int(level)
+    except (TypeError, ValueError):
+        return None
+
+
+def validate_run_plan(weeks: list[WeekPlan]) -> list[str]:
+    """Return all R-C1..R-C7 violations for real RUN-LIB WeekPlans."""
+    if any(not isinstance(week, WeekPlan) for week in weeks):
+        raise TypeError("validate_run_plan requires WeekPlan instances")
     violations: list[str] = []
-    race_dates = _race_dates(races)
+    race_dates = sorted({race_date for week in weeks for race_date in _race_dates(_value(week, "races", []))})
     placed = _placed_runs(weeks)
 
     # R-C1: intensity must not appear in the two calendar days after any race;
@@ -211,12 +222,14 @@ def validate_run_plan(weeks: list[Any], races: list[Any]) -> list[str]:
             # are overlays, not a placed RUN-LIB workout for R-C3.
             if level_data is not None and duration >= 1.5:
                 rendered = render_run_description(_value(session, "archetype_id"), _value(session, "level"))
-                nutrition = rendered.split("NUTRITION:", 1)[1] if "NUTRITION:" in rendered else ""
+                nutrition = _nutrition_body(rendered)
                 if not nutrition.strip() or "none needed" in nutrition.lower():
                     violations.append(_violation(week, index, "R-C3", "run >=90min lacks actionable NUTRITION section"))
 
-        if _value(week, "week_type", "load") == "load" and not _is_race_week(week, races) and not has_long_run:
+        if _value(week, "week_type", "load") == "load" and not _is_race_week(week) and not has_long_run:
             violations.append(_violation(week, index, "R-C2", "non-race load week has no long run"))
+        if _has_weekend_race(week) and has_long_run:
+            violations.append(_violation(week, index, "R-C7", "Saturday/Sunday race week must not contain a long run"))
 
         template = _template_hours(week)
         if required_hours < template * 0.90 or required_hours > template * 1.10:
@@ -227,8 +240,8 @@ def validate_run_plan(weeks: list[Any], races: list[Any]) -> list[str]:
     # R-C6: compare the actual long-run placements, even across a race week.
     for (previous_index, previous_week, previous), (index, week, current) in zip(long_runs, long_runs[1:]):
         del previous_index, previous_week
-        previous_level, current_level = _value(previous, "level"), _value(current, "level")
-        if isinstance(previous_level, int) and isinstance(current_level, int) and current_level > previous_level + 1:
+        previous_level, current_level = _normalized_level(previous), _normalized_level(current)
+        if previous_level is not None and current_level is not None and current_level > previous_level + 1:
             violations.append(_violation(week, index, "R-C6", f"long-run level jumps from {previous_level} to {current_level}"))
 
     return violations

@@ -30,7 +30,20 @@ tuesday_phase_mapping:
   base: [strides, hills_powerhike]
   build: [tempo_steady, hills_reps]
   peak: [race_pace]
-  taper: [openers] # The descriptor's taper phase is the race-week mapping.
+  race: [openers]
+  taper: [openers]
+
+# Wednesday is optional easy volume.  Its cap is both the universal 40-minute
+# ceiling and the easy Monday equivalent for the descriptor's week type.
+week_types:
+  load:
+    monday_equivalent_min: 40
+  recovery:
+    monday_equivalent_min: 30
+  race:
+    monday_equivalent_min: 20
+  taper:
+    monday_equivalent_min: 20
 
 race_overlay:
   saturday_race:

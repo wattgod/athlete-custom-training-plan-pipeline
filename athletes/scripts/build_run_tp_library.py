@@ -9,6 +9,7 @@ generate locally and can be reconciled against a browser-exported folder dump.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -21,7 +22,13 @@ from run_structure_export import export_tp_structure
 
 FOLDER_NAME = "GG Run | Workouts"
 WORKOUT_TYPE_VALUE_ID = 3
-_RECONCILE_FIELDS = ("totalTimePlanned", "tssPlanned", "hasStructure")
+_RECONCILE_FIELDS = (
+    "workoutTypeValueId",
+    "totalTimePlanned",
+    "tssPlanned",
+    "descriptionSha1",
+    "structureDigest",
+)
 
 
 def _category_name(category_id: str) -> str:
@@ -109,17 +116,50 @@ def generate_library_payload() -> dict[str, Any]:
     return {"folder_name": FOLDER_NAME, "items": items}
 
 
+def _sha1(value: Any) -> str | None:
+    return hashlib.sha1(value.encode("utf-8")).hexdigest() if isinstance(value, str) else None
+
+
+def _structure_digest(structure: Any) -> dict[str, Any] | None:
+    """Fingerprint TP steps by their count and the fields that affect execution."""
+    if not isinstance(structure, Mapping):
+        return None
+    elements = structure.get("structure")
+    if not isinstance(elements, list):
+        return None
+    steps: list[list[Any]] = []
+    for element in elements:
+        if not isinstance(element, Mapping):
+            return None
+        element_steps = element.get("steps")
+        if not isinstance(element_steps, list) or len(element_steps) != 1 or not isinstance(element_steps[0], Mapping):
+            return None
+        step = element_steps[0]
+        length = step.get("length")
+        targets = step.get("targets")
+        if not isinstance(length, Mapping) or not isinstance(targets, list) or len(targets) != 1 or not isinstance(targets[0], Mapping):
+            return None
+        target = targets[0]
+        steps.append([length.get("value"), target.get("minValue"), target.get("maxValue"), step.get("intensityClass")])
+    encoded = json.dumps(steps, separators=(",", ":"), ensure_ascii=True)
+    return {"elementCount": len(steps), "sha1": hashlib.sha1(encoded.encode("utf-8")).hexdigest()}
+
+
+def _reconciliation_item(item: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize a full TP item into the fields that prove a faithful library dump."""
+    return {
+        "itemName": item.get("itemName"),
+        "workoutTypeValueId": item.get("workoutTypeValueId"),
+        "totalTimePlanned": item.get("totalTimePlanned"),
+        "tssPlanned": item.get("tssPlanned"),
+        "descriptionSha1": _sha1(item.get("description")),
+        "structureDigest": _structure_digest(item.get("structure")),
+    }
+
+
 def expected_reconciliation_items() -> list[dict[str, Any]]:
-    """Project the payload to the minimal browser-folder dump contract."""
-    return [
-        {
-            "itemName": item["itemName"],
-            "totalTimePlanned": item.get("totalTimePlanned"),
-            "tssPlanned": item["tssPlanned"],
-            "hasStructure": "structure" in item,
-        }
-        for item in generate_library_payload()["items"]
-    ]
+    """Return expected reconciliation fingerprints, keyed by stable item name."""
+    return [_reconciliation_item(item) for item in generate_library_payload()["items"]]
 
 
 def _values_match(expected: Any, actual: Any) -> bool:
@@ -136,10 +176,10 @@ def _values_match(expected: Any, actual: Any) -> bool:
 def reconcile_library_dump(dump_items: Iterable[Mapping[str, Any]]) -> dict[str, list[Any]]:
     """Compare a TP folder dump to the expected 80 generic library items.
 
-    ``dump_items`` must be records containing ``itemName``,
-    ``totalTimePlanned``, ``tssPlanned``, and ``hasStructure``. The returned
-    report always contains ``missing``, ``extra``, and ``mismatched`` lists,
-    enabling both CLI use and coach-tool integration without parsing text.
+    ``dump_items`` must be full TP item objects containing ``itemName``,
+    ``workoutTypeValueId``, ``totalTimePlanned``, ``tssPlanned``,
+    ``description``, and (for leveled workouts) ``structure``. The returned
+    report always contains ``missing``, ``extra``, and ``mismatched`` lists.
     """
     expected_by_name = {item["itemName"]: item for item in expected_reconciliation_items()}
     actual_by_name: dict[str, Mapping[str, Any]] = {}
@@ -154,7 +194,7 @@ def reconcile_library_dump(dump_items: Iterable[Mapping[str, Any]]) -> dict[str,
         if item_name not in expected_by_name or item_name in actual_by_name:
             extra.append(item_name)
             continue
-        actual_by_name[item_name] = item
+        actual_by_name[item_name] = _reconciliation_item(item)
 
     missing = sorted(set(expected_by_name) - set(actual_by_name))
     mismatched: list[dict[str, Any]] = []
@@ -199,7 +239,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     actions = parser.add_mutually_exclusive_group(required=True)
     actions.add_argument("--out", type=Path, help="write the browser-ready library payload JSON")
-    actions.add_argument("--reconcile", type=Path, metavar="DUMP_JSON", help="compare a TP folder dump JSON")
+    actions.add_argument(
+        "--reconcile",
+        type=Path,
+        metavar="DUMP_JSON",
+        help=(
+            "compare a JSON list of full TP items: itemName, workoutTypeValueId, "
+            "totalTimePlanned, tssPlanned, description, and structure for leveled items"
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.out is not None:

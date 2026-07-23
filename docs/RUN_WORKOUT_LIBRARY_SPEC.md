@@ -253,6 +253,8 @@ builder — same placement discipline as the self-serve gate (which lives in
 
 `athletes/scripts/build_run_tp_library.py` builds "GG Run | Workouts" folder(s)
 via the exerciselibrary API (2026 bike-curation recipe; rx-invisibility rule).
+Library race-brief items deliberately carry no hours; athlete placement rebuilds
+them with `export_tp_workout(planned_hours=...)`.
 Item names: `Run <Category> - <Display Name> - <level> - <min>min - RPE<band>`
 (bike lib convention with a `Run` prefix). Library items contain NO absolute
 BPM (generic text; BPM only at athlete placement). Placement uses items
