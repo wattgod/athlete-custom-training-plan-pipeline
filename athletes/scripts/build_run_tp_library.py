@@ -140,9 +140,32 @@ def _structure_digest(structure: Any) -> dict[str, Any] | None:
         if not isinstance(length, Mapping) or not isinstance(targets, list) or len(targets) != 1 or not isinstance(targets[0], Mapping):
             return None
         target = targets[0]
-        steps.append([length.get("value"), target.get("minValue"), target.get("maxValue"), step.get("intensityClass")])
-    encoded = json.dumps(steps, separators=(",", ":"), ensure_ascii=True)
+        steps.append([
+            _canonical_number(length.get("value")),
+            length.get("unit"),
+            _canonical_number(target.get("minValue")),
+            _canonical_number(target.get("maxValue")),
+            step.get("intensityClass"),
+            bool(step.get("openDuration", False)),
+            _canonical_number(element.get("begin")),
+            _canonical_number(element.get("end")),
+        ])
+    header = [
+        structure.get("primaryIntensityMetric"),
+        structure.get("primaryLengthMetric"),
+        structure.get("primaryIntensityTargetOrRange"),
+    ]
+    encoded = json.dumps([header, steps], separators=(",", ":"), ensure_ascii=True)
     return {"elementCount": len(steps), "sha1": hashlib.sha1(encoded.encode("utf-8")).hexdigest()}
+
+
+def _canonical_number(value: Any) -> Any:
+    """Collapse integral floats to ints so browser JSON (300) and Python (300.0) hash identically."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
 
 
 def _reconciliation_item(item: Mapping[str, Any]) -> dict[str, Any]:

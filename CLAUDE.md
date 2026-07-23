@@ -297,8 +297,11 @@ athletes/scripts/tests/fixtures/tp_run_structure_fixture.json ← live-accepted 
 
 ### Pipeline
 ```
-run_workout_library.yaml → dual_sport_dispatch.py → dual_sport_selector.py →
-run_renderer.py / run_structure_export.py → run_compliance.py → TrainingPeaks payload
+run_workout_library.yaml → dual_sport_dispatch.py (select_week per week +
+run_compliance gate; raises RunComplianceError; returns WeekPlans) →
+[separate step] run_renderer.py / run_structure_export.py render+export the
+chosen sessions → build_run_tp_library.py emits the offline TP payload
+(browser session performs the POSTs; --reconcile verifies a dump)
 ```
 
 ### Known Pitfalls

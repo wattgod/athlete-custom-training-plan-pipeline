@@ -240,6 +240,8 @@ validates run items + cross-sport adjacency only:
 - R-C5 optional items never contain a segment with RPE ≥5.
 - R-C6 long-run level/duration may not jump >1 level between consecutive long
   runs.
+- R-C7 a week with a weekend race must not also contain a long run (the race
+  replaces it).
 
 **Failure behavior (sol finding 7):** the coached-athlete path hard-fails
 (raise, no delivery) — no `GG_STRICT_COMPLIANCE` dependency; that env-gated
@@ -251,8 +253,11 @@ builder — same placement discipline as the self-serve gate (which lives in
 
 ## TP library build
 
-`athletes/scripts/build_run_tp_library.py` builds "GG Run | Workouts" folder(s)
-via the exerciselibrary API (2026 bike-curation recipe; rx-invisibility rule).
+`athletes/scripts/build_run_tp_library.py` builds the "GG Run | Workouts"
+folder as an OFFLINE payload — this repo has no TP client. The coach's
+logged-in browser session performs the exerciselibrary POSTs (2026
+bike-curation recipe; rx-invisibility rule), then a JSON dump of the folder is
+verified with `--reconcile` (digest-based, browser-serialization-stable).
 Library race-brief items deliberately carry no hours; athlete placement rebuilds
 them with `export_tp_workout(planned_hours=...)`.
 Item names: `Run <Category> - <Display Name> - <level> - <min>min - RPE<band>`
@@ -274,7 +279,7 @@ verbatim (Anthony round-3 pattern).
 - **R5** `dual_sport_week.yaml` + `dual_sport_selector.py` (phase mapping,
   race overlays, post-race rule, optional caps) + tests. Emits a typed
   week-plan interface consumed by R6.
-- **R6** `run_compliance.py` (R-C1..R-C6) + negative-case tests. DEPENDS on
+- **R6** `run_compliance.py` (R-C1..R-C7) + negative-case tests. DEPENDS on
   R5's week-plan interface — not parallel with R5.
 - **R7** `build_run_tp_library.py` + reconcile check. DEPENDS on R3 (structure
   export), not merely R2.

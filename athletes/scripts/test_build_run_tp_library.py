@@ -160,3 +160,44 @@ def test_every_leveled_payload_item_tracks_its_authored_library_record():
             assert matching[0]["totalTimePlanned"] == level_data["duration"] / 3600
             assert matching[0]["tssPlanned"] == level_data["tss"]
             assert level_data == get_run_level(archetype_id, level)
+
+
+def test_digest_is_browser_serialization_stable():
+    """A dump that round-tripped through browser JSON (300.0 -> 300) must digest identically."""
+    from build_run_tp_library import _structure_digest
+
+    item = next(i for i in generate_library_payload()["items"] if "structure" in i)
+
+    def browserify(obj):
+        if isinstance(obj, bool):
+            return obj
+        if isinstance(obj, float) and obj.is_integer():
+            return int(obj)
+        if isinstance(obj, dict):
+            return {k: browserify(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [browserify(v) for v in obj]
+        return obj
+
+    assert _structure_digest(item["structure"]) == _structure_digest(browserify(item["structure"]))
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda s: s["structure"][0].__setitem__("begin", s["structure"][0]["begin"] + 30),
+        lambda s: s["structure"][0]["steps"][0]["length"].__setitem__("unit", "minute"),
+        lambda s: s["structure"][0]["steps"][0].__setitem__("openDuration", True),
+        lambda s: s.__setitem__("primaryIntensityMetric", "percentOfFtp"),
+    ],
+    ids=["begin", "length-unit", "openDuration", "primaryIntensityMetric"],
+)
+def test_digest_detects_semantic_structure_mutations(mutate):
+    from build_run_tp_library import _structure_digest
+    import copy
+
+    item = next(i for i in generate_library_payload()["items"] if "structure" in i)
+    baseline = _structure_digest(item["structure"])
+    corrupted = copy.deepcopy(item["structure"])
+    mutate(corrupted)
+    assert _structure_digest(corrupted) != baseline
