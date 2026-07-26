@@ -1,11 +1,13 @@
 # COACHING-LOOP — Rolling Athlete Calendar Orchestration
 
-**Status:** v5 ACCEPTED (Matti, 2026-07-24) — adversarial convergence: sol r1
-(6B/8M/2m) → luna r1 (1B/10M/1m) → sol r2 (2B/9M/1m) → luna r2 (0B/9M/2m),
-all folded; final certification round waived by coach decision (blocker count
-had reached zero; residual findings were bookkeeping-grade and folded).
-Nothing executes until Matti approves CL-T0a dispatch and answers the open
-questions.
+**Status:** v5.1 RATIFIED FOR EXECUTION (Matti, 2026-07-25) — v5 accepted
+2026-07-24 after adversarial convergence: sol r1 (6B/8M/2m) → luna r1
+(1B/10M/1m) → sol r2 (2B/9M/1m) → luna r2 (0B/9M/2m), all folded; final
+certification round waived by coach decision (blocker count had reached
+zero; residual findings were bookkeeping-grade and folded). 2026-07-25:
+Matti ratified the recommended defaults for the open questions (§Ratified
+answers) and authorized CL-T0a dispatch. Only the pilot-roster fifth-seat
+confirmations remain owner input, and they block T0a COMPLETION, not start.
 **Repo home:** `athlete-custom-training-plan-pipeline` (references Endure MS-B01)
 
 ## Thesis
@@ -263,8 +265,10 @@ Fail → revise, rerun once. Two failures → stop and rethink.
   session; comments captured ONLY in derived form) + schema tests;
   exclusions module; ProposalIR JSON Schema + C1 hash utils (acyclicity
   test: construct full artifact chain from fixtures); engine_state + journal
-  schemas + season resolver spec; resolve Matti's open questions. No
-  mutations. Output: T0a report appended here; Matti reads before T1+.
+  schemas + season resolver spec; exercise the ratified answers
+  (§Ratified answers) — the only still-open input is the pilot roster's
+  three unconfirmed seats. No mutations. Output: T0a report appended
+  here; Matti reads before T1+.
 - CL-T1 dossier schema/validator (defaults table from this spec) + base-state
   validator + **season resolver implementation + state-machine tests** + 5
   hand-authored pilot dossiers (Matti approves).
@@ -286,10 +290,33 @@ Fail → revise, rerun once. Two failures → stop and rethink.
 
 Terra executes, Fable verifies/commits, sol gates each ticket.
 
-## Open questions for Matti (block T0a completion, not start)
+## Ratified answers (Matti, 2026-07-25 — delegated defaults folded)
 
-1. Pilot five (bike-focused). 2. Cadence anchor. 3. Dossier approval format.
-4. Strength depth v1.0. 5. T0b authorization (pre-placement only).
+1. **Pilot five (bike-focused):** provisional roster = Juan Echeverri
+   (1683197) and Heather Gray, plus three seats Matti confirms from the
+   active roster before shadow-pilot start. Constraints already in force:
+   Anthony Robinson (418209) is code-excluded (frozenset, 6 layers);
+   athlete 5959039 is reserved as the T0b live-mutation test athlete and
+   may NOT be a pilot seat. Roster confirmation blocks T0a COMPLETION
+   (the spike's dossier schema must be exercised against the real five),
+   not T0a start.
+2. **Cadence anchor:** RATIFIED as proposed — Saturday generation, Sunday
+   coach review, Monday placement. The weekly manifest deadline and the
+   ≤60min 84-athlete scan budget key off this anchor.
+3. **Dossier approval format:** one markdown dossier per athlete in this
+   repo (`athletes/<id>/DOSSIER.md`), reviewed PR-style as a diff; a
+   dossier is USABLE only after an explicit `approved-by: Matti <date>`
+   line exists in the file. Edits after approval re-enter review (same
+   gated-supersession rule as proposal edits — an edited dossier is a new
+   dossier pending approval, never a live mutation).
+4. **Strength depth v1.0:** HOLD luna's scope cut — strength appears as
+   scheduled slots from the existing GG strength libraries only; no
+   adaptive strength progression, no load autoregulation until v1.1.
+5. **T0b authorization:** DEFERRED — explicitly not granted now. T0b
+   (live mutation, test athlete 5959039, pre-placement only) requires a
+   fresh, explicit Matti authorization after the 4-week shadow pilot
+   passes its exit gate. Nothing before that point is blocked by this
+   deferral.
 
 ## Convergence trail
 
