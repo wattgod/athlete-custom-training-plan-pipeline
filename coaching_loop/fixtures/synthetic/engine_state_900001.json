@@ -1,0 +1,19 @@
+{
+  "schema_version": "engine-state-v1",
+  "athlete_id": 900001,
+  "season": {
+    "active_goal_id": "goal-2026-gravel-nationals",
+    "phase_calendar": [
+      { "block_number": 1, "week_in_block": 1, "phase": "base", "start_date": "2026-07-13", "end_date": "2026-07-19" },
+      { "block_number": 1, "week_in_block": 2, "phase": "base", "start_date": "2026-07-20", "end_date": "2026-07-26" },
+      { "block_number": 1, "week_in_block": 3, "phase": "build", "start_date": "2026-07-27", "end_date": "2026-08-02" }
+    ],
+    "resolution_input_hash": "b41a056b125919f1e50f5d101372adeac708545f427ef422ddad595a7214275e"
+  },
+  "cursor": { "block_number": 1, "week_in_block": 2 },
+  "bike_series_levels": { "sst": 3, "vo2": 2 },
+  "ownership_registry": {
+    "2026-07-20": ["wo-syn-0001", "wo-syn-0002"]
+  },
+  "recent_races": []
+}

@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "coaching_loop/schemas/proposal_ir.schema.json",
+  "title": "ProposalIR v1 (C2)",
+  "description": "docs/COACHING_LOOP_SPEC.md, C2. capability_profile 'v1.0-proposal-only' machine-enforces tp_op={op:add} only, per the v1.0 scope section and sol r2 f12: 'schema validation REJECTS any tp_op other than add' under that profile. The full op grammar (add|replace|delete) is specified now for v1.1+ but is only reachable once capability_profile advances past v1.0-proposal-only.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "capability_profile",
+    "proposal_id",
+    "content_hash",
+    "athlete_id",
+    "week_start",
+    "revision",
+    "status",
+    "input_manifest",
+    "origin",
+    "sessions",
+    "adaptation_decisions",
+    "flags",
+    "exceptions",
+    "coverage_report",
+    "load_summary",
+    "engine_state_next"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "proposal-ir-v1" },
+    "capability_profile": {
+      "type": "string",
+      "enum": ["v1.0-proposal-only"],
+      "description": "v1.0 scope: exactly one profile value exists. Widening the enum is itself the v1.1 capability upgrade -- not a T0a decision."
+    },
+    "proposal_id": {
+      "type": "string",
+      "pattern": "^prop-[0-9a-f]{16}$",
+      "description": "'prop-' + H(athlete_id|week_start|content_hash)[:16]. Excluded from the content-view (see C1); present on the assembled artifact only."
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "athlete_id": { "type": "integer" },
+    "week_start": {
+      "type": "string",
+      "format": "date",
+      "description": "Athlete-tz ISO Monday."
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Journal metadata -- NOT in the content-view; replay identity is content_hash equality, not revision."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["proposed", "approved", "edited_superseded", "rejected", "expired"]
+    },
+    "origin": {
+      "type": "string",
+      "enum": ["engine", "coach_edit"]
+    },
+    "input_manifest": {
+      "type": "object",
+      "required": ["snapshot_hash", "dossier_rev", "engine_state_hash", "code_manifest", "lexicon"],
+      "additionalProperties": false,
+      "properties": {
+        "snapshot_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "dossier_rev": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "engine_state_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "code_manifest": {
+          "type": "object",
+          "description": "git SHA + dirty-tree guard scoped to SOURCE paths only.",
+          "required": ["git_sha", "dirty"],
+          "properties": {
+            "git_sha": { "type": "string" },
+            "dirty": { "type": "boolean" },
+            "dirty_paths": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "lexicon": {
+          "type": "object",
+          "required": ["version", "content_sha"],
+          "additionalProperties": false,
+          "properties": {
+            "version": { "type": "string" },
+            "content_sha": { "type": "string" }
+          }
+        }
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/session" }
+    },
+    "adaptation_decisions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/adaptation_decision" }
+    },
+    "flags": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "exceptions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/exception" }
+    },
+    "coverage_report": { "type": "object" },
+    "load_summary": { "type": "object" },
+    "engine_state_next": {
+      "$ref": "coaching_loop/schemas/engine_state_base_view.schema.json",
+      "description": "base-state-view form; contains NO proposal/journal references (C3), and -- unlike the STORED engine_state.schema.json -- MUST NOT carry state_rev, since state_rev is computed FROM this view and is therefore excluded from it by definition (C1 #2)."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "capability_profile": { "const": "v1.0-proposal-only" } },
+        "required": ["capability_profile"]
+      },
+      "then": {
+        "properties": {
+          "sessions": {
+            "items": {
+              "properties": {
+                "tp_op": {
+                  "type": "object",
+                  "required": ["op"],
+                  "properties": { "op": { "const": "add" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "session": {
+      "type": "object",
+      "required": [
+        "session_id",
+        "session_content_hash",
+        "day",
+        "sport",
+        "slot",
+        "source",
+        "description",
+        "duration_hours",
+        "tss_est",
+        "tp_op"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "pattern": "^sess-[0-9a-f]{12}$",
+          "description": "'sess-' + H(session_content_hash|ordinal)[:12]. Excluded from the content-view sessions (session_content_hash is what content_hash actually covers)."
+        },
+        "session_content_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "day": { "type": "string", "format": "date" },
+        "sport": { "type": "string" },
+        "slot": {
+          "type": "string",
+          "enum": ["quality", "long", "optional", "race", "openers", "other"]
+        },
+        "source": {
+          "type": "string",
+          "enum": ["library", "adaptation_overlay", "coach_edit"]
+        },
+        "library_item_id": { "type": ["string", "null"] },
+        "structure": { "type": ["object", "null"] },
+        "description": { "type": "string" },
+        "duration_hours": { "type": "number", "minimum": 0 },
+        "tss_est": { "type": ["number", "null"], "minimum": 0 },
+        "tp_op": { "$ref": "#/$defs/tp_op" }
+      }
+    },
+    "tp_op": {
+      "description": "Full op grammar (v1.1+, specified now). Order deletes -> replaces -> adds when a proposal contains multiple ops (not schema-enforced here -- see coaching_loop.validation.check_tp_op_ordering). v1.0-proposal-only additionally restricts every session to {op: add} via the top-level allOf/if/then.",
+      "oneOf": [
+        {
+          "type": "object",
+          "title": "add",
+          "required": ["op"],
+          "additionalProperties": false,
+          "properties": { "op": { "const": "add" } }
+        },
+        {
+          "type": "object",
+          "title": "replace",
+          "required": ["op", "target_workout_id", "target_fingerprint"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "replace" },
+            "target_workout_id": { "type": "string" },
+            "target_fingerprint": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "title": "delete",
+          "required": ["op", "target_workout_id", "target_fingerprint"],
+          "additionalProperties": false,
+          "properties": {
+            "op": { "const": "delete" },
+            "target_workout_id": { "type": "string" },
+            "target_fingerprint": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "adaptation_decision": {
+      "type": "object",
+      "required": ["rule", "window", "evidence", "action"],
+      "additionalProperties": false,
+      "properties": {
+        "rule": { "type": "string", "enum": ["A1", "A2", "A3", "A4"] },
+        "window": { "type": "object" },
+        "evidence": { "type": "object" },
+        "action": { "type": "object" }
+      }
+    },
+    "exception": {
+      "type": "object",
+      "required": ["exception_id", "type", "blocking"],
+      "additionalProperties": false,
+      "properties": {
+        "exception_id": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["W-1", "W-2", "W-3", "W-4", "W-5", "W-6", "W-7", "A3"]
+        },
+        "blocking": {
+          "type": "boolean",
+          "description": "DERIVED at emission from the canonical EXCEPTION_CLASS code map; re-validated at approvals parsing (mismatch -> reject)."
+        },
+        "detail": { "type": "object" }
+      }
+    }
+  }
+}

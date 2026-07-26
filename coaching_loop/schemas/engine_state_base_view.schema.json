@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "coaching_loop/schemas/engine_state_base_view.schema.json",
+  "title": "EngineState base-state-view (C1 #2 / C3)",
+  "description": "The HASHABLE form of engine state -- what coaching_loop.hashing.base_state_view() produces and what C1 #2 (engine_state_hash = H(base-state-view)) and C2's engine_state_next both hash/carry. Identical to engine_state.schema.json (the STORED form) except state_rev has NO property definition here at all, so additionalProperties:false rejects it outright: 'the stored state_rev field is set to this value and is NOT part of the view.' Keep this file's `properties` (other than state_rev) in sync with engine_state.schema.json by hand -- there is no schema-level inheritance mechanism used here, by design, to keep each file's constraints legible on its own.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "athlete_id",
+    "season",
+    "cursor",
+    "bike_series_levels",
+    "ownership_registry",
+    "recent_races"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "engine-state-v1" },
+    "athlete_id": { "type": "integer" },
+    "season": {
+      "type": "object",
+      "required": ["active_goal_id", "phase_calendar", "resolution_input_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "active_goal_id": { "type": "string" },
+        "phase_calendar": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["block_number", "week_in_block", "phase", "start_date", "end_date"],
+            "additionalProperties": false,
+            "properties": {
+              "block_number": { "type": "integer", "minimum": 1 },
+              "week_in_block": { "type": "integer", "minimum": 1 },
+              "phase": { "type": "string" },
+              "start_date": { "type": "string", "format": "date" },
+              "end_date": { "type": "string", "format": "date" }
+            }
+          }
+        },
+        "resolution_input_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Hash of the persisted inputs the season resolver ran on (goal + dossier fields). SHA-256 hex, per 'Hash algorithm everywhere: SHA-256.' A mismatch on the next run triggers season re-resolution and cursor re-anchoring (C3, GOAL/DOSSIER CHANGE)."
+        }
+      }
+    },
+    "cursor": {
+      "type": "object",
+      "required": ["block_number", "week_in_block"],
+      "additionalProperties": false,
+      "properties": {
+        "block_number": { "type": "integer", "minimum": 1 },
+        "week_in_block": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "bike_series_levels": {
+      "type": "object",
+      "description": "series name -> current level.",
+      "additionalProperties": { "type": "integer", "minimum": 1 }
+    },
+    "ownership_registry": {
+      "type": "object",
+      "description": "TP workout ids the loop owns, keyed by week_start (ISO date). Used by the v1.1+ op-grammar preflight (replace/delete targets must be loop-owned) and by A1/A2 windowing (loop-owned sessions only). Keys are constrained to date strings so this map cannot be used to smuggle in proposal/journal-shaped data under an arbitrary key name.",
+      "propertyNames": { "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    },
+    "recent_races": {
+      "type": "array",
+      "description": "Rolling 28-day window, refreshed on APPROVE from the approved week's races. The W-1 lookback source.",
+      "items": {
+        "type": "object",
+        "required": ["date", "sport", "priority"],
+        "additionalProperties": false,
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "sport": { "type": "string" },
+          "priority": { "type": "string" }
+        }
+      }
+    }
+  }
+}

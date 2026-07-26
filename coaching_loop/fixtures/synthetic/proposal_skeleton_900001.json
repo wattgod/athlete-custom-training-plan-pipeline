@@ -1,0 +1,83 @@
+{
+  "_note": "SYNTHETIC. Sessions here are the pre-derivation shape: everything C2 needs EXCEPT session_id/session_content_hash, which coaching_loop.hashing.build_artifact_chain derives. Exercises source in {library, adaptation_overlay, coach_edit}, slot in {quality, openers, race}, structure both populated and null, library_item_id both populated and null, an A4 overlay (openers + race), and engine_state_next as a base-state-view with cursor advanced + recent_races refreshed from this week's race -- the C3 APPROVE-time refresh this proposal's engine_state_next represents.",
+  "schema_version": "proposal-ir-v1",
+  "capability_profile": "v1.0-proposal-only",
+  "athlete_id": 900001,
+  "week_start": "2026-07-27",
+  "status": "proposed",
+  "origin": "engine",
+  "sessions": [
+    {
+      "day": "2026-07-28",
+      "sport": "bike",
+      "slot": "quality",
+      "source": "library",
+      "library_item_id": "sst-3x12",
+      "structure": { "intervals": [{ "reps": 3, "work_min": 12, "target": "sst" }] },
+      "description": "SST 3x12",
+      "duration_hours": 1.5,
+      "tss_est": 85,
+      "tp_op": { "op": "add" }
+    },
+    {
+      "day": "2026-08-01",
+      "sport": "bike",
+      "slot": "openers",
+      "source": "adaptation_overlay",
+      "library_item_id": "openers-45",
+      "structure": null,
+      "description": "Pre-race openers (A4 overlay, day-before-race)",
+      "duration_hours": 0.75,
+      "tss_est": 35,
+      "tp_op": { "op": "add" }
+    },
+    {
+      "day": "2026-08-02",
+      "sport": "bike",
+      "slot": "race",
+      "source": "adaptation_overlay",
+      "library_item_id": null,
+      "structure": null,
+      "description": "Gravel Nationals qualifier (A4 overlay, race slot)",
+      "duration_hours": 2.0,
+      "tss_est": 150,
+      "tp_op": { "op": "add" }
+    }
+  ],
+  "adaptation_decisions": [
+    {
+      "rule": "A4",
+      "window": { "race_date": "2026-08-02", "days_out_at_resolution": 5 },
+      "evidence": { "source": "dossier.upcoming_races" },
+      "action": { "overlay": "race_and_openers", "openers_duration_bucket": "45-59" }
+    }
+  ],
+  "flags": [
+    { "code": "A4_OVERLAY_APPLIED", "detail": "race day + day-before openers inserted" }
+  ],
+  "exceptions": [],
+  "coverage_report": { "planned_sessions": 3, "days_covered": 3, "rest_days": 4 },
+  "load_summary": { "total_tss_est": 270, "total_duration_hours": 4.25 },
+  "engine_state_next": {
+    "schema_version": "engine-state-v1",
+    "athlete_id": 900001,
+    "season": {
+      "active_goal_id": "goal-2026-gravel-nationals",
+      "phase_calendar": [
+        { "block_number": 1, "week_in_block": 1, "phase": "base", "start_date": "2026-07-13", "end_date": "2026-07-19" },
+        { "block_number": 1, "week_in_block": 2, "phase": "base", "start_date": "2026-07-20", "end_date": "2026-07-26" },
+        { "block_number": 1, "week_in_block": 3, "phase": "build", "start_date": "2026-07-27", "end_date": "2026-08-02" }
+      ],
+      "resolution_input_hash": "b41a056b125919f1e50f5d101372adeac708545f427ef422ddad595a7214275e"
+    },
+    "cursor": { "block_number": 1, "week_in_block": 3 },
+    "bike_series_levels": { "sst": 3, "vo2": 2 },
+    "ownership_registry": {
+      "2026-07-20": ["wo-syn-0001", "wo-syn-0002"],
+      "2026-07-27": ["wo-syn-0003", "wo-syn-0004", "wo-syn-0005"]
+    },
+    "recent_races": [
+      { "date": "2026-08-02", "sport": "bike", "priority": "A" }
+    ]
+  }
+}

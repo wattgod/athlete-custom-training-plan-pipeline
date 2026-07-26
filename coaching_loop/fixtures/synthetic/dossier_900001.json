@@ -1,0 +1,12 @@
+{
+  "_note": "SYNTHETIC fixture. Athlete 900001 is a fictional pilot stand-in, not a real roster id. Dossier SCHEMA/validator is CL-T1's deliverable -- this file exists only to exercise dossier_rev in the C1 hash chain for CL-T0a's acyclicity/determinism tests, per the pure-function signature (snapshot, dossier, base_engine_state, code_manifest, lexicon).",
+  "athlete_id": 900001,
+  "name": "Synthetic Pilot A",
+  "active_goal_id": "goal-2026-gravel-nationals",
+  "bike_focused": true,
+  "optional_floor_min": 20,
+  "openers_duration_bucket": "45-59",
+  "hours_band": { "min": 6, "max": 10 },
+  "z2_map_version": "z2_map_v1",
+  "approved_by": "Matti 2026-07-25"
+}

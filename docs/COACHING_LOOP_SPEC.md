@@ -338,3 +338,141 @@ Terra executes, Fable verifies/commits, sol gates each ticket.
   blocking vs overridable exceptions; edit-magnitude metric defined; comment
   privacy via derived form; C5/C6/resolver ticket owners (T1/T2c);
   capability_profile enforcement + T0a gate slimmed. Folded in v4.
+
+## CL-T0a report (2026-07-25, read-only spike, no mutations)
+
+**What was built.** New package `coaching_loop/` (does not modify any
+existing pipeline module; `athletes/scripts/`, `webhook/` untouched).
+15 Python modules + 5 JSON Schema files + 8 synthetic fixture files + 1
+markdown recipe + 1 spec-only doc, 15 test files, 193 tests, all passing.
+Existing suite (`athletes/scripts/ webhook/tests/`) re-run before and
+after: identical 19 pre-existing failures/1839 passed/77 skipped both
+times — no regression.
+
+- `exclusions.py` + `entry_points.py`: `EXCLUDED_ATHLETE_IDS =
+  frozenset({418209})`, `RESERVED_ATHLETE_IDS = frozenset({5959039})`,
+  `normalize_athlete_id`/`assert_not_excluded`/`assert_pilot_eligible`.
+  Six entry-point stubs (fetch, resolve, propose, brief,
+  approvals_parsing, placement) each enforce exclusion before touching a
+  bundle. Tests prove a bundle carrying 418209 is rejected at all six
+  layers, in every coercible form (int/str/float), and that 5959039 is
+  accepted by `assert_not_excluded` but rejected by
+  `assert_pilot_eligible` (reserved-for-T0b, not pilot-eligible, not
+  excluded).
+- `canonical_json.py` + `hashing.py`: C1 hash discipline, all 7
+  construction steps, SHA-256 everywhere. `content_view` excludes BOTH
+  `session_id` and `session_content_hash` from each session (see
+  Deviations below) plus proposal_id/status/revision/input_manifest, per
+  "excluded by definition." `build_artifact_chain` constructs the full
+  chain from fixtures for the acyclicity test.
+- `schemas/proposal_ir.schema.json` (C2): `capability_profile:
+  "v1.0-proposal-only"` machine-rejects any `tp_op` other than `{op:
+  add}` via an `allOf`/`if`/`then` over every `sessions[]` item (sol
+  r2 f12) — confirmed sound by adversarial review. Full v1.1+ op grammar
+  (add/replace/delete) specified in `$defs/tp_op`, reachable directly
+  (not through a full proposal) for grammar-shape tests; `order deletes
+  -> replaces -> adds` is not JSON-Schema-expressible and is enforced by
+  `coaching_loop.validation.check_tp_op_ordering` instead.
+- `schemas/engine_state.schema.json` (STORED form, requires `state_rev`)
+  + `schemas/engine_state_base_view.schema.json` (the C1 hash-input /
+  `engine_state_next` form, structurally forbids `state_rev`) — split
+  into two files after adversarial review found the original single
+  schema let a proposal's `engine_state_next` carry `state_rev` and
+  still validate. `ownership_registry` keys constrained to date strings;
+  `resolution_input_hash` constrained to SHA-256 hex.
+- `schemas/journal_record.schema.json` (C3): all 8 record types
+  (PROPOSED, REPLAY, REPROPOSED_UNCHANGED, APPROVED, EDITED_SUPERSEDED,
+  REJECTED, EXPIRED, STATE_APPLIED). REJECTED/EXPIRED field lists and
+  APPROVED's extra `proposal_id` are T0a assumptions (spec doesn't spell
+  them out verbatim) — flagged in the schema file itself, for Matti to
+  confirm or correct in CL-T1.
+- `schemas/tp_fixture.schema.json` + `fixtures/synthetic/*.json`: TP
+  READ fixture contract (calendar/workouts/comments), comments
+  structurally closed to derived form only (`additionalProperties:
+  false`, no raw-text field can ever validate). Synthetic fixture for
+  athlete 900001 (fictional, not a real roster id) exercises every
+  status value, a non-loop-owned sport, a multi-workout day, and both a
+  zero-hit and a hit-bearing derived comment. Separate minimal fixtures
+  for 418209 and 5959039 exist ONLY to drive the exclusion/reservation
+  tests.
+- `fixtures/README.md`: plain-language (STE-style) capture recipe for
+  dropping real captures in later, plus `validate_fixtures.py`, a
+  standalone script/library that validates any file or directory of
+  files against the same schema and flags excluded athlete ids. No TP
+  access, no network calls anywhere in this package.
+- `exception_classes.py`: canonical `EXCEPTION_CLASS` map (W-6/W-7/A3
+  blocking, W-1..W-5 overridable) plus mismatch detection for the
+  approvals-parsing re-validation the spec requires.
+- `code_manifest.py`: `build_code_manifest(repo_root)` — git SHA +
+  dirty-tree guard scoped to SOURCE paths only (`*.py`,
+  `athletes/config/**`, `*.schema.json`), excluding machine-owned
+  runtime paths (`athletes/roster/`, `runs/`, `approvals/`) even where a
+  pattern would otherwise match. Read-only (`git status`/`rev-parse`
+  only); tested against both a throwaway repo (clean/dirty/runtime-only/
+  non-source cases) and this worktree.
+- `season_resolver_spec.md`: spec-only (no code), per the ticket. Pure
+  signature `resolve_season(dossier, prior_engine_state, today) ->
+  SeasonResolution`; `today` is caller-injected, never an internal
+  system-clock read; re-anchoring algorithm for GOAL/DOSSIER CHANGE;
+  state-machine properties CL-T1's tests must cover.
+
+**sol (gpt-5.6-sol) adversarial review — findings applied/rejected.**
+Full review run read-only against the finished spike, verdict NO-GO with
+2 BLOCKER / 7 MAJOR / 3 MINOR findings. Each was checked against the
+spec text and/or reproduced against live code before acting:
+
+- *Applied (confirmed real bugs, fixed):* engine_state_next/stored-state
+  schema conflation (BLOCKER, split into two files, see above);
+  `canonical_json` rounded non-integral floats to an integral value but
+  left it a float instead of re-collapsing to int, and did not
+  NFC-normalize dict keys (both fixed); `content_view` order relative to
+  session-id derivation was ambiguous against C1's literal numbered
+  list — resolved by excluding both `session_id` and
+  `session_content_hash` from the content view and computing both
+  strictly after `content_hash` in `build_artifact_chain`; JSON Schema
+  `format` keywords were unenforced (no `FormatChecker` attached) —
+  fixed, plus a custom `date-time` checker since the optional
+  `rfc3339-validator` package isn't installed; `ownership_registry` keys
+  and `resolution_input_hash` were unconstrained — both now pattern-
+  constrained; `code_manifest` dirty-tree-guard scoping was described
+  but never implemented — `code_manifest.py` added; hash-formula tests
+  reused the implementation as their own oracle — added
+  `test_hashing_golden.py` with hand-computed `hashlib` digests
+  independent of `coaching_loop.hashing`; determinism test docstring
+  overstated what it proves — softened; APPROVED journal record's extra
+  `proposal_id` field wasn't flagged as an assumption — now flagged in
+  the schema file.
+- *Rejected (verified against spec/brief, not a defect):* "the required
+  real-fixture/completion gate has not been met" (BLOCKER) — this
+  restates the ticket's own explicit scope boundary. The dispatch brief
+  and Ratified answer #1 both say real capture happens later through
+  the parent's authenticated browser session and roster confirmation
+  blocks T0a COMPLETION, not T0a start; this executor has no TP access
+  by design. Sol's own text acknowledges this ("may be expected at
+  review time"). Not fixed because there is nothing in this executor's
+  scope to fix.
+- *Also verified sound, no change needed:* the capability_profile
+  `if`/`then` enforcement itself (sol confirmed it applies per-array-
+  item with no loophole); the six exclusion entry points (sol confirmed
+  every coercible form of 418209 is rejected at all six, booleans
+  rejected, 5959039 correctly reserved-not-excluded); comment-privacy
+  structural closure.
+
+**Open items for the parent / Matti.**
+
+1. Real TP READ fixture capture (browser session) + roster confirmation
+   for the 3 unconfirmed pilot seats — both explicitly block T0a
+   COMPLETION per Ratified answer #1, neither is fixable by this
+   executor.
+2. Confirm or correct the two flagged journal-schema assumptions
+   (REJECTED/EXPIRED field lists, APPROVED's `proposal_id`) before
+   CL-T1 builds against them.
+3. A2's readiness time-series data source (and its fixture contract) is
+   explicitly out of `coaching_loop/fixtures/README.md`'s scope — TP
+   READ fixtures cover calendar/workouts/comments only, per the ticket
+   text. Needs a source and owner before CL-T4 (adaptation rules).
+4. `code_manifest.py` is new, unrequested-by-ticket-text-but-load-bearing
+   infrastructure (C1 names `code_manifest` as part of the input
+   manifest); Matti/parent should confirm the SOURCE_GLOBS/
+   RUNTIME_PATH_PREFIXES scoping matches actual repo layout expectations
+   before CL-T2c wires it into a live orchestrator run.

@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "coaching_loop/schemas/journal_record.schema.json",
+  "title": "Loop journal record (C3)",
+  "description": "docs/COACHING_LOOP_SPEC.md, C3: 'Journal record schemas (all with run_id, ts): PROPOSED, REPLAY, REPROPOSED_UNCHANGED, APPROVED {approval_hash, operator}, EDITED_SUPERSEDED, REJECTED, EXPIRED, STATE_APPLIED {state_hash before, after}.' T0a ASSUMPTIONS (not ratified answers, flagged in the T0a report for Matti to confirm or correct): (1) REJECTED and EXPIRED field lists are not spelled out verbatim in the spec text -- this schema fills them in with `proposal_id` (to identify the subject) and, for REJECTED, `operator` (a coach action, unlike EXPIRED's automatic cadence lapse). (2) APPROVED adds `proposal_id` beyond the spec's literal `{approval_hash, operator}` list, for the same reason -- without it, nothing in the record names which proposal was approved.",
+  "type": "object",
+  "required": ["record_type", "run_id", "ts"],
+  "properties": {
+    "run_id": { "type": "string" },
+    "ts": { "type": "string", "format": "date-time" }
+  },
+  "oneOf": [
+    {
+      "title": "PROPOSED",
+      "type": "object",
+      "required": ["record_type", "week_start", "revision", "proposal_id", "content_hash", "input_manifest_hash", "origin"],
+      "additionalProperties": false,
+      "properties": {
+        "record_type": { "const": "PROPOSED" },
+        "run_id": { "type": "string" },
+        "ts": { "type": "string", "format": "date-time" },
+        "week_start": { "type": "string", "format": "date" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "proposal_id": { "type": "string", "pattern": "^prop-[0-9a-f]{16}$" },
+        "content_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "input_manifest_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "origin": { "type": "string", "enum": ["engine", "coach_edit"] }
+      }
+    },
+    {
+      "title": "REPLAY",
+      "description": "Identical content regenerated -- no new revision.",
+      "type": "object",
+      "required": ["record_type", "week_start", "revision_ref", "proposal_id"],
+      "additionalProperties": false,
+      "properties": {
+        "record_type": { "const": "REPLAY" },
+        "run_id": { "type": "string" },
+        "ts": { "type": "string", "format": "date-time" },
+        "week_start": { "type": "string", "format": "date" },
+        "revision_ref": { "type": "integer", "minimum": 1 },
+        "proposal_id": { "type": "string", "pattern": "^prop-[0-9a-f]{16}$" }
+      }
+    },
+    {
+      "title": "REPROPOSED_UNCHANGED",
+      "description": "As REPLAY, but after a REJECT -- flagged in the brief: the engine re-proposed content the coach already rejected.",
+      "type": "object",
+      "required": ["record_type", "week_start", "revision_ref", "proposal_id"],
+      "additionalProperties": false,
+      "properties": {
+        "record_type": { "const": "REPROPOSED_UNCHANGED" },
+        "run_id": { "type": "string" },
+        "ts": { "type": "string", "format": "date-time" },
+        "week_start": { "type": "string", "format": "date" },
+        "revision_ref": { "type": "integer", "minimum": 1 },
+        "proposal_id": { "type": "string", "pattern": "^prop-[0-9a-f]{16}$" }
+      }
+    },
+    {
+      "title": "APPROVED",
+      "type": "object",
+      "required": ["record_type", "proposal_id", "approval_hash", "operator"],
+      "additionalProperties": false,
+      "properties": {
+        "record_type": { "const": "APPROVED" },
+        "run_id": { "type": "string" },
+        "ts": { "type": "string", "format": "date-time" },
+        "proposal_id": { "type": "string", "pattern": "^prop-[0-9a-f]{16}$" },
+        "approval_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "operator": { "type": "string" }
+      }
+    },
+    {
+      "title": "EDITED_SUPERSEDED",
+      "type": "object",
+      "required": ["record_type", "old_proposal_id", "new_proposal_id", "operator"],
+      "additionalProperties": false,
+      "properties": {
+        "record_type": { "const": "EDITED_SUPERSEDED" },
+        "run_id": { "type": "string" },
+        "ts": { "type": "string", "format": "date-time" },
+        "old_proposal_id": { "type": "string", "pattern": "^prop-[0-9a-f]{16}$" },
+        "new_proposal_id": { "type": "string", "pattern": "^prop-[0-9a-f]{16}$" },
+        "operator": { "type": "string" }
+      }
+    },
+    {
+      "title": "REJECTED",
+      "type": "object",
+      "required": ["record_type", "proposal_id", "operator"],
+      "additionalProperties": false,
+      "properties": {
+        "record_type": { "const": "REJECTED" },
+        "run_id": { "type": "string" },
+        "ts": { "type": "string", "format": "date-time" },
+        "proposal_id": { "type": "string", "pattern": "^prop-[0-9a-f]{16}$" },
+        "operator": { "type": "string" }
+      }
+    },
+    {
+      "title": "EXPIRED",
+      "type": "object",
+      "required": ["record_type", "proposal_id"],
+      "additionalProperties": false,
+      "properties": {
+        "record_type": { "const": "EXPIRED" },
+        "run_id": { "type": "string" },
+        "ts": { "type": "string", "format": "date-time" },
+        "proposal_id": { "type": "string", "pattern": "^prop-[0-9a-f]{16}$" }
+      }
+    },
+    {
+      "title": "STATE_APPLIED",
+      "type": "object",
+      "required": ["record_type", "state_hash_before", "state_hash_after"],
+      "additionalProperties": false,
+      "properties": {
+        "record_type": { "const": "STATE_APPLIED" },
+        "run_id": { "type": "string" },
+        "ts": { "type": "string", "format": "date-time" },
+        "state_hash_before": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "state_hash_after": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  ]
+}

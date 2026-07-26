@@ -1,0 +1,9 @@
+{
+  "version": "lexicon-v1",
+  "terms": [
+    { "term_id": "pain_severe", "gloss": "severe/sharp pain report" },
+    { "term_id": "pain_mild", "gloss": "mild soreness report" },
+    { "term_id": "illness", "gloss": "illness/sickness report" },
+    { "term_id": "fatigue_extreme", "gloss": "extreme fatigue report" }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "_note": "SYNTHETIC. Athlete 5959039 is reserved for the CL-T0b live-mutation spike (Ratified answers #1, #5) -- NOT excluded (fetch/resolve/etc must still succeed for it once T0b is authorized), but NOT pilot-eligible. This fixture exercises coaching_loop.exclusions.assert_pilot_eligible rejecting it while assert_not_excluded accepts it.",
+  "schema_version": "tp-fixture-v1",
+  "athlete_id": 5959039,
+  "fetched_at": "2026-08-01T13:00:00Z",
+  "source": "synthetic",
+  "calendar": {
+    "week_start": "2026-07-27",
+    "athlete_tz": "America/Denver",
+    "days": [
+      { "date": "2026-07-27", "workout_ids": [] },
+      { "date": "2026-07-28", "workout_ids": [] },
+      { "date": "2026-07-29", "workout_ids": [] },
+      { "date": "2026-07-30", "workout_ids": [] },
+      { "date": "2026-07-31", "workout_ids": [] },
+      { "date": "2026-08-01", "workout_ids": [] },
+      { "date": "2026-08-02", "workout_ids": [] }
+    ]
+  },
+  "workouts": [],
+  "comments": []
+}

@@ -1,0 +1,120 @@
+{
+  "_note": "SYNTHETIC. Exercises every tp_fixture.schema.json field: all `status` values (planned, completed, skipped, race), a non-loop-owned sport with slot=null, a multi-workout day, both a zero-hit and a hit-bearing DERIVED comment (never raw text), and completed_duration_hours/tss_completed both populated and null.",
+  "schema_version": "tp-fixture-v1",
+  "athlete_id": 900001,
+  "fetched_at": "2026-08-01T13:00:00Z",
+  "source": "synthetic",
+  "calendar": {
+    "week_start": "2026-07-27",
+    "athlete_tz": "America/Denver",
+    "days": [
+      { "date": "2026-07-27", "workout_ids": [] },
+      { "date": "2026-07-28", "workout_ids": ["wo-syn-0001"] },
+      { "date": "2026-07-29", "workout_ids": ["wo-syn-0002"] },
+      { "date": "2026-07-30", "workout_ids": ["wo-syn-0003", "wo-syn-0004"] },
+      { "date": "2026-07-31", "workout_ids": [] },
+      { "date": "2026-08-01", "workout_ids": ["wo-syn-0005"] },
+      { "date": "2026-08-02", "workout_ids": ["wo-syn-0006"] }
+    ]
+  },
+  "workouts": [
+    {
+      "workout_id": "wo-syn-0001",
+      "date": "2026-07-28",
+      "sport": "bike",
+      "slot": "quality",
+      "title": "SST 3x12",
+      "structure": { "intervals": [{ "reps": 3, "work_min": 12, "target": "sst" }] },
+      "planned_duration_hours": 1.5,
+      "completed_duration_hours": 1.4,
+      "tss_planned": 85,
+      "tss_completed": 79,
+      "status": "completed",
+      "loop_owned": true
+    },
+    {
+      "workout_id": "wo-syn-0002",
+      "date": "2026-07-29",
+      "sport": "strength",
+      "slot": "optional",
+      "title": "GG Strength - BASICS A",
+      "structure": null,
+      "planned_duration_hours": 0.75,
+      "completed_duration_hours": 0.75,
+      "tss_planned": null,
+      "tss_completed": null,
+      "status": "completed",
+      "loop_owned": true
+    },
+    {
+      "workout_id": "wo-syn-0003",
+      "date": "2026-07-30",
+      "sport": "bike",
+      "slot": "other",
+      "title": "Z2 endurance",
+      "structure": null,
+      "planned_duration_hours": 1.0,
+      "completed_duration_hours": 1.0,
+      "tss_planned": 55,
+      "tss_completed": 53,
+      "status": "completed",
+      "loop_owned": true
+    },
+    {
+      "workout_id": "wo-syn-0004",
+      "date": "2026-07-30",
+      "sport": "run",
+      "slot": null,
+      "title": "Easy jog",
+      "structure": null,
+      "planned_duration_hours": 0.5,
+      "completed_duration_hours": null,
+      "tss_planned": null,
+      "tss_completed": null,
+      "status": "skipped",
+      "loop_owned": false
+    },
+    {
+      "workout_id": "wo-syn-0005",
+      "date": "2026-08-01",
+      "sport": "bike",
+      "slot": "openers",
+      "title": "Pre-race openers",
+      "structure": null,
+      "planned_duration_hours": 0.75,
+      "completed_duration_hours": null,
+      "tss_planned": 35,
+      "tss_completed": null,
+      "status": "planned",
+      "loop_owned": true
+    },
+    {
+      "workout_id": "wo-syn-0006",
+      "date": "2026-08-02",
+      "sport": "bike",
+      "slot": "race",
+      "title": "Gravel Nationals qualifier",
+      "structure": null,
+      "planned_duration_hours": 2.0,
+      "completed_duration_hours": null,
+      "tss_planned": 150,
+      "tss_completed": null,
+      "status": "race",
+      "loop_owned": true
+    }
+  ],
+  "comments": [
+    {
+      "comment_id": "cm-syn-0001",
+      "workout_id": "wo-syn-0001",
+      "lexicon": { "version": "lexicon-v1", "hits": [] },
+      "length": 42
+    },
+    {
+      "comment_id": "cm-syn-0002",
+      "workout_id": "wo-syn-0004",
+      "lexicon": { "version": "lexicon-v1", "hits": ["illness"] },
+      "length": 58
+    }
+  ]
+}

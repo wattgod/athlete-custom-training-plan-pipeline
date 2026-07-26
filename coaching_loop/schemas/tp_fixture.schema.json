@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "coaching_loop/schemas/tp_fixture.schema.json",
+  "title": "TP READ fixture v1",
+  "description": "TP READ data-plane fixture contract (CL-T0a). Covers exactly the three TP surfaces the loop reads: athlete calendar, workouts, comments. Comments are DERIVED FORM ONLY -- raw athlete comment text must never appear in a fixture. See docs/COACHING_LOOP_SPEC.md, 'Comment privacy (sol r2 f10)'.",
+  "type": "object",
+  "required": ["schema_version", "athlete_id", "fetched_at", "calendar", "workouts", "comments"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "tp-fixture-v1" },
+    "athlete_id": {
+      "type": "integer",
+      "description": "Normalized int athlete id. Fixture-bundle-level exclusion checks run over this field before anything else in the bundle is read."
+    },
+    "fetched_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC timestamp the fixture was captured (or, for synthetic fixtures, authored)."
+    },
+    "source": {
+      "type": "string",
+      "enum": ["synthetic", "real_capture"],
+      "description": "Provenance marker. Synthetic fixtures ship in this repo; real_capture fixtures are dropped in later via the capture recipe (see coaching_loop/fixtures/README.md) and validated against this same schema."
+    },
+    "calendar": {
+      "type": "object",
+      "description": "The athlete-tz week the fixture covers.",
+      "required": ["week_start", "athlete_tz", "days"],
+      "additionalProperties": false,
+      "properties": {
+        "week_start": {
+          "type": "string",
+          "format": "date",
+          "description": "Athlete-tz ISO Monday for the fetched week."
+        },
+        "athlete_tz": {
+          "type": "string",
+          "description": "IANA timezone name, e.g. 'America/Denver'."
+        },
+        "days": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {
+            "type": "object",
+            "required": ["date", "workout_ids"],
+            "additionalProperties": false,
+            "properties": {
+              "date": { "type": "string", "format": "date" },
+              "workout_ids": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Foreign keys into `workouts[].workout_id`. May be empty (rest day)."
+              }
+            }
+          }
+        }
+      }
+    },
+    "workouts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "workout_id",
+          "date",
+          "sport",
+          "title",
+          "status",
+          "planned_duration_hours"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "workout_id": { "type": "string" },
+          "date": { "type": "string", "format": "date" },
+          "sport": {
+            "type": "string",
+            "description": "TP sport tag as captured, e.g. 'bike', 'strength', 'run', 'swim'. v1.0 loop-owned sports are bike + strength only; other sports may still appear in a real athlete's calendar and must round-trip through the fixture even though the loop does not touch them."
+          },
+          "slot": {
+            "type": ["string", "null"],
+            "enum": ["quality", "long", "optional", "race", "openers", "other", null],
+            "description": "Loop slot classification, when known. Null for workouts the loop does not classify (e.g. non-loop-owned sports)."
+          },
+          "title": { "type": "string" },
+          "structure": {
+            "description": "Opaque structured-workout payload as TP returns it (intervals, targets, etc). Left schema-open -- CL-T2a owns interpreting it.",
+            "type": ["object", "null"]
+          },
+          "planned_duration_hours": { "type": "number", "minimum": 0 },
+          "completed_duration_hours": { "type": ["number", "null"], "minimum": 0 },
+          "tss_planned": { "type": ["number", "null"], "minimum": 0 },
+          "tss_completed": { "type": ["number", "null"], "minimum": 0 },
+          "status": {
+            "type": "string",
+            "enum": ["planned", "completed", "skipped", "race"]
+          },
+          "loop_owned": {
+            "type": "boolean",
+            "description": "Whether this workout_id is registered in engine_state.ownership_registry. Used by the op-grammar preflight (v1.1+) and by A1/A2 windowing, which only consider loop-owned sessions."
+          }
+        }
+      }
+    },
+    "comments": {
+      "type": "array",
+      "description": "Comments in DERIVED FORM ONLY. Raw comment text is never present here -- it may exist only transiently inside the fetch step and must not persist into a fixture, snapshot, or any other artifact. The one sanctioned exception to 'derived form only' anywhere in the loop is an at-most-8-word excerpt stored in an ExceptionRecord's ledger entry (see spec) -- fixtures never carry that either.",
+      "items": {
+        "type": "object",
+        "required": ["comment_id", "workout_id", "lexicon", "length"],
+        "additionalProperties": false,
+        "properties": {
+          "comment_id": { "type": "string" },
+          "workout_id": {
+            "type": "string",
+            "description": "Foreign key into `workouts[].workout_id`."
+          },
+          "lexicon": {
+            "type": "object",
+            "required": ["version", "hits"],
+            "additionalProperties": false,
+            "properties": {
+              "version": { "type": "string" },
+              "hits": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Lexicon term ids the comment matched. Empty array = no hits, comment carried no A3-relevant signal."
+              }
+            }
+          },
+          "length": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Character length of the original raw comment (metadata only; never the text itself)."
+          }
+        }
+      }
+    }
+  }
+}
