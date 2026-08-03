@@ -1,141 +1,140 @@
-# Coverage sweep — 2026-07-27
+# Coverage sweep — 2026-08-03
 
-**195/200 orders DELIVERED a plan (97%)** — the customer-facing number (no refund). Of those, 129 were clean and 66 need a coach pass before sending. **5 produced NO plan** (the only refund bucket).
+**200/200 orders DELIVERED a plan (100%)** — the customer-facing number (no refund). Of those, 125 were clean and 75 need a coach pass before sending. **0 produced NO plan** (the only refund bucket).
 
 Breadth complement to the daily depth judge: every cell is a real pipeline build. 'Clean' passes the deterministic send-worthy contract; 'needs review' delivered but tripped a compliance check (coach reviews before sending); 'failed' produced nothing.
 
 ## Pass rate by persona
-- weekend_warrior: 55%
-- veteran_podium_chaser: 57%
-- masters_returner: 62%
-- time_crunched_parent: 67%
-- ambitious_first_timer: 80%
+- weekend_warrior: 45%
+- veteran_podium_chaser: 52%
+- time_crunched_parent: 62%
+- masters_returner: 67%
+- ambitious_first_timer: 85%
 
 ## Pass rate by discipline
-- road: 63%
-- gravel: 65%
+- gravel: 62%
+- road: 62%
 
 ## Failures by type (frequency)
-- ×48  needs review
-- ×47  preview fail
-- ×5  pipeline exited non-zero (gate blocked)
+- ×53  preview fail
+- ×51  needs review
 
 ## Worst-offending races (fix top-down)
-### UCI Gran Fondo Loutraki — 5 persona(s) failed
-- ambitious_first_timer: needs review: compliance flagged (delivered)
-- veteran_podium_chaser: preview FAIL: Zone Distribution
-- weekend_warrior: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
-- masters_returner: preview FAIL: Weekly Volume; needs review: compliance flagged (delivered)
-- weekend_warrior: needs review: compliance flagged (delivered)
-
-### Granfondo Tre Valli Varesine — 5 persona(s) failed
+### UCI Gran Fondo Loutraki — 9 persona(s) failed
+- time_crunched_parent: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
+- masters_returner: preview FAIL: Zone Distribution
+- veteran_podium_chaser: needs review: compliance flagged (delivered)
+- weekend_warrior: preview FAIL: Zone Distribution
 - time_crunched_parent: needs review: compliance flagged (delivered)
-- weekend_warrior: preview FAIL: Per-Day Duration Caps; needs review: compliance flagged (delivered)
-- veteran_podium_chaser: needs review: compliance flagged (delivered)
-- veteran_podium_chaser: preview FAIL: Zone Distribution
-- weekend_warrior: preview FAIL: Zone Distribution
 
-### Bike MS: New York City — 5 persona(s) failed
-- time_crunched_parent: pipeline exited non-zero (gate blocked)
-- masters_returner: pipeline exited non-zero (gate blocked)
-- ambitious_first_timer: pipeline exited non-zero (gate blocked)
-- veteran_podium_chaser: pipeline exited non-zero (gate blocked)
-- weekend_warrior: pipeline exited non-zero (gate blocked)
-
-### Levi's GranFondo — 4 persona(s) failed
-- time_crunched_parent: preview FAIL: Per-Day Duration Caps; needs review: compliance flagged (delivered)
-- veteran_podium_chaser: preview FAIL: Zone Distribution
-- veteran_podium_chaser: needs review: compliance flagged (delivered)
-- weekend_warrior: needs review: compliance flagged (delivered)
-
-### Around the Bay in a Day — 4 persona(s) failed
+### L'Eroica — 5 persona(s) failed
 - time_crunched_parent: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
 - masters_returner: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
 - weekend_warrior: preview FAIL: Zone Distribution
-- masters_returner: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
-
-### UCI Gran Fondo Brasil – Pomerode — 4 persona(s) failed
-- time_crunched_parent: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
-- masters_returner: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
-- veteran_podium_chaser: needs review: compliance flagged (delivered)
+- time_crunched_parent: needs review: compliance flagged (delivered)
 - weekend_warrior: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
 
-### Taiwan KOM Challenge — 4 persona(s) failed
-- time_crunched_parent: preview FAIL: Per-Day Duration Caps; needs review: compliance flagged (delivered)
-- ambitious_first_timer: preview FAIL: Zone Distribution
-- weekend_warrior: preview FAIL: Per-Day Duration Caps; needs review: compliance flagged (delivered)
-- veteran_podium_chaser: needs review: compliance flagged (delivered)
-
-### Cycling Shimanami — 4 persona(s) failed
+### Gran Fondo Guadeloupe — 5 persona(s) failed
 - time_crunched_parent: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
-- masters_returner: needs review: compliance flagged (delivered)
-- weekend_warrior: preview FAIL: Per-Day Duration Caps; needs review: compliance flagged (delivered)
-- veteran_podium_chaser: preview FAIL: Zone Distribution
-
-### Lake Taupo Cycle Challenge — 4 persona(s) failed
-- time_crunched_parent: preview FAIL: Per-Day Duration Caps
-- masters_returner: needs review: compliance flagged (delivered)
-- weekend_warrior: preview FAIL: Per-Day Duration Caps; needs review: compliance flagged (delivered)
+- masters_returner: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
 - veteran_podium_chaser: needs review: compliance flagged (delivered)
-
-### Gravel Revival — 3 persona(s) failed
-- ambitious_first_timer: preview FAIL: Zone Distribution
-- veteran_podium_chaser: preview FAIL: Zone Distribution
 - weekend_warrior: needs review: compliance flagged (delivered)
+- time_crunched_parent: preview FAIL: Zone Distribution
 
-### L'Eroica — 3 persona(s) failed
-- time_crunched_parent: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
-- weekend_warrior: preview FAIL: Weekly Volume
-- ambitious_first_timer: needs review: compliance flagged (delivered)
-
-### Heck of the North — 3 persona(s) failed
+### GFNY Maryland Cambridge — 4 persona(s) failed
+- veteran_podium_chaser: preview FAIL: Zone Distribution
 - ambitious_first_timer: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
 - masters_returner: preview FAIL: Zone Distribution
 - weekend_warrior: needs review: compliance flagged (delivered)
 
-### Tour de Tucson — 2 persona(s) failed
-- masters_returner: preview FAIL: Per-Day Duration Caps; needs review: compliance flagged (delivered)
-- weekend_warrior: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
-
-### BELGIAN WAFFLE RIDE NORTH CAROLINA — 2 persona(s) failed
+### La Ruta de los Conquistadores — 4 persona(s) failed
 - time_crunched_parent: needs review: compliance flagged (delivered)
-- weekend_warrior: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
+- weekend_warrior: preview FAIL: Per-Day Duration Caps; needs review: compliance flagged (delivered)
+- ambitious_first_timer: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
+- weekend_warrior: preview FAIL: Zone Distribution; preview FAIL: Per-Day Duration Caps
 
-### Little Sugar MTB — 2 persona(s) failed
-- weekend_warrior: preview FAIL: Zone Distribution
-- veteran_podium_chaser: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
-
-### The Rad — 2 persona(s) failed
-- time_crunched_parent: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
+### Gran Fondo Eilat — 4 persona(s) failed
 - veteran_podium_chaser: preview FAIL: Weekly Volume; needs review: compliance flagged (delivered)
+- weekend_warrior: preview FAIL: Zone Distribution
+- time_crunched_parent: preview FAIL: Zone Distribution
+- veteran_podium_chaser: preview FAIL: Zone Distribution
 
-### Iceman Cometh — 2 persona(s) failed
-- ambitious_first_timer: preview FAIL: Zone Distribution
-- veteran_podium_chaser: needs review: compliance flagged (delivered)
-
-### UCI Gravel Dustman — 2 persona(s) failed
-- time_crunched_parent: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
-- ambitious_first_timer: preview FAIL: Zone Distribution
-
-### Spotted Horse Ultra — 2 persona(s) failed
-- time_crunched_parent: needs review: compliance flagged (delivered)
-- masters_returner: preview FAIL: Zone Distribution
-
-### Grassroots Gravel — 2 persona(s) failed
+### GFNY Cozumel — 4 persona(s) failed
 - masters_returner: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
 - veteran_podium_chaser: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
+- masters_returner: needs review: compliance flagged (delivered)
+- weekend_warrior: preview FAIL: Per-Day Duration Caps; needs review: compliance flagged (delivered)
 
-### La Ruta de los Conquistadores — 1 persona(s) failed
-- masters_returner: preview FAIL: Per-Day Duration Caps; needs review: compliance flagged (delivered)
-
-### Gran Fondo Eilat — 1 persona(s) failed
-- veteran_podium_chaser: needs review: compliance flagged (delivered)
-
-### Dunoon Dirt Dash — 1 persona(s) failed
+### Marys Mayhem — 3 persona(s) failed
+- ambitious_first_timer: preview FAIL: Zone Distribution
+- veteran_podium_chaser: preview FAIL: Zone Distribution
 - weekend_warrior: needs review: compliance flagged (delivered)
 
-### GFNY Cozumel — 1 persona(s) failed
+### L'Etape Poland by Tour de France — 3 persona(s) failed
+- ambitious_first_timer: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
+- weekend_warrior: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
+- veteran_podium_chaser: preview FAIL: Zone Distribution
+
+### Cycling Shimanami — 3 persona(s) failed
+- masters_returner: preview FAIL: Zone Distribution
+- veteran_podium_chaser: preview FAIL: Zone Distribution
+- weekend_warrior: needs review: compliance flagged (delivered)
+
+### Atlas Gran Fondo — 3 persona(s) failed
+- time_crunched_parent: preview FAIL: Zone Distribution
+- veteran_podium_chaser: needs review: compliance flagged (delivered)
+- weekend_warrior: preview FAIL: Per-Day Duration Caps; needs review: compliance flagged (delivered)
+
+### Turkcell Granfondo Izmir — 3 persona(s) failed
+- time_crunched_parent: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
+- weekend_warrior: preview FAIL: Per-Day Duration Caps; needs review: compliance flagged (delivered)
+- veteran_podium_chaser: needs review: compliance flagged (delivered)
+
+### Tour de Tucson — 3 persona(s) failed
+- time_crunched_parent: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
 - veteran_podium_chaser: preview FAIL: Weekly Volume; needs review: compliance flagged (delivered)
+- weekend_warrior: preview FAIL: Per-Day Duration Caps
+
+### Granfondo Tre Valli Varesine — 3 persona(s) failed
+- time_crunched_parent: preview FAIL: Per-Day Duration Caps; needs review: compliance flagged (delivered)
+- masters_returner: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
+- weekend_warrior: preview FAIL: Weekly Volume; needs review: compliance flagged (delivered)
+
+### Bowral Classic — 3 persona(s) failed
+- time_crunched_parent: preview FAIL: Zone Distribution
+- masters_returner: preview FAIL: Zone Distribution
+- weekend_warrior: preview FAIL: Zone Distribution
+
+### Gran Fondo Il Lombardia Felice Gimondi — 3 persona(s) failed
+- masters_returner: preview FAIL: Zone Distribution
+- veteran_podium_chaser: preview FAIL: Weekly Volume; needs review: compliance flagged (delivered)
+- weekend_warrior: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
+
+### Iceman Cometh — 2 persona(s) failed
+- time_crunched_parent: needs review: compliance flagged (delivered)
+- masters_returner: needs review: compliance flagged (delivered)
+
+### Fairfield Harvest Rush — 2 persona(s) failed
+- ambitious_first_timer: preview FAIL: Zone Distribution
+- veteran_podium_chaser: needs review: compliance flagged (delivered)
+
+### Spirit World 100 — 1 persona(s) failed
+- weekend_warrior: preview FAIL: Weekly Volume
+
+### Spotted Horse Ultra — 1 persona(s) failed
+- veteran_podium_chaser: preview FAIL: Zone Distribution
+
+### UCI Gravel World Championships — 1 persona(s) failed
+- weekend_warrior: needs review: compliance flagged (delivered)
+
+### Walburg Dirty 30 — 1 persona(s) failed
+- veteran_podium_chaser: needs review: compliance flagged (delivered)
+
+### Cyclotour du Léman — 1 persona(s) failed
+- veteran_podium_chaser: preview FAIL: Zone Distribution; needs review: compliance flagged (delivered)
+
+### Old Fashioned Gravel — 1 persona(s) failed
+- weekend_warrior: needs review: compliance flagged (delivered)
 
 ### Red Granite Grinder — 1 persona(s) failed
-- masters_returner: preview FAIL: Zone Distribution
+- masters_returner: needs review: compliance flagged (delivered)
