@@ -1979,7 +1979,7 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
   <div class="gg-module gg-tactical">
     <div class="gg-label">THE RACE DAY FUELING RULE</div>
     <p>On race day, eat what you've practiced. If you haven't tested a gel brand in training,
-    don't eat it in the race. GI distress at mile 60 of a {race_distance}-mile race is a
+    don't eat it in the race. GI distress at mile {int(round(float(race_distance) * 0.6)) if str(race_distance).replace('.','',1).isdigit() else 60} of a {race_distance}-mile race is a
     DNF-level problem that is 100% preventable.</p>
   </div>
 </section>"""
