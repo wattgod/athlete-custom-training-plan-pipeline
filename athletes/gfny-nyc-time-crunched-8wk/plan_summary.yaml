@@ -1,0 +1,23 @@
+athlete_id: gfny-nyc-time-crunched-8wk
+athlete_name: Time-Crunched Road Alpine-Fondo (GFNY World Championship NYC)
+generated_date: '2026-08-04T23:19:37.697515'
+race:
+  name: GFNY World Championship NYC
+  date: '2027-05-16'
+  distance_miles: 85.1
+plan:
+  weeks: 8
+  start_date: '2027-03-22'
+  end_date: '2027-05-16'
+  methodology: Time-Crunched
+  methodology_score: 90.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 371
+  estimated_duration_hours: 5.3
+files:
+  guide: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/gfny-nyc-time-crunched-8wk/training_guide.html
+  workouts_dir: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/gfny-nyc-time-crunched-8wk/workouts
+  workout_count: 38

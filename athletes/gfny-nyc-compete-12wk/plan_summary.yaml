@@ -1,0 +1,23 @@
+athlete_id: gfny-nyc-compete-12wk
+athlete_name: Compete Road Alpine-Fondo (GFNY World Championship NYC)
+generated_date: '2026-08-04T23:19:47.154102'
+race:
+  name: GFNY World Championship NYC
+  date: '2027-05-16'
+  distance_miles: 85.1
+plan:
+  weeks: 12
+  start_date: '2027-02-22'
+  end_date: '2027-05-16'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 75.0
+  tier: COMPETE
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 80
+  total_carbs: 360
+  estimated_duration_hours: 4.5
+files:
+  guide: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/gfny-nyc-compete-12wk/training_guide.html
+  workouts_dir: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/gfny-nyc-compete-12wk/workouts
+  workout_count: 67
