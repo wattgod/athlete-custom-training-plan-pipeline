@@ -969,6 +969,28 @@ class TestGravelSpecificArchetypes:
         assert len(blocks) > 0
 
 
+class TestDisciplineBranding(unittest.TestCase):
+    def test_road_zwo_removes_gravel_brand_and_vocabulary(self):
+        from generate_athlete_package import brand_zwo_for_discipline
+
+        source = """<author>Gravel God Training</author>
+<name>Gravel Race Simulation</name>
+This is exactly what you'll face in a 12-16 hour gravel race."""
+        branded = brand_zwo_for_discipline(source, 'road')
+
+        self.assertIn('<author>Roadie Labs</author>', branded)
+        self.assertIn('<name>Road Race Simulation</name>', branded)
+        self.assertIn('long road race', branded)
+        self.assertNotIn('Gravel God', branded)
+        self.assertNotIn('gravel race', branded.lower())
+
+    def test_gravel_zwo_is_unchanged(self):
+        from generate_athlete_package import brand_zwo_for_discipline
+
+        source = '<author>Gravel God Training</author>Gravel Race Simulation'
+        self.assertEqual(source, brand_zwo_for_discipline(source, 'gravel'))
+
+
 class TestImportedArchetypes(unittest.TestCase):
     """Tests for 34 imported archetypes from Cursor ZWO dumps."""
 

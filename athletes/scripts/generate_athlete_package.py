@@ -92,6 +92,30 @@ def _heat_cue_body(heat_risk: str) -> str:
     return _HEAT_CUE_BODY.get(heat_risk, _HEAT_CUE_BODY['unknown'])
 
 
+def brand_zwo_for_discipline(content: str, discipline: str) -> str:
+    """Apply the selling brand and surface vocabulary to generated workouts.
+
+    The workout archetype library is shared by Gravel God and Roadie Labs. Its
+    source XML and a few legacy descriptions predate the Roadie brand, so the
+    final package boundary must not pass those gravel-only labels through to a
+    road customer.
+    """
+    if (discipline or '').lower() != 'road':
+        return content
+
+    replacements = {
+        '<author>Gravel God Training</author>': '<author>Roadie Labs</author>',
+        '<author>Gravel God</author>': '<author>Roadie Labs</author>',
+        'Gravel Race Simulation': 'Road Race Simulation',
+        'Gravel race simulation': 'Road race simulation',
+        'gravel race simulation': 'road race simulation',
+        '12-16 hour gravel race': 'long road race',
+    }
+    for source, destination in replacements.items():
+        content = content.replace(source, destination)
+    return content
+
+
 # Workout types the heat cue must NEVER land on — every nate_workout_types
 # key (VO2max, Anaerobic, Sprints, Threshold, SFR, Over_Under,
 # Mixed_Climbing, Cadence_Work, Blended, Tempo, Race_Sim, Durability, plus
@@ -2604,6 +2628,26 @@ GO GET IT, {athlete_name.upper()}!
                     f.write(zwo_content)
 
                 generated_files.append(filepath)
+
+    # Shared archetypes still contain a small amount of legacy Gravel God
+    # metadata. Rebrand only at the final package boundary so the source
+    # library remains discipline-neutral and every ZWO-writing path (Nate,
+    # fallback, race day, travel, and strength) receives the same treatment.
+    if _heat_discipline == 'road':
+        branded_files = []
+        for filepath in generated_files:
+            branded_name = filepath.name.replace(
+                'Gravel_Race_Simulation', 'Road_Race_Simulation'
+            )
+            branded_path = filepath.with_name(branded_name)
+            branded_content = brand_zwo_for_discipline(
+                filepath.read_text(), _heat_discipline
+            ).replace('Gravel_Race_Simulation', 'Road_Race_Simulation')
+            if branded_path != filepath:
+                filepath.unlink()
+            branded_path.write_text(branded_content)
+            branded_files.append(branded_path)
+        generated_files = branded_files
 
     return generated_files
 

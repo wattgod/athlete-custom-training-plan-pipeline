@@ -40,8 +40,6 @@ def _snapshot_races() -> Dict[str, Dict[str, Any]]:
 
     out = {}
     for key, e in races.items():
-        if not e.get("date"):
-            continue  # date validation needs a specific date
         name = e.get("name", "")
         disc = e.get("discipline")
         if name.strip().lower() in ambiguous:

@@ -18,8 +18,8 @@ RPE:
 RPE 3-4 (moderate, sustainable for hours)</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.68"/>
-    <SteadyState Duration="1200" Power="0.55"/>
-    <Cooldown Duration="300" PowerLow="0.60" PowerHigh="0.45"/>
+    <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.55"/>
+    <SteadyState Duration="1200" Power="0.58"/>
+    <Cooldown Duration="300" PowerLow="0.58" PowerHigh="0.45"/>
   </workout>
 </workout_file>

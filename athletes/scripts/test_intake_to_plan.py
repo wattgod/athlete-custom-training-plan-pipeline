@@ -421,7 +421,11 @@ class TestMatchRace:
         assert m is not None
         _id, info = m
         assert 'north carolina' in info['name'].lower()
-        assert str(info.get('date', '')).startswith('2026-10')
+        # The event identity remains resolvable even while the race database
+        # correctly carries no confirmed future date. A customer-supplied
+        # edition date is handled by build_profile below; the snapshot must
+        # not resurrect the stale October 2026 date.
+        assert info.get('date') is None
         # a discipline-prefixed snapshot key resolves by its bare slug too
         assert lookup_by_slug('gran-fondo-loutraki') is not None
         # unknown slug → None (no fuzzy fallback here)
@@ -464,7 +468,7 @@ class TestMatchRace:
         assert m is not None
         race_id, info = m
         assert 'north-carolina' in race_id or 'nc' in race_id.lower()
-        assert str(info.get('date', '')).startswith('2026-10')
+        assert info.get('date') is None
         # the plain San Diego event still resolves to itself
         m2 = match_race('Belgian Waffle Ride')
         assert m2 and m2[0] == 'belgian_waffle_ride'

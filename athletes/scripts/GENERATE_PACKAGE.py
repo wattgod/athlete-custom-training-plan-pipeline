@@ -69,15 +69,18 @@ def gate_1_tests() -> bool:
     """Gate 1: All tests must pass."""
     print_header("GATE 1: Running All Tests")
 
+    test_paths = [str(path) for path in sorted(SCRIPTS_DIR.glob('test_*.py'))]
+    nested_tests = SCRIPTS_DIR / 'tests'
+    if nested_tests.exists():
+        test_paths.append(str(nested_tests))
+
     success, output = run_command(
-        [sys.executable, '-m', 'pytest', '-v', '--tb=short'],
+        [sys.executable, '-m', 'pytest', '-v', '--tb=short', *test_paths],
         "pytest test_*.py"
     )
 
-    # Check for failures
-    if 'failed' in output.lower() and 'passed' in output:
-        # Some tests failed
-        print_fail("Some tests failed")
+    if not success:
+        print_fail("Test suite failed")
         print(output[-2000:])  # Show last 2000 chars
         return False
 
@@ -226,40 +229,51 @@ def gate_6_checklist(athlete_id: str) -> bool:
     )
 
     print(output)
+    if not success:
+        print_fail("Checklist generation failed")
+        return False
     print_pass("Checklist generated - REVIEW BEFORE DELIVERY")
     return True
 
 
 def main():
     if len(sys.argv) < 2:
-        print(f"{RED}Usage: python3 GENERATE_PACKAGE.py <athlete_id>{RESET}")
+        print(f"{RED}Usage: python3 GENERATE_PACKAGE.py <athlete_id> [athlete_id ...]{RESET}")
         print("\nThis is the MANDATORY wrapper for package generation.")
         print("DO NOT use generate_athlete_package.py directly.")
         sys.exit(1)
 
-    athlete_id = sys.argv[1]
+    athlete_ids = sys.argv[1:]
 
-    print_header(f"GENERATING PACKAGE FOR: {athlete_id}")
+    print_header(f"GENERATING {len(athlete_ids)} PACKAGE(S)")
     print(f"\n{BOLD}This script enforces ALL quality gates.{RESET}")
     print("If any gate fails, the process stops immediately.\n")
 
-    # Run all gates in order
-    gates = [
-        ("Gate 1: Tests", lambda: gate_1_tests()),
-        ("Gate 2: Athlete Files", lambda: gate_2_athlete_files(athlete_id)),
-        ("Gate 3: Generate Package", lambda: gate_3_generate_package(athlete_id)),
-        ("Gate 4: Distribution", lambda: gate_4_distribution(athlete_id)),
-        ("Gate 5: Integrity", lambda: gate_5_integrity(athlete_id)),
-        ("Gate 6: Checklist", lambda: gate_6_checklist(athlete_id)),
-    ]
+    # The source-tree regression gate is invariant across athletes. Run it
+    # once, then run every athlete-specific gate in order for each package.
+    if not gate_1_tests():
+        print(f"\n{RED}{BOLD}{'='*60}{RESET}")
+        print(f"{RED}{BOLD}PIPELINE STOPPED: Gate 1: Tests FAILED{RESET}")
+        print(f"{RED}{BOLD}{'='*60}{RESET}")
+        sys.exit(1)
 
-    for gate_name, gate_func in gates:
-        if not gate_func():
-            print(f"\n{RED}{BOLD}{'='*60}{RESET}")
-            print(f"{RED}{BOLD}PIPELINE STOPPED: {gate_name} FAILED{RESET}")
-            print(f"{RED}{BOLD}{'='*60}{RESET}")
-            print(f"\nFix the issue above and run again.")
-            sys.exit(1)
+    for athlete_id in athlete_ids:
+        print_header(f"GENERATING PACKAGE FOR: {athlete_id}")
+        gates = [
+            ("Gate 2: Athlete Files", lambda: gate_2_athlete_files(athlete_id)),
+            ("Gate 3: Generate Package", lambda: gate_3_generate_package(athlete_id)),
+            ("Gate 4: Distribution", lambda: gate_4_distribution(athlete_id)),
+            ("Gate 5: Integrity", lambda: gate_5_integrity(athlete_id)),
+            ("Gate 6: Checklist", lambda: gate_6_checklist(athlete_id)),
+        ]
+
+        for gate_name, gate_func in gates:
+            if not gate_func():
+                print(f"\n{RED}{BOLD}{'='*60}{RESET}")
+                print(f"{RED}{BOLD}PIPELINE STOPPED: {athlete_id}: {gate_name} FAILED{RESET}")
+                print(f"{RED}{BOLD}{'='*60}{RESET}")
+                print(f"\nFix the issue above and run again.")
+                sys.exit(1)
 
     # All gates passed
     print(f"\n{GREEN}{BOLD}{'='*60}{RESET}")
@@ -267,8 +281,8 @@ def main():
     print(f"{GREEN}{BOLD}{'='*60}{RESET}")
 
     from constants import get_athlete_dir
-    athlete_dir = get_athlete_dir(athlete_id)
-    print(f"\nOutput: {athlete_dir}")
+    for athlete_id in athlete_ids:
+        print(f"\nOutput: {get_athlete_dir(athlete_id)}")
     print(f"\n{YELLOW}IMPORTANT: Review the pre-delivery checklist before sending to athlete!{RESET}")
 
 
