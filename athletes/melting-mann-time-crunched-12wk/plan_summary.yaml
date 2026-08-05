@@ -1,0 +1,23 @@
+athlete_id: melting-mann-time-crunched-12wk
+athlete_name: Time-Crunched Gravel All-Rounder (Melting Mann)
+generated_date: '2026-08-04T22:01:05.444044'
+race:
+  name: Melting Mann
+  date: '2027-03-20'
+  distance_miles: 58
+plan:
+  weeks: 12
+  start_date: '2026-12-28'
+  end_date: '2027-03-21'
+  methodology: Time-Crunched
+  methodology_score: 90.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 336
+  estimated_duration_hours: 4.8
+files:
+  guide: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/melting-mann-time-crunched-12wk/training_guide.html
+  workouts_dir: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/melting-mann-time-crunched-12wk/workouts
+  workout_count: 55

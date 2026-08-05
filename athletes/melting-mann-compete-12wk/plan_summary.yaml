@@ -1,0 +1,23 @@
+athlete_id: melting-mann-compete-12wk
+athlete_name: Compete Gravel All-Rounder (Melting Mann)
+generated_date: '2026-08-04T22:00:21.341778'
+race:
+  name: Melting Mann
+  date: '2027-03-20'
+  distance_miles: 58
+plan:
+  weeks: 12
+  start_date: '2026-12-28'
+  end_date: '2027-03-21'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 75.0
+  tier: COMPETE
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 90
+  total_carbs: 324
+  estimated_duration_hours: 3.6
+files:
+  guide: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/melting-mann-compete-12wk/training_guide.html
+  workouts_dir: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/melting-mann-compete-12wk/workouts
+  workout_count: 67

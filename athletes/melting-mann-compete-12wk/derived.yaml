@@ -1,0 +1,15 @@
+tier: compete
+plan_weeks: 12
+starting_phase: base_1
+strength_frequency: 0
+equipment_tier: minimal
+risk_factors: []
+exercise_exclusions: []
+key_day_candidates:
+- saturday
+- sunday
+strength_day_candidates: []
+derived_date: '2026-08-04 22:00:11'
+plan_start: '2026-12-28'
+plan_end: '2027-03-21'
+race_weekday: Saturday
