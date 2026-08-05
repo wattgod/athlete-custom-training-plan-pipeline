@@ -40,12 +40,17 @@ def main() -> None:
             raise SystemExit(f"refusing to overwrite {target}")
 
         profile = yaml.safe_load(source.read_text())
-        profile["name"] = f"{tier} {args.discipline.title()} Alpine-Fondo ({args.name})"
+        profile["name"] = f"{tier} {args.discipline.title()} Store Plan ({args.name})"
         profile["email"] = f"base@{'roadielabs' if args.discipline == 'road' else 'gravelgod'}.internal"
         profile["athlete_id"] = athlete_id
         profile["discipline_default"] = args.discipline
         profile["plan_duration_weeks_override"] = int(length.removesuffix("wk"))
         profile["plan_tier"] = tier
+        climbing_clause = (
+            f" and {args.elevation:,} feet of climbing"
+            if args.elevation > 0
+            else ""
+        )
         profile["target_race"] = {
             "name": args.name,
             "race_id": args.slug,
@@ -56,7 +61,7 @@ def main() -> None:
             "goal": goal,
             "goal_description": (
                 f"Execute {args.name}'s long route with controlled pacing across "
-                f"{args.terrain} and {args.elevation:,} feet of climbing."
+                f"{args.terrain}{climbing_clause}."
             ),
         }
         profile["a_events"] = [{

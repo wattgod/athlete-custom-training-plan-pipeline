@@ -7665,10 +7665,10 @@
    "slug": "gfny-maryland-cambridge"
   },
   "road:gfny-miami": {
-   "date": "2026-11-08",
+   "date": "2027-04-04",
    "discipline": "road",
-   "distance_mi": 71.0,
-   "elevation_ft": 1500.0,
+   "distance_mi": 52.0,
+   "elevation_ft": null,
    "location": "Miami, Florida, USA",
    "name": "GFNY Miami",
    "slug": "gfny-miami"
@@ -7728,10 +7728,10 @@
    "slug": "gfny-pittsburgh"
   },
   "road:gfny-punta-del-este": {
-   "date": "2026-03-15",
+   "date": "2027-03-14",
    "discipline": "road",
    "distance_mi": 90.7,
-   "elevation_ft": 5423.0,
+   "elevation_ft": 5577.0,
    "location": "Punta del Este, Maldonado Department, Uruguay",
    "name": "GFNY Punta del Este",
    "slug": "gfny-punta-del-este"
