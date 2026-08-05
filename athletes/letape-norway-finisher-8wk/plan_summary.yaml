@@ -1,0 +1,23 @@
+athlete_id: letape-norway-finisher-8wk
+athlete_name: "Finisher Road Alpine-Fondo (L'\xC9tape Trondheim)"
+generated_date: '2026-08-05T08:48:58.185319'
+race:
+  name: "L'\xC9tape Trondheim"
+  date: '2027-06-12'
+  distance_miles: 80.8
+plan:
+  weeks: 8
+  start_date: '2027-04-19'
+  end_date: '2027-06-13'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 92.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 350
+  estimated_duration_hours: 5.0
+files:
+  guide: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/letape-norway-finisher-8wk/training_guide.html
+  workouts_dir: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/letape-norway-finisher-8wk/workouts
+  workout_count: 44

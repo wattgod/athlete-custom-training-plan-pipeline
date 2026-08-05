@@ -1,0 +1,23 @@
+athlete_id: letape-norway-time-crunched-8wk
+athlete_name: "Time-Crunched Road Alpine-Fondo (L'\xC9tape Trondheim)"
+generated_date: '2026-08-05T08:49:33.633091'
+race:
+  name: "L'\xC9tape Trondheim"
+  date: '2027-06-12'
+  distance_miles: 80.8
+plan:
+  weeks: 8
+  start_date: '2027-04-19'
+  end_date: '2027-06-13'
+  methodology: Time-Crunched
+  methodology_score: 90.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 350
+  estimated_duration_hours: 5.0
+files:
+  guide: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/letape-norway-time-crunched-8wk/training_guide.html
+  workouts_dir: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/letape-norway-time-crunched-8wk/workouts
+  workout_count: 38
