@@ -3733,7 +3733,7 @@ def _cross_reference_race_date(race_name: str, athlete_date: str) -> dict:
     }
 
 
-def _resolve_race_data(race_name, race_data_dirs):
+def _resolve_race_data(race_name, race_data_dirs, race_id=None):
     """Load a race's JSON from the gravel-race-automation / road-race-automation
     DB (whichever dirs the caller passes, in search order), keyed off the
     VERIFIED matcher so the venue we render always belongs to the race we
@@ -3798,6 +3798,8 @@ def _resolve_race_data(race_name, race_data_dirs):
         'lotoja-classic-—-logan-to-jackson': 'lotoja-classic',
     }
     candidate_slugs = [s for s in [
+        race_id,
+        str(race_id).replace('_', '-') if race_id else None,
         canonical_slug,
         canonical_slug.replace('_', '-') if canonical_slug else None,
         _slug_aliases.get(canonical_slug or ''),
@@ -4091,9 +4093,25 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
     _race_data_dirs = (_road_race_dirs + _gravel_race_dirs if _cli_discipline == 'road'
                         else _gravel_race_dirs + _road_race_dirs)
 
-    race_data, verified_location = _resolve_race_data(race_name, _race_data_dirs)
+    race_data, verified_location = _resolve_race_data(
+        race_name,
+        _race_data_dirs,
+        race_id=target_race.get('race_id'),
+    )
 
     race_data = _flatten_race_data(race_data)
+
+    # A store SKU can target one route inside a multi-route event. Hainan is
+    # the concrete case: the race database correctly stores the three-day
+    # program aggregate, while this SKU explicitly anchors to Friday's
+    # 110.4km coastal qualifier. In store mode, the profile's route-specific
+    # elevation is authoritative for the guide cover and calculations.
+    if store_mode and target_race.get('elevation_ft') is not None:
+        sku_elevation = target_race['elevation_ft']
+        race_data['elevation_feet'] = sku_elevation
+        race_data['elevation_gain_feet'] = sku_elevation
+        race_data['gain_display'] = f"{float(sku_elevation):,.0f} ft"
+        race_data.setdefault('race_metadata', {})['elevation_feet'] = sku_elevation
 
     # Overlay the verified venue from the race DB so a missing JSON file
     # still renders the CORRECT location (matched to race_name) rather than
