@@ -1,0 +1,23 @@
+athlete_id: granfondo-la-guadeloupe-save-my-race-6wk
+athlete_name: Save My Race Road Store Plan (Granfondo La Guadeloupe)
+generated_date: '2026-08-05T15:37:46.440431'
+race:
+  name: Granfondo La Guadeloupe
+  date: '2026-12-06'
+  distance_miles: 78.3
+plan:
+  weeks: 6
+  start_date: '2026-10-26'
+  end_date: '2026-12-06'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 92.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 343
+  estimated_duration_hours: 4.9
+files:
+  guide: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/granfondo-la-guadeloupe-save-my-race-6wk/training_guide.html
+  workouts_dir: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/granfondo-la-guadeloupe-save-my-race-6wk/workouts
+  workout_count: 30

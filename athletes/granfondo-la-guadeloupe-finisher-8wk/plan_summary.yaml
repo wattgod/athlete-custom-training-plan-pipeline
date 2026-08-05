@@ -1,0 +1,23 @@
+athlete_id: granfondo-la-guadeloupe-finisher-8wk
+athlete_name: Finisher Road Store Plan (Granfondo La Guadeloupe)
+generated_date: '2026-08-05T15:37:36.087075'
+race:
+  name: Granfondo La Guadeloupe
+  date: '2026-12-06'
+  distance_miles: 78.3
+plan:
+  weeks: 8
+  start_date: '2026-10-12'
+  end_date: '2026-12-06'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 92.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 343
+  estimated_duration_hours: 4.9
+files:
+  guide: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/granfondo-la-guadeloupe-finisher-8wk/training_guide.html
+  workouts_dir: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/granfondo-la-guadeloupe-finisher-8wk/workouts
+  workout_count: 44
