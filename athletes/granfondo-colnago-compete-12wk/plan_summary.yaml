@@ -1,0 +1,23 @@
+athlete_id: granfondo-colnago-compete-12wk
+athlete_name: Compete Road Alpine-Fondo (Granfondo Colnago)
+generated_date: '2026-08-04T22:56:17.915749'
+race:
+  name: Granfondo Colnago
+  date: '2027-04-11'
+  distance_miles: 87.0
+plan:
+  weeks: 12
+  start_date: '2027-01-18'
+  end_date: '2027-04-11'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 75.0
+  tier: COMPETE
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 80
+  total_carbs: 368
+  estimated_duration_hours: 4.6
+files:
+  guide: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/granfondo-colnago-compete-12wk/training_guide.html
+  workouts_dir: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/granfondo-colnago-compete-12wk/workouts
+  workout_count: 67

@@ -1,0 +1,23 @@
+athlete_id: granfondo-colnago-time-crunched-12wk
+athlete_name: Time-Crunched Road Alpine-Fondo (Granfondo Colnago)
+generated_date: '2026-08-04T22:56:09.696084'
+race:
+  name: Granfondo Colnago
+  date: '2027-04-11'
+  distance_miles: 87.0
+plan:
+  weeks: 12
+  start_date: '2027-01-18'
+  end_date: '2027-04-11'
+  methodology: Time-Crunched
+  methodology_score: 90.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 378
+  estimated_duration_hours: 5.4
+files:
+  guide: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/granfondo-colnago-time-crunched-12wk/training_guide.html
+  workouts_dir: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/granfondo-colnago-time-crunched-12wk/workouts
+  workout_count: 55
