@@ -1,0 +1,23 @@
+athlete_id: west-coast-gravel-finisher-8wk
+athlete_name: Finisher Gravel All-Rounder (West Coast Gravel)
+generated_date: '2026-08-04T22:33:52.097819'
+race:
+  name: West Coast Gravel
+  date: '2027-04-25'
+  distance_miles: 53
+plan:
+  weeks: 8
+  start_date: '2027-03-01'
+  end_date: '2027-04-25'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 92.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 70
+  total_carbs: 308
+  estimated_duration_hours: 4.4
+files:
+  guide: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/west-coast-gravel-finisher-8wk/training_guide.html
+  workouts_dir: /Users/mattirowe/athlete-custom-training-plan-pipeline/athletes/west-coast-gravel-finisher-8wk/workouts
+  workout_count: 44
