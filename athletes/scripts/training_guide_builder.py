@@ -11,6 +11,7 @@ Brand system: Gravel God desert editorial palette, two-voice typography
 
 import json
 import math
+import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -1812,7 +1813,7 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
   <div class="gg-module gg-tactical">
     <div class="gg-label">THE RACE DAY FUELING RULE</div>
     <p>On race day, eat what you've practiced. If you haven't tested a gel brand in training,
-    don't eat it in the race. GI distress at mile 60 of a {race_distance}-mile race is a
+    don't eat it in the race. GI distress deep into a {race_distance}-mile race is a
     DNF-level problem that is 100% preventable.</p>
   </div>
 </section>"""
@@ -3654,6 +3655,31 @@ def _resolve_race_data(race_name, race_data_dirs):
     return race_data, verified_location
 
 
+def _gravel_race_data_dirs(scripts_dir: Path) -> List[Path]:
+    """Authoritative race-data lookup order for guide generation.
+
+    The optional environment path lets isolated worktrees use a verified
+    catalog snapshot without copying data into the guide-pipeline checkout.
+    """
+    override = os.environ.get("GUIDE_GRAVEL_RACE_DATA_DIR")
+    return ([Path(override)] if override else []) + [
+        scripts_dir.parent.parent.parent / "gravel-race-automation" / "race-data",
+        Path.home() / "Documents" / "GravelGod" / "gravel-race-automation" / "race-data",
+    ]
+
+
+def _climate_text(climate) -> str:
+    """Read every climate shape currently emitted by the race catalog."""
+    if not isinstance(climate, dict):
+        return str(climate or "")
+    return (
+        climate.get("summary")
+        or climate.get("description")
+        or climate.get("primary")
+        or ""
+    )
+
+
 def generate_training_guide(athlete_id: str, output_path=None):
     """
     CURRENT GUIDE BUILDER — produces the branded training guide with:
@@ -3835,10 +3861,10 @@ def generate_training_guide(athlete_id: str, output_path=None):
 
     # ── Load race data from gravel-race-automation (if available) ──
     race_name = derived['race_name']
-    race_data, verified_location = _resolve_race_data(race_name, [
-        scripts_dir.parent.parent.parent / 'gravel-race-automation' / 'race-data',
-        Path.home() / 'Documents' / 'GravelGod' / 'gravel-race-automation' / 'race-data',
-    ])
+    race_data, verified_location = _resolve_race_data(
+        race_name,
+        _gravel_race_data_dirs(scripts_dir),
+    )
 
     # Unwrap race data: raw JSON has {"race": {...}}, step_07 expects flat dict
     if 'race' in race_data and isinstance(race_data['race'], dict):
@@ -3863,7 +3889,7 @@ def generate_training_guide(athlete_id: str, output_path=None):
         climate = inner.get('climate', {})
         race_data.setdefault('race_characteristics', {
             'terrain': terrain.get('primary', ''),
-            'climate': climate.get('summary', '') if isinstance(climate, dict) else str(climate),
+            'climate': _climate_text(climate),
         })
 
     # Overlay the verified venue from the race DB so a missing JSON file
