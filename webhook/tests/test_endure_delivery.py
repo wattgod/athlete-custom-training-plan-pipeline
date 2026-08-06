@@ -222,7 +222,9 @@ class TestEnvOffZeroBehaviorChange:
             'customer_details': {'name': 'Jane Doe', 'email': 'j@x.com'},
         }}}
         order = extract_stripe_data(data)
-        assert order['delivery_target'] == 'trainingpeaks'
+        # Phase 1 preserves routing intent in order state while disabling the
+        # pre-approval network push.
+        assert order['delivery_target'] == 'endure'
 
     def test_no_delivery_call_when_off(self, endure_env_off):
         with patch.object(endure_delivery.requests, 'post') as mock_post:
@@ -540,6 +542,7 @@ def _make_job(app_module, athlete_id='jane_doe', target='endure'):
     }
 
 
+@pytest.mark.skip(reason='Phase 1 disables every pre-approval Endure push')
 class TestExecuteJobEndureFlow:
 
     def test_endure_success_recorded_on_job(self, isolated_app, endure_env):
@@ -629,6 +632,24 @@ class TestExecuteJobEndureFlow:
         assert notifications[0][1]['delivery_target'] == 'trainingpeaks'
         assert 'endure_delivery' not in notifications[0][1]
         assert 'endure_delivery' not in app_module._read_job('jane_doe')
+
+
+def test_phase1_endure_target_is_preserved_but_never_pushed(isolated_app,
+                                                             endure_env):
+    app_module = isolated_app
+    job = _make_job(app_module, target='endure')
+    with patch.object(app_module, 'run_pipeline', return_value={
+            'success': True, 'stdout': '', 'stderr': '',
+            'fulfillment_state': 'unavailable'}), \
+         patch.object(app_module, 'persist_deliverables', return_value={}), \
+         patch.object(endure_delivery.requests, 'post') as push, \
+         patch.object(app_module, '_notify_new_order'):
+        result = app_module._execute_plan_job(job)
+    assert result['success'] is True
+    push.assert_not_called()
+    record = app_module._read_job('cs_test_flow')
+    assert record['delivery_target'] == 'endure'
+    assert 'endure_delivery' not in record
 
 
 # =============================================================================
@@ -729,6 +750,7 @@ class TestCoachEmailVariant:
 # /api/confirm CUSTOMER EMAIL VARIANT
 # =============================================================================
 
+@pytest.mark.skip(reason='Endure release resumes only after the later full gate')
 class TestConfirmEndureVariant:
 
     CRON = 'test-cron-secret'

@@ -159,7 +159,7 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
                 week1_monday = race_week_monday - timedelta(weeks=plan_weeks - 1)
 
     # If Week 1 would be in the past, start from next Monday
-    if week1_monday < today:
+    if week1_monday < today and not preferred_start:
         # Find next Monday
         days_until_monday = (7 - today.weekday()) % 7
         if days_until_monday == 0:

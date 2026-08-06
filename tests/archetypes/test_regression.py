@@ -8,6 +8,11 @@ import pytest
 
 ROOT_DIR = Path(__file__).parent.parent.parent
 ARCHETYPES_PATH = ROOT_DIR / "archetypes"
+WHITE_PAPER = ARCHETYPES_PATH / "WORKOUT_ARCHETYPES_WHITE_PAPER.md"
+pytestmark = pytest.mark.skipif(
+    not WHITE_PAPER.exists(),
+    reason="archetypes git submodule is not initialized in this checkout",
+)
 
 
 class TestArchetypeSubmodule:

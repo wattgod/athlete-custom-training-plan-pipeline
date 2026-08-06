@@ -1765,6 +1765,8 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
   </div>
 
   <h3>Fueling During Workouts — General Guidance</h3>
+  <p><strong>General guidance only.</strong> Use the serialized prescription above
+  whenever one is present.</p>
   <p><strong>General guidance, not your target:</strong> the personalized card above is your target.
   The ranges below explain common starting points and must not override it.</p>
   <p>This is where races are won or lost.</p>

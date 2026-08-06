@@ -4,11 +4,12 @@ import json
 import sys
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "webhook"))
 sys.path.insert(0, str(ROOT / "athletes" / "scripts"))
 
@@ -263,3 +264,38 @@ def test_lazy_v1_migration_lists_candidates_without_inference(monkeypatch, tmp_p
     assert migrated["legacy_candidates"] == ["test_candidate_1", "test_candidate_2"]
     assert migrated["blocking_issues"][0]["id"] == "STATE_UNAVAILABLE"
     assert json.loads(legacy.read_text())["schema_version"] == "tombstone/v1"
+    monkeypatch.setenv("CRON_SECRET", "bind-secret")
+    response = webhook_app.app.test_client().post(
+        f"/api/fulfillment/{order_id}/bind-legacy",
+        headers={"X-Cron-Secret": "bind-secret"},
+        json={"ledger_order_id": "test_candidate_2",
+              "coach": "coach@example.invalid"},
+    )
+    assert response.status_code == 200
+    assert response.get_json()["legacy_binding"]["ledger_order_id"] == "test_candidate_2"
+
+
+def test_pipeline_generation_roots_are_order_isolated(monkeypatch, tmp_path):
+    import app as webhook_app
+    roots = []
+
+    def fake_run(*args, **kwargs):
+        root = Path(kwargs["env"]["GG_ATHLETES_BASE_DIR"])
+        roots.append(root)
+        generated = root / "same-slug"
+        generated.mkdir(parents=True)
+        (generated / "fulfillment_status.json").write_text("{}")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(webhook_app, "DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(webhook_app, "SCRIPTS_DIR", str(ROOT / "athletes" / "scripts"))
+    monkeypatch.setattr(webhook_app.subprocess, "run", fake_run)
+    intake = {"name": "Same Slug", "email": "synthetic@example.invalid"}
+    for order_id in ("test_concurrent_1", "test_concurrent_2"):
+        result = webhook_app.run_pipeline(
+            "same_slug", intake_data=intake,
+            order_data={"order_id": order_id, "delivery_platform": "manual"},
+        )
+        assert result["success"] is True
+        assert order_id in result["artifact_dir"]
+    assert roots[0] != roots[1]

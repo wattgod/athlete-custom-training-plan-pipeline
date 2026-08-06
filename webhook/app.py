@@ -34,7 +34,8 @@ import yaml
 
 from fulfillment_state import (APPLIED, APPLIED_ATTESTED, APPLYING, APPROVED,
                                BLOCKED_REVIEW, CONFIRMED, RELEASE_STATUSES,
-                               FulfillmentStateError, confirm_after_send,
+                               FulfillmentStateError, bind_legacy_order,
+                               confirm_after_send,
                                finalize_transitional_release,
                                load as load_fulfillment_state,
                                migrate_v1_to_quarantine,
@@ -941,6 +942,8 @@ def _build_plan_notification_details(order_data: dict, result: dict,
         'tier': order_data.get('tier', 'custom'),
         'order_id': order_data.get('order_id', ''),
         'athlete_id': athlete_id,
+        'delivery_target': order_data.get(
+            'delivery_platform', order_data.get('delivery_target', 'trainingpeaks')),
         'race_name': target.get('name', intake_data.get('race_name', '') if intake_data else ''),
         'race_date': target.get('date', intake_data.get('race_date', '') if intake_data else ''),
         'ftp': fitness.get('ftp_watts', intake_data.get('ftp', '') if intake_data else ''),
@@ -2763,6 +2766,34 @@ def fulfillment_status(order_ref):
         'waiver': state['waiver'],
         'application': state['application'],
         'confirmation': state['confirmation'],
+    }), 200
+
+
+@app.route('/api/fulfillment/<order_ref>/bind-legacy', methods=['POST'])
+def bind_legacy_fulfillment_order(order_ref):
+    """Authenticated coach assertion for a quarantined schema-v1 order."""
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
+        return jsonify({'error': 'Unauthorized'}), 401
+    order_id = _resolve_order_id(order_ref)
+    if not order_id:
+        return jsonify({'error': 'Fulfillment state unavailable'}), 409
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or _has_client_timestamp(data):
+        return jsonify({'error': 'JSON body without client timestamps is required'}), 400
+    try:
+        state = bind_legacy_order(
+            _fulfillment_status_path(order_id),
+            str(data.get('ledger_order_id') or ''),
+            str(data.get('coach') or ''),
+        )
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 409
+    return jsonify({
+        'order_id': state['order_id'],
+        'athlete_id': state['athlete_id'],
+        'legacy_binding': state['legacy_binding'],
+        'status': state['status'],
     }), 200
 
 
