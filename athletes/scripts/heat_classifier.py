@@ -34,6 +34,7 @@ Returns {heat_risk, evidence, reason} — never a bare label.
 """
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -61,9 +62,13 @@ def _candidate_race_data_dirs(discipline: Optional[str]) -> List[Path]:
     root = _ecosystem_root()
     gravel_dir = root / "gravel-race-automation" / "race-data"
     road_dir = root / "road-race-automation" / "race-data"
+    gravel_dirs = ([Path(os.environ["GUIDE_GRAVEL_RACE_DATA_DIR"])]
+                   if os.environ.get("GUIDE_GRAVEL_RACE_DATA_DIR") else []) + [gravel_dir]
+    road_dirs = ([Path(os.environ["GUIDE_ROAD_RACE_DATA_DIR"])]
+                 if os.environ.get("GUIDE_ROAD_RACE_DATA_DIR") else []) + [road_dir]
     if (discipline or "").strip().lower() == "road":
-        return [road_dir, gravel_dir]
-    return [gravel_dir, road_dir]
+        return road_dirs + gravel_dirs
+    return gravel_dirs + road_dirs
 
 
 def load_race_profile(race_id: Optional[str], discipline: Optional[str] = None) -> Optional[Dict]:

@@ -11,6 +11,7 @@ Brand system: Gravel God desert editorial palette, two-voice typography
 
 import json
 import math
+import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -1993,7 +1994,7 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
   <div class="gg-module gg-tactical">
     <div class="gg-label">THE RACE DAY FUELING RULE</div>
     <p>On race day, eat what you've practiced. If you haven't tested a gel brand in training,
-    don't eat it in the race. GI distress at mile {int(round(float(race_distance) * 0.6)) if str(race_distance).replace('.','',1).isdigit() else 60} of a {race_distance}-mile race is a
+    don't eat it in the race. GI distress deep into a {race_distance}-mile race is a
     DNF-level problem that is 100% preventable.</p>
   </div>
 </section>"""
@@ -3890,9 +3891,15 @@ def _flatten_race_data(race_data: Dict) -> Dict:
         # Create race_characteristics for terrain/climate
         terrain = inner.get('terrain', {})
         climate = inner.get('climate', {})
+        climate_text = (
+            climate.get('summary')
+            or climate.get('description')
+            or climate.get('primary')
+            or ''
+        ) if isinstance(climate, dict) else str(climate)
         race_data.setdefault('race_characteristics', {
             'terrain': terrain.get('primary', ''),
-            'climate': climate.get('summary', '') if isinstance(climate, dict) else str(climate),
+            'climate': climate_text,
         })
     return race_data
 
@@ -4096,11 +4103,13 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
     except Exception:
         _cli_discipline = 'gravel'
 
-    _gravel_race_dirs = [
+    _gravel_race_dirs = ([Path(os.environ["GUIDE_GRAVEL_RACE_DATA_DIR"])]
+                         if os.environ.get("GUIDE_GRAVEL_RACE_DATA_DIR") else []) + [
         scripts_dir.parent.parent.parent / 'gravel-race-automation' / 'race-data',
         Path.home() / 'Documents' / 'GravelGod' / 'gravel-race-automation' / 'race-data',
     ]
-    _road_race_dirs = [
+    _road_race_dirs = ([Path(os.environ["GUIDE_ROAD_RACE_DATA_DIR"])]
+                       if os.environ.get("GUIDE_ROAD_RACE_DATA_DIR") else []) + [
         scripts_dir.parent.parent.parent / 'road-race-automation' / 'race-data',
         Path.home() / 'Documents' / 'GravelGod' / 'road-race-automation' / 'race-data',
     ]
