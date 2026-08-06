@@ -635,3 +635,30 @@ class TestStoreMode:
         assert "230W" in html
         assert "165 lbs" in html
         assert "Custom Plan for Finisher Gravel Punchy" in html
+
+
+class TestMastersGateIsTierCorrect:
+    def test_explicit_masters_tiers_fire_regardless_of_template_age(self):
+        from training_guide_builder import _conditional_triggers
+
+        for tier in ("Masters", "Masters 50+"):
+            profile = {"plan_tier": tier, "demographics": {"age": 33}}
+            assert _conditional_triggers(profile, {})["masters"] is True
+
+    def test_non_masters_store_tiers_ignore_representative_age(self):
+        from training_guide_builder import _conditional_triggers
+
+        for tier, age in (
+            ("Finisher", 40),
+            ("Time-Crunched", 42),
+            ("Save My Race", 40),
+            ("Compete", 55),
+        ):
+            profile = {"plan_tier": tier, "demographics": {"age": age}}
+            assert _conditional_triggers(profile, {})["masters"] is False
+
+    def test_custom_profile_falls_back_to_masters_50_threshold(self):
+        from training_guide_builder import _conditional_triggers
+
+        assert _conditional_triggers({"demographics": {"age": 49}}, {})["masters"] is False
+        assert _conditional_triggers({"demographics": {"age": 50}}, {})["masters"] is True

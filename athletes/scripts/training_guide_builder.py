@@ -243,8 +243,15 @@ def _conditional_triggers(profile: Dict, race_data: Dict) -> Dict:
     sex = profile.get("demographics", {}).get("sex", "")
     show_women = bool(sex and sex.lower() == "female")
 
-    age = profile.get("demographics", {}).get("age")
-    show_masters = bool(age and int(age) >= 40)
+    # Store personas carry representative ages, so an explicit SKU tier must
+    # control the Masters section. Custom athlete profiles have no plan_tier
+    # and fall back to the advertised Masters 50+ age threshold.
+    plan_tier = str(profile.get("plan_tier") or "").strip().lower()
+    if plan_tier:
+        show_masters = plan_tier.startswith("masters")
+    else:
+        age = profile.get("demographics", {}).get("age")
+        show_masters = bool(age and int(age) >= 50)
 
     return {"altitude": show_altitude, "women": show_women, "masters": show_masters}
 
