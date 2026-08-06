@@ -34,6 +34,7 @@ from intake_to_plan import (
     parse_wkg,
     parse_years,
     parse_range,
+    parse_device_list,
     generate_athlete_id,
     IntakeValidationError,
     _normalize_section_name,
@@ -57,6 +58,25 @@ from constants import (
 # ---------------------------------------------------------------------------
 
 NICHOLAS_INTAKE_PATH = Path("/tmp/nicholas-intake.md")
+
+
+def test_device_parser_preserves_multiword_tokens_and_canonicalizes():
+    assert parse_device_list('power meter, hr strap') == [
+        'power_meter', 'hr_strap']
+
+
+def test_device_parser_splits_only_commas_and_newlines_and_preserves_unknowns():
+    assert parse_device_list('Garmin Edge 840\nheart rate monitor') == [
+        'garmin edge 840', 'hr_strap']
+
+
+def test_absent_devices_produce_no_profile_device_token(minimal_valid_parsed):
+    parsed = copy.deepcopy(minimal_valid_parsed)
+    parsed['equipment']['devices'] = 'unknown'
+    profile = build_profile(parsed)
+    assert profile['devices']['devices'] == []
+    assert profile['cycling_equipment']['power_meter_bike'] is False
+    assert profile['cycling_equipment']['hr_monitor'] is False
 
 
 @pytest.fixture

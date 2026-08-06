@@ -2762,6 +2762,60 @@ class TestTravelDatesPassthrough:
         assert '## Nutrition' in md
         assert 'Training Fuel: 55g/hr' in md
 
+    def test_markdown_devices_come_only_from_form(self):
+        from app import _questionnaire_to_markdown
+        supplied = _questionnaire_to_markdown(
+            {'devices': 'power meter, hr strap'}, name='T', email='t@e.com')
+        absent = _questionnaire_to_markdown({}, name='T', email='t@e.com')
+        assert 'Devices: power meter, hr strap' in supplied
+        assert 'Devices: unknown' in absent
+        assert 'power meter, HR strap' not in absent
+
+
+class TestIntelStatsWindow:
+    def test_validates_hours_and_rejects_limit(self, client, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'secret')
+        headers = {'X-Cron-Secret': 'secret'}
+        for query in ('?hours=nope', '?hours=0', '?hours=-1', '?hours=721', '?limit=5'):
+            assert client.get('/api/intel-stats' + query, headers=headers).status_code == 400
+        response = client.get('/api/intel-stats?hours=720', headers=headers)
+        assert response.status_code == 200
+        assert response.get_json()['window_hours'] == 720
+
+    def test_reads_every_required_month_and_orders_deterministically(
+            self, client, monkeypatch, tmp_path):
+        import app as app_module
+
+        class FrozenDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 3, 1, 1, 0, 0)
+
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'secret')
+        monkeypatch.setattr(app_module, 'DATA_DIR', str(tmp_path))
+        monkeypatch.setattr(app_module, 'datetime', FrozenDatetime)
+        log_dir = tmp_path / '.logs'
+        log_dir.mkdir()
+        (log_dir / '2026-01.jsonl').write_text(json.dumps({
+            'timestamp': '2026-01-31T12:00:00', 'order_id': 'cs_b',
+            'product_type': 'training_plan', 'email': 'b@real.test',
+            'name': 'B', 'success': True}) + '\n')
+        (log_dir / '2026-02.jsonl').write_text('\n'.join([
+            json.dumps({'timestamp': '2026-02-10T12:00:00', 'order_id': 'cs_z',
+                        'product_type': 'training_plan', 'email': 'z@real.test',
+                        'name': 'Z', 'success': True}),
+            json.dumps({'timestamp': '2026-02-10T12:00:00', 'order_id': 'cs_a',
+                        'product_type': 'training_plan', 'email': 'a@real.test',
+                        'name': 'A', 'success': False}),
+        ]) + '\n')
+        response = client.get(
+            '/api/intel-stats?hours=720', headers={'X-Cron-Secret': 'secret'})
+        assert response.status_code == 200
+        data = response.get_json()
+        assert [order['id'] for order in data['orders']] == ['cs_b', 'cs_a', 'cs_z']
+        assert [order['id'] for order in data['failed_orders']] == ['cs_a']
+
 
 class TestComplianceNeedsReview:
     """A plan that delivers but fails an auto-compliance check must reach the

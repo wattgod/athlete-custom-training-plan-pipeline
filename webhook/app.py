@@ -1484,7 +1484,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 
 ## Equipment
 - Indoor Trainer: {intake_data.get('trainer_access', 'smart trainer')}
-- Devices: power meter, HR strap
+- Devices: {intake_data.get('devices') or 'unknown'}
 
 ## Schedule
 - Weekly Hours Available: {intake_data.get('hours_per_week', '10')}
@@ -4022,7 +4022,7 @@ def process_touchpoint_emails():
 @app.route('/api/intel-stats', methods=['GET'])
 @limiter.limit("10/minute")
 def intel_stats():
-    """Last-24h commerce ground truth for the Morning Intel report.
+    """Windowed commerce ground truth for the Morning Intel report.
 
     The report previously inferred orders from GA4 events; this endpoint
     exposes the actual ledger (/data/.logs) — orders WITH fulfillment
@@ -4037,12 +4037,28 @@ def intel_stats():
     if not hmac.compare_digest(secret, CRON_SECRET):
         return jsonify({'error': 'Unauthorized'}), 401
 
+    if 'limit' in request.args:
+        return jsonify({'error': 'limit is not supported; use hours'}), 400
+    raw_hours = request.args.get('hours', '24')
+    try:
+        hours = int(raw_hours)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'hours must be an integer from 1 to 720'}), 400
+    if hours < 1 or hours > 720:
+        return jsonify({'error': 'hours must be an integer from 1 to 720'}), 400
+
     from datetime import timedelta as _td
     now = datetime.now()
-    cutoff = (now - _td(hours=24)).isoformat()
+    cutoff = (now - _td(hours=hours)).isoformat()
     log_dir = Path(DATA_DIR) / '.logs'
-    months = {now.strftime('%Y-%m'),
-              (now.replace(day=1) - _td(days=1)).strftime('%Y-%m')}
+    months = []
+    cursor = (now - _td(hours=hours)).replace(day=1)
+    final_month = now.strftime('%Y-%m')
+    while True:
+        months.append(cursor.strftime('%Y-%m'))
+        if cursor.strftime('%Y-%m') == final_month:
+            break
+        cursor = (cursor.replace(day=28) + _td(days=4)).replace(day=1)
 
     def _monitor(email):
         e = (email or '').lower()
@@ -4050,7 +4066,7 @@ def intel_stats():
                 or 'gravelgodcoaching@' in e or 'example.com' in e)
 
     orders, recoveries = [], []
-    for m in sorted(months):
+    for m in months:
         f = log_dir / f'{m}.jsonl'
         if not f.exists():
             continue
@@ -4062,11 +4078,13 @@ def intel_stats():
             if (e.get('timestamp') or '') < cutoff or _monitor(e.get('email')):
                 continue
             if e.get('product_type') == 'cart_recovery' or 'recovery_url_sent' in e:
-                recoveries.append({'timestamp': e.get('timestamp'),
+                recoveries.append({'id': e.get('order_id') or e.get('intake_id') or '',
+                                   'timestamp': e.get('timestamp'),
                                    'email': e.get('email'),
                                    'product': e.get('original_product')})
             else:
-                orders.append({'timestamp': e.get('timestamp'),
+                orders.append({'id': e.get('order_id') or e.get('intake_id') or '',
+                               'timestamp': e.get('timestamp'),
                                'product_type': e.get('product_type'),
                                'email': e.get('email'),
                                'name': e.get('name'),
@@ -4074,7 +4092,7 @@ def intel_stats():
                                'error': (e.get('error') or '')[:200] or None})
 
     q_starts = 0
-    for m in sorted(months):
+    for m in months:
         f = log_dir / f'questionnaire-starts-{m}.jsonl'
         if not f.exists():
             continue
@@ -4087,8 +4105,10 @@ def intel_stats():
                     not _monitor(e.get('email')) and e.get('src') != 'health-check':
                 q_starts += 1
 
+    orders.sort(key=lambda item: (item.get('timestamp') or '', item.get('id') or ''))
+    recoveries.sort(key=lambda item: (item.get('timestamp') or '', item.get('id') or ''))
     return jsonify({
-        'window_hours': 24,
+        'window_hours': hours,
         'orders': orders,
         'failed_orders': [o for o in orders if o.get('success') is False],
         'recoveries': recoveries,

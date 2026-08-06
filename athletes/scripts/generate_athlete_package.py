@@ -3121,6 +3121,17 @@ def generate_athlete_package(athlete_id: str) -> dict:
         except Exception as exc:
             warning(f"Could not persist W00 pre-plan week to plan_dates.yaml: {exc}")
 
+    # F2: derive gut-training labels from the actual persisted plan calendar
+    # (including W00), then rebuild the guide so its canonical fueling card and
+    # the serialized fueling artifact describe the same weeks and targets.
+    try:
+        from calculate_fueling import align_fueling_to_plan
+        align_fueling_to_plan(athlete_dir)
+        generate_training_guide(athlete_id, output_path=guide_path)
+        detail("Aligned fueling labels to plan_dates.yaml and refreshed guide")
+    except Exception as exc:
+        warning(f"Could not align fueling labels to plan dates: {exc}")
+
     # G0 reflection only: aggregate the artifacts just generated.  PlanIR is
     # deliberately advisory until later tickets make serializers project it;
     # a malformed historical/optional artifact must never block delivery.

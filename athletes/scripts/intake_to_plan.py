@@ -504,8 +504,31 @@ def parse_years(val: str) -> int:
 
 
 def parse_device_list(val: str) -> List[str]:
-    """Parse comma-separated device list."""
-    return [d.strip().lower() for d in re.split(r'[,\s]+', val) if d.strip()]
+    """Parse form-supplied devices without breaking multi-word tokens.
+
+    Commas/newlines are the only delimiters. Known answers map through the
+    canonical vocabulary; unknown answers survive verbatim for coach review.
+    """
+    vocabulary = {
+        'power meter': 'power_meter',
+        'powermeter': 'power_meter',
+        'hr strap': 'hr_strap',
+        'heart rate strap': 'hr_strap',
+        'heart rate monitor': 'hr_strap',
+        'hr monitor': 'hr_strap',
+        'smart trainer': 'smart_trainer',
+        'garmin': 'garmin',
+        'wahoo': 'wahoo',
+    }
+    devices = []
+    for raw in re.split(r'[,\n]+', str(val or '')):
+        token = re.sub(r'\s+', ' ', raw.strip().lower())
+        if not token or token == 'unknown':
+            continue
+        canonical = vocabulary.get(token, token)
+        if canonical not in devices:
+            devices.append(canonical)
+    return devices
 
 
 def parse_day_list(val: str) -> List[str]:

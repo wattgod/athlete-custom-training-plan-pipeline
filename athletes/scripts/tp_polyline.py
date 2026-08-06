@@ -29,10 +29,8 @@ def compute_polyline(structure: List[Dict[str, Any]]) -> List[List[float]]:
     itself reverse-engineered from Matti's working OG TrainingPeaks workouts:
     per step a vertical rise then a horizontal hold (x = fraction of total
     duration, y = fraction of peak intensity), bookended by [0,0] and [1,0].
-    Each step's duration fraction is rounded to 3 decimals BEFORE accumulating
-    into the running cumulative fraction (matching the source data exactly, so
-    rounding drift can push the last cumulative point slightly past 1 before
-    the explicit closing [1,0]).
+    Cumulative time stays unrounded until each point is emitted. Emitted x
+    values are clamped to [0, 1] and monotonically nondecreasing.
     """
     flat: List[Dict[str, Any]] = []
     for block in structure:
@@ -56,11 +54,14 @@ def compute_polyline(structure: List[Dict[str, Any]]) -> List[List[float]]:
     polyline: List[List[float]] = [[0, 0]]
     if total > 0:
         cum = 0.0
+        emitted_x = 0.0
         for dur, intensity in zip(durations, intensities):
             y = round(intensity / peak, 3)
-            t_begin = round(cum, 3)
-            cum = round(cum + round(dur / total, 3), 3)
+            t_begin = max(emitted_x, min(1.0, round(cum, 3)))
+            cum += dur / total
+            t_end = max(t_begin, min(1.0, round(cum, 3)))
             polyline.append([t_begin, y])
-            polyline.append([cum, y])
+            polyline.append([t_end, y])
+            emitted_x = t_end
     polyline.append([1, 0])
     return polyline

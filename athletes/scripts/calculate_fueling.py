@@ -91,29 +91,27 @@ HOURLY_CARB_TARGETS = {
     }
 }
 
-# Gut training progression by phase (g/hr targets during training)
+# Gut-training education templates. Week labels and personalized ranges are
+# derived from the actual plan and canonical prescription below; this table no
+# longer claims fixed BASE 1-6 / BUILD 7-14 / PEAK 15-18 bands.
 GUT_TRAINING_PHASES = {
     "base": {
-        "weeks": "1-6",
-        "target_range": [40, 50],
         "description": "Build tolerance - start conservative",
         "guidance": "Practice fueling on ALL rides over 90 minutes. Start with familiar products."
     },
     "build": {
-        "weeks": "7-14",
-        "target_range": [50, 70],
         "description": "Increase absorption capacity",
         "guidance": "Gradually increase carb intake on long rides. Test race-day products."
     },
     "peak": {
-        "weeks": "15-18",
-        "target_range": [60, 80],
         "description": "Race-rate practice",
         "guidance": "Simulate race fueling on long rides. Lock in your race-day products."
     },
+    "taper": {
+        "description": "Rehearse the settled plan",
+        "guidance": "Keep familiar products and timing; reduce novelty, not consistency."
+    },
     "race": {
-        "weeks": "Race day",
-        "target_range": [70, 90],
         "description": "Execute your fueling plan",
         "guidance": "Stick to the plan. Nothing new on race day."
     }
@@ -302,7 +300,27 @@ def calculate_total_carb_target(
     }
 
 
-def get_gut_training_phase(week: int, plan_weeks: int) -> Dict:
+def _phase_target_range(phase: str, prescription: Dict) -> List[int]:
+    """Derive every personalized training range from one prescription."""
+    target = int(prescription.get("race_target_g_per_hour") or 60)
+    race_range = list(prescription.get("race_range_g_per_hour") or [target, target])
+    if phase == "race":
+        return [int(race_range[0]), int(race_range[1])]
+    offsets = {
+        "base": (20, 10),
+        "lead_in": (20, 10),
+        "build": (15, 5),
+        "peak": (10, 0),
+        "taper": (10, 0),
+    }
+    low_offset, high_offset = offsets.get(phase, (15, 5))
+    low = max(30, target - low_offset)
+    high = max(low, target - high_offset)
+    return [low, high]
+
+
+def get_gut_training_phase(week: int, plan_weeks: int,
+                           prescription: Optional[Dict] = None) -> Dict:
     """
     Get gut training guidance for a specific week.
 
@@ -327,10 +345,60 @@ def get_gut_training_phase(week: int, plan_weeks: int) -> Dict:
 
     phase_info = GUT_TRAINING_PHASES[phase].copy()
     phase_info["current_week"] = week
+    phase_info["week_label"] = f"W{week}"
     phase_info["plan_weeks"] = plan_weeks
     phase_info["phase_name"] = phase
+    phase_info["target_range"] = _phase_target_range(
+        phase, prescription or {"race_target_g_per_hour": 60})
 
     return phase_info
+
+
+def _phase_inventory(progression: List[Dict]) -> Dict:
+    inventory: Dict[str, Dict] = {}
+    for week in progression:
+        phase = week["phase_name"]
+        entry = inventory.setdefault(phase, {
+            **GUT_TRAINING_PHASES.get(
+                phase, GUT_TRAINING_PHASES["base"]),
+            "weeks": [],
+            "target_range": week["target_range"],
+        })
+        entry["weeks"].append(week["week_label"])
+    return inventory
+
+
+def align_fueling_to_plan(athlete_dir: Path) -> Dict:
+    """Rewrite gut-training labels from actual plan_dates, including W00."""
+    athlete_dir = Path(athlete_dir)
+    fueling_path = athlete_dir / "fueling.yaml"
+    plan_dates_path = athlete_dir / "plan_dates.yaml"
+    with fueling_path.open() as handle:
+        fueling = yaml.safe_load(handle) or {}
+    with plan_dates_path.open() as handle:
+        plan_dates = yaml.safe_load(handle) or {}
+    prescription = fueling.get("prescription") or {}
+    paid_weeks = int(plan_dates.get("plan_weeks") or 0)
+    progression = []
+    for week in sorted(plan_dates.get("weeks") or [], key=lambda item: int(item.get("week", 0))):
+        number = int(week.get("week", 0))
+        raw_phase = str(week.get("phase") or "base").strip().lower()
+        phase = "lead_in" if number == 0 else raw_phase
+        template_phase = phase if phase in GUT_TRAINING_PHASES else "base"
+        info = GUT_TRAINING_PHASES[template_phase].copy()
+        info.update({
+            "current_week": number,
+            "week_label": "W00" if number == 0 else f"W{number}",
+            "plan_weeks": paid_weeks,
+            "phase_name": phase,
+            "target_range": _phase_target_range(phase, prescription),
+        })
+        progression.append(info)
+    fueling.setdefault("gut_training", {})["weekly_progression"] = progression
+    fueling["gut_training"]["phases"] = _phase_inventory(progression)
+    with fueling_path.open("w") as handle:
+        yaml.dump(fueling, handle, default_flow_style=False, sort_keys=False)
+    return fueling
 
 
 # =============================================================================
@@ -434,7 +502,7 @@ def generate_fueling_context(
     # Get gut training progression
     gut_training = []
     for week in range(1, plan_weeks + 1):
-        gut_training.append(get_gut_training_phase(week, plan_weeks))
+        gut_training.append(get_gut_training_phase(week, plan_weeks, p))
 
     # Build fueling timeline
     fueling_timeline = generate_fueling_timeline(
@@ -457,7 +525,7 @@ def generate_fueling_context(
         "calories": calorie_data,
         "carbohydrates": carb_data,
         "gut_training": {
-            "phases": GUT_TRAINING_PHASES,
+            "phases": _phase_inventory(gut_training),
             "weekly_progression": gut_training
         },
         "fueling_timeline": fueling_timeline,
@@ -649,8 +717,9 @@ def main():
     print()
 
     print("📈 Gut Training Progression:")
-    for phase, info in GUT_TRAINING_PHASES.items():
-        print(f"   {phase.upper()} ({info['weeks']}): {info['target_range'][0]}-{info['target_range'][1]}g/hr")
+    for phase, info in fueling["gut_training"]["phases"].items():
+        labels = ', '.join(info['weeks'])
+        print(f"   {phase.upper()} ({labels}): {info['target_range'][0]}-{info['target_range'][1]}g/hr")
     print()
 
     recs = fueling["recommendations"]
