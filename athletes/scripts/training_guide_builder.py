@@ -364,6 +364,12 @@ def generate_guide(
     output_path.write_text(html, encoding="utf-8")
 
 
+def _store_persona_label(profile: Dict, tier_display: str) -> str:
+    """Return a customer-facing persona name from an internal tier token."""
+    raw = str(profile.get("plan_tier") or tier_display).strip()
+    return raw.replace("_", " ").title()
+
+
 def _build_full_guide(
     athlete_name: str,
     race_name: str,
@@ -390,7 +396,7 @@ def _build_full_guide(
     # not the internally-derived tier (which can disagree with the SKU
     # name) and never the fake base-intake "name" (e.g. "Finisher Gravel
     # Punchy") — that's a tier label wearing a person's name.
-    persona_label = (profile.get("plan_tier") or tier_display) if store_mode else None
+    persona_label = _store_persona_label(profile, tier_display) if store_mode else None
 
     # Brand by discipline — a road athlete gets ROADIE LABS + road skills,
     # never a GRAVEL GOD footer or gravel-cornering drills.
@@ -595,7 +601,7 @@ def _section_training_plan_brief(
     FTP/height/years/hours from a generic base intake) and reframes
     1:1-questionnaire language for marketplace/store SKU guides.
     """
-    persona_label = (profile.get("plan_tier") or tier_display) if store_mode else None
+    persona_label = _store_persona_label(profile, tier_display) if store_mode else None
     demo = profile.get("demographics", {})
     fitness = profile.get("fitness", {})
     sched = profile.get("schedule", {})

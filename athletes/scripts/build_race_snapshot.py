@@ -18,16 +18,33 @@ discipline, location}. Run when the race DBs change:
 import calendar
 import glob
 import json
+import os
 import re
 from datetime import date
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 SNAPSHOT = SCRIPTS_DIR.parent / "config" / "races.json"
-GG_ROOT = Path.home() / "Documents" / "GravelGod"
+GG_ROOT = Path(os.environ.get(
+    "GRAVEL_GOD_REPOS_ROOT",
+    Path.home() / "Documents" / "GravelGod",
+)).expanduser()
+
+
+def source_dir(repo_name: str) -> Path:
+    """Resolve race-data repos without assuming one historical checkout root."""
+    env_name = f"{repo_name.upper().replace('-', '_')}_ROOT"
+    if os.environ.get(env_name):
+        return Path(os.environ[env_name]).expanduser() / "race-data"
+    legacy = GG_ROOT / repo_name / "race-data"
+    if legacy.exists():
+        return legacy
+    return Path.home() / repo_name / "race-data"
+
+
 SOURCES = [
-    (GG_ROOT / "gravel-race-automation" / "race-data", "gravel"),
-    (GG_ROOT / "road-race-automation" / "race-data", "road"),
+    (source_dir("gravel-race-automation"), "gravel"),
+    (source_dir("road-race-automation"), "road"),
 ]
 
 _MONTHS = {m.lower(): i for i, m in enumerate(calendar.month_name) if m}

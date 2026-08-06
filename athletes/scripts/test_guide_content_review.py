@@ -26,10 +26,25 @@ from training_guide_builder import (
     _section_equipment_checklist,
     _section_gravel_skills,
     _build_section_titles,
+    _store_persona_label,
 )
 
 
 SCHEDULE_DAY_ROW = re.compile(r"<t[dh][^>]*>\s*(?:<strong>)?(Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day")
+
+
+class TestStorePersonaLabels:
+    @pytest.mark.parametrize(
+        ("token", "expected"),
+        [
+            ("finisher", "Finisher"),
+            ("time-crunched", "Time-Crunched"),
+            ("save_my_race", "Save My Race"),
+            ("Masters", "Masters"),
+        ],
+    )
+    def test_internal_tier_tokens_render_as_product_names(self, token, expected):
+        assert _store_persona_label({"plan_tier": token}, "Fallback") == expected
 
 
 class TestRemovedSections:

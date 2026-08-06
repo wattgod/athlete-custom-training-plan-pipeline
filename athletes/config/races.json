@@ -3885,12 +3885,12 @@
    "slug": "letape-slovenia"
   },
   "gravel:letape-taiwan": {
-   "date": "2026-04-12",
+   "date": "2026-10-03",
    "discipline": "gravel",
    "distance_mi": 64.6,
    "elevation_ft": 4921,
    "location": "Sun Moon Lake, Nantou County, Taiwan",
-   "name": "L'Etape Taiwan by Tour de France",
+   "name": "L'\u00c9tape Sun Moon Lake by Tour de France",
    "slug": "letape-taiwan"
   },
   "gravel:letape-thailand": {
@@ -9087,12 +9087,12 @@
    "slug": "letape-slovenia"
   },
   "road:letape-taiwan": {
-   "date": "2026-04-12",
+   "date": "2026-10-03",
    "discipline": "road",
    "distance_mi": 64.6,
    "elevation_ft": 4921.0,
    "location": "Sun Moon Lake, Nantou County, Taiwan",
-   "name": "L'Etape Taiwan by Tour de France",
+   "name": "L'\u00c9tape Sun Moon Lake by Tour de France",
    "slug": "letape-taiwan"
   },
   "road:letape-thailand": {
