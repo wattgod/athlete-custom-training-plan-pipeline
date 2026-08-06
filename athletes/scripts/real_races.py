@@ -52,8 +52,11 @@ def buildable_races(discipline=None, min_weeks=8, max_weeks=30, today=None,
 def pick(rng, discipline=None, min_weeks=8, max_weeks=30, today=None,
          min_mi=25, max_mi=170):
     """Pick one buildable real race (reproducible via the supplied rng).
-    Falls back across disciplines, then to None if the snapshot is empty."""
+    Returns None when no race satisfies the requested discipline and bounds.
+
+    Callers already provide discipline-safe synthetic or fixed fallbacks. A
+    cross-discipline result is worse than no result because it can silently
+    turn a Roadie order into a gravel event (or vice versa).
+    """
     races = buildable_races(discipline, min_weeks, max_weeks, today, min_mi, max_mi)
-    if not races and discipline:
-        races = buildable_races(None, min_weeks, max_weeks, today, min_mi, max_mi)
     return rng.choice(races) if races else None
