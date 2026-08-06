@@ -5595,11 +5595,11 @@
    "slug": "switchgrass"
   },
   "gravel:taiwan-kom-challenge": {
-   "date": "2026-10-23",
+   "date": "2026-11-02",
    "discipline": "gravel",
-   "distance_mi": 93,
-   "elevation_ft": 10745,
-   "location": "Yilan to Wuling Pass, Taiwan",
+   "distance_mi": 65.2,
+   "elevation_ft": 11155,
+   "location": "Hualien to Wuling Pass, Taiwan",
    "name": "Taiwan KOM Challenge",
    "slug": "taiwan-kom-challenge"
   },
@@ -9969,11 +9969,11 @@
    "slug": "suzuka-endurance-road"
   },
   "road:taiwan-kom-challenge": {
-   "date": "2026-10-23",
+   "date": "2026-11-02",
    "discipline": "road",
-   "distance_mi": 93.0,
-   "elevation_ft": 10745.0,
-   "location": "Yilan to Wuling Pass, Taiwan",
+   "distance_mi": 65.2,
+   "elevation_ft": 11155.0,
+   "location": "Hualien to Wuling Pass, Taiwan",
    "name": "Taiwan KOM Challenge",
    "slug": "taiwan-kom-challenge"
   },
