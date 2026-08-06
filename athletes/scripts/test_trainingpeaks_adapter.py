@@ -12,7 +12,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'webhook'))
 
 from delivery.trainingpeaks import TrainingPeaksAdapter, TrainingPeaksReadbackMismatch
-from fulfillment_state import APPROVED, load, transition, write_generation
+from fulfillment_state import (APPROVED, finalize_transitional_release, load,
+                               transition, write_generation)
 
 
 class FakeTP:
@@ -97,6 +98,10 @@ def test_readback_mismatch_never_marks_j1_applied(tmp_path, manifest):
     fake = FakeTP(mismatch=True)
     state_path = tmp_path / 'fulfillment_status.json'
     write_generation(state_path, 'heather')
+    revision_dir = tmp_path / 'revisions' / 'r1'
+    revision_dir.mkdir(parents=True)
+    (revision_dir / 'artifact.txt').write_text('sealed')
+    finalize_transitional_release(state_path, revision_dir, expected_revision=1)
     transition(state_path, APPROVED, 'coach@example.test')
     try:
         adapter = TrainingPeaksAdapter(fake.url, 'test', tmp_path / 'ops.json')
