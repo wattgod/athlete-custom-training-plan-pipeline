@@ -14,6 +14,7 @@ Day abbreviations: Mon, Tue, Wed, Thu, Fri, Sat, Sun
 Month abbreviations: Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec
 """
 
+import os
 import sys
 import yaml
 from datetime import datetime, timedelta
@@ -419,7 +420,7 @@ def main():
     args = parser.parse_args()
 
     # Load athlete data
-    athletes_dir = Path(__file__).parent.parent
+    athletes_dir = Path(os.environ.get('GG_ATHLETES_BASE_DIR', Path(__file__).parent.parent))
     athlete_dir = athletes_dir / args.athlete_id
 
     if not athlete_dir.exists():

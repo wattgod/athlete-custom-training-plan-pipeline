@@ -2961,7 +2961,7 @@ GO GET IT, {athlete_name.upper()}!
 def generate_athlete_package(athlete_id: str) -> dict:
     """Generate complete training package for an athlete."""
 
-    athletes_dir = Path(__file__).parent.parent
+    athletes_dir = Path(os.environ.get('GG_ATHLETES_BASE_DIR', Path(__file__).parent.parent))
     athlete_dir = athletes_dir / athlete_id
 
     if not athlete_dir.exists():
@@ -3100,6 +3100,8 @@ def generate_athlete_package(athlete_id: str) -> dict:
         write_generation(
             athlete_dir / 'fulfillment_status.json', athlete_id,
             getattr(generate_zwo_files, 'last_fulfillment_issues', []),
+            order_id=str(profile.get('order_id') or ''),
+            delivery_platform=str(profile.get('delivery_platform') or 'manual'),
         )
         detail("Saved: fulfillment_status.json")
     except Exception as exc:
@@ -3145,11 +3147,12 @@ def generate_athlete_package(athlete_id: str) -> dict:
         from validate_plan_package import validate_plan_package
         semantic_issues = validate_plan_package(athlete_dir)
         if semantic_issues:
-            from fulfillment_state import load as load_fulfillment_state, set_generation_blockers
+            from fulfillment_state import load as load_fulfillment_state, merge_generation_blockers
             current = load_fulfillment_state(athlete_dir / 'fulfillment_status.json')
-            blockers = {issue['id']: issue for issue in current['blocking_issues']}
-            blockers.update({issue['id']: issue for issue in semantic_issues})
-            set_generation_blockers(athlete_dir / 'fulfillment_status.json', list(blockers.values()))
+            merge_generation_blockers(
+                athlete_dir / 'fulfillment_status.json',
+                current['generation_revision'], 'package_consistency', semantic_issues,
+            )
             build_plan_ir(athlete_id)  # PlanIR's fulfillment projection follows the gate.
             warning(f"Package consistency gate flagged {len(semantic_issues)} issue(s)")
         from fulfillment_manifest import build_fulfillment_manifest

@@ -11,6 +11,7 @@ Created: Feb 2026
 Reason: Bug #16-18 - Packages were delivered without proper validation.
 """
 
+import os
 import sys
 import yaml
 import subprocess
@@ -59,7 +60,7 @@ def race_match_lines(profile: dict) -> list:
 
 def generate_checklist(athlete_id: str) -> str:
     """Generate a comprehensive pre-delivery checklist."""
-    athletes_dir = Path(__file__).parent.parent
+    athletes_dir = Path(os.environ.get('GG_ATHLETES_BASE_DIR', Path(__file__).parent.parent))
     athlete_dir = athletes_dir / athlete_id
     scripts_dir = Path(__file__).parent
 
@@ -264,7 +265,7 @@ def main():
     print(checklist)
 
     # Also save to file
-    athletes_dir = Path(__file__).parent.parent
+    athletes_dir = Path(os.environ.get('GG_ATHLETES_BASE_DIR', Path(__file__).parent.parent))
     athlete_dir = athletes_dir / athlete_id
     checklist_path = athlete_dir / 'PRE_DELIVERY_CHECKLIST.txt'
 

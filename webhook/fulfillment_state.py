@@ -496,8 +496,6 @@ def transition(
         if to == APPROVED:
             if not state.get("model_seal") or not state.get("release_manifest_digest"):
                 raise FulfillmentStateError("approval requires a sealed release")
-            if state.get("required_confirmations"):
-                raise FulfillmentStateError("required confirmations are unresolved")
             if current == GENERATED:
                 pass
             elif current == BLOCKED_REVIEW:
@@ -523,6 +521,8 @@ def transition(
                 }
             else:
                 raise FulfillmentStateError(f"illegal transition {current} -> {to}")
+            if state.get("required_confirmations"):
+                raise FulfillmentStateError("required confirmations are unresolved")
             state["approval"] = {
                 "coach": coach.strip(),
                 "at": now_iso(),

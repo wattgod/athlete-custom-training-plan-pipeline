@@ -5,6 +5,7 @@ Single source of truth for constants used across the pipeline.
 All shared constants should be defined here to avoid duplication.
 """
 
+import os
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
@@ -13,7 +14,9 @@ from typing import Dict, List, Tuple, Optional
 # Use these instead of constructing paths manually throughout the codebase
 
 # Get the absolute path to the athletes directory (scripts/../)
-ATHLETES_BASE_DIR: Path = Path(__file__).parent.parent.resolve()
+ATHLETES_BASE_DIR: Path = Path(
+    os.environ.get('GG_ATHLETES_BASE_DIR', Path(__file__).parent.parent)
+).resolve()
 
 
 def get_athlete_dir(athlete_id: str) -> Path:

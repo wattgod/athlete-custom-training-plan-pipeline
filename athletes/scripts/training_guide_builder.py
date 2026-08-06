@@ -3807,7 +3807,7 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
 
     # Resolve paths
     scripts_dir = Path(__file__).parent
-    athletes_dir = scripts_dir.parent
+    athletes_dir = Path(os.environ.get('GG_ATHLETES_BASE_DIR', scripts_dir.parent))
     athlete_dir = athletes_dir / athlete_id
 
     if output_path is None:
