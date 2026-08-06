@@ -1,0 +1,28 @@
+{
+  "name": "Athlete M",
+  "email": "athlete-m@example.invalid",
+  "sex": "Female",
+  "age": 45,
+  "weight": "150",
+  "ftp": "",
+  "powerOrHr": "hr",
+  "hr_threshold": "",
+  "devices": "power meter, hr strap",
+  "hours_per_week": "7-10",
+  "long_ride_days": ["monday", "tuesday", "sunday"],
+  "interval_days": ["wednesday", "thursday"],
+  "off_days": ["saturday"],
+  "race_slug": "three-course-race",
+  "computed_weeks": 7,
+  "athlete_timezone": "America/Denver",
+  "races": [
+    {
+      "name": "Three Course Race",
+      "slug": "three-course-race",
+      "date": "2026-09-19",
+      "distance": "75 miles",
+      "priority": "A",
+      "goal": "Finish Strong"
+    }
+  ]
+}

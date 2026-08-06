@@ -1,0 +1,31 @@
+{
+  "race_date": "2026-09-19",
+  "plan_weeks": 6,
+  "weeks": [
+    {"week": 0, "phase": "lead_in", "start_date": "2026-08-05", "end_date": "2026-08-09", "sessions": [
+      {"date": "2026-08-05", "title": "Easy Endurance", "tp_kind": "bike", "type": "workout"}
+    ]},
+    {"week": 1, "phase": "base", "start_date": "2026-08-10", "end_date": "2026-08-16", "sessions": [
+      {"date": "2026-08-10", "title": "HR Field Test", "tp_kind": "bike", "type": "workout"},
+      {"date": "2026-08-12", "title": "Tempo", "tp_kind": "bike", "type": "workout"},
+      {"date": "2026-08-16", "title": "VO2 Session", "tp_kind": "bike", "type": "workout"}
+    ]},
+    {"week": 2, "phase": "build", "start_date": "2026-08-17", "end_date": "2026-08-23", "sessions": [
+      {"date": "2026-08-19", "title": "Tempo", "tp_kind": "bike", "type": "workout"}
+    ]},
+    {"week": 3, "phase": "build", "start_date": "2026-08-24", "end_date": "2026-08-30", "sessions": [
+      {"date": "2026-08-26", "title": "Threshold", "tp_kind": "bike", "type": "workout"}
+    ]},
+    {"week": 4, "phase": "specific", "start_date": "2026-08-31", "end_date": "2026-09-06", "sessions": [
+      {"date": "2026-09-02", "title": "Race Simulation", "tp_kind": "bike", "type": "workout"}
+    ]},
+    {"week": 5, "phase": "taper", "start_date": "2026-09-07", "end_date": "2026-09-13", "sessions": [
+      {"date": "2026-09-09", "title": "Openers", "tp_kind": "bike", "type": "workout"}
+    ]},
+    {"week": 6, "phase": "race", "start_date": "2026-09-14", "end_date": "2026-09-20", "sessions": [
+      {"date": "2026-09-17", "title": "Openers", "tp_kind": "bike", "type": "workout"},
+      {"date": "2026-09-18", "title": "Easy Endurance", "tp_kind": "bike", "type": "workout"},
+      {"date": "2026-09-19", "title": "Race Day", "tp_kind": "race", "type": "race"}
+    ]}
+  ]
+}
