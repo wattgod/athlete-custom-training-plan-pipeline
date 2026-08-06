@@ -27,6 +27,7 @@ from training_guide_builder import (
     _section_gravel_skills,
     _build_section_titles,
     _store_persona_label,
+    _write_clean_html,
 )
 
 
@@ -45,6 +46,12 @@ class TestStorePersonaLabels:
     )
     def test_internal_tier_tokens_render_as_product_names(self, token, expected):
         assert _store_persona_label({"plan_tier": token}, "Fallback") == expected
+
+
+def test_guide_writer_removes_trailing_whitespace(tmp_path):
+    output = tmp_path / "guide.html"
+    _write_clean_html(output, "<p>clean</p>  \n   \n")
+    assert output.read_text(encoding="utf-8") == "<p>clean</p>\n\n"
 
 
 class TestRemovedSections:

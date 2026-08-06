@@ -361,7 +361,15 @@ def generate_guide(
         store_mode=store_mode,
     )
 
-    output_path.write_text(html, encoding="utf-8")
+    _write_clean_html(output_path, html)
+
+
+def _write_clean_html(output_path: Path, html: str) -> None:
+    """Write stable HTML without whitespace-only or trailing-space diffs."""
+    clean = "\n".join(line.rstrip() for line in html.splitlines())
+    if html.endswith("\n"):
+        clean += "\n"
+    output_path.write_text(clean, encoding="utf-8")
 
 
 def _store_persona_label(profile: Dict, tier_display: str) -> str:
@@ -4186,7 +4194,7 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
         html = html.replace(f'{rd}mi successfully', 'successfully')
         html = html.replace(f' {rd}mi</td>', '</td>')  # Stat card: just show number
 
-    output_path.write_text(html, encoding='utf-8')
+    _write_clean_html(output_path, html)
     return output_path
 
 
