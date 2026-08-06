@@ -76,14 +76,23 @@ def _real_road_race(*, hillclimb=False):
     import random
     from datetime import date as _date
     try:
-        from real_races import pick
-        bounds = {"min_mi": 1, "max_mi": 40} if hillclimb else {
-            "min_mi": 40, "max_mi": 140}
-        race = pick(
-            random.Random("acceptance-road-hill-v1" if hillclimb
-                          else "acceptance-road-fondo-v1"),
-            discipline="road", min_weeks=8, max_weeks=60,
-            today=_date.today().isoformat(), **bounds)
+        from real_races import buildable_races, pick
+        if hillclimb:
+            candidates = buildable_races(
+                discipline="road", min_weeks=8, max_weeks=60,
+                today=_date.today().isoformat(), min_mi=1, max_mi=100)
+            hill_terms = ("hill", "climb", "kom", "mount")
+            candidates = [
+                race for race in candidates
+                if any(term in race.get("name", "").lower() for term in hill_terms)
+            ]
+            race = (random.Random("acceptance-road-hill-v2").choice(candidates)
+                    if candidates else None)
+        else:
+            race = pick(
+                random.Random("acceptance-road-fondo-v1"),
+                discipline="road", min_weeks=8, max_weeks=60,
+                today=_date.today().isoformat(), min_mi=40, max_mi=140)
         if race:
             return race
     except Exception:
