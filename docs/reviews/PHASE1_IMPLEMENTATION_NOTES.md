@@ -1,4 +1,99 @@
-# Phase 1 implementation notes — review round 2 closure
+# Phase 1 implementation notes — review round 3 closure
+
+## Round 3 baseline and required blocker dispositions
+
+- This closure starts from R3 review commit `921d9be` and treats
+  `docs/SPEC_TRUSTWORTHY_FULFILMENT.md` as normative.
+- The de-identified task brief is retained as `.codex-phase1-fix3-brief.md` so
+  the requested scope remains auditable with the closure.
+
+1. **B1 residual — fixed: the live TrainingPeaks browser driver is not a
+   Phase 1 release path.** `tp_apply_order.py` hard-fails job mode before a
+   status request, file write, or runbook print. Its direct `build_apply_job`
+   and `print_runbook` entry points carry the same hard failure, so no caller
+   can bypass the CLI dispatch to obtain executable job bytes. The message
+   directs the coach to apply manually in the TrainingPeaks UI and record
+   APPLIED through the authenticated transition with evidence; automated apply
+   is explicitly deferred to the Phase 4/5 worker. `tp_apply_driver.js` throws
+   the identical message at its first executable statement, before installing
+   globals, inspecting browser credentials, calling the gate, or making a TP
+   request, so previously emitted jobs are inert. The historical status/token
+   helpers and server endpoints remain intact for the worker migration.
+   Production regressions prove the CLI writes neither a requested output file
+   nor a runbook even when server arguments are supplied, the JS file exits
+   before network/global activity, and an APPROVED sealed TP order still gets a
+   working status capability whose live gate returns the same release binding.
+
+2. **N4 — fixed: Endure remains fully disabled.** The authoritative APPLIED
+   transition accepts only `trainingpeaks` and the Phase 1 `manual` attestation
+   path. A requested or immutable Endure platform is rejected with an error
+   citing D4/R9 condition 11 before seal/application mutation. `/api/confirm`
+   checks immutable `delivery_platform` before artifact or email work, rejects
+   Endure with the same citation, and rejects every other non-TrainingPeaks
+   platform rather than constructing TrainingPeaks copy. The production-route
+   regression performs R3's exact authenticated attack against a clean,
+   approved Endure order (`platform=endure`, `evidence=x`), proves the state
+   remains APPROVED with no application, then proves confirmation returns 409
+   with zero sends. A separate manual-order regression proves its APPLIED
+   attestation remains allowed while the TP-specific confirmation route stays
+   closed.
+
+## Round 3 re-attack dispositions
+
+1. **Facts-rehydrating helper — fixed.** Repository search confirmed the old
+   `training_guide_builder.generate_guide` helper is outside the production
+   order path (the shipping entry point remains `generate_training_guide`). It
+   now shares the durable facts-omitted predicate with the shipping builder and
+   skips both catalog loading and date cross-reference, retaining only the
+   athlete-supplied distance. A regression proves the retired helper does not
+   even import the catalog loader and passes no external facts downstream.
+2. **Retained Endure transport and old notification variants — deferred,
+   non-reachable in Phase 1.** `endure_delivery.deliver_purchased_plan` remains
+   later-phase transport code, but `_execute_plan_job` has no caller to it and
+   the production orchestration regression continues to assert zero POST while
+   preserving the immutable Endure target. The old `_build_training_plan_email`
+   variants are still exercised only by direct legacy-shaped unit inputs; the
+   normal plan job supplies state fields that select the Phase 1 state-aware
+   notification. The newly closed APPLIED and confirm boundaries remove the
+   reachable post-approval bypass. Deleting later-phase mapping/transport code
+   is unnecessary Phase 1 churn and remains deferred with Endure re-enable.
+3. **Apply-token boundary hardening — fixed cheaply.** Exact-expiration-second
+   tokens now expire (`exp <= now`), claims must be objects with a typed `iat`,
+   and malformed base64/Unicode input fails as 401 instead of escaping as 500.
+   Regressions cover malformed input and the exact expiry boundary; status,
+   successful token exchange, regeneration revocation, and seal-mismatch
+   materialization remain covered.
+4. **All-guide confirmation verification — coverage closed.** The production
+   confirmation fixture now seals both PDF and HTML. Mutation regressions cover
+   the selected PDF, the unselected HTML while PDF is preferred, and the
+   personalized email body; every mutation returns 409, sends nothing, and
+   materializes non-waivable `SEAL_MISMATCH`.
+5. **N1 quarantine integration — no change required.** Legacy/missing-intake
+   quarantine precedence, normal status integration, download closure, and
+   confirmation refusal remain intact. The platform guard deliberately runs
+   after legacy quarantine detection so preserved legacy evidence cannot gain
+   a different error-path authority.
+
+## Round 3 verification
+
+- Focused CLI/state/production-bypass/guide selection: **124 passed**.
+- Complete sandbox suite: `python3 -m pytest -q` → **2357 passed, 86 skipped**,
+  21 existing warnings, 0 failures.
+- `python3 -m compileall -q athletes/scripts delivery tools webhook` passes.
+- `git diff --check` passes.
+- Socket and live TrainingPeaks, Endure, Stripe, Resend, Railway, SMTP, and
+  browser actions were not run in the sandbox and remain human/live checks.
+
+## Deferred Phase 2+
+
+The apply-contract worker, lease/quiescence and operation journal, provider
+readback/reconciliation, durable outbox, and Endure re-enable remain gated by
+their specified later phases. Phase 1 retains only the future-facing gate/token
+infrastructure; neither platform has gained new automated machinery here.
+
+---
+
+## Prior round 2 closure record
 
 ## Baseline and review disposition
 
