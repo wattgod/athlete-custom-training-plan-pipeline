@@ -31,6 +31,7 @@ VALID_STATUSES = {
     GENERATED, BLOCKED_REVIEW, APPROVED, APPLIED, CONFIRMED,
 }
 DELIVERY_PLATFORMS = {"trainingpeaks", "endure", "manual"}
+PHASE1_APPLIED_PLATFORMS = {"trainingpeaks", "manual"}
 RELEASE_STATUSES = {APPROVED, APPLIED, CONFIRMED}
 TRANSITIONAL_SEAL_VERSION = "transitional_artifact_bytes/v1"
 
@@ -652,9 +653,20 @@ def transition(
         elif to == APPLIED:
             if current != APPROVED:
                 raise FulfillmentStateError("application requires APPROVED status")
-            if not str(platform).strip() or not str(evidence).strip():
+            requested_platform = str(platform).strip()
+            delivery_platform = state["delivery_platform"]
+            if requested_platform == "endure" or delivery_platform == "endure":
+                raise FulfillmentStateError(
+                    "Endure APPLIED is disabled in Phase 1 by D4/R9 condition 11"
+                )
+            if (requested_platform not in PHASE1_APPLIED_PLATFORMS
+                    or delivery_platform not in PHASE1_APPLIED_PLATFORMS):
+                raise FulfillmentStateError(
+                    "Phase 1 APPLIED supports only trainingpeaks or the manual/attested path"
+                )
+            if not requested_platform or not str(evidence).strip():
                 raise FulfillmentStateError("platform and nonempty evidence are required")
-            if platform.strip() != state["delivery_platform"]:
+            if requested_platform != delivery_platform:
                 raise FulfillmentStateError(
                     "application platform does not match immutable delivery_platform"
                 )
@@ -669,7 +681,7 @@ def transition(
                 ) from exc
             state["application"] = {
                 "coach": coach.strip(), "at": now_iso(),
-                "platform": platform.strip(), "evidence": evidence.strip(),
+                "platform": requested_platform, "evidence": evidence.strip(),
             }
         else:
             raise FulfillmentStateError(f"illegal transition {current} -> {to}")

@@ -2,6 +2,7 @@
 
 import json
 import sys
+from datetime import timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -19,7 +20,6 @@ from fulfillment_state import (APPROVED, BLOCKED_REVIEW,
                                FulfillmentStateError,
                                load as load_fulfillment_state, transition,
                                write_generation)
-import tp_apply_order
 
 
 def _persistable_source(tmp_path, *, order_id, platform='trainingpeaks'):
@@ -28,6 +28,7 @@ def _persistable_source(tmp_path, *, order_id, platform='trainingpeaks'):
     for relative, content in {
         'workouts/W01.zwo': 'sealed workout',
         'training_guide.html': 'sealed guide',
+        'training_guide.pdf': 'sealed pdf guide',
         'plan_preview.html': 'review',
         'coaching_brief.md': 'brief',
         'personal_email.md': '**Subject:** Ready\n\nSealed body',
@@ -175,8 +176,78 @@ def test_download_seal_mismatch_revokes_authority_and_persists_blocker(
     assert mismatch["waivable"] is False
 
 
-def test_live_apply_gate_revokes_emitted_job_after_regeneration(monkeypatch, tmp_path):
-    """A real server-issued browser job dies if the order regenerates."""
+def test_future_apply_gate_status_and_token_behavior_unchanged(monkeypatch, tmp_path):
+    """Phase 1 keeps the sealed status/token boundary for the later worker."""
+    import app as webhook_app
+
+    data_dir = tmp_path / 'data'
+    monkeypatch.setattr(webhook_app, 'DATA_DIR', str(data_dir))
+    monkeypatch.setattr(webhook_app, 'DELIVERIES_DIR', str(data_dir / 'deliveries'))
+    monkeypatch.setenv('CRON_SECRET', 'ops-secret')
+    source = _persistable_source(tmp_path, order_id='test_future_gate')
+    persisted = webhook_app.persist_deliverables(
+        'test_future_gate', 'athlete-m', source_dir=source,
+        delivery_platform='trainingpeaks')
+    state_path = Path(persisted['delivery_dir']) / 'fulfillment_status.json'
+    transition(state_path, APPROVED, 'coach@example.invalid')
+
+    client = webhook_app.app.test_client()
+    status_response = client.get(
+        '/api/fulfillment/test_future_gate/status',
+        headers={'X-Cron-Secret': 'ops-secret'})
+    assert status_response.status_code == 200
+    status = status_response.get_json()
+    assert status['release_authorized'] is True
+    assert status['delivery_platform'] == 'trainingpeaks'
+    assert status['apply_gate_token']
+    assert status['apply_gate_url'].endswith(
+        '/api/fulfillment/test_future_gate/apply-gate')
+
+    gate = client.get(
+        '/api/fulfillment/test_future_gate/apply-gate',
+        query_string={'token': status['apply_gate_token']},
+        headers={'Origin': 'https://app.trainingpeaks.com'})
+    assert gate.status_code == 200
+    body = gate.get_json()
+    assert body['order_id'] == 'test_future_gate'
+    assert body['generation_revision'] == status['generation_revision']
+    assert body['model_seal'] == status['model_seal']
+    assert body['tp_manifest_sha256'] == status['tp_manifest_sha256']
+    assert body['release_authorized'] is True
+
+    malformed = client.get(
+        '/api/fulfillment/test_future_gate/apply-gate',
+        query_string={'token': 'not-base64.%%%'})
+    assert malformed.status_code == 401
+    assert malformed.get_json()['error'] == 'invalid apply gate token'
+
+
+def test_apply_gate_token_expires_at_exact_expiration_second(monkeypatch):
+    import app as webhook_app
+
+    monkeypatch.setenv('CRON_SECRET', 'ops-secret')
+    state = {
+        'order_id': 'test-expiry', 'athlete_id': 'athlete-m',
+        'delivery_platform': 'trainingpeaks', 'generation_revision': 1,
+        'model_seal': 'seal', 'release_manifest_digest': 'manifest',
+    }
+    token = webhook_app._issue_apply_gate_token(state, 'tp-digest')
+    encoded = token.split('.', 1)[0]
+    claims = json.loads(webhook_app._b64url_decode(encoded))
+    real_datetime = webhook_app.datetime
+
+    class AtExpiry(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return real_datetime.fromtimestamp(claims['exp'], tz=timezone.utc)
+
+    monkeypatch.setattr(webhook_app, 'datetime', AtExpiry)
+    with pytest.raises(FulfillmentStateError, match='expired'):
+        webhook_app._verify_apply_gate_token(token)
+
+
+def test_live_apply_gate_revokes_token_after_regeneration(monkeypatch, tmp_path):
+    """A real server-issued future-worker token dies after regeneration."""
     import app as webhook_app
 
     data_dir = tmp_path / 'data'
@@ -196,31 +267,14 @@ def test_live_apply_gate_revokes_emitted_job_after_regeneration(monkeypatch, tmp
         headers={'X-Cron-Secret': 'ops-secret'})
     assert status_response.status_code == 200
     status = status_response.get_json()
-    job = tp_apply_order.build_apply_job(
-        {'plan_title': 'Bound plan', 'sessions': [{
-            'date': '2026-08-07', 'title': 'Ride', 'tp_kind': 'bike',
-        }], 'expected': {
-            'bike': 1, 'strength': 0, 'day_off': 0, 'race': 0, 'total': 1,
-        }},
-        athlete_tp_id='123', target_date='2026-08-07', start_type=1,
-        binding={
-            **{key: status[key] for key in (
-                'order_id', 'athlete_id', 'delivery_platform',
-                'generation_revision', 'model_seal',
-                'release_manifest_digest', 'tp_manifest_sha256',
-            )},
-            'apply_gate_url': status['apply_gate_url'],
-            'apply_gate_token': status['apply_gate_token'],
-        },
-    )
-    assert job['order_id'] == 'test_live_gate'
+    assert status['apply_gate_token']
 
     write_generation(
         state_path, 'athlete-m', order_id='test_live_gate',
         delivery_platform='trainingpeaks')
     revoked = client.get(
         '/api/fulfillment/test_live_gate/apply-gate',
-        query_string={'token': job['gate']['token']},
+        query_string={'token': status['apply_gate_token']},
         headers={'Origin': 'https://app.trainingpeaks.com'})
     assert revoked.status_code == 409
     assert 'not APPROVED' in revoked.get_json()['error']
@@ -262,7 +316,9 @@ def test_live_apply_gate_materializes_post_emission_seal_mismatch(
                 if item['id'] == 'SEAL_MISMATCH')['waivable'] is False
 
 
-def test_production_apply_gate_rejects_cross_platform_order(monkeypatch, tmp_path):
+def test_authenticated_endure_apply_and_confirm_attack_is_refused(
+    monkeypatch, tmp_path,
+):
     import app as webhook_app
 
     data_dir = tmp_path / 'data'
@@ -277,21 +333,71 @@ def test_production_apply_gate_rejects_cross_platform_order(monkeypatch, tmp_pat
     state_path = Path(persisted['delivery_dir']) / 'fulfillment_status.json'
     transition(state_path, APPROVED, 'coach@example.invalid')
 
-    response = webhook_app.app.test_client().get(
+    client = webhook_app.app.test_client()
+    response = client.get(
         '/api/fulfillment/test_endure_gate/status',
         headers={'X-Cron-Secret': 'ops-secret'})
     assert response.status_code == 200
     status = response.get_json()
     assert status['delivery_platform'] == 'endure'
     assert 'apply_gate_token' not in status
-    with pytest.raises(FulfillmentStateError, match='immutable delivery_platform'):
-        transition(
-            state_path, 'APPLIED', 'coach@example.invalid',
-            platform='trainingpeaks', evidence='must never land')
+
+    applied = client.post(
+        '/api/fulfillment/test_endure_gate/transition',
+        json={
+            'to': 'APPLIED', 'coach': 'coach',
+            'platform': 'endure', 'evidence': 'x',
+        },
+        headers={'X-Cron-Secret': 'ops-secret'})
+    assert applied.status_code == 409
+    assert 'D4/R9 condition 11' in applied.get_json()['error']
+    state = load_fulfillment_state(state_path)
+    assert state['status'] == APPROVED
+    assert state['application'] is None
+
+    with patch.object(webhook_app, '_send_email') as send:
+        confirmed = client.post(
+            '/api/confirm/test_endure_gate',
+            headers={'X-Cron-Secret': 'ops-secret'})
+    assert confirmed.status_code == 409
+    assert 'D4/R9 condition 11' in confirmed.get_json()['error']
+    send.assert_not_called()
+    assert load_fulfillment_state(state_path)['status'] == APPROVED
+
+
+def test_manual_order_confirmation_never_sends_trainingpeaks_copy(
+    monkeypatch, tmp_path,
+):
+    import app as webhook_app
+
+    data_dir = tmp_path / 'data'
+    monkeypatch.setattr(webhook_app, 'DATA_DIR', str(data_dir))
+    monkeypatch.setattr(webhook_app, 'DELIVERIES_DIR', str(data_dir / 'deliveries'))
+    monkeypatch.setenv('CRON_SECRET', 'ops-secret')
+    source = _persistable_source(
+        tmp_path, order_id='test_manual_confirm', platform='manual')
+    persisted = webhook_app.persist_deliverables(
+        'test_manual_confirm', 'athlete-m', source_dir=source,
+        delivery_platform='manual')
+    state_path = Path(persisted['delivery_dir']) / 'fulfillment_status.json'
+    transition(state_path, APPROVED, 'coach@example.invalid')
+    transition(
+        state_path, 'APPLIED', 'coach@example.invalid',
+        platform='manual', evidence='coach-attested inventory')
+
+    with patch.object(webhook_app, '_send_email') as send:
+        response = webhook_app.app.test_client().post(
+            '/api/confirm/test_manual_confirm',
+            headers={'X-Cron-Secret': 'ops-secret'})
+    assert response.status_code == 409
+    assert response.get_json()['error'] == (
+        'This Phase 1 confirmation route is TrainingPeaks-only')
+    send.assert_not_called()
+    assert load_fulfillment_state(state_path)['status'] == 'APPLIED'
 
 
 @pytest.mark.parametrize('mutated_artifact', [
-    'personal_email.md', 'training_guide.html',
+    'personal_email.md', 'training_guide.html', 'training_guide.pdf',
 ])
 def test_confirm_route_refuses_mutated_sealed_bytes(
     monkeypatch, tmp_path, mutated_artifact,

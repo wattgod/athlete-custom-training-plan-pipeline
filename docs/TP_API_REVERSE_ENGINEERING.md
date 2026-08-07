@@ -5,6 +5,13 @@ APIs that the custom-plan apply tooling (`tools/tp_apply_order.py`,
 `tools/tp_apply_driver.js`) depends on. Captured while building TP-native
 custom-plan delivery; kept in-repo so future work doesn't re-derive it.
 
+**Phase 1 release status:** the browser driver is retained only as historical
+Phase 4/5 migration evidence. The CLI cannot emit `apply_job.json` or a driver
+runbook, and the JS file exits before installing or executing any browser code.
+Until the worker ships behind its later-phase gates, the coach applies manually
+in TrainingPeaks and records APPLIED through the authenticated transition with
+evidence.
+
 Companion: `tools/rx_exercise_catalog_full.json` (690 exercises),
 `tools/custom_movement_catalog_map.json`. Polyline computation lives in
 `athletes/scripts/plan_ir.py::_compute_polyline`.

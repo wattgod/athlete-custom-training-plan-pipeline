@@ -155,7 +155,10 @@ stop anything." That is false. `BLOCKED_REVIEW` enforces a real sequence:
 - approval requires a waiver covering **every** blocker;
 - application requires `APPROVED`;
 - `/api/confirm` returns **409 — "Plan must be APPLIED before confirmation"**;
-- `tools/tp_apply_order.py` refuses to apply unless Railway reports `APPROVED`.
+- Phase 1 hard-disables `tools/tp_apply_order.py` job emission and
+  `tools/tp_apply_driver.js` execution. The coach applies manually in the
+  TrainingPeaks UI, then records APPLIED through the authenticated transition
+  with evidence. Automated apply returns only through the Phase 4/5 worker.
 
 The accurate statement is narrower and worse: **the gate governs the tracked
 fulfilment path, and nothing forces anyone onto that path.** It does not prevent

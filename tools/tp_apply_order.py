@@ -1,24 +1,10 @@
 #!/usr/bin/env python3
-"""tp_apply_order.py — transactional TrainingPeaks apply orchestrator (D5).
+"""Phase 1-disabled TrainingPeaks browser-apply tooling.
 
-Architecture: this CLI *prepares and validates only*. It never talks to
-TrainingPeaks itself — ``tp_apply_driver.js`` executes inside a logged-in TP
-browser tab (injected via playwriter by the operator, same runtime model as
-``gravel-god-training-plans/tools/tp_load_plan.js``). This CLI:
-
-  1. loads + validates ``tp_manifest.json`` from a package (dir or zip),
-  2. gates on the athlete's Railway-authoritative fulfillment status
-     (refuses to build a job unless the sealed TrainingPeaks order is
-     APPROVED),
-  3. emits a release-bound ``apply_job.json`` with a short-lived live-gate
-     capability for the driver to re-check immediately before its first write,
-     and prints the
-     operator runbook, OR
-  4. (``--receipt``) validates a completed browser receipt against the
-     manifest's expected counts and, with ``--server``, posts the APPLIED
-     transition with the receipt as evidence.
-
-See SPEC_tp_native_custom_plans.md, section "CLI (D5)".
+The status/gate and historical receipt-validation helpers remain for the
+Phase 4/5 worker migration, but Phase 1 cannot emit an executable browser job
+or a driver runbook. Coaches apply manually in TrainingPeaks and record APPLIED
+through the authenticated fulfillment transition with evidence.
 """
 from __future__ import annotations
 
@@ -29,29 +15,23 @@ import os
 import shlex
 import sys
 import tempfile
-import uuid
 import zipfile
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 try:
     import requests
 except ImportError:  # network features degrade; local-only flows still work
     requests = None  # type: ignore[assignment]
 
-# rx_strength_docs.py is built in a parallel workstream (ws-c). Code to its
-# documented interface; degrade gracefully if it hasn't landed yet.
-try:
-    from . import rx_strength_docs  # type: ignore
-except ImportError:
-    try:
-        import rx_strength_docs  # type: ignore
-    except ImportError:
-        rx_strength_docs = None  # type: ignore[assignment]
-
-
 MANIFEST_FILENAME = "tp_manifest.json"
 EXPECTED_KINDS = ("bike", "strength", "day_off", "race")
+AUTOMATED_APPLY_DISABLED_MESSAGE = (
+    "AUTOMATED TRAININGPEAKS APPLY IS DISABLED FOR PHASE 1. "
+    "Automated apply returns in Phase 4/5 via the worker. Until then, the coach "
+    "must apply manually in the TrainingPeaks UI and record APPLIED through the "
+    "authenticated fulfillment transition with evidence."
+)
 
 
 class ApplyOrderError(ValueError):
@@ -65,17 +45,6 @@ class ApprovalGateError(ApplyOrderError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ApplyOrderError(message)
-
-
-def atomic_write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
-    try:
-        tmp.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(tmp, path)
-    finally:
-        if tmp.exists():
-            tmp.unlink()
 
 
 # ---------------------------------------------------------------------------
@@ -170,12 +139,6 @@ def validate_manifest(manifest: Dict[str, Any]) -> None:
                 f"does not match expected.{kind} ({expected[kind]})")
 
 
-def _session_date_range(sessions: List[Dict[str, Any]]) -> Dict[str, str]:
-    dates = sorted(s["date"] for s in sessions if s.get("date"))
-    require(bool(dates), "manifest has no dated sessions to derive a range from")
-    return {"start": dates[0], "end": dates[-1]}
-
-
 # ---------------------------------------------------------------------------
 # Railway fulfillment-status gate
 # ---------------------------------------------------------------------------
@@ -213,7 +176,7 @@ def check_approval_gate(
     athlete_id: str, generation_revision: int, model_seal: str,
     manifest_sha256: str,
 ) -> Dict[str, Any]:
-    """Require live order/revision/seal/package binding before job emission."""
+    """Validate the retained live binding contract for the future worker."""
     if not server:
         raise ApprovalGateError(
             "no --server given — the legacy local bypass is disabled; use the "
@@ -256,115 +219,14 @@ def check_approval_gate(
 
 
 # ---------------------------------------------------------------------------
-# apply_job.json emission
+# apply_job.json emission (hard-disabled for Phase 1)
 # ---------------------------------------------------------------------------
-
-def _workout_entry(session: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "date": session["date"],
-        "order_on_day": session.get("order_on_day", 0),
-        "title": session.get("display_name") or session["title"],
-        "workoutTypeValueId": session.get("workout_type_value_id"),
-        "tssPlanned": session.get("tss_planned"),
-        "totalTimePlanned": session.get("total_time_planned"),
-        "description": session.get("description", ""),
-        "structure": session.get("structure"),
-        "race": session.get("race"),
-    }
-
-
-def _strength_entry(session: Dict[str, Any], strength_module: Any,
-                     uuid_factory: Callable[[], str]) -> Dict[str, Any]:
-    entry: Dict[str, Any] = {
-        "date": session["date"],
-        "order_on_day": session.get("order_on_day", 0),
-        "title": session.get("display_name") or session["title"],
-        "template_key": session.get("strength_template"),
-    }
-    if strength_module is None:
-        entry["pending_module"] = True
-        entry["doc"] = None
-        return entry
-    # calendar_id (planPersonId) and doc_id are only known live in-browser
-    # (the plan/rx-workout don't exist yet at CLI-build time) — the driver
-    # resolves them onto this prebuilt doc immediately before the PUT.
-    entry["doc"] = strength_module.build_strength_doc(
-        entry["template_key"],
-        calendar_id=None,
-        prescribed_date=entry["date"],
-        doc_id=None,
-        uuid_factory=uuid_factory,
-    )
-    return entry
-
 
 def build_apply_job(manifest: Dict[str, Any], *, athlete_tp_id: str, target_date: Optional[str],
                      start_type: int, binding: Dict[str, Any], strength_module: Any = None,
-                     uuid_factory: Optional[Callable[[], str]] = None) -> Dict[str, Any]:
-    """Emit the transactional ``apply_job.json`` payload for the JS driver."""
-    require(bool(athlete_tp_id) and str(athlete_tp_id).strip(),
-            "athlete_tp_id is required and must be non-empty — never guess an athlete")
-    require(isinstance(binding, dict), "sealed order binding is required")
-    for field in ("order_id", "athlete_id", "generation_revision", "model_seal",
-                  "release_manifest_digest", "tp_manifest_sha256",
-                  "apply_gate_url", "apply_gate_token"):
-        require(binding.get(field) not in (None, ""),
-                f"sealed order binding missing {field}")
-    require(binding.get("delivery_platform") == "trainingpeaks",
-            "sealed order binding delivery_platform must be trainingpeaks")
-    uuid_factory = uuid_factory or (lambda: str(uuid.uuid4()))
-
-    sessions = manifest["sessions"]
-    non_strength = [s for s in sessions if s.get("tp_kind") != "strength"]
-    strength = [s for s in sessions if s.get("tp_kind") == "strength"]
-
-    # NO-OP (2026-07-17 findings doc, Matti's final ALL-CATALOG decision):
-    # every movement in each strength session's prebuilt doc
-    # (rx_strength_docs.build_strength_doc()) resolves to a real catalog
-    # exercise now -- there is no more inline-custom-exercise concept.
-    # custom_exercises_needed() always returns [] on the current module;
-    # this list is kept for backward compatibility with any strength_module
-    # that still implements it.
-    custom_exercises: List[Dict[str, Any]] = []
-    pending_module = strength_module is None
-    if strength_module is not None and hasattr(strength_module, "custom_exercises_needed"):
-        custom_exercises = list(strength_module.custom_exercises_needed())
-
-    date_range = _session_date_range(sessions)
-    job: Dict[str, Any] = {
-        "order_id": binding["order_id"],
-        "athlete_id": binding["athlete_id"],
-        "delivery_platform": binding["delivery_platform"],
-        "generation_revision": binding["generation_revision"],
-        "model_seal": binding["model_seal"],
-        "release_manifest_digest": binding["release_manifest_digest"],
-        "tp_manifest_sha256": binding["tp_manifest_sha256"],
-        "gate": {
-            "url": binding["apply_gate_url"],
-            "token": binding["apply_gate_token"],
-        },
-        "plan_title": manifest["plan_title"],
-        "athlete_tp_id": str(athlete_tp_id),
-        "duplicate_guard": {"title": manifest["plan_title"]},
-        "workouts": [_workout_entry(s) for s in non_strength],
-        "strength": [_strength_entry(s, strength_module, uuid_factory) for s in strength],
-        "custom_exercises": custom_exercises,
-        "apply": {
-            "targetDate": target_date,
-            "startType": start_type,
-            "enabled": bool(target_date),
-        },
-        "verify": {
-            "expected": manifest["expected"],
-            "date_range": date_range,
-        },
-        "rollback": {
-            "snapshot_range": date_range,
-        },
-    }
-    if pending_module:
-        job["strength_module_pending"] = True
-    return job
+                     uuid_factory: Any = None) -> Dict[str, Any]:
+    """Refuse every executable browser-job construction path in Phase 1."""
+    raise ApprovalGateError(AUTOMATED_APPLY_DISABLED_MESSAGE)
 
 
 # ---------------------------------------------------------------------------
@@ -445,29 +307,11 @@ def print_registry_commands(*, plan_title: str, plan_id: Optional[int], status: 
 
 
 # ---------------------------------------------------------------------------
-# Operator runbook
+# Operator runbook (hard-disabled for Phase 1)
 # ---------------------------------------------------------------------------
 
 def print_runbook(job_path: Path, receipt_path: Path, driver_path: Path) -> None:
-    print("\n" + "=" * 78)
-    print("OPERATOR RUNBOOK — apply via a logged-in TrainingPeaks browser tab")
-    print("=" * 78)
-    print("1. Open app.trainingpeaks.com in the browser tab Claude controls")
-    print("   (playwriter), logged in as the coach account.")
-    print("2. Inject the driver, then run it against the job payload:")
-    print(f"     - load the contents of {driver_path}")
-    print(f"     - set window.__APPLY_JOB__ = <contents of {job_path}>")
-    print("     - run: await window.applyJob(window.__APPLY_JOB__)")
-    print("3. The driver writes live progress to window.__APPLY_RECEIPT__ — poll")
-    print("   it (JSON.stringify(window.__APPLY_RECEIPT__)) to watch stage/posted/rxDone.")
-    print("4. On a 401 (TP_SESSION_401) or any halt: reload the tab, re-run step 2.")
-    print("   The driver resumes from receipt.planId (localStorage backup too).")
-    print("5. When receipt.finishedAt is set, save window.__APPLY_RECEIPT__ to a file:")
-    print(f"     {receipt_path}")
-    print("6. Feed it back to this CLI:")
-    print(f"     python3 tools/tp_apply_order.py <athlete-id> --package <package> "
-          f"--receipt {receipt_path} [--server <railway-url> --auth CRON_SECRET]")
-    print("=" * 78)
+    raise ApprovalGateError(AUTOMATED_APPLY_DISABLED_MESSAGE)
 
 
 # ---------------------------------------------------------------------------
@@ -475,48 +319,7 @@ def print_runbook(job_path: Path, receipt_path: Path, driver_path: Path) -> None
 # ---------------------------------------------------------------------------
 
 def _run_job_mode(args: argparse.Namespace, manifest: Dict[str, Any], token: Optional[str]) -> int:
-    require(bool(args.athlete_tp_id) and str(args.athlete_tp_id).strip(),
-            "--athlete-tp-id is required — never guess an athlete")
-    status = check_approval_gate(
-        server=args.server, token=token, order_id=args.order_id,
-        athlete_id=args.athlete_id,
-        generation_revision=args.generation_revision,
-        model_seal=args.model_seal,
-        manifest_sha256=args.manifest_sha256,
-    )
-
-    strength_module = rx_strength_docs
-    if strength_module is None:
-        print("WARNING: tools/rx_strength_docs.py not found — strength jobs will carry "
-              "{pending_module: true} instead of prebuilt StructuredStrength docs.",
-              file=sys.stderr)
-
-    job = build_apply_job(
-        manifest, athlete_tp_id=args.athlete_tp_id, target_date=args.target_date,
-        start_type=args.start_type, strength_module=strength_module,
-        binding={
-            "order_id": status["order_id"],
-            "athlete_id": status["athlete_id"],
-            "delivery_platform": status["delivery_platform"],
-            "generation_revision": status["generation_revision"],
-            "model_seal": status["model_seal"],
-            "release_manifest_digest": status["release_manifest_digest"],
-            "tp_manifest_sha256": status["tp_manifest_sha256"],
-            "apply_gate_url": status["apply_gate_url"],
-            "apply_gate_token": status["apply_gate_token"],
-        },
-    )
-
-    out_dir = default_output_dir(args.package)
-    job_path = args.out or (out_dir / "apply_job.json")
-    atomic_write_json(job_path, job)
-    print(f"wrote {job_path} ({len(job['workouts'])} bike/day_off/race + "
-          f"{len(job['strength'])} strength)")
-
-    driver_path = Path(__file__).resolve().parent / "tp_apply_driver.js"
-    receipt_path = out_dir / "receipt.json"
-    print_runbook(job_path, receipt_path, driver_path)
-    return 0
+    raise ApprovalGateError(AUTOMATED_APPLY_DISABLED_MESSAGE)
 
 
 def _run_receipt_mode(args: argparse.Namespace, manifest: Dict[str, Any], token: Optional[str]) -> int:
@@ -588,16 +391,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--auth", default="CRON_SECRET",
                         help="env var name holding the X-Cron-Secret token (default: CRON_SECRET)")
     parser.add_argument("--athlete-tp-id", default=None,
-                        help="TrainingPeaks numeric athlete id — REQUIRED for job emission, "
-                             "never guessed/defaulted")
+                        help="retained for future worker migration; browser job emission is disabled")
     parser.add_argument("--target-date", default=None,
-                        help="apply targetDate YYYY-MM-DD; enables Stage 5 apply-to-athlete in the driver job")
+                        help="retained for future worker migration; browser apply is disabled")
     parser.add_argument("--start-type", type=int, choices=(1, 3), default=1,
                         help="1=start-on (default), 3=end-on")
     parser.add_argument("--out", type=Path, default=None,
-                        help="output path for apply_job.json (default: <package-dir>/apply_job.json)")
+                        help="historical receipt companion path; no job is emitted in Phase 1")
     parser.add_argument("--receipt", type=Path, default=None,
-                        help="validate a completed receipt.json instead of emitting a new job")
+                        help="validate a historical completed receipt; creates no browser work")
     parser.add_argument("--coach", default=os.environ.get("USER", "coach"),
                         help="coach name recorded on the APPLIED transition (receipt mode + --server only)")
     args = parser.parse_args(argv)

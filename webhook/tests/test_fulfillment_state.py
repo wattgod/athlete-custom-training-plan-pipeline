@@ -231,6 +231,40 @@ def test_application_reverifies_seal_and_materializes_mismatch(tmp_path):
     assert state['application'] is None
 
 
+def test_phase1_endure_application_is_disabled_but_manual_attestation_is_allowed(
+    tmp_path,
+):
+    endure_path = tmp_path / 'endure.json'
+    write_generation(
+        endure_path, 'athlete-m', order_id='cs_endure',
+        delivery_platform='endure')
+    _seal(endure_path, tmp_path)
+    transition(endure_path, APPROVED, 'coach@example.test')
+    with pytest.raises(FulfillmentStateError, match='D4/R9 condition 11'):
+        transition(
+            endure_path, APPLIED, 'coach@example.test',
+            platform='endure', evidence='x')
+    assert load(endure_path)['status'] == APPROVED
+
+    manual_root = tmp_path / 'manual-artifacts'
+    manual_root.mkdir()
+    (manual_root / 'guide.html').write_text('manual sealed guide')
+    manual_path = tmp_path / 'manual.json'
+    write_generation(
+        manual_path, 'athlete-m', order_id='cs_manual',
+        delivery_platform='manual')
+    state = load(manual_path)
+    finalize_transitional_release(
+        manual_path, manual_root,
+        expected_revision=state['generation_revision'])
+    transition(manual_path, APPROVED, 'coach@example.test')
+    applied = transition(
+        manual_path, APPLIED, 'coach@example.test',
+        platform='manual', evidence='coach-attested inventory')
+    assert applied['status'] == APPLIED
+    assert applied['application']['platform'] == 'manual'
+
+
 def test_download_handle_is_the_verified_descriptor_not_a_reopen(tmp_path):
     path = tmp_path / 'status.json'
     write_generation(path, 'athlete-m', order_id='cs_handle')

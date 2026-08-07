@@ -1,11 +1,4 @@
-"""Tests for tp_apply_order.py (D5).
-
-Covers manifest validation, apply_job.json emission (golden fixture from a
-synthetic manifest), receipt validation, and approval-gate refusal paths.
-Deliberately no browser/network tests — tp_apply_driver.js executes in a
-real TP browser tab and is out of pytest's reach; --server paths here are
-exercised with a monkeypatched network layer only.
-"""
+"""Tests for Phase 1-disabled tp_apply_order.py and its retained gate helpers."""
 from __future__ import annotations
 
 import json
@@ -186,121 +179,18 @@ class TestLoadManifest:
 
 
 # ---------------------------------------------------------------------------
-# apply_job.json emission
+# apply_job.json emission is hard-disabled
 # ---------------------------------------------------------------------------
 
 class TestBuildApplyJob:
-    def test_requires_athlete_tp_id(self):
-        with pytest.raises(tao.ApplyOrderError, match="athlete_tp_id"):
+    def test_direct_builder_refuses_all_inputs(self):
+        with pytest.raises(
+                tao.ApprovalGateError,
+                match="AUTOMATED TRAININGPEAKS APPLY IS DISABLED FOR PHASE 1"):
             tao.build_apply_job(
-                golden_manifest(), athlete_tp_id="", target_date=None,
-                start_type=1, binding=sealed_binding())
-
-    def test_requires_complete_sealed_binding(self):
-        with pytest.raises(tao.ApplyOrderError, match="model_seal"):
-            tao.build_apply_job(
-                golden_manifest(), athlete_tp_id="2000302", target_date=None,
-                start_type=1, binding=sealed_binding(model_seal=""))
-
-    def test_golden_job_without_strength_module(self):
-        """Pinned golden fixture: module absent -> strength jobs carry
-        {pending_module: true}, per spec's degrade-gracefully instruction."""
-        job = tao.build_apply_job(golden_manifest(), athlete_tp_id="2000302",
-                                  target_date=None, start_type=1,
-                                  binding=sealed_binding(), strength_module=None)
-
-        assert {key: job[key] for key in (
-            "order_id", "athlete_id", "delivery_platform",
-            "generation_revision", "model_seal", "release_manifest_digest",
-            "tp_manifest_sha256",
-        )} == {key: sealed_binding()[key] for key in (
-            "order_id", "athlete_id", "delivery_platform",
-            "generation_revision", "model_seal", "release_manifest_digest",
-            "tp_manifest_sha256",
-        )}
-        assert job["gate"] == {
-            "url": sealed_binding()["apply_gate_url"],
-            "token": sealed_binding()["apply_gate_token"],
-        }
-        assert job["plan_title"] == "Example Client · Example Downtown Criterium · 10wk [CUSTOM]"
-        assert job["athlete_tp_id"] == "2000302"
-        assert job["duplicate_guard"] == {"title": job["plan_title"]}
-        assert job["strength_module_pending"] is True
-        assert job["custom_exercises"] == []
-
-        # bike/day_off/race sessions land in workouts[]; strength does not.
-        assert len(job["workouts"]) == 4
-        assert {w["title"] for w in job["workouts"]} == {
-            "Endurance Ride", "Rest Day", "Intervals", "Example Downtown Criterium",
-        }
-        assert all("strength_template" not in w for w in job["workouts"])
-
-        assert len(job["strength"]) == 1
-        strength = job["strength"][0]
-        assert strength == {
-            "date": "2026-08-05", "order_on_day": 0, "title": "Foundation (A)",
-            "template_key": "foundation_a", "pending_module": True, "doc": None,
-        }
-
-        assert job["apply"] == {"targetDate": None, "startType": 1, "enabled": False}
-        assert job["verify"] == {
-            "expected": {"bike": 2, "strength": 1, "day_off": 1, "race": 1, "total": 5},
-            "date_range": {"start": "2026-08-03", "end": "2026-08-06"},
-        }
-        assert job["rollback"] == {"snapshot_range": {"start": "2026-08-03", "end": "2026-08-06"}}
-
-    def test_target_date_enables_apply_stage(self):
-        job = tao.build_apply_job(golden_manifest(), athlete_tp_id="2000302",
-                                  target_date="2027-06-28", start_type=3,
-                                  binding=sealed_binding(), strength_module=None)
-        assert job["apply"] == {"targetDate": "2027-06-28", "startType": 3, "enabled": True}
-
-    def test_strength_module_present_builds_docs(self):
-        calls = []
-
-        class FakeStrengthModule:
-            @staticmethod
-            def build_strength_doc(template_key, *, calendar_id, prescribed_date, doc_id, uuid_factory):
-                calls.append((template_key, calendar_id, prescribed_date, doc_id))
-                return {"title": template_key, "blocks": [], "prescribedDate": prescribed_date, "id": uuid_factory()}
-
-            @staticmethod
-            def custom_exercises_needed():
-                return [{"key": "dead_bug", "title": "Dead Bug"}]
-
-        job = tao.build_apply_job(golden_manifest(), athlete_tp_id="2000302", target_date=None,
-                                  start_type=1, binding=sealed_binding(),
-                                  strength_module=FakeStrengthModule(),
-                                  uuid_factory=lambda: "fixed-uuid")
-
-        assert "strength_module_pending" not in job
-        assert job["custom_exercises"] == [{"key": "dead_bug", "title": "Dead Bug"}]
-        assert calls == [("foundation_a", None, "2026-08-05", None)]
-        strength = job["strength"][0]
-        assert strength["doc"] == {"title": "foundation_a", "blocks": [],
-                                   "prescribedDate": "2026-08-05", "id": "fixed-uuid"}
-        assert "pending_module" not in strength
-
-    def test_total_time_planned_passes_through_unrounded_and_stays_whole_minutes(self):
-        """Regression guard for the "4:09:44" ragged-duration bug: PlanIR
-        (plan_ir.py::_round_time_planned_hours) is the single place
-        total_time_planned is computed -- tp_apply_order._workout_entry must
-        be a pure passthrough (session.get("total_time_planned"), no
-        re-derivation) so a whole-minute value entering the apply-job body
-        stays whole-minute, byte-for-byte. 4.1333h == 248min exactly (the
-        value a real "Endurance with Surges" session projects to)."""
-        manifest = golden_manifest()
-        manifest["sessions"][0]["total_time_planned"] = 4.1333
-        job = tao.build_apply_job(manifest, athlete_tp_id="2000302",
-                                  target_date=None, start_type=1,
-                                  binding=sealed_binding(), strength_module=None)
-        entry = next(w for w in job["workouts"] if w["title"] == "Endurance Ride")
-        assert entry["totalTimePlanned"] == 4.1333, (
-            "totalTimePlanned was re-derived instead of passed through unchanged")
-        reconstructed_sec = round(entry["totalTimePlanned"] * 3600)
-        assert reconstructed_sec % 60 == 0, (
-            f"totalTimePlanned {entry['totalTimePlanned']} is not a whole number of minutes "
-            f"({reconstructed_sec}s)")
+                golden_manifest(), athlete_tp_id="2000302",
+                target_date="2027-06-28", start_type=3,
+                binding=sealed_binding())
 
 
 # ---------------------------------------------------------------------------
@@ -442,9 +332,9 @@ class TestMainJobMode:
     BINDING = ["--order-id", "order-1", "--generation-revision", "2",
                "--model-seal", "seal-2"]
 
-    def test_missing_athlete_tp_id_errors(self, package_dir):
+    def test_missing_athlete_tp_id_still_hits_hard_disable(self, package_dir):
         rc = tao.main(["example_client", "--package", str(package_dir), *self.BINDING])
-        assert rc == 1
+        assert rc == 3
 
     def test_no_server_exits_3_and_writes_no_job(self, package_dir):
         rc = tao.main(["example_client", "--package", str(package_dir),
@@ -452,14 +342,26 @@ class TestMainJobMode:
         assert rc == 3
         assert not (package_dir / "apply_job.json").exists()
 
-    def test_server_not_approved_exits_3(self, package_dir, monkeypatch):
-        monkeypatch.setattr(tao, "fetch_fulfillment_status",
-                            lambda server, token, order_id: {
-                                "status": "BLOCKED_REVIEW", "legacy": False})
+    def test_approved_server_cannot_emit_job_or_runbook(
+        self, package_dir, tmp_path, monkeypatch, capsys,
+    ):
+        def unexpected_status_call(*args, **kwargs):
+            pytest.fail("disabled CLI must stop before requesting a capability")
+
+        monkeypatch.setattr(tao, "fetch_fulfillment_status", unexpected_status_call)
         monkeypatch.setenv("CRON_SECRET", "secret")
-        rc = tao.main(["example_client", "--package", str(package_dir), "--athlete-tp-id", "2000302",
-                      "--server", "https://example.railway.app", *self.BINDING])
+        output_path = tmp_path / "apply_job.json"
+        rc = tao.main([
+            "example_client", "--package", str(package_dir),
+            "--athlete-tp-id", "2000302",
+            "--server", "https://example.railway.app",
+            "--out", str(output_path), *self.BINDING,
+        ])
         assert rc == 3
+        assert not output_path.exists()
+        captured = capsys.readouterr()
+        assert tao.AUTOMATED_APPLY_DISABLED_MESSAGE in captured.err
+        assert "OPERATOR RUNBOOK" not in captured.out + captured.err
 
 
 class TestMainReceiptMode:
@@ -517,71 +419,16 @@ class TestMainReceiptMode:
         assert posted["evidence"]["planId"] == 661259
 
 
-def test_browser_driver_checks_live_gate_before_any_trainingpeaks_request():
-    """The actual JS consumer must stop on live revocation before a TP call."""
+def test_browser_driver_hard_exits_before_network_or_global_install():
     driver = Path(__file__).with_name('tp_apply_driver.js')
-    job = {
-        **sealed_binding(),
-        'gate': {
-            'url': sealed_binding()['apply_gate_url'],
-            'token': sealed_binding()['apply_gate_token'],
-        },
-    }
-    job.pop('apply_gate_url')
-    job.pop('apply_gate_token')
     script = "\n".join([
-        "const fs = require('fs');",
         "global.window = {};",
-        "global.localStorage = { setItem() {} };",
-        "global.XMLHttpRequest = function() {};",
-        "global.XMLHttpRequest.prototype.setRequestHeader = function() {};",
-        "const calls = [];",
-        "global.fetch = async function(url) {",
-        "  calls.push(String(url));",
-        "  return { ok: false, status: 409, json: async () => ({ error: 'status is GENERATED' }) };",
-        "};",
-        f"eval(fs.readFileSync({json.dumps(str(driver))}, 'utf8'));",
-        f"const job = {json.dumps(job)};",
-        "window.applyJob(job).then(",
-        "  () => { console.error('driver unexpectedly ran'); process.exit(1); },",
-        "  (error) => {",
-        "    if (!String(error.message).includes('APPLY_GATE_REFUSED')) process.exit(2);",
-        "    if (calls.length !== 1 || calls[0].includes('tpapi.trainingpeaks.com')) process.exit(3);",
-        "    process.stdout.write('gate-refused-before-tp');",
-        "  },",
-        ");",
+        "global.fetch = async function() { process.stdout.write('NETWORK'); };",
+        f"require({json.dumps(str(driver))});",
+        "process.stdout.write(window.applyJob ? 'INSTALLED' : 'NO_GLOBAL');",
     ])
     completed = subprocess.run(
         ['node', '-e', script], capture_output=True, text=True, timeout=10)
-    assert completed.returncode == 0, completed.stderr
-    assert completed.stdout == 'gate-refused-before-tp'
-
-
-def test_browser_driver_refuses_missing_release_binding_without_network():
-    driver = Path(__file__).with_name('tp_apply_driver.js')
-    job = {
-        'delivery_platform': 'trainingpeaks',
-        'gate': {'url': 'https://example.invalid/gate', 'token': 'token'},
-    }
-    script = "\n".join([
-        "const fs = require('fs');",
-        "global.window = {};",
-        "global.localStorage = { setItem() {} };",
-        "global.XMLHttpRequest = function() {};",
-        "global.XMLHttpRequest.prototype.setRequestHeader = function() {};",
-        "let calls = 0; global.fetch = async function() { calls += 1; };",
-        f"eval(fs.readFileSync({json.dumps(str(driver))}, 'utf8'));",
-        f"const job = {json.dumps(job)};",
-        "window.applyJob(job).then(",
-        "  () => process.exit(1),",
-        "  (error) => {",
-        "    if (!String(error.message).includes('APPLY_JOB_BINDING_MISSING')) process.exit(2);",
-        "    if (calls !== 0) process.exit(3);",
-        "    process.stdout.write('unbound-job-refused');",
-        "  },",
-        ");",
-    ])
-    completed = subprocess.run(
-        ['node', '-e', script], capture_output=True, text=True, timeout=10)
-    assert completed.returncode == 0, completed.stderr
-    assert completed.stdout == 'unbound-job-refused'
+    assert completed.returncode != 0
+    assert completed.stdout == ''
+    assert tao.AUTOMATED_APPLY_DISABLED_MESSAGE in completed.stderr

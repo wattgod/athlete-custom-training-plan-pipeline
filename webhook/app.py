@@ -23,6 +23,7 @@ import math
 import shutil
 import zipfile
 import base64
+import binascii
 from html import escape as html_escape
 import requests as http_requests
 from pathlib import Path
@@ -2814,14 +2815,19 @@ def _verify_apply_gate_token(token: str) -> dict:
         if not hmac.compare_digest(_b64url_decode(supplied), expected):
             raise ValueError('signature')
         claims = json.loads(_b64url_decode(encoded))
-    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        if not isinstance(claims, dict):
+            raise ValueError('claims')
+    except (ValueError, TypeError, json.JSONDecodeError,
+            UnicodeError, binascii.Error) as exc:
         raise FulfillmentStateError('invalid apply gate token') from exc
     now = int(datetime.now(timezone.utc).timestamp())
     if claims.get('v') != 1 or claims.get('aud') != 'trainingpeaks_apply_gate':
         raise FulfillmentStateError('invalid apply gate token audience')
-    if not isinstance(claims.get('exp'), int) or claims['exp'] < now:
+    if not isinstance(claims.get('exp'), int) or claims['exp'] <= now:
         raise FulfillmentStateError('apply gate token expired')
-    if claims['exp'] - int(claims.get('iat') or 0) > APPLY_GATE_TOKEN_TTL_SECONDS:
+    if (not isinstance(claims.get('iat'), int)
+            or claims['exp'] <= claims['iat']
+            or claims['exp'] - claims['iat'] > APPLY_GATE_TOKEN_TTL_SECONDS):
         raise FulfillmentStateError('apply gate token lifetime is invalid')
     return claims
 
@@ -3055,12 +3061,20 @@ def confirm_plan_ready(order_ref):
         state = load_fulfillment_state(_fulfillment_status_path(order_id))
     except FulfillmentStateError:
         return jsonify({'error': 'Fulfillment state unavailable'}), 409
-    if state['status'] not in (APPLIED, CONFIRMED):
-        return jsonify({'error': 'Plan must be APPLIED before confirmation'}), 409
     if state.get('legacy'):
         return jsonify({
             'error': 'Legacy order is quarantined and must be regenerated before confirmation'
         }), 409
+    if state.get('delivery_platform') == 'endure':
+        return jsonify({
+            'error': 'Endure confirmation is disabled in Phase 1 by D4/R9 condition 11'
+        }), 409
+    if state.get('delivery_platform') != 'trainingpeaks':
+        return jsonify({
+            'error': 'This Phase 1 confirmation route is TrainingPeaks-only'
+        }), 409
+    if state['status'] not in (APPLIED, CONFIRMED):
+        return jsonify({'error': 'Plan must be APPLIED before confirmation'}), 409
     norm_id = _normalize_athlete_id(state['athlete_id'])
     if state['status'] == CONFIRMED:
         return jsonify({'status': 'confirmed', 'athlete_id': norm_id}), 200
