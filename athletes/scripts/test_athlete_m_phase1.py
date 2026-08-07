@@ -1,6 +1,7 @@
 """Deterministic Phase 1 replay gate for the synthetic athlete-m contract."""
 
 import json
+import os
 import sys
 import zipfile
 from datetime import date
@@ -21,30 +22,6 @@ FIXTURE = ROOT / "tests" / "fixtures" / "athlete_m"
 
 def _load(name):
     return json.loads((FIXTURE / name).read_text())
-
-
-def _plan_dates_golden(plan_dates):
-    """Stable, lossless-enough calendar projection from production output."""
-    return {
-        "race_date": plan_dates["race_date"],
-        "plan_weeks": plan_dates["plan_weeks"],
-        "plan_start": plan_dates["plan_start"],
-        "plan_end": plan_dates["plan_end"],
-        "weeks": [
-            {
-                "week": week["week"],
-                "phase": week["phase"],
-                "start_date": week["days"][0]["date"],
-                "end_date": week["days"][-1]["date"],
-                "dates": [day["date"] for day in week["days"]],
-                "race_days": [
-                    day["date"] for day in week["days"]
-                    if day.get("is_race_day")
-                ],
-            }
-            for week in plan_dates["weeks"]
-        ],
-    }
 
 
 @pytest.fixture(autouse=True)
@@ -94,7 +71,10 @@ def test_athlete_m_phase1_golden(monkeypatch, tmp_path):
 
     assert profile["devices"]["devices"] == expected["profile_devices"]
     assert profile["target_race"]["distance_miles"] == 75
-    assert _plan_dates_golden(plan_dates) == _load("expected/plan_dates.json")
+    golden_path = FIXTURE / 'expected' / 'plan_dates.yaml'
+    if os.environ.get('GG_UPDATE_ATHLETE_M_GOLDEN') == '1':
+        golden_path.write_text((source / 'plan_dates.yaml').read_text())
+    assert plan_dates == yaml.safe_load(golden_path.read_text())
     sessions = [
         (week["number"], session)
         for week in plan_ir["weeks"] for session in week["sessions"]
@@ -135,6 +115,12 @@ def test_athlete_m_phase1_golden(monkeypatch, tmp_path):
     assert state["status"] == expected["status"]
     assert [{"id": i["id"], "waivable": i["waivable"]}
             for i in state["blocking_issues"]] == expected["blockers"]
+    release_manifest = json.loads(
+        (Path(persisted['revision_dir']) / 'release_manifest.json').read_text())
+    sealed_paths = {item['path'] for item in release_manifest['artifacts']}
+    assert {
+        'artifacts/plan_ir.json', 'artifacts/tp_manifest.json',
+    } <= sealed_paths
 
     with zipfile.ZipFile(persisted["review_zip"]) as archive:
         assert not any(name.lower().endswith(".zwo") for name in archive.namelist())
@@ -179,6 +165,85 @@ def test_athlete_m_phase1_golden(monkeypatch, tmp_path):
             waiver={"rule_ids": [item["id"] for item in issues],
                     "reason": "fixture must remain blocked"},
         )
+
+
+def test_facts_omitted_regeneration_never_rehydrates_catalog_facts(
+    monkeypatch, tmp_path,
+):
+    """Production intake + package + shipping guide use athlete facts only."""
+    import app as webhook_app
+
+    intake = _load('intake.json')
+    clock = _load('clock.json')
+    intake['generation_clock'] = clock['generation_at']
+    intake['course_facts_mode'] = 'athlete_only'
+
+    snapshot = _load('race_snapshot.json')
+    snapshot.update({
+        'location': 'FORBIDDEN SNAPSHOT LOCATION',
+        'discipline': 'road',
+        'race_metadata': {'start_elevation_feet': 9876},
+    })
+    snapshot_path = tmp_path / 'race_snapshot.json'
+    snapshot_path.write_text(json.dumps(snapshot))
+
+    race_data_dir = tmp_path / 'race-data'
+    race_data_dir.mkdir()
+    (race_data_dir / 'three-course-race.json').write_text(json.dumps({
+        'race': {
+            'name': 'Three Course Race',
+            'vitals': {
+                'distance_mi': 191,
+                'elevation_ft': 12345,
+                'location': 'FORBIDDEN GUIDE LOCATION',
+            },
+            'terrain': {'primary': 'FORBIDDEN GUIDE TERRAIN'},
+            'climate': {'summary': 'FORBIDDEN GUIDE CLIMATE'},
+            'race_specific': {
+                'surface_hazards': ['FORBIDDEN GUIDE HAZARD'],
+            },
+        },
+    }))
+
+    data_dir = tmp_path / 'data'
+    monkeypatch.setattr(webhook_app, 'DATA_DIR', str(data_dir))
+    monkeypatch.setattr(webhook_app, 'DELIVERIES_DIR', str(data_dir / 'deliveries'))
+    monkeypatch.setattr(webhook_app, 'JOBS_DIR', str(data_dir / 'jobs'))
+    monkeypatch.setattr(
+        webhook_app, 'SCRIPTS_DIR', str(ROOT / 'athletes' / 'scripts'))
+    monkeypatch.setenv('GG_FIXED_NOW', clock['generation_at'])
+    monkeypatch.setenv('GG_RACE_SNAPSHOT_FIXTURE', str(snapshot_path))
+    monkeypatch.setenv('GUIDE_GRAVEL_RACE_DATA_DIR', str(race_data_dir))
+
+    result = webhook_app.run_pipeline(
+        'athlete-m-facts-omitted', deliver=True, intake_data=intake,
+        order_data={
+            'order_id': 'test_athlete_m_facts_omitted',
+            'delivery_platform': 'trainingpeaks',
+            'order_created_at': clock['order_created_at'],
+            'weeks_purchased': 7,
+        },
+    )
+    assert result['success'], result.get('stderr') or result.get('stdout')
+    source = Path(result['artifact_dir'])
+    profile = yaml.safe_load((source / 'profile.yaml').read_text())
+    target = profile['target_race']
+    assert target['course_facts_omitted'] is True
+    assert target['course_facts_mode'] == 'athlete_only'
+    assert target['distance_miles'] == 75
+    for field in (
+        'location', 'discipline', 'elevation_ft', 'race_metadata',
+        'courses', 'course_variant', 'category',
+    ):
+        assert field not in target
+
+    guide = (source / 'training_guide.html').read_text()
+    for forbidden in (
+        'FORBIDDEN SNAPSHOT LOCATION', 'FORBIDDEN GUIDE LOCATION',
+        'FORBIDDEN GUIDE TERRAIN', 'FORBIDDEN GUIDE CLIMATE',
+        'FORBIDDEN GUIDE HAZARD', '12345', '191 miles',
+    ):
+        assert forbidden not in guide
 
 
 def test_order_scoped_jobs_do_not_suppress_repeat_customer(monkeypatch, tmp_path):
