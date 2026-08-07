@@ -3,6 +3,7 @@
 import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -10,6 +11,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "webhook"))
 sys.path.insert(0, str(ROOT / "athletes" / "scripts"))
+sys.path.insert(0, str(ROOT / "tools"))
 
 import deliver_package
 import email_delivery
@@ -17,6 +19,29 @@ from fulfillment_state import (APPROVED, BLOCKED_REVIEW,
                                FulfillmentStateError,
                                load as load_fulfillment_state, transition,
                                write_generation)
+import tp_apply_order
+
+
+def _persistable_source(tmp_path, *, order_id, platform='trainingpeaks'):
+    source = tmp_path / f'source-{order_id}'
+    (source / 'workouts').mkdir(parents=True)
+    for relative, content in {
+        'workouts/W01.zwo': 'sealed workout',
+        'training_guide.html': 'sealed guide',
+        'plan_preview.html': 'review',
+        'coaching_brief.md': 'brief',
+        'personal_email.md': '**Subject:** Ready\n\nSealed body',
+        'plan_summary.yaml': 'plan_weeks: 1\n',
+        'fueling.yaml': '{}\n',
+        'plan_ir.json': '{}\n',
+        'tp_manifest.json': '{}\n',
+    }.items():
+        (source / relative).write_text(content)
+    write_generation(
+        source / 'fulfillment_status.json', 'athlete-m',
+        order_id=order_id, delivery_platform=platform,
+    )
+    return source
 
 
 def test_legacy_package_delivery_refuses_before_writing(monkeypatch, tmp_path):
@@ -148,6 +173,170 @@ def test_download_seal_mismatch_revokes_authority_and_persists_blocker(
     mismatch = next(item for item in state["blocking_issues"]
                     if item["id"] == "SEAL_MISMATCH")
     assert mismatch["waivable"] is False
+
+
+def test_live_apply_gate_revokes_emitted_job_after_regeneration(monkeypatch, tmp_path):
+    """A real server-issued browser job dies if the order regenerates."""
+    import app as webhook_app
+
+    data_dir = tmp_path / 'data'
+    monkeypatch.setattr(webhook_app, 'DATA_DIR', str(data_dir))
+    monkeypatch.setattr(webhook_app, 'DELIVERIES_DIR', str(data_dir / 'deliveries'))
+    monkeypatch.setenv('CRON_SECRET', 'ops-secret')
+    source = _persistable_source(tmp_path, order_id='test_live_gate')
+    persisted = webhook_app.persist_deliverables(
+        'test_live_gate', 'athlete-m', source_dir=source,
+        delivery_platform='trainingpeaks')
+    state_path = Path(persisted['delivery_dir']) / 'fulfillment_status.json'
+    transition(state_path, APPROVED, 'coach@example.invalid')
+
+    client = webhook_app.app.test_client()
+    status_response = client.get(
+        '/api/fulfillment/test_live_gate/status',
+        headers={'X-Cron-Secret': 'ops-secret'})
+    assert status_response.status_code == 200
+    status = status_response.get_json()
+    job = tp_apply_order.build_apply_job(
+        {'plan_title': 'Bound plan', 'sessions': [{
+            'date': '2026-08-07', 'title': 'Ride', 'tp_kind': 'bike',
+        }], 'expected': {
+            'bike': 1, 'strength': 0, 'day_off': 0, 'race': 0, 'total': 1,
+        }},
+        athlete_tp_id='123', target_date='2026-08-07', start_type=1,
+        binding={
+            **{key: status[key] for key in (
+                'order_id', 'athlete_id', 'delivery_platform',
+                'generation_revision', 'model_seal',
+                'release_manifest_digest', 'tp_manifest_sha256',
+            )},
+            'apply_gate_url': status['apply_gate_url'],
+            'apply_gate_token': status['apply_gate_token'],
+        },
+    )
+    assert job['order_id'] == 'test_live_gate'
+
+    write_generation(
+        state_path, 'athlete-m', order_id='test_live_gate',
+        delivery_platform='trainingpeaks')
+    revoked = client.get(
+        '/api/fulfillment/test_live_gate/apply-gate',
+        query_string={'token': job['gate']['token']},
+        headers={'Origin': 'https://app.trainingpeaks.com'})
+    assert revoked.status_code == 409
+    assert 'not APPROVED' in revoked.get_json()['error']
+    assert revoked.headers['Access-Control-Allow-Origin'] == 'https://app.trainingpeaks.com'
+
+
+def test_live_apply_gate_materializes_post_emission_seal_mismatch(
+    monkeypatch, tmp_path,
+):
+    import app as webhook_app
+
+    data_dir = tmp_path / 'data'
+    monkeypatch.setattr(webhook_app, 'DATA_DIR', str(data_dir))
+    monkeypatch.setattr(webhook_app, 'DELIVERIES_DIR', str(data_dir / 'deliveries'))
+    monkeypatch.setenv('CRON_SECRET', 'ops-secret')
+    source = _persistable_source(tmp_path, order_id='test_live_gate_seal')
+    persisted = webhook_app.persist_deliverables(
+        'test_live_gate_seal', 'athlete-m', source_dir=source,
+        delivery_platform='trainingpeaks')
+    state_path = Path(persisted['delivery_dir']) / 'fulfillment_status.json'
+    transition(state_path, APPROVED, 'coach@example.invalid')
+    client = webhook_app.app.test_client()
+    status = client.get(
+        '/api/fulfillment/test_live_gate_seal/status',
+        headers={'X-Cron-Secret': 'ops-secret'}).get_json()
+
+    (Path(persisted['revision_dir']) / 'artifacts/tp_manifest.json').write_text(
+        '{"post_approval":"mutation"}')
+    refused = client.get(
+        '/api/fulfillment/test_live_gate_seal/apply-gate',
+        query_string={'token': status['apply_gate_token']},
+        headers={'Origin': 'https://app.trainingpeaks.com'})
+
+    assert refused.status_code == 409
+    assert 'seal verification failed' in refused.get_json()['error']
+    state = load_fulfillment_state(state_path)
+    assert state['status'] == BLOCKED_REVIEW
+    assert next(item for item in state['blocking_issues']
+                if item['id'] == 'SEAL_MISMATCH')['waivable'] is False
+
+
+def test_production_apply_gate_rejects_cross_platform_order(monkeypatch, tmp_path):
+    import app as webhook_app
+
+    data_dir = tmp_path / 'data'
+    monkeypatch.setattr(webhook_app, 'DATA_DIR', str(data_dir))
+    monkeypatch.setattr(webhook_app, 'DELIVERIES_DIR', str(data_dir / 'deliveries'))
+    monkeypatch.setenv('CRON_SECRET', 'ops-secret')
+    source = _persistable_source(
+        tmp_path, order_id='test_endure_gate', platform='endure')
+    persisted = webhook_app.persist_deliverables(
+        'test_endure_gate', 'athlete-m', source_dir=source,
+        delivery_platform='endure')
+    state_path = Path(persisted['delivery_dir']) / 'fulfillment_status.json'
+    transition(state_path, APPROVED, 'coach@example.invalid')
+
+    response = webhook_app.app.test_client().get(
+        '/api/fulfillment/test_endure_gate/status',
+        headers={'X-Cron-Secret': 'ops-secret'})
+    assert response.status_code == 200
+    status = response.get_json()
+    assert status['delivery_platform'] == 'endure'
+    assert 'apply_gate_token' not in status
+    with pytest.raises(FulfillmentStateError, match='immutable delivery_platform'):
+        transition(
+            state_path, 'APPLIED', 'coach@example.invalid',
+            platform='trainingpeaks', evidence='must never land')
+
+
+@pytest.mark.parametrize('mutated_artifact', [
+    'personal_email.md', 'training_guide.html',
+])
+def test_confirm_route_refuses_mutated_sealed_bytes(
+    monkeypatch, tmp_path, mutated_artifact,
+):
+    """The real customer-send route materializes SEAL_MISMATCH before send."""
+    import app as webhook_app
+
+    data_dir = tmp_path / 'data'
+    monkeypatch.setattr(webhook_app, 'DATA_DIR', str(data_dir))
+    monkeypatch.setattr(webhook_app, 'DELIVERIES_DIR', str(data_dir / 'deliveries'))
+    monkeypatch.setenv('CRON_SECRET', 'ops-secret')
+    source = _persistable_source(tmp_path, order_id='test_confirm_seal')
+    persisted = webhook_app.persist_deliverables(
+        'test_confirm_seal', 'athlete-m', source_dir=source,
+        delivery_platform='trainingpeaks')
+    state_path = Path(persisted['delivery_dir']) / 'fulfillment_status.json'
+    transition(state_path, APPROVED, 'coach@example.invalid')
+    transition(
+        state_path, 'APPLIED', 'coach@example.invalid',
+        platform='trainingpeaks', evidence='verified receipt')
+
+    log_dir = data_dir / '.logs'
+    log_dir.mkdir(parents=True)
+    (log_dir / '2026-08.jsonl').write_text(json.dumps({
+        'order_id': 'test_confirm_seal', 'success': True,
+        'email': 'athlete@example.invalid', 'name': 'Athlete M',
+    }) + '\n')
+    artifact = (Path(persisted['revision_dir']) / 'artifacts'
+                / mutated_artifact)
+    artifact.write_bytes(b'post-approval mutation')
+
+    with patch.object(webhook_app, '_send_email') as send:
+        response = webhook_app.app.test_client().post(
+            '/api/confirm/test_confirm_seal',
+            headers={'X-Cron-Secret': 'ops-secret'})
+
+    assert response.status_code == 409
+    assert response.get_json()['error'] == 'Release seal verification failed'
+    send.assert_not_called()
+    state = load_fulfillment_state(state_path)
+    assert state['status'] == BLOCKED_REVIEW
+    mismatch = next(
+        item for item in state['blocking_issues']
+        if item['id'] == 'SEAL_MISMATCH')
+    assert mismatch['waivable'] is False
 
 
 def test_startup_migrates_shadowed_v1_and_quarantine_has_no_authority(

@@ -654,6 +654,19 @@ def transition(
                 raise FulfillmentStateError("application requires APPROVED status")
             if not str(platform).strip() or not str(evidence).strip():
                 raise FulfillmentStateError("platform and nonempty evidence are required")
+            if platform.strip() != state["delivery_platform"]:
+                raise FulfillmentStateError(
+                    "application platform does not match immutable delivery_platform"
+                )
+            artifact_root = Path(str(state.get("release_manifest") or "")).parent
+            try:
+                verify_release_manifest(state, artifact_root)
+            except FulfillmentStateError as exc:
+                _materialize_seal_mismatch(state, str(exc))
+                _atomic_write(state_path, state)
+                raise FulfillmentStateError(
+                    f"application refused: {exc}"
+                ) from exc
             state["application"] = {
                 "coach": coach.strip(), "at": now_iso(),
                 "platform": platform.strip(), "evidence": evidence.strip(),

@@ -10,7 +10,9 @@ browser tab (injected via playwriter by the operator, same runtime model as
   2. gates on the athlete's Railway-authoritative fulfillment status
      (refuses to build a job unless APPROVED, or the operator explicitly
      opts into an unguarded local/dev run),
-  3. emits ``apply_job.json`` for the driver to execute, and prints the
+  3. emits a release-bound ``apply_job.json`` with a short-lived live-gate
+     capability for the driver to re-check immediately before its first write,
+     and prints the
      operator runbook, OR
   4. (``--receipt``) validates a completed browser receipt against the
      manifest's expected counts and, with ``--server``, posts the APPLIED
@@ -224,6 +226,8 @@ def check_approval_gate(
     failures = []
     if status.get("legacy"):
         failures.append("order is a legacy quarantine")
+    if status.get("delivery_platform") != "trainingpeaks":
+        failures.append("delivery_platform is not trainingpeaks")
     if status.get("status") != "APPROVED":
         failures.append(f"status is {status.get('status')!r}, not APPROVED")
     if not status.get("seal_verified") or not status.get("release_authorized"):
@@ -242,6 +246,8 @@ def check_approval_gate(
         failures.append("approval is not bound to release manifest")
     if status.get("tp_manifest_sha256") != manifest_sha256:
         failures.append("tp_manifest bytes do not match the sealed order artifact")
+    if not status.get("apply_gate_url") or not status.get("apply_gate_token"):
+        failures.append("server did not issue a short-lived live apply gate")
     if failures:
         raise ApprovalGateError(
             f"refusing to apply order {order_id}: " + "; ".join(failures)
@@ -293,11 +299,19 @@ def _strength_entry(session: Dict[str, Any], strength_module: Any,
 
 
 def build_apply_job(manifest: Dict[str, Any], *, athlete_tp_id: str, target_date: Optional[str],
-                     start_type: int, strength_module: Any = None,
+                     start_type: int, binding: Dict[str, Any], strength_module: Any = None,
                      uuid_factory: Optional[Callable[[], str]] = None) -> Dict[str, Any]:
     """Emit the transactional ``apply_job.json`` payload for the JS driver."""
     require(bool(athlete_tp_id) and str(athlete_tp_id).strip(),
             "athlete_tp_id is required and must be non-empty — never guess an athlete")
+    require(isinstance(binding, dict), "sealed order binding is required")
+    for field in ("order_id", "athlete_id", "generation_revision", "model_seal",
+                  "release_manifest_digest", "tp_manifest_sha256",
+                  "apply_gate_url", "apply_gate_token"):
+        require(binding.get(field) not in (None, ""),
+                f"sealed order binding missing {field}")
+    require(binding.get("delivery_platform") == "trainingpeaks",
+            "sealed order binding delivery_platform must be trainingpeaks")
     uuid_factory = uuid_factory or (lambda: str(uuid.uuid4()))
 
     sessions = manifest["sessions"]
@@ -318,6 +332,17 @@ def build_apply_job(manifest: Dict[str, Any], *, athlete_tp_id: str, target_date
 
     date_range = _session_date_range(sessions)
     job: Dict[str, Any] = {
+        "order_id": binding["order_id"],
+        "athlete_id": binding["athlete_id"],
+        "delivery_platform": binding["delivery_platform"],
+        "generation_revision": binding["generation_revision"],
+        "model_seal": binding["model_seal"],
+        "release_manifest_digest": binding["release_manifest_digest"],
+        "tp_manifest_sha256": binding["tp_manifest_sha256"],
+        "gate": {
+            "url": binding["apply_gate_url"],
+            "token": binding["apply_gate_token"],
+        },
         "plan_title": manifest["plan_title"],
         "athlete_tp_id": str(athlete_tp_id),
         "duplicate_guard": {"title": manifest["plan_title"]},
@@ -452,7 +477,7 @@ def print_runbook(job_path: Path, receipt_path: Path, driver_path: Path) -> None
 def _run_job_mode(args: argparse.Namespace, manifest: Dict[str, Any], token: Optional[str]) -> int:
     require(bool(args.athlete_tp_id) and str(args.athlete_tp_id).strip(),
             "--athlete-tp-id is required — never guess an athlete")
-    check_approval_gate(
+    status = check_approval_gate(
         server=args.server, token=token, order_id=args.order_id,
         athlete_id=args.athlete_id,
         generation_revision=args.generation_revision,
@@ -466,8 +491,21 @@ def _run_job_mode(args: argparse.Namespace, manifest: Dict[str, Any], token: Opt
               "{pending_module: true} instead of prebuilt StructuredStrength docs.",
               file=sys.stderr)
 
-    job = build_apply_job(manifest, athlete_tp_id=args.athlete_tp_id, target_date=args.target_date,
-                          start_type=args.start_type, strength_module=strength_module)
+    job = build_apply_job(
+        manifest, athlete_tp_id=args.athlete_tp_id, target_date=args.target_date,
+        start_type=args.start_type, strength_module=strength_module,
+        binding={
+            "order_id": status["order_id"],
+            "athlete_id": status["athlete_id"],
+            "delivery_platform": status["delivery_platform"],
+            "generation_revision": status["generation_revision"],
+            "model_seal": status["model_seal"],
+            "release_manifest_digest": status["release_manifest_digest"],
+            "tp_manifest_sha256": status["tp_manifest_sha256"],
+            "apply_gate_url": status["apply_gate_url"],
+            "apply_gate_token": status["apply_gate_token"],
+        },
+    )
 
     out_dir = default_output_dir(args.package)
     job_path = args.out or (out_dir / "apply_job.json")

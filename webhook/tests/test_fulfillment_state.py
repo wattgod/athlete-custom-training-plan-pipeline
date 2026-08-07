@@ -64,7 +64,7 @@ def test_apply_requires_approved(tmp_path):
 
 def test_confirm_applied_sends_once_and_marks_confirmed(tmp_path):
     path = tmp_path / 'status.json'
-    write_generation(path, 'heather_gray')
+    write_generation(path, 'heather_gray', delivery_platform='trainingpeaks')
     _seal(path, tmp_path)
     transition(path, APPROVED, 'coach@example.test')
     transition(path, APPLIED, 'coach@example.test', platform='trainingpeaks', evidence='TP 123')
@@ -76,7 +76,7 @@ def test_confirm_applied_sends_once_and_marks_confirmed(tmp_path):
 
 def test_confirm_email_failure_leaves_applied(tmp_path):
     path = tmp_path / 'status.json'
-    write_generation(path, 'heather_gray')
+    write_generation(path, 'heather_gray', delivery_platform='trainingpeaks')
     _seal(path, tmp_path)
     transition(path, APPROVED, 'coach@example.test')
     transition(path, APPLIED, 'coach@example.test', platform='trainingpeaks', evidence='TP 123')
@@ -87,7 +87,7 @@ def test_confirm_email_failure_leaves_applied(tmp_path):
 
 def test_confirmed_retry_is_idempotent(tmp_path):
     path = tmp_path / 'status.json'
-    write_generation(path, 'heather_gray')
+    write_generation(path, 'heather_gray', delivery_platform='trainingpeaks')
     _seal(path, tmp_path)
     transition(path, APPROVED, 'coach@example.test')
     transition(path, APPLIED, 'coach@example.test', platform='trainingpeaks', evidence='TP 123')
@@ -97,7 +97,7 @@ def test_confirmed_retry_is_idempotent(tmp_path):
 
 def test_concurrent_confirm_sends_once(tmp_path):
     path = tmp_path / 'status.json'
-    write_generation(path, 'heather_gray')
+    write_generation(path, 'heather_gray', delivery_platform='trainingpeaks')
     _seal(path, tmp_path)
     transition(path, APPROVED, 'coach@example.test')
     transition(path, APPLIED, 'coach@example.test', platform='trainingpeaks', evidence='TP 123')
@@ -121,11 +121,11 @@ def test_missing_or_malformed_state_fails_closed(tmp_path):
 
 def test_regeneration_invalidates_prior_approval_and_application(tmp_path):
     path = tmp_path / 'status.json'
-    write_generation(path, 'heather_gray')
+    write_generation(path, 'heather_gray', delivery_platform='trainingpeaks')
     _seal(path, tmp_path)
     transition(path, APPROVED, 'coach@example.test')
     transition(path, APPLIED, 'coach@example.test', platform='trainingpeaks', evidence='TP 123')
-    state = write_generation(path, 'heather_gray')
+    state = write_generation(path, 'heather_gray', delivery_platform='trainingpeaks')
     assert state['generation_revision'] == 2
     assert state['status'] == GENERATED
     assert state['approval'] is None and state['application'] is None
@@ -206,6 +206,29 @@ def test_approval_after_sealed_byte_mutation_fails_and_materializes_blocker(tmp_
                     if i['id'] == 'SEAL_MISMATCH')
     assert mismatch['waivable'] is False
     assert state['approval'] is None
+
+
+def test_application_reverifies_seal_and_materializes_mismatch(tmp_path):
+    path = tmp_path / 'status.json'
+    write_generation(
+        path, 'athlete-m', order_id='cs_apply_seal',
+        delivery_platform='trainingpeaks')
+    _seal(path, tmp_path)
+    transition(path, APPROVED, 'coach@example.test')
+    (tmp_path / 'artifacts' / 'guide.html').write_text('mutated after approval')
+
+    with pytest.raises(FulfillmentStateError, match='application refused'):
+        transition(
+            path, APPLIED, 'coach@example.test',
+            platform='trainingpeaks', evidence='TP 123')
+
+    state = load(path)
+    assert state['status'] == BLOCKED_REVIEW
+    mismatch = next(
+        issue for issue in state['blocking_issues']
+        if issue['id'] == 'SEAL_MISMATCH')
+    assert mismatch['waivable'] is False
+    assert state['application'] is None
 
 
 def test_download_handle_is_the_verified_descriptor_not_a_reopen(tmp_path):

@@ -20,7 +20,9 @@
  *
  * INPUT: window.__APPLY_JOB__ (or pass a job object directly), shaped per
  * tp_apply_order.py's build_apply_job():
- *   { plan_title, athlete_tp_id, duplicate_guard:{title},
+ *   { order_id, athlete_id, delivery_platform, generation_revision,
+ *     model_seal, release_manifest_digest, tp_manifest_sha256,
+ *     gate:{url,token}, plan_title, athlete_tp_id, duplicate_guard:{title},
  *     workouts:[{date, order_on_day, title, workoutTypeValueId, tssPlanned,
  *                totalTimePlanned, description, structure, race}],
  *     strength:[{date, order_on_day, title, template_key, doc|pending_module}],
@@ -83,6 +85,43 @@
   }
   function _backup() {
     try { localStorage.setItem('tp_apply_driver_receipt', JSON.stringify(receipt)); } catch (_) { /* best effort */ }
+  }
+
+  function validateJobBinding(job) {
+    const required = [
+      'order_id', 'athlete_id', 'generation_revision', 'model_seal',
+      'release_manifest_digest', 'tp_manifest_sha256',
+    ];
+    const missing = required.filter(k => job[k] === undefined || job[k] === null || job[k] === '');
+    if (missing.length) throw new Error(`APPLY_JOB_BINDING_MISSING: ${missing.join(', ')}`);
+    if (job.delivery_platform !== 'trainingpeaks') {
+      throw new Error('APPLY_JOB_PLATFORM_MISMATCH: delivery_platform must be trainingpeaks');
+    }
+    if (!job.gate || !job.gate.url || !job.gate.token) {
+      throw new Error('APPLY_JOB_GATE_MISSING: short-lived live gate is required');
+    }
+  }
+
+  async function checkLiveGate(job) {
+    const separator = job.gate.url.includes('?') ? '&' : '?';
+    const response = await fetch(
+      `${job.gate.url}${separator}token=${encodeURIComponent(job.gate.token)}`,
+      { method: 'GET', credentials: 'omit', cache: 'no-store' },
+    );
+    let body = {};
+    try { body = await response.json(); } catch (_) { /* handled below */ }
+    if (!response.ok) {
+      throw new Error(`APPLY_GATE_REFUSED: ${body.error || `HTTP ${response.status}`}`);
+    }
+    const required = [
+      'order_id', 'athlete_id', 'delivery_platform', 'generation_revision',
+      'model_seal', 'release_manifest_digest', 'tp_manifest_sha256',
+    ];
+    const drift = required.filter(k => body[k] !== job[k]);
+    if (drift.length || body.status !== 'APPROVED' || body.legacy
+        || !body.seal_verified || !body.release_authorized) {
+      throw new Error(`APPLY_GATE_BINDING_MISMATCH: ${drift.join(', ') || 'authority'}`);
+    }
   }
 
   // ---- fetch wrappers --------------------------------------------------
@@ -497,8 +536,15 @@
     job = job || window.__APPLY_JOB__;
     if (!job) throw new Error('no job — set window.__APPLY_JOB__ or pass one to applyJob()');
     try {
+      validateJobBinding(job);
+      setStage('gate');
+      await checkLiveGate(job);
       if (!receipt.planId) {
         const dup = await stage0DuplicateGuard(job);
+        // Duplicate inspection is read-only and may take time. Re-check at
+        // the final boundary immediately before stage 1's first POST.
+        setStage('gate');
+        await checkLiveGate(job);
         await stage1CreateOrAdopt(job, dup);
       }
       await stage2Workouts(job);

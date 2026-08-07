@@ -312,7 +312,9 @@ def _send_email(to: str, subject: str, body: str, html: str = None, reply_to: st
                 attachments: list = None, brand: str = DEFAULT_BRAND):
     """Send email via Resend HTTP API. Returns True on success.
 
-    attachments: list of (filename, path) tuples; files are base64-encoded.
+    attachments: list of (filename, path-or-sealed-bytes) tuples; files are
+    base64-encoded. Confirmation passes bytes from an already-verified open
+    descriptor so the sender never reopens a mutable release path.
     Resend caps total message size at 40MB.
     """
     if not RESEND_API_KEY:
@@ -332,11 +334,13 @@ def _send_email(to: str, subject: str, body: str, html: str = None, reply_to: st
     if attachments:
         import base64
         encoded = []
-        for fname, fpath in attachments:
+        for fname, source in attachments:
             try:
+                content = (bytes(source) if isinstance(source, (bytes, bytearray))
+                           else Path(source).read_bytes())
                 encoded.append({
                     'filename': fname,
-                    'content': base64.b64encode(Path(fpath).read_bytes()).decode(),
+                    'content': base64.b64encode(content).decode(),
                 })
             except Exception as e:
                 logger.warning(f"Skipping attachment {fname}: {e}")
@@ -1765,6 +1769,7 @@ PRIVATE_DELIVERABLES = [
     'derived.yaml',
     'intake_backup.json',
     'fulfillment_manifest.json',
+    'plan_ir.json',
     'tp_manifest.json',
 ]
 
@@ -2245,80 +2250,6 @@ def _update_job(ref: str, **fields) -> dict:
     return job
 
 
-def _load_profile_yaml(athlete_id: str) -> dict:
-    """Load the pipeline's profile.yaml (build_profile output) for an athlete.
-
-    Checks the persistent deliveries dir first (persist_deliverables copies
-    profile.yaml there), then the ephemeral athlete dir — including the
-    hyphen/underscore variant intake_to_plan.py uses. Returns {} if absent.
-    """
-    candidates = [
-        Path(DELIVERIES_DIR) / athlete_id / 'profile.yaml',
-        Path(ATHLETES_DIR) / athlete_id / 'profile.yaml',
-        Path(ATHLETES_DIR) / athlete_id.replace('_', '-') / 'profile.yaml',
-    ]
-    for path in candidates:
-        if path.exists():
-            try:
-                with open(path) as f:
-                    return yaml.safe_load(f) or {}
-            except Exception as e:
-                logger.warning(f"Unreadable profile.yaml at {path}: {e}")
-    return {}
-
-
-def _attempt_endure_delivery(athlete_id: str, order_data: dict,
-                             intake_data: dict = None) -> dict:
-    """Push a generated plan to Endure. NEVER raises, never fails the order.
-
-    Returns the delivery record (also persisted on the job record):
-    status delivered/already_delivered → coach email switches to the
-    Endure review checklist; status failed → coach email keeps the full
-    TrainingPeaks checklist and flags the failure loudly
-    (order-killer-prevention: loud to the coach, invisible to the customer).
-    """
-    order_id = order_data.get('order_id', '')
-    try:
-        profile = _load_profile_yaml(athlete_id)
-        if not profile:
-            record = {'ok': False, 'status': 'failed', 'attempts': 0,
-                      'error': 'profile.yaml not found for Endure mapping'}
-        else:
-            payload = endure_delivery.build_delivery_payload(
-                profile, order_id, intake=intake_data or {})
-            record = endure_delivery.deliver_purchased_plan(payload)
-    except endure_delivery.EndureMappingError as e:
-        record = {'ok': False, 'status': 'failed', 'attempts': 0,
-                  'error': f'mapping error: {e}'}
-    except Exception as e:
-        logger.exception(f"Unexpected Endure delivery error for {athlete_id}")
-        record = {'ok': False, 'status': 'failed', 'attempts': 0,
-                  'error': str(e)[:300]}
-
-    success = record.get('status') in ('delivered', 'already_delivered')
-    try:
-        streak = endure_delivery.record_delivery_result(
-            success, order_id, data_dir=DATA_DIR)
-        record['streak'] = streak.get('consecutive_successes')
-    except Exception:
-        logger.exception("Failed to record Endure delivery streak")
-
-    try:
-        _update_job(athlete_id, endure_delivery=record)
-    except Exception:
-        logger.exception(f"Failed to record Endure delivery on job {athlete_id}")
-
-    if success:
-        logger.info(f"Endure delivery OK for {athlete_id} "
-                    f"(plan {record.get('plan_id', '?')}, "
-                    f"streak {record.get('streak', '?')})")
-    else:
-        logger.error(f"ENDURE DELIVERY FAILED for {athlete_id} "
-                     f"(order {order_id or '?'}): {record.get('error')} — "
-                     f"falling back to TrainingPeaks delivery")
-    return record
-
-
 def _execute_plan_job(job: dict, intake_data: dict = None):
     """Run the full generation flow for one job and keep its record updated.
 
@@ -2344,19 +2275,23 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
         result = run_pipeline(athlete_id, deliver=True,
                               intake_data=intake_data or None,
                               order_data=order_data)
-        log_order(order_data, result)
 
         persisted = None
         persistence_error = ''
-        if result['success']:
+        quarantine_requested = result.get('fulfillment_state') == 'unavailable'
+        if result['success'] or quarantine_requested:
+            source_dir = result.get('artifact_dir')
+            if not source_dir:
+                source_dir = ((Path(ATHLETES_DIR) / athlete_id)
+                              if quarantine_requested
+                              else _resolve_generated_athlete_dir(athlete_id))
             try:
                 persisted = persist_deliverables(
                     order_data.get('order_id', ''), athlete_id,
-                    source_dir=(result.get('artifact_dir')
-                                or _resolve_generated_athlete_dir(athlete_id)),
+                    source_dir=source_dir,
                     delivery_platform=order_data.get(
                         'delivery_platform', order_data.get('delivery_target', 'manual')),
-                    state_unavailable=result.get('fulfillment_state') == 'unavailable',
+                    state_unavailable=quarantine_requested,
                 )
             except Exception as e:
                 logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
@@ -2365,8 +2300,7 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
                 try:
                     persisted = persist_deliverables(
                         order_data.get('order_id', ''), athlete_id,
-                        source_dir=(result.get('artifact_dir')
-                                    or _resolve_generated_athlete_dir(athlete_id)),
+                        source_dir=source_dir,
                         delivery_platform=order_data.get(
                             'delivery_platform', order_data.get('delivery_target', 'manual')),
                         state_unavailable=True,
@@ -2384,6 +2318,13 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
                     persistence_error
                     or 'Persistence returned no durable order state'
                 )
+            elif quarantine_requested:
+                # Reaching a durable non-waivable BLOCKED_REVIEW state is a
+                # successful order workflow outcome, not a dead pipeline job.
+                result['success'] = True
+                result['quarantined'] = True
+
+        log_order(order_data, result)
 
         details = _build_plan_notification_details(order_data, result,
                                                    intake_data or None)
@@ -2393,9 +2334,17 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
             details['blocking_issues'] = persisted['state']['blocking_issues']
             details['required_confirmations'] = persisted['state']['required_confirmations']
         if result['success'] and persisted:
-            if persisted:
+            try:
                 details['download_token'] = _generate_download_token(
                     order_data.get('order_id', ''), 'review_bundle')
+            except DownloadTokenError as exc:
+                # The durable blocked order remains the authority. Missing
+                # link-signing config suppresses review download access and is
+                # loud to the coach, but must not turn quarantine into a dead
+                # pipeline job.
+                logger.error(
+                    f'Review token unavailable for order '
+                    f"{order_data.get('order_id', '')}: {exc}")
             _notify_new_order('training_plan', details)
             _update_job(job['order_id'], status='succeeded',
                         finished_at=datetime.now().isoformat(), error=None)
@@ -2815,6 +2764,76 @@ def _has_client_timestamp(value) -> bool:
     return False
 
 
+APPLY_GATE_TOKEN_TTL_SECONDS = 5 * 60
+
+
+def _apply_gate_secret() -> bytes:
+    secret = os.environ.get('CRON_SECRET', '')
+    if not secret:
+        raise FulfillmentStateError('CRON_SECRET is required for apply gate tokens')
+    return secret.encode('utf-8')
+
+
+def _b64url_encode(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b'=').decode('ascii')
+
+
+def _b64url_decode(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + '=' * (-len(value) % 4))
+
+
+def _issue_apply_gate_token(state: dict, tp_manifest_sha256: str) -> str:
+    """Issue a short-lived browser capability bound to one approved release."""
+    now = int(datetime.now(timezone.utc).timestamp())
+    claims = {
+        'v': 1,
+        'aud': 'trainingpeaks_apply_gate',
+        'order_id': state['order_id'],
+        'athlete_id': state['athlete_id'],
+        'delivery_platform': state['delivery_platform'],
+        'generation_revision': state['generation_revision'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'tp_manifest_sha256': tp_manifest_sha256,
+        'iat': now,
+        'exp': now + APPLY_GATE_TOKEN_TTL_SECONDS,
+        'jti': uuid.uuid4().hex,
+    }
+    encoded = _b64url_encode(json.dumps(
+        claims, sort_keys=True, separators=(',', ':')).encode('utf-8'))
+    signature = hmac.new(
+        _apply_gate_secret(), encoded.encode('ascii'), hashlib.sha256).digest()
+    return f'{encoded}.{_b64url_encode(signature)}'
+
+
+def _verify_apply_gate_token(token: str) -> dict:
+    try:
+        encoded, supplied = str(token or '').split('.', 1)
+        expected = hmac.new(
+            _apply_gate_secret(), encoded.encode('ascii'), hashlib.sha256).digest()
+        if not hmac.compare_digest(_b64url_decode(supplied), expected):
+            raise ValueError('signature')
+        claims = json.loads(_b64url_decode(encoded))
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise FulfillmentStateError('invalid apply gate token') from exc
+    now = int(datetime.now(timezone.utc).timestamp())
+    if claims.get('v') != 1 or claims.get('aud') != 'trainingpeaks_apply_gate':
+        raise FulfillmentStateError('invalid apply gate token audience')
+    if not isinstance(claims.get('exp'), int) or claims['exp'] < now:
+        raise FulfillmentStateError('apply gate token expired')
+    if claims['exp'] - int(claims.get('iat') or 0) > APPLY_GATE_TOKEN_TTL_SECONDS:
+        raise FulfillmentStateError('apply gate token lifetime is invalid')
+    return claims
+
+
+def _tp_manifest_record(manifest: dict | None) -> dict:
+    return next(
+        (item for item in (manifest or {}).get('artifacts', [])
+         if item.get('path') == 'artifacts/tp_manifest.json'),
+        {},
+    )
+
+
 @app.route('/api/fulfillment/<order_ref>/transition', methods=['POST'])
 def transition_fulfillment_state(order_ref):
     """Record the coach's authenticated review/application transition."""
@@ -2876,19 +2895,15 @@ def fulfillment_status(order_ref):
                     _fulfillment_status_path(order_id), str(exc))
             except FulfillmentStateError:
                 return jsonify({'error': 'Fulfillment state unavailable'}), 409
-    tp_record = next(
-        (item for item in (manifest or {}).get('artifacts', [])
-         if item.get('path') == 'artifacts/tp_manifest.json'),
-        {},
-    )
-    return jsonify({
+    tp_record = _tp_manifest_record(manifest)
+    release_authorized = bool(seal_verified and approval_matches_release(state))
+    response = {
         'order_id': order_id,
         'athlete_id': state['athlete_id'],
         'delivery_platform': state['delivery_platform'],
         'status': state['status'],
         'legacy': bool(state.get('legacy')),
-        'release_authorized': bool(
-            seal_verified and approval_matches_release(state)),
+        'release_authorized': release_authorized,
         'seal_verified': seal_verified,
         'tp_manifest_sha256': tp_record.get('sha256'),
         'generation_revision': state['generation_revision'],
@@ -2901,7 +2916,94 @@ def fulfillment_status(order_ref):
         'waiver': state['waiver'],
         'application': state['application'],
         'confirmation': state['confirmation'],
-    }), 200
+    }
+    if (release_authorized and state['status'] == APPROVED
+            and state['delivery_platform'] == 'trainingpeaks'
+            and tp_record.get('sha256')):
+        response['apply_gate_token'] = _issue_apply_gate_token(
+            state, tp_record['sha256'])
+        response['apply_gate_url'] = (
+            request.host_url.rstrip('/')
+            + f'/api/fulfillment/{order_id}/apply-gate'
+        )
+    return jsonify(response), 200
+
+
+@app.route('/api/fulfillment/<order_ref>/apply-gate', methods=['GET'])
+def live_trainingpeaks_apply_gate(order_ref):
+    """Reauthorize a sealed TP job immediately before its first live write."""
+    try:
+        claims = _verify_apply_gate_token(request.args.get('token', ''))
+    except FulfillmentStateError as exc:
+        response = jsonify({'error': str(exc)})
+        response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
+        return response, 401
+
+    order_id = _resolve_order_id(order_ref)
+    if not order_id or claims.get('order_id') != order_id:
+        response = jsonify({'error': 'apply gate order binding mismatch'})
+        response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
+        return response, 409
+    try:
+        state = load_fulfillment_state(_fulfillment_status_path(order_id))
+    except FulfillmentStateError:
+        response = jsonify({'error': 'Fulfillment state unavailable'})
+        response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
+        return response, 409
+
+    manifest = None
+    if state.get('model_seal') and not state.get('legacy'):
+        revision_dir = (_order_dir(order_id) / 'revisions'
+                        / f"r{state['generation_revision']}")
+        try:
+            manifest = verify_release_manifest(state, revision_dir)
+        except FulfillmentStateError as exc:
+            try:
+                record_seal_mismatch(_fulfillment_status_path(order_id), str(exc))
+            except FulfillmentStateError:
+                pass
+            response = jsonify({'error': f'apply gate seal verification failed: {exc}'})
+            response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
+            return response, 409
+
+    tp_record = _tp_manifest_record(manifest)
+    current = {
+        'order_id': state['order_id'],
+        'athlete_id': state['athlete_id'],
+        'delivery_platform': state['delivery_platform'],
+        'generation_revision': state['generation_revision'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'tp_manifest_sha256': tp_record.get('sha256'),
+    }
+    failures = []
+    if state.get('legacy'):
+        failures.append('order is a legacy quarantine')
+    if state.get('status') != APPROVED:
+        failures.append(f"status is {state.get('status')!r}, not APPROVED")
+    if state.get('delivery_platform') != 'trainingpeaks':
+        failures.append('delivery_platform is not trainingpeaks')
+    if not approval_matches_release(state):
+        failures.append('approval is not bound to the current release')
+    failures.extend(
+        f'{field} mismatch' for field, value in current.items()
+        if claims.get(field) != value
+    )
+    if failures:
+        response = jsonify({'error': 'apply gate refused: ' + '; '.join(failures)})
+        response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
+        return response, 409
+
+    response = jsonify({
+        **current,
+        'status': state['status'],
+        'legacy': False,
+        'seal_verified': True,
+        'release_authorized': True,
+    })
+    response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
+    response.headers['Cache-Control'] = 'no-store'
+    return response, 200
 
 
 @app.route('/api/fulfillment/<order_ref>/bind-legacy', methods=['POST'])
@@ -2960,13 +3062,64 @@ def confirm_plan_ready(order_ref):
             'error': 'Legacy order is quarantined and must be regenerated before confirmation'
         }), 409
     norm_id = _normalize_athlete_id(state['athlete_id'])
+    if state['status'] == CONFIRMED:
+        return jsonify({'status': 'confirmed', 'athlete_id': norm_id}), 200
+
+    revision_dir = (_order_dir(order_id) / 'revisions'
+                    / f"r{state['generation_revision']}")
+    try:
+        if not approval_matches_release(state):
+            raise FulfillmentStateError(
+                'release approval does not match the current seal')
+        manifest = verify_release_manifest(state, revision_dir)
+        artifact_paths = {
+            str(item.get('path') or '') for item in manifest['artifacts']}
+
+        personal_email_bytes = None
+        personal_relative = 'artifacts/personal_email.md'
+        if personal_relative in artifact_paths:
+            handle = open_verified_release_artifact(
+                state, revision_dir, personal_relative)
+            try:
+                personal_email_bytes = handle.read()
+            finally:
+                handle.close()
+
+        intake_backup_bytes = None
+        intake_relative = 'artifacts/intake_backup.json'
+        if intake_relative in artifact_paths:
+            handle = open_verified_release_artifact(
+                state, revision_dir, intake_relative)
+            try:
+                intake_backup_bytes = handle.read()
+            finally:
+                handle.close()
+
+        guide_attachments = []
+        for guide_name in ('training_guide.pdf', 'training_guide.html'):
+            relative = f'artifacts/{guide_name}'
+            if relative not in artifact_paths:
+                continue
+            handle = open_verified_release_artifact(state, revision_dir, relative)
+            try:
+                guide_attachments.append((guide_name, handle.read()))
+            finally:
+                handle.close()
+            break
+    except FulfillmentStateError as exc:
+        logger.error(
+            f'Confirmation seal verification failed for order {order_id}: {exc}')
+        try:
+            record_seal_mismatch(_fulfillment_status_path(order_id), str(exc))
+        except FulfillmentStateError:
+            return jsonify({'error': 'Fulfillment state unavailable'}), 409
+        return jsonify({'error': 'Release seal verification failed'}), 409
 
     # Find customer email and race from order logs
     log_dir = Path(DATA_DIR) / '.logs'
     customer_email = None
     customer_name = None
     race_name = None
-    plan_weeks = None
     brand = DEFAULT_BRAND
 
     for log_file in sorted(log_dir.glob('*.jsonl'), reverse=True):
@@ -2989,15 +3142,11 @@ def confirm_plan_ready(order_ref):
         return jsonify({'error': 'Customer email not found in order logs'}), 404
 
     # Load intake backup for race details
-    delivery_dir = (_order_dir(order_id) / 'revisions'
-                    / f"r{state['generation_revision']}" / 'artifacts')
-    intake_backup = delivery_dir / 'intake_backup.json'
-    if intake_backup.exists():
+    if intake_backup_bytes is not None:
         try:
-            with open(intake_backup) as f:
-                backup = json.load(f)
-                race_name = backup.get('race_name', '')
-                brand = normalize_brand(backup.get('brand') or brand)
+            backup = json.loads(intake_backup_bytes)
+            race_name = backup.get('race_name', '')
+            brand = normalize_brand(backup.get('brand') or brand)
         except Exception:
             pass
 
@@ -3008,16 +3157,6 @@ def confirm_plan_ready(order_ref):
     signature_name = signature.get('signature_name', 'Matti')
     signature_org = signature.get('signature_organization', brand_cfg['name'])
     signature_site = signature.get('signature_site', brand_cfg['site'].replace('https://', ''))
-
-    # The intake email promises the training guide — attach it. PDF when
-    # the pipeline produced one, HTML otherwise (Railway has no Chrome,
-    # so the PDF is often absent server-side; Jesse Couch never got his).
-    guide_attachments = []
-    for guide_name in ('training_guide.pdf', 'training_guide.html'):
-        guide_path = delivery_dir / guide_name
-        if guide_path.exists():
-            guide_attachments.append((guide_name, str(guide_path)))
-            break
 
     def _send_and_mark(send):
         """Keep mail send and CONFIRMED transition in one athlete lock."""
@@ -3032,94 +3171,10 @@ def confirm_plan_ready(order_ref):
         except FulfillmentStateError:
             return False, ('state', 409)
 
-    # Phase 4c: endure-target orders that actually delivered on Endure get
-    # the Endure "plan is live" email. The invitation email itself is sent
-    # by Endure's invitation machinery on approval (spec §1) — this email
-    # points the athlete at it rather than embedding a link the pipeline
-    # can't construct (the response carries invitation_id, not the token).
-    _job = _read_job(order_id) or {}
-    _endure = _job.get('endure_delivery') or {}
-    if (_job.get('delivery_target') == 'endure'
-            and _endure.get('status') in ('delivered', 'already_delivered')):
-        subject = f'Your training plan{race_mention} is live on Endure'
-
-        text_body = f"""Hey {first_name},
-
-Your custom training plan{race_mention} is built, reviewed, and live on Endure.
-
-Here's what to do:
-1. Accept your Endure invitation — check your inbox for an email from Endure Labs and follow the link to set up your account.
-2. Log in. Week 1 is already on your calendar, day by day.
-3. Each workout has target power zones, duration, and structure — just follow the plan.
-4. Questions about why a week looks the way it does? Ask David, the coach inside Endure — he knows your plan.
-
-A few things to know:
-- Week 1 is calibration. It may feel easy. That's intentional.
-- If life gets in the way and you miss a day, skip it and move on. Don't double up.
-- I can see your completed workouts in Endure. I'm watching — in a good way.
-
-If you have questions at any point, just reply to this email.
-
-— {signature_name}, {signature_org}
-{signature_site}
-"""
-
-        html_body = f"""
-<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-  <div style="background: #59473c; color: white; padding: 24px; border-radius: 4px 4px 0 0;">
-    <h1 style="margin: 0; font-size: 22px;">Your plan is live on Endure</h1>
-    {f'<p style="margin: 6px 0 0; opacity: 0.9; font-size: 15px;">{race_name}</p>' if race_name else ''}
-  </div>
-
-  <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
-    <p style="font-size: 15px; line-height: 1.6;">Hey {first_name},</p>
-
-    <p style="font-size: 15px; line-height: 1.6;">Your custom training plan{race_mention} is built, reviewed, and <strong>live on Endure</strong>.</p>
-
-    <h3 style="margin: 24px 0 12px; font-size: 16px; color: #59473c;">Get started</h3>
-    <ol style="font-size: 14px; padding-left: 20px; line-height: 2.2;">
-      <li><strong>Accept your Endure invitation</strong> — check your inbox for an email from Endure Labs and follow the link to set up your account.</li>
-      <li><strong>Log in</strong> — week 1 is already on your calendar, day by day.</li>
-      <li><strong>Follow the structure</strong> — each workout has target power zones, duration, and intervals.</li>
-      <li><strong>Ask David</strong> — the coach inside Endure knows your plan and can explain any week.</li>
-    </ol>
-
-    <div style="margin: 24px 0; padding: 16px; background: #fff; border-left: 3px solid #59473c;">
-      <p style="margin: 0 0 8px; font-size: 14px; color: #555;"><strong>Good to know:</strong></p>
-      <ul style="font-size: 14px; padding-left: 18px; line-height: 1.8; color: #555; margin: 0;">
-        <li>Week 1 is calibration. It may feel easy. That's intentional.</li>
-        <li>If life gets in the way, skip the day and move on. Don't double up.</li>
-        <li>I can see your completed workouts in Endure. I'm watching — in a good way.</li>
-      </ul>
-    </div>
-
-    <p style="font-size: 14px; line-height: 1.6;">Questions at any point? Just reply to this email.</p>
-
-    <p style="font-size: 14px; margin-top: 24px; color: #666;">— {signature_name}, {signature_org}<br>
-    <a href="{brand_cfg['site']}" style="color: #1A8A82;">{signature_site}</a></p>
-  </div>
-</div>"""
-
-        ok, failure = _send_and_mark(lambda: _send_email(
-            customer_email, subject, text_body, html=html_body,
-            reply_to=NOTIFICATION_EMAIL, attachments=guide_attachments,
-            brand=brand))
-        if ok:
-            logger.info(f"Sent Endure plan confirmation to "
-                        f"{_mask_email(customer_email)} for {norm_id}")
-            return jsonify({
-                'status': 'confirmed',
-                'athlete_id': norm_id,
-                'email': _mask_email(customer_email),
-                'delivery_target': 'endure',
-            })
-        return jsonify({'error': 'Failed to send confirmation email' if failure and failure[0] == 'email' else 'Fulfillment state unavailable'}), failure[1]
-
     # Check for personalized email generated by the pipeline
-    personal_email_path = delivery_dir / 'personal_email.md'
-    if personal_email_path.exists():
+    if personal_email_bytes is not None:
         try:
-            personal_md = personal_email_path.read_text().strip()
+            personal_md = personal_email_bytes.decode('utf-8').strip()
             # Extract subject line (first line starting with **Subject:**)
             subject = f'Your training plan{race_mention} is live on TrainingPeaks'
             for line in personal_md.split('\n'):

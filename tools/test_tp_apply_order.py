@@ -9,6 +9,7 @@ exercised with a monkeypatched network layer only.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -69,6 +70,22 @@ def golden_manifest() -> dict:
         "expected": {"bike": 2, "strength": 1, "day_off": 1, "race": 1, "total": 5},
         "sessions": sessions,
     }
+
+
+def sealed_binding(**overrides) -> dict:
+    value = {
+        "order_id": "order-1",
+        "athlete_id": "example_client",
+        "delivery_platform": "trainingpeaks",
+        "generation_revision": 2,
+        "model_seal": "seal-2",
+        "release_manifest_digest": "release-2",
+        "tp_manifest_sha256": "manifest-2",
+        "apply_gate_url": "https://example.railway.app/api/fulfillment/order-1/apply-gate",
+        "apply_gate_token": "short-lived-token",
+    }
+    value.update(overrides)
+    return value
 
 
 @pytest.fixture
@@ -175,14 +192,36 @@ class TestLoadManifest:
 class TestBuildApplyJob:
     def test_requires_athlete_tp_id(self):
         with pytest.raises(tao.ApplyOrderError, match="athlete_tp_id"):
-            tao.build_apply_job(golden_manifest(), athlete_tp_id="", target_date=None, start_type=1)
+            tao.build_apply_job(
+                golden_manifest(), athlete_tp_id="", target_date=None,
+                start_type=1, binding=sealed_binding())
+
+    def test_requires_complete_sealed_binding(self):
+        with pytest.raises(tao.ApplyOrderError, match="model_seal"):
+            tao.build_apply_job(
+                golden_manifest(), athlete_tp_id="2000302", target_date=None,
+                start_type=1, binding=sealed_binding(model_seal=""))
 
     def test_golden_job_without_strength_module(self):
         """Pinned golden fixture: module absent -> strength jobs carry
         {pending_module: true}, per spec's degrade-gracefully instruction."""
         job = tao.build_apply_job(golden_manifest(), athlete_tp_id="2000302",
-                                  target_date=None, start_type=1, strength_module=None)
+                                  target_date=None, start_type=1,
+                                  binding=sealed_binding(), strength_module=None)
 
+        assert {key: job[key] for key in (
+            "order_id", "athlete_id", "delivery_platform",
+            "generation_revision", "model_seal", "release_manifest_digest",
+            "tp_manifest_sha256",
+        )} == {key: sealed_binding()[key] for key in (
+            "order_id", "athlete_id", "delivery_platform",
+            "generation_revision", "model_seal", "release_manifest_digest",
+            "tp_manifest_sha256",
+        )}
+        assert job["gate"] == {
+            "url": sealed_binding()["apply_gate_url"],
+            "token": sealed_binding()["apply_gate_token"],
+        }
         assert job["plan_title"] == "Example Client · Example Downtown Criterium · 10wk [CUSTOM]"
         assert job["athlete_tp_id"] == "2000302"
         assert job["duplicate_guard"] == {"title": job["plan_title"]}
@@ -212,7 +251,8 @@ class TestBuildApplyJob:
 
     def test_target_date_enables_apply_stage(self):
         job = tao.build_apply_job(golden_manifest(), athlete_tp_id="2000302",
-                                  target_date="2027-06-28", start_type=3, strength_module=None)
+                                  target_date="2027-06-28", start_type=3,
+                                  binding=sealed_binding(), strength_module=None)
         assert job["apply"] == {"targetDate": "2027-06-28", "startType": 3, "enabled": True}
 
     def test_strength_module_present_builds_docs(self):
@@ -229,7 +269,8 @@ class TestBuildApplyJob:
                 return [{"key": "dead_bug", "title": "Dead Bug"}]
 
         job = tao.build_apply_job(golden_manifest(), athlete_tp_id="2000302", target_date=None,
-                                  start_type=1, strength_module=FakeStrengthModule(),
+                                  start_type=1, binding=sealed_binding(),
+                                  strength_module=FakeStrengthModule(),
                                   uuid_factory=lambda: "fixed-uuid")
 
         assert "strength_module_pending" not in job
@@ -251,7 +292,8 @@ class TestBuildApplyJob:
         manifest = golden_manifest()
         manifest["sessions"][0]["total_time_planned"] = 4.1333
         job = tao.build_apply_job(manifest, athlete_tp_id="2000302",
-                                  target_date=None, start_type=1, strength_module=None)
+                                  target_date=None, start_type=1,
+                                  binding=sealed_binding(), strength_module=None)
         entry = next(w for w in job["workouts"] if w["title"] == "Endurance Ride")
         assert entry["totalTimePlanned"] == 4.1333, (
             "totalTimePlanned was re-derived instead of passed through unchanged")
@@ -332,11 +374,14 @@ class TestApprovalGate:
     def _status(**overrides):
         value = {
             "status": "APPROVED", "legacy": False,
+            "delivery_platform": "trainingpeaks",
             "release_authorized": True, "seal_verified": True,
             "order_id": "order-1", "athlete_id": "example_client",
             "generation_revision": 2, "model_seal": "seal-2",
             "release_manifest_digest": "release-2",
             "tp_manifest_sha256": "manifest-2",
+            "apply_gate_url": "https://example.railway.app/api/fulfillment/order-1/apply-gate",
+            "apply_gate_token": "short-lived-token",
             "approval": {"model_seal": "seal-2",
                          "release_manifest_digest": "release-2"},
         }
@@ -378,6 +423,7 @@ class TestApprovalGate:
     @pytest.mark.parametrize("field,value", [
         ("legacy", True), ("generation_revision", 3),
         ("model_seal", "other"), ("tp_manifest_sha256", "other"),
+        ("delivery_platform", "endure"),
     ])
     def test_binding_mismatch_refused(self, monkeypatch, field, value):
         monkeypatch.setattr(
@@ -445,9 +491,12 @@ class TestMainReceiptMode:
         monkeypatch.setattr(tao, "fetch_fulfillment_status", lambda *args: {
             "status": "APPROVED", "legacy": False, "release_authorized": True,
             "seal_verified": True, "order_id": "order-1",
+            "delivery_platform": "trainingpeaks",
             "athlete_id": "example_client", "generation_revision": 2,
             "model_seal": "seal-2", "release_manifest_digest": "release-2",
             "tp_manifest_sha256": digest,
+            "apply_gate_url": "https://example.railway.app/api/fulfillment/order-1/apply-gate",
+            "apply_gate_token": "short-lived-token",
             "approval": {"model_seal": "seal-2",
                          "release_manifest_digest": "release-2"},
         })
@@ -466,3 +515,73 @@ class TestMainReceiptMode:
         assert posted["token"] == "secret-token"
         assert posted["coach"] == "coach_lee"
         assert posted["evidence"]["planId"] == 661259
+
+
+def test_browser_driver_checks_live_gate_before_any_trainingpeaks_request():
+    """The actual JS consumer must stop on live revocation before a TP call."""
+    driver = Path(__file__).with_name('tp_apply_driver.js')
+    job = {
+        **sealed_binding(),
+        'gate': {
+            'url': sealed_binding()['apply_gate_url'],
+            'token': sealed_binding()['apply_gate_token'],
+        },
+    }
+    job.pop('apply_gate_url')
+    job.pop('apply_gate_token')
+    script = "\n".join([
+        "const fs = require('fs');",
+        "global.window = {};",
+        "global.localStorage = { setItem() {} };",
+        "global.XMLHttpRequest = function() {};",
+        "global.XMLHttpRequest.prototype.setRequestHeader = function() {};",
+        "const calls = [];",
+        "global.fetch = async function(url) {",
+        "  calls.push(String(url));",
+        "  return { ok: false, status: 409, json: async () => ({ error: 'status is GENERATED' }) };",
+        "};",
+        f"eval(fs.readFileSync({json.dumps(str(driver))}, 'utf8'));",
+        f"const job = {json.dumps(job)};",
+        "window.applyJob(job).then(",
+        "  () => { console.error('driver unexpectedly ran'); process.exit(1); },",
+        "  (error) => {",
+        "    if (!String(error.message).includes('APPLY_GATE_REFUSED')) process.exit(2);",
+        "    if (calls.length !== 1 || calls[0].includes('tpapi.trainingpeaks.com')) process.exit(3);",
+        "    process.stdout.write('gate-refused-before-tp');",
+        "  },",
+        ");",
+    ])
+    completed = subprocess.run(
+        ['node', '-e', script], capture_output=True, text=True, timeout=10)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == 'gate-refused-before-tp'
+
+
+def test_browser_driver_refuses_missing_release_binding_without_network():
+    driver = Path(__file__).with_name('tp_apply_driver.js')
+    job = {
+        'delivery_platform': 'trainingpeaks',
+        'gate': {'url': 'https://example.invalid/gate', 'token': 'token'},
+    }
+    script = "\n".join([
+        "const fs = require('fs');",
+        "global.window = {};",
+        "global.localStorage = { setItem() {} };",
+        "global.XMLHttpRequest = function() {};",
+        "global.XMLHttpRequest.prototype.setRequestHeader = function() {};",
+        "let calls = 0; global.fetch = async function() { calls += 1; };",
+        f"eval(fs.readFileSync({json.dumps(str(driver))}, 'utf8'));",
+        f"const job = {json.dumps(job)};",
+        "window.applyJob(job).then(",
+        "  () => process.exit(1),",
+        "  (error) => {",
+        "    if (!String(error.message).includes('APPLY_JOB_BINDING_MISSING')) process.exit(2);",
+        "    if (calls !== 0) process.exit(3);",
+        "    process.stdout.write('unbound-job-refused');",
+        "  },",
+        ");",
+    ])
+    completed = subprocess.run(
+        ['node', '-e', script], capture_output=True, text=True, timeout=10)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == 'unbound-job-refused'

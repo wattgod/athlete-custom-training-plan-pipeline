@@ -283,7 +283,7 @@ class TestWooCommerceWebhook:
 
     def test_woocommerce_without_intake_is_not_falsely_fulfilled(
             self, client, temp_athletes_dir):
-        """Legacy Woo orders without authoritative intake fail closed."""
+        """Legacy Woo orders without intake enter durable quarantine."""
         order_data = {
             'id': 12345,
             'status': 'completed',
@@ -309,8 +309,15 @@ class TestWooCommerceWebhook:
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data['status'] == 'pipeline_failed'
+        assert data['status'] == 'success'
         assert data['athlete_id'] == 'john_doe'
+        state_path = (temp_athletes_dir / 'deliveries' / 'orders' / '12345'
+                      / 'fulfillment_status.json')
+        state = json.loads(state_path.read_text())
+        assert state['status'] == 'BLOCKED_REVIEW'
+        issue = next(item for item in state['blocking_issues']
+                     if item['id'] == 'STATE_UNAVAILABLE')
+        assert issue['waivable'] is False
 
     def test_woocommerce_idempotency(self, client, temp_athletes_dir):
         """Duplicate orders are rejected."""
@@ -819,7 +826,7 @@ class TestStripeWebhookWithIntake:
         assert profile['fitness_markers']['ftp_watts'] == 220
 
     def test_stripe_webhook_refuses_without_intake(self, client, temp_athletes_dir):
-        """Sparse fallback is quarantined instead of reporting success."""
+        """Paid missing-intake order is durably quarantined, not failed."""
         stripe_event = {
             'type': 'checkout.session.completed',
             'data': {
@@ -845,7 +852,18 @@ class TestStripeWebhookWithIntake:
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data['status'] == 'pipeline_failed'
+        assert data['status'] == 'success'
+        state_path = (temp_athletes_dir / 'deliveries' / 'orders'
+                      / 'cs_test_no_intake' / 'fulfillment_status.json')
+        state = json.loads(state_path.read_text())
+        assert state['status'] == 'BLOCKED_REVIEW'
+        issue = next(item for item in state['blocking_issues']
+                     if item['id'] == 'STATE_UNAVAILABLE')
+        assert issue['waivable'] is False
+        job = json.loads(
+            (temp_athletes_dir / 'jobs' / 'orders'
+             / 'cs_test_no_intake.json').read_text())
+        assert job['status'] == 'succeeded'
 
 
 class TestPriceComputation:
