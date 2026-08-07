@@ -294,6 +294,18 @@ def _build_section_titles(profile: Dict, race_data: Dict):
     return [(f"section-{i+1}", title) for i, title in enumerate(titles)]
 
 
+def _course_facts_are_omitted(profile: Dict) -> bool:
+    """Return the durable S4 facts-omitted signal for every guide entrypoint."""
+    target_race = (profile or {}).get('target_race', {})
+    course_mode = str(
+        target_race.get('course_facts_mode')
+        or (profile or {}).get('course_facts_mode') or '').strip().lower()
+    return bool(
+        target_race.get('course_facts_omitted')
+        or course_mode in {
+            'athlete_only', 'athlete-supplied-only', 'facts_omitted'})
+
+
 def generate_guide(
     profile: Dict,
     derived: Dict,
@@ -326,19 +338,29 @@ def generate_guide(
         if "ftp_test_weeks" not in plan_config:
             plan_config["ftp_test_weeks"] = full_config.get("ftp_test_weeks", [])
 
-    # Load race data for guide content
-    from pipeline.step_06_workouts import load_race_data
+    if _course_facts_are_omitted(profile):
+        # This retired helper is outside the shipping order path, but it must
+        # honor the same S4 remediation if called manually: no catalog load or
+        # date cross-reference may rehydrate deliberately omitted facts.
+        target_race = profile.get('target_race', {})
+        race_data = {
+            'distance_miles': target_race.get('distance_miles', race_distance),
+        }
+        date_xref = {}
+    else:
+        # Load race data for guide content.
+        from pipeline.step_06_workouts import load_race_data
 
-    race_data = load_race_data(race_name, race_distance, base_dir) if race_name else {}
-    if race_data is None:
-        race_data = {}
+        race_data = load_race_data(
+            race_name, race_distance, base_dir) if race_name else {}
+        if race_data is None:
+            race_data = {}
 
-    # Cross-reference race date against the real race database (1,184-race
-    # snapshot + curated known_races). The old import pulled from the gravel
-    # repo's `pipeline` package, which isn't importable here — so date_xref
-    # was always empty and EVERY race showed "not in database". Now local.
-    race_date_str = derived.get("race_date", "")
-    date_xref = _cross_reference_race_date(race_name, race_date_str) if race_name and race_date_str else {}
+        # Cross-reference race date against the real race database (1,184-race
+        # snapshot + curated known_races).
+        race_date_str = derived.get("race_date", "")
+        date_xref = _cross_reference_race_date(
+            race_name, race_date_str) if race_name and race_date_str else {}
 
     html = _build_full_guide(
         athlete_name=athlete_name,
@@ -3972,13 +3994,7 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
 
     # ── Load race data from gravel-race-automation (if allowed) ──
     race_name = derived['race_name']
-    course_mode = str(
-        target_race.get('course_facts_mode')
-        or profile.get('course_facts_mode') or '').strip().lower()
-    facts_omitted = bool(
-        target_race.get('course_facts_omitted')
-        or course_mode in {
-            'athlete_only', 'athlete-supplied-only', 'facts_omitted'})
+    facts_omitted = _course_facts_are_omitted(profile)
     if facts_omitted:
         # S4 remediation is stronger than hiding a few output fields: never
         # resolve the catalog. Only athlete-supplied facts already retained

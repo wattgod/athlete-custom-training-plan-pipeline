@@ -662,3 +662,55 @@ class TestMastersGateIsTierCorrect:
 
         assert _conditional_triggers({"demographics": {"age": 49}}, {})["masters"] is False
         assert _conditional_triggers({"demographics": {"age": 50}}, {})["masters"] is True
+
+
+def test_retired_generate_guide_never_rehydrates_omitted_course_facts(
+    monkeypatch, tmp_path,
+):
+    """Even the non-production helper must honor the durable S4 omission."""
+    import builtins
+    import training_guide_builder as tgb
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('facts-omitted guide attempted a race catalog lookup')
+
+    real_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        if name == 'pipeline.step_06_workouts':
+            forbidden()
+        return real_import(name, *args, **kwargs)
+
+    captured = {}
+
+    def capture_guide(**kwargs):
+        captured.update(kwargs)
+        return '<html>athlete-only</html>'
+
+    monkeypatch.setattr(builtins, '__import__', guarded_import)
+    monkeypatch.setattr(tgb, '_cross_reference_race_date', forbidden)
+    monkeypatch.setattr(tgb, '_build_full_guide', capture_guide)
+
+    output = tmp_path / 'guide.html'
+    tgb.generate_guide(
+        profile={
+            'name': 'Athlete Only',
+            'target_race': {
+                'name': 'Ambiguous Race',
+                'distance_miles': 77,
+                'course_facts_mode': 'athlete_only',
+                'course_facts_omitted': True,
+            },
+        },
+        derived={
+            'race_name': 'Ambiguous Race', 'race_distance_miles': 77,
+            'race_date': '2027-05-01', 'tier': 'compete',
+            'level': 'intermediate',
+        },
+        plan_config={'plan_duration': 12, 'template': {'weeks': []}},
+        schedule={'days': {}}, output_path=output, base_dir=tmp_path,
+    )
+
+    assert output.read_text() == '<html>athlete-only</html>'
+    assert captured['race_data'] == {'distance_miles': 77}
+    assert captured['date_xref'] == {}
