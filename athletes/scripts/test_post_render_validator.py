@@ -43,11 +43,15 @@ def _document():
         'input_version': INPUT_VERSION,
         'plan_ir': {
             'plan_ir_version': '0.1',
-            'race_snapshot': {'date': '2026-09-19'},
+            'athlete': {'name': 'Athlete M'},
+            'race_snapshot': {
+                'name': 'Three Course Race', 'date': '2026-09-19'},
             'weeks': weeks,
         },
         'tp_manifest': {
-            'version': 1, 'plan_title': 'Athlete M · Three Course Race · 6wk',
+            'version': 1,
+            'plan_title': 'Athlete M · Three Course Race · 6wk [CUSTOM]',
+            'athlete': 'Athlete M',
             'race': {'name': 'Three Course Race', 'date': '2026-09-19',
                      'priority': 'A'},
             'expected': {**counts, 'total': sum(counts.values())},
@@ -139,6 +143,26 @@ def test_equal_count_manifest_semantic_drift_is_rejected():
     document['tp_manifest']['sessions'][0]['title'] = 'Malicious replacement'
 
     with pytest.raises(PostRenderValidationError, match='semantic drift'):
+        validate_transitional_input(document)
+
+
+@pytest.mark.parametrize(('field_path', 'mutated'), [
+    (('plan_title',), 'Injected plan title'),
+    (('athlete',), 'Different Athlete'),
+    (('race', 'name'), 'Different Race'),
+    (('race', 'date'), '2026-09-20'),
+    (('race', 'priority'), 'B'),
+])
+def test_every_top_level_manifest_projection_field_is_validated(
+    field_path, mutated,
+):
+    document = _document()
+    target = document['tp_manifest']
+    for part in field_path[:-1]:
+        target = target[part]
+    target[field_path[-1]] = mutated
+
+    with pytest.raises(PostRenderValidationError, match='PlanIR projection'):
         validate_transitional_input(document)
 
 

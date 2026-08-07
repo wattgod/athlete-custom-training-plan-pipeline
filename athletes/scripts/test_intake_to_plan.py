@@ -110,6 +110,7 @@ def test_unresolved_course_omits_matched_facts_and_athlete_only_regeneration_cle
         'name': 'Three Course Race', 'date': '2026-09-19',
         'distance_miles': 89, 'elevation_ft': 7500,
         'course_variant': 'long', 'category': 'mountainous',
+        'location': 'Database Location', 'discipline': 'road',
         'race_metadata': {'start_elevation_feet': 6200},
         'courses': [
             {'id': 'short', 'distance_miles': 55, 'elevation_ft': 3000},
@@ -130,7 +131,8 @@ def test_unresolved_course_omits_matched_facts_and_athlete_only_regeneration_cle
     assert target['course_unresolved'] is True
     assert target['course_facts_omitted'] is True
     for matched_fact in (
-        'elevation_ft', 'courses', 'course_variant', 'category', 'race_metadata'
+        'elevation_ft', 'courses', 'course_variant', 'category', 'race_metadata',
+        'location', 'discipline',
     ):
         assert matched_fact not in target
     blockers, _ = assemble_intake_review_items(unresolved)
@@ -140,6 +142,9 @@ def test_unresolved_course_omits_matched_facts_and_athlete_only_regeneration_cle
     regenerated = build_profile(parsed)
     regenerated_target = regenerated['target_race']
     assert regenerated_target['course_facts_omitted'] is True
+    assert regenerated_target['course_facts_mode'] == 'athlete_only'
+    assert 'location' not in regenerated_target
+    assert 'discipline' not in regenerated_target
     assert regenerated_target.get('course_unresolved') is None
     blockers, _ = assemble_intake_review_items(regenerated)
     assert 'COURSE_UNRESOLVED' not in {item['id'] for item in blockers}

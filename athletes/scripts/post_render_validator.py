@@ -112,8 +112,27 @@ def _validate_manifest_projection(
         raise PostRenderValidationError("tp_manifest.sessions must be non-empty")
     if len(manifest_sessions) != len(plan_sessions):
         raise PostRenderValidationError("PlanIR/tp_manifest session count mismatch")
-    if not isinstance(manifest.get("plan_title"), str) or not manifest["plan_title"].strip():
-        raise PostRenderValidationError("tp_manifest.plan_title is required")
+    plan_weeks = max(
+        (int(week.get("number", 0)) for week in plan_ir.get("weeks") or []
+         if int(week.get("number", 0)) > 0),
+        default=0,
+    )
+    athlete_name = str((plan_ir.get("athlete") or {}).get("name") or "Athlete")
+    race_snapshot = plan_ir.get("race_snapshot") or {}
+    race_name = str(race_snapshot.get("name") or "Race")
+    expected_top_level = {
+        "plan_title": f"{athlete_name} · {race_name} · {plan_weeks}wk [CUSTOM]",
+        "athlete": athlete_name,
+        "race": {
+            "name": race_snapshot.get("name"),
+            "date": race_snapshot.get("date"),
+            "priority": "A",
+        },
+    }
+    for field, expected_value in expected_top_level.items():
+        if manifest.get(field) != expected_value:
+            raise PostRenderValidationError(
+                f"tp_manifest.{field} does not match PlanIR projection")
 
     counts = {kind: 0 for kind in TP_KINDS}
     for index, (source, projected) in enumerate(
@@ -144,12 +163,6 @@ def _validate_manifest_projection(
     if expected_counts != canonical_counts:
         raise PostRenderValidationError(
             "tp_manifest.expected does not match projected session kinds")
-    manifest_race = manifest.get("race")
-    if not isinstance(manifest_race, dict):
-        raise PostRenderValidationError("tp_manifest.race is required")
-    if manifest_race.get("date") != (plan_ir.get("race_snapshot") or {}).get("date"):
-        raise PostRenderValidationError(
-            "tp_manifest race date does not match PlanIR race snapshot")
 
 
 def _timezone(name: str) -> ZoneInfo:

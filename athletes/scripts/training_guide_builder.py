@@ -3970,12 +3970,31 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
         'ftp_test_weeks': [],
     }
 
-    # ── Load race data from gravel-race-automation (if available) ──
+    # ── Load race data from gravel-race-automation (if allowed) ──
     race_name = derived['race_name']
-    race_data, verified_location = _resolve_race_data(
-        race_name,
-        _gravel_race_data_dirs(scripts_dir),
-    )
+    course_mode = str(
+        target_race.get('course_facts_mode')
+        or profile.get('course_facts_mode') or '').strip().lower()
+    facts_omitted = bool(
+        target_race.get('course_facts_omitted')
+        or course_mode in {
+            'athlete_only', 'athlete-supplied-only', 'facts_omitted'})
+    if facts_omitted:
+        # S4 remediation is stronger than hiding a few output fields: never
+        # resolve the catalog. Only athlete-supplied facts already retained
+        # on the profile may shape the guide.
+        race_data = {
+            'distance_miles': target_race.get('distance_miles'),
+        }
+        verified_location = None
+        date_xref = {}
+    else:
+        race_data, verified_location = _resolve_race_data(
+            race_name,
+            _gravel_race_data_dirs(scripts_dir),
+        )
+        date_xref = _cross_reference_race_date(
+            race_name, derived.get('race_date', ''))
 
     # Unwrap race data: raw JSON has {"race": {...}}, step_07 expects flat dict
     if 'race' in race_data and isinstance(race_data['race'], dict):
@@ -4028,7 +4047,7 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
         race_data=race_data,
         # Verify the athlete's date against the real race DB (was hardcoded
         # empty here, so every guide showed "not in database").
-        date_xref=_cross_reference_race_date(race_name, derived.get('race_date', '')),
+        date_xref=date_xref,
         store_mode=store_mode,
     )
 

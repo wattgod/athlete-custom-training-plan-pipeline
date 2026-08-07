@@ -959,6 +959,21 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     # is the preferred path and removes the whole name-matching bug class.
     target_slug = (goals.get('race_slug') or '').strip()
 
+    def _stated_discipline() -> str:
+        explicit = str(goals.get('discipline') or '').strip().lower()
+        if explicit in {'gravel', 'road', 'mtb'}:
+            return explicit
+        category_text = ' '.join(str(goals.get(key) or '') for key in (
+            'race_category', 'race_format', 'road_category')).lower()
+        if any(token in category_text for token in ('mountain bike', 'mtb', 'xc')):
+            return 'mtb'
+        if 'gravel' in category_text:
+            return 'gravel'
+        if any(token in category_text for token in (
+            'road', 'criterium', 'crit', 'fondo', 'sportive')):
+            return 'road'
+        return ''
+
     for i, parsed in enumerate(parsed_races):
         race_name_clean = parsed['name']
         is_target = (i == target_idx)
@@ -992,20 +1007,25 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
 
         if matched:
             race_id, info = matched
+            courses = info.get('courses') or []
+            facts_omitted_mode = str(
+                goals.get('course_facts_mode') or '').strip().lower()
+            course_facts_omitted = is_target and len(courses) > 1
             # The slug nails the race IDENTITY (exactly which event) — that's
             # what kills the wrong-edition / not-in-database / date-mismatch
             # order-killers. The athlete's own date/distance still win when
             # given (their date drives the plan length they were priced on, and
             # their distance is the route they're actually doing); we only fall
             # back to the DB for anything they left blank.
-            if not event['date']:
+            if not event['date'] and not course_facts_omitted:
                 event['date'] = info.get('date', '')
-            if not event['distance_miles']:
+            if not event['distance_miles'] and not course_facts_omitted:
                 event['distance_miles'] = info.get('distance_miles', 0)
-            event['name'] = info['name']
+            if not course_facts_omitted:
+                event['name'] = info['name']
             if is_target:
                 target_race_info = {
-                    'name': info['name'],
+                    'name': event['name'],
                     # clean slug (snapshot keys are 'discipline:slug')
                     'race_id': race_id.split(':', 1)[-1],
                     'date': event['date'],
@@ -1021,9 +1041,6 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                     'verified_at': info.get('verified_at'),
                     'event_year': info.get('event_year'),
                 }
-                courses = info.get('courses') or []
-                facts_omitted_mode = str(
-                    goals.get('course_facts_mode') or '').strip().lower()
                 if len(courses) > 1:
                     # Identity/provenance may be retained, but no matched-record
                     # course fact may reach the plan or guide until a per-course
@@ -1031,6 +1048,11 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                     # live in the event above and are the only planning facts.
                     target_race_info['course_facts_omitted'] = True
                     target_race_info['course_facts_source'] = 'athlete_supplied'
+                    if facts_omitted_mode:
+                        target_race_info['course_facts_mode'] = facts_omitted_mode
+                    stated_discipline = _stated_discipline()
+                    if stated_discipline:
+                        target_race_info['discipline'] = stated_discipline
                     if facts_omitted_mode not in {
                         'athlete_only', 'athlete-supplied-only', 'facts_omitted'
                     }:
@@ -1061,11 +1083,11 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                     target_race_info['race_provenance_issue'] = issue
                 # Verified venue from the DB (used by the guide, and lets the
                 # integrity check trust the date instead of re-deriving it).
-                if info.get('location'):
+                if not course_facts_omitted and info.get('location'):
                     target_race_info['location'] = info['location']
                 # Discipline from the race DB drives guide branding (road ->
                 # Roadie Labs + road skills). Only set when the DB knows it.
-                if info.get('discipline'):
+                if not course_facts_omitted and info.get('discipline'):
                     target_race_info['discipline'] = info['discipline']
         else:
             # UNMATCHED race — build the plan from what the athlete actually
