@@ -28,6 +28,14 @@ INTENSITY_TITLE = re.compile(
     re.I,
 )
 LONG_RIDE_TITLE = re.compile(r"\b(long ride|durability|long endurance)\b", re.I)
+TP_KINDS = ("bike", "strength", "day_off", "race")
+TP_SESSION_FIELDS = (
+    "date", "title", "display_name", "filename_stem", "description",
+    "tp_kind", "workout_type_value_id", "tss_planned",
+    "total_time_planned", "structure", "series_id", "series_index",
+    "series_total", "order_on_day", "strength_template", "archetype_id",
+    "race",
+)
 
 
 class PostRenderValidationError(ValueError):
@@ -92,6 +100,56 @@ def _sessions(plan_ir: Dict[str, Any]) -> Iterable[Tuple[int, Dict[str, Any]]]:
         number = int(week.get("number", 0))
         for session in week.get("sessions") or []:
             yield number, session
+
+
+def _validate_manifest_projection(
+    plan_ir: Dict[str, Any], manifest: Dict[str, Any],
+) -> None:
+    """Prove the executable manifest is the semantic PlanIR projection."""
+    manifest_sessions = manifest.get("sessions")
+    plan_sessions = [session for _, session in _sessions(plan_ir)]
+    if not isinstance(manifest_sessions, list) or not manifest_sessions:
+        raise PostRenderValidationError("tp_manifest.sessions must be non-empty")
+    if len(manifest_sessions) != len(plan_sessions):
+        raise PostRenderValidationError("PlanIR/tp_manifest session count mismatch")
+    if not isinstance(manifest.get("plan_title"), str) or not manifest["plan_title"].strip():
+        raise PostRenderValidationError("tp_manifest.plan_title is required")
+
+    counts = {kind: 0 for kind in TP_KINDS}
+    for index, (source, projected) in enumerate(
+        zip(plan_sessions, manifest_sessions)
+    ):
+        if not isinstance(projected, dict):
+            raise PostRenderValidationError(
+                f"tp_manifest.sessions[{index}] must be an object")
+        expected = {field: source.get(field) for field in TP_SESSION_FIELDS}
+        actual = {field: projected.get(field) for field in TP_SESSION_FIELDS}
+        if actual != expected:
+            differing = sorted(
+                field for field in TP_SESSION_FIELDS
+                if actual[field] != expected[field]
+            )
+            raise PostRenderValidationError(
+                f"tp_manifest semantic drift at session {index}: "
+                + ", ".join(differing)
+            )
+        kind = projected.get("tp_kind")
+        if kind not in counts:
+            raise PostRenderValidationError(
+                f"tp_manifest.sessions[{index}] has unknown tp_kind")
+        counts[kind] += 1
+
+    expected_counts = manifest.get("expected")
+    canonical_counts = {**counts, "total": sum(counts.values())}
+    if expected_counts != canonical_counts:
+        raise PostRenderValidationError(
+            "tp_manifest.expected does not match projected session kinds")
+    manifest_race = manifest.get("race")
+    if not isinstance(manifest_race, dict):
+        raise PostRenderValidationError("tp_manifest.race is required")
+    if manifest_race.get("date") != (plan_ir.get("race_snapshot") or {}).get("date"):
+        raise PostRenderValidationError(
+            "tp_manifest race date does not match PlanIR race snapshot")
 
 
 def _timezone(name: str) -> ZoneInfo:
@@ -206,6 +264,7 @@ def validate_transitional_input(
         raise PostRenderValidationError("unsupported transitional PlanIR version")
     if manifest.get("version") != 1:
         raise PostRenderValidationError("unsupported tp_manifest version")
+    _validate_manifest_projection(plan_ir, manifest)
 
     issues: List[Dict[str, str]] = []
     confirmations: List[Dict[str, str]] = []
@@ -301,13 +360,13 @@ def validate_transitional_input(
         ))
 
     target_race = profile.get("target_race") or {}
-    altitude = (
-        target_race.get("start_elevation_asl_ft")
-        or target_race.get("average_elevation_asl_ft")
-        or 0
-    )
+    race_metadata = target_race.get("race_metadata") or {}
     try:
-        qualifies_altitude = float(altitude) > 5000
+        altitude = max(
+            float(race_metadata.get("start_elevation_feet") or 0),
+            float(race_metadata.get("avg_elevation_feet") or 0),
+        )
+        qualifies_altitude = altitude > 5000
     except (TypeError, ValueError):
         qualifies_altitude = False
     if qualifies_altitude and "Altitude Training" not in guide:
@@ -316,10 +375,6 @@ def validate_transitional_input(
             "Frozen race snapshot qualifies for altitude guidance but the guide lacks it.",
         ))
 
-    # Cross-projection sanity: the validator's two named inputs must enumerate
-    # the same number of sessions before any semantic result is trusted.
-    if len(manifest.get("sessions") or []) != len(sessions):
-        raise PostRenderValidationError("PlanIR/tp_manifest session count mismatch")
     return (
         sorted({item["id"]: item for item in issues}.values(), key=lambda item: item["id"]),
         sorted(

@@ -90,6 +90,36 @@ class IntakeValidationError(Exception):
     pass
 
 
+def generation_now() -> datetime:
+    """Production clock with an explicit deterministic-test injection."""
+    fixed = os.environ.get('GG_FIXED_NOW', '').strip()
+    if fixed:
+        return datetime.fromisoformat(fixed.replace('Z', '+00:00')).replace(tzinfo=None)
+    return datetime.now()
+
+
+def resolve_race_by_slug(slug: str):
+    """Resolve production race data, with a frozen replay snapshot hook."""
+    fixture_path = os.environ.get('GG_RACE_SNAPSHOT_FIXTURE', '').strip()
+    if fixture_path:
+        try:
+            snapshot = json.loads(Path(fixture_path).read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise IntakeValidationError(
+                f'Frozen race snapshot is unreadable: {exc}') from exc
+        if str(snapshot.get('slug') or '') != slug:
+            raise IntakeValidationError(
+                'Frozen race snapshot slug does not match intake race slug')
+        return f"gravel:{slug}", {
+            **snapshot,
+            'source_urls': snapshot.get('source_urls') or [],
+            'source_type': snapshot.get('source_type') or 'frozen_fixture',
+            'event_year': snapshot.get('event_year') or generation_now().year,
+            'course_variant': snapshot.get('course_variant'),
+        }
+    return lookup_by_slug(slug)
+
+
 # Height sanity bounds (not in constants.py -- specific to intake validation)
 HEIGHT_MIN_CM: int = 120
 HEIGHT_MAX_CM: int = 220
@@ -503,32 +533,46 @@ def parse_years(val: str) -> int:
     return int(m.group(1)) if m else 0
 
 
+_DEVICE_VOCABULARY = {
+    'power meter': 'power_meter',
+    'powermeter': 'power_meter',
+    'power_meter': 'power_meter',
+    'hr strap': 'hr_strap',
+    'heart rate strap': 'hr_strap',
+    'heart rate monitor': 'hr_strap',
+    'hr monitor': 'hr_strap',
+    'hr_strap': 'hr_strap',
+    'smart trainer': 'smart_trainer',
+    'smart_trainer': 'smart_trainer',
+    'garmin': 'garmin',
+    'wahoo': 'wahoo',
+}
+
+
+def _parse_device_answers(val: str) -> Tuple[List[str], List[str]]:
+    devices: List[str] = []
+    unknown: List[str] = []
+    for raw in re.split(r'[,\n]+', str(val or '')):
+        verbatim = raw.strip()
+        lookup = re.sub(r'\s+', ' ', verbatim.lower())
+        if not lookup or lookup == 'unknown':
+            continue
+        canonical = _DEVICE_VOCABULARY.get(lookup)
+        token = canonical if canonical is not None else verbatim
+        if token not in devices:
+            devices.append(token)
+        if canonical is None and verbatim not in unknown:
+            unknown.append(verbatim)
+    return devices, unknown
+
+
 def parse_device_list(val: str) -> List[str]:
     """Parse form-supplied devices without breaking multi-word tokens.
 
     Commas/newlines are the only delimiters. Known answers map through the
     canonical vocabulary; unknown answers survive verbatim for coach review.
     """
-    vocabulary = {
-        'power meter': 'power_meter',
-        'powermeter': 'power_meter',
-        'hr strap': 'hr_strap',
-        'heart rate strap': 'hr_strap',
-        'heart rate monitor': 'hr_strap',
-        'hr monitor': 'hr_strap',
-        'smart trainer': 'smart_trainer',
-        'garmin': 'garmin',
-        'wahoo': 'wahoo',
-    }
-    devices = []
-    for raw in re.split(r'[,\n]+', str(val or '')):
-        token = re.sub(r'\s+', ' ', raw.strip().lower())
-        if not token or token == 'unknown':
-            continue
-        canonical = vocabulary.get(token, token)
-        if canonical not in devices:
-            devices.append(canonical)
-    return devices
+    return _parse_device_answers(val)[0]
 
 
 def parse_day_list(val: str) -> List[str]:
@@ -583,7 +627,7 @@ def extract_date_from_text(text: str) -> str:
     if m:
         month_num = month_names[m.group(1).lower()]
         day = int(m.group(2))
-        year = int(m.group(3)) if m.group(3) else date.today().year
+        year = int(m.group(3)) if m.group(3) else generation_now().year
         if 1 <= day <= 31:
             return f"{year}-{month_num:02d}-{day:02d}"
 
@@ -732,10 +776,13 @@ def parse_race_line(line: str) -> Dict[str, Any]:
         if priority_match:
             priority = priority_match.group(1).upper()
 
-        # Numeric distance: bare integer in the meta string (not the date).
+        # Numeric distance: accept the production questionnaire's ``75 miles``
+        # as well as the historical bare ``75`` form (never inspect the date).
         for part in [p.strip() for p in meta.split(',')]:
-            if part.isdigit() and 1 <= int(part) <= 999:
-                distance = int(part)
+            distance_match = re.fullmatch(
+                r'(\d{1,3})(?:\s*(?:miles?|mi))?', part, re.IGNORECASE)
+            if distance_match and 1 <= int(distance_match.group(1)) <= 999:
+                distance = int(distance_match.group(1))
                 break
 
     return {
@@ -877,6 +924,9 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     max_hr = parse_hr(fitness.get('hr_max', '')) or parse_hr(recovery.get('hr_max', ''))
     lthr = (parse_hr(fitness.get('hr_threshold', ''))
             or parse_hr(fitness.get('lthr', '')))
+    training_metric = str(fitness.get('training_metric') or '').strip().lower()
+    if training_metric not in {'power', 'hr', 'rpe'}:
+        training_metric = 'power'
     sleep_hours = parse_hours(recovery.get('typical_sleep', ''))
     sleep_quality = recovery.get('sleep_quality', 'good').lower()
     recovery_speed = recovery.get('recovery_speed', 'normal').lower()
@@ -921,7 +971,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         match_meta = None
         matched_by_slug = False
         if is_target and target_slug:
-            matched = lookup_by_slug(target_slug)
+            matched = resolve_race_by_slug(target_slug)
             matched_by_slug = matched is not None
             if matched:
                 match_meta = {
@@ -960,7 +1010,6 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                     'race_id': race_id.split(':', 1)[-1],
                     'date': event['date'],
                     'distance_miles': event['distance_miles'],
-                    'elevation_ft': info.get('elevation_ft', 0),
                     'goal_type': goal_type,
                     'goal': goal_type,
                     'goal_description': success_text,
@@ -971,17 +1020,36 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                     'source_type': info.get('source_type'),
                     'verified_at': info.get('verified_at'),
                     'event_year': info.get('event_year'),
-                    'course_variant': info.get('course_variant'),
-                    'courses': info.get('courses') or [],
-                    'category': info.get('category'),
                 }
                 courses = info.get('courses') or []
-                if len(courses) > 1 and not goals.get('race_course_id'):
-                    target_race_info['course_unresolved'] = True
-                    target_race_info['course_unresolved_reason'] = (
-                        'Multi-course race requires an explicit course selection; '
-                        'distance text alone is not a course identity.'
-                    )
+                facts_omitted_mode = str(
+                    goals.get('course_facts_mode') or '').strip().lower()
+                if len(courses) > 1:
+                    # Identity/provenance may be retained, but no matched-record
+                    # course fact may reach the plan or guide until a per-course
+                    # schema can resolve it. Athlete name/date/distance already
+                    # live in the event above and are the only planning facts.
+                    target_race_info['course_facts_omitted'] = True
+                    target_race_info['course_facts_source'] = 'athlete_supplied'
+                    if facts_omitted_mode not in {
+                        'athlete_only', 'athlete-supplied-only', 'facts_omitted'
+                    }:
+                        target_race_info['course_unresolved'] = True
+                        target_race_info['course_unresolved_reason'] = (
+                            'Multi-course race requires facts-omitted regeneration '
+                            'from athlete-supplied name, date, and distance.'
+                        )
+                else:
+                    target_race_info.update({
+                        'elevation_ft': info.get('elevation_ft', 0),
+                        'course_variant': info.get('course_variant'),
+                        'courses': courses,
+                        'category': info.get('category'),
+                        # True altitude-above-sea-level fields use the same
+                        # schema as the production guide trigger. elevation_ft
+                        # remains total gain and must never trigger altitude.
+                        'race_metadata': info.get('race_metadata') or {},
+                    })
                 # A name match is not permission to reuse a prior edition's
                 # course facts. H1 keeps the plan build recoverable but forces
                 # a coach review when requested and sourced edition disagree.
@@ -1167,7 +1235,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
 
     # -- Equipment --
     devices_raw = equipment.get('devices', '')
-    device_list = parse_device_list(devices_raw)
+    device_list, unknown_device_tokens = _parse_device_answers(devices_raw)
     platform = equipment.get('platform', 'trainingpeaks').lower()
     intervals_id = equipment.get('intervals_icu_id', equipment.get('intervals_icu', ''))
     if intervals_id and intervals_id.lower() in ('n/a', 'na', 'none', ''):
@@ -1289,7 +1357,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     overtraining = recovery.get('overtraining_history', 'never').lower()
 
     # -- Plan start --
-    today = date.today()
+    today = generation_now().date()
     # Next Monday
     days_until_monday = (7 - today.weekday()) % 7
     if days_until_monday == 0:
@@ -1399,6 +1467,9 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'resting_hr': resting_hr,
             'max_hr': max_hr,
             'lthr': lthr,
+            # Questionnaire intent survives into generation so the Week 1
+            # assessment tests the metric the athlete actually uses.
+            'training_metric': training_metric,
         },
         'recent_training': {
             'last_12_weeks': 'sporadic',
@@ -1474,6 +1545,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'training_log': True,
             'platforms': [platform] if platform else ['trainingpeaks'],
             'devices': device_list if device_list else [],
+            'unknown_tokens': unknown_device_tokens,
         },
         'work': {
             'employed': True,
@@ -1849,7 +1921,7 @@ def write_profile_yaml(profile: Dict[str, Any], output_path: Path) -> None:
 
     header_comment = (
         f"# Athlete Profile: {profile['name']}\n"
-        f"# Generated by intake_to_plan.py on {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+        f"# Generated by intake_to_plan.py on {generation_now().strftime('%Y-%m-%d %H:%M')}\n"
         f"# Source: intake questionnaire\n\n"
     )
 
@@ -2593,7 +2665,7 @@ def generate_coaching_brief(
     # FOOTER
     # =====================================================================
     md += f"---\n"
-    md += f"*Generated by intake_to_plan.py on {datetime.now().strftime('%Y-%m-%d %H:%M')}*\n"
+    md += f"*Generated by intake_to_plan.py on {generation_now().strftime('%Y-%m-%d %H:%M')}*\n"
 
     return md
 
@@ -3025,6 +3097,72 @@ def generate_personal_email(
     return '\n'.join(lines)
 
 
+def assemble_intake_review_items(
+    profile: Dict,
+    *,
+    delivered_weeks: int = 0,
+    quality_issues: Optional[List[Dict]] = None,
+) -> Tuple[List[Dict], List[Dict]]:
+    """Production owner for Phase 1 intake blockers and confirmations."""
+    blockers: List[Dict] = []
+    target_race = profile.get('target_race') or {}
+    target_match = target_race.get('race_match') or {}
+    if target_match.get('method') == 'none':
+        blockers.append({
+            'id': 'RACE_UNMATCHED', 'source': 'intake_to_plan',
+            'severity': 'CRITICAL',
+            'message': 'A-race did not match a known race; coach verification is required.',
+        })
+    blockers.extend(profile.get('availability_review_issues') or [])
+    provenance_issue = target_race.get('race_provenance_issue')
+    if provenance_issue:
+        blockers.append({
+            'id': 'RACE_STALE', 'source': 'race_provenance',
+            'severity': 'CRITICAL', 'message': provenance_issue,
+        })
+    brand_blocker = brand_discipline_blocker(profile)
+    if brand_blocker:
+        blockers.append(brand_blocker)
+    blockers.extend(quality_issues or [])
+    if (profile.get('fitness_markers') or {}).get('ftp_estimated'):
+        blockers.append({
+            'id': 'FTP_ESTIMATED', 'source': 'intake',
+            'severity': 'CRITICAL',
+            'message': 'FTP was estimated; Phase 1 cannot release power-anchored artifacts.',
+        })
+    if target_race.get('course_unresolved'):
+        blockers.append({
+            'id': 'COURSE_UNRESOLVED', 'source': 'intake',
+            'severity': 'CRITICAL',
+            'message': target_race.get('course_unresolved_reason')
+                       or 'Race course facts are unresolved.',
+        })
+    purchased_weeks = int(
+        (profile.get('fulfillment') or {}).get('weeks_purchased') or 0)
+    if purchased_weeks and delivered_weeks and purchased_weeks != delivered_weeks:
+        blockers.append({
+            'id': 'WEEKS_MISMATCH', 'source': 'intake',
+            'severity': 'CRITICAL',
+            'message': (f'Generated {delivered_weeks} paid weeks but the order '
+                        f'purchased {purchased_weeks}; W00 excluded.'),
+        })
+
+    confirmations = [
+        {
+            'id': f'DEVICE_UNKNOWN_CONFIRM_{index}',
+            'source': 'intake',
+            'message': f'Confirm unknown device token verbatim: {token}',
+        }
+        for index, token in enumerate(
+            (profile.get('devices') or {}).get('unknown_tokens') or [], 1)
+    ]
+    return (
+        sorted({item['id']: item for item in blockers}.values(),
+               key=lambda item: item['id']),
+        confirmations,
+    )
+
+
 # ===========================================================================
 # Deliverables Copier
 # ===========================================================================
@@ -3323,57 +3461,19 @@ def main():
     fulfillment_state_available = True
     try:
         state = load_fulfillment_state(state_path)
-        blockers = []
-        target_match = (profile.get('target_race') or {}).get('race_match') or {}
-        if target_match.get('method') == 'none':
-            blockers.append({
-                'id': 'RACE_UNMATCHED',
-                'source': 'intake_to_plan',
-                'severity': 'CRITICAL',
-                'message': 'A-race did not match a known race; coach verification is required.',
-            })
-        blockers.extend((profile.get('availability_review_issues') or []))
-        provenance_issue = (profile.get('target_race') or {}).get('race_provenance_issue')
-        if provenance_issue:
-            blockers.append({'id': 'RACE_STALE', 'source': 'race_provenance',
-                             'severity': 'CRITICAL', 'message': provenance_issue})
-        brand_blocker = brand_discipline_blocker(profile)
-        if brand_blocker:
-            blockers.append(brand_blocker)
-        blockers.extend(getattr(run_quality_gates, 'last_critical_issues', []))
-        if (profile.get('fitness_markers') or {}).get('ftp_estimated'):
-            blockers.append({
-                'id': 'FTP_ESTIMATED', 'source': 'intake',
-                'severity': 'CRITICAL',
-                'message': 'FTP was estimated; Phase 1 cannot release power-anchored artifacts.',
-            })
-        target_race = profile.get('target_race') or {}
-        if target_race.get('course_unresolved'):
-            blockers.append({
-                'id': 'COURSE_UNRESOLVED', 'source': 'intake',
-                'severity': 'CRITICAL',
-                'message': target_race.get('course_unresolved_reason')
-                           or 'Race course facts are unresolved.',
-            })
         try:
             import yaml
             with open(athlete_dir / 'plan_dates.yaml') as handle:
                 delivered_weeks = int((yaml.safe_load(handle) or {}).get('plan_weeks') or 0)
         except (OSError, ValueError, TypeError):
             delivered_weeks = 0
-        purchased_weeks = int((profile.get('fulfillment') or {}).get('weeks_purchased') or 0)
-        if purchased_weeks and delivered_weeks and purchased_weeks != delivered_weeks:
-            blockers.append({
-                'id': 'WEEKS_MISMATCH', 'source': 'intake',
-                'severity': 'CRITICAL',
-                'message': (f'Generated {delivered_weeks} paid weeks but the order '
-                            f'purchased {purchased_weeks}; W00 excluded.'),
-            })
-        # Preserve one record per rule across a rerun of the final pipeline steps.
-        deduped = {issue['id']: issue for issue in blockers}
+        blockers, intake_confirmations = assemble_intake_review_items(
+            profile, delivered_weeks=delivered_weeks,
+            quality_issues=getattr(run_quality_gates, 'last_critical_issues', []),
+        )
         merge_generation_blockers(
             state_path, state['generation_revision'], 'intake',
-            list(deduped.values()))
+            blockers, required_confirmations=intake_confirmations)
         # PlanIR's fulfillment projection must follow this final gate. These
         # intake/quality blockers land AFTER generate_athlete_package's own
         # build_plan_ir, so without this re-sync plan_ir.json reports the stale
@@ -3451,6 +3551,17 @@ def main():
             from plan_ir import build_plan_ir, build_tp_manifest
             build_plan_ir(athlete_id)
             build_tp_manifest(athlete_id)
+            # Validate the final on-disk bytes, not the pre-merge projections.
+            # Any rewrite after this point is a release-seal violation.
+            final_input = build_validator_input(athlete_dir)
+            final_issues, final_confirmations = validate_transitional_input(
+                final_input)
+            if ([item['id'] for item in final_issues]
+                    != [item['id'] for item in validator_issues]
+                    or [item['id'] for item in final_confirmations]
+                    != [item['id'] for item in confirmations]):
+                raise RuntimeError(
+                    'post-render findings changed after final projection rewrite')
             print(f"  {GREEN}Post-render validation complete{RESET} "
                   f"({len(validator_issues)} blocker(s), "
                   f"{len(confirmations)} confirmation(s))")

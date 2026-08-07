@@ -49,8 +49,17 @@ def _keyring() -> Dict[str, Dict[str, str]]:
             raise DownloadTokenError("DOWNLOAD_TOKEN_KEYS is invalid") from exc
         if not isinstance(parsed, dict):
             raise DownloadTokenError("DOWNLOAD_TOKEN_KEYS is invalid")
+        for audience in ARTIFACT_AUDIENCE.values():
+            if not isinstance(parsed.get(audience), dict) or not parsed[audience]:
+                raise DownloadTokenError(
+                    f"DOWNLOAD_TOKEN_KEYS has no {audience} keys")
         return parsed
-    root = os.environ.get("DOWNLOAD_TOKEN_SECRET") or os.environ.get("CRON_SECRET") or "dev-secret"
+    root = os.environ.get("DOWNLOAD_TOKEN_SECRET", "").strip()
+    if not root:
+        raise DownloadTokenError(
+            "download token keys are not configured; set DOWNLOAD_TOKEN_KEYS "
+            "or DOWNLOAD_TOKEN_SECRET"
+        )
     kid = os.environ.get("DOWNLOAD_TOKEN_KID", "phase1-v1")
     return {
         audience: {

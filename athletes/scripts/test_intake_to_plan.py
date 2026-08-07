@@ -20,6 +20,8 @@ import copy
 import pytest
 from pathlib import Path
 
+import intake_to_plan
+
 # Ensure scripts dir is importable
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -43,6 +45,7 @@ from intake_to_plan import (
     generate_coaching_brief,
     parse_race_line,
     _parse_ftp_with_unknown_handling,
+    assemble_intake_review_items,
 )
 from known_races import match_race, KNOWN_RACES, RACE_ALIASES
 from constants import (
@@ -66,8 +69,24 @@ def test_device_parser_preserves_multiword_tokens_and_canonicalizes():
 
 
 def test_device_parser_splits_only_commas_and_newlines_and_preserves_unknowns():
-    assert parse_device_list('Garmin Edge 840\nheart rate monitor') == [
-        'garmin edge 840', 'hr_strap']
+    assert parse_device_list('  Garmin   Edge 840  \nheart rate monitor') == [
+        'Garmin   Edge 840', 'hr_strap']
+
+
+def test_unknown_device_is_a_verbatim_required_confirmation(minimal_valid_parsed):
+    parsed = copy.deepcopy(minimal_valid_parsed)
+    parsed['equipment']['devices'] = 'power meter,  Mystery   Sensor X  '
+    profile = build_profile(parsed)
+    _, confirmations = assemble_intake_review_items(profile)
+
+    assert profile['devices']['devices'] == [
+        'power_meter', 'Mystery   Sensor X']
+    assert profile['devices']['unknown_tokens'] == ['Mystery   Sensor X']
+    assert confirmations == [{
+        'id': 'DEVICE_UNKNOWN_CONFIRM_1',
+        'source': 'intake',
+        'message': 'Confirm unknown device token verbatim: Mystery   Sensor X',
+    }]
 
 
 def test_absent_devices_produce_no_profile_device_token(minimal_valid_parsed):
@@ -77,6 +96,53 @@ def test_absent_devices_produce_no_profile_device_token(minimal_valid_parsed):
     assert profile['devices']['devices'] == []
     assert profile['cycling_equipment']['power_meter_bike'] is False
     assert profile['cycling_equipment']['hr_monitor'] is False
+
+
+def test_unresolved_course_omits_matched_facts_and_athlete_only_regeneration_clears(
+    minimal_valid_parsed, monkeypatch,
+):
+    parsed = copy.deepcopy(minimal_valid_parsed)
+    parsed['goals'].update({
+        'race_slug': 'three-course-race',
+        'races': 'Three Course Race (2026-09-19, 75, priority A)',
+    })
+    race_info = {
+        'name': 'Three Course Race', 'date': '2026-09-19',
+        'distance_miles': 89, 'elevation_ft': 7500,
+        'course_variant': 'long', 'category': 'mountainous',
+        'race_metadata': {'start_elevation_feet': 6200},
+        'courses': [
+            {'id': 'short', 'distance_miles': 55, 'elevation_ft': 3000},
+            {'id': 'middle', 'distance_miles': 75, 'elevation_ft': 5000},
+            {'id': 'long', 'distance_miles': 89, 'elevation_ft': 7500},
+        ],
+        'source_urls': ['https://example.invalid/race'],
+        'source_type': 'fixture', 'verified_at': None, 'event_year': 2026,
+    }
+    monkeypatch.setattr(
+        intake_to_plan, 'lookup_by_slug',
+        lambda slug: (f'gravel:{slug}', race_info),
+    )
+
+    unresolved = build_profile(parsed)
+    target = unresolved['target_race']
+    assert target['distance_miles'] == 75  # athlete-supplied fact survives
+    assert target['course_unresolved'] is True
+    assert target['course_facts_omitted'] is True
+    for matched_fact in (
+        'elevation_ft', 'courses', 'course_variant', 'category', 'race_metadata'
+    ):
+        assert matched_fact not in target
+    blockers, _ = assemble_intake_review_items(unresolved)
+    assert 'COURSE_UNRESOLVED' in {item['id'] for item in blockers}
+
+    parsed['goals']['course_facts_mode'] = 'athlete_only'
+    regenerated = build_profile(parsed)
+    regenerated_target = regenerated['target_race']
+    assert regenerated_target['course_facts_omitted'] is True
+    assert regenerated_target.get('course_unresolved') is None
+    blockers, _ = assemble_intake_review_items(regenerated)
+    assert 'COURSE_UNRESOLVED' not in {item['id'] for item in blockers}
 
 
 @pytest.fixture
@@ -542,6 +608,11 @@ class TestParseRaceLine:
         assert result['priority'] is None
         assert result['date'] == '2026-08-15'
         assert result['distance_miles'] == 100
+
+    def test_production_distance_with_unit(self):
+        result = parse_race_line(
+            'Three Course Race (2026-09-19, 75 miles, priority A)')
+        assert result['distance_miles'] == 75
 
     def test_priority_lowercase_input(self):
         result = parse_race_line('Race X (2026-07-04, 75, priority b)')
