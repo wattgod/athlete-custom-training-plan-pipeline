@@ -17,6 +17,10 @@ class TrainingPeaksReadbackMismatch(RuntimeError):
     pass
 
 
+class TrainingPeaksAdapterDisabled(RuntimeError):
+    """The pre-worker adapter has no order/revision/seal authorization."""
+
+
 class TrainingPeaksAdapter:
     api_version = 'tp-undocumented-v1'
 
@@ -65,6 +69,14 @@ class TrainingPeaksAdapter:
         return f"{prefix}:{item.get('external_id') or fallback}"
 
     def apply(self, athlete_id: str, manifest: Dict[str, Any]) -> Dict[str, Any]:
+        raise TrainingPeaksAdapterDisabled(
+            'Legacy TrainingPeaks adapter is disabled in Phase 1: it cannot '
+            'verify a seal-bound APPROVED order. Use the gated apply path '
+            'introduced with the Phase 5 worker.'
+        )
+
+        # Historical implementation retained temporarily for migration parity
+        # work.  It is intentionally unreachable while Phase 1 is active.
         created = 0
         for index, workout in enumerate(manifest.get('workouts', []), 1):
             external_id = workout.get('external_id') or f"workout:{workout.get('date')}:{workout.get('title')}"

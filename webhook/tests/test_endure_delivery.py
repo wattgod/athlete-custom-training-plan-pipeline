@@ -638,10 +638,16 @@ def test_phase1_endure_target_is_preserved_but_never_pushed(isolated_app,
                                                              endure_env):
     app_module = isolated_app
     job = _make_job(app_module, target='endure')
+    persisted = {'state': {
+        'status': 'BLOCKED_REVIEW', 'blocking_issues': [{
+            'id': 'STATE_UNAVAILABLE', 'waivable': False,
+        }], 'required_confirmations': [],
+    }}
     with patch.object(app_module, 'run_pipeline', return_value={
             'success': True, 'stdout': '', 'stderr': '',
             'fulfillment_state': 'unavailable'}), \
-         patch.object(app_module, 'persist_deliverables', return_value={}), \
+         patch.object(app_module, 'persist_deliverables', return_value=persisted), \
+         patch.object(app_module, '_generate_download_token', return_value='token'), \
          patch.object(endure_delivery.requests, 'post') as push, \
          patch.object(app_module, '_notify_new_order'):
         result = app_module._execute_plan_job(job)

@@ -1,6 +1,7 @@
 """Focused J1 state-machine tests (kept independent of Flask fixtures)."""
 
 import json
+import os
 import sys
 import threading
 from pathlib import Path
@@ -14,6 +15,7 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CONFIRMED,
                                confirm_after_send, finalize_transitional_release,
                                load, merge_generation_blockers,
                                migrate_v1_to_quarantine, transition,
+                               open_verified_release_artifact,
                                verify_release_manifest, write_generation)
 
 
@@ -189,6 +191,52 @@ def test_seal_detects_same_revision_mutation(tmp_path):
         verify_release_manifest(path, root)
 
 
+def test_approval_after_sealed_byte_mutation_fails_and_materializes_blocker(tmp_path):
+    path = tmp_path / 'status.json'
+    write_generation(path, 'athlete-m', order_id='cs_seal_approval')
+    _seal(path, tmp_path)
+    (tmp_path / 'artifacts' / 'guide.html').write_text('mutated after seal')
+
+    with pytest.raises(FulfillmentStateError, match='approval refused'):
+        transition(path, APPROVED, 'coach@example.test')
+
+    state = load(path)
+    assert state['status'] == BLOCKED_REVIEW
+    mismatch = next(i for i in state['blocking_issues']
+                    if i['id'] == 'SEAL_MISMATCH')
+    assert mismatch['waivable'] is False
+    assert state['approval'] is None
+
+
+def test_download_handle_is_the_verified_descriptor_not_a_reopen(tmp_path):
+    path = tmp_path / 'status.json'
+    write_generation(path, 'athlete-m', order_id='cs_handle')
+    _seal(path, tmp_path)
+    transition(path, APPROVED, 'coach@example.test')
+    artifact = tmp_path / 'artifacts' / 'guide.html'
+
+    handle = open_verified_release_artifact(
+        path, tmp_path / 'artifacts', 'guide.html')
+    replacement = tmp_path / 'replacement.html'
+    replacement.write_text('unsealed replacement')
+    os.replace(replacement, artifact)
+    try:
+        assert handle.read() == b'sealed guide'
+    finally:
+        handle.close()
+
+
+def test_phase1_schema_rejects_later_phase_statuses(tmp_path):
+    path = tmp_path / 'status.json'
+    write_generation(path, 'athlete-m', order_id='cs_future_status')
+    raw = json.loads(path.read_text())
+    for status in ('APPLYING', 'APPLIED_ATTESTED', 'CANCELLED'):
+        raw['status'] = status
+        path.write_text(json.dumps(raw))
+        with pytest.raises(FulfillmentStateError, match='malformed'):
+            load(path)
+
+
 def test_v1_migration_quarantines_and_tombstones(tmp_path):
     old = tmp_path / 'athlete' / 'fulfillment_status.json'
     old.parent.mkdir()
@@ -210,3 +258,8 @@ def test_v1_migration_quarantines_and_tombstones(tmp_path):
         transition(destination, APPROVED, 'coach')
     bound = bind_legacy_order(destination, 'cs_candidate', 'coach')
     assert bound['legacy_binding']['ledger_order_id'] == 'cs_candidate'
+    with pytest.raises(FulfillmentStateError, match='must be regenerated'):
+        transition(destination, APPLIED, 'coach', platform='trainingpeaks',
+                   evidence='legacy evidence')
+    with pytest.raises(FulfillmentStateError, match='must be regenerated'):
+        confirm_after_send(destination, lambda: pytest.fail('must not send'))

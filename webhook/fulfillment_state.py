@@ -16,7 +16,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, Optional, Tuple
+from typing import Any, BinaryIO, Callable, Dict, Iterator, Optional, Tuple
 
 SCHEMA_VERSION = 2
 GENERATED = "GENERATED"
@@ -28,11 +28,10 @@ APPLIED_ATTESTED = "APPLIED_ATTESTED"
 CONFIRMED = "CONFIRMED"
 CANCELLED = "CANCELLED"
 VALID_STATUSES = {
-    GENERATED, BLOCKED_REVIEW, APPROVED, APPLYING, APPLIED,
-    APPLIED_ATTESTED, CONFIRMED, CANCELLED,
+    GENERATED, BLOCKED_REVIEW, APPROVED, APPLIED, CONFIRMED,
 }
 DELIVERY_PLATFORMS = {"trainingpeaks", "endure", "manual"}
-RELEASE_STATUSES = {APPROVED, APPLYING, APPLIED, APPLIED_ATTESTED, CONFIRMED}
+RELEASE_STATUSES = {APPROVED, APPLIED, CONFIRMED}
 TRANSITIONAL_SEAL_VERSION = "transitional_artifact_bytes/v1"
 
 # Server-owned policy.  Structural/quality rules not named here are waivable;
@@ -428,6 +427,8 @@ def verify_release_manifest(
     except (OSError, json.JSONDecodeError) as exc:
         raise FulfillmentStateError("release manifest unavailable") from exc
     records = manifest.get("artifacts")
+    if not isinstance(records, list) or not records:
+        raise FulfillmentStateError("release manifest has no artifacts")
     if (
         manifest.get("seal_version") != TRANSITIONAL_SEAL_VERSION
         or canonical_digest(records) != state["model_seal"]
@@ -453,6 +454,114 @@ def verify_release_manifest(
                 f"sealed artifact mismatch: {record['path']}"
             )
     return manifest
+
+
+def approval_matches_release(state: Dict[str, Any]) -> bool:
+    """Return whether current authority is bound to the current sealed bytes."""
+    approval = state.get("approval") or {}
+    return bool(
+        not state.get("legacy")
+        and state.get("status") in RELEASE_STATUSES
+        and approval.get("model_seal") == state.get("model_seal")
+        and approval.get("release_manifest_digest")
+        == state.get("release_manifest_digest")
+    )
+
+
+def _seal_mismatch_issue(message: str) -> Dict[str, Any]:
+    return _validate_issue({
+        "id": "SEAL_MISMATCH",
+        "source": "seal_verification",
+        "severity": "CRITICAL",
+        "message": f"Release seal verification failed: {message}",
+    })
+
+
+def _materialize_seal_mismatch(
+    state: Dict[str, Any], message: str,
+) -> None:
+    preserved = [
+        issue for issue in state["blocking_issues"]
+        if issue["id"] != "SEAL_MISMATCH"
+    ]
+    state["blocking_issues"] = sorted(
+        preserved + [_seal_mismatch_issue(message)], key=lambda item: item["id"])
+    state["status"] = BLOCKED_REVIEW
+    _history(state, "SEAL_MISMATCH", message=message)
+
+
+def record_seal_mismatch(
+    path: os.PathLike[str] | str, message: str,
+) -> Dict[str, Any]:
+    """Revoke release authority and durably merge the fatal seal blocker."""
+    with locked_state(path) as (state_path, state):
+        if state is None:
+            raise FulfillmentStateError("missing or malformed fulfillment state")
+        _materialize_seal_mismatch(state, str(message))
+        _atomic_write(state_path, state)
+        return copy.deepcopy(state)
+
+
+def open_verified_release_artifact(
+    state_or_path: Dict[str, Any] | os.PathLike[str] | str,
+    artifact_root: os.PathLike[str] | str,
+    relative_path: str,
+    *,
+    require_approval: bool = True,
+) -> BinaryIO:
+    """Verify and return the exact open handle that the caller must serve.
+
+    Keeping the verified descriptor open closes the former hash-then-reopen
+    race in the Flask download path.
+    """
+    state = state_or_path if isinstance(state_or_path, dict) else load(state_or_path)
+    if require_approval and not approval_matches_release(state):
+        raise FulfillmentStateError("release approval does not match the current seal")
+    manifest_path = Path(state.get("release_manifest") or "")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise FulfillmentStateError("release manifest unavailable") from exc
+    records = manifest.get("artifacts")
+    if (
+        not isinstance(records, list)
+        or not records
+        or manifest.get("seal_version") != TRANSITIONAL_SEAL_VERSION
+        or canonical_digest(records) != state.get("model_seal")
+        or canonical_digest(records) != state.get("release_manifest_digest")
+    ):
+        raise FulfillmentStateError("release manifest seal mismatch")
+
+    root = Path(artifact_root).resolve()
+    served: Optional[BinaryIO] = None
+    try:
+        for record in records:
+            candidate = (root / str(record.get("path") or "")).resolve()
+            if root not in candidate.parents:
+                raise FulfillmentStateError("release manifest path escapes artifact root")
+            handle = candidate.open("rb")
+            data = handle.read()
+            if (
+                len(data) != record.get("bytes")
+                or hashlib.sha256(data).hexdigest() != record.get("sha256")
+            ):
+                handle.close()
+                raise FulfillmentStateError(
+                    f"sealed artifact mismatch: {record.get('path')}"
+                )
+            if record.get("path") == relative_path:
+                handle.seek(0)
+                served = handle
+            else:
+                handle.close()
+        if served is None:
+            raise FulfillmentStateError(
+                "artifact is not in the approved release manifest")
+        return served
+    except Exception:
+        if served is not None:
+            served.close()
+        raise
 
 
 def verify_release_artifact(
@@ -488,8 +597,10 @@ def transition(
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
-        if state.get("legacy") and not state.get("legacy_binding"):
-            raise FulfillmentStateError("legacy order is quarantined pending manual binding")
+        if state.get("legacy"):
+            raise FulfillmentStateError(
+                "legacy order is quarantined and must be regenerated after manual binding"
+            )
         current = state["status"]
         if to == CONFIRMED and current == CONFIRMED:
             return copy.deepcopy(state)
@@ -523,6 +634,15 @@ def transition(
                 raise FulfillmentStateError(f"illegal transition {current} -> {to}")
             if state.get("required_confirmations"):
                 raise FulfillmentStateError("required confirmations are unresolved")
+            artifact_root = Path(str(state.get("release_manifest") or "")).parent
+            try:
+                verify_release_manifest(state, artifact_root)
+            except FulfillmentStateError as exc:
+                _materialize_seal_mismatch(state, str(exc))
+                _atomic_write(state_path, state)
+                raise FulfillmentStateError(
+                    f"approval refused: {exc}"
+                ) from exc
             state["approval"] = {
                 "coach": coach.strip(),
                 "at": now_iso(),
@@ -558,9 +678,13 @@ def confirm_after_send(
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
+        if state.get("legacy"):
+            raise FulfillmentStateError(
+                "legacy order is quarantined and must be regenerated before confirmation"
+            )
         if state["status"] == CONFIRMED:
             return "idempotent", copy.deepcopy(state)
-        if state["status"] not in (APPLIED, APPLIED_ATTESTED):
+        if state["status"] != APPLIED:
             raise FulfillmentStateError("confirmation requires APPLIED status")
         if not send():
             raise RuntimeError("confirmation email failed")

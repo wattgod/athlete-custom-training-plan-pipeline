@@ -328,35 +328,64 @@ class TestValidateReceipt:
 # ---------------------------------------------------------------------------
 
 class TestApprovalGate:
+    @staticmethod
+    def _status(**overrides):
+        value = {
+            "status": "APPROVED", "legacy": False,
+            "release_authorized": True, "seal_verified": True,
+            "order_id": "order-1", "athlete_id": "example_client",
+            "generation_revision": 2, "model_seal": "seal-2",
+            "release_manifest_digest": "release-2",
+            "tp_manifest_sha256": "manifest-2",
+            "approval": {"model_seal": "seal-2",
+                         "release_manifest_digest": "release-2"},
+        }
+        value.update(overrides)
+        return value
+
+    @staticmethod
+    def _check(**overrides):
+        values = {
+            "server": "https://example.railway.app", "token": "secret",
+            "order_id": "order-1", "athlete_id": "example_client",
+            "generation_revision": 2, "model_seal": "seal-2",
+            "manifest_sha256": "manifest-2",
+        }
+        values.update(overrides)
+        return tao.check_approval_gate(**values)
+
     def test_server_approved_passes(self, monkeypatch):
         monkeypatch.setattr(tao, "fetch_fulfillment_status",
-                            lambda server, token, athlete_id: {"status": "APPROVED"})
-        status = tao.check_approval_gate(server="https://example.railway.app", token="secret",
-                                         athlete_id="example_client", skip_approval_check=False)
+                            lambda server, token, order_id: self._status())
+        status = self._check()
         assert status["status"] == "APPROVED"
 
     def test_server_not_approved_refused(self, monkeypatch):
         monkeypatch.setattr(tao, "fetch_fulfillment_status",
-                            lambda server, token, athlete_id: {"status": "GENERATED"})
+                            lambda server, token, order_id: self._status(
+                                status="GENERATED", release_authorized=False))
         with pytest.raises(tao.ApprovalGateError, match="not APPROVED"):
-            tao.check_approval_gate(server="https://example.railway.app", token="secret",
-                                    athlete_id="example_client", skip_approval_check=False)
+            self._check()
 
     def test_server_without_token_refused(self):
         with pytest.raises(tao.ApplyOrderError, match="token"):
-            tao.check_approval_gate(server="https://example.railway.app", token="",
-                                    athlete_id="example_client", skip_approval_check=False)
+            self._check(token="")
 
-    def test_no_server_no_skip_refused(self):
-        with pytest.raises(tao.ApprovalGateError, match="local/dev mode"):
-            tao.check_approval_gate(server=None, token=None, athlete_id="example_client",
-                                    skip_approval_check=False)
+    def test_no_server_refused_without_bypass(self):
+        with pytest.raises(tao.ApprovalGateError, match="local bypass is disabled"):
+            self._check(server=None, token=None)
 
-    def test_no_server_with_skip_proceeds(self, capsys):
-        result = tao.check_approval_gate(server=None, token=None, athlete_id="example_client",
-                                         skip_approval_check=True)
-        assert result is None
-        assert "WARNING" in capsys.readouterr().err
+    @pytest.mark.parametrize("field,value", [
+        ("legacy", True), ("generation_revision", 3),
+        ("model_seal", "other"), ("tp_manifest_sha256", "other"),
+    ])
+    def test_binding_mismatch_refused(self, monkeypatch, field, value):
+        monkeypatch.setattr(
+            tao, "fetch_fulfillment_status",
+            lambda server, token, order_id: self._status(**{field: value}),
+        )
+        with pytest.raises(tao.ApprovalGateError):
+            self._check()
 
 
 # ---------------------------------------------------------------------------
@@ -364,34 +393,31 @@ class TestApprovalGate:
 # ---------------------------------------------------------------------------
 
 class TestMainJobMode:
-    def test_writes_apply_job_with_skip_approval_check(self, package_dir, capsys):
-        rc = tao.main(["example_client", "--package", str(package_dir),
-                      "--athlete-tp-id", "2000302", "--skip-approval-check"])
-        assert rc == 0
-        job_path = package_dir / "apply_job.json"
-        assert job_path.exists()
-        job = json.loads(job_path.read_text())
-        assert job["athlete_tp_id"] == "2000302"
-        assert "OPERATOR RUNBOOK" in capsys.readouterr().out
+    BINDING = ["--order-id", "order-1", "--generation-revision", "2",
+               "--model-seal", "seal-2"]
 
     def test_missing_athlete_tp_id_errors(self, package_dir):
-        rc = tao.main(["example_client", "--package", str(package_dir), "--skip-approval-check"])
+        rc = tao.main(["example_client", "--package", str(package_dir), *self.BINDING])
         assert rc == 1
 
-    def test_no_server_no_skip_exits_3(self, package_dir):
-        rc = tao.main(["example_client", "--package", str(package_dir), "--athlete-tp-id", "2000302"])
+    def test_no_server_exits_3_and_writes_no_job(self, package_dir):
+        rc = tao.main(["example_client", "--package", str(package_dir),
+                       "--athlete-tp-id", "2000302", *self.BINDING])
         assert rc == 3
+        assert not (package_dir / "apply_job.json").exists()
 
     def test_server_not_approved_exits_3(self, package_dir, monkeypatch):
         monkeypatch.setattr(tao, "fetch_fulfillment_status",
-                            lambda server, token, athlete_id: {"status": "BLOCKED_REVIEW"})
+                            lambda server, token, order_id: {
+                                "status": "BLOCKED_REVIEW", "legacy": False})
         monkeypatch.setenv("CRON_SECRET", "secret")
         rc = tao.main(["example_client", "--package", str(package_dir), "--athlete-tp-id", "2000302",
-                      "--server", "https://example.railway.app"])
+                      "--server", "https://example.railway.app", *self.BINDING])
         assert rc == 3
 
 
 class TestMainReceiptMode:
+    BINDING = TestMainJobMode.BINDING
     def _write_receipt(self, tmp_path, **overrides):
         receipt = _ok_receipt(**overrides)
         path = tmp_path / "receipt.json"
@@ -400,32 +426,43 @@ class TestMainReceiptMode:
 
     def test_valid_receipt_exits_0(self, package_dir, tmp_path, capsys):
         receipt_path = self._write_receipt(tmp_path)
-        rc = tao.main(["example_client", "--package", str(package_dir), "--receipt", str(receipt_path)])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "receipt OK" in out
-        assert "plan_registry.py register" in out
-        assert "plan_registry.py check" in out
+        rc = tao.main(["example_client", "--package", str(package_dir),
+                       "--receipt", str(receipt_path), *self.BINDING])
+        assert rc == 3
 
     def test_invalid_receipt_exits_1(self, package_dir, tmp_path):
         receipt_path = self._write_receipt(tmp_path, finishedAt=None)
-        rc = tao.main(["example_client", "--package", str(package_dir), "--receipt", str(receipt_path)])
-        assert rc == 1
+        rc = tao.main(["example_client", "--package", str(package_dir),
+                       "--receipt", str(receipt_path), *self.BINDING])
+        assert rc == 3
 
     def test_receipt_mode_posts_applied_transition_with_server(self, package_dir, tmp_path, monkeypatch):
         receipt_path = self._write_receipt(tmp_path)
         posted = {}
 
-        def fake_post(server, token, athlete_id, coach, evidence):
-            posted.update(server=server, token=token, athlete_id=athlete_id, coach=coach, evidence=evidence)
+        digest = __import__('hashlib').sha256(
+            (package_dir / tao.MANIFEST_FILENAME).read_bytes()).hexdigest()
+        monkeypatch.setattr(tao, "fetch_fulfillment_status", lambda *args: {
+            "status": "APPROVED", "legacy": False, "release_authorized": True,
+            "seal_verified": True, "order_id": "order-1",
+            "athlete_id": "example_client", "generation_revision": 2,
+            "model_seal": "seal-2", "release_manifest_digest": "release-2",
+            "tp_manifest_sha256": digest,
+            "approval": {"model_seal": "seal-2",
+                         "release_manifest_digest": "release-2"},
+        })
+
+        def fake_post(server, token, order_id, coach, evidence):
+            posted.update(server=server, token=token, order_id=order_id, coach=coach, evidence=evidence)
             return {"status": "APPLIED"}
 
         monkeypatch.setattr(tao, "post_applied_transition", fake_post)
         monkeypatch.setenv("CRON_SECRET", "secret-token")
         rc = tao.main(["example_client", "--package", str(package_dir), "--receipt", str(receipt_path),
-                      "--server", "https://example.railway.app", "--coach", "coach_lee"])
+                      "--server", "https://example.railway.app", "--coach", "coach_lee",
+                      *self.BINDING])
         assert rc == 0
-        assert posted["athlete_id"] == "example_client"
+        assert posted["order_id"] == "order-1"
         assert posted["token"] == "secret-token"
         assert posted["coach"] == "coach_lee"
         assert posted["evidence"]["planId"] == 661259

@@ -35,7 +35,20 @@ def _email_delivery_for_profile(profile: dict):
 
 
 def deliver_package(athlete_id: str) -> dict:
-    """Prepare athlete package for delivery."""
+    """Refuse the retired athlete-keyed release path.
+
+    This module cannot bind its mutable athlete directory to an order,
+    generation revision, approval, and release seal.  Phase 1 therefore keeps
+    the historical implementation below unreachable until it is removed.
+    """
+
+    message = (
+        "Legacy deliver_package.py release is disabled: it cannot verify a "
+        "seal-bound APPROVED order. Use the order-scoped webhook review and "
+        "/api/download/<order_id>?artifact=customer_bundle gated path."
+    )
+    print(f"ERROR: {message}")
+    return {'success': False, 'error': message}
 
     athletes_dir = Path(__file__).parent.parent
     athlete_dir = athletes_dir / athlete_id

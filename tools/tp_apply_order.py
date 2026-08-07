@@ -21,6 +21,7 @@ See SPEC_tp_native_custom_plans.md, section "CLI (D5)".
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shlex
@@ -98,17 +99,24 @@ def default_output_dir(package_path: Path) -> Path:
 
 
 def load_manifest(package_dir: Path) -> Dict[str, Any]:
-    manifest_path = package_dir / MANIFEST_FILENAME
-    if not manifest_path.exists():
-        candidates = sorted(package_dir.rglob(MANIFEST_FILENAME))
-        require(bool(candidates), f"{MANIFEST_FILENAME} not found under {package_dir}")
-        manifest_path = candidates[0]
+    manifest_path = find_manifest_path(package_dir)
+
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ApplyOrderError(f"{manifest_path}: invalid JSON ({exc})") from exc
     validate_manifest(manifest)
     return manifest
+
+
+def find_manifest_path(package_dir: Path) -> Path:
+    """Locate the exact manifest bytes that must match the server seal."""
+    manifest_path = package_dir / MANIFEST_FILENAME
+    if not manifest_path.exists():
+        candidates = sorted(package_dir.rglob(MANIFEST_FILENAME))
+        require(bool(candidates), f"{MANIFEST_FILENAME} not found under {package_dir}")
+        manifest_path = candidates[0]
+    return manifest_path
 
 
 def validate_manifest(manifest: Dict[str, Any]) -> None:
@@ -170,22 +178,22 @@ def _session_date_range(sessions: List[Dict[str, Any]]) -> Dict[str, str]:
 # Railway fulfillment-status gate
 # ---------------------------------------------------------------------------
 
-def fetch_fulfillment_status(server: str, token: str, athlete_id: str, *, timeout: float = 15.0) -> Dict[str, Any]:
+def fetch_fulfillment_status(server: str, token: str, order_id: str, *, timeout: float = 15.0) -> Dict[str, Any]:
     require(requests is not None, "the 'requests' package is required for --server checks")
-    url = server.rstrip("/") + f"/api/fulfillment/{athlete_id}/status"
+    url = server.rstrip("/") + f"/api/fulfillment/{order_id}/status"
     response = requests.get(url, headers={"X-Cron-Secret": token}, timeout=timeout)
     if response.status_code == 401:
         raise ApplyOrderError(f"unauthorized against {server} — check --auth env var / CRON_SECRET")
     if response.status_code == 404:
-        raise ApplyOrderError(f"no fulfillment state found for athlete {athlete_id!r} on {server}")
+        raise ApplyOrderError(f"no fulfillment state found for order {order_id!r} on {server}")
     response.raise_for_status()
     return response.json()
 
 
-def post_applied_transition(server: str, token: str, athlete_id: str, coach: str,
+def post_applied_transition(server: str, token: str, order_id: str, coach: str,
                              evidence: Dict[str, Any], *, timeout: float = 15.0) -> Dict[str, Any]:
     require(requests is not None, "the 'requests' package is required for --server transitions")
-    url = server.rstrip("/") + f"/api/fulfillment/{athlete_id}/transition"
+    url = server.rstrip("/") + f"/api/fulfillment/{order_id}/transition"
     payload = {"to": "APPLIED", "coach": coach, "platform": "trainingpeaks",
                "evidence": json.dumps(evidence, sort_keys=True)}
     response = requests.post(url, headers={"X-Cron-Secret": token}, json=payload, timeout=timeout)
@@ -198,36 +206,47 @@ def post_applied_transition(server: str, token: str, athlete_id: str, coach: str
     return response.json()
 
 
-def check_approval_gate(*, server: Optional[str], token: Optional[str], athlete_id: str,
-                         skip_approval_check: bool) -> Optional[Dict[str, Any]]:
-    """Enforce the APPROVED preflight (spec D5 step 1 + sol r2 F1).
-
-    With ``--server``: fetch the Railway-authoritative status and refuse
-    unless it is APPROVED. Without ``--server`` (local/dev mode): refuse
-    unless the operator explicitly passes ``--skip-approval-check`` — never a
-    silent default. Raises ``ApprovalGateError`` on refusal.
-    """
-    if server:
-        require(bool(token), "--auth env var must resolve to a non-empty token when --server is given")
-        status = fetch_fulfillment_status(server, token, athlete_id)
-        if status.get("status") != "APPROVED":
-            raise ApprovalGateError(
-                f"refusing to apply: {athlete_id} fulfillment status is "
-                f"{status.get('status')!r}, not APPROVED (server={server}). "
-                "Never call local transition() on a downloaded snapshot — this "
-                "must be re-checked against Railway once the coach approves."
-            )
-        return status
-    if not skip_approval_check:
+def check_approval_gate(
+    *, server: Optional[str], token: Optional[str], order_id: str,
+    athlete_id: str, generation_revision: int, model_seal: str,
+    manifest_sha256: str,
+) -> Dict[str, Any]:
+    """Require live order/revision/seal/package binding before job emission."""
+    if not server:
         raise ApprovalGateError(
-            "no --server given (local/dev mode) — refusing to build an apply job "
-            "without verifying APPROVED status. Pass --skip-approval-check to "
-            "proceed anyway (loud warning, no gate)."
+            "no --server given — the legacy local bypass is disabled; use the "
+            "order-scoped gated path"
         )
-    print("WARNING: --skip-approval-check set with no --server — proceeding WITHOUT "
-          "verifying the athlete's fulfillment status is APPROVED. Local/dev mode only; "
-          "never do this against a real customer order.", file=sys.stderr)
-    return None
+    require(bool(token),
+            "--auth env var must resolve to a non-empty token when --server is given")
+    status = fetch_fulfillment_status(server, token, order_id)
+    approval = status.get("approval") or {}
+    failures = []
+    if status.get("legacy"):
+        failures.append("order is a legacy quarantine")
+    if status.get("status") != "APPROVED":
+        failures.append(f"status is {status.get('status')!r}, not APPROVED")
+    if not status.get("seal_verified") or not status.get("release_authorized"):
+        failures.append("server did not verify release authority")
+    if status.get("order_id") != order_id:
+        failures.append("order_id mismatch")
+    if status.get("athlete_id") != athlete_id:
+        failures.append("athlete_id mismatch")
+    if status.get("generation_revision") != generation_revision:
+        failures.append("generation_revision mismatch")
+    if status.get("model_seal") != model_seal:
+        failures.append("model_seal mismatch")
+    if approval.get("model_seal") != model_seal:
+        failures.append("approval is not bound to model_seal")
+    if approval.get("release_manifest_digest") != status.get("release_manifest_digest"):
+        failures.append("approval is not bound to release manifest")
+    if status.get("tp_manifest_sha256") != manifest_sha256:
+        failures.append("tp_manifest bytes do not match the sealed order artifact")
+    if failures:
+        raise ApprovalGateError(
+            f"refusing to apply order {order_id}: " + "; ".join(failures)
+        )
+    return status
 
 
 # ---------------------------------------------------------------------------
@@ -433,8 +452,13 @@ def print_runbook(job_path: Path, receipt_path: Path, driver_path: Path) -> None
 def _run_job_mode(args: argparse.Namespace, manifest: Dict[str, Any], token: Optional[str]) -> int:
     require(bool(args.athlete_tp_id) and str(args.athlete_tp_id).strip(),
             "--athlete-tp-id is required — never guess an athlete")
-    check_approval_gate(server=args.server, token=token, athlete_id=args.athlete_id,
-                        skip_approval_check=args.skip_approval_check)
+    check_approval_gate(
+        server=args.server, token=token, order_id=args.order_id,
+        athlete_id=args.athlete_id,
+        generation_revision=args.generation_revision,
+        model_seal=args.model_seal,
+        manifest_sha256=args.manifest_sha256,
+    )
 
     strength_module = rx_strength_docs
     if strength_module is None:
@@ -458,6 +482,13 @@ def _run_job_mode(args: argparse.Namespace, manifest: Dict[str, Any], token: Opt
 
 
 def _run_receipt_mode(args: argparse.Namespace, manifest: Dict[str, Any], token: Optional[str]) -> int:
+    check_approval_gate(
+        server=args.server, token=token, order_id=args.order_id,
+        athlete_id=args.athlete_id,
+        generation_revision=args.generation_revision,
+        model_seal=args.model_seal,
+        manifest_sha256=args.manifest_sha256,
+    )
     receipt_path = Path(args.receipt)
     require(receipt_path.exists(), f"receipt not found: {receipt_path}")
     try:
@@ -494,7 +525,7 @@ def _run_receipt_mode(args: argparse.Namespace, manifest: Dict[str, Any], token:
             "athleteVerified": receipt.get("athleteVerified"),
             "finishedAt": receipt.get("finishedAt"),
         }
-        result = post_applied_transition(args.server, token, args.athlete_id, args.coach, evidence)
+        result = post_applied_transition(args.server, token, args.order_id, args.coach, evidence)
         print(f"POSTed APPLIED transition: {result}")
 
     print_registry_commands(plan_title=manifest["plan_title"], plan_id=receipt.get("planId"))
@@ -505,6 +536,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("athlete_id", help="pipeline athlete id (e.g. example_athlete)")
+    parser.add_argument("--order-id", required=True,
+                        help="immutable order id whose sealed revision is being applied")
+    parser.add_argument("--generation-revision", required=True, type=int,
+                        help="sealed generation revision approved by the coach")
+    parser.add_argument("--model-seal", required=True,
+                        help="model seal shown by the authoritative order state")
     parser.add_argument("--package", required=True, type=Path,
                         help="path to the full delivery package (zip or extracted dir) "
                              "containing tp_manifest.json")
@@ -515,8 +552,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--athlete-tp-id", default=None,
                         help="TrainingPeaks numeric athlete id — REQUIRED for job emission, "
                              "never guessed/defaulted")
-    parser.add_argument("--skip-approval-check", action="store_true",
-                        help="local/dev mode only: bypass the APPROVED gate when --server is not given")
     parser.add_argument("--target-date", default=None,
                         help="apply targetDate YYYY-MM-DD; enables Stage 5 apply-to-athlete in the driver job")
     parser.add_argument("--start-type", type=int, choices=(1, 3), default=1,
@@ -532,6 +567,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         package_dir = resolve_package_dir(args.package)
         manifest = load_manifest(package_dir)
+        manifest_path = find_manifest_path(package_dir)
+        args.manifest_sha256 = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
         token = os.environ.get(args.auth, "") if args.server else None
 
         if args.receipt:

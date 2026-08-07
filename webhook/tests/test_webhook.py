@@ -281,8 +281,9 @@ class TestWooCommerceWebhook:
         data = response.get_json()
         assert data['status'] == 'ignored'
 
-    def test_woocommerce_processes_completed_orders(self, client, temp_athletes_dir):
-        """Completed orders are processed."""
+    def test_woocommerce_without_intake_is_not_falsely_fulfilled(
+            self, client, temp_athletes_dir):
+        """Legacy Woo orders without authoritative intake fail closed."""
         order_data = {
             'id': 12345,
             'status': 'completed',
@@ -300,19 +301,16 @@ class TestWooCommerceWebhook:
             ]
         }
 
-        with patch('app.run_pipeline') as mock_pipeline:
-            mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
+        response = client.post(
+            '/webhook/woocommerce',
+            json=order_data,
+            content_type='application/json'
+        )
 
-            response = client.post(
-                '/webhook/woocommerce',
-                json=order_data,
-                content_type='application/json'
-            )
-
-            assert response.status_code == 200
-            data = response.get_json()
-            assert data['status'] == 'success'
-            assert data['athlete_id'] == 'john_doe'
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'pipeline_failed'
+        assert data['athlete_id'] == 'john_doe'
 
     def test_woocommerce_idempotency(self, client, temp_athletes_dir):
         """Duplicate orders are rejected."""
@@ -364,8 +362,9 @@ class TestStripeWebhook:
         data = response.get_json()
         assert data['status'] == 'ignored'
 
-    def test_stripe_processes_checkout_completed(self, client, temp_athletes_dir):
-        """Checkout completed events are processed."""
+    def test_stripe_without_intake_is_not_falsely_fulfilled(
+            self, client, temp_athletes_dir):
+        """Checkout metadata alone cannot enter the release pipeline."""
         stripe_event = {
             'type': 'checkout.session.completed',
             'data': {
@@ -385,18 +384,15 @@ class TestStripeWebhook:
             }
         }
 
-        with patch('app.run_pipeline') as mock_pipeline:
-            mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
+        response = client.post(
+            '/webhook/stripe',
+            json=stripe_event,
+            content_type='application/json'
+        )
 
-            response = client.post(
-                '/webhook/stripe',
-                json=stripe_event,
-                content_type='application/json'
-            )
-
-            assert response.status_code == 200
-            data = response.get_json()
-            assert data['status'] == 'success'
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'pipeline_failed'
 
 
 class TestDataExtraction:
@@ -463,7 +459,7 @@ class TestDataExtraction:
 class TestProfileCreation:
     """Tests for profile creation."""
 
-    def test_create_athlete_profile(self, temp_athletes_dir):
+    def test_create_athlete_profile(self, temp_athletes_dir, app):
         """Profile is created with correct structure."""
         os.environ['ATHLETES_DIR'] = str(temp_athletes_dir)
 
@@ -510,7 +506,7 @@ class TestSecurityHeaders:
 class TestIntakeStorage:
     """Tests for questionnaire intake storage."""
 
-    def test_store_and_load_intake(self, temp_athletes_dir):
+    def test_store_and_load_intake(self, temp_athletes_dir, app):
         """Intake data can be stored and loaded."""
         os.environ['ATHLETES_DIR'] = str(temp_athletes_dir)
         from app import store_intake, load_intake
@@ -525,7 +521,7 @@ class TestIntakeStorage:
         assert loaded['email'] == 'test@test.com'
         assert loaded['tier'] == 'full_build'
 
-    def test_load_nonexistent_intake(self, temp_athletes_dir):
+    def test_load_nonexistent_intake(self, temp_athletes_dir, app):
         """Loading a nonexistent intake returns empty dict."""
         os.environ['ATHLETES_DIR'] = str(temp_athletes_dir)
         from app import load_intake
@@ -790,7 +786,13 @@ class TestStripeWebhookWithIntake:
             }
         }
 
-        with patch('app.run_pipeline') as mock_pipeline:
+        persisted = {'state': {
+            'status': 'BLOCKED_REVIEW', 'blocking_issues': [],
+            'required_confirmations': [],
+        }}
+        with patch('app.run_pipeline') as mock_pipeline, \
+             patch('app.persist_deliverables', return_value=persisted), \
+             patch('app._generate_download_token', return_value='token'):
             mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
 
             response = client.post(
@@ -816,8 +818,8 @@ class TestStripeWebhookWithIntake:
         # Weight should be converted from lbs to kg
         assert profile['fitness_markers']['ftp_watts'] == 220
 
-    def test_stripe_webhook_works_without_intake(self, client, temp_athletes_dir):
-        """Stripe webhook still works without intake data (sparse fallback)."""
+    def test_stripe_webhook_refuses_without_intake(self, client, temp_athletes_dir):
+        """Sparse fallback is quarantined instead of reporting success."""
         stripe_event = {
             'type': 'checkout.session.completed',
             'data': {
@@ -835,18 +837,15 @@ class TestStripeWebhookWithIntake:
             }
         }
 
-        with patch('app.run_pipeline') as mock_pipeline:
-            mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
+        response = client.post(
+            '/webhook/stripe',
+            json=stripe_event,
+            content_type='application/json'
+        )
 
-            response = client.post(
-                '/webhook/stripe',
-                json=stripe_event,
-                content_type='application/json'
-            )
-
-            assert response.status_code == 200
-            data = response.get_json()
-            assert data['status'] == 'success'
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'pipeline_failed'
 
 
 class TestPriceComputation:
@@ -2770,6 +2769,12 @@ class TestTravelDatesPassthrough:
         assert 'Devices: unknown' in absent
         assert 'power meter, HR strap' not in absent
 
+    def test_markdown_preserves_training_metric(self):
+        from app import _questionnaire_to_markdown
+        md = _questionnaire_to_markdown(
+            {'powerOrHr': 'hr'}, name='T', email='t@e.com')
+        assert 'Training Metric: hr' in md
+
 
 class TestIntelStatsWindow:
     def test_validates_hours_and_rejects_limit(self, client, monkeypatch):
@@ -2979,10 +2984,9 @@ class TestAsyncPipelineJobs:
         assert result is None
         mock_thread.assert_called_once()
 
-    def test_success_path_preserves_delivery_behaviors(
+    def test_persistence_failure_never_reports_success(
             self, client, temp_athletes_dir, jobs_dir):
-        """Job thread still: runs pipeline, logs order, persists ZIP,
-        sends the coach delivery email, marks job succeeded."""
+        """No durable order state means failed job + failure notice."""
         import app as app_module
 
         def run_inline(job, intake_data=None):
@@ -3004,12 +3008,12 @@ class TestAsyncPipelineJobs:
         mock_pipeline.assert_called_once()
         assert mock_persist.call_args.args[:2] == ('cs_async_ok', 'async_tester')
         mock_log.assert_called_once()
-        assert mock_notify.call_args[0][0] == 'training_plan'
+        assert mock_notify.call_args[0][0] == 'training_plan_FAILED'
         assert mock_notify.call_args[0][1]['fulfillment_state'] == 'unavailable'
 
         job = json.loads((jobs_dir / 'async_tester.json').read_text())
-        assert job['status'] == 'succeeded'
-        assert job['error'] is None
+        assert job['status'] == 'failed'
+        assert 'Persistence returned no durable order state' in job['error']
 
     def test_failure_marks_failed_and_notifies_operator(
             self, client, temp_athletes_dir, jobs_dir):
@@ -3322,9 +3326,15 @@ class TestSyncPipelineEscapeHatch:
 
     def test_sync_mode_returns_legacy_success_contract(
             self, client, temp_athletes_dir, jobs_dir):
-        """Inline path still reports success/pipeline_failed synchronously."""
+        """Inline path reports success only after durable persistence."""
+        persisted = {'state': {
+            'status': 'BLOCKED_REVIEW', 'blocking_issues': [],
+            'required_confirmations': [],
+        }}
         with patch.dict(os.environ, {'SYNC_PIPELINE': '1'}), \
              patch('app.run_pipeline') as mock_pipeline, \
+             patch('app.persist_deliverables', return_value=persisted), \
+             patch('app._generate_download_token', return_value='token'), \
              patch('app._notify_new_order'):
             mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
             r = client.post('/webhook/stripe',

@@ -32,17 +32,21 @@ from flask_limiter import Limiter
 import stripe
 import yaml
 
-from fulfillment_state import (APPLIED, APPLIED_ATTESTED, APPLYING, APPROVED,
-                               BLOCKED_REVIEW, CONFIRMED, RELEASE_STATUSES,
-                               FulfillmentStateError, bind_legacy_order,
+from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CONFIRMED,
+                               RELEASE_STATUSES, FulfillmentStateError,
+                               approval_matches_release, bind_legacy_order,
                                confirm_after_send,
                                finalize_transitional_release,
                                load as load_fulfillment_state,
                                migrate_v1_to_quarantine,
+                               open_verified_release_artifact,
+                               record_seal_mismatch,
                                transition as transition_fulfillment,
-                               verify_release_artifact, write_generation)
+                               verify_release_artifact,
+                               verify_release_manifest, write_generation)
 from download_tokens import (ARTIFACT_AUDIENCE, DownloadTokenError,
-                             issue_download_token, verify_download_token)
+                             issue_download_token, revoke_download_token,
+                             verify_download_token)
 
 import endure_delivery
 
@@ -1548,6 +1552,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 - Primary Goal: specific_race
 - Brand: {_brand}
 - Race Slug: {target_slug}
+- Course Facts Mode: {intake_data.get('course_facts_mode', '')}
 - Discipline: {_discipline_hint}
 - Race Format: {race_format}
 - Road Category: {road_category}
@@ -1557,6 +1562,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 
 ## Current Fitness
 - FTP: {intake_data.get('ftp', 'unknown')}
+- Training Metric: {intake_data.get('powerOrHr', '')}
 - HR Max: {intake_data.get('hr_max', '')}
 - HR Threshold: {intake_data.get('hr_threshold', '')}
 - W/kg: {intake_data.get('pwRatio', '')}
@@ -1614,33 +1620,32 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
     """Run the full training plan pipeline via intake_to_plan.py."""
     script_path = Path(SCRIPTS_DIR) / 'intake_to_plan.py'
 
-    # Fallback to generate_full_package.py if no intake data (legacy path)
+    # The historical no-intake fallback invoked generate_full_package.py with
+    # --deliver, exposing guides and ZWOs outside order/revision/seal authority.
+    # Missing intake is recoverable by the coach, but it is never releasable.
     if not intake_data:
-        script_path = Path(SCRIPTS_DIR) / 'generate_full_package.py'
-        if not script_path.exists():
-            return {
-                'success': False,
-                'stdout': '',
-                'stderr': f'Pipeline script not found: {script_path}'
-            }
-        cmd = ['python3', str(script_path), athlete_id]
-        if deliver:
-            cmd.append('--deliver')
-        logger.info(f"Running legacy pipeline for {athlete_id}")
-    else:
-        if not script_path.exists():
-            return {
-                'success': False,
-                'stdout': '',
-                'stderr': f'Pipeline script not found: {script_path}'
-            }
-        cmd = ['python3', str(script_path)]
-        logger.info(f"Running intake pipeline for {athlete_id}")
+        message = (
+            'No intake was attached; legacy delivery is disabled because it '
+            'cannot produce a seal-bound order revision. Coach action is required.'
+        )
+        logger.error(f"Refusing no-intake pipeline for {athlete_id}: {message}")
+        return {'success': False, 'stdout': '', 'stderr': message,
+                'fulfillment_state': 'unavailable', 'artifact_dir': None}
+    if not script_path.exists():
+        return {
+            'success': False,
+            'stdout': '',
+            'stderr': f'Pipeline script not found: {script_path}'
+        }
+    cmd = ['python3', str(script_path)]
+    logger.info(f"Running intake pipeline for {athlete_id}")
 
     # Each order gets a private generation root. Athlete slugs are labels, not
     # persistence keys; sharing the historical athletes/<slug> directory lets
     # repeat/concurrent orders overwrite one another.
     pipeline_env = {**os.environ, 'GG_AUTO_EMAIL': 'true'}
+    if intake_data.get('generation_clock'):
+        pipeline_env['GG_FIXED_NOW'] = str(intake_data['generation_clock'])
     work_athletes_dir = None
     if intake_data and order_data and order_data.get('order_id'):
         work_athletes_dir = (Path(DATA_DIR) / 'order-work'
@@ -1801,6 +1806,63 @@ def _record_order_lookup(order_id: str, athlete_id: str) -> None:
         fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
+def _legacy_ledger_candidates(athlete_id: str) -> list[str]:
+    processed_path = Path(DATA_DIR) / '.processed_orders.json'
+    try:
+        processed = json.loads(processed_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    return sorted(
+        order for order, entry in processed.items()
+        if _normalize_athlete_id(str(entry.get('athlete_id') or ''))
+        == _normalize_athlete_id(athlete_id)
+    )
+
+
+def _migrate_legacy_path(legacy_path: Path) -> dict | None:
+    """Recoverably migrate/tombstone one old athlete-keyed state file."""
+    raw = json.loads(legacy_path.read_text())
+    if raw.get('schema_version') == 'tombstone/v1':
+        migrated = Path(str(raw.get('migrated_to') or ''))
+        if migrated.exists():
+            state = load_fulfillment_state(migrated)
+            _record_order_lookup(state['order_id'], state['athlete_id'])
+            return state
+        return None
+    if raw.get('schema_version') != 1:
+        return None
+    _, state = migrate_v1_to_quarantine(
+        legacy_path, _orders_root(),
+        ledger_candidates=_legacy_ledger_candidates(
+            str(raw.get('athlete_id') or legacy_path.parent.name)),
+    )
+    _record_order_lookup(state['order_id'], state['athlete_id'])
+    return state
+
+
+def migrate_all_v1_states() -> dict:
+    """Startup-complete migration of every old athlete-keyed v1 state."""
+    stats = {'migrated': 0, 'tombstones_verified': 0, 'failed': 0}
+    deliveries = Path(DELIVERIES_DIR)
+    if not deliveries.exists():
+        return stats
+    for legacy_path in sorted(deliveries.glob('*/fulfillment_status.json')):
+        try:
+            raw = json.loads(legacy_path.read_text())
+            version = raw.get('schema_version')
+            if version not in (1, 'tombstone/v1'):
+                continue
+            state = _migrate_legacy_path(legacy_path)
+            if state:
+                key = 'migrated' if version == 1 else 'tombstones_verified'
+                stats[key] += 1
+        except (OSError, json.JSONDecodeError, FulfillmentStateError) as exc:
+            stats['failed'] += 1
+            logger.error(
+                f'Legacy fulfillment migration failed closed for {legacy_path}: {exc}')
+    return stats
+
+
 def _resolve_order_id(ref: str) -> str | None:
     try:
         direct = _order_dir(ref)
@@ -1808,6 +1870,18 @@ def _resolve_order_id(ref: str) -> str | None:
         return None
     if (direct / 'fulfillment_status.json').exists():
         return ref
+
+    # Examine the old athlete path before trusting an existing v2 lookup. A
+    # repeat customer's newer lookup must never shadow an unmigrated v1 file.
+    legacy_path = (Path(DELIVERIES_DIR) / _normalize_athlete_id(ref)
+                   / 'fulfillment_status.json')
+    if legacy_path.exists():
+        try:
+            _migrate_legacy_path(legacy_path)
+        except (OSError, json.JSONDecodeError, FulfillmentStateError) as exc:
+            logger.error(f'Legacy fulfillment migration failed closed for {ref}: {exc}')
+            return None
+
     lookup = _order_lookup_path(ref)
     try:
         order_ids = (json.loads(lookup.read_text()).get('order_ids') or [])
@@ -1816,35 +1890,6 @@ def _resolve_order_id(ref: str) -> str | None:
     if len(order_ids) == 1:
         return order_ids[0]
 
-    # Lazy, recoverable startup migration for the old athlete-keyed v1 file.
-    # Candidate ledger orders are recorded but never selected automatically.
-    legacy_path = Path(DELIVERIES_DIR) / _normalize_athlete_id(ref) / 'fulfillment_status.json'
-    if legacy_path.exists():
-        try:
-            raw = json.loads(legacy_path.read_text())
-            if raw.get('schema_version') == 'tombstone/v1':
-                migrated = Path(str(raw.get('migrated_to') or ''))
-                if migrated.exists():
-                    state = load_fulfillment_state(migrated)
-                    _record_order_lookup(state['order_id'], state['athlete_id'])
-                    return state['order_id']
-            if raw.get('schema_version') == 1:
-                candidates = []
-                processed_path = Path(DATA_DIR) / '.processed_orders.json'
-                try:
-                    processed = json.loads(processed_path.read_text())
-                    candidates = sorted(
-                        order for order, entry in processed.items()
-                        if _normalize_athlete_id(str(entry.get('athlete_id') or ''))
-                        == _normalize_athlete_id(ref))
-                except (OSError, json.JSONDecodeError):
-                    pass
-                _, state = migrate_v1_to_quarantine(
-                    legacy_path, _orders_root(), ledger_candidates=candidates)
-                _record_order_lookup(state['order_id'], state['athlete_id'])
-                return state['order_id']
-        except (OSError, json.JSONDecodeError, FulfillmentStateError) as exc:
-            logger.error(f'Legacy fulfillment migration failed closed for {ref}: {exc}')
     return None
 
 
@@ -1901,6 +1946,10 @@ def persist_deliverables(order_id: str, athlete_id: str = '', source_dir: Path |
     order_root.mkdir(parents=True, exist_ok=True)
     state_path = order_root / 'fulfillment_status.json'
 
+    existing_state = None
+    if state_path.exists():
+        existing_state = load_fulfillment_state(state_path)
+
     if state_unavailable:
         state = write_generation(state_path, athlete_id, [{
             'id': 'STATE_UNAVAILABLE', 'source': 'webhook',
@@ -1913,12 +1962,25 @@ def persist_deliverables(order_id: str, athlete_id: str = '', source_dir: Path |
             raise FulfillmentStateError('generated state order_id mismatch')
         if state['delivery_platform'] != delivery_platform:
             raise FulfillmentStateError('generated state delivery_platform mismatch')
+        if (existing_state
+                and existing_state['generation_revision'] == state['generation_revision']
+                and existing_state.get('model_seal')):
+            raise FulfillmentStateError(
+                'sealed revision already exists; call write_generation before persisting corrections'
+            )
         shutil.copy2(source_state_path, state_path)
         state = load_fulfillment_state(state_path)
 
     revision = state['generation_revision']
     revision_dir = order_root / 'revisions' / f'r{revision}'
     if revision_dir.exists():
+        if ((existing_state
+             and existing_state['generation_revision'] == revision
+             and existing_state.get('model_seal'))
+                or (revision_dir / 'release_manifest.json').exists()):
+            raise FulfillmentStateError(
+                'sealed revision directory is immutable; call write_generation first'
+            )
         shutil.rmtree(revision_dir)
     artifact_dir = revision_dir / 'artifacts'
     artifact_dir.mkdir(parents=True)
@@ -2285,6 +2347,7 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
         log_order(order_data, result)
 
         persisted = None
+        persistence_error = ''
         if result['success']:
             try:
                 persisted = persist_deliverables(
@@ -2297,6 +2360,7 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
                 )
             except Exception as e:
                 logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
+                persistence_error = str(e)
                 result['fulfillment_state'] = 'unavailable'
                 try:
                     persisted = persist_deliverables(
@@ -2307,8 +2371,19 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
                             'delivery_platform', order_data.get('delivery_target', 'manual')),
                         state_unavailable=True,
                     )
-                except Exception:
+                except Exception as quarantine_exc:
+                    persistence_error = (
+                        f'{persistence_error}; quarantine failed: {quarantine_exc}'
+                    ).strip('; ')
                     logger.exception('Could not persist STATE_UNAVAILABLE quarantine')
+
+            if not persisted:
+                result['success'] = False
+                result['fulfillment_state'] = 'unavailable'
+                result['stderr'] = (
+                    persistence_error
+                    or 'Persistence returned no durable order state'
+                )
 
         details = _build_plan_notification_details(order_data, result,
                                                    intake_data or None)
@@ -2317,7 +2392,7 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
             details['fulfillment_status'] = persisted['state']['status']
             details['blocking_issues'] = persisted['state']['blocking_issues']
             details['required_confirmations'] = persisted['state']['required_confirmations']
-        if result['success']:
+        if result['success'] and persisted:
             if persisted:
                 details['download_token'] = _generate_download_token(
                     order_data.get('order_id', ''), 'review_bundle')
@@ -2557,10 +2632,7 @@ def download_deliverables(order_id):
         return jsonify({'error': 'Unauthorized'}), 401
 
     if artifact == 'customer_bundle':
-        approval = state.get('approval') or {}
-        if (state['status'] not in RELEASE_STATUSES
-                or approval.get('model_seal') != state.get('model_seal')
-                or approval.get('release_manifest_digest') != state.get('release_manifest_digest')):
+        if not approval_matches_release(state):
             return jsonify({'error': 'plan not released'}), 409
 
     revision_dir = _order_dir(resolved_order_id) / 'revisions' / f"r{state['generation_revision']}"
@@ -2568,19 +2640,25 @@ def download_deliverables(order_id):
                 if artifact == 'review_bundle'
                 else f'{resolved_order_id}-customer-bundle.zip')
     try:
-        zip_path = verify_release_artifact(state, revision_dir, filename)
+        zip_handle = open_verified_release_artifact(
+            state, revision_dir, filename,
+            require_approval=(artifact == 'customer_bundle'),
+        )
     except FulfillmentStateError as exc:
         logger.error(f"Download seal verification failed for order {resolved_order_id}: {exc}")
+        try:
+            record_seal_mismatch(
+                _fulfillment_status_path(resolved_order_id), str(exc))
+        except FulfillmentStateError:
+            logger.exception(
+                f"Could not record seal mismatch for order {resolved_order_id}")
         return jsonify({'error': 'plan not released'}), 409
 
-    if not zip_path.exists():
-        return jsonify({'error': 'Deliverables not found. Pipeline may not have run yet.'}), 404
-
     return send_file(
-        zip_path,
+        zip_handle,
         mimetype='application/zip',
         as_attachment=True,
-        download_name=zip_path.name,
+        download_name=filename,
     )
 
 
@@ -2634,18 +2712,23 @@ def order_status(ref):
             return jsonify({'status': 'unknown', 'download_ready': False}), 404
 
     download_ready = False
+    state = None
     try:
         state = load_fulfillment_state(_fulfillment_status_path(order_id))
-        if state['status'] in RELEASE_STATUSES:
-            approval = state.get('approval') or {}
-            if (approval.get('model_seal') == state.get('model_seal')
-                    and approval.get('release_manifest_digest') == state.get('release_manifest_digest')):
-                revision_dir = _order_dir(order_id) / 'revisions' / f"r{state['generation_revision']}"
-                verify_release_artifact(
-                    state, revision_dir, f'{order_id}-customer-bundle.zip')
-                download_ready = True
-    except FulfillmentStateError:
-        state = None
+        if approval_matches_release(state):
+            revision_dir = _order_dir(order_id) / 'revisions' / f"r{state['generation_revision']}"
+            verify_release_artifact(
+                state, revision_dir, f'{order_id}-customer-bundle.zip')
+            download_ready = True
+    except FulfillmentStateError as exc:
+        if state is not None:
+            try:
+                state = record_seal_mismatch(
+                    _fulfillment_status_path(order_id), str(exc))
+            except FulfillmentStateError:
+                state = None
+        else:
+            state = None
 
     job = _read_job(order_id) or {}
     job_status = job.get('status', '')
@@ -2691,6 +2774,32 @@ def jobs_sweep():
     except Exception as e:
         logger.exception(f"Job sweep error: {e}")
         return jsonify({'error': 'Internal error'}), 500
+
+
+@app.route('/api/download-tokens/revoke', methods=['POST'])
+@limiter.limit("10/minute")
+def revoke_download_capability():
+    """Authenticated operational revocation for one link jti and/or key kid."""
+    configured_secret = os.environ.get('CRON_SECRET', '')
+    supplied_secret = request.headers.get('X-Cron-Secret', '')
+    if (not configured_secret or not supplied_secret
+            or not hmac.compare_digest(supplied_secret, configured_secret)):
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or _has_client_timestamp(data):
+        return jsonify({'error': 'JSON body without client timestamps is required'}), 400
+    jti = str(data.get('jti') or '').strip()
+    kid = str(data.get('kid') or '').strip()
+    if not jti and not kid:
+        return jsonify({'error': 'jti or kid is required'}), 400
+    try:
+        revoke_download_token(
+            Path(DATA_DIR) / 'token_revocations.json', jti=jti, kid=kid)
+    except DownloadTokenError as exc:
+        return jsonify({'error': str(exc)}), 409
+    logger.warning(
+        f"Download capability revoked: jti={jti or '-'} kid={kid or '-'}")
+    return jsonify({'status': 'revoked', 'jti': jti or None, 'kid': kid or None})
 
 
 def _fulfillment_status_path(order_id: str) -> Path:
@@ -2751,11 +2860,37 @@ def fulfillment_status(order_ref):
         state = load_fulfillment_state(_fulfillment_status_path(order_id))
     except FulfillmentStateError:
         return jsonify({'error': 'Fulfillment state not found'}), 404
+    seal_verified = False
+    manifest = None
+    if state.get('model_seal') and not state.get('legacy'):
+        revision_dir = (_order_dir(order_id) / 'revisions'
+                        / f"r{state['generation_revision']}")
+        try:
+            manifest = verify_release_manifest(state, revision_dir)
+            seal_verified = True
+        except FulfillmentStateError as exc:
+            logger.error(
+                f"Status seal verification failed for order {order_id}: {exc}")
+            try:
+                state = record_seal_mismatch(
+                    _fulfillment_status_path(order_id), str(exc))
+            except FulfillmentStateError:
+                return jsonify({'error': 'Fulfillment state unavailable'}), 409
+    tp_record = next(
+        (item for item in (manifest or {}).get('artifacts', [])
+         if item.get('path') == 'artifacts/tp_manifest.json'),
+        {},
+    )
     return jsonify({
         'order_id': order_id,
         'athlete_id': state['athlete_id'],
         'delivery_platform': state['delivery_platform'],
         'status': state['status'],
+        'legacy': bool(state.get('legacy')),
+        'release_authorized': bool(
+            seal_verified and approval_matches_release(state)),
+        'seal_verified': seal_verified,
+        'tp_manifest_sha256': tp_record.get('sha256'),
         'generation_revision': state['generation_revision'],
         'updated_at': state['updated_at'],
         'blocking_issues': state['blocking_issues'],
@@ -2818,8 +2953,12 @@ def confirm_plan_ready(order_ref):
         state = load_fulfillment_state(_fulfillment_status_path(order_id))
     except FulfillmentStateError:
         return jsonify({'error': 'Fulfillment state unavailable'}), 409
-    if state['status'] not in (APPLIED, APPLIED_ATTESTED, CONFIRMED):
+    if state['status'] not in (APPLIED, CONFIRMED):
         return jsonify({'error': 'Plan must be APPLIED before confirmation'}), 409
+    if state.get('legacy'):
+        return jsonify({
+            'error': 'Legacy order is quarantined and must be regenerated before confirmation'
+        }), 409
     norm_id = _normalize_athlete_id(state['athlete_id'])
 
     # Find customer email and race from order logs
@@ -3950,7 +4089,10 @@ def test_webhook():
     # Log order (same as real flow)
     log_order(order_data, result)
 
-    # Persist deliverables to volume + create zip (same as real flow)
+    # Persist deliverables to volume + create zip (same as real flow).
+    # A successful subprocess without durable state is not fulfillment.
+    persisted = None
+    persistence_error = ''
     if result['success']:
         try:
             persisted = persist_deliverables(
@@ -3963,17 +4105,22 @@ def test_webhook():
             )
         except Exception as e:
             logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
+            persistence_error = str(e)
+        if not persisted:
+            result['success'] = False
+            result['fulfillment_state'] = 'unavailable'
+            result['stderr'] = (
+                persistence_error or 'Persistence returned no durable order state')
 
     # Send notification email (same as real flow)
     details = _build_plan_notification_details(order_data, result, intake_data)
-    if result['success']:
+    if result['success'] and persisted:
         details['fulfillment_state'] = result.get('fulfillment_state', 'unavailable')
-        if 'persisted' in locals():
-            details['fulfillment_status'] = persisted['state']['status']
-            details['blocking_issues'] = persisted['state']['blocking_issues']
-            details['required_confirmations'] = persisted['state']['required_confirmations']
-            details['download_token'] = _generate_download_token(
-                order_data['order_id'], 'review_bundle')
+        details['fulfillment_status'] = persisted['state']['status']
+        details['blocking_issues'] = persisted['state']['blocking_issues']
+        details['required_confirmations'] = persisted['state']['required_confirmations']
+        details['download_token'] = _generate_download_token(
+            order_data['order_id'], 'review_bundle')
         _notify_new_order('training_plan', details)
         return jsonify({
             'status': 'success',
@@ -4664,6 +4811,15 @@ try:
     cleanup_stale_intakes()
 except Exception as e:
     logger.warning(f"Intake cleanup on startup failed: {e}")
+
+# Schema-v1 authority is quarantined eagerly. Lazy lookup remains only as a
+# crash-recovery safety net for files that appear after process startup.
+try:
+    _startup_migration = migrate_all_v1_states()
+    if any(_startup_migration.values()):
+        logger.warning(f"Startup legacy state migration: {_startup_migration}")
+except Exception as e:
+    logger.error(f"Startup legacy state migration failed closed: {e}")
 
 # Crash durability: retry jobs orphaned by a restart mid-generation.
 # Only touches queued/running records older than JOB_STUCK_AFTER_MINUTES,
