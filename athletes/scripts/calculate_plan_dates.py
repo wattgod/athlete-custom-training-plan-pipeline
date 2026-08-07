@@ -29,6 +29,14 @@ class PlanDateValidationError(Exception):
     pass
 
 
+def generation_now() -> datetime:
+    """Injectable production clock used by deterministic replay gates."""
+    fixed = os.environ.get('GG_FIXED_NOW', '').strip()
+    if fixed:
+        return datetime.fromisoformat(fixed.replace('Z', '+00:00')).replace(tzinfo=None)
+    return datetime.now()
+
+
 def validate_plan_dates(plan_dates: dict, race_date_str: str) -> list:
     """
     Validate plan dates for sanity.
@@ -88,7 +96,7 @@ def validate_plan_dates(plan_dates: dict, race_date_str: str) -> list:
         errors.append(f"WARNING: Plan is only {plan_weeks} weeks (minimum recommended: 6)")
 
     # 10. Plan start should not be in the past (warning only)
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = generation_now().replace(hour=0, minute=0, second=0, microsecond=0)
     if plan_start < today:
         days_past = (today - plan_start).days
         errors.append(f"WARNING: Plan start is {days_past} days in the past")
@@ -136,7 +144,7 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
 
     # Parse race date
     race_date = datetime.strptime(race_date_str, '%Y-%m-%d')
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = generation_now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Race week ends on Sunday after race (or race day if Sunday)
     # Race week starts on Monday of that week

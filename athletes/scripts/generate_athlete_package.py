@@ -16,8 +16,9 @@ import sys
 import json
 import yaml
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 # Add script path for local imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -27,6 +28,43 @@ from fulfillment_state import write_generation
 from workout_spec import rewrite_zwo_description
 from availability_ledger import (AvailabilityLedgerError, build_ledger,
                                  materialize_fixed_sessions)
+
+
+def generation_now() -> datetime:
+    """Production clock with an explicit deterministic-test injection."""
+    fixed = os.environ.get('GG_FIXED_NOW', '').strip()
+    if fixed:
+        return datetime.fromisoformat(fixed.replace('Z', '+00:00')).replace(tzinfo=None)
+    return datetime.now()
+
+
+def _order_based_pre_plan_start(profile: dict, default: datetime,
+                                plan_start: datetime) -> datetime:
+    """Start W00 after purchase when that creates a bounded lead-in.
+
+    Paid orders can wait for generation.  Preserving the post-purchase days as
+    W00 is honest about what the delivered calendar says and lets the validator
+    surface any session that predates generation for coach review.
+    """
+    fulfillment = (profile or {}).get('fulfillment') or {}
+    raw = str(fulfillment.get('order_created_at') or '').strip()
+    if not raw:
+        return default
+    try:
+        order_at = datetime.fromisoformat(raw.replace('Z', '+00:00'))
+        timezone_name = str(fulfillment.get('athlete_timezone') or 'UTC')
+        try:
+            athlete_zone = ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError:
+            athlete_zone = ZoneInfo('UTC')
+        if order_at.tzinfo is None:
+            order_at = order_at.replace(tzinfo=ZoneInfo('UTC'))
+        candidate = order_at.astimezone(athlete_zone).replace(
+            tzinfo=None, hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    except (TypeError, ValueError):
+        return default
+    lead_in_days = (plan_start - candidate).days
+    return candidate if 1 <= lead_in_days <= 7 and candidate <= default else default
 
 # Local imports - use centralized modules
 from config_loader import get_config
@@ -574,6 +612,11 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     # Use centralized day mappings from constants.py
     strength_only_abbrevs = [DAY_FULL_TO_ABBREV.get(d.lower(), d) for d in strength_only_days]
     long_day_abbrev = DAY_FULL_TO_ABBREV.get(preferred_long_day.lower(), 'Sat')
+    declared_long_days = {
+        DAY_FULL_TO_ABBREV.get(str(day).lower(), str(day))
+        for day in ((profile or {}).get('availability_roles') or {}).get(
+            'long_ride_days', [])
+    } or {long_day_abbrev}
 
     def get_day_availability(day_abbrev: str) -> dict:
         """Get availability info for a day from profile."""
@@ -1615,7 +1658,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         # Tue/Thu first — tests replace the quality session on a hard day.
         # Iteration order MUST match get_ftp_day_candidates() below.
         for _d in ['Tue', 'Thu', 'Mon', 'Wed', 'Fri', 'Sat', 'Sun']:
-            if _d == long_day_abbrev or not _ftp_day_viable(_d):
+            if _d in declared_long_days or not _ftp_day_viable(_d):
                 continue
             _avail = get_day_availability(_d)
             _entry = (_d, _avail.get('max_duration_min', 120))
@@ -1729,7 +1772,6 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         (see the pre_plan_week persistence in generate_athlete_package()).
         w00_week_entry is None when no pre-plan days are generated.
         """
-        from datetime import datetime, timedelta
 
         plan_start_str = plan_dates.get('plan_start', '')
         if not plan_start_str:
@@ -1738,7 +1780,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         plan_start = datetime.strptime(plan_start_str, '%Y-%m-%d')
 
         # Calculate days from today until plan start
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today = generation_now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today = _order_based_pre_plan_start(profile, today, plan_start)
         days_until_start = (plan_start - today).days
 
         # Only generate pre-plan if plan starts in the future (1-7 days out)
@@ -2086,7 +2129,7 @@ TIPS:
                 continue  # Travel day handled
 
             # Skip ZWO generation for unavailable days (integrity checker rejects them)
-            if use_custom_schedule:
+            if use_custom_schedule and not is_race_day:
                 day_avail = get_day_availability(day_abbrev)
                 if day_avail.get('availability') in ('unavailable', 'rest'):
                     continue
@@ -2119,6 +2162,39 @@ TIPS:
                 bb_name = bb_day['name']
                 bb_level = bb_day.get('level', 3)
                 bb_duration = bb_day.get('duration', 60)
+
+                if (bb_name == 'Anaerobic Test'
+                        and week_num in ftp_test_target_weeks
+                        and (profile.get('fitness_markers') or {}).get(
+                            'training_metric') == 'hr'):
+                    # The HR-first baseline week contains one HR assessment;
+                    # its second quality slot remains training, using the
+                    # protected VO2 anchor instead of a second assessment.
+                    bb_name = 'VO2max'
+                    bb_level = 1
+
+                # The legacy assessment overlay is the sole owner of the
+                # canonical Week 1 field test.  A testing-week calendar may
+                # also place an ``FTP Test`` slot elsewhere; rendering both
+                # creates two same-metric tests.  Replace that stale second
+                # slot with an easy ride after (or away from) the canonical
+                # assessment day.
+                if (bb_name == 'FTP Test'
+                        and week_num in ftp_test_target_weeks
+                        and (week_num in ftp_tests_added
+                             or day_abbrev != _ftp_slot_day)):
+                    bb_day = dict(bb_day)
+                    if ((profile.get('fitness_markers') or {}).get(
+                            'training_metric') == 'hr'):
+                        # HR-first plans still need the protected aerobic-
+                        # power stimulus.  The displaced duplicate assessment
+                        # becomes that VO2 anchor on its scheduled day.
+                        bb_name = 'VO2max'
+                        bb_day['role'] = 'intensity'
+                    else:
+                        bb_name = 'Endurance'
+                        bb_day['role'] = 'filler'
+                    bb_level = 1
 
                 # Track variation for endurance variety.
                 # INTENSITY days: variation is keyed to the BLOCK so a series
@@ -2364,7 +2440,10 @@ TIPS:
                 week_total_minutes += duration
 
             # Generate Rest days as 1-min workouts with personalized instructions
-            if workout_type == 'Rest' or duration == 0:
+            # A-race authority comes from plan_dates, even when the athlete's
+            # normal weekly availability marks that weekday as off.  The race
+            # overlay below must replace the rest template (C2 exemption).
+            if (workout_type == 'Rest' or duration == 0) and not is_race_day:
                 weeks_to_race = total_weeks - week_num + 1
                 rest_description = f"""REST DAY - {athlete_name}
 
@@ -2441,7 +2520,7 @@ Trust the process, {athlete_name}."""
                 # adding a hard day. MUST match the hoisted _ftp_slot_day
                 # iteration order or the gated day never gets its test.
                 for d in ['Tue', 'Thu', 'Mon', 'Wed', 'Fri', 'Sat', 'Sun']:
-                    if d == long_day_abbrev:
+                    if d in declared_long_days:
                         continue  # Never put FTP test on the long ride day
                     if not is_day_available_for_ftp(d):
                         continue
@@ -2597,6 +2676,11 @@ GO GET IT, {athlete_name.upper()}!
             workout_name = f"{workout_prefix}_{workout_type}"
             filename = f"{workout_name}.zwo"
             display_name = _display_words(workout_type)
+            if (workout_type == 'FTP_Test'
+                    and (profile.get('fitness_markers') or {}).get(
+                        'training_metric') == 'hr'):
+                display_name = 'HR Field Test'
+                workout_name = f"{workout_prefix}_HR_Field_Test"
 
             # Get week within phase from pre-calculated cache (PERFORMANCE)
             week_in_phase = week_in_phase_cache.get(week_num, 1)
@@ -3059,7 +3143,7 @@ def generate_athlete_package(athlete_id: str) -> dict:
     summary = {
         'athlete_id': athlete_id,
         'athlete_name': athlete_name,
-        'generated_date': datetime.now().isoformat(),
+        'generated_date': generation_now().isoformat(),
         'race': {
             'name': race_name,
             'date': race_date,

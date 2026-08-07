@@ -3,6 +3,7 @@
 import json
 import sys
 import zipfile
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,9 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "webhook"))
 sys.path.insert(0, str(ROOT / "athletes" / "scripts"))
 
-import intake_to_plan
-from fulfillment_state import APPROVED, FulfillmentStateError, transition, write_generation
-from post_render_validator import INPUT_VERSION, validate_transitional_input
+from fulfillment_state import APPROVED, FulfillmentStateError, transition
 
 FIXTURE = ROOT / "tests" / "fixtures" / "athlete_m"
 
@@ -24,13 +23,27 @@ def _load(name):
     return json.loads((FIXTURE / name).read_text())
 
 
-def _race_info(snapshot):
+def _plan_dates_golden(plan_dates):
+    """Stable, lossless-enough calendar projection from production output."""
     return {
-        **snapshot,
-        "source_urls": [],
-        "source_type": "fixture",
-        "event_year": 2026,
-        "course_variant": None,
+        "race_date": plan_dates["race_date"],
+        "plan_weeks": plan_dates["plan_weeks"],
+        "plan_start": plan_dates["plan_start"],
+        "plan_end": plan_dates["plan_end"],
+        "weeks": [
+            {
+                "week": week["week"],
+                "phase": week["phase"],
+                "start_date": week["days"][0]["date"],
+                "end_date": week["days"][-1]["date"],
+                "dates": [day["date"] for day in week["days"]],
+                "race_days": [
+                    day["date"] for day in week["days"]
+                    if day.get("is_race_day")
+                ],
+            }
+            for week in plan_dates["weeks"]
+        ],
     }
 
 
@@ -40,130 +53,79 @@ def _isolate_webhook_module():
     sys.modules.pop("app", None)
 
 
-def _replay_profile(monkeypatch, webhook_app):
-    intake = _load("intake.json")
-    clock = _load("clock.json")
-    race = _load("race_snapshot.json")
-    monkeypatch.setattr(
-        intake_to_plan, "lookup_by_slug",
-        lambda slug: (f"gravel:{slug}", _race_info(race)),
-    )
-    markdown = webhook_app._questionnaire_to_markdown(
-        intake,
-        fulfillment={
-            "order_id": "test_athlete_m",
-            "delivery_platform": "trainingpeaks",
-            "order_created_at": clock["order_created_at"],
-            "generation_at": clock["generation_at"],
-            "weeks_purchased": 7,
-            "athlete_timezone": clock["athlete_timezone"],
-        },
-    )
-    assert "- Devices: power meter, hr strap" in markdown
-    return intake_to_plan.build_profile(
-        intake_to_plan.parse_intake_markdown(markdown))
-
-
-def _rendered_replay(profile):
-    plan_dates = _load("expected/plan_dates.json")
-    weeks = []
-    sessions = []
-    for week in plan_dates["weeks"]:
-        rendered = []
-        for source in week["sessions"]:
-            session = {
-                **source,
-                "display_name": source["title"],
-                "duration_s": 3600,
-                "total_time_planned": 1.0,
-                "structure": None,
-            }
-            rendered.append(session)
-            sessions.append(dict(session))
-        weeks.append({
-            "number": week["week"], "phase": week["phase"],
-            "sessions": rendered,
-        })
-    labels = ["W00"] + [f"W{week}" for week in range(1, 7)]
-    fueling = {
-        "prescription": {"race_target_g_per_hour": 60},
-        "gut_training": {"weekly_progression": [
-            {"week_label": label} for label in labels
-        ]},
-    }
-    document = {
-        "input_version": INPUT_VERSION,
-        "plan_ir": {
-            "plan_ir_version": "0.1",
-            "race_snapshot": {"date": plan_dates["race_date"]},
-            "weeks": weeks,
-        },
-        "tp_manifest": {"version": 1, "sessions": sessions},
-        "context": {
-            "profile": profile,
-            "fueling": fueling,
-            "guide_html": '<div data-canonical-carb-target="60">60g/hr</div>',
-            **_load("clock.json"),
-            "weeks_purchased": 7,
-        },
-    }
-    return document, fueling
-
-
-def _intake_issues(profile):
-    return [
-        {"id": "COURSE_UNRESOLVED", "source": "intake", "severity": "CRITICAL",
-         "message": profile["target_race"]["course_unresolved_reason"]},
-        {"id": "FTP_ESTIMATED", "source": "intake", "severity": "CRITICAL",
-         "message": "FTP was estimated; regenerate from a truthful control basis."},
-        {"id": "RACE_STALE", "source": "intake", "severity": "CRITICAL",
-         "message": profile["target_race"]["race_provenance_issue"]},
-        {"id": "WEEKS_MISMATCH", "source": "intake", "severity": "CRITICAL",
-         "message": "Generated 6 paid weeks but the order purchased 7; W00 excluded."},
-    ]
-
-
 def test_athlete_m_phase1_golden(monkeypatch, tmp_path):
     import app as webhook_app
     expected = _load("expected/phase1.json")
-    profile = _replay_profile(monkeypatch, webhook_app)
-    document, fueling = _rendered_replay(profile)
-    validator_issues, confirmations = validate_transitional_input(document)
-    issues = sorted(_intake_issues(profile) + validator_issues,
-                    key=lambda item: item["id"])
+    intake = _load("intake.json")
+    clock = _load("clock.json")
+    intake["generation_clock"] = clock["generation_at"]
+
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webhook_app, "DATA_DIR", str(data_dir))
+    monkeypatch.setattr(webhook_app, "DELIVERIES_DIR", str(data_dir / "deliveries"))
+    monkeypatch.setattr(webhook_app, "JOBS_DIR", str(data_dir / "jobs"))
+    monkeypatch.setattr(
+        webhook_app, "SCRIPTS_DIR", str(ROOT / "athletes" / "scripts"))
+    monkeypatch.setenv("GG_FIXED_NOW", clock["generation_at"])
+    monkeypatch.setenv(
+        "GG_RACE_SNAPSHOT_FIXTURE", str(FIXTURE / "race_snapshot.json"))
+    monkeypatch.setenv("CRON_SECRET", "fixture-secret")
+    monkeypatch.setenv("DOWNLOAD_TOKEN_SECRET", "fixture-token-secret")
+
+    result = webhook_app.run_pipeline(
+        "athlete-m", deliver=True, intake_data=intake,
+        order_data={
+            "order_id": "test_athlete_m",
+            "delivery_platform": "trainingpeaks",
+            "order_created_at": clock["order_created_at"],
+            "weeks_purchased": 7,
+        },
+    )
+    assert result["success"], result.get("stderr") or result.get("stdout")
+    source = Path(result["artifact_dir"])
+    profile = yaml.safe_load((source / "profile.yaml").read_text())
+    fueling = yaml.safe_load((source / "fueling.yaml").read_text())
+    plan_dates = yaml.safe_load((source / "plan_dates.yaml").read_text())
+    plan_ir = json.loads((source / "plan_ir.json").read_text())
+    state = webhook_app.load_fulfillment_state(
+        source / "fulfillment_status.json")
+    issues = state["blocking_issues"]
+    confirmations = state["required_confirmations"]
 
     assert profile["devices"]["devices"] == expected["profile_devices"]
+    assert profile["target_race"]["distance_miles"] == 75
+    assert _plan_dates_golden(plan_dates) == _load("expected/plan_dates.json")
+    sessions = [
+        (week["number"], session)
+        for week in plan_ir["weeks"] for session in week["sessions"]
+    ]
+    field_tests = [
+        (week, session) for week, session in sessions
+        if "field test" in session["title"].lower()
+    ]
+    assert [(week, session["title"]) for week, session in field_tests] == [
+        (1, "HR Field Test")]
+    race_week_counted = [
+        session for week, session in sessions
+        if week == 6 and session["tp_kind"] in {"bike", "race"}
+    ]
+    assert len(race_week_counted) >= 3
+    assert any(
+        session["date"] == "2026-09-19" and session["tp_kind"] == "race"
+        for _, session in sessions
+    )
+    assert any(
+        "vo2" in session["title"].lower()
+        and date.fromisoformat(session["date"]).weekday() == 6
+        for _, session in sessions
+    )
     assert [i["id"] for i in issues] == [i["id"] for i in expected["blockers"]]
     assert [c["id"] for c in confirmations] == expected["required_confirmations"]
     assert not set(expected["absent_blockers"]) & {i["id"] for i in issues}
     labels = [item["week_label"] for item in fueling["gut_training"]["weekly_progression"]]
     assert labels == expected["fueling_week_labels"]
 
-    source = tmp_path / "generated" / "athlete-m"
-    workouts = source / "workouts"
-    workouts.mkdir(parents=True)
-    (workouts / "W01_HR_Field_Test.zwo").write_text("<workout_file/>")
-    (source / "profile.yaml").write_text(yaml.safe_dump(profile))
-    (source / "fueling.yaml").write_text(yaml.safe_dump(fueling))
-    (source / "plan_ir.json").write_text(json.dumps(document["plan_ir"]))
-    (source / "tp_manifest.json").write_text(json.dumps(document["tp_manifest"]))
-    (source / "training_guide.html").write_text(document["context"]["guide_html"])
-    (source / "plan_preview.html").write_text("<h1>Review only</h1>")
-    (source / "coaching_brief.md").write_text("# Synthetic review")
-    (source / "plan_summary.yaml").write_text("plan_weeks: 6\n")
-    state = write_generation(
-        source / "fulfillment_status.json", "athlete-m", issues,
-        order_id="test_athlete_m", delivery_platform="trainingpeaks",
-        required_confirmations=confirmations,
-    )
-
-    data_dir = tmp_path / "data"
-    monkeypatch.setattr(webhook_app, "DATA_DIR", str(data_dir))
-    monkeypatch.setattr(webhook_app, "DELIVERIES_DIR", str(data_dir / "deliveries"))
-    monkeypatch.setattr(webhook_app, "JOBS_DIR", str(data_dir / "jobs"))
     monkeypatch.setattr(webhook_app, "CRON_SECRET", "fixture-secret")
-    monkeypatch.setenv("CRON_SECRET", "fixture-secret")
-    monkeypatch.setenv("DOWNLOAD_TOKEN_SECRET", "fixture-token-secret")
 
     persisted = webhook_app.persist_deliverables(
         "test_athlete_m", "athlete-m", source_dir=source,
