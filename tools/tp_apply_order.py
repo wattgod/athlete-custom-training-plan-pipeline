@@ -8,8 +8,8 @@ browser tab (injected via playwriter by the operator, same runtime model as
 
   1. loads + validates ``tp_manifest.json`` from a package (dir or zip),
   2. gates on the athlete's Railway-authoritative fulfillment status
-     (refuses to build a job unless APPROVED, or the operator explicitly
-     opts into an unguarded local/dev run),
+     (refuses to build a job unless the sealed TrainingPeaks order is
+     APPROVED),
   3. emits a release-bound ``apply_job.json`` with a short-lived live-gate
      capability for the driver to re-check immediately before its first write,
      and prints the

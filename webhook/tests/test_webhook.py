@@ -371,7 +371,7 @@ class TestStripeWebhook:
 
     def test_stripe_without_intake_is_not_falsely_fulfilled(
             self, client, temp_athletes_dir):
-        """Checkout metadata alone cannot enter the release pipeline."""
+        """Checkout metadata alone enters non-releasable quarantine."""
         stripe_event = {
             'type': 'checkout.session.completed',
             'data': {
@@ -399,7 +399,15 @@ class TestStripeWebhook:
 
         assert response.status_code == 200
         data = response.get_json()
-        assert data['status'] == 'pipeline_failed'
+        assert data['status'] == 'success'
+        assert data['athlete_id'] == 'test_user'
+        state_path = (temp_athletes_dir / 'deliveries' / 'orders'
+                      / 'cs_test_123' / 'fulfillment_status.json')
+        state = json.loads(state_path.read_text())
+        assert state['status'] == 'BLOCKED_REVIEW'
+        issue = next(item for item in state['blocking_issues']
+                     if item['id'] == 'STATE_UNAVAILABLE')
+        assert issue['waivable'] is False
 
 
 class TestDataExtraction:
