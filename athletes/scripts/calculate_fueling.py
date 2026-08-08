@@ -489,6 +489,7 @@ def generate_fueling_context(
         sex=sex,
     )
     p = prescription.to_dict()
+    no_power = fitness.get("power_basis") == "none" or not fitness.get("ftp_watts")
     carb_data = {
         "hourly_target": p["race_target_g_per_hour"],
         "hourly_range": p["race_range_g_per_hour"],
@@ -511,7 +512,7 @@ def generate_fueling_context(
         distance_miles=distance_miles
     )
 
-    return {
+    fueling = {
         "athlete": {
             "weight_kg": round(weight_kg, 1),
             "sex": sex
@@ -530,6 +531,15 @@ def generate_fueling_context(
         },
         "fueling_timeline": fueling_timeline,
         "prescription": p,
+        "fueling_basis": {
+            "kind": p.get("inputs", {}).get("basis"),
+            "power_used": not no_power,
+            "label": (
+                "Duration + intensity descriptor + body-mass bounds"
+                if no_power else "Measured power + duration + body mass"
+            ),
+            "reanchor": fitness.get("reanchor") if no_power else None,
+        },
         "recommendations": generate_fueling_recommendations(
             duration_hours=duration_hours,
             hourly_carbs=carb_data["hourly_target"],
@@ -537,6 +547,42 @@ def generate_fueling_context(
         ) | {"hydration": p["hydration"]},
         "generated_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
+    from derived_registry import entry as derived_entry, validate_registry
+    derived_at = str(
+        (profile.get('fulfillment') or {}).get('generation_at')
+        or datetime.now().astimezone().isoformat()
+    )
+    fueling['_derived'] = validate_registry([
+        derived_entry(
+            id='RACE_DURATION_HOURS', field='race.duration_hours',
+            value_class='inferred',
+            basis='race distance, elevation, discipline, and goal pace model',
+            inputs={
+                'distance_miles': distance_miles,
+                'elevation_feet': elevation_feet,
+                'discipline': discipline,
+                'goal_type': goal_type,
+            },
+            sensitivity='personal', at=derived_at,
+        ),
+        derived_entry(
+            id='FUELING_HOURLY_TARGET', field='carbohydrates.hourly_target',
+            value_class='inferred',
+            basis=str(p.get('inputs', {}).get('basis') or 'fueling policy'),
+            inputs=p.get('inputs', {}), sensitivity='sensitive', at=derived_at,
+        ),
+        derived_entry(
+            id='FUELING_TOTAL_TARGET', field='carbohydrates.total_grams',
+            value_class='inferred',
+            basis='hourly prescription multiplied by modeled event duration',
+            inputs={
+                'hourly_target': p['race_target_g_per_hour'],
+                'duration_hours': duration_hours,
+            },
+            sensitivity='sensitive', at=derived_at,
+        ),
+    ])
+    return fueling
 
 
 def generate_fueling_timeline(
@@ -713,7 +759,7 @@ def main():
 
     print(f"🏁 Race: {race['distance_miles']} miles, ~{race['duration_hours']}h estimated")
     print(f"⚡ Energy: {cals['total_calories']:,} kcal ({cals['calories_per_hour']} kcal/hr)")
-    print(f"🍞 Carbs: {carbs['hourly_target']}g/hr → {carbs['total_grams']}g total")
+    print("🍞 Carbs: computed — values available in authenticated review")
     print()
 
     print("📈 Gut Training Progression:")

@@ -67,6 +67,10 @@ class Segment:
     on_power: Optional[float] = None
     off_seconds: Optional[int] = None
     off_power: Optional[float] = None
+    # Phase 3 canonical target. Exactly one target type is present for models
+    # built from canonical_training_model.json; legacy power fields remain for
+    # backward-compatible reflection of historical packages.
+    target: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -103,6 +107,9 @@ class Session:
     # race: {priority: 'B'}"): carries {'priority': 'A'|'B'} for race/
     # B-race sessions, None otherwise.
     race: Optional[Dict[str, Any]] = None
+    control_metric: Optional[str] = None
+    control_basis: Optional[str] = None
+    target_summary: Optional[str] = None
 
 
 @dataclass
@@ -213,7 +220,8 @@ def _athlete_from_profile(athlete_id: str, profile: Dict[str, Any]) -> Athlete:
     ftp = _first(markers, "ftp_watts", "ftp")
     key_markers = {
         key: markers.get(key)
-        for key in ("w_kg", "resting_hr", "max_hr", "ftp_date")
+        for key in ("w_kg", "resting_hr", "max_hr", "lthr", "ftp_date",
+                    "power_basis", "control_metric", "control_basis", "reanchor")
         if markers.get(key) is not None
     }
     return Athlete(
@@ -546,7 +554,97 @@ def _fulfillment_from_file(athlete_dir: Path) -> Fulfillment:
         return Fulfillment()
 
 
-def build_plan_ir(athlete_id: str) -> PlanIR:
+def _plan_ir_from_canonical(
+    athlete_id: str,
+    athlete_dir: Path,
+    model: Dict[str, Any],
+    profile: Dict[str, Any],
+    fueling_data: Dict[str, Any],
+    plan_dates: Dict[str, Any],
+) -> PlanIR:
+    """Build PlanIR strictly as a canonical-model projection."""
+    from canonical_training_model import project_tp_structure
+
+    athlete = _athlete_from_profile(athlete_id, profile)
+    control = model.get("athlete") or {}
+    by_week: Dict[int, Week] = {}
+    for raw in model.get("sessions") or []:
+        week_number = int(raw.get("week") or 0)
+        week = by_week.setdefault(
+            week_number, Week(number=week_number, phase=raw.get("phase")))
+        segments = []
+        for segment in raw.get("segments") or []:
+            target = segment.get("target") or {}
+            legacy_power = {}
+            if target.get("type") == "power_pct_ftp":
+                legacy_power = {
+                    "power_low": target.get("low"),
+                    "power_high": target.get("high"),
+                    "power_target": target.get("value"),
+                    "on_power": target.get("on"),
+                    "off_power": target.get("off"),
+                }
+            segments.append(Segment(
+                name=str(segment.get("name") or segment.get("kind") or "segment"),
+                seconds=int(segment.get("seconds") or 0),
+                kind=str(segment.get("kind") or "steady_state"),
+                repeat=segment.get("repeat"),
+                on_seconds=segment.get("on_seconds"),
+                off_seconds=segment.get("off_seconds"),
+                target=target,
+                **legacy_power,
+            ))
+        description = raw.get("description")
+        if control.get("control_metric") == "rpe" and raw.get("target_summary"):
+            description = ((description or "").rstrip()
+                           + f"\n\nPRESCRIPTION: {raw['target_summary']}").strip()
+        week.sessions.append(Session(
+            date=raw.get("date"), title=str(raw.get("title") or "Untitled session"),
+            sport=str(raw.get("sport") or "cycling"),
+            type=str(raw.get("session_type") or "workout"),
+            origin=str(raw.get("origin") or "prescribed"),
+            duration_s=int(raw.get("duration_s") or 0),
+            tss=int(raw.get("tss") or 0), segments=segments,
+            source_file=raw.get("source_file"), description=description,
+            tp_kind=raw.get("tp_kind"),
+            workout_type_value_id=raw.get("workout_type_value_id"),
+            tss_planned=raw.get("tss_planned"),
+            total_time_planned=raw.get("total_time_planned"),
+            structure=project_tp_structure(raw, control),
+            series_id=raw.get("series_id"), series_index=raw.get("series_index"),
+            series_total=raw.get("series_total"), order_on_day=raw.get("order_on_day"),
+            strength_template=raw.get("strength_template"),
+            archetype_id=raw.get("archetype_id"),
+            display_name=raw.get("display_name") or raw.get("title"),
+            filename_stem=raw.get("filename_stem"), race=raw.get("race"),
+            control_metric=control.get("control_metric"),
+            control_basis=control.get("control_basis"),
+            target_summary=raw.get("target_summary"),
+        ))
+    prescription_data = model.get("fueling") or (
+        prescription_from_fueling(fueling_data) if fueling_data else None)
+    fueling = FuelingPrescription(**prescription_data) if prescription_data else None
+    race_data = model.get("race_snapshot") or {}
+    return PlanIR(
+        athlete=athlete,
+        race_snapshot=RaceSnapshot(**{
+            key: value for key, value in race_data.items()
+            if key in RaceSnapshot.__dataclass_fields__
+        }),
+        fueling=fueling, weeks=sorted(by_week.values(), key=lambda item: item.number),
+        notes=list(model.get("notes") or []),
+        entitlements=list(model.get("entitlements") or []),
+        attachments=list(model.get("attachments") or []),
+        fulfillment=_fulfillment_from_file(athlete_dir),
+    )
+
+
+def build_plan_ir(
+    athlete_id: str,
+    *,
+    prefer_canonical: bool = True,
+    plan_dates_override: Optional[Dict[str, Any]] = None,
+) -> PlanIR:
     """Aggregate an athlete's existing outputs and write ``plan_ir.json``.
 
     Missing artifacts yield warnings and a partial object.  This makes G0 safe
@@ -556,31 +654,40 @@ def build_plan_ir(athlete_id: str) -> PlanIR:
     athlete_dir = ATHLETES_DIR / athlete_id
     profile = _load_yaml(athlete_dir / "profile.yaml")
     fueling_data = _load_yaml(athlete_dir / "fueling.yaml")
-    plan_dates = _load_yaml(athlete_dir / "plan_dates.yaml")
+    plan_dates = (plan_dates_override if plan_dates_override is not None
+                  else _load_yaml(athlete_dir / "plan_dates.yaml"))
     _load_yaml(athlete_dir / "weekly_structure.yaml")  # Reflected input; scheduling moves to PlanIR in G4.
 
-    athlete = _athlete_from_profile(athlete_id, profile)
-    prescription_data = prescription_from_fueling(fueling_data) if fueling_data else None
-    fueling = FuelingPrescription(**prescription_data) if prescription_data else None
-    target = profile.get('target_race', {}) or {}
-    mental = profile.get('mental_game', {}) or {}
-    mental_tasks = [
-        {'kind': 'mental_training', 'id': key, 'text': str(value)}
-        for key, value in mental.items() if value not in (None, '', 'none', 'no')
-    ]
-    guide_path = 'training_guide.pdf' if (athlete_dir / 'training_guide.pdf').exists() else 'training_guide.html'
-    plan_ir = PlanIR(
-        athlete=athlete,
-        race_snapshot=_race_from_artifacts(profile, fueling_data, plan_dates),
-        fueling=fueling,
-        weeks=_build_weeks(athlete_dir, plan_dates, athlete,
-                           profile.get('recurring_sessions', []) or []),
-        notes=mental_tasks,
-        entitlements=[{'kind': 'course', 'race': target.get('name'),
-                       'race_date': target.get('date'), 'race_id': target.get('race_id')}],
-        attachments=[{'id': 'guide', 'kind': 'guide', 'path': guide_path}],
-        fulfillment=_fulfillment_from_file(athlete_dir),
-    )
+    canonical_path = athlete_dir / "canonical_training_model.json"
+    if prefer_canonical and canonical_path.exists():
+        from canonical_training_model import load_canonical_model
+        plan_ir = _plan_ir_from_canonical(
+            athlete_id, athlete_dir, load_canonical_model(canonical_path),
+            profile, fueling_data, plan_dates,
+        )
+    else:
+        athlete = _athlete_from_profile(athlete_id, profile)
+        prescription_data = prescription_from_fueling(fueling_data) if fueling_data else None
+        fueling = FuelingPrescription(**prescription_data) if prescription_data else None
+        target = profile.get('target_race', {}) or {}
+        mental = profile.get('mental_game', {}) or {}
+        mental_tasks = [
+            {'kind': 'mental_training', 'id': key, 'text': str(value)}
+            for key, value in mental.items() if value not in (None, '', 'none', 'no')
+        ]
+        guide_path = 'training_guide.pdf' if (athlete_dir / 'training_guide.pdf').exists() else 'training_guide.html'
+        plan_ir = PlanIR(
+            athlete=athlete,
+            race_snapshot=_race_from_artifacts(profile, fueling_data, plan_dates),
+            fueling=fueling,
+            weeks=_build_weeks(athlete_dir, plan_dates, athlete,
+                               profile.get('recurring_sessions', []) or []),
+            notes=mental_tasks,
+            entitlements=[{'kind': 'course', 'race': target.get('name'),
+                           'race_date': target.get('date'), 'race_id': target.get('race_id')}],
+            attachments=[{'id': 'guide', 'kind': 'guide', 'path': guide_path}],
+            fulfillment=_fulfillment_from_file(athlete_dir),
+        )
     output_path = athlete_dir / "plan_ir.json"
     payload = json.dumps(plan_ir.to_dict(), indent=2, sort_keys=True) + "\n"
     # Atomic write: a sibling temp file then os.replace, so an I/O failure or a
@@ -640,6 +747,9 @@ def project_tp_manifest(plan_ir: PlanIR) -> Dict[str, Any]:
                 "strength_template": session.strength_template,
                 "archetype_id": session.archetype_id,
                 "race": session.race,
+                "control_metric": session.control_metric,
+                "control_basis": session.control_basis,
+                "target_summary": session.target_summary,
             })
 
     plan_weeks = max((w.number for w in plan_ir.weeks if w.number and w.number > 0), default=0)
@@ -653,6 +763,12 @@ def project_tp_manifest(plan_ir: PlanIR) -> Dict[str, Any]:
             "name": plan_ir.race_snapshot.name,
             "date": plan_ir.race_snapshot.date,
             "priority": "A",
+        },
+        "control": {
+            "metric": plan_ir.athlete.key_markers.get("control_metric"),
+            "basis": plan_ir.athlete.key_markers.get("control_basis"),
+            "power_basis": plan_ir.athlete.key_markers.get("power_basis"),
+            "reanchor": plan_ir.athlete.key_markers.get("reanchor"),
         },
         "expected": {
             "bike": counts["bike"],

@@ -35,12 +35,14 @@ DELIVERY_PLATFORMS = {"trainingpeaks", "endure", "manual"}
 PHASE1_APPLIED_PLATFORMS = {"trainingpeaks", "manual"}
 RELEASE_STATUSES = {APPROVED, APPLIED, CONFIRMED}
 TRANSITIONAL_SEAL_VERSION = "transitional_artifact_bytes/v1"
+CANONICAL_SEAL_VERSION = "canonical_model_apply_contract/v1"
 REVIEW_CATALOG_VERSION = "review_catalog/v1"
 APPROVAL_SNAPSHOT_VERSION = "approval_snapshot/v2"
 REVIEW_ITEM_TYPES = {
     "blocker", "required_confirmation", "soft_confirmation", "verified_fact",
 }
 REVIEW_SENSITIVITIES = {"public", "internal", "personal", "sensitive"}
+SENSITIVE_REDACTION = "[REDACTED — open authenticated review]"
 
 # Server-owned policy.  Structural/quality rules not named here are waivable;
 # the non-waivable set is closed and cannot be weakened by caller input.
@@ -51,6 +53,7 @@ NON_WAIVABLE_RULES = {
     "VALIDATOR_CRASH",
     "POST_RENDER_VALIDATOR_CRASH",
     "SEAL_MISMATCH",
+    "APPLY_CONTRACT_INVALID",
 }
 
 NON_WAIVABLE_REMEDIATIONS = {
@@ -64,6 +67,7 @@ NON_WAIVABLE_REMEDIATIONS = {
         "Repair the post-render validator failure and regenerate the order."
     ),
     "SEAL_MISMATCH": "Regenerate from immutable source artifacts and review again.",
+    "APPLY_CONTRACT_INVALID": "Repair the offline contract and regenerate this revision.",
 }
 
 _REVIEW_METADATA_KEYS = (
@@ -104,6 +108,17 @@ def review_catalog_digest(
         "version": REVIEW_CATALOG_VERSION,
         "items": items,
     })
+
+
+def redact_sensitive_review_items(items: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
+    """Safe projection for notifications, logs, exports, and non-review APIs."""
+    result = copy.deepcopy(items or [])
+    for item in result:
+        if item.get("sensitivity") == "sensitive":
+            for key in ("value", "review_value", "message", "basis"):
+                if key in item:
+                    item[key] = SENSITIVE_REDACTION
+    return result
 
 
 def _state_path(path: os.PathLike[str] | str) -> Path:
@@ -160,6 +175,29 @@ def _validate_confirmation(item: Dict[str, Any]) -> Dict[str, Any]:
         "message": str(item.get("message", "")).strip(),
     }
     _copy_review_metadata(item, normalized)
+    return normalized
+
+
+def _validate_derived_value(item: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate one materialized A3 provenance record stored server-side."""
+    required = ("id", "field", "class", "basis", "inputs", "sensitivity", "at", "value")
+    if not isinstance(item, dict) or any(key not in item for key in required):
+        raise FulfillmentStateError("derived value is missing required fields")
+    normalized = copy.deepcopy(item)
+    if any(not str(normalized.get(key) or "").strip()
+           for key in ("id", "field", "class", "basis", "at")):
+        raise FulfillmentStateError("derived value identity and provenance are required")
+    if normalized["class"] not in {
+        "measured", "athlete_reported", "defaulted", "inferred", "externally_observed",
+    }:
+        raise FulfillmentStateError("unknown derived value class")
+    if normalized["sensitivity"] not in REVIEW_SENSITIVITIES:
+        raise FulfillmentStateError("unknown derived value sensitivity")
+    _canonical_review_value(normalized["inputs"])
+    _canonical_review_value(normalized["value"])
+    normalized["revision"] = int(normalized.get("revision", 1))
+    if normalized["revision"] < 1:
+        raise FulfillmentStateError("derived value revision must be positive")
     return normalized
 
 
@@ -249,6 +287,15 @@ def _expected_review_catalog(state: Dict[str, Any]) -> list[Dict[str, Any]]:
         (item, "soft_confirmation")
         for item in state.get("soft_confirmations", [])
     )
+    for derived in state.get("derived_values", []):
+        sources.append(({
+            "id": f"DERIVED_{derived['id']}",
+            "source": "derived_registry",
+            "basis": derived["basis"],
+            "sensitivity": derived["sensitivity"],
+            "message": f"{derived['field']} ({derived['class']}).",
+            "review_value": derived["value"],
+        }, "verified_fact"))
     sources.append(({
         "id": "FACT_ORDER_CONTEXT",
         "source": "fulfillment_state",
@@ -376,6 +423,10 @@ def _validate_state(state: Any) -> Dict[str, Any]:
     state["soft_confirmations"] = [
         _validate_confirmation(item) for item in soft_confirmations
     ]
+    derived_values = state.get("derived_values", [])
+    if not isinstance(derived_values, list):
+        raise FulfillmentStateError("derived_values must be a list")
+    state["derived_values"] = [_validate_derived_value(item) for item in derived_values]
     for key in ("approval", "waiver", "application", "confirmation"):
         if key not in state:
             raise FulfillmentStateError(f"fulfillment state missing {key}")
@@ -486,6 +537,7 @@ def write_generation(
     delivery_platform: str = "manual",
     required_confirmations: Optional[list[Dict[str, Any]]] = None,
     soft_confirmations: Optional[list[Dict[str, Any]]] = None,
+    derived_values: Optional[list[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Start a revision while preserving immutable order identity."""
     issues = [_validate_issue(issue) for issue in (blocking_issues or [])]
@@ -493,6 +545,7 @@ def write_generation(
         _validate_confirmation(item) for item in (required_confirmations or [])
     ]
     soft = [_validate_confirmation(item) for item in (soft_confirmations or [])]
+    derived = [_validate_derived_value(item) for item in (derived_values or [])]
     delivery_platform = str(delivery_platform or "manual").strip().lower()
     if delivery_platform not in DELIVERY_PLATFORMS:
         raise FulfillmentStateError("invalid delivery_platform")
@@ -532,6 +585,10 @@ def write_generation(
             "blocking_issues": sorted(issues, key=lambda item: item["id"]),
             "required_confirmations": sorted(confirmations, key=lambda item: item["id"]),
             "soft_confirmations": sorted(soft, key=lambda item: item["id"]),
+            "derived_values": sorted(
+                [{**item, "revision": revision} for item in derived],
+                key=lambda item: item["id"],
+            ),
             "approval": None,
             "waiver": None,
             "application": None,
@@ -676,6 +733,36 @@ def _artifact_records(artifact_root: Path) -> list[Dict[str, Any]]:
     return records
 
 
+def _canonical_model_seal_from_release(
+    artifact_root: Path, state: Dict[str, Any], contract: Dict[str, Any],
+) -> str:
+    artifact_dir = artifact_root / "artifacts"
+    try:
+        canonical_model = json.loads(
+            (artifact_dir / "canonical_training_model.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise FulfillmentStateError("canonical model unavailable for seal") from exc
+    guide_sources = {}
+    for name in ("profile.yaml", "methodology.yaml", "fueling.yaml", "plan_dates.yaml"):
+        candidate = artifact_dir / name
+        if candidate.is_file():
+            guide_sources[name] = hashlib.sha256(candidate.read_bytes()).hexdigest()
+    # FACT_RELEASE_SEAL is added only after this model seal exists; excluding
+    # that derived fact keeps the finalization graph acyclic.
+    review_items = [item for item in state.get("review_items", [])
+                    if item.get("item_id") != "FACT_RELEASE_SEAL"]
+    operation_payloads = [{
+        "logical_id": op["logical_id"], "kind": op["kind"],
+        "disposition": op["disposition"], "payload": op["payload"],
+    } for op in contract.get("operations", [])]
+    return canonical_digest({
+        "canonical_model": canonical_model,
+        "review_items": review_items,
+        "guide_sources": guide_sources,
+        "operation_payloads": operation_payloads,
+    })
+
+
 def finalize_transitional_release(
     path: os.PathLike[str] | str,
     artifact_root: os.PathLike[str] | str,
@@ -689,12 +776,20 @@ def finalize_transitional_release(
     records = _artifact_records(artifact_root)
     if not records:
         raise FulfillmentStateError("cannot seal an empty artifact set")
-    model_seal = canonical_digest(records)
-    manifest = {
-        "seal_version": TRANSITIONAL_SEAL_VERSION,
-        "model_seal": model_seal,
-        "artifacts": records,
-    }
+    contract_path = artifact_root / "artifacts" / "apply_contract.json"
+    if contract_path.is_file():
+        try:
+            contract = json.loads(contract_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise FulfillmentStateError("apply contract unavailable for seal") from exc
+        seal_version = CANONICAL_SEAL_VERSION
+        # State validation under the lock below repeats identity checks before
+        # granting authority; this early value only builds the manifest.
+        model_seal = None
+    else:
+        contract = None
+        seal_version = TRANSITIONAL_SEAL_VERSION
+        model_seal = canonical_digest(records)
     manifest_path = artifact_root / "release_manifest.json"
 
     with locked_state(path) as (state_path, state):
@@ -704,6 +799,19 @@ def finalize_transitional_release(
             raise FulfillmentStateError("generation revision mismatch")
         if state.get("model_seal"):
             raise FulfillmentStateError("release is already sealed")
+        if contract is not None:
+            if (contract.get("order_id") != state["order_id"]
+                    or contract.get("generation_revision") != expected_revision):
+                raise FulfillmentStateError("apply contract identity mismatch")
+            model_seal = _canonical_model_seal_from_release(
+                artifact_root, state, contract)
+            if contract.get("model_seal") != model_seal:
+                raise FulfillmentStateError("apply contract model_seal mismatch")
+        manifest = {
+            "seal_version": seal_version,
+            "model_seal": model_seal,
+            "artifacts": records,
+        }
         _atomic_write(manifest_path, manifest)
         # Verify the exact bytes we just made durable before granting authority.
         persisted = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -713,7 +821,7 @@ def finalize_transitional_release(
         state["release_manifest_digest"] = canonical_digest(records)
         state["release_manifest"] = str(manifest_path)
         state["release_artifact_count"] = len(records)
-        state["seal_version"] = TRANSITIONAL_SEAL_VERSION
+        state["seal_version"] = seal_version
         _refresh_review_catalog(state)
         _history(
             state, "RELEASE_SEALED", model_seal=model_seal,
@@ -740,12 +848,26 @@ def verify_release_manifest(
     records = manifest.get("artifacts")
     if not isinstance(records, list) or not records:
         raise FulfillmentStateError("release manifest has no artifacts")
-    if (
-        manifest.get("seal_version") != TRANSITIONAL_SEAL_VERSION
-        or canonical_digest(records) != state["model_seal"]
-        or canonical_digest(records) != state["release_manifest_digest"]
-    ):
+    manifest_seal_version = manifest.get("seal_version")
+    if (manifest_seal_version not in {TRANSITIONAL_SEAL_VERSION, CANONICAL_SEAL_VERSION}
+            or manifest.get("model_seal") != state["model_seal"]
+            or canonical_digest(records) != state["release_manifest_digest"]):
         raise FulfillmentStateError("release manifest seal mismatch")
+    if manifest_seal_version == TRANSITIONAL_SEAL_VERSION:
+        if canonical_digest(records) != state["model_seal"]:
+            raise FulfillmentStateError("release manifest seal mismatch")
+    else:
+        try:
+            contract = json.loads(
+                (Path(artifact_root) / "artifacts" / "apply_contract.json")
+                .read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise FulfillmentStateError("apply contract unavailable for seal") from exc
+        expected_model_seal = _canonical_model_seal_from_release(
+            Path(artifact_root), state, contract)
+        if (expected_model_seal != state["model_seal"]
+                or contract.get("model_seal") != state["model_seal"]):
+            raise FulfillmentStateError("canonical model seal mismatch")
     root = Path(artifact_root).resolve()
     for record in records:
         candidate = (root / record["path"]).resolve()
@@ -829,6 +951,7 @@ def _materialize_seal_mismatch(
     state["blocking_issues"] = [_seal_mismatch_issue(message)]
     state["required_confirmations"] = []
     state["soft_confirmations"] = []
+    state["derived_values"] = []
     state["status"] = BLOCKED_REVIEW
     state["approval"] = None
     state["waiver"] = None
@@ -875,20 +998,8 @@ def open_verified_release_artifact(
     state = state_or_path if isinstance(state_or_path, dict) else load(state_or_path)
     if require_approval and not approval_matches_release(state):
         raise FulfillmentStateError("release approval does not match the current seal")
-    manifest_path = Path(state.get("release_manifest") or "")
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise FulfillmentStateError("release manifest unavailable") from exc
+    manifest = verify_release_manifest(state, artifact_root)
     records = manifest.get("artifacts")
-    if (
-        not isinstance(records, list)
-        or not records
-        or manifest.get("seal_version") != TRANSITIONAL_SEAL_VERSION
-        or canonical_digest(records) != state.get("model_seal")
-        or canonical_digest(records) != state.get("release_manifest_digest")
-    ):
-        raise FulfillmentStateError("release manifest seal mismatch")
 
     root = Path(artifact_root).resolve()
     served: Optional[BinaryIO] = None
@@ -1204,6 +1315,7 @@ def migrate_v1_to_quarantine(
         })],
         "required_confirmations": [],
         "soft_confirmations": [],
+        "derived_values": [],
         "approval": original.get("approval"),
         "waiver": original.get("waiver"),
         "application": original.get("application"),

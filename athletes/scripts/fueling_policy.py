@@ -3,8 +3,11 @@ from dataclasses import asdict, dataclass
 import re
 from typing import Any, Dict, List, Optional
 
-POLICY_VERSION = "2026-07-14.2"
+POLICY_VERSION = "2026-08-08.3"
 _DEFAULT_IF = {"survival": .62, "finish": .68, "compete": .75, "podium": .80}
+_BODY_MASS_G_PER_KG_H = {
+    "survival": .65, "finish": .75, "compete": .85, "podium": .95,
+}
 
 
 def _duration_ceiling(hours: float) -> float:
@@ -91,22 +94,65 @@ def build_fueling_prescription(*, duration_hours: float, weight_kg: float,
                                ftp_watts: Optional[float], goal_type: str,
                                gut_phase: str = "build", tolerated_g_per_hour: Optional[float] = None,
                                sex: Optional[str] = None) -> FuelingPrescription:
-    """Make one race prescription from body mass, absolute work and tolerance.
+    """Make one race prescription from truthful available anchors.
 
     Sex is intentionally not a carbohydrate-rate multiplier. It only adds an
-    energy-availability reminder where useful.
+    energy-availability reminder where useful.  With measured power, the
+    established work-rate policy remains available.  Without measured power,
+    the prescription is derived only from duration, the goal/intensity
+    descriptor, body-mass bounds, and demonstrated tolerance; no synthetic
+    work rate is computed or serialized.
     """
     goal = goal_type if goal_type in _DEFAULT_IF else "finish"
     assumptions: List[str] = []
-    intensity_factor = _DEFAULT_IF[goal]
-    if not ftp_watts or ftp_watts <= 0:
-        ftp_watts = weight_kg * 2.4
-        assumptions.append("FTP unavailable; estimated absolute work rate from body mass.")
-    absolute_work = float(ftp_watts) * intensity_factor
-    # Work-rate first, with a deliberately modest goal effect. Goal cannot turn a
-    # small athlete into a 90 g/hr prescription by itself.
-    goal_adjustment = {"survival": -5, "finish": 0, "compete": 3, "podium": 5}[goal]
-    target = 48 + .055 * absolute_work + .10 * (weight_kg - 60) + goal_adjustment
+    measured_power = bool(ftp_watts and ftp_watts > 0)
+    if measured_power:
+        intensity_factor = _DEFAULT_IF[goal]
+        absolute_work = float(ftp_watts) * intensity_factor
+        # Work-rate first, with a deliberately modest goal effect.
+        goal_adjustment = {"survival": -5, "finish": 0, "compete": 3, "podium": 5}[goal]
+        target = 48 + .055 * absolute_work + .10 * (weight_kg - 60) + goal_adjustment
+        inputs: Dict[str, Any] = {
+            "basis": "measured_power_duration_body_mass",
+            "duration_hours": round(duration_hours, 1),
+            "weight_kg": round(weight_kg, 1),
+            "ftp_watts": round(float(ftp_watts)),
+            "intensity_factor": intensity_factor,
+            "absolute_work_watts": round(absolute_work),
+            "goal_type": goal,
+        }
+    else:
+        descriptor = {
+            "survival": "conservative completion",
+            "finish": "steady endurance",
+            "compete": "competitive endurance",
+            "podium": "high competitive endurance",
+        }[goal]
+        if weight_kg and weight_kg > 0:
+            target = float(weight_kg) * _BODY_MASS_G_PER_KG_H[goal]
+            basis = "duration_intensity_descriptor_body_mass"
+            deferred = False
+        else:
+            # Missing mass is an unsafe personalization case. Keep a low,
+            # explicitly deferred starting point rather than inventing mass or
+            # a work rate; the coach/field-test re-anchor owns the correction.
+            target = 45.0
+            basis = "duration_intensity_descriptor_deferred"
+            deferred = True
+            assumptions.append(
+                "Body mass unavailable; conservative starting range only, review after the Week 1 field test."
+            )
+        assumptions.append(
+            "No measured power anchor; prescription uses duration, intensity descriptor, and body-mass bounds."
+        )
+        inputs = {
+            "basis": basis,
+            "duration_hours": round(duration_hours, 1),
+            "weight_kg": round(weight_kg, 1) if weight_kg and weight_kg > 0 else None,
+            "intensity_descriptor": descriptor,
+            "goal_type": goal,
+            "deferred_to_field_test": deferred,
+        }
     target = max(45, min(90, target))
     modeled_target = target
     tolerated = _plausible_g_per_hour(tolerated_g_per_hour, units_implied=True)
@@ -149,10 +195,8 @@ def build_fueling_prescription(*, duration_hours: float, weight_kg: float,
         race_target_g_per_hour=target_i, race_range_g_per_hour=race_range,
         total_g=round(target_i * duration_hours), training_tiers=tiers,
         hydration=hydration, assumptions=assumptions,
-        inputs={"duration_hours": round(duration_hours, 1), "weight_kg": round(weight_kg, 1),
-                "ftp_watts": round(float(ftp_watts)), "intensity_factor": intensity_factor,
-                "absolute_work_watts": round(absolute_work), "goal_type": goal,
-                "gut_training_phase": gut_phase, "tolerated_g_per_hour": tolerated},
+        inputs={**inputs, "gut_training_phase": gut_phase,
+                "tolerated_g_per_hour": tolerated},
     )
 
 

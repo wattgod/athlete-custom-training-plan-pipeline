@@ -41,6 +41,7 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CONFIRMED,
                                load as load_fulfillment_state,
                                migrate_v1_to_quarantine,
                                open_verified_release_artifact,
+                               redact_sensitive_review_items,
                                record_seal_mismatch,
                                transition as transition_fulfillment,
                                verify_release_artifact,
@@ -409,7 +410,7 @@ def _build_phase1_generation_email(details: dict) -> tuple:
     name = str(details.get('name') or 'Unknown')
     order_id = str(details.get('order_id') or '')
     status = str(details.get('fulfillment_status') or 'BLOCKED_REVIEW')
-    issues = details.get('blocking_issues') or []
+    issues = redact_sensitive_review_items(details.get('blocking_issues') or [])
     unavailable = details.get('fulfillment_state') == 'unavailable'
     if unavailable and not any(i.get('id') == 'STATE_UNAVAILABLE' for i in issues):
         issues = [{
@@ -1809,12 +1810,15 @@ PRIVATE_DELIVERABLES = [
     'personal_email.md',
     'plan_summary.yaml',
     'profile.yaml',
+    'plan_dates.yaml',
     'methodology.yaml',
     'derived.yaml',
     'intake_backup.json',
     'fulfillment_manifest.json',
     'plan_ir.json',
     'tp_manifest.json',
+    'canonical_training_model.json',
+    'apply_contract.json',
 ]
 
 
@@ -3246,11 +3250,11 @@ def fulfillment_status(order_ref):
         'tp_manifest_sha256': tp_record.get('sha256'),
         'generation_revision': state['generation_revision'],
         'updated_at': state['updated_at'],
-        'blocking_issues': state['blocking_issues'],
-        'required_confirmations': state['required_confirmations'],
-        'soft_confirmations': state.get('soft_confirmations', []),
+        'blocking_issues': redact_sensitive_review_items(state['blocking_issues']),
+        'required_confirmations': redact_sensitive_review_items(state['required_confirmations']),
+        'soft_confirmations': redact_sensitive_review_items(state.get('soft_confirmations', [])),
         'review_catalog_version': state.get('review_catalog_version'),
-        'review_items': state.get('review_items', []),
+        'review_items': redact_sensitive_review_items(state.get('review_items', [])),
         'model_seal': state['model_seal'],
         'release_manifest_digest': state['release_manifest_digest'],
         'approval': state['approval'],

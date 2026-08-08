@@ -3140,6 +3140,25 @@ def generate_athlete_package(athlete_id: str) -> dict:
     zwo_files = generate_zwo_files(athlete_dir, plan_dates, methodology, derived, profile, fueling)
     detail(f"Generated {len(zwo_files)} workout files")
 
+    # A1.1: finalize the metric-neutral session model before guide/preview/TP
+    # payload projections. The mature renderer is an internal authored-shape
+    # adapter during Phase 3; non-power ZWOs are removed by this step and never
+    # become package artifacts.
+    step(3.5, "Finalizing canonical training model...")
+    from copy import deepcopy
+    from canonical_training_model import build_canonical_model
+    _canonical_dates = deepcopy(plan_dates)
+    _pre_plan_week = getattr(generate_zwo_files, 'last_pre_plan_week', None)
+    if (_pre_plan_week
+            and not any(w.get('week') == 0 for w in _canonical_dates.get('weeks', []))):
+        _canonical_dates.setdefault('weeks', []).insert(0, _pre_plan_week)
+    canonical_model = build_canonical_model(
+        athlete_id, athlete_dir, plan_dates=_canonical_dates)
+    control = canonical_model['athlete']
+    detail(f"Canonical control: {control['control_metric']} ({control['control_basis']})")
+    if control['control_metric'] != 'power':
+        detail("Executable ZWO projection suppressed: no measured power control")
+
     # Generate training guide AFTER workouts (reads ZWO filenames for ATP table)
     step(4, "Generating training guide...")
     guide_path = athlete_dir / 'training_guide.html'
@@ -3191,11 +3210,22 @@ def generate_athlete_package(athlete_id: str) -> dict:
     # never make the customer lose a complete package, but it will fail closed
     # at confirmation until an operator repairs persistent storage.
     try:
+        from derived_registry import materialize
+        derived_values = (
+            materialize(profile, profile.get('_derived') or [], namespace='profile')
+            + materialize(fueling, fueling.get('_derived') or [], namespace='fueling')
+            + materialize(
+                canonical_model,
+                canonical_model.get('derived_values') or [],
+                namespace='canonical',
+            )
+        )
         write_generation(
             athlete_dir / 'fulfillment_status.json', athlete_id,
             getattr(generate_zwo_files, 'last_fulfillment_issues', []),
             order_id=str(profile.get('order_id') or ''),
             delivery_platform=str(profile.get('delivery_platform') or 'manual'),
+            derived_values=derived_values,
         )
         detail("Saved: fulfillment_status.json")
     except Exception as exc:

@@ -18,6 +18,7 @@ sendgrid>=6.9               # SendGrid API for email delivery
 # === Testing ===
 pytest>=7.0                 # Test framework
 pytest-cov>=4.0             # Coverage reporting
+jsonschema>=4.0            # Offline apply_contract/v1 validation
 
 # === Development ===
 black>=23.0                 # Code formatting

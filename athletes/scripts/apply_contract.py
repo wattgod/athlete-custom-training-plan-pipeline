@@ -1,0 +1,503 @@
+"""D0 offline projection for the normative ``apply_contract/v1``.
+
+This module deliberately has no HTTP, browser, credential, or apply code.  It
+turns the canonical PlanIR projection plus an optional fake-server inspection
+snapshot into a complete reconciliation document and validates that document
+before it is written.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import tempfile
+from collections import defaultdict
+from pathlib import Path
+from typing import Any, Dict, Iterable, Mapping, Optional
+
+from jsonschema import Draft202012Validator
+
+
+CONTRACT_VERSION = "apply_contract/v1"
+DATED_KINDS = {
+    "workout_upsert", "calendar_note_upsert", "attachment_upsert",
+    "mental_task_upsert",
+}
+MARKER_KINDS = set(DATED_KINDS)
+SINGLETON_KINDS = {"threshold_update", "zone_update"}
+ENTITLEMENT_KIND = "course_entitlement_grant"
+KINDS = DATED_KINDS | SINGLETON_KINDS | {ENTITLEMENT_KIND}
+DISPOSITIONS = {"create", "update", "keep", "delete"}
+
+
+class ApplyContractError(ValueError):
+    """The offline contract is incomplete, ambiguous, or schema-invalid."""
+
+
+def canonical_json(value: Any) -> bytes:
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def digest_payload(payload: Mapping[str, Any]) -> str:
+    return hashlib.sha256(canonical_json(payload)).hexdigest()
+
+
+PAYLOAD_SCHEMAS: Dict[str, Dict[str, Any]] = {
+    "workout_upsert": {
+        "type": "object", "additionalProperties": False,
+        "required": ["date", "title", "description", "tp_workout_type",
+                     "total_seconds", "tss_planned", "structure"],
+        "properties": {
+            "date": {"type": ["string", "null"]}, "title": {"type": "string"},
+            "description": {"type": ["string", "null"]},
+            "tp_workout_type": {"type": ["integer", "null"]},
+            "total_seconds": {"type": "integer", "minimum": 0},
+            "tss_planned": {"type": ["number", "null"]},
+            "structure": {"type": ["object", "null"]},
+        },
+    },
+    "calendar_note_upsert": {
+        "type": "object", "additionalProperties": False,
+        "required": ["date", "title", "body"],
+        "properties": {"date": {"type": ["string", "null"]},
+                       "title": {"type": "string"}, "body": {"type": "string"}},
+    },
+    "attachment_upsert": {
+        "type": "object", "additionalProperties": False,
+        "required": ["parent_logical_id", "filename", "sha256", "bytes_ref"],
+        "properties": {"parent_logical_id": {"type": "string"},
+                       "filename": {"type": "string"}, "sha256": {"type": "string"},
+                       "bytes_ref": {"type": "string"}},
+    },
+    "mental_task_upsert": {
+        "type": "object", "additionalProperties": False,
+        "required": ["date", "title", "body"],
+        "properties": {"date": {"type": ["string", "null"]},
+                       "title": {"type": "string"}, "body": {"type": "string"}},
+    },
+    ENTITLEMENT_KIND: {
+        "type": "object", "additionalProperties": False,
+        "required": ["product_id"], "properties": {"product_id": {"type": "string"}},
+    },
+    "threshold_update": {
+        "type": "object", "additionalProperties": False,
+        "required": ["metric", "after_value", "unit"],
+        "properties": {"metric": {"type": "string"},
+                       "after_value": {"type": ["number", "integer", "string"]},
+                       "unit": {"type": "string"}},
+    },
+    "zone_update": {
+        "type": "object", "additionalProperties": False,
+        "required": ["zone_set", "after_table"],
+        "properties": {"zone_set": {"type": "string"},
+                       "after_table": {"type": ["array", "object"]}},
+    },
+}
+
+
+def _operation_branch(kind: str, disposition: str) -> Dict[str, Any]:
+    dated = kind in DATED_KINDS
+    singleton = kind in SINGLETON_KINDS
+    payload_required = disposition in {"create", "update"}
+    digest_required = disposition in {"create", "update", "keep"}
+    prior_required = dated and disposition in {"update", "delete"}
+    before_required = singleton and disposition == "update"
+    strategy = (
+        "delete_by_remote_id" if dated and disposition == "create" else
+        "restore_prior_payload" if dated and disposition == "update" else
+        "recreate_from_prior_payload" if dated and disposition == "delete" else
+        "restore_before_image" if singleton and disposition == "update" else "none"
+    )
+    if dated:
+        predecessor_schema = ({"$ref": "#/$defs/dated_predecessor"}
+                              if disposition in {"update", "keep", "delete"}
+                              else {"type": "null"})
+        marker_schema = {"type": "string"}
+    elif singleton:
+        predecessor_schema = {"oneOf": [{"type": "null"},
+                                          {"$ref": "#/$defs/positional_predecessor"}]}
+        marker_schema = {"type": "null"}
+    else:
+        predecessor_schema = {"oneOf": [{"type": "null"},
+                                          {"$ref": "#/$defs/positional_predecessor"}]}
+        marker_schema = {"type": "null"}
+    return {
+        "type": "object", "additionalProperties": False,
+        "required": ["op_id", "logical_id", "kind", "disposition", "payload",
+                     "expected_digest", "prior_payload", "before_image",
+                     "remote_marker", "predecessor", "rollback"],
+        "properties": {
+            "op_id": {"type": "string", "minLength": 1},
+            "logical_id": {"type": "string", "minLength": 1},
+            "kind": {"const": kind}, "disposition": {"const": disposition},
+            "payload": PAYLOAD_SCHEMAS[kind] if payload_required else {"type": "null"},
+            "expected_digest": ({"type": "string", "pattern": "^[0-9a-f]{64}$"}
+                                if digest_required else {"type": "null"}),
+            "prior_payload": PAYLOAD_SCHEMAS[kind] if prior_required else {"type": "null"},
+            "before_image": ({"type": "object"} if before_required else {"type": "null"}),
+            "remote_marker": marker_schema, "predecessor": predecessor_schema,
+            "rollback": {"type": "object", "additionalProperties": False,
+                         "required": ["strategy"],
+                         "properties": {"strategy": {"const": strategy}}},
+        },
+    }
+
+
+def contract_schema() -> Dict[str, Any]:
+    branches = []
+    for kind in sorted(DATED_KINDS):
+        for disposition in ("create", "update", "keep", "delete"):
+            branches.append(_operation_branch(kind, disposition))
+    for kind in sorted(SINGLETON_KINDS):
+        for disposition in ("update", "keep"):
+            branches.append(_operation_branch(kind, disposition))
+    for disposition in ("create", "keep"):
+        branches.append(_operation_branch(ENTITLEMENT_KIND, disposition))
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://gravelgod.com/schemas/apply_contract-v1.json",
+        "title": "Gravel God apply_contract/v1", "type": "object",
+        "additionalProperties": False,
+        "required": ["contract_version", "order_id", "tp_athlete_id",
+                     "generation_revision", "model_seal", "operations", "compat"],
+        "properties": {
+            "contract_version": {"const": CONTRACT_VERSION},
+            "order_id": {"type": "string", "minLength": 1},
+            "tp_athlete_id": {"type": "string", "minLength": 1},
+            "generation_revision": {"type": "integer", "minimum": 1},
+            "model_seal": {"type": "string"},
+            "operations": {"type": "array", "items": {"oneOf": branches}},
+            "compat": {"type": "object", "additionalProperties": False,
+                       "required": ["min_reader"],
+                       "properties": {"min_reader": {"const": CONTRACT_VERSION}}},
+        },
+        "$defs": {
+            "dated_predecessor": {"type": "object", "additionalProperties": False,
+                "required": ["op_id", "remote_id"], "properties": {
+                    "op_id": {"type": "string", "minLength": 1},
+                    "remote_id": {"type": "string", "minLength": 1}}},
+            "positional_predecessor": {"type": "object", "additionalProperties": False,
+                "required": ["op_id", "remote_id"], "properties": {
+                    "op_id": {"type": "string", "minLength": 1},
+                    "remote_id": {"type": "null"}}},
+        },
+    }
+
+
+def schema_path() -> Path:
+    return Path(__file__).resolve().parents[2] / "schemas" / "apply_contract_v1.schema.json"
+
+
+def assert_checked_schema_current() -> None:
+    checked = json.loads(schema_path().read_text(encoding="utf-8"))
+    if checked != contract_schema():
+        raise ApplyContractError("checked apply-contract schema is not generated definition")
+
+
+def _schema_validate(contract: Dict[str, Any]) -> None:
+    assert_checked_schema_current()
+    errors = sorted(Draft202012Validator(contract_schema()).iter_errors(contract),
+                    key=lambda error: list(error.absolute_path))
+    if errors:
+        error = errors[0]
+        location = ".".join(str(part) for part in error.absolute_path) or "contract"
+        raise ApplyContractError(f"schema validation failed at {location}: {error.message}")
+
+
+def _logical_id(order_id: str, kind: str, logical_key: str) -> str:
+    return f"{order_id}:{kind}:{logical_key}"
+
+
+def _desired_resources(
+    ir: Dict[str, Any], order_id: str, athlete_dir: Optional[Path],
+    singleton_desires: Mapping[str, Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    desired: Dict[str, Dict[str, Any]] = {}
+    per_date: Dict[str, int] = defaultdict(int)
+    workout_by_date: Dict[str, str] = {}
+    for week in ir.get("weeks", []):
+        for session in week.get("sessions", []):
+            date = str(session.get("date") or "undated")
+            per_date[date] += 1
+            key = f"{date}#{per_date[date]}"
+            logical_id = _logical_id(order_id, "workout_upsert", key)
+            workout_by_date.setdefault(date, logical_id)
+            desired[logical_id] = {"kind": "workout_upsert", "logical_key": key,
+                "date": session.get("date"), "payload": {
+                    "date": session.get("date"), "title": str(session.get("title") or "Untitled session"),
+                    "description": session.get("description"),
+                    "tp_workout_type": session.get("workout_type_value_id"),
+                    "total_seconds": int(session.get("duration_s") or 0),
+                    "tss_planned": session.get("tss_planned"),
+                    "structure": session.get("structure"),
+                }}
+            note_key = f"{date}#{per_date[date]}"
+            note_id = _logical_id(order_id, "calendar_note_upsert", note_key)
+            desired[note_id] = {"kind": "calendar_note_upsert", "logical_key": note_key,
+                "date": session.get("date"), "payload": {"date": session.get("date"),
+                    "title": str(session.get("title") or "Untitled session"),
+                    "body": f"Week {week.get('number')} · {session.get('title') or 'Untitled session'} · {session.get('type') or 'workout'}"}}
+
+    for index, note in enumerate(ir.get("notes") or [], 1):
+        if note.get("kind") not in {"mental_training", "mental_task"}:
+            continue
+        date = note.get("date")
+        slug = str(note.get("id") or f"mental-task-{index}")
+        logical_id = _logical_id(order_id, "mental_task_upsert", slug)
+        desired[logical_id] = {"kind": "mental_task_upsert", "logical_key": slug,
+            "date": date, "payload": {"date": date,
+                "title": str(note.get("title") or slug.replace("_", " ").title()),
+                "body": str(note.get("body") or note.get("text") or "")}}
+
+    attachments = list(ir.get("attachments") or [])
+    if not attachments:
+        guide_name = ("training_guide.pdf" if athlete_dir and
+                      (athlete_dir / "training_guide.pdf").is_file()
+                      else "training_guide.html")
+        attachments = [{"id": "guide", "kind": "guide", "path": guide_name}]
+    for index, attachment in enumerate(attachments, 1):
+        raw_path = str(attachment.get("path") or "training_guide.html")
+        filename = Path(raw_path).name
+        parent = str(attachment.get("parent_logical_id") or
+                     next(iter(workout_by_date.values()), _logical_id(order_id, "workout_upsert", "plan#1")))
+        logical_key = f"{parent}:{filename}"
+        logical_id = _logical_id(order_id, "attachment_upsert", logical_key)
+        file_path = athlete_dir / raw_path if athlete_dir else None
+        file_bytes = file_path.read_bytes() if file_path and file_path.is_file() else b""
+        desired[logical_id] = {"kind": "attachment_upsert", "logical_key": logical_key,
+            "date": None, "payload": {"parent_logical_id": parent, "filename": filename,
+                "sha256": hashlib.sha256(file_bytes).hexdigest(), "bytes_ref": raw_path}}
+
+    entitlements = list(ir.get("entitlements") or [])
+    if not entitlements:
+        race = ir.get("race_snapshot") or {}
+        entitlements = [{"product_id": str(race.get("name") or "course") + ":" + str(race.get("date") or "undated")}]
+    for entitlement in entitlements:
+        product_id = str(entitlement.get("product_id") or entitlement.get("external_id")
+                         or entitlement.get("race") or "course")
+        logical_id = _logical_id(order_id, ENTITLEMENT_KIND, product_id)
+        desired[logical_id] = {"kind": ENTITLEMENT_KIND, "logical_key": product_id,
+                               "date": None, "payload": {"product_id": product_id}}
+
+    for singleton_name, spec in singleton_desires.items():
+        kind = str(spec.get("kind") or "")
+        if kind not in SINGLETON_KINDS:
+            raise ApplyContractError("singleton desire has invalid kind")
+        logical_id = _logical_id(order_id, kind, singleton_name)
+        desired[logical_id] = {"kind": kind, "logical_key": singleton_name,
+                               "date": None, "payload": dict(spec["payload"])}
+    return desired
+
+
+def _predecessor(record: Dict[str, Any], dated: bool) -> Dict[str, Any]:
+    remote_id = record.get("remote_id")
+    if dated and not str(remote_id or "").strip():
+        raise ApplyContractError("dated inventory predecessor requires remote_id")
+    return {"op_id": str(record.get("last_op_id") or ""),
+            "remote_id": str(remote_id) if dated else None}
+
+
+def _operation(
+    order_id: str, revision: int, logical_id: str, resource: Optional[Dict[str, Any]],
+    inventory_record: Optional[Dict[str, Any]], inspection: Dict[str, Any],
+) -> Dict[str, Any]:
+    kind = (resource or inventory_record or {}).get("kind")
+    if kind not in KINDS:
+        raise ApplyContractError(f"unknown inventory kind for {logical_id}")
+    dated, singleton = kind in DATED_KINDS, kind in SINGLETON_KINDS
+    payload = resource.get("payload") if resource else None
+    desired_digest = digest_payload(payload) if payload is not None else None
+    predecessor = _predecessor(inventory_record, dated) if inventory_record else None
+    before_image = None
+    prior_payload = None
+
+    if resource is None:
+        if dated:
+            disposition = "delete"
+            prior_payload = inventory_record.get("payload")
+            if not isinstance(prior_payload, dict):
+                raise ApplyContractError("dated delete requires copied prior payload")
+        else:
+            # Positional resources cannot be deleted by this contract.  A no-
+            # longer-desired singleton remains unchanged; an entitlement is
+            # irreversible-by-us and remains a verified keep/coach cleanup.
+            disposition = "keep"
+            desired_digest = inventory_record.get("desired_digest")
+            if not str(desired_digest or ""):
+                raise ApplyContractError("positional keep requires inventory digest")
+    elif singleton:
+        current = (inspection.get("singletons") or {}).get(resource["logical_key"])
+        if inventory_record and inventory_record.get("desired_digest") == desired_digest:
+            disposition = "keep"
+        elif not inventory_record and isinstance(current, dict) and digest_payload(current) == desired_digest:
+            disposition = "keep"
+            desired_digest = digest_payload(current)
+        else:
+            disposition = "update"
+            if not isinstance(current, dict):
+                raise ApplyContractError("singleton update requires inspection before_image")
+            before_image = current
+    elif kind == ENTITLEMENT_KIND:
+        present = resource["logical_key"] in set(inspection.get("entitlements") or [])
+        if inventory_record or present:
+            disposition = "keep"
+            desired_digest = (inventory_record or {}).get("desired_digest") or digest_payload(payload)
+        else:
+            disposition = "create"
+    elif inventory_record is None:
+        disposition = "create"
+    elif inventory_record.get("desired_digest") == desired_digest:
+        disposition = "keep"
+        desired_digest = inventory_record["desired_digest"]
+    else:
+        disposition = "update"
+        prior_payload = inventory_record.get("payload")
+        if not isinstance(prior_payload, dict):
+            raise ApplyContractError("dated update requires copied prior payload")
+
+    if disposition in {"keep", "delete"}:
+        payload = None
+    strategy = (
+        "delete_by_remote_id" if dated and disposition == "create" else
+        "restore_prior_payload" if dated and disposition == "update" else
+        "recreate_from_prior_payload" if dated and disposition == "delete" else
+        "restore_before_image" if singleton and disposition == "update" else "none"
+    )
+    remote_marker = logical_id if kind in MARKER_KINDS else None
+    return {
+        "op_id": f"{logical_id}@r{revision}", "logical_id": logical_id,
+        "kind": kind, "disposition": disposition, "payload": payload,
+        "expected_digest": desired_digest if disposition != "delete" else None,
+        "prior_payload": prior_payload, "before_image": before_image,
+        "remote_marker": remote_marker, "predecessor": predecessor,
+        "rollback": {"strategy": strategy},
+    }
+
+
+def _sort_key(operation: Dict[str, Any]) -> tuple:
+    kind, disposition = operation["kind"], operation["disposition"]
+    if kind in SINGLETON_KINDS:
+        return (0, "", 0, operation["logical_id"])
+    payload = operation.get("payload") or operation.get("prior_payload") or {}
+    date = str(payload.get("date") or "9999-99-99")
+    kind_rank = {"workout_upsert": 0, "calendar_note_upsert": 1,
+                 "mental_task_upsert": 2, "attachment_upsert": 3}.get(kind, 4)
+    if kind in DATED_KINDS and disposition in {"delete", "update"}:
+        return (1, date, kind_rank, operation["logical_id"])
+    if kind == ENTITLEMENT_KIND:
+        return (4, date, kind_rank, operation["logical_id"])
+    return (2, date, kind_rank, operation["logical_id"])
+
+
+def validate_contract(
+    contract: Dict[str, Any], *, effective_remote_inventory: Optional[Mapping[str, Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Schema and semantic validation; safe to call on any loaded contract."""
+    _schema_validate(contract)
+    operations = contract["operations"]
+    logical_ids = [op["logical_id"] for op in operations]
+    if len(logical_ids) != len(set(logical_ids)):
+        raise ApplyContractError("duplicate logical_id")
+    revision = contract["generation_revision"]
+    inventory_supplied = effective_remote_inventory is not None
+    inventory = dict(effective_remote_inventory or {})
+    for op in operations:
+        expected_logical = _logical_id(
+            contract["order_id"], op["kind"], op["logical_id"].split(f":{op['kind']}:", 1)[-1])
+        if op["logical_id"] != expected_logical:
+            raise ApplyContractError("logical_id does not match order and kind")
+        if op["op_id"] != f"{op['logical_id']}@r{revision}":
+            raise ApplyContractError("op_id does not bind logical_id and revision")
+        if op["remote_marker"] is not None and op["logical_id"] not in op["remote_marker"]:
+            raise ApplyContractError("remote marker does not embed logical_id")
+        if op["payload"] is not None and op["expected_digest"] != digest_payload(op["payload"]):
+            raise ApplyContractError("expected_digest does not match payload")
+        if inventory_supplied:
+            record = inventory.get(op["logical_id"])
+            if bool(record) != bool(op["predecessor"]):
+                raise ApplyContractError("predecessor presence does not match inventory")
+            if record and op["predecessor"] != _predecessor(record, op["kind"] in DATED_KINDS):
+                raise ApplyContractError("predecessor does not match inventory")
+    if inventory_supplied and set(inventory) - set(logical_ids):
+        raise ApplyContractError("contract omits effective inventory dispositions")
+    if operations != sorted(operations, key=_sort_key):
+        raise ApplyContractError("operations violate normative execution order")
+    return contract
+
+
+def model_seal_sources(
+    canonical_model: Dict[str, Any], review_items: Iterable[Dict[str, Any]],
+    guide_sources: Dict[str, Any], operations: Iterable[Dict[str, Any]],
+) -> Dict[str, Any]:
+    return {"canonical_model": canonical_model, "review_items": list(review_items),
+            "guide_sources": guide_sources,
+            "operation_payloads": [{"logical_id": op["logical_id"], "kind": op["kind"],
+                                    "disposition": op["disposition"], "payload": op["payload"]}
+                                   for op in operations]}
+
+
+def compute_model_seal(
+    canonical_model: Dict[str, Any], review_items: Iterable[Dict[str, Any]],
+    guide_sources: Dict[str, Any], operations: Iterable[Dict[str, Any]],
+) -> str:
+    return digest_payload(model_seal_sources(canonical_model, review_items, guide_sources, operations))
+
+
+def guide_source_digests(athlete_dir: Path | str) -> Dict[str, str]:
+    """Stable source inventory used by guide rendering and S2's model seal."""
+    root = Path(athlete_dir)
+    result = {}
+    for name in ("profile.yaml", "methodology.yaml", "fueling.yaml", "plan_dates.yaml"):
+        path = root / name
+        if path.is_file():
+            result[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return result
+
+
+def build_contract(
+    ir: Dict[str, Any], *, order_id: str, tp_athlete_id: str,
+    generation_revision: int, canonical_model: Dict[str, Any],
+    review_items: Iterable[Dict[str, Any]], guide_sources: Dict[str, Any],
+    athlete_dir: Path | str | None = None,
+    effective_remote_inventory: Optional[Mapping[str, Dict[str, Any]]] = None,
+    inspection: Optional[Dict[str, Any]] = None,
+    singleton_desires: Optional[Mapping[str, Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    inventory = dict(effective_remote_inventory or {})
+    inspection = dict(inspection or {})
+    desired = _desired_resources(
+        ir, str(order_id), Path(athlete_dir) if athlete_dir else None,
+        singleton_desires or {},
+    )
+    operations = [
+        _operation(str(order_id), int(generation_revision), logical_id,
+                   desired.get(logical_id), inventory.get(logical_id), inspection)
+        for logical_id in sorted(set(desired) | set(inventory))
+    ]
+    operations.sort(key=_sort_key)
+    seal = compute_model_seal(canonical_model, review_items, guide_sources, operations)
+    contract = {"contract_version": CONTRACT_VERSION, "order_id": str(order_id),
+                "tp_athlete_id": str(tp_athlete_id),
+                "generation_revision": int(generation_revision), "model_seal": seal,
+                "operations": operations, "compat": {"min_reader": CONTRACT_VERSION}}
+    return validate_contract(contract, effective_remote_inventory=inventory)
+
+
+def emit_contract(path: Path | str, contract: Dict[str, Any], *,
+                  effective_remote_inventory: Optional[Mapping[str, Dict[str, Any]]] = None) -> None:
+    """Validate every emitted contract, then atomically persist it."""
+    validate_contract(contract, effective_remote_inventory=effective_remote_inventory)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(contract, handle, indent=2, sort_keys=True, allow_nan=False)
+            handle.write("\n"); handle.flush(); os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)

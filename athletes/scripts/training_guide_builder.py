@@ -476,7 +476,9 @@ def _build_full_guide(
     # the guide). Do not re-add calendar/schedule content to the guide.
     _fit = profile.get("fitness", {})
     sections.append(_section_training_zones(
-        effective_ftp, tier, lthr=_fit.get("lthr"), max_hr=_fit.get("max_hr")))
+        effective_ftp, tier, lthr=_fit.get("lthr"), max_hr=_fit.get("max_hr"),
+        control_metric=_fit.get("control_metric", "power"),
+        control_basis=_fit.get("control_basis", "ftp")))
     sections.append(_section_adaptation())
     # Only claim strength work when the athlete actually opted in — otherwise the
     # guide asserted strength every week for athletes with zero strength sessions.
@@ -488,7 +490,10 @@ def _build_full_guide(
                                               strength_included=_strength_included))
     sections.append(_section_phase_progression(plan_duration, tier, ride_realism,
                                                strength_included=_strength_included))
-    sections.append(_section_workout_execution(tier, effective_ftp))
+    sections.append(_section_workout_execution(
+        tier, effective_ftp,
+        control_metric=_fit.get("control_metric", "power"),
+        control_basis=_fit.get("control_basis", "ftp")))
     sections.append(_section_recovery_protocol(tier, profile, store_mode=store_mode))
     sections.append(_section_equipment_checklist(profile, race_data, _discipline))
     sections.append(_section_nutrition(race_data, tier, race_distance, profile, plan_duration, store_mode=store_mode))
@@ -998,7 +1003,9 @@ def _hr_bpm_band(pct_str: str, lthr: int) -> str:
 
 def _section_training_zones(ftp: Optional[int], tier: str,
                             lthr: Optional[int] = None,
-                            max_hr: Optional[int] = None):
+                            max_hr: Optional[int] = None,
+                            control_metric: str = "power",
+                            control_basis: str = "ftp"):
     zone_data = [
         ("1", "Active Recovery", "< 55%", "< 68%", "1-2", "Very easy, conversational. You should feel like you're barely working."),
         ("2", "Endurance", "56-75%", "69-83%", "3-4", "Easy effort. You can speak in full sentences. The bulk of your riding lives here."),
@@ -1008,6 +1015,39 @@ def _section_training_zones(ftp: Optional[int], tier: str,
         ("5", "VO2max", "106-120%", "> 106%", "9", "Very hard, can barely speak. 3-8 minute efforts."),
         ("6", "Anaerobic", "> 120%", "N/A", "10", "Maximum effort. 30 seconds to 2 minutes."),
     ]
+
+    if control_metric != "power":
+        rows = []
+        for zone, name, _pct, lthr_pct, rpe, feel in zone_data:
+            if control_basis == "lthr" and lthr:
+                target = f"{lthr_pct} LTHR ({_hr_bpm_band(lthr_pct, lthr)})"
+            elif control_basis == "hrmax" and max_hr:
+                hrmax_ranges = {
+                    "1": "50-60", "2": "60-70", "3": "70-80",
+                    "GS": "80-88", "4": "85-92", "5": "92-97", "6": "97-100",
+                }
+                band = hrmax_ranges[zone]
+                lo, hi = (int(value) for value in band.split("-"))
+                target = (f"{band}% HRmax "
+                          f"({round(lo * max_hr / 100)}-{round(hi * max_hr / 100)} bpm)")
+            else:
+                target = f"RPE {rpe}"
+            rows.append(
+                f'<tr><td><strong>{zone}</strong></td><td>{name}</td>'
+                f'<td>{target}</td><td>{feel}</td></tr>')
+        anchor = (
+            f"Measured LTHR: {lthr} bpm" if control_basis == "lthr" and lthr
+            else f"Measured HRmax: {max_hr} bpm" if control_basis == "hrmax" and max_hr
+            else "Use RPE until the Week 1 HR field test establishes the measured anchor"
+        )
+        return f"""<section id="section-2" class="gg-section">
+  <h2>2 &middot; Training Zones</h2>
+  <p><strong>Your control source: {anchor}.</strong> Each workout uses this source directly;
+  no power value has been estimated. Record the Week 1 field-test result and update the
+  anchor before subsequent structured work.</p>
+  <table><thead><tr><th>Zone</th><th>Name</th><th>Your target</th><th>Feel</th></tr></thead>
+  <tbody>{''.join(rows)}</tbody></table>
+</section>"""
 
     if ftp:
         power_rows = []
@@ -1411,7 +1451,35 @@ def _scale_volume_hours(template_hrs: str, scale_factor: float) -> str:
     return f"{lo_s}-{hi_s}"
 
 
-def _section_workout_execution(tier: str, ftp: Optional[int] = None):
+def _section_workout_execution(
+    tier: str,
+    ftp: Optional[int] = None,
+    control_metric: str = "power",
+    control_basis: str = "ftp",
+):
+    if control_metric != "power":
+        label = {
+            "lthr": "percentage of measured LTHR",
+            "hrmax": "percentage of measured HRmax",
+            "rpe_pending_lthr": "RPE until the Week 1 HR field test",
+            "rpe": "RPE",
+        }.get(control_basis, "RPE")
+        return f"""<section id="section-6" class="gg-section">
+  <h2>6 &middot; Workout Execution</h2>
+  <div class="gg-module gg-alert"><div class="gg-label">YOUR PRESCRIPTION SOURCE</div>
+  <p>Targets in this plan are controlled by <strong>{label}</strong>. No power value is assumed.
+  Complete the Week 1 field test, record the result, and use it as the re-anchor point for
+  every subsequent session.</p></div>
+  <h3>Universal Execution Rules</h3>
+  <ul>
+    <li>Start each set conservatively and finish every repeat with the intended form.</li>
+    <li>For HR targets, allow normal response lag; use RPE for short efforts and stop if effort
+        rises while HR or pace deteriorates.</li>
+    <li>Recovery means genuinely easy: breathing settles and conversation is comfortable.</li>
+    <li>If you cannot hold the prescribed effort, end the set or convert the day to endurance.</li>
+    <li>Never make up a missed workout; continue with the calendar.</li>
+  </ul>
+</section>"""
     no_ftp_note = ""
     if ftp is None:
         no_ftp_note = """
@@ -4104,6 +4172,15 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
         html = html.replace(f'{rd}mi training plan', 'training plan')
         html = html.replace(f'{rd}mi successfully', 'successfully')
         html = html.replace(f' {rd}mi</td>', '</td>')  # Stat card: just show number
+
+    # A1.1 final projection guard: legacy educational sections contain power
+    # examples that are valid for measured-power plans but must not leak into
+    # an HR/RPE athlete's artifact. The canonical text projector removes those
+    # references without inventing a replacement value.
+    fitness = profile.get('fitness_markers') or profile.get('fitness') or {}
+    if fitness.get('control_metric') != 'power':
+        from canonical_training_model import determine_control, metric_neutral_text
+        html = metric_neutral_text(html, determine_control(profile))
 
     output_path.write_text(html, encoding='utf-8')
     return output_path

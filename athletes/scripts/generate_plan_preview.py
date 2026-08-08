@@ -15,6 +15,7 @@ Usage:
 
 import sys
 import os
+import json
 import yaml
 from pathlib import Path
 from datetime import datetime
@@ -69,22 +70,62 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
     weekly_structure = _load('weekly_structure.yaml')
     fueling = _load('fueling.yaml')
 
-    ftp = float(profile.get('fitness_markers', {}).get('ftp_watts', 200))
+    fitness = profile.get('fitness_markers', {}) or {}
+    ftp_raw = fitness.get('ftp_watts')
+    try:
+        ftp = float(ftp_raw) if ftp_raw not in (None, '') else None
+    except (TypeError, ValueError):
+        ftp = None
+    control_metric = str(fitness.get('control_metric') or (
+        'power' if ftp is not None else 'rpe'))
+    control_basis = str(fitness.get('control_basis') or (
+        'ftp' if control_metric == 'power' else control_metric))
 
     # Parse all ZWO files
-    workouts_dir = ad / 'workouts'
-    zwo_files = sorted(workouts_dir.glob('*.zwo')) if workouts_dir.exists() else []
     workouts_by_prefix = {}
-    for zwo in zwo_files:
-        parsed = parse_zwo(zwo, ftp)
-        # Extract week prefix: W01_Mon_Mar9 -> use as key
-        prefix = zwo.stem  # e.g. W01_Mon_Mar9_Endurance
-        # Keep the filename stem on the workout: it reliably encodes the
-        # workout TYPE (FTP_Test, Long_Ride, ...) in the original underscore
-        # form even now that the ZWO <name> carries a clean coach-style
-        # display name ("FTP Test") that type-detection can't pattern-match.
-        parsed['_stem'] = zwo.stem
-        workouts_by_prefix[prefix] = parsed
+    canonical_path = ad / 'canonical_training_model.json'
+    if canonical_path.exists():
+        canonical = json.loads(canonical_path.read_text())
+        for session in canonical.get('sessions') or []:
+            if session.get('tp_kind') == 'day_off':
+                continue
+            stem = session.get('filename_stem') or (
+                f"W{int(session.get('week') or 0):02d}_{session.get('date') or 'undated'}_"
+                + str(session.get('title') or 'Session').replace(' ', '_'))
+            max_rpe = 0
+            ratios = []
+            for segment in session.get('segments') or []:
+                target = segment.get('target') or {}
+                if target.get('type') == 'rpe':
+                    values = [target.get(key) for key in ('value', 'low', 'high', 'on', 'off')]
+                    max_rpe = max([max_rpe] + [int(v) for v in values if v is not None])
+                elif target.get('type') in {'power_pct_ftp', 'pct_lthr', 'pct_hrmax'}:
+                    values = [target.get(key) for key in ('value', 'low', 'high', 'on', 'off')]
+                    ratios.extend(float(v) for v in values if v is not None)
+            effort = max(ratios, default=(max_rpe / 10 if max_rpe else .5))
+            parsed = {
+                'name': stem,
+                '_stem': stem,
+                'duration_sec': int(session.get('duration_s') or 0),
+                'duration_min': int(session.get('duration_s') or 0) / 60,
+                'tss': int(session.get('tss') or 0),
+                'intensity_factor': (round(effort, 2)
+                                     if control_metric == 'power' else None),
+                'zone': _if_to_zone(effort),
+                'intervals_summary': session.get('target_summary') or '',
+                'target_summary': session.get('target_summary') or '',
+            }
+            workouts_by_prefix[stem] = parsed
+    else:
+        workouts_dir = ad / 'workouts'
+        zwo_files = sorted(workouts_dir.glob('*.zwo')) if workouts_dir.exists() else []
+        for zwo in zwo_files:
+            # Historical package compatibility only. Null FTP is never
+            # replaced with a fabricated athlete value; 1.0 is a parser scale
+            # for ratio-only ZWO metrics and is not serialized.
+            parsed = parse_zwo(zwo, ftp if ftp is not None else 1.0)
+            parsed['_stem'] = zwo.stem
+            workouts_by_prefix[zwo.stem] = parsed
 
     # Build week-by-week data
     weeks_data = []
@@ -168,6 +209,8 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
         'fueling': fueling,
         'weeks': weeks_data,
         'ftp': ftp,
+        'control_metric': control_metric,
+        'control_basis': control_basis,
         'checks': checks,
         'generated': datetime.now().strftime('%Y-%m-%d %H:%M'),
     }
@@ -517,6 +560,8 @@ def render_preview_html(data: Dict[str, Any]) -> str:
     weeks = data['weeks']
     checks = data['checks']
     ftp = data['ftp']
+    control_metric = data.get('control_metric', 'power')
+    control_basis = data.get('control_basis', 'ftp')
     preview_author = workout_author(profile)
 
     name = profile.get('name', 'Unknown')
@@ -611,7 +656,7 @@ def render_preview_html(data: Dict[str, Any]) -> str:
                 zone_color = zone_colors.get(zone, '#999')
                 dur = wo['duration_min']
                 tss = wo['tss']
-                if_val = wo['intensity_factor']
+                if_val = wo.get('intensity_factor')
 
                 # Workout type from filename
                 wo_name = wo['name'].split('_', 3)[-1] if '_' in wo['name'] else wo['name']
@@ -636,6 +681,12 @@ def render_preview_html(data: Dict[str, Any]) -> str:
                 elif d['is_b_opener']:
                     race_marker = '<div class="opener-marker">OPENER</div>'
 
+                control_detail = (
+                    f'<div class="wo-power">IF: {if_val}</div>'
+                    if control_metric == 'power'
+                    else f'<div class="wo-power">{_esc(wo.get("target_summary") or control_basis)}</div>'
+                )
+
                 day_cells += (
                     f'<td class="day-workout" style="border-left:3px solid {zone_color}">'
                     f'{race_marker}'
@@ -646,7 +697,7 @@ def render_preview_html(data: Dict[str, Any]) -> str:
                     f'<span class="metric zone-tag" style="background:{zone_color}">{zone}</span>'
                     f'</div>'
                     f'{interval_str}'
-                    f'<div class="wo-power">IF: {if_val}</div>'
+                    f'{control_detail}'
                     f'</td>'
                 )
 
@@ -672,6 +723,14 @@ def render_preview_html(data: Dict[str, Any]) -> str:
             f'<strong>{_esc(c["name"])}</strong>: {_esc(c["detail"])}'
             f'</div>\n'
         )
+
+    if control_metric == 'power' and ftp is not None:
+        control_row = (f'<div class="ref-row"><span class="label">FTP</span>'
+                       f'<span class="value">{ftp:.0f}W ({w_kg} W/kg)</span></div>')
+    else:
+        control_row = (f'<div class="ref-row"><span class="label">Control</span>'
+                       f'<span class="value">{_esc(control_metric.upper())} '
+                       f'({_esc(control_basis)})</span></div>')
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -766,7 +825,7 @@ h2 {{ font-size: 1.1em; margin: 20px 0 8px 0; border-bottom: 2px solid #333; pad
 <div class="ref-card">
   <div class="ref-box">
     <h3>Athlete Profile</h3>
-    <div class="ref-row"><span class="label">FTP</span><span class="value">{ftp:.0f}W ({w_kg} W/kg)</span></div>
+    {control_row}
     <div class="ref-row"><span class="label">Weight</span><span class="value">{weight}kg</span></div>
     <div class="ref-row"><span class="label">Age</span><span class="value">{age}</span></div>
     <div class="ref-row"><span class="label">Hours/wk</span><span class="value">{cycling_hours}</span></div>
