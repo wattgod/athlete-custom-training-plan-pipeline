@@ -1,0 +1,376 @@
+"""Production-route regression tests for the Phase 2 coach review page."""
+
+import html
+import json
+import os
+import re
+import sys
+import zipfile
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+os.environ.setdefault('FLASK_ENV', 'test')
+os.environ.setdefault('STRIPE_SECRET_KEY', '')
+
+import app as webhook_app
+from fulfillment_state import (APPROVED, BLOCKED_REVIEW, GENERATED,
+                               approval_matches_release,
+                               finalize_transitional_release, load,
+                               write_generation)
+from review_auth import verify_review_token
+
+
+ATHLETE_M = (Path(__file__).resolve().parents[2] / 'tests' / 'fixtures'
+             / 'athlete_m')
+
+
+@pytest.fixture
+def review_client(tmp_path, monkeypatch):
+    data = tmp_path / 'data'
+    data.mkdir()
+    monkeypatch.setattr(webhook_app, 'DATA_DIR', str(data))
+    monkeypatch.setattr(webhook_app, 'DELIVERIES_DIR', str(data / 'deliveries'))
+    monkeypatch.setenv('DOWNLOAD_TOKEN_SECRET', 'phase2-page-test-secret')
+    monkeypatch.delenv('DOWNLOAD_TOKEN_KEYS', raising=False)
+    monkeypatch.delenv('REVIEW_TOKEN_KEYS', raising=False)
+    monkeypatch.delenv('REVIEW_TOKEN_SECRET', raising=False)
+    webhook_app.app.config['TESTING'] = True
+    return webhook_app.app.test_client()
+
+
+def _issue(rule_id, *, value=None):
+    return {
+        'id': rule_id, 'source': 'fixture', 'severity': 'CRITICAL',
+        'message': f'{rule_id} fixture finding',
+        'review_value': value if value is not None else {'rule': rule_id},
+        'basis': 'de-identified Phase 2 route fixture',
+        'sensitivity': 'internal',
+    }
+
+
+def _confirmation(item_id='SCHEDULE_MISMATCH_CONFIRM', *, value=None):
+    return {
+        'id': item_id, 'source': 'fixture',
+        'message': f'{item_id} fixture confirmation',
+        'review_value': value if value is not None else {'item': item_id},
+        'basis': 'athlete availability compared with generated schedule',
+        'sensitivity': 'personal',
+    }
+
+
+def _seed_order(
+    order_id, *, athlete_id='athlete-m', blockers=None, confirmations=None,
+):
+    state_path = webhook_app._fulfillment_status_path(order_id)
+    state = write_generation(
+        state_path, athlete_id, blockers or [], order_id=order_id,
+        delivery_platform='trainingpeaks',
+        required_confirmations=confirmations or [],
+    )
+    revision = (webhook_app._order_dir(order_id) / 'revisions'
+                / f"r{state['generation_revision']}")
+    revision.mkdir(parents=True)
+    (revision / 'reviewed-values.txt').write_text('sealed review source')
+    review_zip = revision / f'{order_id}-review-bundle.zip'
+    with zipfile.ZipFile(review_zip, 'w') as archive:
+        archive.writestr('plan_preview.txt', 'non-executable review preview')
+    state = finalize_transitional_release(
+        state_path, revision, expected_revision=state['generation_revision'])
+    webhook_app._record_order_lookup(order_id, athlete_id)
+    return state, state_path, revision
+
+
+def _login(client, order_id, *, expected_secret='athlete-m'):
+    token = webhook_app._generate_review_token(
+        order_id, 'coach@example.invalid')
+    # GET is scanner-safe and leaks no state before the fragment exchange.
+    shell = client.get(f'/review/{order_id}')
+    assert shell.status_code == 200
+    assert expected_secret not in shell.get_data(as_text=True)
+    assert shell.headers['Cache-Control'].startswith('no-store')
+    assert shell.headers['Referrer-Policy'] == 'no-referrer'
+
+    opened = client.post(
+        f'/review/{order_id}/session', data={'token': token})
+    assert opened.status_code == 303
+    assert opened.headers['Location'] == f'/review/{order_id}'
+    assert 'HttpOnly' in opened.headers['Set-Cookie']
+    assert 'SameSite=Strict' in opened.headers['Set-Cookie']
+
+    page = client.get(f'/review/{order_id}')
+    assert page.status_code == 200
+    body = page.get_data(as_text=True)
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', body)
+    assert csrf, body
+    return body, html.unescape(csrf.group(1))
+
+
+def _confirmed_ids(state):
+    return [
+        item['item_id'] for item in state['review_items']
+        if item['type'] in {'required_confirmation', 'verified_fact'}
+    ]
+
+
+def _approval_form(state, csrf, *, confirm_ids=None, waived_ids=None, reason=''):
+    return {
+        'csrf_token': csrf,
+        'generation_revision': str(state['generation_revision']),
+        'confirm_item': (_confirmed_ids(state) if confirm_ids is None else confirm_ids),
+        'waive_item': waived_ids or [],
+        'waiver_reason': reason,
+    }
+
+
+def test_athlete_m_login_to_approved_persists_complete_seal_bound_snapshot(
+    review_client,
+):
+    """The de-identified athlete-m values traverse the complete page flow."""
+    intake = json.loads((ATHLETE_M / 'intake.json').read_text())
+    blockers = [_issue('WEEKS_MISMATCH', value={
+        'generated_paid_weeks': 6,
+        'purchased_weeks': intake['computed_weeks'],
+        'lead_in_excluded': True,
+    })]
+    confirmations = [_confirmation(value={
+        'long_ride_days': intake['long_ride_days'],
+        'interval_days': intake['interval_days'],
+        'generated_mismatches': ['intensity on sunday (2026-08-09)'],
+    })]
+    state, state_path, _ = _seed_order(
+        'test_athlete_m_phase2', blockers=blockers,
+        confirmations=confirmations)
+    body, csrf = _login(review_client, state['order_id'])
+    assert 'WEEKS_MISMATCH' in body
+    assert 'SCHEDULE_MISMATCH_CONFIRM' in body
+    assert 'waivable with reason' in body
+
+    approved = review_client.post(
+        f"/review/{state['order_id']}/approve",
+        data=_approval_form(
+            state, csrf, waived_ids=['WEEKS_MISMATCH'],
+            reason='Coach verified the paid entitlement and accepts six paid weeks.',
+        ),
+    )
+    assert approved.status_code == 303
+
+    persisted = load(state_path)
+    assert persisted['status'] == APPROVED
+    assert approval_matches_release(persisted)
+    approval = persisted['approval']
+    assert approval['model_seal'] == persisted['model_seal']
+    assert approval['release_manifest_digest'] == persisted['release_manifest_digest']
+    assert approval['revision'] == persisted['generation_revision']
+    assert approval['credential'].startswith('review-link:')
+    snapshots = {item['item_id']: item for item in approval['confirmations']}
+    assert set(snapshots) == {item['item_id'] for item in persisted['review_items']}
+    assert snapshots['WEEKS_MISMATCH']['value']['purchased_weeks'] == 7
+    assert snapshots['WEEKS_MISMATCH']['disposition'] == 'resolved:waived'
+    assert snapshots['SCHEDULE_MISMATCH_CONFIRM']['value'][
+        'generated_mismatches'] == ['intensity on sunday (2026-08-09)']
+    assert snapshots['SCHEDULE_MISMATCH_CONFIRM']['disposition'] == 'confirmed'
+    assert all(item['revision'] == 1 for item in snapshots.values())
+
+    approved_page = review_client.get(f"/review/{state['order_id']}")
+    assert approved_page.status_code == 200
+    assert 'This decision is bound to revision 1' in approved_page.get_data(as_text=True)
+
+
+def test_review_page_download_uses_typed_token_and_unauthenticated_call_leaks_nothing(
+    review_client,
+):
+    state, _, _ = _seed_order('test_review_download')
+    unauthorized = review_client.get(
+        f"/api/download/{state['order_id']}?artifact=review_bundle")
+    assert unauthorized.status_code == 401
+
+    body, _ = _login(review_client, state['order_id'])
+    match = re.search(r'href="([^"]+artifact=review_bundle[^"]+)"', body)
+    assert match
+    downloaded = review_client.get(html.unescape(match.group(1)))
+    assert downloaded.status_code == 200
+    assert downloaded.mimetype == 'application/zip'
+
+
+def test_page_approval_rejects_missing_required_confirmation(review_client):
+    state, state_path, _ = _seed_order(
+        'test_missing_confirmation', confirmations=[_confirmation()])
+    _, csrf = _login(review_client, state['order_id'])
+    fact_ids = [
+        item['item_id'] for item in state['review_items']
+        if item['type'] == 'verified_fact'
+    ]
+    response = review_client.post(
+        f"/review/{state['order_id']}/approve",
+        data=_approval_form(state, csrf, confirm_ids=fact_ids),
+    )
+    assert response.status_code == 409
+    assert 'required confirmation is unresolved' in response.get_data(as_text=True)
+    assert load(state_path)['status'] == GENERATED
+
+
+def test_page_approval_rejects_waiver_that_does_not_cover_all_blockers(review_client):
+    state, state_path, _ = _seed_order(
+        'test_partial_waiver', blockers=[_issue('RACE_STALE'), _issue('WEEKS_MISMATCH')])
+    _, csrf = _login(review_client, state['order_id'])
+    response = review_client.post(
+        f"/review/{state['order_id']}/approve",
+        data=_approval_form(
+            state, csrf, waived_ids=['RACE_STALE'], reason='Reviewed one only.'),
+    )
+    assert response.status_code == 409
+    assert 'cover every blocking issue exactly' in response.get_data(as_text=True)
+    assert load(state_path)['status'] == BLOCKED_REVIEW
+
+
+def test_page_approval_rejects_nonwaivable_blocker_even_when_submitted(review_client):
+    state, state_path, _ = _seed_order(
+        'test_nonwaivable_page', blockers=[_issue('FTP_ESTIMATED')])
+    body, csrf = _login(review_client, state['order_id'])
+    assert 'non-waivable' in body
+    assert 'Supply a measured FTP and regenerate' in body
+    response = review_client.post(
+        f"/review/{state['order_id']}/approve",
+        data=_approval_form(
+            state, csrf, waived_ids=['FTP_ESTIMATED'], reason='Cannot override policy.'),
+    )
+    assert response.status_code == 409
+    assert 'non-waivable blockers require regeneration' in response.get_data(as_text=True)
+    assert load(state_path)['status'] == BLOCKED_REVIEW
+
+
+def test_page_approval_rejects_stale_revision_session(review_client):
+    state, state_path, _ = _seed_order('test_stale_page')
+    _, csrf = _login(review_client, state['order_id'])
+    regenerated = write_generation(
+        state_path, state['athlete_id'], order_id=state['order_id'],
+        delivery_platform='trainingpeaks')
+    assert regenerated['generation_revision'] == 2
+
+    response = review_client.post(
+        f"/review/{state['order_id']}/approve",
+        data=_approval_form(state, csrf),
+    )
+    assert response.status_code == 409
+    assert 'session unavailable or superseded' in response.get_data(as_text=True)
+    assert load(state_path)['status'] == GENERATED
+
+
+def test_page_approval_rejects_seal_mismatch_and_materializes_policy_blocker(
+    review_client,
+):
+    state, state_path, revision = _seed_order('test_page_seal_mismatch')
+    _, csrf = _login(review_client, state['order_id'])
+    (revision / 'reviewed-values.txt').write_text('mutated after review')
+
+    response = review_client.post(
+        f"/review/{state['order_id']}/approve",
+        data=_approval_form(state, csrf),
+    )
+    assert response.status_code == 409
+    persisted = load(state_path)
+    assert persisted['status'] == BLOCKED_REVIEW
+    mismatch = next(item for item in persisted['blocking_issues']
+                    if item['id'] == 'SEAL_MISMATCH')
+    assert mismatch['waivable'] is False
+    assert persisted['approval'] is None
+
+
+def test_page_approval_rejects_unknown_item_wrong_csrf_and_escapes_values(review_client):
+    malicious = _confirmation(
+        'ESCAPE_CONFIRM', value='</pre><script>alert(1)</script>')
+    malicious['message'] = '<img src=x onerror=alert(2)>'
+    state, state_path, _ = _seed_order(
+        'test_review_xss', confirmations=[malicious])
+    body, csrf = _login(review_client, state['order_id'])
+    assert '&lt;script&gt;alert(1)&lt;/script&gt;' in body
+    assert '&lt;img src=x onerror=alert(2)&gt;' in body
+    assert '</pre><script>alert(1)</script>' not in body
+
+    bad_csrf = review_client.post(
+        f"/review/{state['order_id']}/approve",
+        data=_approval_form(state, 'wrong-token'),
+    )
+    assert bad_csrf.status_code == 403
+
+    unknown = review_client.post(
+        f"/review/{state['order_id']}/approve",
+        data=_approval_form(
+            state, csrf,
+            confirm_ids=_confirmed_ids(state) + ['UNKNOWN_ITEM']),
+    )
+    assert unknown.status_code == 409
+    assert 'unknown review item id' in unknown.get_data(as_text=True)
+    assert load(state_path)['approval'] is None
+
+
+def test_generation_email_points_to_fragment_login_not_a_bundle_alias():
+    _, text, rendered = webhook_app._build_phase1_generation_email({
+        'name': 'Athlete M', 'order_id': 'test_email_review',
+        'fulfillment_status': 'GENERATED', 'blocking_issues': [],
+        'download_token': 'download-token', 'review_token': 'review-token',
+    })
+    content = text + rendered
+    assert '/review/test_email_review#token=review-token' in content
+    assert '/review/test_email_review?token=' not in content
+    assert '/api/download/test_email_review?artifact=review_bundle' in content
+
+
+def test_operator_approval_endpoint_requires_same_revisioned_snapshot_policy(
+    review_client, monkeypatch,
+):
+    monkeypatch.setenv('CRON_SECRET', 'operator-test-secret')
+    state, state_path, _ = _seed_order('test_operator_snapshot')
+    endpoint = f"/api/fulfillment/{state['order_id']}/transition"
+    missing = review_client.post(
+        endpoint, json={'to': APPROVED, 'coach': 'untrusted-name'},
+        headers={'X-Cron-Secret': 'operator-test-secret'})
+    assert missing.status_code == 400
+
+    approved = review_client.post(
+        endpoint,
+        json={
+            'to': APPROVED,
+            'coach': 'untrusted-name',
+            'generation_revision': state['generation_revision'],
+            'confirmations': [
+                {
+                    'item_id': item_id,
+                    'revision': state['generation_revision'],
+                    'disposition': 'confirmed',
+                }
+                for item_id in _confirmed_ids(state)
+            ],
+        },
+        headers={'X-Cron-Secret': 'operator-test-secret'},
+    )
+    assert approved.status_code == 200
+    persisted = load(state_path)
+    assert persisted['approval']['credential'] == 'operator-secret'
+    assert persisted['approval']['coach'] == 'operator-secret'
+
+
+def test_revoking_link_after_login_ends_page_session(review_client, monkeypatch):
+    monkeypatch.setenv('CRON_SECRET', 'operator-test-secret')
+    state, _, _ = _seed_order('test_review_session_revoke')
+    token = webhook_app._generate_review_token(
+        state['order_id'], 'coach@example.invalid')
+    claims = verify_review_token(
+        token, order_id=state['order_id'], athlete_id=state['athlete_id'],
+        generation_revision=state['generation_revision'],
+        revocation_path=Path(webhook_app.DATA_DIR) / 'token_revocations.json')
+    opened = review_client.post(
+        f"/review/{state['order_id']}/session", data={'token': token})
+    assert opened.status_code == 303
+
+    revoked = review_client.post(
+        '/api/download-tokens/revoke', json={'jti': claims['jti']},
+        headers={'X-Cron-Secret': 'operator-test-secret'})
+    assert revoked.status_code == 200
+    shell = review_client.get(f"/review/{state['order_id']}")
+    body = shell.get_data(as_text=True)
+    assert 'Opening your secure review session' in body
+    assert state['athlete_id'] not in body

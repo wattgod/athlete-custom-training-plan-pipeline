@@ -28,7 +28,7 @@ from html import escape as html_escape
 import requests as http_requests
 from pathlib import Path
 from datetime import datetime, timedelta, date, timezone
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, make_response, redirect
 from flask_limiter import Limiter
 import stripe
 import yaml
@@ -48,6 +48,10 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CONFIRMED,
 from download_tokens import (ARTIFACT_AUDIENCE, DownloadTokenError,
                              issue_download_token, revoke_download_token,
                              verify_download_token)
+from review_auth import (ReviewAuthError, create_review_session,
+                         issue_review_token, load_review_session,
+                         verify_review_token)
+from review_surface import render_bootstrap, render_review_page
 
 import endure_delivery
 
@@ -386,7 +390,12 @@ def _build_phase1_generation_email(details: dict) -> tuple:
     base_url = 'https://athlete-custom-training-plan-pipeline-production.up.railway.app'
     bundle_url = (f'{base_url}/api/download/{order_id}?artifact=review_bundle&token={token}'
                   if order_id and token else '')
-    review_url = bundle_url
+    review_token = details.get('review_token') or ''
+    # The bearer stays in the URL fragment: browsers do not send fragments in
+    # HTTP requests, access logs, or Referer headers. Static bootstrap JS POSTs
+    # it once to create the server-side review session.
+    review_url = (f'{base_url}/review/{order_id}#token={review_token}'
+                  if order_id and review_token else '')
     rows = []
     text_rows = []
     for issue in issues:
@@ -402,10 +411,17 @@ def _build_phase1_generation_email(details: dict) -> tuple:
     issues_html = '<ul>' + ''.join(rows) + '</ul>' if rows else '<p>No blockers.</p>'
     links_html = ''
     links_text = ''
-    if bundle_url:
-        links_html = (f'<p><a href="{html_escape(review_url)}">Open review materials</a></p>'
-                      f'<p><a href="{html_escape(bundle_url)}">Download review bundle</a></p>')
-        links_text = f'\nReview materials: {review_url}\nReview bundle: {bundle_url}\n'
+    if review_url or bundle_url:
+        links = []
+        text_links = []
+        if review_url:
+            links.append(f'<p><a href="{html_escape(review_url)}">Open review page</a></p>')
+            text_links.append(f'Review page: {review_url}')
+        if bundle_url:
+            links.append(f'<p><a href="{html_escape(bundle_url)}">Download review bundle</a></p>')
+            text_links.append(f'Review bundle: {bundle_url}')
+        links_html = ''.join(links)
+        links_text = '\n' + '\n'.join(text_links) + '\n'
     subject = f"[GG] {label}: {name} — order {order_id}"
     text = (f'{label}: {name}\nOrder: {order_id}\n\nBlockers:\n'
             + ('\n'.join(text_rows) if text_rows else '- none') + links_text
@@ -2089,6 +2105,17 @@ def _generate_download_token(order_id: str, artifact: str = 'review_bundle') -> 
         generation_revision=state['generation_revision'], artifact=artifact)
 
 
+def _generate_review_token(order_id: str, issued_to: str = '') -> str:
+    """Issue one action-scoped, revision-bound coach review credential."""
+    order_id = _resolve_order_id(order_id) or order_id
+    state = load_fulfillment_state(_fulfillment_status_path(order_id))
+    return issue_review_token(
+        order_id=state['order_id'], athlete_id=state['athlete_id'],
+        generation_revision=state['generation_revision'],
+        issued_to=(issued_to or NOTIFICATION_EMAIL or 'operator-notification'),
+    )
+
+
 def _verify_download_token(order_id: str, token: str, artifact: str) -> dict:
     order_id = _resolve_order_id(order_id) or order_id
     state = load_fulfillment_state(_fulfillment_status_path(order_id))
@@ -2338,7 +2365,9 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
             try:
                 details['download_token'] = _generate_download_token(
                     order_data.get('order_id', ''), 'review_bundle')
-            except DownloadTokenError as exc:
+                details['review_token'] = _generate_review_token(
+                    order_data.get('order_id', ''), NOTIFICATION_EMAIL)
+            except (DownloadTokenError, ReviewAuthError, FulfillmentStateError) as exc:
                 # The durable blocked order remains the authority. Missing
                 # link-signing config suppresses review download access and is
                 # loud to the coach, but must not turn quarantine into a dead
@@ -2547,6 +2576,187 @@ def health():
 
     status_code = 200 if checks['status'] == 'ok' else 503
     return jsonify(checks), status_code
+
+
+# =============================================================================
+# PHASE 2 COACH REVIEW — signed-link login, server session, CSRF approval
+# =============================================================================
+
+REVIEW_SESSION_COOKIE = 'gg_review_session'
+
+
+def _review_sessions_root() -> Path:
+    return Path(DATA_DIR) / 'review-sessions'
+
+
+def _review_revocation_path() -> Path:
+    return Path(DATA_DIR) / 'token_revocations.json'
+
+
+def _review_response(html: str, status: int = 200, *, nonce: str = ''):
+    response = make_response(html, status)
+    response.headers['Content-Type'] = 'text/html; charset=utf-8'
+    response.headers['Cache-Control'] = 'no-store, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    script_policy = f"'nonce-{nonce}'" if nonce else "'none'"
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
+        f"script-src {script_policy}; style-src 'unsafe-inline'; "
+        "form-action 'self'"
+    )
+    return response
+
+
+def _review_bootstrap(status: int = 200):
+    nonce = uuid.uuid4().hex
+    return _review_response(render_bootstrap(nonce), status, nonce=nonce)
+
+
+def _authorized_review(order_ref: str):
+    """Return (order_id, current state, review session), without leaking on failure."""
+    order_id = _resolve_order_id(order_ref)
+    if not order_id:
+        raise ReviewAuthError('review session is unavailable')
+    session = load_review_session(
+        _review_sessions_root(), request.cookies.get(REVIEW_SESSION_COOKIE, ''),
+        order_id=order_id, revocation_path=_review_revocation_path(),
+    )
+    try:
+        state = load_fulfillment_state(_fulfillment_status_path(order_id))
+    except FulfillmentStateError as exc:
+        raise ReviewAuthError('review state is unavailable') from exc
+    if (session.get('athlete_id') != state.get('athlete_id')
+            or session.get('generation_revision') != state.get('generation_revision')):
+        raise ReviewAuthError('review link is superseded by a newer revision')
+    return order_id, state, session
+
+
+def _render_authorized_review(
+    order_id: str, state: dict, session: dict, *, error: str = '', status: int = 200,
+):
+    download_url = ''
+    seal_error = ''
+    revision_dir = (_order_dir(order_id) / 'revisions'
+                    / f"r{state['generation_revision']}")
+    try:
+        verify_release_manifest(state, revision_dir)
+        token = _generate_download_token(order_id, 'review_bundle')
+        download_url = (
+            f'/api/download/{order_id}?artifact=review_bundle&token={token}'
+        )
+    except (FulfillmentStateError, DownloadTokenError) as exc:
+        seal_error = str(exc)
+        if isinstance(exc, FulfillmentStateError) and state.get('model_seal'):
+            try:
+                state = record_seal_mismatch(
+                    _fulfillment_status_path(order_id), str(exc))
+            except FulfillmentStateError:
+                pass
+    combined_error = error or (f'Sealed review unavailable: {seal_error}' if seal_error else '')
+    return _review_response(render_review_page(
+        state, csrf_token=session['csrf_token'], download_url=download_url,
+        error=combined_error,
+    ), status)
+
+
+@app.route('/review/<order_ref>', methods=['GET'])
+@limiter.limit('30/minute')
+def review_order(order_ref):
+    """Scanner-safe shell or the authenticated, revision-bound review page."""
+    try:
+        order_id, state, session = _authorized_review(order_ref)
+    except ReviewAuthError:
+        # Generic shell contains no order existence, athlete, artifact, or
+        # state data. The URL-fragment token is exchanged by its static script.
+        return _review_bootstrap()
+    return _render_authorized_review(order_id, state, session)
+
+
+@app.route('/review/<order_ref>/session', methods=['POST'])
+@limiter.limit('10/minute')
+def open_review_session(order_ref):
+    """Exchange a fragment-carried review bearer for an opaque server session."""
+    order_id = _resolve_order_id(order_ref)
+    token = str(request.form.get('token') or '')
+    if not order_id or not token:
+        return _review_bootstrap(401)
+    try:
+        state = load_fulfillment_state(_fulfillment_status_path(order_id))
+        claims = verify_review_token(
+            token, order_id=state['order_id'], athlete_id=state['athlete_id'],
+            generation_revision=state['generation_revision'],
+            revocation_path=_review_revocation_path(),
+        )
+        session_id, session = create_review_session(
+            _review_sessions_root(), claims)
+    except (FulfillmentStateError, ReviewAuthError):
+        return _review_bootstrap(401)
+    response = redirect(f'/review/{order_id}', code=303)
+    response.set_cookie(
+        REVIEW_SESSION_COOKIE, session_id,
+        max_age=max(1, session['expires_at'] - int(datetime.now(timezone.utc).timestamp())),
+        secure=IS_PRODUCTION, httponly=True, samesite='Strict',
+        path=f'/review/{order_id}',
+    )
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    return response
+
+
+@app.route('/review/<order_ref>/approve', methods=['POST'])
+@limiter.limit('10/minute')
+def approve_review_order(order_ref):
+    """Approve exactly the values and sealed revision rendered by the page."""
+    try:
+        order_id, state, session = _authorized_review(order_ref)
+    except ReviewAuthError as exc:
+        return _review_response(
+            '<!doctype html><title>Review unavailable</title>'
+            '<p>Review session unavailable or superseded.</p>', 409)
+    supplied_csrf = str(request.form.get('csrf_token') or '')
+    if (not supplied_csrf
+            or not hmac.compare_digest(supplied_csrf, session['csrf_token'])):
+        return _render_authorized_review(
+            order_id, state, session, error='Invalid review form token.', status=403)
+    try:
+        expected_revision = int(str(request.form.get('generation_revision') or ''))
+    except ValueError:
+        return _render_authorized_review(
+            order_id, state, session, error='Invalid generation revision.', status=400)
+
+    decisions = [
+        {
+            'item_id': item_id,
+            'revision': expected_revision,
+            'disposition': 'confirmed',
+        }
+        for item_id in request.form.getlist('confirm_item')
+    ]
+    blocker_ids = [item['id'] for item in state.get('blocking_issues', [])]
+    waived_ids = request.form.getlist('waive_item')
+    waiver = None
+    if blocker_ids:
+        waiver = {
+            'rule_ids': waived_ids,
+            'reason': str(request.form.get('waiver_reason') or '').strip(),
+        }
+    try:
+        transition_fulfillment(
+            _fulfillment_status_path(order_id), APPROVED,
+            session['credential'], waiver=waiver,
+            expected_revision=expected_revision,
+            review_decisions=decisions,
+            credential=session['credential'],
+        )
+    except FulfillmentStateError as exc:
+        try:
+            state = load_fulfillment_state(_fulfillment_status_path(order_id))
+        except FulfillmentStateError:
+            pass
+        return _render_authorized_review(
+            order_id, state, session, error=str(exc), status=409)
+    return redirect(f'/review/{order_id}', code=303)
 
 
 # =============================================================================
@@ -2852,11 +3062,25 @@ def transition_fulfillment_state(order_ref):
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or _has_client_timestamp(data):
         return jsonify({'error': 'JSON body without client timestamps is required'}), 400
+    destination = str(data.get('to', ''))
+    expected_revision = data.get('generation_revision')
+    review_decisions = data.get('confirmations')
+    if destination == APPROVED:
+        if not isinstance(expected_revision, int) or not isinstance(review_decisions, list):
+            return jsonify({
+                'error': ('APPROVED requires generation_revision and a '
+                          'confirmations list from the current review catalog')
+            }), 400
     try:
         state = transition_fulfillment(
-            _fulfillment_status_path(order_id), str(data.get('to', '')),
-            str(data.get('coach', '')), waiver=data.get('waiver'),
+            _fulfillment_status_path(order_id), destination,
+            ('operator-secret' if destination == APPROVED
+             else str(data.get('coach', ''))),
+            waiver=data.get('waiver'),
             platform=str(data.get('platform', '')), evidence=str(data.get('evidence', '')),
+            expected_revision=(expected_revision if destination == APPROVED else None),
+            review_decisions=(review_decisions if destination == APPROVED else None),
+            credential=('operator-secret' if destination == APPROVED else ''),
         )
     except FulfillmentStateError as exc:
         return jsonify({'error': str(exc)}), 409
@@ -2916,6 +3140,9 @@ def fulfillment_status(order_ref):
         'updated_at': state['updated_at'],
         'blocking_issues': state['blocking_issues'],
         'required_confirmations': state['required_confirmations'],
+        'soft_confirmations': state.get('soft_confirmations', []),
+        'review_catalog_version': state.get('review_catalog_version'),
+        'review_items': state.get('review_items', []),
         'model_seal': state['model_seal'],
         'release_manifest_digest': state['release_manifest_digest'],
         'approval': state['approval'],
@@ -4188,8 +4415,15 @@ def test_webhook():
         details['fulfillment_status'] = persisted['state']['status']
         details['blocking_issues'] = persisted['state']['blocking_issues']
         details['required_confirmations'] = persisted['state']['required_confirmations']
-        details['download_token'] = _generate_download_token(
-            order_data['order_id'], 'review_bundle')
+        try:
+            details['download_token'] = _generate_download_token(
+                order_data['order_id'], 'review_bundle')
+            details['review_token'] = _generate_review_token(
+                order_data['order_id'], NOTIFICATION_EMAIL)
+        except (DownloadTokenError, ReviewAuthError, FulfillmentStateError) as exc:
+            logger.error(
+                f'Review capability unavailable for order '
+                f"{order_data.get('order_id', '')}: {exc}")
         _notify_new_order('training_plan', details)
         return jsonify({
             'status': 'success',
