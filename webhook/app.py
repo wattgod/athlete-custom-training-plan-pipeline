@@ -23,17 +23,31 @@ import math
 import shutil
 import zipfile
 import base64
+import binascii
+from html import escape as html_escape
 import requests as http_requests
 from pathlib import Path
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from flask import Flask, request, jsonify, send_file
 from flask_limiter import Limiter
 import stripe
 import yaml
 
-from fulfillment_state import (APPLIED, CONFIRMED, FulfillmentStateError,
-                               confirm_after_send, load as load_fulfillment_state,
-                               transition as transition_fulfillment)
+from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CONFIRMED,
+                               RELEASE_STATUSES, FulfillmentStateError,
+                               approval_matches_release, bind_legacy_order,
+                               confirm_after_send,
+                               finalize_transitional_release,
+                               load as load_fulfillment_state,
+                               migrate_v1_to_quarantine,
+                               open_verified_release_artifact,
+                               record_seal_mismatch,
+                               transition as transition_fulfillment,
+                               verify_release_artifact,
+                               verify_release_manifest, write_generation)
+from download_tokens import (ARTIFACT_AUDIENCE, DownloadTokenError,
+                             issue_download_token, revoke_download_token,
+                             verify_download_token)
 
 import endure_delivery
 
@@ -299,7 +313,9 @@ def _send_email(to: str, subject: str, body: str, html: str = None, reply_to: st
                 attachments: list = None, brand: str = DEFAULT_BRAND):
     """Send email via Resend HTTP API. Returns True on success.
 
-    attachments: list of (filename, path) tuples; files are base64-encoded.
+    attachments: list of (filename, path-or-sealed-bytes) tuples; files are
+    base64-encoded. Confirmation passes bytes from an already-verified open
+    descriptor so the sender never reopens a mutable release path.
     Resend caps total message size at 40MB.
     """
     if not RESEND_API_KEY:
@@ -319,11 +335,13 @@ def _send_email(to: str, subject: str, body: str, html: str = None, reply_to: st
     if attachments:
         import base64
         encoded = []
-        for fname, fpath in attachments:
+        for fname, source in attachments:
             try:
+                content = (bytes(source) if isinstance(source, (bytes, bytearray))
+                           else Path(source).read_bytes())
                 encoded.append({
                     'filename': fname,
-                    'content': base64.b64encode(Path(fpath).read_bytes()).decode(),
+                    'content': base64.b64encode(content).decode(),
                 })
             except Exception as e:
                 logger.warning(f"Skipping attachment {fname}: {e}")
@@ -348,6 +366,59 @@ def _send_email(to: str, subject: str, body: str, html: str = None, reply_to: st
         return False
 
 
+def _build_phase1_generation_email(details: dict) -> tuple:
+    """State-aware generation notice containing review-only controls."""
+    name = str(details.get('name') or 'Unknown')
+    order_id = str(details.get('order_id') or '')
+    status = str(details.get('fulfillment_status') or 'BLOCKED_REVIEW')
+    issues = details.get('blocking_issues') or []
+    unavailable = details.get('fulfillment_state') == 'unavailable'
+    if unavailable and not any(i.get('id') == 'STATE_UNAVAILABLE' for i in issues):
+        issues = [{
+            'id': 'STATE_UNAVAILABLE', 'severity': 'CRITICAL',
+            'message': 'Fulfillment state unavailable; repair and regenerate.',
+            'waivable': False,
+        }]
+        status = 'BLOCKED_REVIEW'
+    blocked = status == 'BLOCKED_REVIEW' or bool(issues) or unavailable
+    label = 'BLOCKED REVIEW' if blocked else 'GENERATED — REVIEW REQUIRED'
+    token = details.get('download_token') or ''
+    base_url = 'https://athlete-custom-training-plan-pipeline-production.up.railway.app'
+    bundle_url = (f'{base_url}/api/download/{order_id}?artifact=review_bundle&token={token}'
+                  if order_id and token else '')
+    review_url = bundle_url
+    rows = []
+    text_rows = []
+    for issue in issues:
+        waivable = bool(issue.get('waivable', False))
+        rid = str(issue.get('id') or 'UNKNOWN')
+        severity = str(issue.get('severity') or 'ERROR')
+        message = str(issue.get('message') or '')
+        policy = 'waivable with reason' if waivable else 'non-waivable — fix and regenerate'
+        rows.append(
+            '<li><code>' + html_escape(rid) + '</code> [' + html_escape(severity)
+            + '] — ' + html_escape(message) + ' <strong>(' + policy + ')</strong></li>')
+        text_rows.append(f'- {rid} [{severity}] — {message} ({policy})')
+    issues_html = '<ul>' + ''.join(rows) + '</ul>' if rows else '<p>No blockers.</p>'
+    links_html = ''
+    links_text = ''
+    if bundle_url:
+        links_html = (f'<p><a href="{html_escape(review_url)}">Open review materials</a></p>'
+                      f'<p><a href="{html_escape(bundle_url)}">Download review bundle</a></p>')
+        links_text = f'\nReview materials: {review_url}\nReview bundle: {bundle_url}\n'
+    subject = f"[GG] {label}: {name} — order {order_id}"
+    text = (f'{label}: {name}\nOrder: {order_id}\n\nBlockers:\n'
+            + ('\n'.join(text_rows) if text_rows else '- none') + links_text
+            + '\nNo release artifact is available before approval.\n')
+    html = f"""<div style="font-family:Arial,sans-serif;max-width:680px">
+      <h2>{html_escape(label)}: {html_escape(name)}</h2>
+      <p>Order <code>{html_escape(order_id)}</code></p>
+      <h3>Blockers</h3>{issues_html}{links_html}
+      <p><strong>No release artifact is available before approval.</strong></p>
+    </div>"""
+    return subject, text, html
+
+
 def _build_training_plan_email(details: dict) -> tuple:
     """Build coach notification email — athlete info + step-by-step fulfillment checklist."""
     name = details.get('name', 'Unknown')
@@ -368,6 +439,13 @@ def _build_training_plan_email(details: dict) -> tuple:
     download_token = details.get('download_token', '')
     brand = normalize_brand(details.get('brand'))
     subject_prefix = _brand_config(brand).get('subject_prefix', '[GG]')
+
+    # Phase 1 generation notices are constrained to review-only surfaces.
+    # Failed pipeline notices retain the older recovery email below.
+    if pipeline_ok and ('fulfillment_status' in details
+                        or 'fulfillment_state' in details
+                        or 'blocking_issues' in details):
+        return _build_phase1_generation_email(details)
 
     # Phase 4b delivery branching: endure-target orders that delivered get
     # the Endure review checklist; a failed Endure push falls back to the
@@ -873,6 +951,8 @@ def _build_plan_notification_details(order_data: dict, result: dict,
         'tier': order_data.get('tier', 'custom'),
         'order_id': order_data.get('order_id', ''),
         'athlete_id': athlete_id,
+        'delivery_target': order_data.get(
+            'delivery_platform', order_data.get('delivery_target', 'trainingpeaks')),
         'race_name': target.get('name', intake_data.get('race_name', '') if intake_data else ''),
         'race_date': target.get('date', intake_data.get('race_date', '') if intake_data else ''),
         'ftp': fitness.get('ftp_watts', intake_data.get('ftp', '') if intake_data else ''),
@@ -1320,16 +1400,30 @@ def extract_stripe_data(data: dict) -> dict:
     profile['brand'] = _brand
     profile['discipline_default'] = _brand_config(_brand)['discipline']
 
+    raw_delivery_platform = str(
+        metadata.get('delivery_target')
+        or os.environ.get('DELIVERY_TARGET_DEFAULT', 'trainingpeaks')
+    ).strip().lower()
+    if raw_delivery_platform not in ('trainingpeaks', 'endure', 'manual'):
+        raw_delivery_platform = 'trainingpeaks'
+    created_raw = session.get('created')
+    try:
+        order_created_at = datetime.fromtimestamp(
+            int(created_raw), tz=timezone.utc).isoformat().replace('+00:00', 'Z')
+    except (TypeError, ValueError, OSError):
+        order_created_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
     return {
         'athlete_id': athlete_id,
         'order_id': session.get('id', ''),
+        'order_created_at': order_created_at,
+        'weeks_purchased': intake_data.get('computed_weeks') or metadata.get('plan_weeks'),
         'tier': tier,
         'brand': _brand,
-        # Phase 4b coexistence flag — "trainingpeaks" (default) or "endure".
-        # Per-order override via Stripe metadata['delivery_target']; default
-        # via DELIVERY_TARGET_DEFAULT env. Always "trainingpeaks" while the
-        # Endure delivery env vars are unset (feature off).
-        'delivery_target': endure_delivery.resolve_delivery_target(metadata),
+        # Phase 1 preserves the purchased platform but never pushes before
+        # approval. delivery_target remains a compatibility projection.
+        'delivery_platform': raw_delivery_platform,
+        'delivery_target': raw_delivery_platform,
         'profile': profile,
     }
 
@@ -1404,7 +1498,8 @@ def create_athlete_profile(order_data: dict) -> tuple:
 # PIPELINE EXECUTION
 # =============================================================================
 
-def _questionnaire_to_markdown(intake_data: dict, name: str = '', email: str = '') -> str:
+def _questionnaire_to_markdown(intake_data: dict, name: str = '', email: str = '',
+                               fulfillment: dict = None) -> str:
     """Convert web questionnaire JSON into the markdown format intake_to_plan.py expects."""
     name = name or intake_data.get('name', 'Unknown Athlete')
     email = email or intake_data.get('email', '')
@@ -1446,6 +1541,7 @@ def _questionnaire_to_markdown(intake_data: dict, name: str = '', email: str = '
     _brand_raw = (intake_data.get('brand') or '').strip().lower()
     _brand = _brand_raw if _brand_raw in BRANDS else ''
     _discipline_hint = _brand_config(_brand)['discipline'] if _brand else ''
+    fulfillment = fulfillment or {}
 
     md = f"""# Athlete Intake: {name}
 Email: {email}
@@ -1461,6 +1557,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 - Primary Goal: specific_race
 - Brand: {_brand}
 - Race Slug: {target_slug}
+- Course Facts Mode: {intake_data.get('course_facts_mode', '')}
 - Discipline: {_discipline_hint}
 - Race Format: {race_format}
 - Road Category: {road_category}
@@ -1470,6 +1567,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 
 ## Current Fitness
 - FTP: {intake_data.get('ftp', 'unknown')}
+- Training Metric: {intake_data.get('powerOrHr', '')}
 - HR Max: {intake_data.get('hr_max', '')}
 - HR Threshold: {intake_data.get('hr_threshold', '')}
 - W/kg: {intake_data.get('pwRatio', '')}
@@ -1484,7 +1582,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 
 ## Equipment
 - Indoor Trainer: {intake_data.get('trainer_access', 'smart trainer')}
-- Devices: power meter, HR strap
+- Devices: {intake_data.get('devices') or 'unknown'}
 
 ## Schedule
 - Weekly Hours Available: {intake_data.get('hours_per_week', '10')}
@@ -1510,43 +1608,75 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 
 ## Additional
 - Other: {intake_data.get('notes', '')}
+
+## Fulfillment
+- Order ID: {fulfillment.get('order_id', '')}
+- Delivery Platform: {fulfillment.get('delivery_platform', 'manual')}
+- Order Created At: {fulfillment.get('order_created_at', '')}
+- Generation At: {fulfillment.get('generation_at', datetime.now().isoformat())}
+- Weeks Purchased: {fulfillment.get('weeks_purchased', '')}
+- Athlete Timezone: {fulfillment.get('athlete_timezone', intake_data.get('athlete_timezone', ''))}
 """
     return md
 
 
-def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None) -> dict:
+def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None,
+                 order_data: dict = None) -> dict:
     """Run the full training plan pipeline via intake_to_plan.py."""
     script_path = Path(SCRIPTS_DIR) / 'intake_to_plan.py'
 
-    # Fallback to generate_full_package.py if no intake data (legacy path)
+    # The historical no-intake fallback invoked generate_full_package.py with
+    # --deliver, exposing guides and ZWOs outside order/revision/seal authority.
+    # Missing intake is recoverable by the coach, but it is never releasable.
     if not intake_data:
-        script_path = Path(SCRIPTS_DIR) / 'generate_full_package.py'
-        if not script_path.exists():
-            return {
-                'success': False,
-                'stdout': '',
-                'stderr': f'Pipeline script not found: {script_path}'
-            }
-        cmd = ['python3', str(script_path), athlete_id]
-        if deliver:
-            cmd.append('--deliver')
-        logger.info(f"Running legacy pipeline for {athlete_id}")
-    else:
-        if not script_path.exists():
-            return {
-                'success': False,
-                'stdout': '',
-                'stderr': f'Pipeline script not found: {script_path}'
-            }
-        cmd = ['python3', str(script_path)]
-        logger.info(f"Running intake pipeline for {athlete_id}")
+        message = (
+            'No intake was attached; legacy delivery is disabled because it '
+            'cannot produce a seal-bound order revision. Coach action is required.'
+        )
+        logger.error(f"Refusing no-intake pipeline for {athlete_id}: {message}")
+        return {'success': False, 'stdout': '', 'stderr': message,
+                'fulfillment_state': 'unavailable', 'artifact_dir': None}
+    if not script_path.exists():
+        return {
+            'success': False,
+            'stdout': '',
+            'stderr': f'Pipeline script not found: {script_path}'
+        }
+    cmd = ['python3', str(script_path)]
+    logger.info(f"Running intake pipeline for {athlete_id}")
+
+    # Each order gets a private generation root. Athlete slugs are labels, not
+    # persistence keys; sharing the historical athletes/<slug> directory lets
+    # repeat/concurrent orders overwrite one another.
+    pipeline_env = {**os.environ, 'GG_AUTO_EMAIL': 'true'}
+    if intake_data.get('generation_clock'):
+        pipeline_env['GG_FIXED_NOW'] = str(intake_data['generation_clock'])
+    work_athletes_dir = None
+    if intake_data and order_data and order_data.get('order_id'):
+        work_athletes_dir = (Path(DATA_DIR) / 'order-work'
+                             / _safe_order_id(order_data['order_id']) / 'athletes')
+        work_athletes_dir.mkdir(parents=True, exist_ok=True)
+        pipeline_env['GG_ATHLETES_BASE_DIR'] = str(work_athletes_dir)
+        pipeline_env['GG_DELIVERY_DIR'] = str(work_athletes_dir.parent / 'review')
 
     # Generate markdown input for intake pipeline
     stdin_data = None
     if intake_data:
         name = intake_data.get('name', '')
         email = intake_data.get('email', '')
-        stdin_data = _questionnaire_to_markdown(intake_data, name=name, email=email)
+        order_data = order_data or {}
+        stdin_data = _questionnaire_to_markdown(
+            intake_data, name=name, email=email,
+            fulfillment={
+                'order_id': order_data.get('order_id', ''),
+                'delivery_platform': order_data.get(
+                    'delivery_platform', order_data.get('delivery_target', 'manual')),
+                'order_created_at': order_data.get('order_created_at', ''),
+                'generation_at': intake_data.get('generation_clock') or datetime.now().isoformat(),
+                'weeks_purchased': order_data.get(
+                    'weeks_purchased', intake_data.get('computed_weeks', '')),
+                'athlete_timezone': intake_data.get('athlete_timezone', ''),
+            })
         logger.info(f"Generated {len(stdin_data)} char markdown intake for {athlete_id}")
 
     try:
@@ -1557,7 +1687,7 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
             text=True,
             timeout=PIPELINE_TIMEOUT,
             cwd=SCRIPTS_DIR,
-            env={**os.environ, 'GG_AUTO_EMAIL': 'true'}
+            env=pipeline_env
         )
 
         success = result.returncode == 0
@@ -1569,10 +1699,28 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
                 f"{_pipeline_error_excerpt({'stderr': result.stderr, 'stdout': result.stdout})}"
             )
 
+        artifact_dir = None
+        if work_athletes_dir and work_athletes_dir.exists():
+            candidates = [path for path in work_athletes_dir.iterdir()
+                          if path.is_dir()]
+            generated = [path for path in candidates
+                         if (path / 'fulfillment_status.json').exists()]
+            if len(generated) == 1:
+                artifact_dir = str(generated[0])
+            elif generated:
+                exact = [path for path in generated
+                         if path.name.replace('-', '_') == athlete_id.replace('-', '_')]
+                artifact_dir = str(exact[0]) if len(exact) == 1 else None
+
         return {
             'success': success,
             'stdout': result.stdout,
             'stderr': result.stderr,
+            'fulfillment_state': (
+                'unavailable' if 'GG_FULFILLMENT_STATE=unavailable' in result.stdout
+                else 'available'
+            ),
+            'artifact_dir': artifact_dir,
         }
 
     except subprocess.TimeoutExpired:
@@ -1603,8 +1751,17 @@ CUSTOMER_DELIVERABLES = [
     'plan_preview.html',
     'fueling.yaml',
 ]
-# Coach-only files (not sent to customer)
-COACH_DELIVERABLES = [
+# Review-bundle files are human-readable and non-executable by construction.
+REVIEW_DELIVERABLES = [
+    'plan_preview.html',
+    'coaching_brief.md',
+    'training_guide.html',
+    'plan_summary.yaml',
+    'fueling.yaml',
+]
+# Private generated inputs retained for audit/sealing but never exposed in the
+# review bundle.
+PRIVATE_DELIVERABLES = [
     'coaching_brief.md',
     'personal_email.md',
     'plan_summary.yaml',
@@ -1613,8 +1770,133 @@ COACH_DELIVERABLES = [
     'derived.yaml',
     'intake_backup.json',
     'fulfillment_manifest.json',
+    'plan_ir.json',
     'tp_manifest.json',
 ]
+
+
+def _safe_order_id(order_id: str) -> str:
+    value = str(order_id or '').strip()
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', value):
+        raise ValueError('invalid order_id')
+    return value
+
+
+def _orders_root() -> Path:
+    return Path(DELIVERIES_DIR) / 'orders'
+
+
+def _order_dir(order_id: str) -> Path:
+    return _orders_root() / _safe_order_id(order_id)
+
+
+def _order_lookup_path(athlete_id: str) -> Path:
+    return Path(DELIVERIES_DIR) / 'athlete-lookups' / f'{_normalize_athlete_id(athlete_id)}.json'
+
+
+def _record_order_lookup(order_id: str, athlete_id: str) -> None:
+    path = _order_lookup_path(athlete_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_suffix('.lock')
+    with open(lock_path, 'a+') as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            current = json.loads(path.read_text()) if path.exists() else {'order_ids': []}
+        except (OSError, json.JSONDecodeError):
+            current = {'order_ids': []}
+        current['athlete_id'] = _normalize_athlete_id(athlete_id)
+        current['order_ids'] = sorted(set(current.get('order_ids', []) + [order_id]))
+        tmp = path.with_name(f'.{path.name}.tmp')
+        tmp.write_text(json.dumps(current, indent=2, sort_keys=True) + '\n')
+        os.replace(tmp, path)
+        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def _legacy_ledger_candidates(athlete_id: str) -> list[str]:
+    processed_path = Path(DATA_DIR) / '.processed_orders.json'
+    try:
+        processed = json.loads(processed_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    return sorted(
+        order for order, entry in processed.items()
+        if _normalize_athlete_id(str(entry.get('athlete_id') or ''))
+        == _normalize_athlete_id(athlete_id)
+    )
+
+
+def _migrate_legacy_path(legacy_path: Path) -> dict | None:
+    """Recoverably migrate/tombstone one old athlete-keyed state file."""
+    raw = json.loads(legacy_path.read_text())
+    if raw.get('schema_version') == 'tombstone/v1':
+        migrated = Path(str(raw.get('migrated_to') or ''))
+        if migrated.exists():
+            state = load_fulfillment_state(migrated)
+            _record_order_lookup(state['order_id'], state['athlete_id'])
+            return state
+        return None
+    if raw.get('schema_version') != 1:
+        return None
+    _, state = migrate_v1_to_quarantine(
+        legacy_path, _orders_root(),
+        ledger_candidates=_legacy_ledger_candidates(
+            str(raw.get('athlete_id') or legacy_path.parent.name)),
+    )
+    _record_order_lookup(state['order_id'], state['athlete_id'])
+    return state
+
+
+def migrate_all_v1_states() -> dict:
+    """Startup-complete migration of every old athlete-keyed v1 state."""
+    stats = {'migrated': 0, 'tombstones_verified': 0, 'failed': 0}
+    deliveries = Path(DELIVERIES_DIR)
+    if not deliveries.exists():
+        return stats
+    for legacy_path in sorted(deliveries.glob('*/fulfillment_status.json')):
+        try:
+            raw = json.loads(legacy_path.read_text())
+            version = raw.get('schema_version')
+            if version not in (1, 'tombstone/v1'):
+                continue
+            state = _migrate_legacy_path(legacy_path)
+            if state:
+                key = 'migrated' if version == 1 else 'tombstones_verified'
+                stats[key] += 1
+        except (OSError, json.JSONDecodeError, FulfillmentStateError) as exc:
+            stats['failed'] += 1
+            logger.error(
+                f'Legacy fulfillment migration failed closed for {legacy_path}: {exc}')
+    return stats
+
+
+def _resolve_order_id(ref: str) -> str | None:
+    try:
+        direct = _order_dir(ref)
+    except ValueError:
+        return None
+    if (direct / 'fulfillment_status.json').exists():
+        return ref
+
+    # Examine the old athlete path before trusting an existing v2 lookup. A
+    # repeat customer's newer lookup must never shadow an unmigrated v1 file.
+    legacy_path = (Path(DELIVERIES_DIR) / _normalize_athlete_id(ref)
+                   / 'fulfillment_status.json')
+    if legacy_path.exists():
+        try:
+            _migrate_legacy_path(legacy_path)
+        except (OSError, json.JSONDecodeError, FulfillmentStateError) as exc:
+            logger.error(f'Legacy fulfillment migration failed closed for {ref}: {exc}')
+            return None
+
+    lookup = _order_lookup_path(ref)
+    try:
+        order_ids = (json.loads(lookup.read_text()).get('order_ids') or [])
+    except (OSError, json.JSONDecodeError):
+        order_ids = []
+    if len(order_ids) == 1:
+        return order_ids[0]
+
+    return None
 
 
 def _resolve_generated_athlete_dir(athlete_id: str) -> Path:
@@ -1656,37 +1938,71 @@ def _resolve_generated_athlete_dir(athlete_id: str) -> Path:
     return exact
 
 
-def persist_deliverables(athlete_id: str) -> dict:
-    """Copy deliverables from ephemeral athlete dir to persistent volume and create zip.
-
-    Returns dict with delivery_dir, zip_path, customer_zip_path, and file counts.
-    Customer zip excludes coach-only files (coaching_brief, profile, methodology).
-    """
+def persist_deliverables(order_id: str, athlete_id: str = '', source_dir: Path | str = None,
+                         delivery_platform: str = 'manual',
+                         state_unavailable: bool = False) -> dict:
+    """Persist one immutable order revision, review bundle, and gated release."""
+    order_id = _safe_order_id(order_id)
+    athlete_id = athlete_id or order_id
     # Prefer the directory that contains generated plan artifacts when both
     # webhook (underscore) and intake pipeline (hyphen) IDs exist.
-    athlete_dir = _resolve_generated_athlete_dir(athlete_id)
-    alt_id = athlete_id.replace('_', '-')
+    athlete_dir = Path(source_dir) if source_dir else _resolve_generated_athlete_dir(athlete_id)
+    source_state_path = athlete_dir / 'fulfillment_status.json'
+    order_root = _order_dir(order_id)
+    order_root.mkdir(parents=True, exist_ok=True)
+    state_path = order_root / 'fulfillment_status.json'
 
-    delivery_dir = Path(DELIVERIES_DIR) / athlete_id
-    delivery_dir.mkdir(parents=True, exist_ok=True)
+    existing_state = None
+    if state_path.exists():
+        existing_state = load_fulfillment_state(state_path)
+
+    if state_unavailable:
+        state = write_generation(state_path, athlete_id, [{
+            'id': 'STATE_UNAVAILABLE', 'source': 'webhook',
+            'severity': 'CRITICAL',
+            'message': 'Pipeline state was unavailable; repair and regenerate before release.',
+        }], order_id=order_id, delivery_platform=delivery_platform)
+    else:
+        state = load_fulfillment_state(source_state_path)
+        if state['order_id'] != order_id:
+            raise FulfillmentStateError('generated state order_id mismatch')
+        if state['delivery_platform'] != delivery_platform:
+            raise FulfillmentStateError('generated state delivery_platform mismatch')
+        if (existing_state
+                and existing_state['generation_revision'] == state['generation_revision']
+                and existing_state.get('model_seal')):
+            raise FulfillmentStateError(
+                'sealed revision already exists; call write_generation before persisting corrections'
+            )
+        shutil.copy2(source_state_path, state_path)
+        state = load_fulfillment_state(state_path)
+
+    revision = state['generation_revision']
+    revision_dir = order_root / 'revisions' / f'r{revision}'
+    if revision_dir.exists():
+        if ((existing_state
+             and existing_state['generation_revision'] == revision
+             and existing_state.get('model_seal'))
+                or (revision_dir / 'release_manifest.json').exists()):
+            raise FulfillmentStateError(
+                'sealed revision directory is immutable; call write_generation first'
+            )
+        shutil.rmtree(revision_dir)
+    artifact_dir = revision_dir / 'artifacts'
+    artifact_dir.mkdir(parents=True)
 
     copied = []
     missing = []
 
     # Also check the ~/Downloads path (where intake_to_plan.py copies curated files)
-    downloads_dir = Path.home() / 'Downloads' / f'{alt_id}-training-plan'
-    if not downloads_dir.exists():
-        downloads_dir = Path.home() / 'Downloads' / f'{athlete_id}-training-plan'
-    source_dir = downloads_dir if downloads_dir.exists() else athlete_dir
+    source_dir = athlete_dir
 
     # Copy workouts/
     workouts_src = source_dir / 'workouts'
     if not workouts_src.exists():
         workouts_src = athlete_dir / 'workouts'
     if workouts_src.exists():
-        workouts_dst = delivery_dir / 'workouts'
-        if workouts_dst.exists():
-            shutil.rmtree(workouts_dst)
+        workouts_dst = artifact_dir / 'workouts'
         shutil.copytree(workouts_src, workouts_dst)
         zwo_count = len(list(workouts_dst.glob('*.zwo')))
         copied.append(f'workouts/ ({zwo_count} .zwo files)')
@@ -1694,48 +2010,52 @@ def persist_deliverables(athlete_id: str) -> dict:
         missing.append('workouts/')
 
     # Copy individual files
-    for fname in CUSTOMER_DELIVERABLES + COACH_DELIVERABLES:
+    for fname in sorted(set(CUSTOMER_DELIVERABLES + PRIVATE_DELIVERABLES + REVIEW_DELIVERABLES)):
         src = source_dir / fname
         if not src.exists():
             src = athlete_dir / fname  # Fallback to raw athlete dir
         if src.exists():
-            shutil.copy2(src, delivery_dir / fname)
+            shutil.copy2(src, artifact_dir / fname)
             copied.append(fname)
         elif fname in ('training_guide.pdf',):
             pass  # PDF is optional (no Chrome on Railway)
         else:
             missing.append(fname)
 
-    # The persistent delivery copy is the authority for operator transitions.
-    # It is intentionally not a customer/coach package artifact: a zip is a
-    # snapshot, while the status changes after review and application.
-    status_src = athlete_dir / 'fulfillment_status.json'
-    if status_src.exists():
-        shutil.copy2(status_src, delivery_dir / 'fulfillment_status.json')
-        copied.append('fulfillment_status.json (state authority)')
-    else:
-        missing.append('fulfillment_status.json')
+    review_zip = revision_dir / f'{order_id}-review-bundle.zip'
+    with zipfile.ZipFile(review_zip, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for fname in REVIEW_DELIVERABLES:
+            path = artifact_dir / fname
+            if path.exists():
+                archive.write(path, fname)
 
-    # Create FULL zip (coach — everything)
-    full_zip = delivery_dir / f'{athlete_id}-full-package.zip'
-    _create_zip(delivery_dir, full_zip, exclude_zip=True,
-                exclude_files={'fulfillment_status.json'})
+    customer_zip = revision_dir / f'{order_id}-customer-bundle.zip'
+    with zipfile.ZipFile(customer_zip, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for fname in CUSTOMER_DELIVERABLES:
+            path = artifact_dir / fname
+            if path.exists():
+                archive.write(path, fname)
+        if (artifact_dir / 'workouts').exists():
+            for workout in sorted((artifact_dir / 'workouts').rglob('*')):
+                if workout.is_file():
+                    archive.write(workout, workout.relative_to(artifact_dir))
 
-    # Create CUSTOMER zip (no coach-only files)
-    customer_zip = delivery_dir / f'{athlete_id}-training-plan.zip'
-    _create_zip(delivery_dir, customer_zip, exclude_zip=True,
-                exclude_files=set(COACH_DELIVERABLES) | {'fulfillment_status.json'})
+    state = finalize_transitional_release(
+        state_path, revision_dir, expected_revision=revision)
+    _record_order_lookup(order_id, athlete_id)
 
     logger.info(f"Persisted deliverables for {athlete_id}: "
-                f"{len(copied)} files, full={full_zip.stat().st_size // 1024}KB, "
+                f"{len(copied)} files, review={review_zip.stat().st_size // 1024}KB, "
                 f"customer={customer_zip.stat().st_size // 1024}KB")
 
     return {
-        'delivery_dir': str(delivery_dir),
-        'full_zip': str(full_zip),
+        'delivery_dir': str(order_root),
+        'revision_dir': str(revision_dir),
+        'review_zip': str(review_zip),
         'customer_zip': str(customer_zip),
-        'full_zip_size': full_zip.stat().st_size,
+        'review_zip_size': review_zip.stat().st_size,
         'customer_zip_size': customer_zip.stat().st_size,
+        'state': state,
         'copied': copied,
         'missing': missing,
     }
@@ -1761,31 +2081,24 @@ def _normalize_athlete_id(athlete_id: str) -> str:
     return athlete_id.replace('-', '_')
 
 
-def _generate_download_token(athlete_id: str) -> str:
-    """Generate a signed download token for an athlete's deliverables.
-
-    Token = HMAC-SHA256(CRON_SECRET, athlete_id:date). Valid for 30 days.
-    """
-    secret = os.environ.get('CRON_SECRET', 'dev-secret')
-    date_str = datetime.now().strftime('%Y-%m')  # Monthly rotation
-    payload = f'{_normalize_athlete_id(athlete_id)}:{date_str}'
-    return hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
+def _generate_download_token(order_id: str, artifact: str = 'review_bundle') -> str:
+    order_id = _resolve_order_id(order_id) or order_id
+    state = load_fulfillment_state(_fulfillment_status_path(order_id))
+    return issue_download_token(
+        order_id=state['order_id'], athlete_id=state['athlete_id'],
+        generation_revision=state['generation_revision'], artifact=artifact)
 
 
-def _verify_download_token(athlete_id: str, token: str) -> bool:
-    """Verify a download token. Checks current and previous month."""
-    secret = os.environ.get('CRON_SECRET', 'dev-secret')
-    norm_id = _normalize_athlete_id(athlete_id)
-    for delta_months in (0, -1):
-        d = date.today().replace(day=1)
-        if delta_months:
-            d = d - timedelta(days=1)  # Last day of previous month
-        date_str = d.strftime('%Y-%m')
-        payload = f'{norm_id}:{date_str}'
-        expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()[:32]
-        if hmac.compare_digest(token, expected):
-            return True
-    return False
+def _verify_download_token(order_id: str, token: str, artifact: str) -> dict:
+    order_id = _resolve_order_id(order_id) or order_id
+    state = load_fulfillment_state(_fulfillment_status_path(order_id))
+    return verify_download_token(
+        token, expected_order_id=state['order_id'],
+        expected_athlete_id=state['athlete_id'],
+        expected_revision=state['generation_revision'],
+        expected_artifact=artifact,
+        expected_audience=ARTIFACT_AUDIENCE[artifact],
+        revocation_path=Path(DATA_DIR) / 'token_revocations.json')
 
 
 # =============================================================================
@@ -1855,14 +2168,22 @@ def _sync_pipeline_mode() -> bool:
     return os.environ.get('SYNC_PIPELINE', '') == '1'
 
 
-def _job_path(athlete_id: str) -> Path:
-    return Path(JOBS_DIR) / f'{athlete_id}.json'
+def _canonical_job_path(order_id: str) -> Path:
+    return Path(JOBS_DIR) / 'orders' / f'{_safe_order_id(order_id)}.json'
+
+
+def _job_path(ref: str) -> Path:
+    """Compatibility lookup path; canonical records live under orders/."""
+    return Path(JOBS_DIR) / f'{_normalize_athlete_id(ref)}.json'
 
 
 def _write_job(job: dict):
     """Atomically persist a job record (temp file + os.replace)."""
     job['updated_at'] = datetime.now().isoformat()
-    path = _job_path(job['athlete_id'])
+    order_id = job.get('order_id') or f"legacy-job-{_normalize_athlete_id(job['athlete_id'])}"
+    job['order_id'] = order_id
+    order_id = _safe_order_id(order_id)
+    path = _canonical_job_path(order_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f'.{path.name}.tmp')
     with _jobs_write_lock:
@@ -1871,13 +2192,48 @@ def _write_job(job: dict):
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, path)
+        # Athlete-keyed file is a lookup only. Keep enough compatibility for
+        # older operational tooling when exactly one order is known.
+        lookup_path = _job_path(job['athlete_id'])
+        try:
+            lookup = json.loads(lookup_path.read_text()) if lookup_path.exists() else {}
+        except (OSError, json.JSONDecodeError):
+            lookup = {}
+        order_ids = sorted(set((lookup.get('order_ids') or []) + [order_id]))
+        lookup_payload = {'athlete_id': job['athlete_id'], 'order_ids': order_ids}
+        if len(order_ids) == 1:
+            lookup_payload.update(job)
+            lookup_payload['order_ids'] = order_ids
+        lookup_tmp = lookup_path.with_name(f'.{lookup_path.name}.tmp')
+        lookup_tmp.write_text(json.dumps(lookup_payload, indent=2) + '\n')
+        os.replace(lookup_tmp, lookup_path)
 
 
-def _read_job(athlete_id: str) -> dict:
+def _read_job(ref: str) -> dict:
     """Load a job record. Returns None if absent or unreadable."""
-    path = _job_path(athlete_id)
-    if not path.exists():
-        return None
+    try:
+        direct = _canonical_job_path(ref)
+    except ValueError:
+        direct = None
+    if direct and direct.exists():
+        path = direct
+    else:
+        lookup_path = _job_path(ref)
+        if not lookup_path.exists():
+            return None
+        try:
+            lookup = json.loads(lookup_path.read_text())
+            order_ids = lookup.get('order_ids') or []
+            if len(order_ids) == 1:
+                path = _canonical_job_path(order_ids[0])
+            elif lookup.get('order_id'):
+                # Read-only compatibility for pre-v2 job files.
+                return lookup
+            else:
+                return None
+        except (json.JSONDecodeError, OSError, ValueError) as e:
+            logger.warning(f"Unreadable job lookup {lookup_path.name}: {e}")
+            return None
     try:
         return json.loads(path.read_text())
     except (json.JSONDecodeError, OSError) as e:
@@ -1885,86 +2241,14 @@ def _read_job(athlete_id: str) -> dict:
         return None
 
 
-def _update_job(athlete_id: str, **fields) -> dict:
+def _update_job(ref: str, **fields) -> dict:
     """Read-modify-write a job record."""
-    job = _read_job(athlete_id) or {'athlete_id': athlete_id}
+    job = _read_job(ref)
+    if not job:
+        raise ValueError(f'job not found: {ref}')
     job.update(fields)
     _write_job(job)
     return job
-
-
-def _load_profile_yaml(athlete_id: str) -> dict:
-    """Load the pipeline's profile.yaml (build_profile output) for an athlete.
-
-    Checks the persistent deliveries dir first (persist_deliverables copies
-    profile.yaml there), then the ephemeral athlete dir — including the
-    hyphen/underscore variant intake_to_plan.py uses. Returns {} if absent.
-    """
-    candidates = [
-        Path(DELIVERIES_DIR) / athlete_id / 'profile.yaml',
-        Path(ATHLETES_DIR) / athlete_id / 'profile.yaml',
-        Path(ATHLETES_DIR) / athlete_id.replace('_', '-') / 'profile.yaml',
-    ]
-    for path in candidates:
-        if path.exists():
-            try:
-                with open(path) as f:
-                    return yaml.safe_load(f) or {}
-            except Exception as e:
-                logger.warning(f"Unreadable profile.yaml at {path}: {e}")
-    return {}
-
-
-def _attempt_endure_delivery(athlete_id: str, order_data: dict,
-                             intake_data: dict = None) -> dict:
-    """Push a generated plan to Endure. NEVER raises, never fails the order.
-
-    Returns the delivery record (also persisted on the job record):
-    status delivered/already_delivered → coach email switches to the
-    Endure review checklist; status failed → coach email keeps the full
-    TrainingPeaks checklist and flags the failure loudly
-    (order-killer-prevention: loud to the coach, invisible to the customer).
-    """
-    order_id = order_data.get('order_id', '')
-    try:
-        profile = _load_profile_yaml(athlete_id)
-        if not profile:
-            record = {'ok': False, 'status': 'failed', 'attempts': 0,
-                      'error': 'profile.yaml not found for Endure mapping'}
-        else:
-            payload = endure_delivery.build_delivery_payload(
-                profile, order_id, intake=intake_data or {})
-            record = endure_delivery.deliver_purchased_plan(payload)
-    except endure_delivery.EndureMappingError as e:
-        record = {'ok': False, 'status': 'failed', 'attempts': 0,
-                  'error': f'mapping error: {e}'}
-    except Exception as e:
-        logger.exception(f"Unexpected Endure delivery error for {athlete_id}")
-        record = {'ok': False, 'status': 'failed', 'attempts': 0,
-                  'error': str(e)[:300]}
-
-    success = record.get('status') in ('delivered', 'already_delivered')
-    try:
-        streak = endure_delivery.record_delivery_result(
-            success, order_id, data_dir=DATA_DIR)
-        record['streak'] = streak.get('consecutive_successes')
-    except Exception:
-        logger.exception("Failed to record Endure delivery streak")
-
-    try:
-        _update_job(athlete_id, endure_delivery=record)
-    except Exception:
-        logger.exception(f"Failed to record Endure delivery on job {athlete_id}")
-
-    if success:
-        logger.info(f"Endure delivery OK for {athlete_id} "
-                    f"(plan {record.get('plan_id', '?')}, "
-                    f"streak {record.get('streak', '?')})")
-    else:
-        logger.error(f"ENDURE DELIVERY FAILED for {athlete_id} "
-                     f"(order {order_id or '?'}): {record.get('error')} — "
-                     f"falling back to TrainingPeaks delivery")
-    return record
 
 
 def _execute_plan_job(job: dict, intake_data: dict = None):
@@ -1984,44 +2268,90 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
         intake_data = load_intake(job['intake_id'])
 
     try:
-        _update_job(athlete_id, status='running',
+        if not _read_job(job['order_id']):
+            _write_job(job)
+        _update_job(job['order_id'], status='running',
                     started_at=datetime.now().isoformat())
 
         result = run_pipeline(athlete_id, deliver=True,
-                              intake_data=intake_data or None)
-        log_order(order_data, result)
+                              intake_data=intake_data or None,
+                              order_data=order_data)
 
-        if result['success']:
+        persisted = None
+        persistence_error = ''
+        quarantine_requested = result.get('fulfillment_state') == 'unavailable'
+        if result['success'] or quarantine_requested:
+            source_dir = result.get('artifact_dir')
+            if not source_dir:
+                source_dir = ((Path(ATHLETES_DIR) / athlete_id)
+                              if quarantine_requested
+                              else _resolve_generated_athlete_dir(athlete_id))
             try:
-                persist_deliverables(athlete_id)
+                persisted = persist_deliverables(
+                    order_data.get('order_id', ''), athlete_id,
+                    source_dir=source_dir,
+                    delivery_platform=order_data.get(
+                        'delivery_platform', order_data.get('delivery_target', 'manual')),
+                    state_unavailable=quarantine_requested,
+                )
             except Exception as e:
                 logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
+                persistence_error = str(e)
+                result['fulfillment_state'] = 'unavailable'
+                try:
+                    persisted = persist_deliverables(
+                        order_data.get('order_id', ''), athlete_id,
+                        source_dir=source_dir,
+                        delivery_platform=order_data.get(
+                            'delivery_platform', order_data.get('delivery_target', 'manual')),
+                        state_unavailable=True,
+                    )
+                except Exception as quarantine_exc:
+                    persistence_error = (
+                        f'{persistence_error}; quarantine failed: {quarantine_exc}'
+                    ).strip('; ')
+                    logger.exception('Could not persist STATE_UNAVAILABLE quarantine')
 
-        # Phase 4b: push to Endure when this order opted in. The full ZWO
-        # package above is ALWAYS generated regardless of target (fallback
-        # guarantee). A failed push never fails the order — it's recorded
-        # on the job, flagged loudly in the coach email, and the coach
-        # delivers via TrainingPeaks as usual.
-        endure_record = None
-        if (result['success']
-                and order_data.get('delivery_target') == 'endure'):
-            endure_record = _attempt_endure_delivery(
-                athlete_id, order_data, intake_data or None)
+            if not persisted:
+                result['success'] = False
+                result['fulfillment_state'] = 'unavailable'
+                result['stderr'] = (
+                    persistence_error
+                    or 'Persistence returned no durable order state'
+                )
+            elif quarantine_requested:
+                # Reaching a durable non-waivable BLOCKED_REVIEW state is a
+                # successful order workflow outcome, not a dead pipeline job.
+                result['success'] = True
+                result['quarantined'] = True
+
+        log_order(order_data, result)
 
         details = _build_plan_notification_details(order_data, result,
                                                    intake_data or None)
-        details['delivery_target'] = order_data.get('delivery_target',
-                                                    'trainingpeaks')
-        if endure_record is not None:
-            details['endure_delivery'] = endure_record
-        if result['success']:
-            details['download_token'] = _generate_download_token(athlete_id)
+        details['fulfillment_state'] = result.get('fulfillment_state', 'unavailable')
+        if persisted:
+            details['fulfillment_status'] = persisted['state']['status']
+            details['blocking_issues'] = persisted['state']['blocking_issues']
+            details['required_confirmations'] = persisted['state']['required_confirmations']
+        if result['success'] and persisted:
+            try:
+                details['download_token'] = _generate_download_token(
+                    order_data.get('order_id', ''), 'review_bundle')
+            except DownloadTokenError as exc:
+                # The durable blocked order remains the authority. Missing
+                # link-signing config suppresses review download access and is
+                # loud to the coach, but must not turn quarantine into a dead
+                # pipeline job.
+                logger.error(
+                    f'Review token unavailable for order '
+                    f"{order_data.get('order_id', '')}: {exc}")
             _notify_new_order('training_plan', details)
-            _update_job(athlete_id, status='succeeded',
+            _update_job(job['order_id'], status='succeeded',
                         finished_at=datetime.now().isoformat(), error=None)
         else:
             _notify_new_order('training_plan_FAILED', details)
-            _update_job(athlete_id, status='failed',
+            _update_job(job['order_id'], status='failed',
                         finished_at=datetime.now().isoformat(),
                         error=_pipeline_error_excerpt(result))
         return result
@@ -2032,7 +2362,7 @@ def _execute_plan_job(job: dict, intake_data: dict = None):
             f"PLAN JOB CRASHED for {athlete_id} "
             f"(order {job.get('order_id', '?')}): {e}", exc_info=True)
         try:
-            _update_job(athlete_id, status='failed',
+            _update_job(job['order_id'], status='failed',
                         finished_at=datetime.now().isoformat(),
                         error=str(e)[:500])
             details = _build_plan_notification_details(
@@ -2070,22 +2400,22 @@ def _spawn_plan_job(order_data: dict, intake_id: str = '',
     Returns (job, sync_result). sync_result is the pipeline result when
     SYNC_PIPELINE=1 (inline execution), else None (background thread).
 
-    Guards against the same athlete's job running twice: if a queued or
-    running job already exists for this athlete_id, no new one is spawned
-    (webhook retries are already absorbed upstream by order idempotency).
+    Guards against the same order running twice. A repeat customer may have
+    multiple simultaneous orders without either being suppressed.
     """
     athlete_id = order_data['athlete_id']
 
-    existing = _read_job(athlete_id)
+    order_id = _safe_order_id(order_data.get('order_id', ''))
+    existing = _read_job(order_id)
     if existing and existing.get('status') in ('queued', 'running'):
         logger.warning(
-            f"Job for {athlete_id} already {existing['status']} "
+            f"Job for order {order_id} already {existing['status']} "
             f"(order {existing.get('order_id', '?')}) — not spawning duplicate")
         return existing, None
 
     job = {
         'athlete_id': athlete_id,
-        'order_id': order_data.get('order_id', ''),
+        'order_id': order_id,
         'intake_id': intake_id or '',
         # Coexistence flag (Phase 4b) — resolved at checkout, recorded here
         # so /api/confirm and the sweep can branch on it after a restart.
@@ -2125,7 +2455,7 @@ def sweep_stuck_jobs() -> dict:
 
     stuck_before = datetime.now() - timedelta(minutes=JOB_STUCK_AFTER_MINUTES)
 
-    for path in sorted(jobs_dir.glob('*.json')):
+    for path in sorted((jobs_dir / 'orders').glob('*.json')):
         job = _read_job(path.stem)
         if not job or job.get('status') not in ('queued', 'running'):
             continue
@@ -2147,7 +2477,7 @@ def sweep_stuck_jobs() -> dict:
                 f"PLAN JOB ORPHANED after {attempts} attempts: {athlete_id} "
                 f"(order {job.get('order_id', '?')}) — marking failed, "
                 f"manual re-run required")
-            _update_job(athlete_id, status='failed',
+            _update_job(job['order_id'], status='failed',
                         finished_at=datetime.now().isoformat(),
                         error=f'Job stuck after {attempts} attempts '
                               f'(likely restart mid-generation)')
@@ -2223,45 +2553,62 @@ def health():
 # DELIVERY ENDPOINTS — download zips, send to customer
 # =============================================================================
 
-@app.route('/api/download/<athlete_id>', methods=['GET'])
-def download_deliverables(athlete_id):
-    """Download an athlete's deliverables zip.
-
-    Auth: either X-Cron-Secret header OR ?token= signed URL parameter.
-    Query params:
-      ?type=customer (default) — customer-facing zip (no coach files)
-      ?type=full — full package including coaching_brief, profile, etc.
-    """
+@app.route('/api/download/<order_id>', methods=['GET'])
+def download_deliverables(order_id):
+    """Download one typed, order/revision-bound artifact."""
+    if 'type' in request.args:
+        return jsonify({'error': 'Unknown artifact type'}), 400
+    artifact = request.args.get('artifact', 'review_bundle')
+    if artifact not in ARTIFACT_AUDIENCE:
+        return jsonify({'error': 'Unknown artifact type'}), 400
+    resolved_order_id = _resolve_order_id(order_id)
+    if not resolved_order_id:
+        return jsonify({'error': 'Fulfillment state unavailable'}), 409
+    try:
+        state = load_fulfillment_state(_fulfillment_status_path(resolved_order_id))
+    except FulfillmentStateError:
+        return jsonify({'error': 'Fulfillment state unavailable'}), 409
     # Auth: header secret or signed token
     secret = request.headers.get('X-Cron-Secret', '')
     token = request.args.get('token', '')
     has_secret = secret and hmac.compare_digest(secret, os.environ.get('CRON_SECRET', ''))
-    has_token = token and _verify_download_token(athlete_id, token)
+    try:
+        has_token = bool(token and _verify_download_token(
+            resolved_order_id, token, artifact))
+    except (DownloadTokenError, FulfillmentStateError):
+        has_token = False
 
     if not has_secret and not has_token:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    # Normalize — accept both underscore and hyphen forms
-    norm_id = _normalize_athlete_id(athlete_id)
-    if not validate_athlete_id(norm_id):
-        return jsonify({'error': 'Invalid athlete ID'}), 400
+    if artifact == 'customer_bundle':
+        if not approval_matches_release(state):
+            return jsonify({'error': 'plan not released'}), 409
 
-    zip_type = request.args.get('type', 'customer')
-    delivery_dir = Path(DELIVERIES_DIR) / norm_id
-
-    if zip_type == 'full':
-        zip_path = delivery_dir / f'{norm_id}-full-package.zip'
-    else:
-        zip_path = delivery_dir / f'{norm_id}-training-plan.zip'
-
-    if not zip_path.exists():
-        return jsonify({'error': 'Deliverables not found. Pipeline may not have run yet.'}), 404
+    revision_dir = _order_dir(resolved_order_id) / 'revisions' / f"r{state['generation_revision']}"
+    filename = (f'{resolved_order_id}-review-bundle.zip'
+                if artifact == 'review_bundle'
+                else f'{resolved_order_id}-customer-bundle.zip')
+    try:
+        zip_handle = open_verified_release_artifact(
+            state, revision_dir, filename,
+            require_approval=(artifact == 'customer_bundle'),
+        )
+    except FulfillmentStateError as exc:
+        logger.error(f"Download seal verification failed for order {resolved_order_id}: {exc}")
+        try:
+            record_seal_mismatch(
+                _fulfillment_status_path(resolved_order_id), str(exc))
+        except FulfillmentStateError:
+            logger.exception(
+                f"Could not record seal mismatch for order {resolved_order_id}")
+        return jsonify({'error': 'plan not released'}), 409
 
     return send_file(
-        zip_path,
+        zip_handle,
         mimetype='application/zip',
         as_attachment=True,
-        download_name=zip_path.name,
+        download_name=filename,
     )
 
 
@@ -2292,39 +2639,54 @@ def order_status(ref):
     if not ref or not _ORDER_REF_RE.match(ref):
         return jsonify({'status': 'unknown', 'download_ready': False}), 404
 
-    athlete_id = None
+    order_id = None
     is_session_ref = ref.startswith('cs_') or ref.startswith('test_')
     if is_session_ref:
-        # Map session/order id → athlete via the idempotency ledger
+        order_id = ref
+        # Ensure the order is known even if generation has not written state.
         processed_file = Path(DATA_DIR) / '.processed_orders.json'
+        entry = None
         try:
             if processed_file.exists():
                 entry = json.loads(processed_file.read_text()).get(ref)
-                if entry:
-                    athlete_id = entry.get('athlete_id', '')
         except (json.JSONDecodeError, OSError) as e:
             logger.warning(f"order-status: could not read processed orders: {e}")
-        if not athlete_id:
+        if not entry:
             # Stripe's webhook may simply not have arrived yet — honest
             # in-progress, never an error the customer has to interpret.
             return jsonify({'status': 'processing', 'download_ready': False,
                             'message': _MSG_IN_PROGRESS})
     else:
-        athlete_id = _normalize_athlete_id(ref.lower())
-        if not validate_athlete_id(athlete_id):
+        order_id = _resolve_order_id(ref)
+        if not order_id:
             return jsonify({'status': 'unknown', 'download_ready': False}), 404
 
-    norm_id = _normalize_athlete_id(athlete_id)
-    customer_zip = Path(DELIVERIES_DIR) / norm_id / f'{norm_id}-training-plan.zip'
-    download_ready = customer_zip.exists()
+    download_ready = False
+    state = None
+    try:
+        state = load_fulfillment_state(_fulfillment_status_path(order_id))
+        if approval_matches_release(state):
+            revision_dir = _order_dir(order_id) / 'revisions' / f"r{state['generation_revision']}"
+            verify_release_artifact(
+                state, revision_dir, f'{order_id}-customer-bundle.zip')
+            download_ready = True
+    except FulfillmentStateError as exc:
+        if state is not None:
+            try:
+                state = record_seal_mismatch(
+                    _fulfillment_status_path(order_id), str(exc))
+            except FulfillmentStateError:
+                state = None
+        else:
+            state = None
 
-    job = _read_job(norm_id) or {}
+    job = _read_job(order_id) or {}
     job_status = job.get('status', '')
 
-    if download_ready or job_status == 'succeeded':
+    if download_ready:
         return jsonify({'status': 'ready', 'download_ready': download_ready,
                         'message': _MSG_READY})
-    if job_status in ('queued', 'running'):
+    if job_status in ('queued', 'running', 'succeeded') or state is not None:
         return jsonify({'status': 'processing', 'download_ready': False,
                         'message': _MSG_IN_PROGRESS})
     if job_status == 'failed':
@@ -2364,8 +2726,34 @@ def jobs_sweep():
         return jsonify({'error': 'Internal error'}), 500
 
 
-def _fulfillment_status_path(athlete_id: str) -> Path:
-    return Path(DELIVERIES_DIR) / athlete_id / 'fulfillment_status.json'
+@app.route('/api/download-tokens/revoke', methods=['POST'])
+@limiter.limit("10/minute")
+def revoke_download_capability():
+    """Authenticated operational revocation for one link jti and/or key kid."""
+    configured_secret = os.environ.get('CRON_SECRET', '')
+    supplied_secret = request.headers.get('X-Cron-Secret', '')
+    if (not configured_secret or not supplied_secret
+            or not hmac.compare_digest(supplied_secret, configured_secret)):
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or _has_client_timestamp(data):
+        return jsonify({'error': 'JSON body without client timestamps is required'}), 400
+    jti = str(data.get('jti') or '').strip()
+    kid = str(data.get('kid') or '').strip()
+    if not jti and not kid:
+        return jsonify({'error': 'jti or kid is required'}), 400
+    try:
+        revoke_download_token(
+            Path(DATA_DIR) / 'token_revocations.json', jti=jti, kid=kid)
+    except DownloadTokenError as exc:
+        return jsonify({'error': str(exc)}), 409
+    logger.warning(
+        f"Download capability revoked: jti={jti or '-'} kid={kid or '-'}")
+    return jsonify({'status': 'revoked', 'jti': jti or None, 'kid': kid or None})
+
+
+def _fulfillment_status_path(order_id: str) -> Path:
+    return _order_dir(order_id) / 'fulfillment_status.json'
 
 
 def _has_client_timestamp(value) -> bool:
@@ -2377,32 +2765,108 @@ def _has_client_timestamp(value) -> bool:
     return False
 
 
-@app.route('/api/fulfillment/<athlete_id>/transition', methods=['POST'])
-def transition_fulfillment_state(athlete_id):
+APPLY_GATE_TOKEN_TTL_SECONDS = 5 * 60
+
+
+def _apply_gate_secret() -> bytes:
+    secret = os.environ.get('CRON_SECRET', '')
+    if not secret:
+        raise FulfillmentStateError('CRON_SECRET is required for apply gate tokens')
+    return secret.encode('utf-8')
+
+
+def _b64url_encode(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b'=').decode('ascii')
+
+
+def _b64url_decode(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + '=' * (-len(value) % 4))
+
+
+def _issue_apply_gate_token(state: dict, tp_manifest_sha256: str) -> str:
+    """Issue a short-lived browser capability bound to one approved release."""
+    now = int(datetime.now(timezone.utc).timestamp())
+    claims = {
+        'v': 1,
+        'aud': 'trainingpeaks_apply_gate',
+        'order_id': state['order_id'],
+        'athlete_id': state['athlete_id'],
+        'delivery_platform': state['delivery_platform'],
+        'generation_revision': state['generation_revision'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'tp_manifest_sha256': tp_manifest_sha256,
+        'iat': now,
+        'exp': now + APPLY_GATE_TOKEN_TTL_SECONDS,
+        'jti': uuid.uuid4().hex,
+    }
+    encoded = _b64url_encode(json.dumps(
+        claims, sort_keys=True, separators=(',', ':')).encode('utf-8'))
+    signature = hmac.new(
+        _apply_gate_secret(), encoded.encode('ascii'), hashlib.sha256).digest()
+    return f'{encoded}.{_b64url_encode(signature)}'
+
+
+def _verify_apply_gate_token(token: str) -> dict:
+    try:
+        encoded, supplied = str(token or '').split('.', 1)
+        expected = hmac.new(
+            _apply_gate_secret(), encoded.encode('ascii'), hashlib.sha256).digest()
+        if not hmac.compare_digest(_b64url_decode(supplied), expected):
+            raise ValueError('signature')
+        claims = json.loads(_b64url_decode(encoded))
+        if not isinstance(claims, dict):
+            raise ValueError('claims')
+    except (ValueError, TypeError, json.JSONDecodeError,
+            UnicodeError, binascii.Error) as exc:
+        raise FulfillmentStateError('invalid apply gate token') from exc
+    now = int(datetime.now(timezone.utc).timestamp())
+    if claims.get('v') != 1 or claims.get('aud') != 'trainingpeaks_apply_gate':
+        raise FulfillmentStateError('invalid apply gate token audience')
+    if not isinstance(claims.get('exp'), int) or claims['exp'] <= now:
+        raise FulfillmentStateError('apply gate token expired')
+    if (not isinstance(claims.get('iat'), int)
+            or claims['exp'] <= claims['iat']
+            or claims['exp'] - claims['iat'] > APPLY_GATE_TOKEN_TTL_SECONDS):
+        raise FulfillmentStateError('apply gate token lifetime is invalid')
+    return claims
+
+
+def _tp_manifest_record(manifest: dict | None) -> dict:
+    return next(
+        (item for item in (manifest or {}).get('artifacts', [])
+         if item.get('path') == 'artifacts/tp_manifest.json'),
+        {},
+    )
+
+
+@app.route('/api/fulfillment/<order_ref>/transition', methods=['POST'])
+def transition_fulfillment_state(order_ref):
     """Record the coach's authenticated review/application transition."""
     secret = request.headers.get('X-Cron-Secret', '')
     if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
         return jsonify({'error': 'Unauthorized'}), 401
-    norm_id = _normalize_athlete_id(athlete_id)
-    if not validate_athlete_id(norm_id):
-        return jsonify({'error': 'Invalid athlete ID'}), 400
+    order_id = _resolve_order_id(order_ref)
+    if not order_id:
+        return jsonify({'error': 'Fulfillment state unavailable'}), 409
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or _has_client_timestamp(data):
         return jsonify({'error': 'JSON body without client timestamps is required'}), 400
     try:
         state = transition_fulfillment(
-            _fulfillment_status_path(norm_id), str(data.get('to', '')),
+            _fulfillment_status_path(order_id), str(data.get('to', '')),
             str(data.get('coach', '')), waiver=data.get('waiver'),
             platform=str(data.get('platform', '')), evidence=str(data.get('evidence', '')),
         )
     except FulfillmentStateError as exc:
         return jsonify({'error': str(exc)}), 409
-    return jsonify({'athlete_id': norm_id, 'status': state['status'],
+    return jsonify({'order_id': order_id, 'athlete_id': state['athlete_id'],
+                    'status': state['status'],
                     'generation_revision': state['generation_revision']}), 200
 
 
-@app.route('/api/fulfillment/<athlete_id>/status', methods=['GET'])
-def fulfillment_status(athlete_id):
+@app.route('/api/fulfillment/<order_ref>/status', methods=['GET'])
+def fulfillment_status(order_ref):
     """Authoritative fulfillment state for the athlete — status, timestamps,
     and an evidence summary (approval/waiver/application/confirmation).
 
@@ -2414,28 +2878,170 @@ def fulfillment_status(athlete_id):
     secret = request.headers.get('X-Cron-Secret', '')
     if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
         return jsonify({'error': 'Unauthorized'}), 401
-    norm_id = _normalize_athlete_id(athlete_id)
-    if not validate_athlete_id(norm_id):
-        return jsonify({'error': 'Invalid athlete ID'}), 400
+    order_id = _resolve_order_id(order_ref)
+    if not order_id:
+        return jsonify({'error': 'Fulfillment state not found'}), 404
     try:
-        state = load_fulfillment_state(_fulfillment_status_path(norm_id))
+        state = load_fulfillment_state(_fulfillment_status_path(order_id))
     except FulfillmentStateError:
         return jsonify({'error': 'Fulfillment state not found'}), 404
-    return jsonify({
-        'athlete_id': norm_id,
+    seal_verified = False
+    manifest = None
+    if state.get('model_seal') and not state.get('legacy'):
+        revision_dir = (_order_dir(order_id) / 'revisions'
+                        / f"r{state['generation_revision']}")
+        try:
+            manifest = verify_release_manifest(state, revision_dir)
+            seal_verified = True
+        except FulfillmentStateError as exc:
+            logger.error(
+                f"Status seal verification failed for order {order_id}: {exc}")
+            try:
+                state = record_seal_mismatch(
+                    _fulfillment_status_path(order_id), str(exc))
+            except FulfillmentStateError:
+                return jsonify({'error': 'Fulfillment state unavailable'}), 409
+    tp_record = _tp_manifest_record(manifest)
+    release_authorized = bool(seal_verified and approval_matches_release(state))
+    response = {
+        'order_id': order_id,
+        'athlete_id': state['athlete_id'],
+        'delivery_platform': state['delivery_platform'],
         'status': state['status'],
+        'legacy': bool(state.get('legacy')),
+        'release_authorized': release_authorized,
+        'seal_verified': seal_verified,
+        'tp_manifest_sha256': tp_record.get('sha256'),
         'generation_revision': state['generation_revision'],
         'updated_at': state['updated_at'],
         'blocking_issues': state['blocking_issues'],
+        'required_confirmations': state['required_confirmations'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
         'approval': state['approval'],
         'waiver': state['waiver'],
         'application': state['application'],
         'confirmation': state['confirmation'],
+    }
+    if (release_authorized and state['status'] == APPROVED
+            and state['delivery_platform'] == 'trainingpeaks'
+            and tp_record.get('sha256')):
+        response['apply_gate_token'] = _issue_apply_gate_token(
+            state, tp_record['sha256'])
+        response['apply_gate_url'] = (
+            request.host_url.rstrip('/')
+            + f'/api/fulfillment/{order_id}/apply-gate'
+        )
+    return jsonify(response), 200
+
+
+@app.route('/api/fulfillment/<order_ref>/apply-gate', methods=['GET'])
+def live_trainingpeaks_apply_gate(order_ref):
+    """Reauthorize a sealed TP job immediately before its first live write."""
+    try:
+        claims = _verify_apply_gate_token(request.args.get('token', ''))
+    except FulfillmentStateError as exc:
+        response = jsonify({'error': str(exc)})
+        response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
+        return response, 401
+
+    order_id = _resolve_order_id(order_ref)
+    if not order_id or claims.get('order_id') != order_id:
+        response = jsonify({'error': 'apply gate order binding mismatch'})
+        response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
+        return response, 409
+    try:
+        state = load_fulfillment_state(_fulfillment_status_path(order_id))
+    except FulfillmentStateError:
+        response = jsonify({'error': 'Fulfillment state unavailable'})
+        response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
+        return response, 409
+
+    manifest = None
+    if state.get('model_seal') and not state.get('legacy'):
+        revision_dir = (_order_dir(order_id) / 'revisions'
+                        / f"r{state['generation_revision']}")
+        try:
+            manifest = verify_release_manifest(state, revision_dir)
+        except FulfillmentStateError as exc:
+            try:
+                record_seal_mismatch(_fulfillment_status_path(order_id), str(exc))
+            except FulfillmentStateError:
+                pass
+            response = jsonify({'error': f'apply gate seal verification failed: {exc}'})
+            response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
+            return response, 409
+
+    tp_record = _tp_manifest_record(manifest)
+    current = {
+        'order_id': state['order_id'],
+        'athlete_id': state['athlete_id'],
+        'delivery_platform': state['delivery_platform'],
+        'generation_revision': state['generation_revision'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'tp_manifest_sha256': tp_record.get('sha256'),
+    }
+    failures = []
+    if state.get('legacy'):
+        failures.append('order is a legacy quarantine')
+    if state.get('status') != APPROVED:
+        failures.append(f"status is {state.get('status')!r}, not APPROVED")
+    if state.get('delivery_platform') != 'trainingpeaks':
+        failures.append('delivery_platform is not trainingpeaks')
+    if not approval_matches_release(state):
+        failures.append('approval is not bound to the current release')
+    failures.extend(
+        f'{field} mismatch' for field, value in current.items()
+        if claims.get(field) != value
+    )
+    if failures:
+        response = jsonify({'error': 'apply gate refused: ' + '; '.join(failures)})
+        response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
+        return response, 409
+
+    response = jsonify({
+        **current,
+        'status': state['status'],
+        'legacy': False,
+        'seal_verified': True,
+        'release_authorized': True,
+    })
+    response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
+    response.headers['Cache-Control'] = 'no-store'
+    return response, 200
+
+
+@app.route('/api/fulfillment/<order_ref>/bind-legacy', methods=['POST'])
+def bind_legacy_fulfillment_order(order_ref):
+    """Authenticated coach assertion for a quarantined schema-v1 order."""
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
+        return jsonify({'error': 'Unauthorized'}), 401
+    order_id = _resolve_order_id(order_ref)
+    if not order_id:
+        return jsonify({'error': 'Fulfillment state unavailable'}), 409
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or _has_client_timestamp(data):
+        return jsonify({'error': 'JSON body without client timestamps is required'}), 400
+    try:
+        state = bind_legacy_order(
+            _fulfillment_status_path(order_id),
+            str(data.get('ledger_order_id') or ''),
+            str(data.get('coach') or ''),
+        )
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 409
+    return jsonify({
+        'order_id': state['order_id'],
+        'athlete_id': state['athlete_id'],
+        'legacy_binding': state['legacy_binding'],
+        'status': state['status'],
     }), 200
 
 
-@app.route('/api/confirm/<athlete_id>', methods=['POST'])
-def confirm_plan_ready(athlete_id):
+@app.route('/api/confirm/<order_ref>', methods=['POST'])
+def confirm_plan_ready(order_ref):
     """Send "your plan is live on TrainingPeaks" email to customer.
 
     Coach triggers this AFTER reviewing the plan and importing to TP.
@@ -2445,25 +3051,89 @@ def confirm_plan_ready(athlete_id):
     if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
         return jsonify({'error': 'Unauthorized'}), 401
 
-    norm_id = _normalize_athlete_id(athlete_id)
-    if not validate_athlete_id(norm_id):
-        return jsonify({'error': 'Invalid athlete ID'}), 400
+    order_id = _resolve_order_id(order_ref)
+    if not order_id:
+        return jsonify({'error': 'Fulfillment state unavailable'}), 409
 
     # Fail closed before looking up an order or constructing/sending mail.
     # The actual send+transition below is also serialized for exactly-once mail.
     try:
-        state = load_fulfillment_state(_fulfillment_status_path(norm_id))
+        state = load_fulfillment_state(_fulfillment_status_path(order_id))
     except FulfillmentStateError:
         return jsonify({'error': 'Fulfillment state unavailable'}), 409
+    if state.get('legacy'):
+        return jsonify({
+            'error': 'Legacy order is quarantined and must be regenerated before confirmation'
+        }), 409
+    if state.get('delivery_platform') == 'endure':
+        return jsonify({
+            'error': 'Endure confirmation is disabled in Phase 1 by D4/R9 condition 11'
+        }), 409
+    if state.get('delivery_platform') != 'trainingpeaks':
+        return jsonify({
+            'error': 'This Phase 1 confirmation route is TrainingPeaks-only'
+        }), 409
     if state['status'] not in (APPLIED, CONFIRMED):
         return jsonify({'error': 'Plan must be APPLIED before confirmation'}), 409
+    norm_id = _normalize_athlete_id(state['athlete_id'])
+    if state['status'] == CONFIRMED:
+        return jsonify({'status': 'confirmed', 'athlete_id': norm_id}), 200
+
+    revision_dir = (_order_dir(order_id) / 'revisions'
+                    / f"r{state['generation_revision']}")
+    try:
+        if not approval_matches_release(state):
+            raise FulfillmentStateError(
+                'release approval does not match the current seal')
+        manifest = verify_release_manifest(state, revision_dir)
+        artifact_paths = {
+            str(item.get('path') or '') for item in manifest['artifacts']}
+
+        personal_email_bytes = None
+        personal_relative = 'artifacts/personal_email.md'
+        if personal_relative in artifact_paths:
+            handle = open_verified_release_artifact(
+                state, revision_dir, personal_relative)
+            try:
+                personal_email_bytes = handle.read()
+            finally:
+                handle.close()
+
+        intake_backup_bytes = None
+        intake_relative = 'artifacts/intake_backup.json'
+        if intake_relative in artifact_paths:
+            handle = open_verified_release_artifact(
+                state, revision_dir, intake_relative)
+            try:
+                intake_backup_bytes = handle.read()
+            finally:
+                handle.close()
+
+        guide_attachments = []
+        for guide_name in ('training_guide.pdf', 'training_guide.html'):
+            relative = f'artifacts/{guide_name}'
+            if relative not in artifact_paths:
+                continue
+            handle = open_verified_release_artifact(state, revision_dir, relative)
+            try:
+                guide_attachments.append((guide_name, handle.read()))
+            finally:
+                handle.close()
+            break
+    except FulfillmentStateError as exc:
+        logger.error(
+            f'Confirmation seal verification failed for order {order_id}: {exc}')
+        try:
+            record_seal_mismatch(_fulfillment_status_path(order_id), str(exc))
+        except FulfillmentStateError:
+            return jsonify({'error': 'Fulfillment state unavailable'}), 409
+        return jsonify({'error': 'Release seal verification failed'}), 409
 
     # Find customer email and race from order logs
     log_dir = Path(DATA_DIR) / '.logs'
     customer_email = None
     customer_name = None
     race_name = None
-    plan_weeks = None
     brand = DEFAULT_BRAND
 
     for log_file in sorted(log_dir.glob('*.jsonl'), reverse=True):
@@ -2471,7 +3141,7 @@ def confirm_plan_ready(athlete_id):
             with open(log_file) as f:
                 for line in f:
                     entry = json.loads(line.strip())
-                    if (entry.get('athlete_id', '').replace('-', '_') == norm_id
+                    if (entry.get('order_id') == order_id
                             and entry.get('success')):
                         customer_email = entry.get('email', '')
                         customer_name = entry.get('name', '')
@@ -2486,14 +3156,11 @@ def confirm_plan_ready(athlete_id):
         return jsonify({'error': 'Customer email not found in order logs'}), 404
 
     # Load intake backup for race details
-    delivery_dir = Path(DELIVERIES_DIR) / norm_id
-    intake_backup = delivery_dir / 'intake_backup.json'
-    if intake_backup.exists():
+    if intake_backup_bytes is not None:
         try:
-            with open(intake_backup) as f:
-                backup = json.load(f)
-                race_name = backup.get('race_name', '')
-                brand = normalize_brand(backup.get('brand') or brand)
+            backup = json.loads(intake_backup_bytes)
+            race_name = backup.get('race_name', '')
+            brand = normalize_brand(backup.get('brand') or brand)
         except Exception:
             pass
 
@@ -2505,21 +3172,11 @@ def confirm_plan_ready(athlete_id):
     signature_org = signature.get('signature_organization', brand_cfg['name'])
     signature_site = signature.get('signature_site', brand_cfg['site'].replace('https://', ''))
 
-    # The intake email promises the training guide — attach it. PDF when
-    # the pipeline produced one, HTML otherwise (Railway has no Chrome,
-    # so the PDF is often absent server-side; Jesse Couch never got his).
-    guide_attachments = []
-    for guide_name in ('training_guide.pdf', 'training_guide.html'):
-        guide_path = delivery_dir / guide_name
-        if guide_path.exists():
-            guide_attachments.append((guide_name, str(guide_path)))
-            break
-
     def _send_and_mark(send):
         """Keep mail send and CONFIRMED transition in one athlete lock."""
         try:
             action, _ = confirm_after_send(
-                _fulfillment_status_path(norm_id), send,
+                _fulfillment_status_path(order_id), send,
                 metadata={'provider': 'resend'},
             )
             return action != 'idempotent' or True, None
@@ -2528,94 +3185,10 @@ def confirm_plan_ready(athlete_id):
         except FulfillmentStateError:
             return False, ('state', 409)
 
-    # Phase 4c: endure-target orders that actually delivered on Endure get
-    # the Endure "plan is live" email. The invitation email itself is sent
-    # by Endure's invitation machinery on approval (spec §1) — this email
-    # points the athlete at it rather than embedding a link the pipeline
-    # can't construct (the response carries invitation_id, not the token).
-    _job = _read_job(norm_id) or {}
-    _endure = _job.get('endure_delivery') or {}
-    if (_job.get('delivery_target') == 'endure'
-            and _endure.get('status') in ('delivered', 'already_delivered')):
-        subject = f'Your training plan{race_mention} is live on Endure'
-
-        text_body = f"""Hey {first_name},
-
-Your custom training plan{race_mention} is built, reviewed, and live on Endure.
-
-Here's what to do:
-1. Accept your Endure invitation — check your inbox for an email from Endure Labs and follow the link to set up your account.
-2. Log in. Week 1 is already on your calendar, day by day.
-3. Each workout has target power zones, duration, and structure — just follow the plan.
-4. Questions about why a week looks the way it does? Ask David, the coach inside Endure — he knows your plan.
-
-A few things to know:
-- Week 1 is calibration. It may feel easy. That's intentional.
-- If life gets in the way and you miss a day, skip it and move on. Don't double up.
-- I can see your completed workouts in Endure. I'm watching — in a good way.
-
-If you have questions at any point, just reply to this email.
-
-— {signature_name}, {signature_org}
-{signature_site}
-"""
-
-        html_body = f"""
-<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-  <div style="background: #59473c; color: white; padding: 24px; border-radius: 4px 4px 0 0;">
-    <h1 style="margin: 0; font-size: 22px;">Your plan is live on Endure</h1>
-    {f'<p style="margin: 6px 0 0; opacity: 0.9; font-size: 15px;">{race_name}</p>' if race_name else ''}
-  </div>
-
-  <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
-    <p style="font-size: 15px; line-height: 1.6;">Hey {first_name},</p>
-
-    <p style="font-size: 15px; line-height: 1.6;">Your custom training plan{race_mention} is built, reviewed, and <strong>live on Endure</strong>.</p>
-
-    <h3 style="margin: 24px 0 12px; font-size: 16px; color: #59473c;">Get started</h3>
-    <ol style="font-size: 14px; padding-left: 20px; line-height: 2.2;">
-      <li><strong>Accept your Endure invitation</strong> — check your inbox for an email from Endure Labs and follow the link to set up your account.</li>
-      <li><strong>Log in</strong> — week 1 is already on your calendar, day by day.</li>
-      <li><strong>Follow the structure</strong> — each workout has target power zones, duration, and intervals.</li>
-      <li><strong>Ask David</strong> — the coach inside Endure knows your plan and can explain any week.</li>
-    </ol>
-
-    <div style="margin: 24px 0; padding: 16px; background: #fff; border-left: 3px solid #59473c;">
-      <p style="margin: 0 0 8px; font-size: 14px; color: #555;"><strong>Good to know:</strong></p>
-      <ul style="font-size: 14px; padding-left: 18px; line-height: 1.8; color: #555; margin: 0;">
-        <li>Week 1 is calibration. It may feel easy. That's intentional.</li>
-        <li>If life gets in the way, skip the day and move on. Don't double up.</li>
-        <li>I can see your completed workouts in Endure. I'm watching — in a good way.</li>
-      </ul>
-    </div>
-
-    <p style="font-size: 14px; line-height: 1.6;">Questions at any point? Just reply to this email.</p>
-
-    <p style="font-size: 14px; margin-top: 24px; color: #666;">— {signature_name}, {signature_org}<br>
-    <a href="{brand_cfg['site']}" style="color: #1A8A82;">{signature_site}</a></p>
-  </div>
-</div>"""
-
-        ok, failure = _send_and_mark(lambda: _send_email(
-            customer_email, subject, text_body, html=html_body,
-            reply_to=NOTIFICATION_EMAIL, attachments=guide_attachments,
-            brand=brand))
-        if ok:
-            logger.info(f"Sent Endure plan confirmation to "
-                        f"{_mask_email(customer_email)} for {norm_id}")
-            return jsonify({
-                'status': 'confirmed',
-                'athlete_id': norm_id,
-                'email': _mask_email(customer_email),
-                'delivery_target': 'endure',
-            })
-        return jsonify({'error': 'Failed to send confirmation email' if failure and failure[0] == 'email' else 'Fulfillment state unavailable'}), failure[1]
-
     # Check for personalized email generated by the pipeline
-    personal_email_path = delivery_dir / 'personal_email.md'
-    if personal_email_path.exists():
+    if personal_email_bytes is not None:
         try:
-            personal_md = personal_email_path.read_text().strip()
+            personal_md = personal_email_bytes.decode('utf-8').strip()
             # Extract subject line (first line starting with **Subject:**)
             subject = f'Your training plan{race_mention} is live on TrainingPeaks'
             for line in personal_md.split('\n'):
@@ -3579,22 +4152,44 @@ def test_webhook():
     _send_payment_confirmation(customer_email, customer_name, race_name=race_name)
 
     # Run pipeline with deliver=True (same as real flow)
-    result = run_pipeline(athlete_id, deliver=True, intake_data=intake_data)
+    result = run_pipeline(athlete_id, deliver=True, intake_data=intake_data,
+                          order_data=order_data)
 
     # Log order (same as real flow)
     log_order(order_data, result)
 
-    # Persist deliverables to volume + create zip (same as real flow)
+    # Persist deliverables to volume + create zip (same as real flow).
+    # A successful subprocess without durable state is not fulfillment.
+    persisted = None
+    persistence_error = ''
     if result['success']:
         try:
-            persist_deliverables(athlete_id)
+            persisted = persist_deliverables(
+                order_data['order_id'], athlete_id,
+                source_dir=(result.get('artifact_dir')
+                            or _resolve_generated_athlete_dir(athlete_id)),
+                delivery_platform=order_data.get(
+                    'delivery_platform', order_data.get('delivery_target', 'manual')),
+                state_unavailable=result.get('fulfillment_state') == 'unavailable',
+            )
         except Exception as e:
             logger.error(f"Failed to persist deliverables for {athlete_id}: {e}")
+            persistence_error = str(e)
+        if not persisted:
+            result['success'] = False
+            result['fulfillment_state'] = 'unavailable'
+            result['stderr'] = (
+                persistence_error or 'Persistence returned no durable order state')
 
     # Send notification email (same as real flow)
     details = _build_plan_notification_details(order_data, result, intake_data)
-    if result['success']:
-        details['download_token'] = _generate_download_token(athlete_id)
+    if result['success'] and persisted:
+        details['fulfillment_state'] = result.get('fulfillment_state', 'unavailable')
+        details['fulfillment_status'] = persisted['state']['status']
+        details['blocking_issues'] = persisted['state']['blocking_issues']
+        details['required_confirmations'] = persisted['state']['required_confirmations']
+        details['download_token'] = _generate_download_token(
+            order_data['order_id'], 'review_bundle')
         _notify_new_order('training_plan', details)
         return jsonify({
             'status': 'success',
@@ -4022,7 +4617,7 @@ def process_touchpoint_emails():
 @app.route('/api/intel-stats', methods=['GET'])
 @limiter.limit("10/minute")
 def intel_stats():
-    """Last-24h commerce ground truth for the Morning Intel report.
+    """Windowed commerce ground truth for the Morning Intel report.
 
     The report previously inferred orders from GA4 events; this endpoint
     exposes the actual ledger (/data/.logs) — orders WITH fulfillment
@@ -4037,12 +4632,28 @@ def intel_stats():
     if not hmac.compare_digest(secret, CRON_SECRET):
         return jsonify({'error': 'Unauthorized'}), 401
 
+    if 'limit' in request.args:
+        return jsonify({'error': 'limit is not supported; use hours'}), 400
+    raw_hours = request.args.get('hours', '24')
+    try:
+        hours = int(raw_hours)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'hours must be an integer from 1 to 720'}), 400
+    if hours < 1 or hours > 720:
+        return jsonify({'error': 'hours must be an integer from 1 to 720'}), 400
+
     from datetime import timedelta as _td
     now = datetime.now()
-    cutoff = (now - _td(hours=24)).isoformat()
+    cutoff = (now - _td(hours=hours)).isoformat()
     log_dir = Path(DATA_DIR) / '.logs'
-    months = {now.strftime('%Y-%m'),
-              (now.replace(day=1) - _td(days=1)).strftime('%Y-%m')}
+    months = []
+    cursor = (now - _td(hours=hours)).replace(day=1)
+    final_month = now.strftime('%Y-%m')
+    while True:
+        months.append(cursor.strftime('%Y-%m'))
+        if cursor.strftime('%Y-%m') == final_month:
+            break
+        cursor = (cursor.replace(day=28) + _td(days=4)).replace(day=1)
 
     def _monitor(email):
         e = (email or '').lower()
@@ -4050,7 +4661,7 @@ def intel_stats():
                 or 'gravelgodcoaching@' in e or 'example.com' in e)
 
     orders, recoveries = [], []
-    for m in sorted(months):
+    for m in months:
         f = log_dir / f'{m}.jsonl'
         if not f.exists():
             continue
@@ -4062,11 +4673,13 @@ def intel_stats():
             if (e.get('timestamp') or '') < cutoff or _monitor(e.get('email')):
                 continue
             if e.get('product_type') == 'cart_recovery' or 'recovery_url_sent' in e:
-                recoveries.append({'timestamp': e.get('timestamp'),
+                recoveries.append({'id': e.get('order_id') or e.get('intake_id') or '',
+                                   'timestamp': e.get('timestamp'),
                                    'email': e.get('email'),
                                    'product': e.get('original_product')})
             else:
-                orders.append({'timestamp': e.get('timestamp'),
+                orders.append({'id': e.get('order_id') or e.get('intake_id') or '',
+                               'timestamp': e.get('timestamp'),
                                'product_type': e.get('product_type'),
                                'email': e.get('email'),
                                'name': e.get('name'),
@@ -4074,7 +4687,7 @@ def intel_stats():
                                'error': (e.get('error') or '')[:200] or None})
 
     q_starts = 0
-    for m in sorted(months):
+    for m in months:
         f = log_dir / f'questionnaire-starts-{m}.jsonl'
         if not f.exists():
             continue
@@ -4087,8 +4700,10 @@ def intel_stats():
                     not _monitor(e.get('email')) and e.get('src') != 'health-check':
                 q_starts += 1
 
+    orders.sort(key=lambda item: (item.get('timestamp') or '', item.get('id') or ''))
+    recoveries.sort(key=lambda item: (item.get('timestamp') or '', item.get('id') or ''))
     return jsonify({
-        'window_hours': 24,
+        'window_hours': hours,
         'orders': orders,
         'failed_orders': [o for o in orders if o.get('success') is False],
         'recoveries': recoveries,
@@ -4265,6 +4880,15 @@ try:
     cleanup_stale_intakes()
 except Exception as e:
     logger.warning(f"Intake cleanup on startup failed: {e}")
+
+# Schema-v1 authority is quarantined eagerly. Lazy lookup remains only as a
+# crash-recovery safety net for files that appear after process startup.
+try:
+    _startup_migration = migrate_all_v1_states()
+    if any(_startup_migration.values()):
+        logger.warning(f"Startup legacy state migration: {_startup_migration}")
+except Exception as e:
+    logger.error(f"Startup legacy state migration failed closed: {e}")
 
 # Crash durability: retry jobs orphaned by a restart mid-generation.
 # Only touches queued/running records older than JOB_STUCK_AFTER_MINUTES,

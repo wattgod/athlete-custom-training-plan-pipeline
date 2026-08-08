@@ -411,13 +411,21 @@ def send_training_package(
     guide_url: str = None
 ) -> Tuple[bool, str]:
     """
-    Send training package to athlete.
+    Refuse the retired athlete-keyed email release path.
 
     Args:
         athlete_id: Athlete directory name
         to_email: Email address (defaults to profile email)
         guide_url: Optional hosted guide URL
     """
+    return (
+        False,
+        "Legacy email_delivery.py release is disabled: it cannot verify a "
+        "seal-bound APPROVED order. Use the order-scoped webhook gated path.",
+    )
+
+    # Historical implementation retained temporarily for reference only.  It
+    # is intentionally unreachable during Phase 1.
     import yaml
 
     athletes_dir = Path(__file__).parent.parent

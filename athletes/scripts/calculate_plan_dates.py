@@ -14,6 +14,7 @@ Day abbreviations: Mon, Tue, Wed, Thu, Fri, Sat, Sun
 Month abbreviations: Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec
 """
 
+import os
 import sys
 import yaml
 from datetime import datetime, timedelta
@@ -26,6 +27,14 @@ from constants import DAY_ORDER, DAY_ORDER_DISPLAY, DAY_FULL_TO_ABBREV
 class PlanDateValidationError(Exception):
     """Raised when plan dates fail validation."""
     pass
+
+
+def generation_now() -> datetime:
+    """Injectable production clock used by deterministic replay gates."""
+    fixed = os.environ.get('GG_FIXED_NOW', '').strip()
+    if fixed:
+        return datetime.fromisoformat(fixed.replace('Z', '+00:00')).replace(tzinfo=None)
+    return datetime.now()
 
 
 def validate_plan_dates(plan_dates: dict, race_date_str: str) -> list:
@@ -87,7 +96,7 @@ def validate_plan_dates(plan_dates: dict, race_date_str: str) -> list:
         errors.append(f"WARNING: Plan is only {plan_weeks} weeks (minimum recommended: 6)")
 
     # 10. Plan start should not be in the past (warning only)
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = generation_now().replace(hour=0, minute=0, second=0, microsecond=0)
     if plan_start < today:
         days_past = (today - plan_start).days
         errors.append(f"WARNING: Plan start is {days_past} days in the past")
@@ -135,7 +144,7 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
 
     # Parse race date
     race_date = datetime.strptime(race_date_str, '%Y-%m-%d')
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = generation_now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Race week ends on Sunday after race (or race day if Sunday)
     # Race week starts on Monday of that week
@@ -158,7 +167,7 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
                 week1_monday = race_week_monday - timedelta(weeks=plan_weeks - 1)
 
     # If Week 1 would be in the past, start from next Monday
-    if week1_monday < today:
+    if week1_monday < today and not preferred_start:
         # Find next Monday
         days_until_monday = (7 - today.weekday()) % 7
         if days_until_monday == 0:
@@ -419,7 +428,7 @@ def main():
     args = parser.parse_args()
 
     # Load athlete data
-    athletes_dir = Path(__file__).parent.parent
+    athletes_dir = Path(os.environ.get('GG_ATHLETES_BASE_DIR', Path(__file__).parent.parent))
     athlete_dir = athletes_dir / args.athlete_id
 
     if not athlete_dir.exists():

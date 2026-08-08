@@ -294,6 +294,18 @@ def _build_section_titles(profile: Dict, race_data: Dict):
     return [(f"section-{i+1}", title) for i, title in enumerate(titles)]
 
 
+def _course_facts_are_omitted(profile: Dict) -> bool:
+    """Return the durable S4 facts-omitted signal for every guide entrypoint."""
+    target_race = (profile or {}).get('target_race', {})
+    course_mode = str(
+        target_race.get('course_facts_mode')
+        or (profile or {}).get('course_facts_mode') or '').strip().lower()
+    return bool(
+        target_race.get('course_facts_omitted')
+        or course_mode in {
+            'athlete_only', 'athlete-supplied-only', 'facts_omitted'})
+
+
 def generate_guide(
     profile: Dict,
     derived: Dict,
@@ -326,19 +338,29 @@ def generate_guide(
         if "ftp_test_weeks" not in plan_config:
             plan_config["ftp_test_weeks"] = full_config.get("ftp_test_weeks", [])
 
-    # Load race data for guide content
-    from pipeline.step_06_workouts import load_race_data
+    if _course_facts_are_omitted(profile):
+        # This retired helper is outside the shipping order path, but it must
+        # honor the same S4 remediation if called manually: no catalog load or
+        # date cross-reference may rehydrate deliberately omitted facts.
+        target_race = profile.get('target_race', {})
+        race_data = {
+            'distance_miles': target_race.get('distance_miles', race_distance),
+        }
+        date_xref = {}
+    else:
+        # Load race data for guide content.
+        from pipeline.step_06_workouts import load_race_data
 
-    race_data = load_race_data(race_name, race_distance, base_dir) if race_name else {}
-    if race_data is None:
-        race_data = {}
+        race_data = load_race_data(
+            race_name, race_distance, base_dir) if race_name else {}
+        if race_data is None:
+            race_data = {}
 
-    # Cross-reference race date against the real race database (1,184-race
-    # snapshot + curated known_races). The old import pulled from the gravel
-    # repo's `pipeline` package, which isn't importable here — so date_xref
-    # was always empty and EVERY race showed "not in database". Now local.
-    race_date_str = derived.get("race_date", "")
-    date_xref = _cross_reference_race_date(race_name, race_date_str) if race_name and race_date_str else {}
+        # Cross-reference race date against the real race database (1,184-race
+        # snapshot + curated known_races).
+        race_date_str = derived.get("race_date", "")
+        date_xref = _cross_reference_race_date(
+            race_name, race_date_str) if race_name and race_date_str else {}
 
     html = _build_full_guide(
         athlete_name=athlete_name,
@@ -1475,21 +1497,10 @@ def _section_recovery_protocol(tier: str, profile: Dict, store_mode: bool = Fals
     sleep = profile.get("health", {}).get("sleep_quality", "moderate")
     stress = profile.get("health", {}).get("stress_level", "moderate")
 
-    # Personalized post-workout targets from body weight — store_mode has no
-    # real athlete behind the profile's weight, so it always takes the
-    # generic (already-existing) fallback below instead of a fake number.
-    weight_lbs = None if store_mode else profile.get("demographics", {}).get("weight_lbs")
-    if weight_lbs:
-        try:
-            weight_kg = float(weight_lbs) / 2.205
-            protein_g = round(weight_kg * 0.4)  # 0.4g/kg recovery dose
-            carb_lo = round(weight_kg * 1.0)     # 1.0g/kg low end
-            carb_hi = round(weight_kg * 1.2)     # 1.2g/kg high end
-            recovery_line = f"{protein_g}g protein + {carb_lo}-{carb_hi}g carbs within 30 minutes (based on your {round(weight_kg)}kg body weight)"
-        except (ValueError, TypeError):
-            recovery_line = "30g protein + 60-90g carbs within 30 minutes"
-    else:
-        recovery_line = "30g protein + 60-90g carbs within 30 minutes"
+    # F2 inventory: this is generic recovery education, not a second
+    # personalized carb prescription calculated from body weight.
+    recovery_line = ("General guidance, not your target: 0.3-0.4g protein/kg "
+                     "+ 1.0-1.2g carbs/kg after demanding sessions")
 
     # store_mode: never present fake health-questionnaire data ("You
     # reported...") as if a real buyer answered it.
@@ -1660,46 +1671,31 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
     # _build_nutrition_section() from fueling.yaml's FuelingPrescription. Do not
     # calculate a second target in this otherwise-static education section.
     personalized_html = ""
-    daily_macros_html = ""
+    daily_macros_html = """
+  <div class="data-card" data-fueling-classification="generic_education">
+    <div class="data-card__header">DAILY MACRO EDUCATION</div>
+    <div class="data-card__content">
+      <p><strong>General guidance, not your target:</strong> scale carbohydrate
+      intake to the day's work and body mass. The race-hour target in your
+      personalized card is the only absolute carb prescription in this guide.</p>
+      <ul>
+        <li>Easy/rest day: 3-4g carbs/kg/day</li>
+        <li>Hard/long day: 5-7g carbs/kg/day</li>
+        <li>Protein: 1.6-2.2g/kg/day</li>
+      </ul>
+    </div>
+  </div>"""
     # Store profiles contain template body data, not a buyer's measurements.
     # Keep the generic per-kilogram guidance and suppress weight-derived daily
     # macro claims in marketplace guides.
     weight_lbs = None if store_mode else profile.get("demographics", {}).get("weight_lbs")
     weight_kg = float(weight_lbs) / 2.205 if weight_lbs else 0
 
-    # Personalized daily macro targets (all from body weight — no AI)
-    if weight_kg:
-        wkg = weight_kg
-        daily_macros_html = f"""
-  <div class="data-card">
-    <div class="data-card__header">YOUR DAILY MACRO TARGETS ({weight_lbs} lbs / {wkg:.0f} kg)</div>
-    <div class="data-card__content">
-      <table>
-      <thead><tr><th>Macro</th><th>Daily Target</th><th>Why</th></tr></thead>
-      <tbody>
-      <tr><td><strong>Protein</strong></td><td>{round(wkg * 1.6)}-{round(wkg * 2.2)}g/day</td>
-        <td>Rebuilds muscle tissue damaged during training. Spread across 4 meals (25-40g each).</td></tr>
-      <tr><td><strong>Carbs (easy day)</strong></td><td>{round(wkg * 3)}-{round(wkg * 4)}g</td>
-        <td>Z2 endurance, rest days. Just restock glycogen.</td></tr>
-      <tr><td><strong>Carbs (hard day)</strong></td><td>{round(wkg * 5)}-{round(wkg * 7)}g</td>
-        <td>Interval days, long rides. Fuel the work, recover for the next session.</td></tr>
-      <tr><td><strong>Fat</strong></td><td>{round(wkg * 0.8)}-{round(wkg * 1.2)}g/day</td>
-        <td>Hormones, cell membranes, vitamin absorption. Moderate and consistent.</td></tr>
-      </tbody>
-      </table>
-      <p><strong>Sources:</strong> Protein from meat, fish, eggs, dairy, legumes. Carbs from rice, potatoes,
-      oats, bread, pasta, fruit &mdash; real food first. Fat from olive oil, nuts, avocados, fatty fish, eggs.</p>
-      <p><strong>The rule:</strong> Match carb intake to training load. Don't carb-load on rest days.
-      Don't under-fuel hard training blocks.</p>
-    </div>
-  </div>"""
+    pre_workout_carbs = "General guidance, not your target: 1-2g carbs/kg bodyweight"
+    pre_race_carbs = "General guidance, not your target: 2-3g carbs/kg bodyweight"
+    post_carbs = "General guidance, not your target: 1-1.5g carbs/kg bodyweight"
 
-    # Pre-workout carb target based on body weight
-    pre_workout_carbs = f"{round(weight_kg * 1)}-{round(weight_kg * 2)}g carbs" if weight_kg else "1-2g carbs per kg bodyweight"
-    pre_race_carbs = f"{round(weight_kg * 2)}-{round(weight_kg * 3)}g carbs" if weight_kg else "2-3g carbs per kg bodyweight"
-    post_carbs = f"{round(weight_kg * 1)}-{round(weight_kg * 1.5)}g carbs" if weight_kg else "1-1.5g carbs per kg bodyweight"
-
-    return f"""<section id="section-9" class="gg-section">
+    return f"""<section id="section-9" class="gg-section" data-fueling-classification="generic_education">
   <h2>9 &middot; Nutrition Strategy</h2>
 
   <p>You can have perfect training, a dialed bike, and excellent pacing strategy. None of it matters if
@@ -1791,7 +1787,9 @@ def _section_nutrition(race_data: Dict, tier: str, race_distance, profile: Dict 
   </div>
 
   <h3>Fueling During Workouts — General Guidance</h3>
-  <p><strong>General guidance only:</strong> the personalized card above is your target.
+  <p><strong>General guidance only.</strong> Use the serialized prescription above
+  whenever one is present.</p>
+  <p><strong>General guidance, not your target:</strong> the personalized card above is your target.
   The ranges below explain common starting points and must not override it.</p>
   <p>This is where races are won or lost.</p>
   <p>For any ride over 90 minutes at moderate-to-high intensity (Z3+), you need 60-80g of
@@ -2975,9 +2973,9 @@ def _section_women_specific(profile: Dict, race_data: Dict, race_name: str,
     weight_lbs = demo.get("weight_lbs", "")
     weight_kg = round(float(weight_lbs) / 2.205, 1) if weight_lbs else ""
 
-    # Carb targets based on body weight
-    carb_training = f"{round(weight_kg * 6)}-{round(weight_kg * 7)}g" if weight_kg else "5-7g/kg"
-    carb_long = f"{round(weight_kg * 8)}-{round(weight_kg * 10)}g" if weight_kg else "8-10g/kg"
+    # F2 inventory: generic per-kg education; never a second absolute target.
+    carb_training = "6-7g/kg"
+    carb_long = "8-10g/kg"
     disc = (discipline or 'gravel').lower()
     sport_phrase = 'gravel racing' if disc == 'gravel' else (
         'road racing' if disc == 'road' else 'mountain-bike racing')
@@ -3065,8 +3063,8 @@ def _section_women_specific(profile: Dict, race_data: Dict, race_name: str,
         <li>Compromise bone density</li>
         <li>Tank performance</li>
       </ul>
-      <p><strong>Your training day target:</strong> {carb_training} carbs ({f'{weight_kg}kg x 6-7g/kg' if weight_kg else '5-7g per kg body weight'}).
-      More on long ride days: {carb_long} ({f'{weight_kg}kg x 8-10g/kg' if weight_kg else '8-10g per kg body weight'}).</p>
+      <p><strong>General guidance, not your target:</strong> {carb_training} carbs per day by body weight.
+      More on long ride days: {carb_long}. Your personalized race-hour target remains the canonical card in Nutrition Strategy.</p>
       <p><strong>General guidance, not your target:</strong> 60-80g carbs per hour for rides over 90 minutes at moderate-to-high intensity
       (scaled down for longer durations &mdash; see Nutrition Strategy section). Don't under-fuel trying to "stay lean" &mdash;
       that strategy kills performance AND health.</p>
@@ -3833,7 +3831,7 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
 
     # Resolve paths
     scripts_dir = Path(__file__).parent
-    athletes_dir = scripts_dir.parent
+    athletes_dir = Path(os.environ.get('GG_ATHLETES_BASE_DIR', scripts_dir.parent))
     athlete_dir = athletes_dir / athlete_id
 
     if output_path is None:
@@ -3994,12 +3992,25 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
         'ftp_test_weeks': [],
     }
 
-    # ── Load race data from gravel-race-automation (if available) ──
+    # ── Load race data from gravel-race-automation (if allowed) ──
     race_name = derived['race_name']
-    race_data, verified_location = _resolve_race_data(
-        race_name,
-        _gravel_race_data_dirs(scripts_dir),
-    )
+    facts_omitted = _course_facts_are_omitted(profile)
+    if facts_omitted:
+        # S4 remediation is stronger than hiding a few output fields: never
+        # resolve the catalog. Only athlete-supplied facts already retained
+        # on the profile may shape the guide.
+        race_data = {
+            'distance_miles': target_race.get('distance_miles'),
+        }
+        verified_location = None
+        date_xref = {}
+    else:
+        race_data, verified_location = _resolve_race_data(
+            race_name,
+            _gravel_race_data_dirs(scripts_dir),
+        )
+        date_xref = _cross_reference_race_date(
+            race_name, derived.get('race_date', ''))
 
     # Unwrap race data: raw JSON has {"race": {...}}, step_07 expects flat dict
     if 'race' in race_data and isinstance(race_data['race'], dict):
@@ -4052,7 +4063,7 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
         race_data=race_data,
         # Verify the athlete's date against the real race DB (was hardcoded
         # empty here, so every guide showed "not in database").
-        date_xref=_cross_reference_race_date(race_name, derived.get('race_date', '')),
+        date_xref=date_xref,
         store_mode=store_mode,
     )
 
@@ -4172,7 +4183,7 @@ def _build_nutrition_section(fueling, profile, store_mode: bool = False) -> str:
     range_str = f"{hourly_range[0]}-{hourly_range[1]}g/hr" if len(hourly_range) == 2 else f"{hourly}g/hr"
 
     return f'''
-    <div style="margin:24px 0">
+    <div style="margin:24px 0" data-fueling-classification="personalized_prescription" data-canonical-carb-target="{hourly}">
       <h3 style="font-family:'Sometype Mono',monospace;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:var(--gg-color-primary-brown);border-bottom:2px solid var(--gg-color-primary-brown);padding-bottom:8px">
         Your Personalized Targets
       </h3>

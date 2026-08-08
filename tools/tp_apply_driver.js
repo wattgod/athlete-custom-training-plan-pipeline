@@ -1,54 +1,16 @@
+throw new Error(
+  'AUTOMATED TRAININGPEAKS APPLY IS DISABLED FOR PHASE 1. '
+  + 'Automated apply returns in Phase 4/5 via the worker. Until then, the coach '
+  + 'must apply manually in the TrainingPeaks UI and record APPLIED through the '
+  + 'authenticated fulfillment transition with evidence.',
+);
+
 /*
- * tp_apply_driver.js — transactional TrainingPeaks apply driver (spec D5).
+ * tp_apply_driver.js — retired Phase 1 TrainingPeaks apply driver (spec D5).
  *
- * Executes a `tp_apply_order.py`-emitted apply_job.json inside a logged-in
- * TrainingPeaks browser tab. Ports gravel-god-training-plans/tools/
- * tp_load_plan.js's proven patterns (athleteId===planPersonId, resumable
- * "day|order|title" keys, paced writes, per-request 401 detection) and
- * extends them with: a duplicate-title guard before create, rx
- * StructuredStrength strength days, a plan->athlete apply stage, and a
- * pre-apply calendar snapshot + this-run-only rollback.
- *
- * RUNTIME: this is a self-contained IIFE. Paste/inject it into the DevTools
- * console (or via playwriter) of a tab logged into app.trainingpeaks.com —
- * it uses the session cookie via credentials:'include' for tpapi calls.
- * rx (StructuredStrength) calls need a bearer token, which this file
- * captures in-page from any rx XHR the app itself fires (patches
- * XMLHttpRequest.setRequestHeader); open a strength builder briefly first
- * if `stage3Strength` reports RX_NO_BEARER. The bearer is NEVER written to
- * the receipt or localStorage.
- *
- * INPUT: window.__APPLY_JOB__ (or pass a job object directly), shaped per
- * tp_apply_order.py's build_apply_job():
- *   { plan_title, athlete_tp_id, duplicate_guard:{title},
- *     workouts:[{date, order_on_day, title, workoutTypeValueId, tssPlanned,
- *                totalTimePlanned, description, structure, race}],
- *     strength:[{date, order_on_day, title, template_key, doc|pending_module}],
- *     custom_exercises:[...] (NO-OP, always [] -- Matti's final ALL-CATALOG
- *       decision means every movement resolves to a real catalog exercise;
- *       there is no more inline-custom-exercise concept for this driver to
- *       handle), apply:{targetDate, startType, enabled},
- *     verify:{expected:{bike,strength,day_off,race,total}, date_range:{start,end}},
- *     rollback:{snapshot_range:{start,end}} }
- *
- * OUTPUT: window.__APPLY_RECEIPT__, updated continuously (poll-friendly):
- *   { stage, planId, planPersonId, posted:[...], rxDone:[...],
- *     verified:{bike_and_race,strength,day_off,total},
- *     applied:{appliedPlanId,athleteId,targetDate,startType,status}|null,
- *     athleteVerified:{...}|null,
- *     rollback:{snapshotRange,snapshot:[...],introducedIds:[...],deletedIds:[...]}|null,
- *     failures:[{stage,message,detail}], finishedAt: ISOString|null }
- * `finishedAt` is set ONLY on a true terminal outcome (done, or an
- * unrecoverable hard failure). A SESSION_401 halt leaves it unset — that is
- * the resumable signal: reload the tab, then re-run
- *   await applyJob(window.__APPLY_JOB__)
- * and the driver picks up from receipt.planId / the localStorage backup.
- *
- * USAGE:
- *   window.__APPLY_JOB__ = <contents of apply_job.json>;
- *   const receipt = await applyJob(window.__APPLY_JOB__);
- *   // feed window.__APPLY_RECEIPT__ back to:
- *   //   python3 tools/tp_apply_order.py <athlete-id> --package <pkg> --receipt <file>
+ * Historical implementation retained for Phase 4/5 worker migration evidence.
+ * The top-of-file hard exit is the Phase 1 release boundary: this file cannot
+ * install applyJob, inspect browser credentials, call a gate, or contact TP.
  */
 
 (function () {
@@ -83,6 +45,43 @@
   }
   function _backup() {
     try { localStorage.setItem('tp_apply_driver_receipt', JSON.stringify(receipt)); } catch (_) { /* best effort */ }
+  }
+
+  function validateJobBinding(job) {
+    const required = [
+      'order_id', 'athlete_id', 'generation_revision', 'model_seal',
+      'release_manifest_digest', 'tp_manifest_sha256',
+    ];
+    const missing = required.filter(k => job[k] === undefined || job[k] === null || job[k] === '');
+    if (missing.length) throw new Error(`APPLY_JOB_BINDING_MISSING: ${missing.join(', ')}`);
+    if (job.delivery_platform !== 'trainingpeaks') {
+      throw new Error('APPLY_JOB_PLATFORM_MISMATCH: delivery_platform must be trainingpeaks');
+    }
+    if (!job.gate || !job.gate.url || !job.gate.token) {
+      throw new Error('APPLY_JOB_GATE_MISSING: short-lived live gate is required');
+    }
+  }
+
+  async function checkLiveGate(job) {
+    const separator = job.gate.url.includes('?') ? '&' : '?';
+    const response = await fetch(
+      `${job.gate.url}${separator}token=${encodeURIComponent(job.gate.token)}`,
+      { method: 'GET', credentials: 'omit', cache: 'no-store' },
+    );
+    let body = {};
+    try { body = await response.json(); } catch (_) { /* handled below */ }
+    if (!response.ok) {
+      throw new Error(`APPLY_GATE_REFUSED: ${body.error || `HTTP ${response.status}`}`);
+    }
+    const required = [
+      'order_id', 'athlete_id', 'delivery_platform', 'generation_revision',
+      'model_seal', 'release_manifest_digest', 'tp_manifest_sha256',
+    ];
+    const drift = required.filter(k => body[k] !== job[k]);
+    if (drift.length || body.status !== 'APPROVED' || body.legacy
+        || !body.seal_verified || !body.release_authorized) {
+      throw new Error(`APPLY_GATE_BINDING_MISMATCH: ${drift.join(', ') || 'authority'}`);
+    }
   }
 
   // ---- fetch wrappers --------------------------------------------------
@@ -497,8 +496,15 @@
     job = job || window.__APPLY_JOB__;
     if (!job) throw new Error('no job — set window.__APPLY_JOB__ or pass one to applyJob()');
     try {
+      validateJobBinding(job);
+      setStage('gate');
+      await checkLiveGate(job);
       if (!receipt.planId) {
         const dup = await stage0DuplicateGuard(job);
+        // Duplicate inspection is read-only and may take time. Re-check at
+        // the final boundary immediately before stage 1's first POST.
+        setStage('gate');
+        await checkLiveGate(job);
         await stage1CreateOrAdopt(job, dup);
       }
       await stage2Workouts(job);

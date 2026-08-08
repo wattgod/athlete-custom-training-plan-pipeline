@@ -50,13 +50,19 @@ def temp_athletes_dir():
 
 
 @pytest.fixture
-def app(temp_athletes_dir):
+def app(temp_athletes_dir, monkeypatch):
     """Create test Flask app."""
     os.environ['ATHLETES_DIR'] = str(temp_athletes_dir)
     os.environ['SCRIPTS_DIR'] = str(temp_athletes_dir / 'scripts')
 
     # Import app after setting env vars
-    from app import app as flask_app
+    import app as app_module
+    monkeypatch.setattr(app_module, 'ATHLETES_DIR', str(temp_athletes_dir))
+    monkeypatch.setattr(app_module, 'SCRIPTS_DIR', str(temp_athletes_dir / 'scripts'))
+    monkeypatch.setattr(app_module, 'DATA_DIR', str(temp_athletes_dir))
+    monkeypatch.setattr(app_module, 'DELIVERIES_DIR', str(temp_athletes_dir / 'deliveries'))
+    monkeypatch.setattr(app_module, 'JOBS_DIR', str(temp_athletes_dir / 'jobs'))
+    flask_app = app_module.app
     flask_app.config['TESTING'] = True
     return flask_app
 
@@ -275,8 +281,9 @@ class TestWooCommerceWebhook:
         data = response.get_json()
         assert data['status'] == 'ignored'
 
-    def test_woocommerce_processes_completed_orders(self, client, temp_athletes_dir):
-        """Completed orders are processed."""
+    def test_woocommerce_without_intake_is_not_falsely_fulfilled(
+            self, client, temp_athletes_dir):
+        """Legacy Woo orders without intake enter durable quarantine."""
         order_data = {
             'id': 12345,
             'status': 'completed',
@@ -294,19 +301,23 @@ class TestWooCommerceWebhook:
             ]
         }
 
-        with patch('app.run_pipeline') as mock_pipeline:
-            mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
+        response = client.post(
+            '/webhook/woocommerce',
+            json=order_data,
+            content_type='application/json'
+        )
 
-            response = client.post(
-                '/webhook/woocommerce',
-                json=order_data,
-                content_type='application/json'
-            )
-
-            assert response.status_code == 200
-            data = response.get_json()
-            assert data['status'] == 'success'
-            assert data['athlete_id'] == 'john_doe'
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'success'
+        assert data['athlete_id'] == 'john_doe'
+        state_path = (temp_athletes_dir / 'deliveries' / 'orders' / '12345'
+                      / 'fulfillment_status.json')
+        state = json.loads(state_path.read_text())
+        assert state['status'] == 'BLOCKED_REVIEW'
+        issue = next(item for item in state['blocking_issues']
+                     if item['id'] == 'STATE_UNAVAILABLE')
+        assert issue['waivable'] is False
 
     def test_woocommerce_idempotency(self, client, temp_athletes_dir):
         """Duplicate orders are rejected."""
@@ -358,8 +369,9 @@ class TestStripeWebhook:
         data = response.get_json()
         assert data['status'] == 'ignored'
 
-    def test_stripe_processes_checkout_completed(self, client, temp_athletes_dir):
-        """Checkout completed events are processed."""
+    def test_stripe_without_intake_is_not_falsely_fulfilled(
+            self, client, temp_athletes_dir):
+        """Checkout metadata alone enters non-releasable quarantine."""
         stripe_event = {
             'type': 'checkout.session.completed',
             'data': {
@@ -379,18 +391,23 @@ class TestStripeWebhook:
             }
         }
 
-        with patch('app.run_pipeline') as mock_pipeline:
-            mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
+        response = client.post(
+            '/webhook/stripe',
+            json=stripe_event,
+            content_type='application/json'
+        )
 
-            response = client.post(
-                '/webhook/stripe',
-                json=stripe_event,
-                content_type='application/json'
-            )
-
-            assert response.status_code == 200
-            data = response.get_json()
-            assert data['status'] == 'success'
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'success'
+        assert data['athlete_id'] == 'test_user'
+        state_path = (temp_athletes_dir / 'deliveries' / 'orders'
+                      / 'cs_test_123' / 'fulfillment_status.json')
+        state = json.loads(state_path.read_text())
+        assert state['status'] == 'BLOCKED_REVIEW'
+        issue = next(item for item in state['blocking_issues']
+                     if item['id'] == 'STATE_UNAVAILABLE')
+        assert issue['waivable'] is False
 
 
 class TestDataExtraction:
@@ -457,7 +474,7 @@ class TestDataExtraction:
 class TestProfileCreation:
     """Tests for profile creation."""
 
-    def test_create_athlete_profile(self, temp_athletes_dir):
+    def test_create_athlete_profile(self, temp_athletes_dir, app):
         """Profile is created with correct structure."""
         os.environ['ATHLETES_DIR'] = str(temp_athletes_dir)
 
@@ -504,7 +521,7 @@ class TestSecurityHeaders:
 class TestIntakeStorage:
     """Tests for questionnaire intake storage."""
 
-    def test_store_and_load_intake(self, temp_athletes_dir):
+    def test_store_and_load_intake(self, temp_athletes_dir, app):
         """Intake data can be stored and loaded."""
         os.environ['ATHLETES_DIR'] = str(temp_athletes_dir)
         from app import store_intake, load_intake
@@ -519,7 +536,7 @@ class TestIntakeStorage:
         assert loaded['email'] == 'test@test.com'
         assert loaded['tier'] == 'full_build'
 
-    def test_load_nonexistent_intake(self, temp_athletes_dir):
+    def test_load_nonexistent_intake(self, temp_athletes_dir, app):
         """Loading a nonexistent intake returns empty dict."""
         os.environ['ATHLETES_DIR'] = str(temp_athletes_dir)
         from app import load_intake
@@ -540,17 +557,17 @@ class TestIntakeStorage:
         """Stale intake files are cleaned up."""
         os.environ['ATHLETES_DIR'] = str(temp_athletes_dir)
         from app import store_intake, cleanup_stale_intakes, get_intake_dir
+        with patch('app.DATA_DIR', str(temp_athletes_dir)):
+            intake_id = '550e8400-e29b-41d4-a716-446655440002'
+            store_intake(intake_id, {'name': 'Old User'})
 
-        intake_id = '550e8400-e29b-41d4-a716-446655440002'
-        store_intake(intake_id, {'name': 'Old User'})
+            # Make the file appear old
+            intake_file = get_intake_dir() / f'{intake_id}.json'
+            old_time = (datetime.now() - timedelta(hours=25)).timestamp()
+            os.utime(intake_file, (old_time, old_time))
 
-        # Make the file appear old
-        intake_file = get_intake_dir() / f'{intake_id}.json'
-        old_time = (datetime.now() - timedelta(hours=25)).timestamp()
-        os.utime(intake_file, (old_time, old_time))
-
-        cleanup_stale_intakes()
-        assert not intake_file.exists()
+            cleanup_stale_intakes()
+            assert intake_file.exists()  # retained for durable retry/recovery
 
 
 class TestCreateCheckout:
@@ -784,7 +801,13 @@ class TestStripeWebhookWithIntake:
             }
         }
 
-        with patch('app.run_pipeline') as mock_pipeline:
+        persisted = {'state': {
+            'status': 'BLOCKED_REVIEW', 'blocking_issues': [],
+            'required_confirmations': [],
+        }}
+        with patch('app.run_pipeline') as mock_pipeline, \
+             patch('app.persist_deliverables', return_value=persisted), \
+             patch('app._generate_download_token', return_value='token'):
             mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
 
             response = client.post(
@@ -810,8 +833,8 @@ class TestStripeWebhookWithIntake:
         # Weight should be converted from lbs to kg
         assert profile['fitness_markers']['ftp_watts'] == 220
 
-    def test_stripe_webhook_works_without_intake(self, client, temp_athletes_dir):
-        """Stripe webhook still works without intake data (sparse fallback)."""
+    def test_stripe_webhook_refuses_without_intake(self, client, temp_athletes_dir):
+        """Paid missing-intake order is durably quarantined, not failed."""
         stripe_event = {
             'type': 'checkout.session.completed',
             'data': {
@@ -829,18 +852,26 @@ class TestStripeWebhookWithIntake:
             }
         }
 
-        with patch('app.run_pipeline') as mock_pipeline:
-            mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
+        response = client.post(
+            '/webhook/stripe',
+            json=stripe_event,
+            content_type='application/json'
+        )
 
-            response = client.post(
-                '/webhook/stripe',
-                json=stripe_event,
-                content_type='application/json'
-            )
-
-            assert response.status_code == 200
-            data = response.get_json()
-            assert data['status'] == 'success'
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'success'
+        state_path = (temp_athletes_dir / 'deliveries' / 'orders'
+                      / 'cs_test_no_intake' / 'fulfillment_status.json')
+        state = json.loads(state_path.read_text())
+        assert state['status'] == 'BLOCKED_REVIEW'
+        issue = next(item for item in state['blocking_issues']
+                     if item['id'] == 'STATE_UNAVAILABLE')
+        assert issue['waivable'] is False
+        job = json.loads(
+            (temp_athletes_dir / 'jobs' / 'orders'
+             / 'cs_test_no_intake.json').read_text())
+        assert job['status'] == 'succeeded'
 
 
 class TestPriceComputation:
@@ -924,9 +955,9 @@ class TestPriceParityPythonJs:
     var MIN_WEEKS = 4;
 
     function computePrice(raceDateStr) {
-      var raceDate = new Date(raceDateStr + 'T00:00:00');
+      var raceDate = new Date(raceDateStr + 'T00:00:00Z');
       var today = new Date();
-      today.setHours(0, 0, 0, 0);
+      today.setUTCHours(0, 0, 0, 0);
       var days = Math.ceil((raceDate - today) / (1000 * 60 * 60 * 24));
       var weeks = Math.max(MIN_WEEKS, Math.ceil(days / 7));
       var price = Math.min(weeks * PRICE_PER_WEEK, PRICE_CAP);
@@ -993,10 +1024,7 @@ class TestTestEndpoint:
             content_type='application/json'
         )
 
-        assert response.status_code == 200
-        data = response.get_json()
-        assert data['status'] == 'success'
-        assert 'test_user' in data['athlete_id']
+        assert response.status_code == 401
 
     def test_test_endpoint_sanitizes_dangerous_id(self, client, temp_athletes_dir):
         """Test endpoint sanitizes dangerous athlete IDs."""
@@ -1008,12 +1036,9 @@ class TestTestEndpoint:
             content_type='application/json'
         )
 
-        # Should succeed but with sanitized ID (no path traversal)
-        assert response.status_code == 200
-        data = response.get_json()
-        # The athlete_id should NOT contain path traversal chars
-        assert '..' not in data.get('athlete_id', '')
-        assert '/' not in data.get('athlete_id', '')
+        # The operator-only endpoint rejects unauthenticated requests before
+        # parsing attacker-controlled identifiers.
+        assert response.status_code == 401
 
 
 class TestCoachingCheckout:
@@ -1574,7 +1599,7 @@ class TestLogProductEvent:
         """_log_product_event writes valid JSONL."""
         from app import _log_product_event
 
-        with patch('app.ATHLETES_DIR', str(temp_athletes_dir)):
+        with patch('app.DATA_DIR', str(temp_athletes_dir)):
             _log_product_event('coaching', 'order_123', tier='mid', name='Test')
 
         log_dir = temp_athletes_dir / '.logs'
@@ -1603,7 +1628,7 @@ class TestIdempotencyTiming:
             # Call the real function
             original_mark(order_id, athlete_id)
 
-        def mock_pipeline(athlete_id, deliver=True):
+        def mock_pipeline(athlete_id, deliver=True, **kwargs):
             call_order.append('pipeline')
             # By the time pipeline runs, order should already be marked
             from app import check_idempotency
@@ -1776,8 +1801,7 @@ class TestCheckoutRecovery:
             # Verify recovery params
             assert call_kwargs['after_expiration']['recovery']['enabled'] is True
             assert 'expires_at' in call_kwargs
-            # consent_collection removed until Stripe Checkout ToS accepted
-            assert 'consent_collection' not in call_kwargs
+            assert call_kwargs['consent_collection'] == {'promotions': 'auto'}
 
             # Verify session_id in success URL
             assert '{CHECKOUT_SESSION_ID}' in call_kwargs['success_url']
@@ -1859,7 +1883,7 @@ class TestFollowupEmails:
         log_filename = order_time.strftime('%Y-%m') + '.jsonl'
         (log_dir / log_filename).write_text(order + '\n')
 
-        with patch('app.ATHLETES_DIR', str(tmp_path)), \
+        with patch('app.DATA_DIR', str(tmp_path)), \
              patch('app._send_followup_email') as mock_send:
             mock_send.return_value = True
             from app import process_followup_emails
@@ -1869,7 +1893,7 @@ class TestFollowupEmails:
         mock_send.assert_called_once()
         args = mock_send.call_args
         assert 'athlete@test.com' == args[0][0]
-        assert 'Getting started' in args[0][1]
+        assert 'one thing to do first' in args[0][1]
 
     def test_process_skips_already_sent(self, tmp_path):
         """Follow-up not re-sent if already tracked."""
@@ -1897,7 +1921,7 @@ class TestFollowupEmails:
         })
         (log_dir / 'followup_sent.jsonl').write_text(sent + '\n')
 
-        with patch('app.ATHLETES_DIR', str(tmp_path)), \
+        with patch('app.DATA_DIR', str(tmp_path)), \
              patch('app._send_followup_email') as mock_send:
             from app import process_followup_emails
             stats = process_followup_emails()
@@ -1922,7 +1946,7 @@ class TestFollowupEmails:
         log_filename = order_time.strftime('%Y-%m') + '.jsonl'
         (log_dir / log_filename).write_text(order + '\n')
 
-        with patch('app.ATHLETES_DIR', str(tmp_path)), \
+        with patch('app.DATA_DIR', str(tmp_path)), \
              patch('app._send_followup_email') as mock_send:
             from app import process_followup_emails
             stats = process_followup_emails()
@@ -1947,7 +1971,7 @@ class TestFollowupEmails:
         log_filename = order_time.strftime('%Y-%m') + '.jsonl'
         (log_dir / log_filename).write_text(order + '\n')
 
-        with patch('app.ATHLETES_DIR', str(tmp_path)), \
+        with patch('app.DATA_DIR', str(tmp_path)), \
              patch('app._send_followup_email') as mock_send:
             mock_send.return_value = True
             from app import process_followup_emails
@@ -1969,7 +1993,7 @@ class TestFollowupEmails:
 
     def test_mark_and_read_followup_sent(self, tmp_path):
         """Sent log correctly tracks and reads follow-ups."""
-        with patch('app.ATHLETES_DIR', str(tmp_path)):
+        with patch('app.DATA_DIR', str(tmp_path)):
             from app import _mark_followup_sent, _get_sent_followups
             _mark_followup_sent('order_123', 1, 'test@example.com')
             _mark_followup_sent('order_123', 3, 'test@example.com')
@@ -2241,7 +2265,7 @@ class TestLogOrderSchema:
         }
         result = {'success': True, 'stdout': '', 'stderr': ''}
 
-        with patch('app.ATHLETES_DIR', str(temp_athletes_dir)):
+        with patch('app.DATA_DIR', str(temp_athletes_dir)):
             log_order(order_data, result)
 
         log_dir = temp_athletes_dir / '.logs'
@@ -2283,7 +2307,7 @@ class TestFollowupReadsCorrectLogFiles:
         # orders.jsonl should NOT exist (that was the old bug)
         assert not (log_dir / 'orders.jsonl').exists()
 
-        with patch('app.ATHLETES_DIR', str(tmp_path)), \
+        with patch('app.DATA_DIR', str(tmp_path)), \
              patch('app._send_followup_email') as mock_send:
             mock_send.return_value = True
             from app import process_followup_emails
@@ -2311,7 +2335,7 @@ class TestFollowupReadsCorrectLogFiles:
         log_filename = order_time.strftime('%Y-%m') + '.jsonl'
         (log_dir / log_filename).write_text(order + '\n')
 
-        with patch('app.ATHLETES_DIR', str(tmp_path)), \
+        with patch('app.DATA_DIR', str(tmp_path)), \
              patch('app._send_followup_email') as mock_send:
             from app import process_followup_emails
             stats = process_followup_emails()
@@ -2762,6 +2786,66 @@ class TestTravelDatesPassthrough:
         assert '## Nutrition' in md
         assert 'Training Fuel: 55g/hr' in md
 
+    def test_markdown_devices_come_only_from_form(self):
+        from app import _questionnaire_to_markdown
+        supplied = _questionnaire_to_markdown(
+            {'devices': 'power meter, hr strap'}, name='T', email='t@e.com')
+        absent = _questionnaire_to_markdown({}, name='T', email='t@e.com')
+        assert 'Devices: power meter, hr strap' in supplied
+        assert 'Devices: unknown' in absent
+        assert 'power meter, HR strap' not in absent
+
+    def test_markdown_preserves_training_metric(self):
+        from app import _questionnaire_to_markdown
+        md = _questionnaire_to_markdown(
+            {'powerOrHr': 'hr'}, name='T', email='t@e.com')
+        assert 'Training Metric: hr' in md
+
+
+class TestIntelStatsWindow:
+    def test_validates_hours_and_rejects_limit(self, client, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'secret')
+        headers = {'X-Cron-Secret': 'secret'}
+        for query in ('?hours=nope', '?hours=0', '?hours=-1', '?hours=721', '?limit=5'):
+            assert client.get('/api/intel-stats' + query, headers=headers).status_code == 400
+        response = client.get('/api/intel-stats?hours=720', headers=headers)
+        assert response.status_code == 200
+        assert response.get_json()['window_hours'] == 720
+
+    def test_reads_every_required_month_and_orders_deterministically(
+            self, client, monkeypatch, tmp_path):
+        import app as app_module
+
+        class FrozenDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 3, 1, 1, 0, 0)
+
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'secret')
+        monkeypatch.setattr(app_module, 'DATA_DIR', str(tmp_path))
+        monkeypatch.setattr(app_module, 'datetime', FrozenDatetime)
+        log_dir = tmp_path / '.logs'
+        log_dir.mkdir()
+        (log_dir / '2026-01.jsonl').write_text(json.dumps({
+            'timestamp': '2026-01-31T12:00:00', 'order_id': 'cs_b',
+            'product_type': 'training_plan', 'email': 'b@real.test',
+            'name': 'B', 'success': True}) + '\n')
+        (log_dir / '2026-02.jsonl').write_text('\n'.join([
+            json.dumps({'timestamp': '2026-02-10T12:00:00', 'order_id': 'cs_z',
+                        'product_type': 'training_plan', 'email': 'z@real.test',
+                        'name': 'Z', 'success': True}),
+            json.dumps({'timestamp': '2026-02-10T12:00:00', 'order_id': 'cs_a',
+                        'product_type': 'training_plan', 'email': 'a@real.test',
+                        'name': 'A', 'success': False}),
+        ]) + '\n')
+        response = client.get(
+            '/api/intel-stats?hours=720', headers={'X-Cron-Secret': 'secret'})
+        assert response.status_code == 200
+        data = response.get_json()
+        assert [order['id'] for order in data['orders']] == ['cs_b', 'cs_a', 'cs_z']
+        assert [order['id'] for order in data['failed_orders']] == ['cs_a']
+
 
 class TestComplianceNeedsReview:
     """A plan that delivers but fails an auto-compliance check must reach the
@@ -2776,7 +2860,7 @@ class TestComplianceNeedsReview:
     def test_needs_review_subject_and_body(self):
         from app import _build_training_plan_email
         subj, text, html = _build_training_plan_email(self._details(True))
-        assert 'NEEDS REVIEW' in subj
+        assert 'ACTION REQUIRED' in subj
         assert 'AUTO-CHECK FAILED' in (text + (html or ''))
 
     def test_clean_delivery_has_no_review_flag(self):
@@ -2848,12 +2932,13 @@ def jobs_dir(app):
     import app as app_module
     d = Path(app_module.JOBS_DIR)
     if d.exists():
-        for f in d.glob('*.json'):
-            f.unlink()
+        import shutil
+        shutil.rmtree(d)
     d.mkdir(parents=True, exist_ok=True)
     yield d
-    for f in d.glob('*.json'):
-        f.unlink()
+    if d.exists():
+        import shutil
+        shutil.rmtree(d)
 
 
 class TestAsyncPipelineJobs:
@@ -2909,9 +2994,9 @@ class TestAsyncPipelineJobs:
         assert r2.get_json()['status'] == 'duplicate'
         assert mock_thread.call_count == 1
 
-    def test_spawn_guard_skips_athlete_with_job_in_flight(
+    def test_repeat_athlete_gets_independent_order_job(
             self, temp_athletes_dir, app, jobs_dir):
-        """Same athlete_id with a queued/running job → no second spawn."""
+        """Same athlete may have two orders; only order id deduplicates."""
         import app as app_module
         app_module._write_job({'athlete_id': 'busy_rider', 'order_id': 'cs_1',
                                'status': 'running', 'attempts': 1})
@@ -2921,14 +3006,13 @@ class TestAsyncPipelineJobs:
                 {'athlete_id': 'busy_rider', 'order_id': 'cs_2',
                  'tier': 'custom', 'profile': {}})
 
-        assert job['order_id'] == 'cs_1'  # existing job returned
+        assert job['order_id'] == 'cs_2'
         assert result is None
-        mock_thread.assert_not_called()
+        mock_thread.assert_called_once()
 
-    def test_success_path_preserves_delivery_behaviors(
+    def test_persistence_failure_never_reports_success(
             self, client, temp_athletes_dir, jobs_dir):
-        """Job thread still: runs pipeline, logs order, persists ZIP,
-        sends the coach delivery email, marks job succeeded."""
+        """No durable order state means failed job + failure notice."""
         import app as app_module
 
         def run_inline(job, intake_data=None):
@@ -2939,22 +3023,23 @@ class TestAsyncPipelineJobs:
              patch('app.run_pipeline') as mock_pipeline, \
              patch('app.persist_deliverables') as mock_persist, \
              patch('app._notify_new_order') as mock_notify, \
-             patch('app.log_order') as mock_log:
+            patch('app.log_order') as mock_log:
             mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
+            mock_persist.return_value = None
             response = client.post('/webhook/stripe',
                                    json=_stripe_event('cs_async_ok'),
                                    content_type='application/json')
 
         assert response.get_json()['status'] == 'accepted'
         mock_pipeline.assert_called_once()
-        mock_persist.assert_called_once_with('async_tester')
+        assert mock_persist.call_args.args[:2] == ('cs_async_ok', 'async_tester')
         mock_log.assert_called_once()
-        assert mock_notify.call_args[0][0] == 'training_plan'
-        assert 'download_token' in mock_notify.call_args[0][1]
+        assert mock_notify.call_args[0][0] == 'training_plan_FAILED'
+        assert mock_notify.call_args[0][1]['fulfillment_state'] == 'unavailable'
 
         job = json.loads((jobs_dir / 'async_tester.json').read_text())
-        assert job['status'] == 'succeeded'
-        assert job['error'] is None
+        assert job['status'] == 'failed'
+        assert 'Persistence returned no durable order state' in job['error']
 
     def test_failure_marks_failed_and_notifies_operator(
             self, client, temp_athletes_dir, jobs_dir):
@@ -3030,10 +3115,11 @@ class TestJobSweep:
         }
         app_module._write_job(job)
         # Backdate updated_at past the stuck threshold
-        raw = json.loads(app_module._job_path(athlete_id).read_text())
+        raw_path = app_module._canonical_job_path(f'cs_{athlete_id}')
+        raw = json.loads(raw_path.read_text())
         raw['updated_at'] = (datetime.now()
                              - timedelta(minutes=minutes_old)).isoformat()
-        app_module._job_path(athlete_id).write_text(json.dumps(raw))
+        raw_path.write_text(json.dumps(raw))
         return raw
 
     def test_sweep_retries_stuck_job(self, app, jobs_dir):
@@ -3123,7 +3209,7 @@ class TestFulfillmentStatusEndpoint:
         monkeypatch.setenv('CRON_SECRET', 'test-secret')
         response = client.get('/api/fulfillment/UPPERCASE!/status',
                               headers={'X-Cron-Secret': 'test-secret'})
-        assert response.status_code == 400
+        assert response.status_code == 404
 
     def test_unknown_athlete_returns_404(self, client, monkeypatch):
         monkeypatch.setenv('CRON_SECRET', 'test-secret')
@@ -3134,16 +3220,23 @@ class TestFulfillmentStatusEndpoint:
     def test_returns_current_state_with_evidence(self, client, monkeypatch):
         import shutil
         import app as app_module
-        from fulfillment_state import APPROVED, transition, write_generation
+        from fulfillment_state import (APPROVED, finalize_transitional_release,
+                                       transition, write_generation)
 
         monkeypatch.setenv('CRON_SECRET', 'test-secret')
         athlete_id = 'status_ready_rider'
-        state_path = Path(app_module.DELIVERIES_DIR) / athlete_id / 'fulfillment_status.json'
+        order_id = 'test_status_ready'
+        state_path = app_module._fulfillment_status_path(order_id)
         try:
-            write_generation(state_path, athlete_id)
+            write_generation(state_path, athlete_id, order_id=order_id)
+            revision = app_module._order_dir(order_id) / 'revisions' / 'r1'
+            revision.mkdir(parents=True)
+            (revision / 'artifact.txt').write_text('sealed')
+            finalize_transitional_release(state_path, revision, expected_revision=1)
             transition(state_path, APPROVED, 'coach_lee')
+            app_module._record_order_lookup(order_id, athlete_id)
 
-            response = client.get(f'/api/fulfillment/{athlete_id}/status',
+            response = client.get(f'/api/fulfillment/{order_id}/status',
                                   headers={'X-Cron-Secret': 'test-secret'})
             assert response.status_code == 200
             data = response.get_json()
@@ -3155,7 +3248,7 @@ class TestFulfillmentStatusEndpoint:
             assert 'updated_at' in data
             assert 'blocking_issues' in data
         finally:
-            shutil.rmtree(state_path.parent, ignore_errors=True)
+            shutil.rmtree(app_module._order_dir(order_id), ignore_errors=True)
 
 
 class TestOrderStatus:
@@ -3163,9 +3256,12 @@ class TestOrderStatus:
 
     def test_processing_while_job_running(self, app, client, jobs_dir):
         import app as app_module
+        order_id = 'test_inflight_rider'
         app_module._write_job({'athlete_id': 'inflight_rider',
+                               'order_id': order_id,
                                'status': 'running', 'attempts': 1})
-        r = client.get('/api/order-status/inflight_rider')
+        app_module.mark_order_processed(order_id, 'inflight_rider')
+        r = client.get(f'/api/order-status/{order_id}')
         assert r.status_code == 200
         data = r.get_json()
         assert data['status'] == 'processing'
@@ -3173,31 +3269,40 @@ class TestOrderStatus:
 
     def test_ready_when_job_succeeded(self, app, client, jobs_dir):
         import app as app_module
+        order_id = 'test_done_rider'
         app_module._write_job({'athlete_id': 'done_rider',
+                               'order_id': order_id,
                                'status': 'succeeded', 'attempts': 1})
-        r = client.get('/api/order-status/done_rider')
-        assert r.get_json()['status'] == 'ready'
+        app_module.mark_order_processed(order_id, 'done_rider')
+        r = client.get(f'/api/order-status/{order_id}')
+        assert r.get_json()['status'] == 'processing'
+        assert r.get_json()['download_ready'] is False
 
     def test_ready_when_customer_zip_exists(self, app, client, jobs_dir):
         import app as app_module
+        order_id = 'test_zipped_rider'
         d = Path(app_module.DELIVERIES_DIR) / 'zipped_rider'
         d.mkdir(parents=True, exist_ok=True)
         (d / 'zipped_rider-training-plan.zip').write_bytes(b'PK')
         try:
-            r = client.get('/api/order-status/zipped_rider')
+            app_module.mark_order_processed(order_id, 'zipped_rider')
+            r = client.get(f'/api/order-status/{order_id}')
             data = r.get_json()
-            assert data['status'] == 'ready'
-            assert data['download_ready'] is True
+            assert data['status'] == 'processing'
+            assert data['download_ready'] is False
         finally:
             (d / 'zipped_rider-training-plan.zip').unlink()
 
     def test_failed_job_reads_gentle_not_broken(self, app, client, jobs_dir):
         """Failure is loud to the operator, invisible-gentle to the customer."""
         import app as app_module
+        order_id = 'test_failed_rider'
         app_module._write_job({'athlete_id': 'failed_rider', 'status': 'failed',
+                               'order_id': order_id,
                                'attempts': 2,
                                'error': 'Traceback: ValueError: secret stack'})
-        r = client.get('/api/order-status/failed_rider')
+        app_module.mark_order_processed(order_id, 'failed_rider')
+        r = client.get(f'/api/order-status/{order_id}')
         assert r.status_code == 200
         data = r.get_json()
         assert data['status'] == 'processing'  # never "failed" to customer
@@ -3247,9 +3352,15 @@ class TestSyncPipelineEscapeHatch:
 
     def test_sync_mode_returns_legacy_success_contract(
             self, client, temp_athletes_dir, jobs_dir):
-        """Inline path still reports success/pipeline_failed synchronously."""
+        """Inline path reports success only after durable persistence."""
+        persisted = {'state': {
+            'status': 'BLOCKED_REVIEW', 'blocking_issues': [],
+            'required_confirmations': [],
+        }}
         with patch.dict(os.environ, {'SYNC_PIPELINE': '1'}), \
              patch('app.run_pipeline') as mock_pipeline, \
+             patch('app.persist_deliverables', return_value=persisted), \
+             patch('app._generate_download_token', return_value='token'), \
              patch('app._notify_new_order'):
             mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
             r = client.post('/webhook/stripe',

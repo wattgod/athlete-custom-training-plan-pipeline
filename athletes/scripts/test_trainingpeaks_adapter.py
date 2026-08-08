@@ -11,8 +11,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'webhook'))
 
-from delivery.trainingpeaks import TrainingPeaksAdapter, TrainingPeaksReadbackMismatch
-from fulfillment_state import APPROVED, load, transition, write_generation
+from delivery.trainingpeaks import (TrainingPeaksAdapter,
+                                    TrainingPeaksAdapterDisabled)
+from fulfillment_state import (APPROVED, finalize_transitional_release, load,
+                               transition, write_generation)
 
 
 class FakeTP:
@@ -64,44 +66,12 @@ def manifest():
     }
 
 
-def test_first_apply_creates_and_second_apply_is_idempotent(tmp_path, manifest):
-    fake = FakeTP()
-    try:
-        adapter = TrainingPeaksAdapter(fake.url, 'test', tmp_path / 'ops.json')
-        assert adapter.apply('7', manifest)['created'] == 4
-        adapter.verify('7', manifest)
-        before = len([c for c in fake.calls if c[0] == 'POST'])
-        assert TrainingPeaksAdapter(fake.url, 'test', tmp_path / 'ops.json').apply('7', manifest)['created'] == 0
-        assert len([c for c in fake.calls if c[0] == 'POST']) == before
-        assert fake.items['workouts'][0]['sportType'] == 8
-    finally:
-        fake.close()
+def test_phase1_adapter_refuses_before_any_remote_write(tmp_path, manifest, monkeypatch):
+    adapter = TrainingPeaksAdapter('https://tp.invalid', 'test', tmp_path / 'ops.json')
+    remote_calls = []
+    monkeypatch.setattr(adapter, '_request', lambda *args, **kwargs: remote_calls.append(args))
 
+    with pytest.raises(TrainingPeaksAdapterDisabled, match='seal-bound APPROVED'):
+        adapter.apply('7', manifest)
 
-def test_partial_failure_resumes_from_checkpoint(tmp_path, manifest):
-    fake = FakeTP(fail_once_path='calendarNote')
-    try:
-        adapter = TrainingPeaksAdapter(fake.url, 'test', tmp_path / 'ops.json')
-        with pytest.raises(Exception):
-            adapter.apply('7', manifest)
-        assert len(fake.items['workouts']) == 1
-        resumed = TrainingPeaksAdapter(fake.url, 'test', tmp_path / 'ops.json')
-        assert resumed.apply('7', manifest)['created'] == 3
-        resumed.verify('7', manifest)
-        assert len(fake.items['workouts']) == len(fake.items['calendarNote']) == 1
-    finally:
-        fake.close()
-
-
-def test_readback_mismatch_never_marks_j1_applied(tmp_path, manifest):
-    fake = FakeTP(mismatch=True)
-    state_path = tmp_path / 'fulfillment_status.json'
-    write_generation(state_path, 'heather')
-    transition(state_path, APPROVED, 'coach@example.test')
-    try:
-        adapter = TrainingPeaksAdapter(fake.url, 'test', tmp_path / 'ops.json')
-        with pytest.raises(TrainingPeaksReadbackMismatch):
-            adapter.apply_and_mark_applied('7', manifest, state_path, 'coach@example.test')
-        assert load(state_path)['status'] == APPROVED
-    finally:
-        fake.close()
+    assert remote_calls == []

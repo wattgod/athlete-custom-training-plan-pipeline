@@ -1,14 +1,8 @@
-"""Tests for tp_apply_order.py (D5).
-
-Covers manifest validation, apply_job.json emission (golden fixture from a
-synthetic manifest), receipt validation, and approval-gate refusal paths.
-Deliberately no browser/network tests — tp_apply_driver.js executes in a
-real TP browser tab and is out of pytest's reach; --server paths here are
-exercised with a monkeypatched network layer only.
-"""
+"""Tests for Phase 1-disabled tp_apply_order.py and its retained gate helpers."""
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -69,6 +63,22 @@ def golden_manifest() -> dict:
         "expected": {"bike": 2, "strength": 1, "day_off": 1, "race": 1, "total": 5},
         "sessions": sessions,
     }
+
+
+def sealed_binding(**overrides) -> dict:
+    value = {
+        "order_id": "order-1",
+        "athlete_id": "example_client",
+        "delivery_platform": "trainingpeaks",
+        "generation_revision": 2,
+        "model_seal": "seal-2",
+        "release_manifest_digest": "release-2",
+        "tp_manifest_sha256": "manifest-2",
+        "apply_gate_url": "https://example.railway.app/api/fulfillment/order-1/apply-gate",
+        "apply_gate_token": "short-lived-token",
+    }
+    value.update(overrides)
+    return value
 
 
 @pytest.fixture
@@ -169,96 +179,18 @@ class TestLoadManifest:
 
 
 # ---------------------------------------------------------------------------
-# apply_job.json emission
+# apply_job.json emission is hard-disabled
 # ---------------------------------------------------------------------------
 
 class TestBuildApplyJob:
-    def test_requires_athlete_tp_id(self):
-        with pytest.raises(tao.ApplyOrderError, match="athlete_tp_id"):
-            tao.build_apply_job(golden_manifest(), athlete_tp_id="", target_date=None, start_type=1)
-
-    def test_golden_job_without_strength_module(self):
-        """Pinned golden fixture: module absent -> strength jobs carry
-        {pending_module: true}, per spec's degrade-gracefully instruction."""
-        job = tao.build_apply_job(golden_manifest(), athlete_tp_id="2000302",
-                                  target_date=None, start_type=1, strength_module=None)
-
-        assert job["plan_title"] == "Example Client · Example Downtown Criterium · 10wk [CUSTOM]"
-        assert job["athlete_tp_id"] == "2000302"
-        assert job["duplicate_guard"] == {"title": job["plan_title"]}
-        assert job["strength_module_pending"] is True
-        assert job["custom_exercises"] == []
-
-        # bike/day_off/race sessions land in workouts[]; strength does not.
-        assert len(job["workouts"]) == 4
-        assert {w["title"] for w in job["workouts"]} == {
-            "Endurance Ride", "Rest Day", "Intervals", "Example Downtown Criterium",
-        }
-        assert all("strength_template" not in w for w in job["workouts"])
-
-        assert len(job["strength"]) == 1
-        strength = job["strength"][0]
-        assert strength == {
-            "date": "2026-08-05", "order_on_day": 0, "title": "Foundation (A)",
-            "template_key": "foundation_a", "pending_module": True, "doc": None,
-        }
-
-        assert job["apply"] == {"targetDate": None, "startType": 1, "enabled": False}
-        assert job["verify"] == {
-            "expected": {"bike": 2, "strength": 1, "day_off": 1, "race": 1, "total": 5},
-            "date_range": {"start": "2026-08-03", "end": "2026-08-06"},
-        }
-        assert job["rollback"] == {"snapshot_range": {"start": "2026-08-03", "end": "2026-08-06"}}
-
-    def test_target_date_enables_apply_stage(self):
-        job = tao.build_apply_job(golden_manifest(), athlete_tp_id="2000302",
-                                  target_date="2027-06-28", start_type=3, strength_module=None)
-        assert job["apply"] == {"targetDate": "2027-06-28", "startType": 3, "enabled": True}
-
-    def test_strength_module_present_builds_docs(self):
-        calls = []
-
-        class FakeStrengthModule:
-            @staticmethod
-            def build_strength_doc(template_key, *, calendar_id, prescribed_date, doc_id, uuid_factory):
-                calls.append((template_key, calendar_id, prescribed_date, doc_id))
-                return {"title": template_key, "blocks": [], "prescribedDate": prescribed_date, "id": uuid_factory()}
-
-            @staticmethod
-            def custom_exercises_needed():
-                return [{"key": "dead_bug", "title": "Dead Bug"}]
-
-        job = tao.build_apply_job(golden_manifest(), athlete_tp_id="2000302", target_date=None,
-                                  start_type=1, strength_module=FakeStrengthModule(),
-                                  uuid_factory=lambda: "fixed-uuid")
-
-        assert "strength_module_pending" not in job
-        assert job["custom_exercises"] == [{"key": "dead_bug", "title": "Dead Bug"}]
-        assert calls == [("foundation_a", None, "2026-08-05", None)]
-        strength = job["strength"][0]
-        assert strength["doc"] == {"title": "foundation_a", "blocks": [],
-                                   "prescribedDate": "2026-08-05", "id": "fixed-uuid"}
-        assert "pending_module" not in strength
-
-    def test_total_time_planned_passes_through_unrounded_and_stays_whole_minutes(self):
-        """Regression guard for the "4:09:44" ragged-duration bug: PlanIR
-        (plan_ir.py::_round_time_planned_hours) is the single place
-        total_time_planned is computed -- tp_apply_order._workout_entry must
-        be a pure passthrough (session.get("total_time_planned"), no
-        re-derivation) so a whole-minute value entering the apply-job body
-        stays whole-minute, byte-for-byte. 4.1333h == 248min exactly (the
-        value a real "Endurance with Surges" session projects to)."""
-        manifest = golden_manifest()
-        manifest["sessions"][0]["total_time_planned"] = 4.1333
-        job = tao.build_apply_job(manifest, athlete_tp_id="2000302",
-                                  target_date=None, start_type=1, strength_module=None)
-        entry = next(w for w in job["workouts"] if w["title"] == "Endurance Ride")
-        assert entry["totalTimePlanned"] == 4.1333, (
-            "totalTimePlanned was re-derived instead of passed through unchanged")
-        reconstructed_sec = round(entry["totalTimePlanned"] * 3600)
-        assert reconstructed_sec % 60 == 0, (
-            f"totalTimePlanned {entry['totalTimePlanned']} is not a whole number of minutes "
-            f"({reconstructed_sec}s)")
+    def test_direct_builder_refuses_all_inputs(self):
+        with pytest.raises(
+                tao.ApprovalGateError,
+                match="AUTOMATED TRAININGPEAKS APPLY IS DISABLED FOR PHASE 1"):
+            tao.build_apply_job(
+                golden_manifest(), athlete_tp_id="2000302",
+                target_date="2027-06-28", start_type=3,
+                binding=sealed_binding())
 
 
 # ---------------------------------------------------------------------------
@@ -328,35 +260,68 @@ class TestValidateReceipt:
 # ---------------------------------------------------------------------------
 
 class TestApprovalGate:
+    @staticmethod
+    def _status(**overrides):
+        value = {
+            "status": "APPROVED", "legacy": False,
+            "delivery_platform": "trainingpeaks",
+            "release_authorized": True, "seal_verified": True,
+            "order_id": "order-1", "athlete_id": "example_client",
+            "generation_revision": 2, "model_seal": "seal-2",
+            "release_manifest_digest": "release-2",
+            "tp_manifest_sha256": "manifest-2",
+            "apply_gate_url": "https://example.railway.app/api/fulfillment/order-1/apply-gate",
+            "apply_gate_token": "short-lived-token",
+            "approval": {"model_seal": "seal-2",
+                         "release_manifest_digest": "release-2"},
+        }
+        value.update(overrides)
+        return value
+
+    @staticmethod
+    def _check(**overrides):
+        values = {
+            "server": "https://example.railway.app", "token": "secret",
+            "order_id": "order-1", "athlete_id": "example_client",
+            "generation_revision": 2, "model_seal": "seal-2",
+            "manifest_sha256": "manifest-2",
+        }
+        values.update(overrides)
+        return tao.check_approval_gate(**values)
+
     def test_server_approved_passes(self, monkeypatch):
         monkeypatch.setattr(tao, "fetch_fulfillment_status",
-                            lambda server, token, athlete_id: {"status": "APPROVED"})
-        status = tao.check_approval_gate(server="https://example.railway.app", token="secret",
-                                         athlete_id="example_client", skip_approval_check=False)
+                            lambda server, token, order_id: self._status())
+        status = self._check()
         assert status["status"] == "APPROVED"
 
     def test_server_not_approved_refused(self, monkeypatch):
         monkeypatch.setattr(tao, "fetch_fulfillment_status",
-                            lambda server, token, athlete_id: {"status": "GENERATED"})
+                            lambda server, token, order_id: self._status(
+                                status="GENERATED", release_authorized=False))
         with pytest.raises(tao.ApprovalGateError, match="not APPROVED"):
-            tao.check_approval_gate(server="https://example.railway.app", token="secret",
-                                    athlete_id="example_client", skip_approval_check=False)
+            self._check()
 
     def test_server_without_token_refused(self):
         with pytest.raises(tao.ApplyOrderError, match="token"):
-            tao.check_approval_gate(server="https://example.railway.app", token="",
-                                    athlete_id="example_client", skip_approval_check=False)
+            self._check(token="")
 
-    def test_no_server_no_skip_refused(self):
-        with pytest.raises(tao.ApprovalGateError, match="local/dev mode"):
-            tao.check_approval_gate(server=None, token=None, athlete_id="example_client",
-                                    skip_approval_check=False)
+    def test_no_server_refused_without_bypass(self):
+        with pytest.raises(tao.ApprovalGateError, match="local bypass is disabled"):
+            self._check(server=None, token=None)
 
-    def test_no_server_with_skip_proceeds(self, capsys):
-        result = tao.check_approval_gate(server=None, token=None, athlete_id="example_client",
-                                         skip_approval_check=True)
-        assert result is None
-        assert "WARNING" in capsys.readouterr().err
+    @pytest.mark.parametrize("field,value", [
+        ("legacy", True), ("generation_revision", 3),
+        ("model_seal", "other"), ("tp_manifest_sha256", "other"),
+        ("delivery_platform", "endure"),
+    ])
+    def test_binding_mismatch_refused(self, monkeypatch, field, value):
+        monkeypatch.setattr(
+            tao, "fetch_fulfillment_status",
+            lambda server, token, order_id: self._status(**{field: value}),
+        )
+        with pytest.raises(tao.ApprovalGateError):
+            self._check()
 
 
 # ---------------------------------------------------------------------------
@@ -364,34 +329,43 @@ class TestApprovalGate:
 # ---------------------------------------------------------------------------
 
 class TestMainJobMode:
-    def test_writes_apply_job_with_skip_approval_check(self, package_dir, capsys):
+    BINDING = ["--order-id", "order-1", "--generation-revision", "2",
+               "--model-seal", "seal-2"]
+
+    def test_missing_athlete_tp_id_still_hits_hard_disable(self, package_dir):
+        rc = tao.main(["example_client", "--package", str(package_dir), *self.BINDING])
+        assert rc == 3
+
+    def test_no_server_exits_3_and_writes_no_job(self, package_dir):
         rc = tao.main(["example_client", "--package", str(package_dir),
-                      "--athlete-tp-id", "2000302", "--skip-approval-check"])
-        assert rc == 0
-        job_path = package_dir / "apply_job.json"
-        assert job_path.exists()
-        job = json.loads(job_path.read_text())
-        assert job["athlete_tp_id"] == "2000302"
-        assert "OPERATOR RUNBOOK" in capsys.readouterr().out
-
-    def test_missing_athlete_tp_id_errors(self, package_dir):
-        rc = tao.main(["example_client", "--package", str(package_dir), "--skip-approval-check"])
-        assert rc == 1
-
-    def test_no_server_no_skip_exits_3(self, package_dir):
-        rc = tao.main(["example_client", "--package", str(package_dir), "--athlete-tp-id", "2000302"])
+                       "--athlete-tp-id", "2000302", *self.BINDING])
         assert rc == 3
+        assert not (package_dir / "apply_job.json").exists()
 
-    def test_server_not_approved_exits_3(self, package_dir, monkeypatch):
-        monkeypatch.setattr(tao, "fetch_fulfillment_status",
-                            lambda server, token, athlete_id: {"status": "BLOCKED_REVIEW"})
+    def test_approved_server_cannot_emit_job_or_runbook(
+        self, package_dir, tmp_path, monkeypatch, capsys,
+    ):
+        def unexpected_status_call(*args, **kwargs):
+            pytest.fail("disabled CLI must stop before requesting a capability")
+
+        monkeypatch.setattr(tao, "fetch_fulfillment_status", unexpected_status_call)
         monkeypatch.setenv("CRON_SECRET", "secret")
-        rc = tao.main(["example_client", "--package", str(package_dir), "--athlete-tp-id", "2000302",
-                      "--server", "https://example.railway.app"])
+        output_path = tmp_path / "apply_job.json"
+        rc = tao.main([
+            "example_client", "--package", str(package_dir),
+            "--athlete-tp-id", "2000302",
+            "--server", "https://example.railway.app",
+            "--out", str(output_path), *self.BINDING,
+        ])
         assert rc == 3
+        assert not output_path.exists()
+        captured = capsys.readouterr()
+        assert tao.AUTOMATED_APPLY_DISABLED_MESSAGE in captured.err
+        assert "OPERATOR RUNBOOK" not in captured.out + captured.err
 
 
 class TestMainReceiptMode:
+    BINDING = TestMainJobMode.BINDING
     def _write_receipt(self, tmp_path, **overrides):
         receipt = _ok_receipt(**overrides)
         path = tmp_path / "receipt.json"
@@ -400,32 +374,61 @@ class TestMainReceiptMode:
 
     def test_valid_receipt_exits_0(self, package_dir, tmp_path, capsys):
         receipt_path = self._write_receipt(tmp_path)
-        rc = tao.main(["example_client", "--package", str(package_dir), "--receipt", str(receipt_path)])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "receipt OK" in out
-        assert "plan_registry.py register" in out
-        assert "plan_registry.py check" in out
+        rc = tao.main(["example_client", "--package", str(package_dir),
+                       "--receipt", str(receipt_path), *self.BINDING])
+        assert rc == 3
 
     def test_invalid_receipt_exits_1(self, package_dir, tmp_path):
         receipt_path = self._write_receipt(tmp_path, finishedAt=None)
-        rc = tao.main(["example_client", "--package", str(package_dir), "--receipt", str(receipt_path)])
-        assert rc == 1
+        rc = tao.main(["example_client", "--package", str(package_dir),
+                       "--receipt", str(receipt_path), *self.BINDING])
+        assert rc == 3
 
     def test_receipt_mode_posts_applied_transition_with_server(self, package_dir, tmp_path, monkeypatch):
         receipt_path = self._write_receipt(tmp_path)
         posted = {}
 
-        def fake_post(server, token, athlete_id, coach, evidence):
-            posted.update(server=server, token=token, athlete_id=athlete_id, coach=coach, evidence=evidence)
+        digest = __import__('hashlib').sha256(
+            (package_dir / tao.MANIFEST_FILENAME).read_bytes()).hexdigest()
+        monkeypatch.setattr(tao, "fetch_fulfillment_status", lambda *args: {
+            "status": "APPROVED", "legacy": False, "release_authorized": True,
+            "seal_verified": True, "order_id": "order-1",
+            "delivery_platform": "trainingpeaks",
+            "athlete_id": "example_client", "generation_revision": 2,
+            "model_seal": "seal-2", "release_manifest_digest": "release-2",
+            "tp_manifest_sha256": digest,
+            "apply_gate_url": "https://example.railway.app/api/fulfillment/order-1/apply-gate",
+            "apply_gate_token": "short-lived-token",
+            "approval": {"model_seal": "seal-2",
+                         "release_manifest_digest": "release-2"},
+        })
+
+        def fake_post(server, token, order_id, coach, evidence):
+            posted.update(server=server, token=token, order_id=order_id, coach=coach, evidence=evidence)
             return {"status": "APPLIED"}
 
         monkeypatch.setattr(tao, "post_applied_transition", fake_post)
         monkeypatch.setenv("CRON_SECRET", "secret-token")
         rc = tao.main(["example_client", "--package", str(package_dir), "--receipt", str(receipt_path),
-                      "--server", "https://example.railway.app", "--coach", "coach_lee"])
+                      "--server", "https://example.railway.app", "--coach", "coach_lee",
+                      *self.BINDING])
         assert rc == 0
-        assert posted["athlete_id"] == "example_client"
+        assert posted["order_id"] == "order-1"
         assert posted["token"] == "secret-token"
         assert posted["coach"] == "coach_lee"
         assert posted["evidence"]["planId"] == 661259
+
+
+def test_browser_driver_hard_exits_before_network_or_global_install():
+    driver = Path(__file__).with_name('tp_apply_driver.js')
+    script = "\n".join([
+        "global.window = {};",
+        "global.fetch = async function() { process.stdout.write('NETWORK'); };",
+        f"require({json.dumps(str(driver))});",
+        "process.stdout.write(window.applyJob ? 'INSTALLED' : 'NO_GLOBAL');",
+    ])
+    completed = subprocess.run(
+        ['node', '-e', script], capture_output=True, text=True, timeout=10)
+    assert completed.returncode != 0
+    assert completed.stdout == ''
+    assert tao.AUTOMATED_APPLY_DISABLED_MESSAGE in completed.stderr

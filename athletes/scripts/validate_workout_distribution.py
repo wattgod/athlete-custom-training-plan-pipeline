@@ -11,6 +11,7 @@ Created: Feb 2026
 Reason: Bug #16 - Plans were delivered with wrong zone ratios because distribution wasn't validated.
 """
 
+import os
 import sys
 import yaml
 from pathlib import Path
@@ -94,7 +95,7 @@ def validate_distribution(athlete_id: str) -> tuple[bool, str]:
 
     Returns: (passed: bool, message: str)
     """
-    athletes_dir = Path(__file__).parent.parent
+    athletes_dir = Path(os.environ.get('GG_ATHLETES_BASE_DIR', Path(__file__).parent.parent))
     athlete_dir = athletes_dir / athlete_id
     workouts_dir = athlete_dir / 'workouts'
     methodology_file = athlete_dir / 'methodology.yaml'
@@ -273,7 +274,7 @@ def validate_vo2max_gap(athlete_id: str) -> tuple[bool, str]:
     from datetime import datetime
     from constants import VO2MAX_GAP_MAX_DAYS
 
-    athletes_dir = Path(__file__).parent.parent
+    athletes_dir = Path(os.environ.get('GG_ATHLETES_BASE_DIR', Path(__file__).parent.parent))
     athlete_dir = athletes_dir / athlete_id
     workouts_dir = athlete_dir / 'workouts'
     plan_dates_file = athlete_dir / 'plan_dates.yaml'

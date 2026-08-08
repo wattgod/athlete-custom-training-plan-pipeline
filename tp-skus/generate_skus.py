@@ -79,7 +79,7 @@ Submitted: {date.today().isoformat()}
 
 ## Equipment
 - Indoor Trainer: smart
-- Devices: power meter, HR strap
+- Devices: unknown
 
 ## Schedule
 - Weekly Hours Available: {a['weekly_hours']}

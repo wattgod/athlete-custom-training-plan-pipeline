@@ -25,7 +25,8 @@ from tp_polyline import compute_polyline
 
 
 PLAN_IR_VERSION = "0.1"
-ATHLETES_DIR = Path(__file__).resolve().parent.parent
+ATHLETES_DIR = Path(os.environ.get(
+    'GG_ATHLETES_BASE_DIR', Path(__file__).resolve().parent.parent))
 
 
 @dataclass

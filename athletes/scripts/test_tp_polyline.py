@@ -12,6 +12,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent))
 from tp_polyline import compute_polyline
 
@@ -48,3 +50,26 @@ def test_peak_normalizes_to_one():
     structure = _GOLDEN["inputs"]["vo2_intervals_unrolled"]
     ys = [p[1] for p in compute_polyline(structure)]
     assert max(ys) == 1.0, "peak step must normalise to y=1.0"
+
+
+def test_x_values_are_clamped_and_monotonic_for_rounding_heavy_structure():
+    structure = _GOLDEN["inputs"]["vo2_intervals_unrolled"]
+    xs = [point[0] for point in compute_polyline(structure)]
+    assert all(0 <= x <= 1 for x in xs)
+    assert xs == sorted(xs)
+
+
+@pytest.mark.parametrize("durations", [
+    [1] * 3, [1] * 7, [17, 19, 23, 29, 31], [1, 999, 1, 999, 1],
+])
+def test_duration_fraction_property(durations):
+    structure = [{
+        "length": {"value": 1, "unit": "repetition"},
+        "steps": [{
+            "length": {"value": duration, "unit": "second"},
+            "targets": [{"minValue": 50 + index}],
+        }],
+    } for index, duration in enumerate(durations)]
+    xs = [point[0] for point in compute_polyline(structure)]
+    assert xs == sorted(xs)
+    assert min(xs) == 0 and max(xs) == 1

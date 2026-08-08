@@ -7,6 +7,7 @@ Run with: pytest webapp/tests/test_webapp.py -v
 
 import os
 import sys
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,12 @@ os.environ['GG_ADMIN_PASSWORD'] = ''
 
 # Add webapp directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+pytest.importorskip('flask_wtf', reason='optional webapp test dependencies not installed')
+
+_WEBAPP_PATH = Path(__file__).parent.parent / 'app.py'
+_SPEC = importlib.util.spec_from_file_location('gravel_god_webapp', _WEBAPP_PATH)
+WEBAPP = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(WEBAPP)
 
 
 class TestInputValidation:
@@ -26,7 +33,7 @@ class TestInputValidation:
 
     def test_validate_athlete_id_valid(self):
         """Valid athlete IDs pass validation."""
-        from app import validate_athlete_id
+        validate_athlete_id = WEBAPP.validate_athlete_id
 
         assert validate_athlete_id('john_doe') is True
         assert validate_athlete_id('john-doe') is True
@@ -36,7 +43,7 @@ class TestInputValidation:
 
     def test_validate_athlete_id_invalid(self):
         """Invalid athlete IDs fail validation."""
-        from app import validate_athlete_id
+        validate_athlete_id = WEBAPP.validate_athlete_id
 
         assert validate_athlete_id('') is False
         assert validate_athlete_id('../etc/passwd') is False
@@ -49,7 +56,7 @@ class TestInputValidation:
 
     def test_sanitize_athlete_id(self):
         """Sanitize converts names to safe IDs."""
-        from app import sanitize_athlete_id
+        sanitize_athlete_id = WEBAPP.sanitize_athlete_id
 
         assert sanitize_athlete_id('John Doe') == 'john-doe'
         assert sanitize_athlete_id('Mary Jane Watson') == 'mary-jane-watson'
@@ -64,7 +71,7 @@ class TestFlaskApp:
     @pytest.fixture
     def app(self):
         """Create test Flask app."""
-        from app import app
+        app = WEBAPP.app
         app.config['TESTING'] = True
         app.config['WTF_CSRF_ENABLED'] = False
         return app
@@ -140,7 +147,7 @@ class TestPipelineStepValidation:
 
     def test_allowed_scripts_only(self):
         """Only whitelisted scripts can run."""
-        from app import run_pipeline_step
+        run_pipeline_step = WEBAPP.run_pipeline_step
 
         # These should fail with "not allowed"
         success, output = run_pipeline_step('malicious.py', 'test')

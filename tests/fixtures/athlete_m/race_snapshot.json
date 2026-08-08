@@ -1,0 +1,13 @@
+{
+  "slug": "three-course-race",
+  "name": "Three Course Race",
+  "date": "2026-09-19",
+  "distance_miles": 89,
+  "elevation_ft": 7500,
+  "verified_at": null,
+  "courses": [
+    {"id": "short", "distance_miles": 55},
+    {"id": "middle", "distance_miles": 75},
+    {"id": "long", "distance_miles": 89}
+  ]
+}
