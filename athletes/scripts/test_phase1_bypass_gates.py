@@ -22,6 +22,25 @@ from fulfillment_state import (APPROVED, BLOCKED_REVIEW,
                                write_generation)
 
 
+def _approve(state_path, coach='coach@example.invalid'):
+    state = load_fulfillment_state(state_path)
+    decisions = [
+        {
+            'item_id': item['item_id'],
+            'revision': state['generation_revision'],
+            'disposition': 'confirmed',
+        }
+        for item in state['review_items']
+        if item['type'] in {'required_confirmation', 'verified_fact'}
+    ]
+    return transition(
+        state_path, APPROVED, coach,
+        expected_revision=state['generation_revision'],
+        expected_catalog_digest=state['review_catalog_digest'],
+        review_decisions=decisions,
+    )
+
+
 def _persistable_source(tmp_path, *, order_id, platform='trainingpeaks'):
     source = tmp_path / f'source-{order_id}'
     (source / 'workouts').mkdir(parents=True)
@@ -158,7 +177,7 @@ def test_download_seal_mismatch_revokes_authority_and_persists_blocker(
         delivery_platform="trainingpeaks",
     )
     state_path = Path(persisted["delivery_dir"]) / "fulfillment_status.json"
-    transition(state_path, APPROVED, "coach@example.invalid")
+    _approve(state_path)
     token = webhook_app._generate_download_token(
         "test_download_mismatch", "customer_bundle")
     Path(persisted["customer_zip"]).write_bytes(b"post-approval mutation")
@@ -189,7 +208,7 @@ def test_future_apply_gate_status_and_token_behavior_unchanged(monkeypatch, tmp_
         'test_future_gate', 'athlete-m', source_dir=source,
         delivery_platform='trainingpeaks')
     state_path = Path(persisted['delivery_dir']) / 'fulfillment_status.json'
-    transition(state_path, APPROVED, 'coach@example.invalid')
+    _approve(state_path)
 
     client = webhook_app.app.test_client()
     status_response = client.get(
@@ -259,7 +278,7 @@ def test_live_apply_gate_revokes_token_after_regeneration(monkeypatch, tmp_path)
         'test_live_gate', 'athlete-m', source_dir=source,
         delivery_platform='trainingpeaks')
     state_path = Path(persisted['delivery_dir']) / 'fulfillment_status.json'
-    transition(state_path, APPROVED, 'coach@example.invalid')
+    _approve(state_path)
 
     client = webhook_app.app.test_client()
     status_response = client.get(
@@ -295,7 +314,7 @@ def test_live_apply_gate_materializes_post_emission_seal_mismatch(
         'test_live_gate_seal', 'athlete-m', source_dir=source,
         delivery_platform='trainingpeaks')
     state_path = Path(persisted['delivery_dir']) / 'fulfillment_status.json'
-    transition(state_path, APPROVED, 'coach@example.invalid')
+    _approve(state_path)
     client = webhook_app.app.test_client()
     status = client.get(
         '/api/fulfillment/test_live_gate_seal/status',
@@ -331,7 +350,7 @@ def test_authenticated_endure_apply_and_confirm_attack_is_refused(
         'test_endure_gate', 'athlete-m', source_dir=source,
         delivery_platform='endure')
     state_path = Path(persisted['delivery_dir']) / 'fulfillment_status.json'
-    transition(state_path, APPROVED, 'coach@example.invalid')
+    _approve(state_path)
 
     client = webhook_app.app.test_client()
     response = client.get(
@@ -380,7 +399,7 @@ def test_manual_order_confirmation_never_sends_trainingpeaks_copy(
         'test_manual_confirm', 'athlete-m', source_dir=source,
         delivery_platform='manual')
     state_path = Path(persisted['delivery_dir']) / 'fulfillment_status.json'
-    transition(state_path, APPROVED, 'coach@example.invalid')
+    _approve(state_path)
     transition(
         state_path, 'APPLIED', 'coach@example.invalid',
         platform='manual', evidence='coach-attested inventory')
@@ -414,7 +433,7 @@ def test_confirm_route_refuses_mutated_sealed_bytes(
         'test_confirm_seal', 'athlete-m', source_dir=source,
         delivery_platform='trainingpeaks')
     state_path = Path(persisted['delivery_dir']) / 'fulfillment_status.json'
-    transition(state_path, APPROVED, 'coach@example.invalid')
+    _approve(state_path)
     transition(
         state_path, 'APPLIED', 'coach@example.invalid',
         platform='trainingpeaks', evidence='verified receipt')

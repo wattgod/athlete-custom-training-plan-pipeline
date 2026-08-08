@@ -125,6 +125,25 @@ def test_athlete_m_phase1_golden(monkeypatch, tmp_path):
     with zipfile.ZipFile(persisted["review_zip"]) as archive:
         assert not any(name.lower().endswith(".zwo") for name in archive.namelist())
 
+    # The real intake assembler and post-render validator values survive
+    # generation, persistence, sealing, session exchange, and page rendering.
+    client = webhook_app.app.test_client()
+    review_token = webhook_app._generate_review_token(
+        "test_athlete_m", "coach@example.invalid")
+    opened = client.post(
+        "/review/test_athlete_m/session", data={"token": review_token})
+    assert opened.status_code == 303
+    rendered_review = client.get("/review/test_athlete_m")
+    assert rendered_review.status_code == 200
+    review_html = rendered_review.get_data(as_text=True)
+    catalog = {item['item_id']: item for item in state['review_items']}
+    assert 'FTP_ESTIMATED' in review_html
+    assert str(catalog['FTP_ESTIMATED']['value']['ftp_watts']) in review_html
+    assert 'SCHEDULE_MISMATCH_CONFIRM' in review_html
+    for mismatch in catalog['SCHEDULE_MISMATCH_CONFIRM']['value'][
+            'generated_mismatches']:
+        assert mismatch in review_html
+
     details = {
         "pipeline_success": True, "name": "Athlete M",
         "order_id": "test_athlete_m", "fulfillment_state": "available",
@@ -144,7 +163,6 @@ def test_athlete_m_phase1_golden(monkeypatch, tmp_path):
     webhook_app.mark_order_processed("test_athlete_m", "athlete-m")
     customer_token = webhook_app._generate_download_token(
         "test_athlete_m", "customer_bundle")
-    client = webhook_app.app.test_client()
     response = client.get(
         "/api/download/test_athlete_m",
         query_string={"artifact": "customer_bundle", "token": customer_token},
@@ -162,6 +180,17 @@ def test_athlete_m_phase1_golden(monkeypatch, tmp_path):
         transition(
             Path(persisted["delivery_dir"]) / "fulfillment_status.json",
             APPROVED, "coach@example.invalid",
+            expected_revision=state['generation_revision'],
+            expected_catalog_digest=state['review_catalog_digest'],
+            review_decisions=[
+                {
+                    'item_id': item['item_id'],
+                    'revision': state['generation_revision'],
+                    'disposition': 'confirmed',
+                }
+                for item in state['review_items']
+                if item['type'] in {'required_confirmation', 'verified_fact'}
+            ],
             waiver={"rule_ids": [item["id"] for item in issues],
                     "reason": "fixture must remain blocked"},
         )

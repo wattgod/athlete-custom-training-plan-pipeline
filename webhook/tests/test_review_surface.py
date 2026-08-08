@@ -19,7 +19,11 @@ import app as webhook_app
 from fulfillment_state import (APPROVED, BLOCKED_REVIEW, GENERATED,
                                approval_matches_release,
                                finalize_transitional_release, load,
-                               write_generation)
+                               merge_generation_blockers,
+                               review_catalog_digest,
+                               set_generation_blockers, write_generation)
+from download_tokens import (MAX_REVIEW_BUNDLE_TTL_SECONDS,
+                             verify_download_token)
 from review_auth import verify_review_token
 
 
@@ -38,6 +42,7 @@ def review_client(tmp_path, monkeypatch):
     monkeypatch.delenv('REVIEW_TOKEN_KEYS', raising=False)
     monkeypatch.delenv('REVIEW_TOKEN_SECRET', raising=False)
     webhook_app.app.config['TESTING'] = True
+    webhook_app.limiter.reset()
     return webhook_app.app.test_client()
 
 
@@ -119,10 +124,28 @@ def _approval_form(state, csrf, *, confirm_ids=None, waived_ids=None, reason='')
     return {
         'csrf_token': csrf,
         'generation_revision': str(state['generation_revision']),
+        'review_catalog_digest': state['review_catalog_digest'],
         'confirm_item': (_confirmed_ids(state) if confirm_ids is None else confirm_ids),
         'waive_item': waived_ids or [],
         'waiver_reason': reason,
     }
+
+
+def _rewrite_catalog_item(state_path, collection, item_id, *, message, value):
+    """Simulate an old/compromised same-revision writer bypassing mutators."""
+    raw = json.loads(state_path.read_text())
+    source = next(item for item in raw[collection] if item['id'] == item_id)
+    source['message'] = message
+    source['review_value'] = value
+    rendered = next(
+        item for item in raw['review_items'] if item['item_id'] == item_id)
+    rendered['message'] = message
+    rendered['value'] = value
+    rendered['value_type'] = (
+        'object' if isinstance(value, dict) else 'string'
+    )
+    raw['review_catalog_digest'] = review_catalog_digest(raw['review_items'])
+    state_path.write_text(json.dumps(raw))
 
 
 def test_athlete_m_login_to_approved_persists_complete_seal_bound_snapshot(
@@ -164,6 +187,7 @@ def test_athlete_m_login_to_approved_persists_complete_seal_bound_snapshot(
     assert approval['model_seal'] == persisted['model_seal']
     assert approval['release_manifest_digest'] == persisted['release_manifest_digest']
     assert approval['revision'] == persisted['generation_revision']
+    assert approval['review_catalog_digest'] == persisted['review_catalog_digest']
     assert approval['credential'].startswith('review-link:')
     snapshots = {item['item_id']: item for item in approval['confirmations']}
     assert set(snapshots) == {item['item_id'] for item in persisted['review_items']}
@@ -173,13 +197,66 @@ def test_athlete_m_login_to_approved_persists_complete_seal_bound_snapshot(
         'generated_mismatches'] == ['intensity on sunday (2026-08-09)']
     assert snapshots['SCHEDULE_MISMATCH_CONFIRM']['disposition'] == 'confirmed'
     assert all(item['revision'] == 1 for item in snapshots.values())
+    assert snapshots['SCHEDULE_MISMATCH_CONFIRM']['message'] == (
+        'SCHEDULE_MISMATCH_CONFIRM fixture confirmation')
 
     approved_page = review_client.get(f"/review/{state['order_id']}")
     assert approved_page.status_code == 200
-    assert 'This decision is bound to revision 1' in approved_page.get_data(as_text=True)
+    approved_body = approved_page.get_data(as_text=True)
+    assert 'This decision is bound to revision 1' in approved_body
+    assert 'resolved:waived' in approved_body
+    assert 'Disposition' in approved_body
 
 
-def test_review_page_download_uses_typed_token_and_unauthenticated_call_leaks_nothing(
+def test_sealed_catalog_mutators_require_new_generation_revision(review_client):
+    state, state_path, _ = _seed_order(
+        'test_sealed_catalog_immutable', blockers=[_issue('RACE_STALE')])
+    with pytest.raises(ValueError, match='write_generation'):
+        merge_generation_blockers(
+            state_path, state['generation_revision'], 'fixture',
+            [_issue('RACE_STALE', value={'changed': True})])
+    with pytest.raises(ValueError, match='write_generation'):
+        set_generation_blockers(state_path, [_issue('RACE_STALE')])
+
+
+def test_page_rejects_confirmation_value_drift_after_render(review_client):
+    state, state_path, _ = _seed_order(
+        'test_confirmation_catalog_drift',
+        confirmations=[_confirmation(value={'target': 40})])
+    _, csrf = _login(review_client, state['order_id'])
+    _rewrite_catalog_item(
+        state_path, 'required_confirmations', 'SCHEDULE_MISMATCH_CONFIRM',
+        message='Changed after render.', value={'target': 120})
+
+    response = review_client.post(
+        f"/review/{state['order_id']}/approve",
+        data=_approval_form(state, csrf),
+    )
+    assert response.status_code == 409
+    assert 'review catalog changed' in response.get_data(as_text=True)
+    assert load(state_path)['approval'] is None
+
+
+def test_page_rejects_blocker_message_and_value_drift_after_render(review_client):
+    state, state_path, _ = _seed_order(
+        'test_blocker_catalog_drift',
+        blockers=[_issue('RACE_STALE', value={'course': 'old'})])
+    _, csrf = _login(review_client, state['order_id'])
+    _rewrite_catalog_item(
+        state_path, 'blocking_issues', 'RACE_STALE',
+        message='Different blocker message.', value={'course': 'new'})
+
+    response = review_client.post(
+        f"/review/{state['order_id']}/approve",
+        data=_approval_form(
+            state, csrf, waived_ids=['RACE_STALE'], reason='Saw old value.'),
+    )
+    assert response.status_code == 409
+    assert 'review catalog changed' in response.get_data(as_text=True)
+    assert load(state_path)['approval'] is None
+
+
+def test_review_page_download_uses_same_session_post_and_is_no_store(
     review_client,
 ):
     state, _, _ = _seed_order('test_review_download')
@@ -187,12 +264,53 @@ def test_review_page_download_uses_typed_token_and_unauthenticated_call_leaks_no
         f"/api/download/{state['order_id']}?artifact=review_bundle")
     assert unauthorized.status_code == 401
 
-    body, _ = _login(review_client, state['order_id'])
-    match = re.search(r'href="([^"]+artifact=review_bundle[^"]+)"', body)
-    assert match
-    downloaded = review_client.get(html.unescape(match.group(1)))
+    body, csrf = _login(review_client, state['order_id'])
+    assert '?artifact=review_bundle' not in body
+    assert f'/review/{state["order_id"]}/bundle' in body
+    downloaded = review_client.post(
+        f'/review/{state["order_id"]}/bundle', data={'csrf_token': csrf})
     assert downloaded.status_code == 200
     assert downloaded.mimetype == 'application/zip'
+    assert downloaded.headers['Cache-Control'].startswith('no-store')
+    assert downloaded.headers['Pragma'] == 'no-cache'
+
+
+@pytest.mark.parametrize('corruption', [
+    'missing_entry', 'changed_value', 'changed_type',
+    'seal_field_mismatch', 'old_snapshot_version',
+])
+def test_page_never_reports_non_authoritative_approval_as_approved(
+    review_client, corruption,
+):
+    state, state_path, _ = _seed_order(f'test_invalid_approval_{corruption}')
+    _, csrf = _login(review_client, state['order_id'])
+    approved = review_client.post(
+        f"/review/{state['order_id']}/approve",
+        data=_approval_form(state, csrf),
+    )
+    assert approved.status_code == 303
+
+    raw = json.loads(state_path.read_text())
+    snapshot = raw['approval']['confirmations'][0]
+    if corruption == 'missing_entry':
+        raw['approval']['confirmations'].pop()
+    elif corruption == 'changed_value':
+        snapshot['value'] = {'changed': True}
+    elif corruption == 'changed_type':
+        snapshot['value_type'] = 'string'
+    elif corruption == 'seal_field_mismatch':
+        raw['approval']['model_seal'] = 'different-seal'
+    elif corruption == 'old_snapshot_version':
+        raw['approval']['snapshot_version'] = 'approval_snapshot/v1'
+    state_path.write_text(json.dumps(raw))
+
+    page = review_client.get(f"/review/{state['order_id']}")
+    assert page.status_code == 200
+    body = page.get_data(as_text=True)
+    assert 'Approval not authoritative — regenerate/re-approve.' in body
+    assert '<strong>Approved.</strong>' not in body
+    assert '<h2>Application</h2>' not in body
+    assert 'Download sealed review bundle' not in body
 
 
 def test_page_approval_rejects_missing_required_confirmation(review_client):
@@ -316,7 +434,30 @@ def test_generation_email_points_to_fragment_login_not_a_bundle_alias():
     content = text + rendered
     assert '/review/test_email_review#token=review-token' in content
     assert '/review/test_email_review?token=' not in content
-    assert '/api/download/test_email_review?artifact=review_bundle' in content
+    assert '/api/download/test_email_review?artifact=review_bundle' not in content
+
+
+def test_unauthenticated_review_get_does_not_migrate_legacy_state(
+    review_client,
+):
+    legacy = (Path(webhook_app.DELIVERIES_DIR) / 'legacy_rider'
+              / 'fulfillment_status.json')
+    legacy.parent.mkdir(parents=True)
+    original = {
+        'schema_version': 1, 'athlete_id': 'legacy_rider',
+        'generation_revision': 1, 'status': 'APPROVED',
+        'blocking_issues': [], 'approval': {'coach': 'legacy'},
+        'waiver': None, 'application': None, 'confirmation': None,
+        'history': [], 'updated_at': '2026-08-01T00:00:00Z',
+    }
+    legacy.write_text(json.dumps(original))
+
+    response = review_client.get('/review/legacy_rider')
+    assert response.status_code == 200
+    assert 'Opening your secure review session' in response.get_data(as_text=True)
+    assert json.loads(legacy.read_text()) == original
+    orders = Path(webhook_app.DELIVERIES_DIR) / 'orders'
+    assert not orders.exists() or list(orders.iterdir()) == []
 
 
 def test_operator_approval_endpoint_requires_same_revisioned_snapshot_policy(
@@ -330,12 +471,33 @@ def test_operator_approval_endpoint_requires_same_revisioned_snapshot_policy(
         headers={'X-Cron-Secret': 'operator-test-secret'})
     assert missing.status_code == 400
 
+    wrong_digest = review_client.post(
+        endpoint,
+        json={
+            'to': APPROVED,
+            'generation_revision': state['generation_revision'],
+            'review_catalog_digest': '0' * 64,
+            'confirmations': [
+                {
+                    'item_id': item_id,
+                    'revision': state['generation_revision'],
+                    'disposition': 'confirmed',
+                }
+                for item_id in _confirmed_ids(state)
+            ],
+        },
+        headers={'X-Cron-Secret': 'operator-test-secret'},
+    )
+    assert wrong_digest.status_code == 409
+    assert 'review catalog changed' in wrong_digest.get_json()['error']
+
     approved = review_client.post(
         endpoint,
         json={
             'to': APPROVED,
             'coach': 'untrusted-name',
             'generation_revision': state['generation_revision'],
+            'review_catalog_digest': state['review_catalog_digest'],
             'confirmations': [
                 {
                     'item_id': item_id,
@@ -374,3 +536,77 @@ def test_revoking_link_after_login_ends_page_session(review_client, monkeypatch)
     body = shell.get_data(as_text=True)
     assert 'Opening your secure review session' in body
     assert state['athlete_id'] not in body
+
+
+def test_parent_revocation_kills_previously_minted_derived_bundle_token(
+    review_client, monkeypatch,
+):
+    monkeypatch.setenv('CRON_SECRET', 'operator-test-secret')
+    state, _, _ = _seed_order('test_review_child_revoke')
+    review_token = webhook_app._generate_review_token(
+        state['order_id'], 'coach@example.invalid')
+    parent = verify_review_token(
+        review_token, order_id=state['order_id'], athlete_id=state['athlete_id'],
+        generation_revision=state['generation_revision'],
+        revocation_path=Path(webhook_app.DATA_DIR) / 'token_revocations.json')
+    child = webhook_app._generate_download_token(
+        state['order_id'], 'review_bundle', parent_review=parent)
+    child_claims = verify_download_token(
+        child, expected_order_id=state['order_id'],
+        expected_athlete_id=state['athlete_id'], expected_revision=1,
+        expected_artifact='review_bundle', expected_audience='coach',
+        revocation_path=Path(webhook_app.DATA_DIR) / 'token_revocations.json')
+    assert child_claims['parent_review_jti'] == parent['jti']
+    assert child_claims['parent_review_kid'] == parent['kid']
+    assert child_claims['exp'] - child_claims['iat'] <= MAX_REVIEW_BUNDLE_TTL_SECONDS
+
+    url = f"/api/download/{state['order_id']}?artifact=review_bundle"
+    before = review_client.get(
+        url, headers={'Authorization': f'Bearer {child}'})
+    assert before.status_code == 200
+    assert before.headers['Cache-Control'].startswith('no-store')
+
+    revoked = review_client.post(
+        '/api/download-tokens/revoke', json={'jti': parent['jti']},
+        headers={'X-Cron-Secret': 'operator-test-secret'})
+    assert revoked.status_code == 200
+    after = review_client.get(
+        url, headers={'Authorization': f'Bearer {child}'})
+    assert after.status_code == 401
+
+
+def test_revoking_parent_ends_same_session_bundle_fetch(review_client, monkeypatch):
+    monkeypatch.setenv('CRON_SECRET', 'operator-test-secret')
+    state, _, _ = _seed_order('test_session_bundle_revoke')
+    token = webhook_app._generate_review_token(
+        state['order_id'], 'coach@example.invalid')
+    claims = verify_review_token(
+        token, order_id=state['order_id'], athlete_id=state['athlete_id'],
+        generation_revision=state['generation_revision'],
+        revocation_path=Path(webhook_app.DATA_DIR) / 'token_revocations.json')
+    assert review_client.post(
+        f"/review/{state['order_id']}/session", data={'token': token}
+    ).status_code == 303
+    page = review_client.get(f"/review/{state['order_id']}").get_data(as_text=True)
+    csrf = html.unescape(re.search(
+        r'name="csrf_token" value="([^"]+)"', page).group(1))
+    endpoint = f"/review/{state['order_id']}/bundle"
+    assert review_client.post(
+        endpoint, data={'csrf_token': csrf}).status_code == 200
+    assert review_client.post(
+        '/api/download-tokens/revoke', json={'jti': claims['jti']},
+        headers={'X-Cron-Secret': 'operator-test-secret'}).status_code == 200
+    assert review_client.post(
+        endpoint, data={'csrf_token': csrf}).status_code == 401
+
+
+def test_application_logging_redacts_legacy_query_bearers():
+    record = webhook_app.logging.LogRecord(
+        'werkzeug', webhook_app.logging.INFO, __file__, 1,
+        'GET /api/download/x?artifact=review_bundle&token=secret-value HTTP/1.1',
+        (), None,
+    )
+    assert webhook_app._bearer_query_redaction.filter(record)
+    rendered = record.getMessage()
+    assert 'secret-value' not in rendered
+    assert 'token=[REDACTED]' in rendered

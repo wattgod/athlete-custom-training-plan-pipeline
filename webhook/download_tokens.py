@@ -16,6 +16,7 @@ from typing import Any, Dict
 
 TOKEN_VERSION = "download_token/v1"
 MAX_TTL_SECONDS = 7 * 24 * 60 * 60
+MAX_REVIEW_BUNDLE_TTL_SECONDS = 5 * 60
 ARTIFACT_AUDIENCE = {
     "review_bundle": "coach",
     "customer_bundle": "customer",
@@ -99,9 +100,11 @@ def issue_download_token(
     generation_revision: int,
     artifact: str,
     audience: str | None = None,
-    ttl_seconds: int = MAX_TTL_SECONDS,
+    ttl_seconds: int | None = None,
     now: int | None = None,
     jti: str | None = None,
+    parent_review_jti: str = "",
+    parent_review_kid: str = "",
 ) -> str:
     expected_audience = ARTIFACT_AUDIENCE.get(artifact)
     if not expected_audience:
@@ -113,8 +116,19 @@ def issue_download_token(
         raise DownloadTokenError("order_id and athlete_id are required")
     if not isinstance(generation_revision, int) or generation_revision < 1:
         raise DownloadTokenError("invalid generation revision")
-    if not isinstance(ttl_seconds, int) or ttl_seconds < 1 or ttl_seconds > MAX_TTL_SECONDS:
+    maximum_ttl = (
+        MAX_REVIEW_BUNDLE_TTL_SECONDS
+        if artifact == "review_bundle" else MAX_TTL_SECONDS
+    )
+    ttl_seconds = maximum_ttl if ttl_seconds is None else ttl_seconds
+    if not isinstance(ttl_seconds, int) or ttl_seconds < 1 or ttl_seconds > maximum_ttl:
         raise DownloadTokenError("invalid token lifetime")
+    parent_review_jti = str(parent_review_jti or "").strip()
+    parent_review_kid = str(parent_review_kid or "").strip()
+    if bool(parent_review_jti) != bool(parent_review_kid):
+        raise DownloadTokenError("derived token parent identity is incomplete")
+    if parent_review_jti and artifact != "review_bundle":
+        raise DownloadTokenError("only review bundles may derive from review credentials")
     issued_at = int(time.time() if now is None else now)
     kid = _current_kid(audience)
     claims = {
@@ -129,6 +143,11 @@ def issue_download_token(
         "jti": jti or uuid.uuid4().hex,
         "kid": kid,
     }
+    if parent_review_jti:
+        claims.update({
+            "parent_review_jti": parent_review_jti,
+            "parent_review_kid": parent_review_kid,
+        })
     payload = _b64(_canonical(claims))
     signature = _b64(hmac.new(_key(audience, kid), payload.encode(), hashlib.sha256).digest())
     return f"{payload}.{signature}"
@@ -179,7 +198,11 @@ def verify_download_token(
     exp = claims.get("exp")
     if not isinstance(iat, int) or not isinstance(exp, int) or exp <= iat:
         raise DownloadTokenError("invalid token timestamps")
-    if exp - iat > MAX_TTL_SECONDS:
+    maximum_ttl = (
+        MAX_REVIEW_BUNDLE_TTL_SECONDS
+        if artifact == "review_bundle" else MAX_TTL_SECONDS
+    )
+    if exp - iat > maximum_ttl:
         raise DownloadTokenError("token lifetime exceeds maximum")
     if current < iat or current >= exp:
         raise DownloadTokenError("token expired or not yet valid")
@@ -196,6 +219,16 @@ def verify_download_token(
     revocations = _read_revocations(Path(revocation_path) if revocation_path else None)
     if claims.get("jti") in revocations["jti"] or kid in revocations["kid"]:
         raise DownloadTokenError("token revoked")
+    parent_jti = str(claims.get("parent_review_jti") or "")
+    parent_kid = str(claims.get("parent_review_kid") or "")
+    if bool(parent_jti) != bool(parent_kid):
+        raise DownloadTokenError("derived token parent identity is incomplete")
+    if parent_jti and (
+        artifact != "review_bundle"
+        or parent_jti in revocations["jti"]
+        or parent_kid in revocations["kid"]
+    ):
+        raise DownloadTokenError("parent review credential revoked")
     return claims
 
 

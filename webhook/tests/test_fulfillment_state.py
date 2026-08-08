@@ -46,6 +46,17 @@ def _decisions(state, *extra_ids):
     ]
 
 
+def _approve(path, coach='coach@example.test', **kwargs):
+    state = load(path)
+    return transition(
+        path, APPROVED, coach,
+        expected_revision=state['generation_revision'],
+        expected_catalog_digest=state['review_catalog_digest'],
+        review_decisions=_decisions(state),
+        **kwargs,
+    )
+
+
 def test_r05_failure_writes_blocked_review_with_rule_id(tmp_path):
     state = write_generation(tmp_path / 'fulfillment_status.json', 'heather_gray', [_issue()])
     assert state['status'] == BLOCKED_REVIEW
@@ -61,8 +72,8 @@ def test_blocked_approval_requires_complete_waiver(tmp_path):
     write_generation(path, 'heather_gray', [_issue('R05'), _issue('R01')])
     _seal(path, tmp_path)
     with pytest.raises(FulfillmentStateError):
-        transition(path, APPROVED, 'coach@example.test', waiver={'rule_ids': ['R05'], 'reason': 'no'})
-    state = transition(path, APPROVED, 'coach@example.test', waiver={
+        _approve(path, waiver={'rule_ids': ['R05'], 'reason': 'no'})
+    state = _approve(path, waiver={
         'rule_ids': ['R01', 'R05'], 'reason': 'Reviewed and accepted the exception.'})
     assert state['status'] == APPROVED
 
@@ -79,7 +90,7 @@ def test_confirm_applied_sends_once_and_marks_confirmed(tmp_path):
     path = tmp_path / 'status.json'
     write_generation(path, 'heather_gray', delivery_platform='trainingpeaks')
     _seal(path, tmp_path)
-    transition(path, APPROVED, 'coach@example.test')
+    _approve(path)
     transition(path, APPLIED, 'coach@example.test', platform='trainingpeaks', evidence='TP 123')
     calls = []
     assert confirm_after_send(path, lambda: calls.append(True) or True)[0] == 'confirmed'
@@ -91,7 +102,7 @@ def test_confirm_email_failure_leaves_applied(tmp_path):
     path = tmp_path / 'status.json'
     write_generation(path, 'heather_gray', delivery_platform='trainingpeaks')
     _seal(path, tmp_path)
-    transition(path, APPROVED, 'coach@example.test')
+    _approve(path)
     transition(path, APPLIED, 'coach@example.test', platform='trainingpeaks', evidence='TP 123')
     with pytest.raises(RuntimeError):
         confirm_after_send(path, lambda: False)
@@ -102,7 +113,7 @@ def test_confirmed_retry_is_idempotent(tmp_path):
     path = tmp_path / 'status.json'
     write_generation(path, 'heather_gray', delivery_platform='trainingpeaks')
     _seal(path, tmp_path)
-    transition(path, APPROVED, 'coach@example.test')
+    _approve(path)
     transition(path, APPLIED, 'coach@example.test', platform='trainingpeaks', evidence='TP 123')
     confirm_after_send(path, lambda: True)
     assert confirm_after_send(path, lambda: pytest.fail('must not send'))[0] == 'idempotent'
@@ -112,7 +123,7 @@ def test_concurrent_confirm_sends_once(tmp_path):
     path = tmp_path / 'status.json'
     write_generation(path, 'heather_gray', delivery_platform='trainingpeaks')
     _seal(path, tmp_path)
-    transition(path, APPROVED, 'coach@example.test')
+    _approve(path)
     transition(path, APPLIED, 'coach@example.test', platform='trainingpeaks', evidence='TP 123')
     calls, results = [], []
     threads = [threading.Thread(target=lambda: results.append(confirm_after_send(
@@ -136,7 +147,7 @@ def test_regeneration_invalidates_prior_approval_and_application(tmp_path):
     path = tmp_path / 'status.json'
     write_generation(path, 'heather_gray', delivery_platform='trainingpeaks')
     _seal(path, tmp_path)
-    transition(path, APPROVED, 'coach@example.test')
+    _approve(path)
     transition(path, APPLIED, 'coach@example.test', platform='trainingpeaks', evidence='TP 123')
     state = write_generation(path, 'heather_gray', delivery_platform='trainingpeaks')
     assert state['generation_revision'] == 2
@@ -188,7 +199,7 @@ def test_nonwaivable_blocker_rejects_complete_waiver(tmp_path):
         path, 'athlete-m', [_issue('FTP_ESTIMATED')], order_id='cs_ftp')
     _seal(path, tmp_path)
     with pytest.raises(FulfillmentStateError, match='non-waivable'):
-        transition(path, APPROVED, 'coach', waiver={
+        _approve(path, 'coach', waiver={
             'rule_ids': ['FTP_ESTIMATED'], 'reason': 'accept'})
     assert state['blocking_issues'][0]['waivable'] is False
 
@@ -222,6 +233,7 @@ def test_review_catalog_and_approval_snapshot_store_typed_values(tmp_path):
 
     approved = transition(
         path, APPROVED, 'review-link-credential', expected_revision=1,
+        expected_catalog_digest=state['review_catalog_digest'],
         review_decisions=_decisions(state),
         credential='review-link:kid:jti-issued-to',
     )
@@ -258,6 +270,7 @@ def test_approval_snapshot_rejects_unknown_or_wrong_revision_items(
     with pytest.raises(FulfillmentStateError, match=message):
         transition(
             path, APPROVED, 'operator', expected_revision=1,
+            expected_catalog_digest=state['review_catalog_digest'],
             review_decisions=decisions, credential='operator-secret')
 
 
@@ -265,7 +278,7 @@ def test_incomplete_legacy_approval_snapshot_grants_no_release_authority(tmp_pat
     path = tmp_path / 'status.json'
     write_generation(path, 'athlete-m', order_id='cs_old_approval')
     state = _seal(path, tmp_path)
-    state = transition(path, APPROVED, 'operator')
+    state = _approve(path, 'operator')
     raw = json.loads(path.read_text())
     raw['approval'].pop('confirmations')
     path.write_text(json.dumps(raw))
@@ -296,10 +309,12 @@ def test_approval_after_sealed_byte_mutation_fails_and_materializes_blocker(tmp_
     (tmp_path / 'artifacts' / 'guide.html').write_text('mutated after seal')
 
     with pytest.raises(FulfillmentStateError, match='approval refused'):
-        transition(path, APPROVED, 'coach@example.test')
+        _approve(path)
 
     state = load(path)
     assert state['status'] == BLOCKED_REVIEW
+    assert state['generation_revision'] == 2
+    assert state['model_seal'] is None
     mismatch = next(i for i in state['blocking_issues']
                     if i['id'] == 'SEAL_MISMATCH')
     assert mismatch['waivable'] is False
@@ -312,7 +327,7 @@ def test_application_reverifies_seal_and_materializes_mismatch(tmp_path):
         path, 'athlete-m', order_id='cs_apply_seal',
         delivery_platform='trainingpeaks')
     _seal(path, tmp_path)
-    transition(path, APPROVED, 'coach@example.test')
+    _approve(path)
     (tmp_path / 'artifacts' / 'guide.html').write_text('mutated after approval')
 
     with pytest.raises(FulfillmentStateError, match='application refused'):
@@ -322,6 +337,8 @@ def test_application_reverifies_seal_and_materializes_mismatch(tmp_path):
 
     state = load(path)
     assert state['status'] == BLOCKED_REVIEW
+    assert state['generation_revision'] == 2
+    assert state['model_seal'] is None
     mismatch = next(
         issue for issue in state['blocking_issues']
         if issue['id'] == 'SEAL_MISMATCH')
@@ -337,7 +354,7 @@ def test_phase1_endure_application_is_disabled_but_manual_attestation_is_allowed
         endure_path, 'athlete-m', order_id='cs_endure',
         delivery_platform='endure')
     _seal(endure_path, tmp_path)
-    transition(endure_path, APPROVED, 'coach@example.test')
+    _approve(endure_path)
     with pytest.raises(FulfillmentStateError, match='D4/R9 condition 11'):
         transition(
             endure_path, APPLIED, 'coach@example.test',
@@ -355,7 +372,7 @@ def test_phase1_endure_application_is_disabled_but_manual_attestation_is_allowed
     finalize_transitional_release(
         manual_path, manual_root,
         expected_revision=state['generation_revision'])
-    transition(manual_path, APPROVED, 'coach@example.test')
+    _approve(manual_path)
     applied = transition(
         manual_path, APPLIED, 'coach@example.test',
         platform='manual', evidence='coach-attested inventory')
@@ -367,7 +384,7 @@ def test_download_handle_is_the_verified_descriptor_not_a_reopen(tmp_path):
     path = tmp_path / 'status.json'
     write_generation(path, 'athlete-m', order_id='cs_handle')
     _seal(path, tmp_path)
-    transition(path, APPROVED, 'coach@example.test')
+    _approve(path)
     artifact = tmp_path / 'artifacts' / 'guide.html'
 
     handle = open_verified_release_artifact(

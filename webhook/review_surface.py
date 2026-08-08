@@ -6,6 +6,8 @@ import json
 from html import escape
 from typing import Any, Dict, Iterable
 
+from fulfillment_state import approval_matches_release
+
 
 def _e(value: Any) -> str:
     return escape(str(value if value is not None else ""), quote=True)
@@ -58,6 +60,11 @@ def _cards(items: Iterable[Dict[str, Any]], *, controls: str = "") -> str:
                    else "non-waivable")
                 + "</span>"
             )
+        disposition = ""
+        if item.get("disposition"):
+            disposition = (
+                f'<div><dt>Disposition</dt><dd>{_e(item.get("disposition"))}</dd></div>'
+            )
         cards.append(
             '<article class="card">'
             f'<div class="card-head"><code>{item_id}</code>{policy}</div>'
@@ -68,7 +75,7 @@ def _cards(items: Iterable[Dict[str, Any]], *, controls: str = "") -> str:
             f'<div><dt>Basis</dt><dd>{_e(item.get("basis"))}</dd></div>'
             f'<div><dt>Sensitivity</dt><dd>{_e(item.get("sensitivity"))}</dd></div>'
             f'<div><dt>Revision</dt><dd>{_e(item.get("revision"))}</dd></div>'
-            '</dl>' + control + '</article>'
+            + disposition + '</dl>' + control + '</article>'
         )
     return "".join(cards) or '<p class="empty">None.</p>'
 
@@ -100,23 +107,31 @@ main{width:min(980px,calc(100% - 32px));margin:32px auto 80px}h1{font-size:clamp
 
 
 def render_review_page(
-    state: Dict[str, Any], *, csrf_token: str, download_url: str = "",
+    state: Dict[str, Any], *, csrf_token: str, download_available: bool = False,
     error: str = "",
 ) -> str:
-    items = state.get("review_items") or []
+    status = str(state.get("status") or "")
+    authoritative = approval_matches_release(state)
+    release_labeled = status in {"APPROVED", "APPLIED", "CONFIRMED"}
+    invalid_approval = release_labeled and not authoritative
+    items = (
+        (state.get("approval") or {}).get("confirmations") or []
+        if authoritative else state.get("review_items") or []
+    )
     by_type = {
         item_type: [item for item in items if item.get("type") == item_type]
         for item_type in ("blocker", "required_confirmation", "soft_confirmation", "verified_fact")
     }
-    status = str(state.get("status") or "")
-    approved = status in {"APPROVED", "APPLIED", "CONFIRMED"}
     non_waivable = any(
         not item.get("waivable") for item in by_type["blocker"]
     )
     error_html = f'<p class="error" role="alert">{_e(error)}</p>' if error else ""
     download_html = (
-        f'<a class="button secondary" href="{_e(download_url)}">Download sealed review bundle</a>'
-        if download_url else '<p class="error">Review download is unavailable; do not approve.</p>'
+        '<button class="button secondary" type="submit" '
+        f'formaction="/review/{_e(state.get("order_id"))}/bundle" '
+        'formmethod="post" formnovalidate>Download sealed review bundle</button>'
+        if download_available
+        else '<p class="error">Review download is unavailable; do not approve.</p>'
     )
     blocker_cards = _cards(by_type["blocker"], controls="waiver")
     required_cards = _cards(by_type["required_confirmation"], controls="required")
@@ -128,12 +143,16 @@ def render_review_page(
 <label for="waiver_reason"><strong>Waiver reason</strong></label>
 <textarea class="waiver-reason" id="waiver_reason" name="waiver_reason" placeholder="Record the business or coaching judgment for every waived blocker."></textarea>"""
     approval_form = ""
-    if not approved:
-        disabled = " disabled" if non_waivable or not download_url else ""
+    if invalid_approval:
+        approval_form = """
+<p class="error" role="alert"><strong>Approval not authoritative — regenerate/re-approve.</strong> The recorded approval is incomplete, stale, legacy, or not bound to the current release seal. No download or later action is available.</p>"""
+    elif not authoritative:
+        disabled = " disabled" if non_waivable or not download_available else ""
         approval_form = f"""
 <form method="post" action="/review/{_e(state.get('order_id'))}/approve">
 <input type="hidden" name="csrf_token" value="{_e(csrf_token)}">
 <input type="hidden" name="generation_revision" value="{_e(state.get('generation_revision'))}">
+<input type="hidden" name="review_catalog_digest" value="{_e(state.get('review_catalog_digest'))}">
 <section><h2>1. Blockers</h2>{blocker_cards}{waiver_reason}</section>
 <section><h2>2. Required confirmations</h2>{required_cards}</section>
 <section><h2>3. Soft confirmations</h2>{soft_cards}</section>
@@ -147,16 +166,22 @@ def render_review_page(
 <section><h2>Required confirmations</h2>{_cards(by_type['required_confirmation'])}</section>
 <section><h2>Soft confirmations</h2>{_cards(by_type['soft_confirmation'])}</section>
 <section><h2>Verified facts</h2>{_cards(by_type['verified_fact'])}</section>
-<div class="actions">{download_html}</div>"""
+<form method="post" action="/review/{_e(state.get('order_id'))}/bundle">
+<input type="hidden" name="csrf_token" value="{_e(csrf_token)}">
+<div class="actions">{download_html}</div>
+</form>"""
 
     post_approval = ""
-    if approved:
+    if authoritative:
         post_approval = """
 <section class="action"><h2>Application</h2><p>The sealed revision is approved. Automated platform application, readback verification, guide release, and draft/confirm controls remain disabled until their later rollout phases. Use the established operator-controlled manual procedure.</p></section>"""
 
+    effective_status = (
+        "APPROVAL NOT AUTHORITATIVE" if invalid_approval else status
+    )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Review order {_e(state.get('order_id'))}</title><style>{_STYLE}</style></head>
 <body><main><p class="eyebrow">Coach review · sealed fulfilment</p><h1>Order {_e(state.get('order_id'))}</h1>
-<dl class="summary"><div><dt>Status</dt><dd>{_e(status)}</dd></div><div><dt>Athlete</dt><dd>{_e(state.get('athlete_id'))}</dd></div><div><dt>Platform</dt><dd>{_e(state.get('delivery_platform'))}</dd></div><div><dt>Revision</dt><dd>{_e(state.get('generation_revision'))}</dd></div></dl>
+<dl class="summary"><div><dt>Status</dt><dd>{_e(effective_status)}</dd></div><div><dt>Athlete</dt><dd>{_e(state.get('athlete_id'))}</dd></div><div><dt>Platform</dt><dd>{_e(state.get('delivery_platform'))}</dd></div><div><dt>Revision</dt><dd>{_e(state.get('generation_revision'))}</dd></div></dl>
 {error_html}{approval_form}{post_approval}</main></body></html>"""

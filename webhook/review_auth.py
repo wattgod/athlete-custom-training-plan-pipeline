@@ -71,19 +71,8 @@ def _review_keyring() -> Dict[str, str]:
     # Existing deployments already carry the Phase 1 typed-token keys.  A
     # domain-separated derivation keeps the review credential distinct while
     # avoiding a rollout window in which paid orders receive dead links.
-    download_root = os.environ.get("DOWNLOAD_TOKEN_SECRET", "").strip()
-    if download_root:
-        kid = os.environ.get(
-            "REVIEW_TOKEN_KID",
-            os.environ.get("DOWNLOAD_TOKEN_COACH_KID",
-                           os.environ.get("DOWNLOAD_TOKEN_KID", "phase1-v1")),
-        )
-        derived = hmac.new(
-            download_root.encode("utf-8"), b"review-link",
-            hashlib.sha256,
-        ).hexdigest()
-        return {kid: derived}
-
+    # Match download_tokens.py rotation precedence: an explicit typed keyring
+    # wins over the legacy root secret when both are temporarily configured.
     download_keys_raw = os.environ.get("DOWNLOAD_TOKEN_KEYS", "").strip()
     if download_keys_raw:
         try:
@@ -100,6 +89,19 @@ def _review_keyring() -> Dict[str, str]:
             for kid, key in coach_keys.items()
             if str(kid) and str(key)
         }
+
+    download_root = os.environ.get("DOWNLOAD_TOKEN_SECRET", "").strip()
+    if download_root:
+        kid = os.environ.get(
+            "REVIEW_TOKEN_KID",
+            os.environ.get("DOWNLOAD_TOKEN_COACH_KID",
+                           os.environ.get("DOWNLOAD_TOKEN_KID", "phase1-v1")),
+        )
+        derived = hmac.new(
+            download_root.encode("utf-8"), b"review-link",
+            hashlib.sha256,
+        ).hexdigest()
+        return {kid: derived}
 
     raise ReviewAuthError(
         "review token keys are not configured; set REVIEW_TOKEN_KEYS, "

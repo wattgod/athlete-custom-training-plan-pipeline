@@ -11,6 +11,7 @@ import contextlib
 import copy
 import fcntl
 import hashlib
+import hmac
 import json
 import os
 import uuid
@@ -35,7 +36,7 @@ PHASE1_APPLIED_PLATFORMS = {"trainingpeaks", "manual"}
 RELEASE_STATUSES = {APPROVED, APPLIED, CONFIRMED}
 TRANSITIONAL_SEAL_VERSION = "transitional_artifact_bytes/v1"
 REVIEW_CATALOG_VERSION = "review_catalog/v1"
-APPROVAL_SNAPSHOT_VERSION = "approval_snapshot/v1"
+APPROVAL_SNAPSHOT_VERSION = "approval_snapshot/v2"
 REVIEW_ITEM_TYPES = {
     "blocker", "required_confirmation", "soft_confirmation", "verified_fact",
 }
@@ -89,6 +90,20 @@ def canonical_json(value: Any) -> bytes:
 
 def canonical_digest(value: Any) -> str:
     return hashlib.sha256(canonical_json(value)).hexdigest()
+
+
+def review_catalog_digest(
+    state_or_items: Dict[str, Any] | list[Dict[str, Any]],
+) -> str:
+    """Identify the exact versioned catalog presented for one approval."""
+    items = (
+        state_or_items.get("review_items") or []
+        if isinstance(state_or_items, dict) else state_or_items
+    )
+    return canonical_digest({
+        "version": REVIEW_CATALOG_VERSION,
+        "items": items,
+    })
 
 
 def _state_path(path: os.PathLike[str] | str) -> Path:
@@ -277,6 +292,7 @@ def _expected_review_catalog(state: Dict[str, Any]) -> list[Dict[str, Any]]:
 def _refresh_review_catalog(state: Dict[str, Any]) -> None:
     state["review_catalog_version"] = REVIEW_CATALOG_VERSION
     state["review_items"] = _expected_review_catalog(state)
+    state["review_catalog_digest"] = review_catalog_digest(state["review_items"])
 
 
 def _approval_snapshot_is_complete(state: Dict[str, Any]) -> bool:
@@ -289,6 +305,8 @@ def _approval_snapshot_is_complete(state: Dict[str, Any]) -> bool:
         return False
     if not str(approval.get("credential") or "").strip():
         return False
+    if approval.get("review_catalog_digest") != review_catalog_digest(state):
+        return False
     snapshots = approval.get("confirmations")
     catalog = state.get("review_items") or []
     if not isinstance(snapshots, list) or len(snapshots) != len(catalog):
@@ -300,11 +318,12 @@ def _approval_snapshot_is_complete(state: Dict[str, Any]) -> bool:
         snapshot = by_id.get(item["item_id"])
         if not snapshot:
             return False
-        if (
-            snapshot.get("revision") != item["revision"]
-            or snapshot.get("value") != item["value"]
-            or snapshot.get("value_type") != item["value_type"]
-        ):
+        reviewed_item = {
+            key: copy.deepcopy(value)
+            for key, value in snapshot.items()
+            if key != "disposition"
+        }
+        if reviewed_item != item:
             return False
         disposition = str(snapshot.get("disposition") or "")
         if item["type"] == "blocker" and disposition != "resolved:waived":
@@ -369,8 +388,14 @@ def _validate_state(state: Any) -> Dict[str, Any]:
     existing_catalog = state.get("review_items")
     if existing_catalog is not None and existing_catalog != expected_catalog:
         raise FulfillmentStateError("review catalog does not match authoritative state")
+    expected_catalog_digest = review_catalog_digest(expected_catalog)
+    existing_catalog_digest = state.get("review_catalog_digest")
+    if (existing_catalog_digest is not None
+            and existing_catalog_digest != expected_catalog_digest):
+        raise FulfillmentStateError("review catalog digest does not match catalog")
     state["review_catalog_version"] = REVIEW_CATALOG_VERSION
     state["review_items"] = expected_catalog
+    state["review_catalog_digest"] = expected_catalog_digest
     return state
 
 
@@ -530,6 +555,10 @@ def set_generation_blockers(
             raise FulfillmentStateError("missing or malformed fulfillment state")
         if state["status"] not in (GENERATED, BLOCKED_REVIEW):
             raise FulfillmentStateError("cannot alter blockers after review begins")
+        if state.get("model_seal") or state.get("release_manifest"):
+            raise FulfillmentStateError(
+                "sealed review catalog is immutable; use write_generation"
+            )
         state["blocking_issues"] = sorted(issues, key=lambda item: item["id"])
         state["status"] = BLOCKED_REVIEW if issues else GENERATED
         _refresh_review_catalog(state)
@@ -571,6 +600,10 @@ def merge_generation_blockers(
             raise FulfillmentStateError("generation revision mismatch")
         if state["status"] not in (GENERATED, BLOCKED_REVIEW):
             raise FulfillmentStateError("cannot alter blockers after review begins")
+        if state.get("model_seal") or state.get("release_manifest"):
+            raise FulfillmentStateError(
+                "sealed review catalog is immutable; use write_generation"
+            )
         preserved = [
             issue for issue in state["blocking_issues"] if issue["source"] != source
         ]
@@ -735,27 +768,48 @@ def _seal_mismatch_issue(message: str) -> Dict[str, Any]:
         "source": "seal_verification",
         "severity": "CRITICAL",
         "message": f"Release seal verification failed: {message}",
+        "review_value": {"seal_verified": False, "failure": message},
+        "basis": "release manifest and artifact-byte verification",
+        "sensitivity": "internal",
     })
 
 
 def _materialize_seal_mismatch(
     state: Dict[str, Any], message: str,
 ) -> None:
-    preserved = [
-        issue for issue in state["blocking_issues"]
-        if issue["id"] != "SEAL_MISMATCH"
-    ]
-    state["blocking_issues"] = sorted(
-        preserved + [_seal_mismatch_issue(message)], key=lambda item: item["id"])
+    prior_revision = state["generation_revision"]
+    prior_status = state["status"]
+    prior_model_seal = state.get("model_seal")
+    # A detected byte/seal failure supersedes the sealed generation. It must
+    # never rewrite that revision's review catalog in place. This creates a
+    # fresh, unsealed quarantine revision with the same reset authority shape
+    # as write_generation; the producer must regenerate artifacts again.
+    state["generation_revision"] = prior_revision + 1
+    state["blocking_issues"] = [_seal_mismatch_issue(message)]
+    state["required_confirmations"] = []
+    state["soft_confirmations"] = []
     state["status"] = BLOCKED_REVIEW
+    state["approval"] = None
+    state["waiver"] = None
+    state["application"] = None
+    state["confirmation"] = None
+    state["model_seal"] = None
+    state["release_manifest_digest"] = None
+    state["release_manifest"] = None
+    state["release_artifact_count"] = None
+    state["seal_version"] = None
     _refresh_review_catalog(state)
-    _history(state, "SEAL_MISMATCH", message=message)
+    _history(
+        state, "SEAL_MISMATCH_REGENERATION_REQUIRED", message=message,
+        prior_revision=prior_revision, prior_status=prior_status,
+        prior_model_seal=prior_model_seal,
+    )
 
 
 def record_seal_mismatch(
     path: os.PathLike[str] | str, message: str,
 ) -> Dict[str, Any]:
-    """Revoke release authority and durably merge the fatal seal blocker."""
+    """Revoke authority by superseding the failed sealed generation."""
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
@@ -851,6 +905,7 @@ def transition(
     evidence: str = "",
     metadata: Optional[Dict[str, Any]] = None,
     expected_revision: Optional[int] = None,
+    expected_catalog_digest: str = "",
     review_decisions: Optional[list[Dict[str, Any]]] = None,
     credential: str = "",
 ) -> Dict[str, Any]:
@@ -878,6 +933,15 @@ def transition(
             approval_credential = str(credential or "operator-secret").strip()
             if not approval_credential:
                 raise FulfillmentStateError("approving credential is required")
+            expected_catalog = _expected_review_catalog(state)
+            current_catalog_digest = review_catalog_digest(expected_catalog)
+            supplied_catalog_digest = str(expected_catalog_digest or "").strip()
+            if (not supplied_catalog_digest
+                    or not hmac.compare_digest(
+                        supplied_catalog_digest, current_catalog_digest)):
+                raise FulfillmentStateError(
+                    "review catalog changed; regenerate or review the current catalog"
+                )
             if current == GENERATED:
                 pass
             elif current == BLOCKED_REVIEW:
@@ -905,24 +969,9 @@ def transition(
                 }
             else:
                 raise FulfillmentStateError(f"illegal transition {current} -> {to}")
-            expected_catalog = _expected_review_catalog(state)
             if state.get("review_items") != expected_catalog:
                 raise FulfillmentStateError("review catalog is stale")
             decisions = review_decisions
-            # A direct trusted operator call predating the page is itself an
-            # acknowledgement of verified facts. External HTTP paths always
-            # pass an explicit list, so browser/operator requests cannot rely
-            # on this compatibility branch.
-            if decisions is None:
-                decisions = [
-                    {
-                        "item_id": item["item_id"],
-                        "revision": item["revision"],
-                        "disposition": "confirmed",
-                    }
-                    for item in expected_catalog
-                    if item["type"] == "verified_fact"
-                ]
             if not isinstance(decisions, list):
                 raise FulfillmentStateError("review confirmations must be a list")
             decisions_by_id: Dict[str, Dict[str, Any]] = {}
@@ -974,11 +1023,8 @@ def transition(
                             f"invalid review disposition: {item['item_id']}"
                         )
                 snapshots.append({
-                    "item_id": item["item_id"],
-                    "value": copy.deepcopy(item["value"]),
-                    "value_type": item["value_type"],
+                    **copy.deepcopy(item),
                     "disposition": disposition,
-                    "revision": item["revision"],
                 })
             artifact_root = Path(str(state.get("release_manifest") or "")).parent
             try:
@@ -995,6 +1041,7 @@ def transition(
                 "at": now_iso(),
                 "revision": state["generation_revision"],
                 "snapshot_version": APPROVAL_SNAPSHOT_VERSION,
+                "review_catalog_digest": current_catalog_digest,
                 "model_seal": state["model_seal"],
                 "release_manifest_digest": state["release_manifest_digest"],
                 "confirmations": snapshots,
@@ -1105,6 +1152,13 @@ def migrate_v1_to_quarantine(
             "source": "v1_migration",
             "severity": "CRITICAL",
             "message": "Legacy state is quarantined until a coach binds its ledger order.",
+            "review_value": {
+                "legacy_state": True,
+                "quarantined": True,
+                "candidate_count": len(set(ledger_candidates or [])),
+            },
+            "basis": "schema-v1 quarantine migration result",
+            "sensitivity": "internal",
         })],
         "required_confirmations": [],
         "soft_confirmations": [],
