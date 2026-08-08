@@ -80,6 +80,52 @@ def _cards(items: Iterable[Dict[str, Any]], *, controls: str = "") -> str:
     return "".join(cards) or '<p class="empty">None.</p>'
 
 
+def _superseded_approval_history(state: Dict[str, Any]) -> str:
+    """Render archived decisions as evidence, never as current authority."""
+    records = state.get("superseded_approvals") or []
+    if not records:
+        return ""
+    entries = []
+    for record in records:
+        approval = record.get("approval") or {}
+        waiver = record.get("waiver")
+        application = record.get("application")
+        confirmation = record.get("confirmation")
+        supporting = ""
+        if waiver is not None:
+            supporting += '<h3>Waiver evidence</h3>' + _value(waiver)
+        if application is not None:
+            supporting += '<h3>Application evidence</h3>' + _value(application)
+        if confirmation is not None:
+            supporting += '<h3>Confirmation evidence</h3>' + _value(confirmation)
+        entries.append(
+            '<article class="card">'
+            '<div class="card-head"><strong>Superseded decision — '
+            'non-authoritative</strong><span class="pill danger">history only</span></div>'
+            '<dl class="meta">'
+            f'<div><dt>Revision</dt><dd>{_e(record.get("generation_revision"))}</dd></div>'
+            f'<div><dt>Prior status</dt><dd>{_e(record.get("status"))}</dd></div>'
+            f'<div><dt>Approved at</dt><dd>{_e(approval.get("at"))}</dd></div>'
+            f'<div><dt>Credential</dt><dd>{_e(approval.get("credential"))}</dd></div>'
+            f'<div><dt>Superseded at</dt><dd>{_e(record.get("superseded_at"))}</dd></div>'
+            f'<div><dt>Reason</dt><dd>{_e(record.get("reason"))}</dd></div>'
+            f'<div><dt>Catalog digest</dt><dd>{_e(approval.get("review_catalog_digest"))}</dd></div>'
+            f'<div><dt>Model seal</dt><dd>{_e(approval.get("model_seal"))}</dd></div>'
+            '</dl>'
+            f'<p>{_e(record.get("message"))}</p>'
+            '<h3>Reviewed values and dispositions</h3>'
+            + _cards(approval.get("confirmations") or [])
+            + supporting
+            + '</article>'
+        )
+    return (
+        '<section class="history"><h2>Superseded approval history</h2>'
+        '<p class="error"><strong>Historical evidence only.</strong> These '
+        'decisions were revoked by supersession and cannot authorize this revision.</p>'
+        + "".join(entries) + '</section>'
+    )
+
+
 def render_bootstrap(nonce: str) -> str:
     """Generic login shell. It contains no order- or athlete-derived data."""
     return f"""<!doctype html>
@@ -179,9 +225,10 @@ def render_review_page(
     effective_status = (
         "APPROVAL NOT AUTHORITATIVE" if invalid_approval else status
     )
+    superseded_history = _superseded_approval_history(state)
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Review order {_e(state.get('order_id'))}</title><style>{_STYLE}</style></head>
 <body><main><p class="eyebrow">Coach review · sealed fulfilment</p><h1>Order {_e(state.get('order_id'))}</h1>
 <dl class="summary"><div><dt>Status</dt><dd>{_e(effective_status)}</dd></div><div><dt>Athlete</dt><dd>{_e(state.get('athlete_id'))}</dd></div><div><dt>Platform</dt><dd>{_e(state.get('delivery_platform'))}</dd></div><div><dt>Revision</dt><dd>{_e(state.get('generation_revision'))}</dd></div></dl>
-{error_html}{approval_form}{post_approval}</main></body></html>"""
+{error_html}{approval_form}{superseded_history}{post_approval}</main></body></html>"""

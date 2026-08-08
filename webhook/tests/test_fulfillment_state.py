@@ -17,6 +17,7 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CONFIRMED,
                                load, merge_generation_blockers,
                                migrate_v1_to_quarantine, transition,
                                open_verified_release_artifact,
+                               record_seal_mismatch,
                                verify_release_manifest, write_generation)
 
 
@@ -344,6 +345,82 @@ def test_application_reverifies_seal_and_materializes_mismatch(tmp_path):
         if issue['id'] == 'SEAL_MISMATCH')
     assert mismatch['waivable'] is False
     assert state['application'] is None
+
+
+def test_seal_mismatch_preserves_all_prior_decision_evidence(tmp_path):
+    path = tmp_path / 'status.json'
+    write_generation(
+        path, 'athlete-m', order_id='cs_full_provenance',
+        delivery_platform='trainingpeaks',
+        blocking_issues=[{
+            'id': 'R05', 'source': 'fixture', 'severity': 'CRITICAL',
+            'message': 'Coach must review an intensity exception.',
+            'review_value': {'week': 8, 'hard_sessions': 1},
+            'basis': 'rendered workout inventory', 'sensitivity': 'internal',
+        }],
+        required_confirmations=[{
+            'id': 'FTP_TARGET_CONFIRM', 'source': 'fixture',
+            'message': 'Confirm the displayed FTP target.',
+            'review_value': {'ftp_watts': 287, 'display': '287 W'},
+            'basis': 'coach-reviewed athlete threshold test',
+            'sensitivity': 'personal',
+        }],
+    )
+    _seal(path, tmp_path)
+    current = load(path)
+    approved = transition(
+        path, APPROVED, 'coach@example.test',
+        waiver={
+            'rule_ids': ['R05'],
+            'reason': 'Reviewed week 8 and accepted the exception.',
+        },
+        expected_revision=current['generation_revision'],
+        expected_catalog_digest=current['review_catalog_digest'],
+        review_decisions=_decisions(current),
+        credential='review-link:coach-v2:jti-provenance',
+    )
+    transition(
+        path, APPLIED, 'coach@example.test', platform='trainingpeaks',
+        evidence='TP receipt 12345')
+    confirm_after_send(
+        path, lambda: True,
+        metadata={'message_id': 'gmail-message-123', 'recipient': 'athlete@test.invalid'},
+    )
+    prior = load(path)
+
+    superseded = record_seal_mismatch(path, 'sealed artifact mismatch: guide.html')
+    assert superseded['status'] == BLOCKED_REVIEW
+    assert superseded['generation_revision'] == 2
+    assert superseded['approval'] is None
+    assert superseded['waiver'] is None
+    assert superseded['application'] is None
+    assert superseded['confirmation'] is None
+    assert approval_matches_release(superseded) is False
+    archived = superseded['superseded_approvals'][0]
+    assert archived['authoritative'] is False
+    assert archived['approval'] == prior['approval'] == approved['approval']
+    assert archived['waiver'] == prior['waiver']
+    assert archived['application'] == prior['application']
+    assert archived['confirmation'] == prior['confirmation']
+    assert archived['model_seal'] == prior['model_seal']
+    assert archived['release_manifest_digest'] == prior['release_manifest_digest']
+    assert archived['approval']['credential'] == 'review-link:coach-v2:jti-provenance'
+    assert archived['waiver']['reason'] == (
+        'Reviewed week 8 and accepted the exception.')
+    snapshots = {
+        item['item_id']: item for item in archived['approval']['confirmations']
+    }
+    assert snapshots['FTP_TARGET_CONFIRM']['value']['ftp_watts'] == 287
+    assert snapshots['FTP_TARGET_CONFIRM']['disposition'] == 'confirmed'
+    assert snapshots['R05']['value'] == {'week': 8, 'hard_sessions': 1}
+    assert snapshots['R05']['disposition'] == 'resolved:waived'
+
+    regenerated = write_generation(
+        path, 'athlete-m', order_id='cs_full_provenance',
+        delivery_platform='trainingpeaks')
+    assert regenerated['generation_revision'] == 3
+    assert regenerated['superseded_approvals'] == superseded[
+        'superseded_approvals']
 
 
 def test_phase1_endure_application_is_disabled_but_manual_attestation_is_allowed(

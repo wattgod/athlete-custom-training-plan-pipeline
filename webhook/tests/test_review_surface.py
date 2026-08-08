@@ -22,7 +22,7 @@ from fulfillment_state import (APPROVED, BLOCKED_REVIEW, GENERATED,
                                merge_generation_blockers,
                                review_catalog_digest,
                                set_generation_blockers, write_generation)
-from download_tokens import (MAX_REVIEW_BUNDLE_TTL_SECONDS,
+from download_tokens import (DownloadTokenError, MAX_REVIEW_BUNDLE_TTL_SECONDS,
                              verify_download_token)
 from review_auth import verify_review_token
 
@@ -397,6 +397,77 @@ def test_page_approval_rejects_seal_mismatch_and_materializes_policy_blocker(
     assert persisted['approval'] is None
 
 
+def test_seal_mismatch_archives_full_approval_and_renders_history_only(
+    review_client,
+):
+    blocker_value = {'paid_weeks': 7, 'generated_weeks': 6}
+    confirmation_value = {
+        'ftp_watts': 287,
+        'basis': 'coach-reviewed threshold test',
+    }
+    waiver_reason = 'Coach accepted the six-week build after reviewing entitlement.'
+    state, state_path, revision = _seed_order(
+        'test_page_approval_provenance',
+        blockers=[_issue('WEEKS_MISMATCH', value=blocker_value)],
+        confirmations=[_confirmation('FTP_TARGET_CONFIRM', value=confirmation_value)],
+    )
+    _, csrf = _login(review_client, state['order_id'])
+    approved = review_client.post(
+        f"/review/{state['order_id']}/approve",
+        data=_approval_form(
+            state, csrf, waived_ids=['WEEKS_MISMATCH'], reason=waiver_reason,
+        ),
+    )
+    assert approved.status_code == 303
+    prior = load(state_path)
+    assert approval_matches_release(prior)
+
+    review_zip = revision / f"{state['order_id']}-review-bundle.zip"
+    review_zip.write_bytes(b'post-approval seal mutation')
+    refused = review_client.post(
+        f"/review/{state['order_id']}/bundle", data={'csrf_token': csrf})
+    assert refused.status_code == 409
+
+    superseded = load(state_path)
+    assert superseded['generation_revision'] == 2
+    assert superseded['status'] == BLOCKED_REVIEW
+    assert superseded['approval'] is None
+    assert superseded['waiver'] is None
+    assert approval_matches_release(superseded) is False
+    assert len(superseded['superseded_approvals']) == 1
+    archived = superseded['superseded_approvals'][0]
+    assert archived['authoritative'] is False
+    assert archived['reason'] == 'release seal mismatch'
+    assert archived['superseded_at']
+    assert archived['generation_revision'] == 1
+    assert archived['approval'] == prior['approval']
+    assert archived['waiver'] == prior['waiver']
+    assert archived['model_seal'] == prior['model_seal']
+    assert archived['release_manifest_digest'] == prior['release_manifest_digest']
+    snapshots = {
+        item['item_id']: item for item in archived['approval']['confirmations']
+    }
+    assert snapshots['WEEKS_MISMATCH']['value'] == blocker_value
+    assert snapshots['WEEKS_MISMATCH']['disposition'] == 'resolved:waived'
+    assert snapshots['FTP_TARGET_CONFIRM']['value'] == confirmation_value
+    assert snapshots['FTP_TARGET_CONFIRM']['disposition'] == 'confirmed'
+    assert archived['waiver']['reason'] == waiver_reason
+    assert archived['approval']['credential'].startswith('review-link:')
+    assert archived['approval']['review_catalog_digest'] == prior[
+        'review_catalog_digest']
+
+    history_body, _ = _login(review_client, state['order_id'])
+    assert 'Superseded approval history' in history_body
+    assert 'Historical evidence only.' in history_body
+    assert 'Superseded decision — non-authoritative' in history_body
+    assert waiver_reason in history_body
+    assert '287' in history_body
+    assert archived['approval']['credential'] in history_body
+    assert '<strong>Approved.</strong>' not in history_body
+    assert 'This decision is bound to revision' not in history_body
+    assert '<h2>Application</h2>' not in history_body
+
+
 def test_page_approval_rejects_unknown_item_wrong_csrf_and_escapes_values(review_client):
     malicious = _confirmation(
         'ESCAPE_CONFIRM', value='</pre><script>alert(1)</script>')
@@ -538,7 +609,7 @@ def test_revoking_link_after_login_ends_page_session(review_client, monkeypatch)
     assert state['athlete_id'] not in body
 
 
-def test_parent_revocation_kills_previously_minted_derived_bundle_token(
+def test_review_bundle_get_rejects_header_and_query_bearers(
     review_client, monkeypatch,
 ):
     monkeypatch.setenv('CRON_SECRET', 'operator-test-secret')
@@ -561,18 +632,21 @@ def test_parent_revocation_kills_previously_minted_derived_bundle_token(
     assert child_claims['exp'] - child_claims['iat'] <= MAX_REVIEW_BUNDLE_TTL_SECONDS
 
     url = f"/api/download/{state['order_id']}?artifact=review_bundle"
-    before = review_client.get(
-        url, headers={'Authorization': f'Bearer {child}'})
-    assert before.status_code == 200
-    assert before.headers['Cache-Control'].startswith('no-store')
+    assert review_client.get(
+        url, headers={'Authorization': f'Bearer {child}'}).status_code == 401
+    assert review_client.get(f'{url}&token={child}').status_code == 401
+    assert review_client.get(f'{url}&%74oken={child}').status_code == 401
 
     revoked = review_client.post(
         '/api/download-tokens/revoke', json={'jti': parent['jti']},
         headers={'X-Cron-Secret': 'operator-test-secret'})
     assert revoked.status_code == 200
-    after = review_client.get(
-        url, headers={'Authorization': f'Bearer {child}'})
-    assert after.status_code == 401
+    with pytest.raises(DownloadTokenError, match='parent review credential revoked'):
+        verify_download_token(
+            child, expected_order_id=state['order_id'],
+            expected_athlete_id=state['athlete_id'], expected_revision=1,
+            expected_artifact='review_bundle', expected_audience='coach',
+            revocation_path=Path(webhook_app.DATA_DIR) / 'token_revocations.json')
 
 
 def test_revoking_parent_ends_same_session_bundle_fetch(review_client, monkeypatch):
@@ -600,13 +674,21 @@ def test_revoking_parent_ends_same_session_bundle_fetch(review_client, monkeypat
         endpoint, data={'csrf_token': csrf}).status_code == 401
 
 
-def test_application_logging_redacts_legacy_query_bearers():
+@pytest.mark.parametrize('token_key', ['token', '%74oken', 't%6fken'])
+def test_application_logging_redacts_percent_encoded_query_bearers(token_key):
     record = webhook_app.logging.LogRecord(
         'werkzeug', webhook_app.logging.INFO, __file__, 1,
-        'GET /api/download/x?artifact=review_bundle&token=secret-value HTTP/1.1',
+        f'GET /api/download/x?artifact=review_bundle&{token_key}=secret-value HTTP/1.1',
         (), None,
     )
     assert webhook_app._bearer_query_redaction.filter(record)
     rendered = record.getMessage()
     assert 'secret-value' not in rendered
-    assert 'token=[REDACTED]' in rendered
+    assert '[REDACTED]' in rendered
+
+
+def test_redaction_filter_is_installed_on_application_request_loggers():
+    for logger_name in ('gravel-god-webhook', 'werkzeug', 'gunicorn.access'):
+        assert webhook_app._bearer_query_redaction in (
+            webhook_app.logging.getLogger(logger_name).filters
+        )

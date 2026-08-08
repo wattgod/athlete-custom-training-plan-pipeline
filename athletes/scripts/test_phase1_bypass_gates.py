@@ -180,11 +180,24 @@ def test_download_seal_mismatch_revokes_authority_and_persists_blocker(
     _approve(state_path)
     token = webhook_app._generate_download_token(
         "test_download_mismatch", "customer_bundle")
-    Path(persisted["customer_zip"]).write_bytes(b"post-approval mutation")
-
-    response = webhook_app.app.test_client().get(
+    client = webhook_app.app.test_client()
+    query_bearer = client.get(
         "/api/download/test_download_mismatch",
         query_string={"artifact": "customer_bundle", "token": token},
+    )
+    assert query_bearer.status_code == 401
+    authorized = client.get(
+        "/api/download/test_download_mismatch",
+        query_string={"artifact": "customer_bundle"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert authorized.status_code == 200
+    Path(persisted["customer_zip"]).write_bytes(b"post-approval mutation")
+
+    response = client.get(
+        "/api/download/test_download_mismatch",
+        query_string={"artifact": "customer_bundle"},
+        headers={"Authorization": f"Bearer {token}"},
     )
 
     assert response.status_code == 409

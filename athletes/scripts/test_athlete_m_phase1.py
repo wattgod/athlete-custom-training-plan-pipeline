@@ -165,7 +165,8 @@ def test_athlete_m_phase1_golden(monkeypatch, tmp_path):
         "test_athlete_m", "customer_bundle")
     response = client.get(
         "/api/download/test_athlete_m",
-        query_string={"artifact": "customer_bundle", "token": customer_token},
+        query_string={"artifact": "customer_bundle"},
+        headers={"Authorization": f"Bearer {customer_token}"},
     )
     assert response.status_code == 409
     assert response.get_json() == {"error": "plan not released"}

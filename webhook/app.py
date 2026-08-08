@@ -92,9 +92,16 @@ logging.basicConfig(
 
 
 class _BearerQueryRedactionFilter(logging.Filter):
-    """Keep legacy query-token requests out of application-managed logs."""
+    """Redact stale bearer URLs from application-managed logs."""
 
-    _TOKEN = re.compile(r'([?&]token=)[^&\s"]+', re.IGNORECASE)
+    # Query-token authentication is not supported, but old links, scanners,
+    # and rejected requests can still reach logs. Match a single URL-decoding
+    # pass for every character in ``token`` as defense in depth.
+    _TOKEN = re.compile(
+        r'([?&](?:t|%74)(?:o|%6f)(?:k|%6b)(?:e|%65)(?:n|%6e)=)'
+        r'[^&\s"]+',
+        re.IGNORECASE,
+    )
 
     @classmethod
     def _redact(cls, value):
@@ -116,6 +123,7 @@ _bearer_query_redaction = _BearerQueryRedactionFilter()
 logger = logging.getLogger('gravel-god-webhook')
 logger.addFilter(_bearer_query_redaction)
 logging.getLogger('werkzeug').addFilter(_bearer_query_redaction)
+logging.getLogger('gunicorn.access').addFilter(_bearer_query_redaction)
 
 # =============================================================================
 # CONFIGURATION - Fail fast if critical config missing in production
@@ -2859,6 +2867,10 @@ def download_deliverables(order_id):
     artifact = request.args.get('artifact', 'review_bundle')
     if artifact not in ARTIFACT_AUDIENCE:
         return jsonify({'error': 'Unknown artifact type'}), 400
+    # Review bundles are available only through the revision-bound review
+    # session POST above. Do not retain a second GET capability surface.
+    if artifact == 'review_bundle':
+        return jsonify({'error': 'Unauthorized'}), 401
     resolved_order_id = _resolve_order_id(order_id)
     if not resolved_order_id:
         return jsonify({'error': 'Fulfillment state unavailable'}), 409
@@ -2866,12 +2878,13 @@ def download_deliverables(order_id):
         state = load_fulfillment_state(_fulfillment_status_path(resolved_order_id))
     except FulfillmentStateError:
         return jsonify({'error': 'Fulfillment state unavailable'}), 409
-    # Auth: header secret or signed token
+    # Auth: operator secret or a typed Authorization bearer. Query parameters
+    # are deliberately never credentials because request targets cross proxy
+    # and access-log boundaries before application redaction can run.
     secret = request.headers.get('X-Cron-Secret', '')
     authorization = str(request.headers.get('Authorization') or '')
-    bearer = (authorization[7:].strip()
-              if authorization.lower().startswith('bearer ') else '')
-    token = bearer or request.args.get('token', '')
+    token = (authorization[7:].strip()
+             if authorization.lower().startswith('bearer ') else '')
     has_secret = secret and hmac.compare_digest(secret, os.environ.get('CRON_SECRET', ''))
     try:
         has_token = bool(token and _verify_download_token(
@@ -2882,18 +2895,14 @@ def download_deliverables(order_id):
     if not has_secret and not has_token:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    if artifact == 'customer_bundle':
-        if not approval_matches_release(state):
-            return jsonify({'error': 'plan not released'}), 409
+    if not approval_matches_release(state):
+        return jsonify({'error': 'plan not released'}), 409
 
     revision_dir = _order_dir(resolved_order_id) / 'revisions' / f"r{state['generation_revision']}"
-    filename = (f'{resolved_order_id}-review-bundle.zip'
-                if artifact == 'review_bundle'
-                else f'{resolved_order_id}-customer-bundle.zip')
+    filename = f'{resolved_order_id}-customer-bundle.zip'
     try:
         zip_handle = open_verified_release_artifact(
-            state, revision_dir, filename,
-            require_approval=(artifact == 'customer_bundle'),
+            state, revision_dir, filename, require_approval=True,
         )
     except FulfillmentStateError as exc:
         logger.error(f"Download seal verification failed for order {resolved_order_id}: {exc}")
@@ -2911,10 +2920,6 @@ def download_deliverables(order_id):
         as_attachment=True,
         download_name=filename,
     )
-    if artifact == 'review_bundle':
-        response.headers['Cache-Control'] = 'no-store, max-age=0'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Referrer-Policy'] = 'no-referrer'
     return response
 
 

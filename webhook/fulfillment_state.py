@@ -379,6 +379,21 @@ def _validate_state(state: Any) -> Dict[str, Any]:
     for key in ("approval", "waiver", "application", "confirmation"):
         if key not in state:
             raise FulfillmentStateError(f"fulfillment state missing {key}")
+    superseded_approvals = state.get("superseded_approvals", [])
+    if not isinstance(superseded_approvals, list):
+        raise FulfillmentStateError("superseded_approvals must be a list of records")
+    for record in superseded_approvals:
+        if (
+            not isinstance(record, dict)
+            or record.get("authoritative") is not False
+            or not isinstance(record.get("generation_revision"), int)
+            or record["generation_revision"] < 1
+            or not str(record.get("reason") or "").strip()
+            or not str(record.get("superseded_at") or "").strip()
+            or not isinstance(record.get("approval"), dict)
+        ):
+            raise FulfillmentStateError("invalid superseded approval record")
+    state["superseded_approvals"] = copy.deepcopy(superseded_approvals)
     if not isinstance(state.get("history"), list) or not state.get("updated_at"):
         raise FulfillmentStateError("fulfillment state missing history or updated_at")
     if "release_manifest" not in state or "model_seal" not in state:
@@ -521,6 +536,9 @@ def write_generation(
             "waiver": None,
             "application": None,
             "confirmation": None,
+            "superseded_approvals": copy.deepcopy(
+                previous.get("superseded_approvals", []) if previous else []
+            ),
             "model_seal": None,
             "release_manifest_digest": None,
             "release_manifest": None,
@@ -780,6 +798,29 @@ def _materialize_seal_mismatch(
     prior_revision = state["generation_revision"]
     prior_status = state["status"]
     prior_model_seal = state.get("model_seal")
+    prior_approval = copy.deepcopy(state.get("approval"))
+    prior_waiver = copy.deepcopy(state.get("waiver"))
+    prior_application = copy.deepcopy(state.get("application"))
+    prior_confirmation = copy.deepcopy(state.get("confirmation"))
+    archived_approval = isinstance(prior_approval, dict)
+    if archived_approval:
+        state.setdefault("superseded_approvals", []).append({
+            "authoritative": False,
+            "reason": "release seal mismatch",
+            "message": str(message),
+            "superseded_at": now_iso(),
+            "generation_revision": prior_revision,
+            "status": prior_status,
+            "approval": prior_approval,
+            "waiver": prior_waiver,
+            "application": prior_application,
+            "confirmation": prior_confirmation,
+            "model_seal": prior_model_seal,
+            "release_manifest_digest": state.get("release_manifest_digest"),
+            "release_manifest": state.get("release_manifest"),
+            "release_artifact_count": state.get("release_artifact_count"),
+            "seal_version": state.get("seal_version"),
+        })
     # A detected byte/seal failure supersedes the sealed generation. It must
     # never rewrite that revision's review catalog in place. This creates a
     # fresh, unsealed quarantine revision with the same reset authority shape
@@ -803,6 +844,7 @@ def _materialize_seal_mismatch(
         state, "SEAL_MISMATCH_REGENERATION_REQUIRED", message=message,
         prior_revision=prior_revision, prior_status=prior_status,
         prior_model_seal=prior_model_seal,
+        superseded_approval_archived=archived_approval,
     )
 
 
@@ -1166,6 +1208,7 @@ def migrate_v1_to_quarantine(
         "waiver": original.get("waiver"),
         "application": original.get("application"),
         "confirmation": original.get("confirmation"),
+        "superseded_approvals": [],
         "model_seal": None,
         "release_manifest_digest": None,
         "release_manifest": None,
