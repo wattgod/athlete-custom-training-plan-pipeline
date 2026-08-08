@@ -1969,6 +1969,13 @@ def brand_discipline_blocker(profile: Dict[str, Any]) -> Optional[Dict[str, str]
         'severity': 'CRITICAL',
         'message': conflict.get('message',
                                 'Ordering brand conflicted with race discipline.'),
+        'review_value': {
+            'brand': conflict.get('brand'),
+            'candidate_discipline': conflict.get('candidate'),
+            'forced_discipline': conflict.get('forced'),
+        },
+        'basis': 'ordering brand discipline policy compared with derived race discipline',
+        'sensitivity': 'internal',
     }
 
 
@@ -2844,6 +2851,9 @@ def run_quality_gates(athlete_id: str) -> bool:
                 'source': 'quality_gate',
                 'severity': 'CRITICAL',
                 'message': '; '.join(crit) or f'{name} reported a critical failure',
+                'review_value': {'gate': name, 'critical_findings': crit},
+                'basis': 'named production quality-gate output for this generated plan',
+                'sensitivity': 'internal',
             }
             for name, crit in flagged
         ]
@@ -3636,6 +3646,13 @@ def main():
                         'id': 'POST_RENDER_VALIDATOR_CRASH',
                         'source': 'post_render', 'severity': 'CRITICAL',
                         'message': f'Post-render validator failed closed: {type(exc).__name__}',
+                        'review_value': {
+                            'validator': 'post_render',
+                            'exception_type': type(exc).__name__,
+                            'failed_closed': True,
+                        },
+                        'basis': 'production post-render validator execution result',
+                        'sensitivity': 'internal',
                     }])
             except Exception as state_exc:
                 fulfillment_state_available = False
