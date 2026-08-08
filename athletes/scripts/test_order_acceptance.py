@@ -8,7 +8,9 @@ intake_to_plan.py subprocess → PDF — across a spread of golden orders,
 then asserts the full contract that makes a plan worth sending:
 
   1. The pipeline exits 0 (the delivery-blocking gates all passed)
-  2. Every deliverable exists (guide, PDF, workouts, fueling)
+  2. Every deliverable exists (guide, PDF, fueling; workouts are generated
+     but stay sealed pre-approval — executables never reach the
+     pre-approval delivery surface, per SPEC_TRUSTWORTHY_FULFILMENT)
   3. The PDF is structurally valid (magic, EOF, real page count)
   4. The guide passes the quality gate (no placeholders, no slop)
   5. Volume + zones + taper + caps all pass the preview checks
@@ -315,9 +317,15 @@ def test_all_deliverables_present(built_order):
     if not built_order["order"]["expect"].get("pdf_optional"):
         assert (d / "training_guide.pdf").exists(), "guide PDF missing"
     assert (d / "fueling.yaml").exists(), "fueling.yaml missing"
-    workouts = d / "workouts"
-    assert workouts.exists() and len(list(workouts.glob("*.zwo"))) >= 20, \
-        "workouts/ missing or sparse"
+    # Generation must produce the full workout set, but executable ZWOs stay
+    # sealed in the athlete package until a seal-bound approval releases the
+    # customer bundle (SPEC_TRUSTWORTHY_FULFILMENT B1/S2). The pre-approval
+    # delivery surface must carry NO executable workout files.
+    generated = built_order["athlete_dir"] / "workouts"
+    assert generated.exists() and len(list(generated.glob("*.zwo"))) >= 20, \
+        "generated workouts/ missing or sparse"
+    assert not list(d.rglob("*.zwo")), \
+        "executable workouts leaked to the pre-approval delivery surface"
 
 
 def test_pdf_is_structurally_valid(built_order):
@@ -460,10 +468,14 @@ def test_roadie_package_is_brand_clean_and_semantically_valid(built_order):
     }[exp["event_format"]]
     assert expected_strategy in guide
 
+    # Guide staging/publishing is a post-approval release action (Phase 5 of
+    # SPEC_TRUSTWORTHY_FULFILMENT); pre-approval staging was a closed Phase 1
+    # bypass. The unpublished draft must NOT appear in the hosting tree.
     staged_guide = (built_order["delivery_dir"].parent /
                     "roadie-labs-guides" / "athletes" /
                     built_order["athlete_id"] / "index.html")
-    assert staged_guide.exists(), "Roadie guide was not staged in its configured repo"
+    assert not staged_guide.exists(), \
+        "unapproved guide was staged to the hosting repo (release bypass)"
 
     from validate_plan_package import validate_plan_package
     assert validate_plan_package(athlete_dir) == []
