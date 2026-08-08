@@ -3792,7 +3792,7 @@ def main():
             tp_athlete_id = str(
                 profile.get('tp_athlete_id')
                 or (profile.get('delivery') or {}).get('tp_athlete_id')
-                or athlete_id
+                or f'offline-unbound:{athlete_id}'
             )
             contract = build_contract(
                 plan_ir_data,
