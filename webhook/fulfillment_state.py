@@ -205,6 +205,8 @@ def _review_item(
         "revision": state["generation_revision"],
         "message": str(source_item.get("message") or "").strip(),
     }
+    if not item["source"] or not item["basis"]:
+        raise FulfillmentStateError("review item source and basis are required")
     choices = source_item.get("resolution_choices", [])
     if not isinstance(choices, list) or any(
         not isinstance(choice, str) or not choice.strip() for choice in choices
@@ -1000,6 +1002,10 @@ def transition(
         elif to == APPLIED:
             if current != APPROVED:
                 raise FulfillmentStateError("application requires APPROVED status")
+            if not approval_matches_release(state):
+                raise FulfillmentStateError(
+                    "application requires a complete seal-bound approval snapshot"
+                )
             requested_platform = str(platform).strip()
             delivery_platform = state["delivery_platform"]
             if requested_platform == "endure" or delivery_platform == "endure":

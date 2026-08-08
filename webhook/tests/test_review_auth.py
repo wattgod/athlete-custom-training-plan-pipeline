@@ -78,6 +78,17 @@ def test_review_tokens_fail_closed_without_keys(monkeypatch):
         _issue()
 
 
+def test_review_token_honors_rotated_coach_kid(monkeypatch, tmp_path):
+    monkeypatch.delenv('DOWNLOAD_TOKEN_SECRET')
+    monkeypatch.setenv('DOWNLOAD_TOKEN_KEYS', json.dumps({
+        'coach': {'old-kid': 'old-secret', 'current-kid': 'current-secret'},
+        'customer': {'customer-kid': 'customer-secret'},
+    }))
+    monkeypatch.setenv('DOWNLOAD_TOKEN_COACH_KID', 'current-kid')
+    claims = _verify(_issue(), tmp_path)
+    assert claims['kid'] == 'current-kid'
+
+
 def test_server_session_is_opaque_scoped_and_revocation_aware(tmp_path):
     claims = _verify(_issue(jti='session-jti'), tmp_path)
     session_id, session = create_review_session(

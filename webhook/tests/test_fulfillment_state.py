@@ -272,6 +272,10 @@ def test_incomplete_legacy_approval_snapshot_grants_no_release_authority(tmp_pat
     incomplete = load(path)
     assert incomplete['status'] == APPROVED
     assert approval_matches_release(incomplete) is False
+    with pytest.raises(FulfillmentStateError, match='complete seal-bound'):
+        transition(
+            path, APPLIED, 'operator', platform='manual',
+            evidence='must not accept incomplete approval')
 
 
 def test_seal_detects_same_revision_mutation(tmp_path):

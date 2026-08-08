@@ -110,6 +110,12 @@ def _review_keyring() -> Dict[str, str]:
 def _current_kid() -> str:
     keys = _review_keyring()
     configured = os.environ.get("REVIEW_TOKEN_KID", "").strip()
+    if (not configured and not os.environ.get("REVIEW_TOKEN_KEYS", "").strip()
+            and not os.environ.get("REVIEW_TOKEN_SECRET", "").strip()):
+        configured = os.environ.get(
+            "DOWNLOAD_TOKEN_COACH_KID",
+            os.environ.get("DOWNLOAD_TOKEN_KID", ""),
+        ).strip()
     if configured:
         if configured not in keys:
             raise ReviewAuthError("configured review token kid is unknown")
