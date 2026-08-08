@@ -3250,17 +3250,18 @@ def fulfillment_status(order_ref):
         'tp_manifest_sha256': tp_record.get('sha256'),
         'generation_revision': state['generation_revision'],
         'updated_at': state['updated_at'],
-        'blocking_issues': redact_sensitive_review_items(state['blocking_issues']),
-        'required_confirmations': redact_sensitive_review_items(state['required_confirmations']),
-        'soft_confirmations': redact_sensitive_review_items(state.get('soft_confirmations', [])),
+        'blocking_issues': state['blocking_issues'],
+        'required_confirmations': state['required_confirmations'],
+        'soft_confirmations': state.get('soft_confirmations', []),
         'review_catalog_version': state.get('review_catalog_version'),
-        'review_items': redact_sensitive_review_items(state.get('review_items', [])),
+        'review_items': state.get('review_items', []),
         'model_seal': state['model_seal'],
         'release_manifest_digest': state['release_manifest_digest'],
         'approval': state['approval'],
         'waiver': state['waiver'],
         'application': state['application'],
         'confirmation': state['confirmation'],
+        'superseded_approvals': state.get('superseded_approvals', []),
     }
     if (release_authorized and state['status'] == APPROVED
             and state['delivery_platform'] == 'trainingpeaks'
@@ -3271,7 +3272,8 @@ def fulfillment_status(order_ref):
             request.host_url.rstrip('/')
             + f'/api/fulfillment/{order_id}/apply-gate'
         )
-    return jsonify(response), 200
+    from fulfillment_state import external_state_projection
+    return jsonify(external_state_projection(response)), 200
 
 
 @app.route('/api/fulfillment/<order_ref>/apply-gate', methods=['GET'])

@@ -8,8 +8,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import pytest
 
 from fulfillment_state import (FulfillmentStateError,
+                               APPROVED,
+                               external_state_projection,
                                finalize_transitional_release,
-                               redact_sensitive_review_items, write_generation)
+                               redact_sensitive_review_items, transition,
+                               write_generation)
 import app as webhook_app
 
 
@@ -44,6 +47,60 @@ def test_sensitive_value_is_absent_from_external_projection():
     output = json.dumps(projected)
     assert secret not in output
     assert "authenticated review" in output
+
+
+def test_recursive_projection_redacts_archived_evidence():
+    secret = "seeded-archive-secret-13579"
+    projected = external_state_projection({
+        "approval": {"confirmations": [{
+            "sensitivity": "sensitive", "value": secret,
+            "review_value": {"nested": secret},
+        }]},
+        "superseded_approvals": [{"approval": {"confirmations": [{
+            "sensitivity": "sensitive", "message": secret,
+        }]}}],
+        "application": {"evidence": {
+            "sensitivity": "sensitive", "evidence": secret}},
+        "waiver": {"reason": secret, "credential": secret},
+    })
+    assert secret not in json.dumps(projected)
+
+
+def test_real_post_approval_status_redacts_live_and_archived_secret(
+        tmp_path, monkeypatch):
+    secret = "seeded-status-secret-86420"
+    data = tmp_path / "data"
+    monkeypatch.setattr(webhook_app, "DATA_DIR", str(data))
+    monkeypatch.setattr(webhook_app, "DELIVERIES_DIR", str(data / "deliveries"))
+    monkeypatch.setenv("CRON_SECRET", "status-secret")
+    order_id = "cs_sensitive_status"
+    state_path = webhook_app._fulfillment_status_path(order_id)
+    state = write_generation(
+        state_path, "athlete-sensitive", order_id=order_id,
+        delivery_platform="trainingpeaks", derived_values=[_derived(secret)])
+    revision = webhook_app._order_dir(order_id) / "revisions" / "r1"
+    revision.mkdir(parents=True)
+    (revision / "artifact.txt").write_text("sealed")
+    state = finalize_transitional_release(
+        state_path, revision, expected_revision=1)
+    state = transition(
+        state_path, APPROVED, "coach@example.invalid",
+        expected_revision=1,
+        expected_catalog_digest=state["review_catalog_digest"],
+        review_decisions=[{
+            "item_id": item["item_id"], "revision": 1,
+            "disposition": "confirmed",
+        } for item in state["review_items"]
+          if item["type"] in {"required_confirmation", "verified_fact"}],
+        credential="operator-secret")
+    webhook_app._record_order_lookup(order_id, "athlete-sensitive")
+    response = webhook_app.app.test_client().get(
+        f"/api/fulfillment/{order_id}/status",
+        headers={"X-Cron-Secret": "status-secret"})
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert secret not in body
+    assert "authenticated review" in body
 
 
 def test_generation_notification_redacts_seeded_sensitive_blocker():

@@ -110,15 +110,43 @@ def review_catalog_digest(
     })
 
 
+def external_state_projection(value: Any) -> Any:
+    """One recursive redaction boundary for every non-review state surface.
+
+    Approval snapshots and superseded evidence intentionally copy complete
+    review items. A shallow live-list helper therefore leaks the archived
+    typed value after approval. This projection walks the entire response and
+    applies the sensitivity policy wherever that evidence is nested.
+    """
+    def project(nested: Any, path: tuple[str, ...]) -> Any:
+        if isinstance(nested, list):
+            return [project(item, path) for item in nested]
+        if not isinstance(nested, dict):
+            return copy.deepcopy(nested)
+        result = copy.deepcopy(nested)
+        sensitive_object = result.get("sensitivity") == "sensitive"
+        for key, child in list(result.items()):
+            child_path = path + (str(key),)
+            audit_secret = (
+                key == "credential"
+                or (key == "evidence" and "application" in path)
+                or (key == "reason" and "waiver" in path)
+            )
+            sensitive_field = sensitive_object and key in {
+                "value", "review_value", "message", "basis", "evidence",
+                "before_image", "prior_payload", "content_snapshot",
+            }
+            result[key] = (SENSITIVE_REDACTION
+                           if audit_secret or sensitive_field
+                           else project(child, child_path))
+        return result
+
+    return project(value, ())
+
+
 def redact_sensitive_review_items(items: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
-    """Safe projection for notifications, logs, exports, and non-review APIs."""
-    result = copy.deepcopy(items or [])
-    for item in result:
-        if item.get("sensitivity") == "sensitive":
-            for key in ("value", "review_value", "message", "basis"):
-                if key in item:
-                    item[key] = SENSITIVE_REDACTION
-    return result
+    """Compatibility wrapper over the recursive external-state boundary."""
+    return external_state_projection(items)
 
 
 def _state_path(path: os.PathLike[str] | str) -> Path:
