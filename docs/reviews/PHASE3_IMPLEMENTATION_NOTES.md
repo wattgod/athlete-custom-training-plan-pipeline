@@ -295,6 +295,114 @@ JS/browser driver.
   masters **78% (2979/3796, PASS)**, roadie fondo **84% (2269/2695, WARN)**,
   and roadie hill climb **83% (2602/3123, WARN)**.
 
+## R1 adversarial-review disposition (2026-08-08)
+
+All nine findings in `PHASE3_IMPLEMENTATION_CODEX_R1.md` were accepted as
+valid. No finding is disputed or silently omitted.
+
+1. **Canonical authority — closed.** The mature generator now emits every
+   authoring document into a private in-memory inventory inside a temporary
+   directory. `canonical_training_model/v1` is finalized and exact-union
+   validated before publication; ZWO, PlanIR, preview, TP structure/polyline,
+   apply-contract session payloads, and guide control/re-anchor evidence then
+   project from it. Production canonicalization neither reads nor globs a
+   published ZWO. Negative union tests reject missing, mixed, forbidden,
+   cross-metric, non-finite, out-of-range-RPE, and illegal-free shapes.
+   Round-trip tests delete/poison the legacy source and prove the canonical
+   session alone controls every downstream session projection.
+2. **Numeric FTP edges — closed.** `parse_watts` full-matches one signed token
+   and accepts only finite values within the existing plausible FTP bounds.
+   Zero, negative, malformed/partial, and implausible tokens produce null FTP,
+   `power_basis: none`, null W/kg, and `POWER_BASIS_NONE_CONFIRM`; the paid
+   order remains sanity-valid and buildable.
+3. **Metric-aware zone accounting — closed.** Power retains its byte/content-
+   pinned normalized IF behavior. LTHR and HRmax invert their own canonical
+   mapping, RPE uses its own 1–10 effort mapping, and free rides remain
+   unprescribed estimates. Ramp and interval duration weighting happens only
+   after that type-specific normalization. Preview verification carries a
+   metric-neutral effort internally and publishes IF only for power.
+4. **Every-artifact non-power fixtures — closed.** LTHR, HRmax, and RPE cases
+   now run the production webhook subprocess, package builder, sealing,
+   release-manifest creation, and both ZIP builders. Each case inspects guide,
+   preview, coaching brief, plan summary, release manifest, every textual ZIP
+   member, and PDF text when a PDF engine is available. They assert zero
+   numeric watts/%FTP, the exact Week 1 field test, serialized re-anchor type
+   and action, and absence of customer ZWOs.
+5. **Derived registry — closed.** Revision is mandatory at entry construction,
+   every owning artifact stamps the prospective/current generation revision,
+   and registry documents reject stale entries. Explicit coverage inventories
+   now gate computed profile fields; fueling duration, calories, carb targets
+   and ranges, gut phases/progression, timeline, prescription, basis,
+   recommendations and hydration; and review-facing plan-summary dates,
+   methodology/score, tier, ability, fueling summaries, control/field-test/
+   re-anchor evidence, and workout count. A negative coverage test fails on an
+   unregistered derived output.
+6. **Sensitive external projection — closed.** One recursive
+   `external_state_projection` owns the non-review API boundary. It redacts
+   sensitive live and archived catalog objects plus approval credentials,
+   waiver reasons, and application evidence at any nesting depth. The real
+   post-approval status endpoint is exercised with a seeded sensitive value;
+   neither live nor approval-snapshot output contains it.
+7. **Normative inventory — closed.** The offline builder accepts exactly
+   `{remote_id, desired_digest, payload_snapshot_ref, kind, last_op_id}`.
+   Inline payload is rejected. Dated update/delete requires an explicit
+   snapshot reader, validates the resolved canonical payload against the kind
+   schema and stored digest, and copies that immutable value into
+   `prior_payload`. Exact update and delete records are regression-tested.
+8. **Attachment identity — closed.** Attachment logical keys are exactly
+   `{parent_logical_key}:{filename}`; `parent_logical_key` is carried
+   separately from the full parent logical ID and the pair must agree. Literal
+   identity fixtures and per-kind grammar checks cover workouts, notes/tasks,
+   attachments, singletons, and entitlements.
+9. **Legacy-to-D0 parity — closed offline.** The legacy projection now exposes
+   the complete normalized remote field set. A field-aware socket-free fake
+   remote compares legacy reconciliation with D0 effects across create,
+   update, delete, keep, every dated kind, positional singletons,
+   attachments, and entitlements. The loopback test uses the identical full
+   state comparison and remains enabled for CI environments that permit local
+   sockets.
+
+### R1 verification evidence
+
+- Focused R1 regressions: **144 passed, 1 skipped**; the skip is only the
+  loopback transport variant, while its field-aware socket-free equivalent
+  passed.
+- Phase 1/2 sealing, gated-review, and download-token invariants:
+  **66 passed**.
+- Complete sandbox suite: **2,452 passed, 87 skipped, 21 warnings, 0 failed**.
+- Opt-in production order acceptance with a writable `HOME`: **36 passed,
+  4 skipped**. Four remaining test failures are solely the two mandatory-PDF
+  assertions for each Gravel God fixture: this sandbox has no Chromium/PDF
+  engine. The two Roadie PDF cases correctly skipped under their HTML-fallback
+  contract. No PDF result was fabricated.
+- Golden power projection: the pre-change and final sorted manifests contain
+  exactly **253 ZWOs** (89 Gravel, 77 Masters, 41 Road Fondo, 46 Road Climb).
+  `diff -u` is empty and both manifest files have SHA-256
+  `0b9bad73ac3b38a4b3c0f72b007a9f0c8e0c9330ca8d9741cd883df0aa4624b5`.
+- `python3 -m compileall -q athletes/scripts webhook` and
+  `git diff --check` passed. No live TP, network, email, Stripe, browser, or
+  worker action was attempted.
+
+### R1 commit boundaries
+
+1. `494d3ce` — `fix(phase3): make canonical sessions authoritative and metric truthful` —
+   `intake_to_plan.py`, `canonical_training_model.py`, `zwo_parser.py`,
+   `generate_athlete_package.py`, `training_guide_builder.py`, `plan_ir.py`,
+   `generate_plan_preview.py`, `validate_plan_package.py`,
+   `calculate_fueling.py`, `derived_registry.py`, and their focused tests,
+   including `test_metric_neutral_packages.py`.
+2. `ab65607` — `fix(phase3): enforce normative reconciliation inventory and identities` —
+   `apply_contract.py`, `fulfillment_manifest.py`, `fake_remote_parity.py`,
+   `test_apply_contract.py`, `test_fulfillment_manifest.py`, and
+   `test_trainingpeaks_adapter.py`.
+3. `b413280` — `fix(phase3): recursively redact external fulfillment evidence` —
+   `webhook/fulfillment_state.py`, `webhook/app.py`, and
+   `webhook/tests/test_phase3_derived_catalog.py`.
+4. `docs(phase3): record all R1 dispositions and verification evidence` —
+   this notes file (committed last).
+
+No push is part of Phase 3 implementation.
+
 ## Remaining human gates
 
 - Run the socket suite outside the sandbox, including the existing fake TP
