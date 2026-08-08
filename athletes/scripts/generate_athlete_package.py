@@ -15,6 +15,8 @@ import os
 import sys
 import json
 import yaml
+import contextlib
+import tempfile
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional
@@ -3135,25 +3137,35 @@ def generate_athlete_package(athlete_id: str) -> dict:
         'plan_dates': plan_dates
     }
 
-    # Generate ZWO workout files FIRST (guide reads from workouts dir)
-    step(3, "Generating ZWO workout files...")
-    zwo_files = generate_zwo_files(athlete_dir, plan_dates, methodology, derived, profile, fueling)
-    detail(f"Generated {len(zwo_files)} workout files")
-
-    # A1.1: finalize the metric-neutral session model before guide/preview/TP
-    # payload projections. The mature renderer is an internal authored-shape
-    # adapter during Phase 3; non-power ZWOs are removed by this step and never
-    # become package artifacts.
-    step(3.5, "Finalizing canonical training model...")
+    # A1.1: the canonical model is finalized before every package projection.
+    # Power control emits ZWO alongside the authored model. HR/RPE authoring
+    # occurs in a short-lived compiler directory, so a ZWO can never appear in
+    # the athlete tree even if canonical projection fails midway.
     from copy import deepcopy
-    from canonical_training_model import build_canonical_model
+    from canonical_training_model import build_canonical_model, determine_control
     _canonical_dates = deepcopy(plan_dates)
-    _pre_plan_week = getattr(generate_zwo_files, 'last_pre_plan_week', None)
-    if (_pre_plan_week
-            and not any(w.get('week') == 0 for w in _canonical_dates.get('weeks', []))):
-        _canonical_dates.setdefault('weeks', []).insert(0, _pre_plan_week)
-    canonical_model = build_canonical_model(
-        athlete_id, athlete_dir, plan_dates=_canonical_dates)
+    _control_intent = determine_control(profile)
+    if _control_intent['control_metric'] == 'power':
+        _authoring_context = contextlib.nullcontext(str(athlete_dir))
+    else:
+        for _stale_zwo in (athlete_dir / 'workouts').glob('*.zwo'):
+            _stale_zwo.unlink()
+        _authoring_context = tempfile.TemporaryDirectory(
+            prefix='.metric-authoring-', dir=athlete_dir)
+    with _authoring_context as _authoring_root:
+        step(3, "Authoring canonical workout sessions...")
+        _authored_dir = Path(_authoring_root)
+        zwo_files = generate_zwo_files(
+            _authored_dir, plan_dates, methodology, derived, profile, fueling)
+        _pre_plan_week = getattr(generate_zwo_files, 'last_pre_plan_week', None)
+        if (_pre_plan_week and not any(
+                w.get('week') == 0 for w in _canonical_dates.get('weeks', []))):
+            _canonical_dates.setdefault('weeks', []).insert(0, _pre_plan_week)
+        step(3.5, "Finalizing canonical training model...")
+        canonical_model = build_canonical_model(
+            athlete_id, athlete_dir, plan_dates=_canonical_dates,
+            authored_dir=_authored_dir)
+    detail(f"Authored {len(zwo_files)} canonical workout sessions")
     control = canonical_model['athlete']
     detail(f"Canonical control: {control['control_metric']} ({control['control_basis']})")
     if control['control_metric'] != 'power':

@@ -235,6 +235,7 @@ def build_canonical_model(
     athlete_dir: Path | str,
     *,
     plan_dates: Optional[Dict[str, Any]] = None,
+    authored_dir: Path | str | None = None,
 ) -> Dict[str, Any]:
     """Build the canonical artifact from the finalized calendar/render shape."""
     athlete_dir = Path(athlete_dir)
@@ -242,16 +243,49 @@ def build_canonical_model(
     profile = yaml.safe_load((athlete_dir / "profile.yaml").read_text()) or {}
     control = determine_control(profile)
 
-    # Bootstrap through the mature ZWO parser exactly once. Subsequent PlanIR,
-    # preview, contract and guide projections read canonical_training_model.json.
+    # Bootstrap through the mature authored workout shape exactly once.
+    # For non-power plans ``authored_dir`` is a short-lived private compiler
+    # directory, never the athlete artifact tree. Subsequent PlanIR, preview,
+    # contract and guide projections read canonical_training_model.json.
     import plan_ir as plan_ir_module
-    original_base = plan_ir_module.ATHLETES_DIR
-    try:
-        plan_ir_module.ATHLETES_DIR = athlete_dir.parent
-        reflected = plan_ir_module.build_plan_ir(
-            athlete_id, prefer_canonical=False, plan_dates_override=plan_dates)
-    finally:
-        plan_ir_module.ATHLETES_DIR = original_base
+    if authored_dir is None or Path(authored_dir).resolve() == athlete_dir.resolve():
+        original_base = plan_ir_module.ATHLETES_DIR
+        try:
+            plan_ir_module.ATHLETES_DIR = athlete_dir.parent
+            reflected = plan_ir_module.build_plan_ir(
+                athlete_id, prefer_canonical=False, plan_dates_override=plan_dates)
+        finally:
+            plan_ir_module.ATHLETES_DIR = original_base
+    else:
+        import yaml
+        source_dir = Path(authored_dir)
+        fueling_data = yaml.safe_load((athlete_dir / "fueling.yaml").read_text()) or {}
+        plan_dates_data = plan_dates or (
+            yaml.safe_load((athlete_dir / "plan_dates.yaml").read_text()) or {})
+        athlete = plan_ir_module._athlete_from_profile(athlete_id, profile)
+        prescription_data = plan_ir_module.prescription_from_fueling(fueling_data)
+        target = profile.get("target_race", {}) or {}
+        mental = profile.get("mental_game", {}) or {}
+        guide_path = ("training_guide.pdf" if (athlete_dir / "training_guide.pdf").exists()
+                      else "training_guide.html")
+        reflected = plan_ir_module.PlanIR(
+            athlete=athlete,
+            race_snapshot=plan_ir_module._race_from_artifacts(
+                profile, fueling_data, plan_dates_data),
+            fueling=(plan_ir_module.FuelingPrescription(**prescription_data)
+                     if prescription_data else None),
+            weeks=plan_ir_module._build_weeks(
+                source_dir, plan_dates_data, athlete,
+                profile.get("recurring_sessions", []) or []),
+            notes=[{"kind": "mental_training", "id": key, "text": str(value)}
+                   for key, value in mental.items()
+                   if value not in (None, "", "none", "no")],
+            entitlements=[{"kind": "course", "race": target.get("name"),
+                           "race_date": target.get("date"),
+                           "race_id": target.get("race_id")}],
+            attachments=[{"id": "guide", "kind": "guide", "path": guide_path}],
+            fulfillment=plan_ir_module._fulfillment_from_file(athlete_dir),
+        )
 
     sessions: List[Dict[str, Any]] = []
     field_test_title = _metric_field_test_title(control)
