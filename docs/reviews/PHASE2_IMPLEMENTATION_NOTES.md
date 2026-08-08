@@ -1,183 +1,182 @@
-# Phase 2 implementation notes — review surface
+# Phase 2 implementation notes — review round 1 closure
 
-Date: 2026-08-07
+Date: 2026-08-08
 
-Normative basis: `docs/SPEC_TRUSTWORTHY_FULFILMENT.md` r9, especially S3,
-C1, C2, C4, and the Phase 2 rollout gate. Phase 1's reviewed controls remain
-in force; the TrainingPeaks browser driver, Endure writes, and all Phase 3+
-worker/apply/release machinery remain disabled or unimplemented as assigned.
+Normative basis: `docs/SPEC_TRUSTWORTHY_FULFILMENT.md` r9 and
+`docs/reviews/PHASE2_IMPLEMENTATION_CODEX_R1.md`. Phase 1 controls remain in
+force. TrainingPeaks/Endure application, provider readback, guide release,
+Gmail drafting, and all other Phase 3+ work remain disabled or out of scope.
 
-## Per-item disposition
+## Round 1 blocker dispositions
 
-1. **S3 review-item catalog — implemented.** Schema-v2 state now carries
-   `review_catalog/v1`: a server-rebuilt, revisioned catalog covering every
-   blocker, required confirmation, soft confirmation, and the verified order
-   and release-seal facts needed for a meaningful clean-order review. Each
-   item stores a JSON-native canonical value plus `value_type`, display unit,
-   source, basis, sensitivity, message, revision, and any server-owned
-   resolution choices. Catalog equality is validated on state load; duplicate
-   item ids, non-JSON values, empty provenance, and unknown sensitivity labels
-   fail closed.
-2. **Approval snapshot with values — implemented.** `approval_snapshot/v1`
-   copies every cataloged value into `approval.confirmations`, with item id,
-   typed value, disposition, and revision. It also records the approving
-   credential, revision, model seal, and release-manifest digest. The server
-   never accepts a value from the form or operator request. Release authority
-   now requires a complete snapshot whose ids, values, types, and revisions
-   still equal the current catalog; a pre-Phase-2/incomplete approval cannot
-   authorize a download or APPLIED transition.
-3. **C1 review page — implemented.** `/review/<order_id>` renders the required
-   order: header, blockers, required confirmations, soft confirmations,
-   verified facts, and the post-approval application status. The page provides
-   waiver controls only for waivable blockers, remediation copy instead of a
-   control for non-waivable blockers, explicit acknowledgements, and a typed-
-   token review-bundle download. After approval it displays the persisted
-   sealed result. Later-phase apply/readback/draft controls are intentionally
-   not enabled; the page says they remain behind their rollout gates.
-4. **C2 surface — implemented.** Current intake and post-render findings now
-   supply structured reviewed values for race matching/provenance, estimated
-   FTP, unresolved course, weeks mismatch, unknown devices, race-week/session
-   date rules, scheduling, fueling, carbohydrate targets, and altitude. Older
-   or generic structural findings still receive a canonical string value from
-   their server-generated message, so no blocker or confirmation can disappear
-   from the catalog.
-5. **C4 authentication — implemented.** Review links are signed for one order,
-   athlete, revision, `review` action, and coach audience, with `kid`, `jti`,
-   issued-to label, and a maximum/default seven-day TTL. The bearer is placed
-   in the URL fragment, which is not sent in HTTP URLs, access logs, or Referer
-   headers. Static bootstrap code POSTs it to a session exchange. That exchange
-   creates an opaque 12-hour server-side session under `DATA_DIR`, stored mode
-   0600, and sets an HttpOnly/SameSite=Strict cookie (Secure in production).
-   Every request rechecks expiry and jti/kid revocation. GET performs no audited
-   action; approval requires a CSRF token. Provenance is honestly recorded as
-   `review-link:<kid>:<jti>-<issued-to>`, while the existing authenticated curl
-   path records `operator-secret` and must submit the same revisioned catalog
-   decisions.
-6. **Policy enforcement — implemented in the state authority.** Exact waiver
-   coverage and a nonempty reason are required; non-waivable ids are recomputed
-   from server policy and rejected even when submitted in a complete waiver.
-   Every required confirmation and verified fact must be resolved for the
-   current revision, soft confirmations are snapshotted as confirmed or
-   unconfirmed, unknown/duplicate/wrong-revision ids are rejected, and only
-   server-declared `resolved:<choice>` values are legal. Seal verification runs
-   under the state lock before the approval is committed; a mismatch becomes a
-   durable non-waivable `SEAL_MISMATCH` blocker.
-7. **Phase 2 athlete-m page gate test — implemented.** The deterministic route
-   test reads the checked-in de-identified `athlete_m/intake.json` values,
-   creates a dedicated remediated review revision, performs fragment-link login
-   → durable session → authenticated page → typed review download → waiver and
-   required confirmation → APPROVED, then reloads state and proves the complete
-   value-bearing snapshot matches the catalog and both seal fields. The exact
-   Phase 1 athlete-m production replay remains unchanged and blocked by its two
-   non-waivable findings; the page test does not waive or delete those controls.
+### 1. Exact rendered-catalog approval binding — closed
 
-## Security and failure-path decisions
+- `review_catalog_digest` is the SHA-256 digest of canonical JSON containing
+  `review_catalog/v1` plus the complete ordered `review_items` array. State
+  stores the current digest, the page embeds it, and the operator endpoint
+  requires it.
+- `transition(..., APPROVED)` requires the digest and an explicit decision
+  list. Under the state lock it rebuilds the authoritative catalog, recomputes
+  the digest, compares it with `hmac.compare_digest`, and only then evaluates
+  decisions and copies values. The compatibility branch that synthesized
+  verified-fact decisions was removed.
+- Successful approvals use `approval_snapshot/v2`, persist
+  `review_catalog_digest`, and copy each complete reviewed catalog entry plus
+  its disposition. The snapshot therefore preserves message, typed value,
+  display unit, source, basis, sensitivity, revision, policy fields, and the
+  actual disposition.
+- `set_generation_blockers` and `merge_generation_blockers` reject any sealed
+  state and require `write_generation`. A detected artifact/seal mismatch no
+  longer edits the sealed revision's catalog: it supersedes that generation
+  into a new unsealed `BLOCKED_REVIEW` revision, clears all release authority,
+  and records the non-waivable `SEAL_MISMATCH` regeneration requirement.
+- Production-route regressions change a required confirmation's value and,
+  separately, a blocker's message/value without changing id or revision after
+  render. Both submissions return 409 and persist no approval. Success coverage
+  proves the submitted digest is persisted in the approval.
 
-- The webhook's existing Flask stack is retained; no framework or dependency
-  was added.
-- Data-derived HTML is escaped server-side. The page embeds no JSON and uses no
-  `innerHTML`. The only script is static login bootstrap code protected by a
-  per-response CSP nonce; the authenticated page permits no script. Review
-  responses set `Cache-Control: no-store`, `Pragma: no-cache`, and
+### 2. Authority-derived page state — closed
+
+- Page success is derived only from `approval_matches_release`, never from a
+  status label. This predicate requires a current, non-legacy, seal-bound,
+  `approval_snapshot/v2` snapshot whose digest and complete copied entries
+  match the current catalog.
+- A release-like status without authority renders `APPROVAL NOT AUTHORITATIVE`
+  and the loud remediation: “Approval not authoritative —
+  regenerate/re-approve.” It exposes no approval form, bundle download, or
+  application/later-phase action.
+- A valid approval renders `approval.confirmations`—the persisted snapshot—not
+  live `review_items`, including each persisted disposition.
+- Production page-route regressions cover a missing snapshot entry, changed
+  value, changed type, approval seal-field mismatch, and old snapshot version.
+  Every case renders remediation and never renders the Approved success or a
+  later action.
+
+### 3. Revocation cascade and bearer hygiene — closed
+
+- The page and generation email no longer place a review-bundle bearer in a
+  query string. The page downloads through a CSRF-protected POST using the
+  existing opaque review session; every fetch rechecks parent jti/kid
+  revocation and session expiry.
+- Typed review-bundle tokens remain for non-page compatibility. When derived
+  from a review credential they carry `parent_review_jti` and
+  `parent_review_kid`; verification checks the shared durable revocation store
+  for both child and parent. The download route also accepts an Authorization
+  bearer so new callers need not use a query string.
+- Every review-bundle token, derived or standalone, is capped at five minutes.
+  Customer-bundle token TTL and approval gating are unchanged.
+- Both the same-session bundle response and typed review-bundle response set
+  `Cache-Control: no-store, max-age=0`, `Pragma: no-cache`, and
   `Referrer-Policy: no-referrer`.
-- An unauthenticated GET always receives a generic shell containing no order,
-  athlete, state, blocker, artifact, or existence information. The session
-  exchange also returns a generic failure.
-- The page never opens artifact files directly. Its review download uses the
-  existing typed, order/revision/audience-bound token route and the existing
-  verified open-descriptor seal check.
-- Review signing can use explicit `REVIEW_TOKEN_KEYS` / `REVIEW_TOKEN_SECRET`.
-  For a no-dead-link rollout, it can also derive a domain-separated review key
-  from the already-required Phase 1 download-token secret/keyring and honors
-  its current coach `kid`. Missing keys fail closed.
-- Review sessions remain valid only while their original signing `kid` exists;
-  rotating a key out or using the existing jti/kid revocation endpoint ends the
-  session.
-- State/catalog corruption, missing durable state, missing seal, typed-token
-  failure, stale session, CSRF failure, and seal mutation all fail closed. None
-  turns the pipeline job into a customer-visible failure or enables a release.
+- Legacy query-token compatibility remains, so application-managed webhook and
+  Werkzeug loggers install a request-target filter that replaces the token
+  value with `[REDACTED]`.
+- Production-route regressions prove a previously valid derived token returns
+  401 after its parent review jti is revoked, the same-session POST also dies
+  after parent revocation, successful bundle responses are no-store, and the
+  derived lifetime is no more than 300 seconds.
 
-## Required negative regression coverage
+## Non-blocking findings and rotation item
 
-Production routes now cover:
+1. **Producer metadata — cheap production cases addressed; generic fallback
+   deferred.** The cited availability, brand, quality-gate, compliance,
+   state-unavailable, validator-crash, and package-consistency producers now
+   provide explicit typed values, factual bases, and sensitivities. Seal and
+   v1-quarantine findings do too. `_review_item` still retains its compatibility
+   synthesis for older/generic producers not enumerated in round 1. Removing it
+   globally is deferred because it would turn an unconverted diagnostic into a
+   paid-order hard failure; a separate producer inventory/migration should
+   precede making all metadata fields structurally mandatory. This does not
+   weaken digest binding: synthesized entries are still included verbatim in
+   the rendered catalog digest and approval snapshot.
+2. **Side-effectful review GET — closed.** Authenticated and unauthenticated
+   review GET use an explicit order-id-only resolver. They cannot invoke legacy
+   migration or write lookup/tombstone state. A route regression proves a v1
+   athlete-path file is byte-for-byte unchanged after GET.
+3. **State approval footgun — closed.** `review_decisions=None` no longer
+   synthesizes confirmations. All approval callers and fixtures now submit
+   explicit decisions and the exact catalog digest.
+4. **End-to-end value traversal — closed for the requested cheap coverage.**
+   The deterministic athlete-m production replay now proves values created by
+   the real intake assembler and post-render validator survive generation,
+   persistence, sealing, review-session exchange, and page rendering. The
+   smaller route fixture continues through successful approval and reload.
+5. **Key precedence divergence — closed.** `review_auth.py` now matches
+   `download_tokens.py`: typed `DOWNLOAD_TOKEN_KEYS` take precedence over the
+   legacy `DOWNLOAD_TOKEN_SECRET` during rotation. Coverage configures both and
+   proves the typed current coach kid wins.
 
-- approval with a missing required confirmation;
-- a waiver that omits one blocker;
-- a waiver containing a non-waivable blocker;
-- a stale revision/session;
-- a same-revision artifact mutation/seal mismatch;
-- an unknown review item and a wrong item revision;
-- missing/wrong CSRF;
-- unauthenticated page and artifact access;
-- post-login jti revocation;
-- XSS payloads in both messages and typed values;
-- operator approval without a revisioned decision list;
-- incomplete historical approval snapshots attempting release/application.
+## Phase 1 and scope disposition
 
-The signed-link unit coverage also includes order/athlete/revision scope,
-audience/action, expiry, missing keys, rotated-current-kid selection, jti
-revocation, opaque server sessions, cross-order session reuse, and session
-revocation.
+- Complete approval snapshots, release/application gates, customer-bundle
+  gating, typed token scope, artifact descriptor verification, and all Phase 1
+  platform disables remain enforced.
+- Seal mismatch handling is stronger: authority is cleared and the failed
+  sealed generation is superseded instead of receiving an in-place catalog
+  edit.
+- No canonical power model, D0 worker contract, browser worker, provider
+  readback, automated apply, guide release, or Gmail evidence path was enabled.
+- No live Stripe, Railway, TrainingPeaks, Endure, Resend, SMTP, or browser
+  action was performed.
 
-## Phase 1 regression disposition
+## Regression coverage and verification
 
-All Phase 1 tests remain green. One existing assertion in
-`test_unknown_device_is_a_verbatim_required_confirmation` evolved because S3
-legitimately supersedes that confirmation's shape: it now asserts the same
-verbatim token plus the new typed value, basis, and sensitivity fields required
-by S3. No Phase 1 control, expected blocker set, calendar golden, bypass gate,
-platform disable, token gate, or seal assertion was weakened. The original
-athlete-m production replay passes unchanged.
+Production paths cover:
 
-## Verification
+- exact catalog digest success and confirmation/blocker drift rejection;
+- sealed catalog-mutator rejection and seal-mismatch revision supersession;
+- missing, changed, stale, legacy-version, and seal-mismatched approval
+  snapshots on the authenticated page;
+- persisted snapshot dispositions on the authoritative page;
+- operator digest requirement and wrong-digest rejection;
+- same-session POST download, CSRF, no-store headers, parent revocation, derived
+  token revocation, five-minute TTL, and application log redaction;
+- scanner-safe GET without legacy migration; and
+- real athlete-m intake/post-render values through persistence and page render.
 
-- Dedicated new review-auth/page tests: **19 passed**.
-- Phase 1 athlete-m + bypass + review/state focused run: **63 passed**.
-- Webhook suite during integration: **479 passed** (before the final added
-  review regression; the complete suite below is authoritative).
-- Complete sandbox suite: `python3 -m pytest -q` → **2380 passed, 86 skipped,
-  21 existing warnings, 0 failed**.
-- `python3 -m compileall -q athletes/scripts delivery tools webhook` passes.
-- `git diff --check` passes.
-- Socket tests remain among the environment-dependent skips and were not run
-  outside the sandbox. No live Stripe, Railway, TrainingPeaks, Endure, Resend,
-  SMTP, or browser action was performed.
+Verification results:
 
-## Commits
+- Focused state/review/token/auth run: **70 passed**.
+- Phase 1 bypass + athlete-m + webhook/endure integration run: **255 passed**.
+- Complete sandbox suite: `pytest -q --disable-warnings --maxfail=20` →
+  **2,393 passed, 86 skipped, 21 warnings, 0 failed**.
+- `python3 -m py_compile` passed for all changed production Python modules.
+- `git diff --check` passed.
+- Socket-dependent tests remain for the human to run outside the sandbox, per
+  the task instruction.
 
-1. `73a96ae` — Add value-bound review approval snapshots.
-2. `65df723` — Add authenticated coach review page.
-3. `88b8558` — Harden review approval authority.
-4. Intended final boundary: `Document Phase 2 review surface`. The sandbox
-   denied creation of the worktree `index.lock` when staging this notes file,
-   so the file is deliberately left uncommitted for the human to commit last.
+## Commit status and intended boundaries
 
-No push was attempted.
+The sandbox denied Git index creation at the real worktree metadata path:
+`.../.git/worktrees/trustworthy-phase2/index.lock: Operation not permitted`.
+Nothing was staged or committed, and no push was attempted. The untracked
+`.codex-phase2-fix-brief.md` was not modified or included.
 
-## Coach steps for the live Phase 2 gate
+Intended local commit boundaries for the human:
 
-The code obligation is complete; the spec still requires one real paid order
-and a human coach, which this sandbox cannot supply.
+1. **Harden Phase 2 review authority and bearer handling** — state/catalog
+   digest and snapshot v2, authority-derived rendering, session POST bundle,
+   parent token revocation, TTL/cache/log controls, and all corresponding
+   production-route/Phase 1 fixture updates.
+2. **Add explicit metadata to Phase 2 finding producers** — availability,
+   brand, quality, compliance, package consistency, state-unavailable,
+   validator-crash, seal-mismatch, and quarantine metadata plus athlete-m
+   traversal coverage.
+3. **Document Phase 2 review round 1 closure** — this file, committed last.
 
-1. Deploy these commits with the existing typed download-token configuration,
-   or configure an explicit review keyring. For explicit keys, set
-   `REVIEW_TOKEN_KEYS` to a JSON `{kid: secret}` object and optionally
-   `REVIEW_TOKEN_KID` to the current kid. No browser receives `CRON_SECRET`.
-2. Generate one real order that has no non-waivable blocker. If it has waivable
-   blockers, the coach must be willing to record a real reason. Confirm the
-   generation email contains an `Open review page` fragment link.
-3. Open that link in a normal browser. Download and inspect the sealed review
-   bundle from the page. Review blockers in order, resolve every required
-   confirmation, acknowledge both verified facts, and enter a reason for every
-   checked waiver.
-4. Select **Approve sealed revision**. Confirm the page reloads as APPROVED.
-5. Inspect the order's server-side `fulfillment_status.json` and retain the gate
-   evidence: `approval.snapshot_version == "approval_snapshot/v1"`, credential
-   begins `review-link:`, `approval.revision` equals the current revision,
-   `approval.model_seal` and `approval.release_manifest_digest` equal the state,
-   and `approval.confirmations` has exactly one value-bearing entry for every
-   `review_items` entry.
+## Remaining live Phase 2 gate
 
-Stop at APPROVED for this phase. Automated apply, provider readback, guide
-release, Gmail drafting, and confirmation remain Phase 4/5 work and are not
-authorized by this gate.
+After human socket tests and rereview, deploy with the existing typed token
+configuration (or explicit review keyring), run one real paid order without a
+non-waivable blocker, and have a human coach inspect the bundle and approve.
+Retain evidence that:
+
+- `approval.snapshot_version == "approval_snapshot/v2"`;
+- `approval.review_catalog_digest == state.review_catalog_digest`;
+- the approval credential begins `review-link:`;
+- approval revision and both seal fields equal current state; and
+- `approval.confirmations` contains one complete entry and persisted
+  disposition for every `review_items` entry.
+
+Stop at APPROVED. All automated application and later release work remains
+behind its later phase gate.
