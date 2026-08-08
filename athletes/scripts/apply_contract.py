@@ -13,7 +13,8 @@ import os
 import tempfile
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, Iterable, Mapping, Optional
+from typing import Any, Callable, Dict, Iterable, Mapping, Optional
+import re
 
 from jsonschema import Draft202012Validator
 
@@ -28,6 +29,10 @@ SINGLETON_KINDS = {"threshold_update", "zone_update"}
 ENTITLEMENT_KIND = "course_entitlement_grant"
 KINDS = DATED_KINDS | SINGLETON_KINDS | {ENTITLEMENT_KIND}
 DISPOSITIONS = {"create", "update", "keep", "delete"}
+INVENTORY_FIELDS = {
+    "remote_id", "desired_digest", "payload_snapshot_ref", "kind", "last_op_id",
+}
+SnapshotReader = Callable[[str], Mapping[str, Any]]
 
 
 class ApplyContractError(ValueError):
@@ -217,14 +222,14 @@ def _desired_resources(
 ) -> Dict[str, Dict[str, Any]]:
     desired: Dict[str, Dict[str, Any]] = {}
     per_date: Dict[str, int] = defaultdict(int)
-    workout_by_date: Dict[str, str] = {}
+    workout_by_date: Dict[str, tuple[str, str]] = {}
     for week in ir.get("weeks", []):
         for session in week.get("sessions", []):
             date = str(session.get("date") or "undated")
             per_date[date] += 1
             key = f"{date}#{per_date[date]}"
             logical_id = _logical_id(order_id, "workout_upsert", key)
-            workout_by_date.setdefault(date, logical_id)
+            workout_by_date.setdefault(date, (key, logical_id))
             desired[logical_id] = {"kind": "workout_upsert", "logical_key": key,
                 "date": session.get("date"), "payload": {
                     "date": session.get("date"), "title": str(session.get("title") or "Untitled session"),
@@ -234,7 +239,7 @@ def _desired_resources(
                     "tss_planned": session.get("tss_planned"),
                     "structure": session.get("structure"),
                 }}
-            note_key = f"{date}#{per_date[date]}"
+            note_key = f"session-{date}-{per_date[date]}"
             note_id = _logical_id(order_id, "calendar_note_upsert", note_key)
             desired[note_id] = {"kind": "calendar_note_upsert", "logical_key": note_key,
                 "date": session.get("date"), "payload": {"date": session.get("date"),
@@ -261,14 +266,23 @@ def _desired_resources(
     for index, attachment in enumerate(attachments, 1):
         raw_path = str(attachment.get("path") or "training_guide.html")
         filename = Path(raw_path).name
-        parent = str(attachment.get("parent_logical_id") or
-                     next(iter(workout_by_date.values()), _logical_id(order_id, "workout_upsert", "plan#1")))
-        logical_key = f"{parent}:{filename}"
+        default_parent = next(
+            iter(workout_by_date.values()),
+            ("undated#1", _logical_id(order_id, "workout_upsert", "undated#1")),
+        )
+        parent_logical_key = str(
+            attachment.get("parent_logical_key") or default_parent[0])
+        parent_logical_id = str(
+            attachment.get("parent_logical_id") or default_parent[1])
+        if parent_logical_id != _logical_id(
+                order_id, "workout_upsert", parent_logical_key):
+            raise ApplyContractError("attachment parent logical key/id disagree")
+        logical_key = f"{parent_logical_key}:{filename}"
         logical_id = _logical_id(order_id, "attachment_upsert", logical_key)
         file_path = athlete_dir / raw_path if athlete_dir else None
         file_bytes = file_path.read_bytes() if file_path and file_path.is_file() else b""
         desired[logical_id] = {"kind": "attachment_upsert", "logical_key": logical_key,
-            "date": None, "payload": {"parent_logical_id": parent, "filename": filename,
+            "date": None, "payload": {"parent_logical_id": parent_logical_id, "filename": filename,
                 "sha256": hashlib.sha256(file_bytes).hexdigest(), "bytes_ref": raw_path}}
 
     entitlements = list(ir.get("entitlements") or [])
@@ -300,9 +314,56 @@ def _predecessor(record: Dict[str, Any], dated: bool) -> Dict[str, Any]:
             "remote_id": str(remote_id) if dated else None}
 
 
+def _validate_inventory(
+    inventory: Mapping[str, Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    normalized: Dict[str, Dict[str, Any]] = {}
+    for logical_id, raw in inventory.items():
+        if not isinstance(raw, dict) or set(raw) != INVENTORY_FIELDS:
+            raise ApplyContractError(
+                "effective inventory record must contain exactly the normative five fields")
+        record = dict(raw)
+        if record.get("kind") not in KINDS:
+            raise ApplyContractError("effective inventory kind is invalid")
+        remote_id = record.get("remote_id")
+        if remote_id is not None and not str(remote_id).strip():
+            raise ApplyContractError("effective inventory remote_id is invalid")
+        digest = str(record.get("desired_digest") or "")
+        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ApplyContractError("effective inventory digest is invalid")
+        snapshot_ref = record.get("payload_snapshot_ref")
+        if snapshot_ref is not None and not str(snapshot_ref).strip():
+            raise ApplyContractError("effective inventory snapshot reference is invalid")
+        if not str(record.get("last_op_id") or "").strip():
+            raise ApplyContractError("effective inventory last_op_id is required")
+        normalized[str(logical_id)] = record
+    return normalized
+
+
+def _read_prior_payload(
+    record: Dict[str, Any], kind: str, snapshot_reader: Optional[SnapshotReader],
+) -> Dict[str, Any]:
+    ref = record.get("payload_snapshot_ref")
+    if not str(ref or "").strip():
+        raise ApplyContractError("dated supersession requires payload_snapshot_ref")
+    if snapshot_reader is None:
+        raise ApplyContractError("dated supersession requires an explicit snapshot reader")
+    try:
+        payload = dict(snapshot_reader(str(ref)))
+    except Exception as exc:
+        raise ApplyContractError("could not resolve immutable payload snapshot") from exc
+    errors = list(Draft202012Validator(PAYLOAD_SCHEMAS[kind]).iter_errors(payload))
+    if errors:
+        raise ApplyContractError("payload snapshot does not match its canonical kind schema")
+    if digest_payload(payload) != record["desired_digest"]:
+        raise ApplyContractError("payload snapshot digest does not match inventory")
+    return payload
+
+
 def _operation(
     order_id: str, revision: int, logical_id: str, resource: Optional[Dict[str, Any]],
     inventory_record: Optional[Dict[str, Any]], inspection: Dict[str, Any],
+    snapshot_reader: Optional[SnapshotReader],
 ) -> Dict[str, Any]:
     kind = (resource or inventory_record or {}).get("kind")
     if kind not in KINDS:
@@ -317,9 +378,8 @@ def _operation(
     if resource is None:
         if dated:
             disposition = "delete"
-            prior_payload = inventory_record.get("payload")
-            if not isinstance(prior_payload, dict):
-                raise ApplyContractError("dated delete requires copied prior payload")
+            prior_payload = _read_prior_payload(
+                inventory_record, kind, snapshot_reader)
         else:
             # Positional resources cannot be deleted by this contract.  A no-
             # longer-desired singleton remains unchanged; an entitlement is
@@ -354,9 +414,8 @@ def _operation(
         desired_digest = inventory_record["desired_digest"]
     else:
         disposition = "update"
-        prior_payload = inventory_record.get("payload")
-        if not isinstance(prior_payload, dict):
-            raise ApplyContractError("dated update requires copied prior payload")
+        prior_payload = _read_prior_payload(
+            inventory_record, kind, snapshot_reader)
 
     if disposition in {"keep", "delete"}:
         payload = None
@@ -403,12 +462,29 @@ def validate_contract(
         raise ApplyContractError("duplicate logical_id")
     revision = contract["generation_revision"]
     inventory_supplied = effective_remote_inventory is not None
-    inventory = dict(effective_remote_inventory or {})
+    inventory = _validate_inventory(effective_remote_inventory or {})
     for op in operations:
-        expected_logical = _logical_id(
-            contract["order_id"], op["kind"], op["logical_id"].split(f":{op['kind']}:", 1)[-1])
+        prefix = f"{contract['order_id']}:{op['kind']}:"
+        if not op["logical_id"].startswith(prefix):
+            raise ApplyContractError("logical_id does not match order and kind")
+        logical_key = op["logical_id"][len(prefix):]
+        expected_logical = _logical_id(contract["order_id"], op["kind"], logical_key)
         if op["logical_id"] != expected_logical:
             raise ApplyContractError("logical_id does not match order and kind")
+        dated_key = r"(?:\d{4}-\d{2}-\d{2}|undated)#(?:[1-9]\d*)"
+        slug = r"[A-Za-z0-9][A-Za-z0-9._-]*"
+        valid_key = (
+            bool(re.fullmatch(dated_key, logical_key))
+            if op["kind"] == "workout_upsert" else
+            bool(re.fullmatch(slug, logical_key))
+            if op["kind"] in {"calendar_note_upsert", "mental_task_upsert",
+                              "threshold_update", "zone_update"} else
+            bool(re.fullmatch(dated_key + r":[^/:]+", logical_key))
+            if op["kind"] == "attachment_upsert" else
+            bool(logical_key.strip())
+        )
+        if not valid_key:
+            raise ApplyContractError(f"invalid logical key grammar for {op['kind']}")
         if op["op_id"] != f"{op['logical_id']}@r{revision}":
             raise ApplyContractError("op_id does not bind logical_id and revision")
         if op["remote_marker"] is not None and op["logical_id"] not in op["remote_marker"]:
@@ -465,8 +541,9 @@ def build_contract(
     effective_remote_inventory: Optional[Mapping[str, Dict[str, Any]]] = None,
     inspection: Optional[Dict[str, Any]] = None,
     singleton_desires: Optional[Mapping[str, Dict[str, Any]]] = None,
+    payload_snapshot_reader: Optional[SnapshotReader] = None,
 ) -> Dict[str, Any]:
-    inventory = dict(effective_remote_inventory or {})
+    inventory = _validate_inventory(effective_remote_inventory or {})
     inspection = dict(inspection or {})
     desired = _desired_resources(
         ir, str(order_id), Path(athlete_dir) if athlete_dir else None,
@@ -474,7 +551,8 @@ def build_contract(
     )
     operations = [
         _operation(str(order_id), int(generation_revision), logical_id,
-                   desired.get(logical_id), inventory.get(logical_id), inspection)
+                   desired.get(logical_id), inventory.get(logical_id), inspection,
+                   payload_snapshot_reader)
         for logical_id in sorted(set(desired) | set(inventory))
     ]
     operations.sort(key=_sort_key)

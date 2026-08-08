@@ -83,6 +83,7 @@ def test_phase3_contract_has_fake_server_effect_parity_with_legacy_manifest(tmp_
     """Socket parity gate; skipped only where the sandbox forbids loopback."""
     from apply_contract import build_contract
     from fulfillment_manifest import build_manifest_from_plan_ir
+    from fake_remote_parity import FakeRemoteModel, legacy_desired_state
 
     (tmp_path / 'guide.html').write_text('guide')
     ir = {
@@ -115,39 +116,24 @@ def test_phase3_contract_has_fake_server_effect_parity_with_legacy_manifest(tmp_
             assert response.status == 200
 
     try:
-        for item in legacy['workouts']:
-            post(old, 'workouts', item)
-        for item in legacy['native_notes']:
-            post(old, 'calendarNote', item)
-        for item in legacy['attachments']:
-            post(old, 'attachments', item)
-        for item in legacy['mental_training_tasks']:
-            post(old, 'mentalTasks', item)
-        post(old, 'entitlements', legacy['course_entitlement'])
-
         buckets = {'workout_upsert': 'workouts', 'calendar_note_upsert': 'calendarNote',
                    'attachment_upsert': 'attachments', 'mental_task_upsert': 'mentalTasks',
                    'course_entitlement_grant': 'entitlements'}
-        for operation in contract['operations']:
-            if operation['disposition'] not in {'create', 'update'}:
-                continue
-            post(new, buckets[operation['kind']], {
-                'external_id': operation['remote_marker'] or operation['logical_id'],
-                **operation['payload'],
-            })
+        legacy_state = legacy_desired_state(legacy)
+        contract_model = FakeRemoteModel()
+        contract_model.apply_contract(contract)
+        assert legacy_state == contract_model.snapshot()
 
-        assert {bucket: len(items) for bucket, items in old.items.items()} == {
-            bucket: len(items) for bucket, items in new.items.items()}
-        assert {item['date'] for item in old.items['workouts']} == {
-            item['date'] for item in new.items['workouts']}
-        assert [item['title'] for item in old.items['calendarNote']] == [
-            item['title'] for item in new.items['calendarNote']]
-        assert [Path(item['path']).name for item in old.items['attachments']] == [
-            item['filename'] for item in new.items['attachments']]
-        assert [item.get('text') for item in old.items['mentalTasks']] == [
-            item.get('body') for item in new.items['mentalTasks']]
-        assert new.items['entitlements'][0]['product_id'] == 'course:fixture'
-        assert legacy['calendar_dates'] == sorted({
-            item['date'] for item in new.items['workouts']})
+        for key, record in sorted(legacy_state.items()):
+            post(old, buckets[record['kind']], {
+                'external_id': key, **record['payload']})
+        for key, record in sorted(contract_model.snapshot().items()):
+            post(new, buckets[record['kind']], {
+                'external_id': key, **record['payload']})
+
+        # Loopback transport compares every normalized remote field, not a
+        # cardinality/selected-field subset. The socket-free model above runs
+        # in restricted sandboxes; this identical state crosses HTTP in CI.
+        assert old.items == new.items
     finally:
         old.close(); new.close()
