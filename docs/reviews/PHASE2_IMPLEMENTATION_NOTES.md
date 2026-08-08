@@ -1,172 +1,123 @@
-# Phase 2 implementation notes — review round 1 closure
+# Phase 2 implementation notes — review round 2 closure
 
 Date: 2026-08-08
 
 Normative basis: `docs/SPEC_TRUSTWORTHY_FULFILMENT.md` r9 and
-`docs/reviews/PHASE2_IMPLEMENTATION_CODEX_R1.md`. Phase 1 controls remain in
-force. TrainingPeaks/Endure application, provider readback, guide release,
-Gmail drafting, and all other Phase 3+ work remain disabled or out of scope.
+`docs/reviews/PHASE2_IMPLEMENTATION_CODEX_R2.md`. The review was factually
+correct; no rebuttal was required. Phase 1 controls remain in force.
+TrainingPeaks/Endure application, provider readback, guide release, Gmail
+drafting, and all other Phase 3+ work remain disabled or out of scope.
 
-## Round 1 blocker dispositions
+## Round 2 blocker dispositions
 
-### 1. Exact rendered-catalog approval binding — closed
+### 1. Residual query-token GET authentication — closed
 
-- `review_catalog_digest` is the SHA-256 digest of canonical JSON containing
-  `review_catalog/v1` plus the complete ordered `review_items` array. State
-  stores the current digest, the page embeds it, and the operator endpoint
-  requires it.
-- `transition(..., APPROVED)` requires the digest and an explicit decision
-  list. Under the state lock it rebuilds the authoritative catalog, recomputes
-  the digest, compares it with `hmac.compare_digest`, and only then evaluates
-  decisions and copies values. The compatibility branch that synthesized
-  verified-fact decisions was removed.
-- Successful approvals use `approval_snapshot/v2`, persist
-  `review_catalog_digest`, and copy each complete reviewed catalog entry plus
-  its disposition. The snapshot therefore preserves message, typed value,
-  display unit, source, basis, sensitivity, revision, policy fields, and the
-  actual disposition.
-- `set_generation_blockers` and `merge_generation_blockers` reject any sealed
-  state and require `write_generation`. A detected artifact/seal mismatch no
-  longer edits the sealed revision's catalog: it supersedes that generation
-  into a new unsealed `BLOCKED_REVIEW` revision, clears all release authority,
-  and records the non-waivable `SEAL_MISMATCH` regeneration requirement.
-- Production-route regressions change a required confirmation's value and,
-  separately, a blocker's message/value without changing id or revision after
-  render. Both submissions return 409 and persist no approval. Success coverage
-  proves the submitted digest is persisted in the approval.
+- `GET /api/download/<order_id>` no longer reads `request.args['token']` for
+  any artifact. Customer-bundle typed capabilities are accepted only in the
+  `Authorization: Bearer` header (with `X-Cron-Secret` retained for operator
+  use).
+- The GET endpoint rejects `review_bundle` before resolving state or verifying
+  a capability. The revision-bound, CSRF-protected
+  `POST /review/<order_id>/bundle` is now the only review-bundle fetch path.
+- The request-target redaction filter remains defense in depth for rejected
+  old links and scanners. It recognizes literal `token` and single-pass
+  percent-encoded spellings such as `%74oken` and `t%6fken`; it is installed
+  on the application, Werkzeug, and Gunicorn access loggers.
+- Production-route regressions prove valid header, literal-query, and
+  percent-encoded-query review-bundle bearers all receive 401 on GET. A valid
+  customer capability in a query string also receives 401, while the same
+  capability in `Authorization` reaches the unchanged approval/seal gate.
 
-### 2. Authority-derived page state — closed
+### 2. Seal-mismatch approval provenance — closed
 
-- Page success is derived only from `approval_matches_release`, never from a
-  status label. This predicate requires a current, non-legacy, seal-bound,
-  `approval_snapshot/v2` snapshot whose digest and complete copied entries
-  match the current catalog.
-- A release-like status without authority renders `APPROVAL NOT AUTHORITATIVE`
-  and the loud remediation: “Approval not authoritative —
-  regenerate/re-approve.” It exposes no approval form, bundle download, or
-  application/later-phase action.
-- A valid approval renders `approval.confirmations`—the persisted snapshot—not
-  live `review_items`, including each persisted disposition.
-- Production page-route regressions cover a missing snapshot entry, changed
-  value, changed type, approval seal-field mismatch, and old snapshot version.
-  Every case renders remediation and never renders the Approved success or a
-  later action.
+- Seal-mismatch supersession still creates a new unsealed `BLOCKED_REVIEW`
+  revision with a non-waivable `SEAL_MISMATCH` finding and clears all current
+  approval, waiver, application, confirmation, and seal authority.
+- Before clearing authority, the transition deep-copies the complete prior
+  approval into `superseded_approvals[]`, together with the waiver,
+  application, confirmation, prior status/revision, seal metadata, mismatch
+  reason/message, and supersession timestamp. Each record is explicitly
+  `authoritative: false` and is schema-validated as historical evidence.
+- `approval_matches_release` remains based solely on the current top-level
+  seal-bound approval. A superseded record cannot authorize a release or a
+  later action. The archive survives subsequent `write_generation` calls.
+- The authenticated page renders archived confirmations, typed values,
+  dispositions, waiver, credential, and digest only under “Superseded approval
+  history,” labeled “Historical evidence only” and “non-authoritative.” It
+  never renders the archived decision as Approved and exposes no application
+  action for the superseded revision.
+- The production regression approves distinct typed blocker/confirmation
+  values with a waiver through the real page, mutates the sealed review ZIP,
+  triggers supersession through the session bundle route, reloads state, and
+  proves the exact snapshot, dispositions, waiver reason, credential, catalog
+  digest, and seals remain recoverable without authority. A focused state test
+  also proves application and confirmation evidence are retained.
 
-### 3. Revocation cascade and bearer hygiene — closed
+## Round 1 controls retained
 
-- The page and generation email no longer place a review-bundle bearer in a
-  query string. The page downloads through a CSRF-protected POST using the
-  existing opaque review session; every fetch rechecks parent jti/kid
-  revocation and session expiry.
-- Typed review-bundle tokens remain for non-page compatibility. When derived
-  from a review credential they carry `parent_review_jti` and
-  `parent_review_kid`; verification checks the shared durable revocation store
-  for both child and parent. The download route also accepts an Authorization
-  bearer so new callers need not use a query string.
-- Every review-bundle token, derived or standalone, is capped at five minutes.
-  Customer-bundle token TTL and approval gating are unchanged.
-- Both the same-session bundle response and typed review-bundle response set
-  `Cache-Control: no-store, max-age=0`, `Pragma: no-cache`, and
-  `Referrer-Policy: no-referrer`.
-- Legacy query-token compatibility remains, so application-managed webhook and
-  Werkzeug loggers install a request-target filter that replaces the token
-  value with `[REDACTED]`.
-- Production-route regressions prove a previously valid derived token returns
-  401 after its parent review jti is revoked, the same-session POST also dies
-  after parent revocation, successful bundle responses are no-store, and the
-  derived lifetime is no more than 300 seconds.
-
-## Non-blocking findings and rotation item
-
-1. **Producer metadata — cheap production cases addressed; generic fallback
-   deferred.** The cited availability, brand, quality-gate, compliance,
-   state-unavailable, validator-crash, and package-consistency producers now
-   provide explicit typed values, factual bases, and sensitivities. Seal and
-   v1-quarantine findings do too. `_review_item` still retains its compatibility
-   synthesis for older/generic producers not enumerated in round 1. Removing it
-   globally is deferred because it would turn an unconverted diagnostic into a
-   paid-order hard failure; a separate producer inventory/migration should
-   precede making all metadata fields structurally mandatory. This does not
-   weaken digest binding: synthesized entries are still included verbatim in
-   the rendered catalog digest and approval snapshot.
-2. **Side-effectful review GET — closed.** Authenticated and unauthenticated
-   review GET use an explicit order-id-only resolver. They cannot invoke legacy
-   migration or write lookup/tombstone state. A route regression proves a v1
-   athlete-path file is byte-for-byte unchanged after GET.
-3. **State approval footgun — closed.** `review_decisions=None` no longer
-   synthesizes confirmations. All approval callers and fixtures now submit
-   explicit decisions and the exact catalog digest.
-4. **End-to-end value traversal — closed for the requested cheap coverage.**
-   The deterministic athlete-m production replay now proves values created by
-   the real intake assembler and post-render validator survive generation,
-   persistence, sealing, review-session exchange, and page rendering. The
-   smaller route fixture continues through successful approval and reload.
-5. **Key precedence divergence — closed.** `review_auth.py` now matches
-   `download_tokens.py`: typed `DOWNLOAD_TOKEN_KEYS` take precedence over the
-   legacy `DOWNLOAD_TOKEN_SECRET` during rotation. Coverage configures both and
-   proves the typed current coach kid wins.
-
-## Phase 1 and scope disposition
-
-- Complete approval snapshots, release/application gates, customer-bundle
-  gating, typed token scope, artifact descriptor verification, and all Phase 1
-  platform disables remain enforced.
-- Seal mismatch handling is stronger: authority is cleared and the failed
-  sealed generation is superseded instead of receiving an in-place catalog
-  edit.
-- No canonical power model, D0 worker contract, browser worker, provider
-  readback, automated apply, guide release, or Gmail evidence path was enabled.
-- No live Stripe, Railway, TrainingPeaks, Endure, Resend, SMTP, or browser
-  action was performed.
+- Approval remains bound to the exact complete rendered catalog through the
+  server-recomputed `review_catalog/v1` digest and
+  `approval_snapshot/v2`. Catalog mutators still reject sealed revisions.
+- Page success remains derived only from `approval_matches_release`, not a
+  status label. Incomplete, stale, legacy-version, or seal-mismatched approval
+  snapshots do not render as Approved or expose download/later actions.
+- Review sessions remain revision-bound, CSRF-protected, short-lived,
+  no-store, and revalidated against parent jti/kid revocation on every use.
+  Review-bundle token issuance remains capped at five minutes even though GET
+  no longer consumes those typed tokens.
+- Generation email review links remain fragment-carried and exchange into an
+  opaque server session; no bearer is emitted in a request query string.
+- Phase 1 customer-bundle approval gating, scoped capability verification,
+  exact open-descriptor seal verification, platform disables, and
+  customer-safe failure behavior were not weakened.
 
 ## Regression coverage and verification
 
-Production paths cover:
+Production-path coverage now includes:
 
-- exact catalog digest success and confirmation/blocker drift rejection;
-- sealed catalog-mutator rejection and seal-mismatch revision supersession;
-- missing, changed, stale, legacy-version, and seal-mismatched approval
-  snapshots on the authenticated page;
-- persisted snapshot dispositions on the authoritative page;
-- operator digest requirement and wrong-digest rejection;
-- same-session POST download, CSRF, no-store headers, parent revocation, derived
-  token revocation, five-minute TTL, and application log redaction;
-- scanner-safe GET without legacy migration; and
-- real athlete-m intake/post-render values through persistence and page render.
+- valid literal and percent-encoded query bearer rejection on GET;
+- review-bundle header bearer rejection on GET and sole session-POST success;
+- percent-encoded request-target redaction and logger topology;
+- valid customer query bearer rejection plus Authorization-header acceptance;
+- seal-mismatch supersession through the authenticated bundle route;
+- full value-bearing approval/waiver provenance recovery and history-only page
+  rendering; and
+- preservation of prior application and confirmation evidence without current
+  authority.
 
 Verification results:
 
-- Focused state/review/token/auth run: **70 passed**.
-- Phase 1 bypass + athlete-m + webhook/endure integration run: **255 passed**.
-- Complete sandbox suite: `pytest -q --disable-warnings --maxfail=20` →
-  **2,393 passed, 86 skipped, 21 warnings, 0 failed**.
-- `python3 -m py_compile` passed for all changed production Python modules.
+- Final named encoded-query/seal-provenance regression selection: **8 passed**,
+  60 deselected.
+- Focused state/review regression run: **53 passed**.
+- Focused state/review/Phase 1 bypass plus compile/diff checks: **68 passed**.
+- Reviewer's focused Phase 1/2 set (state, review, download-token,
+  review-auth, athlete-m, bypass, Endure, webhook): **330 passed**, 18 warnings.
+- Complete sandbox suite: `python3 -m pytest -q --disable-warnings
+  --maxfail=20` → **2,398 passed, 86 skipped, 21 warnings, 0 failed**.
+- `python3 -m py_compile` passed for every changed Python module and test.
 - `git diff --check` passed.
 - Socket-dependent tests remain for the human to run outside the sandbox, per
   the task instruction.
 
-## Commit status and intended boundaries
+## Commit boundaries
 
-The sandbox denied Git index creation at the real worktree metadata path:
-`.../.git/worktrees/trustworthy-phase2/index.lock: Operation not permitted`.
-Nothing was staged or committed, and no push was attempted. The untracked
-`.codex-phase2-fix-brief.md` was not modified or included.
+1. Close both Round 2 blockers with production changes and focused regressions:
+   remove review-bundle GET/query-token authentication and preserve
+   seal-mismatch approval provenance as non-authoritative history.
+2. Document Round 2 closure and final verification results (this file,
+   committed last).
 
-Intended local commit boundaries for the human:
-
-1. **Harden Phase 2 review authority and bearer handling** — state/catalog
-   digest and snapshot v2, authority-derived rendering, session POST bundle,
-   parent token revocation, TTL/cache/log controls, and all corresponding
-   production-route/Phase 1 fixture updates.
-2. **Add explicit metadata to Phase 2 finding producers** — availability,
-   brand, quality, compliance, package consistency, state-unavailable,
-   validator-crash, seal-mismatch, and quarantine metadata plus athlete-m
-   traversal coverage.
-3. **Document Phase 2 review round 1 closure** — this file, committed last.
+The sandbox denied Git index creation at the real worktree metadata path
+(`.git/worktrees/trustworthy-phase2/index.lock: Operation not permitted`). No
+files were staged or committed, and no push was attempted. The pre-existing
+untracked `.codex-phase2-fix2-brief.md` was not modified or included. The tree
+is intentionally left dirty for the human to commit using the boundaries
+above.
 
 ## Remaining live Phase 2 gate
 
-After human socket tests and rereview, deploy with the existing typed token
+After the human socket tests and rereview, deploy with the existing typed token
 configuration (or explicit review keyring), run one real paid order without a
 non-waivable blocker, and have a human coach inspect the bundle and approve.
 Retain evidence that:
