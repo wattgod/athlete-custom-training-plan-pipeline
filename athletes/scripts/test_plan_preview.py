@@ -11,7 +11,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from generate_plan_preview import parse_zwo, build_preview_data, _if_to_zone, _run_verification_checks
+from generate_plan_preview import (
+    parse_zwo,
+    build_preview_data,
+    _canonical_intensity_factor,
+    _if_to_zone,
+    _run_verification_checks,
+)
 from nate_workout_generator import (
     generate_nate_zwo,
     _get_default_cadence,
@@ -111,6 +117,31 @@ class TestZoneClassification:
     def test_z5_plus(self):
         assert _if_to_zone(1.10) == 'Z5+'
 
+    def test_canonical_intervals_use_duration_weighted_session_intensity(self, tmp_path):
+        """A 40/20 session projects the same normalized IF as its ZWO."""
+        zwo = tmp_path / 'vo2-4020.zwo'
+        zwo.write_text(
+            "<workout_file><name>40/20</name><description></description><workout>"
+            '<Warmup Duration="900" PowerLow="0.5" PowerHigh="0.75"/>'
+            '<IntervalsT Repeat="6" OnDuration="40" OnPower="1.2" '
+            'OffDuration="20" OffPower="0.5"/>'
+            '<Cooldown Duration="600" PowerLow="0.75" PowerHigh="0.5"/>'
+            "</workout></workout_file>"
+        )
+        segments = [
+            {'kind': 'warmup', 'seconds': 900,
+             'target': {'type': 'power_pct_ftp', 'low': .5, 'high': .75}},
+            {'kind': 'intervals', 'seconds': 360, 'repeat': 6,
+             'on_seconds': 40, 'off_seconds': 20,
+             'target': {'type': 'power_pct_ftp', 'on': 1.2, 'off': .5}},
+            {'kind': 'cooldown', 'seconds': 600,
+             'target': {'type': 'power_pct_ftp', 'low': .75, 'high': .5}},
+        ]
+
+        canonical_if = _canonical_intensity_factor(segments)
+        assert canonical_if == pytest.approx(parse_zwo(zwo, 250)['intensity_factor'], abs=.005)
+        assert _if_to_zone(canonical_if) == 'Z3'
+
 
 # ===========================================================================
 # Preview Data Assembly
@@ -206,6 +237,47 @@ class TestVerificationChecks:
         fails = [c for c in nicholas_data['checks'] if c['status'] == 'FAIL']
         fail_names = [c['name'] for c in fails]
         assert len(fail_names) == 0, f"Unexpected failing checks: {fail_names}"
+
+    def test_zone_distribution_uses_duration_weighted_session_intensity(self):
+        """Warmups/recoveries do not change a hard session into easy time."""
+        def day(zone, minutes):
+            return {
+                'day': 'Tue', 'date': '', 'is_off': False, 'is_race': False,
+                'is_b_race': False, 'is_b_opener': False,
+                'workout': {
+                    'name': f'{zone} fixture', '_stem': f'{zone}_fixture',
+                    'zone': zone, 'duration_min': minutes,
+                    'duration_sec': minutes * 60, 'tss': 0,
+                    'intensity_factor': .65 if zone == 'Z2' else .85,
+                    # These obsolete fields model the rejected segment-literal
+                    # accounting: it would report 97% easy and FAIL.
+                    'easy_duration_min': minutes if zone == 'Z2' else 50,
+                    'hard_duration_min': 0 if zone == 'Z2' else 10,
+                },
+            }
+
+        days = [day('Z2', 60) for _ in range(4)] + [day('Z3', 60)]
+        weeks = [{
+            'week': 1, 'phase': 'build', 'days': days, 'total_tss': 0,
+            'total_hours': 5, 'zone_counts': {}, 'b_race': {},
+            'is_race_week': False,
+        }]
+        checks = _run_verification_checks(
+            profile={
+                'weekly_availability': {'cycling_hours_target': 5},
+                'schedule_constraints': {
+                    'preferred_off_days': [], 'preferred_long_day': ''},
+                'b_events': [], 'target_race': {},
+            },
+            derived={},
+            methodology={'configuration': {
+                'intensity_distribution': {'z1_z2': .70}}},
+            plan_dates={'weeks': []}, weekly_structure={'days': {}},
+            weeks_data=weeks,
+        )
+        zone = next(c for c in checks if c['name'] == 'Zone Distribution')
+        assert zone['status'] == 'WARN'
+        assert '80% easy session time (240/300 min)' in zone['detail']
 
     def test_volume_passes_with_scaling(self, nicholas_data):
         """Duration scaling brings volume to ~110% of target (PASS range: 80-120%)."""

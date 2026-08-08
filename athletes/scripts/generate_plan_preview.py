@@ -47,6 +47,59 @@ def _if_to_zone(if_val: float) -> str:
         return 'Z5+'
 
 
+def _canonical_intensity_factor(segments: list[dict]) -> float:
+    """Calculate session intensity from canonical segment time and targets.
+
+    This mirrors the established ZWO projection: fourth-power duration
+    weighting for work/recovery steps, with ramps represented by their mean
+    target. RPE targets use the canonical 0-10 scale; HR and power targets are
+    already ratios.
+    """
+    samples = []
+
+    def effort(target, key):
+        value = target.get(key)
+        if value is None:
+            return None
+        value = float(value)
+        return value / 10 if target.get('type') == 'rpe' else value
+
+    for segment in segments or []:
+        seconds = int(segment.get('seconds') or 0)
+        target = segment.get('target') or {}
+        if segment.get('kind') == 'free_ride' or target.get('type') == 'free':
+            # FreeRide has no prescribed target. Preserve the preview's
+            # established TSS-only estimate without adding a target to PlanIR.
+            samples.append((seconds, .65 if seconds > 3600 else .55))
+        elif segment.get('kind') == 'intervals':
+            repeat = int(segment.get('repeat') or 1)
+            on_seconds = int(segment.get('on_seconds') or 0)
+            off_seconds = int(segment.get('off_seconds') or 0)
+            on = effort(target, 'on')
+            off = effort(target, 'off')
+            for _ in range(repeat):
+                if on_seconds and on is not None:
+                    samples.append((on_seconds, on))
+                if off_seconds and off is not None:
+                    samples.append((off_seconds, off))
+        else:
+            low = effort(target, 'low')
+            high = effort(target, 'high')
+            value = effort(target, 'value')
+            if low is not None and high is not None:
+                value = (low + high) / 2
+            elif value is None:
+                value = high if high is not None else low
+            if seconds and value is not None:
+                samples.append((seconds, value))
+
+    total_seconds = sum(seconds for seconds, _ in samples)
+    if total_seconds <= 0:
+        return .5
+    return (sum(seconds * value ** 4 for seconds, value in samples)
+            / total_seconds) ** .25
+
+
 # ===========================================================================
 # Data Assembly
 # ===========================================================================
@@ -92,17 +145,7 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
             stem = session.get('filename_stem') or (
                 f"W{int(session.get('week') or 0):02d}_{session.get('date') or 'undated'}_"
                 + str(session.get('title') or 'Session').replace(' ', '_'))
-            max_rpe = 0
-            ratios = []
-            for segment in session.get('segments') or []:
-                target = segment.get('target') or {}
-                if target.get('type') == 'rpe':
-                    values = [target.get(key) for key in ('value', 'low', 'high', 'on', 'off')]
-                    max_rpe = max([max_rpe] + [int(v) for v in values if v is not None])
-                elif target.get('type') in {'power_pct_ftp', 'pct_lthr', 'pct_hrmax'}:
-                    values = [target.get(key) for key in ('value', 'low', 'high', 'on', 'off')]
-                    ratios.extend(float(v) for v in values if v is not None)
-            effort = max(ratios, default=(max_rpe / 10 if max_rpe else .5))
+            effort = _canonical_intensity_factor(session.get('segments') or [])
             parsed = {
                 'name': stem,
                 '_stem': stem,
@@ -296,9 +339,13 @@ def _run_verification_checks(
     intensity_dist = meth_config.get('intensity_distribution', {})
     target_z1z2 = intensity_dist.get('z1_z2', 0)
     if target_z1z2 and weeks_data:
-        # Count TIME, not workouts. Intensity distribution targets (80/20,
-        # 95/5) are defined on training time — counting sessions punishes a
-        # 45min interval workout the same as a 5h Z2 ride.
+        # Count duration-weighted SESSION intensity, not workout count or
+        # literal segment zones. Methodology targets describe the plan's
+        # hard/easy session emphasis ("hard days"), and were calibrated
+        # against each ZWO's normalized session IF. The canonical projection
+        # preserves that definition: derive one duration-weighted IF from all
+        # typed segments, classify the session, then add its actual duration.
+        # This still gives a 5h easy ride five times the weight of a 1h ride.
         easy_min = 0.0
         hard_min = 0.0
         for w in weeks_data:
@@ -315,10 +362,9 @@ def _run_verification_checks(
         total_min = easy_min + hard_min
         easy_pct = (easy_min / total_min * 100) if total_min > 0 else 0
         # Methodology distributions (e.g. g_spot 45/30/25) describe session
-        # emphasis, not time-in-zone: warmups and interval recoveries are
-        # easy time inside "hard" files. Real plans of every methodology run
-        # >=70% easy by time — floor the target so threshold-flavored
-        # methodologies don't false-FAIL well-built plans.
+        # emphasis. Real plans of every methodology run >=70% easy session
+        # time — floor the target so threshold-flavored methodologies don't
+        # false-FAIL well-built plans.
         target_pct = max(target_z1z2 * 100, 70.0)
         diff = abs(easy_pct - target_pct)
         # PASS: delta < 10%, WARN: 10-15%, FAIL: > 15%
@@ -331,7 +377,7 @@ def _run_verification_checks(
         checks.append({
             'name': 'Zone Distribution',
             'status': status,
-            'detail': (f"Target: {target_pct:.0f}% easy | Actual: {easy_pct:.0f}% easy by time "
+            'detail': (f"Target: {target_pct:.0f}% easy | Actual: {easy_pct:.0f}% easy session time "
                        f"({easy_min:.0f}/{total_min:.0f} min) | Delta: {diff:.0f}% | "
                        f"Thresholds: PASS <10%, WARN 10-15%, FAIL >15%"),
         })
