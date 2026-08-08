@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CONFIRMED,
                                GENERATED, FulfillmentStateError, bind_legacy_order,
+                               approval_matches_release,
                                confirm_after_send, finalize_transitional_release,
                                load, merge_generation_blockers,
                                migrate_v1_to_quarantine, transition,
@@ -31,6 +32,18 @@ def _seal(path, tmp_path):
     state = load(path)
     return finalize_transitional_release(
         path, root, expected_revision=state['generation_revision'])
+
+
+def _decisions(state, *extra_ids):
+    ids = [
+        item['item_id'] for item in state['review_items']
+        if item['type'] in {'required_confirmation', 'verified_fact'}
+    ] + list(extra_ids)
+    return [
+        {'item_id': item_id, 'revision': state['generation_revision'],
+         'disposition': 'confirmed'}
+        for item_id in ids
+    ]
 
 
 def test_r05_failure_writes_blocked_review_with_rule_id(tmp_path):
@@ -178,6 +191,87 @@ def test_nonwaivable_blocker_rejects_complete_waiver(tmp_path):
         transition(path, APPROVED, 'coach', waiver={
             'rule_ids': ['FTP_ESTIMATED'], 'reason': 'accept'})
     assert state['blocking_issues'][0]['waivable'] is False
+
+
+def test_review_catalog_and_approval_snapshot_store_typed_values(tmp_path):
+    path = tmp_path / 'status.json'
+    state = write_generation(
+        path, 'athlete-m', order_id='cs_snapshot',
+        required_confirmations=[{
+            'id': 'SCHEDULE_MISMATCH_CONFIRM', 'source': 'post_render',
+            'message': 'Sunday intensity needs confirmation.',
+            'review_value': {
+                'day': 'sunday', 'role': 'long_ride_only', 'count': 1,
+            },
+            'basis': 'generated schedule versus athlete availability',
+            'sensitivity': 'personal',
+        }],
+        soft_confirmations=[{
+            'id': 'COSMETIC_NOTE', 'source': 'fixture',
+            'message': 'Optional copy observation.', 'review_value': True,
+        }],
+    )
+    state = _seal(path, tmp_path)
+    catalog = {item['item_id']: item for item in state['review_items']}
+    assert catalog['SCHEDULE_MISMATCH_CONFIRM']['value'] == {
+        'day': 'sunday', 'role': 'long_ride_only', 'count': 1,
+    }
+    assert catalog['SCHEDULE_MISMATCH_CONFIRM']['value_type'] == 'object'
+    assert catalog['COSMETIC_NOTE']['value_type'] == 'boolean'
+    assert catalog['FACT_RELEASE_SEAL']['value']['model_seal'] == state['model_seal']
+
+    approved = transition(
+        path, APPROVED, 'review-link-credential', expected_revision=1,
+        review_decisions=_decisions(state),
+        credential='review-link:kid:jti-issued-to',
+    )
+    assert approval_matches_release(approved)
+    snapshots = {item['item_id']: item
+                 for item in approved['approval']['confirmations']}
+    assert snapshots['SCHEDULE_MISMATCH_CONFIRM']['value'] == catalog[
+        'SCHEDULE_MISMATCH_CONFIRM']['value']
+    assert snapshots['SCHEDULE_MISMATCH_CONFIRM']['disposition'] == 'confirmed'
+    assert snapshots['COSMETIC_NOTE']['disposition'] == 'unconfirmed'
+    assert approved['approval']['credential'] == 'review-link:kid:jti-issued-to'
+
+
+@pytest.mark.parametrize('decisions, message', [
+    ([{'item_id': 'UNKNOWN', 'revision': 1, 'disposition': 'confirmed'}],
+     'unknown review item'),
+    ([{'item_id': 'REQUIRED', 'revision': 2, 'disposition': 'confirmed'}],
+     'revision mismatch'),
+])
+def test_approval_snapshot_rejects_unknown_or_wrong_revision_items(
+    tmp_path, decisions, message,
+):
+    path = tmp_path / 'status.json'
+    state = write_generation(
+        path, 'athlete-m', order_id='cs_bad_snapshot',
+        required_confirmations=[{
+            'id': 'REQUIRED', 'source': 'fixture', 'message': 'Confirm me.',
+        }])
+    state = _seal(path, tmp_path)
+    decisions.extend(
+        item for item in _decisions(state)
+        if item['item_id'].startswith('FACT_')
+    )
+    with pytest.raises(FulfillmentStateError, match=message):
+        transition(
+            path, APPROVED, 'operator', expected_revision=1,
+            review_decisions=decisions, credential='operator-secret')
+
+
+def test_incomplete_legacy_approval_snapshot_grants_no_release_authority(tmp_path):
+    path = tmp_path / 'status.json'
+    write_generation(path, 'athlete-m', order_id='cs_old_approval')
+    state = _seal(path, tmp_path)
+    state = transition(path, APPROVED, 'operator')
+    raw = json.loads(path.read_text())
+    raw['approval'].pop('confirmations')
+    path.write_text(json.dumps(raw))
+    incomplete = load(path)
+    assert incomplete['status'] == APPROVED
+    assert approval_matches_release(incomplete) is False
 
 
 def test_seal_detects_same_revision_mutation(tmp_path):

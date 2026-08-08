@@ -82,17 +82,37 @@ def build_validator_input(
     }
 
 
-def _issue(rule_id: str, message: str) -> Dict[str, str]:
-    return {
+def _issue(
+    rule_id: str, message: str, *, review_value: Any = None,
+    basis: str = "post-render PlanIR and TP manifest validation",
+    display_unit: str | None = None,
+) -> Dict[str, Any]:
+    item = {
         "id": rule_id,
         "source": "post_render",
         "severity": "CRITICAL",
         "message": message,
+        "review_value": message if review_value is None else review_value,
+        "basis": basis,
+        "sensitivity": "internal",
     }
+    if display_unit:
+        item["display_unit"] = display_unit
+    return item
 
 
-def _confirmation(item_id: str, message: str) -> Dict[str, str]:
-    return {"id": item_id, "source": "post_render", "message": message}
+def _confirmation(
+    item_id: str, message: str, *, review_value: Any = None,
+    basis: str = "generated schedule compared with athlete availability",
+) -> Dict[str, Any]:
+    return {
+        "id": item_id,
+        "source": "post_render",
+        "message": message,
+        "review_value": message if review_value is None else review_value,
+        "basis": basis,
+        "sensitivity": "personal",
+    }
 
 
 def _sessions(plan_ir: Dict[str, Any]) -> Iterable[Tuple[int, Dict[str, Any]]]:
@@ -253,12 +273,21 @@ def _schedule_findings(
         blockers.append(_issue(
             "SCHEDULE_CONTRADICTION",
             "Explicit off-day constraints were violated: " + "; ".join(contradiction),
+            review_value={
+                "off_days": sorted(off_days),
+                "scheduled_conflicts": contradiction,
+            },
         ))
     if mismatch:
         confirmations.append(_confirmation(
             "SCHEDULE_MISMATCH_CONFIRM",
             "Generated roles differ from stated availability roles: "
             + "; ".join(mismatch),
+            review_value={
+                "long_ride_days": sorted(long_days),
+                "interval_days": sorted(interval_days),
+                "generated_mismatches": mismatch,
+            },
         ))
     return blockers, confirmations
 
@@ -294,7 +323,8 @@ def validate_transitional_input(
     ]
     if not race_entries:
         issues.append(_issue(
-            "NO_RACE_DAY_WORKOUT", "Race date has no race-day entry."))
+            "NO_RACE_DAY_WORKOUT", "Race date has no race-day entry.",
+            review_value={"race_date": race_date_raw, "race_day_entries": 0}))
     else:
         race_week = race_entries[0][0]
         counted = sum(
@@ -305,6 +335,12 @@ def validate_transitional_input(
             issues.append(_issue(
                 "THIN_RACE_WEEK",
                 f"Race week W{race_week} has {counted} counted bike/race entries; minimum is 3.",
+                review_value={
+                    "race_week": race_week,
+                    "counted_entries": counted,
+                    "minimum_entries": 3,
+                    "counted_kinds": sorted(COUNTED_RACE_WEEK_KINDS),
+                },
             ))
 
     tests: Dict[Tuple[int, str], int] = {}
@@ -318,7 +354,11 @@ def validate_transitional_input(
     if duplicates:
         detail = ", ".join(f"W{week} {metric}={count}" for week, metric, count in duplicates)
         issues.append(_issue(
-            "DUPLICATE_FIELD_TEST", "Duplicate same-metric field tests: " + detail))
+            "DUPLICATE_FIELD_TEST", "Duplicate same-metric field tests: " + detail,
+            review_value=[
+                {"week": week, "metric": metric, "count": count}
+                for week, metric, count in duplicates
+            ]))
 
     timezone_name = str(context.get("athlete_timezone") or "UTC")
     generation_date = _local_date(str(context.get("generation_at") or ""), timezone_name)
@@ -336,11 +376,21 @@ def validate_transitional_input(
         issues.append(_issue(
             "SESSION_PREDATES_GENERATION",
             "Sessions precede the local generation date: " + ", ".join(predates_generation),
+            review_value={
+                "session_dates": predates_generation,
+                "generation_date": generation_date.isoformat() if generation_date else None,
+                "athlete_timezone": timezone_name,
+            },
         ))
     if predates_order:
         issues.append(_issue(
             "SESSION_PREDATES_ORDER",
             "Sessions precede the local order date: " + ", ".join(predates_order),
+            review_value={
+                "session_dates": predates_order,
+                "order_date": order_date.isoformat() if order_date else None,
+                "athlete_timezone": timezone_name,
+            },
         ))
 
     profile = context.get("profile") or {}
@@ -360,6 +410,7 @@ def validate_transitional_input(
         issues.append(_issue(
             "FUELING_WEEK_LABEL_MISMATCH",
             f"Fueling labels {labels} do not match plan weeks {expected_labels}.",
+            review_value={"fueling_labels": labels, "plan_labels": expected_labels},
         ))
 
     guide = str(context.get("guide_html") or "")
@@ -370,6 +421,11 @@ def validate_transitional_input(
         issues.append(_issue(
             "CARB_TARGET_CONTRADICTION",
             f"Guide canonical carb targets {rendered_targets} do not equal fueling target {target}.",
+            review_value={
+                "guide_targets_g_per_hour": rendered_targets,
+                "fueling_target_g_per_hour": int(target),
+            },
+            display_unit="g/h",
         ))
 
     target_race = profile.get("target_race") or {}
@@ -386,6 +442,11 @@ def validate_transitional_input(
         issues.append(_issue(
             "ALTITUDE_SECTION_MISSING",
             "Frozen race snapshot qualifies for altitude guidance but the guide lacks it.",
+            review_value={
+                "qualifying_elevation_feet": altitude,
+                "altitude_section_present": False,
+            },
+            display_unit="ft",
         ))
 
     return (
