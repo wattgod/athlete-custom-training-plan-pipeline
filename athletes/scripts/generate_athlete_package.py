@@ -172,7 +172,7 @@ def _display_words(raw: str) -> str:
     return words
 
 
-def _patch_zwo_name(filepath: Path, new_name: str) -> None:
+def _patch_zwo_name(filepath: Path, new_name: str) -> str:
     """Rewrite just the <name> element of an already-written ZWO file.
 
     Used for the block-builder progression-series suffix ("(n of N)"),
@@ -185,6 +185,7 @@ def _patch_zwo_name(filepath: Path, new_name: str) -> None:
     escaped = html.escape(new_name, quote=False)
     patched = re.sub(r'(?<=<name>).*?(?=</name>)', lambda _m: escaped, content, count=1)
     filepath.write_text(patched)
+    return patched
 
 
 def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min: float = None,
@@ -559,6 +560,12 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     zwo_dir.mkdir(exist_ok=True)
 
     generated_files = []
+    _authored_documents = {}
+
+    def _emit_authored_document(filepath: Path, content: str) -> None:
+        """Capture the compiler document in memory before private staging."""
+        filepath.write_text(content, encoding='utf-8')
+        _authored_documents[filepath.stem] = content
     from brand_config import workout_author
     _workout_author = workout_author(profile or {})
 
@@ -1954,8 +1961,7 @@ Stay loose, {athlete_name}!"""
             )
 
             zwo_path = zwo_dir / filename
-            with open(zwo_path, 'w') as f:
-                f.write(zwo_content)
+            _emit_authored_document(zwo_path, zwo_content)
             pre_plan_files.append(zwo_path)
 
             workout_prefix = f"W00_{day_abbrev}_{date_short}"
@@ -2083,8 +2089,7 @@ GO RACE SMART, {athlete_name.upper()}!
 </workout_file>"""
 
                 filepath = zwo_dir / b_race_filename
-                with open(filepath, 'w') as f:
-                    f.write(b_race_zwo)
+                _emit_authored_document(filepath, b_race_zwo)
                 generated_files.append(filepath)
                 _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
                                     display_name=b_race_display_name, race={'priority': 'B'})
@@ -2133,8 +2138,7 @@ TIPS:
   </workout>
 </workout_file>"""
                 filepath = zwo_dir / f"{travel_plan_name}.zwo"
-                with open(filepath, 'w') as f:
-                    f.write(travel_zwo)
+                _emit_authored_document(filepath, travel_zwo)
                 generated_files.append(filepath)
                 _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
                                     display_name=travel_display_name)
@@ -2315,8 +2319,7 @@ TIPS:
                     )
 
                     filepath = zwo_dir / f"{workout_name}.zwo"
-                    with open(filepath, 'w') as f:
-                        f.write(zwo_content)
+                    _emit_authored_document(filepath, zwo_content)
                     generated_files.append(filepath)
                     if _series_id is not None:
                         _series_records.append({
@@ -2486,8 +2489,7 @@ Trust the process, {athlete_name}."""
                     blocks=rest_blocks
                 )
                 filepath = zwo_dir / f"{workout_prefix}_Rest.zwo"
-                with open(filepath, 'w') as f:
-                    f.write(rest_content)
+                _emit_authored_document(filepath, rest_content)
                 generated_files.append(filepath)
                 _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'day_off',
                                     display_name='Rest Day')
@@ -2585,10 +2587,12 @@ Trust the process, {athlete_name}."""
                 race_filename = f"{race_plan_name}.zwo"
                 race_display_name = f"Race Day — {race_name}"
 
-                # Get fueling data (passed via derived or load directly)
+                # The private compiler directory deliberately carries no
+                # athlete artifacts. Use the already-loaded canonical fueling
+                # source; retain file fallback only for legacy direct callers.
+                fueling_data = dict(fueling or {})
                 fueling_file = athlete_dir / 'fueling.yaml'
-                fueling_data = {}
-                if fueling_file.exists():
+                if not fueling_data and fueling_file.exists():
                     with open(fueling_file, 'r') as f:
                         fueling_data = yaml.safe_load(f) or {}
 
@@ -2669,8 +2673,7 @@ GO GET IT, {athlete_name.upper()}!
 </workout_file>"""
 
                 filepath = zwo_dir / race_filename
-                with open(filepath, 'w') as f:
-                    f.write(race_zwo)
+                _emit_authored_document(filepath, race_zwo)
                 generated_files.append(filepath)
                 _record_tp_session(filepath, day_info['date'], week_num, phase, 'race',
                                     display_name=race_display_name, race={'priority': 'A'})
@@ -2791,8 +2794,7 @@ GO GET IT, {athlete_name.upper()}!
 
                         # Write the personalized content
                         filepath = zwo_dir / f"{workout_name}.zwo"
-                        with open(filepath, 'w') as f:
-                            f.write(zwo_content)
+                        _emit_authored_document(filepath, zwo_content)
                         generated_files.append(filepath)
                         _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
                                             display_name=display_name)
@@ -2859,8 +2861,7 @@ GO GET IT, {athlete_name.upper()}!
 
             # Write file
             filepath = zwo_dir / filename
-            with open(filepath, 'w') as f:
-                f.write(zwo_content)
+            _emit_authored_document(filepath, zwo_content)
 
             generated_files.append(filepath)
             _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
@@ -2886,7 +2887,8 @@ GO GET IT, {athlete_name.upper()}!
                 continue  # solo session in its series -- no suffix
             _group.sort(key=lambda r: r['rank_hint'])
             for _rank, _rec in enumerate(_group, start=1):
-                _patch_zwo_name(_rec['filepath'], f"{_rec['base_name']} ({_rank} of {_total})")
+                _authored_documents[_rec['filepath'].stem] = _patch_zwo_name(
+                    _rec['filepath'], f"{_rec['base_name']} ({_rank} of {_total})")
 
     # Generate strength workouts - respect athlete availability
     strength_sessions = profile.get('strength', {}).get('sessions_per_week', 2) if profile else 2
@@ -2991,8 +2993,7 @@ GO GET IT, {athlete_name.upper()}!
                 )
 
                 filepath = strength_dir / filename
-                with open(filepath, 'w') as f:
-                    f.write(zwo_content)
+                _emit_authored_document(filepath, zwo_content)
 
                 generated_files.append(filepath)
                 _record_tp_session(filepath, date_full, week_num, phase, 'strength',
@@ -3051,6 +3052,10 @@ GO GET IT, {athlete_name.upper()}!
     # shape used by existing generator callers.
     generate_zwo_files.last_fulfillment_issues = _fulfillment_issues
     generate_zwo_files.last_pre_plan_week = _w00_week_entry
+    generate_zwo_files.last_authored_documents = dict(_authored_documents)
+    generate_zwo_files.last_naming_manifest = {
+        record['filename_stem']: dict(record) for record in _tp_manifest_records
+    }
     return generated_files
 
 
@@ -3137,25 +3142,22 @@ def generate_athlete_package(athlete_id: str) -> dict:
         'plan_dates': plan_dates
     }
 
-    # A1.1: the canonical model is finalized before every package projection.
-    # Power control emits ZWO alongside the authored model. HR/RPE authoring
-    # occurs in a short-lived compiler directory, so a ZWO can never appear in
-    # the athlete tree even if canonical projection fails midway.
+    # A1.1: mature scheduling emits private in-memory compiler documents into
+    # a short-lived directory for every metric. The exact typed canonical model
+    # is then finalized and validated; only afterward may its power projection
+    # publish ZWOs. Published artifacts are never inputs to canonicalization.
     from copy import deepcopy
-    from canonical_training_model import build_canonical_model, determine_control
+    from canonical_training_model import (build_canonical_model,
+                                          publish_zwo_projection)
     _canonical_dates = deepcopy(plan_dates)
-    _control_intent = determine_control(profile)
-    if _control_intent['control_metric'] == 'power':
-        _authoring_context = contextlib.nullcontext(str(athlete_dir))
-    else:
-        for _stale_zwo in (athlete_dir / 'workouts').glob('*.zwo'):
-            _stale_zwo.unlink()
-        _authoring_context = tempfile.TemporaryDirectory(
-            prefix='.metric-authoring-', dir=athlete_dir)
+    for _stale_zwo in (athlete_dir / 'workouts').glob('*.zwo'):
+        _stale_zwo.unlink()
+    _authoring_context = tempfile.TemporaryDirectory(
+        prefix='.metric-authoring-', dir=athlete_dir)
     with _authoring_context as _authoring_root:
         step(3, "Authoring canonical workout sessions...")
         _authored_dir = Path(_authoring_root)
-        zwo_files = generate_zwo_files(
+        _private_files = generate_zwo_files(
             _authored_dir, plan_dates, methodology, derived, profile, fueling)
         _pre_plan_week = getattr(generate_zwo_files, 'last_pre_plan_week', None)
         if (_pre_plan_week and not any(
@@ -3164,17 +3166,27 @@ def generate_athlete_package(athlete_id: str) -> dict:
         step(3.5, "Finalizing canonical training model...")
         canonical_model = build_canonical_model(
             athlete_id, athlete_dir, plan_dates=_canonical_dates,
-            authored_dir=_authored_dir)
+            authored_documents=getattr(
+                generate_zwo_files, 'last_authored_documents', {}),
+            naming_manifest=getattr(
+                generate_zwo_files, 'last_naming_manifest', {}))
+        zwo_files = publish_zwo_projection(canonical_model, athlete_dir)
+        private_review = _authored_dir / 'NEEDS_REVIEW.txt'
+        if private_review.is_file():
+            (athlete_dir / 'NEEDS_REVIEW.txt').write_text(
+                private_review.read_text(encoding='utf-8'), encoding='utf-8')
     detail(f"Authored {len(zwo_files)} canonical workout sessions")
     control = canonical_model['athlete']
     detail(f"Canonical control: {control['control_metric']} ({control['control_basis']})")
     if control['control_metric'] != 'power':
         detail("Executable ZWO projection suppressed: no measured power control")
 
-    # Generate training guide AFTER workouts (reads ZWO filenames for ATP table)
+    # The guide receives the finalized canonical authority explicitly. Power
+    # ZWOs may already exist, but they are never its prescription source.
     step(4, "Generating training guide...")
     guide_path = athlete_dir / 'training_guide.html'
-    generate_training_guide(athlete_id, output_path=guide_path)
+    generate_training_guide(
+        athlete_id, output_path=guide_path, canonical_model=canonical_model)
 
     # Generate plan summary
     step(5, "Generating plan summary...")
@@ -3204,12 +3216,109 @@ def generate_athlete_package(athlete_id: str) -> dict:
             'total_carbs': fueling.get('carbohydrates', {}).get('total_grams'),
             'estimated_duration_hours': fueling.get('race', {}).get('duration_hours'),
         },
+        'control': {
+            'metric': canonical_model['athlete'].get('control_metric'),
+            'basis': canonical_model['athlete'].get('control_basis'),
+            'week_1_field_test': next((
+                session.get('title') for session in canonical_model.get('sessions', [])
+                if int(session.get('week') or 0) == 1
+                and 'field test' in str(session.get('title') or '').lower()
+            ), None),
+            'reanchor': canonical_model['athlete'].get('reanchor'),
+        },
         'files': {
             'guide': str(guide_path),
             'workouts_dir': str(athlete_dir / 'workouts'),
             'workout_count': len(zwo_files),
         }
     }
+
+    from derived_registry import assert_registry_covers, entry as derived_entry
+    summary_revision = int(
+        (profile.get('fulfillment') or {}).get('generation_revision') or 1)
+    summary_at = str(
+        (profile.get('fulfillment') or {}).get('generation_at')
+        or summary['generated_date'])
+
+    def _summary_record(identifier, field, basis, inputs, sensitivity='personal'):
+        return derived_entry(
+            id=identifier, field=field, value_class='inferred', basis=basis,
+            inputs=inputs, sensitivity=sensitivity, at=summary_at,
+            revision=summary_revision,
+        )
+
+    plan_inputs = {
+        'race_date': race_date,
+        'plan_start': plan_dates.get('plan_start'),
+        'plan_end': plan_dates.get('plan_end'),
+        'plan_weeks': plan_weeks,
+    }
+    summary_records = [
+        _summary_record('SUMMARY_GENERATED_DATE', 'generated_date',
+                        'injected generation clock',
+                        {'generation_at': summary_at}, 'internal'),
+        _summary_record('SUMMARY_RACE_DATE', 'race.date',
+                        'resolved target race and plan calendar', plan_inputs),
+        _summary_record('SUMMARY_RACE_DISTANCE', 'race.distance_miles',
+                        'resolved athlete-selected race course',
+                        {'target_race': profile.get('target_race', {})}),
+        _summary_record('SUMMARY_PLAN_WEEKS', 'plan.weeks',
+                        'final plan calendar week count', plan_inputs),
+        _summary_record('SUMMARY_PLAN_START', 'plan.start_date',
+                        'final plan calendar boundary', plan_inputs),
+        _summary_record('SUMMARY_PLAN_END', 'plan.end_date',
+                        'final plan calendar boundary', plan_inputs),
+        _summary_record('SUMMARY_METHODOLOGY', 'plan.methodology',
+                        'production methodology selector result',
+                        {'methodology_id': methodology.get('methodology_id')}),
+        _summary_record('SUMMARY_METHODOLOGY_SCORE', 'plan.methodology_score',
+                        'production methodology scoring matrix',
+                        {'methodology_scores': methodology.get('scores', {})}),
+        _summary_record('SUMMARY_TIER', 'plan.tier',
+                        'derived commercial plan tier',
+                        {'derived_tier': derived.get('tier')}),
+        _summary_record('SUMMARY_ABILITY', 'plan.ability_level',
+                        'derived athlete ability classification',
+                        {'derived_ability': derived.get('ability_level')}),
+        _summary_record('SUMMARY_HOURLY_CARBS', 'fueling.hourly_carb_target',
+                        'canonical fueling prescription projection',
+                        {'source_field': 'fueling.carbohydrates.hourly_target'},
+                        'sensitive'),
+        _summary_record('SUMMARY_TOTAL_CARBS', 'fueling.total_carbs',
+                        'canonical fueling prescription projection',
+                        {'source_field': 'fueling.carbohydrates.total_grams'},
+                        'sensitive'),
+        _summary_record('SUMMARY_DURATION', 'fueling.estimated_duration_hours',
+                        'canonical fueling duration projection',
+                        {'source_field': 'fueling.race.duration_hours'}),
+        _summary_record('SUMMARY_CONTROL_METRIC', 'control.metric',
+                        'canonical training-model control projection',
+                        {'source_field': 'canonical.athlete.control_metric'}),
+        _summary_record('SUMMARY_CONTROL_BASIS', 'control.basis',
+                        'canonical training-model control projection',
+                        {'source_field': 'canonical.athlete.control_basis'}),
+        _summary_record('SUMMARY_FIELD_TEST', 'control.week_1_field_test',
+                        'canonical Week 1 assessment inventory',
+                        {'canonical_sessions': len(canonical_model.get('sessions') or [])}),
+        _summary_record('SUMMARY_REANCHOR', 'control.reanchor',
+                        'canonical post-assessment re-anchor instruction',
+                        {'source_field': 'canonical.athlete.reanchor'}),
+        _summary_record('SUMMARY_WORKOUT_COUNT', 'files.workout_count',
+                        'count of canonical sessions eligible for ZWO projection',
+                        {'canonical_session_count': len(canonical_model.get('sessions') or [])},
+                        'internal'),
+    ]
+    summary['_derived'] = assert_registry_covers(
+        summary, summary_records, required_fields=[
+            'generated_date', 'race.date', 'race.distance_miles',
+            'plan.weeks', 'plan.start_date', 'plan.end_date',
+            'plan.methodology', 'plan.methodology_score', 'plan.tier',
+            'plan.ability_level', 'fueling.hourly_carb_target',
+            'fueling.total_carbs', 'fueling.estimated_duration_hours',
+            'control.metric', 'control.basis', 'control.week_1_field_test',
+            'control.reanchor',
+            'files.workout_count',
+        ], revision=summary_revision)
 
     summary_path = athlete_dir / 'plan_summary.yaml'
     with open(summary_path, 'w') as f:
@@ -3226,6 +3335,7 @@ def generate_athlete_package(athlete_id: str) -> dict:
         derived_values = (
             materialize(profile, profile.get('_derived') or [], namespace='profile')
             + materialize(fueling, fueling.get('_derived') or [], namespace='fueling')
+            + materialize(summary, summary.get('_derived') or [], namespace='summary')
             + materialize(
                 canonical_model,
                 canonical_model.get('derived_values') or [],
@@ -3265,7 +3375,8 @@ def generate_athlete_package(athlete_id: str) -> dict:
     try:
         from calculate_fueling import align_fueling_to_plan
         align_fueling_to_plan(athlete_dir)
-        generate_training_guide(athlete_id, output_path=guide_path)
+        generate_training_guide(
+            athlete_id, output_path=guide_path, canonical_model=canonical_model)
         detail("Aligned fueling labels to plan_dates.yaml and refreshed guide")
     except Exception as exc:
         warning(f"Could not align fueling labels to plan dates: {exc}")

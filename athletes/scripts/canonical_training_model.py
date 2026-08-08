@@ -1,19 +1,20 @@
 """Canonical metric-neutral per-session training model (A1.1).
 
-Phase 3 keeps the mature calendar/block builder, but all downstream plan
-payloads consume this artifact.  The transitional workout renderer is used as
-an internal authored-shape adapter while the model is assembled; HR/RPE
-packages then remove those temporary ZWO files before any package artifact is
-published.  Each segment has exactly one typed prescription source.
+Phase 3 keeps the mature calendar/block builder as a private in-memory compiler,
+then finalizes and validates this object before publication. ZWO, PlanIR,
+preview, apply-contract, guide control evidence, and TP polyline are projections
+of this authority. Each segment has exactly one typed prescription source.
 """
 
 from __future__ import annotations
 
 import json
+import html
 import math
 import os
 import re
 import tempfile
+from types import SimpleNamespace
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -115,6 +116,37 @@ def _rpe(value: float) -> int:
     return 10
 
 
+def normalize_target_effort(target_type: str, value: Any) -> Optional[float]:
+    """Map one typed target to the legacy-neutral session-effort axis.
+
+    Power ratios already use that axis. HR targets are inverted through the
+    exact mapping used when the canonical prescription was authored; RPE uses
+    the midpoint of its authored band. This deliberately avoids comparing raw
+    %LTHR, %HRmax, or 0-10 RPE values with power-IF thresholds.
+    """
+    numeric = _num(value)
+    if numeric is None:
+        return None
+    if target_type == "power_pct_ftp":
+        return numeric
+    if target_type == "pct_lthr":
+        return _piecewise(numeric, (
+            (.55, .35), (.68, .55), (.83, .75), (.94, .87),
+            (1.05, 1.05), (1.12, 1.20), (1.16, 1.50),
+        ))
+    if target_type == "pct_hrmax":
+        return _piecewise(numeric, (
+            (.48, .35), (.60, .55), (.75, .75), (.85, .87),
+            (.92, 1.05), (.98, 1.20), (1.00, 1.50),
+        ))
+    if target_type == "rpe":
+        return _piecewise(numeric, (
+            (1, .40), (2, .50), (4, .65), (6, .815),
+            (8, .965), (9, 1.13), (10, 1.30),
+        ))
+    return None
+
+
 def _target_value(value: Optional[float], target_type: str) -> Any:
     if value is None:
         return None
@@ -192,6 +224,28 @@ def metric_neutral_text(value: Any, control: Dict[str, Any]) -> str:
     return text
 
 
+def project_guide_html(html_text: str, model: Dict[str, Any]) -> str:
+    """Project control targets/re-anchor evidence from the canonical model."""
+    validate_canonical_model(model)
+    control = model["athlete"]
+    if control["control_metric"] == "power":
+        return html_text
+    projected = metric_neutral_text(html_text, control)
+    field_test = next((
+        session for session in model.get("sessions") or []
+        if "field test" in str(session.get("title") or "").lower()
+    ), None)
+    reanchor = control.get("reanchor") or {}
+    evidence = (
+        '<section id="canonical-control" class="section">'
+        '<h2>Week 1 Control &amp; Re-anchor</h2>'
+        f'<p><strong>{html.escape(str((field_test or {}).get("title") or "Field Test"))}</strong></p>'
+        f'<p>{html.escape(str(reanchor.get("action") or "Record the measured result and update future targets."))}</p>'
+        '</section>'
+    )
+    return projected.replace("</body>", evidence + "\n</body>", 1)
+
+
 def _canonical_segment(segment: Dict[str, Any], control: Dict[str, Any]) -> Dict[str, Any]:
     result = {
         "name": segment.get("name") or str(segment.get("kind") or "segment"),
@@ -202,7 +256,116 @@ def _canonical_segment(segment: Dict[str, Any], control: Dict[str, Any]) -> Dict
     for key in ("repeat", "on_seconds", "off_seconds"):
         if segment.get(key) is not None:
             result[key] = int(segment[key])
+    zwo = segment.get("zwo")
+    if isinstance(zwo, dict):
+        zwo = json.loads(json.dumps(zwo))
+        if control["control_metric"] != "power":
+            for child in zwo.get("children") or []:
+                attributes = child.get("attributes") or {}
+                if "message" in attributes:
+                    attributes["message"] = metric_neutral_text(
+                        attributes["message"], control)
+        result["zwo"] = zwo
     return result
+
+
+def _compiler_session(
+    stem: str, xml_text: str, *, date: Optional[str], is_race_day: bool,
+    manifest: Dict[str, Any], ftp: Optional[float],
+) -> SimpleNamespace:
+    """Compile a private in-memory authoring document into neutral fields."""
+    from zwo_parser import parse_zwo_structure_text, parse_zwo_text
+    import plan_ir as plan_ir_module
+
+    structure = parse_zwo_structure_text(xml_text, source_name=stem)
+    metrics = parse_zwo_text(xml_text, ftp or 1.0, source_name=stem)
+    title = structure["name"].replace("_", " ")
+    session_type = plan_ir_module._session_type(title, is_race_day)
+    entry = manifest.get(stem, {})
+    tp_kind = entry.get("tp_kind") or plan_ir_module._default_tp_kind(session_type)
+    workout_type_id = entry.get("workout_type_value_id")
+    if workout_type_id is None:
+        workout_type_id = plan_ir_module.TP_WORKOUT_TYPE_VALUE_ID.get(tp_kind)
+    duration_s = int(metrics["duration_sec"])
+    return SimpleNamespace(
+        date=date, title=title,
+        sport=plan_ir_module._sport_for_type(session_type), type=session_type,
+        origin=plan_ir_module._session_origin(session_type), duration_s=duration_s,
+        tss=int(metrics["tss"]),
+        segments=[SimpleNamespace(**segment) for segment in structure["segments"]],
+        source_file=f"{stem}.zwo", description=structure.get("description"),
+        tp_kind=tp_kind, workout_type_value_id=workout_type_id,
+        tss_planned=round(float(metrics["tss"]), 1),
+        total_time_planned=plan_ir_module._round_time_planned_hours(duration_s),
+        series_id=entry.get("series_id"), series_index=entry.get("series_index"),
+        series_total=entry.get("series_total"), order_on_day=entry.get("order_on_day"),
+        strength_template=entry.get("strength_template"),
+        archetype_id=entry.get("archetype_id"),
+        display_name=entry.get("display_name") or title, filename_stem=stem,
+        race=entry.get("race"), zwo_author=structure.get("author"),
+        zwo_sport_type=structure.get("sport_type"),
+    )
+
+
+def _compile_authored_weeks(
+    documents: Dict[str, str], manifest: Dict[str, Any],
+    plan_dates: Dict[str, Any], profile: Dict[str, Any],
+) -> List[SimpleNamespace]:
+    """Finalize calendar sessions without reading or globbing published ZWOs."""
+    import plan_ir as plan_ir_module
+    ftp = _num((profile.get("fitness_markers") or {}).get("ftp_watts"))
+    remaining = set(documents)
+    weeks: List[SimpleNamespace] = []
+    for index, week_data in enumerate(plan_dates.get("weeks") or [], 1):
+        sessions = []
+        for day in week_data.get("days") or []:
+            prefix = str(day.get("workout_prefix") or "")
+            matches = sorted(stem for stem in remaining if prefix and stem.startswith(prefix))
+            is_race = bool(day.get("is_race_day") or day.get("is_b_race_day"))
+            if matches:
+                for stem in matches:
+                    remaining.remove(stem)
+                    sessions.append(_compiler_session(
+                        stem, documents[stem], date=day.get("date"),
+                        is_race_day=is_race, manifest=manifest, ftp=ftp))
+            else:
+                sessions.append(plan_ir_module._rest_session(day.get("date")))
+        for raw in profile.get("recurring_sessions") or []:
+            if not raw.get("locked"):
+                continue
+            for day in week_data.get("days") or []:
+                if str(day.get("day_name", day.get("day", "")))[:3].title() != raw.get("day"):
+                    continue
+                sessions.append(SimpleNamespace(
+                    date=day.get("date"), title=raw.get("title") or "Fixed external session",
+                    sport="cycling", type="external_fixed", origin="athlete_fixed",
+                    duration_s=int(raw.get("duration_min", 0)) * 60,
+                    tss=int(raw.get("tss", 0) or 0), segments=[], source_file=None,
+                    description=None, tp_kind="bike", workout_type_value_id=2,
+                    tss_planned=float(raw.get("tss", 0) or 0),
+                    total_time_planned=float(raw.get("duration_min", 0)) / 60,
+                    series_id=None, series_index=None, series_total=None,
+                    order_on_day=None, strength_template=None, archetype_id=None,
+                    display_name=raw.get("title") or "Fixed external session",
+                    filename_stem=None, race=None, zwo_author=None,
+                    zwo_sport_type=None,
+                ))
+        weeks.append(SimpleNamespace(
+            number=int(week_data.get("week", index)),
+            phase=week_data.get("phase"), sessions=sessions))
+    by_number = {week.number: week for week in weeks}
+    for stem in sorted(remaining):
+        match = re.match(r"W(\d+)_", stem)
+        number = int(match.group(1)) if match else 0
+        week = by_number.get(number)
+        if week is None:
+            week = SimpleNamespace(number=number, phase=None, sessions=[])
+            by_number[number] = week
+            weeks.append(week)
+        week.sessions.append(_compiler_session(
+            stem, documents[stem], date=None,
+            is_race_day="RACE_DAY" in stem.upper(), manifest=manifest, ftp=ftp))
+    return weeks
 
 
 def target_summary(target: Dict[str, Any]) -> str:
@@ -236,19 +399,47 @@ def build_canonical_model(
     *,
     plan_dates: Optional[Dict[str, Any]] = None,
     authored_dir: Path | str | None = None,
+    authored_documents: Optional[Dict[str, str]] = None,
+    naming_manifest: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Build the canonical artifact from the finalized calendar/render shape."""
+    """Finalize the authority from private compiler documents before publish."""
     athlete_dir = Path(athlete_dir)
     import yaml
     profile = yaml.safe_load((athlete_dir / "profile.yaml").read_text()) or {}
     control = determine_control(profile)
 
-    # Bootstrap through the mature authored workout shape exactly once.
-    # For non-power plans ``authored_dir`` is a short-lived private compiler
-    # directory, never the athlete artifact tree. Subsequent PlanIR, preview,
-    # contract and guide projections read canonical_training_model.json.
+    # Production passes in-memory compiler documents. No published ZWO path is
+    # read, and the final ZWO projection is emitted only after this model has
+    # validated and persisted. ``authored_dir`` remains compatibility-only for
+    # historical fixtures and is not used by package generation.
     import plan_ir as plan_ir_module
-    if authored_dir is None or Path(authored_dir).resolve() == athlete_dir.resolve():
+    if authored_documents is not None:
+        fueling_data = yaml.safe_load((athlete_dir / "fueling.yaml").read_text()) or {}
+        plan_dates_data = plan_dates or (
+            yaml.safe_load((athlete_dir / "plan_dates.yaml").read_text()) or {})
+        athlete = plan_ir_module._athlete_from_profile(athlete_id, profile)
+        prescription_data = plan_ir_module.prescription_from_fueling(fueling_data)
+        target = profile.get("target_race", {}) or {}
+        mental = profile.get("mental_game", {}) or {}
+        reflected = SimpleNamespace(
+            athlete=athlete,
+            race_snapshot=plan_ir_module._race_from_artifacts(
+                profile, fueling_data, plan_dates_data),
+            fueling=(plan_ir_module.FuelingPrescription(**prescription_data)
+                     if prescription_data else None),
+            weeks=_compile_authored_weeks(
+                dict(authored_documents), dict(naming_manifest or {}),
+                plan_dates_data, profile),
+            notes=[{"kind": "mental_training", "id": key, "text": str(value)}
+                   for key, value in mental.items()
+                   if value not in (None, "", "none", "no")],
+            entitlements=[{"kind": "course", "race": target.get("name"),
+                           "race_date": target.get("date"),
+                           "race_id": target.get("race_id")}],
+            attachments=[{"id": "guide", "kind": "guide",
+                          "path": "training_guide.html"}],
+        )
+    elif authored_dir is None or Path(authored_dir).resolve() == athlete_dir.resolve():
         original_base = plan_ir_module.ATHLETES_DIR
         try:
             plan_ir_module.ATHLETES_DIR = athlete_dir.parent
@@ -298,9 +489,11 @@ def build_canonical_model(
             raw = raw_session.__dict__.copy()
             raw_segments = [segment.__dict__.copy() for segment in raw_session.segments]
             is_field_test = raw_session.type == "ftp_test" or "field test" in raw_session.title.lower()
-            title = field_test_title if is_field_test else metric_neutral_text(raw_session.title, control)
+            title = (field_test_title if is_field_test and
+                     control["control_metric"] != "power" else
+                     metric_neutral_text(raw_session.title, control))
             description = metric_neutral_text(raw_session.description, control)
-            if is_field_test:
+            if is_field_test and control["control_metric"] != "power":
                 description = (description.rstrip() + "\n\nRE-ANCHOR: Complete this Week 1 field test, "
                                "record the measured result, and update future targets.").strip()
             segments = [_canonical_segment(segment, control) for segment in raw_segments]
@@ -333,9 +526,16 @@ def build_canonical_model(
                 "archetype_id": raw_session.archetype_id,
                 "display_name": title,
                 "race": raw_session.race,
+                "zwo_projection": ({
+                    "author": getattr(raw_session, "zwo_author", None),
+                    "sport_type": getattr(raw_session, "zwo_sport_type", None),
+                } if getattr(raw_session, "source_file", None) else None),
             })
 
     generated_at = str((profile.get("fulfillment") or {}).get("generation_at") or "")
+    generation_revision = int(
+        (profile.get("fulfillment") or {}).get("generation_revision") or 1
+    )
     if not generated_at:
         from datetime import datetime, timezone
         generated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -363,6 +563,7 @@ def build_canonical_model(
                     "control_basis": control["control_basis"],
                 },
                 sensitivity="personal", at=generated_at,
+                revision=generation_revision,
             ),
             derived_entry(
                 id="CANONICAL_SESSION_TARGETS", field="sessions",
@@ -375,6 +576,7 @@ def build_canonical_model(
                     "control_basis": control["control_basis"],
                 },
                 sensitivity="personal", at=generated_at,
+                revision=generation_revision,
             ),
         ]),
     }
@@ -402,8 +604,147 @@ def validate_canonical_model(model: Dict[str, Any]) -> None:
             target = segment.get("target") or {}
             if target.get("type") not in TARGET_TYPES:
                 raise CanonicalModelError("segment has no typed target")
-            if set(target) == {"type"} and target.get("type") != "free":
-                raise CanonicalModelError("segment target has no prescription value")
+            target_type = target["type"]
+            expected_type = (
+                "power_pct_ftp" if athlete.get("control_metric") == "power" else
+                "pct_lthr" if athlete.get("control_metric") == "hr"
+                and athlete.get("control_basis") == "lthr" else
+                "pct_hrmax" if athlete.get("control_metric") == "hr"
+                and athlete.get("control_basis") == "hrmax" else "rpe"
+            )
+            if target_type not in {expected_type, "free"}:
+                raise CanonicalModelError("segment target type disagrees with plan control")
+            allowed_shapes = (
+                [{"type"}] if target_type == "free" else
+                [{"type", "on", "off"}] if segment.get("kind") == "intervals" else
+                [{"type", "value"}, {"type", "low", "high"}]
+            )
+            if set(target) not in allowed_shapes:
+                raise CanonicalModelError(
+                    "segment target is not one exact discriminated-union branch")
+            if target_type == "free" and segment.get("kind") != "free_ride":
+                raise CanonicalModelError("free target is permitted only on free rides")
+            if target_type != "free":
+                for key, value in target.items():
+                    if key == "type" or _num(value) is None:
+                        if key != "type":
+                            raise CanonicalModelError("segment target value is not finite")
+                if target_type == "rpe" and any(
+                    not (1 <= float(value) <= 10)
+                    for key, value in target.items() if key != "type"
+                ):
+                    raise CanonicalModelError("RPE target is outside 1-10")
+
+
+def _power_attribute(segment: Dict[str, Any], attribute: str) -> str:
+    target = segment["target"]
+    mapping = {
+        "Power": "value", "PowerLow": "low", "PowerHigh": "high",
+        "OnPower": "on", "OffPower": "off",
+    }
+    if attribute in mapping:
+        return f"{float(target[mapping[attribute]]):.2f}"
+    if attribute == "Duration":
+        return str(int(segment.get("seconds") or 0))
+    if attribute == "Repeat":
+        return str(int(segment.get("repeat") or 1))
+    if attribute == "OnDuration":
+        return str(int(segment.get("on_seconds") or 0))
+    if attribute == "OffDuration":
+        return str(int(segment.get("off_seconds") or 0))
+    return str((segment.get("zwo") or {}).get("extra_attributes", {}).get(attribute, ""))
+
+
+def render_zwo_bytes(session: Dict[str, Any], control: Dict[str, Any]) -> bytes:
+    """Render one executable projection solely from a validated session."""
+    if control.get("control_metric") != "power":
+        raise CanonicalModelError("ZWO projection requires measured-power control")
+    projection = session.get("zwo_projection") or {}
+    def text_value(value: Any) -> str:
+        return str(value or "").replace("&", "&amp;").replace("<", "&lt;")
+
+    def attr_value(value: Any) -> str:
+        return (str(value).replace("&", "&amp;").replace('"', "&quot;")
+                .replace("<", "&lt;").replace(">", "&gt;"))
+
+    lines = ["<?xml version='1.0' encoding='UTF-8'?>", "<workout_file>"]
+    if projection.get("author"):
+        lines.append(f"  <author>{text_value(projection['author'])}</author>")
+    lines.append(f"  <name>{text_value(session.get('title') or 'Session')}</name>")
+    lines.append(f"  <description>{text_value(session.get('description') or '')}</description>")
+    if projection.get("sport_type"):
+        lines.append(f"  <sportType>{text_value(projection['sport_type'])}</sportType>")
+    lines.append("  <workout>")
+    for segment in session.get("segments") or []:
+        recipe = segment.get("zwo") or {}
+        tag = str(recipe.get("tag") or "")
+        if not tag:
+            raise CanonicalModelError("published session lacks a ZWO render recipe")
+        attributes = []
+        for attribute in recipe.get("attribute_order") or []:
+            attributes.append(
+                f'{attribute}="{attr_value(_power_attribute(segment, attribute))}"')
+        opening = f"    <{tag}" + (" " + " ".join(attributes) if attributes else "")
+        children = recipe.get("children") or []
+        if not children:
+            space = " " if recipe.get("empty_element_space") else ""
+            lines.append(opening + space + "/>")
+            continue
+        lines.append(opening + ">")
+        for child_recipe in children:
+            child_tag = str(child_recipe.get("tag") or "textevent")
+            child_attrs = "".join(
+                f' {key}="{attr_value(value)}"'
+                for key, value in (child_recipe.get("attributes") or {}).items())
+            child_text = text_value(child_recipe.get("text") or "")
+            if child_text:
+                lines.append(
+                    f"      <{child_tag}{child_attrs}>{child_text}</{child_tag}>")
+            else:
+                space = " " if child_recipe.get("empty_element_space", True) else ""
+                lines.append(f"      <{child_tag}{child_attrs}{space}/>")
+        lines.append(f"    </{tag}>")
+    lines.extend(["  </workout>", "</workout_file>"])
+    return "\n".join(lines).encode("utf-8")
+
+
+def publish_zwo_projection(
+    model: Dict[str, Any], athlete_dir: Path | str,
+) -> List[Path]:
+    """Publish ZWO + naming manifest only after canonical finalization."""
+    validate_canonical_model(model)
+    athlete_dir = Path(athlete_dir)
+    workout_dir = athlete_dir / "workouts"
+    workout_dir.mkdir(parents=True, exist_ok=True)
+    for stale in workout_dir.glob("*.zwo"):
+        stale.unlink()
+    control = model["athlete"]
+    if control["control_metric"] != "power":
+        manifest_path = workout_dir / "naming_manifest.json"
+        if manifest_path.exists():
+            manifest_path.unlink()
+        return []
+    paths: List[Path] = []
+    manifest: Dict[str, Any] = {}
+    for session in model.get("sessions") or []:
+        source_file = session.get("source_file")
+        if not source_file:
+            continue
+        path = workout_dir / Path(str(source_file)).name
+        path.write_bytes(render_zwo_bytes(session, control))
+        paths.append(path)
+        manifest[path.stem] = {
+            key: session.get(key) for key in (
+                "filename_stem", "date", "week", "phase", "tp_kind",
+                "workout_type_value_id", "series_id", "series_index",
+                "series_total", "order_on_day", "strength_template",
+                "archetype_id", "display_name", "race",
+            ) if session.get(key) is not None
+        }
+        manifest[path.stem]["week_num"] = manifest[path.stem].pop("week", None)
+    (workout_dir / "naming_manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return paths
 
 
 def load_canonical_model(path: Path | str) -> Dict[str, Any]:

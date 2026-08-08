@@ -41,8 +41,8 @@ def entry(
     basis: str,
     inputs: Any,
     sensitivity: str,
+    revision: int,
     at: str | None = None,
-    revision: int = 1,
 ) -> Dict[str, Any]:
     """Build and validate one normative A3 ``_derived`` entry."""
     record = {
@@ -70,7 +70,9 @@ def validate_entry(record: Dict[str, Any]) -> Dict[str, Any]:
         raise DerivedRegistryError("unknown derived-value class")
     if record.get("sensitivity") not in SENSITIVITIES:
         raise DerivedRegistryError("unknown derived-value sensitivity")
-    revision = record.get("revision", 1)
+    if "revision" not in record:
+        raise DerivedRegistryError("derived-value revision is required")
+    revision = record.get("revision")
     if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
         raise DerivedRegistryError("derived-value revision must be a positive integer")
     # Reject unserializable/non-finite values without importing the state layer.
@@ -93,11 +95,42 @@ def validate_registry(records: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]
 def registry_document(records: Iterable[Dict[str, Any]], *, revision: int = 1) -> Dict[str, Any]:
     if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
         raise DerivedRegistryError("registry revision must be a positive integer")
+    entries = validate_registry(records)
+    if any(record["revision"] != revision for record in entries):
+        raise DerivedRegistryError("entry revision must match registry revision")
     return {
         "version": REGISTRY_VERSION,
         "revision": revision,
-        "entries": validate_registry(records),
+        "entries": entries,
     }
+
+
+def assert_registry_covers(
+    document: Dict[str, Any], records: Iterable[Dict[str, Any]],
+    *, required_fields: Iterable[str], revision: int,
+) -> List[Dict[str, Any]]:
+    """Fail closed when a declared athlete/review-facing derivation is absent.
+
+    The inventory is deliberately explicit at each owning artifact. Adding a
+    computed output therefore requires adding its provenance record in the
+    same change instead of silently expanding an unreviewable output surface.
+    """
+    normalized = validate_registry(records)
+    fields = [record["field"] for record in normalized]
+    required = sorted(set(required_fields))
+    if len(fields) != len(set(fields)):
+        raise DerivedRegistryError("duplicate derived-value field")
+    if sorted(fields) != required:
+        missing = sorted(set(required) - set(fields))
+        extra = sorted(set(fields) - set(required))
+        raise DerivedRegistryError(
+            f"derived-value coverage mismatch; missing={missing}, extra={extra}"
+        )
+    if any(record["revision"] != revision for record in normalized):
+        raise DerivedRegistryError("derived-value entry revision is stale")
+    for field in required:
+        get_field(document, field)
+    return normalized
 
 
 def get_field(document: Dict[str, Any], field: str) -> Any:

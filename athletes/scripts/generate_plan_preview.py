@@ -50,10 +50,10 @@ def _if_to_zone(if_val: float) -> str:
 def _canonical_intensity_factor(segments: list[dict]) -> float:
     """Calculate session intensity from canonical segment time and targets.
 
-    This mirrors the established ZWO projection: fourth-power duration
-    weighting for work/recovery steps, with ramps represented by their mean
-    target. RPE targets use the canonical 0-10 scale; HR and power targets are
-    already ratios.
+    Power keeps the established ZWO projection exactly. LTHR, HRmax, and RPE
+    are first normalized through their own authored scales, then the same
+    duration-weighted whole-session unit is applied. Raw HR percentages and
+    RPE values are never compared with power-IF cutoffs.
     """
     samples = []
 
@@ -61,8 +61,8 @@ def _canonical_intensity_factor(segments: list[dict]) -> float:
         value = target.get(key)
         if value is None:
             return None
-        value = float(value)
-        return value / 10 if target.get('type') == 'rpe' else value
+        from canonical_training_model import normalize_target_effort
+        return normalize_target_effort(str(target.get('type') or ''), value)
 
     for segment in segments or []:
         seconds = int(segment.get('seconds') or 0)
@@ -152,6 +152,9 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
                 'duration_sec': int(session.get('duration_s') or 0),
                 'duration_min': int(session.get('duration_s') or 0) / 60,
                 'tss': int(session.get('tss') or 0),
+                # Metric-neutral comparison unit used only by verification;
+                # unlike IF it is valid for LTHR, HRmax, and RPE controls.
+                'normalized_effort': round(effort, 2),
                 'intensity_factor': (round(effort, 2)
                                      if control_metric == 'power' else None),
                 'zone': _if_to_zone(effort),
@@ -240,8 +243,9 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
         })
 
     # Verification checks
-    checks = _run_verification_checks(profile, derived, methodology, plan_dates,
-                                       weekly_structure, weeks_data)
+    checks = _run_verification_checks(
+        profile, derived, methodology, plan_dates, weekly_structure,
+        weeks_data, control_metric=control_metric)
 
     return {
         'profile': profile,
@@ -260,7 +264,8 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
 
 
 def _run_verification_checks(
-    profile, derived, methodology, plan_dates, weekly_structure, weeks_data
+    profile, derived, methodology, plan_dates, weekly_structure, weeks_data,
+    control_metric='power',
 ) -> List[Dict[str, Any]]:
     """Run automated checks: plan vs questionnaire."""
     checks = []
@@ -569,11 +574,15 @@ def _run_verification_checks(
         phase_clean = w['phase'].replace('_1', '').replace('_2', '')
         for d in w['days']:
             wo = d.get('workout')
-            if wo and wo.get('intensity_factor', 0) > 0:
+            effort = ((wo or {}).get('normalized_effort')
+                      if wo else None)
+            if effort is None and wo:
+                effort = wo.get('intensity_factor')
+            if wo and (effort or 0) > 0:
                 if phase_clean == 'taper':
-                    taper_ifs.append(wo['intensity_factor'])
+                    taper_ifs.append(effort)
                 elif phase_clean in ('build', 'peak'):
-                    build_peak_ifs.append(wo['intensity_factor'])
+                    build_peak_ifs.append(effort)
     if taper_ifs and build_peak_ifs:
         avg_taper_if = sum(taper_ifs) / len(taper_ifs)
         avg_build_if = sum(build_peak_ifs) / len(build_peak_ifs)
@@ -582,10 +591,11 @@ def _run_verification_checks(
         # is textbook (short sharp openers). Only flag a taper that is
         # HARDER than the build, which is a build week in disguise.
         ti_status = 'PASS' if taper_ratio <= 105 else 'WARN'
+        unit = 'IF' if control_metric == 'power' else 'normalized effort'
         checks.append({
             'name': 'Taper Intensity',
             'status': ti_status,
-            'detail': (f"Taper avg IF: {avg_taper_if:.2f} | Build/Peak avg IF: {avg_build_if:.2f} | "
+            'detail': (f"Taper avg {unit}: {avg_taper_if:.2f} | Build/Peak avg {unit}: {avg_build_if:.2f} | "
                        f"Ratio: {taper_ratio:.0f}% | Threshold: WARN if > 105% (taper harder than build)"),
         })
 

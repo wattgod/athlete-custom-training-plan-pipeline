@@ -547,41 +547,82 @@ def generate_fueling_context(
         ) | {"hydration": p["hydration"]},
         "generated_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
-    from derived_registry import entry as derived_entry, validate_registry
+    from derived_registry import (assert_registry_covers,
+                                  entry as derived_entry)
     derived_at = str(
         (profile.get('fulfillment') or {}).get('generation_at')
         or datetime.now().astimezone().isoformat()
     )
-    fueling['_derived'] = validate_registry([
-        derived_entry(
-            id='RACE_DURATION_HOURS', field='race.duration_hours',
-            value_class='inferred',
-            basis='race distance, elevation, discipline, and goal pace model',
-            inputs={
-                'distance_miles': distance_miles,
-                'elevation_feet': elevation_feet,
-                'discipline': discipline,
-                'goal_type': goal_type,
-            },
-            sensitivity='personal', at=derived_at,
-        ),
-        derived_entry(
-            id='FUELING_HOURLY_TARGET', field='carbohydrates.hourly_target',
-            value_class='inferred',
-            basis=str(p.get('inputs', {}).get('basis') or 'fueling policy'),
-            inputs=p.get('inputs', {}), sensitivity='sensitive', at=derived_at,
-        ),
-        derived_entry(
-            id='FUELING_TOTAL_TARGET', field='carbohydrates.total_grams',
-            value_class='inferred',
-            basis='hourly prescription multiplied by modeled event duration',
-            inputs={
-                'hourly_target': p['race_target_g_per_hour'],
-                'duration_hours': duration_hours,
-            },
-            sensitivity='sensitive', at=derived_at,
-        ),
-    ])
+    revision = int((profile.get('fulfillment') or {}).get('generation_revision') or 1)
+    policy_inputs = p.get('inputs', {})
+    duration_inputs = {
+        'distance_miles': distance_miles, 'elevation_feet': elevation_feet,
+        'discipline': discipline, 'goal_type': goal_type,
+    }
+
+    def record(identifier, field, basis, inputs, sensitivity='sensitive'):
+        return derived_entry(
+            id=identifier, field=field, value_class='inferred', basis=basis,
+            inputs=inputs, sensitivity=sensitivity, at=derived_at,
+            revision=revision,
+        )
+
+    derived_records = [
+        record('RACE_DURATION_HOURS', 'race.duration_hours',
+               'race distance, elevation, discipline, and goal pace model',
+               duration_inputs, 'personal'),
+        record('RACE_CALORIES', 'calories',
+               'body mass, modeled duration, course load, sex, and goal model',
+               {**duration_inputs, 'weight_kg': weight_kg, 'sex': sex}),
+        record('FUELING_HOURLY_TARGET', 'carbohydrates.hourly_target',
+               str(policy_inputs.get('basis') or 'fueling policy'), policy_inputs),
+        record('FUELING_HOURLY_RANGE', 'carbohydrates.hourly_range',
+               'canonical fueling-policy physiological range', policy_inputs),
+        record('FUELING_TOTAL_TARGET', 'carbohydrates.total_grams',
+               'hourly prescription multiplied by modeled event duration',
+               {'hourly_target': p['race_target_g_per_hour'],
+                'duration_hours': duration_hours}),
+        record('FUELING_TOTAL_RANGE', 'carbohydrates.total_range',
+               'hourly prescription bounds multiplied by modeled event duration',
+               {'hourly_range': p['race_range_g_per_hour'],
+                'duration_hours': duration_hours}),
+        record('GUT_PHASES', 'gut_training.phases',
+               'plan-week inventory of the canonical gut-training progression',
+               {'plan_weeks': plan_weeks, 'prescription': policy_inputs}),
+        record('GUT_WEEKLY_PROGRESSION', 'gut_training.weekly_progression',
+               'week-indexed canonical gut-training progression',
+               {'plan_weeks': plan_weeks, 'prescription': policy_inputs}),
+        record('FUELING_TIMELINE', 'fueling_timeline',
+               'hourly target distributed across modeled event duration and distance',
+               {'duration_hours': duration_hours,
+                'hourly_target': carb_data['hourly_target'],
+                'distance_miles': distance_miles}),
+        record('FUELING_PRESCRIPTION', 'prescription',
+               str(policy_inputs.get('basis') or 'fueling policy'), policy_inputs),
+        record('FUELING_BASIS', 'fueling_basis',
+               'truthful power-basis selection for fueling',
+               {'power_basis': fitness.get('power_basis'),
+                'ftp_present': fitness.get('ftp_watts') is not None}, 'personal'),
+        record('FUELING_RECOMMENDATIONS', 'recommendations',
+               'canonical prescription rendered as athlete-facing recommendations',
+               {'duration_hours': duration_hours,
+                'hourly_target': carb_data['hourly_target'],
+                'total_carbs': carb_data['total_grams']}),
+        record('HYDRATION_TARGET', 'recommendations.hydration',
+               'canonical fueling-policy hydration prescription', policy_inputs),
+    ]
+    fueling['_derived'] = assert_registry_covers(
+        fueling, derived_records,
+        required_fields=[
+            'race.duration_hours', 'calories',
+            'carbohydrates.hourly_target', 'carbohydrates.hourly_range',
+            'carbohydrates.total_grams', 'carbohydrates.total_range',
+            'gut_training.phases', 'gut_training.weekly_progression',
+            'fueling_timeline', 'prescription', 'fueling_basis',
+            'recommendations', 'recommendations.hydration',
+        ],
+        revision=revision,
+    )
     return fueling
 
 

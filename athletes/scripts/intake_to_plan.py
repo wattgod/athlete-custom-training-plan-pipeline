@@ -34,6 +34,7 @@ import sys
 import os
 import re
 import json
+import math
 import argparse
 import shutil
 import subprocess
@@ -69,7 +70,7 @@ from known_races import (KNOWN_RACES, RACE_ALIASES, match_race,
                          build_generic_race_profile, race_provenance_issue)
 from brand_config import (brand_for_discipline, email_signature,
                           get_brand_config, load_brands, normalize_brand)
-from derived_registry import entry as derived_entry, validate_registry
+from derived_registry import assert_registry_covers, entry as derived_entry
 
 # ---------------------------------------------------------------------------
 # ANSI colors for terminal output
@@ -463,11 +464,27 @@ def height_to_cm(height_str: str) -> int:
 
 
 def parse_watts(val: str) -> Optional[int]:
-    """Extract watts from '315 W' or '315'."""
-    m = re.search(r'(\d+)', val)
-    if m:
-        return int(m.group(1))
-    return None
+    """Parse one complete signed watts token and accept only a safe anchor.
+
+    Free text, partial tokens, zero/negative values, and physiologically
+    implausible values are not measured facts. They degrade to ``None`` so a
+    paid order follows the coach-confirmation path instead of failing sanity
+    validation or turning ``-200`` into a fabricated positive 200 W anchor.
+    """
+    token = str(val or "").strip()
+    match = re.fullmatch(
+        r"([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*(?:w|watts?)?", token,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    try:
+        watts = float(match.group(1))
+    except ValueError:
+        return None
+    if not math.isfinite(watts) or not (FTP_MIN_WATTS <= watts <= FTP_MAX_WATTS):
+        return None
+    return int(round(watts))
 
 
 # Patterns that indicate FTP is unknown / athlete has no power meter
@@ -845,6 +862,12 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     additional = parsed.get('additional', {})
     nutrition_intake = parsed.get('nutrition', {})
     fulfillment = parsed.get('fulfillment', {})
+    try:
+        generation_revision = int(fulfillment.get('generation_revision') or 1)
+    except (TypeError, ValueError):
+        generation_revision = 1
+    if generation_revision < 1:
+        generation_revision = 1
 
     email = header.get('email', basic.get('email', ''))
     submitted = header.get('submitted', '')
@@ -1454,6 +1477,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'generation_at': fulfillment.get('generation_at', ''),
             'weeks_purchased': _safe_int(fulfillment.get('weeks_purchased', '')),
             'athlete_timezone': fulfillment.get('athlete_timezone', ''),
+            'generation_revision': generation_revision,
         },
         'sex': sex,
         'height_cm': height_cm,
@@ -1511,9 +1535,11 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'reanchor': {
                 'required': power_basis == 'none' or control_basis == 'rpe_pending_lthr',
                 'week': 1,
-                'test': ('lthr_field_test' if requested_metric == 'hr'
-                         else 'rpe_field_test' if training_metric == 'rpe'
-                         else 'ftp_field_test'),
+                'test': (
+                    'lthr_field_test' if control_basis in {'lthr', 'rpe_pending_lthr'}
+                    else 'hrmax_field_test' if control_basis == 'hrmax'
+                    else 'rpe_field_test' if training_metric == 'rpe'
+                    else 'ftp_field_test'),
                 'action': 'Update the measured anchor after the Week 1 field test.',
             },
         },
@@ -1761,6 +1787,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             basis=('forgiving intake default; coach review required'
                    if age_defaulted else 'athlete questionnaire'),
             inputs={'reported_age': age_raw}, sensitivity='personal', at=derived_at,
+            revision=generation_revision,
         ),
         derived_entry(
             id='SEX_INPUT', field='fitness_markers.sex',
@@ -1768,6 +1795,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             basis=('forgiving intake default; coach review required'
                    if sex_defaulted else 'athlete questionnaire'),
             inputs={'reported_sex': sex_raw}, sensitivity='personal', at=derived_at,
+            revision=generation_revision,
         ),
         derived_entry(
             id='WEIGHT_KG', field='fitness_markers.weight_kg',
@@ -1776,6 +1804,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                    if weight_defaulted else 'unit-normalized athlete questionnaire value'),
             inputs={'reported_weight': weight_raw, 'sex': sex},
             sensitivity='sensitive', at=derived_at,
+            revision=generation_revision,
         ),
         derived_entry(
             id='POWER_BASIS', field='fitness_markers.power_basis',
@@ -1783,6 +1812,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             basis='measured FTP presence; no FTP estimation is permitted',
             inputs={'ftp_supplied': ftp_watts is not None},
             sensitivity='personal', at=derived_at,
+            revision=generation_revision,
         ),
         derived_entry(
             id='CONTROL_METRIC', field='fitness_markers.control_metric',
@@ -1795,6 +1825,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 'hrmax_available': max_hr is not None,
             },
             sensitivity='personal', at=derived_at,
+            revision=generation_revision,
         ),
         derived_entry(
             id='CONTROL_BASIS', field='fitness_markers.control_basis',
@@ -1802,12 +1833,14 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             basis='LTHR preferred, measured HRmax second, RPE used while HR anchor is pending',
             inputs={'control_metric': training_metric, 'lthr': lthr, 'max_hr': max_hr},
             sensitivity='sensitive', at=derived_at,
+            revision=generation_revision,
         ),
         derived_entry(
             id='DISCIPLINE', field='discipline', value_class='inferred',
             basis='race facts, explicit discipline, and brand policy',
             inputs={'candidate': candidate_discipline, 'brand': profile.get('brand')},
             sensitivity='internal', at=derived_at,
+            revision=generation_revision,
         ),
     ]
     if ftp_watts is not None:
@@ -1816,6 +1849,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             value_class='measured', basis='athlete-reported measured FTP',
             inputs={'questionnaire_field': 'current_fitness.ftp'},
             sensitivity='sensitive', at=derived_at,
+            revision=generation_revision,
         ))
     if w_kg is not None:
         derived_records.append(derived_entry(
@@ -1825,8 +1859,21 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                    else 'measured FTP divided by normalized body mass'),
             inputs={'ftp_watts': ftp_watts, 'weight_kg': weight_kg},
             sensitivity='sensitive', at=derived_at,
+            revision=generation_revision,
         ))
-    profile['_derived'] = validate_registry(derived_records)
+    profile_fields = [
+        'health_factors.age', 'fitness_markers.sex',
+        'fitness_markers.weight_kg', 'fitness_markers.power_basis',
+        'fitness_markers.control_metric', 'fitness_markers.control_basis',
+        'discipline',
+    ]
+    if ftp_watts is not None:
+        profile_fields.append('fitness_markers.ftp_watts')
+    if w_kg is not None:
+        profile_fields.append('fitness_markers.w_kg')
+    profile['_derived'] = assert_registry_covers(
+        profile, derived_records, required_fields=profile_fields,
+        revision=generation_revision)
 
     return profile
 
@@ -3561,6 +3608,23 @@ def main():
 
     athlete_name = parsed.get('athlete_name', 'Unknown')
     print(f"  Athlete: {athlete_name}")
+
+    # Stamp source-owned provenance with the revision that write_generation
+    # will create later in this same paid-order run. This must happen before
+    # profile/fueling/canonical construction; rewriting only the state copy
+    # would leave the authoritative artifacts falsely claiming revision 1.
+    prospective_id = generate_athlete_id(athlete_name)
+    existing_state_path = get_athlete_dir(prospective_id) / 'fulfillment_status.json'
+    next_revision = 1
+    if existing_state_path.is_file():
+        try:
+            prior_state = json.loads(existing_state_path.read_text())
+            next_revision = int(prior_state.get('generation_revision') or 0) + 1
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            # The later state write fails closed on malformed state. Keep the
+            # source revision valid so package generation remains recoverable.
+            next_revision = 1
+    parsed.setdefault('fulfillment', {})['generation_revision'] = next_revision
 
     sections = [k for k in parsed if k not in ('athlete_name', '__header__')]
     print(f"  Sections found: {len(sections)} ({', '.join(sections)})")

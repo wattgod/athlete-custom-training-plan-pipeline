@@ -3875,7 +3875,8 @@ def _climate_text(climate) -> str:
     )
 
 
-def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool = False):
+def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool = False,
+                            canonical_model=None):
     """
     CURRENT GUIDE BUILDER — produces the branded training guide with:
     - Radar chart, non-negotiables, phase badges
@@ -3912,6 +3913,22 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
         profile = yaml.safe_load(f)
     with open(athlete_dir / 'derived.yaml') as f:
         derived = yaml.safe_load(f)
+
+    if canonical_model is None:
+        canonical_path = athlete_dir / 'canonical_training_model.json'
+        if canonical_path.is_file():
+            from canonical_training_model import load_canonical_model
+            canonical_model = load_canonical_model(canonical_path)
+    if canonical_model is not None:
+        from canonical_training_model import validate_canonical_model
+        validate_canonical_model(canonical_model)
+        canonical_control = canonical_model['athlete']
+        fitness = profile.setdefault('fitness_markers', {})
+        fitness.update({
+            key: canonical_control.get(key) for key in (
+                'ftp_watts', 'power_basis', 'control_metric', 'control_basis',
+                'reanchor')
+        })
 
     plan_dates = {}
     pd_path = athlete_dir / 'plan_dates.yaml'
@@ -4177,10 +4194,9 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
     # examples that are valid for measured-power plans but must not leak into
     # an HR/RPE athlete's artifact. The canonical text projector removes those
     # references without inventing a replacement value.
-    fitness = profile.get('fitness_markers') or profile.get('fitness') or {}
-    if fitness.get('control_metric') != 'power':
-        from canonical_training_model import determine_control, metric_neutral_text
-        html = metric_neutral_text(html, determine_control(profile))
+    if canonical_model is not None:
+        from canonical_training_model import project_guide_html
+        html = project_guide_html(html, canonical_model)
 
     output_path.write_text(html, encoding='utf-8')
     return output_path

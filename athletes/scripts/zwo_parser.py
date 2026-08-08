@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Shared ZWO parsing for package inspection and PlanIR aggregation.
+"""Shared parser for private authoring documents and historical ZWO inspection.
 
-This module deliberately reads rendered ZWO files.  It does not participate in
-workout generation; consumers can use the flattened power samples for metrics
-or the preserved structural segments for a faithful representation of XML.
+Production canonicalization uses the in-memory text entry points before any ZWO
+is published. Path-based wrappers remain for compatibility validation and legacy
+package inspection. Both preserve the exact structural recipe needed for a
+byte-identical canonical power projection.
 """
 
 import xml.etree.ElementTree as ET
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -18,11 +20,18 @@ def parse_zwo_structure(zwo_path: Path) -> Dict[str, Any]:
     calculation.  ``segments`` retains one entry per ZWO element, including a
     single typed entry for each ``IntervalsT`` block.
     """
-    tree = ET.parse(zwo_path)
-    root = tree.getroot()
+    return parse_zwo_structure_text(
+        zwo_path.read_text(encoding="utf-8"), source_name=zwo_path.stem)
+
+
+def parse_zwo_structure_text(xml_text: str, *, source_name: str = "session") -> Dict[str, Any]:
+    """Parse an in-memory legacy authoring document without publishing it."""
+    root = ET.fromstring(xml_text)
     name_el = root.find("name")
     desc_el = root.find("description")
-    name = name_el.text if name_el is not None else zwo_path.stem
+    author_el = root.find("author")
+    sport_el = root.find("sportType")
+    name = name_el.text if name_el is not None else source_name
     description = desc_el.text if desc_el is not None else ""
     workout = root.find("workout")
     if workout is None:
@@ -32,14 +41,40 @@ def parse_zwo_structure(zwo_path: Path) -> Dict[str, Any]:
             "segments": [],
             "power_samples": [],
             "intervals_summary": [],
+            "author": author_el.text if author_el is not None else "",
+            "sport_type": sport_el.text if sport_el is not None else "bike",
         }
 
     segments: List[Dict[str, Any]] = []
     power_samples: List[Tuple[float, float]] = []
     intervals_summary: List[str] = []
+    opening_lines = [
+        match.group(0) for match in re.finditer(
+            r"(?m)^    <(?:Warmup|Cooldown|Ramp|SteadyState|IntervalsT|FreeRide)\b[^>]*>",
+            xml_text)
+    ]
 
-    for element in workout:
+    for element_index, element in enumerate(workout):
         tag = element.tag
+        render_data = {
+            "tag": tag,
+            "attribute_order": list(element.attrib),
+            "extra_attributes": {
+                key: value for key, value in element.attrib.items()
+                if key not in {"Duration", "PowerLow", "PowerHigh", "Power",
+                               "Repeat", "OnDuration", "OnPower",
+                               "OffDuration", "OffPower"}
+            },
+            "children": [
+                {"tag": child.tag, "attributes": dict(child.attrib),
+                 "text": child.text or "", "empty_element_space": True}
+                for child in element
+            ],
+            "empty_element_space": (
+                opening_lines[element_index].endswith(" />")
+                if element_index < len(opening_lines) else True
+            ),
+        }
         if tag in ("Warmup", "Cooldown", "Ramp"):
             duration = float(element.get("Duration", 0))
             low = float(element.get("PowerLow", 0.5))
@@ -51,6 +86,7 @@ def parse_zwo_structure(zwo_path: Path) -> Dict[str, Any]:
                 "seconds": int(duration),
                 "power_low": low,
                 "power_high": high,
+                "zwo": render_data,
             })
             power_samples.append((duration, (low + high) / 2))
         elif tag == "SteadyState":
@@ -61,6 +97,7 @@ def parse_zwo_structure(zwo_path: Path) -> Dict[str, Any]:
                 "kind": "steady_state",
                 "seconds": int(duration),
                 "power_target": power,
+                "zwo": render_data,
             })
             power_samples.append((duration, power))
         elif tag == "IntervalsT":
@@ -80,6 +117,7 @@ def parse_zwo_structure(zwo_path: Path) -> Dict[str, Any]:
                 "on_power": on_power,
                 "off_seconds": int(off_duration),
                 "off_power": off_power,
+                "zwo": render_data,
             })
             for _ in range(repeats):
                 power_samples.append((on_duration, on_power))
@@ -94,6 +132,7 @@ def parse_zwo_structure(zwo_path: Path) -> Dict[str, Any]:
                 "name": "Free Ride",
                 "kind": "free_ride",
                 "seconds": int(duration),
+                "zwo": render_data,
             })
             power_samples.append((duration, estimated_power))
 
@@ -103,12 +142,25 @@ def parse_zwo_structure(zwo_path: Path) -> Dict[str, Any]:
         "segments": segments,
         "power_samples": power_samples,
         "intervals_summary": intervals_summary,
+        "author": author_el.text if author_el is not None else "",
+        "sport_type": sport_el.text if sport_el is not None else "bike",
     }
 
 
 def parse_zwo(zwo_path: Path, ftp: float) -> Dict[str, Any]:
     """Parse a ZWO file and calculate the preview's established metrics."""
     parsed = parse_zwo_structure(zwo_path)
+    result = _metrics_from_structure(parsed, ftp)
+    result["file"] = zwo_path.name
+    return result
+
+
+def parse_zwo_text(xml_text: str, ftp: float = 1.0, *, source_name: str = "session") -> Dict[str, Any]:
+    parsed = parse_zwo_structure_text(xml_text, source_name=source_name)
+    return _metrics_from_structure(parsed, ftp)
+
+
+def _metrics_from_structure(parsed: Dict[str, Any], ftp: float) -> Dict[str, Any]:
     samples = parsed["power_samples"]
     if not samples:
         return _empty_workout(parsed["name"], parsed["description"])
@@ -121,7 +173,7 @@ def parse_zwo(zwo_path: Path, ftp: float) -> Dict[str, Any]:
 
     return {
         "name": parsed["name"],
-        "file": zwo_path.name,
+        "file": "",
         "duration_sec": total_duration,
         "duration_min": round(total_duration / 60, 1),
         "duration_hrs": round(total_duration / 3600, 2),

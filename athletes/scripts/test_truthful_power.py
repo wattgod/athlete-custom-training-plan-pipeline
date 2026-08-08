@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,13 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent))
 
 import plan_ir
-from canonical_training_model import build_canonical_model
+from canonical_training_model import (CanonicalModelError, MODEL_VERSION,
+                                      build_canonical_model,
+                                      project_guide_html,
+                                      publish_zwo_projection,
+                                      validate_canonical_model)
+from apply_contract import build_contract
+from generate_plan_preview import build_preview_data
 from plan_ir import build_plan_ir, project_tp_manifest
 from validate_plan_package import validate_plan_package
 
@@ -121,3 +128,140 @@ def test_power_interval_plan_ir_matches_zwo_bounds(tmp_path, monkeypatch):
     assert interval.power_low == .5
     assert interval.power_high == 1.2
     assert validate_plan_package(root) == []
+
+
+def test_canonical_round_trip_is_the_only_session_projection_input(
+    tmp_path, monkeypatch,
+):
+    """ZWO, PlanIR, preview, TP/polyline, and D0 share one finalized input."""
+    case = {
+        "id": "canonical-upstream-fixture",
+        "fitness_markers": {
+            "ftp_watts": 250, "power_basis": "measured",
+            "requested_metric": "power",
+        },
+    }
+    athletes, root, plan_dates = _write_fixture(tmp_path, case)
+    authored = root / "workouts" / "W01_Fri_Aug14_FTP_TEST.zwo"
+    authored_text = authored.read_text()
+    authored.unlink()
+    stem = "W01_Fri_Aug14_FTP_TEST"
+
+    # Production's private compiler hands this document over in memory. No
+    # published workout exists for canonicalization to reflect.
+    model = build_canonical_model(
+        case["id"], root, plan_dates=plan_dates,
+        authored_documents={stem: authored_text},
+        naming_manifest={stem: {
+            "filename_stem": stem, "week_num": 1, "phase": "base",
+            "tp_kind": "bike", "workout_type_value_id": 2,
+        }},
+    )
+    session = model["sessions"][0]
+    assert session["title"] == "FTP Field Test"
+    assert session["segments"][1]["target"] == {
+        "type": "power_pct_ftp", "value": .95,
+    }
+
+    # A competing legacy file cannot influence any projection and is removed
+    # by publication from the already-finalized canonical model.
+    (root / "workouts" / "legacy-wrong.zwo").write_text(
+        "<workout_file><name>WRONG SOURCE</name><workout/></workout_file>")
+    publish_zwo_projection(model, root)
+    assert not (root / "workouts" / "legacy-wrong.zwo").exists()
+    published = (root / "workouts" / f"{stem}.zwo").read_text()
+    assert "FTP Field Test" in published and 'Power="0.95"' in published
+
+    monkeypatch.setattr(plan_ir, "ATHLETES_DIR", athletes)
+    ir = build_plan_ir(case["id"])
+    projected = ir.weeks[0].sessions[0]
+    assert projected.title == session["title"]
+    assert projected.segments[1].target == session["segments"][1]["target"]
+    tp = project_tp_manifest(ir)
+    tp_session = tp["sessions"][0]
+    assert tp_session["title"] == session["title"]
+    assert tp_session["structure"]["primaryIntensityMetric"] == "percentOfFtp"
+    assert tp_session["structure"]["polyline"]
+
+    preview = build_preview_data(root)
+    preview_session = next(
+        day["workout"] for week in preview["weeks"] for day in week["days"]
+        if day.get("workout")
+    )
+    assert preview_session["target_summary"] == session["target_summary"]
+
+    contract = build_contract(
+        ir.to_dict(), order_id="canonical-upstream-order",
+        tp_athlete_id="tp-fixture", generation_revision=1,
+        canonical_model=model, review_items=[], guide_sources={},
+        athlete_dir=root,
+    )
+    workout = next(
+        operation for operation in contract["operations"]
+        if operation["kind"] == "workout_upsert")
+    assert workout["payload"]["title"] == session["title"]
+    assert workout["payload"]["structure"] == tp_session["structure"]
+
+
+def test_guide_control_projection_comes_from_canonical_input(tmp_path):
+    case = deepcopy(CASES[0])
+    athletes, root, plan_dates = _write_fixture(tmp_path, case)
+    authored = root / "workouts" / "W01_Fri_Aug14_FTP_TEST.zwo"
+    stem, document = authored.stem, authored.read_text()
+    authored.unlink()
+    model = build_canonical_model(
+        case["id"], root, plan_dates=plan_dates,
+        authored_documents={stem: document}, naming_manifest={stem: {}},
+    )
+    template = (
+        "<html><body><h1>Legacy FTP Test</h1>"
+        "<p>Ride 20 min at 95% FTP and record 250 watts.</p></body></html>"
+    )
+    guide = project_guide_html(template, model)
+    assert "LTHR Field Test" in guide
+    assert model["athlete"]["reanchor"]["action"] in guide
+    assert not re.search(r"\b\d+(?:\.\d+)?\s*(?:W|watts?)\b", guide, re.I)
+    assert not re.search(r"\b\d+(?:\.\d+)?\s*%\s*FTP\b", guide, re.I)
+
+
+@pytest.mark.parametrize('target,kind', [
+    ({'type': 'power_pct_ftp'}, 'steady_state'),
+    ({'type': 'power_pct_ftp', 'value': .7, 'low': .6}, 'steady_state'),
+    ({'type': 'free', 'value': .7}, 'free_ride'),
+    ({'type': 'pct_lthr', 'low': .68, 'high': .83}, 'intervals'),
+    ({'type': 'rpe', 'on': 11, 'off': 4}, 'intervals'),
+])
+def test_target_union_rejects_missing_mixed_forbidden_shapes(target, kind):
+    model = {
+        'model_version': MODEL_VERSION,
+        'athlete': {'control_metric': 'power', 'power_basis': 'measured',
+                    'ftp_watts': 250},
+        'sessions': [{'segments': [{'kind': kind, 'target': target}]}],
+    }
+    with pytest.raises(CanonicalModelError):
+        validate_canonical_model(model)
+
+
+@pytest.mark.parametrize('athlete,segments', [
+    ({'control_metric': 'rpe', 'control_basis': 'rpe', 'power_basis': 'none',
+      'ftp_watts': None}, [
+        {'kind': 'steady_state', 'target': {'type': 'rpe', 'value': 4}},
+        {'kind': 'intervals', 'target': {'type': 'rpe', 'on': 9, 'off': 4}},
+        {'kind': 'free_ride', 'target': {'type': 'free'}},
+    ]),
+    ({'control_metric': 'hr', 'control_basis': 'lthr', 'power_basis': 'none',
+      'ftp_watts': None}, [
+        {'kind': 'ramp', 'target': {'type': 'pct_lthr',
+                                   'low': .68, 'high': .83}},
+    ]),
+    ({'control_metric': 'hr', 'control_basis': 'hrmax', 'power_basis': 'none',
+      'ftp_watts': None}, [
+        {'kind': 'intervals', 'target': {'type': 'pct_hrmax',
+                                         'on': .92, 'off': .60}},
+    ]),
+])
+def test_exact_target_union_accepts_each_branch(athlete, segments):
+    validate_canonical_model({
+        'model_version': MODEL_VERSION, 'athlete': athlete,
+        'sessions': [{'segments': segments}],
+    })

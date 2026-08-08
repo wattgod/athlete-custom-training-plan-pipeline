@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""PlanIR v0: a non-authoring aggregation of generated plan artifacts.
+"""PlanIR v0: a platform-neutral projection of the canonical session model.
 
-G0 intentionally reads the package the pipeline has already produced.  It is
-not an input to ZWO, guide, or fueling generation yet; later tickets migrate
-those serializers to project this object instead.
+Production reads ``canonical_training_model.json`` and never re-derives session
+targets from published ZWOs. The historical artifact-reflection branch remains
+available only for incomplete pre-Phase-3 packages and compatibility fixtures.
 """
 
 from __future__ import annotations
@@ -259,7 +259,10 @@ def _race_from_artifacts(profile: Dict[str, Any], fueling: Dict[str, Any], plan_
 
 
 def _segment_from_dict(segment: Dict[str, Any]) -> Segment:
-    return Segment(**segment)
+    return Segment(**{
+        key: value for key, value in segment.items()
+        if key in Segment.__dataclass_fields__
+    })
 
 
 # =============================================================================

@@ -39,7 +39,8 @@ def _canon_segments(segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     Any real value difference — power, seconds, kind, repeat — still mismatches.
     """
     return [
-        {k: v for k, v in (seg or {}).items() if v is not None and k != 'target'}
+        {k: v for k, v in (seg or {}).items()
+         if v is not None and k not in {'target', 'zwo'}}
         for seg in segments
     ]
 

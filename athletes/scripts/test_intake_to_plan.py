@@ -1117,7 +1117,7 @@ class TestEdgeCases:
 
     def test_ftp_with_trailing_text(self):
         result = parse_watts('315 watts estimated')
-        assert result == 315
+        assert result is None
 
     def test_race_name_with_year(self):
         # "Unbound 200 2026" should still match something
@@ -1140,10 +1140,7 @@ class TestEdgeCases:
         validate_profile_sanity(profile)  # no error
 
     def test_negative_ftp(self):
-        # parse_watts uses \d+ which only matches digits (no minus sign)
-        result = parse_watts('-200')
-        # \d+ matches "200" from "-200"
-        assert result == 200
+        assert parse_watts('-200') is None
 
     def test_height_just_feet_no_inches(self):
         result = height_to_cm("6'")
@@ -2166,6 +2163,21 @@ class TestEdgeCasesSilentFailures:
     def test_parse_ftp_just_number(self):
         """_parse_ftp_with_unknown_handling returns watts for '250'."""
         assert _parse_ftp_with_unknown_handling('250') == 250
+
+    @pytest.mark.parametrize('raw', ['0', '-200', '250 maybe', '999'])
+    def test_paid_order_invalid_numeric_ftp_degrades_to_confirmation(self, raw):
+        """Recoverable FTP edge cases never kill or fabricate a paid order."""
+        parsed = self._make_parsed(ftp=raw, weight='75 kg', sex='male', age=30)
+        validate_parsed_intake(parsed)
+        profile = build_profile(parsed)
+        validate_profile_sanity(profile)
+        fitness = profile['fitness_markers']
+        assert fitness['ftp_watts'] is None
+        assert fitness['power_basis'] == 'none'
+        assert fitness['w_kg'] is None
+        _, confirmations = assemble_intake_review_items(profile)
+        assert [item['id'] for item in confirmations] == [
+            'POWER_BASIS_NONE_CONFIRM']
 
     def test_ftp_unknown_never_estimates_from_weight(self):
         """Phase 3 A1.2 keeps FTP null rather than fabricating watts."""

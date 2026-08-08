@@ -142,6 +142,43 @@ class TestZoneClassification:
         assert canonical_if == pytest.approx(parse_zwo(zwo, 250)['intensity_factor'], abs=.005)
         assert _if_to_zone(canonical_if) == 'Z3'
 
+    @pytest.mark.parametrize('target', [
+        {'type': 'pct_lthr', 'low': .68, 'high': .83},
+        {'type': 'pct_hrmax', 'low': .60, 'high': .75},
+        {'type': 'rpe', 'value': 4},
+    ])
+    def test_metric_specific_endurance_targets_remain_z2(self, target):
+        segments = [{'kind': 'steady_state', 'seconds': 3600, 'target': target}]
+        assert _if_to_zone(_canonical_intensity_factor(segments)) == 'Z2'
+
+    def test_lthr_ramp_uses_metric_specific_inverse_mapping(self):
+        segments = [{'kind': 'ramp', 'seconds': 900,
+                     'target': {'type': 'pct_lthr', 'low': .68, 'high': .83}}]
+        assert _canonical_intensity_factor(segments) == pytest.approx(.65)
+        assert _if_to_zone(_canonical_intensity_factor(segments)) == 'Z2'
+
+    @pytest.mark.parametrize('target_type,on,off', [
+        ('power_pct_ftp', 1.20, .55),
+        ('pct_lthr', 1.12, .68),
+        ('pct_hrmax', .98, .60),
+        ('rpe', 9, 4),
+    ])
+    def test_intervals_normalize_each_metric_before_weighting(
+            self, target_type, on, off):
+        segments = [{'kind': 'intervals', 'seconds': 600, 'repeat': 10,
+                     'on_seconds': 30, 'off_seconds': 30,
+                     'target': {'type': target_type, 'on': on, 'off': off}}]
+        effort = _canonical_intensity_factor(segments)
+        assert _if_to_zone(effort) == 'Z5'
+
+    def test_free_ride_uses_unprescribed_duration_policy(self):
+        short = [{'kind': 'free_ride', 'seconds': 3600,
+                  'target': {'type': 'free'}}]
+        long = [{'kind': 'free_ride', 'seconds': 7200,
+                 'target': {'type': 'free'}}]
+        assert _canonical_intensity_factor(short) == pytest.approx(.55)
+        assert _canonical_intensity_factor(long) == pytest.approx(.65)
+
 
 # ===========================================================================
 # Preview Data Assembly
