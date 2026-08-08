@@ -110,6 +110,9 @@ def test_athlete_m_phase3_golden(monkeypatch, tmp_path):
     assert labels == expected["fueling_week_labels"]
     assert fueling["fueling_basis"]["power_used"] is False
     assert not any("watt" in key.lower() for key in fueling["prescription"]["inputs"])
+    assert not any(key in {"work_rate", "kilojoules", "kj"}
+                   for key in map(str.lower, fueling["prescription"]["inputs"]))
+    assert not re.search(r"\b\d+(?:\.\d+)?\s*kJ\b", json.dumps(fueling), re.I)
     assert not list((source / "workouts").glob("*.zwo"))
     contract = json.loads((source / "apply_contract.json").read_text())
     assert contract["contract_version"] == "apply_contract/v1"
