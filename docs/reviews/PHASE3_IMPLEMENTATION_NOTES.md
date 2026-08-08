@@ -179,6 +179,122 @@ JS/browser driver.
 5. `42cb466` — assert null-power fueling never fabricates work rate or kJ.
 6. This notes file is committed last. No push was attempted.
 
+## Roadie order-acceptance regression disposition (2026-08-08)
+
+### Zone distribution — measurement regression, no plan-content change
+
+- Diagnosis was performed against the Phase 2 merge parent (`d8cb3e1^2`), not
+  inferred from the failing percentages. The Phase 2 roadie acceptance subset
+  passed (**20 passed, 4 environment skips**), and recursive comparison plus
+  per-file SHA-256 comparison showed every Phase 2 and Phase 3 roadie ZWO was
+  byte-identical for both `acc-roadiefondo` and `acc-roadieclimber`. No golden
+  plan content or workout serializer changed.
+- The regression was introduced when the Phase 3 preview projection replaced
+  ZWO-derived aggregate intensity with the maximum target found anywhere in a
+  canonical session. A 40/20 interval therefore classified its warm-up,
+  recoveries, and cooldown as VO2 time. That produced the false 49% and 39%
+  easy-time results even though the executable plans were unchanged.
+- Disposition: preview zone accounting consumes the canonical segment
+  durations and typed targets to calculate one normalized session intensity,
+  using fourth-power duration weighting for work and recovery. The session is
+  then classified once and its actual duration contributes to that zone. This
+  restores the Phase 2 check's calibrated unit—duration-weighted hard/easy
+  **session emphasis**—without returning to Phase 3's erroneous maximum-target
+  shortcut. It follows
+  `SPEC_TRUSTWORTHY_FULFILMENT.md` **A1.1**, which requires preview to be a
+  projection of the metric-neutral canonical model and gives each segment one
+  typed target. The target and PASS/WARN/FAIL thresholds were not changed or
+  weakened.
+- Repaired results under the final, single definition: fondo **84% easy
+  session time (2269/2695 min), WARN**; hill climb **83% (2602/3123 min),
+  WARN**. Both remain visible coach signals and no longer fail delivery on
+  maximum-target classification.
+
+### 40/20 PlanIR-to-ZWO mismatch — incomplete canonical projection
+
+- Diagnosis: the canonical model correctly held interval `on`/`off` targets,
+  repeat count, and work/recovery durations. Its PlanIR compatibility
+  projection populated `on_power` and `off_power` but left `power_low` and
+  `power_high` null. The persisted ZWO parser truthfully exposes both pairs:
+  `on_power`/`off_power` plus their derived min/max bounds. Consequently the
+  G5 validator compared an incomplete PlanIR projection with the executable
+  ZWO and raised the named `PACKAGE_ZWO_*_SEGMENTS` findings. Null fields on
+  non-interval segments were display noise and were not suppressed to fix the
+  mismatch.
+- Disposition: the power PlanIR projection now derives interval `power_low`
+  and `power_high` from the canonical on/off targets while preserving the
+  original fields. This makes PlanIR describe the on-disk workout exactly, as
+  required by `SPEC_TRUSTWORTHY_FULFILMENT.md` **A1.1** (PlanIR and ZWO are
+  projections of one canonical model) and `PLAN_TRUTH_SPEC.md` **G5** (session
+  structure must compare exactly against the executable ZWO). The validator
+  was not silenced or weakened. Both roadie packages now return zero findings.
+
+### Regression verification
+
+- Focused preview/canonical/package tests: **73 passed, 1 expected warning**.
+- Phase 3 golden/replay group: **25 passed, 1 sandbox socket skip**.
+- Full order-acceptance file after the gravel closure: **42 passed, 2 expected
+  non-roadie skips, 0 failed**. A temporary sandbox-only Chromium launcher was
+  used for mandatory PDF rendering and removed immediately after the run;
+  production PDF configuration was restored unchanged.
+- Complete sandbox suite: **2,419 passed, 87 skipped, 21 warnings, 0 failed**.
+- `git diff --check` passed. No acceptance golden or expected plan-content file
+  was changed, and no push or external mutation was attempted.
+- Git commits could not be created in this managed worktree because Git could
+  not create `.git/worktrees/trustworthy-phase3/index.lock` (`Operation not
+  permitted`). Intended coherent boundaries are: (1) duration-weighted
+  canonical session-intensity preview accounting plus its roadie/gravel
+  regressions; (2) faithful PlanIR interval bounds plus the end-to-end
+  package-validator regression; (3) these diagnosis and verification notes.
+  No push was attempted.
+
+## Gravel-fullgym order-acceptance closure (2026-08-08)
+
+### Artifact identity and population diagnosis
+
+- The comparison reused the preserved Phase 2 checkout at
+  `/private/tmp/gg-phase2-acceptance.WnuTzO` and the Phase 3
+  `acc-gravelrider` package. Both packages contain **89 ZWOs**. Sorted
+  per-file SHA-256 manifests are identical: no filename, byte, workout
+  structure, or plan-content change occurred. The only Phase 3-only package
+  artifacts are the canonical model and apply contract; differences in common
+  non-ZWO artifacts are Phase 3 provenance/seal fields, generated timestamps,
+  and projections.
+- Strength was explicitly tested as the first suspected population change and
+  ruled out. Phase 2's ZWO-based preview included **300 strength minutes** in
+  the evaluated calendar population and classified all 300 as easy from the
+  strength ZWO's low normalized IF. Phase 3 included the same 300 minutes and
+  classified them the same way. The total denominator remained exactly
+  **5008.75 minutes**. Strength therefore did not cause the regression, and no
+  per-order or strength-specific filter was added.
+- The actual delta was entirely measurement semantics. Phase 2 assigned
+  **4228.75 easy / 780 hard minutes** by each ZWO's normalized session IF
+  (**84.43% easy, WARN**). Segment-literal accounting assigned **4411 easy /
+  597.75 hard minutes** (**88.07%, FAIL**) because recovery, warm-up, and
+  cooldown portions of hard sessions moved to the easy bucket. That 182.25
+  minute reclassification explains the failure without any plan change.
+
+### One zone-distribution definition
+
+- The check now has one definition for every order and control metric:
+  canonical typed segments → fourth-power duration-weighted session effort →
+  one session zone → the session's actual duration in that zone. This is
+  duration-weighted **session-zone time**, not literal physiological
+  segment-level time-in-zone; the preview label now says “easy session time”
+  to remove that ambiguity.
+- This is the truthful comparison for this check's existing target. The
+  methodology catalog describes a hard/easy split in terms of “hard days,”
+  and the generator/distribution regressions classify whole workout types.
+  Phase 2 calibrated the acceptance thresholds against normalized session IF.
+  Comparing that session-emphasis target with segment-literal minutes mixed
+  two different units. `SPEC_TRUSTWORTHY_FULFILMENT.md` **A1.1** is preserved:
+  the preview derives the session effort from all canonical typed segments,
+  rather than independently authoring or taking the maximum target. No target,
+  threshold, golden order, or expected plan content changed.
+- Final acceptance results are gravel-fullgym **84% (4229/5009, WARN)**,
+  masters **78% (2979/3796, PASS)**, roadie fondo **84% (2269/2695, WARN)**,
+  and roadie hill climb **83% (2602/3123, WARN)**.
+
 ## Remaining human gates
 
 - Run the socket suite outside the sandbox, including the existing fake TP
