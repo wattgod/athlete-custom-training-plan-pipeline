@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import plan_ir
 from canonical_training_model import build_canonical_model
 from plan_ir import build_plan_ir, project_tp_manifest
+from validate_plan_package import validate_plan_package
 
 
 CASES = json.loads(
@@ -86,3 +87,37 @@ def test_truthful_control_fixture_projects_without_watts(tmp_path, monkeypatch, 
     serialized = json.dumps({"canonical": model, "plan_ir": ir.to_dict(), "tp": tp})
     assert not re.search(r"\b\d+(?:\.\d+)?\s*(?:W|watts?)\b", serialized, re.I)
     assert not re.search(r"\b\d+(?:\.\d+)?\s*%\s*FTP\b", serialized, re.I)
+
+
+def test_power_interval_plan_ir_matches_zwo_bounds(tmp_path, monkeypatch):
+    """PlanIR's power compatibility fields describe the executable ZWO exactly."""
+    case = {
+        "id": "power-interval-fixture",
+        "fitness_markers": {
+            "ftp_watts": 250,
+            "power_basis": "measured",
+            "requested_metric": "power",
+        },
+    }
+    athletes, root, plan_dates = _write_fixture(tmp_path, case)
+    authored = root / "workouts" / "W01_Fri_Aug14_FTP_TEST.zwo"
+    zwo = root / "workouts" / "W01_Fri_Aug14_VO2max_4020_1.zwo"
+    authored.rename(zwo)
+    zwo.write_text(
+        "<?xml version='1.0'?><workout_file><name>Power Intervals</name>"
+        "<description>MAIN SET:\n- 6x0:40 @ 120% FTP, 0:20 recovery @ 50% FTP"
+        "</description><workout>"
+        "<IntervalsT Repeat='6' OnDuration='40' OnPower='1.2' "
+        "OffDuration='20' OffPower='0.5'/>"
+        "</workout></workout_file>"
+    )
+    monkeypatch.setattr(plan_ir, "ATHLETES_DIR", athletes)
+
+    build_canonical_model(case["id"], root, plan_dates=plan_dates)
+    interval = build_plan_ir(case["id"]).weeks[0].sessions[0].segments[0]
+
+    assert interval.on_power == 1.2
+    assert interval.off_power == .5
+    assert interval.power_low == .5
+    assert interval.power_high == 1.2
+    assert validate_plan_package(root) == []

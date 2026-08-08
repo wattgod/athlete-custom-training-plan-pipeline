@@ -577,12 +577,18 @@ def _plan_ir_from_canonical(
             target = segment.get("target") or {}
             legacy_power = {}
             if target.get("type") == "power_pct_ftp":
+                on_power = target.get("on")
+                off_power = target.get("off")
                 legacy_power = {
-                    "power_low": target.get("low"),
-                    "power_high": target.get("high"),
+                    "power_low": (min(on_power, off_power)
+                                  if on_power is not None and off_power is not None
+                                  else target.get("low")),
+                    "power_high": (max(on_power, off_power)
+                                   if on_power is not None and off_power is not None
+                                   else target.get("high")),
                     "power_target": target.get("value"),
-                    "on_power": target.get("on"),
-                    "off_power": target.get("off"),
+                    "on_power": on_power,
+                    "off_power": off_power,
                 }
             segments.append(Segment(
                 name=str(segment.get("name") or segment.get("kind") or "segment"),
