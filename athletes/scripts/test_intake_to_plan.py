@@ -934,14 +934,17 @@ class TestBlankFtpIsNotRequired:
         # was raising IntakeValidationError("FTP is required in Current Fitness")
         itp.validate_parsed_intake(parsed)
 
-    def test_blank_ftp_is_estimated_from_weight(self):
+    def test_blank_ftp_uses_truthful_non_power_control(self):
+        """Phase 3 A1.2 deletes FTP estimation; null FTP remains buildable."""
         import intake_to_plan as itp
         parsed = itp.parse_intake_markdown(self._MD)
         prof = itp.build_profile(parsed)
         fm = prof.get('fitness_markers', {})
-        assert fm.get('ftp_watts') and fm['ftp_watts'] > 0
-        assert fm.get('ftp_estimated') is True
-        itp.validate_profile_sanity(prof)  # estimated FTP must be in bounds
+        assert fm.get('ftp_watts') is None
+        assert fm.get('ftp_estimated') is False
+        assert fm.get('power_basis') == 'none'
+        assert fm.get('control_metric') in {'hr', 'rpe'}
+        itp.validate_profile_sanity(prof)
 
 
 class TestBuildProfileTypes:
@@ -2164,43 +2167,39 @@ class TestEdgeCasesSilentFailures:
         """_parse_ftp_with_unknown_handling returns watts for '250'."""
         assert _parse_ftp_with_unknown_handling('250') == 250
 
-    def test_ftp_unknown_estimates_from_weight(self):
-        """FTP='unknown' should estimate FTP from weight, not crash."""
+    def test_ftp_unknown_never_estimates_from_weight(self):
+        """Phase 3 A1.2 keeps FTP null rather than fabricating watts."""
         parsed = self._make_parsed(ftp='unknown', weight='75 kg', sex='male', age=30)
         profile = build_profile(parsed)
         ftp = profile['fitness_markers']['ftp_watts']
-        assert ftp is not None
-        assert ftp > 0
-        assert profile['fitness_markers']['ftp_estimated'] is True
+        assert ftp is None
+        assert profile['fitness_markers']['ftp_estimated'] is False
+        assert profile['fitness_markers']['power_basis'] == 'none'
 
-    def test_ftp_unknown_female_lower_estimate(self):
-        """Female FTP estimate should use 2.2 W/kg (lower than male 2.5)."""
+    def test_ftp_unknown_sex_does_not_create_estimate(self):
         male_parsed = self._make_parsed(ftp='unknown', weight='70 kg', sex='male', age=30)
         female_parsed = self._make_parsed(ftp='unknown', weight='70 kg', sex='female', age=30)
         male_profile = build_profile(male_parsed)
         female_profile = build_profile(female_parsed)
-        assert male_profile['fitness_markers']['ftp_watts'] > female_profile['fitness_markers']['ftp_watts']
+        assert male_profile['fitness_markers']['ftp_watts'] is None
+        assert female_profile['fitness_markers']['ftp_watts'] is None
 
-    def test_ftp_unknown_age_adjusted(self):
-        """Older athletes should get lower FTP estimates."""
+    def test_ftp_unknown_age_does_not_create_estimate(self):
         young_parsed = self._make_parsed(ftp='unknown', weight='75 kg', age=30)
         old_parsed = self._make_parsed(ftp='unknown', weight='75 kg', age=60)
         young_profile = build_profile(young_parsed)
         old_profile = build_profile(old_parsed)
-        assert young_profile['fitness_markers']['ftp_watts'] > old_profile['fitness_markers']['ftp_watts']
+        assert young_profile['fitness_markers']['ftp_watts'] is None
+        assert old_profile['fitness_markers']['ftp_watts'] is None
 
-    def test_ftp_unknown_wkg_calculated(self):
-        """W/kg should be calculated from estimated FTP."""
+    def test_ftp_unknown_wkg_remains_unknown(self):
         parsed = self._make_parsed(ftp='unknown', weight='75 kg')
         profile = build_profile(parsed)
-        ftp = profile['fitness_markers']['ftp_watts']
-        wkg = profile['fitness_markers']['w_kg']
-        assert wkg is not None
-        expected_wkg = round(ftp / 75.0, 2)
-        assert abs(wkg - expected_wkg) < 0.01
+        assert profile['fitness_markers']['ftp_watts'] is None
+        assert profile['fitness_markers']['w_kg'] is None
 
     def test_ftp_unknown_passes_sanity(self):
-        """Estimated FTP should pass sanity validation bounds."""
+        """Null FTP should pass sanity validation in metric-neutral mode."""
         parsed = self._make_parsed(ftp='unknown', weight='75 kg')
         profile = build_profile(parsed)
         validate_profile_sanity(profile)  # should not raise
@@ -2216,11 +2215,10 @@ class TestEdgeCasesSilentFailures:
         """'no power meter' FTP should produce a buildable profile."""
         parsed = self._make_parsed(ftp='no power meter', weight='80 kg', age=35)
         profile = build_profile(parsed)
-        assert profile['fitness_markers']['ftp_watts'] > 0
-        assert profile['fitness_markers']['ftp_estimated'] is True
-        # W/kg should be reasonable
-        wkg = profile['fitness_markers']['w_kg']
-        assert 1.0 <= wkg <= 5.0
+        assert profile['fitness_markers']['ftp_watts'] is None
+        assert profile['fitness_markers']['ftp_estimated'] is False
+        assert profile['fitness_markers']['w_kg'] is None
+        assert profile['fitness_markers']['power_basis'] == 'none'
 
     # -------------------------------------------------------------------
     # 4. High-volume athlete (20 hours/week)

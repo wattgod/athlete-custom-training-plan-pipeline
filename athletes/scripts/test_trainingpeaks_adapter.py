@@ -2,6 +2,7 @@
 import json
 import sys
 import threading
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -19,7 +20,8 @@ from fulfillment_state import (APPROVED, finalize_transitional_release, load,
 
 class FakeTP:
     def __init__(self, *, fail_once_path=None, mismatch=False):
-        self.items = {'workouts': [], 'calendarNote': [], 'attachments': [], 'entitlements': []}
+        self.items = {'workouts': [], 'calendarNote': [], 'attachments': [],
+                      'mentalTasks': [], 'entitlements': []}
         self.calls = []
         self.fail_once_path, self.mismatch = fail_once_path, mismatch
         owner = self
@@ -75,3 +77,77 @@ def test_phase1_adapter_refuses_before_any_remote_write(tmp_path, manifest, monk
         adapter.apply('7', manifest)
 
     assert remote_calls == []
+
+
+def test_phase3_contract_has_fake_server_effect_parity_with_legacy_manifest(tmp_path):
+    """Socket parity gate; skipped only where the sandbox forbids loopback."""
+    from apply_contract import build_contract
+    from fulfillment_manifest import build_manifest_from_plan_ir
+
+    (tmp_path / 'guide.html').write_text('guide')
+    ir = {
+        'athlete': {'id': 'fixture'},
+        'race_snapshot': {'name': 'Fixture Race', 'date': '2026-09-01'},
+        'weeks': [{'number': 1, 'sessions': [{
+            'date': '2026-08-14', 'title': 'Field Session', 'description': 'HR target',
+            'workout_type_value_id': 2, 'duration_s': 3600, 'tss_planned': 50,
+            'structure': {'primaryIntensityMetric': 'percentOfThresholdHr', 'structure': []},
+            'type': 'workout', 'sport': 'cycling', 'segments': [],
+        }]}],
+        'notes': [{'kind': 'mental_task', 'id': 'focus', 'date': '2026-08-14',
+                   'title': 'Focus', 'text': 'Breathe'}],
+        'attachments': [{'id': 'guide', 'kind': 'guide', 'path': 'guide.html'}],
+        'entitlements': [{'kind': 'course', 'product_id': 'course:fixture'}],
+    }
+    legacy = build_manifest_from_plan_ir(ir, tmp_path)
+    contract = build_contract(
+        ir, order_id='cs_parity', tp_athlete_id='fake-1', generation_revision=1,
+        canonical_model={'model_version': 'canonical_training_model/v1'},
+        review_items=[], guide_sources={}, athlete_dir=tmp_path)
+    old, new = FakeTP(), FakeTP()
+
+    def post(server, bucket, item):
+        request = urllib.request.Request(
+            server.url + '/' + bucket,
+            data=json.dumps(item).encode(),
+            headers={'Content-Type': 'application/json'}, method='POST')
+        with urllib.request.urlopen(request, timeout=2) as response:
+            assert response.status == 200
+
+    try:
+        for item in legacy['workouts']:
+            post(old, 'workouts', item)
+        for item in legacy['native_notes']:
+            post(old, 'calendarNote', item)
+        for item in legacy['attachments']:
+            post(old, 'attachments', item)
+        for item in legacy['mental_training_tasks']:
+            post(old, 'mentalTasks', item)
+        post(old, 'entitlements', legacy['course_entitlement'])
+
+        buckets = {'workout_upsert': 'workouts', 'calendar_note_upsert': 'calendarNote',
+                   'attachment_upsert': 'attachments', 'mental_task_upsert': 'mentalTasks',
+                   'course_entitlement_grant': 'entitlements'}
+        for operation in contract['operations']:
+            if operation['disposition'] not in {'create', 'update'}:
+                continue
+            post(new, buckets[operation['kind']], {
+                'external_id': operation['remote_marker'] or operation['logical_id'],
+                **operation['payload'],
+            })
+
+        assert {bucket: len(items) for bucket, items in old.items.items()} == {
+            bucket: len(items) for bucket, items in new.items.items()}
+        assert {item['date'] for item in old.items['workouts']} == {
+            item['date'] for item in new.items['workouts']}
+        assert [item['title'] for item in old.items['calendarNote']] == [
+            item['title'] for item in new.items['calendarNote']]
+        assert [Path(item['path']).name for item in old.items['attachments']] == [
+            item['filename'] for item in new.items['attachments']]
+        assert [item.get('text') for item in old.items['mentalTasks']] == [
+            item.get('body') for item in new.items['mentalTasks']]
+        assert new.items['entitlements'][0]['product_id'] == 'course:fixture'
+        assert legacy['calendar_dates'] == sorted({
+            item['date'] for item in new.items['workouts']})
+    finally:
+        old.close(); new.close()
