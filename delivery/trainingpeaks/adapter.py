@@ -21,6 +21,60 @@ class TrainingPeaksAdapterDisabled(RuntimeError):
     """The pre-worker adapter has no order/revision/seal authorization."""
 
 
+def legacy_apply_requests(athlete_id: str, manifest: Dict[str, Any]) -> list[Dict[str, Any]]:
+    """Reproduce the historical adapter's exact supported POST requests.
+
+    This is a pure migration-parity seam: it performs no I/O and grants no
+    execution authority.  ``TrainingPeaksAdapter.apply`` still raises before
+    it can consume these records.
+    """
+    requests: list[Dict[str, Any]] = []
+    for index, workout in enumerate(manifest.get('workouts', []), 1):
+        external_id = workout.get('external_id') or f"workout:{workout.get('date')}:{workout.get('title')}"
+        payload = {
+            'external_id': external_id, 'title': workout['title'], 'date': workout.get('date'),
+            'duration': workout.get('duration_s'),
+            'sportType': int(workout.get('workout_type', 8 if workout.get('sport') == 'mtb' else 1)),
+            'segments': workout.get('segments', []),
+        }
+        requests.append({
+            'key': f"workout:{workout.get('external_id') or str(index)}",
+            'kind': 'workout_upsert',
+            'logical_key': str(workout.get('logical_key') or external_id),
+            'path': f'/fitness/v6/athletes/{athlete_id}/workouts',
+            'payload': payload,
+        })
+    for index, note in enumerate(manifest.get('native_notes', []), 1):
+        external_id = note.get('external_id') or f"note:{note.get('date')}:{note.get('title')}"
+        requests.append({
+            'key': f"note:{note.get('external_id') or str(index)}",
+            'kind': 'calendar_note_upsert',
+            'logical_key': str(note.get('logical_key') or external_id),
+            'path': f'/fitness/v1/athletes/{athlete_id}/calendarNote',
+            'payload': {'external_id': external_id, **note},
+        })
+    for index, attachment in enumerate(manifest.get('attachments', []), 1):
+        external_id = attachment.get('external_id') or f"attachment:{attachment.get('id') or attachment.get('path')}"
+        requests.append({
+            'key': f"attachment:{attachment.get('external_id') or str(index)}",
+            'kind': 'attachment_upsert',
+            'logical_key': str(attachment.get('logical_key') or external_id),
+            'path': f'/fitness/v1/athletes/{athlete_id}/attachments',
+            'payload': {'external_id': external_id, **attachment},
+        })
+    entitlement = manifest.get('course_entitlement')
+    if entitlement:
+        external_id = entitlement.get('external_id') or f"entitlement:{entitlement.get('race')}:{entitlement.get('race_date')}"
+        requests.append({
+            'key': 'entitlement:course',
+            'kind': 'course_entitlement_grant',
+            'logical_key': str(entitlement.get('logical_key') or entitlement.get('product_id') or external_id),
+            'path': f'/fitness/v1/athletes/{athlete_id}/entitlements',
+            'payload': {'external_id': external_id, **entitlement},
+        })
+    return requests
+
+
 class TrainingPeaksAdapter:
     api_version = 'tp-undocumented-v1'
 
@@ -78,32 +132,9 @@ class TrainingPeaksAdapter:
         # Historical implementation retained temporarily for migration parity
         # work.  It is intentionally unreachable while Phase 1 is active.
         created = 0
-        for index, workout in enumerate(manifest.get('workouts', []), 1):
-            external_id = workout.get('external_id') or f"workout:{workout.get('date')}:{workout.get('title')}"
-            payload = {
-                'external_id': external_id, 'title': workout['title'], 'date': workout.get('date'),
-                'duration': workout.get('duration_s'),
-                'sportType': int(workout.get('workout_type', 8 if workout.get('sport') == 'mtb' else 1)),
-                'segments': workout.get('segments', []),
-            }
-            created += self._upsert(self._id('workout', workout, str(index)),
-                                    f'/fitness/v6/athletes/{athlete_id}/workouts', payload)
-        for index, note in enumerate(manifest.get('native_notes', []), 1):
-            external_id = note.get('external_id') or f"note:{note.get('date')}:{note.get('title')}"
-            created += self._upsert(self._id('note', note, str(index)),
-                                    f'/fitness/v1/athletes/{athlete_id}/calendarNote',
-                                    {'external_id': external_id, **note})
-        for index, attachment in enumerate(manifest.get('attachments', []), 1):
-            external_id = attachment.get('external_id') or f"attachment:{attachment.get('id') or attachment.get('path')}"
-            created += self._upsert(self._id('attachment', attachment, str(index)),
-                                    f'/fitness/v1/athletes/{athlete_id}/attachments',
-                                    {'external_id': external_id, **attachment})
-        entitlement = manifest.get('course_entitlement')
-        if entitlement:
-            external_id = entitlement.get('external_id') or f"entitlement:{entitlement.get('race')}:{entitlement.get('race_date')}"
-            created += self._upsert('entitlement:course',
-                                    f'/fitness/v1/athletes/{athlete_id}/entitlements',
-                                    {'external_id': external_id, **entitlement})
+        for request in legacy_apply_requests(athlete_id, manifest):
+            created += self._upsert(
+                request['key'], request['path'], request['payload'])
         return {'status': 'dry_run' if self.dry_run else 'applied',
                 'created': created, 'operations': len(self.done)}
 

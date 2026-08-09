@@ -79,11 +79,31 @@ def test_phase1_adapter_refuses_before_any_remote_write(tmp_path, manifest, monk
     assert remote_calls == []
 
 
+def test_legacy_request_extraction_matches_unreachable_adapter_shape(manifest):
+    from delivery.trainingpeaks.adapter import legacy_apply_requests
+
+    requests = legacy_apply_requests('7', manifest)
+    workout = next(item for item in requests if item['kind'] == 'workout_upsert')
+    assert workout['path'] == '/fitness/v6/athletes/7/workouts'
+    assert set(workout['payload']) == {
+        'external_id', 'title', 'date', 'duration', 'sportType', 'segments'}
+    assert workout['payload'] == {
+        'external_id': 'w1', 'title': 'MTB skills', 'date': '2026-01-12',
+        'duration': 3600, 'sportType': 8, 'segments': [],
+    }
+    assert {item['kind'] for item in requests} == {
+        'workout_upsert', 'calendar_note_upsert', 'attachment_upsert',
+        'course_entitlement_grant',
+    }
+    assert all(item['kind'] != 'mental_task_upsert' for item in requests)
+
+
 def test_phase3_contract_has_fake_server_effect_parity_with_legacy_manifest(tmp_path):
     """Socket parity gate; skipped only where the sandbox forbids loopback."""
     from apply_contract import build_contract
     from fulfillment_manifest import build_manifest_from_plan_ir
-    from fake_remote_parity import FakeRemoteModel, legacy_desired_state
+    from fake_remote_parity import LEGACY_SUPPORTED_KINDS, FakeRemoteModel
+    from delivery.trainingpeaks.adapter import legacy_apply_requests
 
     (tmp_path / 'guide.html').write_text('guide')
     ir = {
@@ -119,15 +139,18 @@ def test_phase3_contract_has_fake_server_effect_parity_with_legacy_manifest(tmp_
         buckets = {'workout_upsert': 'workouts', 'calendar_note_upsert': 'calendarNote',
                    'attachment_upsert': 'attachments', 'mental_task_upsert': 'mentalTasks',
                    'course_entitlement_grant': 'entitlements'}
-        legacy_state = legacy_desired_state(legacy)
+        legacy_model = FakeRemoteModel()
+        legacy_model.apply_legacy_requests(legacy_apply_requests('fake-1', legacy))
         contract_model = FakeRemoteModel()
         contract_model.apply_contract(contract)
-        assert legacy_state == contract_model.snapshot()
+        legacy_state = legacy_model.normalized_snapshot(kinds=LEGACY_SUPPORTED_KINDS)
+        contract_state = contract_model.normalized_snapshot(kinds=LEGACY_SUPPORTED_KINDS)
+        assert legacy_state == contract_state
 
         for key, record in sorted(legacy_state.items()):
             post(old, buckets[record['kind']], {
                 'external_id': key, **record['payload']})
-        for key, record in sorted(contract_model.snapshot().items()):
+        for key, record in sorted(contract_state.items()):
             post(new, buckets[record['kind']], {
                 'external_id': key, **record['payload']})
 

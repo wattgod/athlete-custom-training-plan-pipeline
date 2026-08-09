@@ -8,12 +8,17 @@ from pathlib import Path
 
 import pytest
 
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from apply_contract import (ApplyContractError, assert_checked_schema_current,
                             build_contract, digest_payload, validate_contract)
 from fulfillment_manifest import build_manifest_from_plan_ir
-from fake_remote_parity import FakeRemoteModel, legacy_desired_state
+from fake_remote_parity import (INTENTIONAL_D0_DIFFERENCES,
+                                LEGACY_SUPPORTED_KINDS, FakeRemoteModel,
+                                classify_migration_differences)
+from delivery.trainingpeaks.adapter import legacy_apply_requests
 
 
 def _ir():
@@ -87,6 +92,26 @@ def test_per_kind_logical_key_grammar_rejects_nested_parent_id(tmp_path):
     attachment["op_id"] = attachment["logical_id"] + "@r1"
     attachment["remote_marker"] = attachment["logical_id"]
     with pytest.raises(ApplyContractError, match="logical key grammar"):
+        validate_contract(contract)
+
+
+@pytest.mark.parametrize("tamper", ["filename", "parent", "missing_parent"])
+def test_loaded_attachment_identity_is_bound_to_payload_and_parent(tmp_path, tamper):
+    contract = _contract(tmp_path)
+    attachment = next(op for op in contract["operations"]
+                      if op["kind"] == "attachment_upsert")
+    if tamper == "filename":
+        attachment["payload"]["filename"] = "different.html"
+    elif tamper == "parent":
+        attachment["payload"]["parent_logical_id"] = (
+            "cs_phase3:workout_upsert:2099-01-01#1")
+    else:
+        contract["operations"] = [
+            op for op in contract["operations"]
+            if op["kind"] != "workout_upsert"]
+    if tamper != "missing_parent":
+        attachment["expected_digest"] = digest_payload(attachment["payload"])
+    with pytest.raises(ApplyContractError, match="attachment"):
         validate_contract(contract)
 
 
@@ -187,6 +212,135 @@ def test_inventory_rejects_inline_payload_and_requires_snapshot_reader(tmp_path)
                   payload_snapshot_reader=lambda _: old)
 
 
+def test_dated_inventory_requires_remote_id_and_snapshot_even_for_keep(tmp_path):
+    first = _contract(tmp_path)
+    workout = next(op for op in first["operations"] if op["kind"] == "workout_upsert")
+    base = {
+        "kind": workout["kind"], "remote_id": "w-1",
+        "desired_digest": workout["expected_digest"],
+        "payload_snapshot_ref": "snapshots/w-1.json",
+        "last_op_id": workout["op_id"],
+    }
+    for field in ("remote_id", "payload_snapshot_ref"):
+        record = copy.deepcopy(base)
+        record[field] = None
+        with pytest.raises(ApplyContractError, match="dated effective inventory"):
+            _contract(
+                tmp_path, generation_revision=2,
+                effective_remote_inventory={workout["logical_id"]: record},
+                payload_snapshot_reader=lambda _: workout["payload"],
+            )
+
+
+def test_positional_inventory_rejects_remote_id_and_adopted_keep_can_update(tmp_path):
+    name = "lthr"
+    old_payload = {"metric": "lthr", "after_value": 170, "unit": "bpm"}
+    first = _contract(
+        tmp_path,
+        singleton_desires={name: {"kind": "threshold_update", "payload": old_payload}},
+        inspection={"singletons": {name: old_payload}},
+    )
+    kept = next(op for op in first["operations"] if op["kind"] == "threshold_update")
+    adopted = {
+        "kind": kept["kind"], "remote_id": None,
+        "desired_digest": kept["expected_digest"],
+        "payload_snapshot_ref": None, "last_op_id": kept["op_id"],
+    }
+    invalid = copy.deepcopy(adopted)
+    invalid["remote_id"] = "not-positional"
+    with pytest.raises(ApplyContractError, match="positional effective inventory"):
+        _contract(
+            tmp_path, generation_revision=2,
+            singleton_desires={name: {"kind": "threshold_update", "payload": old_payload}},
+            inspection={"singletons": {name: old_payload}},
+            effective_remote_inventory={kept["logical_id"]: invalid},
+        )
+
+    new_payload = {"metric": "lthr", "after_value": 174, "unit": "bpm"}
+    changed = _contract(
+        tmp_path, generation_revision=2,
+        singleton_desires={name: {"kind": "threshold_update", "payload": new_payload}},
+        inspection={"singletons": {name: old_payload}},
+        effective_remote_inventory={kept["logical_id"]: adopted},
+    )
+    updated = next(op for op in changed["operations"]
+                   if op["kind"] == "threshold_update")
+    assert updated["disposition"] == "update"
+    assert updated["before_image"] == old_payload
+    assert updated["predecessor"] == {"op_id": kept["op_id"], "remote_id": None}
+
+
+def test_written_singleton_snapshot_branch_supports_keep_then_update(tmp_path):
+    name = "lthr"
+    before = {"metric": "lthr", "after_value": 165, "unit": "bpm"}
+    desired = {"metric": "lthr", "after_value": 171, "unit": "bpm"}
+    first = _contract(
+        tmp_path,
+        singleton_desires={name: {"kind": "threshold_update", "payload": desired}},
+        inspection={"singletons": {name: before}},
+    )
+    written = next(op for op in first["operations"] if op["kind"] == "threshold_update")
+    assert written["disposition"] == "update"
+    inventory = {written["logical_id"]: {
+        "kind": written["kind"], "remote_id": None,
+        "desired_digest": written["expected_digest"],
+        "payload_snapshot_ref": "snapshots/lthr-r1.json",
+        "last_op_id": written["op_id"],
+    }}
+    second = _contract(
+        tmp_path, generation_revision=2,
+        singleton_desires={name: {"kind": "threshold_update", "payload": desired}},
+        inspection={"singletons": {name: desired}},
+        effective_remote_inventory=inventory,
+    )
+    kept = next(op for op in second["operations"] if op["kind"] == "threshold_update")
+    assert kept["disposition"] == "keep"
+
+    changed = {"metric": "lthr", "after_value": 176, "unit": "bpm"}
+    inventory[written["logical_id"]]["last_op_id"] = kept["op_id"]
+    third = _contract(
+        tmp_path, generation_revision=3,
+        singleton_desires={name: {"kind": "threshold_update", "payload": changed}},
+        inspection={"singletons": {name: desired}},
+        effective_remote_inventory=inventory,
+    )
+    updated = next(op for op in third["operations"] if op["kind"] == "threshold_update")
+    assert updated["disposition"] == "update"
+    assert updated["before_image"] == desired
+
+
+def test_dated_snapshot_branch_supports_keep_then_update(tmp_path):
+    first = _contract(tmp_path)
+    workout = next(op for op in first["operations"] if op["kind"] == "workout_upsert")
+    inventory = {workout["logical_id"]: {
+        "kind": workout["kind"], "remote_id": "w-1",
+        "desired_digest": workout["expected_digest"],
+        "payload_snapshot_ref": "snapshots/w-r1.json",
+        "last_op_id": workout["op_id"],
+    }}
+    second = _contract(
+        tmp_path, generation_revision=2,
+        effective_remote_inventory=inventory,
+    )
+    kept = next(op for op in second["operations"] if op["kind"] == "workout_upsert")
+    assert kept["disposition"] == "keep"
+
+    changed_ir = _ir()
+    changed_ir["weeks"][0]["sessions"][0]["title"] = "Changed LTHR Field Test"
+    inventory[workout["logical_id"]]["last_op_id"] = kept["op_id"]
+    third = build_contract(
+        changed_ir, order_id="cs_phase3", tp_athlete_id="fake-42",
+        generation_revision=3,
+        canonical_model={"model_version": "canonical_training_model/v1"},
+        review_items=[], guide_sources={}, athlete_dir=tmp_path,
+        effective_remote_inventory=inventory,
+        payload_snapshot_reader=lambda _: workout["payload"],
+    )
+    updated = next(op for op in third["operations"] if op["kind"] == "workout_upsert")
+    assert updated["disposition"] == "update"
+    assert updated["prior_payload"] == workout["payload"]
+
+
 def test_fake_server_migration_parity_retains_every_legacy_operation_class(tmp_path):
     """The two offline projections express equivalent fake-server effects."""
     ir = _ir()
@@ -211,7 +365,7 @@ def test_fake_server_migration_parity_retains_every_legacy_operation_class(tmp_p
 
 
 def test_field_aware_remote_effect_parity_all_dispositions_and_kinds(tmp_path):
-    """Legacy desired-state and D0 diff land the same complete remote state."""
+    """Exact legacy creates match D0; unsupported supersession stays explicit."""
     (tmp_path / "guide.html").write_text("guide")
     first_ir = _ir()
     template = copy.deepcopy(first_ir["weeks"][0]["sessions"][0])
@@ -220,32 +374,26 @@ def test_field_aware_remote_effect_parity_all_dispositions_and_kinds(tmp_path):
     third_session = {**copy.deepcopy(template), "date": "2026-08-16",
                      "title": "Deleted Session"}
     first_ir["weeks"][0]["sessions"].extend([second_session, third_session])
-    singleton_desires = {
-        "lthr": {"kind": "threshold_update", "payload": {
-            "metric": "lthr", "after_value": 170, "unit": "bpm"}}
-    }
-    inspection = {
-        "singletons": {"lthr": singleton_desires["lthr"]["payload"]},
-        "entitlements": ["course:test-race"],
-    }
     first_legacy = build_manifest_from_plan_ir(first_ir, tmp_path)
     first_contract = build_contract(
         first_ir, order_id="cs_phase3", tp_athlete_id="fake-42",
         generation_revision=1,
         canonical_model={"model_version": "canonical_training_model/v1"},
-        review_items=[], guide_sources={}, athlete_dir=tmp_path,
-        inspection=inspection, singleton_desires=singleton_desires)
+        review_items=[], guide_sources={}, athlete_dir=tmp_path)
 
-    positional_seed = legacy_desired_state(
-        {"course_entitlement": first_legacy["course_entitlement"]},
-        singletons=singleton_desires)
     old_remote, new_remote = FakeRemoteModel(), FakeRemoteModel()
-    old_remote.seed(positional_seed)
-    new_remote.seed(positional_seed)
-    old_remote.reconcile_legacy(legacy_desired_state(
-        first_legacy, singletons=singleton_desires))
+    old_remote.apply_legacy_requests(legacy_apply_requests("fake-42", first_legacy))
     new_remote.apply_contract(first_contract)
-    assert old_remote.snapshot() == new_remote.snapshot()
+    assert old_remote.normalized_snapshot(kinds=LEGACY_SUPPORTED_KINDS) == (
+        new_remote.normalized_snapshot(kinds=LEGACY_SUPPORTED_KINDS))
+
+    raw_workout = next(
+        record for record in old_remote.raw_snapshot().values()
+        if record["kind"] == "workout_upsert")
+    assert set(raw_workout["payload"]) == {
+        "external_id", "title", "date", "duration", "sportType", "segments"}
+    assert "description" not in raw_workout["payload"]
+    assert "structure" not in raw_workout["payload"]
 
     snapshots = {}
     inventory = {}
@@ -279,15 +427,18 @@ def test_field_aware_remote_effect_parity_all_dispositions_and_kinds(tmp_path):
         canonical_model={"model_version": "canonical_training_model/v1"},
         review_items=[], guide_sources={}, athlete_dir=tmp_path,
         effective_remote_inventory=inventory,
-        payload_snapshot_reader=snapshots.__getitem__,
-        inspection=inspection, singleton_desires=singleton_desires)
+        payload_snapshot_reader=snapshots.__getitem__)
     dispositions = {operation["disposition"] for operation in second_contract["operations"]}
     assert dispositions == {"create", "update", "delete", "keep"}
 
-    old_remote.reconcile_legacy(legacy_desired_state(
-        second_legacy, singletons=singleton_desires))
+    old_remote.apply_legacy_requests(legacy_apply_requests("fake-42", second_legacy))
     new_remote.apply_contract(second_contract)
-    assert old_remote.snapshot() == new_remote.snapshot()
+    differences = classify_migration_differences(old_remote, new_remote)
+    assert differences
+    assert INTENTIONAL_D0_DIFFERENCES["update"] in differences.values()
+    assert INTENTIONAL_D0_DIFFERENCES["delete"] in differences.values()
+    assert INTENTIONAL_D0_DIFFERENCES["mental_task_upsert"] in differences.values()
+    assert "workout_rich_fields" in INTENTIONAL_D0_DIFFERENCES
 
 
 def test_module_has_no_execution_or_network_surface():

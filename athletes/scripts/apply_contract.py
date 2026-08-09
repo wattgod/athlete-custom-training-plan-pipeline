@@ -334,6 +334,16 @@ def _validate_inventory(
         snapshot_ref = record.get("payload_snapshot_ref")
         if snapshot_ref is not None and not str(snapshot_ref).strip():
             raise ApplyContractError("effective inventory snapshot reference is invalid")
+        if record["kind"] in DATED_KINDS:
+            if not str(remote_id or "").strip():
+                raise ApplyContractError(
+                    "dated effective inventory requires a non-empty remote_id")
+            if not str(snapshot_ref or "").strip():
+                raise ApplyContractError(
+                    "dated effective inventory requires payload_snapshot_ref")
+        elif remote_id is not None:
+            raise ApplyContractError(
+                "positional effective inventory requires a null remote_id")
         if not str(record.get("last_op_id") or "").strip():
             raise ApplyContractError("effective inventory last_op_id is required")
         normalized[str(logical_id)] = record
@@ -463,6 +473,7 @@ def validate_contract(
     revision = contract["generation_revision"]
     inventory_supplied = effective_remote_inventory is not None
     inventory = _validate_inventory(effective_remote_inventory or {})
+    known_identities = set(logical_ids) | set(inventory)
     for op in operations:
         prefix = f"{contract['order_id']}:{op['kind']}:"
         if not op["logical_id"].startswith(prefix):
@@ -485,6 +496,21 @@ def validate_contract(
         )
         if not valid_key:
             raise ApplyContractError(f"invalid logical key grammar for {op['kind']}")
+        if op["kind"] == "attachment_upsert":
+            parent_key, key_filename = logical_key.rsplit(":", 1)
+            expected_parent_id = _logical_id(
+                contract["order_id"], "workout_upsert", parent_key)
+            attachment_payload = op.get("payload") or op.get("prior_payload")
+            if attachment_payload is not None:
+                if attachment_payload.get("filename") != key_filename:
+                    raise ApplyContractError(
+                        "attachment payload filename does not match logical key")
+                if attachment_payload.get("parent_logical_id") != expected_parent_id:
+                    raise ApplyContractError(
+                        "attachment payload parent does not match logical key")
+            if expected_parent_id not in known_identities:
+                raise ApplyContractError(
+                    "attachment parent workout identity does not exist")
         if op["op_id"] != f"{op['logical_id']}@r{revision}":
             raise ApplyContractError("op_id does not bind logical_id and revision")
         if op["remote_marker"] is not None and op["logical_id"] not in op["remote_marker"]:
