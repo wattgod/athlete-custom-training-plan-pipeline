@@ -612,15 +612,7 @@ def generate_fueling_context(
                'canonical fueling-policy hydration prescription', policy_inputs),
     ]
     fueling['_derived'] = assert_registry_covers(
-        fueling, derived_records,
-        required_fields=[
-            'race.duration_hours', 'calories',
-            'carbohydrates.hourly_target', 'carbohydrates.hourly_range',
-            'carbohydrates.total_grams', 'carbohydrates.total_range',
-            'gut_training.phases', 'gut_training.weekly_progression',
-            'fueling_timeline', 'prescription', 'fueling_basis',
-            'recommendations', 'recommendations.hydration',
-        ],
+        fueling, derived_records, artifact='fueling',
         revision=revision,
     )
     return fueling
@@ -795,26 +787,17 @@ def main():
     print(f"{'='*60}\n")
 
     race = fueling["race"]
-    cals = fueling["calories"]
-    carbs = fueling["carbohydrates"]
-
     print(f"🏁 Race: {race['distance_miles']} miles, ~{race['duration_hours']}h estimated")
-    print(f"⚡ Energy: {cals['total_calories']:,} kcal ({cals['calories_per_hour']} kcal/hr)")
-    print("🍞 Carbs: computed — values available in authenticated review")
+    print("⚡ Energy and carbohydrate targets: available in authenticated review")
     print()
 
     print("📈 Gut Training Progression:")
     for phase, info in fueling["gut_training"]["phases"].items():
         labels = ', '.join(info['weeks'])
-        print(f"   {phase.upper()} ({labels}): {info['target_range'][0]}-{info['target_range'][1]}g/hr")
+        print(f"   {phase.upper()} ({labels}): target available in authenticated review")
     print()
 
-    recs = fueling["recommendations"]
-    print(f"📦 Example Fueling (mixed approach):")
-    mixed = recs["example_products"]["mixed_approach"]
-    print(f"   Gels: {mixed['gels']}")
-    print(f"   Chews: {mixed['chews_packs']} packs")
-    print(f"   Drink mix: {mixed['drink_mix_bottles']} bottles")
+    print("📦 Example fueling quantities: available in authenticated review")
     print()
 
     print(f"💾 Saved to: {fueling_path}")

@@ -41,6 +41,7 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CONFIRMED,
                                load as load_fulfillment_state,
                                migrate_v1_to_quarantine,
                                open_verified_release_artifact,
+                               external_notification_projection,
                                redact_sensitive_review_items,
                                record_seal_mismatch,
                                transition as transition_fulfillment,
@@ -407,6 +408,7 @@ def _send_email(to: str, subject: str, body: str, html: str = None, reply_to: st
 
 def _build_phase1_generation_email(details: dict) -> tuple:
     """State-aware generation notice containing review-only controls."""
+    details = external_notification_projection(details)
     name = str(details.get('name') or 'Unknown')
     order_id = str(details.get('order_id') or '')
     status = str(details.get('fulfillment_status') or 'BLOCKED_REVIEW')
@@ -465,6 +467,7 @@ def _build_phase1_generation_email(details: dict) -> tuple:
 
 def _build_training_plan_email(details: dict) -> tuple:
     """Build coach notification email — athlete info + step-by-step fulfillment checklist."""
+    details = external_notification_projection(details)
     name = details.get('name', 'Unknown')
     email = details.get('email', '')
     tier = details.get('tier', 'custom')
@@ -831,6 +834,7 @@ def _send_ga4_purchase(order_id: str, value_cents, product_type: str,
 
 def _notify_new_order(product_type: str, details: dict):
     """Send rich notification for new order. Falls back to CRITICAL log if Resend not configured."""
+    details = external_notification_projection(details)
     if product_type in ('training_plan', 'training_plan_FAILED'):
         details['pipeline_success'] = product_type == 'training_plan'
         subject, text, html = _build_training_plan_email(details)

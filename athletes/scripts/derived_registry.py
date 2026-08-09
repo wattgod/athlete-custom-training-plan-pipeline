@@ -24,6 +24,79 @@ DERIVATION_CLASSES = {
 }
 SENSITIVITIES = {"public", "internal", "personal", "sensitive"}
 
+# Authoritative inventories for every artifact that owns review-facing derived
+# values.  Callers may not supply their own coverage list: adding an output to
+# a strict artifact fails until this schema and the owning provenance records
+# are updated together.  Optional fields are still schema-owned; they are
+# required exactly when the owning document contains them.
+ARTIFACT_DERIVED_SCHEMAS = {
+    "profile": {
+        "required": (
+            "health_factors.age", "fitness_markers.sex",
+            "fitness_markers.weight_kg", "fitness_markers.power_basis",
+            "fitness_markers.control_metric", "fitness_markers.control_basis",
+            "discipline",
+        ),
+        "optional": ("fitness_markers.ftp_watts", "fitness_markers.w_kg"),
+        "optional_non_null": True,
+        "strict_top_level": False,
+    },
+    "fueling": {
+        "required": (
+            "race.duration_hours", "calories",
+            "carbohydrates.hourly_target", "carbohydrates.hourly_range",
+            "carbohydrates.total_grams", "carbohydrates.total_range",
+            "gut_training.phases", "gut_training.weekly_progression",
+            "fueling_timeline", "prescription", "fueling_basis",
+            "recommendations", "recommendations.hydration",
+        ),
+        "optional": (), "optional_non_null": False, "strict_top_level": False,
+    },
+    "summary": {
+        "required": (
+            "generated_date", "race.date", "race.distance_miles",
+            "plan.weeks", "plan.start_date", "plan.end_date",
+            "plan.methodology", "plan.methodology_score", "plan.tier",
+            "plan.ability_level", "fueling.hourly_carb_target",
+            "fueling.total_carbs", "fueling.estimated_duration_hours",
+            "control.metric", "control.basis", "control.week_1_field_test",
+            "control.reanchor", "files.workout_count",
+        ),
+        "optional": (), "optional_non_null": False, "strict_top_level": False,
+    },
+    "derived": {
+        "required": (
+            "tier", "plan_weeks", "starting_phase", "strength_frequency",
+            "equipment_tier", "risk_factors", "exercise_exclusions",
+            "key_day_candidates", "strength_day_candidates", "derived_date",
+        ),
+        "optional": ("plan_start", "plan_end", "race_weekday"),
+        "optional_non_null": False,
+        "strict_top_level": True,
+    },
+    "methodology": {
+        "required": (
+            "selected_methodology", "methodology_id", "score", "reasons",
+            "warnings", "configuration", "alternatives", "selection_date",
+            "confidence", "confidence_note",
+        ),
+        "optional": (), "optional_non_null": False, "strict_top_level": True,
+    },
+    "calendar": {
+        "required": (
+            "race_date", "race_weekday", "plan_weeks", "plan_start",
+            "plan_start_short", "plan_end", "week1_monday",
+            "race_week_monday", "weeks", "workout_naming_convention",
+            "workout_example", "day_abbreviations", "month_abbreviations",
+        ),
+        "optional": (), "optional_non_null": False, "strict_top_level": True,
+    },
+    "schedule": {
+        "required": ("description", "days"),
+        "optional": (), "optional_non_null": False, "strict_top_level": True,
+    },
+}
+
 
 class DerivedRegistryError(ValueError):
     """A derived-value record is incomplete or unsafe to publish."""
@@ -107,17 +180,32 @@ def registry_document(records: Iterable[Dict[str, Any]], *, revision: int = 1) -
 
 def assert_registry_covers(
     document: Dict[str, Any], records: Iterable[Dict[str, Any]],
-    *, required_fields: Iterable[str], revision: int,
+    *, artifact: str, revision: int,
 ) -> List[Dict[str, Any]]:
-    """Fail closed when a declared athlete/review-facing derivation is absent.
-
-    The inventory is deliberately explicit at each owning artifact. Adding a
-    computed output therefore requires adding its provenance record in the
-    same change instead of silently expanding an unreviewable output surface.
-    """
+    """Fail closed against the registry owner's authoritative artifact schema."""
+    schema = ARTIFACT_DERIVED_SCHEMAS.get(str(artifact or "").strip())
+    if schema is None:
+        raise DerivedRegistryError("unknown derived-value artifact schema")
     normalized = validate_registry(records)
     fields = [record["field"] for record in normalized]
-    required = sorted(set(required_fields))
+    required = set(schema["required"])
+    for field in schema["optional"]:
+        try:
+            value = get_field(document, field)
+        except DerivedRegistryError:
+            continue
+        if schema.get("optional_non_null") and value is None:
+            continue
+        required.add(field)
+    required = sorted(required)
+    if schema["strict_top_level"]:
+        declared_roots = {field.split(".", 1)[0]
+                          for field in (*schema["required"], *schema["optional"])}
+        actual_roots = set(document) - {"_derived"}
+        undeclared = sorted(actual_roots - declared_roots)
+        if undeclared:
+            raise DerivedRegistryError(
+                f"undeclared computed output(s) for {artifact}: {undeclared}")
     if len(fields) != len(set(fields)):
         raise DerivedRegistryError("duplicate derived-value field")
     if sorted(fields) != required:
@@ -147,11 +235,17 @@ def materialize(
     document: Dict[str, Any], records: Iterable[Dict[str, Any]], *, namespace: str,
 ) -> List[Dict[str, Any]]:
     """Copy typed values beside provenance for the server-only review state."""
+    import json
     result = []
     for record in validate_registry(records):
+        # State is JSON. Normalize mapping keys and tuple/list distinctions
+        # before its review-catalog digest is computed so the atomic write's
+        # JSON round trip cannot invalidate the state it just created.
+        value = json.loads(json.dumps(
+            get_field(document, record["field"]), allow_nan=False))
         result.append({
             **record,
             "id": f"{str(namespace).strip().upper()}_{record['id']}",
-            "value": get_field(document, record["field"]),
+            "value": value,
         })
     return result

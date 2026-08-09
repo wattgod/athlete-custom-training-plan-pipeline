@@ -22,6 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from constants import DAY_ORDER, DAY_ORDER_DISPLAY, DAY_FULL_TO_ABBREV
+from derived_registry import assert_registry_covers, entry as derived_entry
 
 
 class PlanDateValidationError(Exception):
@@ -118,7 +119,9 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
                          heavy_training_end: str = None,
                          b_events: list = None,
                          meso_pattern: str = None,
-                         travel_dates: list = None) -> dict:
+                         travel_dates: list = None,
+                         generation_revision: int = 1,
+                         derived_at: str = None) -> dict:
     """
     Calculate all plan dates working backwards from race date.
 
@@ -344,6 +347,50 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         'month_abbreviations': {i+1: m for i, m in enumerate(month_abbrev)}
     }
 
+    registry_at = str(
+        derived_at or generation_now().isoformat().replace('+00:00', 'Z'))
+    common_inputs = {
+        'race_date': race_date_str,
+        'requested_plan_weeks': plan_weeks,
+        'preferred_start': preferred_start,
+        'heavy_training_end': heavy_training_end,
+        'meso_pattern': effective_pattern,
+        'b_event_count': len(b_events or []),
+        'travel_date_count': len(travel_dates or []),
+    }
+
+    def record(identifier, field, basis, inputs=None, sensitivity='personal'):
+        return derived_entry(
+            id=identifier, field=field, value_class='inferred', basis=basis,
+            inputs=common_inputs if inputs is None else inputs,
+            sensitivity=sensitivity, at=registry_at,
+            revision=generation_revision)
+
+    records = [
+        record('CALENDAR_RACE_DATE', 'race_date', 'target race calendar fact'),
+        record('CALENDAR_RACE_WEEKDAY', 'race_weekday', 'weekday derived from target race date'),
+        record('CALENDAR_PLAN_WEEKS', 'plan_weeks', 'available Mondays through race week'),
+        record('CALENDAR_PLAN_START', 'plan_start', 'first Monday in the final plan window'),
+        record('CALENDAR_PLAN_START_SHORT', 'plan_start_short', 'display projection of plan start'),
+        record('CALENDAR_PLAN_END', 'plan_end', 'Sunday ending target race week'),
+        record('CALENDAR_WEEK1_MONDAY', 'week1_monday', 'canonical first-week boundary'),
+        record('CALENDAR_RACE_WEEK_MONDAY', 'race_week_monday', 'Monday containing target race'),
+        record('CALENDAR_WEEKS', 'weeks',
+               'calendar owner phase, recovery, race, travel, and day overlays'),
+        record('CALENDAR_NAMING', 'workout_naming_convention',
+               'stable calendar-derived workout naming contract', sensitivity='internal'),
+        record('CALENDAR_EXAMPLE', 'workout_example',
+               'display example projected from Week 1 Monday', sensitivity='internal'),
+        record('CALENDAR_DAY_ABBREVIATIONS', 'day_abbreviations',
+               'canonical weekday abbreviation table', {'source': 'constants.DAY_FULL_TO_ABBREV'},
+               'internal'),
+        record('CALENDAR_MONTH_ABBREVIATIONS', 'month_abbreviations',
+               'canonical month abbreviation table', {'source': 'calendar month table'},
+               'internal'),
+    ]
+    result['_derived'] = assert_registry_covers(
+        result, records, artifact='calendar', revision=generation_revision)
+
     return result
 
 
@@ -493,9 +540,12 @@ def main():
     travel_dates = profile.get('travel_dates', [])
 
     # Calculate dates with constraints (including recovery week marking)
-    plan_dates = calculate_plan_dates(race_date, plan_weeks, preferred_start,
-                                      heavy_training_end, b_events, meso_pattern,
-                                      travel_dates)
+    fulfillment = profile.get('fulfillment') or {}
+    generation_revision = int(fulfillment.get('generation_revision') or 1)
+    derived_at = str(fulfillment.get('generation_at') or '') or None
+    plan_dates = calculate_plan_dates(
+        race_date, plan_weeks, preferred_start, heavy_training_end, b_events,
+        meso_pattern, travel_dates, generation_revision, derived_at)
 
     # Print summary
     print("=" * 60)
@@ -535,6 +585,29 @@ def main():
         derived['plan_end'] = plan_dates['plan_end']
         derived['plan_weeks'] = plan_dates['plan_weeks']
         derived['race_weekday'] = plan_dates['race_weekday']
+        replaced = {'plan_start', 'plan_end', 'plan_weeks', 'race_weekday'}
+        records = [record for record in (derived.get('_derived') or [])
+                   if record.get('field') not in replaced]
+        calendar_inputs = {
+            'race_date': race_date,
+            'preferred_start': preferred_start,
+            'calendar_plan_weeks': plan_dates['plan_weeks'],
+        }
+        for identifier, field, basis in (
+            ('CLASSIFICATION_PLAN_WEEKS', 'plan_weeks',
+             'final calendar week count after start-date constraints'),
+            ('CLASSIFICATION_PLAN_START', 'plan_start', 'final calendar start boundary'),
+            ('CLASSIFICATION_PLAN_END', 'plan_end', 'final calendar end boundary'),
+            ('CLASSIFICATION_RACE_WEEKDAY', 'race_weekday',
+             'weekday derived from the target race date'),
+        ):
+            records.append(derived_entry(
+                id=identifier, field=field, value_class='inferred', basis=basis,
+                inputs=calendar_inputs, sensitivity='personal',
+                at=str(derived_at or generation_now().isoformat().replace('+00:00', 'Z')),
+                revision=generation_revision))
+        derived['_derived'] = assert_registry_covers(
+            derived, records, artifact='derived', revision=generation_revision)
 
         with open(derived_path, 'w') as f:
             yaml.dump(derived, f, default_flow_style=False, sort_keys=False)

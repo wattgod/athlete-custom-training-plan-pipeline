@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 import pytest
+import os
+import subprocess
 import sys
 from pathlib import Path
+
+import yaml
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -41,12 +45,64 @@ def test_registry_rejects_missing_or_stale_entry_revision():
 
 
 def test_coverage_gate_fails_when_a_derived_output_lacks_provenance():
-    document = {"fitness": {"target": 67, "range": [55, 75]}}
-    with pytest.raises(DerivedRegistryError, match="missing=.*fitness.range"):
+    from derive_classifications import derive_all
+    document = derive_all({
+        "weekly_availability": {"cycling_hours_target": 8},
+        "target_race": {"goal_type": "finish"},
+        "training_history": {"years_structured": 3},
+    })
+    records = document.pop("_derived")
+    document["new_computed_output"] = 8675309
+    with pytest.raises(DerivedRegistryError, match="undeclared computed output"):
         assert_registry_covers(
-            document, [_record()],
-            required_fields=["fitness.target", "fitness.range"], revision=3,
+            document, records, artifact="derived", revision=1,
         )
+
+
+def test_caller_cannot_supply_a_self_declared_coverage_list():
+    with pytest.raises(TypeError):
+        assert_registry_covers(
+            {"x": 1, "new_computed_output": 2}, [],
+            required_fields=["x"], revision=1,
+        )
+
+
+def test_fueling_cli_does_not_print_seeded_sensitive_targets(tmp_path):
+    athlete_id = "seeded-cli-sensitive"
+    athlete_dir = tmp_path / athlete_id
+    athlete_dir.mkdir()
+    profile = {
+        "fitness_markers": {
+            "weight_kg": 73.4, "sex": "female", "power_basis": "none",
+            "ftp_watts": None, "reanchor": {"action": "field test"},
+        },
+        "target_race": {
+            "distance_miles": 137, "elevation_ft": 8400,
+            "goal_type": "compete",
+        },
+        "nutrition": {"gut_training_phase": "build"},
+        "fulfillment": {
+            "generation_revision": 1,
+            "generation_at": "2026-08-08T12:00:00Z",
+        },
+    }
+    (athlete_dir / "profile.yaml").write_text(yaml.safe_dump(profile))
+    (athlete_dir / "derived.yaml").write_text("plan_weeks: 12\n")
+    env = os.environ.copy()
+    env["GG_ATHLETES_BASE_DIR"] = str(tmp_path)
+    completed = subprocess.run(
+        [sys.executable, str(Path(__file__).parent / "calculate_fueling.py"), athlete_id],
+        check=True, capture_output=True, text=True, env=env,
+    )
+    fueling = yaml.safe_load((athlete_dir / "fueling.yaml").read_text())
+    output = completed.stdout
+    secret_values = [
+        fueling["carbohydrates"]["hourly_target"],
+        *fueling["carbohydrates"]["hourly_range"],
+    ]
+    assert all(f"{value}g/hr" not in output for value in secret_values)
+    assert str(fueling["calories"]["total_calories"]) not in output
+    assert "authenticated review" in output
 
 
 @pytest.mark.parametrize("field,value", [

@@ -3309,49 +3309,14 @@ def generate_athlete_package(athlete_id: str) -> dict:
                         'internal'),
     ]
     summary['_derived'] = assert_registry_covers(
-        summary, summary_records, required_fields=[
-            'generated_date', 'race.date', 'race.distance_miles',
-            'plan.weeks', 'plan.start_date', 'plan.end_date',
-            'plan.methodology', 'plan.methodology_score', 'plan.tier',
-            'plan.ability_level', 'fueling.hourly_carb_target',
-            'fueling.total_carbs', 'fueling.estimated_duration_hours',
-            'control.metric', 'control.basis', 'control.week_1_field_test',
-            'control.reanchor',
-            'files.workout_count',
-        ], revision=summary_revision)
+        summary, summary_records, artifact='summary',
+        revision=summary_revision)
 
     summary_path = athlete_dir / 'plan_summary.yaml'
     with open(summary_path, 'w') as f:
         yaml.dump(summary, f, default_flow_style=False, sort_keys=False)
 
     detail(f"Saved: {summary_path}")
-
-    # J1: package generation has now completed its three required artifacts.
-    # This is deliberately non-fatal: an inability to record review state must
-    # never make the customer lose a complete package, but it will fail closed
-    # at confirmation until an operator repairs persistent storage.
-    try:
-        from derived_registry import materialize
-        derived_values = (
-            materialize(profile, profile.get('_derived') or [], namespace='profile')
-            + materialize(fueling, fueling.get('_derived') or [], namespace='fueling')
-            + materialize(summary, summary.get('_derived') or [], namespace='summary')
-            + materialize(
-                canonical_model,
-                canonical_model.get('derived_values') or [],
-                namespace='canonical',
-            )
-        )
-        write_generation(
-            athlete_dir / 'fulfillment_status.json', athlete_id,
-            getattr(generate_zwo_files, 'last_fulfillment_issues', []),
-            order_id=str(profile.get('order_id') or ''),
-            delivery_platform=str(profile.get('delivery_platform') or 'manual'),
-            derived_values=derived_values,
-        )
-        detail("Saved: fulfillment_status.json")
-    except Exception as exc:
-        warning(f"Could not write fulfillment state (confirmation will fail closed): {exc}")
 
     # W00 (D1/D2): persist the pre-plan week into plan_dates.yaml on disk so
     # PlanIR can match W00 ZWOs by calendar-day workout_prefix like any other
@@ -3380,6 +3345,43 @@ def generate_athlete_package(athlete_id: str) -> dict:
         detail("Aligned fueling labels to plan_dates.yaml and refreshed guide")
     except Exception as exc:
         warning(f"Could not align fueling labels to plan dates: {exc}")
+
+    # J1: write the catalog only after the final W00 calendar and fueling
+    # alignment are persisted, so state materializes the artifacts the coach
+    # actually reviews.  This remains non-fatal for package delivery and fail-
+    # closed for confirmation when durable state is unavailable.
+    try:
+        from derived_registry import materialize
+        fueling = load_yaml(athlete_dir / 'fueling.yaml')
+        weekly_structure = load_yaml(athlete_dir / 'weekly_structure.yaml')
+        derived_values = (
+            materialize(profile, profile.get('_derived') or [], namespace='profile')
+            + materialize(derived, derived.get('_derived') or [], namespace='derived')
+            + materialize(methodology, methodology.get('_derived') or [],
+                          namespace='methodology')
+            + materialize(fueling, fueling.get('_derived') or [], namespace='fueling')
+            + materialize(plan_dates, plan_dates.get('_derived') or [],
+                          namespace='calendar')
+            + materialize(weekly_structure,
+                          weekly_structure.get('_derived') or [],
+                          namespace='schedule')
+            + materialize(summary, summary.get('_derived') or [], namespace='summary')
+            + materialize(
+                canonical_model,
+                canonical_model.get('derived_values') or [],
+                namespace='canonical',
+            )
+        )
+        write_generation(
+            athlete_dir / 'fulfillment_status.json', athlete_id,
+            getattr(generate_zwo_files, 'last_fulfillment_issues', []),
+            order_id=str(profile.get('order_id') or ''),
+            delivery_platform=str(profile.get('delivery_platform') or 'manual'),
+            derived_values=derived_values,
+        )
+        detail("Saved: fulfillment_status.json")
+    except Exception as exc:
+        warning(f"Could not write fulfillment state (confirmation will fail closed): {exc}")
 
     # G0 reflection only: aggregate the artifacts just generated.  PlanIR is
     # deliberately advisory until later tickets make serializers project it;

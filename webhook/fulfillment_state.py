@@ -134,7 +134,7 @@ def external_state_projection(value: Any) -> Any:
             )
             sensitive_field = sensitive_object and key in {
                 "value", "review_value", "message", "basis", "evidence",
-                "before_image", "prior_payload", "content_snapshot",
+                "before_image", "prior_payload", "content_snapshot", "inputs",
             }
             result[key] = (SENSITIVE_REDACTION
                            if audit_secret or sensitive_field
@@ -142,6 +142,44 @@ def external_state_projection(value: Any) -> Any:
         return result
 
     return project(value, ())
+
+
+_SENSITIVE_NOTIFICATION_FIELDS = {
+    "ftp", "ftp_watts", "weight", "weight_kg", "weight_lbs", "w_kg",
+    "carbohydrates", "hourly_carb_target", "total_carbs", "carb_target",
+    "carb_range", "before_image", "prior_payload",
+}
+
+
+def external_notification_projection(value: Any) -> Any:
+    """Project arbitrary notification inputs onto the non-review boundary.
+
+    Notification detail dictionaries predate the typed review catalog and use
+    flat convenience keys.  This adapter first applies the recursive catalog
+    policy, then drops the legacy keys whose owning A3 fields are sensitive.
+    Raw pipeline exceptions are also replaced: durable authenticated logs are
+    the diagnostic surface, while notification/log fallbacks carry only the
+    loud failure fact.
+    """
+    projected = external_state_projection(value)
+
+    def drop(nested: Any, path: tuple[str, ...]) -> Any:
+        if isinstance(nested, list):
+            return [drop(item, path) for item in nested]
+        if not isinstance(nested, dict):
+            return copy.deepcopy(nested)
+        result = {}
+        for key, child in nested.items():
+            normalized = str(key).strip().lower()
+            if normalized in _SENSITIVE_NOTIFICATION_FIELDS:
+                result[key] = None
+            elif normalized == "error" and not path and child:
+                result[key] = "See authenticated Railway logs for failure details."
+            else:
+                result[key] = drop(child, path + (str(key),))
+        return result
+
+    return drop(projected, ())
 
 
 def redact_sensitive_review_items(items: list[Dict[str, Any]]) -> list[Dict[str, Any]]:

@@ -2,6 +2,7 @@
 import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -113,6 +114,50 @@ def test_generation_notification_redacts_seeded_sensitive_blocker():
     })
     assert secret not in text + html
     assert "authenticated review" in text + html
+
+
+def _failed_notification_details(secret):
+    return {
+        "name": "Athlete", "email": "athlete@example.invalid",
+        "order_id": "cs_failed_a3", "athlete_id": "athlete-a3",
+        "race_name": "Fixture Race", "ftp": secret,
+        "weight_kg": secret, "error": f"pipeline exposed {secret}",
+    }
+
+
+def test_failed_order_email_drops_sensitive_values_from_text_and_html():
+    secret = "seeded-failure-secret-97531"
+    subject, text, html = webhook_app._build_training_plan_email({
+        **_failed_notification_details(secret), "pipeline_success": False,
+    })
+    assert "FAILED" in subject
+    assert secret not in text + html
+    assert "authenticated Railway logs" in text + html
+
+
+def test_unconfigured_email_log_fallback_drops_sensitive_values():
+    secret = "seeded-unconfigured-log-secret-86420"
+    with patch.object(webhook_app, "NOTIFICATION_EMAIL", ""), \
+            patch.object(webhook_app, "RESEND_API_KEY", ""), \
+            patch.object(webhook_app, "logger") as logger:
+        webhook_app._notify_new_order(
+            "training_plan_FAILED", _failed_notification_details(secret))
+    logged = logger.critical.call_args.args[0]
+    assert secret not in logged
+    assert "authenticated Railway logs" in logged
+
+
+def test_send_failure_log_fallback_drops_sensitive_values():
+    secret = "seeded-send-failure-log-secret-75319"
+    with patch.object(webhook_app, "NOTIFICATION_EMAIL", "coach@example.invalid"), \
+            patch.object(webhook_app, "RESEND_API_KEY", "configured"), \
+            patch.object(webhook_app, "_send_email", return_value=False), \
+            patch.object(webhook_app, "logger") as logger:
+        webhook_app._notify_new_order(
+            "training_plan_FAILED", _failed_notification_details(secret))
+    logged = logger.critical.call_args.args[0]
+    assert secret not in logged
+    assert "authenticated Railway logs" in logged
 
 
 def test_canonical_release_rejects_contract_with_unbound_model_seal(tmp_path):

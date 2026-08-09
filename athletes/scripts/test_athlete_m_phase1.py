@@ -77,8 +77,22 @@ def test_athlete_m_phase3_golden(monkeypatch, tmp_path):
     assert profile["target_race"]["distance_miles"] == 75
     golden_path = FIXTURE / 'expected' / 'plan_dates.yaml'
     if os.environ.get('GG_UPDATE_ATHLETE_M_GOLDEN') == '1':
-        golden_path.write_text((source / 'plan_dates.yaml').read_text())
-    assert plan_dates == yaml.safe_load(golden_path.read_text())
+        golden_path.write_text(yaml.safe_dump(
+            {key: value for key, value in plan_dates.items() if key != '_derived'},
+            sort_keys=False,
+        ))
+    from derived_registry import ARTIFACT_DERIVED_SCHEMAS
+    calendar_registry = plan_dates.get('_derived') or []
+    assert {record['field'] for record in calendar_registry} == set(
+        ARTIFACT_DERIVED_SCHEMAS['calendar']['required'])
+    assert {record['revision'] for record in calendar_registry} == {1}
+    assert {key: value for key, value in plan_dates.items() if key != '_derived'} == (
+        yaml.safe_load(golden_path.read_text()))
+    catalog_ids = {value['id'] for value in state['derived_values']}
+    assert any(item.startswith('DERIVED_') for item in catalog_ids)
+    assert any(item.startswith('METHODOLOGY_') for item in catalog_ids)
+    assert any(item.startswith('CALENDAR_') for item in catalog_ids)
+    assert any(item.startswith('SCHEDULE_') for item in catalog_ids)
     sessions = [
         (week["number"], session)
         for week in plan_ir["weeks"] for session in week["sessions"]

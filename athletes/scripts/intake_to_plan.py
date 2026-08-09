@@ -1861,18 +1861,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             sensitivity='sensitive', at=derived_at,
             revision=generation_revision,
         ))
-    profile_fields = [
-        'health_factors.age', 'fitness_markers.sex',
-        'fitness_markers.weight_kg', 'fitness_markers.power_basis',
-        'fitness_markers.control_metric', 'fitness_markers.control_basis',
-        'discipline',
-    ]
-    if ftp_watts is not None:
-        profile_fields.append('fitness_markers.ftp_watts')
-    if w_kg is not None:
-        profile_fields.append('fitness_markers.w_kg')
     profile['_derived'] = assert_registry_covers(
-        profile, derived_records, required_fields=profile_fields,
+        profile, derived_records, artifact='profile',
         revision=generation_revision)
 
     return profile
