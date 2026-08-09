@@ -33,6 +33,7 @@ INVENTORY_FIELDS = {
     "remote_id", "desired_digest", "payload_snapshot_ref", "kind", "last_op_id",
 }
 SnapshotReader = Callable[[str], Mapping[str, Any]]
+OperationReader = Callable[[str], Mapping[str, Any]]
 
 
 class ApplyContractError(ValueError):
@@ -316,6 +317,7 @@ def _predecessor(record: Dict[str, Any], dated: bool) -> Dict[str, Any]:
 
 def _validate_inventory(
     inventory: Mapping[str, Dict[str, Any]],
+    operation_reader: Optional[OperationReader] = None,
 ) -> Dict[str, Dict[str, Any]]:
     normalized: Dict[str, Dict[str, Any]] = {}
     for logical_id, raw in inventory.items():
@@ -346,6 +348,25 @@ def _validate_inventory(
                 "positional effective inventory requires a null remote_id")
         if not str(record.get("last_op_id") or "").strip():
             raise ApplyContractError("effective inventory last_op_id is required")
+        if snapshot_ref is None and record["kind"] not in DATED_KINDS:
+            if operation_reader is None:
+                raise ApplyContractError(
+                    "null positional snapshot requires durable last-operation provenance")
+            try:
+                provenance = dict(operation_reader(str(record["last_op_id"])))
+            except Exception as exc:
+                raise ApplyContractError(
+                    "could not resolve durable last-operation provenance") from exc
+            if (provenance.get("op_id") != record["last_op_id"]
+                    or provenance.get("logical_id") != str(logical_id)
+                    or provenance.get("kind") != record["kind"]):
+                raise ApplyContractError(
+                    "last-operation provenance does not match positional inventory")
+            if (provenance.get("disposition") != "keep"
+                    or provenance.get("payload") is not None
+                    or provenance.get("expected_digest") != record["desired_digest"]):
+                raise ApplyContractError(
+                    "null positional snapshot is legal only for a verified never-written keep")
         normalized[str(logical_id)] = record
     return normalized
 
@@ -462,7 +483,9 @@ def _sort_key(operation: Dict[str, Any]) -> tuple:
 
 
 def validate_contract(
-    contract: Dict[str, Any], *, effective_remote_inventory: Optional[Mapping[str, Dict[str, Any]]] = None,
+    contract: Dict[str, Any], *,
+    effective_remote_inventory: Optional[Mapping[str, Dict[str, Any]]] = None,
+    last_operation_reader: Optional[OperationReader] = None,
 ) -> Dict[str, Any]:
     """Schema and semantic validation; safe to call on any loaded contract."""
     _schema_validate(contract)
@@ -472,7 +495,8 @@ def validate_contract(
         raise ApplyContractError("duplicate logical_id")
     revision = contract["generation_revision"]
     inventory_supplied = effective_remote_inventory is not None
-    inventory = _validate_inventory(effective_remote_inventory or {})
+    inventory = _validate_inventory(
+        effective_remote_inventory or {}, last_operation_reader)
     known_identities = set(logical_ids) | set(inventory)
     for op in operations:
         prefix = f"{contract['order_id']}:{op['kind']}:"
@@ -500,14 +524,16 @@ def validate_contract(
             parent_key, key_filename = logical_key.rsplit(":", 1)
             expected_parent_id = _logical_id(
                 contract["order_id"], "workout_upsert", parent_key)
-            attachment_payload = op.get("payload") or op.get("prior_payload")
-            if attachment_payload is not None:
+            for payload_name in ("payload", "prior_payload"):
+                attachment_payload = op.get(payload_name)
+                if attachment_payload is None:
+                    continue
                 if attachment_payload.get("filename") != key_filename:
                     raise ApplyContractError(
-                        "attachment payload filename does not match logical key")
+                        f"attachment {payload_name} filename does not match logical key")
                 if attachment_payload.get("parent_logical_id") != expected_parent_id:
                     raise ApplyContractError(
-                        "attachment payload parent does not match logical key")
+                        f"attachment {payload_name} parent does not match logical key")
             if expected_parent_id not in known_identities:
                 raise ApplyContractError(
                     "attachment parent workout identity does not exist")
@@ -523,6 +549,11 @@ def validate_contract(
                 raise ApplyContractError("predecessor presence does not match inventory")
             if record and op["predecessor"] != _predecessor(record, op["kind"] in DATED_KINDS):
                 raise ApplyContractError("predecessor does not match inventory")
+            if (record and op["kind"] == "attachment_upsert"
+                    and op.get("prior_payload") is not None
+                    and digest_payload(op["prior_payload"]) != record["desired_digest"]):
+                raise ApplyContractError(
+                    "attachment prior_payload digest does not match predecessor snapshot")
     if inventory_supplied and set(inventory) - set(logical_ids):
         raise ApplyContractError("contract omits effective inventory dispositions")
     if operations != sorted(operations, key=_sort_key):
@@ -568,8 +599,10 @@ def build_contract(
     inspection: Optional[Dict[str, Any]] = None,
     singleton_desires: Optional[Mapping[str, Dict[str, Any]]] = None,
     payload_snapshot_reader: Optional[SnapshotReader] = None,
+    last_operation_reader: Optional[OperationReader] = None,
 ) -> Dict[str, Any]:
-    inventory = _validate_inventory(effective_remote_inventory or {})
+    inventory = _validate_inventory(
+        effective_remote_inventory or {}, last_operation_reader)
     inspection = dict(inspection or {})
     desired = _desired_resources(
         ir, str(order_id), Path(athlete_dir) if athlete_dir else None,
@@ -587,13 +620,18 @@ def build_contract(
                 "tp_athlete_id": str(tp_athlete_id),
                 "generation_revision": int(generation_revision), "model_seal": seal,
                 "operations": operations, "compat": {"min_reader": CONTRACT_VERSION}}
-    return validate_contract(contract, effective_remote_inventory=inventory)
+    return validate_contract(
+        contract, effective_remote_inventory=inventory,
+        last_operation_reader=last_operation_reader)
 
 
 def emit_contract(path: Path | str, contract: Dict[str, Any], *,
-                  effective_remote_inventory: Optional[Mapping[str, Dict[str, Any]]] = None) -> None:
+                  effective_remote_inventory: Optional[Mapping[str, Dict[str, Any]]] = None,
+                  last_operation_reader: Optional[OperationReader] = None) -> None:
     """Validate every emitted contract, then atomically persist it."""
-    validate_contract(contract, effective_remote_inventory=effective_remote_inventory)
+    validate_contract(
+        contract, effective_remote_inventory=effective_remote_inventory,
+        last_operation_reader=last_operation_reader)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)

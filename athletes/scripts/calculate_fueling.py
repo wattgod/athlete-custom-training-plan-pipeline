@@ -735,6 +735,11 @@ def generate_fueling_recommendations(
     }
 
 
+def _gut_training_cli_summary(_fueling: Dict) -> str:
+    """Return the only CLI-safe rendering of the sensitive phase aggregate."""
+    return "📈 Gut training progression: available in authenticated review"
+
+
 # =============================================================================
 # MAIN ENTRY POINT
 # =============================================================================
@@ -791,10 +796,10 @@ def main():
     print("⚡ Energy and carbohydrate targets: available in authenticated review")
     print()
 
-    print("📈 Gut Training Progression:")
-    for phase, info in fueling["gut_training"]["phases"].items():
-        labels = ', '.join(info['weeks'])
-        print(f"   {phase.upper()} ({labels}): target available in authenticated review")
+    # ``gut_training.phases`` is one sensitive registered value. Do not print
+    # any descendant (including phase names or week labels) on this operator/
+    # log surface; partial rendering would still disclose the typed value.
+    print(_gut_training_cli_summary(fueling))
     print()
 
     print("📦 Example fueling quantities: available in authenticated review")

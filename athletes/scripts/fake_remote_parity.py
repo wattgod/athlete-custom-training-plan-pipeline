@@ -25,11 +25,15 @@ INTENTIONAL_D0_DIFFERENCES = {
     "zone_update": "new_d0_positional_operation_not_written_by_legacy",
     "update": "d0_supersession_updates_legacy_skipped_done_keys",
     "delete": "d0_supersession_removes_resources_legacy_left_installed",
-    "workout_rich_fields": (
-        "d0 adds description, TP workout type, TSS, and TP-native structure; "
-        "legacy wrote only title/date/duration/sportType/segments"
-    ),
+    "workout_external_marker": "legacy_external_id_to_d0_logical_remote_marker",
+    "workout_sport_type": "legacy_sport_type_to_d0_tp_workout_type",
+    "workout_segments": "legacy_segments_to_d0_tp_native_structure",
 }
+ALLOWED_DIFFERENCE_DISPOSITIONS = frozenset(INTENTIONAL_D0_DIFFERENCES.values())
+
+
+class ParityError(AssertionError):
+    """A remote-effect delta has no exact migration disposition."""
 
 
 def contract_key(operation: Mapping[str, Any]) -> str:
@@ -45,10 +49,21 @@ def _normalized_payload(record: Mapping[str, Any]) -> Dict[str, Any]:
     source = record["source"]
     if kind == "workout_upsert":
         return {
+            # D0 deliberately changes the marker format, sport/workout type
+            # representation, and segments representation. Keep the historical
+            # six request fields in the comparison so those conversions are
+            # visible and independently classified rather than discarded.
+            "external_id": (payload.get("external_id") if source == "legacy"
+                            else record.get("remote_marker")),
             "date": payload.get("date"),
             "title": payload.get("title"),
             "duration": (payload.get("duration") if source == "legacy"
                          else payload.get("total_seconds")),
+            "sportType": (payload.get("sportType") if source == "legacy"
+                          else payload.get("tp_workout_type")),
+            "segments": (copy.deepcopy(payload.get("segments"))
+                         if source == "legacy"
+                         else copy.deepcopy(payload.get("structure"))),
         }
     if kind == "calendar_note_upsert":
         return {
@@ -83,6 +98,7 @@ class FakeRemoteModel:
 
     state: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     legacy_done: set[str] = field(default_factory=set)
+    d0_dispositions: Dict[str, str] = field(default_factory=dict)
 
     def apply_legacy_requests(self, requests: Iterable[Mapping[str, Any]]) -> None:
         for request in requests:
@@ -106,6 +122,8 @@ class FakeRemoteModel:
                 self.state[key] = {
                     "source": "d0", "kind": operation["kind"],
                     "op_id": operation["op_id"],
+                    "logical_id": operation["logical_id"],
+                    "remote_marker": operation.get("remote_marker"),
                     "payload": copy.deepcopy(operation["payload"]),
                 }
             elif disposition == "delete":
@@ -115,6 +133,7 @@ class FakeRemoteModel:
                     raise AssertionError(f"keep referenced absent remote object: {key}")
             else:
                 raise AssertionError(f"unknown disposition: {disposition}")
+            self.d0_dispositions[key] = str(disposition)
 
     def raw_snapshot(self) -> Dict[str, Dict[str, Any]]:
         """Expose every request field for probes against invented behavior."""
@@ -138,21 +157,63 @@ class FakeRemoteModel:
 
 def classify_migration_differences(
     legacy: FakeRemoteModel, d0: FakeRemoteModel,
-) -> Dict[str, str]:
+) -> Dict[str, Dict[str, Any]]:
     """Classify every non-parity delta instead of silently equating it."""
     legacy_state = legacy.normalized_snapshot()
     d0_state = d0.normalized_snapshot()
-    result: Dict[str, str] = {}
+    result: Dict[str, Dict[str, Any]] = {}
+
+    def add(key: str, disposition: str, legacy_value: Any, d0_value: Any) -> None:
+        if disposition not in ALLOWED_DIFFERENCE_DISPOSITIONS:
+            raise ParityError(f"unknown migration disposition for {key}: {disposition}")
+        result[key] = {
+            "disposition": disposition,
+            "legacy": copy.deepcopy(legacy_value),
+            "d0": copy.deepcopy(d0_value),
+        }
+
     for key in sorted(set(legacy_state) | set(d0_state)):
-        if legacy_state.get(key) == d0_state.get(key):
+        legacy_record = legacy_state.get(key)
+        d0_record = d0_state.get(key)
+        if legacy_record == d0_record:
             continue
         kind = key.split(":", 1)[0]
-        if kind in {"mental_task_upsert", "threshold_update", "zone_update"}:
-            result[key] = INTENTIONAL_D0_DIFFERENCES[kind]
-        elif key in legacy_state and key not in d0_state:
-            result[key] = INTENTIONAL_D0_DIFFERENCES["delete"]
-        elif key in legacy_state and key in d0_state:
-            result[key] = INTENTIONAL_D0_DIFFERENCES["update"]
-        else:
-            result[key] = "d0_create_not_present_in_legacy_remote"
+        if legacy_record is None:
+            if kind not in {"mental_task_upsert", "threshold_update", "zone_update"}:
+                raise ParityError(f"unclassified D0-only remote effect: {key}")
+            add(key, INTENTIONAL_D0_DIFFERENCES[kind], None, d0_record)
+            continue
+        if d0_record is None:
+            if d0.d0_dispositions.get(key) != "delete":
+                raise ParityError(f"unclassified legacy-only remote effect: {key}")
+            add(key, INTENTIONAL_D0_DIFFERENCES["delete"], legacy_record, None)
+            continue
+        if legacy_record.get("kind") != d0_record.get("kind"):
+            raise ParityError(f"remote kind changed without disposition: {key}")
+
+        legacy_payload = legacy_record.get("payload") or {}
+        d0_payload = d0_record.get("payload") or {}
+        if set(legacy_payload) != set(d0_payload):
+            raise ParityError(f"normalized field inventory changed for {key}")
+        for field_name in sorted(legacy_payload):
+            legacy_value = legacy_payload[field_name]
+            d0_value = d0_payload[field_name]
+            if legacy_value == d0_value:
+                continue
+            delta_key = f"{key}:{field_name}"
+            if d0.d0_dispositions.get(key) == "update":
+                add(delta_key, INTENTIONAL_D0_DIFFERENCES["update"],
+                    legacy_value, d0_value)
+            elif kind == "workout_upsert" and field_name == "external_id":
+                add(delta_key, INTENTIONAL_D0_DIFFERENCES["workout_external_marker"],
+                    legacy_value, d0_value)
+            elif kind == "workout_upsert" and field_name == "sportType":
+                add(delta_key, INTENTIONAL_D0_DIFFERENCES["workout_sport_type"],
+                    legacy_value, d0_value)
+            elif kind == "workout_upsert" and field_name == "segments":
+                add(delta_key, INTENTIONAL_D0_DIFFERENCES["workout_segments"],
+                    legacy_value, d0_value)
+            else:
+                raise ParityError(
+                    f"unclassified shared remote-field delta: {delta_key}")
     return result

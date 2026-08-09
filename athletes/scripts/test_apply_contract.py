@@ -17,7 +17,7 @@ from apply_contract import (ApplyContractError, assert_checked_schema_current,
 from fulfillment_manifest import build_manifest_from_plan_ir
 from fake_remote_parity import (INTENTIONAL_D0_DIFFERENCES,
                                 LEGACY_SUPPORTED_KINDS, FakeRemoteModel,
-                                classify_migration_differences)
+                                ParityError, classify_migration_differences)
 from delivery.trainingpeaks.adapter import legacy_apply_requests
 
 
@@ -51,6 +51,14 @@ def _contract(tmp_path, **kwargs):
         canonical_model={"model_version": "canonical_training_model/v1"},
         review_items=[{"item_id": "FACT", "value": 1}],
         guide_sources={"profile.yaml": "abc"}, athlete_dir=tmp_path, **kwargs)
+
+
+def _operation_reader(*contracts):
+    operations = {
+        operation["op_id"]: copy.deepcopy(operation)
+        for contract in contracts for operation in contract["operations"]
+    }
+    return operations.__getitem__
 
 
 def test_checked_schema_is_generated_definition_and_every_emission_validates(tmp_path):
@@ -137,7 +145,8 @@ def test_first_and_subsequent_adopted_singleton_keep_positions(
     subsequent = _contract(
         tmp_path, generation_revision=2, singleton_desires=desire,
         inspection={"singletons": {name: current}},
-        effective_remote_inventory=inventory)
+        effective_remote_inventory=inventory,
+        last_operation_reader=_operation_reader(first))
     op = next(op for op in subsequent["operations"] if op["kind"] == kind)
     assert op["disposition"] == "keep"
     assert op["predecessor"] == {"op_id": first_op["op_id"], "remote_id": None}
@@ -155,10 +164,70 @@ def test_first_and_subsequent_preexisting_entitlement_keep_positions(tmp_path):
     }}
     second = _contract(tmp_path, generation_revision=2,
                        inspection={"entitlements": ["course:test-race"]},
-                       effective_remote_inventory=inventory)
+                       effective_remote_inventory=inventory,
+                       last_operation_reader=_operation_reader(first))
     second_op = next(op for op in second["operations"]
                      if op["kind"] == "course_entitlement_grant")
     assert second_op["predecessor"] == {"op_id": first_op["op_id"], "remote_id": None}
+
+
+@pytest.mark.parametrize("resource", ["written_singleton", "created_entitlement"])
+def test_written_positional_inventory_rejects_null_snapshot(tmp_path, resource):
+    if resource == "written_singleton":
+        name = "lthr"
+        desired = {"metric": "lthr", "after_value": 171, "unit": "bpm"}
+        first = _contract(
+            tmp_path,
+            singleton_desires={name: {"kind": "threshold_update", "payload": desired}},
+            inspection={"singletons": {
+                name: {"metric": "lthr", "after_value": 165, "unit": "bpm"}}},
+        )
+        operation = next(op for op in first["operations"]
+                         if op["kind"] == "threshold_update")
+        next_kwargs = {
+            "singleton_desires": {name: {"kind": "threshold_update", "payload": desired}},
+            "inspection": {"singletons": {name: desired}},
+        }
+    else:
+        first = _contract(tmp_path)
+        operation = next(op for op in first["operations"]
+                         if op["kind"] == "course_entitlement_grant")
+        assert operation["disposition"] == "create"
+        next_kwargs = {"inspection": {"entitlements": ["course:test-race"]}}
+
+    impossible = {operation["logical_id"]: {
+        "kind": operation["kind"], "remote_id": None,
+        "desired_digest": operation["expected_digest"],
+        "payload_snapshot_ref": None, "last_op_id": operation["op_id"],
+    }}
+    with pytest.raises(ApplyContractError, match="never-written keep"):
+        _contract(
+            tmp_path, generation_revision=2,
+            effective_remote_inventory=impossible,
+            last_operation_reader=_operation_reader(first),
+            **next_kwargs,
+        )
+
+
+def test_created_entitlement_snapshot_supports_subsequent_keep(tmp_path):
+    first = _contract(tmp_path)
+    created = next(op for op in first["operations"]
+                   if op["kind"] == "course_entitlement_grant")
+    inventory = {created["logical_id"]: {
+        "kind": created["kind"], "remote_id": None,
+        "desired_digest": created["expected_digest"],
+        "payload_snapshot_ref": "snapshots/entitlement-r1.json",
+        "last_op_id": created["op_id"],
+    }}
+    second = _contract(
+        tmp_path, generation_revision=2,
+        inspection={"entitlements": ["course:test-race"]},
+        effective_remote_inventory=inventory,
+    )
+    kept = next(op for op in second["operations"]
+                if op["kind"] == "course_entitlement_grant")
+    assert kept["disposition"] == "keep"
+    assert kept["predecessor"] == {"op_id": created["op_id"], "remote_id": None}
 
 
 def test_supersession_serializes_update_delete_prior_payloads(tmp_path):
@@ -189,6 +258,42 @@ def test_supersession_serializes_update_delete_prior_payloads(tmp_path):
     assert updated["prior_payload"]["title"] == "old"
     assert deleted["disposition"] == "delete"
     assert deleted["rollback"]["strategy"] == "recreate_from_prior_payload"
+
+
+@pytest.mark.parametrize("tamper", ["prior_filename", "prior_parent", "prior_digest"])
+def test_attachment_update_validates_prior_identity_and_inventory_digest(tmp_path, tamper):
+    first = _contract(tmp_path)
+    attachment = next(op for op in first["operations"]
+                      if op["kind"] == "attachment_upsert")
+    old_payload = copy.deepcopy(attachment["payload"])
+    old_payload["sha256"] = "0" * 64
+    inventory = {attachment["logical_id"]: {
+        "kind": attachment["kind"], "remote_id": "attachment-1",
+        "desired_digest": digest_payload(old_payload),
+        "payload_snapshot_ref": "snapshots/attachment-r1.json",
+        "last_op_id": attachment["op_id"],
+    }}
+    second = _contract(
+        tmp_path, generation_revision=2,
+        effective_remote_inventory=inventory,
+        payload_snapshot_reader=lambda _: old_payload,
+    )
+    updated = next(op for op in second["operations"]
+                   if op["kind"] == "attachment_upsert")
+    assert updated["disposition"] == "update"
+    assert updated["prior_payload"] == old_payload
+
+    tampered = copy.deepcopy(second)
+    prior = next(op for op in tampered["operations"]
+                 if op["kind"] == "attachment_upsert")["prior_payload"]
+    if tamper == "prior_filename":
+        prior["filename"] = "wrong.html"
+    elif tamper == "prior_parent":
+        prior["parent_logical_id"] = "cs_phase3:workout_upsert:2099-01-01#1"
+    else:
+        prior["sha256"] = "f" * 64
+    with pytest.raises(ApplyContractError, match="attachment"):
+        validate_contract(tampered, effective_remote_inventory=inventory)
 
 
 def test_inventory_rejects_inline_payload_and_requires_snapshot_reader(tmp_path):
@@ -262,6 +367,7 @@ def test_positional_inventory_rejects_remote_id_and_adopted_keep_can_update(tmp_
         singleton_desires={name: {"kind": "threshold_update", "payload": new_payload}},
         inspection={"singletons": {name: old_payload}},
         effective_remote_inventory={kept["logical_id"]: adopted},
+        last_operation_reader=_operation_reader(first),
     )
     updated = next(op for op in changed["operations"]
                    if op["kind"] == "threshold_update")
@@ -384,8 +490,13 @@ def test_field_aware_remote_effect_parity_all_dispositions_and_kinds(tmp_path):
     old_remote, new_remote = FakeRemoteModel(), FakeRemoteModel()
     old_remote.apply_legacy_requests(legacy_apply_requests("fake-42", first_legacy))
     new_remote.apply_contract(first_contract)
-    assert old_remote.normalized_snapshot(kinds=LEGACY_SUPPORTED_KINDS) == (
-        new_remote.normalized_snapshot(kinds=LEGACY_SUPPORTED_KINDS))
+    first_differences = classify_migration_differences(old_remote, new_remote)
+    assert {item["disposition"] for item in first_differences.values()} == {
+        INTENTIONAL_D0_DIFFERENCES["workout_external_marker"],
+        INTENTIONAL_D0_DIFFERENCES["workout_sport_type"],
+        INTENTIONAL_D0_DIFFERENCES["workout_segments"],
+        INTENTIONAL_D0_DIFFERENCES["mental_task_upsert"],
+    }
 
     raw_workout = next(
         record for record in old_remote.raw_snapshot().values()
@@ -435,10 +546,46 @@ def test_field_aware_remote_effect_parity_all_dispositions_and_kinds(tmp_path):
     new_remote.apply_contract(second_contract)
     differences = classify_migration_differences(old_remote, new_remote)
     assert differences
-    assert INTENTIONAL_D0_DIFFERENCES["update"] in differences.values()
-    assert INTENTIONAL_D0_DIFFERENCES["delete"] in differences.values()
-    assert INTENTIONAL_D0_DIFFERENCES["mental_task_upsert"] in differences.values()
-    assert "workout_rich_fields" in INTENTIONAL_D0_DIFFERENCES
+    dispositions = {item["disposition"] for item in differences.values()}
+    assert dispositions == {
+        INTENTIONAL_D0_DIFFERENCES["update"],
+        INTENTIONAL_D0_DIFFERENCES["delete"],
+        INTENTIONAL_D0_DIFFERENCES["mental_task_upsert"],
+        INTENTIONAL_D0_DIFFERENCES["workout_external_marker"],
+        INTENTIONAL_D0_DIFFERENCES["workout_sport_type"],
+        INTENTIONAL_D0_DIFFERENCES["workout_segments"],
+    }
+
+
+@pytest.mark.parametrize(("field", "tampered", "classified_as"), [
+    ("external_id", "tampered-marker", "workout_external_marker"),
+    ("title", "Tampered title", None),
+    ("date", "2099-01-01", None),
+    ("duration", 999, None),
+    ("sportType", 99, "workout_sport_type"),
+    ("segments", [{"tampered": True}], "workout_segments"),
+])
+def test_each_legacy_workout_request_field_is_compared(
+    tmp_path, field, tampered, classified_as,
+):
+    (tmp_path / "guide.html").write_text("guide")
+    legacy = build_manifest_from_plan_ir(_ir(), tmp_path)
+    contract = _contract(tmp_path)
+    old_remote, new_remote = FakeRemoteModel(), FakeRemoteModel()
+    old_remote.apply_legacy_requests(legacy_apply_requests("fake-42", legacy))
+    new_remote.apply_contract(contract)
+    workout_key = next(key for key, record in old_remote.state.items()
+                       if record["kind"] == "workout_upsert")
+    old_remote.state[workout_key]["payload"][field] = copy.deepcopy(tampered)
+
+    if classified_as is None:
+        with pytest.raises(ParityError, match="unclassified shared remote-field delta"):
+            classify_migration_differences(old_remote, new_remote)
+        return
+    differences = classify_migration_differences(old_remote, new_remote)
+    delta = differences[f"{workout_key}:{field}"]
+    assert delta["disposition"] == INTENTIONAL_D0_DIFFERENCES[classified_as]
+    assert delta["legacy"] == tampered
 
 
 def test_module_has_no_execution_or_network_surface():

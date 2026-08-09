@@ -53,10 +53,34 @@ def test_coverage_gate_fails_when_a_derived_output_lacks_provenance():
     })
     records = document.pop("_derived")
     document["new_computed_output"] = 8675309
-    with pytest.raises(DerivedRegistryError, match="undeclared computed output"):
+    with pytest.raises(DerivedRegistryError, match="unclassified output path"):
         assert_registry_covers(
             document, records, artifact="derived", revision=1,
         )
+
+
+@pytest.mark.parametrize(("artifact", "document", "seed"), [
+    ("profile", {"fitness_markers": {"unregistered_profile_value": 1}},
+     "fitness_markers.unregistered_profile_value"),
+    ("fueling", {"gut_training": {"phases": {"secret_phase": {}}}},
+     "gut_training.phases.secret_phase"),
+    ("summary", {"plan": {"unregistered_summary_value": 1}},
+     "plan.unregistered_summary_value"),
+    ("derived", {"unregistered_classification": 1},
+     "unregistered_classification"),
+    ("methodology", {"configuration": {"unregistered_methodology_value": 1}},
+     "configuration.unregistered_methodology_value"),
+    ("calendar", {"weeks": [{"unregistered_calendar_value": 1}]},
+     "weeks[].unregistered_calendar_value"),
+    ("schedule", {"days": {"monday": {"unregistered_schedule_value": 1}}},
+     "days.monday.unregistered_schedule_value"),
+])
+def test_each_artifact_class_rejects_an_output_without_schema_coverage(
+    artifact, document, seed,
+):
+    with pytest.raises(DerivedRegistryError, match="unclassified output path") as exc:
+        assert_registry_covers(document, [], artifact=artifact, revision=1)
+    assert seed in str(exc.value)
 
 
 def test_caller_cannot_supply_a_self_declared_coverage_list():
@@ -102,6 +126,20 @@ def test_fueling_cli_does_not_print_seeded_sensitive_targets(tmp_path):
     ]
     assert all(f"{value}g/hr" not in output for value in secret_values)
     assert str(fueling["calories"]["total_calories"]) not in output
+    assert "authenticated review" in output
+
+
+def test_fueling_cli_suppresses_seeded_sensitive_phase_and_week_metadata():
+    from calculate_fueling import _gut_training_cli_summary
+
+    secret_phase = "phase-secret-8675309"
+    secret_week = "week-secret-8675309"
+    fueling = {"gut_training": {"phases": {
+        secret_phase: {"weeks": [secret_week], "target_range": [61, 73]},
+    }}}
+    output = _gut_training_cli_summary(fueling)
+    assert secret_phase not in output
+    assert secret_week not in output
     assert "authenticated review" in output
 
 

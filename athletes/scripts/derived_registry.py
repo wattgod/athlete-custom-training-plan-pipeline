@@ -25,10 +25,214 @@ DERIVATION_CLASSES = {
 SENSITIVITIES = {"public", "internal", "personal", "sensitive"}
 
 # Authoritative inventories for every artifact that owns review-facing derived
-# values.  Callers may not supply their own coverage list: adding an output to
-# a strict artifact fails until this schema and the owning provenance records
-# are updated together.  Optional fields are still schema-owned; they are
-# required exactly when the owning document contains them.
+# values. Callers may not supply their own coverage list. ``output_shape`` is a
+# recursive, closed classification: every emitted key is either derived or an
+# explicitly raw/non-derived aggregate. A derived aggregate record covers its
+# declared descendants, but the descendant key inventory remains closed, so a
+# new field under ``weeks``, ``days``, ``configuration``, etc. cannot inherit
+# provenance accidentally.
+DERIVED = "derived"
+RAW = "raw"
+
+
+def _optional(shape: Any) -> tuple[str, Any]:
+    return ("optional", shape)
+
+
+def _list(shape: Any) -> tuple[str, Any]:
+    return ("list", shape)
+
+
+def _map(keys: Iterable[str], shape: Any) -> tuple[str, frozenset[str], Any]:
+    return ("map", frozenset(str(key) for key in keys), shape)
+
+
+_PROFILE_RAW_ROOTS = (
+    "name", "email", "athlete_id", "order_id", "delivery_platform",
+    "fulfillment", "sex", "height_cm", "weight_kg", "primary_goal",
+    "target_race", "brand", "road_category", "discipline_default",
+    "a_events", "b_events", "c_events", "secondary_races", "racing",
+    "training_history", "recent_training", "weekly_availability",
+    "preferred_days", "availability_roles", "recurring_sessions",
+    "availability_review_issues", "travel_dates", "schedule_constraints",
+    "cycling_equipment", "strength_equipment", "training_environment",
+    "injury_history", "movement_limitations", "strength", "devices",
+    "work", "life_balance", "nutrition", "bike", "social", "coaching",
+    "personal", "methodology_preferences", "workout_preferences",
+    "strength_preferences", "coaching_style", "motivation", "mental_game",
+    "lifestyle", "platforms", "communication", "plan_start",
+)
+
+_PROFILE_SHAPE = {key: RAW for key in _PROFILE_RAW_ROOTS} | {
+    "health_factors": {
+        "age": DERIVED,
+        "sleep_quality": RAW,
+        "sleep_hours_avg": RAW,
+        "stress_level": RAW,
+        "recovery_capacity": RAW,
+        "medical_conditions": RAW,
+        "medications": RAW,
+        "health_notes": RAW,
+    },
+    "fitness_markers": {
+        "ftp_watts": DERIVED,
+        "ftp_estimated": RAW,
+        "power_basis": DERIVED,
+        "ftp_date": RAW,
+        "weight_kg": DERIVED,
+        "height_cm": RAW,
+        "sex": DERIVED,
+        "w_kg": DERIVED,
+        "resting_hr": RAW,
+        "max_hr": RAW,
+        "lthr": RAW,
+        "training_metric": RAW,
+        "control_metric": DERIVED,
+        "control_basis": DERIVED,
+        "requested_metric": RAW,
+        "reanchor": RAW,
+    },
+    "discipline": DERIVED,
+    "event_format": _optional(RAW),
+    "brand_discipline_conflict": _optional(RAW),
+}
+
+_FUELING_PHASE = {
+    "description": DERIVED,
+    "guidance": DERIVED,
+    "weeks": _list(DERIVED),
+    "target_range": _list(DERIVED),
+}
+_FUELING_WEEK = {
+    "description": DERIVED,
+    "guidance": DERIVED,
+    "current_week": DERIVED,
+    "week_label": DERIVED,
+    "plan_weeks": DERIVED,
+    "phase_name": DERIVED,
+    "target_range": _list(DERIVED),
+}
+_FUELING_SHAPE = {
+    "athlete": {"weight_kg": RAW, "sex": RAW},
+    "race": {
+        "distance_miles": RAW, "elevation_feet": RAW,
+        "duration_hours": DERIVED, "goal_type": RAW,
+    },
+    "calories": {
+        "total_calories": DERIVED, "calories_per_hour": DERIVED,
+        "rate_kcal_kg_km": DERIVED, "duration_hours": DERIVED,
+        "distance_km": DERIVED, "weight_kg": DERIVED,
+        "breakdown": {
+            "base_rate": DERIVED, "elevation_adjustment": DERIVED,
+            "duration_factor": DERIVED, "final_rate": DERIVED,
+        },
+    },
+    "carbohydrates": {
+        "hourly_target": DERIVED, "hourly_range": _list(DERIVED),
+        "total_grams": DERIVED, "total_range": _list(DERIVED),
+        "duration_hours": RAW, "goal_type": RAW,
+    },
+    "gut_training": {
+        "phases": _map(
+            ("lead_in", "base", "build", "peak", "maintenance", "taper", "race"),
+            _FUELING_PHASE,
+        ),
+        "weekly_progression": _list(_FUELING_WEEK),
+    },
+    "fueling_timeline": _list({
+        "hour": DERIVED, "mile": DERIVED, "action": DERIVED,
+        "carbs_target": DERIVED, "cumulative_carbs": DERIVED,
+        "notes": DERIVED,
+    }),
+    "prescription": {
+        "race_target_g_per_hour": DERIVED,
+        "race_range_g_per_hour": _list(DERIVED),
+        "total_g": DERIVED,
+        "training_tiers": _map(("quality", "long_ride", "race_sim"), {
+            "target_g_per_hour": DERIVED,
+            "range_g_per_hour": _list(DERIVED),
+        }),
+        "hydration": {
+            "target_ml_per_hour": DERIVED,
+            "electrolytes": DERIVED,
+        },
+        "assumptions": _list(DERIVED),
+        "inputs": {
+            "basis": DERIVED, "duration_hours": DERIVED,
+            "weight_kg": DERIVED, "goal_type": DERIVED,
+            "gut_training_phase": DERIVED, "tolerated_g_per_hour": DERIVED,
+            "ftp_watts": _optional(DERIVED),
+            "intensity_factor": _optional(DERIVED),
+            "absolute_work_watts": _optional(DERIVED),
+            "intensity_descriptor": _optional(DERIVED),
+            "deferred_to_field_test": _optional(DERIVED),
+        },
+        "policy_version": DERIVED,
+    },
+    "fueling_basis": {
+        "kind": DERIVED, "power_used": DERIVED, "label": DERIVED,
+        "reanchor": RAW,
+    },
+    "recommendations": {
+        "hourly_target": DERIVED, "total_target": DERIVED,
+        "example_products": {
+            "gels_only": {
+                "quantity": DERIVED, "frequency": DERIVED, "notes": DERIVED,
+            },
+            "mixed_approach": {
+                "gels": DERIVED, "chews_packs": DERIVED,
+                "drink_mix_bottles": DERIVED, "notes": DERIVED,
+            },
+            "real_food_hybrid": {
+                "gels": DERIVED, "rice_cakes_bars": DERIVED,
+                "drink_mix": DERIVED, "notes": DERIVED,
+            },
+        },
+        "hydration": {"target_ml_per_hour": DERIVED, "electrolytes": DERIVED},
+        "pre_race": {
+            "meal_timing": DERIVED, "meal_composition": DERIVED,
+            "example": DERIVED, "final_top_off": DERIVED,
+        },
+        "post_race": {
+            "timing": DERIVED, "composition": DERIVED, "example": DERIVED,
+        },
+    },
+    "generated_date": RAW,
+}
+
+_METHODOLOGY_CONFIGURATION = {
+    "methodology": DERIVED, "emphasis": DERIVED,
+    "intensity_distribution": {
+        "z1_z2": DERIVED, "z3": DERIVED, "z4_z5": DERIVED,
+    },
+    "strength_approach": DERIVED, "key_workouts": _list(DERIVED),
+    "progression_style": DERIVED, "testing_frequency": DERIVED,
+}
+
+_CALENDAR_DAY = {
+    "day": DERIVED, "date": DERIVED, "date_short": DERIVED,
+    "workout_prefix": DERIVED, "is_race_day": DERIVED,
+    "is_b_race_day": _optional(DERIVED),
+    "is_b_race_opener": _optional(DERIVED),
+    "is_b_race_easy": _optional(DERIVED),
+    "is_travel_day": _optional(DERIVED),
+}
+_CALENDAR_WEEK = {
+    "week": DERIVED, "monday": DERIVED, "monday_short": DERIVED,
+    "sunday": DERIVED, "sunday_short": DERIVED, "phase": DERIVED,
+    "is_race_week": DERIVED, "days": _list(_CALENDAR_DAY),
+    "is_recovery_week": DERIVED,
+    "b_race": _optional({"name": DERIVED, "date": DERIVED, "phase": DERIVED}),
+}
+
+_DAY_NAMES = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+_SCHEDULE_DAY = {
+    "am": DERIVED, "pm": DERIVED, "is_key_day": DERIVED,
+    "notes": DERIVED, "max_duration": DERIVED,
+}
+
+# Optional fields are still schema-owned; they are required exactly when the
+# owning document contains them.
 ARTIFACT_DERIVED_SCHEMAS = {
     "profile": {
         "required": (
@@ -39,7 +243,7 @@ ARTIFACT_DERIVED_SCHEMAS = {
         ),
         "optional": ("fitness_markers.ftp_watts", "fitness_markers.w_kg"),
         "optional_non_null": True,
-        "strict_top_level": False,
+        "output_shape": _PROFILE_SHAPE,
     },
     "fueling": {
         "required": (
@@ -50,7 +254,7 @@ ARTIFACT_DERIVED_SCHEMAS = {
             "fueling_timeline", "prescription", "fueling_basis",
             "recommendations", "recommendations.hydration",
         ),
-        "optional": (), "optional_non_null": False, "strict_top_level": False,
+        "optional": (), "optional_non_null": False, "output_shape": _FUELING_SHAPE,
     },
     "summary": {
         "required": (
@@ -62,7 +266,25 @@ ARTIFACT_DERIVED_SCHEMAS = {
             "control.metric", "control.basis", "control.week_1_field_test",
             "control.reanchor", "files.workout_count",
         ),
-        "optional": (), "optional_non_null": False, "strict_top_level": False,
+        "optional": (), "optional_non_null": False,
+        "output_shape": {
+            "athlete_id": RAW, "athlete_name": RAW, "generated_date": DERIVED,
+            "race": {"name": RAW, "date": DERIVED, "distance_miles": DERIVED},
+            "plan": {
+                "weeks": DERIVED, "start_date": DERIVED, "end_date": DERIVED,
+                "methodology": DERIVED, "methodology_score": DERIVED,
+                "tier": DERIVED, "ability_level": DERIVED,
+            },
+            "fueling": {
+                "hourly_carb_target": DERIVED, "total_carbs": DERIVED,
+                "estimated_duration_hours": DERIVED,
+            },
+            "control": {
+                "metric": DERIVED, "basis": DERIVED,
+                "week_1_field_test": DERIVED, "reanchor": DERIVED,
+            },
+            "files": {"guide": RAW, "workouts_dir": RAW, "workout_count": DERIVED},
+        },
     },
     "derived": {
         "required": (
@@ -72,7 +294,15 @@ ARTIFACT_DERIVED_SCHEMAS = {
         ),
         "optional": ("plan_start", "plan_end", "race_weekday"),
         "optional_non_null": False,
-        "strict_top_level": True,
+        "output_shape": {
+            "tier": DERIVED, "plan_weeks": DERIVED, "starting_phase": DERIVED,
+            "strength_frequency": DERIVED, "equipment_tier": DERIVED,
+            "risk_factors": _list(DERIVED), "exercise_exclusions": _list(DERIVED),
+            "key_day_candidates": _list(DERIVED),
+            "strength_day_candidates": _list(DERIVED), "derived_date": DERIVED,
+            "plan_start": _optional(DERIVED), "plan_end": _optional(DERIVED),
+            "race_weekday": _optional(DERIVED),
+        },
     },
     "methodology": {
         "required": (
@@ -80,7 +310,17 @@ ARTIFACT_DERIVED_SCHEMAS = {
             "warnings", "configuration", "alternatives", "selection_date",
             "confidence", "confidence_note",
         ),
-        "optional": (), "optional_non_null": False, "strict_top_level": True,
+        "optional": (), "optional_non_null": False,
+        "output_shape": {
+            "selected_methodology": DERIVED, "methodology_id": DERIVED,
+            "score": DERIVED, "reasons": _list(DERIVED),
+            "warnings": _list(DERIVED), "configuration": _METHODOLOGY_CONFIGURATION,
+            "alternatives": _list({
+                "name": DERIVED, "score": DERIVED, "key_reason": DERIVED,
+            }),
+            "selection_date": DERIVED, "confidence": DERIVED,
+            "confidence_note": DERIVED,
+        },
     },
     "calendar": {
         "required": (
@@ -89,11 +329,21 @@ ARTIFACT_DERIVED_SCHEMAS = {
             "race_week_monday", "weeks", "workout_naming_convention",
             "workout_example", "day_abbreviations", "month_abbreviations",
         ),
-        "optional": (), "optional_non_null": False, "strict_top_level": True,
+        "optional": (), "optional_non_null": False,
+        "output_shape": {
+            "race_date": DERIVED, "race_weekday": DERIVED, "plan_weeks": DERIVED,
+            "plan_start": DERIVED, "plan_start_short": DERIVED, "plan_end": DERIVED,
+            "week1_monday": DERIVED, "race_week_monday": DERIVED,
+            "weeks": _list(_CALENDAR_WEEK), "workout_naming_convention": DERIVED,
+            "workout_example": DERIVED,
+            "day_abbreviations": _map(_DAY_NAMES, DERIVED),
+            "month_abbreviations": _map(tuple(str(i) for i in range(1, 13)), DERIVED),
+        },
     },
     "schedule": {
         "required": ("description", "days"),
-        "optional": (), "optional_non_null": False, "strict_top_level": True,
+        "optional": (), "optional_non_null": False,
+        "output_shape": {"description": DERIVED, "days": _map(_DAY_NAMES, _SCHEDULE_DAY)},
     },
 }
 
@@ -188,6 +438,8 @@ def assert_registry_covers(
         raise DerivedRegistryError("unknown derived-value artifact schema")
     normalized = validate_registry(records)
     fields = [record["field"] for record in normalized]
+    classified = _assert_output_shape(
+        document, schema["output_shape"], artifact=str(artifact))
     required = set(schema["required"])
     for field in schema["optional"]:
         try:
@@ -198,14 +450,6 @@ def assert_registry_covers(
             continue
         required.add(field)
     required = sorted(required)
-    if schema["strict_top_level"]:
-        declared_roots = {field.split(".", 1)[0]
-                          for field in (*schema["required"], *schema["optional"])}
-        actual_roots = set(document) - {"_derived"}
-        undeclared = sorted(actual_roots - declared_roots)
-        if undeclared:
-            raise DerivedRegistryError(
-                f"undeclared computed output(s) for {artifact}: {undeclared}")
     if len(fields) != len(set(fields)):
         raise DerivedRegistryError("duplicate derived-value field")
     if sorted(fields) != required:
@@ -216,9 +460,98 @@ def assert_registry_covers(
         )
     if any(record["revision"] != revision for record in normalized):
         raise DerivedRegistryError("derived-value entry revision is stale")
+    for path, classification in classified:
+        if classification != DERIVED:
+            continue
+        if (schema.get("optional_non_null") and path in schema["optional"]
+                and get_field(document, path) is None):
+            continue
+        if not any(path == field or path.startswith(field + ".")
+                   or path.startswith(field + "[]") for field in fields):
+            raise DerivedRegistryError(
+                f"derived output lacks provenance for {artifact}: {path}")
     for field in required:
         get_field(document, field)
     return normalized
+
+
+def _assert_output_shape(
+    value: Any, shape: Any, *, artifact: str, path: str = "",
+) -> List[tuple[str, str]]:
+    """Validate and classify every present artifact path recursively.
+
+    Unknown keys are reported before missing required keys. This makes a
+    negative probe that adds one output fail for that output even when it uses
+    a deliberately minimal fixture.
+    """
+    if isinstance(shape, str) and shape in {DERIVED, RAW}:
+        return [(path, shape)] if path else []
+
+    if isinstance(shape, tuple):
+        tag = shape[0]
+        if tag == "optional":
+            return _assert_output_shape(
+                value, shape[1], artifact=artifact, path=path)
+        if tag == "list":
+            if not isinstance(value, list):
+                raise DerivedRegistryError(
+                    f"artifact output shape mismatch for {artifact}: {path} must be a list")
+            classified: List[tuple[str, str]] = []
+            for item in value:
+                classified.extend(_assert_output_shape(
+                    item, shape[1], artifact=artifact, path=f"{path}[]"))
+            return classified
+        if tag == "map":
+            if not isinstance(value, dict):
+                raise DerivedRegistryError(
+                    f"artifact output shape mismatch for {artifact}: {path} must be an object")
+            allowed = shape[1]
+            unknown = sorted(str(key) for key in value if str(key) not in allowed)
+            if unknown:
+                rendered = [f"{path}.{key}" if path else key for key in unknown]
+                raise DerivedRegistryError(
+                    f"unclassified output path(s) for {artifact}: {rendered}")
+            classified = []
+            for key, item in value.items():
+                child = f"{path}.{key}" if path else str(key)
+                classified.extend(_assert_output_shape(
+                    item, shape[2], artifact=artifact, path=child))
+            return classified
+        raise DerivedRegistryError("invalid artifact output schema")
+
+    if not isinstance(shape, dict):
+        raise DerivedRegistryError("invalid artifact output schema")
+    if not isinstance(value, dict):
+        raise DerivedRegistryError(
+            f"artifact output shape mismatch for {artifact}: {path or '<root>'} must be an object")
+
+    actual = set(value) - ({"_derived"} if not path else set())
+    declared = set(shape)
+    unknown = sorted(str(key) for key in actual - declared)
+    if unknown:
+        rendered = [f"{path}.{key}" if path else key for key in unknown]
+        raise DerivedRegistryError(
+            f"unclassified output path(s) for {artifact}: {rendered}")
+
+    classified = []
+    for key in sorted(actual, key=str):
+        child_shape = shape[key]
+        if isinstance(child_shape, tuple) and child_shape[0] == "optional":
+            child_shape = child_shape[1]
+        child = f"{path}.{key}" if path else str(key)
+        classified.extend(_assert_output_shape(
+            value[key], child_shape, artifact=artifact, path=child))
+
+    missing = sorted(
+        key for key, child_shape in shape.items()
+        if key not in actual
+        and not (isinstance(child_shape, tuple) and child_shape[0] == "optional")
+    )
+    if missing:
+        rendered = [f"{path}.{key}" if path else key for key in missing]
+        raise DerivedRegistryError(
+            f"artifact output shape is missing path(s) for {artifact}: {rendered}")
+    return classified
 
 
 def get_field(document: Dict[str, Any], field: str) -> Any:
