@@ -315,6 +315,47 @@ def _predecessor(record: Dict[str, Any], dated: bool) -> Dict[str, Any]:
             "remote_id": str(remote_id) if dated else None}
 
 
+def _validate_null_positional_provenance(
+    logical_id: str, record: Dict[str, Any], operation_reader: OperationReader,
+) -> None:
+    """Prove a null snapshot descends only from a verified adoption keep."""
+    next_op_id = str(record["last_op_id"])
+    seen_op_ids = set()
+    while True:
+        if next_op_id in seen_op_ids:
+            raise ApplyContractError(
+                "null positional snapshot provenance contains a cycle")
+        seen_op_ids.add(next_op_id)
+        try:
+            provenance = dict(operation_reader(next_op_id))
+        except Exception as exc:
+            raise ApplyContractError(
+                "could not resolve durable positional predecessor provenance") from exc
+
+        if (provenance.get("op_id") != next_op_id
+                or provenance.get("logical_id") != logical_id
+                or provenance.get("kind") != record["kind"]
+                or provenance.get("expected_digest") != record["desired_digest"]):
+            raise ApplyContractError(
+                "positional predecessor provenance does not match inventory")
+        if (provenance.get("disposition") != "keep"
+                or provenance.get("payload") is not None):
+            raise ApplyContractError(
+                "null positional snapshot is legal only for a verified never-written keep")
+
+        predecessor = provenance.get("predecessor")
+        if predecessor is None:
+            return
+        if (not isinstance(predecessor, Mapping)
+                or set(predecessor) != {"op_id", "remote_id"}
+                or predecessor.get("remote_id") is not None
+                or not isinstance(predecessor.get("op_id"), str)
+                or not predecessor["op_id"].strip()):
+            raise ApplyContractError(
+                "null positional snapshot has invalid predecessor provenance")
+        next_op_id = predecessor["op_id"]
+
+
 def _validate_inventory(
     inventory: Mapping[str, Dict[str, Any]],
     operation_reader: Optional[OperationReader] = None,
@@ -352,21 +393,8 @@ def _validate_inventory(
             if operation_reader is None:
                 raise ApplyContractError(
                     "null positional snapshot requires durable last-operation provenance")
-            try:
-                provenance = dict(operation_reader(str(record["last_op_id"])))
-            except Exception as exc:
-                raise ApplyContractError(
-                    "could not resolve durable last-operation provenance") from exc
-            if (provenance.get("op_id") != record["last_op_id"]
-                    or provenance.get("logical_id") != str(logical_id)
-                    or provenance.get("kind") != record["kind"]):
-                raise ApplyContractError(
-                    "last-operation provenance does not match positional inventory")
-            if (provenance.get("disposition") != "keep"
-                    or provenance.get("payload") is not None
-                    or provenance.get("expected_digest") != record["desired_digest"]):
-                raise ApplyContractError(
-                    "null positional snapshot is legal only for a verified never-written keep")
+            _validate_null_positional_provenance(
+                str(logical_id), record, operation_reader)
         normalized[str(logical_id)] = record
     return normalized
 

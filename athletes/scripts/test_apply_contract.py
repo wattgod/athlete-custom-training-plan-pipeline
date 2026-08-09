@@ -209,6 +209,144 @@ def test_written_positional_inventory_rejects_null_snapshot(tmp_path, resource):
         )
 
 
+@pytest.mark.parametrize("resource", ["written_singleton", "created_entitlement"])
+def test_positional_keep_cannot_erase_written_snapshot_provenance(tmp_path, resource):
+    if resource == "written_singleton":
+        name = "lthr"
+        before = {"metric": "lthr", "after_value": 165, "unit": "bpm"}
+        desired = {"metric": "lthr", "after_value": 171, "unit": "bpm"}
+        first = _contract(
+            tmp_path,
+            singleton_desires={name: {"kind": "threshold_update", "payload": desired}},
+            inspection={"singletons": {name: before}},
+        )
+        written = next(op for op in first["operations"]
+                       if op["kind"] == "threshold_update")
+        assert written["disposition"] == "update"
+        next_kwargs = {
+            "singleton_desires": {
+                name: {"kind": "threshold_update", "payload": desired}},
+            "inspection": {"singletons": {name: desired}},
+        }
+        snapshot_ref = "snapshots/lthr-r1.json"
+    else:
+        first = _contract(tmp_path)
+        written = next(op for op in first["operations"]
+                       if op["kind"] == "course_entitlement_grant")
+        assert written["disposition"] == "create"
+        next_kwargs = {"inspection": {"entitlements": ["course:test-race"]}}
+        snapshot_ref = "snapshots/entitlement-r1.json"
+
+    inventory = {written["logical_id"]: {
+        "kind": written["kind"], "remote_id": None,
+        "desired_digest": written["expected_digest"],
+        "payload_snapshot_ref": snapshot_ref, "last_op_id": written["op_id"],
+    }}
+    second = _contract(
+        tmp_path, generation_revision=2,
+        effective_remote_inventory=inventory,
+        **next_kwargs,
+    )
+    kept = next(op for op in second["operations"]
+                if op["logical_id"] == written["logical_id"])
+    assert kept["disposition"] == "keep"
+
+    inventory[written["logical_id"]].update({
+        "payload_snapshot_ref": None, "last_op_id": kept["op_id"],
+    })
+    with pytest.raises(ApplyContractError, match="never-written keep"):
+        _contract(
+            tmp_path, generation_revision=3,
+            effective_remote_inventory=inventory,
+            last_operation_reader=_operation_reader(first, second),
+            **next_kwargs,
+        )
+
+
+def test_three_revision_adopted_keep_chain_retains_null_snapshot(tmp_path):
+    name = "lthr"
+    desired = {"metric": "lthr", "after_value": 171, "unit": "bpm"}
+    kwargs = {
+        "singleton_desires": {
+            name: {"kind": "threshold_update", "payload": desired}},
+        "inspection": {"singletons": {name: desired}},
+    }
+    contracts = [_contract(tmp_path, **kwargs)]
+    root = next(op for op in contracts[0]["operations"]
+                if op["kind"] == "threshold_update")
+    assert root["disposition"] == "keep" and root["predecessor"] is None
+    inventory = {root["logical_id"]: {
+        "kind": root["kind"], "remote_id": None,
+        "desired_digest": root["expected_digest"],
+        "payload_snapshot_ref": None, "last_op_id": root["op_id"],
+    }}
+
+    for revision in (2, 3):
+        contract = _contract(
+            tmp_path, generation_revision=revision,
+            effective_remote_inventory=inventory,
+            last_operation_reader=_operation_reader(*contracts),
+            **kwargs,
+        )
+        kept = next(op for op in contract["operations"]
+                    if op["logical_id"] == root["logical_id"])
+        assert kept["disposition"] == "keep"
+        inventory[root["logical_id"]]["last_op_id"] = kept["op_id"]
+        contracts.append(contract)
+
+    fourth = _contract(
+        tmp_path, generation_revision=4,
+        effective_remote_inventory=inventory,
+        last_operation_reader=_operation_reader(*contracts),
+        **kwargs,
+    )
+    assert next(op for op in fourth["operations"]
+                if op["logical_id"] == root["logical_id"])["disposition"] == "keep"
+
+
+@pytest.mark.parametrize("tamper", ["missing_link", "cycle"])
+def test_null_snapshot_predecessor_chain_rejects_missing_links_and_cycles(
+    tmp_path, tamper,
+):
+    first = _contract(tmp_path, inspection={"entitlements": ["course:test-race"]})
+    root = next(op for op in first["operations"]
+                if op["kind"] == "course_entitlement_grant")
+    inventory = {root["logical_id"]: {
+        "kind": root["kind"], "remote_id": None,
+        "desired_digest": root["expected_digest"],
+        "payload_snapshot_ref": None, "last_op_id": root["op_id"],
+    }}
+    second = _contract(
+        tmp_path, generation_revision=2,
+        inspection={"entitlements": ["course:test-race"]},
+        effective_remote_inventory=inventory,
+        last_operation_reader=_operation_reader(first),
+    )
+    kept = next(op for op in second["operations"]
+                if op["logical_id"] == root["logical_id"])
+    inventory[root["logical_id"]]["last_op_id"] = kept["op_id"]
+    operations = {
+        operation["op_id"]: copy.deepcopy(operation)
+        for contract in (first, second) for operation in contract["operations"]
+    }
+    if tamper == "missing_link":
+        del operations[root["op_id"]]
+        match = "could not resolve durable positional predecessor"
+    else:
+        operations[root["op_id"]]["predecessor"] = {
+            "op_id": kept["op_id"], "remote_id": None,
+        }
+        match = "contains a cycle"
+
+    with pytest.raises(ApplyContractError, match=match):
+        _contract(
+            tmp_path, generation_revision=3,
+            inspection={"entitlements": ["course:test-race"]},
+            effective_remote_inventory=inventory,
+            last_operation_reader=operations.__getitem__,
+        )
+
+
 def test_created_entitlement_snapshot_supports_subsequent_keep(tmp_path):
     first = _contract(tmp_path)
     created = next(op for op in first["operations"]

@@ -576,3 +576,43 @@ also pinned as direct unit regressions.
   marker round-trip, identity binding, reconciliation, apply, readback,
   rollback, worker authorization/quiescence, and canary health remain the
   explicit Phase 4/5 gates. The transitional driver remains hard-disabled.
+
+## R4 adversarial-review disposition (2026-08-09)
+
+The single blocker in `PHASE3_IMPLEMENTATION_CODEX_R4.md` is closed at the
+offline Phase 3 contract boundary. Null-snapshot positional inventory now
+walks the complete durable predecessor chain instead of trusting only
+`last_op_id`. Every resolved operation must match the referenced op id,
+logical id, positional kind, and inventory digest and must remain a
+payload-null `keep`. Positional predecessor shapes are checked at every hop;
+missing links and repeated op ids fail closed. The only accepted terminus is a
+predecessor-null verified adoption keep, so a singleton update, entitlement
+create, or payload-installing compensation cannot be hidden behind later
+keeps.
+
+Regression coverage now proves:
+
+- singleton `update -> keep -> null snapshot` is rejected;
+- entitlement `create -> keep -> null snapshot` is rejected;
+- a three-revision adopted `keep -> keep -> keep` ancestry retains the legal
+  null-snapshot path; and
+- missing predecessor records and cyclic predecessor chains are rejected.
+
+The R3 closures remain pinned in the focused file: direct singleton-write and
+entitlement-create null snapshots fail, both legal adoption branches pass,
+attachment current/prior identity stays bound, and all parity tamper tests
+remain closed.
+
+### R4 verification evidence
+
+- Focused apply-contract suite: **35 passed, 0 failed**.
+- Complete sandbox suite: **2,490 passed, 87 skipped, 21 warnings, 0 failed**.
+- `python3 -m compileall -q athletes/scripts delivery tools webhook` and
+  `git diff --check` passed.
+- The golden ZWO manifest is unchanged. This repair changes only contract
+  validation, its regressions, and these notes; no workout generator, ZWO,
+  fixture, or golden file changed. The established sorted **253-ZWO** manifest
+  remains byte-identical with SHA-256
+  `79452230ea1cdf33fcc684e971816bc1805e84eefbbdbc7e3579bb5d49c3985e`.
+- No live TrainingPeaks, browser, worker, Stripe, email, network, or push action
+  was attempted.
