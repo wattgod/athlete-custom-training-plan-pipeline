@@ -19,6 +19,7 @@ import os
 import re
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
@@ -60,6 +61,19 @@ class VerifiedCapability:
     @property
     def action(self) -> str:
         return str(self.claims["action"])
+
+
+@dataclass(frozen=True)
+class VerifiedInspectionEvidence:
+    """Provenance returned only after a signed inspect capability executes."""
+
+    order_id: str
+    tp_athlete_id: str
+    capability_jti: str
+    capability_kid: str
+    request_digest: str
+    observed_at: str
+    result: dict[str, Any]
 
 
 def _canonical_json(value: Any) -> bytes:
@@ -321,6 +335,11 @@ class ProbeExecutionStore:
             return copy.deepcopy(results)
 
     @staticmethod
+    def request_digest(request: Mapping[str, Any]) -> str:
+        """Return the canonical digest bound into a probe execution record."""
+        return _digest(request)
+
+    @staticmethod
     def _write(path: Path, value: Mapping[str, Any]) -> None:
         fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
         try:
@@ -402,14 +421,35 @@ class ReadOnlyWorkerService:
         )
 
     def inspect_account(self, tp_athlete_id: str, capability: str, *, now: int) -> dict[str, Any]:
+        return copy.deepcopy(
+            self.inspect_account_evidence(
+                tp_athlete_id, capability, now=now,
+            ).result
+        )
+
+    def inspect_account_evidence(
+        self, tp_athlete_id: str, capability: str, *, now: int,
+    ) -> VerifiedInspectionEvidence:
+        """Inspect once and return capability/request-bound readback provenance."""
         verified = self.codec.verify(capability, now=now, expected_action="inspect")
         subject = verified.claims["subject"]
         if subject.get("tp_athlete_id") != str(tp_athlete_id):
             raise WorkerAuthorizationError("inspection request does not match capability subject")
         request = {"operation": "inspect_account", "tp_athlete_id": str(tp_athlete_id)}
-        return self.replay_store.run(
+        result = self.replay_store.run(
             verified.claims, request,
             lambda: self.transport.inspect_account(str(tp_athlete_id)),
+        )
+        return VerifiedInspectionEvidence(
+            order_id=str(verified.claims["order_id"]),
+            tp_athlete_id=str(tp_athlete_id),
+            capability_jti=str(verified.claims["jti"]),
+            capability_kid=verified.kid,
+            request_digest=self.replay_store.request_digest(request),
+            observed_at=datetime.fromtimestamp(
+                int(now), tz=timezone.utc,
+            ).isoformat().replace("+00:00", "Z"),
+            result=copy.deepcopy(result),
         )
 
     @staticmethod

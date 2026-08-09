@@ -240,6 +240,24 @@ def render_review_page(
 <div><dt>Bound TP athlete</dt><dd>{_e(binding.get('tp_athlete_id') or 'not bound')}</dd></div>
 <div><dt>Candidate count</dt><dd>{_e(len(candidates))}</dd></div></dl>
 {binding_control}</section>"""
+    pending_readbacks = state.get("d2_pending_requirements") or {}
+    readback_controls = "".join(
+        f"""
+<form method="post" action="/review/{_e(order_id)}/d2/readback">
+<input type="hidden" name="csrf_token" value="{_e(csrf_token)}">
+<input type="hidden" name="generation_revision" value="{_e(state.get('generation_revision'))}">
+<input type="hidden" name="readback_item" value="{_e(item_id)}">
+<p>Manual correction for <code>{_e(item_id)}</code> is awaiting an exact,
+order-bound worker inspection.</p>
+<button class="button secondary" type="submit">Run worker readback</button>
+</form>"""
+        for item_id in sorted(pending_readbacks)
+    )
+    readback_panel = (
+        '<section class="action"><h2>Manual correction readback</h2>'
+        + readback_controls + '</section>'
+        if readback_controls else ""
+    )
 
     approval_form = ""
     if invalid_approval:
@@ -284,4 +302,4 @@ def render_review_page(
 <title>Review order {_e(state.get('order_id'))}</title><style>{_STYLE}</style></head>
 <body><main><p class="eyebrow">Coach review · sealed fulfilment</p><h1>Order {_e(state.get('order_id'))}</h1>
 <dl class="summary"><div><dt>Status</dt><dd>{_e(effective_status)}</dd></div><div><dt>Athlete</dt><dd>{_e(state.get('athlete_id'))}</dd></div><div><dt>Platform</dt><dd>{_e(state.get('delivery_platform'))}</dd></div><div><dt>Revision</dt><dd>{_e(state.get('generation_revision'))}</dd></div></dl>
-{error_html}{identity_panel}{approval_form}{superseded_history}{post_approval}</main></body></html>"""
+{error_html}{identity_panel}{readback_panel}{approval_form}{superseded_history}{post_approval}</main></body></html>"""

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import copy
+import re
 from datetime import date, datetime, timezone
 from typing import Any, Mapping
+
+from delivery.trainingpeaks.worker_service import VerifiedInspectionEvidence
 
 from fulfillment_state import (
     BLOCKED_REVIEW,
@@ -118,6 +121,62 @@ def validate_d2_state(state: dict[str, Any]) -> None:
                 or not str(resolution.get("actor") or "").strip()
                 or not str(resolution.get("at") or "").strip()):
             raise FulfillmentStateError("D2 resolution record is invalid")
+        evidence = resolution.get("readback_evidence")
+        if evidence is not None:
+            required = {
+                "record_type", "order_id", "tp_athlete_id", "capability_jti",
+                "capability_kid", "request_digest", "observed_at", "metric",
+                "field", "value", "unit",
+            }
+            metric_fields = {
+                "lthr": ("lthr_bpm", "bpm"),
+                "ftp": ("ftp_watts", "W"),
+                "age": ("age", "years"),
+            }
+            metric = evidence.get("metric") if isinstance(evidence, dict) else None
+            expected_field_unit = metric_fields.get(metric)
+            try:
+                observed = datetime.fromisoformat(
+                    str(evidence.get("observed_at") or "").replace("Z", "+00:00")
+                ) if isinstance(evidence, dict) else None
+            except ValueError:
+                observed = None
+            if (not isinstance(evidence, dict) or set(evidence) != required
+                    or evidence.get("record_type") != "d2_worker_readback/v1"
+                    or evidence.get("order_id") != state.get("order_id")
+                    or not str(evidence.get("tp_athlete_id") or "").strip()
+                    or not str(evidence.get("capability_kid") or "").strip()
+                    or not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", str(
+                        evidence.get("capability_jti") or ""))
+                    or not re.fullmatch(r"[0-9a-f]{64}", str(
+                        evidence.get("request_digest") or ""))
+                    or observed is None or observed.tzinfo is None
+                    or expected_field_unit != (
+                        evidence.get("field"), evidence.get("unit"))
+                    or isinstance(evidence.get("value"), bool)
+                    or not isinstance(evidence.get("value"), int)
+                    or resolution.get("choice") != "manually-corrected"):
+                raise FulfillmentStateError("D2 worker readback evidence is invalid")
+            derived_id = f"D2_MANUAL_READBACK_{metric.upper()}"
+            derived_matches = [
+                item for item in state.get("derived_values", [])
+                if item.get("id") == derived_id
+            ]
+            expected_inputs = {
+                "capability_jti": evidence["capability_jti"],
+                "capability_kid": evidence["capability_kid"],
+                "request_digest": evidence["request_digest"],
+                "tp_athlete_id": evidence["tp_athlete_id"],
+            }
+            if (len(derived_matches) != 1
+                    or derived_matches[0].get("field") != f"d2.manual_readback.{metric}"
+                    or derived_matches[0].get("class") != "externally_observed"
+                    or derived_matches[0].get("sensitivity") != "sensitive"
+                    or derived_matches[0].get("at") != evidence["observed_at"]
+                    or derived_matches[0].get("value") != evidence["value"]
+                    or derived_matches[0].get("inputs") != expected_inputs):
+                raise FulfillmentStateError(
+                    "D2 worker readback evidence is not registry-consistent")
     for item_id, requirement in state["d2_pending_requirements"].items():
         if (not str(item_id).strip() or not isinstance(requirement, dict)
                 or requirement.get("kind") != "worker-readback"
@@ -489,6 +548,48 @@ def _mark_resolution_on_source(state: dict[str, Any], item_id: str, choice: str)
             item["resolved_resolution"] = choice
 
 
+def _clear_resolution_on_source(state: dict[str, Any], item_id: str) -> None:
+    for item in state["required_confirmations"]:
+        if item.get("source") == "d2" and item.get("id") == item_id:
+            item.pop("resolved_resolution", None)
+
+
+def _retract_resolution_effects(
+    state: dict[str, Any], item_id: str, metric: str,
+) -> None:
+    """Remove every effect owned by the item's previous resolution."""
+    previous = (state.get("d2_resolutions") or {}).get(item_id) or {}
+    input_field = {
+        "lthr": "hr_threshold", "ftp": "ftp", "age": "age", "weight": "weight",
+    }.get(metric)
+    if input_field:
+        state["canonical_input_overrides"].pop(input_field, None)
+    state["d2_apply_operations"].pop(metric, None)
+    state["d2_pending_requirements"].pop(item_id, None)
+    state["derived_values"] = [
+        item for item in state.get("derived_values", [])
+        if item.get("id") != f"D2_MANUAL_READBACK_{metric.upper()}"
+    ]
+    if previous.get("choice") == "use-tp-value" and metric == "lthr":
+        restored = previous.get(
+            "plan_value_before_resolution",
+            (state.get("d2_context", {}).get("intake_thresholds") or {}).get(metric),
+        )
+        state["d2_context"]["canonical_control_value"] = restored
+        for confirmation in state["required_confirmations"]:
+            if confirmation.get("id") == item_id:
+                confirmation.setdefault("review_value", {})["plan_value"] = restored
+    state["blocking_issues"] = [
+        issue for issue in state["blocking_issues"]
+        if not (
+            issue.get("id") == "D2_CANNOT_RESOLVE"
+            and (issue.get("review_value") or {}).get("item_id") == item_id
+        )
+    ]
+    state["d2_resolutions"].pop(item_id, None)
+    _clear_resolution_on_source(state, item_id)
+
+
 def resolve_d2_item(
     path, expected_revision: int, item_id: str, choice: str, *, actor: str,
 ) -> dict[str, Any]:
@@ -509,27 +610,60 @@ def resolve_d2_item(
         metric = str(value.get("metric") or value.get("field") or "")
         account_value = value.get("account_value")
         context = state["d2_context"]
-        _begin_regeneration(state, reason=f"D2 resolution {choice} for {item_id}")
+        previous_choice = (state["d2_resolutions"].get(str(item_id)) or {}).get("choice")
+
+        input_field = {
+            "lthr": "hr_threshold", "ftp": "ftp", "age": "age", "weight": "weight",
+        }.get(metric)
+        intake_value = (context.get("intake_thresholds") or {}).get(metric)
+        if choice == "use-tp-value" and (not input_field or account_value is None):
+            raise FulfillmentStateError("inspected value cannot become a canonical input")
+        if choice == "update-from-intake":
+            if metric not in {"lthr", "ftp"}:
+                raise FulfillmentStateError(
+                    "only threshold/zone findings can emit apply operations")
+            if intake_value is None:
+                raise FulfillmentStateError(
+                    "update-from-intake requires an intake threshold value")
+        previous_resolution = state["d2_resolutions"].get(str(item_id)) or {}
+        manual_expected = (
+            previous_resolution.get(
+                "plan_value_before_resolution",
+                context.get("canonical_control_value"),
+            ) if metric == "lthr"
+            else (context.get("intake_age") if metric == "age" else None)
+        )
+        if choice == "manually-corrected" and manual_expected is None:
+            raise FulfillmentStateError(
+                "manual correction requires a canonical expected value")
+
+        # Only choices which add/remove plan or apply-contract content revoke
+        # the seal. Manual readback and cannot-resolve alter review evidence,
+        # not the sealed release bytes.
+        if choice in {"use-tp-value", "update-from-intake"} or previous_choice in {
+            "use-tp-value", "update-from-intake",
+        }:
+            _begin_regeneration(
+                state, reason=f"D2 resolution {choice} for {item_id}")
+        _retract_resolution_effects(state, str(item_id), metric)
 
         if choice == "use-tp-value":
-            input_field = {"lthr": "hr_threshold", "ftp": "ftp", "age": "age", "weight": "weight"}.get(metric)
-            if not input_field or account_value is None:
-                raise FulfillmentStateError("inspected value cannot become a canonical input")
+            plan_value_before = context.get("canonical_control_value")
             state["canonical_input_overrides"][input_field] = account_value
             if metric == "lthr":
                 context["canonical_control_value"] = account_value
+                for confirmation in state["required_confirmations"]:
+                    if confirmation.get("id") == item_id:
+                        confirmation.setdefault("review_value", {})[
+                            "plan_value"] = account_value
             state["d2_resolutions"][item_id] = {
                 "choice": choice, "actor": str(actor), "at": now_iso(),
                 "inspected_value": account_value,
+                "plan_value_before_resolution": plan_value_before,
                 "effect": "canonical-input-override-and-regeneration",
             }
             _mark_resolution_on_source(state, item_id, choice)
         elif choice == "update-from-intake":
-            if metric not in {"lthr", "ftp"}:
-                raise FulfillmentStateError("only threshold/zone findings can emit apply operations")
-            intake_value = (context.get("intake_thresholds") or {}).get(metric)
-            if intake_value is None:
-                raise FulfillmentStateError("update-from-intake requires an intake threshold value")
             unit = "bpm" if metric == "lthr" else "W"
             state["d2_apply_operations"][metric] = {
                 "kind": "threshold_update",
@@ -540,19 +674,15 @@ def resolve_d2_item(
                 "inspected_before_image": {
                     "metric": metric, "value": account_value, "unit": unit,
                 },
+                "sealed_plan_value": context.get("canonical_control_value"),
+                "intake_value": intake_value,
                 "effect": "apply-contract-threshold-update-plan-unchanged",
             }
             _mark_resolution_on_source(state, item_id, choice)
         elif choice == "manually-corrected":
-            expected = (
-                context.get("canonical_control_value") if metric == "lthr"
-                else (context.get("intake_age") if metric == "age" else None)
-            )
-            if expected is None:
-                raise FulfillmentStateError("manual correction requires a canonical expected value")
             state["d2_pending_requirements"][item_id] = {
                 "kind": "worker-readback", "metric": metric,
-                "expected_value": expected, "requested_by": str(actor),
+                "expected_value": manual_expected, "requested_by": str(actor),
                 "requested_at": now_iso(),
             }
             state["d2_resolutions"][item_id] = {
@@ -565,6 +695,7 @@ def resolve_d2_item(
                 "choice": choice, "actor": str(actor), "at": now_iso(),
                 "effect": "non-waivable-block",
             }
+            _mark_resolution_on_source(state, item_id, choice)
             state["blocking_issues"] = sorted(
                 [issue for issue in state["blocking_issues"]
                  if issue.get("id") != "D2_CANNOT_RESOLVE"]
@@ -586,37 +717,75 @@ def resolve_d2_item(
 
 
 def record_manual_readback(
-    path, expected_revision: int, item_id: str, inspection: Mapping[str, Any], *,
-    capability_jti: str,
+    path, expected_revision: int, item_id: str,
+    evidence: VerifiedInspectionEvidence,
 ) -> dict[str, Any]:
-    """Satisfy manual-correction only with matching worker readback evidence."""
+    """Persist an exact readback produced by the verified worker boundary."""
+    if not isinstance(evidence, VerifiedInspectionEvidence):
+        raise FulfillmentStateError(
+            "manual correction requires verified worker inspection evidence")
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
         validate_d2_state(state)
         if state["generation_revision"] != expected_revision:
             raise FulfillmentStateError("generation revision mismatch")
+        if not state.get("model_seal") or not state.get("release_manifest"):
+            raise FulfillmentStateError("manual correction readback requires a sealed review")
         pending = state["d2_pending_requirements"].get(str(item_id))
         if not isinstance(pending, dict) or pending.get("kind") != "worker-readback":
             raise FulfillmentStateError("manual correction has no pending readback")
         metric = pending["metric"]
         field = {"lthr": "lthr_bpm", "ftp": "ftp_watts", "age": "age"}.get(metric)
-        if not field or inspection.get(field) != pending["expected_value"]:
+        binding = state.get("platform_identity") or {}
+        if (evidence.order_id != state.get("order_id")
+                or evidence.tp_athlete_id != binding.get("tp_athlete_id")):
+            raise FulfillmentStateError(
+                "worker readback evidence does not match this order binding")
+        inspection = evidence.result
+        if (inspection.get("tp_athlete_id") not in {None, "", evidence.tp_athlete_id}
+                or not field or inspection.get(field) != pending["expected_value"]):
             raise FulfillmentStateError("worker readback does not confirm corrected value")
-        _begin_regeneration(state, reason=f"manual correction readback for {item_id}")
-        evidence = {
-            "capability_jti": str(capability_jti), "observed_at": now_iso(),
-            "metric": metric, "value": inspection[field], "field": field,
+        unit = "bpm" if metric == "lthr" else ("W" if metric == "ftp" else "years")
+        record = {
+            "record_type": "d2_worker_readback/v1",
+            "order_id": evidence.order_id,
+            "tp_athlete_id": evidence.tp_athlete_id,
+            "capability_jti": evidence.capability_jti,
+            "capability_kid": evidence.capability_kid,
+            "request_digest": evidence.request_digest,
+            "observed_at": evidence.observed_at,
+            "metric": metric,
+            "field": field,
+            "value": inspection[field],
+            "unit": unit,
         }
         state["d2_resolutions"][str(item_id)].update({
-            "effect": "worker-readback-confirmed", "readback_evidence": evidence,
+            "effect": "worker-readback-confirmed", "readback_evidence": record,
         })
         del state["d2_pending_requirements"][str(item_id)]
+        derived_id = f"D2_MANUAL_READBACK_{metric.upper()}"
+        state["derived_values"] = sorted(
+            [item for item in state["derived_values"] if item.get("id") != derived_id]
+            + [_derived(
+                derived_id, f"d2.manual_readback.{metric}", inspection[field],
+                basis="TrainingPeaks worker readback after coach-reported correction",
+                inputs={
+                    "capability_jti": evidence.capability_jti,
+                    "capability_kid": evidence.capability_kid,
+                    "request_digest": evidence.request_digest,
+                    "tp_athlete_id": evidence.tp_athlete_id,
+                },
+                at=evidence.observed_at,
+                revision=state["generation_revision"],
+            )],
+            key=lambda item: item["id"],
+        )
         _mark_resolution_on_source(state, str(item_id), "manually-corrected")
         _refresh_review_catalog(state)
         _history(
             state, "D2_MANUAL_READBACK_CONFIRMED", item_id=str(item_id),
-            capability_jti=str(capability_jti),
+            capability_jti=evidence.capability_jti,
         )
         _atomic_write(state_path, state)
         return copy.deepcopy(state)
@@ -645,16 +814,19 @@ def d2_contract_inputs(state: Mapping[str, Any]) -> tuple[str, dict[str, Any], d
 
 def validate_d2_approval(state: Mapping[str, Any]) -> None:
     """Server-side approval legality for identity and account consistency."""
-    if not state.get("d2_active"):
-        return
     if _automated(state):
         binding = state.get("platform_identity") or {}
-        if not str(binding.get("tp_athlete_id") or "").strip():
+        if (not str(binding.get("tp_athlete_id") or "").strip()
+                or binding.get("order_id") != state.get("order_id")):
             raise FulfillmentStateError("approval requires a bound platform identity")
+    if not state.get("d2_active"):
+        return
     if state.get("regeneration_request"):
         raise FulfillmentStateError("D2 regeneration is pending")
     if state.get("d2_pending_requirements"):
         raise FulfillmentStateError("D2 worker readback is still required")
+    expected_overrides: dict[str, Any] = {}
+    expected_operations: dict[str, Any] = {}
     for item in state.get("required_confirmations", []):
         if item.get("source") != "d2":
             continue
@@ -663,6 +835,49 @@ def validate_d2_approval(state: Mapping[str, Any]) -> None:
             raise FulfillmentStateError(f"D2 review item is unresolved: {item['id']}")
         if choice == "cannot-resolve":
             raise FulfillmentStateError(f"D2 review item cannot be resolved: {item['id']}")
+        value = item.get("review_value") or {}
+        metric = str(value.get("metric") or value.get("field") or "")
+        resolution = (state.get("d2_resolutions") or {}).get(item["id"]) or {}
+        if resolution.get("choice") != choice:
+            raise FulfillmentStateError(
+                f"D2 resolution record is inconsistent: {item['id']}")
+        if choice == "use-tp-value":
+            input_field = {
+                "lthr": "hr_threshold", "ftp": "ftp", "age": "age", "weight": "weight",
+            }.get(metric)
+            if not input_field or resolution.get("inspected_value") != value.get("account_value"):
+                raise FulfillmentStateError("adopted account value provenance is inconsistent")
+            expected_overrides[input_field] = value.get("account_value")
+        elif choice == "update-from-intake":
+            intake_value = ((state.get("d2_context") or {}).get(
+                "intake_thresholds") or {}).get(metric)
+            unit = "bpm" if metric == "lthr" else "W"
+            expected_operations[metric] = {
+                "kind": "threshold_update",
+                "payload": {
+                    "metric": metric, "after_value": intake_value, "unit": unit,
+                },
+            }
+            if resolution.get("inspected_before_image") != {
+                "metric": metric, "value": value.get("account_value"), "unit": unit,
+            }:
+                raise FulfillmentStateError("threshold before-image is inconsistent")
+        elif choice == "manually-corrected":
+            readback = resolution.get("readback_evidence") or {}
+            expected = (
+                (state.get("d2_context") or {}).get("canonical_control_value")
+                if metric == "lthr" else
+                (state.get("d2_context") or {}).get("intake_age")
+                if metric == "age" else None
+            )
+            if (readback.get("record_type") != "d2_worker_readback/v1"
+                    or readback.get("value") != expected
+                    or readback.get("order_id") != state.get("order_id")):
+                raise FulfillmentStateError("manual correction lacks consistent readback")
+    if state.get("canonical_input_overrides") != expected_overrides:
+        raise FulfillmentStateError("D2 canonical input effects are inconsistent")
+    if state.get("d2_apply_operations") != expected_operations:
+        raise FulfillmentStateError("D2 apply-contract effects are inconsistent")
     context = state.get("d2_context") or {}
     inspection = state.get("account_inspection") or {}
     control = context.get("control_metric")
@@ -677,8 +892,15 @@ def validate_d2_approval(state: Mapping[str, Any]) -> None:
             choice = threshold.get("resolved_resolution")
             if choice == "use-tp-value" and plan_value != account_value:
                 raise FulfillmentStateError("sealed HR anchor does not match adopted account LTHR")
-            if choice == "update-from-intake" and "lthr" not in (state.get("d2_apply_operations") or {}):
-                raise FulfillmentStateError("threshold resolution is missing its apply operation")
+            if choice == "update-from-intake":
+                intake_value = (context.get("intake_thresholds") or {}).get("lthr")
+                resolution = (state.get("d2_resolutions") or {}).get(
+                    THRESHOLD_ITEM_ID, {})
+                if (plan_value != intake_value
+                        or resolution.get("sealed_plan_value") != plan_value
+                        or resolution.get("intake_value") != intake_value):
+                    raise FulfillmentStateError(
+                        "sealed HR anchor does not match the intake update target")
             if choice == "manually-corrected":
                 evidence = (state.get("d2_resolutions") or {}).get(
                     THRESHOLD_ITEM_ID, {}).get("readback_evidence")

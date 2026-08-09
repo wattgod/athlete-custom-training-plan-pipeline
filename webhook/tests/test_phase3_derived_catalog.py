@@ -15,6 +15,7 @@ from fulfillment_state import (FulfillmentStateError,
                                redact_sensitive_review_items, transition,
                                write_generation)
 import app as webhook_app
+from d2_identity import record_identity_result
 
 
 def _derived(value):
@@ -79,6 +80,11 @@ def test_real_post_approval_status_redacts_live_and_archived_secret(
     state = write_generation(
         state_path, "athlete-sensitive", order_id=order_id,
         delivery_platform="trainingpeaks", derived_values=[_derived(secret)])
+    state = record_identity_result(
+        state_path, state["generation_revision"], {
+            "outcome": "bound", "tp_athlete_id": "fixture-sensitive-athlete",
+            "candidates": [],
+        }, capability_jti="fixture-sensitive-binding-jti")
     revision = webhook_app._order_dir(order_id) / "revisions" / "r1"
     revision.mkdir(parents=True)
     (revision / "artifact.txt").write_text("sealed")

@@ -9,6 +9,12 @@ sys.path.insert(0, str(ROOT / "webhook"))
 sys.path.insert(0, str(ROOT / "athletes/scripts"))
 
 from apply_contract import build_contract
+from delivery.trainingpeaks.worker_service import (
+    CapabilityCodec,
+    CannedProbeTransport,
+    ProbeExecutionStore,
+    ReadOnlyWorkerService,
+)
 from d2_identity import (
     DEMOGRAPHIC_ITEM_ID,
     DORMANCY_ITEM_ID,
@@ -21,6 +27,7 @@ from d2_identity import (
     select_identity_candidate,
 )
 from fulfillment_state import (
+    APPLIED,
     APPROVED,
     FulfillmentStateError,
     finalize_transitional_release,
@@ -34,7 +41,10 @@ FIXTURE = ROOT / "tests/fixtures/athlete_m"
 OBSERVED_AT = "2026-08-06T15:00:00Z"
 
 
-def _seed(tmp_path, order_id="phase4-d2", *, control_value=None, intake_lthr=None):
+def _seed(
+    tmp_path, order_id="phase4-d2", *, control_value=None, intake_lthr=None,
+    intake_age=45,
+):
     path = tmp_path / f"{order_id}.json"
     state = write_generation(
         path, "athlete-m", order_id=order_id,
@@ -55,7 +65,7 @@ def _seed(tmp_path, order_id="phase4-d2", *, control_value=None, intake_lthr=Non
     fixture["tp_athlete_id"] = "fixture-athlete-m"
     state = record_account_inspection(
         path, state["generation_revision"], fixture,
-        intake_age=45, intake_thresholds={"lthr": intake_lthr},
+        intake_age=intake_age, intake_thresholds={"lthr": intake_lthr},
         control_metric="hr", canonical_control_value=control_value,
         capability_jti="inspect-jti-0000000000001",
         observed_at=OBSERVED_AT,
@@ -87,6 +97,42 @@ def _approval_decisions(state):
             "disposition": disposition,
         })
     return result
+
+
+def _worker_evidence(tmp_path, state, *, lthr, jti):
+    fixture = json.loads((FIXTURE / "worker_probes.json").read_text())
+    fixture["lthr_bpm"] = lthr
+    fixture["tp_athlete_id"] = "fixture-athlete-m"
+    now = 1_800_000_000
+    audience = "gg-trainingpeaks-worker"
+    kid = "phase4-test"
+    codec = CapabilityCodec(
+        {kid: "phase4-readback-test-signing-secret-0001"}, audience=audience)
+    worker = ReadOnlyWorkerService(
+        codec, ProbeExecutionStore(tmp_path / f"replay-{jti}"),
+        CannedProbeTransport(fixture),
+    )
+    claims = {
+        "order_id": state["order_id"],
+        "subject": {
+            "kind": "identity_query", "tp_athlete_id": "fixture-athlete-m",
+        },
+        "action": "inspect", "audience": audience,
+        "iat": now - 1, "exp": now + 300, "jti": jti,
+    }
+    return worker.inspect_account_evidence(
+        "fixture-athlete-m", codec.issue(claims, kid=kid), now=now)
+
+
+def _regenerate_and_seal_if_needed(path, tmp_path, state):
+    if state.get("regeneration_request"):
+        state = write_generation(
+            path, state["athlete_id"], order_id=state["order_id"],
+            delivery_platform=state["delivery_platform"],
+        )
+    if not state.get("model_seal"):
+        state = _seal(path, tmp_path)
+    return state
 
 
 def test_athlete_m_inspection_materializes_exact_phase4_findings_and_sensitive_provenance(tmp_path):
@@ -232,26 +278,66 @@ def test_approval_is_legal_when_threshold_update_resolution_matches_sealed_plan(
     assert approved["d2_apply_operations"]["lthr"]["payload"]["after_value"] == 160
 
 
-def test_manually_corrected_blocks_until_exact_worker_readback(tmp_path):
-    path, state = _seed(tmp_path, control_value=155, intake_lthr=155)
+def test_manually_corrected_sealed_review_requires_exact_verified_worker_readback(tmp_path):
+    path, state = _seed(
+        tmp_path, control_value=155, intake_lthr=155, intake_age=19)
+    state = _seal(path, tmp_path)
+    original_seal = state["model_seal"]
     pending = resolve_d2_item(
         path, state["generation_revision"], THRESHOLD_ITEM_ID,
         "manually-corrected", actor="coach")
     assert pending["d2_pending_requirements"][THRESHOLD_ITEM_ID]["expected_value"] == 155
+    assert pending["model_seal"] == original_seal
+    assert pending["regeneration_request"] is None
     assert "resolved_resolution" not in next(
         item for item in pending["required_confirmations"]
         if item["id"] == THRESHOLD_ITEM_ID)
+    with pytest.raises(FulfillmentStateError, match="readback is still required"):
+        transition(
+            path, APPROVED, "coach",
+            expected_revision=pending["generation_revision"],
+            expected_catalog_digest=pending["review_catalog_digest"],
+            review_decisions=_approval_decisions(pending),
+        )
+    with pytest.raises(FulfillmentStateError, match="verified worker"):
+        record_manual_readback(
+            path, pending["generation_revision"], THRESHOLD_ITEM_ID,
+            {"lthr_bpm": 155},
+        )
     with pytest.raises(FulfillmentStateError, match="does not confirm"):
         record_manual_readback(
             path, pending["generation_revision"], THRESHOLD_ITEM_ID,
-            {"lthr_bpm": 154}, capability_jti="readback-jti-00000000001")
+            _worker_evidence(
+                tmp_path, pending, lthr=154,
+                jti="readback-jti-00000000001"),
+        )
     confirmed = record_manual_readback(
         path, pending["generation_revision"], THRESHOLD_ITEM_ID,
-        {"lthr_bpm": 155}, capability_jti="readback-jti-00000000002")
+        _worker_evidence(
+            tmp_path, pending, lthr=155,
+            jti="readback-jti-00000000002"),
+    )
     assert THRESHOLD_ITEM_ID not in confirmed["d2_pending_requirements"]
     evidence = confirmed["d2_resolutions"][THRESHOLD_ITEM_ID]["readback_evidence"]
+    assert evidence["record_type"] == "d2_worker_readback/v1"
     assert evidence["value"] == 155
     assert evidence["capability_jti"] == "readback-jti-00000000002"
+    assert evidence["request_digest"]
+    assert evidence["observed_at"] == "2027-01-15T08:00:00Z"
+    assert confirmed["model_seal"] == original_seal
+    derived = next(item for item in confirmed["derived_values"]
+                   if item["id"] == "D2_MANUAL_READBACK_LTHR")
+    assert derived["value"] == 155
+    assert derived["class"] == "externally_observed"
+    assert derived["inputs"]["capability_jti"] == evidence["capability_jti"]
+
+    approved = transition(
+        path, APPROVED, "coach",
+        expected_revision=confirmed["generation_revision"],
+        expected_catalog_digest=confirmed["review_catalog_digest"],
+        review_decisions=_approval_decisions(confirmed),
+    )
+    assert approved["status"] == APPROVED
 
 
 def test_cannot_resolve_creates_nonwaivable_blocker(tmp_path):
@@ -315,3 +401,181 @@ def test_manual_delivery_does_not_block_on_missing_platform_account(tmp_path):
         {"outcome": "not-found", "candidates": []},
         capability_jti="manual-probe-jti-0000001")
     assert state["blocking_issues"] == []
+
+
+@pytest.mark.parametrize("platform", ["trainingpeaks", "endure"])
+def test_automated_approval_requires_order_scoped_platform_identity(tmp_path, platform):
+    path = tmp_path / f"{platform}-missing-identity.json"
+    state = write_generation(
+        path, "athlete-m", order_id=f"order-{platform}",
+        delivery_platform=platform)
+    state = _seal(path, tmp_path)
+    with pytest.raises(FulfillmentStateError, match="bound platform identity"):
+        transition(
+            path, APPROVED, "coach",
+            expected_revision=state["generation_revision"],
+            expected_catalog_digest=state["review_catalog_digest"],
+            review_decisions=_approval_decisions(state),
+        )
+
+
+@pytest.mark.parametrize("platform", ["trainingpeaks", "endure"])
+def test_automated_approval_accepts_valid_binding(tmp_path, platform):
+    path = tmp_path / f"{platform}-bound.json"
+    state = write_generation(
+        path, "athlete-m", order_id=f"bound-{platform}",
+        delivery_platform=platform)
+    state = record_identity_result(
+        path, state["generation_revision"], {
+            "outcome": "bound", "tp_athlete_id": f"athlete-{platform}",
+            "candidates": [],
+        }, capability_jti=f"binding-{platform}-jti-000001")
+    state = _seal(path, tmp_path)
+    approved = transition(
+        path, APPROVED, "coach",
+        expected_revision=state["generation_revision"],
+        expected_catalog_digest=state["review_catalog_digest"],
+        review_decisions=_approval_decisions(state),
+    )
+    assert approved["status"] == APPROVED
+
+
+def test_wrong_order_platform_binding_is_rejected_fail_closed(tmp_path):
+    path = tmp_path / "wrong-order-binding.json"
+    state = write_generation(
+        path, "athlete-m", order_id="right-order",
+        delivery_platform="trainingpeaks")
+    raw = json.loads(path.read_text())
+    raw["platform_identity"] = {
+        "platform": "trainingpeaks", "tp_athlete_id": "athlete-wrong-order",
+        "order_id": "different-order", "bound_at": OBSERVED_AT,
+        "binding_evidence": {"capability_jti": "wrong-order-jti-0000001"},
+    }
+    path.write_text(json.dumps(raw))
+    with pytest.raises(FulfillmentStateError, match="malformed"):
+        load(path)
+
+
+def test_manual_approval_needs_no_binding_but_applied_needs_matching_evidence(tmp_path):
+    path = tmp_path / "manual-approval-direction.json"
+    state = write_generation(
+        path, "athlete-m", order_id="manual-direction",
+        delivery_platform="manual")
+    state = _seal(path, tmp_path)
+    approved = transition(
+        path, APPROVED, "coach",
+        expected_revision=state["generation_revision"],
+        expected_catalog_digest=state["review_catalog_digest"],
+        review_decisions=_approval_decisions(state),
+    )
+    assert approved["platform_identity"] is None
+    with pytest.raises(FulfillmentStateError, match="nonempty evidence"):
+        transition(path, APPLIED, "coach", platform="manual", evidence="")
+    applied = transition(
+        path, APPLIED, "coach", platform="manual",
+        evidence="coach attested exact sealed package delivery")
+    assert applied["status"] == APPLIED
+
+
+@pytest.mark.parametrize(
+    "first_choice,second_choice",
+    [
+        (first, second)
+        for first in sorted({
+            "use-tp-value", "update-from-intake", "manually-corrected",
+            "cannot-resolve",
+        })
+        for second in sorted({
+            "use-tp-value", "update-from-intake", "manually-corrected",
+            "cannot-resolve",
+        })
+        if first != second
+    ],
+)
+def test_threshold_resolution_switch_retracts_all_prior_effects_and_validates_terminal_state(
+    tmp_path, first_choice, second_choice,
+):
+    path, state = _seed(
+        tmp_path, order_id=f"switch-{first_choice}-to-{second_choice}",
+        control_value=160, intake_lthr=160, intake_age=19)
+    state = _seal(path, tmp_path)
+    state = resolve_d2_item(
+        path, state["generation_revision"], THRESHOLD_ITEM_ID,
+        first_choice, actor="coach:first")
+    state = _regenerate_and_seal_if_needed(path, tmp_path, state)
+    if first_choice == "manually-corrected":
+        state = record_manual_readback(
+            path, state["generation_revision"], THRESHOLD_ITEM_ID,
+            _worker_evidence(
+                tmp_path, state, lthr=160,
+                jti="first-readback-jti-00000001"),
+        )
+    state = resolve_d2_item(
+        path, state["generation_revision"], THRESHOLD_ITEM_ID,
+        second_choice, actor="coach:second")
+    state = _regenerate_and_seal_if_needed(path, tmp_path, state)
+
+    assert state["canonical_input_overrides"] == (
+        {"hr_threshold": 148} if second_choice == "use-tp-value" else {})
+    assert state["d2_apply_operations"] == (
+        {"lthr": {
+            "kind": "threshold_update",
+            "payload": {"metric": "lthr", "after_value": 160, "unit": "bpm"},
+        }} if second_choice == "update-from-intake" else {})
+    assert set(state["d2_pending_requirements"]) == (
+        {THRESHOLD_ITEM_ID} if second_choice == "manually-corrected" else set())
+    resolution = state["d2_resolutions"][THRESHOLD_ITEM_ID]
+    assert resolution["choice"] == second_choice
+    assert "readback_evidence" not in resolution
+    assert "D2_MANUAL_READBACK_LTHR" not in {
+        item["id"] for item in state["derived_values"]}
+    assert ("D2_CANNOT_RESOLVE" in {
+        issue["id"] for issue in state["blocking_issues"]
+    }) is (second_choice == "cannot-resolve")
+
+    if second_choice == "manually-corrected":
+        state = record_manual_readback(
+            path, state["generation_revision"], THRESHOLD_ITEM_ID,
+            _worker_evidence(
+                tmp_path, state, lthr=160,
+                jti="switch-readback-jti-0000001"),
+        )
+    if second_choice == "cannot-resolve":
+        with pytest.raises(FulfillmentStateError, match="cannot be resolved"):
+            transition(
+                path, APPROVED, "coach",
+                expected_revision=state["generation_revision"],
+                expected_catalog_digest=state["review_catalog_digest"],
+                review_decisions=_approval_decisions(state),
+            )
+    else:
+        approved = transition(
+            path, APPROVED, "coach",
+            expected_revision=state["generation_revision"],
+            expected_catalog_digest=state["review_catalog_digest"],
+            review_decisions=_approval_decisions(state),
+        )
+        assert approved["status"] == APPROVED
+
+
+def test_approval_rejects_tampered_current_resolution_effects(tmp_path):
+    path, state = _seed(
+        tmp_path, order_id="tampered-terminal-effects",
+        control_value=160, intake_lthr=160, intake_age=19)
+    state = resolve_d2_item(
+        path, state["generation_revision"], THRESHOLD_ITEM_ID,
+        "update-from-intake", actor="coach")
+    state = _regenerate_and_seal_if_needed(path, tmp_path, state)
+    raw = json.loads(path.read_text())
+    raw["d2_apply_operations"]["lthr"]["payload"].update({
+        "metric": "ftp", "after_value": 197, "unit": "W",
+    })
+    path.write_text(json.dumps(raw))
+    tampered = load(path)
+    with pytest.raises(FulfillmentStateError, match="apply-contract effects"):
+        transition(
+            path, APPROVED, "coach",
+            expected_revision=tampered["generation_revision"],
+            expected_catalog_digest=tampered["review_catalog_digest"],
+            review_decisions=_approval_decisions(tampered),
+        )

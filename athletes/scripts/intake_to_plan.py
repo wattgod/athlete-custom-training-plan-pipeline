@@ -38,6 +38,7 @@ import math
 import argparse
 import shutil
 import subprocess
+import uuid
 from pathlib import Path
 from datetime import datetime, date
 from typing import Dict, List, Optional, Tuple, Any
@@ -3840,7 +3841,6 @@ def main():
     if fulfillment_state_available and worker_fixture:
         print(f"\n{BOLD}Step 4e: Running canned read-only worker inspection...{RESET}")
         try:
-            import hashlib
             from datetime import timezone
             from delivery.trainingpeaks.worker_service import (
                 CapabilityCodec, CannedProbeTransport, ProbeExecutionStore,
@@ -3869,8 +3869,10 @@ def main():
                 'GG_WORKER_REPLAY_DIR', str(athlete_dir.parent / '.worker-replay')))
             worker = ReadOnlyWorkerService(
                 codec, ProbeExecutionStore(replay_root), transport)
-            probe_jti = 'probe-' + hashlib.sha256(
-                f'{order_id}:probe'.encode()).hexdigest()[:32]
+            # One jti names one resumable attempt. A later issuance must be a
+            # fresh attempt so a terminal replay record can never act as an
+            # implicit account-data cache.
+            probe_jti = 'probe-' + uuid.uuid4().hex
             probe_claims = {
                 'order_id': order_id,
                 'subject': {'kind': 'identity_query', 'email': email},
@@ -3885,8 +3887,7 @@ def main():
             )
             if identity.get('outcome') == 'bound':
                 tp_id = str(identity['tp_athlete_id'])
-                inspect_jti = 'inspect-' + hashlib.sha256(
-                    f'{order_id}:inspect:{tp_id}'.encode()).hexdigest()[:32]
+                inspect_jti = 'inspect-' + uuid.uuid4().hex
                 inspect_claims = {
                     'order_id': order_id,
                     'subject': {'kind': 'identity_query', 'tp_athlete_id': tp_id},

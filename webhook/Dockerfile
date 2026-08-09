@@ -30,6 +30,7 @@ RUN pip install --no-cache-dir -r webhook/requirements.txt && \
 # Copy application code (bust cache: 2026-03-31)
 COPY webhook/ ./webhook/
 COPY athletes/ ./athletes/
+COPY delivery/ ./delivery/
 
 # Create persistent data directory (Railway volume mounts here)
 RUN mkdir -p /data
@@ -40,6 +41,7 @@ ENV SCRIPTS_DIR=/app/athletes/scripts
 ENV DATA_DIR=/data
 ENV PORT=8080
 ENV FLASK_ENV=production
+ENV PYTHONPATH=/app
 
 # Expose port
 EXPOSE 8080

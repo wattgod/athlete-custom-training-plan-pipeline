@@ -1,3 +1,4 @@
+import base64
 import json
 import sys
 from pathlib import Path
@@ -99,6 +100,60 @@ def test_inspect_capability_is_bound_to_tp_id_and_returns_exact_fixture(tmp_path
         service.inspect_account("different-athlete", token, now=NOW)
 
 
+def test_fresh_jti_after_terminal_probe_fetches_and_records_fresh_data(tmp_path):
+    class ChangingTransport:
+        def __init__(self):
+            self.calls = 0
+
+        def probe_athlete(self, _identity):
+            self.calls += 1
+            return {
+                "outcome": "bound", "tp_athlete_id": f"athlete-{self.calls}",
+                "candidates": [],
+            }
+
+        def inspect_account(self, _tp_athlete_id):
+            raise AssertionError("not used")
+
+    transport = ChangingTransport()
+    store = ProbeExecutionStore(tmp_path / "jti")
+    service = ReadOnlyWorkerService(_codec(), store, transport)
+    first_token = _codec().issue(
+        _probe_claims(jti="probe-attempt-000000000001"), kid="phase4-k1")
+    second_token = _codec().issue(
+        _probe_claims(jti="probe-attempt-000000000002", iat=NOW - 2),
+        kid="phase4-k1")
+
+    first = service.probe_athlete(
+        {"email": "fixture@example.invalid"}, first_token, now=NOW)
+    second = service.probe_athlete(
+        {"email": "fixture@example.invalid"}, second_token, now=NOW)
+
+    assert first["tp_athlete_id"] == "athlete-1"
+    assert second["tp_athlete_id"] == "athlete-2"
+    assert transport.calls == 2
+    assert len(list((tmp_path / "jti/order_phase4_worker").glob("*.json"))) == 2
+
+
+def test_verified_inspection_evidence_binds_capability_and_request_digest(tmp_path):
+    fixture = json.loads((ROOT / "tests/fixtures/athlete_m/worker_probes.json").read_text())
+    service = ReadOnlyWorkerService(
+        _codec(), ProbeExecutionStore(tmp_path), CannedProbeTransport(fixture))
+    claims = _probe_claims(
+        action="inspect",
+        subject={"kind": "identity_query", "tp_athlete_id": "fixture-athlete-m"},
+        jti="inspect-evidence-0000000001",
+    )
+    evidence = service.inspect_account_evidence(
+        "fixture-athlete-m", _codec().issue(claims, kid="phase4-k1"), now=NOW)
+    assert evidence.order_id == claims["order_id"]
+    assert evidence.capability_jti == claims["jti"]
+    assert evidence.capability_kid == "phase4-k1"
+    assert len(evidence.request_digest) == 64
+    assert evidence.observed_at == "2027-01-15T08:00:00Z"
+    assert evidence.result["lthr_bpm"] == 148
+
+
 @pytest.mark.parametrize(
     "mutator, message",
     [
@@ -126,6 +181,35 @@ def test_tampered_signature_and_unknown_kid_fail_closed():
     unknown = other.issue(_probe_claims(), kid="other-kid")
     with pytest.raises(WorkerAuthorizationError, match="unknown"):
         _codec().verify(unknown, now=NOW)
+
+
+@pytest.mark.parametrize(
+    "claims, message",
+    [
+        (_probe_claims(exp=NOW + 901), "lifetime"),
+        (_probe_claims(jti="short"), "jti"),
+        (_probe_claims(iat=True), "iat"),
+        (_probe_claims(exp=True), "exp"),
+        (_mutation_claims(extra=True), "shape"),
+    ],
+)
+def test_capability_edge_shapes_fail_closed(claims, message):
+    token = _codec().issue(claims, kid="phase4-k1")
+    with pytest.raises(WorkerAuthorizationError, match=message):
+        _codec().verify(token, now=NOW)
+
+
+def test_malformed_header_and_wrong_expected_action_fail_closed():
+    token = _codec().issue(_probe_claims(), kid="phase4-k1")
+    _header, payload, signature = token.split(".")
+    malformed = base64.urlsafe_b64encode(json.dumps({
+        "alg": "HS256", "kid": "phase4-k1", "typ": "GG-WORKER-CAP",
+        "extra": True,
+    }).encode()).rstrip(b"=").decode()
+    with pytest.raises(WorkerAuthorizationError, match="header"):
+        _codec().verify(f"{malformed}.{payload}.{signature}", now=NOW)
+    with pytest.raises(WorkerAuthorizationError, match="action mismatch"):
+        _codec().verify(token, now=NOW, expected_action="inspect")
 
 
 def test_same_jti_with_different_request_is_rejected(tmp_path):

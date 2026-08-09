@@ -1234,8 +1234,9 @@ def transition(
         if to == CONFIRMED and current == CONFIRMED:
             return copy.deepcopy(state)
         if to == APPROVED:
-            from d2_identity import validate_d2_approval
-            validate_d2_approval(state)
+            if state.get("d2_active"):
+                from d2_identity import validate_d2_approval
+                validate_d2_approval(state)
             if not state.get("model_seal") or not state.get("release_manifest_digest"):
                 raise FulfillmentStateError("approval requires a sealed release")
             approval_credential = str(credential or "operator-secret").strip()
@@ -1334,6 +1335,12 @@ def transition(
                     **copy.deepcopy(item),
                     "disposition": disposition,
                 })
+            # Identity and D2 consistency are approval-boundary invariants,
+            # evaluated after the submitted review snapshot/policy so existing
+            # catalog and non-waivable failures keep their precise diagnostics.
+            if not state.get("d2_active"):
+                from d2_identity import validate_d2_approval
+                validate_d2_approval(state)
             artifact_root = Path(str(state.get("release_manifest") or "")).parent
             try:
                 verify_release_manifest(state, artifact_root)

@@ -2881,9 +2881,90 @@ def resolve_review_d2_item(order_ref):
             _fulfillment_status_path(order_id), expected_revision,
             item_id, choice, actor=session['credential'],
         )
-        if choice != 'manually-corrected':
-            _queue_d2_regeneration(order_id, changed)
+        _queue_d2_regeneration(order_id, changed)
     except (ValueError, FulfillmentStateError) as exc:
+        return _render_authorized_review(
+            order_id, state, session, error=str(exc), status=409)
+    return redirect(f'/review/{order_id}', code=303)
+
+
+def _run_d2_manual_readback(order_id: str, state: dict, item_id: str) -> dict:
+    """Issue and execute one order/identity-bound read-only inspect attempt."""
+    from delivery.trainingpeaks.worker_service import (
+        CapabilityCodec, CannedProbeTransport, ProbeExecutionStore,
+        ReadOnlyWorkerService,
+    )
+    from d2_identity import record_manual_readback
+
+    fixture_path = os.environ.get('GG_WORKER_PROBES_FIXTURE', '').strip()
+    capability_secret = os.environ.get('GG_WORKER_CAPABILITY_SECRET', '')
+    if not fixture_path:
+        raise FulfillmentStateError(
+            'read-only worker transport is unavailable for manual readback')
+    if len(capability_secret.encode('utf-8')) < 32:
+        raise FulfillmentStateError(
+            'read-only worker capability signing is unavailable')
+    binding = state.get('platform_identity') or {}
+    tp_id = str(binding.get('tp_athlete_id') or '').strip()
+    if not tp_id or binding.get('order_id') != order_id:
+        raise FulfillmentStateError(
+            "manual readback requires this order's bound platform identity")
+
+    audience = 'gg-trainingpeaks-worker'
+    kid = 'phase4-fixture'
+    codec = CapabilityCodec({kid: capability_secret}, audience=audience)
+    transport = CannedProbeTransport.from_path(
+        fixture_path, tp_athlete_id=tp_id)
+    replay_root = Path(os.environ.get(
+        'GG_WORKER_REPLAY_DIR', str(Path(DATA_DIR) / 'worker-replay')))
+    worker = ReadOnlyWorkerService(
+        codec, ProbeExecutionStore(replay_root), transport)
+    now_epoch = int(datetime.now(timezone.utc).timestamp())
+    jti = 'manual-inspect-' + uuid.uuid4().hex
+    claims = {
+        'order_id': order_id,
+        'subject': {'kind': 'identity_query', 'tp_athlete_id': tp_id},
+        'action': 'inspect', 'audience': audience,
+        'iat': now_epoch - 1, 'exp': now_epoch + 300, 'jti': jti,
+    }
+    capability = codec.issue(claims, kid=kid)
+    evidence = worker.inspect_account_evidence(
+        tp_id, capability, now=now_epoch)
+    return record_manual_readback(
+        _fulfillment_status_path(order_id), state['generation_revision'],
+        item_id, evidence,
+    )
+
+
+@app.route('/review/<order_ref>/d2/readback', methods=['POST'])
+@limiter.limit('10/minute')
+def complete_review_d2_readback(order_ref):
+    """Authenticated command obtaining manual-correction evidence from worker."""
+    try:
+        order_id, state, session = _authorized_review(order_ref)
+    except ReviewAuthError:
+        return _review_response(
+            '<!doctype html><title>Review unavailable</title>'
+            '<p>Review session unavailable or superseded.</p>', 409)
+    supplied_csrf = str(request.form.get('csrf_token') or '')
+    if (not supplied_csrf
+            or not hmac.compare_digest(supplied_csrf, session['csrf_token'])):
+        return _render_authorized_review(
+            order_id, state, session, error='Invalid review form token.', status=403)
+    try:
+        expected_revision = int(str(request.form.get('generation_revision') or ''))
+        if expected_revision != state['generation_revision']:
+            raise FulfillmentStateError('generation revision mismatch')
+        item_id = str(request.form.get('readback_item') or '').strip()
+        if item_id not in (state.get('d2_pending_requirements') or {}):
+            raise FulfillmentStateError(
+                'manual correction has no pending readback')
+        _run_d2_manual_readback(order_id, state, item_id)
+    except (ValueError, FulfillmentStateError) as exc:
+        try:
+            state = load_fulfillment_state(_fulfillment_status_path(order_id))
+        except FulfillmentStateError:
+            pass
         return _render_authorized_review(
             order_id, state, session, error=str(exc), status=409)
     return redirect(f'/review/{order_id}', code=303)

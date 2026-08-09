@@ -77,6 +77,12 @@ def _seed_order(
         delivery_platform='trainingpeaks',
         required_confirmations=confirmations or [],
     )
+    state = record_identity_result(
+        state_path, state['generation_revision'], {
+            'outcome': 'bound',
+            'tp_athlete_id': f'fixture-{order_id}',
+            'candidates': [],
+        }, capability_jti=f'binding-{order_id}-jti')
     revision = (webhook_app._order_dir(order_id) / 'revisions'
                 / f"r{state['generation_revision']}")
     revision.mkdir(parents=True)
@@ -237,6 +243,105 @@ def test_d2_regeneration_queue_applies_canonical_overrides_and_installs_intent_f
     assert spawned[0][1]['intake_data']['hr_threshold'] == 148
     assert spawned[0][1]['intake_data']['age'] == 45
     assert spawned[0][0]['order_id'] == 'queue-d2'
+
+
+def test_manual_correction_route_uses_verified_worker_readback_and_then_approves(
+    review_client, tmp_path, monkeypatch,
+):
+    order_id = 'test_phase4_manual_readback_surface'
+    state_path = webhook_app._fulfillment_status_path(order_id)
+    state = write_generation(
+        state_path, 'athlete-m', order_id=order_id,
+        delivery_platform='trainingpeaks')
+    state = record_identity_result(
+        state_path, state['generation_revision'], {
+            'outcome': 'bound', 'tp_athlete_id': 'fixture-athlete-m',
+            'candidates': [],
+        }, capability_jti='surface-manual-probe-jti-001')
+    probes = json.loads((ATHLETE_M / 'worker_probes.json').read_text())
+    probes['tp_athlete_id'] = 'fixture-athlete-m'
+    state = record_account_inspection(
+        state_path, state['generation_revision'], probes,
+        intake_age=19, intake_thresholds={'lthr': 155},
+        control_metric='hr', canonical_control_value=155,
+        capability_jti='surface-manual-inspect-jti-01',
+        observed_at='2026-08-06T15:00:00Z')
+    revision = (webhook_app._order_dir(order_id) / 'revisions'
+                / f"r{state['generation_revision']}")
+    revision.mkdir(parents=True)
+    (revision / 'reviewed-values.txt').write_text('sealed manual correction review')
+    state = finalize_transitional_release(
+        state_path, revision, expected_revision=state['generation_revision'])
+    webhook_app._record_order_lookup(order_id, 'athlete-m')
+
+    worker_fixture = tmp_path / 'manual-worker-probes.json'
+    wrong = {**probes, 'lthr_bpm': 154}
+    worker_fixture.write_text(json.dumps(wrong))
+    monkeypatch.setenv('GG_WORKER_PROBES_FIXTURE', str(worker_fixture))
+    monkeypatch.setenv(
+        'GG_WORKER_CAPABILITY_SECRET',
+        'phase4-surface-worker-capability-secret-0001')
+    monkeypatch.setenv('GG_WORKER_REPLAY_DIR', str(tmp_path / 'worker-replay'))
+
+    _body, csrf = _login(review_client, order_id)
+    selected = review_client.post(
+        f'/review/{order_id}/d2/resolve', data={
+            'csrf_token': csrf,
+            'generation_revision': str(state['generation_revision']),
+            'resolution_item': THRESHOLD_ITEM_ID,
+            f'resolution_choice:{THRESHOLD_ITEM_ID}': 'manually-corrected',
+        })
+    assert selected.status_code == 303
+    pending = load(state_path)
+    assert pending['model_seal'] == state['model_seal']
+    page = review_client.get(f'/review/{order_id}').get_data(as_text=True)
+    assert 'Run worker readback' in page
+    assert f'/review/{order_id}/d2/readback' in page
+
+    bad_csrf = review_client.post(
+        f'/review/{order_id}/d2/readback', data={
+            'csrf_token': 'wrong',
+            'generation_revision': str(pending['generation_revision']),
+            'readback_item': THRESHOLD_ITEM_ID,
+        })
+    assert bad_csrf.status_code == 403
+    wrong_readback = review_client.post(
+        f'/review/{order_id}/d2/readback', data={
+            'csrf_token': csrf,
+            'generation_revision': str(pending['generation_revision']),
+            'readback_item': THRESHOLD_ITEM_ID,
+        })
+    assert wrong_readback.status_code == 409
+    assert THRESHOLD_ITEM_ID in load(state_path)['d2_pending_requirements']
+
+    worker_fixture.write_text(json.dumps({**probes, 'lthr_bpm': 155}))
+    exact_readback = review_client.post(
+        f'/review/{order_id}/d2/readback', data={
+            'csrf_token': csrf,
+            'generation_revision': str(pending['generation_revision']),
+            'readback_item': THRESHOLD_ITEM_ID,
+        })
+    assert exact_readback.status_code == 303
+    confirmed = load(state_path)
+    evidence = confirmed['d2_resolutions'][THRESHOLD_ITEM_ID]['readback_evidence']
+    assert evidence['record_type'] == 'd2_worker_readback/v1'
+    assert evidence['order_id'] == order_id
+    assert evidence['tp_athlete_id'] == 'fixture-athlete-m'
+    assert evidence['capability_jti'].startswith('manual-inspect-')
+    assert len(evidence['request_digest']) == 64
+
+    confirm_ids = [
+        item_id for item_id in _confirmed_ids(confirmed)
+        if item_id != THRESHOLD_ITEM_ID
+    ]
+    approval_form = _approval_form(
+        confirmed, csrf, confirm_ids=confirm_ids)
+    approval_form['resolved_item'] = [
+        f'{THRESHOLD_ITEM_ID}::manually-corrected']
+    approved = review_client.post(
+        f'/review/{order_id}/approve', data=approval_form)
+    assert approved.status_code == 303
+    assert load(state_path)['status'] == APPROVED
 
 
 def test_athlete_m_login_to_approved_persists_complete_seal_bound_snapshot(

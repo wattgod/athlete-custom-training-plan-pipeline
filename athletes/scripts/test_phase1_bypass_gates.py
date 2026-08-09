@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import deliver_package
 import email_delivery
+from d2_identity import record_identity_result
 from fulfillment_state import (APPROVED, BLOCKED_REVIEW,
                                FulfillmentStateError,
                                load as load_fulfillment_state, transition,
@@ -57,10 +58,15 @@ def _persistable_source(tmp_path, *, order_id, platform='trainingpeaks'):
         'tp_manifest.json': '{}\n',
     }.items():
         (source / relative).write_text(content)
-    write_generation(
+    state = write_generation(
         source / 'fulfillment_status.json', 'athlete-m',
         order_id=order_id, delivery_platform=platform,
     )
+    record_identity_result(
+        source / 'fulfillment_status.json', state['generation_revision'], {
+            'outcome': 'bound', 'tp_athlete_id': f'fixture-{order_id}',
+            'candidates': [],
+        }, capability_jti=f'fixture-{order_id}-binding-jti')
     return source
 
 
@@ -162,10 +168,15 @@ def test_download_seal_mismatch_revokes_authority_and_persists_blocker(
         "tp_manifest.json": "{}\n",
     }.items():
         (source / relative).write_text(content)
-    write_generation(
+    state = write_generation(
         source / "fulfillment_status.json", "athlete-m",
         order_id="test_download_mismatch", delivery_platform="trainingpeaks",
     )
+    record_identity_result(
+        source / "fulfillment_status.json", state["generation_revision"], {
+            "outcome": "bound", "tp_athlete_id": "fixture-download-athlete",
+            "candidates": [],
+        }, capability_jti="fixture-download-binding-jti")
     data_dir = tmp_path / "data"
     monkeypatch.setattr(webhook_app, "DATA_DIR", str(data_dir))
     monkeypatch.setattr(
