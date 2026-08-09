@@ -155,18 +155,26 @@ def test_phase3_contract_has_fake_server_effect_parity_with_legacy_manifest(tmp_
             INTENTIONAL_D0_DIFFERENCES['mental_task_upsert'],
         }
 
+        # The payload keeps its own fields (including any external marker);
+        # the normalized-state key rides alongside as the idempotency key.
         for key, record in sorted(legacy_state.items()):
             post(old, buckets[record['kind']], {
-                'external_id': key, **record['payload']})
+                'external_id': key, 'payload': record['payload']})
         for key, record in sorted(contract_state.items()):
             post(new, buckets[record['kind']], {
-                'external_id': key, **record['payload']})
+                'external_id': key, 'payload': record['payload']})
 
         # Loopback transports both complete six-field normalized workout
         # records. Equality is intentionally false for the three classified
         # representation migrations above; each server must retain exactly
         # the field-complete state sent to it.
-        assert len(old.items) == len(legacy_state)
-        assert len(new.items) == len(contract_state)
+        def retained(server):
+            return {item['external_id']: item['payload']
+                    for bucket in server.items.values() for item in bucket}
+
+        assert retained(old) == {
+            key: record['payload'] for key, record in legacy_state.items()}
+        assert retained(new) == {
+            key: record['payload'] for key, record in contract_state.items()}
     finally:
         old.close(); new.close()
