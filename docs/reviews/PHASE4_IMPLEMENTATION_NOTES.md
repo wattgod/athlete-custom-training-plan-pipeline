@@ -201,3 +201,46 @@ grant issuance remains deliberately absent/refused until Phase 5.
 
 The sandbox-forbidden loopback/PDF checks and the scheduled live read-only
 canary remain external verification items. No push is part of this phase.
+
+## R1 blocker disposition — 2026-08-09
+
+Review: `docs/reviews/PHASE4_IMPLEMENTATION_CODEX_R1.md`.
+
+All four blockers were accepted as valid; there are no disputes.
+
+| R1 blocker | Disposition | Closing implementation and regression evidence |
+|---|---|---|
+| 1. Automated approval without identity | **Closed** | `validate_d2_approval` now requires a nonempty, order-scoped binding for every `trainingpeaks` or `endure` approval even when D2 never activated. Manual approval remains identity-exempt, while APPLIED still requires nonempty evidence matching the immutable manual platform. The matrix covers TP/Endure missing binding, wrong-order binding, valid bindings, and the manual direction. |
+| 2. Stale effects after resolution switching | **Closed** | Every D2 command now retracts the prior choice's canonical override, singleton operation, pending requirement, typed readback/derived record, resolved marker, and cannot-resolve blocker under the same state lock before installing the new effect. Plan/apply-contract changes revoke the seal and persist regeneration intent atomically. Approval reconstructs the exact expected override and singleton-operation maps from the current choices and validates metric, kind, unit, after-value, inspected before-image, intake source, and sealed control anchor. All 12 directed threshold-choice switches plus a tampered terminal operation are covered. |
+| 3. Unusable/forgeable manually-corrected completion | **Closed** | Manual selection no longer invalidates a seal when it changes neither plan nor apply contract. The authenticated CSRF-bound review command issues a fresh order/TP-id-bound inspect capability and calls the read-only worker itself; the browser supplies no value or jti. Persistence accepts only `VerifiedInspectionEvidence`, records `d2_worker_readback/v1` with capability jti/kid, request digest, inspected field/value/unit and worker timestamp, and cross-checks a sensitive `externally_observed` derived-registry record on every load. Sealed end-to-end coverage rejects pre-readback, bare-dict, wrong-value, wrong-CSRF, and accepts exact worker readback followed by approval. |
+| 4. Terminal probe record reused as an implicit cache | **Closed** | Pipeline and review issuance use a UUID jti for every new logical probe/inspection attempt. `ProbeExecutionStore` remains keyed by `{order_id, jti}` and bound to the canonical request digest, so the same jti/digest resumes or returns its terminal result while a fresh jti necessarily creates a new durable record and calls transport again. Tests prove changing transport data is freshly observed and pin overlong TTL, malformed jti/header, boolean time claims, mutation-shape extras, and wrong expected action. |
+
+The zero-write boundary is unchanged: Phase 4 apply/verify/rollback and execution
+grant exchange still refuse before transport. The production image now includes
+the read-only `delivery/` package and `/app` import root required by the verified
+review-readback path.
+
+### R1 verification evidence
+
+- Blocker-focused worker + D2 + review surface: **79 passed**.
+- Broad Phase 4/settled state gate (worker, D2, review, fulfilment state,
+  download tokens, athlete-m Phase 1/3/4 goldens, bypass gates): **139 passed**.
+- Worker + D2 + D0 apply-contract projection: **91 passed**.
+- Complete sandbox suite: **2,550 passed, 87 skipped, 21 warnings, 0 failed**.
+- Opt-in production acceptance with writable `HOME` and the existing user-site
+  dependency path: **36 passed, 4 skipped, 4 failed**. The four failures are
+  the unchanged missing mandatory PDF checks for Gravel Full Gym and Masters;
+  the four Roadie PDF/package cases remain expected skips. The same result was
+  reproduced from a clean `d291eb4` archive.
+- Fresh current and `d291eb4` acceptance builds produced byte-identical ZWOs:
+  **284/284** (89 Gravel, 77 Masters, 72 Road Fondo, 46 Road Climb). Recursive
+  directory comparison reported no difference; both sorted per-file manifests
+  hash to `69e150efe14ea2cbda277bb3677835859c3a7280707d2d1f860745528ffa1e7e`.
+  This supersedes the earlier unreproducible 253-ZWO note and confirms no Phase
+  4 or R1 workout-byte change under the current date-dependent acceptance input.
+- `python3 -m compileall -q athletes/scripts delivery tools webhook` and
+  `git diff --check` pass.
+
+Implementation commit boundary: `ad7f5f7` (`fix(phase4): close R1 identity and
+readback blockers`). This notes update is a separate documentation boundary.
+No push or remote write was performed.
