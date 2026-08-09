@@ -12,8 +12,11 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from apply_contract import (ApplyContractError, assert_checked_schema_current,
-                            build_contract, digest_payload, validate_contract)
+from apply_contract import (ApplyContractError, OperationProvenance,
+                            assert_checked_schema_current,
+                            bind_operation_provenance, build_contract,
+                            canonical_json, compute_model_seal, digest_payload,
+                            validate_contract)
 from fulfillment_manifest import build_manifest_from_plan_ir
 from fake_remote_parity import (INTENTIONAL_D0_DIFFERENCES,
                                 LEGACY_SUPPORTED_KINDS, FakeRemoteModel,
@@ -54,10 +57,14 @@ def _contract(tmp_path, **kwargs):
 
 
 def _operation_reader(*contracts):
-    operations = {
-        operation["op_id"]: copy.deepcopy(operation)
-        for contract in contracts for operation in contract["operations"]
-    }
+    operations = {}
+    for source in contracts:
+        contract = copy.deepcopy(source)
+        provenance = bind_operation_provenance(
+            contract, contract_digest=digest_payload(contract),
+            model_seal=contract["model_seal"])
+        for operation in contract["operations"]:
+            operations[operation["op_id"]] = provenance
     return operations.__getitem__
 
 
@@ -65,6 +72,14 @@ def test_checked_schema_is_generated_definition_and_every_emission_validates(tmp
     assert_checked_schema_current()
     contract = _contract(tmp_path)
     assert validate_contract(contract) is contract
+    with pytest.raises(ApplyContractError, match="digest mismatch"):
+        bind_operation_provenance(
+            contract, contract_digest="0" * 64,
+            model_seal=contract["model_seal"])
+    with pytest.raises(ApplyContractError, match="model seal mismatch"):
+        bind_operation_provenance(
+            contract, contract_digest=digest_payload(contract),
+            model_seal="0" * 64)
     broken = copy.deepcopy(contract)
     broken["operations"][0]["rollback"]["strategy"] = "none"
     with pytest.raises(ApplyContractError, match="schema validation"):
@@ -304,6 +319,228 @@ def test_three_revision_adopted_keep_chain_retains_null_snapshot(tmp_path):
                 if op["logical_id"] == root["logical_id"])["disposition"] == "keep"
 
 
+def test_deep_5000_link_adopted_chain_remains_iterative(tmp_path):
+    logical_id = "cs_phase3:course_entitlement_grant:course:test-race"
+    expected_digest = digest_payload({"product_id": "course:test-race"})
+    records = {}
+    predecessor = None
+    for revision in range(1, 5001):
+        op_id = f"{logical_id}@r{revision}"
+        operation = {
+            "op_id": op_id, "logical_id": logical_id,
+            "kind": "course_entitlement_grant", "disposition": "keep",
+            "payload": None, "expected_digest": expected_digest,
+            "prior_payload": None, "before_image": None,
+            "remote_marker": None, "predecessor": predecessor,
+            "rollback": {"strategy": "none"},
+        }
+        model_seal = compute_model_seal({}, [], {}, [operation])
+        contract = {
+            "contract_version": "apply_contract/v1", "order_id": "cs_phase3",
+            "tp_athlete_id": "fake-42", "generation_revision": revision,
+            "model_seal": model_seal, "operations": [operation],
+            "compat": {"min_reader": "apply_contract/v1"},
+        }
+        records[op_id] = bind_operation_provenance(
+            contract, contract_digest=digest_payload(contract),
+            model_seal=model_seal)
+        predecessor = {"op_id": op_id, "remote_id": None}
+
+    inventory = {logical_id: {
+        "kind": "course_entitlement_grant", "remote_id": None,
+        "desired_digest": expected_digest, "payload_snapshot_ref": None,
+        "last_op_id": f"{logical_id}@r5000",
+    }}
+    current = _contract(
+        tmp_path, generation_revision=5001,
+        inspection={"entitlements": ["course:test-race"]},
+        effective_remote_inventory=inventory,
+        last_operation_reader=records.__getitem__,
+    )
+    assert next(op for op in current["operations"]
+                if op["logical_id"] == logical_id)["disposition"] == "keep"
+
+
+def test_middle_link_coordinated_forged_op_id_rejects_swapped_contract(tmp_path):
+    first = _contract(tmp_path, inspection={"entitlements": ["course:test-race"]})
+    root = next(op for op in first["operations"]
+                if op["kind"] == "course_entitlement_grant")
+    inventory = {root["logical_id"]: {
+        "kind": root["kind"], "remote_id": None,
+        "desired_digest": root["expected_digest"],
+        "payload_snapshot_ref": None, "last_op_id": root["op_id"],
+    }}
+    second = _contract(
+        tmp_path, generation_revision=2,
+        inspection={"entitlements": ["course:test-race"]},
+        effective_remote_inventory=inventory,
+        last_operation_reader=_operation_reader(first),
+    )
+    tampered = copy.deepcopy(second)
+    middle = next(op for op in tampered["operations"]
+                  if op["logical_id"] == root["logical_id"])
+    middle["op_id"] = "coordinated-forged-middle-link"
+    inventory[root["logical_id"]]["last_op_id"] = middle["op_id"]
+    swapped = OperationProvenance(
+        contract_bytes=canonical_json(tampered),
+        contract_digest=digest_payload(second),
+        model_seal=second["model_seal"],
+    )
+    reader = _operation_reader(first)
+
+    with pytest.raises(ApplyContractError, match="contract digest mismatch"):
+        _contract(
+            tmp_path, generation_revision=3,
+            inspection={"entitlements": ["course:test-race"]},
+            effective_remote_inventory=inventory,
+            last_operation_reader=lambda op_id: (
+                swapped if op_id == middle["op_id"] else reader(op_id)),
+        )
+
+
+def test_schema_invalid_keep_labeled_compensation_middle_link_rejected(tmp_path):
+    first = _contract(tmp_path, inspection={"entitlements": ["course:test-race"]})
+    root = next(op for op in first["operations"]
+                if op["kind"] == "course_entitlement_grant")
+    inventory = {root["logical_id"]: {
+        "kind": root["kind"], "remote_id": None,
+        "desired_digest": root["expected_digest"],
+        "payload_snapshot_ref": None, "last_op_id": root["op_id"],
+    }}
+    second = _contract(
+        tmp_path, generation_revision=2,
+        inspection={"entitlements": ["course:test-race"]},
+        effective_remote_inventory=inventory,
+        last_operation_reader=_operation_reader(first),
+    )
+    middle = next(op for op in second["operations"]
+                  if op["logical_id"] == root["logical_id"])
+    middle["compensation"] = {"strategy": "restore_before_image"}
+    inventory[root["logical_id"]]["last_op_id"] = middle["op_id"]
+
+    with pytest.raises(ApplyContractError, match="schema validation"):
+        _contract(
+            tmp_path, generation_revision=3,
+            inspection={"entitlements": ["course:test-race"]},
+            effective_remote_inventory=inventory,
+            last_operation_reader=_operation_reader(first, second),
+        )
+
+
+def test_non_monotonic_revision_chain_r5_to_r2_rejected(tmp_path):
+    first = _contract(tmp_path, inspection={"entitlements": ["course:test-race"]})
+    root = next(op for op in first["operations"]
+                if op["kind"] == "course_entitlement_grant")
+    inventory = {root["logical_id"]: {
+        "kind": root["kind"], "remote_id": None,
+        "desired_digest": root["expected_digest"],
+        "payload_snapshot_ref": None, "last_op_id": root["op_id"],
+    }}
+    second = _contract(
+        tmp_path, generation_revision=2,
+        inspection={"entitlements": ["course:test-race"]},
+        effective_remote_inventory=inventory,
+        last_operation_reader=_operation_reader(first),
+    )
+    future_root = _contract(
+        tmp_path, generation_revision=5,
+        inspection={"entitlements": ["course:test-race"]})
+    r5_keep = next(op for op in future_root["operations"]
+                   if op["logical_id"] == root["logical_id"])
+    r2_keep = next(op for op in second["operations"]
+                   if op["logical_id"] == root["logical_id"])
+    r2_keep["predecessor"] = {"op_id": r5_keep["op_id"], "remote_id": None}
+    inventory[root["logical_id"]]["last_op_id"] = r2_keep["op_id"]
+
+    with pytest.raises(ApplyContractError, match="strictly descending"):
+        _contract(
+            tmp_path, generation_revision=6,
+            inspection={"entitlements": ["course:test-race"]},
+            effective_remote_inventory=inventory,
+            last_operation_reader=_operation_reader(second, future_root),
+        )
+
+
+def test_future_predecessor_r99_for_current_r3_rejected(tmp_path):
+    future = _contract(
+        tmp_path, generation_revision=99,
+        inspection={"entitlements": ["course:test-race"]})
+    future_keep = next(op for op in future["operations"]
+                       if op["kind"] == "course_entitlement_grant")
+    inventory = {future_keep["logical_id"]: {
+        "kind": future_keep["kind"], "remote_id": None,
+        "desired_digest": future_keep["expected_digest"],
+        "payload_snapshot_ref": None, "last_op_id": future_keep["op_id"],
+    }}
+
+    with pytest.raises(ApplyContractError, match="strictly descending"):
+        _contract(
+            tmp_path, generation_revision=3,
+            inspection={"entitlements": ["course:test-race"]},
+            effective_remote_inventory=inventory,
+            last_operation_reader=_operation_reader(future),
+        )
+
+
+def _created_entitlement_rewired_to_adoption_root(tmp_path, root_revision, root_op_id):
+    first = _contract(tmp_path)
+    created = next(op for op in first["operations"]
+                   if op["kind"] == "course_entitlement_grant")
+    inventory = {created["logical_id"]: {
+        "kind": created["kind"], "remote_id": None,
+        "desired_digest": created["expected_digest"],
+        "payload_snapshot_ref": "snapshots/entitlement-r1.json",
+        "last_op_id": created["op_id"],
+    }}
+    second = _contract(
+        tmp_path, generation_revision=2,
+        inspection={"entitlements": ["course:test-race"]},
+        effective_remote_inventory=inventory,
+    )
+    kept = next(op for op in second["operations"]
+                if op["logical_id"] == created["logical_id"])
+    forged_root = _contract(
+        tmp_path, generation_revision=root_revision,
+        inspection={"entitlements": ["course:test-race"]})
+    adoption = next(op for op in forged_root["operations"]
+                    if op["logical_id"] == created["logical_id"])
+    adoption["op_id"] = root_op_id
+    kept["predecessor"] = {"op_id": root_op_id, "remote_id": None}
+    inventory[created["logical_id"]].update({
+        "payload_snapshot_ref": None, "last_op_id": kept["op_id"],
+    })
+    return first, second, forged_root, inventory
+
+
+def test_coordinated_noncanonical_op_id_hiding_real_create_rejected(tmp_path):
+    first, second, forged_root, inventory = (
+        _created_entitlement_rewired_to_adoption_root(
+            tmp_path, 1, "forged-adoption-root"))
+
+    with pytest.raises(ApplyContractError, match="op_id does not bind"):
+        _contract(
+            tmp_path, generation_revision=3,
+            inspection={"entitlements": ["course:test-race"]},
+            effective_remote_inventory=inventory,
+            last_operation_reader=_operation_reader(first, second, forged_root),
+        )
+
+
+def test_future_revision_r99_hiding_real_create_rejected(tmp_path):
+    first, second, forged_root, inventory = (
+        _created_entitlement_rewired_to_adoption_root(
+            tmp_path, 99,
+            "cs_phase3:course_entitlement_grant:course:test-race@r99"))
+
+    with pytest.raises(ApplyContractError, match="strictly descending"):
+        _contract(
+            tmp_path, generation_revision=3,
+            inspection={"entitlements": ["course:test-race"]},
+            effective_remote_inventory=inventory,
+            last_operation_reader=_operation_reader(first, second, forged_root),
+        )
+
+
 @pytest.mark.parametrize("tamper", ["missing_link", "cycle"])
 def test_null_snapshot_predecessor_chain_rejects_missing_links_and_cycles(
     tmp_path, tamper,
@@ -325,15 +562,13 @@ def test_null_snapshot_predecessor_chain_rejects_missing_links_and_cycles(
     kept = next(op for op in second["operations"]
                 if op["logical_id"] == root["logical_id"])
     inventory[root["logical_id"]]["last_op_id"] = kept["op_id"]
-    operations = {
-        operation["op_id"]: copy.deepcopy(operation)
-        for contract in (first, second) for operation in contract["operations"]
-    }
+    reader_contracts = [copy.deepcopy(first), copy.deepcopy(second)]
     if tamper == "missing_link":
-        del operations[root["op_id"]]
+        reader_contracts = [reader_contracts[1]]
         match = "could not resolve durable positional predecessor"
     else:
-        operations[root["op_id"]]["predecessor"] = {
+        next(op for op in reader_contracts[0]["operations"]
+             if op["op_id"] == root["op_id"])["predecessor"] = {
             "op_id": kept["op_id"], "remote_id": None,
         }
         match = "contains a cycle"
@@ -343,7 +578,7 @@ def test_null_snapshot_predecessor_chain_rejects_missing_links_and_cycles(
             tmp_path, generation_revision=3,
             inspection={"entitlements": ["course:test-race"]},
             effective_remote_inventory=inventory,
-            last_operation_reader=operations.__getitem__,
+            last_operation_reader=_operation_reader(*reader_contracts),
         )
 
 

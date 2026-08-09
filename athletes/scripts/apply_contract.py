@@ -12,6 +12,7 @@ import json
 import os
 import tempfile
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional
 import re
@@ -33,7 +34,24 @@ INVENTORY_FIELDS = {
     "remote_id", "desired_digest", "payload_snapshot_ref", "kind", "last_op_id",
 }
 SnapshotReader = Callable[[str], Mapping[str, Any]]
-OperationReader = Callable[[str], Mapping[str, Any]]
+
+
+@dataclass(frozen=True)
+class OperationProvenance:
+    """Immutable operation provenance from a sealed containing contract.
+
+    ``contract_digest`` is the trusted SHA-256 of ``contract_bytes`` in the
+    canonical D0 serialization.  Keeping the complete contract bytes in the
+    record lets the consumer prove that the looked-up operation is a member of
+    the revision whose digest and model seal were verified by the reader.
+    """
+
+    contract_bytes: bytes
+    contract_digest: str
+    model_seal: str
+
+
+OperationReader = Callable[[str], OperationProvenance]
 
 
 class ApplyContractError(ValueError):
@@ -49,6 +67,31 @@ def canonical_json(value: Any) -> bytes:
 
 def digest_payload(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(canonical_json(payload)).hexdigest()
+
+
+def bind_operation_provenance(
+    contract: Mapping[str, Any], *, contract_digest: str, model_seal: str,
+) -> OperationProvenance:
+    """Bind a loaded contract to digest/seal values from immutable storage."""
+    if not isinstance(contract_digest, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", contract_digest
+    ):
+        raise ApplyContractError("loaded apply contract digest is invalid")
+    if not isinstance(model_seal, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", model_seal
+    ):
+        raise ApplyContractError("loaded apply contract model seal is invalid")
+    contract_bytes = canonical_json(contract)
+    actual_digest = hashlib.sha256(contract_bytes).hexdigest()
+    if actual_digest != contract_digest:
+        raise ApplyContractError("loaded apply contract digest mismatch")
+    if contract.get("model_seal") != model_seal:
+        raise ApplyContractError("loaded apply contract model seal mismatch")
+    return OperationProvenance(
+        contract_bytes=contract_bytes,
+        contract_digest=contract_digest,
+        model_seal=model_seal,
+    )
 
 
 PAYLOAD_SCHEMAS: Dict[str, Dict[str, Any]] = {
@@ -317,9 +360,11 @@ def _predecessor(record: Dict[str, Any], dated: bool) -> Dict[str, Any]:
 
 def _validate_null_positional_provenance(
     logical_id: str, record: Dict[str, Any], operation_reader: OperationReader,
+    *, current_revision: int, order_id: str, tp_athlete_id: str,
 ) -> None:
     """Prove a null snapshot descends only from a verified adoption keep."""
     next_op_id = str(record["last_op_id"])
+    child_revision = current_revision
     seen_op_ids = set()
     while True:
         if next_op_id in seen_op_ids:
@@ -327,13 +372,63 @@ def _validate_null_positional_provenance(
                 "null positional snapshot provenance contains a cycle")
         seen_op_ids.add(next_op_id)
         try:
-            provenance = dict(operation_reader(next_op_id))
+            bound = operation_reader(next_op_id)
         except Exception as exc:
             raise ApplyContractError(
                 "could not resolve durable positional predecessor provenance") from exc
 
-        if (provenance.get("op_id") != next_op_id
-                or provenance.get("logical_id") != logical_id
+        if not isinstance(bound, OperationProvenance):
+            raise ApplyContractError(
+                "positional predecessor requires contract-bound provenance")
+        if (not isinstance(bound.contract_bytes, bytes)
+                or not isinstance(bound.contract_digest, str)
+                or not re.fullmatch(r"[0-9a-f]{64}", bound.contract_digest)
+                or hashlib.sha256(bound.contract_bytes).hexdigest()
+                != bound.contract_digest):
+            raise ApplyContractError(
+                "positional predecessor containing contract digest mismatch")
+        try:
+            containing_contract = json.loads(bound.contract_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ApplyContractError(
+                "positional predecessor containing contract is invalid") from exc
+        if not isinstance(containing_contract, dict):
+            raise ApplyContractError(
+                "positional predecessor containing contract is invalid")
+        try:
+            is_canonical = canonical_json(containing_contract) == bound.contract_bytes
+        except (TypeError, ValueError) as exc:
+            raise ApplyContractError(
+                "positional predecessor containing contract is invalid") from exc
+        if (not is_canonical
+                or not isinstance(bound.model_seal, str)
+                or containing_contract.get("model_seal") != bound.model_seal
+                or not re.fullmatch(r"[0-9a-f]{64}", bound.model_seal)):
+            raise ApplyContractError(
+                "positional predecessor containing contract seal mismatch")
+        _schema_validate(containing_contract)
+        predecessor_revision = containing_contract["generation_revision"]
+        if (containing_contract["order_id"] != order_id
+                or containing_contract["tp_athlete_id"] != tp_athlete_id):
+            raise ApplyContractError(
+                "positional predecessor containing contract identity mismatch")
+        if (predecessor_revision >= child_revision
+                or predecessor_revision > current_revision):
+            raise ApplyContractError(
+                "positional predecessor revisions are not strictly descending")
+        matches = [
+            operation for operation in containing_contract["operations"]
+            if operation["op_id"] == next_op_id
+        ]
+        if len(matches) != 1:
+            raise ApplyContractError(
+                "positional predecessor lookup is not bound to its containing contract")
+        provenance = matches[0]
+        if provenance["op_id"] != f"{provenance['logical_id']}@r{predecessor_revision}":
+            raise ApplyContractError(
+                "positional predecessor op_id does not bind logical_id and revision")
+
+        if (provenance.get("logical_id") != logical_id
                 or provenance.get("kind") != record["kind"]
                 or provenance.get("expected_digest") != record["desired_digest"]):
             raise ApplyContractError(
@@ -354,11 +449,13 @@ def _validate_null_positional_provenance(
             raise ApplyContractError(
                 "null positional snapshot has invalid predecessor provenance")
         next_op_id = predecessor["op_id"]
+        child_revision = predecessor_revision
 
 
 def _validate_inventory(
     inventory: Mapping[str, Dict[str, Any]],
     operation_reader: Optional[OperationReader] = None,
+    *, current_revision: int, order_id: str, tp_athlete_id: str,
 ) -> Dict[str, Dict[str, Any]]:
     normalized: Dict[str, Dict[str, Any]] = {}
     for logical_id, raw in inventory.items():
@@ -394,7 +491,9 @@ def _validate_inventory(
                 raise ApplyContractError(
                     "null positional snapshot requires durable last-operation provenance")
             _validate_null_positional_provenance(
-                str(logical_id), record, operation_reader)
+                str(logical_id), record, operation_reader,
+                current_revision=current_revision, order_id=order_id,
+                tp_athlete_id=tp_athlete_id)
         normalized[str(logical_id)] = record
     return normalized
 
@@ -524,7 +623,9 @@ def validate_contract(
     revision = contract["generation_revision"]
     inventory_supplied = effective_remote_inventory is not None
     inventory = _validate_inventory(
-        effective_remote_inventory or {}, last_operation_reader)
+        effective_remote_inventory or {}, last_operation_reader,
+        current_revision=revision, order_id=contract["order_id"],
+        tp_athlete_id=contract["tp_athlete_id"])
     known_identities = set(logical_ids) | set(inventory)
     for op in operations:
         prefix = f"{contract['order_id']}:{op['kind']}:"
@@ -629,15 +730,18 @@ def build_contract(
     payload_snapshot_reader: Optional[SnapshotReader] = None,
     last_operation_reader: Optional[OperationReader] = None,
 ) -> Dict[str, Any]:
+    revision = int(generation_revision)
     inventory = _validate_inventory(
-        effective_remote_inventory or {}, last_operation_reader)
+        effective_remote_inventory or {}, last_operation_reader,
+        current_revision=revision, order_id=str(order_id),
+        tp_athlete_id=str(tp_athlete_id))
     inspection = dict(inspection or {})
     desired = _desired_resources(
         ir, str(order_id), Path(athlete_dir) if athlete_dir else None,
         singleton_desires or {},
     )
     operations = [
-        _operation(str(order_id), int(generation_revision), logical_id,
+        _operation(str(order_id), revision, logical_id,
                    desired.get(logical_id), inventory.get(logical_id), inspection,
                    payload_snapshot_reader)
         for logical_id in sorted(set(desired) | set(inventory))
@@ -646,7 +750,7 @@ def build_contract(
     seal = compute_model_seal(canonical_model, review_items, guide_sources, operations)
     contract = {"contract_version": CONTRACT_VERSION, "order_id": str(order_id),
                 "tp_athlete_id": str(tp_athlete_id),
-                "generation_revision": int(generation_revision), "model_seal": seal,
+                "generation_revision": revision, "model_seal": seal,
                 "operations": operations, "compat": {"min_reader": CONTRACT_VERSION}}
     return validate_contract(
         contract, effective_remote_inventory=inventory,

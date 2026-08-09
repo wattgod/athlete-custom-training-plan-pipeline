@@ -616,3 +616,48 @@ remain closed.
   `79452230ea1cdf33fcc684e971816bc1805e84eefbbdbc7e3579bb5d49c3985e`.
 - No live TrainingPeaks, browser, worker, Stripe, email, network, or push action
   was attempted.
+
+## R5 adversarial-review disposition (2026-08-09)
+
+The sole blocker in `PHASE3_IMPLEMENTATION_CODEX_R5.md` is closed at the
+offline Phase 3 predecessor-reader boundary. An operation lookup no longer
+returns a free-standing mapping. It returns immutable canonical bytes for the
+containing contract together with that contract's trusted canonical SHA-256
+and model seal. Every predecessor hop verifies the digest and seal, validates
+the complete containing contract with the generated D0 schema, selects exactly
+one operation by the lookup key, and verifies the canonical
+`{logical_id}@r{generation_revision}` identity. The containing order and
+athlete identities must match the current contract, and revisions must descend
+strictly at every hop without exceeding the current contract revision.
+
+The walk remains iterative. The legal 5,000-link adopted keep regression
+completes without recursion, and revision gaps remain legal when every
+predecessor is strictly older than its child. The R4 legal three-revision chain,
+missing-link/cycle failures, authentic write/create ancestry failures, and
+ordinary provenance-field rejection coverage remain green.
+
+Direct R5 regressions now reject all six previously accepted forgeries:
+
+- `middle_link_coordinated_forged_op_id` fails the containing-contract digest
+  binding;
+- `schema_invalid_keep_labeled_compensation_middle_link` fails the generated
+  exact D0 operation branch;
+- `non_monotonic_revision_chain_r5_to_r2` and
+  `future_predecessor_r99_for_current_r3` fail strict revision descent; and
+- `coordinated_noncanonical_op_id_hiding_real_create` and
+  `future_revision_r99_hiding_real_create` can no longer hide the authentic
+  entitlement create behind a manufactured adoption root.
+
+### R5 verification evidence
+
+- Focused apply-contract suite: **42 passed, 0 failed** (the prior 35 plus six
+  forgery regressions and one 5,000-link legal-chain regression).
+- Complete sandbox suite: **2,497 passed, 87 skipped, 21 warnings, 0 failed**.
+- `python3 -m compileall -q athletes/scripts delivery tools webhook` and
+  `git diff --check` passed.
+- The state manifest and golden ZWOs are unchanged. This repair changes only
+  the offline contract reader/validator, its regressions, and these notes; the
+  established sorted **253-ZWO** manifest remains byte-identical with SHA-256
+  `79452230ea1cdf33fcc684e971816bc1805e84eefbbdbc7e3579bb5d49c3985e`.
+- No live TrainingPeaks, browser, worker, Stripe, email, network, or push action
+  was attempted.
