@@ -401,6 +401,88 @@ valid. No finding is disputed or silently omitted.
 4. `docs(phase3): record all R1 dispositions and verification evidence` —
    this notes file (committed last).
 
+## R2 adversarial-review disposition (2026-08-08)
+
+All five blockers in `PHASE3_IMPLEMENTATION_CODEX_R2.md` are closed offline.
+The R1 probes and Phase 1/2 invariant suites remain regression tests.
+
+1. **Authoritative A3 coverage — closed.** `derived_registry.py` now owns an
+   authoritative field schema for each computed artifact: profile, fueling,
+   summary, classifications, methodology, calendar, and weekly schedule. The
+   coverage gate enumerates those schemas itself; callers can no longer supply
+   a list that omits a new output. Entirely computed artifacts reject unknown
+   top-level output fields. Classifications, methodology, calendar, and
+   schedule owners now emit `_derived` records, and package generation
+   materializes all four namespaces into fulfillment state/review catalog.
+   The negative regression adds an output without changing a coverage list and
+   proves that validation fails.
+2. **External notification and CLI projection — closed.** Success and failure
+   notification data is recursively passed through the same external
+   projection before template rendering or log fallback. Sensitive legacy
+   aliases and raw top-level failure text are removed. Seeded regressions cover
+   failed-order email, missing-email-configuration logging, email-send-failure
+   logging, and fueling CLI stdout; none exposes FTP, weight, carbohydrate
+   ranges, or product quantities.
+3. **Per-kind inventory values — closed.** Every dated record requires a
+   non-empty `remote_id` and `payload_snapshot_ref`. Positional singletons
+   require null `remote_id`; written singleton inventory carries a snapshot,
+   while an adopted positional keep may retain null remote/snapshot identity.
+   Tests cover first and subsequent keeps plus later compensable updates from
+   both adopted and previously written singleton branches, and from dated
+   records.
+4. **Loaded attachment identity — closed.** Semantic validation splits the
+   attachment logical key and binds its filename component to
+   `payload.filename`, its parent-key component to
+   `payload.parent_logical_id`, and that parent to an existing workout
+   operation or inventory identity. The same rules apply to prior payloads.
+   Digest-preserving tampered-contract tests cover filename, parent ID, and
+   missing-parent attacks.
+5. **Exact legacy/D0 parity boundary — closed.** The adapter exposes a pure,
+   non-executing extraction of its historical request builders with the exact
+   legacy fields (`external_id`, `title`, `date`, `duration`, `sportType`, and
+   `segments` for workouts) and exact supported create operations. The adapter
+   still raises before that code and no TrainingPeaks execution path is
+   enabled. A field-complete fake applies legacy requests and D0 operations
+   independently, then compares only shared normalized remote facts.
+
+### Intentional D0 migration differences
+
+The following are migration behavior, not legacy-parity claims:
+
+- Mental-task installation is required by the R9 D0 contract; the historical
+  adapter omitted it.
+- Positional singleton writes are new D0 operations; the historical adapter
+  did not own those remote facts.
+- Update and delete are required for revision supersession and reconciliation;
+  the historical adapter supported create/keep only.
+- D0 workout payloads preserve richer typed target data than the historical
+  request builder. Shared legacy fields must still normalize identically.
+
+These differences remain behind the offline contract plus the Phase 4/5
+coach-reviewed cutover, canary, readback, and rollback gates. The parity suite
+classifies them explicitly and never silently treats them as equivalent legacy
+effects.
+
+### R2 verification evidence
+
+- R2-focused apply/registry/adapter/catalog suite: **50 passed, 1 skipped**;
+  the only skip is the loopback transport variant. Its socket-free,
+  field-complete equivalent passed.
+- Phase 1/2 state, review, and download-token invariants: **66 passed**.
+- Complete sandbox suite: **2,465 passed, 87 skipped, 21 warnings, 0 failed**.
+- Opt-in order acceptance with writable `HOME`: **36 passed, 4 skipped,
+  4 failed**. The same result occurs in a fresh pre-change archive. All four
+  failures are the mandatory PDF presence/structure assertions for Gravel and
+  Masters in a sandbox without a PDF engine. Roadie HTML fallback accounts for
+  two skips; the other two are expected Roadie-only package cases.
+- Fresh pre-change and final acceptance builds each contain **253 ZWOs**:
+  89 Gravel, 77 Masters, 41 Road Fondo, and 46 Road Climb. The sorted manifest
+  diff is empty and both manifests have SHA-256
+  `e82ebcd550b7cbedc46b9c0d8ae4ff2a955bbc690a26231f110797344c885c7c`.
+- No live TrainingPeaks, network, email, Stripe, browser, or worker action was
+  attempted. The remaining loopback and PDF checks require a less restricted
+  environment.
+
 No push is part of Phase 3 implementation.
 
 ## Remaining human gates
