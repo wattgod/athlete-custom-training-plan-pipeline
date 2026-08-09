@@ -7,7 +7,11 @@ import re
 from datetime import date, datetime, timezone
 from typing import Any, Mapping
 
-from delivery.trainingpeaks.worker_service import VerifiedInspectionEvidence
+from delivery.trainingpeaks.worker_service import (
+    ProbeExecutionStore,
+    VerifiedInspectionEvidence,
+    WorkerAuthorizationError,
+)
 
 from fulfillment_state import (
     BLOCKED_REVIEW,
@@ -719,11 +723,20 @@ def resolve_d2_item(
 def record_manual_readback(
     path, expected_revision: int, item_id: str,
     evidence: VerifiedInspectionEvidence,
+    *, replay_store: ProbeExecutionStore | None = None,
 ) -> dict[str, Any]:
-    """Persist an exact readback produced by the verified worker boundary."""
+    """Persist readback only when its exact succeeded worker record exists."""
     if not isinstance(evidence, VerifiedInspectionEvidence):
         raise FulfillmentStateError(
             "manual correction requires verified worker inspection evidence")
+    if not isinstance(replay_store, ProbeExecutionStore):
+        raise FulfillmentStateError(
+            "manual correction requires the authoritative worker replay store")
+    try:
+        replay_store.verify_inspection_evidence(evidence)
+    except WorkerAuthorizationError as exc:
+        raise FulfillmentStateError(
+            f"manual correction evidence origin is unverified: {exc}") from exc
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")

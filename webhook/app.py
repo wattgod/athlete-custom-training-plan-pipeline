@@ -2917,8 +2917,8 @@ def _run_d2_manual_readback(order_id: str, state: dict, item_id: str) -> dict:
         fixture_path, tp_athlete_id=tp_id)
     replay_root = Path(os.environ.get(
         'GG_WORKER_REPLAY_DIR', str(Path(DATA_DIR) / 'worker-replay')))
-    worker = ReadOnlyWorkerService(
-        codec, ProbeExecutionStore(replay_root), transport)
+    replay_store = ProbeExecutionStore(replay_root)
+    worker = ReadOnlyWorkerService(codec, replay_store, transport)
     now_epoch = int(datetime.now(timezone.utc).timestamp())
     jti = 'manual-inspect-' + uuid.uuid4().hex
     claims = {
@@ -2932,7 +2932,7 @@ def _run_d2_manual_readback(order_id: str, state: dict, item_id: str) -> dict:
         tp_id, capability, now=now_epoch)
     return record_manual_readback(
         _fulfillment_status_path(order_id), state['generation_revision'],
-        item_id, evidence,
+        item_id, evidence, replay_store=replay_store,
     )
 
 

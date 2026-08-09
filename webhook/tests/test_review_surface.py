@@ -26,7 +26,7 @@ from download_tokens import (DownloadTokenError, MAX_REVIEW_BUNDLE_TTL_SECONDS,
                              verify_download_token)
 from review_auth import verify_review_token
 from d2_identity import (THRESHOLD_ITEM_ID, record_account_inspection,
-                         record_identity_result)
+                         record_identity_result, resolve_d2_item)
 
 
 ATHLETE_M = (Path(__file__).resolve().parents[2] / 'tests' / 'fixtures'
@@ -243,6 +243,77 @@ def test_d2_regeneration_queue_applies_canonical_overrides_and_installs_intent_f
     assert spawned[0][1]['intake_data']['hr_threshold'] == 148
     assert spawned[0][1]['intake_data']['age'] == 45
     assert spawned[0][0]['order_id'] == 'queue-d2'
+
+
+def test_approval_route_rejects_client_resolution_mismatch_and_snapshots_command(
+    review_client,
+):
+    order_id = 'test_phase4_authoritative_resolution_snapshot'
+    state_path = webhook_app._fulfillment_status_path(order_id)
+    state = write_generation(
+        state_path, 'athlete-m', order_id=order_id,
+        delivery_platform='trainingpeaks')
+    state = record_identity_result(
+        state_path, state['generation_revision'], {
+            'outcome': 'bound', 'tp_athlete_id': 'fixture-athlete-m',
+            'candidates': [],
+        }, capability_jti='approval-route-probe-jti-001')
+    probes = json.loads((ATHLETE_M / 'worker_probes.json').read_text())
+    probes['tp_athlete_id'] = 'fixture-athlete-m'
+    state = record_account_inspection(
+        state_path, state['generation_revision'], probes,
+        intake_age=19, intake_thresholds={'lthr': 160},
+        control_metric='hr', canonical_control_value=160,
+        capability_jti='approval-route-inspect-jti-01',
+        observed_at='2026-08-06T15:00:00Z')
+    state = resolve_d2_item(
+        state_path, state['generation_revision'], THRESHOLD_ITEM_ID,
+        'update-from-intake', actor='review-link:test')
+    state = write_generation(
+        state_path, state['athlete_id'], order_id=state['order_id'],
+        delivery_platform=state['delivery_platform'])
+    revision = (webhook_app._order_dir(order_id) / 'revisions'
+                / f"r{state['generation_revision']}")
+    revision.mkdir(parents=True)
+    (revision / 'reviewed-values.txt').write_text(
+        'sealed authoritative D2 resolution')
+    state = finalize_transitional_release(
+        state_path, revision, expected_revision=state['generation_revision'])
+    webhook_app._record_order_lookup(order_id, 'athlete-m')
+
+    _body, csrf = _login(review_client, order_id)
+    confirm_ids = [
+        item_id for item_id in _confirmed_ids(state)
+        if item_id != THRESHOLD_ITEM_ID
+    ]
+    mismatched_form = _approval_form(
+        state, csrf, confirm_ids=confirm_ids)
+    mismatched_form['resolved_item'] = [
+        f'{THRESHOLD_ITEM_ID}::use-tp-value']
+    rejected = review_client.post(
+        f'/review/{order_id}/approve', data=mismatched_form)
+    assert rejected.status_code == 409
+    assert ('does not match the authoritative command'
+            in rejected.get_data(as_text=True))
+    assert load(state_path)['approval'] is None
+
+    honest_form = _approval_form(state, csrf, confirm_ids=confirm_ids)
+    honest_form['resolved_item'] = [
+        f'{THRESHOLD_ITEM_ID}::update-from-intake']
+    approved = review_client.post(
+        f'/review/{order_id}/approve', data=honest_form)
+    assert approved.status_code == 303
+    persisted = load(state_path)
+    snapshot = next(
+        item for item in persisted['approval']['confirmations']
+        if item['item_id'] == THRESHOLD_ITEM_ID)
+    authoritative_choice = persisted['d2_resolutions'][THRESHOLD_ITEM_ID]['choice']
+    assert authoritative_choice == 'update-from-intake'
+    assert snapshot['disposition'] == f'resolved:{authoritative_choice}'
+    assert snapshot['resolved_resolution'] == authoritative_choice
+    assert persisted['d2_apply_operations']['lthr']['payload'] == {
+        'metric': 'lthr', 'after_value': 160, 'unit': 'bpm',
+    }
 
 
 def test_manual_correction_route_uses_verified_worker_readback_and_then_approves(

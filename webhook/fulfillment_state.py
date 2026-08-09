@@ -1313,6 +1313,16 @@ def transition(
                             f"{label} is unresolved: {item['item_id']}"
                         )
                     disposition = str(decision.get("disposition") or "").strip()
+                    authoritative_choice = item.get("resolved_resolution")
+                    if authoritative_choice is not None:
+                        authoritative_disposition = (
+                            f"resolved:{authoritative_choice}")
+                        if disposition != authoritative_disposition:
+                            raise FulfillmentStateError(
+                                "submitted review resolution does not match "
+                                f"the authoritative command: {item['item_id']}"
+                            )
+                        disposition = authoritative_disposition
                     resolved_choice = (
                         disposition.removeprefix("resolved:")
                         if disposition.startswith("resolved:") else ""
