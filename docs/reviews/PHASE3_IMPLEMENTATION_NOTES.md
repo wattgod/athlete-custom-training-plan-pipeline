@@ -485,6 +485,88 @@ effects.
 
 No push is part of Phase 3 implementation.
 
+## R3 adversarial-review disposition (2026-08-08)
+
+All five blockers in `PHASE3_IMPLEMENTATION_CODEX_R3.md` are closed at the
+offline Phase 3 boundary. The R1/R2 probes, Phase 1/2 release gates, pure
+extraction boundary, and disabled adapter remain intact.
+
+1. **Total artifact schemas — closed.** `derived_registry.py` now owns a
+   recursive, closed output-shape classification for profile, fueling, summary,
+   classifications, methodology, calendar, and weekly schedule. Every emitted
+   root is derived or explicitly raw/non-derived; registered aggregates have
+   closed descendant inventories, including fueling phases/progression,
+   methodology configuration, calendar weeks/days, and schedule days. Unknown
+   top-level or nested paths fail before provenance coverage is considered.
+   Seven independent negatives add an output to each artifact class without
+   editing the schema or a caller-supplied list and all are rejected.
+2. **Sensitive fueling phase aggregate — closed.** `gut_training.phases`
+   remains one sensitive typed value. The CLI no longer iterates or renders any
+   descendant: phase names, week labels, descriptions, guidance, and targets
+   are all suppressed behind one authenticated-review message. A seeded phase
+   name and seeded week label are both absent from the CLI-safe rendering.
+3. **Positional snapshot provenance — closed.** A null positional
+   `payload_snapshot_ref` now requires an explicit durable last-operation
+   reader. The resolved operation must match logical id, kind, op id, and
+   digest and must be a payload-null verified `keep`; a preceding singleton
+   write or entitlement create is rejected. Adopted singleton and pre-existing
+   entitlement keeps retain their legal null-snapshot path with immutable
+   provenance, while written singleton keep/update and created-entitlement
+   keep paths retain non-null snapshots.
+4. **Attachment rollback identity — closed.** Loaded attachment validation
+   independently binds both non-null `payload` and `prior_payload` to the
+   logical-key filename and stable parent workout identity. With effective
+   inventory present, `prior_payload` must also hash to the predecessor
+   inventory digest. Update regressions independently tamper the prior
+   filename, parent, and content digest; all fail before apply.
+5. **Six-field legacy parity — closed.** Workout normalization retains all six
+   historical request facts: `external_id`, `title`, `date`, `duration`,
+   `sportType`, and `segments`. Title/date/duration are exact shared facts.
+   External-marker, sport/workout-type, and segments/TP-native-structure
+   conversions have exact named dispositions with both legacy and D0 evidence
+   retained. The comparator works field-by-field, has a closed disposition
+   whitelist, and raises on any unclassified D0-only, legacy-only, kind,
+   normalized-field-inventory, or shared-field delta. Independent tampering of
+   every historical workout field either fails comparison or produces the
+   exact tested conversion disposition; none remains silently equal.
+
+### R3 reviewer-probe replay
+
+The R3 transcript was replayed against the final implementation:
+
+```text
+fueling_undeclared_top_level: REJECTED
+fueling_cli_sensitive_phase_label_leaked: False
+written_singleton_null_snapshot: REJECTED
+attachment_update_prior_payload_tamper: REJECTED
+external_id tamper_still_parity= False disposition= legacy_external_id_to_d0_logical_remote_marker
+sportType tamper_still_parity= False disposition= legacy_sport_type_to_d0_tp_workout_type
+segments tamper_still_parity= False disposition= legacy_segments_to_d0_tp_native_structure
+```
+
+Created-entitlement/null-snapshot and all six individual workout fields are
+also pinned as direct unit regressions.
+
+### R3 verification evidence
+
+- R3/R2 registry, apply-contract, adapter, and external-catalog boundary:
+  **56 passed, 1 skipped**. The skip is the sandbox-forbidden loopback
+  transport; the same field-complete socket-free comparator passed.
+- Phase 1/2 sealing, authenticated review, and download-token invariants:
+  **66 passed**.
+- Complete sandbox suite: **2,485 passed, 87 skipped, 21 warnings, 0 failed**.
+- Opt-in production order acceptance: **36 passed, 4 skipped, 4 failed**. The
+  four failures are unchanged mandatory-PDF presence/structure assertions for
+  Gravel Full Gym and Masters in this no-PDF-engine sandbox; an isolated
+  pre-fix `f41d1dc` archive produced the identical result.
+- Current and isolated pre-fix acceptance builds each contain exactly **253
+  ZWOs**: 89 Gravel, 77 Masters, 41 Road Fondo, and 46 Road Climb. Their sorted
+  per-file SHA-256 manifests have an empty `diff -u`; both complete manifests
+  hash to `79452230ea1cdf33fcc684e971816bc1805e84eefbbdbc7e3579bb5d49c3985e`.
+- `python3 -m compileall -q athletes/scripts delivery tools webhook`,
+  `git diff --check`, and the reviewer transcript replay passed. No live TP,
+  browser, worker, Stripe, email, or external-network action was attempted.
+
 ## Remaining human gates
 
 - Run the socket suite outside the sandbox, including the existing fake TP
