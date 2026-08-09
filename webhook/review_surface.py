@@ -26,7 +26,9 @@ def _value(value: Any, unit: str | None = None) -> str:
     return f'<pre class="value">{_e(rendered)}{suffix}</pre>'
 
 
-def _cards(items: Iterable[Dict[str, Any]], *, controls: str = "") -> str:
+def _cards(
+    items: Iterable[Dict[str, Any]], *, controls: str = "", order_id: str = "",
+) -> str:
     cards = []
     for item in items:
         item_id = _e(item.get("item_id"))
@@ -40,6 +42,30 @@ def _cards(items: Iterable[Dict[str, Any]], *, controls: str = "") -> str:
             control = (
                 '<p class="remediation"><strong>Required remediation:</strong> '
                 + _e(item.get("remediation") or "Fix and regenerate.") + "</p>"
+            )
+        elif controls in {"required", "fact", "soft"} and item.get("resolution_choices"):
+            choices = "".join(
+                f'<option value="{_e(choice)}"'
+                + (" selected" if choice == item.get("resolved_resolution") else "")
+                + f'>{_e(choice)}</option>'
+                for choice in item.get("resolution_choices", [])
+            )
+            selected = item.get("resolved_resolution")
+            resolved_input = (
+                '<input type="hidden" name="resolved_item" '
+                f'value="{_e(item.get("item_id"))}::{_e(selected)}">'
+                if selected else ""
+            )
+            control = (
+                '<label class="choice"><strong>Resolution command</strong><br>'
+                f'<select name="resolution_choice:{item_id}">'
+                '<option value="">Choose a resolution…</option>'
+                f'{choices}</select> '
+                '<button class="button secondary" type="submit" '
+                f'formaction="/review/{_e(order_id)}/d2/resolve" formmethod="post" '
+                f'name="resolution_item" value="{item_id}">Run command</button>'
+                + (f'<br><small>Recorded: {_e(selected)}</small>' if selected else "")
+                + resolved_input + '</label>'
             )
         elif controls in {"required", "fact", "soft"}:
             label = {
@@ -179,15 +205,42 @@ def render_review_page(
         if download_available
         else '<p class="error">Review download is unavailable; do not approve.</p>'
     )
-    blocker_cards = _cards(by_type["blocker"], controls="waiver")
-    required_cards = _cards(by_type["required_confirmation"], controls="required")
-    soft_cards = _cards(by_type["soft_confirmation"], controls="soft")
-    fact_cards = _cards(by_type["verified_fact"], controls="fact")
+    order_id = str(state.get("order_id") or "")
+    blocker_cards = _cards(by_type["blocker"], controls="waiver", order_id=order_id)
+    required_cards = _cards(
+        by_type["required_confirmation"], controls="required", order_id=order_id)
+    soft_cards = _cards(by_type["soft_confirmation"], controls="soft", order_id=order_id)
+    fact_cards = _cards(by_type["verified_fact"], controls="fact", order_id=order_id)
     waiver_reason = ""
     if any(item.get("waivable") for item in by_type["blocker"]):
         waiver_reason = """
 <label for="waiver_reason"><strong>Waiver reason</strong></label>
 <textarea class="waiver-reason" id="waiver_reason" name="waiver_reason" placeholder="Record the business or coaching judgment for every waived blocker."></textarea>"""
+    identity = state.get("identity_resolution") or {}
+    identity_outcome = identity.get("outcome") or "unresolved"
+    binding = state.get("platform_identity") or {}
+    candidates = identity.get("candidates") or []
+    candidate_controls = "".join(
+        '<label class="choice"><input type="radio" name="tp_athlete_id" '
+        f'value="{_e(candidate.get("tp_athlete_id"))}" required> '
+        f'{_e(candidate.get("label") or candidate.get("tp_athlete_id"))}</label>'
+        for candidate in candidates
+    )
+    binding_control = ""
+    if identity_outcome == "multiple-candidates" and candidates:
+        binding_control = f"""
+<form method="post" action="/review/{_e(order_id)}/d2/identity">
+<input type="hidden" name="csrf_token" value="{_e(csrf_token)}">
+<input type="hidden" name="generation_revision" value="{_e(state.get('generation_revision'))}">
+{candidate_controls}<button class="button secondary" type="submit">Bind selected account</button>
+</form>"""
+    identity_panel = f"""
+<section class="action"><h2>Platform identity</h2>
+<dl class="meta"><div><dt>Outcome</dt><dd>{_e(identity_outcome)}</dd></div>
+<div><dt>Bound TP athlete</dt><dd>{_e(binding.get('tp_athlete_id') or 'not bound')}</dd></div>
+<div><dt>Candidate count</dt><dd>{_e(len(candidates))}</dd></div></dl>
+{binding_control}</section>"""
+
     approval_form = ""
     if invalid_approval:
         approval_form = """
@@ -231,4 +284,4 @@ def render_review_page(
 <title>Review order {_e(state.get('order_id'))}</title><style>{_STYLE}</style></head>
 <body><main><p class="eyebrow">Coach review · sealed fulfilment</p><h1>Order {_e(state.get('order_id'))}</h1>
 <dl class="summary"><div><dt>Status</dt><dd>{_e(effective_status)}</dd></div><div><dt>Athlete</dt><dd>{_e(state.get('athlete_id'))}</dd></div><div><dt>Platform</dt><dd>{_e(state.get('delivery_platform'))}</dd></div><div><dt>Revision</dt><dd>{_e(state.get('generation_revision'))}</dd></div></dl>
-{error_html}{approval_form}{superseded_history}{post_approval}</main></body></html>"""
+{error_html}{identity_panel}{approval_form}{superseded_history}{post_approval}</main></body></html>"""

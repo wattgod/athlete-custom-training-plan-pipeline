@@ -54,6 +54,12 @@ NON_WAIVABLE_RULES = {
     "POST_RENDER_VALIDATOR_CRASH",
     "SEAL_MISMATCH",
     "APPLY_CONTRACT_INVALID",
+    "ATHLETE_UNLINKED",
+    "ATHLETE_NO_ACCOUNT",
+    "ATHLETE_IDENTITY_UNRESOLVED",
+    "D2_REGENERATION_REQUIRED",
+    "D2_CANNOT_RESOLVE",
+    "D2_INSPECTION_FAILED",
 }
 
 NON_WAIVABLE_REMEDIATIONS = {
@@ -68,11 +74,17 @@ NON_WAIVABLE_REMEDIATIONS = {
     ),
     "SEAL_MISMATCH": "Regenerate from immutable source artifacts and review again.",
     "APPLY_CONTRACT_INVALID": "Repair the offline contract and regenerate this revision.",
+    "ATHLETE_UNLINKED": "Bind a currently coached platform account or use manual delivery.",
+    "ATHLETE_NO_ACCOUNT": "Bind the athlete's platform account or use manual delivery.",
+    "ATHLETE_IDENTITY_UNRESOLVED": "Select and bind exactly one platform account.",
+    "D2_REGENERATION_REQUIRED": "Finish regeneration and review the new sealed revision.",
+    "D2_CANNOT_RESOLVE": "Correct the account or intake inconsistency before approval.",
+    "D2_INSPECTION_FAILED": "Repair the read-only worker inspection and retry.",
 }
 
 _REVIEW_METADATA_KEYS = (
     "review_value", "display_unit", "basis", "sensitivity",
-    "resolution_choices",
+    "resolution_choices", "resolved_resolution",
 )
 
 
@@ -197,6 +209,7 @@ def blocker_is_waivable(rule_id: str) -> bool:
         rule_id in NON_WAIVABLE_RULES
         or rule_id.startswith("VALIDATOR_CRASH")
         or rule_id.startswith("SEAL_MISMATCH")
+        or rule_id.startswith("D2_CANNOT_RESOLVE")
     )
 
 
@@ -241,6 +254,9 @@ def _validate_confirmation(item: Dict[str, Any]) -> Dict[str, Any]:
         "message": str(item.get("message", "")).strip(),
     }
     _copy_review_metadata(item, normalized)
+    resolved = normalized.get("resolved_resolution")
+    if resolved is not None and resolved not in normalized.get("resolution_choices", []):
+        raise FulfillmentStateError("resolved confirmation choice is invalid")
     return normalized
 
 
@@ -332,6 +348,11 @@ def _review_item(
     ):
         raise FulfillmentStateError("review item resolution choices are invalid")
     item["resolution_choices"] = sorted(set(choice.strip() for choice in choices))
+    if source_item.get("resolved_resolution") is not None:
+        resolved = str(source_item["resolved_resolution"]).strip()
+        if resolved not in item["resolution_choices"]:
+            raise FulfillmentStateError("review item resolution is invalid")
+        item["resolved_resolution"] = resolved
     if item_type == "blocker":
         item.update({
             "severity": str(source_item.get("severity") or "CRITICAL").strip(),
@@ -516,6 +537,10 @@ def _validate_state(state: Any) -> Dict[str, Any]:
     if "release_manifest" not in state or "model_seal" not in state:
         raise FulfillmentStateError("fulfillment state missing release seal fields")
     state.setdefault("release_artifact_count", None)
+    # D2 remains an optional extension for all pre-Phase-4 schema-v2 files.
+    # Importing lazily avoids making the state foundation depend on Flask.
+    from d2_identity import validate_d2_state
+    validate_d2_state(state)
     expected_catalog = _expected_review_catalog(state)
     existing_catalog = state.get("review_items")
     if existing_catalog is not None and existing_catalog != expected_catalog:
@@ -640,6 +665,32 @@ def write_generation(
             order_id = str(order_id or _opaque_manual_order_id()).strip()
 
         revision = (previous.get("generation_revision", 0) if previous else 0) + 1
+        if previous:
+            # D2 inspection is external order evidence. Regeneration replaces
+            # generated namespaces while retaining the binding, inspection,
+            # and chosen command effects. The temporary regeneration blocker
+            # clears only when the producer actually starts this revision.
+            issues += [
+                copy.deepcopy(issue) for issue in previous.get("blocking_issues", [])
+                if issue.get("source") == "d2"
+                and issue.get("id") != "D2_REGENERATION_REQUIRED"
+                and issue.get("id") not in {item["id"] for item in issues}
+            ]
+            confirmations += [
+                copy.deepcopy(item) for item in previous.get("required_confirmations", [])
+                if item.get("source") == "d2"
+                and item.get("id") not in {value["id"] for value in confirmations}
+            ]
+            soft += [
+                copy.deepcopy(item) for item in previous.get("soft_confirmations", [])
+                if item.get("source") == "d2"
+                and item.get("id") not in {value["id"] for value in soft}
+            ]
+            derived += [
+                copy.deepcopy(item) for item in previous.get("derived_values", [])
+                if item.get("id", "").startswith("D2_")
+                and item.get("id") not in {value["id"] for value in derived}
+            ]
         history = list(previous.get("history", []) if previous else [])
         state = {
             "schema_version": SCHEMA_VERSION,
@@ -667,10 +718,40 @@ def write_generation(
             "release_manifest": None,
             "release_artifact_count": None,
             "seal_version": None,
+            "d2_active": bool(previous.get("d2_active")) if previous else False,
+            "platform_identity": copy.deepcopy(
+                previous.get("platform_identity") if previous else None),
+            "identity_resolution": copy.deepcopy(
+                previous.get("identity_resolution") if previous else {
+                    "outcome": "unresolved", "candidates": [], "at": None,
+                }),
+            "account_inspection": copy.deepcopy(
+                previous.get("account_inspection") if previous else None),
+            "d2_resolutions": copy.deepcopy(
+                previous.get("d2_resolutions", {}) if previous else {}),
+            "d2_pending_requirements": copy.deepcopy(
+                previous.get("d2_pending_requirements", {}) if previous else {}),
+            "d2_apply_operations": copy.deepcopy(
+                previous.get("d2_apply_operations", {}) if previous else {}),
+            "canonical_input_overrides": copy.deepcopy(
+                previous.get("canonical_input_overrides", {}) if previous else {}),
+            "d2_context": copy.deepcopy(
+                previous.get("d2_context", {}) if previous else {}),
+            "regeneration_request": None,
             "legacy": False,
             "history": history,
             "updated_at": now_iso(),
         }
+        adopted_lthr = (
+            state.get("d2_context", {}).get("canonical_control_value")
+            if state.get("d2_resolutions", {}).get(
+                "D2_THRESHOLD_LTHR_STALE_MISMATCH", {}).get("choice")
+            == "use-tp-value" else None
+        )
+        if adopted_lthr is not None:
+            for confirmation in state["required_confirmations"]:
+                if confirmation.get("id") == "D2_THRESHOLD_LTHR_STALE_MISMATCH":
+                    confirmation.setdefault("review_value", {})["plan_value"] = adopted_lthr
         _refresh_review_catalog(state)
         if previous:
             _history(
@@ -760,6 +841,12 @@ def merge_generation_blockers(
                 preserved_confirmations + confirmations,
                 key=lambda item: item["id"],
             )
+            if (state.get("d2_active")
+                    and (state.get("account_inspection") or {}).get("lthr_bpm") is not None):
+                state["required_confirmations"] = [
+                    item for item in state["required_confirmations"]
+                    if item.get("id") != "POWER_BASIS_NONE_CONFIRM"
+                ]
         if soft is not None:
             preserved_soft = [
                 item for item in state["soft_confirmations"]
@@ -1147,6 +1234,8 @@ def transition(
         if to == CONFIRMED and current == CONFIRMED:
             return copy.deepcopy(state)
         if to == APPROVED:
+            from d2_identity import validate_d2_approval
+            validate_d2_approval(state)
             if not state.get("model_seal") or not state.get("release_manifest_digest"):
                 raise FulfillmentStateError("approval requires a sealed release")
             approval_credential = str(credential or "operator-secret").strip()

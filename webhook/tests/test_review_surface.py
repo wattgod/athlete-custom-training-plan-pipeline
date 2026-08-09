@@ -25,6 +25,8 @@ from fulfillment_state import (APPROVED, BLOCKED_REVIEW, GENERATED,
 from download_tokens import (DownloadTokenError, MAX_REVIEW_BUNDLE_TTL_SECONDS,
                              verify_download_token)
 from review_auth import verify_review_token
+from d2_identity import (THRESHOLD_ITEM_ID, record_account_inspection,
+                         record_identity_result)
 
 
 ATHLETE_M = (Path(__file__).resolve().parents[2] / 'tests' / 'fixtures'
@@ -146,6 +148,95 @@ def _rewrite_catalog_item(state_path, collection, item_id, *, message, value):
     )
     raw['review_catalog_digest'] = review_catalog_digest(raw['review_items'])
     state_path.write_text(json.dumps(raw))
+
+
+def test_d2_identity_panel_and_resolution_selector_execute_state_command(
+    review_client, tmp_path, monkeypatch,
+):
+    order_id = 'test_phase4_d2_surface'
+    state_path = webhook_app._fulfillment_status_path(order_id)
+    state = write_generation(
+        state_path, 'athlete-m', order_id=order_id,
+        delivery_platform='trainingpeaks')
+    state = record_identity_result(
+        state_path, state['generation_revision'], {
+            'outcome': 'bound', 'tp_athlete_id': 'fixture-athlete-m',
+            'candidates': [],
+        }, capability_jti='surface-probe-jti-00000001')
+    probes = json.loads((ATHLETE_M / 'worker_probes.json').read_text())
+    probes['tp_athlete_id'] = 'fixture-athlete-m'
+    state = record_account_inspection(
+        state_path, state['generation_revision'], probes,
+        intake_age=45, intake_thresholds={'lthr': None},
+        control_metric='hr', canonical_control_value=None,
+        capability_jti='surface-inspect-jti-000001',
+        observed_at='2026-08-06T15:00:00Z')
+    revision = (webhook_app._order_dir(order_id) / 'revisions'
+                / f"r{state['generation_revision']}")
+    revision.mkdir(parents=True)
+    (revision / 'reviewed-values.txt').write_text('sealed d2 review source')
+    with zipfile.ZipFile(revision / f'{order_id}-review-bundle.zip', 'w') as archive:
+        archive.writestr('plan_preview.txt', 'phase4 d2 preview')
+    state = finalize_transitional_release(
+        state_path, revision, expected_revision=state['generation_revision'])
+    webhook_app._record_order_lookup(order_id, 'athlete-m')
+
+    body, csrf = _login(review_client, order_id)
+    assert '<h2>Platform identity</h2>' in body
+    assert '<dd>bound</dd>' in body
+    assert 'fixture-athlete-m' in body
+    assert THRESHOLD_ITEM_ID in body
+    assert 'Resolution command' in body
+    assert 'use-tp-value' in body
+    assert f'/review/{order_id}/d2/resolve' in body
+
+    monkeypatch.setattr(
+        webhook_app, '_queue_d2_regeneration', lambda *_args, **_kwargs: None)
+    response = review_client.post(
+        f'/review/{order_id}/d2/resolve', data={
+            'csrf_token': csrf,
+            'generation_revision': str(state['generation_revision']),
+            'resolution_item': THRESHOLD_ITEM_ID,
+            f'resolution_choice:{THRESHOLD_ITEM_ID}': 'use-tp-value',
+        })
+    assert response.status_code == 303
+    changed = load(state_path)
+    assert changed['generation_revision'] == state['generation_revision'] + 1
+    assert changed['canonical_input_overrides']['hr_threshold'] == 148
+    assert changed['regeneration_request']
+
+
+def test_d2_regeneration_queue_applies_canonical_overrides_and_installs_intent_first(
+    tmp_path, monkeypatch,
+):
+    data = tmp_path / 'data'
+    monkeypatch.setattr(webhook_app, 'DATA_DIR', str(data))
+    monkeypatch.setattr(webhook_app, '_read_job', lambda _order_id: {
+        'order_id': 'queue-d2', 'athlete_id': 'athlete-m',
+        'intake_id': 'intake-d2',
+        'order_data': {'order_id': 'queue-d2', 'athlete_id': 'athlete-m'},
+    })
+    monkeypatch.setattr(webhook_app, 'load_intake', lambda _intake_id: {
+        'age': 45, 'hr_threshold': '', 'race_name': 'Fixture Race',
+    })
+    spawned = []
+    monkeypatch.setattr(
+        webhook_app, '_spawn_plan_job',
+        lambda order_data, **kwargs: spawned.append((order_data, kwargs)))
+    state = {
+        'order_id': 'queue-d2', 'athlete_id': 'athlete-m',
+        'generation_revision': 2,
+        'canonical_input_overrides': {'hr_threshold': 148},
+        'regeneration_request': {'prior_revision': 1, 'reason': 'use TP LTHR'},
+    }
+    webhook_app._queue_d2_regeneration('queue-d2', state)
+    installed = json.loads((
+        data / 'order-work' / 'queue-d2' / 'athletes' / 'athlete-m'
+        / 'fulfillment_status.json').read_text())
+    assert installed == state
+    assert spawned[0][1]['intake_data']['hr_threshold'] == 148
+    assert spawned[0][1]['intake_data']['age'] == 45
+    assert spawned[0][0]['order_id'] == 'queue-d2'
 
 
 def test_athlete_m_login_to_approved_persists_complete_seal_bound_snapshot(
