@@ -244,3 +244,39 @@ review-readback path.
 Implementation commit boundary: `ad7f5f7` (`fix(phase4): close R1 identity and
 readback blockers`). This notes update is a separate documentation boundary.
 No push or remote write was performed.
+
+## R2 blocker disposition — 2026-08-09
+
+Review: `docs/reviews/PHASE4_IMPLEMENTATION_CODEX_R2.md`.
+
+Both blockers were accepted as valid; there are no disputes.
+
+| R2 blocker | Disposition | Closing implementation and regression evidence |
+|---|---|---|
+| 1. Caller-constructible readback evidence | **Closed** | A successful inspect operation now stores worker-owned evidence context (operation, bound TP athlete id, capability kid, and first observation time) beside the order/jti, canonical request digest, and exact results in the atomic replay record. `record_manual_readback` requires the authoritative `ProbeExecutionStore` to find that jti in `succeeded` state and exactly match every evidence field, including a recomputed inspect-request digest, before it changes fulfilment state. A publicly constructed `VerifiedInspectionEvidence` with no record, an evidence object pointed at a different jti's record, and a changed digest all reject while retaining the pending requirement; the exact worker-produced record succeeds and still approves through the authenticated route. |
+| 2. Approval snapshot could contradict the executed D2 command | **Closed** | Approval now rejects a submitted `resolved:<choice>` unless it exactly equals the server catalog's `resolved_resolution`, which `validate_d2_approval` has already cross-checked against `d2_resolutions` and the installed effects. Rejection was chosen instead of silent override so a stale or tampered form cannot appear successful; the coach reloads and explicitly approves the authoritative command. The HTTP regression submits `use-tp-value` against an executed `update-from-intake` command and receives 409, then submits the exact command and proves the stored snapshot disposition equals `resolved:` plus the authoritative resolution while the sealed apply payload remains the executed 160 bpm update. |
+
+The evidence check is performed before any pending requirement, derived value,
+or resolution marker is changed. Replay records remain crash-safe and immutable
+at terminal success: same order/jti/digest returns the originally recorded
+result and first observation provenance; a different digest fails closed.
+
+### R2 verification evidence
+
+- Blocker-focused worker + D2 + authenticated review route: **83 passed**.
+- Broad Phase 1/2/3/4 state, review, download, golden, bypass, worker, adapter,
+  and D0 apply-contract set: **205 passed, 1 skipped**. The skip is the
+  sandbox-forbidden loopback fake-TrainingPeaks parity test.
+- Complete sandbox suite: **2,554 passed, 87 skipped, 21 warnings, 0 failed**.
+- `python3 -m compileall -q athletes/scripts delivery tools webhook` and
+  `git diff --check` pass.
+- The opt-in acceptance suite was not rerun in this managed workspace: its
+  harness deletes and recreates `$HOME/.gg-acctest-delivery`, outside the
+  writable workspace roots, and no safe writable-home override was available.
+  No acceptance expectations, closed golden fixture, workout generator, or ZWO
+  file changed in this R2 boundary.
+
+Implementation commit boundary: `a2cd1de` (`fix(phase4): verify readback and
+approval provenance`). This notes update is a separate documentation boundary.
+No push, external request, remote write, or TrainingPeaks operation was
+performed.
