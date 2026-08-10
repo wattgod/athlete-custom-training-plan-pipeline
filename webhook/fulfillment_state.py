@@ -11,6 +11,7 @@ import contextlib
 import copy
 import fcntl
 import hashlib
+import hmac
 import json
 import os
 import uuid
@@ -34,6 +35,12 @@ DELIVERY_PLATFORMS = {"trainingpeaks", "endure", "manual"}
 PHASE1_APPLIED_PLATFORMS = {"trainingpeaks", "manual"}
 RELEASE_STATUSES = {APPROVED, APPLIED, CONFIRMED}
 TRANSITIONAL_SEAL_VERSION = "transitional_artifact_bytes/v1"
+REVIEW_CATALOG_VERSION = "review_catalog/v1"
+APPROVAL_SNAPSHOT_VERSION = "approval_snapshot/v2"
+REVIEW_ITEM_TYPES = {
+    "blocker", "required_confirmation", "soft_confirmation", "verified_fact",
+}
+REVIEW_SENSITIVITIES = {"public", "internal", "personal", "sensitive"}
 
 # Server-owned policy.  Structural/quality rules not named here are waivable;
 # the non-waivable set is closed and cannot be weakened by caller input.
@@ -45,6 +52,24 @@ NON_WAIVABLE_RULES = {
     "POST_RENDER_VALIDATOR_CRASH",
     "SEAL_MISMATCH",
 }
+
+NON_WAIVABLE_REMEDIATIONS = {
+    "FTP_ESTIMATED": "Supply a measured FTP and regenerate this revision.",
+    "COURSE_UNRESOLVED": (
+        "Regenerate in athlete-facts-only mode or resolve the exact course."
+    ),
+    "STATE_UNAVAILABLE": "Repair durable state and regenerate the order.",
+    "VALIDATOR_CRASH": "Repair the validator failure and regenerate the order.",
+    "POST_RENDER_VALIDATOR_CRASH": (
+        "Repair the post-render validator failure and regenerate the order."
+    ),
+    "SEAL_MISMATCH": "Regenerate from immutable source artifacts and review again.",
+}
+
+_REVIEW_METADATA_KEYS = (
+    "review_value", "display_unit", "basis", "sensitivity",
+    "resolution_choices",
+)
 
 
 class FulfillmentStateError(ValueError):
@@ -59,11 +84,26 @@ def canonical_json(value: Any) -> bytes:
     """Canonical serialization used by every Phase 1 digest."""
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        allow_nan=False,
     ).encode("utf-8")
 
 
 def canonical_digest(value: Any) -> str:
     return hashlib.sha256(canonical_json(value)).hexdigest()
+
+
+def review_catalog_digest(
+    state_or_items: Dict[str, Any] | list[Dict[str, Any]],
+) -> str:
+    """Identify the exact versioned catalog presented for one approval."""
+    items = (
+        state_or_items.get("review_items") or []
+        if isinstance(state_or_items, dict) else state_or_items
+    )
+    return canonical_digest({
+        "version": REVIEW_CATALOG_VERSION,
+        "items": items,
+    })
 
 
 def _state_path(path: os.PathLike[str] | str) -> Path:
@@ -79,6 +119,22 @@ def blocker_is_waivable(rule_id: str) -> bool:
     )
 
 
+def blocker_remediation(rule_id: str) -> str:
+    """Server-owned remediation copy for non-waivable review findings."""
+    normalized = str(rule_id or "").strip().upper()
+    if normalized.startswith("VALIDATOR_CRASH"):
+        return NON_WAIVABLE_REMEDIATIONS["VALIDATOR_CRASH"]
+    if normalized.startswith("SEAL_MISMATCH"):
+        return NON_WAIVABLE_REMEDIATIONS["SEAL_MISMATCH"]
+    return NON_WAIVABLE_REMEDIATIONS.get(normalized, "")
+
+
+def _copy_review_metadata(source: Dict[str, Any], target: Dict[str, Any]) -> None:
+    for key in _REVIEW_METADATA_KEYS:
+        if key in source:
+            target[key] = copy.deepcopy(source[key])
+
+
 def _validate_issue(issue: Dict[str, Any], *, source: str = "") -> Dict[str, Any]:
     required = ("id", "source", "severity", "message")
     if source:
@@ -91,17 +147,202 @@ def _validate_issue(issue: Dict[str, Any], *, source: str = "") -> Dict[str, Any
         )
     normalized = {key: str(issue[key]).strip() for key in required}
     normalized["waivable"] = blocker_is_waivable(normalized["id"])
+    _copy_review_metadata(issue, normalized)
     return normalized
 
 
 def _validate_confirmation(item: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(item, dict) or not str(item.get("id", "")).strip():
         raise FulfillmentStateError("required confirmation requires id")
-    return {
+    normalized = {
         "id": str(item["id"]).strip(),
         "source": str(item.get("source", "post_render")).strip(),
         "message": str(item.get("message", "")).strip(),
     }
+    _copy_review_metadata(item, normalized)
+    return normalized
+
+
+def _value_type(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, dict):
+        return "object"
+    raise FulfillmentStateError("review item value is not JSON-typed")
+
+
+def _canonical_review_value(value: Any) -> Any:
+    try:
+        canonical_json(value)
+    except (TypeError, ValueError) as exc:
+        raise FulfillmentStateError("review item value is not canonical JSON") from exc
+    return copy.deepcopy(value)
+
+
+def _review_item(
+    state: Dict[str, Any], source_item: Dict[str, Any], item_type: str,
+) -> Dict[str, Any]:
+    if item_type not in REVIEW_ITEM_TYPES:
+        raise FulfillmentStateError("unknown review item type")
+    item_id = str(source_item.get("id") or "").strip()
+    if not item_id:
+        raise FulfillmentStateError("review item requires item_id")
+    value = _canonical_review_value(
+        source_item.get("review_value", source_item.get("message", ""))
+    )
+    sensitivity = str(source_item.get("sensitivity") or "internal").strip()
+    if sensitivity not in REVIEW_SENSITIVITIES:
+        raise FulfillmentStateError("unknown review item sensitivity")
+    display_unit = source_item.get("display_unit")
+    if display_unit is not None:
+        display_unit = str(display_unit).strip() or None
+    item = {
+        "item_id": item_id,
+        "type": item_type,
+        "value": value,
+        "value_type": _value_type(value),
+        "display_unit": display_unit,
+        "source": str(source_item.get("source") or "state").strip(),
+        "basis": str(
+            source_item.get("basis") or source_item.get("source") or "state"
+        ).strip(),
+        "sensitivity": sensitivity,
+        "revision": state["generation_revision"],
+        "message": str(source_item.get("message") or "").strip(),
+    }
+    if not item["source"] or not item["basis"]:
+        raise FulfillmentStateError("review item source and basis are required")
+    choices = source_item.get("resolution_choices", [])
+    if not isinstance(choices, list) or any(
+        not isinstance(choice, str) or not choice.strip() for choice in choices
+    ):
+        raise FulfillmentStateError("review item resolution choices are invalid")
+    item["resolution_choices"] = sorted(set(choice.strip() for choice in choices))
+    if item_type == "blocker":
+        item.update({
+            "severity": str(source_item.get("severity") or "CRITICAL").strip(),
+            "waivable": blocker_is_waivable(item_id),
+            "remediation": blocker_remediation(item_id),
+        })
+    return item
+
+
+def _expected_review_catalog(state: Dict[str, Any]) -> list[Dict[str, Any]]:
+    """Build the complete server-owned catalog for the current revision."""
+    sources: list[tuple[Dict[str, Any], str]] = []
+    sources.extend((item, "blocker") for item in state.get("blocking_issues", []))
+    sources.extend(
+        (item, "required_confirmation")
+        for item in state.get("required_confirmations", [])
+    )
+    sources.extend(
+        (item, "soft_confirmation")
+        for item in state.get("soft_confirmations", [])
+    )
+    sources.append(({
+        "id": "FACT_ORDER_CONTEXT",
+        "source": "fulfillment_state",
+        "basis": "immutable order identity",
+        "sensitivity": "personal",
+        "message": "Order, athlete, platform, and revision identity.",
+        "review_value": {
+            "order_id": state["order_id"],
+            "athlete_id": state["athlete_id"],
+            "delivery_platform": state["delivery_platform"],
+            "generation_revision": state["generation_revision"],
+        },
+    }, "verified_fact"))
+    if state.get("model_seal") and state.get("release_manifest_digest"):
+        sources.append(({
+            "id": "FACT_RELEASE_SEAL",
+            "source": "release_manifest",
+            "basis": str(state.get("seal_version") or "sealed release"),
+            "sensitivity": "internal",
+            "message": "Immutable release manifest identity.",
+            "review_value": {
+                "model_seal": state["model_seal"],
+                "release_manifest_digest": state["release_manifest_digest"],
+                "artifact_count": state.get("release_artifact_count"),
+            },
+        }, "verified_fact"))
+
+    items = [_review_item(state, source, item_type) for source, item_type in sources]
+    ids = [item["item_id"] for item in items]
+    if len(ids) != len(set(ids)):
+        raise FulfillmentStateError("duplicate review item id")
+    rank = {
+        "blocker": 0,
+        "required_confirmation": 1,
+        "soft_confirmation": 2,
+        "verified_fact": 3,
+    }
+    return sorted(items, key=lambda item: (rank[item["type"]], item["item_id"]))
+
+
+def _refresh_review_catalog(state: Dict[str, Any]) -> None:
+    state["review_catalog_version"] = REVIEW_CATALOG_VERSION
+    state["review_items"] = _expected_review_catalog(state)
+    state["review_catalog_digest"] = review_catalog_digest(state["review_items"])
+
+
+def _approval_snapshot_is_complete(state: Dict[str, Any]) -> bool:
+    approval = state.get("approval")
+    if not isinstance(approval, dict):
+        return False
+    if approval.get("snapshot_version") != APPROVAL_SNAPSHOT_VERSION:
+        return False
+    if approval.get("revision") != state.get("generation_revision"):
+        return False
+    if not str(approval.get("credential") or "").strip():
+        return False
+    if approval.get("review_catalog_digest") != review_catalog_digest(state):
+        return False
+    snapshots = approval.get("confirmations")
+    catalog = state.get("review_items") or []
+    if not isinstance(snapshots, list) or len(snapshots) != len(catalog):
+        return False
+    by_id = {item.get("item_id"): item for item in snapshots if isinstance(item, dict)}
+    if len(by_id) != len(catalog):
+        return False
+    for item in catalog:
+        snapshot = by_id.get(item["item_id"])
+        if not snapshot:
+            return False
+        reviewed_item = {
+            key: copy.deepcopy(value)
+            for key, value in snapshot.items()
+            if key != "disposition"
+        }
+        if reviewed_item != item:
+            return False
+        disposition = str(snapshot.get("disposition") or "")
+        if item["type"] == "blocker" and disposition != "resolved:waived":
+            return False
+        resolved_choice = (
+            disposition.removeprefix("resolved:")
+            if disposition.startswith("resolved:") else ""
+        )
+        resolution_allowed = resolved_choice in item.get("resolution_choices", [])
+        if item["type"] in {"required_confirmation", "verified_fact"} and (
+            disposition != "confirmed" and not resolution_allowed
+        ):
+            return False
+        if item["type"] == "soft_confirmation" and (
+            disposition not in {"confirmed", "unconfirmed"}
+            and not resolution_allowed
+        ):
+            return False
+    return True
 
 
 def _validate_state(state: Any) -> Dict[str, Any]:
@@ -129,13 +370,47 @@ def _validate_state(state: Any) -> Dict[str, Any]:
     state["required_confirmations"] = [
         _validate_confirmation(item) for item in confirmations
     ]
+    soft_confirmations = state.get("soft_confirmations", [])
+    if not isinstance(soft_confirmations, list):
+        raise FulfillmentStateError("soft_confirmations must be a list")
+    state["soft_confirmations"] = [
+        _validate_confirmation(item) for item in soft_confirmations
+    ]
     for key in ("approval", "waiver", "application", "confirmation"):
         if key not in state:
             raise FulfillmentStateError(f"fulfillment state missing {key}")
+    superseded_approvals = state.get("superseded_approvals", [])
+    if not isinstance(superseded_approvals, list):
+        raise FulfillmentStateError("superseded_approvals must be a list of records")
+    for record in superseded_approvals:
+        if (
+            not isinstance(record, dict)
+            or record.get("authoritative") is not False
+            or not isinstance(record.get("generation_revision"), int)
+            or record["generation_revision"] < 1
+            or not str(record.get("reason") or "").strip()
+            or not str(record.get("superseded_at") or "").strip()
+            or not isinstance(record.get("approval"), dict)
+        ):
+            raise FulfillmentStateError("invalid superseded approval record")
+    state["superseded_approvals"] = copy.deepcopy(superseded_approvals)
     if not isinstance(state.get("history"), list) or not state.get("updated_at"):
         raise FulfillmentStateError("fulfillment state missing history or updated_at")
     if "release_manifest" not in state or "model_seal" not in state:
         raise FulfillmentStateError("fulfillment state missing release seal fields")
+    state.setdefault("release_artifact_count", None)
+    expected_catalog = _expected_review_catalog(state)
+    existing_catalog = state.get("review_items")
+    if existing_catalog is not None and existing_catalog != expected_catalog:
+        raise FulfillmentStateError("review catalog does not match authoritative state")
+    expected_catalog_digest = review_catalog_digest(expected_catalog)
+    existing_catalog_digest = state.get("review_catalog_digest")
+    if (existing_catalog_digest is not None
+            and existing_catalog_digest != expected_catalog_digest):
+        raise FulfillmentStateError("review catalog digest does not match catalog")
+    state["review_catalog_version"] = REVIEW_CATALOG_VERSION
+    state["review_items"] = expected_catalog
+    state["review_catalog_digest"] = expected_catalog_digest
     return state
 
 
@@ -210,12 +485,14 @@ def write_generation(
     order_id: str = "",
     delivery_platform: str = "manual",
     required_confirmations: Optional[list[Dict[str, Any]]] = None,
+    soft_confirmations: Optional[list[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Start a revision while preserving immutable order identity."""
     issues = [_validate_issue(issue) for issue in (blocking_issues or [])]
     confirmations = [
         _validate_confirmation(item) for item in (required_confirmations or [])
     ]
+    soft = [_validate_confirmation(item) for item in (soft_confirmations or [])]
     delivery_platform = str(delivery_platform or "manual").strip().lower()
     if delivery_platform not in DELIVERY_PLATFORMS:
         raise FulfillmentStateError("invalid delivery_platform")
@@ -254,18 +531,24 @@ def write_generation(
             "status": BLOCKED_REVIEW if issues else GENERATED,
             "blocking_issues": sorted(issues, key=lambda item: item["id"]),
             "required_confirmations": sorted(confirmations, key=lambda item: item["id"]),
+            "soft_confirmations": sorted(soft, key=lambda item: item["id"]),
             "approval": None,
             "waiver": None,
             "application": None,
             "confirmation": None,
+            "superseded_approvals": copy.deepcopy(
+                previous.get("superseded_approvals", []) if previous else []
+            ),
             "model_seal": None,
             "release_manifest_digest": None,
             "release_manifest": None,
+            "release_artifact_count": None,
             "seal_version": None,
             "legacy": False,
             "history": history,
             "updated_at": now_iso(),
         }
+        _refresh_review_catalog(state)
         if previous:
             _history(
                 state, "REGENERATED", prior_status=previous.get("status"),
@@ -290,8 +573,13 @@ def set_generation_blockers(
             raise FulfillmentStateError("missing or malformed fulfillment state")
         if state["status"] not in (GENERATED, BLOCKED_REVIEW):
             raise FulfillmentStateError("cannot alter blockers after review begins")
+        if state.get("model_seal") or state.get("release_manifest"):
+            raise FulfillmentStateError(
+                "sealed review catalog is immutable; use write_generation"
+            )
         state["blocking_issues"] = sorted(issues, key=lambda item: item["id"])
         state["status"] = BLOCKED_REVIEW if issues else GENERATED
+        _refresh_review_catalog(state)
         _history(state, "BLOCKERS_REPLACED", blocker_ids=[item["id"] for item in issues])
         _atomic_write(state_path, state)
         return copy.deepcopy(state)
@@ -304,6 +592,7 @@ def merge_generation_blockers(
     issues: list[Dict[str, Any]],
     *,
     required_confirmations: Optional[list[Dict[str, Any]]] = None,
+    soft_confirmations: Optional[list[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Replace one source namespace without erasing other blockers."""
     source = str(source or "").strip()
@@ -316,6 +605,12 @@ def merge_generation_blockers(
             _validate_confirmation({**item, "source": source})
             for item in required_confirmations
         ]
+    soft = None
+    if soft_confirmations is not None:
+        soft = [
+            _validate_confirmation({**item, "source": source})
+            for item in soft_confirmations
+        ]
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
@@ -323,6 +618,10 @@ def merge_generation_blockers(
             raise FulfillmentStateError("generation revision mismatch")
         if state["status"] not in (GENERATED, BLOCKED_REVIEW):
             raise FulfillmentStateError("cannot alter blockers after review begins")
+        if state.get("model_seal") or state.get("release_manifest"):
+            raise FulfillmentStateError(
+                "sealed review catalog is immutable; use write_generation"
+            )
         preserved = [
             issue for issue in state["blocking_issues"] if issue["source"] != source
         ]
@@ -338,7 +637,16 @@ def merge_generation_blockers(
                 preserved_confirmations + confirmations,
                 key=lambda item: item["id"],
             )
+        if soft is not None:
+            preserved_soft = [
+                item for item in state["soft_confirmations"]
+                if item.get("source") != source
+            ]
+            state["soft_confirmations"] = sorted(
+                preserved_soft + soft, key=lambda item: item["id"]
+            )
         state["status"] = BLOCKED_REVIEW if state["blocking_issues"] else GENERATED
+        _refresh_review_catalog(state)
         _history(
             state, "BLOCKERS_MERGED", source=source,
             blocker_ids=[item["id"] for item in incoming],
@@ -404,7 +712,9 @@ def finalize_transitional_release(
         state["model_seal"] = model_seal
         state["release_manifest_digest"] = canonical_digest(records)
         state["release_manifest"] = str(manifest_path)
+        state["release_artifact_count"] = len(records)
         state["seal_version"] = TRANSITIONAL_SEAL_VERSION
+        _refresh_review_catalog(state)
         _history(
             state, "RELEASE_SEALED", model_seal=model_seal,
             release_manifest_digest=state["release_manifest_digest"],
@@ -466,6 +776,7 @@ def approval_matches_release(state: Dict[str, Any]) -> bool:
         and approval.get("model_seal") == state.get("model_seal")
         and approval.get("release_manifest_digest")
         == state.get("release_manifest_digest")
+        and _approval_snapshot_is_complete(state)
     )
 
 
@@ -475,26 +786,72 @@ def _seal_mismatch_issue(message: str) -> Dict[str, Any]:
         "source": "seal_verification",
         "severity": "CRITICAL",
         "message": f"Release seal verification failed: {message}",
+        "review_value": {"seal_verified": False, "failure": message},
+        "basis": "release manifest and artifact-byte verification",
+        "sensitivity": "internal",
     })
 
 
 def _materialize_seal_mismatch(
     state: Dict[str, Any], message: str,
 ) -> None:
-    preserved = [
-        issue for issue in state["blocking_issues"]
-        if issue["id"] != "SEAL_MISMATCH"
-    ]
-    state["blocking_issues"] = sorted(
-        preserved + [_seal_mismatch_issue(message)], key=lambda item: item["id"])
+    prior_revision = state["generation_revision"]
+    prior_status = state["status"]
+    prior_model_seal = state.get("model_seal")
+    prior_approval = copy.deepcopy(state.get("approval"))
+    prior_waiver = copy.deepcopy(state.get("waiver"))
+    prior_application = copy.deepcopy(state.get("application"))
+    prior_confirmation = copy.deepcopy(state.get("confirmation"))
+    archived_approval = isinstance(prior_approval, dict)
+    if archived_approval:
+        state.setdefault("superseded_approvals", []).append({
+            "authoritative": False,
+            "reason": "release seal mismatch",
+            "message": str(message),
+            "superseded_at": now_iso(),
+            "generation_revision": prior_revision,
+            "status": prior_status,
+            "approval": prior_approval,
+            "waiver": prior_waiver,
+            "application": prior_application,
+            "confirmation": prior_confirmation,
+            "model_seal": prior_model_seal,
+            "release_manifest_digest": state.get("release_manifest_digest"),
+            "release_manifest": state.get("release_manifest"),
+            "release_artifact_count": state.get("release_artifact_count"),
+            "seal_version": state.get("seal_version"),
+        })
+    # A detected byte/seal failure supersedes the sealed generation. It must
+    # never rewrite that revision's review catalog in place. This creates a
+    # fresh, unsealed quarantine revision with the same reset authority shape
+    # as write_generation; the producer must regenerate artifacts again.
+    state["generation_revision"] = prior_revision + 1
+    state["blocking_issues"] = [_seal_mismatch_issue(message)]
+    state["required_confirmations"] = []
+    state["soft_confirmations"] = []
     state["status"] = BLOCKED_REVIEW
-    _history(state, "SEAL_MISMATCH", message=message)
+    state["approval"] = None
+    state["waiver"] = None
+    state["application"] = None
+    state["confirmation"] = None
+    state["model_seal"] = None
+    state["release_manifest_digest"] = None
+    state["release_manifest"] = None
+    state["release_artifact_count"] = None
+    state["seal_version"] = None
+    _refresh_review_catalog(state)
+    _history(
+        state, "SEAL_MISMATCH_REGENERATION_REQUIRED", message=message,
+        prior_revision=prior_revision, prior_status=prior_status,
+        prior_model_seal=prior_model_seal,
+        superseded_approval_archived=archived_approval,
+    )
 
 
 def record_seal_mismatch(
     path: os.PathLike[str] | str, message: str,
 ) -> Dict[str, Any]:
-    """Revoke release authority and durably merge the fatal seal blocker."""
+    """Revoke authority by superseding the failed sealed generation."""
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
@@ -589,6 +946,10 @@ def transition(
     platform: str = "",
     evidence: str = "",
     metadata: Optional[Dict[str, Any]] = None,
+    expected_revision: Optional[int] = None,
+    expected_catalog_digest: str = "",
+    review_decisions: Optional[list[Dict[str, Any]]] = None,
+    credential: str = "",
 ) -> Dict[str, Any]:
     """Apply an authenticated operator transition and persist it atomically."""
     if to not in VALID_STATUSES:
@@ -602,12 +963,27 @@ def transition(
             raise FulfillmentStateError(
                 "legacy order is quarantined and must be regenerated after manual binding"
             )
+        if (expected_revision is not None
+                and expected_revision != state["generation_revision"]):
+            raise FulfillmentStateError("generation revision mismatch; review is superseded")
         current = state["status"]
         if to == CONFIRMED and current == CONFIRMED:
             return copy.deepcopy(state)
         if to == APPROVED:
             if not state.get("model_seal") or not state.get("release_manifest_digest"):
                 raise FulfillmentStateError("approval requires a sealed release")
+            approval_credential = str(credential or "operator-secret").strip()
+            if not approval_credential:
+                raise FulfillmentStateError("approving credential is required")
+            expected_catalog = _expected_review_catalog(state)
+            current_catalog_digest = review_catalog_digest(expected_catalog)
+            supplied_catalog_digest = str(expected_catalog_digest or "").strip()
+            if (not supplied_catalog_digest
+                    or not hmac.compare_digest(
+                        supplied_catalog_digest, current_catalog_digest)):
+                raise FulfillmentStateError(
+                    "review catalog changed; regenerate or review the current catalog"
+                )
             if current == GENERATED:
                 pass
             elif current == BLOCKED_REVIEW:
@@ -630,11 +1006,68 @@ def transition(
                 state["waiver"] = {
                     "coach": coach.strip(), "at": now_iso(),
                     "rule_ids": sorted(blockers), "reason": reason,
+                    "credential": approval_credential,
+                    "revision": state["generation_revision"],
                 }
             else:
                 raise FulfillmentStateError(f"illegal transition {current} -> {to}")
-            if state.get("required_confirmations"):
-                raise FulfillmentStateError("required confirmations are unresolved")
+            if state.get("review_items") != expected_catalog:
+                raise FulfillmentStateError("review catalog is stale")
+            decisions = review_decisions
+            if not isinstance(decisions, list):
+                raise FulfillmentStateError("review confirmations must be a list")
+            decisions_by_id: Dict[str, Dict[str, Any]] = {}
+            catalog_by_id = {item["item_id"]: item for item in expected_catalog}
+            for decision in decisions:
+                if not isinstance(decision, dict):
+                    raise FulfillmentStateError("review confirmation is malformed")
+                item_id = str(decision.get("item_id") or "").strip()
+                if item_id not in catalog_by_id:
+                    raise FulfillmentStateError("unknown review item id")
+                if item_id in decisions_by_id:
+                    raise FulfillmentStateError("duplicate review item decision")
+                if decision.get("revision") != state["generation_revision"]:
+                    raise FulfillmentStateError("review item revision mismatch")
+                decisions_by_id[item_id] = decision
+
+            snapshots = []
+            for item in expected_catalog:
+                decision = decisions_by_id.get(item["item_id"])
+                item_type = item["type"]
+                if item_type == "blocker":
+                    disposition = "resolved:waived"
+                elif item_type == "soft_confirmation" and decision is None:
+                    disposition = "unconfirmed"
+                else:
+                    if decision is None:
+                        label = ("required confirmation" if item_type ==
+                                 "required_confirmation" else "verified fact")
+                        raise FulfillmentStateError(
+                            f"{label} is unresolved: {item['item_id']}"
+                        )
+                    disposition = str(decision.get("disposition") or "").strip()
+                    resolved_choice = (
+                        disposition.removeprefix("resolved:")
+                        if disposition.startswith("resolved:") else ""
+                    )
+                    resolution_allowed = (
+                        resolved_choice in item.get("resolution_choices", [])
+                    )
+                    if item_type in {"required_confirmation", "verified_fact"}:
+                        if (disposition != "confirmed"
+                                and not resolution_allowed):
+                            raise FulfillmentStateError(
+                                f"required review item is unresolved: {item['item_id']}"
+                            )
+                    elif (disposition not in {"confirmed", "unconfirmed"}
+                          and not resolution_allowed):
+                        raise FulfillmentStateError(
+                            f"invalid review disposition: {item['item_id']}"
+                        )
+                snapshots.append({
+                    **copy.deepcopy(item),
+                    "disposition": disposition,
+                })
             artifact_root = Path(str(state.get("release_manifest") or "")).parent
             try:
                 verify_release_manifest(state, artifact_root)
@@ -646,13 +1079,22 @@ def transition(
                 ) from exc
             state["approval"] = {
                 "coach": coach.strip(),
+                "credential": approval_credential,
                 "at": now_iso(),
+                "revision": state["generation_revision"],
+                "snapshot_version": APPROVAL_SNAPSHOT_VERSION,
+                "review_catalog_digest": current_catalog_digest,
                 "model_seal": state["model_seal"],
                 "release_manifest_digest": state["release_manifest_digest"],
+                "confirmations": snapshots,
             }
         elif to == APPLIED:
             if current != APPROVED:
                 raise FulfillmentStateError("application requires APPROVED status")
+            if not approval_matches_release(state):
+                raise FulfillmentStateError(
+                    "application requires a complete seal-bound approval snapshot"
+                )
             requested_platform = str(platform).strip()
             delivery_platform = state["delivery_platform"]
             if requested_platform == "endure" or delivery_platform == "endure":
@@ -688,7 +1130,10 @@ def transition(
         state["status"] = to
         _history(
             state, "TRANSITION", from_status=current, to_status=to,
-            coach=coach.strip(), **(metadata or {}),
+            coach=coach.strip(),
+            credential=(str(credential or "operator-secret").strip()
+                        if to == APPROVED else ""),
+            **(metadata or {}),
         )
         _atomic_write(state_path, state)
         return copy.deepcopy(state)
@@ -749,15 +1194,25 @@ def migrate_v1_to_quarantine(
             "source": "v1_migration",
             "severity": "CRITICAL",
             "message": "Legacy state is quarantined until a coach binds its ledger order.",
+            "review_value": {
+                "legacy_state": True,
+                "quarantined": True,
+                "candidate_count": len(set(ledger_candidates or [])),
+            },
+            "basis": "schema-v1 quarantine migration result",
+            "sensitivity": "internal",
         })],
         "required_confirmations": [],
+        "soft_confirmations": [],
         "approval": original.get("approval"),
         "waiver": original.get("waiver"),
         "application": original.get("application"),
         "confirmation": original.get("confirmation"),
+        "superseded_approvals": [],
         "model_seal": None,
         "release_manifest_digest": None,
         "release_manifest": None,
+        "release_artifact_count": None,
         "seal_version": None,
         "legacy": True,
         "legacy_binding": None,
@@ -766,6 +1221,7 @@ def migrate_v1_to_quarantine(
         "history": list(original.get("history") or []),
         "updated_at": now_iso(),
     }
+    _refresh_review_catalog(state)
     _history(state, "LEGACY_QUARANTINED", source_path=str(old_path))
     _atomic_write(destination, state)
     verified = load(destination)

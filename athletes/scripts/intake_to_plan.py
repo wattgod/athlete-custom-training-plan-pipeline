@@ -1969,6 +1969,13 @@ def brand_discipline_blocker(profile: Dict[str, Any]) -> Optional[Dict[str, str]
         'severity': 'CRITICAL',
         'message': conflict.get('message',
                                 'Ordering brand conflicted with race discipline.'),
+        'review_value': {
+            'brand': conflict.get('brand'),
+            'candidate_discipline': conflict.get('candidate'),
+            'forced_discipline': conflict.get('forced'),
+        },
+        'basis': 'ordering brand discipline policy compared with derived race discipline',
+        'sensitivity': 'internal',
     }
 
 
@@ -2844,6 +2851,9 @@ def run_quality_gates(athlete_id: str) -> bool:
                 'source': 'quality_gate',
                 'severity': 'CRITICAL',
                 'message': '; '.join(crit) or f'{name} reported a critical failure',
+                'review_value': {'gate': name, 'critical_findings': crit},
+                'basis': 'named production quality-gate output for this generated plan',
+                'sensitivity': 'internal',
             }
             for name, crit in flagged
         ]
@@ -3134,6 +3144,14 @@ def assemble_intake_review_items(
             'id': 'RACE_UNMATCHED', 'source': 'intake_to_plan',
             'severity': 'CRITICAL',
             'message': 'A-race did not match a known race; coach verification is required.',
+            'review_value': {
+                'name': target_race.get('name'),
+                'date': target_race.get('date'),
+                'distance_miles': target_race.get('distance_miles'),
+                'match_method': target_match.get('method'),
+            },
+            'basis': 'athlete intake and race-catalog match result',
+            'sensitivity': 'personal',
         })
     blockers.extend(profile.get('availability_review_issues') or [])
     provenance_issue = target_race.get('race_provenance_issue')
@@ -3141,6 +3159,13 @@ def assemble_intake_review_items(
         blockers.append({
             'id': 'RACE_STALE', 'source': 'race_provenance',
             'severity': 'CRITICAL', 'message': provenance_issue,
+            'review_value': {
+                'race': target_race.get('name'),
+                'verified_at': target_race.get('verified_at'),
+                'provenance_issue': provenance_issue,
+            },
+            'basis': 'frozen race snapshot provenance',
+            'sensitivity': 'internal',
         })
     brand_blocker = brand_discipline_blocker(profile)
     if brand_blocker:
@@ -3151,6 +3176,13 @@ def assemble_intake_review_items(
             'id': 'FTP_ESTIMATED', 'source': 'intake',
             'severity': 'CRITICAL',
             'message': 'FTP was estimated; Phase 1 cannot release power-anchored artifacts.',
+            'review_value': {
+                'ftp_watts': (profile.get('fitness_markers') or {}).get('ftp_watts'),
+                'estimated': True,
+            },
+            'display_unit': 'W',
+            'basis': 'pipeline estimate rather than a measured athlete value',
+            'sensitivity': 'personal',
         })
     if target_race.get('course_unresolved'):
         blockers.append({
@@ -3158,6 +3190,14 @@ def assemble_intake_review_items(
             'severity': 'CRITICAL',
             'message': target_race.get('course_unresolved_reason')
                        or 'Race course facts are unresolved.',
+            'review_value': {
+                'race': target_race.get('name'),
+                'athlete_distance_miles': target_race.get('distance_miles'),
+                'course_facts_mode': target_race.get('course_facts_mode'),
+                'course_unresolved': True,
+            },
+            'basis': 'athlete-selected distance versus frozen multi-course snapshot',
+            'sensitivity': 'personal',
         })
     purchased_weeks = int(
         (profile.get('fulfillment') or {}).get('weeks_purchased') or 0)
@@ -3167,6 +3207,14 @@ def assemble_intake_review_items(
             'severity': 'CRITICAL',
             'message': (f'Generated {delivered_weeks} paid weeks but the order '
                         f'purchased {purchased_weeks}; W00 excluded.'),
+            'review_value': {
+                'generated_paid_weeks': delivered_weeks,
+                'purchased_weeks': purchased_weeks,
+                'lead_in_excluded': True,
+            },
+            'display_unit': 'weeks',
+            'basis': 'generated plan calendar compared with paid order metadata',
+            'sensitivity': 'internal',
         })
 
     confirmations = [
@@ -3174,6 +3222,9 @@ def assemble_intake_review_items(
             'id': f'DEVICE_UNKNOWN_CONFIRM_{index}',
             'source': 'intake',
             'message': f'Confirm unknown device token verbatim: {token}',
+            'review_value': token,
+            'basis': 'athlete-reported device string',
+            'sensitivity': 'personal',
         }
         for index, token in enumerate(
             (profile.get('devices') or {}).get('unknown_tokens') or [], 1)
@@ -3595,6 +3646,13 @@ def main():
                         'id': 'POST_RENDER_VALIDATOR_CRASH',
                         'source': 'post_render', 'severity': 'CRITICAL',
                         'message': f'Post-render validator failed closed: {type(exc).__name__}',
+                        'review_value': {
+                            'validator': 'post_render',
+                            'exception_type': type(exc).__name__,
+                            'failed_closed': True,
+                        },
+                        'basis': 'production post-render validator execution result',
+                        'sensitivity': 'internal',
                     }])
             except Exception as state_exc:
                 fulfillment_state_available = False

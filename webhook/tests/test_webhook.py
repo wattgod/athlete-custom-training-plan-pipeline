@@ -3232,8 +3232,20 @@ class TestFulfillmentStatusEndpoint:
             revision = app_module._order_dir(order_id) / 'revisions' / 'r1'
             revision.mkdir(parents=True)
             (revision / 'artifact.txt').write_text('sealed')
-            finalize_transitional_release(state_path, revision, expected_revision=1)
-            transition(state_path, APPROVED, 'coach_lee')
+            sealed = finalize_transitional_release(
+                state_path, revision, expected_revision=1)
+            transition(
+                state_path, APPROVED, 'coach_lee', expected_revision=1,
+                expected_catalog_digest=sealed['review_catalog_digest'],
+                review_decisions=[
+                    {
+                        'item_id': item['item_id'], 'revision': 1,
+                        'disposition': 'confirmed',
+                    }
+                    for item in sealed['review_items']
+                    if item['type'] in {'required_confirmation', 'verified_fact'}
+                ],
+            )
             app_module._record_order_lookup(order_id, athlete_id)
 
             response = client.get(f'/api/fulfillment/{order_id}/status',

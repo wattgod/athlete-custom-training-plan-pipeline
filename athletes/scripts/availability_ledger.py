@@ -118,7 +118,9 @@ def materialize_fixed_sessions(plan: Dict[str, Any], ledger: Dict[str, Dict[str,
     return plan
 
 
-def contradiction_issues(structured: Iterable[Dict[str, Any]], free_text: str) -> List[Dict[str, str]]:
+def contradiction_issues(
+    structured: Iterable[Dict[str, Any]], free_text: str,
+) -> List[Dict[str, Any]]:
     """Catch the high-risk claim that a locked commute is an off/rest day."""
     text = (free_text or '').lower()
     issues = []
@@ -134,5 +136,12 @@ def contradiction_issues(structured: Iterable[Dict[str, Any]], free_text: str) -
                for word in ('off', 'rest', 'unavailable')):
             issues.append({'id': 'AVAILABILITY_CONTRADICTION', 'source': 'availability_ledger',
                            'severity': 'CRITICAL',
-                           'message': f"{session['day']} is described as unavailable but has locked {session['title'] or 'session'}"})
+                           'message': f"{session['day']} is described as unavailable but has locked {session['title'] or 'session'}",
+                           'review_value': {
+                               'day': session['day'],
+                               'locked_session_title': session['title'] or 'session',
+                               'locked': True,
+                           },
+                           'basis': 'athlete free-text availability compared with normalized locked sessions',
+                           'sensitivity': 'personal'})
     return issues

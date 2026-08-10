@@ -86,6 +86,9 @@ def test_unknown_device_is_a_verbatim_required_confirmation(minimal_valid_parsed
         'id': 'DEVICE_UNKNOWN_CONFIRM_1',
         'source': 'intake',
         'message': 'Confirm unknown device token verbatim: Mystery   Sensor X',
+        'review_value': 'Mystery   Sensor X',
+        'basis': 'athlete-reported device string',
+        'sensitivity': 'personal',
     }]
 
 

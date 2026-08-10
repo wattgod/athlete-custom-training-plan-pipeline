@@ -12,11 +12,17 @@ from workout_spec import _mins  # renderer's canonical minute formatter — sing
 from zwo_parser import parse_zwo_structure
 
 
-def _issue(artifact: str, field: str, expected: Any, actual: Any) -> Dict[str, str]:
+def _issue(artifact: str, field: str, expected: Any, actual: Any) -> Dict[str, Any]:
     return {
         'id': f'PACKAGE_{artifact.upper()}_{field.upper().replace(".", "_")}',
         'source': 'validate_plan_package', 'severity': 'CRITICAL',
         'message': f'{artifact}.{field}: expected {expected!r}, found {actual!r}',
+        'review_value': {
+            'artifact': artifact, 'field': field,
+            'expected': expected, 'actual': actual,
+        },
+        'basis': 'PlanIR canonical value compared with its persisted serializer projection',
+        'sensitivity': 'internal',
     }
 
 
@@ -40,7 +46,7 @@ def _main_set_text(description: str) -> str:
     return match.group(1).strip() if match else ''
 
 
-def validate_plan_package(athlete_dir: Path | str) -> List[Dict[str, str]]:
+def validate_plan_package(athlete_dir: Path | str) -> List[Dict[str, Any]]:
     """Compare serializer facts against ``plan_ir.json``.
 
     Missing optional artifacts are not a mismatch here; the pre-delivery gate

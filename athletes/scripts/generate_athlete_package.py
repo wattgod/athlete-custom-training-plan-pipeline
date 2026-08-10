@@ -742,7 +742,10 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         except AvailabilityLedgerError as exc:
             _fulfillment_issues.append({'id': 'AVAILABILITY_CAP_IMPOSSIBLE',
                                         'source': 'availability_ledger', 'severity': 'CRITICAL',
-                                        'message': str(exc)})
+                                        'message': str(exc),
+                                        'review_value': {'constraint_error': str(exc)},
+                                        'basis': 'normalized locked sessions compared with athlete day caps',
+                                        'sensitivity': 'personal'})
             _builder_hours = cycling_hours_target
 
         _bb_plan = build_plan_from_calendar(
@@ -842,6 +845,13 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 'source': 'block_compliance',
                 'severity': rule.get('severity', 'CRITICAL'),
                 'message': rule.get('message', 'Compliance rule failed'),
+                'review_value': {
+                    'rule_id': rule_id,
+                    'message': rule.get('message', 'Compliance rule failed'),
+                    'passed': False,
+                },
+                'basis': 'production block-compliance validation of the generated calendar',
+                'sensitivity': 'internal',
             } for rule_id, rule in _compliance['rules'].items()
               if rule.get('severity') == 'CRITICAL' and not rule.get('passed'))
         else:
