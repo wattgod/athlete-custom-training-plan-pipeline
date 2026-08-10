@@ -32,10 +32,12 @@ SUBJECT_LOCATORS = {"email", "tp_athlete_id", "candidate_list_ref"}
 PROBE_CAPABILITY_TYPE = "trainingpeaks_probe_capability/v1"
 MUTATION_CAPABILITY_TYPE = "trainingpeaks_mutation_capability/v1"
 INSPECTION_EVIDENCE_TYPE = "trainingpeaks_inspection_evidence/v1"
-PROBE_EXECUTION_RECORD_TYPE = "trainingpeaks_probe_execution/v2"
+PROBE_EXECUTION_RECORD_TYPE = "trainingpeaks_probe_execution/v3"
 TOKEN_ALGORITHM = "HS256"
 MAX_CAPABILITY_TTL_SECONDS = 15 * 60
 JTI_PATTERN = re.compile(r"[A-Za-z0-9_-]{16,128}\Z")
+SERVER_PROBE_AUDIENCE = "gg-trainingpeaks-worker"
+SERVER_PROBE_KID = "phase4-fixture"
 
 
 class WorkerAuthorizationError(ValueError):
@@ -88,6 +90,16 @@ def authoritative_probe_execution_root() -> Path:
     if data_dir:
         return (Path(data_dir) / "worker-replay").resolve()
     return (Path(__file__).resolve().parents[2] / "athletes" / "worker-replay").resolve()
+
+
+def _server_configured_probe_codec() -> "CapabilityCodec":
+    """Build the verifier/issuer from server-owned capability configuration."""
+    secret = os.environ.get("GG_WORKER_CAPABILITY_SECRET", "")
+    if len(secret.encode("utf-8")) < 32:
+        raise WorkerAuthorizationError(
+            "server worker capability signing is unavailable")
+    return CapabilityCodec(
+        {SERVER_PROBE_KID: secret}, audience=SERVER_PROBE_AUDIENCE)
 
 
 def _canonical_json(value: Any) -> bytes:
@@ -320,25 +332,53 @@ class ProbeExecutionStore:
         self, root: Path | str,
         capability_codec: CapabilityCodec | None = None,
     ):
-        self.root = Path(root)
+        candidate = Path(root).resolve()
+        if candidate == authoritative_probe_execution_root():
+            raise ValueError(
+                "authoritative probe execution stores use server-internal wiring")
+        self.root = candidate
         self._capability_codec = capability_codec
 
     @classmethod
-    def authoritative(
-        cls, capability_codec: CapabilityCodec | None = None,
-    ) -> "ProbeExecutionStore":
-        """Open the replay store selected by server configuration."""
-        return cls(authoritative_probe_execution_root(), capability_codec)
+    def authoritative(cls) -> "ProbeExecutionStore":
+        """Open the server root with only the server-configured verifier."""
+        store = cls.__new__(cls)
+        store.root = authoritative_probe_execution_root()
+        store._capability_codec = _server_configured_probe_codec()
+        return store
 
     def uses_codec(self, codec: CapabilityCodec) -> bool:
         return self._capability_codec is codec
 
-    def _paths(self, order_id: str, jti: str) -> tuple[Path, Path]:
+    def _paths(
+        self, order_id: str, jti: str, *, create_order: bool = False,
+    ) -> tuple[Path, Path]:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", order_id):
             raise WorkerAuthorizationError("capability order_id is unsafe")
         if not JTI_PATTERN.fullmatch(jti):
             raise WorkerAuthorizationError("capability jti is invalid")
-        record = self.root / order_id / f"{jti}.json"
+        try:
+            if create_order:
+                self.root.mkdir(parents=True, exist_ok=True)
+            if not self.root.is_dir() or self.root.is_symlink():
+                raise WorkerAuthorizationError(
+                    "probe execution root is unavailable or unsafe")
+            order_dir = self.root / order_id
+            if order_dir.is_symlink():
+                raise WorkerAuthorizationError(
+                    "probe execution order directory is unsafe")
+            if create_order:
+                order_dir.mkdir(mode=0o700, exist_ok=True)
+            if (not order_dir.is_dir() or order_dir.is_symlink()
+                    or order_dir.resolve() != order_dir):
+                raise WorkerAuthorizationError(
+                    "probe execution order directory is unavailable or unsafe")
+        except OSError as exc:
+            raise WorkerAuthorizationError(
+                "probe execution order directory is unavailable or unsafe") from exc
+        record = order_dir / f"{jti}.json"
+        if record.is_symlink() or record.with_suffix(".lock").is_symlink():
+            raise WorkerAuthorizationError("probe execution record path is unsafe")
         return record, record.with_suffix(".lock")
 
     def run(
@@ -354,8 +394,8 @@ class ProbeExecutionStore:
         """Verify a capability, then run/replay and return its durable record."""
         verified = self._verify_record_capability(capability, request, now=now)
         claims = verified.claims
-        record_path, lock_path = self._paths(str(claims["order_id"]), str(claims["jti"]))
-        record_path.parent.mkdir(parents=True, exist_ok=True)
+        record_path, lock_path = self._paths(
+            str(claims["order_id"]), str(claims["jti"]), create_order=True)
         request_digest = _digest(request)
         capability_context = {
             "capability_type": verified.capability_type,
@@ -390,6 +430,7 @@ class ProbeExecutionStore:
                 if existing.get("request_digest") != request_digest:
                     raise WorkerAuthorizationError("capability jti replay request differs")
                 if (existing.get("record_type") != PROBE_EXECUTION_RECORD_TYPE
+                        or existing.get("capability_token") != capability
                         or existing.get("capability_context") != capability_context):
                     raise WorkerAuthorizationError(
                         "probe replay record lacks verified capability provenance")
@@ -408,6 +449,7 @@ class ProbeExecutionStore:
                     "status": "accepted", "order_id": claims["order_id"],
                     "jti": claims["jti"], "request_digest": request_digest,
                     "results": None, "evidence_context": context,
+                    "capability_token": capability,
                     "capability_context": capability_context,
                 })
             self._write(record_path, {
@@ -415,6 +457,7 @@ class ProbeExecutionStore:
                 "status": "running", "order_id": claims["order_id"],
                 "jti": claims["jti"], "request_digest": request_digest,
                 "results": None, "evidence_context": context,
+                "capability_token": capability,
                 "capability_context": capability_context,
             })
             try:
@@ -427,6 +470,7 @@ class ProbeExecutionStore:
                     "jti": claims["jti"], "request_digest": request_digest,
                     "results": {"error_type": type(exc).__name__},
                     "evidence_context": context,
+                    "capability_token": capability,
                     "capability_context": capability_context,
                 })
                 raise WorkerTransportError("read-only worker transport failed") from exc
@@ -435,6 +479,7 @@ class ProbeExecutionStore:
                 "status": "succeeded", "order_id": claims["order_id"],
                 "jti": claims["jti"], "request_digest": request_digest,
                 "results": results, "evidence_context": context,
+                "capability_token": capability,
                 "capability_context": capability_context,
             }
             self._write(record_path, succeeded)
@@ -497,22 +542,47 @@ class ProbeExecutionStore:
             "capability_kid": evidence.capability_kid,
             "observed_at": evidence.observed_at,
         }
+        capability_token = record.get("capability_token")
         capability_context = record.get("capability_context")
-        valid_capability_context = bool(
-            isinstance(capability_context, dict)
-            and set(capability_context) == {
-                "capability_type", "action", "audience", "kid", "claims_digest",
+        if not isinstance(capability_token, str) or not capability_token:
+            raise WorkerAuthorizationError(
+                "probe replay record lacks retained capability proof")
+        if self._capability_codec is None:
+            raise WorkerAuthorizationError(
+                "inspection evidence requires a configured capability verifier")
+        try:
+            observed = datetime.fromisoformat(
+                evidence.observed_at.replace("Z", "+00:00"))
+            if observed.tzinfo is None:
+                raise ValueError("timestamp lacks timezone")
+            verified = self._capability_codec.verify(
+                capability_token, now=int(observed.timestamp()),
+                expected_action="inspect")
+        except (ValueError, TypeError) as exc:
+            if isinstance(exc, WorkerAuthorizationError):
+                raise
+            raise WorkerAuthorizationError(
+                "worker inspection evidence timestamp is invalid") from exc
+        claims = verified.claims
+        expected_capability_context = {
+            "capability_type": PROBE_CAPABILITY_TYPE,
+            "action": "inspect",
+            "audience": self._capability_codec.audience,
+            "kid": verified.kid,
+            "claims_digest": _digest(claims),
+        }
+        valid_capability_binding = bool(
+            capability_context == expected_capability_context
+            and claims.get("order_id") == evidence.order_id
+            and claims.get("jti") == evidence.capability_jti
+            and claims.get("subject") == {
+                "kind": "identity_query",
+                "tp_athlete_id": evidence.tp_athlete_id,
             }
-            and capability_context.get("capability_type") == PROBE_CAPABILITY_TYPE
-            and capability_context.get("action") == "inspect"
-            and isinstance(capability_context.get("audience"), str)
-            and bool(capability_context.get("audience"))
-            and capability_context.get("kid") == evidence.capability_kid
-            and isinstance(capability_context.get("claims_digest"), str)
-            and re.fullmatch(r"[0-9a-f]{64}", capability_context["claims_digest"])
+            and verified.kid == evidence.capability_kid
         )
         if (record.get("record_type") != PROBE_EXECUTION_RECORD_TYPE
-                or not valid_capability_context
+                or not valid_capability_binding
                 or record.get("status") != "succeeded"
                 or record.get("order_id") != evidence.order_id
                 or record.get("jti") != evidence.capability_jti
@@ -529,8 +599,12 @@ class ProbeExecutionStore:
         """Verify evidence while holding its record lock through state commit."""
         if not isinstance(evidence, VerifiedInspectionEvidence):
             raise WorkerAuthorizationError("worker inspection evidence type is invalid")
-        record_path, lock_path = self._paths(
-            evidence.order_id, evidence.capability_jti)
+        try:
+            record_path, lock_path = self._paths(
+                evidence.order_id, evidence.capability_jti)
+        except WorkerAuthorizationError as exc:
+            raise WorkerAuthorizationError(
+                "worker inspection evidence has no durable execution record") from exc
         if not record_path.exists():
             raise WorkerAuthorizationError(
                 "worker inspection evidence has no durable execution record")
@@ -704,6 +778,15 @@ class ReadOnlyWorkerService:
 
     def rollback(self, *_args: Any, **_kwargs: Any) -> None:
         self._refuse("rollback")
+
+
+def build_server_read_only_worker(
+    transport: ReadOnlyWorkerTransport,
+) -> tuple[CapabilityCodec, ReadOnlyWorkerService]:
+    """Wire one worker to the authoritative root and server-owned signer."""
+    replay_store = ProbeExecutionStore.authoritative()
+    codec = replay_store._capability_codec
+    return codec, ReadOnlyWorkerService(codec, replay_store, transport)
 
 
 def exchange_mutation_capability_phase4(*_args: Any, **_kwargs: Any) -> None:

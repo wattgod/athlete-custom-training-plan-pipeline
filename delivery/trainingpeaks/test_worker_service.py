@@ -86,6 +86,8 @@ def test_probe_capability_executes_canned_transport_and_replay_returns_recorded_
     record = json.loads(next((tmp_path / "jti/order_phase4_worker").glob("*.json")).read_text())
     assert record["status"] == "succeeded"
     assert record["order_id"] == "order_phase4_worker"
+    assert record["record_type"] == "trainingpeaks_probe_execution/v3"
+    assert record["capability_token"] == token
 
 
 def test_inspect_capability_is_bound_to_tp_id_and_returns_exact_fixture(tmp_path):
@@ -203,6 +205,38 @@ def test_run_record_checks_capability_action_and_expiry_itself(tmp_path):
         store.run_record(expired_token, request, lambda: {}, now=NOW)
 
     assert list(tmp_path.rglob("*.json")) == []
+
+
+def test_probe_store_rejects_symlinked_order_directory_before_transport(tmp_path):
+    codec = _codec()
+    root = tmp_path / "records"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    (root / "order_phase4_worker").symlink_to(outside, target_is_directory=True)
+    store = ProbeExecutionStore(root, codec)
+    claims = _probe_claims(
+        action="inspect",
+        subject={"kind": "identity_query", "tp_athlete_id": "fixture-athlete-m"},
+        jti="symlink-inspect-0000000001",
+    )
+    token = codec.issue(claims, kid="phase4-k1")
+    operation_called = False
+
+    def operation():
+        nonlocal operation_called
+        operation_called = True
+        return {"tp_athlete_id": "fixture-athlete-m", "lthr_bpm": 155}
+
+    with pytest.raises(WorkerAuthorizationError, match="directory is unsafe"):
+        store.run_record(
+            token,
+            {"operation": "inspect_account", "tp_athlete_id": "fixture-athlete-m"},
+            operation, now=NOW,
+        )
+
+    assert operation_called is False
+    assert list(outside.iterdir()) == []
 
 
 @pytest.mark.parametrize(

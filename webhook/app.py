@@ -2891,42 +2891,37 @@ def resolve_review_d2_item(order_ref):
 def _run_d2_manual_readback(order_id: str, state: dict, item_id: str) -> dict:
     """Issue and execute one order/identity-bound read-only inspect attempt."""
     from delivery.trainingpeaks.worker_service import (
-        CapabilityCodec, CannedProbeTransport, ProbeExecutionStore,
-        ReadOnlyWorkerService, authoritative_probe_execution_root,
+        CannedProbeTransport, SERVER_PROBE_AUDIENCE, SERVER_PROBE_KID,
+        WorkerAuthorizationError, build_server_read_only_worker,
     )
     from d2_identity import record_manual_readback
 
     fixture_path = os.environ.get('GG_WORKER_PROBES_FIXTURE', '').strip()
-    capability_secret = os.environ.get('GG_WORKER_CAPABILITY_SECRET', '')
     if not fixture_path:
         raise FulfillmentStateError(
             'read-only worker transport is unavailable for manual readback')
-    if len(capability_secret.encode('utf-8')) < 32:
-        raise FulfillmentStateError(
-            'read-only worker capability signing is unavailable')
     binding = state.get('platform_identity') or {}
     tp_id = str(binding.get('tp_athlete_id') or '').strip()
     if not tp_id or binding.get('order_id') != order_id:
         raise FulfillmentStateError(
             "manual readback requires this order's bound platform identity")
 
-    audience = 'gg-trainingpeaks-worker'
-    kid = 'phase4-fixture'
-    codec = CapabilityCodec({kid: capability_secret}, audience=audience)
     transport = CannedProbeTransport.from_path(
         fixture_path, tp_athlete_id=tp_id)
-    replay_root = authoritative_probe_execution_root()
-    replay_store = ProbeExecutionStore(replay_root, codec)
-    worker = ReadOnlyWorkerService(codec, replay_store, transport)
+    try:
+        codec, worker = build_server_read_only_worker(transport)
+    except WorkerAuthorizationError as exc:
+        raise FulfillmentStateError(
+            'read-only worker capability signing is unavailable') from exc
     now_epoch = int(datetime.now(timezone.utc).timestamp())
     jti = 'manual-inspect-' + uuid.uuid4().hex
     claims = {
         'order_id': order_id,
         'subject': {'kind': 'identity_query', 'tp_athlete_id': tp_id},
-        'action': 'inspect', 'audience': audience,
+        'action': 'inspect', 'audience': SERVER_PROBE_AUDIENCE,
         'iat': now_epoch - 1, 'exp': now_epoch + 300, 'jti': jti,
     }
-    capability = codec.issue(claims, kid=kid)
+    capability = codec.issue(claims, kid=SERVER_PROBE_KID)
     evidence = worker.inspect_account_evidence(
         tp_id, capability, now=now_epoch)
     return record_manual_readback(

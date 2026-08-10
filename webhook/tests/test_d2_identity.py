@@ -15,7 +15,11 @@ from delivery.trainingpeaks.worker_service import (
     CannedProbeTransport,
     ProbeExecutionStore,
     ReadOnlyWorkerService,
+    SERVER_PROBE_AUDIENCE,
+    SERVER_PROBE_KID,
     VerifiedInspectionEvidence,
+    authoritative_probe_execution_root,
+    build_server_read_only_worker,
 )
 from d2_identity import (
     DEMOGRAPHIC_ITEM_ID,
@@ -41,12 +45,14 @@ from fulfillment_state import (
 
 FIXTURE = ROOT / "tests/fixtures/athlete_m"
 OBSERVED_AT = "2026-08-06T15:00:00Z"
+SERVER_CAPABILITY_SECRET = "phase4-readback-test-signing-secret-0001"
 
 
 @pytest.fixture(autouse=True)
 def _server_selected_worker_replay_root(monkeypatch, tmp_path):
     monkeypatch.setenv(
         "GG_WORKER_REPLAY_DIR", str(tmp_path / "worker-replay"))
+    monkeypatch.setenv("GG_WORKER_CAPABILITY_SECRET", SERVER_CAPABILITY_SECRET)
 
 
 def _seed(
@@ -112,23 +118,18 @@ def _worker_evidence(tmp_path, state, *, lthr, jti):
     fixture["lthr_bpm"] = lthr
     fixture["tp_athlete_id"] = "fixture-athlete-m"
     now = 1_800_000_000
-    audience = "gg-trainingpeaks-worker"
-    kid = "phase4-test"
-    codec = CapabilityCodec(
-        {kid: "phase4-readback-test-signing-secret-0001"}, audience=audience)
-    replay_store = ProbeExecutionStore(tmp_path / "worker-replay", codec)
-    worker = ReadOnlyWorkerService(codec, replay_store, CannedProbeTransport(fixture))
+    codec, worker = build_server_read_only_worker(CannedProbeTransport(fixture))
     claims = {
         "order_id": state["order_id"],
         "subject": {
             "kind": "identity_query", "tp_athlete_id": "fixture-athlete-m",
         },
-        "action": "inspect", "audience": audience,
+        "action": "inspect", "audience": SERVER_PROBE_AUDIENCE,
         "iat": now - 1, "exp": now + 300, "jti": jti,
     }
     evidence = worker.inspect_account_evidence(
-        "fixture-athlete-m", codec.issue(claims, kid=kid), now=now)
-    return evidence, replay_store
+        "fixture-athlete-m", codec.issue(claims, kid=SERVER_PROBE_KID), now=now)
+    return evidence, worker.replay_store
 
 
 def _regenerate_and_seal_if_needed(path, tmp_path, state):
@@ -424,6 +425,98 @@ def test_caller_selected_store_record_cannot_clear_readback_or_reach_approval(tm
             review_decisions=_approval_decisions(retained),
         )
     assert load(path)["approval"] is None
+
+
+def test_authoritative_store_constructor_rejects_caller_selected_codec(tmp_path):
+    attacker_codec = CapabilityCodec(
+        {"attacker-kid": "attacker-controlled-capability-secret-0001"},
+        audience=SERVER_PROBE_AUDIENCE)
+
+    with pytest.raises(ValueError, match="server-internal wiring"):
+        ProbeExecutionStore(
+            authoritative_probe_execution_root(), attacker_codec)
+
+
+def test_same_root_attacker_signed_record_fails_server_key_reverification(tmp_path):
+    path, state = _seed(
+        tmp_path, order_id="same-root-attacker", control_value=155,
+        intake_lthr=155, intake_age=19)
+    state = _seal(path, tmp_path)
+    pending = resolve_d2_item(
+        path, state["generation_revision"], THRESHOLD_ITEM_ID,
+        "manually-corrected", actor="coach")
+
+    now = 1_800_000_000
+    attacker_codec = CapabilityCodec(
+        {"attacker-kid": "attacker-controlled-capability-secret-0001"},
+        audience=SERVER_PROBE_AUDIENCE)
+    attacker_store = ProbeExecutionStore(tmp_path / "attacker-records", attacker_codec)
+    worker = ReadOnlyWorkerService(
+        attacker_codec, attacker_store,
+        CannedProbeTransport({
+            "tp_athlete_id": "fixture-athlete-m", "lthr_bpm": 155,
+        }))
+    claims = {
+        "order_id": pending["order_id"],
+        "subject": {
+            "kind": "identity_query", "tp_athlete_id": "fixture-athlete-m",
+        },
+        "action": "inspect", "audience": SERVER_PROBE_AUDIENCE,
+        "iat": now - 1, "exp": now + 300,
+        "jti": "same-root-attacker-jti-0001",
+    }
+    evidence = worker.inspect_account_evidence(
+        "fixture-athlete-m",
+        attacker_codec.issue(claims, kid="attacker-kid"), now=now)
+
+    source = next((tmp_path / "attacker-records").rglob("*.json"))
+    authoritative_order = authoritative_probe_execution_root() / pending["order_id"]
+    authoritative_order.mkdir(parents=True)
+    (authoritative_order / source.name).write_bytes(source.read_bytes())
+
+    with pytest.raises(FulfillmentStateError, match="unknown capability signing key"):
+        record_manual_readback(
+            path, pending["generation_revision"], THRESHOLD_ITEM_ID, evidence)
+
+    retained = load(path)
+    assert THRESHOLD_ITEM_ID in retained["d2_pending_requirements"]
+    with pytest.raises(FulfillmentStateError, match="readback is still required"):
+        transition(
+            path, APPROVED, "coach",
+            expected_revision=retained["generation_revision"],
+            expected_catalog_digest=retained["review_catalog_digest"],
+            review_decisions=_approval_decisions(retained),
+        )
+    assert load(path)["approval"] is None
+
+
+def test_readback_rejects_record_whose_retained_token_fails_server_verification(
+    tmp_path,
+):
+    path, state = _seed(
+        tmp_path, order_id="tampered-retained-token", control_value=155,
+        intake_lthr=155, intake_age=19)
+    state = _seal(path, tmp_path)
+    pending = resolve_d2_item(
+        path, state["generation_revision"], THRESHOLD_ITEM_ID,
+        "manually-corrected", actor="coach")
+    evidence, _ = _worker_evidence(
+        tmp_path, pending, lthr=155, jti="tampered-token-jti-0000001")
+    record_path = (
+        authoritative_probe_execution_root() / pending["order_id"]
+        / f"{evidence.capability_jti}.json")
+    record = json.loads(record_path.read_text())
+    token = record["capability_token"]
+    record["capability_token"] = token[:-1] + ("A" if token[-1] != "A" else "B")
+    record_path.write_text(json.dumps(record))
+
+    with pytest.raises(FulfillmentStateError, match="invalid capability signature"):
+        record_manual_readback(
+            path, pending["generation_revision"], THRESHOLD_ITEM_ID, evidence)
+
+    retained = load(path)
+    assert THRESHOLD_ITEM_ID in retained["d2_pending_requirements"]
+    assert retained["approval"] is None
 
 
 def test_delete_after_initial_record_verification_fails_before_state_commit(

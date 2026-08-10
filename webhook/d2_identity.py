@@ -728,7 +728,11 @@ def record_manual_readback(
     if not isinstance(evidence, VerifiedInspectionEvidence):
         raise FulfillmentStateError(
             "manual correction requires verified worker inspection evidence")
-    replay_store = ProbeExecutionStore.authoritative()
+    try:
+        replay_store = ProbeExecutionStore.authoritative()
+    except WorkerAuthorizationError as exc:
+        raise FulfillmentStateError(
+            f"manual correction evidence origin is unverified: {exc}") from exc
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")

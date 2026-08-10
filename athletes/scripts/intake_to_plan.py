@@ -3843,15 +3843,11 @@ def main():
         try:
             from datetime import timezone
             from delivery.trainingpeaks.worker_service import (
-                CapabilityCodec, CannedProbeTransport, ProbeExecutionStore,
-                ReadOnlyWorkerService, authoritative_probe_execution_root,
+                CannedProbeTransport, SERVER_PROBE_AUDIENCE, SERVER_PROBE_KID,
+                build_server_read_only_worker,
             )
             from d2_identity import record_account_inspection, record_identity_result
 
-            capability_secret = os.environ.get('GG_WORKER_CAPABILITY_SECRET', '')
-            if len(capability_secret.encode('utf-8')) < 32:
-                raise RuntimeError(
-                    'GG_WORKER_CAPABILITY_SECRET (32+ bytes) is required for canned probes')
             state = load_fulfillment_state(state_path)
             now_dt = generation_now().replace(tzinfo=timezone.utc)
             now_epoch = int(now_dt.timestamp())
@@ -3859,15 +3855,9 @@ def main():
             email = str(profile.get('email') or '').strip()
             if not email:
                 raise RuntimeError('D2 probe requires the order email identity')
-            codec = CapabilityCodec(
-                {'phase4-fixture': capability_secret},
-                audience='gg-trainingpeaks-worker',
-            )
             transport = CannedProbeTransport.from_path(
                 worker_fixture, tp_athlete_id='fixture-athlete-m')
-            replay_root = authoritative_probe_execution_root()
-            worker = ReadOnlyWorkerService(
-                codec, ProbeExecutionStore(replay_root, codec), transport)
+            codec, worker = build_server_read_only_worker(transport)
             # One jti names one resumable attempt. A later issuance must be a
             # fresh attempt so a terminal replay record can never act as an
             # implicit account-data cache.
@@ -3875,10 +3865,10 @@ def main():
             probe_claims = {
                 'order_id': order_id,
                 'subject': {'kind': 'identity_query', 'email': email},
-                'action': 'probe', 'audience': 'gg-trainingpeaks-worker',
+                'action': 'probe', 'audience': SERVER_PROBE_AUDIENCE,
                 'iat': now_epoch - 1, 'exp': now_epoch + 300, 'jti': probe_jti,
             }
-            probe_token = codec.issue(probe_claims, kid='phase4-fixture')
+            probe_token = codec.issue(probe_claims, kid=SERVER_PROBE_KID)
             identity = worker.probe_athlete({'email': email}, probe_token, now=now_epoch)
             state = record_identity_result(
                 state_path, state['generation_revision'], identity,
@@ -3890,11 +3880,11 @@ def main():
                 inspect_claims = {
                     'order_id': order_id,
                     'subject': {'kind': 'identity_query', 'tp_athlete_id': tp_id},
-                    'action': 'inspect', 'audience': 'gg-trainingpeaks-worker',
+                    'action': 'inspect', 'audience': SERVER_PROBE_AUDIENCE,
                     'iat': now_epoch - 1, 'exp': now_epoch + 300,
                     'jti': inspect_jti,
                 }
-                inspect_token = codec.issue(inspect_claims, kid='phase4-fixture')
+                inspect_token = codec.issue(inspect_claims, kid=SERVER_PROBE_KID)
                 inspection = worker.inspect_account(tp_id, inspect_token, now=now_epoch)
                 fitness = profile.get('fitness_markers') or {}
                 state = record_account_inspection(

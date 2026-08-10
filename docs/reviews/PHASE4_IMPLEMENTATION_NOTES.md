@@ -324,3 +324,43 @@ Commit creation was attempted, but this managed worktree cannot create
 the seven scoped implementation, regression, and notes files remain unstaged.
 No push, external request, remote write, or TrainingPeaks operation was
 performed.
+
+## R4 blocker disposition — 2026-08-09
+
+Review: `docs/reviews/PHASE4_IMPLEMENTATION_CODEX_R4.md`.
+
+The reopened same-root authenticity blocker was accepted as valid; there are
+no disputes.
+
+| R4 requirement | Disposition | Closing implementation and regression evidence |
+|---|---|---|
+| Durable server-verifiable authorization proof | **Closed** | Probe execution records are now `trainingpeaks_probe_execution/v3` and retain the exact signed capability token in every accepted, running, failed, and succeeded record. Terminal replay additionally requires the presented token to equal the retained proof, so a jti cannot be rebound to another authorization. Older/self-asserted records without the retained token fail closed. |
+| Server-key verification at readback | **Closed** | The inspection-record reader re-verifies the retained token with the server-configured capability codec before trusting any record context or result. Verification reconstructs and exactly checks the trusted audience, `inspect` action, identity-query subject/TP athlete id, order id, jti, kid, capability type, and claims digest, then retains the R3 request/result/evidence equality checks and locked final recheck. `record_manual_readback` creates this authoritative verifier from `GG_WORKER_CAPABILITY_SECRET`; neither evidence nor its caller can provide the trust key. The same-root attacker-key regression stays pending and cannot approve, while a separately tampered retained token is rejected by signature verification and the server-issued path still approves. |
+| Authoritative constructor and issuance wiring | **Closed** | The public `ProbeExecutionStore(root, codec)` constructor rejects the configured authoritative root. `ProbeExecutionStore.authoritative()` accepts no codec and creates its verifier only from server configuration. Pipeline and authenticated review issuance use the same server-internal worker builder, audience, kid, root, and key configuration as readback. Constructor privacy is defense in depth; the same-root attacker-record regression independently proves the read-side cryptographic boundary. |
+| Authoritative-root containment | **Closed** | Order and jti components remain lexically constrained, and record creation/read now reject a symlinked order directory plus symlinked record/lock paths before transport or persistence. The reviewed symlink escape probe leaves the outside directory empty and never calls transport. |
+
+The Phase 4 zero-write boundary is unchanged: apply, verify, rollback, and
+mutation execution-grant exchange still refuse before transport. No golden
+fixture, athlete-m expected JSON, workout generator, checked-in ZWO, or ZWO
+manifest changed.
+
+### R4 verification evidence
+
+- Blocker-focused worker + D2 suite: **60 passed**.
+- Worker, D2, authenticated review, fulfilment-state, and athlete-m Phase 4
+  golden gate: **123 passed**.
+- Complete sandbox suite: **2,562 passed, 87 skipped, 21 warnings, 0 failed**
+  in 45.52 seconds. The four-test increase over the R4 review total is exactly
+  the new authoritative-constructor, same-root signer, retained-token, and
+  symlink-containment coverage.
+- Opt-in production acceptance in an isolated writable home with the existing
+  user-site dependency path: **36 passed, 4 skipped, 4 failed**. The four
+  failures are the unchanged mandatory PDF presence/structure checks for
+  Gravel Full Gym and Masters in this environment; every non-PDF assertion
+  passed.
+- `python3 -m compileall -q athletes/scripts delivery tools webhook` and
+  `git diff --check` pass. Git diff confirms the athlete-m golden, checked-in
+  ZWOs, and manifest fixtures are unchanged.
+
+No push, external request, remote write, or TrainingPeaks operation was
+performed.
