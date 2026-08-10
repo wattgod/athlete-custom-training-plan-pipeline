@@ -3844,7 +3844,7 @@ def main():
             from datetime import timezone
             from delivery.trainingpeaks.worker_service import (
                 CapabilityCodec, CannedProbeTransport, ProbeExecutionStore,
-                ReadOnlyWorkerService,
+                ReadOnlyWorkerService, authoritative_probe_execution_root,
             )
             from d2_identity import record_account_inspection, record_identity_result
 
@@ -3865,10 +3865,9 @@ def main():
             )
             transport = CannedProbeTransport.from_path(
                 worker_fixture, tp_athlete_id='fixture-athlete-m')
-            replay_root = Path(os.environ.get(
-                'GG_WORKER_REPLAY_DIR', str(athlete_dir.parent / '.worker-replay')))
+            replay_root = authoritative_probe_execution_root()
             worker = ReadOnlyWorkerService(
-                codec, ProbeExecutionStore(replay_root), transport)
+                codec, ProbeExecutionStore(replay_root, codec), transport)
             # One jti names one resumable attempt. A later issuance must be a
             # fresh attempt so a terminal replay record can never act as an
             # implicit account-data cache.

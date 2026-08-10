@@ -2892,7 +2892,7 @@ def _run_d2_manual_readback(order_id: str, state: dict, item_id: str) -> dict:
     """Issue and execute one order/identity-bound read-only inspect attempt."""
     from delivery.trainingpeaks.worker_service import (
         CapabilityCodec, CannedProbeTransport, ProbeExecutionStore,
-        ReadOnlyWorkerService,
+        ReadOnlyWorkerService, authoritative_probe_execution_root,
     )
     from d2_identity import record_manual_readback
 
@@ -2915,9 +2915,8 @@ def _run_d2_manual_readback(order_id: str, state: dict, item_id: str) -> dict:
     codec = CapabilityCodec({kid: capability_secret}, audience=audience)
     transport = CannedProbeTransport.from_path(
         fixture_path, tp_athlete_id=tp_id)
-    replay_root = Path(os.environ.get(
-        'GG_WORKER_REPLAY_DIR', str(Path(DATA_DIR) / 'worker-replay')))
-    replay_store = ProbeExecutionStore(replay_root)
+    replay_root = authoritative_probe_execution_root()
+    replay_store = ProbeExecutionStore(replay_root, codec)
     worker = ReadOnlyWorkerService(codec, replay_store, transport)
     now_epoch = int(datetime.now(timezone.utc).timestamp())
     jti = 'manual-inspect-' + uuid.uuid4().hex
@@ -2932,7 +2931,7 @@ def _run_d2_manual_readback(order_id: str, state: dict, item_id: str) -> dict:
         tp_id, capability, now=now_epoch)
     return record_manual_readback(
         _fulfillment_status_path(order_id), state['generation_revision'],
-        item_id, evidence, replay_store=replay_store,
+        item_id, evidence,
     )
 
 

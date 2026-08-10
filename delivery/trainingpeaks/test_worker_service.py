@@ -31,6 +31,12 @@ def _codec():
     return CapabilityCodec(KEYS, audience=AUDIENCE)
 
 
+def _service(root, transport):
+    codec = _codec()
+    return ReadOnlyWorkerService(
+        codec, ProbeExecutionStore(root, codec), transport)
+
+
 def _probe_claims(action="probe", **overrides):
     claims = {
         "order_id": "order_phase4_worker",
@@ -64,8 +70,7 @@ def _mutation_claims(action="apply", **overrides):
 def test_probe_capability_executes_canned_transport_and_replay_returns_recorded_result(tmp_path):
     fixture = json.loads((ROOT / "tests/fixtures/athlete_m/worker_probes.json").read_text())
     transport = CannedProbeTransport(fixture)
-    service = ReadOnlyWorkerService(
-        _codec(), ProbeExecutionStore(tmp_path / "jti"), transport)
+    service = _service(tmp_path / "jti", transport)
     token = _codec().issue(_probe_claims(), kid="phase4-k1")
 
     first = service.probe_athlete(
@@ -86,7 +91,7 @@ def test_probe_capability_executes_canned_transport_and_replay_returns_recorded_
 def test_inspect_capability_is_bound_to_tp_id_and_returns_exact_fixture(tmp_path):
     fixture = json.loads((ROOT / "tests/fixtures/athlete_m/worker_probes.json").read_text())
     transport = CannedProbeTransport(fixture)
-    service = ReadOnlyWorkerService(_codec(), ProbeExecutionStore(tmp_path), transport)
+    service = _service(tmp_path, transport)
     claims = _probe_claims(
         action="inspect",
         subject={"kind": "identity_query", "tp_athlete_id": "fixture-athlete-m"},
@@ -116,8 +121,7 @@ def test_fresh_jti_after_terminal_probe_fetches_and_records_fresh_data(tmp_path)
             raise AssertionError("not used")
 
     transport = ChangingTransport()
-    store = ProbeExecutionStore(tmp_path / "jti")
-    service = ReadOnlyWorkerService(_codec(), store, transport)
+    service = _service(tmp_path / "jti", transport)
     first_token = _codec().issue(
         _probe_claims(jti="probe-attempt-000000000001"), kid="phase4-k1")
     second_token = _codec().issue(
@@ -137,8 +141,7 @@ def test_fresh_jti_after_terminal_probe_fetches_and_records_fresh_data(tmp_path)
 
 def test_verified_inspection_evidence_binds_capability_and_request_digest(tmp_path):
     fixture = json.loads((ROOT / "tests/fixtures/athlete_m/worker_probes.json").read_text())
-    service = ReadOnlyWorkerService(
-        _codec(), ProbeExecutionStore(tmp_path), CannedProbeTransport(fixture))
+    service = _service(tmp_path, CannedProbeTransport(fixture))
     claims = _probe_claims(
         action="inspect",
         subject={"kind": "identity_query", "tp_athlete_id": "fixture-athlete-m"},
@@ -152,6 +155,54 @@ def test_verified_inspection_evidence_binds_capability_and_request_digest(tmp_pa
     assert len(evidence.request_digest) == 64
     assert evidence.observed_at == "2027-01-15T08:00:00Z"
     assert evidence.result["lthr_bpm"] == 148
+
+
+def test_run_record_refuses_unsigned_claims_before_creating_any_record(tmp_path):
+    codec = _codec()
+    store = ProbeExecutionStore(tmp_path, codec)
+    claims = _probe_claims(
+        action="inspect",
+        subject={"kind": "identity_query", "tp_athlete_id": "fixture-athlete-m"},
+        jti="unsigned-inspect-0000000001",
+    )
+    operation_called = False
+
+    def operation():
+        nonlocal operation_called
+        operation_called = True
+        return {"tp_athlete_id": "fixture-athlete-m", "lthr_bpm": 155}
+
+    with pytest.raises(WorkerAuthorizationError, match="encoding"):
+        store.run_record(
+            claims,
+            {"operation": "inspect_account", "tp_athlete_id": "fixture-athlete-m"},
+            operation, now=NOW,
+        )
+
+    assert operation_called is False
+    assert list(tmp_path.rglob("*.json")) == []
+
+
+def test_run_record_checks_capability_action_and_expiry_itself(tmp_path):
+    codec = _codec()
+    store = ProbeExecutionStore(tmp_path, codec)
+    request = {
+        "operation": "inspect_account", "tp_athlete_id": "fixture-athlete-m",
+    }
+    probe_token = codec.issue(_probe_claims(), kid="phase4-k1")
+    with pytest.raises(WorkerAuthorizationError, match="action mismatch"):
+        store.run_record(probe_token, request, lambda: {}, now=NOW)
+
+    expired_claims = _probe_claims(
+        action="inspect",
+        subject={"kind": "identity_query", "tp_athlete_id": "fixture-athlete-m"},
+        iat=NOW - 301, exp=NOW - 1, jti="expired-inspect-0000000001",
+    )
+    expired_token = codec.issue(expired_claims, kid="phase4-k1")
+    with pytest.raises(WorkerAuthorizationError, match="currently valid"):
+        store.run_record(expired_token, request, lambda: {}, now=NOW)
+
+    assert list(tmp_path.rglob("*.json")) == []
 
 
 @pytest.mark.parametrize(
@@ -214,7 +265,7 @@ def test_malformed_header_and_wrong_expected_action_fail_closed():
 
 def test_same_jti_with_different_request_is_rejected(tmp_path):
     transport = CannedProbeTransport({"account_found": True, "coached": True})
-    service = ReadOnlyWorkerService(_codec(), ProbeExecutionStore(tmp_path), transport)
+    service = _service(tmp_path, transport)
     token = _codec().issue(_probe_claims(), kid="phase4-k1")
     service.probe_athlete({"email": "fixture@example.invalid"}, token, now=NOW)
     with pytest.raises(WorkerAuthorizationError, match="subject"):
@@ -275,7 +326,7 @@ def test_probe_tokens_can_never_validate_as_mutations():
 
 def test_all_mutation_entrypoints_and_grant_issuance_refuse_before_transport(tmp_path):
     transport = CannedProbeTransport({"account_found": True, "coached": True})
-    service = ReadOnlyWorkerService(_codec(), ProbeExecutionStore(tmp_path), transport)
+    service = _service(tmp_path, transport)
     for operation in (service.apply, service.verify, service.rollback):
         with pytest.raises(WorkerMutationRefused, match="REFUSED"):
             operation({"would": "write"})

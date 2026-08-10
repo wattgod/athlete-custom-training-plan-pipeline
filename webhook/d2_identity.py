@@ -723,20 +723,12 @@ def resolve_d2_item(
 def record_manual_readback(
     path, expected_revision: int, item_id: str,
     evidence: VerifiedInspectionEvidence,
-    *, replay_store: ProbeExecutionStore | None = None,
 ) -> dict[str, Any]:
-    """Persist readback only when its exact succeeded worker record exists."""
+    """Persist readback against the server-selected store under both locks."""
     if not isinstance(evidence, VerifiedInspectionEvidence):
         raise FulfillmentStateError(
             "manual correction requires verified worker inspection evidence")
-    if not isinstance(replay_store, ProbeExecutionStore):
-        raise FulfillmentStateError(
-            "manual correction requires the authoritative worker replay store")
-    try:
-        replay_store.verify_inspection_evidence(evidence)
-    except WorkerAuthorizationError as exc:
-        raise FulfillmentStateError(
-            f"manual correction evidence origin is unverified: {exc}") from exc
+    replay_store = ProbeExecutionStore.authoritative()
     with locked_state(path) as (state_path, state):
         if state is None:
             raise FulfillmentStateError("missing or malformed fulfillment state")
@@ -748,60 +740,82 @@ def record_manual_readback(
         pending = state["d2_pending_requirements"].get(str(item_id))
         if not isinstance(pending, dict) or pending.get("kind") != "worker-readback":
             raise FulfillmentStateError("manual correction has no pending readback")
-        metric = pending["metric"]
-        field = {"lthr": "lthr_bpm", "ftp": "ftp_watts", "age": "age"}.get(metric)
-        binding = state.get("platform_identity") or {}
-        if (evidence.order_id != state.get("order_id")
-                or evidence.tp_athlete_id != binding.get("tp_athlete_id")):
-            raise FulfillmentStateError(
-                "worker readback evidence does not match this order binding")
-        inspection = evidence.result
-        if (inspection.get("tp_athlete_id") not in {None, "", evidence.tp_athlete_id}
-                or not field or inspection.get(field) != pending["expected_value"]):
-            raise FulfillmentStateError("worker readback does not confirm corrected value")
-        unit = "bpm" if metric == "lthr" else ("W" if metric == "ftp" else "years")
-        record = {
-            "record_type": "d2_worker_readback/v1",
-            "order_id": evidence.order_id,
-            "tp_athlete_id": evidence.tp_athlete_id,
-            "capability_jti": evidence.capability_jti,
-            "capability_kid": evidence.capability_kid,
-            "request_digest": evidence.request_digest,
-            "observed_at": evidence.observed_at,
-            "metric": metric,
-            "field": field,
-            "value": inspection[field],
-            "unit": unit,
-        }
-        state["d2_resolutions"][str(item_id)].update({
-            "effect": "worker-readback-confirmed", "readback_evidence": record,
-        })
-        del state["d2_pending_requirements"][str(item_id)]
-        derived_id = f"D2_MANUAL_READBACK_{metric.upper()}"
-        state["derived_values"] = sorted(
-            [item for item in state["derived_values"] if item.get("id") != derived_id]
-            + [_derived(
-                derived_id, f"d2.manual_readback.{metric}", inspection[field],
-                basis="TrainingPeaks worker readback after coach-reported correction",
-                inputs={
+        try:
+            with replay_store.locked_inspection_evidence(evidence) as evidence_guard:
+                metric = pending["metric"]
+                field = {
+                    "lthr": "lthr_bpm", "ftp": "ftp_watts", "age": "age",
+                }.get(metric)
+                binding = state.get("platform_identity") or {}
+                if (evidence.order_id != state.get("order_id")
+                        or evidence.tp_athlete_id != binding.get("tp_athlete_id")):
+                    raise FulfillmentStateError(
+                        "worker readback evidence does not match this order binding")
+                inspection = evidence.result
+                if (inspection.get("tp_athlete_id")
+                        not in {None, "", evidence.tp_athlete_id}
+                        or not field
+                        or inspection.get(field) != pending["expected_value"]):
+                    raise FulfillmentStateError(
+                        "worker readback does not confirm corrected value")
+                unit = (
+                    "bpm" if metric == "lthr"
+                    else ("W" if metric == "ftp" else "years"))
+                record = {
+                    "record_type": "d2_worker_readback/v1",
+                    "order_id": evidence.order_id,
+                    "tp_athlete_id": evidence.tp_athlete_id,
                     "capability_jti": evidence.capability_jti,
                     "capability_kid": evidence.capability_kid,
                     "request_digest": evidence.request_digest,
-                    "tp_athlete_id": evidence.tp_athlete_id,
-                },
-                at=evidence.observed_at,
-                revision=state["generation_revision"],
-            )],
-            key=lambda item: item["id"],
-        )
-        _mark_resolution_on_source(state, str(item_id), "manually-corrected")
-        _refresh_review_catalog(state)
-        _history(
-            state, "D2_MANUAL_READBACK_CONFIRMED", item_id=str(item_id),
-            capability_jti=evidence.capability_jti,
-        )
-        _atomic_write(state_path, state)
-        return copy.deepcopy(state)
+                    "observed_at": evidence.observed_at,
+                    "metric": metric,
+                    "field": field,
+                    "value": inspection[field],
+                    "unit": unit,
+                }
+                state["d2_resolutions"][str(item_id)].update({
+                    "effect": "worker-readback-confirmed",
+                    "readback_evidence": record,
+                })
+                del state["d2_pending_requirements"][str(item_id)]
+                derived_id = f"D2_MANUAL_READBACK_{metric.upper()}"
+                state["derived_values"] = sorted(
+                    [item for item in state["derived_values"]
+                     if item.get("id") != derived_id]
+                    + [_derived(
+                        derived_id, f"d2.manual_readback.{metric}",
+                        inspection[field],
+                        basis=(
+                            "TrainingPeaks worker readback after "
+                            "coach-reported correction"),
+                        inputs={
+                            "capability_jti": evidence.capability_jti,
+                            "capability_kid": evidence.capability_kid,
+                            "request_digest": evidence.request_digest,
+                            "tp_athlete_id": evidence.tp_athlete_id,
+                        },
+                        at=evidence.observed_at,
+                        revision=state["generation_revision"],
+                    )],
+                    key=lambda item: item["id"],
+                )
+                _mark_resolution_on_source(
+                    state, str(item_id), "manually-corrected")
+                _refresh_review_catalog(state)
+                _history(
+                    state, "D2_MANUAL_READBACK_CONFIRMED",
+                    item_id=str(item_id),
+                    capability_jti=evidence.capability_jti,
+                )
+                # Close the old verify/commit gap: re-read under the still-held
+                # execution-record lock immediately before the state replace.
+                evidence_guard.reverify()
+                _atomic_write(state_path, state)
+                return copy.deepcopy(state)
+        except WorkerAuthorizationError as exc:
+            raise FulfillmentStateError(
+                f"manual correction evidence origin is unverified: {exc}") from exc
 
 
 def d2_contract_inputs(state: Mapping[str, Any]) -> tuple[str, dict[str, Any], dict[str, Any]]:

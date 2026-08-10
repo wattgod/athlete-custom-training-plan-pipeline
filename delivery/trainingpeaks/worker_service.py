@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import binascii
 import copy
+import contextlib
 import fcntl
 import hashlib
 import hmac
@@ -31,6 +32,7 @@ SUBJECT_LOCATORS = {"email", "tp_athlete_id", "candidate_list_ref"}
 PROBE_CAPABILITY_TYPE = "trainingpeaks_probe_capability/v1"
 MUTATION_CAPABILITY_TYPE = "trainingpeaks_mutation_capability/v1"
 INSPECTION_EVIDENCE_TYPE = "trainingpeaks_inspection_evidence/v1"
+PROBE_EXECUTION_RECORD_TYPE = "trainingpeaks_probe_execution/v2"
 TOKEN_ALGORITHM = "HS256"
 MAX_CAPABILITY_TTL_SECONDS = 15 * 60
 JTI_PATTERN = re.compile(r"[A-Za-z0-9_-]{16,128}\Z")
@@ -75,6 +77,17 @@ class VerifiedInspectionEvidence:
     request_digest: str
     observed_at: str
     result: dict[str, Any]
+
+
+def authoritative_probe_execution_root() -> Path:
+    """Return the server-configured replay root shared by worker and webhook."""
+    configured = str(os.environ.get("GG_WORKER_REPLAY_DIR") or "").strip()
+    if configured:
+        return Path(configured).resolve()
+    data_dir = str(os.environ.get("DATA_DIR") or "").strip()
+    if data_dir:
+        return (Path(data_dir) / "worker-replay").resolve()
+    return (Path(__file__).resolve().parents[2] / "athletes" / "worker-replay").resolve()
 
 
 def _canonical_json(value: Any) -> bytes:
@@ -273,11 +286,52 @@ def mutation_exchange_predicate(
     return False, "unknown mutation action"
 
 
+class _InspectionEvidenceGuard:
+    """A verified record whose per-record lock remains held by its context."""
+
+    def __init__(
+        self, store: "ProbeExecutionStore", evidence: VerifiedInspectionEvidence,
+        record_path: Path, record: Mapping[str, Any],
+    ):
+        self._store = store
+        self._evidence = evidence
+        self._record_path = record_path
+        self._record = copy.deepcopy(dict(record))
+        self._active = True
+
+    def reverify(self) -> None:
+        """Fail if the locked record changed or disappeared before commit."""
+        if not self._active:
+            raise WorkerAuthorizationError("inspection evidence lock is not active")
+        current = self._store._read_and_validate_inspection_evidence(
+            self._evidence, self._record_path)
+        if current != self._record:
+            raise WorkerAuthorizationError(
+                "worker inspection evidence record changed before state commit")
+
+    def _close(self) -> None:
+        self._active = False
+
+
 class ProbeExecutionStore:
     """Atomic, order-scoped replay records for read-only probe capabilities."""
 
-    def __init__(self, root: Path | str):
+    def __init__(
+        self, root: Path | str,
+        capability_codec: CapabilityCodec | None = None,
+    ):
         self.root = Path(root)
+        self._capability_codec = capability_codec
+
+    @classmethod
+    def authoritative(
+        cls, capability_codec: CapabilityCodec | None = None,
+    ) -> "ProbeExecutionStore":
+        """Open the replay store selected by server configuration."""
+        return cls(authoritative_probe_execution_root(), capability_codec)
+
+    def uses_codec(self, codec: CapabilityCodec) -> bool:
+        return self._capability_codec is codec
 
     def _paths(self, order_id: str, jti: str) -> tuple[Path, Path]:
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", order_id):
@@ -288,25 +342,39 @@ class ProbeExecutionStore:
         return record, record.with_suffix(".lock")
 
     def run(
-        self, claims: Mapping[str, Any], request: Mapping[str, Any], operation,
-        *, evidence_context: Mapping[str, Any] | None = None,
+        self, capability: str, request: Mapping[str, Any], operation, *, now: int,
     ) -> dict[str, Any]:
         return copy.deepcopy(self.run_record(
-            claims, request, operation, evidence_context=evidence_context,
+            capability, request, operation, now=now,
         )["results"])
 
     def run_record(
-        self, claims: Mapping[str, Any], request: Mapping[str, Any], operation,
-        *, evidence_context: Mapping[str, Any] | None = None,
+        self, capability: str, request: Mapping[str, Any], operation, *, now: int,
     ) -> dict[str, Any]:
-        """Run or replay an operation and return its complete durable record."""
+        """Verify a capability, then run/replay and return its durable record."""
+        verified = self._verify_record_capability(capability, request, now=now)
+        claims = verified.claims
         record_path, lock_path = self._paths(str(claims["order_id"]), str(claims["jti"]))
         record_path.parent.mkdir(parents=True, exist_ok=True)
         request_digest = _digest(request)
-        context = copy.deepcopy(dict(evidence_context)) if evidence_context is not None else None
-        evidence_requested = context is not None
-        if context is not None:
-            _canonical_json(context)
+        capability_context = {
+            "capability_type": verified.capability_type,
+            "action": verified.action,
+            "audience": str(claims["audience"]),
+            "kid": verified.kid,
+            "claims_digest": _digest(claims),
+        }
+        context = None
+        if verified.action == "inspect":
+            context = {
+                "evidence_type": INSPECTION_EVIDENCE_TYPE,
+                "operation": "inspect_account",
+                "tp_athlete_id": str(request["tp_athlete_id"]),
+                "capability_kid": verified.kid,
+                "observed_at": datetime.fromtimestamp(
+                    int(now), tz=timezone.utc,
+                ).isoformat().replace("+00:00", "Z"),
+            }
         with open(lock_path, "a+", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             existing = None
@@ -315,10 +383,17 @@ class ProbeExecutionStore:
                     existing = json.loads(record_path.read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError) as exc:
                     raise WorkerAuthorizationError("probe replay record is malformed") from exc
+                if not isinstance(existing, dict):
+                    raise WorkerAuthorizationError(
+                        "probe replay record is malformed")
             if existing:
                 if existing.get("request_digest") != request_digest:
                     raise WorkerAuthorizationError("capability jti replay request differs")
-                if evidence_requested and not existing.get("evidence_context"):
+                if (existing.get("record_type") != PROBE_EXECUTION_RECORD_TYPE
+                        or existing.get("capability_context") != capability_context):
+                    raise WorkerAuthorizationError(
+                        "probe replay record lacks verified capability provenance")
+                if verified.action == "inspect" and not existing.get("evidence_context"):
                     raise WorkerAuthorizationError(
                         "probe replay record lacks inspection provenance")
                 if existing.get("status") == "succeeded":
@@ -329,52 +404,88 @@ class ProbeExecutionStore:
                 context = copy.deepcopy(existing.get("evidence_context"))
             else:
                 self._write(record_path, {
+                    "record_type": PROBE_EXECUTION_RECORD_TYPE,
                     "status": "accepted", "order_id": claims["order_id"],
                     "jti": claims["jti"], "request_digest": request_digest,
                     "results": None, "evidence_context": context,
+                    "capability_context": capability_context,
                 })
             self._write(record_path, {
+                "record_type": PROBE_EXECUTION_RECORD_TYPE,
                 "status": "running", "order_id": claims["order_id"],
                 "jti": claims["jti"], "request_digest": request_digest,
                 "results": None, "evidence_context": context,
+                "capability_context": capability_context,
             })
             try:
                 results = dict(operation())
                 _canonical_json(results)
             except Exception as exc:
                 self._write(record_path, {
+                    "record_type": PROBE_EXECUTION_RECORD_TYPE,
                     "status": "failed", "order_id": claims["order_id"],
                     "jti": claims["jti"], "request_digest": request_digest,
                     "results": {"error_type": type(exc).__name__},
                     "evidence_context": context,
+                    "capability_context": capability_context,
                 })
                 raise WorkerTransportError("read-only worker transport failed") from exc
             succeeded = {
+                "record_type": PROBE_EXECUTION_RECORD_TYPE,
                 "status": "succeeded", "order_id": claims["order_id"],
                 "jti": claims["jti"], "request_digest": request_digest,
                 "results": results, "evidence_context": context,
+                "capability_context": capability_context,
             }
             self._write(record_path, succeeded)
             return copy.deepcopy(succeeded)
 
-    def verify_inspection_evidence(
-        self, evidence: VerifiedInspectionEvidence,
-    ) -> None:
-        """Require exact equality with a durable succeeded inspection record."""
-        if not isinstance(evidence, VerifiedInspectionEvidence):
-            raise WorkerAuthorizationError("worker inspection evidence type is invalid")
-        record_path, lock_path = self._paths(
-            evidence.order_id, evidence.capability_jti)
+    def _verify_record_capability(
+        self, capability: str, request: Mapping[str, Any], *, now: int,
+    ) -> VerifiedCapability:
+        if self._capability_codec is None:
+            raise WorkerAuthorizationError(
+                "probe record creation requires a configured capability verifier")
+        if not isinstance(request, Mapping):
+            raise WorkerAuthorizationError("probe request must be an object")
+        operation = request.get("operation")
+        expected_action = {
+            "probe_athlete": "probe", "inspect_account": "inspect",
+        }.get(operation)
+        if expected_action is None:
+            raise WorkerAuthorizationError("unknown probe record operation")
+        verified = self._capability_codec.verify(
+            capability, now=int(now), expected_action=expected_action)
+        subject = verified.claims["subject"]
+        if expected_action == "probe":
+            identity = request.get("identity")
+            locator = next(iter(SUBJECT_LOCATORS & set(subject)))
+            if (set(request) != {"operation", "identity"}
+                    or not isinstance(identity, dict)
+                    or identity != {locator: subject[locator]}):
+                raise WorkerAuthorizationError(
+                    "probe record request does not match capability subject")
+        elif (set(request) != {"operation", "tp_athlete_id"}
+              or request.get("tp_athlete_id") != subject.get("tp_athlete_id")):
+            raise WorkerAuthorizationError(
+                "inspection record request does not match capability subject")
+        return verified
+
+    def _read_and_validate_inspection_evidence(
+        self, evidence: VerifiedInspectionEvidence, record_path: Path,
+    ) -> dict[str, Any]:
         if not record_path.exists():
             raise WorkerAuthorizationError(
                 "worker inspection evidence has no durable execution record")
-        with open(lock_path, "a+", encoding="utf-8") as lock:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-            try:
-                record = json.loads(record_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError) as exc:
-                raise WorkerAuthorizationError(
-                    "probe replay record is malformed") from exc
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise WorkerAuthorizationError(
+                "probe replay record is malformed") from exc
+        if not isinstance(record, dict):
+            raise WorkerAuthorizationError("probe replay record is malformed")
+        if not isinstance(evidence, VerifiedInspectionEvidence):
+            raise WorkerAuthorizationError("worker inspection evidence type is invalid")
         expected_request = {
             "operation": "inspect_account",
             "tp_athlete_id": evidence.tp_athlete_id,
@@ -386,7 +497,23 @@ class ProbeExecutionStore:
             "capability_kid": evidence.capability_kid,
             "observed_at": evidence.observed_at,
         }
-        if (record.get("status") != "succeeded"
+        capability_context = record.get("capability_context")
+        valid_capability_context = bool(
+            isinstance(capability_context, dict)
+            and set(capability_context) == {
+                "capability_type", "action", "audience", "kid", "claims_digest",
+            }
+            and capability_context.get("capability_type") == PROBE_CAPABILITY_TYPE
+            and capability_context.get("action") == "inspect"
+            and isinstance(capability_context.get("audience"), str)
+            and bool(capability_context.get("audience"))
+            and capability_context.get("kid") == evidence.capability_kid
+            and isinstance(capability_context.get("claims_digest"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", capability_context["claims_digest"])
+        )
+        if (record.get("record_type") != PROBE_EXECUTION_RECORD_TYPE
+                or not valid_capability_context
+                or record.get("status") != "succeeded"
                 or record.get("order_id") != evidence.order_id
                 or record.get("jti") != evidence.capability_jti
                 or record.get("request_digest") != evidence.request_digest
@@ -395,6 +522,40 @@ class ProbeExecutionStore:
                 or record.get("results") != evidence.result):
             raise WorkerAuthorizationError(
                 "worker inspection evidence does not match durable execution record")
+        return record
+
+    @contextlib.contextmanager
+    def locked_inspection_evidence(self, evidence: VerifiedInspectionEvidence):
+        """Verify evidence while holding its record lock through state commit."""
+        if not isinstance(evidence, VerifiedInspectionEvidence):
+            raise WorkerAuthorizationError("worker inspection evidence type is invalid")
+        record_path, lock_path = self._paths(
+            evidence.order_id, evidence.capability_jti)
+        if not record_path.exists():
+            raise WorkerAuthorizationError(
+                "worker inspection evidence has no durable execution record")
+        try:
+            lock = open(lock_path, "a+", encoding="utf-8")
+        except OSError as exc:
+            raise WorkerAuthorizationError(
+                "worker inspection evidence record lock is unavailable") from exc
+        with lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            guard = _InspectionEvidenceGuard(
+                self, evidence, record_path,
+                self._read_and_validate_inspection_evidence(evidence, record_path),
+            )
+            try:
+                yield guard
+            finally:
+                guard._close()
+
+    def verify_inspection_evidence(
+        self, evidence: VerifiedInspectionEvidence,
+    ) -> None:
+        """Require exact equality with a durable succeeded inspection record."""
+        with self.locked_inspection_evidence(evidence):
+            return
 
     @staticmethod
     def request_digest(request: Mapping[str, Any]) -> str:
@@ -465,6 +626,9 @@ class ReadOnlyWorkerService:
         self, codec: CapabilityCodec, replay_store: ProbeExecutionStore,
         transport: ReadOnlyWorkerTransport,
     ):
+        if not replay_store.uses_codec(codec):
+            raise ValueError(
+                "probe execution store must use the worker capability codec")
         self.codec = codec
         self.replay_store = replay_store
         self.transport = transport
@@ -478,8 +642,8 @@ class ReadOnlyWorkerService:
             raise WorkerAuthorizationError("probe request does not match capability subject")
         request = {"operation": "probe_athlete", "identity": normalized}
         return self.replay_store.run(
-            verified.claims, request,
-            lambda: self.transport.probe_athlete(normalized),
+            capability, request, lambda: self.transport.probe_athlete(normalized),
+            now=now,
         )
 
     def inspect_account(self, tp_athlete_id: str, capability: str, *, now: int) -> dict[str, Any]:
@@ -498,19 +662,10 @@ class ReadOnlyWorkerService:
         if subject.get("tp_athlete_id") != str(tp_athlete_id):
             raise WorkerAuthorizationError("inspection request does not match capability subject")
         request = {"operation": "inspect_account", "tp_athlete_id": str(tp_athlete_id)}
-        observed_at = datetime.fromtimestamp(
-            int(now), tz=timezone.utc,
-        ).isoformat().replace("+00:00", "Z")
         record = self.replay_store.run_record(
-            verified.claims, request,
+            capability, request,
             lambda: self.transport.inspect_account(str(tp_athlete_id)),
-            evidence_context={
-                "evidence_type": INSPECTION_EVIDENCE_TYPE,
-                "operation": "inspect_account",
-                "tp_athlete_id": str(tp_athlete_id),
-                "capability_kid": verified.kid,
-                "observed_at": observed_at,
-            },
+            now=now,
         )
         context = record.get("evidence_context")
         if not isinstance(context, dict):

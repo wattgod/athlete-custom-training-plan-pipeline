@@ -43,6 +43,12 @@ FIXTURE = ROOT / "tests/fixtures/athlete_m"
 OBSERVED_AT = "2026-08-06T15:00:00Z"
 
 
+@pytest.fixture(autouse=True)
+def _server_selected_worker_replay_root(monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        "GG_WORKER_REPLAY_DIR", str(tmp_path / "worker-replay"))
+
+
 def _seed(
     tmp_path, order_id="phase4-d2", *, control_value=None, intake_lthr=None,
     intake_age=45,
@@ -110,7 +116,7 @@ def _worker_evidence(tmp_path, state, *, lthr, jti):
     kid = "phase4-test"
     codec = CapabilityCodec(
         {kid: "phase4-readback-test-signing-secret-0001"}, audience=audience)
-    replay_store = ProbeExecutionStore(tmp_path / "worker-replay")
+    replay_store = ProbeExecutionStore(tmp_path / "worker-replay", codec)
     worker = ReadOnlyWorkerService(codec, replay_store, CannedProbeTransport(fixture))
     claims = {
         "order_id": state["order_id"],
@@ -311,14 +317,14 @@ def test_manually_corrected_sealed_review_requires_exact_verified_worker_readbac
     with pytest.raises(FulfillmentStateError, match="does not confirm"):
         record_manual_readback(
             path, pending["generation_revision"], THRESHOLD_ITEM_ID,
-            wrong_evidence, replay_store=wrong_store,
+            wrong_evidence,
         )
     exact_evidence, exact_store = _worker_evidence(
         tmp_path, pending, lthr=155,
         jti="readback-jti-00000000002")
     confirmed = record_manual_readback(
         path, pending["generation_revision"], THRESHOLD_ITEM_ID,
-        exact_evidence, replay_store=exact_store,
+        exact_evidence,
     )
     assert THRESHOLD_ITEM_ID not in confirmed["d2_pending_requirements"]
     evidence = confirmed["d2_resolutions"][THRESHOLD_ITEM_ID]["readback_evidence"]
@@ -364,9 +370,99 @@ def test_forged_verified_inspection_instance_without_worker_record_is_rejected(t
     with pytest.raises(FulfillmentStateError, match="no durable execution record"):
         record_manual_readback(
             path, pending["generation_revision"], THRESHOLD_ITEM_ID, forged,
-            replay_store=ProbeExecutionStore(tmp_path / "worker-replay"),
         )
     assert THRESHOLD_ITEM_ID in load(path)["d2_pending_requirements"]
+
+
+def test_caller_selected_store_record_cannot_clear_readback_or_reach_approval(tmp_path):
+    path, state = _seed(
+        tmp_path, order_id="caller-store-forgery", control_value=155,
+        intake_lthr=155, intake_age=19)
+    state = _seal(path, tmp_path)
+    pending = resolve_d2_item(
+        path, state["generation_revision"], THRESHOLD_ITEM_ID,
+        "manually-corrected", actor="coach")
+
+    now = 1_800_000_000
+    audience = "gg-trainingpeaks-worker"
+    attacker_codec = CapabilityCodec(
+        {"forged-kid": "attacker-controlled-capability-secret-0001"},
+        audience=audience)
+    caller_store = ProbeExecutionStore(
+        tmp_path / "caller-selected-store", attacker_codec)
+    worker = ReadOnlyWorkerService(
+        attacker_codec, caller_store,
+        CannedProbeTransport({
+            "tp_athlete_id": "fixture-athlete-m", "lthr_bpm": 155,
+        }))
+    claims = {
+        "order_id": pending["order_id"],
+        "subject": {
+            "kind": "identity_query", "tp_athlete_id": "fixture-athlete-m",
+        },
+        "action": "inspect", "audience": audience,
+        "iat": now - 1, "exp": now + 300,
+        "jti": "caller-forged-record-000001",
+    }
+    evidence = worker.inspect_account_evidence(
+        "fixture-athlete-m", attacker_codec.issue(claims, kid="forged-kid"),
+        now=now)
+    assert evidence.capability_kid == "forged-kid"
+    assert list((tmp_path / "caller-selected-store").rglob("*.json"))
+
+    with pytest.raises(FulfillmentStateError, match="no durable execution record"):
+        record_manual_readback(
+            path, pending["generation_revision"], THRESHOLD_ITEM_ID, evidence)
+
+    retained = load(path)
+    assert THRESHOLD_ITEM_ID in retained["d2_pending_requirements"]
+    with pytest.raises(FulfillmentStateError, match="readback is still required"):
+        transition(
+            path, APPROVED, "coach",
+            expected_revision=retained["generation_revision"],
+            expected_catalog_digest=retained["review_catalog_digest"],
+            review_decisions=_approval_decisions(retained),
+        )
+    assert load(path)["approval"] is None
+
+
+def test_delete_after_initial_record_verification_fails_before_state_commit(
+    monkeypatch, tmp_path,
+):
+    path, state = _seed(
+        tmp_path, order_id="delete-after-verify", control_value=155,
+        intake_lthr=155, intake_age=19)
+    state = _seal(path, tmp_path)
+    pending = resolve_d2_item(
+        path, state["generation_revision"], THRESHOLD_ITEM_ID,
+        "manually-corrected", actor="coach")
+    evidence, _store = _worker_evidence(
+        tmp_path, pending, lthr=155, jti="delete-after-verify-jti-0001")
+    before = path.read_bytes()
+    original = ProbeExecutionStore._read_and_validate_inspection_evidence
+    calls = 0
+
+    def delete_after_first_verification(store, supplied, record_path):
+        nonlocal calls
+        record = original(store, supplied, record_path)
+        calls += 1
+        if calls == 1:
+            record_path.unlink()
+        return record
+
+    monkeypatch.setattr(
+        ProbeExecutionStore, "_read_and_validate_inspection_evidence",
+        delete_after_first_verification)
+
+    with pytest.raises(FulfillmentStateError, match="no durable execution record"):
+        record_manual_readback(
+            path, pending["generation_revision"], THRESHOLD_ITEM_ID, evidence)
+
+    assert calls == 1
+    assert path.read_bytes() == before
+    retained = load(path)
+    assert THRESHOLD_ITEM_ID in retained["d2_pending_requirements"]
+    assert retained["approval"] is None
 
 
 def test_worker_readback_rejects_evidence_with_mismatched_record_jti(tmp_path):
@@ -386,7 +482,6 @@ def test_worker_readback_rejects_evidence_with_mismatched_record_jti(tmp_path):
         record_manual_readback(
             path, pending["generation_revision"], THRESHOLD_ITEM_ID,
             replace(evidence, capability_jti=other.capability_jti),
-            replay_store=replay_store,
         )
     assert THRESHOLD_ITEM_ID in load(path)["d2_pending_requirements"]
 
@@ -406,7 +501,6 @@ def test_worker_readback_rejects_evidence_with_mismatched_request_digest(tmp_pat
         record_manual_readback(
             path, pending["generation_revision"], THRESHOLD_ITEM_ID,
             replace(evidence, request_digest="0" * 64),
-            replay_store=replay_store,
         )
     assert THRESHOLD_ITEM_ID in load(path)["d2_pending_requirements"]
 
@@ -580,7 +674,7 @@ def test_threshold_resolution_switch_retracts_all_prior_effects_and_validates_te
             jti="first-readback-jti-00000001")
         state = record_manual_readback(
             path, state["generation_revision"], THRESHOLD_ITEM_ID,
-            evidence, replay_store=replay_store,
+            evidence,
         )
     state = resolve_d2_item(
         path, state["generation_revision"], THRESHOLD_ITEM_ID,
@@ -611,7 +705,7 @@ def test_threshold_resolution_switch_retracts_all_prior_effects_and_validates_te
             jti="switch-readback-jti-0000001")
         state = record_manual_readback(
             path, state["generation_revision"], THRESHOLD_ITEM_ID,
-            evidence, replay_store=replay_store,
+            evidence,
         )
     if second_choice == "cannot-resolve":
         with pytest.raises(FulfillmentStateError, match="cannot be resolved"):
