@@ -280,3 +280,47 @@ Implementation commit boundary: `a2cd1de` (`fix(phase4): verify readback and
 approval provenance`). This notes update is a separate documentation boundary.
 No push, external request, remote write, or TrainingPeaks operation was
 performed.
+
+## R3 blocker disposition — 2026-08-09
+
+Review: `docs/reviews/PHASE4_IMPLEMENTATION_CODEX_R3.md`.
+
+The remaining evidence-authenticity blocker was accepted as valid; there are
+no disputes.
+
+| R3 requirement | Disposition | Closing implementation and regression evidence |
+|---|---|---|
+| Server-selected trust root | **Closed** | `record_manual_readback` no longer accepts a `ProbeExecutionStore` from its caller. It opens the authoritative replay root selected by server configuration (`GG_WORKER_REPLAY_DIR`, otherwise the server `DATA_DIR` replay directory), and both the pipeline worker and review worker use the same resolver. A matching record and public evidence created under an attacker-selected root are ignored; readback stays pending and approval remains null. |
+| Verified record-creation boundary | **Closed** | Public `ProbeExecutionStore.run`/`run_record` now accept the presented signed capability, not a claims mapping, and invoke their configured `CapabilityCodec.verify` themselves. The request determines the required `probe`/`inspect` action and must exactly match the signed subject; signature, audience, issuance/expiry, TTL, action, and exact claim-shape checks therefore run before any replay directory, record, or transport operation is created. Inspection provenance and the v2 record's capability context are derived only from the verified token. The unsigned-claims regression proves the operation is not called and no JSON record is written; direct wrong-action and expired-capability attempts also reject. |
+| Evidence/state TOCTOU | **Closed** | Manual readback acquires the fulfilment-state lock, then the authoritative execution-record lock, validates the exact succeeded record, performs the in-memory transition, re-reads the still-locked record, and only then atomically replaces the state file. The injected delete-after-initial-verify regression rejects before `_atomic_write`, leaves the state byte-identical, retains the pending requirement, and keeps approval null. |
+| Honest signed path | **Closed** | A server-issued inspect capability still executes the canned worker transport, creates a verified v2 execution record, yields matching evidence, clears the sealed manual-readback requirement, records the capability kid/jti/digest, and reaches `APPROVED` through the existing end-to-end regression and authenticated review route. |
+
+The v2 replay-record shape deliberately rejects terminal records written by
+the former unsigned-claims API because they lack verified capability
+provenance. The Phase 4 zero-write boundary is unchanged: apply, verify,
+rollback, and mutation execution-grant exchange still refuse before transport.
+
+### R3 verification evidence
+
+- Blocker-focused worker + D2 suite: **56 passed**.
+- Worker, D2, authenticated review, fulfilment-state, and athlete-m Phase 4
+  golden gate: **119 passed**.
+- Complete sandbox suite: **2,558 passed, 87 skipped, 21 warnings, 0 failed**
+  in 40.29 seconds. The four-test increase over the R3 review total is exactly
+  the new unsigned-boundary, action/expiry, caller-root forgery, and TOCTOU
+  coverage.
+- Opt-in production acceptance in an isolated workspace-owned output root:
+  **36 passed, 4 skipped, 4 failed**. As in the R3 review and clean Phase 3
+  baseline, the four failures are only the mandatory PDF presence/structure
+  checks for Gravel Full Gym and Masters in this environment without a usable
+  PDF engine; all non-PDF acceptance assertions passed.
+- `python3 -m compileall -q athletes/scripts delivery tools webhook`,
+  `git diff --check`, and the focused compile checks pass.
+- No golden fixture, expected Phase 4 JSON, workout generator, checked-in ZWO,
+  or ZWO manifest changed.
+
+Commit creation was attempted, but this managed worktree cannot create
+`.git/worktrees/trustworthy-phase4/index.lock` (`Operation not permitted`), so
+the seven scoped implementation, regression, and notes files remain unstaged.
+No push, external request, remote write, or TrainingPeaks operation was
+performed.
