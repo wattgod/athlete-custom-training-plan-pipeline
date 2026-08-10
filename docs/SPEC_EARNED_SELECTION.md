@@ -1,7 +1,7 @@
 # SPEC: Earned Selection — workout quality and selection as verified claims
 
-Status: DRAFT r4 — resolves R1 blockers 1–19, R2 blockers R2-01–R2-14,
-and R3 blockers R3-01–R3-08.
+Status: DRAFT r5 — resolves R1 blockers 1–19, R2 blockers R2-01–R2-14,
+R3 blockers R3-01–R3-08, and R4 blockers R4-01–R4-06.
 The combined disposition map is Appendix 1. All schemas, registries, algorithms,
 and migration data required by this revision are normative content in this file;
 implementation MUST NOT invent or defer a policy choice named here.
@@ -312,7 +312,7 @@ and new series implicitly. Within each group, order load-week sessions by
 previous value. Equality is allowed: a cap-induced plateau is non-regression.
 A decrease emits `SERIES_DOSE_REGRESSION`; an empty/unavailable dose inside a
 prescribed series emits `SERIES_DOSE_UNAVAILABLE`. Both are
-`quality_finding/v1` warnings, never blockers in r4, and are promotable only by a
+`quality_finding/v1` warnings, never blockers in r5, and are promotable only by a
 later reviewed gate-version change.
 
 Progression fixtures include flat, rounded-flat, mixed-direction, one-transition
@@ -364,7 +364,7 @@ discriminants:
 | `PROGRESSIVE_INTERVAL_GENERATOR` | `generate_progressive_interval_blocks` (`athletes/scripts/generate_athlete_package.py:2792-2802`) | Generator/source digest, `threshold` or `vo2max/<geometry>` purpose from returned template ID, final purpose gate. |
 | `PROGRESSIVE_ENDURANCE_GENERATOR` | `generate_progressive_endurance_blocks` (`athletes/scripts/generate_athlete_package.py:2803-2809`) | Generator/source digest and final `endurance` gate. |
 | `STANDARD_BLOCK_GENERATOR` | `create_workout_blocks`, including B-race opener/easy overlays (`athletes/scripts/generate_athlete_package.py:1237-1553,2333-2439,2810-2855`) | Versioned template ID, overlay parameters, source digest, and final gate for its explicit purpose. `FTP_Test` sets `is_assessment: true`; the training template `Anaerobic` does not. |
-| `PRE_PLAN_GENERATOR` | W00 easy/rest emitter (`athletes/scripts/generate_athlete_package.py:1900-1974`) | Exact `pre_plan_easy` or `pre_plan_rest` tuple; the easy variant records the nested standard-block body, while the outer origin remains producer-only. |
+| `PRE_PLAN_GENERATOR` | W00 easy/endurance/strength-prep/rest emitter (`build/trustworthy-phase3:athletes/scripts/generate_athlete_package.py:1800-1977`) | Exact `pre_plan_easy`, `pre_plan_endurance`, `pre_plan_strength_prep`, or `pre_plan_rest` tuple. All three positive-duration variants record the shared nested `create_workout_blocks(..., 'Easy')` body actually emitted; the outer origin remains producer-only. |
 | `REST_SENTINEL_ZWO` | Bespoke one-segment, 60-second 30% Rest ZWO (`athletes/scripts/generate_athlete_package.py:2442-2482`) | Exact rest-sentinel structure/duration target plus truthful rest identity; `design_*` recorded but no Q3/library pin. |
 | `A_RACE_FREERIDE` | Bespoke A-race ZWO (`athletes/scripts/generate_athlete_package.py:2569-2665`) | Pure-free race identity, declared duration, race priority A; dose `NOT_APPLICABLE`. |
 | `B_RACE_FREERIDE` | Bespoke B-race ZWO (`athletes/scripts/generate_athlete_package.py:2024-2082`) | Pure-free race identity, declared duration, race priority B; dose `NOT_APPLICABLE`. |
@@ -418,7 +418,8 @@ Precedence is race event → `RACE`; explicit policy tier → its row; otherwise
 enumerated empty-string case → `NONE`; no match is `UNAVAILABLE`, never guessed.
 Within cycling sessions, the closed `NONE` predicate is: origin
 `REST_SENTINEL_ZWO`, `TRAVEL_SHAKEOUT`, or `ATHLETE_FIXED`; tuple
-`PRE_PLAN_GENERATOR/pre_plan_rest`; normalized session type
+`PRE_PLAN_GENERATOR/pre_plan_rest` or
+`PRE_PLAN_GENERATOR/pre_plan_strength_prep`; normalized session type
 `recovery|easy|shakeout|rest|off|openers`; purpose class `recovery|openers`; or
 purpose class `endurance` with final `duration_s < 5400`. No other session may
 carry `NONE`. `CANONICAL_REST` is non-cycling and therefore carries the
@@ -452,9 +453,10 @@ reference scorer’s complete execution list is at
 The compliance-rules document controls severity and semantics where the
 scorer/skill differ, except stricter recovery-week purity remains CRITICAL. R18
 and R22 are explicitly `DEFERRED` and emit
-`NOT_APPLICABLE` until their named inputs exist. R03 is intentionally changed
-from the current dynamic implementation: `<50% FAIL`, `50–65% PASS`, `>65–75%
-WARNING`, and `>75% FAIL`.
+`NOT_APPLICABLE` until their named inputs exist. R03's E3 target intentionally
+changes the current dynamic implementation to `<50% FAIL`, `50–65% PASS`,
+`>65–75% WARNING`, and `>75% FAIL`; A3.0 retains the current 30% floor and
+load-dependent ceiling through E1/E2.
 
 R26 is adopted as CRITICAL because the pipeline has two independently produced
 values worth reconciling after mutation: candidate weekly reported cycling TSS
@@ -467,56 +469,79 @@ The registry is split into `PRE_GUIDE` and `POST_GUIDE`; R07 and R25 are the onl
 post-guide rules. The exact order is:
 
 1. Finish selection, day-cap fitting, overlays, all duration scaling, and every
-   authored-session mutation. Assign immutable session IDs, producer-only
-   origin/provenance, purpose, role, internal fueling class, and week fields.
-2. Freeze the complete Appendix 7 `FinalPlanCandidate/v1` and compute **D1** as
+   authored-session mutation. Persist the already-authored W00 week into
+   `athlete:plan_dates.yaml`, then run `align_fueling_to_plan` once so
+   `athlete:fueling.yaml` reflects that final calendar. Assign immutable session
+   IDs, producer-only origin/provenance, purpose, role, internal fueling class,
+   and week fields. These existing Phase 3 mutations currently occur after the
+   first guide build (`build/trustworthy-phase3:athletes/scripts/generate_athlete_package.py:3321-3347`);
+   E1 moves them here, before D1.
+2. Copy the selected global certification manifest to the exact revision-local
+   §5.3 snapshot path, canonicalize and digest the snapshot, validate its
+   version vector and ordered promotion set, and construct the candidate's own
+   `manifest_pin`. The snapshot and complete pin exist before any candidate
+   bytes are frozen.
+3. Freeze the complete Appendix 7 `FinalPlanCandidate/v1` and compute **D1** as
    SHA-256 of its canonical JSON bytes. D1 includes every root/plan/week/session/
    segment/provenance field, its sorted four-entry version vector, all config and
-   source digests, and guide *input* digests. It excludes the canonical model,
+   source digests, its manifest pin, and guide *input* digests. It excludes the canonical model,
    emitted guide, report, catalog, apply contract, and seal. No code may mutate
    candidate training content after D1.
-3. Run final-instance dose gates, the final-series warning, and every
+4. Run final-instance dose gates, the final-series warning, and every
    `PRE_GUIDE` Appendix 3 rule against the frozen candidate.
-4. Finalize `canonical_training_model.json` from that same candidate and build
+5. Finalize `canonical_training_model.json` from that same candidate and build
    its PlanIR projections. Finalization is a projection, not a candidate
    mutation.
-5. Generate `training_guide.html` deterministically from the finalized canonical
-   model and D1 guide inputs. The guide consumes but never changes the candidate.
+6. Generate `training_guide.html` exactly once and deterministically from the
+   finalized canonical model and D1 guide inputs. The guide consumes but never
+   changes the candidate.
    Compute **D2** as SHA-256 canonical JSON of exactly
    `{"candidate_sha256":D1,"guide_sha256":SHA256(raw emitted guide bytes),
    "guide_source_digests":<the sorted path→digest map consumed by the builder>}`.
-6. Run R07 and R25 (`POST_GUIDE`) against the emitted guide bytes pinned by D2,
+7. Run R07 and R25 (`POST_GUIDE`) against the emitted guide bytes pinned by D2,
    then run the existing Phase 3 post-render validators. No second content
    mutation or guide generation is permitted.
-7. Create one merged `workout_quality_report.json` containing pre-guide and
+8. Create one merged `workout_quality_report.json` containing pre-guide and
    post-guide results, D1, D2, and post-render results. Perform exactly one state
    merge for this report revision, then exactly one review-catalog refresh.
-8. Assert the report’s ordered session IDs and content digests equal the
+9. Assert the report’s ordered session IDs and content digests equal the
    canonical model’s ordered session IDs and candidate-derived content digests;
    any difference is `VALIDATOR_CRASH`. Build `apply_contract.json` from the
    finalized model and final catalog, persist revision files/bundles, and seal
    with v2. No catalog mutation is permitted after contract build.
 
+E1 implements this reordering. It changes when W00 and fueling are persisted,
+not what is written to any athlete surface: the final W00 ZWOs, final
+`plan_dates.yaml` calendar projection consumed downstream, aligned
+`fueling.yaml`, guide, PDF, bundles, and delivery payloads MUST match the Phase
+3 two-guide flow byte-for-byte under Q0's complete §6 inventory. Exactly one
+guide-builder invocation is permitted. A Q0 difference is a failed E1 release,
+not an allowed consequence of the reorder.
+
 The nine rules with real blocking behavior before this spec—R01–R06, R14, R19,
-and R20—have `blocking_since: pre-existing` and keep that approval-blocking
-behavior in every mode and rollout phase. This preserves the existing
-compliance path, which executes all nine plus the R08/R11 no-op delegations
-(`athletes/scripts/block_compliance.py:373-403`). “Blocking” here retains the
-order-safety behavior: a built plan is delivered as needs-review rather than
-discarded.
+and R20—have `blocking_since: pre-existing`. During E1 and E2 they use Appendix
+3 A3.0's legacy-equivalent verdict functions, not their E3 target algorithms.
+For identical inputs, their ordered nine PASS/FAIL outcomes and derived
+`critical_pass` MUST equal current `block_compliance.validate_plan` at
+`athletes/scripts/block_compliance.py:373-403`; any difference fails the E1
+release predicate. “Blocking” retains the order-safety behavior: a built plan
+is delivered as needs-review rather than discarded.
 
 Every other Appendix 3 rule has `blocking_since: E3`. Through E1/E2, its FAIL,
 WARNING, or unavailable result is a `quality_finding/v1` whose severity exactly
 matches the registry (`critical` or `warning`); it does not enter
-`blocking_issues`. At E3, a `blocking_since: E3` CRITICAL FAIL/UNAVAILABLE enters
-`blocking_issues`, while WARNING results remain findings. Thus E1 adds zero new
-approval blockers and remains audit-only.
+`blocking_issues`. At E3, a `blocking_since: E3` CRITICAL FAIL enters
+`blocking_issues`; WARNING and `UNAVAILABLE` results remain findings unless a
+separate closed non-waivable code applies. Thus E1 adds zero new
+approval blockers and remains audit-only. At E3 the nine pre-existing rows
+atomically dispatch to their `algorithm_since: E3` target algorithms. E2 may
+rebaseline content but MUST NOT silently activate those target verdicts.
 
 A rule crash produces the existing non-waivable `VALIDATOR_CRASH` or
 `POST_RENDER_VALIDATOR_CRASH`, not a pass. Missing required input for an active
-CRITICAL rule produces `<OUTPUT_CODE>_UNAVAILABLE` and is routed according to
-that row’s `blocking_since` and current rollout phase; a WARNING row produces a
-quality finding. `NOT_APPLICABLE` is used only when the registry’s applicability
+CRITICAL rule produces `<OUTPUT_CODE>_UNAVAILABLE` as a quality finding and does
+not satisfy Appendix 2's exact blocker-routing formula; a WARNING row also
+produces a quality finding. `NOT_APPLICABLE` is used only when the registry’s applicability
 is false or its status is explicitly `DEFERRED`.
 
 ### 4.6 Closed non-waivable policy amendment
@@ -524,7 +549,7 @@ is false or its status is explicitly `DEFERRED`.
 This specification normatively amends the fulfilment specification’s closed
 non-waivable set. The pre-earned-selection set and remediation map being amended are verified
 at `build/trustworthy-phase3:webhook/fulfillment_state.py:47-71`. The complete
-set after r4 is:
+set after r5 is:
 
 ```
 APPLY_CONTRACT_INVALID
@@ -858,7 +883,8 @@ is exactly:
 ${DATA_DIR}/deliveries/orders/<safe_order_id>/revisions/r<n>/certification_manifest.json
 ```
 
-It is copied before bundle construction and seal finalization. It is included in
+It is copied and digest-validated before the Appendix 7 candidate freeze, and
+therefore before R21, bundle construction, and seal finalization. It is included in
 the revision’s release artifact inventory as `certification_manifest.json`; it
 is not placed in the customer/review ZIP and is not nested under `artifacts/`.
 
@@ -981,7 +1007,7 @@ them or from them.
 
 PDF, ZIP, and MIME are byte-deterministic requirements, not assumed facts: pin
 PDF metadata/clock/fonts/renderer, normalize input mtimes and ZIP metadata, and
-set MIME boundaries/headers. **No semantic-only exception is approved by r4.**
+set MIME boundaries/headers. **No semantic-only exception is approved by r5.**
 If a surface demonstrably cannot be made byte-deterministic, E1 stops. A named
 exception may be added only by owner-signed spec amendment identifying that one
 surface, the irreducible nondeterministic bytes, the exact semantic comparator,
@@ -1001,10 +1027,13 @@ and accepted evidence. It MUST NOT weaken any other surface silently.
    invalid calibrated-without-promotion; purpose/gate promotion digest/coverage/
    policy tests; exact 600-row purpose coverage and exact version-vector pins.
 4. Q3 and final-series fixtures in §4.1.
-5. One fixture per §4.4 producer origin plus native/standard assessments,
+5. One fixture per §4.4 producer origin, all four W00 variants, plus native/standard assessments,
    producer-registry rejection, complete candidate schema/derivation coverage,
    and the complete reachability sweep.
-6. Complete Appendix 3 row fixtures, including R02 exemptions; R03 block
+6. Complete Appendix 3 row fixtures and A3.0 production/E1–E2 verdict-equivalence
+   goldens for all nine pre-existing rules, including the Sunday/Monday R01 pair,
+   R02 race-overlay/recovery-endpoint cases, R03 40% case, R06 boundaries, and
+   R20 race-on-off-day. Target fixtures include R02 pair/edge boundaries; R03 block
    adjacency and four bands; R11’s state table; R12/R17 tables; R14 grammar;
    R18/R22 NA; R08–R10 integrations; R25 present/absent goldens; active-rule
    unavailable; crash; and R26 race sums.
@@ -1019,9 +1048,11 @@ and accepted evidence. It MUST NOT weaken any other surface silently.
     missing pin, mismatched digest, and unknown version.
 12. The complete §6 surface comparison, exact TP-kind inventory set-equality,
     athlete-m Mode A replay, and null-FTP redaction/no-power-leak checks.
-13. D1 freeze/no-mutation, D2 guide binding, pre/post-guide stage order, single
-    report merge/catalog refresh, session aggregate precedence, and every count
-    equation in Appendix 2.
+13. Pre-D1 revision-manifest snapshot and candidate-pin equality; pre-D1 W00/
+    fueling persistence; D1 freeze/no-mutation; D2 guide binding; exactly one
+    guide build; pre/post-guide stage order; single
+    report merge/catalog refresh, session aggregate precedence, every count
+    equation in Appendix 2, and the identical-row E1/E3 rubric-blocker goldens.
 
 ### 7.2 Rollout
 
@@ -1031,8 +1062,10 @@ and accepted evidence. It MUST NOT weaken any other surface silently.
   scorer, complete hypothesis results, manifest/report, Appendix 3,
   state/catalog/snapshot v3, and seal v2. Every applicable purpose/gate result
   must be observed with none missing and all effective `NOT_ENFORCED`. Only the
-  nine pre-existing rules remain blockers; every new rule is a finding. No
-  content changes and zero new approval blockers. Q0 must pass on every surface.
+  nine pre-existing rules remain blockers through their A3.0 production-
+  equivalent verdict functions; every new or E3-target result is a finding. E1
+  also performs the §4.5 W00/fueling/snapshot reorder and exactly one guide build.
+  No content changes and zero new approval blockers. Q0 must pass on every surface.
 - **E2 — owner dispositions:** fix/re-class/retire/band-adjust the observed
   backlog. Content byte changes are allowed only here, each enumerated and
   rebaselined. The owner signs the complete purpose assignment and gate
@@ -1059,15 +1092,15 @@ only a crash with no usable package follows the loud failed-order path.
 - No per-athlete W′ estimation or safety claim.
 - No LLM judgment in a gate path.
 - No unpromoted training-science authority.
-- No automatic promotion of the final-series warning in r4.
+- No automatic promotion of the final-series warning in r5.
 
 ---
 
-## Appendix 1 — combined R1 + R2 + R3 blocker disposition map
+## Appendix 1 — combined R1 + R2 + R3 + R4 blocker disposition map
 
 ### A1.1 R1 blockers
 
-| R1 | r4 disposition |
+| R1 | r5 disposition |
 |---:|---|
 | 1 | §0.3 retains and accurately scopes existing progression/compliance checks. |
 | 2 | §3 supplies hypothesis/effective semantics and an exact promotion artifact. |
@@ -1091,7 +1124,7 @@ only a crash with no usable package follows the loud failed-order path.
 
 ### A1.2 R2 blockers
 
-| R2 | r4 disposition |
+| R2 | r5 disposition |
 |---|---|
 | R2-01 | §1.1–§1.2: `design_*`, exact 1 Hz ramp, trace duration, empty sentinel, mixed FreeRide, known Rest Day exemption. |
 | R2-02 | §3 and Appendix 2: observed/effective split, hypothesis never enforced, promotion schema, Q3 protocol. |
@@ -1110,7 +1143,7 @@ only a crash with no usable package follows the loud failed-order path.
 
 ### A1.3 R3 blockers
 
-| R3 | r4 disposition |
+| R3 | r5 disposition |
 |---|---|
 | R3-01 | §1.3, §3, Appendix 5, and Appendix 6 publish the complete provisional 600-row purpose assignment, deterministic derivation/overrides, exact initial gate registry, W′bal recurrence/goldens, and pinned version vector. |
 | R3-02 | §4.4 and Appendices 7–8 make origin producer-only, make assessment orthogonal, close `FinalPlanCandidate/v1`, and publish the non-native producer/template registry. |
@@ -1120,6 +1153,17 @@ only a crash with no usable package follows the loud failed-order path.
 | R3-06 | §4.10 and Appendix 2 define session aggregation precedence, named collection counters/equations, and one four-entry version vector. |
 | R3-07 | §6 enumerates and compares all seven apply-contract kinds and requires exact inventory set equality. |
 | R3-08 | §2, §4.5, Appendix 3, and §7 scope effective PASS to Mode B, require complete Mode A observations, preserve nine existing blockers, and keep all new rules findings-only until E3. |
+
+### A1.4 R4 blockers
+
+| R4 | r5 disposition |
+|---|---|
+| R4-01 | §4.4 and Appendix 8 enumerate all four reachable W00 tuples and publish exact endurance/strength-prep purpose, role, assessment, fueling, final body, and reachability contracts. |
+| R4-02 | Appendix 5 adds the native assessment and long-ride booleans; Appendix 7 fixes every authority to the real YAML/key, preserves zero-based variation, and gives `strength_declined` a named E1 producer and false default. |
+| R4-03 | §4.5 creates and pins the revision manifest before D1, defines the two-prefix path namespace and complete guide input set, moves W00/fueling before D1, and permits exactly one post-canonical guide build under Q0 byte neutrality. |
+| R4-04 | §4.5 and A3.0 make E1/E2 verdict-equivalent to current production for all nine pre-existing blockers, retain each separate E3 target as `algorithm_since:E3`, and publish the required differential goldens. |
+| R4-05 | A3.1/A3.6 close R02 pair/edge arithmetic, R04 tuples/efforts, R06's registry boolean, R13's key predicate, and R23's all-adjacent-pairs algorithm/golden. |
+| R4-06 | Appendix 2 adds report-root `rollout_phase`, the required row routing boolean and exact formula, a derivable blocker count, and identical-row E1/E3 goldens. |
 
 ---
 
@@ -1219,6 +1263,8 @@ No extra keys are allowed at any level. Arrays are ordered as stated.
         "main_set_rule": string,
         "main_set_segment_ids": [string, ...]
       },
+      "is_assessment": boolean,
+      "long_ride_registered": boolean,
       "source": {
         "path": string,
         "sha256": sha256,
@@ -1284,6 +1330,7 @@ descendant tree.
   "schema_version": "workout_quality_report/v1",
   "generation_revision": positive integer,
   "generated_at": ISO-8601-UTC string,
+  "rollout_phase": "E1" | "E2" | "E3",
   "canonical_candidate_sha256": sha256,
   "guide_evidence_sha256": sha256,
   "version_vector": {
@@ -1330,6 +1377,7 @@ descendant tree.
         "sport": string,
         "origin": "<one §4.4 discriminant>",
         "is_assessment": boolean,
+        "long_ride_registered": boolean,
         "fueling_class": "HIGH" | "LONG_RIDE" | "RACE" | "NONE" | null,
         "control_metric": "power" | "hr" | "rpe" | "none",
         "control_basis": string,
@@ -1385,7 +1433,8 @@ descendant tree.
       "subject_ids": [string, ...],
       "metric": canonical-JSON object,
       "message": string,
-      "finding_id": string | null
+      "finding_id": string | null,
+      "routed_to_blocking_issues": boolean
     }, exactly 26 entries],
     "plan_series": [{
       "series_identity": string,
@@ -1416,6 +1465,9 @@ Here `verdict` is `PASS|FAIL|NOT_APPLICABLE|UNAVAILABLE` and
 promotion digests lexicographically. The same canonical-order four-entry
 `version_vector` is byte-equal in the manifest, report root, report pin,
 candidate, and both derived records.
+The report `manifest_pin` is a byte-for-byte projection of the frozen
+candidate's `manifest_pin`; it is not reconstructed from the global manifest or
+deployment state after D1.
 
 For each session, aggregate the one `manifest_gate` plus every `final_gates`
 entry with this exact precedence:
@@ -1437,8 +1489,22 @@ counts.pass + counts.fail + counts.pass_with_observed_fail
   + counts.not_applicable + counts.unavailable == counts.sessions
 artifact_counts.quality_findings == count(unique non-null IDs in
   sessions[].quality_finding_ids + rubric[].finding_id + plan_series[].finding_id)
-artifact_counts.rubric_blockers == count(rubric rows routed to blocking_issues)
+rubric[].routed_to_blocking_issues ==
+  (severity == CRITICAL AND result == FAIL AND
+   (blocking_since == pre-existing OR rollout_phase == E3))
+artifact_counts.rubric_blockers ==
+  count(rubric rows where routed_to_blocking_issues == true)
 ```
+
+The routing boolean is required on every rubric row and is recomputed, not
+trusted, by report validation. `rollout_phase` is the phase active for this
+generation revision and is the only phase input to the formula. Golden pair:
+both reports contain an otherwise identical single relevant row
+`{severity:CRITICAL,result:FAIL,blocking_since:E3}`. With root
+`rollout_phase:E1`, its boolean is false and `rubric_blockers=0`; with root
+`rollout_phase:E3`, its boolean is true and `rubric_blockers=1`. A
+`blocking_since:pre-existing` CRITICAL FAIL is true in all three phases. No
+counter may be inferred from deployment environment or mode.
 
 `gate_result_counts.manifest_gates` counts the named one-per-session collection;
 `final_gates` counts the flattened session `final_gates` arrays; `rubric` counts
@@ -1453,12 +1519,59 @@ Report canonical digest excludes no fields.
 
 ## Appendix 3 — normative `rule_registry/v1` and execution matrix
 
-All ACTIVE `PRE_GUIDE` rules run at §4.5 step 3; R07/R25 run at step 6. Every
+All ACTIVE `PRE_GUIDE` rules run at §4.5 step 4; R07/R25 run at step 7. Every
 rule consumes Appendix 7’s frozen candidate, with post-guide rules additionally
 consuming D2. Candidate session fields are the exact fields later serialized to
 canonical model. Common NA: no applicable week/session yields
 `NOT_APPLICABLE`, never PASS. Common unavailable: an ACTIVE rule’s named input
 is missing/malformed. Output code is stable and uppercase.
+
+### A3.0 E1/E2 verdict equivalence and E3 algorithm dispatch
+
+Each `rule_registry/v1` row carries both `legacy_equivalent_algorithm` (nullable),
+`target_algorithm`, and `algorithm_since`. The main A3.6 table publishes the
+target. For R01–R06, R14, R19, and R20,
+`legacy_equivalent_algorithm=A3.0/<rule-id>` and `algorithm_since=E3`; for every
+other row the legacy field is null and `algorithm_since=E1`. E1/E2 writes the
+legacy result for those nine to the closed report; the acceptance harness
+evaluates the target separately without adding a report field. E3 writes the
+target result only.
+
+The nine legacy verdict functions are exactly:
+
+| ID | E1/E2 `legacy_equivalent_algorithm` |
+|---|---|
+| R01 | Iterate each input week independently in its existing day order; reset `prev_was_intensity=false` at every week boundary. A day is intensity by current `_day_is_intensity` (nested session intensity role, else day role, else current `INTENSITY_TYPES` name set). FAIL only for two adjacent entries inside the same week that both classify intensity. |
+| R02 | Exclude weeks whose phase is `racing|taper`, week type is `race|recovery`, or that contain a `role=race` day. If none remain, PASS. Record a week number once when any non-excluded day name is in current `VO2MAX_TYPES`. No VO2 with at most three non-excluded weeks PASS; no VO2 with more than three FAIL. Otherwise compute adjacent numeric week-number gaps and FAIL iff the maximum is greater than 3. Race-day overlays and recovery endpoints therefore retain production exemptions. |
+| R03 | Ignore race-overlay weeks. Collect exact load and recovery `total_tss` only outside `racing|taper`. Missing either collection or load mean zero PASS. Set floor 0.30 and ceiling 0.85 for mean load `<300`, 0.75 for `<400`, 0.70 for `<500`, else 0.65. FAIL iff any recovery/load-mean ratio is below floor or above ceiling. |
+| R04 | Inspect only exact recovery weeks. FAIL iff current `_day_is_intensity(day)` is true and `day.name != 'Openers'`; all other days pass irrespective of purpose tuple or segment geometry. |
+| R05 | Inspect exact load weeks; exempt phase `racing|taper` and race-overlay weeks. Count current intensity days. Required range is `min(2,max_intensity)..max_intensity`; FAIL any out-of-range week. |
+| R06 | Inspect exact load weeks and exempt race-overlay weeks. `min_long=60` minutes iff `target_hours` is truthy and `<7`, else 90. FAIL when no `role=long_ride` day exists or any such day's current nested/fallback duration satisfies `0 < duration < min_long`; a present zero-duration long-role day retains production's PASS behavior. |
+| R14 | PASS iff the current plan root `all_violations` array is empty; otherwise FAIL. Do not reconstruct series identity in E1/E2. |
+| R19 | Set tolerance 15% when `target_hours<6`, else 10%; maximum is `target_hours*(1+tolerance)*60`, and load floor is `target_hours*0.65*60`. Skip recovery and race-overlay weeks. FAIL any remaining week above maximum, or an exact load week below the floor unless `phase=base AND plan_week<=4`. |
+| R20 | For every day, FAIL iff its day token is in `off_days` and role is neither `off` nor `race`. The explicit race-role exemption remains active. |
+
+These functions are verdict-equivalent to the current implementations at
+`athletes/scripts/block_compliance.py:93-269,284-344`; message wording may be
+normalized in the report but cannot affect routing. The differential golden set
+is mandatory:
+
+| Rule | Frozen input | Production/E1–E2 | E3 target |
+|---|---|---|---|
+| R01 | Sunday intensity followed by Monday intensity in the next week | PASS (weekly reset) | FAIL |
+| R02a | Four otherwise trainable weeks, each carrying a race-role overlay and no VO2 name/purpose; target plan edges span more than 16 days | PASS (race-overlay exemption) | FAIL |
+| R02b | W1 VO2 on 2026-01-08, W2 exact recovery, W3 VO2 on 2026-01-25; raw difference 17 days and plan-week difference 2 | PASS | FAIL under exact date difference |
+| R03 | load mean 250 TSS, recovery 100 TSS (40%) | PASS | FAIL |
+| R04 | recovery-week cadence-purpose filler whose role is not intensity | PASS | FAIL |
+| R05 | transition-phase load week with zero intensity and `max_intensity=3` | FAIL | PASS |
+| R06 | 6.5 available hours and one 60-minute long-role ride | PASS; 59 FAIL. At 7.0 hours, 89 FAIL and 90 PASS | FAIL at 60; target boundaries are 90 minutes through 8.0 hours, 120 above 8.0, or 75 for a registered structured long design |
+| R14 | empty `all_violations` but two same-slot candidate assignments with different family keys | PASS | FAIL |
+| R19 | 10 available hours and a 663-minute load week | FAIL (660-minute maximum) | PASS (665-minute target maximum) |
+| R20 | race-role session on an athlete off day | PASS | FAIL |
+
+The harness runs current production and the E1 adapter on the same legacy input
+object and requires exact nine-boolean equality before it checks the separately
+constructed target result.
 
 ### A3.1 Calendar vocabulary and R02/R03 block algorithm
 
@@ -1487,10 +1600,29 @@ cycling_phase in {transition, racing}
 or week_type in {taper, race, medium}
 ```
 
-No “off-season” alias or other implicit exemption exists. `recovery` pauses the
-calendar-day counter but is not itself an exempt endpoint. `testing` is
-trainable and an assessment with VO2-character prescribed setup may count only
-when its purpose contract explicitly contains `vo2max` character.
+No “off-season” alias or other implicit exemption exists. `testing` is trainable
+and an assessment with VO2-character prescribed setup may count only when its
+purpose contract explicitly contains `vo2max` character.
+
+For the E3 R02 target, let `S=(d_1,...,d_n)` be all qualifying VO2 stimulus
+dates after that exemption, strictly sorted and deduplicated by ISO date. A
+qualifying stimulus is a cycling session with purpose class `vo2max`; role or
+title alone does not qualify. Every ordered adjacent pair MUST satisfy
+`(d_(i+1)-d_i).days <= 16`. This is ordinary civil-date subtraction: for
+January 1 and January 17 the value is 16 and PASS; January 1 and January 18 is
+17 and FAIL. Equivalently, only dates strictly between endpoints are
+intervening; the endpoints are exclusive when describing the gap. Recovery
+dates do not subtract or pause elapsed time.
+
+The plan edges are also covered. Let `p_first` be the Monday/first calendar day
+of the first non-exempt exact `week_type=load` week, and `p_last` the Sunday/last
+calendar day of the last exact load week whose cycling phase is not `racing`
+and whose week type is not taper. Require `n>=1`,
+`(d_1-p_first).days <= 16`, and `(p_last-d_n).days <= 16`. A negative edge
+difference is malformed ordering and `UNAVAILABLE`. No applicable load week is
+`NOT_APPLICABLE`; applicable load weeks with no stimulus FAIL. These pair and
+edge predicates are the complete E3 gap algorithm—there is no separate
+“trainable prefix/suffix” interpretation.
 
 For R03, parse the configured `meso_pattern` with the same
 `load_weeks,recovery_weeks` grammar used by calendar recovery marking; its cycle
@@ -1516,6 +1648,49 @@ Both numerator and denominator use the candidate’s `reported_cycling_tss`
 and never `design_tss`. Empty same-block load set → `NOT_APPLICABLE`; missing/non-finite value or
 mean `<=0` → `UNAVAILABLE`. Bands are `<0.50 FAIL`, `0.50..0.65 PASS`,
 `>0.65..0.75 WARNING`, `>0.75 FAIL`, inclusive exactly as written.
+
+For the E3 R04 target, after excluding rest/off sessions, the only ordinary
+cycling tuples allowed in an exact recovery week are:
+
+```
+(purpose.class=endurance, purpose.subtype=endurance/steady, level=1)
+(purpose.class=endurance, purpose.subtype=endurance/steady, level=2)
+(purpose.class=recovery, purpose.subtype=<any registered recovery subtype>, level=1)
+(purpose.class=recovery, purpose.subtype=<any registered recovery subtype>, level=2)
+```
+
+Here level is the registered native/non-native template level; a missing level
+is `UNAVAILABLE`, not an implicit L1. In addition, exactly one session with
+exact purpose tuple `openers/openers/short` is allowed. Define the openers floor
+as `1.10` on `normalize_target_effort`'s neutral axis. This is the minimum live
+native opener effort (`athletes/scripts/new_archetypes.py:1233-1304`), and the
+Phase 3 neutral transform is at
+`build/trustworthy-phase3:athletes/scripts/canonical_training_model.py:119-146`.
+That opener qualifies iff
+it contains at least one `kind=intervals` container with normalized `target.on
+>= 1.10`, every such container has integer `on_seconds <= 45`, and no prescribed
+non-interval segment reaches that floor. An intervals container below the floor
+is not an “individual effort”; an at/above-floor container with missing target
+or `on_seconds` is `UNAVAILABLE`. More than one qualifying opener or any other
+purpose/class/subtype/level tuple FAILS; zero qualifying openers also FAILS.
+Thus “individual efforts” has exactly
+the segment predicate above and never means title words or arbitrary steady
+segments.
+
+For the E3 R06 target, each applicable week passes iff at least one cycling
+session satisfies this exact predicate, where `H` is the week's available
+cycling hours and durations are final minutes:
+
+```
+(role == long_ride AND duration_min >= (90 if H <= 8 else 120))
+OR
+(long_ride_registered == true AND duration_min >= 75)
+```
+
+The first branch does not require registry status; the second does not require
+the runtime role. The comparison boundaries are inclusive. Multiple short
+sessions are never summed, and purpose/title/duration alone cannot synthesize
+the registry boolean.
 
 ### A3.2 R11/R12 strength tables
 
@@ -1639,31 +1814,37 @@ with only “Prioritize sleep (8+ hours)” → FAIL. Initial load/medium/race n
 therefore honestly produce observed findings until their E2 disposition; the
 rule does not invent guidance.
 
+### A3.6 Target rule matrix
+
+The algorithm column below is `target_algorithm`. Per A3.0 its
+`algorithm_since` is `E3` for R01–R06, R14, R19, and R20 and `E1` for every
+other row; this label does not change `blocking_since`.
+
 | ID | Stage | `blocking_since` | Status / severity | Applicability and exact algorithm | Exact frozen/sealed input | NA / unavailable | Output code |
 |---|---|---|---|---|---|---|---|
 | R01 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | All cycling days: no consecutive calendar dates both containing intensity-role sessions, including week boundaries. Athlete-fixed hard sessions count. | candidate `sessions[].{id,date,sport,role,origin}` | <2 intensity dates → NA; missing date/role → unavailable | `R01_BACK_TO_BACK_INTENSITY` |
-| R02 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Apply A3.1’s exact exemption predicate. Across remaining dates, consecutive VO2 stimuli may be at most 16 non-recovery calendar days apart; ≥2 trainable weeks with none fails; recovery weeks pause elapsed count. | candidate session purpose/role/date + copied week type/cycling phase | Exempt plan slice or <2 trainable weeks → NA; missing purpose/date/week type/phase → unavailable | `R02_VO2_GAP` |
+| R02 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Apply A3.1's exact exemption, ordered adjacent-pair date-difference predicate, and both 16-day plan-edge predicates. Date subtraction counts endpoints exclusively; recovery never pauses it. | candidate session purpose/date + copied week type/cycling phase and load-week boundaries | No applicable load week → NA; applicable load weeks with no stimulus → FAIL; missing purpose/date/week type/phase → unavailable | `R02_VO2_GAP` |
 | R03 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL with warning band | Apply A3.1’s same-meso-block adjacency and exact reported-TSS ratio/bands. No volume-specific boundary and no final-session/design TSS substitution. | candidate `weeks[].{week_type,cycling_phase,meso_block_id,reported_cycling_tss}` | Empty adjacent load run → NA; missing/non-finite/≤0 denominator → unavailable | `R03_RECOVERY_TSS_RATIO` |
-| R04 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Recovery weeks contain only rest, plain Endurance L1–L2, and Openers whose individual efforts are ≤30 s. Any tempo, cadence/SFR, threshold, VO2, race-sim, mixed, sustained >30 s, or other type fails. | candidate session purpose, level, segments, week type | No recovery week → NA; missing segment/purpose → unavailable | `R04_RECOVERY_PURITY` |
+| R04 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Apply A3.1's exact four allowed `(class,subtype,level)` tuples plus exactly one `openers/openers/short` session satisfying the normalized 1.10-floor intervals-container predicate with every qualifying `on_seconds<=45`. Any missing/extra opener or other tuple/effort fails. | candidate session purpose, level, typed segments, week type | No recovery week → NA; missing level/segment/purpose → unavailable | `R04_RECOVERY_PURITY` |
 | R05 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Load and uber-load weeks have 2–3 intensity sessions. Transition allows 0–3; training age <1 or ≤3 available cycling days allows 1–3. Recovery, race, and medium weeks are excluded. | candidate roles; training age/off days; week type | No applicable load week → NA; missing role/week type → unavailable | `R05_INTENSITY_COUNT` |
-| R06 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Every non-recovery/non-race week has ≥90 min ride when target hours ≤8, otherwise ≥120 min. A registered structured-endurance long design may satisfy at ≥75 min. | candidate cycling duration/purpose + available hours + week type | No applicable week → NA; missing duration/hours → unavailable | `R06_LONG_RIDE_MISSING` |
+| R06 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Apply A3.1's exact disjunction: a long-role ride ≥90 min when hours ≤8 (8.0 included) or ≥120 above 8, OR any copied `long_ride_registered=true` cycling session ≥75 min. No summing. | candidate cycling duration/role/`long_ride_registered` + available hours + week type | No applicable week → NA; missing duration/hours/boolean → unavailable | `R06_LONG_RIDE_MISSING` |
 | R07 | POST_GUIDE | E3 | ACTIVE / WARNING | Every paid week’s emitted guide has exactly one Monday block note and its registered note type equals candidate week type. | D2 guide bytes + candidate weeks + block-notes digest | No paid weeks → NA; well-formed missing/mismatch → FAIL; malformed guide/config → unavailable | `R07_BLOCK_NOTE` |
 | R08 | PRE_GUIDE | E3 | ACTIVE / CRITICAL | Every cycling session has exactly one §4.4.1 internal class; `NONE` is legal only for the closed enumerated session set. | candidate `sessions[].{sport,origin,session_type,purpose,duration_s,fueling_class}` | No cycling sessions → NA; missing/malformed class → unavailable | `R08_FUEL_TAG_MISSING` |
 | R09 | PRE_GUIDE | E3 | ACTIVE / WARNING | Enforce §4.4.1's exact source-tier projection, including the enumerated empty tier. | candidate `fueling_source_tier` + `fueling_class` | No cycling sessions → NA; missing source/class → unavailable | `R09_INTENSITY_FUEL` |
 | R10 | PRE_GUIDE | E3 | ACTIVE / WARNING | Enforce §4.4.1 scope: RACE only on race simulation/event; LONG_RIDE only on long-ride-role or ≥90-min endurance. | candidate purpose/role/origin/duration/fueling class | Neither class occurs → NA; missing purpose/class → unavailable | `R10_FUEL_SCOPE` |
 | R11 | PRE_GUIDE | E3 | ACTIVE / CRITICAL | Evaluate every paid week through A3.2’s complete weekly-structure/artifact state table and validity check. | candidate week strength prescription/decline + strength artifacts/provenance | Exactly A3.2; malformed or contradictory → unavailable | `R11_STRENGTH_TRACK` |
 | R12 | PRE_GUIDE | E3 | ACTIVE / WARNING | Apply A3.2’s recovery override and complete cycling-phase→strength-phase/intensity/frequency table. | candidate cycling phase, week type, meso block, strength contract + config digest | Declined/no prescribed strength → NA; unknown state → unavailable; known mismatch → FAIL | `R12_STRENGTH_PHASE` |
-| R13 | PRE_GUIDE | E3 | ACTIVE / WARNING | Max/heavy strength cannot share a date with key threshold/VO2/race-sim intervals. Maintenance/deload/bodyweight is exempt. | candidate same-date strength intensity and cycling roles | No max/heavy strength → NA; missing template intensity → unavailable | `R13_STRENGTH_INTERVAL_CONFLICT` |
+| R13 | PRE_GUIDE | E3 | ACTIVE / WARNING | A cycling session is key iff `(role == intensity) AND (purpose.class in {threshold,vo2max,race_sim})`. Max/heavy strength cannot share its date; maintenance/deload/bodyweight is exempt. No other purpose or intensity-role session is key. | candidate same-date strength intensity and cycling `role` + `purpose.class` | No max/heavy strength → NA; missing template intensity/role/purpose → unavailable | `R13_STRENGTH_INTERVAL_CONFLICT` |
 | R14 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Apply A3.3 normalization inside each tracker slot/block; family key and immutable ID stay constant except for the exact Kitchen-Sink equivalence set or a tombstone replacement resolved before series start. | candidate series tracker identity, raw display name, selected immutable ID | <2 assignments → NA; missing tracker/ID → unavailable | `R14_SERIES_COHERENCE` |
 | R15 | PRE_GUIDE | E3 | ACTIVE / WARNING | Across applicable load-week pairs in one series, level delta 0, 1, or 2 passes; decrease or jump >2 fails. | candidate series ID, level, week type | No pair or non-native series → NA; missing level → unavailable | `R15_LEVEL_PROGRESSION` |
 | R16 | PRE_GUIDE | E3 | ACTIVE / WARNING | Each non-race week’s sum of canonical planned session TSS is within ±15% of candidate target cycling TSS. | candidate session `tss` + week target TSS | No target/race week → NA; malformed target → unavailable | `R16_TSS_GUARDRAIL` |
 | R17 | PRE_GUIDE | E3 | ACTIVE / CRITICAL | Apply A3.4’s exact phase/week allowed-set, subtype exclusion, and per-week inclusion algorithm. | candidate purpose/subtype/cycling phase/week type + phase-purpose digest | Only A3.4 NA cases; missing input/registry → unavailable | `R17_PHASE_MISMATCH` |
-| R18 | PRE_GUIDE | E3 | DEFERRED / WARNING | Phase zone-time distribution against registered targets. No filename approximation. | required future per-session zone-duration data | Always `NOT_APPLICABLE` in r4 because required zone data does not exist; never unavailable/pass | `R18_PHASE_DISTRIBUTION` |
+| R18 | PRE_GUIDE | E3 | DEFERRED / WARNING | Phase zone-time distribution against registered targets. No filename approximation. | required future per-session zone-duration data | Always `NOT_APPLICABLE` in r5 because required zone data does not exist; never unavailable/pass | `R18_PHASE_DISTRIBUTION` |
 | R19 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Every load/medium/uber-load week cycling duration ≤ athlete available hours ×1.10 +5 min. Recovery/race are excluded. | candidate final cycling duration + available hours + week type | No applicable week → NA; missing hours/duration → unavailable | `R19_HOURS_EXCEEDED` |
 | R20 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | No generated cycling or strength training occurs on an athlete-declared off day; rest/day-off is allowed. Locked athlete-fixed activity remains visible and triggers review rather than erasure. | candidate sessions/date + preferred off days | No declared off day → NA; invalid day/date → unavailable | `R20_OFF_DAY_VIOLATION` |
-| R21 | PRE_GUIDE | E3 | ACTIVE / CRITICAL | Every native session resolves to the pinned manifest row required by current mode; every non-native tuple resolves exactly in Appendix 8. No display-name matching. | candidate origin/provenance + manifest pin + producer-registry digest | Canonical rest/athlete-fixed use their registered identity contracts; unresolved/mismatched tuple → FAIL; malformed registry/pin → unavailable | `R21_WORKOUT_EXISTS` |
-| R22 | PRE_GUIDE | E3 | DEFERRED / WARNING | Compare total hours and percent time above threshold to previous block; both may not increase simultaneously. | required future previous-block state + zone-duration data | Always `NOT_APPLICABLE` in r4 because both inputs are absent; never unavailable/pass | `R22_DUAL_ESCALATION` |
-| R23 | PRE_GUIDE | E3 | ACTIVE / WARNING | Second applicable load week canonical planned cycling TSS must be ≥ first. No hidden tolerance. | candidate session `tss` grouped by meso load week | <2 load weeks → NA; missing TSS/week type → unavailable | `R23_PROGRESSIVE_OVERLOAD` |
+| R21 | PRE_GUIDE | E3 | ACTIVE / CRITICAL | Every native session resolves to the pinned manifest row required by current mode; every non-native tuple resolves exactly in Appendix 8. No display-name matching. | candidate origin/provenance + candidate's own pre-D1 `manifest_pin` + producer-registry digest | Canonical rest/athlete-fixed use their registered identity contracts; unresolved/mismatched tuple → FAIL; malformed registry/pin → unavailable | `R21_WORKOUT_EXISTS` |
+| R22 | PRE_GUIDE | E3 | DEFERRED / WARNING | Compare total hours and percent time above threshold to previous block; both may not increase simultaneously. | required future previous-block state + zone-duration data | Always `NOT_APPLICABLE` in r5 because both inputs are absent; never unavailable/pass | `R22_DUAL_ESCALATION` |
+| R23 | PRE_GUIDE | E3 | ACTIVE / WARNING | Within each series, sort every applicable exact load week ascending and evaluate every adjacent pair `(w_i,w_(i+1))`; each later week's summed canonical planned cycling TSS MUST be ≥ the prior week's sum. All pairs must pass and there is no hidden tolerance. Golden `[100,120,90]` evaluates `120>=100` PASS then `90>=120` FAIL, so the series FAILS. | candidate session `tss` grouped by series and load week | <2 applicable load weeks in every series → NA; missing TSS/week type/series → unavailable | `R23_PROGRESSIVE_OVERLOAD` |
 | R24 | PRE_GUIDE | E3 | ACTIVE / WARNING | Training age <1 year forbids native levels 5–6; age <2 forbids Uber Load weeks. | candidate training age + final levels + week types | Missing training age → unavailable; no restricted level/week → PASS | `R24_TRAINING_AGE` |
 | R25 | POST_GUIDE | E3 | ACTIVE / WARNING | For every paid week, apply A3.5’s exact normalized closed-marker substring test to its emitted Monday block-note text. | D2 guide bytes + candidate week/note IDs + block-notes digest | No paid weeks → NA; no marker → FAIL; missing/malformed guide/config → unavailable | `R25_READINESS_GUIDANCE` |
 | R26 | PRE_GUIDE | E3 | ACTIVE / CRITICAL | For each paid week, absolute difference between reported cycling TSS and sum of final session canonical planned TSS ≤15. Race week uses min(sum including race, sum excluding race). | candidate week reported TSS + session `tss` and race flag | No paid weeks → NA; missing/non-finite reported total → unavailable | `R26_TSS_INTEGRITY` |
@@ -1904,6 +2085,55 @@ source-body construction is explicit in its structural branches at
 `athletes/scripts/nate_workout_generator.py:1669-1784`; positional inference
 after rendering is forbidden.
 
+The registry also owns two native booleans; neither may be inferred from title,
+rendered content, role, or duration at candidate-build time.
+
+- `is_assessment=true` exactly for all six levels of
+  `lt1-maf--maf-test-protocol`, `testing--ftp-ramp-test`,
+  `testing--20min-ftp-test`, and `testing--cp-test-protocol`—24 rows total.
+  These are precisely the initial assessment/testing contracts. Every other
+  native row is false.
+- `long_ride_registered=true` exactly for all six levels of the three current
+  structured long-design archetypes `endurance--terrain-simulation-z2`
+  (the `NP/IF Target` long-slot design),
+  `endurance--endurance-with-surges`, and
+  `endurance--endurance-blocks`—18 rows total. The non-native
+  `endurance/long` and simple-endurance contracts are enumerated separately in
+  Appendix 8. These names are the live long-slot designs in
+  `athletes/config/workout_selection.yaml:35-37,75-77,111-113`, resolved by
+  `athletes/scripts/workout_mapper.py:97-104`. Every other native row is false. These are the complete initial
+  structured long-design subtypes for R06; broad `endurance/*`, duration, and
+  a runtime long-ride role do not alter the registry boolean.
+
+The 24 true assessment row IDs, enumerated without range shorthand, are:
+
+```
+lt1-maf--maf-test-protocol@L1
+lt1-maf--maf-test-protocol@L2
+lt1-maf--maf-test-protocol@L3
+lt1-maf--maf-test-protocol@L4
+lt1-maf--maf-test-protocol@L5
+lt1-maf--maf-test-protocol@L6
+testing--ftp-ramp-test@L1
+testing--ftp-ramp-test@L2
+testing--ftp-ramp-test@L3
+testing--ftp-ramp-test@L4
+testing--ftp-ramp-test@L5
+testing--ftp-ramp-test@L6
+testing--20min-ftp-test@L1
+testing--20min-ftp-test@L2
+testing--20min-ftp-test@L3
+testing--20min-ftp-test@L4
+testing--20min-ftp-test@L5
+testing--20min-ftp-test@L6
+testing--cp-test-protocol@L1
+testing--cp-test-protocol@L2
+testing--cp-test-protocol@L3
+testing--cp-test-protocol@L4
+testing--cp-test-protocol@L5
+testing--cp-test-protocol@L6
+```
+
 ### A5.2 Explicit overrides
 
 Only the rows below differ from category-class plus system-tag derivation. This
@@ -1950,618 +2180,622 @@ is the complete override set; an implementation may not add a title heuristic.
 | `inscyd--glycolytic-power` | `wprime_drain/anaerobic` | Adopted W′ gate for glycolytic-power intervals. |
 
 The author inspected all six level structures for all 100 archetypes against the
-category and structural-tag result. This table is the complete set whose
-default result was ambiguous or physiologically wrong; no ambiguity remains
-implicit and no additional override is authorized.
+category and structural-tag result. This override list resolves deterministic
+derivation ambiguity only; it is not proof of physiological correctness. In
+particular `ilt--ilt-single-leg`, `sprint--sprint-buildups`, and
+`tempo--tempo-sprints` are expected E2 reclassification candidates. Until the
+owner disposition, their explicit r5 assignments remain hypotheses and MUST
+not be silently changed by an implementation.
 
 ### A5.3 Explicit 600-row assignment
 
-The columns are `row_id | class | subtype | main_set_rule | assignment_status`.
+The columns are `row_id | class | subtype | main_set_rule | is_assessment |
+long_ride_registered | assignment_status`.
 Rows are in Appendix 4 category/slot order, then L1–L6. Repetition is deliberate:
 the manifest is row-addressed and no level may inherit an unstated contract.
 
-| Row ID | Purpose class | Subtype | Main-set rule | Status |
-|---|---|---|---|---|
-| `vo2max--5x3-vo2-classic@L1` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--5x3-vo2-classic@L2` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--5x3-vo2-classic@L3` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--5x3-vo2-classic@L4` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--5x3-vo2-classic@L5` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--5x3-vo2-classic@L6` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--descending-vo2-pyramid@L1` | `vo2max` | `vo2max/pyramid` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--descending-vo2-pyramid@L2` | `vo2max` | `vo2max/pyramid` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--descending-vo2-pyramid@L3` | `vo2max` | `vo2max/pyramid` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--descending-vo2-pyramid@L4` | `vo2max` | `vo2max/pyramid` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--descending-vo2-pyramid@L5` | `vo2max` | `vo2max/pyramid` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--descending-vo2-pyramid@L6` | `vo2max` | `vo2max/pyramid` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--norwegian-4x8@L1` | `vo2max` | `vo2max/long_intervals` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--norwegian-4x8@L2` | `vo2max` | `vo2max/long_intervals` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--norwegian-4x8@L3` | `vo2max` | `vo2max/long_intervals` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--norwegian-4x8@L4` | `vo2max` | `vo2max/long_intervals` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--norwegian-4x8@L5` | `vo2max` | `vo2max/long_intervals` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--norwegian-4x8@L6` | `vo2max` | `vo2max/long_intervals` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-with-loaded-recovery@L1` | `vo2max` | `vo2max/loaded_recovery` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-with-loaded-recovery@L2` | `vo2max` | `vo2max/loaded_recovery` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-with-loaded-recovery@L3` | `vo2max` | `vo2max/loaded_recovery` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-with-loaded-recovery@L4` | `vo2max` | `vo2max/loaded_recovery` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-with-loaded-recovery@L5` | `vo2max` | `vo2max/loaded_recovery` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-with-loaded-recovery@L6` | `vo2max` | `vo2max/loaded_recovery` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-30-30@L1` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-30-30@L2` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-30-30@L3` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-30-30@L4` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-30-30@L5` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-30-30@L6` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-40-20@L1` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-40-20@L2` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-40-20@L3` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-40-20@L4` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-40-20@L5` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-40-20@L6` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-extended@L1` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-extended@L2` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-extended@L3` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-extended@L4` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-extended@L5` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--vo2max-extended@L6` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--ronnestad-30-15@L1` | `vo2max` | `vo2max/30_15` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--ronnestad-30-15@L2` | `vo2max` | `vo2max/30_15` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--ronnestad-30-15@L3` | `vo2max` | `vo2max/30_15` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--ronnestad-30-15@L4` | `vo2max` | `vo2max/30_15` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--ronnestad-30-15@L5` | `vo2max` | `vo2max/30_15` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--ronnestad-30-15@L6` | `vo2max` | `vo2max/30_15` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--ronnestad-40-20@L1` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--ronnestad-40-20@L2` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--ronnestad-40-20@L3` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--ronnestad-40-20@L4` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--ronnestad-40-20@L5` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--ronnestad-40-20@L6` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--float-sets@L1` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--float-sets@L2` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--float-sets@L3` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--float-sets@L4` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--float-sets@L5` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `vo2max--float-sets@L6` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--single-sustained-threshold@L1` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--single-sustained-threshold@L2` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--single-sustained-threshold@L3` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--single-sustained-threshold@L4` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--single-sustained-threshold@L5` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--single-sustained-threshold@L6` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-ramps@L1` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-ramps@L2` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-ramps@L3` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-ramps@L4` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-ramps@L5` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-ramps@L6` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--descending-threshold@L1` | `threshold` | `threshold/descending` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--descending-threshold@L2` | `threshold` | `threshold/descending` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--descending-threshold@L3` | `threshold` | `threshold/descending` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--descending-threshold@L4` | `threshold` | `threshold/descending` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--descending-threshold@L5` | `threshold` | `threshold/descending` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--descending-threshold@L6` | `threshold` | `threshold/descending` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-accumulation@L1` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-accumulation@L2` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-accumulation@L3` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-accumulation@L4` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-accumulation@L5` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-accumulation@L6` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-touch@L1` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-touch@L2` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-touch@L3` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-touch@L4` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-touch@L5` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--threshold-touch@L6` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--criss-cross-intervals@L1` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--criss-cross-intervals@L2` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--criss-cross-intervals@L3` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--criss-cross-intervals@L4` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--criss-cross-intervals@L5` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--criss-cross-intervals@L6` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--tte-extension@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--tte-extension@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--tte-extension@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--tte-extension@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--tte-extension@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--tte-extension@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--bpa-best-possible-average@L1` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--bpa-best-possible-average@L2` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--bpa-best-possible-average@L3` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--bpa-best-possible-average@L4` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--bpa-best-possible-average@L5` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `hypothesis` |
-| `tt-threshold--bpa-best-possible-average@L6` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--attack-repeats@L1` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--attack-repeats@L2` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--attack-repeats@L3` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--attack-repeats@L4` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--attack-repeats@L5` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--attack-repeats@L6` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--sprint-buildups@L1` | `wprime_drain` | `wprime_drain/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--sprint-buildups@L2` | `wprime_drain` | `wprime_drain/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--sprint-buildups@L3` | `wprime_drain` | `wprime_drain/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--sprint-buildups@L4` | `wprime_drain` | `wprime_drain/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--sprint-buildups@L5` | `wprime_drain` | `wprime_drain/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--sprint-buildups@L6` | `wprime_drain` | `wprime_drain/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--peak-and-fade@L1` | `wprime_drain` | `wprime_drain/peak_fade` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--peak-and-fade@L2` | `wprime_drain` | `wprime_drain/peak_fade` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--peak-and-fade@L3` | `wprime_drain` | `wprime_drain/peak_fade` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--peak-and-fade@L4` | `wprime_drain` | `wprime_drain/peak_fade` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--peak-and-fade@L5` | `wprime_drain` | `wprime_drain/peak_fade` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--peak-and-fade@L6` | `wprime_drain` | `wprime_drain/peak_fade` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--ilt-single-leg-training@L1` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--ilt-single-leg-training@L2` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--ilt-single-leg-training@L3` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--ilt-single-leg-training@L4` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--ilt-single-leg-training@L5` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--ilt-single-leg-training@L6` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--stomps@L1` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--stomps@L2` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--stomps@L3` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--stomps@L4` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--stomps@L5` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--stomps@L6` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--burst-intervals@L1` | `wprime_drain` | `wprime_drain/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--burst-intervals@L2` | `wprime_drain` | `wprime_drain/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--burst-intervals@L3` | `wprime_drain` | `wprime_drain/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--burst-intervals@L4` | `wprime_drain` | `wprime_drain/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--burst-intervals@L5` | `wprime_drain` | `wprime_drain/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sprint-neuromuscular--burst-intervals@L6` | `wprime_drain` | `wprime_drain/segments` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--2min-killers@L1` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--2min-killers@L2` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--2min-killers@L3` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--2min-killers@L4` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--2min-killers@L5` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--2min-killers@L6` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--90sec-repeats@L1` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--90sec-repeats@L2` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--90sec-repeats@L3` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--90sec-repeats@L4` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--90sec-repeats@L5` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--90sec-repeats@L6` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--1min-all-out-repeats@L1` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--1min-all-out-repeats@L2` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--1min-all-out-repeats@L3` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--1min-all-out-repeats@L4` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--1min-all-out-repeats@L5` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `anaerobic-capacity--1min-all-out-repeats@L6` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-vo2max@L1` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-vo2max@L2` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-vo2max@L3` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-vo2max@L4` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-vo2max@L5` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-vo2max@L6` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--double-day-simulation@L1` | `mixed` | `mixed/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `durability--double-day-simulation@L2` | `mixed` | `mixed/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `durability--double-day-simulation@L3` | `mixed` | `mixed/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `durability--double-day-simulation@L4` | `mixed` | `mixed/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `durability--double-day-simulation@L5` | `mixed` | `mixed/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `durability--double-day-simulation@L6` | `mixed` | `mixed/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `durability--progressive-fatigue-threshold@L1` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--progressive-fatigue-threshold@L2` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--progressive-fatigue-threshold@L3` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--progressive-fatigue-threshold@L4` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--progressive-fatigue-threshold@L5` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--progressive-fatigue-threshold@L6` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--vo2-bookend@L1` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--vo2-bookend@L2` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--vo2-bookend@L3` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--vo2-bookend@L4` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--vo2-bookend@L5` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--vo2-bookend@L6` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--buffer-workout@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `durability--buffer-workout@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `durability--buffer-workout@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `durability--buffer-workout@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `durability--buffer-workout@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `durability--buffer-workout@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-30-30s@L1` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-30-30s@L2` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-30-30s@L3` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-30-30s@L4` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-30-30s@L5` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-30-30s@L6` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-40-20s@L1` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-40-20s@L2` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-40-20s@L3` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-40-20s@L4` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-40-20s@L5` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-40-20s@L6` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-threshold@L1` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-threshold@L2` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-threshold@L3` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-threshold@L4` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-threshold@L5` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-threshold@L6` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-threshold-repeats@L1` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-threshold-repeats@L2` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-threshold-repeats@L3` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-threshold-repeats@L4` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-threshold-repeats@L5` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tired-threshold-repeats@L6` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--g-spot-into-threshold@L1` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `hypothesis` |
-| `durability--g-spot-into-threshold@L2` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `hypothesis` |
-| `durability--g-spot-into-threshold@L3` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `hypothesis` |
-| `durability--g-spot-into-threshold@L4` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `hypothesis` |
-| `durability--g-spot-into-threshold@L5` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `hypothesis` |
-| `durability--g-spot-into-threshold@L6` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tempo-into-threshold@L1` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tempo-into-threshold@L2` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tempo-into-threshold@L3` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tempo-into-threshold@L4` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tempo-into-threshold@L5` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `hypothesis` |
-| `durability--tempo-into-threshold@L6` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `hypothesis` |
-| `durability--full-simulation-combo@L1` | `race_sim` | `race_sim/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--full-simulation-combo@L2` | `race_sim` | `race_sim/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--full-simulation-combo@L3` | `race_sim` | `race_sim/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--full-simulation-combo@L4` | `race_sim` | `race_sim/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--full-simulation-combo@L5` | `race_sim` | `race_sim/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--full-simulation-combo@L6` | `race_sim` | `race_sim/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--late-race-vo2max@L1` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--late-race-vo2max@L2` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--late-race-vo2max@L3` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--late-race-vo2max@L4` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--late-race-vo2max@L5` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `durability--late-race-vo2max@L6` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--pre-race-openers@L1` | `openers` | `openers/short` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--pre-race-openers@L2` | `openers` | `openers/short` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--pre-race-openers@L3` | `openers` | `openers/short` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--pre-race-openers@L4` | `openers` | `openers/short` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--pre-race-openers@L5` | `openers` | `openers/short` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--pre-race-openers@L6` | `openers` | `openers/short` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--terrain-simulation-z2@L1` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--terrain-simulation-z2@L2` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--terrain-simulation-z2@L3` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--terrain-simulation-z2@L4` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--terrain-simulation-z2@L5` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--terrain-simulation-z2@L6` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--endurance-with-surges@L1` | `mixed` | `mixed/endurance_surges` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--endurance-with-surges@L2` | `mixed` | `mixed/endurance_surges` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--endurance-with-surges@L3` | `mixed` | `mixed/endurance_surges` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--endurance-with-surges@L4` | `mixed` | `mixed/endurance_surges` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--endurance-with-surges@L5` | `mixed` | `mixed/endurance_surges` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--endurance-with-surges@L6` | `mixed` | `mixed/endurance_surges` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--endurance-blocks@L1` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--endurance-blocks@L2` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--endurance-blocks@L3` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--endurance-blocks@L4` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--endurance-blocks@L5` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--endurance-blocks@L6` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--heat-acclimation-protocol@L1` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--heat-acclimation-protocol@L2` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--heat-acclimation-protocol@L3` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--heat-acclimation-protocol@L4` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--heat-acclimation-protocol@L5` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `endurance--heat-acclimation-protocol@L6` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--breakaway-simulation@L1` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--breakaway-simulation@L2` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--breakaway-simulation@L3` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--breakaway-simulation@L4` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--breakaway-simulation@L5` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--breakaway-simulation@L6` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--variable-pace-chaos@L1` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--variable-pace-chaos@L2` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--variable-pace-chaos@L3` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--variable-pace-chaos@L4` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--variable-pace-chaos@L5` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--variable-pace-chaos@L6` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--sector-simulation@L1` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--sector-simulation@L2` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--sector-simulation@L3` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--sector-simulation@L4` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--sector-simulation@L5` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--sector-simulation@L6` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--race-simulation@L1` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--race-simulation@L2` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--race-simulation@L3` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--race-simulation@L4` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--race-simulation@L5` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--race-simulation@L6` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--hard-starts@L1` | `vo2max` | `vo2max/hard_start` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--hard-starts@L2` | `vo2max` | `vo2max/hard_start` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--hard-starts@L3` | `vo2max` | `vo2max/hard_start` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--hard-starts@L4` | `vo2max` | `vo2max/hard_start` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--hard-starts@L5` | `vo2max` | `vo2max/hard_start` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--hard-starts@L6` | `vo2max` | `vo2max/hard_start` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--structured-fartlek@L1` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--structured-fartlek@L2` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--structured-fartlek@L3` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--structured-fartlek@L4` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--structured-fartlek@L5` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--structured-fartlek@L6` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--attacks-and-repeatability@L1` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--attacks-and-repeatability@L2` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--attacks-and-repeatability@L3` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--attacks-and-repeatability@L4` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--attacks-and-repeatability@L5` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--attacks-and-repeatability@L6` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--kitchen-sink-all-systems@L1` | `mixed` | `mixed/kitchen_sink` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--kitchen-sink-all-systems@L2` | `mixed` | `mixed/kitchen_sink` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--kitchen-sink-all-systems@L3` | `mixed` | `mixed/kitchen_sink` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--kitchen-sink-all-systems@L4` | `mixed` | `mixed/kitchen_sink` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--kitchen-sink-all-systems@L5` | `mixed` | `mixed/kitchen_sink` | `SOURCE_BODY` | `hypothesis` |
-| `race-simulation--kitchen-sink-all-systems@L6` | `mixed` | `mixed/kitchen_sink` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-intervals@L1` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-intervals@L2` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-intervals@L3` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-intervals@L4` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-intervals@L5` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-intervals@L6` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-criss-cross@L1` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-criss-cross@L2` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-criss-cross@L3` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-criss-cross@L4` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-criss-cross@L5` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-criss-cross@L6` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-progressive@L1` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-progressive@L2` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-progressive@L3` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-progressive@L4` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-progressive@L5` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `hypothesis` |
-| `g-spot--g-spot-progressive@L6` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `hypothesis` |
-| `lt1-maf--lt1-capped-endurance@L1` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `lt1-maf--lt1-capped-endurance@L2` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `lt1-maf--lt1-capped-endurance@L3` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `lt1-maf--lt1-capped-endurance@L4` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `lt1-maf--lt1-capped-endurance@L5` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `lt1-maf--lt1-capped-endurance@L6` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `lt1-maf--maf-test-protocol@L1` | `assessment` | `assessment/maf` | `ASSESSMENT_BODY` | `hypothesis` |
-| `lt1-maf--maf-test-protocol@L2` | `assessment` | `assessment/maf` | `ASSESSMENT_BODY` | `hypothesis` |
-| `lt1-maf--maf-test-protocol@L3` | `assessment` | `assessment/maf` | `ASSESSMENT_BODY` | `hypothesis` |
-| `lt1-maf--maf-test-protocol@L4` | `assessment` | `assessment/maf` | `ASSESSMENT_BODY` | `hypothesis` |
-| `lt1-maf--maf-test-protocol@L5` | `assessment` | `assessment/maf` | `ASSESSMENT_BODY` | `hypothesis` |
-| `lt1-maf--maf-test-protocol@L6` | `assessment` | `assessment/maf` | `ASSESSMENT_BODY` | `hypothesis` |
-| `critical-power--above-cp-repeats@L1` | `wprime_drain` | `wprime_drain/above_cp` | `SOURCE_BODY` | `hypothesis` |
-| `critical-power--above-cp-repeats@L2` | `wprime_drain` | `wprime_drain/above_cp` | `SOURCE_BODY` | `hypothesis` |
-| `critical-power--above-cp-repeats@L3` | `wprime_drain` | `wprime_drain/above_cp` | `SOURCE_BODY` | `hypothesis` |
-| `critical-power--above-cp-repeats@L4` | `wprime_drain` | `wprime_drain/above_cp` | `SOURCE_BODY` | `hypothesis` |
-| `critical-power--above-cp-repeats@L5` | `wprime_drain` | `wprime_drain/above_cp` | `SOURCE_BODY` | `hypothesis` |
-| `critical-power--above-cp-repeats@L6` | `wprime_drain` | `wprime_drain/above_cp` | `SOURCE_BODY` | `hypothesis` |
-| `critical-power--w-prime-depletion@L1` | `wprime_drain` | `wprime_drain/w_prime` | `SOURCE_BODY` | `hypothesis` |
-| `critical-power--w-prime-depletion@L2` | `wprime_drain` | `wprime_drain/w_prime` | `SOURCE_BODY` | `hypothesis` |
-| `critical-power--w-prime-depletion@L3` | `wprime_drain` | `wprime_drain/w_prime` | `SOURCE_BODY` | `hypothesis` |
-| `critical-power--w-prime-depletion@L4` | `wprime_drain` | `wprime_drain/w_prime` | `SOURCE_BODY` | `hypothesis` |
-| `critical-power--w-prime-depletion@L5` | `wprime_drain` | `wprime_drain/w_prime` | `SOURCE_BODY` | `hypothesis` |
-| `critical-power--w-prime-depletion@L6` | `wprime_drain` | `wprime_drain/w_prime` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-4x8-classic@L1` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-4x8-classic@L2` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-4x8-classic@L3` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-4x8-classic@L4` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-4x8-classic@L5` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-4x8-classic@L6` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-double-am@L1` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-double-am@L2` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-double-am@L3` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-double-am@L4` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-double-am@L5` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-double-am@L6` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-double-pm@L1` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-double-pm@L2` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-double-pm@L3` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-double-pm@L4` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-double-pm@L5` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `norwegian-double--norwegian-double-pm@L6` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `hvli-extended--hvli-extended-z2@L1` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `hvli-extended--hvli-extended-z2@L2` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `hvli-extended--hvli-extended-z2@L3` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `hvli-extended--hvli-extended-z2@L4` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `hvli-extended--hvli-extended-z2@L5` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `hvli-extended--hvli-extended-z2@L6` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `hvli-extended--hvli-terrain-simulation@L1` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `hvli-extended--hvli-terrain-simulation@L2` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `hvli-extended--hvli-terrain-simulation@L3` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `hvli-extended--hvli-terrain-simulation@L4` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `hvli-extended--hvli-terrain-simulation@L5` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `hvli-extended--hvli-terrain-simulation@L6` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `testing--ftp-ramp-test@L1` | `assessment` | `assessment/ramp` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--ftp-ramp-test@L2` | `assessment` | `assessment/ramp` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--ftp-ramp-test@L3` | `assessment` | `assessment/ramp` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--ftp-ramp-test@L4` | `assessment` | `assessment/ramp` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--ftp-ramp-test@L5` | `assessment` | `assessment/ramp` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--ftp-ramp-test@L6` | `assessment` | `assessment/ramp` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--20min-ftp-test@L1` | `assessment` | `assessment/20min` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--20min-ftp-test@L2` | `assessment` | `assessment/20min` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--20min-ftp-test@L3` | `assessment` | `assessment/20min` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--20min-ftp-test@L4` | `assessment` | `assessment/20min` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--20min-ftp-test@L5` | `assessment` | `assessment/20min` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--20min-ftp-test@L6` | `assessment` | `assessment/20min` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--cp-test-protocol@L1` | `assessment` | `assessment/cp` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--cp-test-protocol@L2` | `assessment` | `assessment/cp` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--cp-test-protocol@L3` | `assessment` | `assessment/cp` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--cp-test-protocol@L4` | `assessment` | `assessment/cp` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--cp-test-protocol@L5` | `assessment` | `assessment/cp` | `ASSESSMENT_BODY` | `hypothesis` |
-| `testing--cp-test-protocol@L6` | `assessment` | `assessment/cp` | `ASSESSMENT_BODY` | `hypothesis` |
-| `recovery--active-recovery-spin@L1` | `recovery` | `recovery/recovery` | `SOURCE_BODY` | `hypothesis` |
-| `recovery--active-recovery-spin@L2` | `recovery` | `recovery/recovery` | `SOURCE_BODY` | `hypothesis` |
-| `recovery--active-recovery-spin@L3` | `recovery` | `recovery/recovery` | `SOURCE_BODY` | `hypothesis` |
-| `recovery--active-recovery-spin@L4` | `recovery` | `recovery/recovery` | `SOURCE_BODY` | `hypothesis` |
-| `recovery--active-recovery-spin@L5` | `recovery` | `recovery/recovery` | `SOURCE_BODY` | `hypothesis` |
-| `recovery--active-recovery-spin@L6` | `recovery` | `recovery/recovery` | `SOURCE_BODY` | `hypothesis` |
-| `recovery--rest-day@L1` | `free` | `free/rest` | `NONE` | `hypothesis` |
-| `recovery--rest-day@L2` | `free` | `free/rest` | `NONE` | `hypothesis` |
-| `recovery--rest-day@L3` | `free` | `free/rest` | `NONE` | `hypothesis` |
-| `recovery--rest-day@L4` | `free` | `free/rest` | `NONE` | `hypothesis` |
-| `recovery--rest-day@L5` | `free` | `free/rest` | `NONE` | `hypothesis` |
-| `recovery--rest-day@L6` | `free` | `free/rest` | `NONE` | `hypothesis` |
-| `inscyd--vlamax-reduction@L1` | `endurance` | `endurance/vlamax_reduction` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--vlamax-reduction@L2` | `endurance` | `endurance/vlamax_reduction` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--vlamax-reduction@L3` | `endurance` | `endurance/vlamax_reduction` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--vlamax-reduction@L4` | `endurance` | `endurance/vlamax_reduction` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--vlamax-reduction@L5` | `endurance` | `endurance/vlamax_reduction` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--vlamax-reduction@L6` | `endurance` | `endurance/vlamax_reduction` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--fatmax-development@L1` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--fatmax-development@L2` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--fatmax-development@L3` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--fatmax-development@L4` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--fatmax-development@L5` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--fatmax-development@L6` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--fatmax-vlamax-suppression@L1` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--fatmax-vlamax-suppression@L2` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--fatmax-vlamax-suppression@L3` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--fatmax-vlamax-suppression@L4` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--fatmax-vlamax-suppression@L5` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--fatmax-vlamax-suppression@L6` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--glycolytic-power@L1` | `wprime_drain` | `wprime_drain/anaerobic` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--glycolytic-power@L2` | `wprime_drain` | `wprime_drain/anaerobic` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--glycolytic-power@L3` | `wprime_drain` | `wprime_drain/anaerobic` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--glycolytic-power@L4` | `wprime_drain` | `wprime_drain/anaerobic` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--glycolytic-power@L5` | `wprime_drain` | `wprime_drain/anaerobic` | `SOURCE_BODY` | `hypothesis` |
-| `inscyd--glycolytic-power@L6` | `wprime_drain` | `wprime_drain/anaerobic` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--surge-and-settle@L1` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--surge-and-settle@L2` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--surge-and-settle@L3` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--surge-and-settle@L4` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--surge-and-settle@L5` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--surge-and-settle@L6` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--terrain-microbursts@L1` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--terrain-microbursts@L2` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--terrain-microbursts@L3` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--terrain-microbursts@L4` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--terrain-microbursts@L5` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--terrain-microbursts@L6` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--gravel-grind@L1` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--gravel-grind@L2` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--gravel-grind@L3` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--gravel-grind@L4` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--gravel-grind@L5` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--gravel-grind@L6` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--late-race-surge-protocol@L1` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--late-race-surge-protocol@L2` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--late-race-surge-protocol@L3` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--late-race-surge-protocol@L4` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--late-race-surge-protocol@L5` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--late-race-surge-protocol@L6` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--gravel-race-simulation@L1` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--gravel-race-simulation@L2` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--gravel-race-simulation@L3` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--gravel-race-simulation@L4` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--gravel-race-simulation@L5` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `gravel-specific--gravel-race-simulation@L6` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-muscle-force--5x4-sfr@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-muscle-force--5x4-sfr@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-muscle-force--5x4-sfr@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-muscle-force--5x4-sfr@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-muscle-force--5x4-sfr@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-muscle-force--5x4-sfr@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-muscle-force--sfr-cadence-contrast@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-muscle-force--sfr-cadence-contrast@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-muscle-force--sfr-cadence-contrast@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-muscle-force--sfr-cadence-contrast@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-muscle-force--sfr-cadence-contrast@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-muscle-force--sfr-cadence-contrast@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `over-under--climbing-over-under@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `over-under--climbing-over-under@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `over-under--climbing-over-under@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `over-under--climbing-over-under@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `over-under--climbing-over-under@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `over-under--climbing-over-under@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `over-under--overunder-threshold@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `over-under--overunder-threshold@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `over-under--overunder-threshold@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `over-under--overunder-threshold@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `over-under--overunder-threshold@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `over-under--overunder-threshold@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `mixed-climbing--mixed-climbing@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `mixed-climbing--mixed-climbing@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `mixed-climbing--mixed-climbing@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `mixed-climbing--mixed-climbing@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `mixed-climbing--mixed-climbing@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `mixed-climbing--mixed-climbing@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `mixed-climbing--mixed-climbing-variations@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `mixed-climbing--mixed-climbing-variations@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `mixed-climbing--mixed-climbing-variations@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `mixed-climbing--mixed-climbing-variations@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `mixed-climbing--mixed-climbing-variations@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `mixed-climbing--mixed-climbing-variations@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `cadence-work--high-cadence-intervals@L1` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `cadence-work--high-cadence-intervals@L2` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `cadence-work--high-cadence-intervals@L3` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `cadence-work--high-cadence-intervals@L4` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `cadence-work--high-cadence-intervals@L5` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `cadence-work--high-cadence-intervals@L6` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-30-30-sfr@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-30-30-sfr@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-30-30-sfr@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-30-30-sfr@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-30-30-sfr@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-30-30-sfr@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-vo2-g-spot@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-vo2-g-spot@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-vo2-g-spot@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-vo2-g-spot@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-vo2-g-spot@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-vo2-g-spot@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-endurance-threshold-sprints@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-endurance-threshold-sprints@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-endurance-threshold-sprints@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-endurance-threshold-sprints@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-endurance-threshold-sprints@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `blended--blended-endurance-threshold-sprints@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-accelerations@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-accelerations@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-accelerations@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-accelerations@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-accelerations@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-accelerations@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-sprints@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-sprints@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-sprints@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-sprints@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-sprints@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-sprints@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--3x15-tempo@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--3x15-tempo@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--3x15-tempo@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--3x15-tempo@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--3x15-tempo@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--3x15-tempo@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--bookend-tempo@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--bookend-tempo@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--bookend-tempo@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--bookend-tempo@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--bookend-tempo@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--bookend-tempo@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-lift@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-lift@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-lift@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-lift@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-lift@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tempo-lift@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tired-tempo@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tired-tempo@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tired-tempo@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tired-tempo@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tired-tempo@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `tempo--tired-tempo@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--drain-cleaner@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--drain-cleaner@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--drain-cleaner@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--drain-cleaner@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--drain-cleaner@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--drain-cleaner@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--la-balanguera@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--la-balanguera@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--la-balanguera@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--la-balanguera@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--la-balanguera@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--la-balanguera@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--hyttevask@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--hyttevask@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--hyttevask@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--hyttevask@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--hyttevask@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `kitchen-sink--hyttevask@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-series--thunder-quads@L1` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-series--thunder-quads@L2` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-series--thunder-quads@L3` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-series--thunder-quads@L4` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-series--thunder-quads@L5` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-series--thunder-quads@L6` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-series--blood-pistons@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-series--blood-pistons@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-series--blood-pistons@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-series--blood-pistons@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-series--blood-pistons@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
-| `sfr-series--blood-pistons@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `hypothesis` |
+| Row ID | Purpose class | Subtype | Main-set rule | Assessment | Long-ride registered | Status |
+|---|---|---|---|---|---|---|
+| `vo2max--5x3-vo2-classic@L1` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--5x3-vo2-classic@L2` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--5x3-vo2-classic@L3` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--5x3-vo2-classic@L4` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--5x3-vo2-classic@L5` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--5x3-vo2-classic@L6` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--descending-vo2-pyramid@L1` | `vo2max` | `vo2max/pyramid` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--descending-vo2-pyramid@L2` | `vo2max` | `vo2max/pyramid` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--descending-vo2-pyramid@L3` | `vo2max` | `vo2max/pyramid` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--descending-vo2-pyramid@L4` | `vo2max` | `vo2max/pyramid` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--descending-vo2-pyramid@L5` | `vo2max` | `vo2max/pyramid` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--descending-vo2-pyramid@L6` | `vo2max` | `vo2max/pyramid` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--norwegian-4x8@L1` | `vo2max` | `vo2max/long_intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--norwegian-4x8@L2` | `vo2max` | `vo2max/long_intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--norwegian-4x8@L3` | `vo2max` | `vo2max/long_intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--norwegian-4x8@L4` | `vo2max` | `vo2max/long_intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--norwegian-4x8@L5` | `vo2max` | `vo2max/long_intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--norwegian-4x8@L6` | `vo2max` | `vo2max/long_intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-with-loaded-recovery@L1` | `vo2max` | `vo2max/loaded_recovery` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-with-loaded-recovery@L2` | `vo2max` | `vo2max/loaded_recovery` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-with-loaded-recovery@L3` | `vo2max` | `vo2max/loaded_recovery` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-with-loaded-recovery@L4` | `vo2max` | `vo2max/loaded_recovery` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-with-loaded-recovery@L5` | `vo2max` | `vo2max/loaded_recovery` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-with-loaded-recovery@L6` | `vo2max` | `vo2max/loaded_recovery` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-30-30@L1` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-30-30@L2` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-30-30@L3` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-30-30@L4` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-30-30@L5` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-30-30@L6` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-40-20@L1` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-40-20@L2` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-40-20@L3` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-40-20@L4` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-40-20@L5` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-40-20@L6` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-extended@L1` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-extended@L2` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-extended@L3` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-extended@L4` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-extended@L5` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--vo2max-extended@L6` | `vo2max` | `vo2max/steady` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--ronnestad-30-15@L1` | `vo2max` | `vo2max/30_15` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--ronnestad-30-15@L2` | `vo2max` | `vo2max/30_15` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--ronnestad-30-15@L3` | `vo2max` | `vo2max/30_15` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--ronnestad-30-15@L4` | `vo2max` | `vo2max/30_15` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--ronnestad-30-15@L5` | `vo2max` | `vo2max/30_15` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--ronnestad-30-15@L6` | `vo2max` | `vo2max/30_15` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--ronnestad-40-20@L1` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--ronnestad-40-20@L2` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--ronnestad-40-20@L3` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--ronnestad-40-20@L4` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--ronnestad-40-20@L5` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--ronnestad-40-20@L6` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--float-sets@L1` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--float-sets@L2` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--float-sets@L3` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--float-sets@L4` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--float-sets@L5` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `vo2max--float-sets@L6` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--single-sustained-threshold@L1` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--single-sustained-threshold@L2` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--single-sustained-threshold@L3` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--single-sustained-threshold@L4` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--single-sustained-threshold@L5` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--single-sustained-threshold@L6` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-ramps@L1` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-ramps@L2` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-ramps@L3` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-ramps@L4` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-ramps@L5` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-ramps@L6` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--descending-threshold@L1` | `threshold` | `threshold/descending` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--descending-threshold@L2` | `threshold` | `threshold/descending` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--descending-threshold@L3` | `threshold` | `threshold/descending` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--descending-threshold@L4` | `threshold` | `threshold/descending` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--descending-threshold@L5` | `threshold` | `threshold/descending` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--descending-threshold@L6` | `threshold` | `threshold/descending` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-accumulation@L1` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-accumulation@L2` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-accumulation@L3` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-accumulation@L4` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-accumulation@L5` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-accumulation@L6` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-touch@L1` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-touch@L2` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-touch@L3` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-touch@L4` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-touch@L5` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--threshold-touch@L6` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--criss-cross-intervals@L1` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--criss-cross-intervals@L2` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--criss-cross-intervals@L3` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--criss-cross-intervals@L4` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--criss-cross-intervals@L5` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--criss-cross-intervals@L6` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--tte-extension@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--tte-extension@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--tte-extension@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--tte-extension@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--tte-extension@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--tte-extension@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--bpa-best-possible-average@L1` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--bpa-best-possible-average@L2` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--bpa-best-possible-average@L3` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--bpa-best-possible-average@L4` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--bpa-best-possible-average@L5` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tt-threshold--bpa-best-possible-average@L6` | `threshold` | `threshold/single_effort` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--attack-repeats@L1` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--attack-repeats@L2` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--attack-repeats@L3` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--attack-repeats@L4` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--attack-repeats@L5` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--attack-repeats@L6` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--sprint-buildups@L1` | `wprime_drain` | `wprime_drain/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--sprint-buildups@L2` | `wprime_drain` | `wprime_drain/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--sprint-buildups@L3` | `wprime_drain` | `wprime_drain/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--sprint-buildups@L4` | `wprime_drain` | `wprime_drain/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--sprint-buildups@L5` | `wprime_drain` | `wprime_drain/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--sprint-buildups@L6` | `wprime_drain` | `wprime_drain/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--peak-and-fade@L1` | `wprime_drain` | `wprime_drain/peak_fade` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--peak-and-fade@L2` | `wprime_drain` | `wprime_drain/peak_fade` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--peak-and-fade@L3` | `wprime_drain` | `wprime_drain/peak_fade` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--peak-and-fade@L4` | `wprime_drain` | `wprime_drain/peak_fade` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--peak-and-fade@L5` | `wprime_drain` | `wprime_drain/peak_fade` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--peak-and-fade@L6` | `wprime_drain` | `wprime_drain/peak_fade` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--ilt-single-leg-training@L1` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--ilt-single-leg-training@L2` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--ilt-single-leg-training@L3` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--ilt-single-leg-training@L4` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--ilt-single-leg-training@L5` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--ilt-single-leg-training@L6` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--stomps@L1` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--stomps@L2` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--stomps@L3` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--stomps@L4` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--stomps@L5` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--stomps@L6` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--burst-intervals@L1` | `wprime_drain` | `wprime_drain/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--burst-intervals@L2` | `wprime_drain` | `wprime_drain/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--burst-intervals@L3` | `wprime_drain` | `wprime_drain/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--burst-intervals@L4` | `wprime_drain` | `wprime_drain/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--burst-intervals@L5` | `wprime_drain` | `wprime_drain/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sprint-neuromuscular--burst-intervals@L6` | `wprime_drain` | `wprime_drain/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--2min-killers@L1` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--2min-killers@L2` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--2min-killers@L3` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--2min-killers@L4` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--2min-killers@L5` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--2min-killers@L6` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--90sec-repeats@L1` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--90sec-repeats@L2` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--90sec-repeats@L3` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--90sec-repeats@L4` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--90sec-repeats@L5` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--90sec-repeats@L6` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--1min-all-out-repeats@L1` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--1min-all-out-repeats@L2` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--1min-all-out-repeats@L3` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--1min-all-out-repeats@L4` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--1min-all-out-repeats@L5` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `anaerobic-capacity--1min-all-out-repeats@L6` | `wprime_drain` | `wprime_drain/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-vo2max@L1` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-vo2max@L2` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-vo2max@L3` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-vo2max@L4` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-vo2max@L5` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-vo2max@L6` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--double-day-simulation@L1` | `mixed` | `mixed/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--double-day-simulation@L2` | `mixed` | `mixed/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--double-day-simulation@L3` | `mixed` | `mixed/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--double-day-simulation@L4` | `mixed` | `mixed/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--double-day-simulation@L5` | `mixed` | `mixed/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--double-day-simulation@L6` | `mixed` | `mixed/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--progressive-fatigue-threshold@L1` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--progressive-fatigue-threshold@L2` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--progressive-fatigue-threshold@L3` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--progressive-fatigue-threshold@L4` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--progressive-fatigue-threshold@L5` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--progressive-fatigue-threshold@L6` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--vo2-bookend@L1` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--vo2-bookend@L2` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--vo2-bookend@L3` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--vo2-bookend@L4` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--vo2-bookend@L5` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--vo2-bookend@L6` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--buffer-workout@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--buffer-workout@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--buffer-workout@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--buffer-workout@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--buffer-workout@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--buffer-workout@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-30-30s@L1` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-30-30s@L2` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-30-30s@L3` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-30-30s@L4` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-30-30s@L5` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-30-30s@L6` | `vo2max` | `vo2max/30_30` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-40-20s@L1` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-40-20s@L2` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-40-20s@L3` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-40-20s@L4` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-40-20s@L5` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-40-20s@L6` | `vo2max` | `vo2max/40_20` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-threshold@L1` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-threshold@L2` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-threshold@L3` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-threshold@L4` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-threshold@L5` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-threshold@L6` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-threshold-repeats@L1` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-threshold-repeats@L2` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-threshold-repeats@L3` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-threshold-repeats@L4` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-threshold-repeats@L5` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tired-threshold-repeats@L6` | `threshold` | `threshold/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--g-spot-into-threshold@L1` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--g-spot-into-threshold@L2` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--g-spot-into-threshold@L3` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--g-spot-into-threshold@L4` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--g-spot-into-threshold@L5` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--g-spot-into-threshold@L6` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tempo-into-threshold@L1` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tempo-into-threshold@L2` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tempo-into-threshold@L3` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tempo-into-threshold@L4` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tempo-into-threshold@L5` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--tempo-into-threshold@L6` | `threshold` | `threshold/blended` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--full-simulation-combo@L1` | `race_sim` | `race_sim/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--full-simulation-combo@L2` | `race_sim` | `race_sim/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--full-simulation-combo@L3` | `race_sim` | `race_sim/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--full-simulation-combo@L4` | `race_sim` | `race_sim/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--full-simulation-combo@L5` | `race_sim` | `race_sim/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--full-simulation-combo@L6` | `race_sim` | `race_sim/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--late-race-vo2max@L1` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--late-race-vo2max@L2` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--late-race-vo2max@L3` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--late-race-vo2max@L4` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--late-race-vo2max@L5` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `durability--late-race-vo2max@L6` | `vo2max` | `vo2max/durability` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `endurance--pre-race-openers@L1` | `openers` | `openers/short` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `endurance--pre-race-openers@L2` | `openers` | `openers/short` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `endurance--pre-race-openers@L3` | `openers` | `openers/short` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `endurance--pre-race-openers@L4` | `openers` | `openers/short` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `endurance--pre-race-openers@L5` | `openers` | `openers/short` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `endurance--pre-race-openers@L6` | `openers` | `openers/short` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `endurance--terrain-simulation-z2@L1` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--terrain-simulation-z2@L2` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--terrain-simulation-z2@L3` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--terrain-simulation-z2@L4` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--terrain-simulation-z2@L5` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--terrain-simulation-z2@L6` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--endurance-with-surges@L1` | `mixed` | `mixed/endurance_surges` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--endurance-with-surges@L2` | `mixed` | `mixed/endurance_surges` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--endurance-with-surges@L3` | `mixed` | `mixed/endurance_surges` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--endurance-with-surges@L4` | `mixed` | `mixed/endurance_surges` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--endurance-with-surges@L5` | `mixed` | `mixed/endurance_surges` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--endurance-with-surges@L6` | `mixed` | `mixed/endurance_surges` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--endurance-blocks@L1` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--endurance-blocks@L2` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--endurance-blocks@L3` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--endurance-blocks@L4` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--endurance-blocks@L5` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--endurance-blocks@L6` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `true` | `hypothesis` |
+| `endurance--heat-acclimation-protocol@L1` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `endurance--heat-acclimation-protocol@L2` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `endurance--heat-acclimation-protocol@L3` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `endurance--heat-acclimation-protocol@L4` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `endurance--heat-acclimation-protocol@L5` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `endurance--heat-acclimation-protocol@L6` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--breakaway-simulation@L1` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--breakaway-simulation@L2` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--breakaway-simulation@L3` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--breakaway-simulation@L4` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--breakaway-simulation@L5` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--breakaway-simulation@L6` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--variable-pace-chaos@L1` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--variable-pace-chaos@L2` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--variable-pace-chaos@L3` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--variable-pace-chaos@L4` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--variable-pace-chaos@L5` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--variable-pace-chaos@L6` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--sector-simulation@L1` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--sector-simulation@L2` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--sector-simulation@L3` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--sector-simulation@L4` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--sector-simulation@L5` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--sector-simulation@L6` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--race-simulation@L1` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--race-simulation@L2` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--race-simulation@L3` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--race-simulation@L4` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--race-simulation@L5` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--race-simulation@L6` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--hard-starts@L1` | `vo2max` | `vo2max/hard_start` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--hard-starts@L2` | `vo2max` | `vo2max/hard_start` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--hard-starts@L3` | `vo2max` | `vo2max/hard_start` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--hard-starts@L4` | `vo2max` | `vo2max/hard_start` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--hard-starts@L5` | `vo2max` | `vo2max/hard_start` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--hard-starts@L6` | `vo2max` | `vo2max/hard_start` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--structured-fartlek@L1` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--structured-fartlek@L2` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--structured-fartlek@L3` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--structured-fartlek@L4` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--structured-fartlek@L5` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--structured-fartlek@L6` | `race_sim` | `race_sim/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--attacks-and-repeatability@L1` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--attacks-and-repeatability@L2` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--attacks-and-repeatability@L3` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--attacks-and-repeatability@L4` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--attacks-and-repeatability@L5` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--attacks-and-repeatability@L6` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--kitchen-sink-all-systems@L1` | `mixed` | `mixed/kitchen_sink` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--kitchen-sink-all-systems@L2` | `mixed` | `mixed/kitchen_sink` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--kitchen-sink-all-systems@L3` | `mixed` | `mixed/kitchen_sink` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--kitchen-sink-all-systems@L4` | `mixed` | `mixed/kitchen_sink` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--kitchen-sink-all-systems@L5` | `mixed` | `mixed/kitchen_sink` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `race-simulation--kitchen-sink-all-systems@L6` | `mixed` | `mixed/kitchen_sink` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-intervals@L1` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-intervals@L2` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-intervals@L3` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-intervals@L4` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-intervals@L5` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-intervals@L6` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-criss-cross@L1` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-criss-cross@L2` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-criss-cross@L3` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-criss-cross@L4` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-criss-cross@L5` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-criss-cross@L6` | `wprime_drain` | `wprime_drain/over_under` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-progressive@L1` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-progressive@L2` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-progressive@L3` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-progressive@L4` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-progressive@L5` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `g-spot--g-spot-progressive@L6` | `threshold` | `threshold/ramp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `lt1-maf--lt1-capped-endurance@L1` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `lt1-maf--lt1-capped-endurance@L2` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `lt1-maf--lt1-capped-endurance@L3` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `lt1-maf--lt1-capped-endurance@L4` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `lt1-maf--lt1-capped-endurance@L5` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `lt1-maf--lt1-capped-endurance@L6` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `lt1-maf--maf-test-protocol@L1` | `assessment` | `assessment/maf` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `lt1-maf--maf-test-protocol@L2` | `assessment` | `assessment/maf` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `lt1-maf--maf-test-protocol@L3` | `assessment` | `assessment/maf` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `lt1-maf--maf-test-protocol@L4` | `assessment` | `assessment/maf` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `lt1-maf--maf-test-protocol@L5` | `assessment` | `assessment/maf` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `lt1-maf--maf-test-protocol@L6` | `assessment` | `assessment/maf` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `critical-power--above-cp-repeats@L1` | `wprime_drain` | `wprime_drain/above_cp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `critical-power--above-cp-repeats@L2` | `wprime_drain` | `wprime_drain/above_cp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `critical-power--above-cp-repeats@L3` | `wprime_drain` | `wprime_drain/above_cp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `critical-power--above-cp-repeats@L4` | `wprime_drain` | `wprime_drain/above_cp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `critical-power--above-cp-repeats@L5` | `wprime_drain` | `wprime_drain/above_cp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `critical-power--above-cp-repeats@L6` | `wprime_drain` | `wprime_drain/above_cp` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `critical-power--w-prime-depletion@L1` | `wprime_drain` | `wprime_drain/w_prime` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `critical-power--w-prime-depletion@L2` | `wprime_drain` | `wprime_drain/w_prime` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `critical-power--w-prime-depletion@L3` | `wprime_drain` | `wprime_drain/w_prime` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `critical-power--w-prime-depletion@L4` | `wprime_drain` | `wprime_drain/w_prime` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `critical-power--w-prime-depletion@L5` | `wprime_drain` | `wprime_drain/w_prime` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `critical-power--w-prime-depletion@L6` | `wprime_drain` | `wprime_drain/w_prime` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-4x8-classic@L1` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-4x8-classic@L2` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-4x8-classic@L3` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-4x8-classic@L4` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-4x8-classic@L5` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-4x8-classic@L6` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-double-am@L1` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-double-am@L2` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-double-am@L3` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-double-am@L4` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-double-am@L5` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-double-am@L6` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-double-pm@L1` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-double-pm@L2` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-double-pm@L3` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-double-pm@L4` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-double-pm@L5` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `norwegian-double--norwegian-double-pm@L6` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `hvli-extended--hvli-extended-z2@L1` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `hvli-extended--hvli-extended-z2@L2` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `hvli-extended--hvli-extended-z2@L3` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `hvli-extended--hvli-extended-z2@L4` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `hvli-extended--hvli-extended-z2@L5` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `hvli-extended--hvli-extended-z2@L6` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `hvli-extended--hvli-terrain-simulation@L1` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `hvli-extended--hvli-terrain-simulation@L2` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `hvli-extended--hvli-terrain-simulation@L3` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `hvli-extended--hvli-terrain-simulation@L4` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `hvli-extended--hvli-terrain-simulation@L5` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `hvli-extended--hvli-terrain-simulation@L6` | `endurance` | `endurance/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `testing--ftp-ramp-test@L1` | `assessment` | `assessment/ramp` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--ftp-ramp-test@L2` | `assessment` | `assessment/ramp` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--ftp-ramp-test@L3` | `assessment` | `assessment/ramp` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--ftp-ramp-test@L4` | `assessment` | `assessment/ramp` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--ftp-ramp-test@L5` | `assessment` | `assessment/ramp` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--ftp-ramp-test@L6` | `assessment` | `assessment/ramp` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--20min-ftp-test@L1` | `assessment` | `assessment/20min` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--20min-ftp-test@L2` | `assessment` | `assessment/20min` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--20min-ftp-test@L3` | `assessment` | `assessment/20min` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--20min-ftp-test@L4` | `assessment` | `assessment/20min` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--20min-ftp-test@L5` | `assessment` | `assessment/20min` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--20min-ftp-test@L6` | `assessment` | `assessment/20min` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--cp-test-protocol@L1` | `assessment` | `assessment/cp` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--cp-test-protocol@L2` | `assessment` | `assessment/cp` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--cp-test-protocol@L3` | `assessment` | `assessment/cp` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--cp-test-protocol@L4` | `assessment` | `assessment/cp` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--cp-test-protocol@L5` | `assessment` | `assessment/cp` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `testing--cp-test-protocol@L6` | `assessment` | `assessment/cp` | `ASSESSMENT_BODY` | `true` | `false` | `hypothesis` |
+| `recovery--active-recovery-spin@L1` | `recovery` | `recovery/recovery` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `recovery--active-recovery-spin@L2` | `recovery` | `recovery/recovery` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `recovery--active-recovery-spin@L3` | `recovery` | `recovery/recovery` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `recovery--active-recovery-spin@L4` | `recovery` | `recovery/recovery` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `recovery--active-recovery-spin@L5` | `recovery` | `recovery/recovery` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `recovery--active-recovery-spin@L6` | `recovery` | `recovery/recovery` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `recovery--rest-day@L1` | `free` | `free/rest` | `NONE` | `false` | `false` | `hypothesis` |
+| `recovery--rest-day@L2` | `free` | `free/rest` | `NONE` | `false` | `false` | `hypothesis` |
+| `recovery--rest-day@L3` | `free` | `free/rest` | `NONE` | `false` | `false` | `hypothesis` |
+| `recovery--rest-day@L4` | `free` | `free/rest` | `NONE` | `false` | `false` | `hypothesis` |
+| `recovery--rest-day@L5` | `free` | `free/rest` | `NONE` | `false` | `false` | `hypothesis` |
+| `recovery--rest-day@L6` | `free` | `free/rest` | `NONE` | `false` | `false` | `hypothesis` |
+| `inscyd--vlamax-reduction@L1` | `endurance` | `endurance/vlamax_reduction` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--vlamax-reduction@L2` | `endurance` | `endurance/vlamax_reduction` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--vlamax-reduction@L3` | `endurance` | `endurance/vlamax_reduction` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--vlamax-reduction@L4` | `endurance` | `endurance/vlamax_reduction` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--vlamax-reduction@L5` | `endurance` | `endurance/vlamax_reduction` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--vlamax-reduction@L6` | `endurance` | `endurance/vlamax_reduction` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--fatmax-development@L1` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--fatmax-development@L2` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--fatmax-development@L3` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--fatmax-development@L4` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--fatmax-development@L5` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--fatmax-development@L6` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--fatmax-vlamax-suppression@L1` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--fatmax-vlamax-suppression@L2` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--fatmax-vlamax-suppression@L3` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--fatmax-vlamax-suppression@L4` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--fatmax-vlamax-suppression@L5` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--fatmax-vlamax-suppression@L6` | `endurance` | `endurance/fatmax` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--glycolytic-power@L1` | `wprime_drain` | `wprime_drain/anaerobic` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--glycolytic-power@L2` | `wprime_drain` | `wprime_drain/anaerobic` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--glycolytic-power@L3` | `wprime_drain` | `wprime_drain/anaerobic` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--glycolytic-power@L4` | `wprime_drain` | `wprime_drain/anaerobic` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--glycolytic-power@L5` | `wprime_drain` | `wprime_drain/anaerobic` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `inscyd--glycolytic-power@L6` | `wprime_drain` | `wprime_drain/anaerobic` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--surge-and-settle@L1` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--surge-and-settle@L2` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--surge-and-settle@L3` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--surge-and-settle@L4` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--surge-and-settle@L5` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--surge-and-settle@L6` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--terrain-microbursts@L1` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--terrain-microbursts@L2` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--terrain-microbursts@L3` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--terrain-microbursts@L4` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--terrain-microbursts@L5` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--terrain-microbursts@L6` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--gravel-grind@L1` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--gravel-grind@L2` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--gravel-grind@L3` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--gravel-grind@L4` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--gravel-grind@L5` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--gravel-grind@L6` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--late-race-surge-protocol@L1` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--late-race-surge-protocol@L2` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--late-race-surge-protocol@L3` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--late-race-surge-protocol@L4` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--late-race-surge-protocol@L5` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--late-race-surge-protocol@L6` | `race_sim` | `race_sim/category_default` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--gravel-race-simulation@L1` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--gravel-race-simulation@L2` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--gravel-race-simulation@L3` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--gravel-race-simulation@L4` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--gravel-race-simulation@L5` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `gravel-specific--gravel-race-simulation@L6` | `race_sim` | `race_sim/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-muscle-force--5x4-sfr@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-muscle-force--5x4-sfr@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-muscle-force--5x4-sfr@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-muscle-force--5x4-sfr@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-muscle-force--5x4-sfr@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-muscle-force--5x4-sfr@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-muscle-force--sfr-cadence-contrast@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-muscle-force--sfr-cadence-contrast@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-muscle-force--sfr-cadence-contrast@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-muscle-force--sfr-cadence-contrast@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-muscle-force--sfr-cadence-contrast@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-muscle-force--sfr-cadence-contrast@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `over-under--climbing-over-under@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `over-under--climbing-over-under@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `over-under--climbing-over-under@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `over-under--climbing-over-under@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `over-under--climbing-over-under@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `over-under--climbing-over-under@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `over-under--overunder-threshold@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `over-under--overunder-threshold@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `over-under--overunder-threshold@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `over-under--overunder-threshold@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `over-under--overunder-threshold@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `over-under--overunder-threshold@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `mixed-climbing--mixed-climbing@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `mixed-climbing--mixed-climbing@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `mixed-climbing--mixed-climbing@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `mixed-climbing--mixed-climbing@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `mixed-climbing--mixed-climbing@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `mixed-climbing--mixed-climbing@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `mixed-climbing--mixed-climbing-variations@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `mixed-climbing--mixed-climbing-variations@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `mixed-climbing--mixed-climbing-variations@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `mixed-climbing--mixed-climbing-variations@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `mixed-climbing--mixed-climbing-variations@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `mixed-climbing--mixed-climbing-variations@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `cadence-work--high-cadence-intervals@L1` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `cadence-work--high-cadence-intervals@L2` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `cadence-work--high-cadence-intervals@L3` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `cadence-work--high-cadence-intervals@L4` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `cadence-work--high-cadence-intervals@L5` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `cadence-work--high-cadence-intervals@L6` | `endurance` | `endurance/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-30-30-sfr@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-30-30-sfr@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-30-30-sfr@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-30-30-sfr@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-30-30-sfr@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-30-30-sfr@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-vo2-g-spot@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-vo2-g-spot@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-vo2-g-spot@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-vo2-g-spot@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-vo2-g-spot@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-vo2-g-spot@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-endurance-threshold-sprints@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-endurance-threshold-sprints@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-endurance-threshold-sprints@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-endurance-threshold-sprints@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-endurance-threshold-sprints@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `blended--blended-endurance-threshold-sprints@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-accelerations@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-accelerations@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-accelerations@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-accelerations@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-accelerations@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-accelerations@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-sprints@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-sprints@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-sprints@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-sprints@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-sprints@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-sprints@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--3x15-tempo@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--3x15-tempo@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--3x15-tempo@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--3x15-tempo@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--3x15-tempo@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--3x15-tempo@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--bookend-tempo@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--bookend-tempo@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--bookend-tempo@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--bookend-tempo@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--bookend-tempo@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--bookend-tempo@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-lift@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-lift@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-lift@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-lift@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-lift@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tempo-lift@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tired-tempo@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tired-tempo@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tired-tempo@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tired-tempo@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tired-tempo@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `tempo--tired-tempo@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--drain-cleaner@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--drain-cleaner@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--drain-cleaner@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--drain-cleaner@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--drain-cleaner@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--drain-cleaner@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--la-balanguera@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--la-balanguera@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--la-balanguera@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--la-balanguera@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--la-balanguera@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--la-balanguera@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--hyttevask@L1` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--hyttevask@L2` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--hyttevask@L3` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--hyttevask@L4` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--hyttevask@L5` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `kitchen-sink--hyttevask@L6` | `mixed` | `mixed/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-series--thunder-quads@L1` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-series--thunder-quads@L2` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-series--thunder-quads@L3` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-series--thunder-quads@L4` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-series--thunder-quads@L5` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-series--thunder-quads@L6` | `threshold` | `threshold/intervals` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-series--blood-pistons@L1` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-series--blood-pistons@L2` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-series--blood-pistons@L3` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-series--blood-pistons@L4` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-series--blood-pistons@L5` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
+| `sfr-series--blood-pistons@L6` | `threshold` | `threshold/segments` | `SOURCE_BODY` | `false` | `false` | `hypothesis` |
 
 ## Appendix 6 — complete initial `quality_gates/v1`
 
@@ -2769,6 +3003,18 @@ SHA-256. Nullable fields are present with `null`; omission is invalid.
     "scorer_version": "earned_selection_scorer/v1",
     "rule_registry_version": "rule_registry/v1"
   },
+  "manifest_pin": {
+    "snapshot_path": "certification_manifest.json",
+    "snapshot_digest": sha256,
+    "manifest_version": "certification_manifest/v1",
+    "version_vector": {
+      "purpose_registry_version": "purpose_registry/v1",
+      "gate_registry_version": "quality_gates/v1",
+      "scorer_version": "earned_selection_scorer/v1",
+      "rule_registry_version": "rule_registry/v1"
+    },
+    "promotion_digests": [sha256, ...]
+  },
   "athlete": {
     "athlete_id": string,
     "training_age_years": non-negative number | null,
@@ -2807,10 +3053,11 @@ SHA-256. Nullable fields are present with `null`; omission is invalid.
     "weekly_structure": sha256,
     "block_notes": sha256,
     "strength_periodization": sha256,
-    "tss_guardrails": sha256
+    "tss_guardrails": sha256,
+    "rollout": sha256
   },
   "guide_inputs": [
-    {"path": repo-relative string, "sha256": sha256}, ...
+    {"path": "repo:<path>" | "athlete:<path>", "sha256": sha256}, ...
   ],
   "weeks": [
     {
@@ -2849,6 +3096,7 @@ SHA-256. Nullable fields are present with `null`; omission is invalid.
       "role": "intensity" | "long_ride" | "filler" | "off" | "strength" | "race" | "travel" | "athlete_fixed" | null,
       "origin": one §4.4 discriminant,
       "is_assessment": boolean,
+      "long_ride_registered": boolean,
       "fueling_source_tier": "quality" | "long_ride" | "race_sim" | "empty" | null,
       "fueling_class": "HIGH" | "LONG_RIDE" | "RACE" | "NONE" | null,
       "duration_s": non-negative integer | null,
@@ -2891,7 +3139,7 @@ SHA-256. Nullable fields are present with `null`; omission is invalid.
         "archetype_id": string,
         "level": integer 1..6,
         "category": string,
-        "variation": positive integer,
+        "variation": integer >= 0,
         "manifest_row_id": string
       } | null,
       "series": {
@@ -2917,7 +3165,7 @@ SHA-256. Nullable fields are present with `null`; omission is invalid.
         "producer_version": string,
         "template_id": string,
         "template_version": string,
-        "source_digests": [{"path": repo-relative string, "sha256": sha256}, ...],
+        "source_digests": [{"path": "repo:<path>" | "athlete:<path>", "sha256": sha256}, ...],
         "transformation_parameters": canonical-JSON object,
         "overlay_ids": [string, ...]
       }
@@ -2936,30 +3184,68 @@ artifact becomes a session. A prescribed-but-absent artifact is represented by
 the week's `strength_artifact_state:ABSENT`, so R11 fails without inventing a
 training session or athlete-visible operation.
 
+Every path-valued digest in the candidate, manifest, and report uses one closed
+namespace. `repo:<path>` means a POSIX path relative to the checked-out
+repository root and is used for repository config/source. `athlete:<path>`
+means a POSIX path relative to the athlete directory and is used for generated
+athlete-local inputs. Absolute paths, `..`, duplicate normalized paths, and any
+other prefix are invalid. An optional guide source resolved outside those roots
+(for example a sibling race-catalog JSON) MUST be copied byte-for-byte before
+D1 to `athlete:guide_inputs/<sha256>.json`; the guide reads the staged copy and
+the candidate records that athlete path. It may not reread the external source
+after D1. The path string including its prefix is the sort and map key.
+
 ### A7.1 Exact field derivation
 
 | Candidate field(s) | Derivation authority |
 |---|---|
-| generation revision/time, athlete/race facts | Copy the same keys from `profile.json.fulfillment`, athlete facts, and target race used by Phase 3 canonical construction; the current builder reads revision/time at `build/trustworthy-phase3:athletes/scripts/canonical_training_model.py:529-539`. |
-| mode and version vector | E1 materializes mode from rollout config and copies the exact Appendix 2 vector; component digests are checked before freeze. |
-| methodology/render style | Exact §4.7 lookup from `profile.json.methodology.id`; unknown/missing is a generation failure. |
+| generation revision/time, athlete/race facts | Copy `generation_revision` and `generated_at` from `athlete:profile.yaml` keys `fulfillment.generation_revision` and `fulfillment.generation_at`; if the intake producer omitted them, the E1 candidate producer writes revision `1` and the single injected generation clock before any digest, matching the Phase 3 fallback at `build/trustworthy-phase3:athletes/scripts/canonical_training_model.py:535-541`. Copy `athlete_id` from `profile.yaml.athlete_id`, defaulting only to the already-resolved athlete-directory ID; copy `training_age_years` from `profile.yaml.training_history.years_cycling`, then `years_structured`, else null; copy hours/days/off-days from `profile.yaml.weekly_availability.cycling_hours_target`, the count of top-level `profile.yaml.preferred_days.*.availability` values not `unavailable|rest`, and `profile.yaml.schedule_constraints.preferred_off_days`, respectively, with null/null/empty-array defaults when absent. `intake_to_plan.build_profile` writes `weekly_availability` and top-level `preferred_days` at `build/trustworthy-phase3:athletes/scripts/intake_to_plan.py:1552-1560`. Copy race ID/name facts from `profile.yaml.target_race`; `race_date` and calendar bounds come from `athlete:plan_dates.yaml` keys `race_date`, `plan_start`, and `plan_end`; `priority` is the schema's constant `A`; discipline uses the existing `derive_discipline` result and defaults only through that named producer. |
+| mode, rollout phase, and version vector | E1 writes and then reads the checked `repo:athletes/config/earned_selection_rollout.yaml`; exact keys are `mode` and `rollout_phase`. Its initial/default content is `mode:A` and `rollout_phase:E1`, materialized before hashing rather than supplied by an unnamed environment value. Copy the exact Appendix 2 vector after checking every component digest. |
+| manifest pin | **NEW E1:** before D1, copy the selected manifest to §5.3's revision-local `certification_manifest.json`, digest its canonical payload, and copy its `schema_version`, byte-equal four-entry `version_vector`, and promotion artifact digests in the manifest's required order. `snapshot_path` is the revision-relative literal `certification_manifest.json`; no global-manifest fallback exists after the freeze. R21 consumes this candidate-owned pin. |
+| methodology/render style | Copy `methodology_id` from `athlete:methodology.yaml` key `methodology_id`, then exact-key map through §4.7. Phase 3 loads the separate YAML at `build/trustworthy-phase3:athletes/scripts/generate_athlete_package.py:3091-3096` and reads that key at lines 595–602. Unknown/missing is a generation failure; no `profile.yaml` methodology field is an authority. |
 | control fields | Copy Phase 3's selected control contract; its HR/RPE selection is at `build/trustworthy-phase3:athletes/scripts/canonical_training_model.py:43-65`. |
-| config digests and guide inputs | **NEW E1:** hash the exact bytes loaded by selection, scoring, block notes, strength, and guide generation. `guide_inputs` is the complete consumed path set, not an allow-list; D2 must repeat the same path→digest map. |
+| config digests and guide inputs | **NEW E1:** hash the exact bytes loaded by selection, scoring, block notes, strength, and guide generation under the closed namespace above. The required athlete-local guide set is exactly `athlete:profile.yaml`, `athlete:derived.yaml`, `athlete:plan_dates.yaml`, `athlete:methodology.yaml`, `athlete:fueling.yaml`, and `athlete:weekly_structure.yaml`; the last remains present in the map even when the guide's fallback branch does not consume its values. These are the guide builder's athlete-file reads at `build/trustworthy-phase3:athletes/scripts/training_guide_builder.py:3911-3953,4050-4055`. Any additional resolved repo input actually read by the guide is included as `repo:<path>`. `guide_inputs` is the complete consumed path set, not an allow-list; D2 repeats the identical sorted path→digest map. |
 | week, dates, phase, week type, block-note template | Copy calendar week number/dates and normalize phase/week type by Appendix 3 A3.1. Resolve `block_note_template_id` by exact key in `block_notes.yaml`; an intentionally unsupported testing/taper key is null and makes R07/R25 unavailable, not guessed. Calendar creation and recovery marking are at `athletes/scripts/calculate_plan_dates.py:193-216,245-268`; block-chain peak normalization is at `athletes/scripts/block_chain.py:25-60`. |
 | meso block fields | **NEW E1:** materialize A3.1's maximal contiguous block and globally stable ID `meso-{zero-based-plan-index:03d}`; `meso_block_index` resets to 0 on each cycling-phase change, and `ordinal_in_meso_block` resets to 1 on each new block. Thus “first base meso block” in R12 is exactly base index 0. |
 | reported weekly TSS | Copy the final block-builder week's `total_tss`, after fixed-session and overlay materialization and before D1. The builder writes that field at `athletes/scripts/block_builder.py:555-561`. It is never recomputed from report gates. |
 | target weekly TSS | **NEW E1:** select the guardrail row from available hours using half-open boundaries `0≤h<8→time_crunched`, `8≤h<12→specialist`, `12≤h<15→volume`, and `h≥15→goat`; these resolve the touching ranges in `athletes/config/tss_guardrails.yaml:7-39` without hard-failing an above-range athlete. For load/testing/medium use the midpoint of its `load_tss` band, for `uber_load` use its upper bound, for recovery use the midpoint of `recovery_tss`, and for taper/race use `null`. No rounding precedes R16. |
-| strength prescription/frequency/state | **NEW E1 projection:** for each paid week, validate the chosen `weekly_structure.json`, materialize the five-state `weekly_structure_state`, and inspect `days.*.{am,pm}` only when valid; count exact value `strength` after scheduling, capped at the source table's 3. Independently validate emitted strength artifacts into the four-state `strength_artifact_state`. The source builder emits slots at `athletes/scripts/build_weekly_structure.py:58-148`. Copy `strength_declined` before applying the R11 table. |
+| strength prescription/frequency/state | **NEW E1 projection:** validate `athlete:weekly_structure.yaml`, materialize the five-state `weekly_structure_state`, and inspect exact keys `days.<weekday>.am` and `.pm` only when valid. `weekly_structure_prescribes_strength` is true iff any such value equals exact string `strength`; per-week frequency counts those scheduled values and is capped at the source table's 3. Independently validate emitted strength artifacts into the four-state `strength_artifact_state`. The source builder emits those keys at `build/trustworthy-phase3:athletes/scripts/build_weekly_structure.py:56-151`. `strength_declined = (weekly_structure_prescribes_strength == false AND profile.yaml.strength.include_in_plan is exactly false)`; if either file/key is missing, malformed, or not a boolean, `strength_declined` defaults false and the independent structure state remains `MISSING`/`MALFORMED`. E1's `FinalPlanCandidateBuilder` writes this derived field. The upstream `intake_to_plan.build_profile` converts parsed `strength.include` to the boolean and writes `profile.yaml.strength.include_in_plan` at `build/trustworthy-phase3:athletes/scripts/intake_to_plan.py:1280-1286,1609-1614`. |
 | strength phase/intensity | **NEW E1:** materialize Appendix 3 A3.2's complete table and the resolved strength artifact/template; do not use display text. |
 | session identity/order and legacy session fields | Copy the final `_bb_plan.weeks[].days[]`/overlay record after all mutations. Assign ID by §4.10. **NEW E1 sport normalization:** emitted bike/race/rest-sentinel ZWO → `cycling`, emitted strength artifact → `strength`, and zero-artifact `CANONICAL_REST` → `rest`; retain the original TP distinction in `tp_kind`. Phase 3's corresponding canonical projection fields are at `build/trustworthy-phase3:athletes/scripts/canonical_training_model.py:481-533`. |
 | role | Copy block-builder `day.role` for block sessions (the producer writes intensity/long_ride/filler/off at `athletes/scripts/block_builder.py:348-405`). **NEW E1:** each Appendix 8 non-block template supplies its closed fallback role; no title inference. |
-| origin/is_assessment | **NEW E1:** the emitting branch writes exactly one §4.4 origin and copies Appendix 5/8's boolean assessment contract before common projection. |
+| origin/is_assessment/long-ride registration | **NEW E1:** the emitting branch writes exactly one §4.4 origin and copies Appendix 5/8's explicit `is_assessment` and `long_ride_registered` booleans before common projection. There is no inference from title, purpose, role, duration, or rendered content. |
 | fueling source tier/class | **NEW E1:** refactor `_get_fuel_tag_for_type` to return its already-selected tier alongside the existing rendered string, then project that tier through §4.4.1. A/B event producers write `race_sim`; the enumerated no-prose cases write `empty`. Athlete fueling bytes are not parsed or changed. |
 | purpose/main-set IDs | Native: copy the exact Appendix 5 row then materialize its rule over segment provenance. Non-native: copy Appendix 8. Assessment status keys only from `is_assessment`. |
 | segment/target fields | Copy the final typed source structure, assign IDs/provenance before projection, then use Phase 3's canonical target transform (`build/trustworthy-phase3:athletes/scripts/canonical_training_model.py:148-194`). All nullable target keys shown in the schema are materialized, even when unused. |
-| archetype/series | Native identity comes from Appendix 4 before render. Series copies the block-builder tracker tuple now created from block/day/name at `athletes/scripts/generate_athlete_package.py:2227-2244,2309-2321`; **NEW E1** also stores tracker slot, raw name, A3.3 family key, and the exact tombstone replacement resolved before series start (null otherwise). |
+| archetype/series | Native identity comes from Appendix 4 before render. `archetype.variation` copies the live zero-based counter without translation: it begins at 0 and records the exact value passed to the renderer (`build/trustworthy-phase3:athletes/scripts/generate_athlete_package.py:2732-2755`). Series copies the block-builder tracker tuple now created from block/day/name at `athletes/scripts/generate_athlete_package.py:2227-2244,2309-2321`; **NEW E1** also stores tracker slot, raw name, A3.3 family key, and the exact tombstone replacement resolved before series start (null otherwise). |
 | provenance | **NEW E1:** the selected Appendix 8/native contract supplies producer/template IDs and versions; hash exact producer/template source bytes and record every dose-affecting scale/cap/overlay parameter. Empty arrays/objects remain present. |
 | race and TP projection fields | Copy the final emitter record and PlanIR values; Phase 3 defines these session fields at `build/trustworthy-phase3:athletes/scripts/plan_ir.py:78-121`. |
+
+The `config_digests` key→path map is closed:
+
+```
+archetype_ids          -> repo:athletes/config/archetype_ids.json
+purpose_registry       -> repo:athletes/config/purpose_registry.yaml
+quality_gates          -> repo:athletes/config/quality_gates.yaml
+rule_registry          -> repo:athletes/config/rule_registry.yaml
+producer_registry      -> repo:athletes/config/non_native_producers.yaml
+phase_purpose_registry -> repo:athletes/config/phase_purpose_registry.yaml
+methodologies          -> repo:athletes/scripts/config/methodologies.yaml
+methodology_profiles   -> repo:athletes/config/methodology_profiles.yaml
+fueling_policy         -> repo:athletes/scripts/fueling_policy.py
+plan_dates             -> athlete:plan_dates.yaml
+weekly_structure       -> athlete:weekly_structure.yaml
+block_notes            -> repo:athletes/config/block_notes.yaml
+strength_periodization -> repo:athletes/config/strength_periodization.yaml
+tss_guardrails         -> repo:athletes/config/tss_guardrails.yaml
+rollout                -> repo:athletes/config/earned_selection_rollout.yaml
+```
+
+The first six registry/config files and the rollout file that are new in E1 are
+written by their named E1 materializers before hashing; every other path already exists. No
+schema field has an unnamed environment lookup. Nullable/default cases are only
+the ones stated in A7.1 or the schema; an implementation may not invent an
+additional fallback.
 
 D1 is the SHA-256 of canonical JSON of exactly this object. E1 MUST prove that
 freezing the candidate and building the canonical model preserves ordered
@@ -2975,20 +3261,20 @@ digests still pin exact bytes. IDs are case-sensitive. Native and legacy-Nate
 sessions resolve through Appendix 4/5 and the manifest instead and MUST NOT be
 entered here.
 
-| Origin | producer ID / version | Allowed template IDs / version | Purpose; role; assessment |
+| Origin | producer ID / version | Allowed template IDs / version | Purpose; role; assessment; long-ride registered |
 |---|---|---|---|
-| `MAPPER_SIMPLE_ENDURANCE` | `workout_mapper.simple_endurance` / `v1` | `simple_endurance` / `v1`; level parameter 1–6 | `endurance/steady`; `filler`; false |
-| `PROGRESSIVE_INTERVAL_GENERATOR` | `workout_library.progressive_interval` / `v1` | the 11 exact A8.1 interval IDs / `v1` | A8.1; `intensity`; false |
-| `PROGRESSIVE_ENDURANCE_GENERATOR` | `workout_library.progressive_endurance` / `v1` | the six exact A8.1 endurance IDs / `v1` | A8.1; `filler`; false |
+| `MAPPER_SIMPLE_ENDURANCE` | `workout_mapper.simple_endurance` / `v1` | `simple_endurance` / `v1`; level parameter 1–6 | `endurance/steady`; `filler`; false; true |
+| `PROGRESSIVE_INTERVAL_GENERATOR` | `workout_library.progressive_interval` / `v1` | the 11 exact A8.1 interval IDs / `v1` | A8.1; `intensity`; false; false |
+| `PROGRESSIVE_ENDURANCE_GENERATOR` | `workout_library.progressive_endurance` / `v1` | the six exact A8.1 endurance IDs / `v1` | A8.1; `filler`; false; false |
 | `STANDARD_BLOCK_GENERATOR` | `generate_athlete_package.standard_blocks` / `v1` | the 22 exact A8.2 IDs / `v1` | A8.2 |
-| `PRE_PLAN_GENERATOR` | `generate_athlete_package.pre_plan` / `v1` | `pre_plan_easy`, `pre_plan_rest` / `v1` | A8.3 |
-| `REST_SENTINEL_ZWO` | `generate_athlete_package.rest_sentinel` / `v1` | `rest_60s_30pct` / `v1` | `recovery/rest_sentinel`; `off`; false |
-| `A_RACE_FREERIDE` | `generate_athlete_package.a_race` / `v1` | `a_race_freeride` / `v1` | `free/race_event`; `race`; false |
-| `B_RACE_FREERIDE` | `generate_athlete_package.b_race` / `v1` | `b_race_freeride` / `v1` | `free/race_event`; `race`; false |
-| `TRAVEL_SHAKEOUT` | `generate_athlete_package.travel_shakeout` / `v1` | `travel_shakeout_30m` / `v1` | `recovery/shakeout`; `travel`; false |
-| `ATHLETE_FIXED` | `canonical_training_model.athlete_fixed` / `v1` | `athlete_fixed` / `v1` | `free/external_fixed`; `athlete_fixed`; copied explicit assessment flag, initially false |
-| `CANONICAL_REST` | `plan_ir.canonical_rest` / `v1` | `canonical_rest_zero` / `v1` | `free/rest`; `off`; false |
-| `STRENGTH_TEMPLATE` | `generate_athlete_package.strength_template` / `v2` | the 12 exact A8.3 strength IDs / `strength_periodization/v2` | no cycling purpose; `strength`; false |
+| `PRE_PLAN_GENERATOR` | `generate_athlete_package.pre_plan` / `v1` | `pre_plan_easy`, `pre_plan_endurance`, `pre_plan_strength_prep`, `pre_plan_rest` / `v1` | A8.3 |
+| `REST_SENTINEL_ZWO` | `generate_athlete_package.rest_sentinel` / `v1` | `rest_60s_30pct` / `v1` | `recovery/rest_sentinel`; `off`; false; false |
+| `A_RACE_FREERIDE` | `generate_athlete_package.a_race` / `v1` | `a_race_freeride` / `v1` | `free/race_event`; `race`; false; false |
+| `B_RACE_FREERIDE` | `generate_athlete_package.b_race` / `v1` | `b_race_freeride` / `v1` | `free/race_event`; `race`; false; false |
+| `TRAVEL_SHAKEOUT` | `generate_athlete_package.travel_shakeout` / `v1` | `travel_shakeout_30m` / `v1` | `recovery/shakeout`; `travel`; false; false |
+| `ATHLETE_FIXED` | `canonical_training_model.athlete_fixed` / `v1` | `athlete_fixed` / `v1` | `free/external_fixed`; `athlete_fixed`; copied explicit assessment flag, initially false; false |
+| `CANONICAL_REST` | `plan_ir.canonical_rest` / `v1` | `canonical_rest_zero` / `v1` | `free/rest`; `off`; false; false |
+| `STRENGTH_TEMPLATE` | `generate_athlete_package.strength_template` / `v2` | the 12 exact A8.3 strength IDs / `strength_periodization/v2` | no cycling purpose; `strength`; false; false |
 
 Every cycling contract above also carries
 `assignment_status:hypothesis`. Its `main_set_rule` is `ASSESSMENT_BODY` only
@@ -2997,6 +3283,13 @@ race FreeRides, `ATHLETE_FIXED`, and `CANONICAL_REST`; it is `SOURCE_BODY` for
 every other cycling tuple. Strength has null cycling purpose/rule. E1
 materializes segment provenance before applying these rules exactly as it does
 for Appendix 5; no non-native title heuristic is permitted.
+
+Every contract also carries explicit `is_assessment` and
+`long_ride_registered` booleans. Assessment is true only for
+`STANDARD_BLOCK_GENERATOR/FTP_Test`. Long-ride registration is true only for
+`MAPPER_SIMPLE_ENDURANCE/simple_endurance` at every level,
+`STANDARD_BLOCK_GENERATOR/Long_Ride`, and the native Appendix 5 rows explicitly
+marked true; all other Appendix 8 tuples, including W00 endurance, are false.
 
 ### A8.1 Progressive template assignments
 
@@ -3075,10 +3368,30 @@ their required `overlay_ids` are `b_race_opener/v1` and
 
 ### A8.3 Bespoke, fixed, and strength assignments
 
-`PRE_PLAN_GENERATOR/pre_plan_easy` uses
-`STANDARD_BLOCK_GENERATOR/Pre_Plan_Easy_Blocks/v1` as a nested source contract;
-`pre_plan_rest` is exactly one 60-second FreeRide. The current pre-plan branch
-is at `athletes/scripts/generate_athlete_package.py:1900-1974`.
+The four live W00 contracts are exact and deliberately preserve the producer's
+oddities (`build/trustworthy-phase3:athletes/scripts/generate_athlete_package.py:1800-1977`):
+
+| Template | Reachable day/input | Purpose; role; assessment | Fuel source/class | Exact final body and structure |
+|---|---|---|---|---|
+| `pre_plan_easy` | Mon/Wed authored 45 min or Tue/Fri authored 40 min, when the future-start window includes the day and it is available | `recovery/easy`; `filler`; false | `empty` / `NONE` | Nested `STANDARD_BLOCK_GENERATOR/Pre_Plan_Easy_Blocks/v1`, called as `create_workout_blocks(round_duration_to_10(authored_minutes),0.60,'Easy')`: three ordered prescribed segments, warmup → steady → cooldown; final duration is 40 min for both live authored inputs under Python's ties-to-even `round(4.5)`. |
+| `pre_plan_endurance` | Saturday, authored/final 80 min | `endurance/steady`; `long_ride`; false | `_get_fuel_tag_for_type('Endurance',...,80)` returns `empty` / `NONE` because it is under 90 min | Nested shared Easy body exactly: 480 s warmup 0.45→0.58, 4020 s steady at 0.65, 300 s cooldown 0.65→0.45; three ordered prescribed segments, `SOURCE_BODY` selects the steady segment. |
+| `pre_plan_strength_prep` | Thursday, authored 35 min | `recovery/strength_prep`; `filler`; false | `empty` / `NONE` | The live positive-duration common branch rounds 35 to final 40 min, then calls `create_workout_blocks(40,0,'Easy')`: 300 s warmup 0.45→0.00, 1800 s steady at 0.58, 300 s cooldown 0.58→0.45; three ordered prescribed cycling segments, `SOURCE_BODY` selects the steady segment. The mobility prose does not turn this emitted bike ZWO into `STRENGTH_TEMPLATE`. |
+| `pre_plan_rest` | Sunday, authored 0 min | `free/rest`; `off`; false | `empty` / `NONE` | Exactly one 60-second `FreeRide`, `main_set_rule=NONE`, dose `NOT_APPLICABLE`, TP kind `day_off`. |
+
+All four have `long_ride_registered=false`. The `pre_plan_easy` nested source
+contract is `STANDARD_BLOCK_GENERATOR/Pre_Plan_Easy_Blocks/v1`; the other two
+positive-duration variants record the same shared producer source plus their
+exact `(authored_duration,power,'Easy',rounded_duration)` transformation
+parameters rather than being relabelled as `pre_plan_easy`.
+
+The reachability golden fixes generation date Monday 2026-08-03, plan start
+Monday 2026-08-10, and all seven days available. It MUST emit at least one of
+each outer tuple: Monday/Tuesday/Wednesday/Friday resolve only to
+`pre_plan_easy`, Thursday to `pre_plan_strength_prep`, Saturday to
+`pre_plan_endurance`, and Sunday to `pre_plan_rest`. Separate unavailable-day
+fixtures prove only the chosen day is skipped. The registry sweep fails if any
+of the four tuples is unreached or any W00 file resolves to another tuple.
+
 The rest sentinel is one 60-second 30% steady segment
 (`athletes/scripts/generate_athlete_package.py:2442-2482`); the B-race
 FreeRide and travel structures are at
