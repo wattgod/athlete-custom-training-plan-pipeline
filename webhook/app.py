@@ -35,7 +35,8 @@ from flask_limiter import Limiter
 import stripe
 import yaml
 
-from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CONFIRMED,
+from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
+                               CONFIRMED,
                                RELEASE_STATUSES, FulfillmentStateError,
                                approval_matches_release, bind_legacy_order,
                                confirm_after_send,
@@ -1308,13 +1309,35 @@ def extract_woocommerce_data(data: dict) -> dict:
     name = f"{first_name} {last_name}".strip()
     athlete_id = sanitize_athlete_id(name)
 
+    raw_delivery_platform = str(
+        meta.get('delivery_platform') or meta.get('delivery_target') or 'trainingpeaks'
+    ).strip().lower()
+    if raw_delivery_platform not in ('trainingpeaks', 'endure', 'manual'):
+        raw_delivery_platform = 'trainingpeaks'
+    brand = normalize_brand(meta.get('brand'))
+    created_raw = str(
+        data.get('date_created_gmt') or data.get('date_created') or ''
+    ).strip()
+    try:
+        order_created_at = datetime.fromisoformat(
+            created_raw.replace('Z', '+00:00')).astimezone(timezone.utc)
+        order_created_at = order_created_at.isoformat().replace('+00:00', 'Z')
+    except (ValueError, TypeError):
+        order_created_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
     return {
         'athlete_id': athlete_id,
         'order_id': str(data.get('id', '')),
+        'order_created_at': order_created_at,
+        'weeks_purchased': safe_int(meta.get('plan_weeks')),
         'tier': tier,
+        'brand': brand,
+        'delivery_platform': raw_delivery_platform,
+        'delivery_target': raw_delivery_platform,
         'profile': {
             'name': name,
             'email': billing.get('email', '').strip().lower(),
+            'brand': brand,
             'age': safe_int(meta.get('age')),
             'fitness_markers': {
                 'weight_kg': safe_float(meta.get('weight_kg')),
@@ -1337,6 +1360,103 @@ def extract_woocommerce_data(data: dict) -> dict:
             'limiters': meta.get('limiters', ''),
             'notes': meta.get('notes', ''),
         }
+    }
+
+
+def _woocommerce_meta(data: dict) -> dict:
+    """Return the Woo order metadata mapping without interpreting values."""
+    return {
+        str(item.get('key') or ''): item.get('value')
+        for item in data.get('meta_data', [])
+        if isinstance(item, dict) and str(item.get('key') or '').strip()
+    }
+
+
+def _woocommerce_list(value, default: list[str]) -> list[str]:
+    """Normalize the list-like values Woo custom fields serialize."""
+    if isinstance(value, list):
+        values = value
+    elif isinstance(value, str):
+        text = value.strip()
+        try:
+            decoded = json.loads(text)
+        except json.JSONDecodeError:
+            decoded = None
+        values = decoded if isinstance(decoded, list) else text.split(',')
+    else:
+        values = []
+    normalized = [str(item).strip() for item in values if str(item).strip()]
+    return normalized or list(default)
+
+
+def extract_woocommerce_intake(data: dict, order_data: dict) -> dict:
+    """Reconstruct the paid questionnaire from complete Woo order metadata.
+
+    Historical Woo orders carry only a sparse profile and correctly enter the
+    non-releasable STATE_UNAVAILABLE quarantine. A checkout integration that
+    persisted the complete questionnaire sets ``intake_complete=true``; only
+    then do we invoke the same markdown/pipeline path used by Stripe intake.
+    """
+    meta = _woocommerce_meta(data)
+    complete = str(meta.get('intake_complete') or '').strip().lower()
+    if complete not in {'1', 'true', 'yes'}:
+        return {}
+
+    profile = order_data.get('profile') or {}
+    target = profile.get('target_race') or {}
+    schedule = profile.get('weekly_schedule') or {}
+    weight_kg = safe_float(meta.get('weight_kg'))
+    weight_lbs = round(weight_kg * 2.2046226218, 1) if weight_kg else ''
+    race_name = str(target.get('name') or '').strip()
+    race_date = str(target.get('date') or '').strip()
+    distance = target.get('distance_miles')
+    distance_text = f'{distance:g} miles' if isinstance(distance, (int, float)) else str(distance or '')
+    goal_map = {
+        'finish': 'Finish Strong', 'compete': 'Compete', 'podium': 'Podium',
+    }
+    goal = goal_map.get(str(profile.get('race_goal') or '').strip().lower(), 'Finish Strong')
+    long_day = str(schedule.get('preferred_long_day') or 'saturday').strip()
+    return {
+        'name': profile.get('name', ''),
+        'email': profile.get('email', ''),
+        'brand': order_data.get('brand', DEFAULT_BRAND),
+        'sex': meta.get('sex', ''),
+        'age': profile.get('age'),
+        'weight': weight_lbs,
+        'height_ft': meta.get('height_ft', ''),
+        'height_in': meta.get('height_in', ''),
+        'ftp': (profile.get('fitness_markers') or {}).get('ftp_watts'),
+        'powerOrHr': meta.get('power_or_hr', 'power'),
+        'hr_max': meta.get('hr_max', ''),
+        'hr_threshold': meta.get('hr_threshold', ''),
+        'hr_resting': meta.get('hr_resting', ''),
+        'devices': meta.get('devices', 'power meter, hr strap'),
+        'years_cycling': meta.get('years_cycling', '5'),
+        'prior_plan_experience': meta.get('prior_plan_experience', '3'),
+        'hours_per_week': str(schedule.get('cycling_hours_target') or '8'),
+        'trainer_access': meta.get('trainer_access', 'smart trainer'),
+        'long_ride_days': _woocommerce_list(
+            meta.get('long_ride_days'), [long_day]),
+        'interval_days': _woocommerce_list(
+            meta.get('interval_days'), ['tuesday', 'thursday']),
+        'off_days': _woocommerce_list(meta.get('off_days'), ['monday']),
+        'strength_current': meta.get('strength_current', '2x/week'),
+        'strength_want': meta.get('strength_want', 'yes'),
+        'strength_equipment': meta.get('strength_equipment', 'full gym'),
+        'sleep_quality': meta.get('sleep_quality', 'good'),
+        'stress_level': meta.get('stress_level', 'moderate'),
+        'injuries': meta.get('injuries', 'None'),
+        'course_facts_mode': meta.get('course_facts_mode', ''),
+        'athlete_timezone': meta.get('athlete_timezone', 'America/Denver'),
+        'race_slug': meta.get('race_slug', ''),
+        'races': [{
+            'name': race_name,
+            'slug': meta.get('race_slug', ''),
+            'date': race_date,
+            'distance': distance_text,
+            'priority': 'A',
+            'goal': goal,
+        }],
     }
 
 
@@ -2679,6 +2799,8 @@ def _authorized_review(order_ref: str):
         state = load_fulfillment_state(_fulfillment_status_path(order_id))
     except FulfillmentStateError as exc:
         raise ReviewAuthError('review state is unavailable') from exc
+    if state.get('status') == CANCELLED:
+        raise ReviewAuthError('review credential is cancelled')
     if (session.get('athlete_id') != state.get('athlete_id')
             or session.get('generation_revision') != state.get('generation_revision')):
         raise ReviewAuthError('review link is superseded by a newer revision')
@@ -2737,6 +2859,8 @@ def open_review_session(order_ref):
         return _review_bootstrap(401)
     try:
         state = load_fulfillment_state(_fulfillment_status_path(order_id))
+        if state.get('status') == CANCELLED:
+            return _review_bootstrap(401)
         claims = verify_review_token(
             token, order_id=state['order_id'], athlete_id=state['athlete_id'],
             generation_revision=state['generation_revision'],
@@ -3170,7 +3294,10 @@ def order_status(ref):
         return jsonify({'status': 'unknown', 'download_ready': False}), 404
 
     order_id = None
-    is_session_ref = ref.startswith('cs_') or ref.startswith('test_')
+    is_session_ref = (
+        ref.startswith('cs_') or ref.startswith('test_')
+        or ref.startswith('drill-')
+    )
     if is_session_ref:
         order_id = ref
         # Ensure the order is known even if generation has not written state.
@@ -3212,23 +3339,52 @@ def order_status(ref):
 
     job = _read_job(order_id) or {}
     job_status = job.get('status', '')
+    operator_secret = str(request.headers.get('X-Cron-Secret') or '')
+    configured_secret = str(os.environ.get('CRON_SECRET') or '')
+    operator_authenticated = bool(
+        operator_secret and configured_secret
+        and hmac.compare_digest(operator_secret, configured_secret)
+    )
+    operator_fields = {}
+    if operator_authenticated:
+        review_bundle_exists = False
+        if state is not None:
+            revision_dir = (_order_dir(order_id) / 'revisions'
+                            / f"r{state['generation_revision']}")
+            try:
+                verify_release_artifact(
+                    state, revision_dir, f'{order_id}-review-bundle.zip')
+                review_bundle_exists = True
+            except FulfillmentStateError:
+                review_bundle_exists = False
+        operator_fields = {
+            'generation_complete': bool(
+                state is not None and job_status == 'succeeded'),
+            'job_status': job_status or None,
+            'fulfillment_status': (
+                state.get('status') if state is not None else None),
+            'blocker_ids': sorted(
+                issue.get('id') for issue in (state or {}).get('blocking_issues', [])
+                if issue.get('id')),
+            'review_bundle_exists': review_bundle_exists,
+        }
 
     if download_ready:
         return jsonify({'status': 'ready', 'download_ready': download_ready,
-                        'message': _MSG_READY})
+                        'message': _MSG_READY, **operator_fields})
     if job_status in ('queued', 'running', 'succeeded') or state is not None:
         return jsonify({'status': 'processing', 'download_ready': False,
-                        'message': _MSG_IN_PROGRESS})
+                        'message': _MSG_IN_PROGRESS, **operator_fields})
     if job_status == 'failed':
         # Operator already notified loudly; the customer sees a calm
         # "finishing up" — the coach recovers the order manually.
         return jsonify({'status': 'processing', 'download_ready': False,
-                        'message': _MSG_FINISHING})
+                        'message': _MSG_FINISHING, **operator_fields})
     if is_session_ref:
         # Order known (idempotency mark) but no job record — legacy or
         # sync-mode order. Report in-progress; email delivery still applies.
         return jsonify({'status': 'processing', 'download_ready': False,
-                        'message': _MSG_IN_PROGRESS})
+                        'message': _MSG_IN_PROGRESS, **operator_fields})
     return jsonify({'status': 'unknown', 'download_ready': False}), 404
 
 
@@ -3389,7 +3545,10 @@ def transition_fulfillment_state(order_ref):
             expected_catalog_digest=(
                 expected_catalog_digest if destination == APPROVED else ''),
             review_decisions=(review_decisions if destination == APPROVED else None),
-            credential=('operator-secret' if destination == APPROVED else ''),
+            credential=('operator-secret'
+                        if destination in (APPROVED, CANCELLED) else ''),
+            metadata=({'reason': str(data.get('reason') or '').strip()}
+                      if destination == CANCELLED else None),
         )
     except FulfillmentStateError as exc:
         return jsonify({'error': str(exc)}), 409
@@ -4165,6 +4324,7 @@ def woocommerce_webhook():
 
     try:
         order_data = extract_woocommerce_data(data)
+        intake_data = extract_woocommerce_intake(data, order_data)
 
         # Idempotency check
         if check_idempotency(order_data['order_id']):
@@ -4188,7 +4348,8 @@ def woocommerce_webhook():
         mark_order_processed(order_data['order_id'], athlete_id)
 
         # Queue generation, return immediately (same async path as Stripe).
-        job, sync_result = _spawn_plan_job(order_data)
+        job, sync_result = _spawn_plan_job(
+            order_data, intake_data=intake_data or None)
 
         if sync_result is not None:
             # SYNC_PIPELINE=1 — legacy inline path (tests / local debugging)
@@ -5202,6 +5363,39 @@ def cron_followup_emails():
                         'touchpoints': tp_stats})
     except Exception as e:
         logger.exception(f"Follow-up cron error: {e}")
+        return jsonify({'error': 'Internal error'}), 500
+
+
+@app.route('/api/cron/state-audit', methods=['POST'])
+@limiter.limit("5/minute")
+def cron_state_audit():
+    """Audit the Railway persistent fulfilment root through cron auth."""
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not hmac.compare_digest(secret, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.get_json(silent=True)
+    if data is None:
+        data = {}
+    if not isinstance(data, dict) or _has_client_timestamp(data):
+        return jsonify({'error': 'JSON body without client timestamps is required'}), 400
+    max_age_days = data.get('max_age_days', 3)
+    if (not isinstance(max_age_days, int) or isinstance(max_age_days, bool)
+            or not 1 <= max_age_days <= 30):
+        return jsonify({'error': 'max_age_days must be an integer from 1 to 30'}), 400
+    try:
+        from tools.audit_fulfillment_states import build_audit_artifact
+        artifact = build_audit_artifact(
+            Path(DELIVERIES_DIR) / 'orders', max_age_days=max_age_days)
+        logger.info(
+            'Fulfillment state audit: %s',
+            json.dumps(artifact, sort_keys=True, separators=(',', ':')),
+        )
+        status = 500 if artifact['summary']['critical'] else 200
+        return jsonify(artifact), status
+    except Exception:
+        logger.exception('Fulfillment state audit execution failed')
         return jsonify({'error': 'Internal error'}), 500
 
 

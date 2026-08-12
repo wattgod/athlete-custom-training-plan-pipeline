@@ -206,9 +206,11 @@ def _run_order(tmp_path, order):
     md_file = tmp_path / f"{order['id']}.md"
     md_file.write_text(md)
 
-    # Delivery dir must live under $HOME — the pipeline's path-safety guard
-    # rejects writes outside home/project (pytest's tmp is under /private/var).
-    delivery_root = Path.home() / ".gg-acctest-delivery" / order["id"]
+    # Delivery dir must live under home or the project — the pipeline's
+    # path-safety guard rejects pytest's /private/var scratch root. Keep this
+    # ignored scratch data inside the writable checkout so sandboxed CI/agents
+    # never need to mutate a developer's home directory.
+    delivery_root = REPO_ROOT / ".gg-acctest-delivery" / order["id"]
     if delivery_root.exists():
         import shutil
         shutil.rmtree(delivery_root)

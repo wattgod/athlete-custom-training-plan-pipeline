@@ -10,8 +10,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CONFIRMED,
-                               GENERATED, FulfillmentStateError, bind_legacy_order,
+from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
+                               CONFIRMED, GENERATED, FulfillmentStateError,
+                               bind_legacy_order,
                                approval_matches_release,
                                confirm_after_send, finalize_transitional_release,
                                load, merge_generation_blockers,
@@ -483,15 +484,46 @@ def test_download_handle_is_the_verified_descriptor_not_a_reopen(tmp_path):
         handle.close()
 
 
-def test_phase1_schema_rejects_later_phase_statuses(tmp_path):
+def test_schema_accepts_cancelled_but_rejects_unimplemented_apply_statuses(tmp_path):
     path = tmp_path / 'status.json'
     write_generation(path, 'athlete-m', order_id='cs_future_status')
     raw = json.loads(path.read_text())
-    for status in ('APPLYING', 'APPLIED_ATTESTED', 'CANCELLED'):
+    raw['status'] = CANCELLED
+    path.write_text(json.dumps(raw))
+    assert load(path)['status'] == CANCELLED
+    for status in ('APPLYING', 'APPLIED_ATTESTED'):
         raw['status'] = status
         path.write_text(json.dumps(raw))
         with pytest.raises(FulfillmentStateError, match='malformed'):
             load(path)
+
+
+def test_preapply_cancellation_is_durable_and_audit_ready(tmp_path):
+    path = tmp_path / 'cancel.json'
+    write_generation(path, 'daily-drill', order_id='drill-20260812')
+    cancelled = transition(
+        path, CANCELLED, 'daily-drill-cleanup',
+        credential='operator-secret', metadata={'reason': 'daily cleanup'})
+    assert cancelled['status'] == CANCELLED
+    assert cancelled['cancel_requested'] is True
+    assert cancelled['execution_epoch'] == 1
+    assert cancelled['cancellation']['worker_stop_acknowledged'] is True
+    assert cancelled['cancellation']['reason'] == 'daily cleanup'
+
+
+def test_cancellation_refuses_to_hide_application_evidence(tmp_path):
+    path = tmp_path / 'applied.json'
+    write_generation(
+        path, 'daily-drill', order_id='drill-20260812',
+        delivery_platform='manual')
+    _seal(path, tmp_path)
+    _approve(path)
+    transition(
+        path, APPLIED, 'coach@example.test', platform='manual',
+        evidence='coach-attested inventory')
+    with pytest.raises(FulfillmentStateError, match='compensation workflow'):
+        transition(path, CANCELLED, 'daily-drill-cleanup')
+    assert load(path)['status'] == APPLIED
 
 
 def test_v1_migration_quarantines_and_tombstones(tmp_path):
