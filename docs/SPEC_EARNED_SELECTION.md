@@ -1,7 +1,8 @@
 # SPEC: Earned Selection — workout quality and selection as verified claims
 
-Status: DRAFT r5 — resolves R1 blockers 1–19, R2 blockers R2-01–R2-14,
-R3 blockers R3-01–R3-08, and R4 blockers R4-01–R4-06.
+Status: DRAFT r6 — resolves R1 blockers 1–19, R2 blockers R2-01–R2-14,
+R3 blockers R3-01–R3-08, R4 blockers R4-01–R4-06, and R5 blockers
+R5-01–R5-02.
 The combined disposition map is Appendix 1. All schemas, registries, algorithms,
 and migration data required by this revision are normative content in this file;
 implementation MUST NOT invent or defer a policy choice named here.
@@ -484,7 +485,8 @@ post-guide rules. The exact order is:
 3. Freeze the complete Appendix 7 `FinalPlanCandidate/v1` and compute **D1** as
    SHA-256 of its canonical JSON bytes. D1 includes every root/plan/week/session/
    segment/provenance field, its sorted four-entry version vector, all config and
-   source digests, its manifest pin, and guide *input* digests. It excludes the canonical model,
+   source digests, its manifest pin, guide *input* digests, and the closed
+   `legacy_compliance_projection/v1`. It excludes the canonical model,
    emitted guide, report, catalog, apply contract, and seal. No code may mutate
    candidate training content after D1.
 4. Run final-instance dose gates, the final-series warning, and every
@@ -526,6 +528,13 @@ For identical inputs, their ordered nine PASS/FAIL outcomes and derived
 `athletes/scripts/block_compliance.py:373-403`; any difference fails the E1
 release predicate. “Blocking” retains the order-safety behavior: a built plan
 is delivered as needs-review rather than discarded.
+
+In E1/E2, each of those nine evaluators reads only the candidate's frozen
+`legacy_compliance_projection`; it MUST NOT read the live `_bb_plan`, normalized
+candidate weeks/sessions, canonical model, or deployment state. Each resulting
+report rubric row projects the verdict from that bound value and includes
+`metric.legacy_compliance_projection_sha256` equal to the candidate projection
+digest. Report validation rejects a missing or unequal digest.
 
 Every other Appendix 3 rule has `blocking_since: E3`. Through E1/E2, its FAIL,
 WARNING, or unavailable result is a `quality_finding/v1` whose severity exactly
@@ -1032,9 +1041,13 @@ and accepted evidence. It MUST NOT weaken any other surface silently.
    and the complete reachability sweep.
 6. Complete Appendix 3 row fixtures and A3.0 production/E1–E2 verdict-equivalence
    goldens for all nine pre-existing rules, including the Sunday/Monday R01 pair,
-   R02 race-overlay/recovery-endpoint cases, R03 40% case, R06 boundaries, and
-   R20 race-on-off-day. Target fixtures include R02 pair/edge boundaries; R03 block
-   adjacency and four bands; R11’s state table; R12/R17 tables; R14 grammar;
+   R02 race-overlay/recovery-endpoint and asymmetric race-week-stimulus cases,
+   R03 40% case, R06 boundaries, and R20 race-on-off-day. In addition to named
+   goldens, generate and exhaustively differentially evaluate A3.0's finite
+   branch/boundary corpus defined there. Target fixtures include R02 pair/edge
+   boundaries and the transition-suffix case; R03 block adjacency and four bands;
+   R04's zero/one/multiple-opener cases in E2 regression evidence; R06's complete
+   applicable/excluded matrix; R11’s state table; R12/R17 tables; R14 grammar;
    R18/R22 NA; R08–R10 integrations; R25 present/absent goldens; active-rule
    unavailable; crash; and R26 race sums.
 7. State/catalog/snapshot tests in §4.8 and exact derived-report coverage.
@@ -1096,11 +1109,11 @@ only a crash with no usable package follows the loud failed-order path.
 
 ---
 
-## Appendix 1 — combined R1 + R2 + R3 + R4 blocker disposition map
+## Appendix 1 — combined R1 + R2 + R3 + R4 + R5 blocker disposition map
 
 ### A1.1 R1 blockers
 
-| R1 | r5 disposition |
+| R1 | r6 disposition |
 |---:|---|
 | 1 | §0.3 retains and accurately scopes existing progression/compliance checks. |
 | 2 | §3 supplies hypothesis/effective semantics and an exact promotion artifact. |
@@ -1124,7 +1137,7 @@ only a crash with no usable package follows the loud failed-order path.
 
 ### A1.2 R2 blockers
 
-| R2 | r5 disposition |
+| R2 | r6 disposition |
 |---|---|
 | R2-01 | §1.1–§1.2: `design_*`, exact 1 Hz ramp, trace duration, empty sentinel, mixed FreeRide, known Rest Day exemption. |
 | R2-02 | §3 and Appendix 2: observed/effective split, hypothesis never enforced, promotion schema, Q3 protocol. |
@@ -1143,7 +1156,7 @@ only a crash with no usable package follows the loud failed-order path.
 
 ### A1.3 R3 blockers
 
-| R3 | r5 disposition |
+| R3 | r6 disposition |
 |---|---|
 | R3-01 | §1.3, §3, Appendix 5, and Appendix 6 publish the complete provisional 600-row purpose assignment, deterministic derivation/overrides, exact initial gate registry, W′bal recurrence/goldens, and pinned version vector. |
 | R3-02 | §4.4 and Appendices 7–8 make origin producer-only, make assessment orthogonal, close `FinalPlanCandidate/v1`, and publish the non-native producer/template registry. |
@@ -1156,14 +1169,21 @@ only a crash with no usable package follows the loud failed-order path.
 
 ### A1.4 R4 blockers
 
-| R4 | r5 disposition |
+| R4 | r6 disposition |
 |---|---|
 | R4-01 | §4.4 and Appendix 8 enumerate all four reachable W00 tuples and publish exact endurance/strength-prep purpose, role, assessment, fueling, final body, and reachability contracts. |
 | R4-02 | Appendix 5 adds the native assessment and long-ride booleans; Appendix 7 fixes every authority to the real YAML/key, preserves zero-based variation, and gives `strength_declined` a named E1 producer and false default. |
 | R4-03 | §4.5 creates and pins the revision manifest before D1, defines the two-prefix path namespace and complete guide input set, moves W00/fueling before D1, and permits exactly one post-canonical guide build under Q0 byte neutrality. |
-| R4-04 | §4.5 and A3.0 make E1/E2 verdict-equivalent to current production for all nine pre-existing blockers, retain each separate E3 target as `algorithm_since:E3`, and publish the required differential goldens. |
-| R4-05 | A3.1/A3.6 close R02 pair/edge arithmetic, R04 tuples/efforts, R06's registry boolean, R13's key predicate, and R23's all-adjacent-pairs algorithm/golden. |
+| R4-04 | §4.5, A3.0, and Appendix 7 bind all nine E1/E2 legacy evaluators to a digested verbatim `_bb_plan` projection, preserve production's asymmetric R02 race-week scan, retain each separate E3 target as `algorithm_since:E3`, and require exhaustive generated differential equality plus named goldens. |
+| R4-05 | A3.1/A3.6 close R02 pair/edge arithmetic, R04 tuples/efforts and named progression-level path, R06's complete applicability and registry boolean, R13's key predicate, and R23's all-adjacent-pairs algorithm/golden. |
 | R4-06 | Appendix 2 adds report-root `rollout_phase`, the required row routing boolean and exact formula, a derivable blocker count, and identical-row E1/E3 goldens. |
+
+### A1.5 R5 blockers
+
+| R5 | r6 disposition |
+|---|---|
+| R5-01 | Appendix 7 adds the D1-bound `legacy_compliance_projection/v1`, including ordered raw week/day fields, nested fixed-session intensity tokens, root `all_violations`, and a canonical digest. §4.5/A3.0 bind every legacy evaluator and its report row only to that projection, correct R02's asymmetric production scan, reproduce the production-true race-week counterexample, and require exhaustive generated branch/boundary differential equality. |
+| R5-02 | A3.1 makes both R02 edges select load weeks through the same complete exemption; closes R06 to paid, non-transition exact-load weeks with included/excluded fixtures; and adds candidate `progression_level`, native and every Appendix 8 derivation, plus R04's exact named input path. |
 
 ---
 
@@ -1498,7 +1518,10 @@ artifact_counts.rubric_blockers ==
 
 The routing boolean is required on every rubric row and is recomputed, not
 trusted, by report validation. `rollout_phase` is the phase active for this
-generation revision and is the only phase input to the formula. Golden pair:
+generation revision and is the only phase input to the formula. Report
+validation MUST read `rollout_phase` from the digest-checked rollout file named
+by the candidate's `config_digests.rollout` derivation and require exact equality
+with the report root; a caller-supplied phase is not authoritative. Golden pair:
 both reports contain an otherwise identical single relevant row
 `{severity:CRITICAL,result:FAIL,blocking_since:E3}`. With root
 `rollout_phase:E1`, its boolean is false and `rubric_blockers=0`; with root
@@ -1541,15 +1564,15 @@ The nine legacy verdict functions are exactly:
 
 | ID | E1/E2 `legacy_equivalent_algorithm` |
 |---|---|
-| R01 | Iterate each input week independently in its existing day order; reset `prev_was_intensity=false` at every week boundary. A day is intensity by current `_day_is_intensity` (nested session intensity role, else day role, else current `INTENSITY_TYPES` name set). FAIL only for two adjacent entries inside the same week that both classify intensity. |
-| R02 | Exclude weeks whose phase is `racing|taper`, week type is `race|recovery`, or that contain a `role=race` day. If none remain, PASS. Record a week number once when any non-excluded day name is in current `VO2MAX_TYPES`. No VO2 with at most three non-excluded weeks PASS; no VO2 with more than three FAIL. Otherwise compute adjacent numeric week-number gaps and FAIL iff the maximum is greater than 3. Race-day overlays and recovery endpoints therefore retain production exemptions. |
-| R03 | Ignore race-overlay weeks. Collect exact load and recovery `total_tss` only outside `racing|taper`. Missing either collection or load mean zero PASS. Set floor 0.30 and ceiling 0.85 for mean load `<300`, 0.75 for `<400`, 0.70 for `<500`, else 0.65. FAIL iff any recovery/load-mean ratio is below floor or above ceiling. |
-| R04 | Inspect only exact recovery weeks. FAIL iff current `_day_is_intensity(day)` is true and `day.name != 'Openers'`; all other days pass irrespective of purpose tuple or segment geometry. |
-| R05 | Inspect exact load weeks; exempt phase `racing|taper` and race-overlay weeks. Count current intensity days. Required range is `min(2,max_intensity)..max_intensity`; FAIL any out-of-range week. |
-| R06 | Inspect exact load weeks and exempt race-overlay weeks. `min_long=60` minutes iff `target_hours` is truthy and `<7`, else 90. FAIL when no `role=long_ride` day exists or any such day's current nested/fallback duration satisfies `0 < duration < min_long`; a present zero-duration long-role day retains production's PASS behavior. |
-| R14 | PASS iff the current plan root `all_violations` array is empty; otherwise FAIL. Do not reconstruct series identity in E1/E2. |
-| R19 | Set tolerance 15% when `target_hours<6`, else 10%; maximum is `target_hours*(1+tolerance)*60`, and load floor is `target_hours*0.65*60`. Skip recovery and race-overlay weeks. FAIL any remaining week above maximum, or an exact load week below the floor unless `phase=base AND plan_week<=4`. |
-| R20 | For every day, FAIL iff its day token is in `off_days` and role is neither `off` nor `race`. The explicit race-role exemption remains active. |
+| R01 | Consume only `legacy_compliance_projection`. Iterate each projected week independently in its projected day order; reset `prev_was_intensity=false` at every week boundary. A day is intensity by current `_day_is_intensity` (projected nested session intensity token, else projected day role, else current `INTENSITY_TYPES` raw-name set). FAIL only for two adjacent entries inside the same week that both classify intensity. |
+| R02 | Consume only `legacy_compliance_projection`. For the applicable-week count, exclude projected weeks whose phase is `racing|taper`, week type is `race|recovery`, or that contain a projected `role=race` day; if none remain, PASS. Separately scan all projected weeks for VO2: skip only exact recovery weeks, phase `racing|taper`, and race-role-overlay weeks, then record a week number once when any remaining raw day `name` is in current `VO2MAX_TYPES`. In particular, `week_type=race` alone does **not** suppress this stimulus scan. No VO2 with at most three applicable weeks PASS; no VO2 with more than three FAIL. Otherwise compute adjacent numeric week-number gaps and FAIL iff the maximum is greater than 3. |
+| R03 | Consume only `legacy_compliance_projection`. Ignore projected race-overlay weeks. Collect exact load and recovery `total_tss` only outside `racing|taper`. Missing either collection or load mean zero PASS. Set floor 0.30 and ceiling 0.85 for mean load `<300`, 0.75 for `<400`, 0.70 for `<500`, else 0.65. FAIL iff any recovery/load-mean ratio is below floor or above ceiling. |
+| R04 | Consume only `legacy_compliance_projection`. Inspect only projected exact recovery weeks. FAIL iff current `_day_is_intensity(projected_day)` is true and projected raw `day.name != 'Openers'`; all other days pass irrespective of purpose tuple or segment geometry. |
+| R05 | Consume only `legacy_compliance_projection`. Inspect projected exact load weeks; exempt phase `racing|taper` and race-overlay weeks. Count current intensity days and use projected `max_intensity`. Required range is `min(2,max_intensity)..max_intensity`; FAIL any out-of-range week. |
+| R06 | Consume only `legacy_compliance_projection`. Inspect projected exact load weeks and exempt race-overlay weeks. `min_long=60` minutes iff projected `target_hours` is truthy and `<7`, else 90. FAIL when no projected `role=long_ride` day exists or any such day's projected nested/fallback duration satisfies `0 < duration < min_long`; a present zero-duration long-role day retains production's PASS behavior. |
+| R14 | Consume only `legacy_compliance_projection`. PASS iff projected root `all_violations` is absent/null/empty; otherwise FAIL. Do not reconstruct series identity in E1/E2. |
+| R19 | Consume only `legacy_compliance_projection`. Set tolerance 15% when projected `target_hours<6`, else 10%; maximum is `target_hours*(1+tolerance)*60`, and load floor is `target_hours*0.65*60`. Skip recovery and race-overlay weeks. FAIL any remaining week above maximum, or an exact load week below the floor unless `phase=base AND plan_week<=4`. |
+| R20 | Consume only `legacy_compliance_projection`. For every projected day, FAIL iff its raw day token is in projected `off_days` and role is neither `off` nor `race`. The explicit race-role exemption remains active. |
 
 These functions are verdict-equivalent to the current implementations at
 `athletes/scripts/block_compliance.py:93-269,284-344`; message wording may be
@@ -1561,6 +1584,7 @@ is mandatory:
 | R01 | Sunday intensity followed by Monday intensity in the next week | PASS (weekly reset) | FAIL |
 | R02a | Four otherwise trainable weeks, each carrying a race-role overlay and no VO2 name/purpose; target plan edges span more than 16 days | PASS (race-overlay exemption) | FAIL |
 | R02b | W1 VO2 on 2026-01-08, W2 exact recovery, W3 VO2 on 2026-01-25; raw difference 17 days and plan-week difference 2 | PASS | FAIL under exact date difference |
+| R02c | Four base/load weeks without a VO2 raw name plus one `phase=base,week_type=race` week containing raw day name `VO2max 30/30` and no race-role overlay | **PASS (`True`)**: the race week is excluded from the applicable-week count but its VO2 is included by the separate stimulus scan | The independently constructed target result follows A3.1's purpose/date algorithm; this fixture's required assertion is production `True` == adapter `True` |
 | R03 | load mean 250 TSS, recovery 100 TSS (40%) | PASS | FAIL |
 | R04 | recovery-week cadence-purpose filler whose role is not intensity | PASS | FAIL |
 | R05 | transition-phase load week with zero intensity and `max_intensity=3` | FAIL | PASS |
@@ -1571,7 +1595,33 @@ is mandatory:
 
 The harness runs current production and the E1 adapter on the same legacy input
 object and requires exact nine-boolean equality before it checks the separately
-constructed target result.
+constructed target result. The named rows are necessary but not sufficient.
+The harness MUST also generate the finite branch/boundary corpus below
+and require equality for every generated object and all nine booleans:
+
+- raw `week_type` in `load|testing|recovery|taper|race|medium|uber_load`, with
+  raw phase on both sides of the `racing|taper` exemption;
+- race-role overlay absent/present, including the overlay as the first, middle,
+  and last raw day so day order is exercised;
+- nested fixed/external `sessions[].intensity` absent, empty, one non-hard token,
+  and each hard token `hard|threshold|vo2|anaerobic|race` in lower and mixed case;
+- raw day `name` absent/unknown/`Openers`, one non-VO2 `INTENSITY_TYPES` member,
+  and every `VO2MAX_TYPES` member, crossed with null/filler/intensity day roles;
+- intensity adjacency absent/present within one week and across a week boundary,
+  plus VO2 numeric week gaps `0|3|4` and no-VO2 applicable-week counts `0|3|4`;
+- long-role absent/present with nested `workout.duration` and fallback `duration`
+  at `0`, one below, and exactly at each 60/90-minute boundary; target hours at
+  `0|5.999|6|6.999|7`, and weekly duration/TSS values immediately below, at,
+  and above every R03/R19 threshold, including the base `plan_week=4|5` floor
+  exemption boundary; and
+- root `all_violations` absent, present-empty, and present-nonempty; `off_days`
+  miss/hit with raw roles `off|race|filler`; and `max_intensity` at `1|2|3`.
+
+Generation MUST cover every listed value and every decision-changing pairwise
+interaction, then deduplicate canonical inputs; it may use pairwise covering for
+non-interacting dimensions rather than materialize the full exponential product.
+The corpus definition, seed, generator version, case count, and production/adapter
+result vector for every case are committed goldens. Any inequality fails E1/E2.
 
 ### A3.1 Calendar vocabulary and R02/R03 block algorithm
 
@@ -1616,13 +1666,20 @@ dates do not subtract or pause elapsed time.
 
 The plan edges are also covered. Let `p_first` be the Monday/first calendar day
 of the first non-exempt exact `week_type=load` week, and `p_last` the Sunday/last
-calendar day of the last exact load week whose cycling phase is not `racing`
-and whose week type is not taper. Require `n>=1`,
+calendar day of the last non-exempt exact `week_type=load` week. **Both** edge
+selectors apply the complete exemption predicate above without alteration;
+neither may use a weaker phase- or type-only predicate. Require `n>=1`,
 `(d_1-p_first).days <= 16`, and `(p_last-d_n).days <= 16`. A negative edge
 difference is malformed ordering and `UNAVAILABLE`. No applicable load week is
 `NOT_APPLICABLE`; applicable load weeks with no stimulus FAIL. These pair and
 edge predicates are the complete E3 gap algorithm—there is no separate
 “trainable prefix/suffix” interpretation.
+
+Required transition-suffix fixture: a qualifying VO2 stimulus on 2026-01-10,
+the Sunday/last day of the final non-exempt base/load week on 2026-01-25, and a
+trailing paid transition/load week ending 2026-02-08. The transition week is
+excluded from `p_last`, so the suffix is exactly 15 days and MUST PASS; treating
+February 8 as `p_last` and returning a 29-day FAIL is non-conforming.
 
 For R03, parse the configured `meso_pattern` with the same
 `load_weeks,recovery_weeks` grammar used by calendar recovery marking; its cycle
@@ -1653,14 +1710,17 @@ For the E3 R04 target, after excluding rest/off sessions, the only ordinary
 cycling tuples allowed in an exact recovery week are:
 
 ```
-(purpose.class=endurance, purpose.subtype=endurance/steady, level=1)
-(purpose.class=endurance, purpose.subtype=endurance/steady, level=2)
-(purpose.class=recovery, purpose.subtype=<any registered recovery subtype>, level=1)
-(purpose.class=recovery, purpose.subtype=<any registered recovery subtype>, level=2)
+(purpose.class=endurance, purpose.subtype=endurance/steady, progression_level=1)
+(purpose.class=endurance, purpose.subtype=endurance/steady, progression_level=2)
+(purpose.class=recovery, purpose.subtype=<any registered recovery subtype>, progression_level=1)
+(purpose.class=recovery, purpose.subtype=<any registered recovery subtype>, progression_level=2)
 ```
 
-Here level is the registered native/non-native template level; a missing level
-is `UNAVAILABLE`, not an implicit L1. In addition, exactly one session with
+Here `progression_level` is candidate `session.progression_level`, never an origin-specific
+field or generic transformation parameter. Native sessions copy
+`archetype.level`; Appendix 8 closes every non-native value. A null progression level is
+`UNAVAILABLE` through the existing routing, not an implicit L1. In addition,
+exactly one session with
 exact purpose tuple `openers/openers/short` is allowed. Define the openers floor
 as `1.10` on `normalize_target_effort`'s neutral axis. This is the minimum live
 native opener effort (`athletes/scripts/new_archetypes.py:1233-1304`), and the
@@ -1672,14 +1732,18 @@ it contains at least one `kind=intervals` container with normalized `target.on
 non-interval segment reaches that floor. An intervals container below the floor
 is not an “individual effort”; an at/above-floor container with missing target
 or `on_seconds` is `UNAVAILABLE`. More than one qualifying opener or any other
-purpose/class/subtype/level tuple FAILS; zero qualifying openers also FAILS.
+purpose/class/subtype/progression-level tuple FAILS; zero qualifying openers also FAILS.
 Thus “individual efforts” has exactly
 the segment predicate above and never means title words or arbitrary steady
 segments.
 
-For the E3 R06 target, each applicable week passes iff at least one cycling
-session satisfies this exact predicate, where `H` is the week's available
-cycling hours and durations are final minutes:
+For the E3 R06 target, the applicable set is exactly weeks satisfying all three
+conditions: `week_type == load`, `cycling_phase not in {transition}`, and
+`is_paid == true`. W00 is unpaid and excluded. Testing, taper, race, medium,
+recovery, and uber-load weeks are not applicable; no other phase/type alias or
+reachability inference widens this set. Each applicable week passes iff at least
+one cycling session satisfies this exact predicate, where `H` is the week's
+available cycling hours and durations are final minutes:
 
 ```
 (role == long_ride AND duration_min >= (90 if H <= 8 else 120))
@@ -1691,6 +1755,17 @@ The first branch does not require registry status; the second does not require
 the runtime role. The comparison boundaries are inclusive. Multiple short
 sessions are never summed, and purpose/title/duration alone cannot synthesize
 the registry boolean.
+
+The required R06 fixture matrix has two cases per row: one containing a session
+that satisfies the predicate and one containing no qualifying session. A paid,
+non-transition exact-load row MUST return PASS/FAIL respectively. Each exact
+excluded type `testing|taper|race|medium|recovery|uber_load` is otherwise paid
+and non-transition and MUST return `NOT_APPLICABLE` in both cases; a paid
+`transition/load` row, and W00 (`week=0,is_paid=false`) MUST return
+`NOT_APPLICABLE` in both their positive and negative cases. This matrix is
+exhaustive for the three applicability dimensions and is not replaced by current-producer
+reachability. `uber_load` remains reserved vocabulary and MUST NOT be described
+as production-reachable until a producer emits it.
 
 ### A3.2 R11/R12 strength tables
 
@@ -1825,9 +1900,9 @@ other row; this label does not change `blocking_since`.
 | R01 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | All cycling days: no consecutive calendar dates both containing intensity-role sessions, including week boundaries. Athlete-fixed hard sessions count. | candidate `sessions[].{id,date,sport,role,origin}` | <2 intensity dates → NA; missing date/role → unavailable | `R01_BACK_TO_BACK_INTENSITY` |
 | R02 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Apply A3.1's exact exemption, ordered adjacent-pair date-difference predicate, and both 16-day plan-edge predicates. Date subtraction counts endpoints exclusively; recovery never pauses it. | candidate session purpose/date + copied week type/cycling phase and load-week boundaries | No applicable load week → NA; applicable load weeks with no stimulus → FAIL; missing purpose/date/week type/phase → unavailable | `R02_VO2_GAP` |
 | R03 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL with warning band | Apply A3.1’s same-meso-block adjacency and exact reported-TSS ratio/bands. No volume-specific boundary and no final-session/design TSS substitution. | candidate `weeks[].{week_type,cycling_phase,meso_block_id,reported_cycling_tss}` | Empty adjacent load run → NA; missing/non-finite/≤0 denominator → unavailable | `R03_RECOVERY_TSS_RATIO` |
-| R04 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Apply A3.1's exact four allowed `(class,subtype,level)` tuples plus exactly one `openers/openers/short` session satisfying the normalized 1.10-floor intervals-container predicate with every qualifying `on_seconds<=45`. Any missing/extra opener or other tuple/effort fails. | candidate session purpose, level, typed segments, week type | No recovery week → NA; missing level/segment/purpose → unavailable | `R04_RECOVERY_PURITY` |
+| R04 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Apply A3.1's exact four allowed `(class,subtype,progression_level)` tuples plus exactly one `openers/openers/short` session satisfying the normalized 1.10-floor intervals-container predicate with every qualifying `on_seconds<=45`. Any missing/extra opener or other tuple/effort fails. | candidate session purpose, `progression_level`, typed segments, week type | No recovery week → NA; null/missing progression level or missing segment/purpose → unavailable | `R04_RECOVERY_PURITY` |
 | R05 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Load and uber-load weeks have 2–3 intensity sessions. Transition allows 0–3; training age <1 or ≤3 available cycling days allows 1–3. Recovery, race, and medium weeks are excluded. | candidate roles; training age/off days; week type | No applicable load week → NA; missing role/week type → unavailable | `R05_INTENSITY_COUNT` |
-| R06 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Apply A3.1's exact disjunction: a long-role ride ≥90 min when hours ≤8 (8.0 included) or ≥120 above 8, OR any copied `long_ride_registered=true` cycling session ≥75 min. No summing. | candidate cycling duration/role/`long_ride_registered` + available hours + week type | No applicable week → NA; missing duration/hours/boolean → unavailable | `R06_LONG_RIDE_MISSING` |
+| R06 | PRE_GUIDE | pre-existing | ACTIVE / CRITICAL | Applicable iff paid exact-load and non-transition; apply A3.1's exact disjunction: a long-role ride ≥90 min when hours ≤8 (8.0 included) or ≥120 above 8, OR any copied `long_ride_registered=true` cycling session ≥75 min. No summing. | candidate cycling duration/role/`long_ride_registered` + week hours/type/phase/`is_paid` | No applicable week → NA; missing duration/hours/boolean/type/phase/paid flag → unavailable | `R06_LONG_RIDE_MISSING` |
 | R07 | POST_GUIDE | E3 | ACTIVE / WARNING | Every paid week’s emitted guide has exactly one Monday block note and its registered note type equals candidate week type. | D2 guide bytes + candidate weeks + block-notes digest | No paid weeks → NA; well-formed missing/mismatch → FAIL; malformed guide/config → unavailable | `R07_BLOCK_NOTE` |
 | R08 | PRE_GUIDE | E3 | ACTIVE / CRITICAL | Every cycling session has exactly one §4.4.1 internal class; `NONE` is legal only for the closed enumerated session set. | candidate `sessions[].{sport,origin,session_type,purpose,duration_s,fueling_class}` | No cycling sessions → NA; missing/malformed class → unavailable | `R08_FUEL_TAG_MISSING` |
 | R09 | PRE_GUIDE | E3 | ACTIVE / WARNING | Enforce §4.4.1's exact source-tier projection, including the enumerated empty tier. | candidate `fueling_source_tier` + `fueling_class` | No cycling sessions → NA; missing source/class → unavailable | `R09_INTENSITY_FUEL` |
@@ -3059,6 +3134,34 @@ SHA-256. Nullable fields are present with `null`; omission is invalid.
   "guide_inputs": [
     {"path": "repo:<path>" | "athlete:<path>", "sha256": sha256}, ...
   ],
+  "legacy_compliance_projection": {
+    "schema_version": "legacy_compliance_projection/v1",
+    "target_hours": non-negative number,
+    "off_days": [string, ...],
+    "max_intensity": non-negative integer,
+    "weeks": [
+      {
+        "plan_week": integer | null,
+        "phase": "base" | "build" | "race_prep" | "maintenance" | "racing" | "taper" | "race" | null,
+        "week_type": "load" | "testing" | "recovery" | "taper" | "race" | "medium" | "uber_load" | null,
+        "total_tss": number | null,
+        "total_duration": number | null,
+        "days": [
+          {
+            "day": string | null,
+            "name": string | null,
+            "role": string | null,
+            "duration": number | null,
+            "workout": {"duration": number | null} | null,
+            "sessions": [{"intensity": string | null}, ...]
+          }, ...
+        ]
+      }, ...
+    ],
+    "all_violations_present": boolean,
+    "all_violations": [string, ...] | null,
+    "projection_sha256": sha256
+  },
   "weeks": [
     {
       "week": integer including 0,
@@ -3097,6 +3200,7 @@ SHA-256. Nullable fields are present with `null`; omission is invalid.
       "origin": one §4.4 discriminant,
       "is_assessment": boolean,
       "long_ride_registered": boolean,
+      "progression_level": integer 1..6 | null,
       "fueling_source_tier": "quality" | "long_ride" | "race_sim" | "empty" | null,
       "fueling_class": "HIGH" | "LONG_RIDE" | "RACE" | "NONE" | null,
       "duration_s": non-negative integer | null,
@@ -3174,6 +3278,36 @@ SHA-256. Nullable fields are present with `null`; omission is invalid.
 }
 ```
 
+`legacy_compliance_projection` is a verbatim field projection of the live
+`_bb_plan` at D1 freeze time. The exact source structure is `_bb_plan` created by
+`build_plan_from_calendar(...)` after the optional
+`materialize_fixed_sessions(_bb_plan,_ledger)` call. Current Phase 3 passes that
+exact object directly to
+`validate_plan(_bb_plan,target_hours=...,off_days=...,max_intensity=...)` at
+`build/trustworthy-phase3:athletes/scripts/generate_athlete_package.py:760-776,814-822`.
+Its `weeks` retain `_bb_plan['weeks']` order; every `days` array retains the raw
+block-day order; `day`, `name`, `role`, top-level `duration`, nested
+`workout.duration`, and every raw `sessions[].intensity` token are copied without
+title, role, or intensity normalization. The source plan shape and root
+`all_violations` are returned at
+`build/trustworthy-phase3:athletes/scripts/block_chain.py:225-231`; fixed/external
+sessions are appended to the raw day object's `sessions` array before totals are
+updated at
+`build/trustworthy-phase3:athletes/scripts/availability_ledger.py:88-118`.
+`target_hours`, `off_days`, and `max_intensity` copy the three exact arguments at
+that same validation call. For a source key that current code accesses through
+`.get`, an absent scalar/nested `workout` materializes as null and absent
+`sessions` materializes as `[]`; present values and array order remain verbatim.
+A missing raw `all_violations` key sets
+`all_violations_present=false,all_violations=null`; when present, its array is
+copied verbatim and the boolean is true.
+
+`projection_sha256` is SHA-256 of canonical JSON of exactly the projection object
+with only its `projection_sha256` member omitted. It is computed and embedded
+before D1. The projection contains every value read by current
+`block_compliance.py:58-75,78-90,93-269,284-344`; the nine A3.0 evaluators have
+no other input authority.
+
 Weeks sort by `week`; sessions and each week's `session_ids` sort by
 `(week,date,daily_ordinal)`; segments retain final emitted order; digest lists
 sort by path and overlays lexicographically. A non-cycling session has
@@ -3183,6 +3317,10 @@ non-strength session has `strength:null`; only an actually emitted strength
 artifact becomes a session. A prescribed-but-absent artifact is represented by
 the week's `strength_artifact_state:ABSENT`, so R11 fails without inventing a
 training session or athlete-visible operation.
+Every session carries `progression_level`: native sessions have the same integer
+as `archetype.level`; every Appendix 8 contract supplies its stated integer or
+null. Null is a real closed value, not permission to infer a level from title,
+duration, segments, or transformation parameters.
 
 Every path-valued digest in the candidate, manifest, and report uses one closed
 namespace. `repo:<path>` means a POSIX path relative to the checked-out
@@ -3205,6 +3343,7 @@ after D1. The path string including its prefix is the sort and map key.
 | methodology/render style | Copy `methodology_id` from `athlete:methodology.yaml` key `methodology_id`, then exact-key map through §4.7. Phase 3 loads the separate YAML at `build/trustworthy-phase3:athletes/scripts/generate_athlete_package.py:3091-3096` and reads that key at lines 595–602. Unknown/missing is a generation failure; no `profile.yaml` methodology field is an authority. |
 | control fields | Copy Phase 3's selected control contract; its HR/RPE selection is at `build/trustworthy-phase3:athletes/scripts/canonical_training_model.py:43-65`. |
 | config digests and guide inputs | **NEW E1:** hash the exact bytes loaded by selection, scoring, block notes, strength, and guide generation under the closed namespace above. The required athlete-local guide set is exactly `athlete:profile.yaml`, `athlete:derived.yaml`, `athlete:plan_dates.yaml`, `athlete:methodology.yaml`, `athlete:fueling.yaml`, and `athlete:weekly_structure.yaml`; the last remains present in the map even when the guide's fallback branch does not consume its values. These are the guide builder's athlete-file reads at `build/trustworthy-phase3:athletes/scripts/training_guide_builder.py:3911-3953,4050-4055`. Any additional resolved repo input actually read by the guide is included as `repo:<path>`. `guide_inputs` is the complete consumed path set, not an allow-list; D2 repeats the identical sorted path→digest map. |
+| legacy compliance projection | **NEW E1:** at D1 freeze, project exactly the live `_bb_plan` fields and validation arguments defined above after fixed-session materialization; compute its embedded digest before D1. No later reconstruction from normalized candidate sessions is permitted. |
 | week, dates, phase, week type, block-note template | Copy calendar week number/dates and normalize phase/week type by Appendix 3 A3.1. Resolve `block_note_template_id` by exact key in `block_notes.yaml`; an intentionally unsupported testing/taper key is null and makes R07/R25 unavailable, not guessed. Calendar creation and recovery marking are at `athletes/scripts/calculate_plan_dates.py:193-216,245-268`; block-chain peak normalization is at `athletes/scripts/block_chain.py:25-60`. |
 | meso block fields | **NEW E1:** materialize A3.1's maximal contiguous block and globally stable ID `meso-{zero-based-plan-index:03d}`; `meso_block_index` resets to 0 on each cycling-phase change, and `ordinal_in_meso_block` resets to 1 on each new block. Thus “first base meso block” in R12 is exactly base index 0. |
 | reported weekly TSS | Copy the final block-builder week's `total_tss`, after fixed-session and overlay materialization and before D1. The builder writes that field at `athletes/scripts/block_builder.py:555-561`. It is never recomputed from report gates. |
@@ -3218,6 +3357,7 @@ after D1. The path string including its prefix is the sort and map key.
 | purpose/main-set IDs | Native: copy the exact Appendix 5 row then materialize its rule over segment provenance. Non-native: copy Appendix 8. Assessment status keys only from `is_assessment`. |
 | segment/target fields | Copy the final typed source structure, assign IDs/provenance before projection, then use Phase 3's canonical target transform (`build/trustworthy-phase3:athletes/scripts/canonical_training_model.py:148-194`). All nullable target keys shown in the schema are materialized, even when unused. |
 | archetype/series | Native identity comes from Appendix 4 before render. `archetype.variation` copies the live zero-based counter without translation: it begins at 0 and records the exact value passed to the renderer (`build/trustworthy-phase3:athletes/scripts/generate_athlete_package.py:2732-2755`). Series copies the block-builder tracker tuple now created from block/day/name at `athletes/scripts/generate_athlete_package.py:2227-2244,2309-2321`; **NEW E1** also stores tracker slot, raw name, A3.3 family key, and the exact tombstone replacement resolved before series start (null otherwise). |
+| progression level | Native sessions copy exact `archetype.level`. Non-native sessions copy the value closed by their Appendix 8 contract. In particular, `MAPPER_SIMPLE_ENDURANCE` copies the live `bb_level` read from `bb_day.get('level',3)` and passed unchanged as `_bb_render(...,level=bb_level,...)` at `build/trustworthy-phase3:athletes/scripts/generate_athlete_package.py:2173-2180,2269-2277`; contracts with no level concept write null. |
 | provenance | **NEW E1:** the selected Appendix 8/native contract supplies producer/template IDs and versions; hash exact producer/template source bytes and record every dose-affecting scale/cap/overlay parameter. Empty arrays/objects remain present. |
 | race and TP projection fields | Copy the final emitter record and PlanIR values; Phase 3 defines these session fields at `build/trustworthy-phase3:athletes/scripts/plan_ir.py:78-121`. |
 
@@ -3261,20 +3401,25 @@ digests still pin exact bytes. IDs are case-sensitive. Native and legacy-Nate
 sessions resolve through Appendix 4/5 and the manifest instead and MUST NOT be
 entered here.
 
-| Origin | producer ID / version | Allowed template IDs / version | Purpose; role; assessment; long-ride registered |
-|---|---|---|---|
-| `MAPPER_SIMPLE_ENDURANCE` | `workout_mapper.simple_endurance` / `v1` | `simple_endurance` / `v1`; level parameter 1–6 | `endurance/steady`; `filler`; false; true |
-| `PROGRESSIVE_INTERVAL_GENERATOR` | `workout_library.progressive_interval` / `v1` | the 11 exact A8.1 interval IDs / `v1` | A8.1; `intensity`; false; false |
-| `PROGRESSIVE_ENDURANCE_GENERATOR` | `workout_library.progressive_endurance` / `v1` | the six exact A8.1 endurance IDs / `v1` | A8.1; `filler`; false; false |
-| `STANDARD_BLOCK_GENERATOR` | `generate_athlete_package.standard_blocks` / `v1` | the 22 exact A8.2 IDs / `v1` | A8.2 |
-| `PRE_PLAN_GENERATOR` | `generate_athlete_package.pre_plan` / `v1` | `pre_plan_easy`, `pre_plan_endurance`, `pre_plan_strength_prep`, `pre_plan_rest` / `v1` | A8.3 |
-| `REST_SENTINEL_ZWO` | `generate_athlete_package.rest_sentinel` / `v1` | `rest_60s_30pct` / `v1` | `recovery/rest_sentinel`; `off`; false; false |
-| `A_RACE_FREERIDE` | `generate_athlete_package.a_race` / `v1` | `a_race_freeride` / `v1` | `free/race_event`; `race`; false; false |
-| `B_RACE_FREERIDE` | `generate_athlete_package.b_race` / `v1` | `b_race_freeride` / `v1` | `free/race_event`; `race`; false; false |
-| `TRAVEL_SHAKEOUT` | `generate_athlete_package.travel_shakeout` / `v1` | `travel_shakeout_30m` / `v1` | `recovery/shakeout`; `travel`; false; false |
-| `ATHLETE_FIXED` | `canonical_training_model.athlete_fixed` / `v1` | `athlete_fixed` / `v1` | `free/external_fixed`; `athlete_fixed`; copied explicit assessment flag, initially false; false |
-| `CANONICAL_REST` | `plan_ir.canonical_rest` / `v1` | `canonical_rest_zero` / `v1` | `free/rest`; `off`; false; false |
-| `STRENGTH_TEMPLATE` | `generate_athlete_package.strength_template` / `v2` | the 12 exact A8.3 strength IDs / `strength_periodization/v2` | no cycling purpose; `strength`; false; false |
+| Origin | producer ID / version | Allowed template IDs / version | Purpose; role; assessment; long-ride registered | `progression_level` |
+|---|---|---|---|---|
+| `MAPPER_SIMPLE_ENDURANCE` | `workout_mapper.simple_endurance` / `v1` | `simple_endurance` / `v1`; level parameter 1–6 | `endurance/steady`; `filler`; false; true | Copy the producer's `bb_level` parameter, integer 1–6. |
+| `PROGRESSIVE_INTERVAL_GENERATOR` | `workout_library.progressive_interval` / `v1` | the 11 exact A8.1 interval IDs / `v1` | A8.1; `intensity`; false; false | null; week-index selection is not a 1–6 level. |
+| `PROGRESSIVE_ENDURANCE_GENERATOR` | `workout_library.progressive_endurance` / `v1` | the six exact A8.1 endurance IDs / `v1` | A8.1; `filler`; false; false | null; rotation index is not a 1–6 level. |
+| `STANDARD_BLOCK_GENERATOR` | `generate_athlete_package.standard_blocks` / `v1` | the 22 exact A8.2 IDs / `v1` | A8.2 | null; the contract has no level concept. |
+| `PRE_PLAN_GENERATOR` | `generate_athlete_package.pre_plan` / `v1` | `pre_plan_easy`, `pre_plan_endurance`, `pre_plan_strength_prep`, `pre_plan_rest` / `v1` | A8.3 | null; the contract has no level concept. |
+| `REST_SENTINEL_ZWO` | `generate_athlete_package.rest_sentinel` / `v1` | `rest_60s_30pct` / `v1` | `recovery/rest_sentinel`; `off`; false; false | null; the contract has no level concept. |
+| `A_RACE_FREERIDE` | `generate_athlete_package.a_race` / `v1` | `a_race_freeride` / `v1` | `free/race_event`; `race`; false; false | null; the contract has no level concept. |
+| `B_RACE_FREERIDE` | `generate_athlete_package.b_race` / `v1` | `b_race_freeride` / `v1` | `free/race_event`; `race`; false; false | null; the contract has no level concept. |
+| `TRAVEL_SHAKEOUT` | `generate_athlete_package.travel_shakeout` / `v1` | `travel_shakeout_30m` / `v1` | `recovery/shakeout`; `travel`; false; false | null; the contract has no level concept. |
+| `ATHLETE_FIXED` | `canonical_training_model.athlete_fixed` / `v1` | `athlete_fixed` / `v1` | `free/external_fixed`; `athlete_fixed`; copied explicit assessment flag, initially false; false | null; the contract has no level concept. |
+| `CANONICAL_REST` | `plan_ir.canonical_rest` / `v1` | `canonical_rest_zero` / `v1` | `free/rest`; `off`; false; false | null; the contract has no level concept. |
+| `STRENGTH_TEMPLATE` | `generate_athlete_package.strength_template` / `v2` | the 12 exact A8.3 strength IDs / `strength_periodization/v2` | no cycling purpose; `strength`; false; false | null; the cycling progression level is not applicable. |
+
+The live block path reads `bb_level` from the selected block day and passes that
+same value to the mapper at
+`build/trustworthy-phase3:athletes/scripts/generate_athlete_package.py:2173-2180,2269-2277`;
+that is the sole non-native non-null derivation above.
 
 Every cycling contract above also carries
 `assignment_status:hypothesis`. Its `main_set_rule` is `ASSESSMENT_BODY` only
