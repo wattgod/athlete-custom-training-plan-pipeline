@@ -22,7 +22,15 @@ def test_heather_like_manifest_is_platform_independent(tmp_path):
     assert len(manifest['workouts']) == len(manifest['native_notes']) == 2
     assert manifest['workouts'][0]['workout_type'] == 8
     assert manifest['workouts'][1]['title'] == 'Friday Recovery'
-    assert manifest['attachments'] == [{'id': 'guide', 'external_id': 'attachment:guide', 'path': 'training_guide.pdf', 'kind': 'guide'}]
+    assert manifest['attachments'] == [{
+        'id': 'guide', 'external_id': 'attachment:guide',
+        'path': 'training_guide.pdf', 'kind': 'guide',
+        'parent_logical_key': '2026-01-12#1',
+        'filename': 'training_guide.pdf',
+        'sha256': '315d429b7714cedb6ad04ac31240145257692630457f3c88253c5beceac76027',
+        'bytes_ref': 'training_guide.pdf',
+        'logical_key': '2026-01-12#1:training_guide.pdf',
+    }]
     assert manifest['mental_training_tasks'][0]['id'] == 'visualization'
     assert manifest['course_entitlement']['race'] == 'Nannup'
     assert (tmp_path / 'fulfillment_manifest.json').exists()

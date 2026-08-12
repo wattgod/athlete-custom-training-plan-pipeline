@@ -1,9 +1,10 @@
-"""Deterministic Phase 1 replay gate for the synthetic athlete-m contract."""
+"""Deterministic Phase 3 replay retaining every Phase 1 negative gate."""
 
 import json
 import os
 import sys
 import zipfile
+import re
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,9 +31,9 @@ def _isolate_webhook_module():
     sys.modules.pop("app", None)
 
 
-def test_athlete_m_phase1_golden(monkeypatch, tmp_path):
+def test_athlete_m_phase3_golden(monkeypatch, tmp_path):
     import app as webhook_app
-    expected = _load("expected/phase1.json")
+    expected = _load("expected/phase3.json")
     intake = _load("intake.json")
     clock = _load("clock.json")
     intake["generation_clock"] = clock["generation_at"]
@@ -70,11 +71,28 @@ def test_athlete_m_phase1_golden(monkeypatch, tmp_path):
     confirmations = state["required_confirmations"]
 
     assert profile["devices"]["devices"] == expected["profile_devices"]
+    assert profile["fitness_markers"]["ftp_watts"] is None
+    assert profile["fitness_markers"]["power_basis"] == "none"
+    assert profile["fitness_markers"]["control_metric"] == "hr"
     assert profile["target_race"]["distance_miles"] == 75
     golden_path = FIXTURE / 'expected' / 'plan_dates.yaml'
     if os.environ.get('GG_UPDATE_ATHLETE_M_GOLDEN') == '1':
-        golden_path.write_text((source / 'plan_dates.yaml').read_text())
-    assert plan_dates == yaml.safe_load(golden_path.read_text())
+        golden_path.write_text(yaml.safe_dump(
+            {key: value for key, value in plan_dates.items() if key != '_derived'},
+            sort_keys=False,
+        ))
+    from derived_registry import ARTIFACT_DERIVED_SCHEMAS
+    calendar_registry = plan_dates.get('_derived') or []
+    assert {record['field'] for record in calendar_registry} == set(
+        ARTIFACT_DERIVED_SCHEMAS['calendar']['required'])
+    assert {record['revision'] for record in calendar_registry} == {1}
+    assert {key: value for key, value in plan_dates.items() if key != '_derived'} == (
+        yaml.safe_load(golden_path.read_text()))
+    catalog_ids = {value['id'] for value in state['derived_values']}
+    assert any(item.startswith('DERIVED_') for item in catalog_ids)
+    assert any(item.startswith('METHODOLOGY_') for item in catalog_ids)
+    assert any(item.startswith('CALENDAR_') for item in catalog_ids)
+    assert any(item.startswith('SCHEDULE_') for item in catalog_ids)
     sessions = [
         (week["number"], session)
         for week in plan_ir["weeks"] for session in week["sessions"]
@@ -104,6 +122,20 @@ def test_athlete_m_phase1_golden(monkeypatch, tmp_path):
     assert not set(expected["absent_blockers"]) & {i["id"] for i in issues}
     labels = [item["week_label"] for item in fueling["gut_training"]["weekly_progression"]]
     assert labels == expected["fueling_week_labels"]
+    assert fueling["fueling_basis"]["power_used"] is False
+    assert not any("watt" in key.lower() for key in fueling["prescription"]["inputs"])
+    assert not any(key in {"work_rate", "kilojoules", "kj"}
+                   for key in map(str.lower, fueling["prescription"]["inputs"]))
+    assert not re.search(r"\b\d+(?:\.\d+)?\s*kJ\b", json.dumps(fueling), re.I)
+    assert not list((source / "workouts").glob("*.zwo"))
+    contract = json.loads((source / "apply_contract.json").read_text())
+    assert contract["contract_version"] == "apply_contract/v1"
+    assert contract["model_seal"]
+    assert all(op["kind"] != "threshold_update" for op in contract["operations"])
+    for path in source.rglob("*"):
+        if path.is_file() and path.suffix.lower() in {".json", ".yaml", ".html", ".md"}:
+            text = path.read_text(errors="replace")
+            assert not re.search(r"\b\d+(?:\.\d+)?\s*(?:W|watts?)\b", text, re.I), path
 
     monkeypatch.setattr(webhook_app, "CRON_SECRET", "fixture-secret")
 
@@ -120,7 +152,10 @@ def test_athlete_m_phase1_golden(monkeypatch, tmp_path):
     sealed_paths = {item['path'] for item in release_manifest['artifacts']}
     assert {
         'artifacts/plan_ir.json', 'artifacts/tp_manifest.json',
+        'artifacts/canonical_training_model.json', 'artifacts/apply_contract.json',
     } <= sealed_paths
+    assert release_manifest['seal_version'] == 'canonical_model_apply_contract/v1'
+    assert release_manifest['model_seal'] == contract['model_seal'] == state['model_seal']
 
     with zipfile.ZipFile(persisted["review_zip"]) as archive:
         assert not any(name.lower().endswith(".zwo") for name in archive.namelist())
@@ -137,8 +172,9 @@ def test_athlete_m_phase1_golden(monkeypatch, tmp_path):
     assert rendered_review.status_code == 200
     review_html = rendered_review.get_data(as_text=True)
     catalog = {item['item_id']: item for item in state['review_items']}
-    assert 'FTP_ESTIMATED' in review_html
-    assert str(catalog['FTP_ESTIMATED']['value']['ftp_watts']) in review_html
+    assert 'FTP_ESTIMATED' not in review_html
+    assert 'POWER_BASIS_NONE_CONFIRM' in review_html
+    assert catalog['POWER_BASIS_NONE_CONFIRM']['value']['power_basis'] == 'none'
     assert 'SCHEDULE_MISMATCH_CONFIRM' in review_html
     for mismatch in catalog['SCHEDULE_MISMATCH_CONFIRM']['value'][
             'generated_mismatches']:

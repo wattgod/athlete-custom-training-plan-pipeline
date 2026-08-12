@@ -38,7 +38,11 @@ def _canon_segments(segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     None) compares equal to a freshly parsed ZWO segment (only populated keys).
     Any real value difference — power, seconds, kind, repeat — still mismatches.
     """
-    return [{k: v for k, v in (seg or {}).items() if v is not None} for seg in segments]
+    return [
+        {k: v for k, v in (seg or {}).items()
+         if v is not None and k not in {'target', 'zwo'}}
+        for seg in segments
+    ]
 
 
 def _main_set_text(description: str) -> str:

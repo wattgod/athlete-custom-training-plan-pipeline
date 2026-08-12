@@ -1,0 +1,2024 @@
+{
+  "$defs": {
+    "dated_predecessor": {
+      "additionalProperties": false,
+      "properties": {
+        "op_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "remote_id": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "op_id",
+        "remote_id"
+      ],
+      "type": "object"
+    },
+    "positional_predecessor": {
+      "additionalProperties": false,
+      "properties": {
+        "op_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "remote_id": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "op_id",
+        "remote_id"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://gravelgod.com/schemas/apply_contract-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "compat": {
+      "additionalProperties": false,
+      "properties": {
+        "min_reader": {
+          "const": "apply_contract/v1"
+        }
+      },
+      "required": [
+        "min_reader"
+      ],
+      "type": "object"
+    },
+    "contract_version": {
+      "const": "apply_contract/v1"
+    },
+    "generation_revision": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "model_seal": {
+      "type": "string"
+    },
+    "operations": {
+      "items": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "create"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "attachment_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "bytes_ref": {
+                    "type": "string"
+                  },
+                  "filename": {
+                    "type": "string"
+                  },
+                  "parent_logical_id": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "parent_logical_id",
+                  "filename",
+                  "sha256",
+                  "bytes_ref"
+                ],
+                "type": "object"
+              },
+              "predecessor": {
+                "type": "null"
+              },
+              "prior_payload": {
+                "type": "null"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "delete_by_remote_id"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "update"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "attachment_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "bytes_ref": {
+                    "type": "string"
+                  },
+                  "filename": {
+                    "type": "string"
+                  },
+                  "parent_logical_id": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "parent_logical_id",
+                  "filename",
+                  "sha256",
+                  "bytes_ref"
+                ],
+                "type": "object"
+              },
+              "predecessor": {
+                "$ref": "#/$defs/dated_predecessor"
+              },
+              "prior_payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "bytes_ref": {
+                    "type": "string"
+                  },
+                  "filename": {
+                    "type": "string"
+                  },
+                  "parent_logical_id": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "parent_logical_id",
+                  "filename",
+                  "sha256",
+                  "bytes_ref"
+                ],
+                "type": "object"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "restore_prior_payload"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "keep"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "attachment_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "type": "null"
+              },
+              "predecessor": {
+                "$ref": "#/$defs/dated_predecessor"
+              },
+              "prior_payload": {
+                "type": "null"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "delete"
+              },
+              "expected_digest": {
+                "type": "null"
+              },
+              "kind": {
+                "const": "attachment_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "type": "null"
+              },
+              "predecessor": {
+                "$ref": "#/$defs/dated_predecessor"
+              },
+              "prior_payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "bytes_ref": {
+                    "type": "string"
+                  },
+                  "filename": {
+                    "type": "string"
+                  },
+                  "parent_logical_id": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "parent_logical_id",
+                  "filename",
+                  "sha256",
+                  "bytes_ref"
+                ],
+                "type": "object"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "recreate_from_prior_payload"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "create"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "calendar_note_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "date",
+                  "title",
+                  "body"
+                ],
+                "type": "object"
+              },
+              "predecessor": {
+                "type": "null"
+              },
+              "prior_payload": {
+                "type": "null"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "delete_by_remote_id"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "update"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "calendar_note_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "date",
+                  "title",
+                  "body"
+                ],
+                "type": "object"
+              },
+              "predecessor": {
+                "$ref": "#/$defs/dated_predecessor"
+              },
+              "prior_payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "date",
+                  "title",
+                  "body"
+                ],
+                "type": "object"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "restore_prior_payload"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "keep"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "calendar_note_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "type": "null"
+              },
+              "predecessor": {
+                "$ref": "#/$defs/dated_predecessor"
+              },
+              "prior_payload": {
+                "type": "null"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "delete"
+              },
+              "expected_digest": {
+                "type": "null"
+              },
+              "kind": {
+                "const": "calendar_note_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "type": "null"
+              },
+              "predecessor": {
+                "$ref": "#/$defs/dated_predecessor"
+              },
+              "prior_payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "date",
+                  "title",
+                  "body"
+                ],
+                "type": "object"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "recreate_from_prior_payload"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "create"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "mental_task_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "date",
+                  "title",
+                  "body"
+                ],
+                "type": "object"
+              },
+              "predecessor": {
+                "type": "null"
+              },
+              "prior_payload": {
+                "type": "null"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "delete_by_remote_id"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "update"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "mental_task_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "date",
+                  "title",
+                  "body"
+                ],
+                "type": "object"
+              },
+              "predecessor": {
+                "$ref": "#/$defs/dated_predecessor"
+              },
+              "prior_payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "date",
+                  "title",
+                  "body"
+                ],
+                "type": "object"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "restore_prior_payload"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "keep"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "mental_task_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "type": "null"
+              },
+              "predecessor": {
+                "$ref": "#/$defs/dated_predecessor"
+              },
+              "prior_payload": {
+                "type": "null"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "delete"
+              },
+              "expected_digest": {
+                "type": "null"
+              },
+              "kind": {
+                "const": "mental_task_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "type": "null"
+              },
+              "predecessor": {
+                "$ref": "#/$defs/dated_predecessor"
+              },
+              "prior_payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "date",
+                  "title",
+                  "body"
+                ],
+                "type": "object"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "recreate_from_prior_payload"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "create"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "workout_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "description": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "structure": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "total_seconds": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "tp_workout_type": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "tss_planned": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "date",
+                  "title",
+                  "description",
+                  "tp_workout_type",
+                  "total_seconds",
+                  "tss_planned",
+                  "structure"
+                ],
+                "type": "object"
+              },
+              "predecessor": {
+                "type": "null"
+              },
+              "prior_payload": {
+                "type": "null"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "delete_by_remote_id"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "update"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "workout_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "description": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "structure": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "total_seconds": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "tp_workout_type": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "tss_planned": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "date",
+                  "title",
+                  "description",
+                  "tp_workout_type",
+                  "total_seconds",
+                  "tss_planned",
+                  "structure"
+                ],
+                "type": "object"
+              },
+              "predecessor": {
+                "$ref": "#/$defs/dated_predecessor"
+              },
+              "prior_payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "description": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "structure": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "total_seconds": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "tp_workout_type": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "tss_planned": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "date",
+                  "title",
+                  "description",
+                  "tp_workout_type",
+                  "total_seconds",
+                  "tss_planned",
+                  "structure"
+                ],
+                "type": "object"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "restore_prior_payload"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "keep"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "workout_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "type": "null"
+              },
+              "predecessor": {
+                "$ref": "#/$defs/dated_predecessor"
+              },
+              "prior_payload": {
+                "type": "null"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "delete"
+              },
+              "expected_digest": {
+                "type": "null"
+              },
+              "kind": {
+                "const": "workout_upsert"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "type": "null"
+              },
+              "predecessor": {
+                "$ref": "#/$defs/dated_predecessor"
+              },
+              "prior_payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "description": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "structure": {
+                    "type": [
+                      "object",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "total_seconds": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "tp_workout_type": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "tss_planned": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "date",
+                  "title",
+                  "description",
+                  "tp_workout_type",
+                  "total_seconds",
+                  "tss_planned",
+                  "structure"
+                ],
+                "type": "object"
+              },
+              "remote_marker": {
+                "type": "string"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "recreate_from_prior_payload"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "object"
+              },
+              "disposition": {
+                "const": "update"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "threshold_update"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "after_value": {
+                    "type": [
+                      "number",
+                      "integer",
+                      "string"
+                    ]
+                  },
+                  "metric": {
+                    "type": "string"
+                  },
+                  "unit": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "metric",
+                  "after_value",
+                  "unit"
+                ],
+                "type": "object"
+              },
+              "predecessor": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/positional_predecessor"
+                  }
+                ]
+              },
+              "prior_payload": {
+                "type": "null"
+              },
+              "remote_marker": {
+                "type": "null"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "restore_before_image"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "keep"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "threshold_update"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "type": "null"
+              },
+              "predecessor": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/positional_predecessor"
+                  }
+                ]
+              },
+              "prior_payload": {
+                "type": "null"
+              },
+              "remote_marker": {
+                "type": "null"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "object"
+              },
+              "disposition": {
+                "const": "update"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "zone_update"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "after_table": {
+                    "type": [
+                      "array",
+                      "object"
+                    ]
+                  },
+                  "zone_set": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "zone_set",
+                  "after_table"
+                ],
+                "type": "object"
+              },
+              "predecessor": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/positional_predecessor"
+                  }
+                ]
+              },
+              "prior_payload": {
+                "type": "null"
+              },
+              "remote_marker": {
+                "type": "null"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "restore_before_image"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "keep"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "zone_update"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "type": "null"
+              },
+              "predecessor": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/positional_predecessor"
+                  }
+                ]
+              },
+              "prior_payload": {
+                "type": "null"
+              },
+              "remote_marker": {
+                "type": "null"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "create"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "course_entitlement_grant"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "additionalProperties": false,
+                "properties": {
+                  "product_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "product_id"
+                ],
+                "type": "object"
+              },
+              "predecessor": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/positional_predecessor"
+                  }
+                ]
+              },
+              "prior_payload": {
+                "type": "null"
+              },
+              "remote_marker": {
+                "type": "null"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before_image": {
+                "type": "null"
+              },
+              "disposition": {
+                "const": "keep"
+              },
+              "expected_digest": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "kind": {
+                "const": "course_entitlement_grant"
+              },
+              "logical_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "op_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "payload": {
+                "type": "null"
+              },
+              "predecessor": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/positional_predecessor"
+                  }
+                ]
+              },
+              "prior_payload": {
+                "type": "null"
+              },
+              "remote_marker": {
+                "type": "null"
+              },
+              "rollback": {
+                "additionalProperties": false,
+                "properties": {
+                  "strategy": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "strategy"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "op_id",
+              "logical_id",
+              "kind",
+              "disposition",
+              "payload",
+              "expected_digest",
+              "prior_payload",
+              "before_image",
+              "remote_marker",
+              "predecessor",
+              "rollback"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "order_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "tp_athlete_id": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract_version",
+    "order_id",
+    "tp_athlete_id",
+    "generation_revision",
+    "model_seal",
+    "operations",
+    "compat"
+  ],
+  "title": "Gravel God apply_contract/v1",
+  "type": "object"
+}

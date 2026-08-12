@@ -34,6 +34,7 @@ import sys
 import os
 import re
 import json
+import math
 import argparse
 import shutil
 import subprocess
@@ -69,6 +70,7 @@ from known_races import (KNOWN_RACES, RACE_ALIASES, match_race,
                          build_generic_race_profile, race_provenance_issue)
 from brand_config import (brand_for_discipline, email_signature,
                           get_brand_config, load_brands, normalize_brand)
+from derived_registry import assert_registry_covers, entry as derived_entry
 
 # ---------------------------------------------------------------------------
 # ANSI colors for terminal output
@@ -462,11 +464,27 @@ def height_to_cm(height_str: str) -> int:
 
 
 def parse_watts(val: str) -> Optional[int]:
-    """Extract watts from '315 W' or '315'."""
-    m = re.search(r'(\d+)', val)
-    if m:
-        return int(m.group(1))
-    return None
+    """Parse one complete signed watts token and accept only a safe anchor.
+
+    Free text, partial tokens, zero/negative values, and physiologically
+    implausible values are not measured facts. They degrade to ``None`` so a
+    paid order follows the coach-confirmation path instead of failing sanity
+    validation or turning ``-200`` into a fabricated positive 200 W anchor.
+    """
+    token = str(val or "").strip()
+    match = re.fullmatch(
+        r"([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*(?:w|watts?)?", token,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    try:
+        watts = float(match.group(1))
+    except ValueError:
+        return None
+    if not math.isfinite(watts) or not (FTP_MIN_WATTS <= watts <= FTP_MAX_WATTS):
+        return None
+    return int(round(watts))
 
 
 # Patterns that indicate FTP is unknown / athlete has no power meter
@@ -844,13 +862,21 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     additional = parsed.get('additional', {})
     nutrition_intake = parsed.get('nutrition', {})
     fulfillment = parsed.get('fulfillment', {})
+    try:
+        generation_revision = int(fulfillment.get('generation_revision') or 1)
+    except (TypeError, ValueError):
+        generation_revision = 1
+    if generation_revision < 1:
+        generation_revision = 1
 
     email = header.get('email', basic.get('email', ''))
     submitted = header.get('submitted', '')
 
     # -- Unit conversions --
-    sex = basic.get('sex', 'male').lower()
-    age = _safe_int(basic.get('age', '0'))
+    sex_raw = str(basic.get('sex') or '').strip()
+    sex = (sex_raw or 'male').lower()
+    age_raw = basic.get('age', '0')
+    age = _safe_int(age_raw)
 
     weight_raw = basic.get('weight', '')
     if 'lbs' in weight_raw.lower() or 'lb' in weight_raw.lower():
@@ -885,32 +911,27 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     # everything. Missing demographics get sane, clearly-flagged assumptions
     # rather than failing the order. The plan stays custom to the race + hours
     # + whatever they DID provide; week-1 testing dials in the rest.
-    if not age or age <= 0:
+    age_defaulted = not age or age <= 0
+    if age_defaulted:
         age = 40
         print(f"{YELLOW}NOTE: age not provided — assuming {age}.{RESET}")
-    if sex not in ('male', 'female'):
+    sex_defaulted = sex not in ('male', 'female')
+    if sex_defaulted:
         sex = 'male'
-    if not weight_kg or weight_kg <= 0:
+    weight_defaulted = not weight_kg or weight_kg <= 0
+    if weight_defaulted:
         weight_kg = 75.0 if sex == 'male' else 62.0
-        print(f"{YELLOW}NOTE: weight not provided — assuming {weight_kg}kg for "
-              f"FTP/fueling estimates. Update for precise fueling.{RESET}")
+        print(f"{YELLOW}NOTE: weight not provided — applying the conservative "
+              f"body-mass fueling default. Review the sensitive value in the "
+              f"authenticated catalog.{RESET}")
 
     ftp_raw = fitness.get('ftp', '')
-    ftp_estimated = False
     ftp_watts = _parse_ftp_with_unknown_handling(ftp_raw)
-    if ftp_watts is None and weight_kg > 0:
-        # Estimate FTP from weight: 2.5 W/kg for males, 2.2 W/kg for females
-        # Conservative estimate suitable for plan generation
-        default_wkg = 2.5 if sex == 'male' else 2.2
-        # Adjust for age: reduce by 0.5% per year over 40
-        age_factor = 1.0
-        if age > 40:
-            age_factor = max(0.7, 1.0 - 0.005 * (age - 40))
-        ftp_watts = int(round(default_wkg * age_factor * weight_kg))
-        ftp_estimated = True
-        print(f"{YELLOW}WARNING: FTP unknown — estimated {ftp_watts}W "
-              f"from {default_wkg} W/kg × {weight_kg}kg × {age_factor:.2f} age factor. "
-              f"FTP test should be scheduled in week 1.{RESET}")
+    power_basis = 'measured' if ftp_watts is not None else 'none'
+    # Phase 3 deletes FTP fabrication. Keep the compatibility flag false so
+    # older readers do not mistake a null anchor for the transitional Phase 1
+    # estimate that FTP_ESTIMATED blocks.
+    ftp_estimated = False
 
     wkg_raw = fitness.get('w_kg', fitness.get('w/kg', ''))
     w_kg = parse_wkg(wkg_raw)
@@ -924,9 +945,23 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     max_hr = parse_hr(fitness.get('hr_max', '')) or parse_hr(recovery.get('hr_max', ''))
     lthr = (parse_hr(fitness.get('hr_threshold', ''))
             or parse_hr(fitness.get('lthr', '')))
-    training_metric = str(fitness.get('training_metric') or '').strip().lower()
-    if training_metric not in {'power', 'hr', 'rpe'}:
-        training_metric = 'power'
+    requested_metric = str(fitness.get('training_metric') or '').strip().lower()
+    if requested_metric not in {'power', 'hr', 'rpe'}:
+        requested_metric = 'power' if power_basis == 'measured' else (
+            'hr' if (lthr or max_hr) else 'rpe')
+    if requested_metric == 'power' and power_basis == 'none':
+        # A missing measured anchor can never silently become watts. Prefer an
+        # available measured HR marker; otherwise RPE is the safe prescription
+        # source until the week-one field test establishes an anchor.
+        training_metric = 'hr' if (lthr or max_hr) else 'rpe'
+    else:
+        training_metric = requested_metric
+    if training_metric == 'hr':
+        control_basis = 'lthr' if lthr else ('hrmax' if max_hr else 'rpe_pending_lthr')
+    elif training_metric == 'power':
+        control_basis = 'ftp'
+    else:
+        control_basis = 'rpe'
     sleep_hours = parse_hours(recovery.get('typical_sleep', ''))
     sleep_quality = recovery.get('sleep_quality', 'good').lower()
     recovery_speed = recovery.get('recovery_speed', 'normal').lower()
@@ -1078,6 +1113,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 issue = race_provenance_issue(
                     info, event['date'], goals.get('race_category', ''),
                     basic.get('sex', ''),
+                    today=generation_now().date(),
                 )
                 if issue:
                     target_race_info['race_provenance_issue'] = issue
@@ -1442,6 +1478,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'generation_at': fulfillment.get('generation_at', ''),
             'weeks_purchased': _safe_int(fulfillment.get('weeks_purchased', '')),
             'athlete_timezone': fulfillment.get('athlete_timezone', ''),
+            'generation_revision': generation_revision,
         },
         'sex': sex,
         'height_cm': height_cm,
@@ -1481,7 +1518,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         'fitness_markers': {
             'ftp_watts': ftp_watts,
             'ftp_estimated': ftp_estimated,
-            'ftp_date': today.isoformat(),
+            'power_basis': power_basis,
+            'ftp_date': (fitness.get('ftp_date') or None) if ftp_watts else None,
             'weight_kg': weight_kg,
             'height_cm': height_cm,
             'sex': sex,
@@ -1492,6 +1530,19 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             # Questionnaire intent survives into generation so the Week 1
             # assessment tests the metric the athlete actually uses.
             'training_metric': training_metric,
+            'control_metric': training_metric,
+            'control_basis': control_basis,
+            'requested_metric': requested_metric,
+            'reanchor': {
+                'required': power_basis == 'none' or control_basis == 'rpe_pending_lthr',
+                'week': 1,
+                'test': (
+                    'lthr_field_test' if control_basis in {'lthr', 'rpe_pending_lthr'}
+                    else 'hrmax_field_test' if control_basis == 'hrmax'
+                    else 'rpe_field_test' if training_metric == 'rpe'
+                    else 'ftp_field_test'),
+                'action': 'Update the measured anchor after the Week 1 field test.',
+            },
         },
         'recent_training': {
             'last_12_weeks': 'sporadic',
@@ -1728,6 +1779,92 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         target_race_info['event_format_source'] = resolution['source']
         if resolution['needs_review']:
             target_race_info['event_format_needs_review'] = True
+
+    derived_at = generation_now().isoformat().replace('+00:00', 'Z')
+    derived_records = [
+        derived_entry(
+            id='AGE_INPUT', field='health_factors.age',
+            value_class='defaulted' if age_defaulted else 'athlete_reported',
+            basis=('forgiving intake default; coach review required'
+                   if age_defaulted else 'athlete questionnaire'),
+            inputs={'reported_age': age_raw}, sensitivity='personal', at=derived_at,
+            revision=generation_revision,
+        ),
+        derived_entry(
+            id='SEX_INPUT', field='fitness_markers.sex',
+            value_class='defaulted' if sex_defaulted else 'athlete_reported',
+            basis=('forgiving intake default; coach review required'
+                   if sex_defaulted else 'athlete questionnaire'),
+            inputs={'reported_sex': sex_raw}, sensitivity='personal', at=derived_at,
+            revision=generation_revision,
+        ),
+        derived_entry(
+            id='WEIGHT_KG', field='fitness_markers.weight_kg',
+            value_class='defaulted' if weight_defaulted else 'inferred',
+            basis=('sex-keyed forgiving intake default; fueling remains labeled'
+                   if weight_defaulted else 'unit-normalized athlete questionnaire value'),
+            inputs={'reported_weight': weight_raw, 'sex': sex},
+            sensitivity='sensitive', at=derived_at,
+            revision=generation_revision,
+        ),
+        derived_entry(
+            id='POWER_BASIS', field='fitness_markers.power_basis',
+            value_class='inferred',
+            basis='measured FTP presence; no FTP estimation is permitted',
+            inputs={'ftp_supplied': ftp_watts is not None},
+            sensitivity='personal', at=derived_at,
+            revision=generation_revision,
+        ),
+        derived_entry(
+            id='CONTROL_METRIC', field='fitness_markers.control_metric',
+            value_class='inferred',
+            basis='requested metric constrained by measured power and HR anchors',
+            inputs={
+                'requested_metric': requested_metric,
+                'power_basis': power_basis,
+                'lthr_available': lthr is not None,
+                'hrmax_available': max_hr is not None,
+            },
+            sensitivity='personal', at=derived_at,
+            revision=generation_revision,
+        ),
+        derived_entry(
+            id='CONTROL_BASIS', field='fitness_markers.control_basis',
+            value_class='inferred',
+            basis='LTHR preferred, measured HRmax second, RPE used while HR anchor is pending',
+            inputs={'control_metric': training_metric, 'lthr': lthr, 'max_hr': max_hr},
+            sensitivity='sensitive', at=derived_at,
+            revision=generation_revision,
+        ),
+        derived_entry(
+            id='DISCIPLINE', field='discipline', value_class='inferred',
+            basis='race facts, explicit discipline, and brand policy',
+            inputs={'candidate': candidate_discipline, 'brand': profile.get('brand')},
+            sensitivity='internal', at=derived_at,
+            revision=generation_revision,
+        ),
+    ]
+    if ftp_watts is not None:
+        derived_records.append(derived_entry(
+            id='FTP_MEASURED', field='fitness_markers.ftp_watts',
+            value_class='measured', basis='athlete-reported measured FTP',
+            inputs={'questionnaire_field': 'current_fitness.ftp'},
+            sensitivity='sensitive', at=derived_at,
+            revision=generation_revision,
+        ))
+    if w_kg is not None:
+        derived_records.append(derived_entry(
+            id='POWER_TO_WEIGHT', field='fitness_markers.w_kg',
+            value_class='athlete_reported' if parse_wkg(wkg_raw) is not None else 'inferred',
+            basis=('athlete questionnaire' if parse_wkg(wkg_raw) is not None
+                   else 'measured FTP divided by normalized body mass'),
+            inputs={'ftp_watts': ftp_watts, 'weight_kg': weight_kg},
+            sensitivity='sensitive', at=derived_at,
+            revision=generation_revision,
+        ))
+    profile['_derived'] = assert_registry_covers(
+        profile, derived_records, artifact='profile',
+        revision=generation_revision)
 
     return profile
 
@@ -3229,6 +3366,21 @@ def assemble_intake_review_items(
         for index, token in enumerate(
             (profile.get('devices') or {}).get('unknown_tokens') or [], 1)
     ]
+    fitness = profile.get('fitness_markers') or {}
+    if fitness.get('power_basis') == 'none':
+        confirmations.append({
+            'id': 'POWER_BASIS_NONE_CONFIRM',
+            'source': 'intake',
+            'message': 'Confirm the plan uses no measured power anchor.',
+            'review_value': {
+                'power_basis': 'none',
+                'control_metric': fitness.get('control_metric'),
+                'control_basis': fitness.get('control_basis'),
+                'reanchor': fitness.get('reanchor'),
+            },
+            'basis': 'null FTP intake projected without estimating watts',
+            'sensitivity': 'personal',
+        })
     return (
         sorted({item['id']: item for item in blockers}.values(),
                key=lambda item: item['id']),
@@ -3448,6 +3600,23 @@ def main():
     athlete_name = parsed.get('athlete_name', 'Unknown')
     print(f"  Athlete: {athlete_name}")
 
+    # Stamp source-owned provenance with the revision that write_generation
+    # will create later in this same paid-order run. This must happen before
+    # profile/fueling/canonical construction; rewriting only the state copy
+    # would leave the authoritative artifacts falsely claiming revision 1.
+    prospective_id = generate_athlete_id(athlete_name)
+    existing_state_path = get_athlete_dir(prospective_id) / 'fulfillment_status.json'
+    next_revision = 1
+    if existing_state_path.is_file():
+        try:
+            prior_state = json.loads(existing_state_path.read_text())
+            next_revision = int(prior_state.get('generation_revision') or 0) + 1
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            # The later state write fails closed on malformed state. Keep the
+            # source revision valid so package generation remains recoverable.
+            next_revision = 1
+    parsed.setdefault('fulfillment', {})['generation_revision'] = next_revision
+
     sections = [k for k in parsed if k not in ('athlete_name', '__header__')]
     print(f"  Sections found: {len(sections)} ({', '.join(sections)})")
 
@@ -3467,9 +3636,12 @@ def main():
     print(f"  Athlete ID: {athlete_id}")
     print(f"  Target Race: {profile.get('target_race', {}).get('name', 'N/A')}")
     print(f"  Race Date: {profile.get('target_race', {}).get('date', 'N/A')}")
-    print(f"  FTP: {profile.get('fitness_markers', {}).get('ftp_watts', 'N/A')}W")
-    print(f"  W/kg: {profile.get('fitness_markers', {}).get('w_kg', 'N/A')}")
-    print(f"  Weight: {profile.get('weight_kg', 'N/A')} kg")
+    fitness_markers = profile.get('fitness_markers', {})
+    print("  FTP: measured anchor supplied" if fitness_markers.get('ftp_watts')
+          else "  FTP: no measured power anchor")
+    print("  W/kg: available in authenticated review" if fitness_markers.get('w_kg')
+          else "  W/kg: unavailable")
+    print("  Weight: available in authenticated review")
     print(f"  Height: {profile.get('height_cm', 'N/A')} cm")
     print(f"  Cycling Hours: {profile.get('weekly_availability', {}).get('cycling_hours_target', 'N/A')}")
     print(f"  Methodology: {profile.get('methodology_preferences', {}).get('preferred_approach', 'N/A')}")
@@ -3659,6 +3831,58 @@ def main():
                 print(f"  {YELLOW}[WARN]{RESET} Fulfillment state unavailable: {state_exc}")
                 print("GG_FULFILLMENT_STATE=unavailable")
             print(f"  {YELLOW}[WARN]{RESET} Post-render validator failed closed: {exc}")
+
+    # -- Step 4e: Phase 3 offline apply-contract projection --
+    # This is deliberately after the final blocker/catalog barrier.  It does
+    # not inspect or mutate TrainingPeaks and contains no execution path.
+    if fulfillment_state_available:
+        print(f"\n{BOLD}Step 4e: Building offline apply contract...{RESET}")
+        try:
+            from apply_contract import (build_contract, emit_contract,
+                                        guide_source_digests)
+            state = load_fulfillment_state(state_path)
+            canonical_model = json.loads(
+                (athlete_dir / 'canonical_training_model.json').read_text())
+            plan_ir_data = json.loads((athlete_dir / 'plan_ir.json').read_text())
+            tp_athlete_id = str(
+                profile.get('tp_athlete_id')
+                or (profile.get('delivery') or {}).get('tp_athlete_id')
+                or f'offline-unbound:{athlete_id}'
+            )
+            contract = build_contract(
+                plan_ir_data,
+                order_id=state['order_id'],
+                tp_athlete_id=tp_athlete_id,
+                generation_revision=state['generation_revision'],
+                canonical_model=canonical_model,
+                review_items=state['review_items'],
+                guide_sources=guide_source_digests(athlete_dir),
+                athlete_dir=athlete_dir,
+            )
+            emit_contract(athlete_dir / 'apply_contract.json', contract)
+            print(f"  {GREEN}Generated{RESET} apply_contract.json "
+                  f"({len(contract['operations'])} offline operation(s))")
+        except Exception as exc:
+            try:
+                state = load_fulfillment_state(state_path)
+                merge_generation_blockers(
+                    state_path, state['generation_revision'], 'apply_contract', [{
+                        'id': 'APPLY_CONTRACT_INVALID',
+                        'source': 'apply_contract', 'severity': 'CRITICAL',
+                        'message': f'Offline apply contract failed closed: {type(exc).__name__}',
+                        'review_value': {
+                            'contract_version': 'apply_contract/v1',
+                            'exception_type': type(exc).__name__,
+                            'execution_attempted': False,
+                        },
+                        'basis': 'D0 schema and semantic contract validation',
+                        'sensitivity': 'internal',
+                    }])
+            except Exception as state_exc:
+                fulfillment_state_available = False
+                print(f"  {YELLOW}[WARN]{RESET} Fulfillment state unavailable: {state_exc}")
+                print("GG_FULFILLMENT_STATE=unavailable")
+            print(f"  {YELLOW}[WARN]{RESET} Apply contract failed closed: {exc}")
 
     # -- Step 5: Copy to Downloads --
     print(f"\n{BOLD}Step 5: Copying to Downloads...{RESET}")

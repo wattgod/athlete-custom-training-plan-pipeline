@@ -6,6 +6,7 @@ file; generating it is safe for package creation and tests.
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 from typing import Any, Dict
 
@@ -22,23 +23,35 @@ def build_manifest_from_plan_ir(ir: Dict[str, Any], athlete_dir: Path | str) -> 
     """Project a parsed PlanIR dictionary to an adapter-neutral manifest."""
     athlete_dir = Path(athlete_dir)
     workouts, notes = [], []
+    per_date = {}
     for week in ir.get('weeks', []):
         for sequence, session in enumerate(week.get('sessions', []), 1):
             # A platform operation gets a stable identity; title alone is not
             # stable because plans legitimately repeat Endurance every week.
             external_id = f"{ir['athlete']['id']}:w{week.get('number')}:{sequence}:{session.get('date') or 'undated'}"
+            date_key = str(session.get('date') or 'undated')
+            per_date[date_key] = per_date.get(date_key, 0) + 1
+            logical_key = f"{date_key}#{per_date[date_key]}"
             item = {
                 'external_id': external_id,
+                'logical_key': logical_key,
                 'plan_week': week.get('number'), 'date': session.get('date'),
                 'title': session.get('title', 'Untitled session'),
                 'workout_type': _sport_type(session), 'sport': session.get('sport', 'cycling'),
                 'session_type': session.get('type', 'workout'), 'origin': session.get('origin', 'prescribed'),
                 'duration_s': int(session.get('duration_s', 0) or 0),
                 'segments': session.get('segments', []), 'source_file': session.get('source_file'),
+                # Complete remote field set used by the legacy/D0 parity gate.
+                'description': session.get('description'),
+                'tp_workout_type': session.get('workout_type_value_id'),
+                'total_seconds': int(session.get('duration_s', 0) or 0),
+                'tss_planned': session.get('tss_planned'),
+                'structure': session.get('structure'),
             }
             workouts.append(item)
             notes.append({
                 'external_id': f"note:{external_id}", 'date': item['date'],
+                'logical_key': f"session-{date_key}-{per_date[date_key]}",
                 'title': item['title'],
                 'text': f"Week {item['plan_week']} · {item['title']} · {item['session_type']}",
             })
@@ -49,9 +62,24 @@ def build_manifest_from_plan_ir(ir: Dict[str, Any], athlete_dir: Path | str) -> 
         attachments.append({'id': 'guide', 'external_id': 'attachment:guide', 'path': guide, 'kind': 'guide'})
     for attachment in attachments:
         attachment.setdefault('external_id', f"attachment:{attachment.get('id') or attachment.get('path')}")
+        raw_path = str(attachment.get('path') or 'training_guide.html')
+        file_path = athlete_dir / raw_path
+        file_bytes = file_path.read_bytes() if file_path.is_file() else b''
+        parent_key = workouts[0]['logical_key'] if workouts else 'undated#1'
+        attachment.update({
+            'parent_logical_key': parent_key,
+            'filename': Path(raw_path).name,
+            'sha256': hashlib.sha256(file_bytes).hexdigest(),
+            'bytes_ref': raw_path,
+            'logical_key': f"{parent_key}:{Path(raw_path).name}",
+        })
     target = ir.get('race_snapshot') or {}
     tasks = [note for note in (ir.get('notes') or [])
              if note.get('kind') in ('mental_training', 'mental_task')]
+    tasks = [{**task,
+              'logical_key': str(task.get('id') or f"mental-task-{index}"),
+              'body': str(task.get('body') or task.get('text') or '')}
+             for index, task in enumerate(tasks, 1)]
     entitlement = next((e for e in (ir.get('entitlements') or [])
                         if e.get('kind') == 'course'), None)
     if entitlement is None:
@@ -63,6 +91,10 @@ def build_manifest_from_plan_ir(ir: Dict[str, Any], athlete_dir: Path | str) -> 
     else:
         entitlement = dict(entitlement)
         entitlement.setdefault('external_id', f"entitlement:{entitlement.get('race')}:{entitlement.get('race_date')}")
+    product_id = str(entitlement.get('product_id') or entitlement.get('external_id')
+                     or entitlement.get('race') or 'course')
+    entitlement['product_id'] = product_id
+    entitlement['logical_key'] = product_id
     dates = sorted({workout['date'] for workout in workouts if workout.get('date')})
     return {
         'schema_version': MANIFEST_VERSION,

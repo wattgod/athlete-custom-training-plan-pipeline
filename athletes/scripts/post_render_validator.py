@@ -24,7 +24,7 @@ FIELD_TEST_PATTERNS = {
     "rpe": re.compile(r"\brpe\b.*\btest\b|\bfield test\b", re.I),
 }
 INTENSITY_TITLE = re.compile(
-    r"\b(vo2|maximal|threshold|over.?under|anaerobic|sprint|g.?spot|microburst)\b",
+    r"\b(vo2(?:max)?|maximal|threshold|over.?under|anaerobic|sprint|g.?spot|microburst)\b",
     re.I,
 )
 LONG_RIDE_TITLE = re.compile(r"\b(long ride|durability|long endurance)\b", re.I)
@@ -213,11 +213,13 @@ def _session_date(session: Dict[str, Any]) -> date | None:
 
 def _field_test_metric(session: Dict[str, Any]) -> str | None:
     title = str(session.get("title") or session.get("display_name") or "")
-    if str(session.get("type") or "") == "ftp_test":
-        return "power"
     for metric, pattern in FIELD_TEST_PATTERNS.items():
         if pattern.search(title):
             return metric
+    # Transitional authored shape still labels every field-test source ZWO as
+    # ftp_test; the canonical title is authoritative for HR/RPE projections.
+    if str(session.get("type") or "") == "ftp_test":
+        return "power"
     return None
 
 

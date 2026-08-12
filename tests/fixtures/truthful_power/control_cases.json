@@ -1,0 +1,29 @@
+[
+  {
+    "id": "hr-with-lthr",
+    "fitness_markers": {"ftp_watts": null, "power_basis": "none", "training_metric": "hr", "lthr": 170, "max_hr": 190},
+    "metric": "hr",
+    "basis": "lthr",
+    "target_type": "pct_lthr",
+    "tp_target_type": "percentOfThresholdHr",
+    "field_test": "LTHR Field Test"
+  },
+  {
+    "id": "hr-only-hrmax",
+    "fitness_markers": {"ftp_watts": null, "power_basis": "none", "training_metric": "hr", "max_hr": 190},
+    "metric": "hr",
+    "basis": "hrmax",
+    "target_type": "pct_hrmax",
+    "tp_target_type": "percentOfMaxHr",
+    "field_test": "HRmax Field Test"
+  },
+  {
+    "id": "rpe-only",
+    "fitness_markers": {"ftp_watts": null, "power_basis": "none", "training_metric": "rpe"},
+    "metric": "rpe",
+    "basis": "rpe",
+    "target_type": "rpe",
+    "tp_target_type": null,
+    "field_test": "RPE Field Test"
+  }
+]

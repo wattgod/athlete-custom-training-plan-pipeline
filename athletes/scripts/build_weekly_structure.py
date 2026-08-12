@@ -13,6 +13,7 @@ from typing import Dict, List
 
 sys.path.insert(0, str(Path(__file__).parent))
 from constants import DAY_ORDER_FULL, get_athlete_file
+from derived_registry import assert_registry_covers, entry as derived_entry
 
 
 def build_weekly_structure(
@@ -20,7 +21,9 @@ def build_weekly_structure(
     key_days: List[str],
     strength_days: List[str],
     tier: str,
-    preferred_long_day: str = None
+    preferred_long_day: str = None,
+    generation_revision: int = 1,
+    derived_at: str = None,
 ) -> Dict:
     """
     Build custom weekly structure from athlete preferences.
@@ -147,6 +150,30 @@ def build_weekly_structure(
         
         structure["days"][day] = day_struct
     
+    if not derived_at:
+        from datetime import datetime, timezone
+        derived_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+    schedule_inputs = {
+        "available_days": sorted(preferred_days),
+        "key_days": list(key_days),
+        "strength_days": list(strength_days),
+        "tier": tier,
+        "preferred_long_day": preferred_long_day,
+    }
+    records = [
+        derived_entry(
+            id="SCHEDULE_DESCRIPTION", field="description", value_class="inferred",
+            basis="human-readable rendering of the selected weekly tier",
+            inputs={"tier": tier}, sensitivity="internal", at=derived_at,
+            revision=generation_revision),
+        derived_entry(
+            id="SCHEDULE_DAYS", field="days", value_class="inferred",
+            basis="availability, duration caps, key-day, long-ride, and strength spacing rules",
+            inputs=schedule_inputs, sensitivity="personal", at=derived_at,
+            revision=generation_revision),
+    ]
+    structure["_derived"] = assert_registry_covers(
+        structure, records, artifact="schedule", revision=generation_revision)
     return structure
 
 
@@ -183,7 +210,11 @@ def main():
         key_days=derived.get("key_day_candidates", []),
         strength_days=derived.get("strength_day_candidates", []),
         tier=derived.get("tier", "finisher"),
-        preferred_long_day=schedule_constraints.get("preferred_long_day", None)
+        preferred_long_day=schedule_constraints.get("preferred_long_day", None),
+        generation_revision=int(
+            (profile.get("fulfillment") or {}).get("generation_revision") or 1),
+        derived_at=str(
+            (profile.get("fulfillment") or {}).get("generation_at") or "") or None,
     )
 
     # Save structure
@@ -204,4 +235,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

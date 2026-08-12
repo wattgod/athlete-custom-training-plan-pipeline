@@ -207,6 +207,40 @@ def test_validate_profile():
     print("✓ Detects FTP out of range")
 
 
+def test_profile_validators_honor_fixed_generation_clock(monkeypatch):
+    """A replay race stays future-dated after the real calendar passes it."""
+    monkeypatch.setenv("GG_FIXED_NOW", "2019-08-06T15:00:00Z")
+    profile = {
+        'name': 'Clocked Athlete',
+        'email': 'clocked@example.invalid',
+        'athlete_id': 'clocked-athlete',
+        'primary_goal': 'specific_race',
+        'target_race': {
+            'name': 'Frozen Race',
+            'race_id': 'frozen-race',
+            'date': '2020-11-21',
+            'distance_miles': 100,
+            'goal_type': 'compete',
+        },
+        'preferred_days': {
+            'saturday': {'is_key_day_ok': True, 'availability': 'available'},
+        },
+        'fitness_markers': {'ftp_watts': 250, 'weight_kg': 75},
+        'training_history': {
+            'years_structured': 3,
+            'highest_weekly_hours': 10,
+            'current_weekly_hours': 8,
+        },
+        'weekly_availability': {'total_hours_available': 8},
+    }
+
+    pre_generation = validate_profile(profile)
+    assert pre_generation.is_valid, pre_generation.errors
+
+    import validate_profile as profile_script
+    assert profile_script.validate_date('2020-11-21', future_only=True)
+
+
 def test_validate_derived():
     """Test derived.yaml validation."""
     print("\n=== Testing validate_derived ===")

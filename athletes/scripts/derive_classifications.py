@@ -19,6 +19,7 @@ from constants import (
     TIER_HOURS_COMPETE_MAX,
     get_athlete_file,
 )
+from derived_registry import assert_registry_covers, entry as derived_entry
 
 
 def derive_tier(profile: Dict) -> str:
@@ -361,7 +362,7 @@ def derive_all(profile: Dict) -> Dict:
     if profile.get("training_history", {}).get("years_structured", 0) < 1:
         risk_factors.append("new_to_structured_training")
     
-    return {
+    result = {
         "tier": tier,
         "plan_weeks": plan_weeks,
         "starting_phase": starting_phase,
@@ -373,6 +374,68 @@ def derive_all(profile: Dict) -> Dict:
         "strength_day_candidates": strength_days,
         "derived_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
+    fulfillment = profile.get("fulfillment") or {}
+    revision = int(fulfillment.get("generation_revision") or 1)
+    derived_at = str(fulfillment.get("generation_at") or result["derived_date"])
+    records = [
+        derived_entry(
+            id="CLASSIFICATION_TIER", field="tier", value_class="inferred",
+            basis="weekly cycling hours constrained by goal and training history",
+            inputs={
+                "cycling_hours_target": (profile.get("weekly_availability") or {}).get("cycling_hours_target"),
+                "goal_type": (profile.get("target_race") or {}).get("goal_type"),
+                "years_structured": (profile.get("training_history") or {}).get("years_structured"),
+            }, sensitivity="personal", at=derived_at, revision=revision),
+        derived_entry(
+            id="CLASSIFICATION_PLAN_WEEKS", field="plan_weeks", value_class="inferred",
+            basis="calendar distance from plan start to target race",
+            inputs={
+                "race_date": (profile.get("target_race") or {}).get("date"),
+                "preferred_start": (profile.get("plan_start") or {}).get("preferred_start"),
+            }, sensitivity="personal", at=derived_at, revision=revision),
+        derived_entry(
+            id="CLASSIFICATION_STARTING_PHASE", field="starting_phase", value_class="inferred",
+            basis="plan length and recent training state",
+            inputs={"plan_weeks": plan_weeks}, sensitivity="personal",
+            at=derived_at, revision=revision),
+        derived_entry(
+            id="CLASSIFICATION_STRENGTH_FREQUENCY", field="strength_frequency",
+            value_class="inferred", basis="tier, experience, recovery, and equipment policy",
+            inputs={"tier": tier}, sensitivity="personal", at=derived_at,
+            revision=revision),
+        derived_entry(
+            id="CLASSIFICATION_EQUIPMENT_TIER", field="equipment_tier",
+            value_class="inferred", basis="athlete-reported strength equipment inventory",
+            inputs={"equipment": (profile.get("strength_training") or {}).get("equipment")},
+            sensitivity="personal", at=derived_at, revision=revision),
+        derived_entry(
+            id="CLASSIFICATION_RISK_FACTORS", field="risk_factors",
+            value_class="inferred", basis="sleep, stress, injury, and training-history safety rules",
+            inputs={"rule_set": "derive_classifications/risk-v1"}, sensitivity="sensitive",
+            at=derived_at, revision=revision),
+        derived_entry(
+            id="CLASSIFICATION_EXCLUSIONS", field="exercise_exclusions",
+            value_class="inferred", basis="health limitations and available equipment",
+            inputs={"rule_set": "derive_classifications/exclusions-v1"}, sensitivity="sensitive",
+            at=derived_at, revision=revision),
+        derived_entry(
+            id="CLASSIFICATION_KEY_DAYS", field="key_day_candidates",
+            value_class="inferred", basis="day availability and key-session suitability",
+            inputs={"preferred_days": sorted((profile.get("preferred_days") or {}).keys())},
+            sensitivity="personal", at=derived_at, revision=revision),
+        derived_entry(
+            id="CLASSIFICATION_STRENGTH_DAYS", field="strength_day_candidates",
+            value_class="inferred", basis="strength frequency with key-day spacing constraints",
+            inputs={"strength_frequency": strength_frequency, "key_days": key_days},
+            sensitivity="personal", at=derived_at, revision=revision),
+        derived_entry(
+            id="CLASSIFICATION_TIMESTAMP", field="derived_date", value_class="inferred",
+            basis="classification owner execution time", inputs={"owner": "derive_classifications.py"},
+            sensitivity="internal", at=derived_at, revision=revision),
+    ]
+    result["_derived"] = assert_registry_covers(
+        result, records, artifact="derived", revision=revision)
+    return result
 
 
 if __name__ == "__main__":
@@ -411,4 +474,3 @@ if __name__ == "__main__":
     print(f"  Exercise Exclusions: {len(derived['exercise_exclusions'])} exercises")
     print(f"  Key Days: {', '.join(derived['key_day_candidates'])}")
     print(f"  Strength Days: {', '.join(derived['strength_day_candidates'])}")
-

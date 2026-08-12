@@ -489,6 +489,7 @@ def generate_fueling_context(
         sex=sex,
     )
     p = prescription.to_dict()
+    no_power = fitness.get("power_basis") == "none" or not fitness.get("ftp_watts")
     carb_data = {
         "hourly_target": p["race_target_g_per_hour"],
         "hourly_range": p["race_range_g_per_hour"],
@@ -511,7 +512,7 @@ def generate_fueling_context(
         distance_miles=distance_miles
     )
 
-    return {
+    fueling = {
         "athlete": {
             "weight_kg": round(weight_kg, 1),
             "sex": sex
@@ -530,6 +531,15 @@ def generate_fueling_context(
         },
         "fueling_timeline": fueling_timeline,
         "prescription": p,
+        "fueling_basis": {
+            "kind": p.get("inputs", {}).get("basis"),
+            "power_used": not no_power,
+            "label": (
+                "Duration + intensity descriptor + body-mass bounds"
+                if no_power else "Measured power + duration + body mass"
+            ),
+            "reanchor": fitness.get("reanchor") if no_power else None,
+        },
         "recommendations": generate_fueling_recommendations(
             duration_hours=duration_hours,
             hourly_carbs=carb_data["hourly_target"],
@@ -537,6 +547,75 @@ def generate_fueling_context(
         ) | {"hydration": p["hydration"]},
         "generated_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
+    from derived_registry import (assert_registry_covers,
+                                  entry as derived_entry)
+    derived_at = str(
+        (profile.get('fulfillment') or {}).get('generation_at')
+        or datetime.now().astimezone().isoformat()
+    )
+    revision = int((profile.get('fulfillment') or {}).get('generation_revision') or 1)
+    policy_inputs = p.get('inputs', {})
+    duration_inputs = {
+        'distance_miles': distance_miles, 'elevation_feet': elevation_feet,
+        'discipline': discipline, 'goal_type': goal_type,
+    }
+
+    def record(identifier, field, basis, inputs, sensitivity='sensitive'):
+        return derived_entry(
+            id=identifier, field=field, value_class='inferred', basis=basis,
+            inputs=inputs, sensitivity=sensitivity, at=derived_at,
+            revision=revision,
+        )
+
+    derived_records = [
+        record('RACE_DURATION_HOURS', 'race.duration_hours',
+               'race distance, elevation, discipline, and goal pace model',
+               duration_inputs, 'personal'),
+        record('RACE_CALORIES', 'calories',
+               'body mass, modeled duration, course load, sex, and goal model',
+               {**duration_inputs, 'weight_kg': weight_kg, 'sex': sex}),
+        record('FUELING_HOURLY_TARGET', 'carbohydrates.hourly_target',
+               str(policy_inputs.get('basis') or 'fueling policy'), policy_inputs),
+        record('FUELING_HOURLY_RANGE', 'carbohydrates.hourly_range',
+               'canonical fueling-policy physiological range', policy_inputs),
+        record('FUELING_TOTAL_TARGET', 'carbohydrates.total_grams',
+               'hourly prescription multiplied by modeled event duration',
+               {'hourly_target': p['race_target_g_per_hour'],
+                'duration_hours': duration_hours}),
+        record('FUELING_TOTAL_RANGE', 'carbohydrates.total_range',
+               'hourly prescription bounds multiplied by modeled event duration',
+               {'hourly_range': p['race_range_g_per_hour'],
+                'duration_hours': duration_hours}),
+        record('GUT_PHASES', 'gut_training.phases',
+               'plan-week inventory of the canonical gut-training progression',
+               {'plan_weeks': plan_weeks, 'prescription': policy_inputs}),
+        record('GUT_WEEKLY_PROGRESSION', 'gut_training.weekly_progression',
+               'week-indexed canonical gut-training progression',
+               {'plan_weeks': plan_weeks, 'prescription': policy_inputs}),
+        record('FUELING_TIMELINE', 'fueling_timeline',
+               'hourly target distributed across modeled event duration and distance',
+               {'duration_hours': duration_hours,
+                'hourly_target': carb_data['hourly_target'],
+                'distance_miles': distance_miles}),
+        record('FUELING_PRESCRIPTION', 'prescription',
+               str(policy_inputs.get('basis') or 'fueling policy'), policy_inputs),
+        record('FUELING_BASIS', 'fueling_basis',
+               'truthful power-basis selection for fueling',
+               {'power_basis': fitness.get('power_basis'),
+                'ftp_present': fitness.get('ftp_watts') is not None}, 'personal'),
+        record('FUELING_RECOMMENDATIONS', 'recommendations',
+               'canonical prescription rendered as athlete-facing recommendations',
+               {'duration_hours': duration_hours,
+                'hourly_target': carb_data['hourly_target'],
+                'total_carbs': carb_data['total_grams']}),
+        record('HYDRATION_TARGET', 'recommendations.hydration',
+               'canonical fueling-policy hydration prescription', policy_inputs),
+    ]
+    fueling['_derived'] = assert_registry_covers(
+        fueling, derived_records, artifact='fueling',
+        revision=revision,
+    )
+    return fueling
 
 
 def generate_fueling_timeline(
@@ -656,6 +735,11 @@ def generate_fueling_recommendations(
     }
 
 
+def _gut_training_cli_summary(_fueling: Dict) -> str:
+    """Return the only CLI-safe rendering of the sensitive phase aggregate."""
+    return "📈 Gut training progression: available in authenticated review"
+
+
 # =============================================================================
 # MAIN ENTRY POINT
 # =============================================================================
@@ -708,26 +792,17 @@ def main():
     print(f"{'='*60}\n")
 
     race = fueling["race"]
-    cals = fueling["calories"]
-    carbs = fueling["carbohydrates"]
-
     print(f"🏁 Race: {race['distance_miles']} miles, ~{race['duration_hours']}h estimated")
-    print(f"⚡ Energy: {cals['total_calories']:,} kcal ({cals['calories_per_hour']} kcal/hr)")
-    print(f"🍞 Carbs: {carbs['hourly_target']}g/hr → {carbs['total_grams']}g total")
+    print("⚡ Energy and carbohydrate targets: available in authenticated review")
     print()
 
-    print("📈 Gut Training Progression:")
-    for phase, info in fueling["gut_training"]["phases"].items():
-        labels = ', '.join(info['weeks'])
-        print(f"   {phase.upper()} ({labels}): {info['target_range'][0]}-{info['target_range'][1]}g/hr")
+    # ``gut_training.phases`` is one sensitive registered value. Do not print
+    # any descendant (including phase names or week labels) on this operator/
+    # log surface; partial rendering would still disclose the typed value.
+    print(_gut_training_cli_summary(fueling))
     print()
 
-    recs = fueling["recommendations"]
-    print(f"📦 Example Fueling (mixed approach):")
-    mixed = recs["example_products"]["mixed_approach"]
-    print(f"   Gels: {mixed['gels']}")
-    print(f"   Chews: {mixed['chews_packs']} packs")
-    print(f"   Drink mix: {mixed['drink_mix_bottles']} bottles")
+    print("📦 Example fueling quantities: available in authenticated review")
     print()
 
     print(f"💾 Saved to: {fueling_path}")

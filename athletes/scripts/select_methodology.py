@@ -42,6 +42,7 @@ from dataclasses import dataclass
 
 sys.path.insert(0, str(Path(__file__).parent))
 from constants import get_athlete_file
+from derived_registry import assert_registry_covers, entry as derived_entry
 
 
 def _load_methodologies() -> Dict:
@@ -530,6 +531,49 @@ def select_methodology(
         result["confidence"] = "low"
         result["confidence_note"] = "Review warnings and consider alternatives"
 
+    fulfillment = profile.get("fulfillment") or {}
+    revision = int(fulfillment.get("generation_revision") or 1)
+    derived_at = str(fulfillment.get("generation_at") or result["selection_date"])
+    score_inputs = {
+        "methodology_count": len(candidates),
+        "race_demands": race_demands,
+        "derived_tier": derived.get("tier"),
+        "plan_weeks": derived.get("plan_weeks"),
+    }
+
+    def record(identifier, field, basis, inputs, sensitivity="personal"):
+        return derived_entry(
+            id=identifier, field=field, value_class="inferred", basis=basis,
+            inputs=inputs, sensitivity=sensitivity, at=derived_at,
+            revision=revision)
+
+    records = [
+        record("METHODOLOGY_SELECTED", "selected_methodology",
+               "highest score from the production methodology matrix", score_inputs),
+        record("METHODOLOGY_ID", "methodology_id",
+               "stable configuration id for the selected methodology", score_inputs, "internal"),
+        record("METHODOLOGY_SCORE", "score",
+               "objective seven-criterion methodology score", score_inputs),
+        record("METHODOLOGY_REASONS", "reasons",
+               "positive scoring explanations from the selected candidate", score_inputs),
+        record("METHODOLOGY_WARNINGS", "warnings",
+               "safety and fit warnings from the selected candidate", score_inputs, "sensitive"),
+        record("METHODOLOGY_CONFIGURATION", "configuration",
+               "selected methodology's authored training configuration",
+               {"methodology_id": selected_id}, "internal"),
+        record("METHODOLOGY_ALTERNATIVES", "alternatives",
+               "next three candidates in descending score order", score_inputs),
+        record("METHODOLOGY_SELECTION_TIME", "selection_date",
+               "methodology owner execution time", {"owner": "select_methodology.py"}, "internal"),
+        record("METHODOLOGY_CONFIDENCE", "confidence",
+               "confidence band derived from the winning score",
+               {"score": selected.score}),
+        record("METHODOLOGY_CONFIDENCE_NOTE", "confidence_note",
+               "human-readable rendering of the confidence band",
+               {"confidence": result["confidence"]}),
+    ]
+    result["_derived"] = assert_registry_covers(
+        result, records, artifact="methodology", revision=revision)
     return result
 
 

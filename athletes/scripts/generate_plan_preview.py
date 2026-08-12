@@ -15,6 +15,7 @@ Usage:
 
 import sys
 import os
+import json
 import yaml
 from pathlib import Path
 from datetime import datetime
@@ -46,6 +47,59 @@ def _if_to_zone(if_val: float) -> str:
         return 'Z5+'
 
 
+def _canonical_intensity_factor(segments: list[dict]) -> float:
+    """Calculate session intensity from canonical segment time and targets.
+
+    Power keeps the established ZWO projection exactly. LTHR, HRmax, and RPE
+    are first normalized through their own authored scales, then the same
+    duration-weighted whole-session unit is applied. Raw HR percentages and
+    RPE values are never compared with power-IF cutoffs.
+    """
+    samples = []
+
+    def effort(target, key):
+        value = target.get(key)
+        if value is None:
+            return None
+        from canonical_training_model import normalize_target_effort
+        return normalize_target_effort(str(target.get('type') or ''), value)
+
+    for segment in segments or []:
+        seconds = int(segment.get('seconds') or 0)
+        target = segment.get('target') or {}
+        if segment.get('kind') == 'free_ride' or target.get('type') == 'free':
+            # FreeRide has no prescribed target. Preserve the preview's
+            # established TSS-only estimate without adding a target to PlanIR.
+            samples.append((seconds, .65 if seconds > 3600 else .55))
+        elif segment.get('kind') == 'intervals':
+            repeat = int(segment.get('repeat') or 1)
+            on_seconds = int(segment.get('on_seconds') or 0)
+            off_seconds = int(segment.get('off_seconds') or 0)
+            on = effort(target, 'on')
+            off = effort(target, 'off')
+            for _ in range(repeat):
+                if on_seconds and on is not None:
+                    samples.append((on_seconds, on))
+                if off_seconds and off is not None:
+                    samples.append((off_seconds, off))
+        else:
+            low = effort(target, 'low')
+            high = effort(target, 'high')
+            value = effort(target, 'value')
+            if low is not None and high is not None:
+                value = (low + high) / 2
+            elif value is None:
+                value = high if high is not None else low
+            if seconds and value is not None:
+                samples.append((seconds, value))
+
+    total_seconds = sum(seconds for seconds, _ in samples)
+    if total_seconds <= 0:
+        return .5
+    return (sum(seconds * value ** 4 for seconds, value in samples)
+            / total_seconds) ** .25
+
+
 # ===========================================================================
 # Data Assembly
 # ===========================================================================
@@ -69,22 +123,55 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
     weekly_structure = _load('weekly_structure.yaml')
     fueling = _load('fueling.yaml')
 
-    ftp = float(profile.get('fitness_markers', {}).get('ftp_watts', 200))
+    fitness = profile.get('fitness_markers', {}) or {}
+    ftp_raw = fitness.get('ftp_watts')
+    try:
+        ftp = float(ftp_raw) if ftp_raw not in (None, '') else None
+    except (TypeError, ValueError):
+        ftp = None
+    control_metric = str(fitness.get('control_metric') or (
+        'power' if ftp is not None else 'rpe'))
+    control_basis = str(fitness.get('control_basis') or (
+        'ftp' if control_metric == 'power' else control_metric))
 
     # Parse all ZWO files
-    workouts_dir = ad / 'workouts'
-    zwo_files = sorted(workouts_dir.glob('*.zwo')) if workouts_dir.exists() else []
     workouts_by_prefix = {}
-    for zwo in zwo_files:
-        parsed = parse_zwo(zwo, ftp)
-        # Extract week prefix: W01_Mon_Mar9 -> use as key
-        prefix = zwo.stem  # e.g. W01_Mon_Mar9_Endurance
-        # Keep the filename stem on the workout: it reliably encodes the
-        # workout TYPE (FTP_Test, Long_Ride, ...) in the original underscore
-        # form even now that the ZWO <name> carries a clean coach-style
-        # display name ("FTP Test") that type-detection can't pattern-match.
-        parsed['_stem'] = zwo.stem
-        workouts_by_prefix[prefix] = parsed
+    canonical_path = ad / 'canonical_training_model.json'
+    if canonical_path.exists():
+        canonical = json.loads(canonical_path.read_text())
+        for session in canonical.get('sessions') or []:
+            if session.get('tp_kind') == 'day_off':
+                continue
+            stem = session.get('filename_stem') or (
+                f"W{int(session.get('week') or 0):02d}_{session.get('date') or 'undated'}_"
+                + str(session.get('title') or 'Session').replace(' ', '_'))
+            effort = _canonical_intensity_factor(session.get('segments') or [])
+            parsed = {
+                'name': stem,
+                '_stem': stem,
+                'duration_sec': int(session.get('duration_s') or 0),
+                'duration_min': int(session.get('duration_s') or 0) / 60,
+                'tss': int(session.get('tss') or 0),
+                # Metric-neutral comparison unit used only by verification;
+                # unlike IF it is valid for LTHR, HRmax, and RPE controls.
+                'normalized_effort': round(effort, 2),
+                'intensity_factor': (round(effort, 2)
+                                     if control_metric == 'power' else None),
+                'zone': _if_to_zone(effort),
+                'intervals_summary': session.get('target_summary') or '',
+                'target_summary': session.get('target_summary') or '',
+            }
+            workouts_by_prefix[stem] = parsed
+    else:
+        workouts_dir = ad / 'workouts'
+        zwo_files = sorted(workouts_dir.glob('*.zwo')) if workouts_dir.exists() else []
+        for zwo in zwo_files:
+            # Historical package compatibility only. Null FTP is never
+            # replaced with a fabricated athlete value; 1.0 is a parser scale
+            # for ratio-only ZWO metrics and is not serialized.
+            parsed = parse_zwo(zwo, ftp if ftp is not None else 1.0)
+            parsed['_stem'] = zwo.stem
+            workouts_by_prefix[zwo.stem] = parsed
 
     # Build week-by-week data
     weeks_data = []
@@ -156,8 +243,9 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
         })
 
     # Verification checks
-    checks = _run_verification_checks(profile, derived, methodology, plan_dates,
-                                       weekly_structure, weeks_data)
+    checks = _run_verification_checks(
+        profile, derived, methodology, plan_dates, weekly_structure,
+        weeks_data, control_metric=control_metric)
 
     return {
         'profile': profile,
@@ -168,13 +256,16 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
         'fueling': fueling,
         'weeks': weeks_data,
         'ftp': ftp,
+        'control_metric': control_metric,
+        'control_basis': control_basis,
         'checks': checks,
         'generated': datetime.now().strftime('%Y-%m-%d %H:%M'),
     }
 
 
 def _run_verification_checks(
-    profile, derived, methodology, plan_dates, weekly_structure, weeks_data
+    profile, derived, methodology, plan_dates, weekly_structure, weeks_data,
+    control_metric='power',
 ) -> List[Dict[str, Any]]:
     """Run automated checks: plan vs questionnaire."""
     checks = []
@@ -253,9 +344,13 @@ def _run_verification_checks(
     intensity_dist = meth_config.get('intensity_distribution', {})
     target_z1z2 = intensity_dist.get('z1_z2', 0)
     if target_z1z2 and weeks_data:
-        # Count TIME, not workouts. Intensity distribution targets (80/20,
-        # 95/5) are defined on training time — counting sessions punishes a
-        # 45min interval workout the same as a 5h Z2 ride.
+        # Count duration-weighted SESSION intensity, not workout count or
+        # literal segment zones. Methodology targets describe the plan's
+        # hard/easy session emphasis ("hard days"), and were calibrated
+        # against each ZWO's normalized session IF. The canonical projection
+        # preserves that definition: derive one duration-weighted IF from all
+        # typed segments, classify the session, then add its actual duration.
+        # This still gives a 5h easy ride five times the weight of a 1h ride.
         easy_min = 0.0
         hard_min = 0.0
         for w in weeks_data:
@@ -272,10 +367,9 @@ def _run_verification_checks(
         total_min = easy_min + hard_min
         easy_pct = (easy_min / total_min * 100) if total_min > 0 else 0
         # Methodology distributions (e.g. g_spot 45/30/25) describe session
-        # emphasis, not time-in-zone: warmups and interval recoveries are
-        # easy time inside "hard" files. Real plans of every methodology run
-        # >=70% easy by time — floor the target so threshold-flavored
-        # methodologies don't false-FAIL well-built plans.
+        # emphasis. Real plans of every methodology run >=70% easy session
+        # time — floor the target so threshold-flavored methodologies don't
+        # false-FAIL well-built plans.
         target_pct = max(target_z1z2 * 100, 70.0)
         diff = abs(easy_pct - target_pct)
         # PASS: delta < 10%, WARN: 10-15%, FAIL: > 15%
@@ -288,7 +382,7 @@ def _run_verification_checks(
         checks.append({
             'name': 'Zone Distribution',
             'status': status,
-            'detail': (f"Target: {target_pct:.0f}% easy | Actual: {easy_pct:.0f}% easy by time "
+            'detail': (f"Target: {target_pct:.0f}% easy | Actual: {easy_pct:.0f}% easy session time "
                        f"({easy_min:.0f}/{total_min:.0f} min) | Delta: {diff:.0f}% | "
                        f"Thresholds: PASS <10%, WARN 10-15%, FAIL >15%"),
         })
@@ -480,11 +574,15 @@ def _run_verification_checks(
         phase_clean = w['phase'].replace('_1', '').replace('_2', '')
         for d in w['days']:
             wo = d.get('workout')
-            if wo and wo.get('intensity_factor', 0) > 0:
+            effort = ((wo or {}).get('normalized_effort')
+                      if wo else None)
+            if effort is None and wo:
+                effort = wo.get('intensity_factor')
+            if wo and (effort or 0) > 0:
                 if phase_clean == 'taper':
-                    taper_ifs.append(wo['intensity_factor'])
+                    taper_ifs.append(effort)
                 elif phase_clean in ('build', 'peak'):
-                    build_peak_ifs.append(wo['intensity_factor'])
+                    build_peak_ifs.append(effort)
     if taper_ifs and build_peak_ifs:
         avg_taper_if = sum(taper_ifs) / len(taper_ifs)
         avg_build_if = sum(build_peak_ifs) / len(build_peak_ifs)
@@ -493,10 +591,11 @@ def _run_verification_checks(
         # is textbook (short sharp openers). Only flag a taper that is
         # HARDER than the build, which is a build week in disguise.
         ti_status = 'PASS' if taper_ratio <= 105 else 'WARN'
+        unit = 'IF' if control_metric == 'power' else 'normalized effort'
         checks.append({
             'name': 'Taper Intensity',
             'status': ti_status,
-            'detail': (f"Taper avg IF: {avg_taper_if:.2f} | Build/Peak avg IF: {avg_build_if:.2f} | "
+            'detail': (f"Taper avg {unit}: {avg_taper_if:.2f} | Build/Peak avg {unit}: {avg_build_if:.2f} | "
                        f"Ratio: {taper_ratio:.0f}% | Threshold: WARN if > 105% (taper harder than build)"),
         })
 
@@ -517,6 +616,8 @@ def render_preview_html(data: Dict[str, Any]) -> str:
     weeks = data['weeks']
     checks = data['checks']
     ftp = data['ftp']
+    control_metric = data.get('control_metric', 'power')
+    control_basis = data.get('control_basis', 'ftp')
     preview_author = workout_author(profile)
 
     name = profile.get('name', 'Unknown')
@@ -611,7 +712,7 @@ def render_preview_html(data: Dict[str, Any]) -> str:
                 zone_color = zone_colors.get(zone, '#999')
                 dur = wo['duration_min']
                 tss = wo['tss']
-                if_val = wo['intensity_factor']
+                if_val = wo.get('intensity_factor')
 
                 # Workout type from filename
                 wo_name = wo['name'].split('_', 3)[-1] if '_' in wo['name'] else wo['name']
@@ -636,6 +737,12 @@ def render_preview_html(data: Dict[str, Any]) -> str:
                 elif d['is_b_opener']:
                     race_marker = '<div class="opener-marker">OPENER</div>'
 
+                control_detail = (
+                    f'<div class="wo-power">IF: {if_val}</div>'
+                    if control_metric == 'power'
+                    else f'<div class="wo-power">{_esc(wo.get("target_summary") or control_basis)}</div>'
+                )
+
                 day_cells += (
                     f'<td class="day-workout" style="border-left:3px solid {zone_color}">'
                     f'{race_marker}'
@@ -646,7 +753,7 @@ def render_preview_html(data: Dict[str, Any]) -> str:
                     f'<span class="metric zone-tag" style="background:{zone_color}">{zone}</span>'
                     f'</div>'
                     f'{interval_str}'
-                    f'<div class="wo-power">IF: {if_val}</div>'
+                    f'{control_detail}'
                     f'</td>'
                 )
 
@@ -672,6 +779,14 @@ def render_preview_html(data: Dict[str, Any]) -> str:
             f'<strong>{_esc(c["name"])}</strong>: {_esc(c["detail"])}'
             f'</div>\n'
         )
+
+    if control_metric == 'power' and ftp is not None:
+        control_row = (f'<div class="ref-row"><span class="label">FTP</span>'
+                       f'<span class="value">{ftp:.0f}W ({w_kg} W/kg)</span></div>')
+    else:
+        control_row = (f'<div class="ref-row"><span class="label">Control</span>'
+                       f'<span class="value">{_esc(control_metric.upper())} '
+                       f'({_esc(control_basis)})</span></div>')
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -766,7 +881,7 @@ h2 {{ font-size: 1.1em; margin: 20px 0 8px 0; border-bottom: 2px solid #333; pad
 <div class="ref-card">
   <div class="ref-box">
     <h3>Athlete Profile</h3>
-    <div class="ref-row"><span class="label">FTP</span><span class="value">{ftp:.0f}W ({w_kg} W/kg)</span></div>
+    {control_row}
     <div class="ref-row"><span class="label">Weight</span><span class="value">{weight}kg</span></div>
     <div class="ref-row"><span class="label">Age</span><span class="value">{age}</span></div>
     <div class="ref-row"><span class="label">Hours/wk</span><span class="value">{cycling_hours}</span></div>
