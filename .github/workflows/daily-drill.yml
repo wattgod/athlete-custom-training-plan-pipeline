@@ -1,0 +1,52 @@
+name: "Daily Real-Path Order Drill"
+
+on:
+  schedule:
+    - cron: '0 13 * * *'  # daily 13:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drill:
+    if: ${{ vars.DRILL_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml python-dateutil pytest pypdf pillow requests beautifulsoup4
+          pip install -r webhook/requirements.txt || echo "webhook reqs partial"
+
+      - name: Cancel yesterday, send today, and verify the gate
+        env:
+          DRILL_WEBHOOK_URL: ${{ secrets.DRILL_WEBHOOK_URL }}
+          DRILL_WEBHOOK_SECRET: ${{ secrets.DRILL_WEBHOOK_SECRET }}
+          DRILL_CUSTOMER_EMAIL: ${{ secrets.DRILL_CUSTOMER_EMAIL }}
+          DRILL_CRON_SECRET: ${{ secrets.DRILL_CRON_SECRET }}
+        run: |
+          python tools/daily_order_drill.py \
+            --cleanup \
+            --timeout 900 \
+            --out reports/daily-drill/daily-drill.json
+
+      - name: Upload redacted drill artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-order-drill-${{ github.run_id }}
+          path: reports/daily-drill/daily-drill.json
+          if-no-files-found: error
+          retention-days: 30

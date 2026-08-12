@@ -84,6 +84,8 @@ jobs:
           python -m pytest \
             tools/test_canary_probe.py \
             tools/test_audit_fulfillment_states.py \
+            tools/test_daily_order_drill.py \
+            webhook/tests/test_state_audit_endpoint.py \
             scripts/test_check_fixture_freshness.py -q
 
       - name: Run ORDER ACCEPTANCE (real pipeline end-to-end + PDF)
