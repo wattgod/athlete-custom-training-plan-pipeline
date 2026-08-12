@@ -46,3 +46,8 @@ athletes/*/plans/*/calendar/*.md
 athletes/acc-*/
 athletes/acctest-*/
 .gg-acctest-delivery/
+
+# Operational probe/audit output (redacted reports; replay records retain tokens)
+athletes/worker-replay/
+reports/canary/
+reports/audits/
