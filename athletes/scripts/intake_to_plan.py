@@ -1113,6 +1113,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 issue = race_provenance_issue(
                     info, event['date'], goals.get('race_category', ''),
                     basic.get('sex', ''),
+                    today=generation_now().date(),
                 )
                 if issue:
                     target_race_info['race_provenance_issue'] = issue

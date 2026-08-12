@@ -6,6 +6,7 @@ Validates ALL input files BEFORE generation starts to fail fast
 and provide actionable error messages.
 """
 
+import os
 import yaml
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +21,15 @@ from constants import (
     AVAILABILITY_TYPES,
     DAY_FULL_TO_ABBREV,
 )
+
+
+def generation_now() -> datetime:
+    """Production clock with the deterministic replay injection honored."""
+    fixed = os.environ.get("GG_FIXED_NOW", "").strip()
+    if fixed:
+        return datetime.fromisoformat(fixed.replace("Z", "+00:00")).replace(
+            tzinfo=None)
+    return datetime.now()
 
 
 @dataclass
@@ -99,7 +109,7 @@ def validate_profile(profile: dict) -> ValidationResult:
     if race_date_str:
         try:
             race_date = datetime.strptime(race_date_str, '%Y-%m-%d')
-            days_until = (race_date - datetime.now()).days
+            days_until = (race_date - generation_now()).days
             if days_until < -7:
                 result.add_error(f"Race date is {abs(days_until)} days in the past")
             elif days_until < 14:
