@@ -8,6 +8,7 @@ Tries multiple PDF engines in order of preference:
 3. wkhtmltopdf (widely available)
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +23,14 @@ except ImportError:
 
 def find_chrome() -> Optional[str]:
     """Find Chrome/Chromium executable."""
+    # Sandboxed agent runs cannot launch Chrome (seatbelt kills it with
+    # SIGABRT, spamming macOS crash dialogs). GG_PDF_DISABLE=1 makes the
+    # engine report "unavailable" without ever spawning the binary; the
+    # production contract already degrades to the HTML guide in that case.
+    # CI and operator verification runs must NOT set this.
+    if os.environ.get('GG_PDF_DISABLE') == '1':
+        return None
+
     if config:
         path = config.get_chrome_path()
         if path:
