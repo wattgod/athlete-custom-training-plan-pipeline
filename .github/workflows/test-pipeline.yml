@@ -9,17 +9,26 @@ on:
       - 'athletes/config/**'
       - 'athletes/*/profile.yaml'
       - 'webhook/**'
+      - 'delivery/**'
+      - 'tools/**'
+      - 'scripts/**'
+      - 'tests/fixtures/**'
       - 'config.yaml'
       - 'requirements.txt'
-      - '.github/workflows/test-pipeline.yml'
+      - '.github/workflows/**'
   pull_request:
     branches: [main]
     paths:
       - 'athletes/scripts/**'
       - 'athletes/config/**'
       - 'webhook/**'
+      - 'delivery/**'
+      - 'tools/**'
+      - 'scripts/**'
+      - 'tests/fixtures/**'
       - 'config.yaml'
       - 'requirements.txt'
+      - '.github/workflows/**'
   # Run regularly even without commits — catches drift from external data
   # (race dates rolling past, library or config edits) and proves the whole
   # order path still produces send-worthy plans.
@@ -67,6 +76,15 @@ jobs:
           # Acceptance tests auto-skip here (no GG_RUN_ACCEPTANCE) — this is
           # the fast layer: unit tests + all the content/PDF/compliance guards.
           python -m pytest . -q --ignore=test_order_acceptance.py
+
+      - name: Run recurring testing-process unit tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python -m pytest \
+            tools/test_canary_probe.py \
+            tools/test_audit_fulfillment_states.py \
+            scripts/test_check_fixture_freshness.py -q
 
       - name: Run ORDER ACCEPTANCE (real pipeline end-to-end + PDF)
         working-directory: athletes/scripts

@@ -1,0 +1,71 @@
+name: "Daily TrainingPeaks Canary Probe"
+
+# Fixture mode is the Phase 4 recurring self-test today. To flip the single
+# integration point after the live transport exists, set repository variable
+# CANARY_LIVE=true and configure TP_CANARY_EMAIL and/or TP_CANARY_ATHLETE_ID as
+# repository secrets. Never put the canary account identifiers in this file.
+
+on:
+  schedule:
+    - cron: '30 12 * * *'  # daily 12:30 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Configure read-only canary environment
+        env:
+          CANARY_LIVE: ${{ vars.CANARY_LIVE }}
+          LIVE_CANARY_EMAIL: ${{ secrets.TP_CANARY_EMAIL }}
+          LIVE_CANARY_ATHLETE_ID: ${{ secrets.TP_CANARY_ATHLETE_ID }}
+          LIVE_WORKER_CAPABILITY_SECRET: ${{ secrets.GG_WORKER_CAPABILITY_SECRET }}
+        run: |
+          echo "GG_WORKER_REPLAY_DIR=${RUNNER_TEMP}/canary-worker-replay" >> "$GITHUB_ENV"
+          echo "TP_CANARY_LABEL=cheesehead" >> "$GITHUB_ENV"
+          if [ "$CANARY_LIVE" = "true" ]; then
+            if [ -z "$LIVE_CANARY_EMAIL" ] && [ -z "$LIVE_CANARY_ATHLETE_ID" ]; then
+              echo "::error::CANARY_LIVE requires TP_CANARY_EMAIL and/or TP_CANARY_ATHLETE_ID repository secret"
+              exit 1
+            fi
+            if [ -z "$LIVE_WORKER_CAPABILITY_SECRET" ]; then
+              echo "::error::CANARY_LIVE requires GG_WORKER_CAPABILITY_SECRET repository secret"
+              exit 1
+            fi
+            echo "TP_CANARY_EMAIL=$LIVE_CANARY_EMAIL" >> "$GITHUB_ENV"
+            echo "TP_CANARY_ATHLETE_ID=$LIVE_CANARY_ATHLETE_ID" >> "$GITHUB_ENV"
+            echo "GG_WORKER_CAPABILITY_SECRET=$LIVE_WORKER_CAPABILITY_SECRET" >> "$GITHUB_ENV"
+            echo "CANARY_TRANSPORT=live" >> "$GITHUB_ENV"
+          else
+            echo "TP_CANARY_EMAIL=fixture-canary@example.invalid" >> "$GITHUB_ENV"
+            python -c 'import secrets; print("GG_WORKER_CAPABILITY_SECRET=" + secrets.token_urlsafe(48))' >> "$GITHUB_ENV"
+            echo "CANARY_TRANSPORT=fixture" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run read-only canary
+        run: |
+          python tools/canary_probe.py \
+            --transport "$CANARY_TRANSPORT" \
+            --out reports/canary/canary.json
+
+      - name: Upload canary artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trainingpeaks-canary-${{ github.run_id }}
+          path: reports/canary/canary.json
+          if-no-files-found: error
+          retention-days: 30
