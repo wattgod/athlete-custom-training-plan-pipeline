@@ -1,0 +1,40 @@
+name: "Railway Fulfillment State Audit"
+
+# Kept separate from the daily order drill so disabling DRILL_ENABLED cannot
+# disable production-state safety monitoring. Railway has no operator crontab;
+# this authenticated call audits the persistent state inside the live service.
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Trigger authenticated Railway state audit
+        env:
+          STATE_AUDIT_URL: ${{ secrets.STATE_AUDIT_URL }}
+          STATE_AUDIT_CRON_SECRET: ${{ secrets.STATE_AUDIT_CRON_SECRET }}
+        run: |
+          if [ -z "$STATE_AUDIT_URL" ] || [ -z "$STATE_AUDIT_CRON_SECRET" ]; then
+            echo "::error::STATE_AUDIT_URL and STATE_AUDIT_CRON_SECRET must be configured"
+            exit 1
+          fi
+          HTTP_STATUS=$(curl -sS \
+            -o "${RUNNER_TEMP}/state-audit.json" \
+            -w '%{http_code}' \
+            -X POST "$STATE_AUDIT_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Cron-Secret: $STATE_AUDIT_CRON_SECRET" \
+            --data '{"max_age_days":3}')
+          python3 -m json.tool "${RUNNER_TEMP}/state-audit.json"
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::error::State audit returned HTTP $HTTP_STATUS"
+            exit 1
+          fi
