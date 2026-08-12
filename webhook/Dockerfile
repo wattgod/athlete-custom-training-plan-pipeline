@@ -31,6 +31,9 @@ RUN pip install --no-cache-dir -r webhook/requirements.txt && \
 COPY webhook/ ./webhook/
 COPY athletes/ ./athletes/
 COPY delivery/ ./delivery/
+# Read-only host audit only. The calendar-mutating historical tools remain out
+# of the production image; this file scans durable JSON and emits redacted data.
+COPY tools/audit_fulfillment_states.py ./tools/
 
 # Create persistent data directory (Railway volume mounts here)
 RUN mkdir -p /data
