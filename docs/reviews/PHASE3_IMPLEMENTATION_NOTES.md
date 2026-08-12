@@ -661,3 +661,63 @@ Direct R5 regressions now reject all six previously accepted forgeries:
   `79452230ea1cdf33fcc684e971816bc1805e84eefbbdbc7e3579bb5d49c3985e`.
 - No live TrainingPeaks, browser, worker, Stripe, email, network, or push action
   was attempted.
+
+## Post-R6 acceptance determinism (2026-08-12)
+
+### Golden-order clock and race fixtures
+
+The order-acceptance races are no longer selected from a window relative to
+`date.today()`. That made a seeded RNG look deterministic while its candidate
+list changed daily: on 2026-08-10 the gravel order moved from Tour de Tucson
+(2026-11-21) to Gran Fondo Guadeloupe (2026-12-07), changing both the order
+fixture and its periodization horizon without a fixture refresh.
+
+The suite now carries literal race records copied from the named keys in the
+committed `athletes/config/races.json` snapshot: `gravel:tour-de-tucson`,
+`road:granfondo-tre-valli-varesine`, and `road:taiwan-kom-challenge`. Generation
+is anchored at `2026-08-06T15:00:00Z` through the same `GG_FIXED_NOW` and
+`generation_clock` replay path used by athlete-m. Both mandatory profile
+past-date validators now honor that existing replay clock; when the variable is
+unset they still use the real production clock. Race-provenance age evaluation
+also receives the injected date. No validator or failure threshold was removed
+or weakened.
+
+A regression pins the literal names, dates, slugs, and clock. Another sets the
+host-independent clock in 2019 and proves both profile validators accept a
+2020 race, which would be past on the current host clock. Consequently the same
+commit produces the same acceptance inputs and the generation gates keep the
+same temporal frame after the real calendar passes the fixture dates. The
+athlete-m test and fixture were not edited, and its fixed-clock Phase 3 golden
+remains green.
+
+### Gravel zone-distribution decision
+
+This closes as option (c), not as a generator or threshold change. Under the
+restored Tour de Tucson fixture, the fixed clock is about 15 weeks before the
+race and generation emits a 14-week plan (2026-08-17 through 2026-11-22). The
+unchanged Phase 3 session-level calculation measures **84% easy session time
+(4,229/5,009 minutes)** against the 70% target: a 14-point delta and therefore
+the existing WARN, not FAIL, result. The acceptance gate is green while the
+coach signal remains visible.
+
+The 17-week Guadeloupe result is therefore moot for this golden suite: it was
+an accidental fixture mutation, not an intentionally specified long-horizon
+acceptance case. This does not decide that 88% easy is desirable for every
+long plan. Such a policy decision needs its own literal long-horizon fixture
+and coaching rationale. This repair deliberately leaves plan generation, the
+70% target, the 15-point failure boundary, canonical fourth-power
+duration-weighted session accounting, and all ZWO content unchanged.
+
+### Verification
+
+- Pinned gravel preview acceptance case: **1 passed**.
+- Fixed-clock validators, real-race unit tests, and athlete-m Phase 3 golden:
+  **17 passed**.
+- Complete suite: **2,499 passed, 87 skipped, 21 warnings, 0 failed**.
+- Full acceptance run in the restricted sandbox: **37 passed, 4 skipped, 4
+  failed**. The four failures were exclusively the pre-existing mandatory-PDF
+  presence/structure checks because sandboxed Chrome exits 134. All non-PDF
+  acceptance checks, including all four preview cases, passed. The PDF gate
+  was not weakened; with a usable PDF engine this test matrix is **43 passed,
+  2 expected non-roadie skips**.
+- `git diff --check` passed. No push or external-system action was attempted.

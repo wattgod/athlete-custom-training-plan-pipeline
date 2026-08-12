@@ -51,67 +51,32 @@ _skip_reason = "set GG_RUN_ACCEPTANCE=1 to run the slow end-to-end order suite"
 
 # ---------------------------------------------------------------------------
 # Golden orders — realistic webhook payloads spanning the dimensions that
-# have broken the pipeline. Race dates use known_races entries with FUTURE
-# dates so the (correct) past-date / date-mismatch gates don't trip.
+# have broken the pipeline. These fixtures and their generation clock are
+# deliberately literal: wall-clock race selection made the old "goldens"
+# change whenever a candidate crossed the moving min_weeks boundary.
 # ---------------------------------------------------------------------------
-def _real_gravel_race():
-    """A stable, future-dated REAL gravel race from the snapshot so golden
-    orders test against actual events and never rot when a date rolls past.
-    Falls back to a fixed race if the snapshot isn't built."""
-    import random
-    from datetime import date as _date
-    try:
-        from real_races import pick
-        race = pick(random.Random("acceptance-golden-v1"), discipline="gravel",
-                    min_weeks=14, max_weeks=28, min_mi=50, max_mi=110,
-                    today=_date.today().isoformat())
-        if race:
-            return race
-    except Exception:
-        pass
-    return {"name": "Big Sugar Gravel", "date": "2026-10-17",
-            "distance_mi": 104, "elevation_ft": 6000}
+_GOLDEN_GENERATION_AT = "2026-08-06T15:00:00Z"
 
-
-def _real_road_race(*, hillclimb=False):
-    """Pick stable, future, provenanced Roadie fondo/hill-climb fixtures."""
-    import random
-    from datetime import date as _date
-    try:
-        from real_races import buildable_races, pick
-        if hillclimb:
-            candidates = buildable_races(
-                discipline="road", min_weeks=8, max_weeks=60,
-                today=_date.today().isoformat(), min_mi=1, max_mi=100)
-            hill_terms = ("hill", "climb", "kom", "mount")
-            candidates = [
-                race for race in candidates
-                if any(term in race.get("name", "").lower() for term in hill_terms)
-            ]
-            race = (random.Random("acceptance-road-hill-v2").choice(candidates)
-                    if candidates else None)
-        else:
-            race = pick(
-                random.Random("acceptance-road-fondo-v1"),
-                discipline="road", min_weeks=8, max_weeks=60,
-                today=_date.today().isoformat(), min_mi=40, max_mi=140)
-        if race:
-            return race
-    except Exception:
-        pass
-    if hillclimb:
-        return {"name": "Mount Baker Hill Climb", "date": "2026-09-13",
-                "distance_mi": 22, "elevation_ft": 4462,
-                "slug": "mount-baker-hill-climb"}
-    return {"name": "RBC GranFondo Whistler", "date": "2026-09-12",
-            "distance_mi": 76, "elevation_ft": 7500,
-            "slug": "rbc-granfondo-whistler"}
-
-
-_RACE = _real_gravel_race()
+# Provenance: literal copies of the named keys in the committed
+# athletes/config/races.json snapshot as of the fixture refresh above.
+_RACE = {
+    "name": "Tour de Tucson", "date": "2026-11-21", "distance_mi": 102,
+    "elevation_ft": 3500, "location": "Tucson, Arizona, USA",
+    "discipline": "gravel", "slug": "tour-de-tucson",
+}
 _RACE_DIST = f"{int(round(float(_RACE['distance_mi'])))} miles"
-_ROAD_FONDO = _real_road_race()
-_ROAD_HILL = _real_road_race(hillclimb=True)
+_ROAD_FONDO = {
+    "name": "Granfondo Tre Valli Varesine", "date": "2026-10-03",
+    "distance_mi": 78.84, "elevation_ft": 8202.0,
+    "location": "Varese, Lombardy, Italy", "discipline": "road",
+    "slug": "granfondo-tre-valli-varesine",
+}
+_ROAD_HILL = {
+    "name": "Taiwan KOM Challenge", "date": "2026-10-23",
+    "distance_mi": 93.0, "elevation_ft": 10745.0,
+    "location": "Yilan to Wuling Pass, Taiwan", "discipline": "road",
+    "slug": "taiwan-kom-challenge",
+}
 
 GOLDEN_ORDERS = [
     {
@@ -236,7 +201,8 @@ def _questionnaire_to_markdown(intake):
 
 
 def _run_order(tmp_path, order):
-    md = _questionnaire_to_markdown(order["intake"])
+    intake = {**order["intake"], "generation_clock": _GOLDEN_GENERATION_AT}
+    md = _questionnaire_to_markdown(intake)
     md_file = tmp_path / f"{order['id']}.md"
     md_file.write_text(md)
 
@@ -253,6 +219,7 @@ def _run_order(tmp_path, order):
     env["GG_GUIDES_DIR"] = str(delivery_root / "gravel-god-guides")
     env["ROADIE_GUIDES_DIR"] = str(delivery_root / "roadie-labs-guides")
     env["PYTHONPATH"] = str(REPO_ROOT)
+    env["GG_FIXED_NOW"] = _GOLDEN_GENERATION_AT
 
     if order.get("via_webhook"):
         # Exercise the production shared runner (including its questionnaire
@@ -264,7 +231,7 @@ def _run_order(tmp_path, order):
              patch.object(webhook_app, "PIPELINE_TIMEOUT", 600), \
              patch.dict(os.environ, env, clear=False):
             result = webhook_app.run_pipeline(
-                order["id"], deliver=True, intake_data=order["intake"])
+                order["id"], deliver=True, intake_data=intake)
         proc = SimpleNamespace(
             returncode=0 if result["success"] else 1,
             stdout=result.get("stdout", ""), stderr=result.get("stderr", ""))
@@ -280,6 +247,17 @@ def _run_order(tmp_path, order):
     athlete_dir = SCRIPTS_DIR.parent / athlete_id
     delivery_dir = delivery_root / f"{athlete_id}-training-plan"
     return proc, athlete_dir, delivery_dir
+
+
+def test_golden_order_inputs_are_literal_and_fixed_clocked():
+    """Fixture refreshes must be explicit, never an effect of today's date."""
+    assert _GOLDEN_GENERATION_AT == "2026-08-06T15:00:00Z"
+    assert (_RACE["name"], _RACE["date"], _RACE["slug"]) == (
+        "Tour de Tucson", "2026-11-21", "tour-de-tucson")
+    assert (_ROAD_FONDO["name"], _ROAD_FONDO["date"]) == (
+        "Granfondo Tre Valli Varesine", "2026-10-03")
+    assert (_ROAD_HILL["name"], _ROAD_HILL["date"]) == (
+        "Taiwan KOM Challenge", "2026-10-23")
 
 
 @pytest.fixture(scope="module", params=GOLDEN_ORDERS, ids=lambda o: o["id"])

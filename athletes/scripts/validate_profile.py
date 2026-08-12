@@ -5,6 +5,7 @@ Validate Athlete Profile
 Checks profile completeness, validates field values, and warns on suspicious inputs.
 """
 
+import os
 import yaml
 import sys
 from pathlib import Path
@@ -20,6 +21,15 @@ class ValidationError(Exception):
     pass
 
 
+def generation_now() -> datetime:
+    """Production clock with the deterministic replay injection honored."""
+    fixed = os.environ.get("GG_FIXED_NOW", "").strip()
+    if fixed:
+        return datetime.fromisoformat(fixed.replace("Z", "+00:00")).replace(
+            tzinfo=None)
+    return datetime.now()
+
+
 def validate_email(email: str) -> bool:
     """Basic email validation."""
     return "@" in email and "." in email.split("@")[1]
@@ -30,7 +40,7 @@ def validate_date(date_str: str, future_only: bool = False) -> bool:
     try:
         date = datetime.strptime(date_str, "%Y-%m-%d").date()
         if future_only:
-            today = datetime.now().date()
+            today = generation_now().date()
             # Allow today or future dates (>= instead of >)
             if date < today:
                 return False
@@ -79,7 +89,7 @@ def validate_profile(profile: Dict) -> Tuple[bool, List[str], List[str]]:
                 # More helpful error message
                 try:
                     race_date = datetime.strptime(target_race["date"], "%Y-%m-%d").date()
-                    today = datetime.now().date()
+                    today = generation_now().date()
                     if race_date < today:
                         errors.append(f"Race date {target_race['date']} is in the past (today is {today})")
                     else:
@@ -236,4 +246,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -16,6 +16,7 @@ import os
 import sys
 import tempfile
 from collections import Counter
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -53,12 +54,22 @@ BLOCK_WEEKS = {2, 3, 4}
 PHASE_RANK = {'base': 0, 'build': 1, 'peak': 2, 'taper': 3, 'race': 4,
               'recovery': 0, 'transition': 0}
 
-# Fixed anchor dates chosen so start→anchor spans exactly N Mon-Sun weeks.
-# start_date 2026-08-03 is a Monday.
-START = '2026-08-03'
-ANCHOR_12W = '2026-10-25'   # 12 calendar weeks inclusive
-ANCHOR_16W = '2026-11-22'   # 16 calendar weeks inclusive
-ANCHOR_24W = '2027-01-17'   # 24 calendar weeks inclusive
+# Anchor dates chosen so start→anchor spans exactly N Mon-Sun weeks.
+# start_date is the most recent Monday: always a Monday, and never more
+# than 6 days in the past (the endpoint rejects start dates >7 days back,
+# so fixed calendar dates rot — see the Aug 2026 suite-wide failure).
+_START = date.today() - timedelta(days=date.today().weekday())
+
+
+def _from_start(days):
+    """ISO date `days` days after the start Monday."""
+    return (_START + timedelta(days=days)).isoformat()
+
+
+START = _START.isoformat()
+ANCHOR_12W = _from_start(12 * 7 - 1)   # Sunday closing week 12
+ANCHOR_16W = _from_start(16 * 7 - 1)   # Sunday closing week 16
+ANCHOR_24W = _from_start(24 * 7 - 1)   # Sunday closing week 24
 
 
 @pytest.fixture
@@ -323,7 +334,7 @@ class TestBraceOverlay:
     def test_b_race_lands_and_is_noted(self, client):
         """A B-race inside the window gets the mini-taper overlay: its week
         is not typed recovery, carries the race in `races`, and gets a note."""
-        b_date = '2026-09-19'  # a Saturday inside the 12-week window
+        b_date = _from_start(47)  # a Saturday inside the 12-week window
         body = _payload(races=[
             {'name': 'Goal Gravel 200', 'date': ANCHOR_12W, 'priority': 'A'},
             {'name': 'Tune-Up Crit', 'date': b_date, 'priority': 'B'},
@@ -338,7 +349,7 @@ class TestBraceOverlay:
         assert week['races'][0]['priority'] == 'B'
 
     def test_c_race_appears_in_its_week(self, client):
-        c_date = '2026-09-12'
+        c_date = _from_start(40)  # a Saturday inside the 12-week window
         body = _payload(races=[
             {'name': 'Goal Gravel 200', 'date': ANCHOR_12W, 'priority': 'A'},
             {'name': 'Local C', 'date': c_date, 'priority': 'C'},
@@ -375,8 +386,8 @@ class TestDeterminism:
     def test_determinism_with_b_races(self, client):
         body = _payload(races=[
             {'name': 'A', 'date': ANCHOR_16W, 'priority': 'A'},
-            {'name': 'B1', 'date': '2026-09-19', 'priority': 'B'},
-            {'name': 'C1', 'date': '2026-10-17', 'priority': 'C'},
+            {'name': 'B1', 'date': _from_start(47), 'priority': 'B'},
+            {'name': 'C1', 'date': _from_start(75), 'priority': 'C'},
         ])
         r1 = _ok(client, body)
         r2 = _ok(client, body)
@@ -448,7 +459,7 @@ class TestInvalidRequests:
     def test_a_race_before_start_rejected(self, client):
         """An A-race dated before start_date does not anchor a season."""
         body = _payload(races=[
-            {'name': 'Past A', 'date': '2026-07-04', 'priority': 'A'}])
+            {'name': 'Past A', 'date': _from_start(-30), 'priority': 'A'}])
         resp = _post(client, body)
         assert resp.status_code == 400
         assert 'races' in resp.get_json()['fields']
@@ -456,7 +467,7 @@ class TestInvalidRequests:
     def test_season_too_short(self, client):
         """< 4 weeks start→anchor is rejected."""
         body = _payload(races=[
-            {'name': 'Soon', 'date': '2026-08-17', 'priority': 'A'}])
+            {'name': 'Soon', 'date': _from_start(14), 'priority': 'A'}])
         resp = _post(client, body)
         assert resp.status_code == 400
         assert 'season' in resp.get_json()['fields']
@@ -464,7 +475,7 @@ class TestInvalidRequests:
     def test_season_too_long(self, client):
         """> 40 weeks start→anchor is rejected."""
         body = _payload(races=[
-            {'name': 'Far', 'date': '2027-07-04', 'priority': 'A'}])
+            {'name': 'Far', 'date': _from_start(41 * 7), 'priority': 'A'}])
         resp = _post(client, body)
         assert resp.status_code == 400
         assert 'season' in resp.get_json()['fields']
