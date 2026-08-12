@@ -12,6 +12,8 @@ import os
 import sys
 import re
 import json
+import copy
+import contextlib
 import hmac
 import fcntl
 import hashlib
@@ -2790,6 +2792,14 @@ def approve_review_order(order_ref):
         }
         for item_id in request.form.getlist('confirm_item')
     ]
+    for encoded in request.form.getlist('resolved_item'):
+        item_id, separator, choice = str(encoded).partition('::')
+        if separator and item_id and choice:
+            decisions.append({
+                'item_id': item_id,
+                'revision': expected_revision,
+                'disposition': f'resolved:{choice}',
+            })
     blocker_ids = [item['id'] for item in state.get('blocking_issues', [])]
     waived_ids = request.form.getlist('waive_item')
     waiver = None
@@ -2815,6 +2825,207 @@ def approve_review_order(order_ref):
         return _render_authorized_review(
             order_id, state, session, error=str(exc), status=409)
     return redirect(f'/review/{order_id}', code=303)
+
+
+@app.route('/review/<order_ref>/d2/identity', methods=['POST'])
+@limiter.limit('10/minute')
+def select_review_identity(order_ref):
+    """State-changing coach command selecting one probed candidate."""
+    try:
+        order_id, state, session = _authorized_review(order_ref)
+    except ReviewAuthError:
+        return _review_response(
+            '<!doctype html><title>Review unavailable</title>'
+            '<p>Review session unavailable or superseded.</p>', 409)
+    supplied_csrf = str(request.form.get('csrf_token') or '')
+    if (not supplied_csrf
+            or not hmac.compare_digest(supplied_csrf, session['csrf_token'])):
+        return _render_authorized_review(
+            order_id, state, session, error='Invalid review form token.', status=403)
+    try:
+        expected_revision = int(str(request.form.get('generation_revision') or ''))
+        from d2_identity import select_identity_candidate
+        changed = select_identity_candidate(
+            _fulfillment_status_path(order_id), expected_revision,
+            str(request.form.get('tp_athlete_id') or ''),
+            actor=session['credential'],
+        )
+        _queue_d2_regeneration(order_id, changed)
+    except (ValueError, FulfillmentStateError) as exc:
+        return _render_authorized_review(
+            order_id, state, session, error=str(exc), status=409)
+    return redirect(f'/review/{order_id}', code=303)
+
+
+@app.route('/review/<order_ref>/d2/resolve', methods=['POST'])
+@limiter.limit('10/minute')
+def resolve_review_d2_item(order_ref):
+    """Execute a D2 selector as a server-side state command."""
+    try:
+        order_id, state, session = _authorized_review(order_ref)
+    except ReviewAuthError:
+        return _review_response(
+            '<!doctype html><title>Review unavailable</title>'
+            '<p>Review session unavailable or superseded.</p>', 409)
+    supplied_csrf = str(request.form.get('csrf_token') or '')
+    if (not supplied_csrf
+            or not hmac.compare_digest(supplied_csrf, session['csrf_token'])):
+        return _render_authorized_review(
+            order_id, state, session, error='Invalid review form token.', status=403)
+    try:
+        expected_revision = int(str(request.form.get('generation_revision') or ''))
+        item_id = str(request.form.get('resolution_item') or '')
+        choice = str(request.form.get(f'resolution_choice:{item_id}') or '')
+        from d2_identity import resolve_d2_item
+        changed = resolve_d2_item(
+            _fulfillment_status_path(order_id), expected_revision,
+            item_id, choice, actor=session['credential'],
+        )
+        _queue_d2_regeneration(order_id, changed)
+    except (ValueError, FulfillmentStateError) as exc:
+        return _render_authorized_review(
+            order_id, state, session, error=str(exc), status=409)
+    return redirect(f'/review/{order_id}', code=303)
+
+
+def _run_d2_manual_readback(order_id: str, state: dict, item_id: str) -> dict:
+    """Issue and execute one order/identity-bound read-only inspect attempt."""
+    from delivery.trainingpeaks.worker_service import (
+        CannedProbeTransport, SERVER_PROBE_AUDIENCE, SERVER_PROBE_KID,
+        WorkerAuthorizationError, build_server_read_only_worker,
+    )
+    from d2_identity import record_manual_readback
+
+    fixture_path = os.environ.get('GG_WORKER_PROBES_FIXTURE', '').strip()
+    if not fixture_path:
+        raise FulfillmentStateError(
+            'read-only worker transport is unavailable for manual readback')
+    binding = state.get('platform_identity') or {}
+    tp_id = str(binding.get('tp_athlete_id') or '').strip()
+    if not tp_id or binding.get('order_id') != order_id:
+        raise FulfillmentStateError(
+            "manual readback requires this order's bound platform identity")
+
+    transport = CannedProbeTransport.from_path(
+        fixture_path, tp_athlete_id=tp_id)
+    try:
+        codec, worker = build_server_read_only_worker(transport)
+    except WorkerAuthorizationError as exc:
+        raise FulfillmentStateError(
+            'read-only worker capability signing is unavailable') from exc
+    now_epoch = int(datetime.now(timezone.utc).timestamp())
+    jti = 'manual-inspect-' + uuid.uuid4().hex
+    claims = {
+        'order_id': order_id,
+        'subject': {'kind': 'identity_query', 'tp_athlete_id': tp_id},
+        'action': 'inspect', 'audience': SERVER_PROBE_AUDIENCE,
+        'iat': now_epoch - 1, 'exp': now_epoch + 300, 'jti': jti,
+    }
+    capability = codec.issue(claims, kid=SERVER_PROBE_KID)
+    evidence = worker.inspect_account_evidence(
+        tp_id, capability, now=now_epoch)
+    return record_manual_readback(
+        _fulfillment_status_path(order_id), state['generation_revision'],
+        item_id, evidence,
+    )
+
+
+@app.route('/review/<order_ref>/d2/readback', methods=['POST'])
+@limiter.limit('10/minute')
+def complete_review_d2_readback(order_ref):
+    """Authenticated command obtaining manual-correction evidence from worker."""
+    try:
+        order_id, state, session = _authorized_review(order_ref)
+    except ReviewAuthError:
+        return _review_response(
+            '<!doctype html><title>Review unavailable</title>'
+            '<p>Review session unavailable or superseded.</p>', 409)
+    supplied_csrf = str(request.form.get('csrf_token') or '')
+    if (not supplied_csrf
+            or not hmac.compare_digest(supplied_csrf, session['csrf_token'])):
+        return _render_authorized_review(
+            order_id, state, session, error='Invalid review form token.', status=403)
+    try:
+        expected_revision = int(str(request.form.get('generation_revision') or ''))
+        if expected_revision != state['generation_revision']:
+            raise FulfillmentStateError('generation revision mismatch')
+        item_id = str(request.form.get('readback_item') or '').strip()
+        if item_id not in (state.get('d2_pending_requirements') or {}):
+            raise FulfillmentStateError(
+                'manual correction has no pending readback')
+        _run_d2_manual_readback(order_id, state, item_id)
+    except (ValueError, FulfillmentStateError) as exc:
+        try:
+            state = load_fulfillment_state(_fulfillment_status_path(order_id))
+        except FulfillmentStateError:
+            pass
+        return _render_authorized_review(
+            order_id, state, session, error=str(exc), status=409)
+    return redirect(f'/review/{order_id}', code=303)
+
+
+def _queue_d2_regeneration(order_id: str, state: dict) -> None:
+    """Feed a durable D2 command back through the normal generation job.
+
+    The command intent is already durable before this function runs. A queue
+    failure therefore leaves a loud, non-approvable regeneration request
+    instead of losing the coach's choice or presenting the old seal as valid.
+    """
+    request_record = state.get('regeneration_request') or {}
+    if not request_record:
+        # Unsealed fixture/unit flows can finish in the current producer run.
+        return
+    job = _read_job(order_id)
+    if not job:
+        raise FulfillmentStateError(
+            'D2 regeneration is recorded but no durable generation job exists')
+    intake_data = load_intake(job.get('intake_id')) if job.get('intake_id') else {}
+    if not intake_data:
+        prior_revision = request_record.get('prior_revision')
+        backup = (_order_dir(order_id) / 'revisions' / f'r{prior_revision}'
+                  / 'artifacts' / 'intake_backup.json')
+        try:
+            loaded = json.loads(backup.read_text(encoding='utf-8'))
+            intake_data = loaded if isinstance(loaded, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            intake_data = {}
+    if not intake_data:
+        raise FulfillmentStateError(
+            'D2 regeneration is recorded but canonical intake is unavailable')
+    for field, value in (state.get('canonical_input_overrides') or {}).items():
+        if field not in {'hr_threshold', 'ftp', 'age', 'weight'}:
+            raise FulfillmentStateError('D2 canonical input override is invalid')
+        intake_data[field] = value
+
+    # The order-work state is the producer's revision source. Install the
+    # already-atomic authoritative intent there before the long generation.
+    work_root = (Path(DATA_DIR) / 'order-work' / _safe_order_id(order_id)
+                 / 'athletes')
+    athlete_id = str(state['athlete_id'])
+    candidates = [work_root / athlete_id, work_root / athlete_id.replace('_', '-')]
+    source_dir = next(
+        (candidate for candidate in candidates if candidate.is_dir()), candidates[-1])
+    source_dir.mkdir(parents=True, exist_ok=True)
+    source_state = source_dir / 'fulfillment_status.json'
+    source_tmp = source_state.with_name(f'.{source_state.name}.d2.tmp')
+    payload = json.dumps(state, indent=2, sort_keys=True) + '\n'
+    try:
+        with open(source_tmp, 'w', encoding='utf-8') as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(source_tmp, source_state)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            source_tmp.unlink()
+
+    order_data = copy.deepcopy(job.get('order_data') or {})
+    order_data.setdefault('order_id', order_id)
+    order_data.setdefault('athlete_id', athlete_id)
+    _spawn_plan_job(
+        order_data, intake_id=str(job.get('intake_id') or ''),
+        intake_data=intake_data,
+    )
 
 
 @app.route('/review/<order_ref>/bundle', methods=['POST'])
@@ -3103,27 +3314,9 @@ def _b64url_decode(value: str) -> bytes:
 
 
 def _issue_apply_gate_token(state: dict, tp_manifest_sha256: str) -> str:
-    """Issue a short-lived browser capability bound to one approved release."""
-    now = int(datetime.now(timezone.utc).timestamp())
-    claims = {
-        'v': 1,
-        'aud': 'trainingpeaks_apply_gate',
-        'order_id': state['order_id'],
-        'athlete_id': state['athlete_id'],
-        'delivery_platform': state['delivery_platform'],
-        'generation_revision': state['generation_revision'],
-        'model_seal': state['model_seal'],
-        'release_manifest_digest': state['release_manifest_digest'],
-        'tp_manifest_sha256': tp_manifest_sha256,
-        'iat': now,
-        'exp': now + APPLY_GATE_TOKEN_TTL_SECONDS,
-        'jti': uuid.uuid4().hex,
-    }
-    encoded = _b64url_encode(json.dumps(
-        claims, sort_keys=True, separators=(',', ':')).encode('utf-8'))
-    signature = hmac.new(
-        _apply_gate_secret(), encoded.encode('ascii'), hashlib.sha256).digest()
-    return f'{encoded}.{_b64url_encode(signature)}'
+    """REFUSED legacy browser grant issuer; Phase 5 uses D1 exchange grants."""
+    raise FulfillmentStateError(
+        'legacy browser apply grant issuance is REFUSED in Phase 4')
 
 
 def _verify_apply_gate_token(token: str) -> dict:
@@ -3267,94 +3460,20 @@ def fulfillment_status(order_ref):
         'confirmation': state['confirmation'],
         'superseded_approvals': state.get('superseded_approvals', []),
     }
-    if (release_authorized and state['status'] == APPROVED
-            and state['delivery_platform'] == 'trainingpeaks'
-            and tp_record.get('sha256')):
-        response['apply_gate_token'] = _issue_apply_gate_token(
-            state, tp_record['sha256'])
-        response['apply_gate_url'] = (
-            request.host_url.rstrip('/')
-            + f'/api/fulfillment/{order_id}/apply-gate'
-        )
     from fulfillment_state import external_state_projection
     return jsonify(external_state_projection(response)), 200
 
 
 @app.route('/api/fulfillment/<order_ref>/apply-gate', methods=['GET'])
 def live_trainingpeaks_apply_gate(order_ref):
-    """Reauthorize a sealed TP job immediately before its first live write."""
-    try:
-        claims = _verify_apply_gate_token(request.args.get('token', ''))
-    except FulfillmentStateError as exc:
-        response = jsonify({'error': str(exc)})
-        response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
-        return response, 401
-
-    order_id = _resolve_order_id(order_ref)
-    if not order_id or claims.get('order_id') != order_id:
-        response = jsonify({'error': 'apply gate order binding mismatch'})
-        response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
-        return response, 409
-    try:
-        state = load_fulfillment_state(_fulfillment_status_path(order_id))
-    except FulfillmentStateError:
-        response = jsonify({'error': 'Fulfillment state unavailable'})
-        response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
-        return response, 409
-
-    manifest = None
-    if state.get('model_seal') and not state.get('legacy'):
-        revision_dir = (_order_dir(order_id) / 'revisions'
-                        / f"r{state['generation_revision']}")
-        try:
-            manifest = verify_release_manifest(state, revision_dir)
-        except FulfillmentStateError as exc:
-            try:
-                record_seal_mismatch(_fulfillment_status_path(order_id), str(exc))
-            except FulfillmentStateError:
-                pass
-            response = jsonify({'error': f'apply gate seal verification failed: {exc}'})
-            response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
-            return response, 409
-
-    tp_record = _tp_manifest_record(manifest)
-    current = {
-        'order_id': state['order_id'],
-        'athlete_id': state['athlete_id'],
-        'delivery_platform': state['delivery_platform'],
-        'generation_revision': state['generation_revision'],
-        'model_seal': state['model_seal'],
-        'release_manifest_digest': state['release_manifest_digest'],
-        'tp_manifest_sha256': tp_record.get('sha256'),
-    }
-    failures = []
-    if state.get('legacy'):
-        failures.append('order is a legacy quarantine')
-    if state.get('status') != APPROVED:
-        failures.append(f"status is {state.get('status')!r}, not APPROVED")
-    if state.get('delivery_platform') != 'trainingpeaks':
-        failures.append('delivery_platform is not trainingpeaks')
-    if not approval_matches_release(state):
-        failures.append('approval is not bound to the current release')
-    failures.extend(
-        f'{field} mismatch' for field, value in current.items()
-        if claims.get(field) != value
-    )
-    if failures:
-        response = jsonify({'error': 'apply gate refused: ' + '; '.join(failures)})
-        response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
-        return response, 409
-
+    """Legacy browser apply is outside D1 and unconditionally disabled."""
     response = jsonify({
-        **current,
-        'status': state['status'],
-        'legacy': False,
-        'seal_verified': True,
-        'release_authorized': True,
+        'error': ('legacy browser apply gate is REFUSED in Phase 4; '
+                  'the worker is read-only'),
     })
     response.headers['Access-Control-Allow-Origin'] = 'https://app.trainingpeaks.com'
     response.headers['Cache-Control'] = 'no-store'
-    return response, 200
+    return response, 409
 
 
 @app.route('/api/fulfillment/<order_ref>/bind-legacy', methods=['POST'])

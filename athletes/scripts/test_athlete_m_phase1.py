@@ -233,6 +233,144 @@ def test_athlete_m_phase3_golden(monkeypatch, tmp_path):
         )
 
 
+def test_athlete_m_phase4_golden(monkeypatch, tmp_path):
+    """R9 Phase 4: signed canned probes feed exact D2 review findings."""
+    import app as webhook_app
+    expected = _load("expected/phase4.json")
+    intake = _load("intake.json")
+    clock = _load("clock.json")
+    intake["generation_clock"] = clock["generation_at"]
+
+    data_dir = tmp_path / "data"
+    monkeypatch.setattr(webhook_app, "DATA_DIR", str(data_dir))
+    monkeypatch.setattr(webhook_app, "DELIVERIES_DIR", str(data_dir / "deliveries"))
+    monkeypatch.setattr(webhook_app, "JOBS_DIR", str(data_dir / "jobs"))
+    monkeypatch.setattr(
+        webhook_app, "SCRIPTS_DIR", str(ROOT / "athletes" / "scripts"))
+    monkeypatch.setenv("GG_FIXED_NOW", clock["generation_at"])
+    monkeypatch.setenv(
+        "GG_RACE_SNAPSHOT_FIXTURE", str(FIXTURE / "race_snapshot.json"))
+    monkeypatch.setenv("GG_WORKER_PROBES_FIXTURE", str(FIXTURE / "worker_probes.json"))
+    monkeypatch.setenv(
+        "GG_WORKER_CAPABILITY_SECRET", "phase4-fixture-capability-secret-0001")
+    monkeypatch.setenv("GG_WORKER_REPLAY_DIR", str(tmp_path / "worker-replay"))
+    monkeypatch.setenv("CRON_SECRET", "fixture-secret")
+    monkeypatch.setenv("DOWNLOAD_TOKEN_SECRET", "fixture-token-secret")
+
+    result = webhook_app.run_pipeline(
+        "athlete-m", deliver=True, intake_data=intake,
+        order_data={
+            "order_id": "test_athlete_m_phase4",
+            "delivery_platform": "trainingpeaks",
+            "order_created_at": clock["order_created_at"],
+            "weeks_purchased": 7,
+        },
+    )
+    assert result["success"], result.get("stderr") or result.get("stdout")
+    source = Path(result["artifact_dir"])
+    profile = yaml.safe_load((source / "profile.yaml").read_text())
+    fueling = yaml.safe_load((source / "fueling.yaml").read_text())
+    plan_ir = json.loads((source / "plan_ir.json").read_text())
+    state = webhook_app.load_fulfillment_state(source / "fulfillment_status.json")
+
+    assert state["d2_active"] is True
+    assert state["identity_resolution"]["outcome"] == expected["identity_outcome"]
+    assert state["platform_identity"]["tp_athlete_id"] == expected["tp_athlete_id"]
+    assert state["account_inspection"] == {
+        "account_found": True,
+        "coached": True,
+        "tp_athlete_id": "fixture-athlete-m",
+        "age": 19,
+        "ftp_watts": 197,
+        "ftp_date": "2019-05-01",
+        "lthr_bpm": 148,
+        "lthr_date": "2019-05-01",
+        "expires_at": "2019-11-18",
+        "workouts_since_threshold": 0,
+        "observed_at": clock["generation_at"],
+        "capability_jti": state["account_inspection"]["capability_jti"],
+    }
+    assert [item["id"] for item in state["blocking_issues"]] == [
+        item["id"] for item in expected["blockers"]]
+    assert [item["id"] for item in state["required_confirmations"]] == (
+        expected["required_confirmations"])
+    threshold = next(item for item in state["required_confirmations"]
+                     if item["id"] == "D2_THRESHOLD_LTHR_STALE_MISMATCH")
+    demographic = next(item for item in state["required_confirmations"]
+                       if item["id"] == "D2_DEMOGRAPHIC_AGE_MISMATCH")
+    assert threshold["review_value"] == expected["threshold"]
+    assert demographic["review_value"] == expected["demographic"]
+    assert not set(expected["absent_blockers"]) & {
+        item["id"] for item in state["blocking_issues"]}
+    assert "POWER_BASIS_NONE_CONFIRM" not in {
+        item["id"] for item in state["required_confirmations"]}
+
+    # Phase 1/3 invariants remain literal on the Phase 4 replay.
+    assert profile["devices"]["devices"] == expected["profile_devices"]
+    assert profile["fitness_markers"]["ftp_watts"] is None
+    assert profile["fitness_markers"]["power_basis"] == "none"
+    assert profile["fitness_markers"]["control_metric"] == "hr"
+    assert [item["week_label"] for item in
+            fueling["gut_training"]["weekly_progression"]] == expected["fueling_week_labels"]
+    assert not list((source / "workouts").glob("*.zwo"))
+    sessions = [session for week in plan_ir["weeks"] for session in week["sessions"]]
+    assert len([session for session in sessions
+                if "field test" in session["title"].lower()]) == 1
+    assert any(session["date"] == "2026-09-19" and session["tp_kind"] == "race"
+               for session in sessions)
+    for path in source.rglob("*"):
+        if path.is_file() and path.suffix.lower() in {".json", ".yaml", ".html", ".md"}:
+            assert not re.search(
+                r"\b\d+(?:\.\d+)?\s*(?:W|watts?)\b",
+                path.read_text(errors="replace"), re.I), path
+    contract = json.loads((source / "apply_contract.json").read_text())
+    assert contract["tp_athlete_id"] == "fixture-athlete-m"
+    assert all(op["kind"] not in {"threshold_update", "zone_update"}
+               for op in contract["operations"])
+
+    persisted = webhook_app.persist_deliverables(
+        "test_athlete_m_phase4", "athlete-m", source_dir=source,
+        delivery_platform="trainingpeaks")
+    state = persisted["state"]
+    assert state["status"] == expected["status"]
+    assert [{"id": item["id"], "waivable": item["waivable"]}
+            for item in state["blocking_issues"]] == expected["blockers"]
+    with zipfile.ZipFile(persisted["review_zip"]) as archive:
+        assert not any(name.lower().endswith(".zwo") for name in archive.namelist())
+
+    client = webhook_app.app.test_client()
+    review_token = webhook_app._generate_review_token(
+        "test_athlete_m_phase4", "coach@example.invalid")
+    assert client.post(
+        "/review/test_athlete_m_phase4/session",
+        data={"token": review_token}).status_code == 303
+    review_html = client.get(
+        "/review/test_athlete_m_phase4").get_data(as_text=True)
+    assert "Platform identity" in review_html
+    assert "<dd>bound</dd>" in review_html
+    assert "Resolution command" in review_html
+    assert "D2_THRESHOLD_LTHR_STALE_MISMATCH" in review_html
+    assert "D2_DEMOGRAPHIC_AGE_MISMATCH" in review_html
+
+    with pytest.raises(FulfillmentStateError, match="D2 review item is unresolved"):
+        transition(
+            Path(persisted["delivery_dir"]) / "fulfillment_status.json",
+            APPROVED, "coach@example.invalid",
+            expected_revision=state["generation_revision"],
+            expected_catalog_digest=state["review_catalog_digest"],
+            review_decisions=[{
+                "item_id": item["item_id"],
+                "revision": state["generation_revision"],
+                "disposition": "confirmed",
+            } for item in state["review_items"]
+              if item["type"] in {"required_confirmation", "verified_fact"}],
+            waiver={
+                "rule_ids": [item["id"] for item in state["blocking_issues"]],
+                "reason": "fixture remains blocked",
+            },
+        )
+
+
 def test_facts_omitted_regeneration_never_rehydrates_catalog_facts(
     monkeypatch, tmp_path,
 ):

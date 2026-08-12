@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import deliver_package
 import email_delivery
+from d2_identity import record_identity_result
 from fulfillment_state import (APPROVED, BLOCKED_REVIEW,
                                FulfillmentStateError,
                                load as load_fulfillment_state, transition,
@@ -57,10 +58,15 @@ def _persistable_source(tmp_path, *, order_id, platform='trainingpeaks'):
         'tp_manifest.json': '{}\n',
     }.items():
         (source / relative).write_text(content)
-    write_generation(
+    state = write_generation(
         source / 'fulfillment_status.json', 'athlete-m',
         order_id=order_id, delivery_platform=platform,
     )
+    record_identity_result(
+        source / 'fulfillment_status.json', state['generation_revision'], {
+            'outcome': 'bound', 'tp_athlete_id': f'fixture-{order_id}',
+            'candidates': [],
+        }, capability_jti=f'fixture-{order_id}-binding-jti')
     return source
 
 
@@ -162,10 +168,15 @@ def test_download_seal_mismatch_revokes_authority_and_persists_blocker(
         "tp_manifest.json": "{}\n",
     }.items():
         (source / relative).write_text(content)
-    write_generation(
+    state = write_generation(
         source / "fulfillment_status.json", "athlete-m",
         order_id="test_download_mismatch", delivery_platform="trainingpeaks",
     )
+    record_identity_result(
+        source / "fulfillment_status.json", state["generation_revision"], {
+            "outcome": "bound", "tp_athlete_id": "fixture-download-athlete",
+            "candidates": [],
+        }, capability_jti="fixture-download-binding-jti")
     data_dir = tmp_path / "data"
     monkeypatch.setattr(webhook_app, "DATA_DIR", str(data_dir))
     monkeypatch.setattr(
@@ -208,8 +219,7 @@ def test_download_seal_mismatch_revokes_authority_and_persists_blocker(
     assert mismatch["waivable"] is False
 
 
-def test_future_apply_gate_status_and_token_behavior_unchanged(monkeypatch, tmp_path):
-    """Phase 1 keeps the sealed status/token boundary for the later worker."""
+def test_phase4_status_issues_no_legacy_apply_grant(monkeypatch, tmp_path):
     import app as webhook_app
 
     data_dir = tmp_path / 'data'
@@ -231,30 +241,26 @@ def test_future_apply_gate_status_and_token_behavior_unchanged(monkeypatch, tmp_
     status = status_response.get_json()
     assert status['release_authorized'] is True
     assert status['delivery_platform'] == 'trainingpeaks'
-    assert status['apply_gate_token']
-    assert status['apply_gate_url'].endswith(
-        '/api/fulfillment/test_future_gate/apply-gate')
+    assert 'apply_gate_token' not in status
+    assert 'apply_gate_url' not in status
 
     gate = client.get(
         '/api/fulfillment/test_future_gate/apply-gate',
-        query_string={'token': status['apply_gate_token']},
+        query_string={'token': 'legacy-token-cannot-authorize'},
         headers={'Origin': 'https://app.trainingpeaks.com'})
-    assert gate.status_code == 200
+    assert gate.status_code == 409
     body = gate.get_json()
-    assert body['order_id'] == 'test_future_gate'
-    assert body['generation_revision'] == status['generation_revision']
-    assert body['model_seal'] == status['model_seal']
-    assert body['tp_manifest_sha256'] == status['tp_manifest_sha256']
-    assert body['release_authorized'] is True
+    assert 'REFUSED in Phase 4' in body['error']
+    assert gate.headers['Cache-Control'] == 'no-store'
 
     malformed = client.get(
         '/api/fulfillment/test_future_gate/apply-gate',
         query_string={'token': 'not-base64.%%%'})
-    assert malformed.status_code == 401
-    assert malformed.get_json()['error'] == 'invalid apply gate token'
+    assert malformed.status_code == 409
+    assert 'REFUSED in Phase 4' in malformed.get_json()['error']
 
 
-def test_apply_gate_token_expires_at_exact_expiration_second(monkeypatch):
+def test_legacy_apply_gate_grant_issuer_refuses(monkeypatch):
     import app as webhook_app
 
     monkeypatch.setenv('CRON_SECRET', 'ops-secret')
@@ -263,23 +269,11 @@ def test_apply_gate_token_expires_at_exact_expiration_second(monkeypatch):
         'delivery_platform': 'trainingpeaks', 'generation_revision': 1,
         'model_seal': 'seal', 'release_manifest_digest': 'manifest',
     }
-    token = webhook_app._issue_apply_gate_token(state, 'tp-digest')
-    encoded = token.split('.', 1)[0]
-    claims = json.loads(webhook_app._b64url_decode(encoded))
-    real_datetime = webhook_app.datetime
-
-    class AtExpiry(real_datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return real_datetime.fromtimestamp(claims['exp'], tz=timezone.utc)
-
-    monkeypatch.setattr(webhook_app, 'datetime', AtExpiry)
-    with pytest.raises(FulfillmentStateError, match='expired'):
-        webhook_app._verify_apply_gate_token(token)
+    with pytest.raises(FulfillmentStateError, match='REFUSED in Phase 4'):
+        webhook_app._issue_apply_gate_token(state, 'tp-digest')
 
 
-def test_live_apply_gate_revokes_token_after_regeneration(monkeypatch, tmp_path):
-    """A real server-issued future-worker token dies after regeneration."""
+def test_legacy_apply_gate_refuses_after_regeneration(monkeypatch, tmp_path):
     import app as webhook_app
 
     data_dir = tmp_path / 'data'
@@ -299,17 +293,17 @@ def test_live_apply_gate_revokes_token_after_regeneration(monkeypatch, tmp_path)
         headers={'X-Cron-Secret': 'ops-secret'})
     assert status_response.status_code == 200
     status = status_response.get_json()
-    assert status['apply_gate_token']
+    assert 'apply_gate_token' not in status
 
     write_generation(
         state_path, 'athlete-m', order_id='test_live_gate',
         delivery_platform='trainingpeaks')
     revoked = client.get(
         '/api/fulfillment/test_live_gate/apply-gate',
-        query_string={'token': status['apply_gate_token']},
+        query_string={'token': 'anything'},
         headers={'Origin': 'https://app.trainingpeaks.com'})
     assert revoked.status_code == 409
-    assert 'not APPROVED' in revoked.get_json()['error']
+    assert 'REFUSED in Phase 4' in revoked.get_json()['error']
     assert revoked.headers['Access-Control-Allow-Origin'] == 'https://app.trainingpeaks.com'
 
 
@@ -329,19 +323,16 @@ def test_live_apply_gate_materializes_post_emission_seal_mismatch(
     state_path = Path(persisted['delivery_dir']) / 'fulfillment_status.json'
     _approve(state_path)
     client = webhook_app.app.test_client()
-    status = client.get(
-        '/api/fulfillment/test_live_gate_seal/status',
-        headers={'X-Cron-Secret': 'ops-secret'}).get_json()
-
     (Path(persisted['revision_dir']) / 'artifacts/tp_manifest.json').write_text(
         '{"post_approval":"mutation"}')
     refused = client.get(
-        '/api/fulfillment/test_live_gate_seal/apply-gate',
-        query_string={'token': status['apply_gate_token']},
-        headers={'Origin': 'https://app.trainingpeaks.com'})
+        '/api/fulfillment/test_live_gate_seal/status',
+        headers={'X-Cron-Secret': 'ops-secret'})
 
-    assert refused.status_code == 409
-    assert 'seal verification failed' in refused.get_json()['error']
+    assert refused.status_code == 200
+    status = refused.get_json()
+    assert status['release_authorized'] is False
+    assert status['seal_verified'] is False
     state = load_fulfillment_state(state_path)
     assert state['status'] == BLOCKED_REVIEW
     assert next(item for item in state['blocking_issues']

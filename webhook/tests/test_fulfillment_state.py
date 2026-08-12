@@ -19,6 +19,7 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CONFIRMED,
                                open_verified_release_artifact,
                                record_seal_mismatch,
                                verify_release_manifest, write_generation)
+from d2_identity import record_identity_result
 
 
 def _issue(rule_id="R05"):
@@ -31,6 +32,13 @@ def _seal(path, tmp_path):
     root.mkdir(exist_ok=True)
     (root / 'guide.html').write_text('sealed guide')
     state = load(path)
+    if (state['delivery_platform'] in {'trainingpeaks', 'endure'}
+            and not state.get('platform_identity')):
+        state = record_identity_result(
+            path, state['generation_revision'], {
+                'outcome': 'bound', 'tp_athlete_id': 'fixture-state-athlete',
+                'candidates': [],
+            }, capability_jti='fixture-state-binding-jti')
     return finalize_transitional_release(
         path, root, expected_revision=state['generation_revision'])
 

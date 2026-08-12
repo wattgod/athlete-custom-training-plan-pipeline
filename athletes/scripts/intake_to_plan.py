@@ -38,6 +38,7 @@ import math
 import argparse
 import shutil
 import subprocess
+import uuid
 from pathlib import Path
 from datetime import datetime, date
 from typing import Dict, List, Optional, Tuple, Any
@@ -46,6 +47,7 @@ from typing import Dict, List, Optional, Tuple, Any
 SCRIPTS_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(SCRIPTS_DIR.parent.parent / 'webhook'))
+sys.path.insert(0, str(SCRIPTS_DIR.parent.parent))
 
 from fulfillment_state import (FulfillmentStateError, load as load_fulfillment_state,
                                merge_generation_blockers, write_generation)
@@ -3832,7 +3834,100 @@ def main():
                 print("GG_FULFILLMENT_STATE=unavailable")
             print(f"  {YELLOW}[WARN]{RESET} Post-render validator failed closed: {exc}")
 
-    # -- Step 4e: Phase 3 offline apply-contract projection --
+    # -- Step 4e: Phase 4 canned read-only worker probe/inspection --
+    # The real browser/session transport is a live gate. This path exists only
+    # when an explicit local fixture is injected; it still exercises signed
+    # capabilities, replay records, the operation interface, and D2 state.
+    worker_fixture = os.environ.get('GG_WORKER_PROBES_FIXTURE', '').strip()
+    if fulfillment_state_available and worker_fixture:
+        print(f"\n{BOLD}Step 4e: Running canned read-only worker inspection...{RESET}")
+        try:
+            from datetime import timezone
+            from delivery.trainingpeaks.worker_service import (
+                CannedProbeTransport, SERVER_PROBE_AUDIENCE, SERVER_PROBE_KID,
+                build_server_read_only_worker,
+            )
+            from d2_identity import record_account_inspection, record_identity_result
+
+            state = load_fulfillment_state(state_path)
+            now_dt = generation_now().replace(tzinfo=timezone.utc)
+            now_epoch = int(now_dt.timestamp())
+            order_id = state['order_id']
+            email = str(profile.get('email') or '').strip()
+            if not email:
+                raise RuntimeError('D2 probe requires the order email identity')
+            transport = CannedProbeTransport.from_path(
+                worker_fixture, tp_athlete_id='fixture-athlete-m')
+            codec, worker = build_server_read_only_worker(transport)
+            # One jti names one resumable attempt. A later issuance must be a
+            # fresh attempt so a terminal replay record can never act as an
+            # implicit account-data cache.
+            probe_jti = 'probe-' + uuid.uuid4().hex
+            probe_claims = {
+                'order_id': order_id,
+                'subject': {'kind': 'identity_query', 'email': email},
+                'action': 'probe', 'audience': SERVER_PROBE_AUDIENCE,
+                'iat': now_epoch - 1, 'exp': now_epoch + 300, 'jti': probe_jti,
+            }
+            probe_token = codec.issue(probe_claims, kid=SERVER_PROBE_KID)
+            identity = worker.probe_athlete({'email': email}, probe_token, now=now_epoch)
+            state = record_identity_result(
+                state_path, state['generation_revision'], identity,
+                capability_jti=probe_jti,
+            )
+            if identity.get('outcome') == 'bound':
+                tp_id = str(identity['tp_athlete_id'])
+                inspect_jti = 'inspect-' + uuid.uuid4().hex
+                inspect_claims = {
+                    'order_id': order_id,
+                    'subject': {'kind': 'identity_query', 'tp_athlete_id': tp_id},
+                    'action': 'inspect', 'audience': SERVER_PROBE_AUDIENCE,
+                    'iat': now_epoch - 1, 'exp': now_epoch + 300,
+                    'jti': inspect_jti,
+                }
+                inspect_token = codec.issue(inspect_claims, kid=SERVER_PROBE_KID)
+                inspection = worker.inspect_account(tp_id, inspect_token, now=now_epoch)
+                fitness = profile.get('fitness_markers') or {}
+                state = record_account_inspection(
+                    state_path, state['generation_revision'], inspection,
+                    intake_age=(profile.get('health_factors') or {}).get('age'),
+                    intake_thresholds={
+                        'lthr': fitness.get('lthr'),
+                        'ftp': fitness.get('ftp_watts'),
+                    },
+                    control_metric=str(fitness.get('control_metric') or ''),
+                    canonical_control_value=(
+                        fitness.get('lthr')
+                        if fitness.get('control_metric') == 'hr' else
+                        fitness.get('ftp_watts')
+                    ),
+                    capability_jti=inspect_jti,
+                    observed_at=now_dt.isoformat().replace('+00:00', 'Z'),
+                )
+            print(f"  {GREEN}Read-only worker inspection recorded{RESET} "
+                  f"({state['identity_resolution']['outcome']})")
+        except Exception as exc:
+            try:
+                state = load_fulfillment_state(state_path)
+                merge_generation_blockers(
+                    state_path, state['generation_revision'], 'd2', [{
+                        'id': 'D2_INSPECTION_FAILED', 'source': 'd2',
+                        'severity': 'CRITICAL',
+                        'message': f'D2 read-only inspection failed closed: {type(exc).__name__}',
+                        'review_value': {
+                            'inspection_completed': False,
+                            'exception_type': type(exc).__name__,
+                        },
+                        'basis': 'signed read-only worker capability and canned transport',
+                        'sensitivity': 'internal',
+                    }])
+            except Exception as state_exc:
+                fulfillment_state_available = False
+                print(f"GG_FULFILLMENT_STATE=unavailable")
+                print(f"  {YELLOW}[WARN]{RESET} Could not persist D2 failure: {state_exc}")
+            print(f"  {YELLOW}[WARN]{RESET} D2 inspection failed closed: {exc}")
+
+    # -- Step 4f: Phase 3 offline apply-contract projection --
     # This is deliberately after the final blocker/catalog barrier.  It does
     # not inspect or mutate TrainingPeaks and contains no execution path.
     if fulfillment_state_available:
@@ -3844,8 +3939,11 @@ def main():
             canonical_model = json.loads(
                 (athlete_dir / 'canonical_training_model.json').read_text())
             plan_ir_data = json.loads((athlete_dir / 'plan_ir.json').read_text())
+            from d2_identity import d2_contract_inputs
+            bound_tp_id, singleton_desires, d2_inspection = d2_contract_inputs(state)
             tp_athlete_id = str(
-                profile.get('tp_athlete_id')
+                bound_tp_id
+                or profile.get('tp_athlete_id')
                 or (profile.get('delivery') or {}).get('tp_athlete_id')
                 or f'offline-unbound:{athlete_id}'
             )
@@ -3858,6 +3956,8 @@ def main():
                 review_items=state['review_items'],
                 guide_sources=guide_source_digests(athlete_dir),
                 athlete_dir=athlete_dir,
+                singleton_desires=singleton_desires,
+                inspection=d2_inspection,
             )
             emit_contract(athlete_dir / 'apply_contract.json', contract)
             print(f"  {GREEN}Generated{RESET} apply_contract.json "
