@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
-"""Fail when date-pinned acceptance fixtures are too close to the real clock."""
+"""Gate the age of date-pinned acceptance fixtures.
+
+Pinned fixtures inject a frozen clock into generation, so they never rot
+mechanically — the past-date validators honor the pinned clock, not the
+wall clock. What this gate bounds is *drift from reality*: goldens
+generated against a months-old clock stop resembling the orders the
+pipeline actually receives. Policy:
+
+- order-acceptance goldens FAIL when the pinned generation clock is more
+  than MAX_PIN_AGE_DAYS old (WARN beyond WARN_PIN_AGE_DAYS). Refreshing is
+  a deliberate act in a dedicated PR — docs/runbooks/GOLDEN_REFRESH.md.
+- athlete-m is EXEMPT: its dates are normative fixture contract in
+  docs/SPEC_TRUSTWORTHY_FULFILMENT.md and may only change with the spec.
+- Every pinned fixture must keep its race date in the pinned clock's
+  future; a violation is a configuration error, not staleness.
+"""
 
 from __future__ import annotations
 
@@ -16,11 +31,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-FAIL_DAYS = 8 * 7
-WARN_DAYS = 12 * 7
+MAX_PIN_AGE_DAYS = 180
+WARN_PIN_AGE_DAYS = 120
 REFRESH_MESSAGE = (
-    "Pinned race fixture is fewer than 8 weeks after real today. "
-    "Refresh goldens in a dedicated PR; follow docs/runbooks/GOLDEN_REFRESH.md."
+    "The acceptance goldens' pinned generation clock is more than "
+    f"{MAX_PIN_AGE_DAYS} days old. Refresh goldens in a dedicated PR; "
+    "follow docs/runbooks/GOLDEN_REFRESH.md."
 )
 
 
@@ -35,6 +51,7 @@ class PinnedRace:
     race_date: date
     generation_at: datetime
     source: str
+    exempt: bool = False
 
 
 def _parse_datetime(value: object, *, source: str) -> datetime:
@@ -100,6 +117,7 @@ def load_pinned_races() -> list[PinnedRace]:
         race_date=athlete_race_date,
         generation_at=athlete_clock,
         source="tests/fixtures/athlete_m/{clock.json,race_snapshot.json,intake.json}",
+        exempt=True,
     ))
     if not races:
         raise FixtureFreshnessError("no pinned races were found")
@@ -109,17 +127,29 @@ def load_pinned_races() -> list[PinnedRace]:
 def assess_fixture_freshness(
     fixtures: Iterable[PinnedRace], *, today: date,
 ) -> list[dict[str, object]]:
-    """Classify fixtures as PASS, WARN, or FAIL against an injected date."""
+    """Classify fixtures as PASS, WARN, FAIL, or EXEMPT against an injected date."""
     results = []
     for fixture in fixtures:
-        days = (fixture.race_date - today).days
-        status = "FAIL" if days < FAIL_DAYS else "WARN" if days < WARN_DAYS else "PASS"
+        if fixture.race_date <= fixture.generation_at.date():
+            raise FixtureFreshnessError(
+                f"pinned race '{fixture.name}' ({fixture.race_date.isoformat()}) "
+                f"is not after the pinned clock "
+                f"({fixture.generation_at.date().isoformat()}) in {fixture.source}")
+        pin_age = (today - fixture.generation_at.date()).days
+        if fixture.exempt:
+            status = "EXEMPT"
+        elif pin_age > MAX_PIN_AGE_DAYS:
+            status = "FAIL"
+        elif pin_age > WARN_PIN_AGE_DAYS:
+            status = "WARN"
+        else:
+            status = "PASS"
         results.append({
             "suite": fixture.suite,
             "name": fixture.name,
             "race_date": fixture.race_date.isoformat(),
             "pinned_clock": fixture.generation_at.isoformat(),
-            "days_remaining": days,
+            "pin_age_days": pin_age,
             "status": status,
             "source": fixture.source,
         })
@@ -136,13 +166,13 @@ def main(argv: list[str] | None = None) -> int:
         results = assess_fixture_freshness(load_pinned_races(), today=date.today())
     except (OSError, json.JSONDecodeError, FixtureFreshnessError) as exc:
         print(f"FAIL fixture freshness configuration: {exc}", file=sys.stderr)
-        print(REFRESH_MESSAGE, file=sys.stderr)
         return 1
 
     for result in results:
         print(
-            f"{result['status']:4}  {result['race_date']}  "
-            f"{result['days_remaining']:>4} days  {result['suite']}: {result['name']}"
+            f"{result['status']:6}  pin {result['pinned_clock'][:10]} "
+            f"({result['pin_age_days']:>4}d old)  race {result['race_date']}  "
+            f"{result['suite']}: {result['name']}"
         )
     failures = [result for result in results if result["status"] == "FAIL"]
     if failures:

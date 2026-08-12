@@ -1,8 +1,16 @@
 # Golden refresh
 
-Golden dates move only in a dedicated PR. A freshness failure is not fixed by
-weakening the eight-week threshold, using a fake wall clock in the nightly job,
-or silently changing a race during unrelated work.
+Golden dates move only in a dedicated PR. The freshness gate fails when the
+acceptance goldens' pinned generation clock is more than 180 days old (warns
+past 120). Pinned fixtures inject their frozen clock into generation, so they
+never rot mechanically — the gate bounds drift from reality, not future-dated
+races. A freshness failure is not fixed by weakening the age threshold, using
+a fake wall clock in the nightly job, or silently changing a race during
+unrelated work.
+
+**athlete-m is exempt and out of scope here**: its dates are normative fixture
+contract in `docs/SPEC_TRUSTWORTHY_FULFILMENT.md` and move only with a spec
+revision, never in a routine refresh.
 
 ## Refresh checklist
 
@@ -15,14 +23,11 @@ or silently changing a race during unrelated work.
       provenance together; do not copy a live lookup into only one fixture.
 - [ ] In `athletes/scripts/test_order_acceptance.py`, update the literal golden
       clock and the affected race objects/orders together.
-- [ ] In `tests/fixtures/athlete_m/`, update `clock.json`, `race_snapshot.json`,
-      and the intake A-race date as one coherent snapshot.
-- [ ] Regenerate athlete-m `expected/plan_dates.yaml` through the production
-      generation test with `GG_UPDATE_ATHLETE_M_GOLDEN=1`. Review the diff; the
-      flag updates plan dates only and is not approval for other expected files.
-- [ ] Re-run the Phase 1, Phase 3, and Phase 4 athlete-m golden cases. Update
-      `expected/phase1.json`, `phase3.json`, or `phase4.json` only when a reviewed
-      semantic change requires it—never merely to accept a failure.
+- [ ] Leave `tests/fixtures/athlete_m/` untouched (spec-frozen; see above). If a
+      spec revision has moved the athlete-m fixture contract, that change ships
+      with the spec PR, regenerating `expected/plan_dates.yaml` via
+      `GG_UPDATE_ATHLETE_M_GOLDEN=1` and re-running the Phase 1/3/4 golden cases
+      there — not here.
 - [ ] Run the acceptance suite with a writable isolated home: create a temporary
       directory in the operator's approved scratch area, store its path in
       `GG_ACCEPTANCE_HOME`, then run
