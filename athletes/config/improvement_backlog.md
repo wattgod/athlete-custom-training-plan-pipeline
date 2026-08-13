@@ -1,80 +1,80 @@
-# Improvement backlog — 2026-08-12
+# Improvement backlog — 2026-08-13
 
-**Quality 0.09** · avg coach 5.29/10 · contract pass 75% · load 14.25/plan · 12 critical issue types
+**Quality 1.25** · avg coach 5.75/10 · contract pass 75% · load 12.5/plan · 9 critical issue types
 
 Ranked recurring issues (frequency × severity). Fix top-down; each fix must keep tests green AND raise the quality score.
 
-### 1. [critical] ×1  (gravel/masters_returner)
-> Discipline mismatch — the guide explicitly includes a 'Road Race Strategy' section and a 'Category 5 to Category 1 Pathway' section. This is a gravel event (GFNY Cozumel). Cat 5–Cat 1 upgrade pathways are a USA Cycling road-racing concept with zero relevance to gravel. This content is embarrassing and wrong for this athlete.
+### 1. [critical] ×2  (gravel/time_crunched_parent, mtb/weekend_warrior)
+> Long ride duration stated as 'peak of 1.5 hours' — for an 81-mile gravel race with an estimated ~5.3-hour finish time, a 1.5-hour long ride is grossly inadequate and contradicts the plan's own disclaimer that urges 3–4 hour rides. If the plan calendar actually caps long rides at 1.5 hours it is race-preparation malpractice for an A-priority 81-mile event; if the 1.5-hour figure is a Week 1 starting point only, the text is ambiguous and will confuse athletes.
 
-### 2. [critical] ×1  (gravel/masters_returner)
-> Weekly Volume check FAILED in automated preview but the plan was still passed to QA without resolution. The guide claims 9h/week and describes a 4-day week with long rides of 3.8–6.2 hours, but no corrective note or explanation is present. Either the volume is miscalculated or the cap logic is broken — either way it must be resolved before sending.
+### 2. [critical] ×1  (road/veteran_podium_chaser)
+> Weekly Volume preview check is flagged FAIL — the plan must not be sent until the volume issue is identified and corrected, as this is the core quantitative backbone of the plan.
 
-### 3. [critical] ×1  (mtb/ambitious_first_timer)
-> FTP value is listed as both watts (149W, correct) AND as body weight in lbs (149 lbs) in the 'Your Profile' section. The athlete's actual weight is not in the intake data, so 149 was pulled from the FTP field and incorrectly stamped into the weight field. This is factually wrong and looks like a system error to any reader.
+### 3. [critical] ×1  (road/veteran_podium_chaser)
+> 'Category 5 to Category 1 Pathway' appears in the table of contents and presumably in the body. This is a USA Cycling road racing licence upgrade pathway — completely irrelevant and potentially confusing for a gran fondo athlete targeting a podium finish. It has no place in this plan and is likely boilerplate bleed-through from a different template.
 
-### 4. [critical] ×1  (mtb/ambitious_first_timer)
-> Discipline is MTB but the guide includes road-racing-specific sections: 'Road Skills,' 'Road Race Strategy,' and 'Category 5 to Category 1 Pathway' are listed in the table of contents. These sections are irrelevant and inappropriate for a mountain bike athlete — they signal the template was not correctly filtered for discipline.
+### 4. [critical] ×1  (mtb/weekend_warrior)
+> Discipline mismatch: the race 'Wild Gravel' is flagged in the plan JSON as discipline='mtb', yet the guide is written throughout as a gravel plan. The section heading 'Gravel Skills' and all gravel-specific framing should reference MTB skills (e.g. technical singletrack, climbing traction, descending body position) — not gravel cornering or gravel-specific cues. Sending an MTB athlete a gravel guide is an embarrassing and trust-destroying error.
 
 ### 5. [critical] ×1  (mtb/ambitious_first_timer)
-> GFNY Miami is a road gran fondo (tarmac), yet the athlete's discipline is recorded as 'mtb.' If the race truly is a road event, the discipline tag is wrong and MTB-specific content (trail skills, etc.) would be mismatched. If the athlete is genuinely an MTB rider doing a road event, the plan still must not include MTB-specific off-road skills content. Either way, the discipline/event mismatch must be resolved before sending.
+> Discipline mismatch — the Contents list includes a 'Gravel Skills' section for an MTB athlete racing Marys Mayhem. This is a mountain-bike event; gravel-specific skills content (likely covering gravel cornering, loose-surface descending technique framed around gravel riding) is wrong for this discipline and will confuse or mislead the athlete.
 
-### 6. [critical] ×1  (mtb/weekend_warrior)
-> Road-discipline content in an MTB plan: the guide includes a 'Road Skills' section and a 'Road Race Strategy — Category 5 to Category 1 Pathway' section (visible in the Table of Contents). This athlete is training for a mountain-bike gran fondo, not a road criterium or road race. Cat 5-to-Cat 1 upgrade pathways are USA Cycling road-race constructs that are irrelevant and confusing here. This content must be replaced with MTB-specific skills (trail braking, switchback technique, technical descending, singletrack line choice) before sending.
+### 6. [critical] ×1  (gravel/time_crunched_parent)
+> Table of contents and implied content includes 'Road Race Strategy' and 'Category 5 to Category 1 Pathway' — this is a GRAVEL event, not a road criterium or road race. Cat 5–1 licensing categories are USA Cycling road/track designations that are completely irrelevant to El Tour de Tucson gravel. Sending this to a gravel athlete is embarrassing and undermines coach credibility.
 
-### 7. [critical] ×1  (mtb/weekend_warrior)
-> Fueling numbers are missing from the visible guide. The plan JSON specifies 55 g carbs/hour for a ~4.6-hour event, but the truncated 'Nutrition Strategy' section shows no race-day or on-bike fueling prescription visible to the athlete. If the Nutrition Strategy section in the full document also omits these figures, the athlete has no actionable fueling plan for a multi-hour MTB event — a significant safety and performance gap. Must verify the full section contains the 55 g/h target and practical product/timing guidance.
+### 7. [critical] ×1  (gravel/time_crunched_parent)
+> 'Road Skills' section heading appears in the TOC without gravel-specific qualification. For a 102-mile gravel event, this section must cover gravel-specific skills (loose surface cornering, tire pressure management, washboard/technical descending) — not road racing pack skills. As written it reads as copy-pasted from a road template.
 
-### 8. [critical] ×1  (road/veteran_podium_chaser)
-> Profile card lists '135 lbs Weight' AND '135W FTP' — the athlete's FTP value (135 W) has been mis-populated into the weight field. The athlete's actual weight was never collected (ftp_known=false context), so a fabricated weight number matching the FTP has been inserted. This is factually wrong and will confuse the athlete about which number is which.
+### 8. [critical] ×1  (gravel/time_crunched_parent)
+> Road-race content included for a gravel athlete: the table of contents lists 'Road Race Strategy' and 'Category 5 to Category 1 Pathway' — these sections are discipline-wrong and embarrassing for a gravel event. A gravel racer has no use for a road cat-upgrade pathway and it signals the template was not properly filtered.
 
-### 9. [critical] ×1  (road/veteran_podium_chaser)
-> 'Category 5 to Category 1 Pathway' section is listed in the table of contents and presumably in the body. El Tour de Tucson is a mass-participation gran fondo/century ride, not a USAC-licensed criterium or road race with cat upgrade points. This section is discipline- and event-type wrong for this athlete and goal, and undermines credibility.
+### 9. [critical] ×1  (gravel/time_crunched_parent)
+> Long-ride ceiling of 1.5–2.3 hours is dangerously low for a 44-mile gravel race. At a realistic gravel pace (12–14 mph on mixed terrain) this athlete will be on course for ~3–3.5 hours. The plan explicitly acknowledges the gap ('long rides are shorter than ideal') but then does nothing to correct it, capping rides at 2.3 hours. No single ride approaches race duration, virtually guaranteeing durability problems on race day.
 
-### 10. [critical] ×1  (gravel/time_crunched_parent)
-> Race date countdown of '65 days from today' is hardcoded and wrong. From the plan start date of 2026-08-24 to the race on 2026-10-16 is 53 days, and from a typical 'today' at time of generation it will be different still. A wrong countdown directly undermines the taper warning the plan itself emphasises.
+### 10. [major] ×2  (gravel/time_crunched_parent, road/veteran_podium_chaser)
+> Long ride duration range cited as '2.8-4.7 hours' in the Weekly Structure section but the race is estimated at ~4.1 hours (per fueling data). The upper bound of 4.7h is acceptable, but the range should be verified against the weekly TSS/volume figures — especially since the Volume check already failed.
 
-### 11. [critical] ×1  (mtb/ambitious_first_timer)
-> Discipline mismatch — the athlete profile is flagged as 'mtb' (discipline: mtb), yet L'Étape Ciudad de México by Tour de France is a verified road/gran fondo event (68 miles on pavement, Mexico City road course). The guide then compounds this by including 'Road Skills' and 'Road Race Strategy' sections AND a 'Category 5 to Category 1 Pathway' section visible in the table of contents. If the discipline field is wrong, the plan must be regenerated for road; if the event data is wrong, it must be corrected. Either way, the current combination is unsendable.
+### 11. [major] ×1  (gravel/time_crunched_parent)
+> Race countdown stated as '93 days from today' — this is a hard-coded or stale calculation. The plan start date is 2026-08-24 and race date is 2026-11-14, which is 82 days. The figure '93 days' does not match any sensible reference point in the plan data and will immediately erode athlete trust if they count on a calendar.
 
-### 12. [critical] ×1  (mtb/ambitious_first_timer)
-> 'Category 5 to Category 1 Pathway' section appears in the table of contents. This athlete's goal is simply to finish their first big event — they are not a licensed racer pursuing category upgrades. This section is irrelevant, potentially confusing, and undermines the credibility of the plan as a personalised document.
+### 12. [major] ×1  (gravel/time_crunched_parent)
+> The plan repeatedly describes the athlete's experience level as 'Intermediate' and states '12 years of cycling experience' — but the athlete JSON contains no experience field. This data was either fabricated by the generator or pulled from a stale/wrong profile. If it is wrong, every methodology justification that cites 'Intermediate level' is built on a false premise.
 
-### 13. [major] ×2  (gravel/time_crunched_parent, gravel/veteran_podium_chaser)
-> TSS Progression check returned WARN in the preview checks but is not acknowledged anywhere in the guide. For a time-crunched athlete with high stress, a TSS progression anomaly (likely a week-over-week jump exceeding the 10% guideline) is a real injury-risk flag that should be noted or corrected, not silently passed through.
+### 13. [major] ×1  (road/masters_returner)
+> A 'Category 5 to Category 1 Pathway' section appears in the table of contents and presumably in the body. This athlete's goal is simply to FINISH a mass-participation Gran Fondo (L'Étape), not to pursue USA Cycling category upgrades. This content is wrong for the persona, the event type, and the stated goal — it will confuse or mislead the athlete and looks like boilerplate pulled from a racing-category plan.
 
-### 14. [major] ×1  (gravel/masters_returner)
-> Zone 1 (Active Recovery) row in the zone chart is missing its % FTP range — the power column shows '0-88W' but the '% FTP' column is blank. Every other zone has a percentage listed. An athlete updating zones after an FTP retest needs that number.
+### 14. [major] ×1  (road/veteran_podium_chaser)
+> The guide labels the athlete as 'Intermediate level' despite 14 years of cycling experience. A 14-year veteran, especially one with a 345W FTP chasing a podium, should be classified as Advanced or Expert. This mislabelling could undermine athlete confidence in the plan's calibration.
 
-### 15. [major] ×1  (gravel/masters_returner)
-> Zone Distribution check is WARN, yet the guide states 'roughly 75%' of riding stays Zone 1-2 without any caveat or explanation of why the distribution may drift. For a Traditional/Pyramidal plan this is the defining promise — a warn here should at minimum be acknowledged or the distribution corrected.
+### 15. [major] ×1  (gravel/time_crunched_parent)
+> Zone Distribution preview check is a hard FAIL. The guide claims '~70% of riding stays genuinely easy' (Zone 1-2) but the automated gate flagged this as failing — meaning the actual scheduled workouts likely skew too heavily into Zone 3+ for a Time-Crunched plan. This is a methodological contradiction between the stated philosophy and the delivered calendar, and it is the single most important thing to fix before sending.
 
-### 16. [major] ×1  (gravel/masters_returner)
-> 'Road Skills' section is listed in the Table of Contents. For a gravel event this should contain gravel-specific skills (loose surface cornering, technical descending, tire pressure management, mud/sand handling) — if the content mirrors road criterium or peloton skills it is wrong for this discipline and athlete.
+### 16. [major] ×1  (gravel/time_crunched_parent)
+> Long-ride duration cap is internally inconsistent. The 'Weekly Structure' section states the long-ride peak duration is '1.5–2.5 hours,' but the immediately following callout urges the athlete to target '3–4 hour' rides for race-day durability. For a 6 h/week athlete with a 62-mile gravel race, the 3–4 h recommendation is correct coaching — but the 1.5–2.5 h figure in the session-type description is wrong and contradicts both the advice below it and the 'Long Ride vs Race Duration: PASS' preview check. One of these numbers needs to be removed or reconciled.
 
-### 17. [major] ×1  (mtb/ambitious_first_timer)
-> Height is listed as 5'4" and weight as 149 lbs in the profile block, but neither height nor weight appear in the athlete JSON provided. These values were fabricated by the template — there is no source data to support them. Sending invented biometric data to a paying customer is a credibility risk.
+### 17. [major] ×1  (mtb/weekend_warrior)
+> Race name is 'Wild Gravel' but the plan JSON discipline is 'mtb'. Either the race has been mis-categorised in the system (it may genuinely be a gravel event), or the discipline field is wrong. This ambiguity must be resolved before sending — if the race is actually gravel, the discipline field is wrong and the plan is fine on that axis; if it is MTB, the content must change. The QA system cannot send until this is confirmed.
 
-### 18. [major] ×1  (mtb/ambitious_first_timer)
-> The Zone Distribution preview check is flagged as WARN, yet the guide text makes no mention of this or any corrective note. A WARN on zone distribution in a Pyramidal plan — where correct zone balance is the core methodology — should either be explained or resolved before sending.
+### 18. [major] ×1  (mtb/weekend_warrior)
+> The 'Gravel Skills' chapter heading appears in the table of contents for an athlete whose discipline is MTB. Regardless of race-name ambiguity, a skills section must match the actual surface and bike type the athlete will race on.
 
 ### 19. [major] ×1  (mtb/ambitious_first_timer)
-> The fueling section (54g carbs/hr, 4.6h duration) is referenced in the plan JSON but does not appear in the truncated guide text shown. If the Nutrition Strategy section is missing or empty, this is a significant omission for a 71-mile, ~4.6-hour goal event where fueling is explicitly flagged as race-critical.
+> Equipment checklist says 'Bike — gravel or similar' for an MTB race. Marys Mayhem is an off-road MTB event in Mudgee. The athlete needs a mountain bike, not a gravel bike. Recommending a gravel bike as the primary equipment option for a 65-mile MTB race is misleading and potentially dangerous.
 
-### 20. [major] ×1  (mtb/weekend_warrior)
-> Zone 1 power range is listed as '0–90 W' but no percentage-of-FTP anchor is given, unlike every other zone. At FTP 165 W that ceiling is 55% FTP — reasonable, but the omission is inconsistent with the rest of the chart and leaves athletes with different FTPs unable to rescale easily. Add '< 56% FTP' to complete the row.
+### 20. [major] ×1  (mtb/ambitious_first_timer)
+> Athlete weight is listed as '147 lbs (66.7 kg)' but the athlete data JSON contains no weight field — this figure appears to have been fabricated or pulled from a default template. Sending a made-up weight to a paying customer is unprofessional and undermines trust in the entire personalisation claim.
 
-### 21. [major] ×1  (mtb/weekend_warrior)
-> Off-days listed as 'Friday, Tuesday, Monday' in the 'At a Glance' section — three off-days — but the plan states 4 training days per week in the Weekly Structure section. Three off-days in a 7-day week leaves only 4 training days, which is consistent, but listing off-days as 'Friday, Tuesday, Monday' is an odd, non-chronological ordering that reads as a copy-paste error and will confuse athletes scanning their week. Should be presented in day order (Monday, Tuesday, Friday) or restructured for clarity.
+### 21. [major] ×1  (gravel/time_crunched_parent)
+> Fueling section is incomplete or missing from the visible guide text. The plan JSON specifies 58 g carbs/hour for a 6.6-hour race effort — this specific, athlete-calculated number must appear in the Nutrition Strategy section. There is no mention of it in the truncated guide, and for a 102-mile gravel event where fueling execution is a primary finish risk, this omission is significant.
 
-### 22. [major] ×1  (road/veteran_podium_chaser)
-> The plan JSON states ftp_known=false, yet the guide presents 135 W as a confirmed FTP and builds a full zone chart from it without flagging that this number is estimated or self-reported. The FTP test protocol section exists but the zone chart is presented as authoritative rather than provisional, which could send the athlete into 13 weeks of miscalibrated training.
+### 22. [major] ×1  (gravel/time_crunched_parent)
+> Fueling section specifies a 2.0-hour duration target (59 g carbs/h × 2 h = ~118 g total), but the race will likely last 3–3.5 hours for this athlete. The nutrition strategy and race-day fueling plan built on 2.0 hours will leave her significantly under-fueled in the back half of the event.
 
-### 23. [major] ×1  (road/veteran_podium_chaser)
-> Height listed as 5'4" — the athlete's height was not present in the plan JSON. This appears to be a fabricated or default value inserted into the profile card, which is an invented athlete fact not grounded in any supplied data.
+### 23. [major] ×1  (gravel/time_crunched_parent)
+> Zone 2 power range is missing from the zone chart as shown — the '56-75% FTP' percentage column is present but the absolute watt range (83–112 W) appears in the table yet the LTHR column entry is incomplete ('69-83% LTHR' shown, which is plausible, but Zone 1 has no % FTP or LTHR listed at all), making the chart inconsistent and harder for an athlete to use confidently.
 
-### 24. [major] ×1  (road/veteran_podium_chaser)
-> The table of contents includes a 'Women-Specific Considerations' section, which is appropriate, but also 'Road Skills' and 'Road Race Strategy' as separate entries alongside 'Category 5 to Category 1 Pathway.' For a 102-mile gran fondo with a podium goal, the strategy content should be fondo/mass-start specific (positioning in large field, aid station tactics, pacing over 100 miles), not generic road-race or upgrade-pathway content.
+### 24. [minor] ×1  (gravel/time_crunched_parent)
+> The 'YOUR BIGGEST OPPORTUNITY' box recommends '3–4 hour rides' but the plan's own long-ride cap (per-day duration caps check: PASS) and the 5h/week budget make a 3–4 hour standalone ride essentially impossible without blowing the entire weekly volume. The advice is aspirational but practically incoherent within the plan's own constraints — a real coach would frame this as an optional monthly override, not a general recommendation.
 
-### 25. [major] ×1  (gravel/time_crunched_parent)
-> Off days listed as 'Thursday, Wednesday, Saturday' — that is THREE off days, yet the Weekly Structure section states the athlete has '4 training days.' Three off days in a 7-day week leaves only 4 training days, which is internally consistent numerically, but listing Saturday as an off day conflicts with gravel athletes typically needing Saturday for long outdoor rides; more importantly the Long Ride Day preview check passed for Sunday, so Saturday being off is plausible — however naming three specific off days while the guide elsewhere says 'the calendar is the source of truth' creates confusion and risks the athlete skipping Saturday rides if the calendar actually schedules one.
+### 25. [minor] ×1  (gravel/time_crunched_parent)
+> Post-ride nutrition guidance ('0.3–0.4g protein/kg + 1.0–1.2g carbs/kg') is labeled 'General guidance, not your target' — but the athlete has a computed fueling profile (66g carbs/hr, 5.3h duration). The generic disclaimer should instead reference the athlete's specific fueling numbers from the Nutrition Strategy section, or at minimum cross-reference it; as written it feels like boilerplate that escaped personalisation.
