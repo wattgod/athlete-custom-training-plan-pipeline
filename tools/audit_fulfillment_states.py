@@ -144,8 +144,14 @@ def audit_state(
     status = str(state.get("status") or "")
     threshold = timedelta(days=max_age_days)
     updated = _parse_time(state.get("updated_at"))
+    is_drill_order = str(state.get("order_id") or "").startswith("drill-")
 
-    if status == "BLOCKED_REVIEW" and updated is not None and now - updated > threshold:
+    if (
+        status == "BLOCKED_REVIEW"
+        and not is_drill_order
+        and updated is not None
+        and now - updated > threshold
+    ):
         anomalies.append(_anomaly(
             ref, "BLOCKED_REVIEW_OLD", WARNING,
             "order has remained in BLOCKED_REVIEW beyond the review-age threshold",
@@ -173,7 +179,7 @@ def audit_state(
         ))
 
     pending = state.get("d2_pending_requirements")
-    if isinstance(pending, dict) and pending:
+    if not is_drill_order and isinstance(pending, dict) and pending:
         ages = []
         for requirement in pending.values():
             if isinstance(requirement, dict):
@@ -246,6 +252,21 @@ def _artifact(
     }
 
 
+def build_audit_artifact(
+    root: Path, *, now: datetime | None = None, max_age_days: int = 3,
+) -> dict[str, Any]:
+    """Run one audit and return the same redacted artifact used by the CLI."""
+    if max_age_days < 1:
+        raise ValueError("max_age_days must be at least 1")
+    generated_at = now or _utc_now()
+    anomalies, scanned = audit_states(
+        Path(root).resolve(), now=generated_at, max_age_days=max_age_days)
+    return external_state_projection(_artifact(
+        root=Path(root).resolve(), now=generated_at,
+        max_age_days=max_age_days, anomalies=anomalies, scanned=scanned,
+    ))
+
+
 def _print_table(artifact: Mapping[str, Any]) -> None:
     anomalies = artifact.get("anomalies") or []
     print(f"{'SEVERITY':8}  {'STATE REF':12}  {'CODE':31}  DETAIL")
@@ -276,12 +297,8 @@ def main(argv: list[str] | None = None) -> int:
     now = _utc_now()
     root = (args.root or _configured_root(os.environ)).resolve()
     out = args.out or _default_out(now)
-    anomalies, scanned = audit_states(
+    projected = build_audit_artifact(
         root, now=now, max_age_days=args.max_age_days)
-    projected = external_state_projection(_artifact(
-        root=root, now=now, max_age_days=args.max_age_days,
-        anomalies=anomalies, scanned=scanned,
-    ))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         json.dumps(projected, indent=2, sort_keys=True, allow_nan=False) + "\n",

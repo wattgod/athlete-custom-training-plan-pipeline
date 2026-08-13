@@ -206,9 +206,11 @@ def _run_order(tmp_path, order):
     md_file = tmp_path / f"{order['id']}.md"
     md_file.write_text(md)
 
-    # Delivery dir must live under $HOME — the pipeline's path-safety guard
-    # rejects writes outside home/project (pytest's tmp is under /private/var).
-    delivery_root = Path.home() / ".gg-acctest-delivery" / order["id"]
+    # Delivery dir must live under home or the project — the pipeline's
+    # path-safety guard rejects pytest's /private/var scratch root. Keep this
+    # ignored scratch data inside the writable checkout so sandboxed CI/agents
+    # never need to mutate a developer's home directory.
+    delivery_root = REPO_ROOT / ".gg-acctest-delivery" / order["id"]
     if delivery_root.exists():
         import shutil
         shutil.rmtree(delivery_root)
@@ -292,7 +294,8 @@ def test_pipeline_exits_clean(built_order):
 def test_all_deliverables_present(built_order):
     d = built_order["delivery_dir"]
     assert (d / "training_guide.html").exists(), "guide HTML missing"
-    if not built_order["order"]["expect"].get("pdf_optional"):
+    if (not built_order["order"]["expect"].get("pdf_optional")
+            and os.environ.get("GG_PDF_DISABLE") != "1"):
         assert (d / "training_guide.pdf").exists(), "guide PDF missing"
     assert (d / "fueling.yaml").exists(), "fueling.yaml missing"
     # Generation must produce the full workout set, but executable ZWOs stay
@@ -309,6 +312,8 @@ def test_all_deliverables_present(built_order):
 def test_pdf_is_structurally_valid(built_order):
     from pdf_generator import validate_pdf
     pdf = built_order["delivery_dir"] / "training_guide.pdf"
+    if os.environ.get("GG_PDF_DISABLE") == "1":
+        pytest.skip("GG_PDF_DISABLE=1: PDF engine intentionally disabled (sandboxed run)")
     if not pdf.exists() and built_order["order"]["expect"].get("pdf_optional"):
         pytest.skip("production contract permits HTML guide when PDF engine is unavailable")
     ok, msg = validate_pdf(pdf)

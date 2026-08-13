@@ -29,7 +29,7 @@ APPLIED_ATTESTED = "APPLIED_ATTESTED"
 CONFIRMED = "CONFIRMED"
 CANCELLED = "CANCELLED"
 VALID_STATUSES = {
-    GENERATED, BLOCKED_REVIEW, APPROVED, APPLIED, CONFIRMED,
+    GENERATED, BLOCKED_REVIEW, APPROVED, APPLIED, CONFIRMED, CANCELLED,
 }
 DELIVERY_PLATFORMS = {"trainingpeaks", "endure", "manual"}
 PHASE1_APPLIED_PLATFORMS = {"trainingpeaks", "manual"}
@@ -1233,7 +1233,33 @@ def transition(
         current = state["status"]
         if to == CONFIRMED and current == CONFIRMED:
             return copy.deepcopy(state)
-        if to == APPROVED:
+        if to == CANCELLED:
+            if current == CANCELLED:
+                return copy.deepcopy(state)
+            attempt = state.get("application_attempt")
+            landed = (
+                attempt.get("landed", [])
+                if isinstance(attempt, dict) else []
+            )
+            if state.get("application") or landed:
+                raise FulfillmentStateError(
+                    "cancellation requires the Phase 5 compensation workflow "
+                    "because application evidence exists"
+                )
+            state["cancel_requested"] = True
+            state["execution_epoch"] = int(state.get("execution_epoch") or 0) + 1
+            state["cancellation"] = {
+                "requested_by": coach.strip(),
+                "credential": str(credential or "operator-secret").strip(),
+                "at": now_iso(),
+                # No application attempt or landed operation exists, so there
+                # is no worker to quiesce. Recording that fact keeps the audit
+                # strict without manufacturing a remote acknowledgement.
+                "worker_stop_acknowledged": True,
+                "worker_stop_basis": "no application attempt or landed operation",
+                "reason": str((metadata or {}).get("reason") or "").strip(),
+            }
+        elif to == APPROVED:
             if state.get("d2_active"):
                 from d2_identity import validate_d2_approval
                 validate_d2_approval(state)

@@ -47,6 +47,37 @@ def test_flags_old_blocked_review(tmp_path):
     assert "BLOCKED_REVIEW_OLD" in codes
 
 
+def test_drill_orders_skip_age_noise_but_not_criticals(tmp_path):
+    seal = "a" * 64
+    codes = _codes(_state(
+        order_id="drill-20260811",
+        status="BLOCKED_REVIEW",
+        updated_at=_iso(NOW - timedelta(days=10)),
+        d2_pending_requirements={
+            "D2_THRESHOLD": {
+                "requested_at": _iso(NOW - timedelta(days=10)),
+            }
+        },
+        approval={"revision": 1},
+        model_seal=seal,
+        release_manifest_digest="b" * 64,
+    ), tmp_path)
+    assert "BLOCKED_REVIEW_OLD" not in codes
+    assert "D2_READBACK_OLD" not in codes
+    assert "UNSEALED_APPROVAL" in codes
+
+
+def test_cancelled_drill_with_no_worker_to_stop_is_clean(tmp_path):
+    codes = _codes(_state(
+        order_id="drill-20260811", status="CANCELLED",
+        cancellation={
+            "worker_stop_acknowledged": True,
+            "worker_stop_basis": "no application attempt or landed operation",
+        },
+    ), tmp_path)
+    assert "CANCELLED_STOP_UNACKNOWLEDGED" not in codes
+
+
 def test_flags_applying_with_expired_grant_and_lease(tmp_path):
     codes = _codes(_state(
         status="APPLYING",
