@@ -6324,11 +6324,11 @@
    "slug": "uci-gravel-dustman"
   },
   "gravel:uci-gravel-worlds": {
-   "date": "2026-10-10",
+   "date": "2026-10-11",
    "discipline": "gravel",
-   "distance_mi": 112,
-   "elevation_ft": 8202,
-   "location": "Rotating (2024: Heerlen, Netherlands)",
+   "distance_mi": 88.9,
+   "elevation_ft": 12182,
+   "location": "Nannup, Western Australia, Australia",
    "name": "UCI Gravel World Championships",
    "slug": "uci-gravel-worlds"
   },
