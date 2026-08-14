@@ -109,6 +109,13 @@ def _review_keyring() -> Dict[str, str]:
     )
 
 
+def keys_configured() -> bool:
+    try:
+        return bool(_review_keyring())
+    except ReviewAuthError:
+        return False
+
+
 def _current_kid() -> str:
     keys = _review_keyring()
     configured = os.environ.get("REVIEW_TOKEN_KID", "").strip()

@@ -8,7 +8,7 @@ import json
 import sys
 import re
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, List
 import yaml
 
@@ -694,7 +694,13 @@ def create_profile_from_form(athlete_id: str, form_data: Dict) -> Dict:
         },
         
         'plan_start': {
-            'preferred_start': datetime.now().strftime('%Y-%m-%d'),
+            # Monday on or after generation date — never "today" on a
+            # Tuesday–Sunday, which made calculate_plan_dates skip its
+            # past-week clamp and emit SESSION_PREDATES_* blockers.
+            'preferred_start': (
+                datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                + timedelta(days=(7 - datetime.now().weekday()) % 7)
+            ).strftime('%Y-%m-%d'),
             'current_commitments': form_data.get('time_commitments', '')
         }
     }

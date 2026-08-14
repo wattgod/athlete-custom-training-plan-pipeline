@@ -17,6 +17,36 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: Production health must ship schema and token keys
+        run: |
+          HTTP_STATUS=$(curl -sS \
+            -o "${RUNNER_TEMP}/health.json" \
+            -w '%{http_code}' \
+            https://athlete-custom-training-plan-pipeline-production.up.railway.app/health)
+          python3 -m json.tool "${RUNNER_TEMP}/health.json"
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::error::Production /health returned HTTP $HTTP_STATUS"
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json, os, pathlib, sys
+          data = json.loads(
+              (pathlib.Path(os.environ["RUNNER_TEMP"]) / "health.json").read_text())
+          files = data.get("runtime_files") or {}
+          missing = []
+          if files.get("apply_contract_schema") is not True:
+              missing.append("runtime_files.apply_contract_schema")
+          tokens = data.get("token_config")
+          if isinstance(tokens, dict):
+              if tokens.get("review") is not True:
+                  missing.append("token_config.review")
+              if tokens.get("download") is not True:
+                  missing.append("token_config.download")
+          if missing:
+              print("missing:", ", ".join(missing), file=sys.stderr)
+              sys.exit(1)
+          PY
+
       - name: Trigger authenticated Railway state audit
         env:
           # CRON_SECRET repo secret matches the Railway CRON_SECRET env var

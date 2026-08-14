@@ -51,11 +51,11 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
                                verify_release_artifact,
                                verify_release_manifest, write_generation)
 from download_tokens import (ARTIFACT_AUDIENCE, DownloadTokenError,
-                             issue_download_token, revoke_download_token,
-                             verify_download_token)
+                             issue_download_token, keys_configured as download_keys_configured,
+                             revoke_download_token, verify_download_token)
 from review_auth import (ReviewAuthError, create_review_session,
-                         issue_review_token, load_review_session,
-                         verify_review_token)
+                         issue_review_token, keys_configured as review_keys_configured,
+                         load_review_session, verify_review_token)
 from review_surface import render_bootstrap, render_review_page
 
 import endure_delivery
@@ -1145,12 +1145,36 @@ def check_idempotency(order_id: str) -> bool:
                 processed = json.load(f)
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
                 if order_id in processed:
+                    if _drill_reprocess_allowed(order_id):
+                        logger.info(
+                            f"Cancelled synthetic drill {order_id} may be reprocessed")
+                        return False
                     logger.info(f"Duplicate order detected: {order_id}")
                     return True
     except (json.JSONDecodeError, IOError) as e:
         logger.warning(f"Error reading processed orders: {e}")
 
     return False
+
+
+def _drill_reprocess_allowed(order_id: str) -> bool:
+    """Same-day drill leftovers may be cancelled and generated again.
+
+    Real paid orders stay idempotent even after CANCELLED. Only the
+    synthetic `drill-YYYYMMDD` identity is reusable, and only when the
+    authoritative state is a pre-apply cancellation.
+    """
+    if not str(order_id).startswith('drill-'):
+        return False
+    try:
+        state = load_fulfillment_state(_fulfillment_status_path(order_id))
+    except FulfillmentStateError:
+        return False
+    if state.get('status') != CANCELLED:
+        return False
+    if state.get('application'):
+        return False
+    return True
 
 
 def mark_order_processed(order_id: str, athlete_id: str):
@@ -2748,6 +2772,11 @@ def _runtime_packaging_ok() -> tuple:
 def health():
     """Health check endpoint with dependency checks."""
     packaging_ok, packaging = _runtime_packaging_ok()
+    token_config = {
+        'review': review_keys_configured(),
+        'download': download_keys_configured(),
+    }
+    tokens_ok = all(token_config.values())
     checks = {
         'service': 'gravel-god-webhook',
         'status': 'ok',
@@ -2755,10 +2784,13 @@ def health():
         'scripts_dir': Path(SCRIPTS_DIR).exists(),
         'data_dir': Path(DATA_DIR).exists(),
         'runtime_files': packaging,
+        'token_config': token_config,
     }
 
     if (not checks['athletes_dir'] or not checks['scripts_dir']
             or not packaging_ok):
+        checks['status'] = 'degraded'
+    if IS_PRODUCTION and not tokens_ok:
         checks['status'] = 'degraded'
 
     # Endure delivery ops status (Decision 2 streak) — only present when the

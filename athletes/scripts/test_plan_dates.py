@@ -328,3 +328,26 @@ def test_heavy_training_end_constraint():
     assert race_week['phase'] == 'race', f"Race week should be race, got {race_week['phase']}"
 
     print("  ✓ PASSED")
+
+
+def test_midweek_preferred_start_never_emits_past_sessions(monkeypatch):
+    """Guillermo-shaped: Friday order + 6-week floor must not start this Monday."""
+    from calculate_plan_dates import monday_on_or_after
+
+    monkeypatch.setenv('GG_FIXED_NOW', '2026-08-14T15:00:00Z')
+    # Mammoth-Tuff-shaped horizon: race week Monday is ~6 weeks out, so the
+    # old max(6, available) floor landed Week 1 on 2026-08-10.
+    result = calculate_plan_dates(
+        '2026-09-19', 12, preferred_start='2026-08-14')
+    start = datetime.strptime(result['plan_start'], '%Y-%m-%d')
+    today = datetime(2026, 8, 14)
+    assert start >= today, f"plan_start {result['plan_start']} predates generation"
+    assert start.weekday() == 0, f"plan_start {result['plan_start']} is not a Monday"
+    assert start == monday_on_or_after(today)
+    past = [
+        day['date']
+        for week in result['weeks']
+        for day in week['days']
+        if datetime.strptime(day['date'], '%Y-%m-%d') < today
+    ]
+    assert past == [], f"sessions before generation date: {past}"
