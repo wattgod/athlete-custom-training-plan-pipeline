@@ -442,7 +442,7 @@ def run_sanity_checks(plan_dates: dict, race_date_str: str, athlete_id: str) -> 
     checks = [
         ("Race date", race_date_str, True),
         ("Race day of week", plan_dates['race_weekday'], True),
-        ("Plan weeks", plan_dates['plan_weeks'], plan_dates['plan_weeks'] >= 6),
+        ("Plan weeks", plan_dates['plan_weeks'], plan_dates['plan_weeks'] >= 4),
         ("Plan start", plan_dates['plan_start'], plan_start <= race_date),
         ("Plan end", plan_dates['plan_end'], True),
         ("W01 starts on", plan_dates['week1_monday'], plan_dates['week1_monday'] == plan_dates['plan_start']),

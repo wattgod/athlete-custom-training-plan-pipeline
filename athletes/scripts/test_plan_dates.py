@@ -351,3 +351,14 @@ def test_midweek_preferred_start_never_emits_past_sessions(monkeypatch):
         if datetime.strptime(day['date'], '%Y-%m-%d') < today
     ]
     assert past == [], f"sessions before generation date: {past}"
+
+
+def test_short_clamped_plan_passes_sanity_checks(monkeypatch):
+    """A late order for a near race is a 4–5 week plan, not a hard fail."""
+    from calculate_plan_dates import run_sanity_checks
+
+    monkeypatch.setenv('GG_FIXED_NOW', '2026-08-14T15:00:00Z')
+    result = calculate_plan_dates(
+        '2026-09-19', 12, preferred_start='2026-08-14')
+    assert 4 <= result['plan_weeks'] < 6
+    assert run_sanity_checks(result, '2026-09-19', 'late-order') is True
