@@ -16,7 +16,7 @@ from apply_contract import (ApplyContractError, OperationProvenance,
                             assert_checked_schema_current,
                             bind_operation_provenance, build_contract,
                             canonical_json, compute_model_seal, digest_payload,
-                            validate_contract)
+                            schema_path, validate_contract)
 from fulfillment_manifest import build_manifest_from_plan_ir
 from fake_remote_parity import (INTENTIONAL_D0_DIFFERENCES,
                                 LEGACY_SUPPORTED_KINDS, FakeRemoteModel,
@@ -66,6 +66,12 @@ def _operation_reader(*contracts):
         for operation in contract["operations"]:
             operations[operation["op_id"]] = provenance
     return operations.__getitem__
+
+
+def test_production_dockerfile_copies_apply_contract_schema():
+    dockerfile = (ROOT / "webhook" / "Dockerfile").read_text()
+    assert "COPY schemas/ ./schemas/" in dockerfile
+    assert schema_path().is_file()
 
 
 def test_checked_schema_is_generated_definition_and_every_emission_validates(tmp_path):

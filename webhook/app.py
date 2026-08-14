@@ -67,6 +67,7 @@ _ATHLETE_SCRIPTS = Path(__file__).resolve().parent.parent / 'athletes' / 'script
 if str(_ATHLETE_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_ATHLETE_SCRIPTS))
 from brand_config import default_brand, load_brands, normalize_brand
+from apply_contract import schema_path as apply_contract_schema_path
 
 app = Flask(__name__)
 
@@ -2719,18 +2720,45 @@ def sweep_stuck_jobs() -> dict:
 
 
 
+def _required_runtime_paths() -> dict:
+    """Repo-root files the production image must ship for offline apply-contract.
+
+    apply_contract.schema_path() is parents[2]/schemas/apply_contract_v1.schema.json
+    (/app/schemas/... in the Railway image). athletes/config is already copied
+    via COPY athletes/; no other webhook/athletes/scripts runtime reads sit
+    outside the image COPY list.
+    """
+    return {
+        'apply_contract_schema': apply_contract_schema_path(),
+    }
+
+
+def _runtime_packaging_ok() -> tuple:
+    checks = {}
+    ok = True
+    for name, path in _required_runtime_paths().items():
+        present = path.is_file()
+        checks[name] = present
+        if not present:
+            ok = False
+    return ok, checks
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint with dependency checks."""
+    packaging_ok, packaging = _runtime_packaging_ok()
     checks = {
         'service': 'gravel-god-webhook',
         'status': 'ok',
         'athletes_dir': Path(ATHLETES_DIR).exists(),
         'scripts_dir': Path(SCRIPTS_DIR).exists(),
         'data_dir': Path(DATA_DIR).exists(),
+        'runtime_files': packaging,
     }
 
-    if not checks['athletes_dir'] or not checks['scripts_dir']:
+    if (not checks['athletes_dir'] or not checks['scripts_dir']
+            or not packaging_ok):
         checks['status'] = 'degraded'
 
     # Endure delivery ops status (Decision 2 streak) — only present when the
@@ -5562,6 +5590,21 @@ try:
         logger.warning(f"Startup job sweep: {_startup_sweep}")
 except Exception as e:
     logger.error(f"Startup job sweep failed: {e}")
+
+# Fail closed if the image omitted files the offline apply-contract build reads.
+# A missing schema has failed every real order since Phase 3 (APPLY_CONTRACT_INVALID).
+_packaging_ok, _packaging = _runtime_packaging_ok()
+_packaging_paths = {name: str(path) for name, path in _required_runtime_paths().items()}
+if _packaging_ok:
+    logger.info("Runtime packaging check OK: %s", _packaging_paths)
+else:
+    _missing = [name for name, present in _packaging.items() if not present]
+    logger.critical(
+        "RUNTIME PACKAGING GAP: required files missing from the image: %s. "
+        "Offline apply-contract will fail closed with APPLY_CONTRACT_INVALID. "
+        "paths=%s",
+        _missing, _packaging_paths,
+    )
 
 
 # =============================================================================
