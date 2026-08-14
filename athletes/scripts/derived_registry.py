@@ -234,6 +234,21 @@ _SCHEDULE_DAY = {
 # Optional fields are still schema-owned; they are required exactly when the
 # owning document contains them.
 ARTIFACT_DERIVED_SCHEMAS = {
+    "workout_quality_report": {
+        "required": ("gate_summary", "manifest_pin"),
+        "optional": (), "optional_non_null": False,
+        "output_shape": {
+            "schema_version": RAW,
+            "generation_revision": RAW,
+            "generated_at": RAW,
+            "rollout_phase": RAW,
+            "canonical_candidate_sha256": RAW,
+            "guide_evidence_sha256": RAW,
+            "version_vector": RAW,
+            "gate_summary": DERIVED,
+            "manifest_pin": DERIVED,
+        },
+    },
     "profile": {
         "required": (
             "health_factors.age", "fitness_markers.sex",
