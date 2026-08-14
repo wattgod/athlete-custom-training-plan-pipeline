@@ -81,3 +81,101 @@ the A3.0 production-equivalent functions. New results are persisted as
 5. Run the PDF acceptance checks in an environment with the PDF browser engine
    available; this is an environment verification gap, not an E1 logic bypass.
 
+## R1 blocker remediation addendum
+
+Review: `docs/reviews/PHASE_E1_IMPLEMENTATION_CODEX_R1.md`
+
+Disposition date: 2026-08-13
+
+### 1. §4.5 stage order — fixed
+
+Diagnosis: generation previously projected mutable model state before the D1
+freeze, split pre/post evaluation across the wrong boundaries, and refreshed
+state/report projections more than once. The orchestration now pins the exact
+revision manifest, freezes the complete candidate, runs all PRE_GUIDE dose,
+final-series, and rule work on that candidate, projects canonical and PlanIR
+from it, builds one guide, runs D2, POST_GUIDE R07/R25, and post-render
+validators, then writes one merged report and one state/catalog update. The
+order-spy golden asserts every §7.1 item 13 boundary in exact order. A
+regeneration regression also proves the isolated paid-order workspace advances
+the authoritative prior state and pins the actual next revision.
+
+### 2. A3.0 blocker authority — fixed
+
+Diagnosis: the nine legacy compliance results were evaluated in the report but
+the live mutable validator still supplied the fulfillment write path. The
+report's A3.0-routed rows are now the only source for those fulfillment
+blockers. `block_compliance.validate_plan` remains an asserted parity oracle
+and cannot write state. A closed fixture asserts blocker ID, source, result,
+and subject IDs are identical between the report and fulfillment state for all
+nine rules.
+
+### 3. Revision-local manifest pin — fixed
+
+Diagnosis: a global manifest could be consulted after generation began and new
+artifacts could silently use legacy seal v1. The manifest is now copied to the
+exact `orders/<order>/revisions/rN/` authority before D1. Candidate, R21,
+report, release-seal v2, and apply-contract-seal v2 validate the same version,
+version vector, and canonical snapshot digest. New E1 candidate-bearing
+generations fail closed on unavailable, missing, mismatched, or unknown pins;
+candidate-less legacy artifacts retain their explicit v1 verification path.
+Tests cover a stale global manifest, missing snapshot, missing pin, digest
+mismatch, and unknown version through both seal constructors.
+
+### 4. Appendices 7/8 and R07/R25 — fixed
+
+Diagnosis: candidate validation accepted open nested structures, provenance did
+not cover every producer field/input, and guide rules searched the full HTML.
+The candidate validator now enforces the full closed root and nested schemas,
+including exact producer tuples and actual source-byte digests. Every repository
+input the D2 guide build can read is content-addressed. W00 records exact origin
+and transformation tuples for rest, easy, endurance, and strength-prep paths,
+including unavailable-day behavior. R07/R25 now inspect structured Monday-note
+records for each paid week, never a whole-guide substring. Goldens cover
+candidate mutations, origins/W00, unavailable days, and present, absent, and
+duplicate Monday-note cases.
+
+### 5. Exhaustive ZWO-byte selection proof — fixed
+
+Diagnosis: the prior proof factorized selection dimensions and did not compare
+every reachable tuple's complete render. `selection_migration_proof.py` now
+deterministically enumerates the spec-reachable methodology, style, discipline,
+phase, workout-type, ability-level, slot-offset, and wrap space. The pinned
+case count is **70,656**. Each case compares selected category, workout name,
+filename, and complete UTF-8 ZWO bytes before and after the immutable-ID
+migration, including every wrap boundary.
+
+### 6. Q0 closed inventory — fixed, with explicit owner sign-offs
+
+Diagnosis: the prior Q0 evidence was spread across regression tests and omitted
+a closed byte inventory. `q0_surface_inventory.py` now rejects added, missing,
+or changed surfaces and covers ZWOs; guide HTML/PDF availability; dashboard,
+preview, and fueling; ZIP member names, member bytes, and ZIP bytes; complete
+TrainingPeaks operations for all seven kinds (including attachment bytes and
+bookkeeping fields); Endure's canonical payload; deterministic Gmail MIME;
+day-1/3/7 follow-ups; and published guide availability. The athlete-m baseline
+is pinned to pre-E1 commit `9b1f052` with fixed clock, timezone, locale,
+`PYTHONHASHSEED`, and ZIP metadata. A synthetic closed-inventory golden emits
+every conditional surface and proves a mutation to each one fails comparison.
+
+The following surfaces were not byte-determinable in the sandboxed athlete-m
+pre-E1 replay and therefore remain explicit owner-sign-off requirements; they
+are recorded in `tests/fixtures/athlete_m/q0_phase3.json` and are not silently
+treated as byte-equivalent:
+
+- `training_guide.pdf`: no PDF renderer was available.
+- `dashboard.html`: the Phase 3 HR-only golden did not emit it.
+- Published guide HTML/PDF: publishing is disabled in E1.
+
+Endure was not enabled for the athlete-m golden, so its deterministic canonical
+payload is inventoried without invoking delivery. Gmail is compared as fixed
+RFC 5322/MIME bytes rather than provider-generated transport headers.
+
+### R1 verification
+
+- Exhaustive selection migration corpus: **70,656 cases**.
+- Full repository suite after remediation: **2,640 passed, 87 skipped, 21
+  warnings** in 108.75 seconds.
+- `git diff --check`: clean.
+- Rollout remains exactly Mode A / E1 audit-only. No content disposition, Mode
+  B behavior, promotion, or E2/E3 enforcement was added.
