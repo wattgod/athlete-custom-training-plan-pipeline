@@ -597,6 +597,42 @@ def test_page_approval_rejects_missing_required_confirmation(review_client):
     assert load(state_path)['status'] == GENERATED
 
 
+def test_review_page_does_not_require_per_fact_checkboxes(review_client):
+    state, _, _ = _seed_order('test_fact_display_only')
+    body, _ = _login(review_client, state['order_id'])
+    assert 'I reviewed this sealed fact' not in body
+    assert 'do not need individual checkboxes' in body
+    assert 'sealed facts</summary>' in body
+    fact_ids = [
+        item['item_id'] for item in state['review_items']
+        if item['type'] == 'verified_fact'
+    ]
+    assert fact_ids
+    for item_id in fact_ids:
+        assert item_id in body
+
+
+def test_page_approval_records_verified_facts_without_checkboxes(review_client):
+    state, state_path, _ = _seed_order(
+        'test_auto_confirm_facts', confirmations=[_confirmation()])
+    _, csrf = _login(review_client, state['order_id'])
+    required_ids = [
+        item['item_id'] for item in state['review_items']
+        if item['type'] == 'required_confirmation'
+    ]
+    response = review_client.post(
+        f"/review/{state['order_id']}/approve",
+        data=_approval_form(state, csrf, confirm_ids=required_ids),
+    )
+    assert response.status_code == 303
+    persisted = load(state_path)
+    assert persisted['status'] == APPROVED
+    snapshots = {item['item_id']: item for item in persisted['approval']['confirmations']}
+    for item in persisted['review_items']:
+        if item['type'] == 'verified_fact':
+            assert snapshots[item['item_id']]['disposition'] == 'confirmed'
+
+
 def test_page_approval_rejects_waiver_that_does_not_cover_all_blockers(review_client):
     state, state_path, _ = _seed_order(
         'test_partial_waiver', blockers=[_issue('RACE_STALE'), _issue('WEEKS_MISMATCH')])
