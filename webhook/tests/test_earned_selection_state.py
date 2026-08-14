@@ -10,10 +10,12 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "athletes" / "scripts"))
 sys.path.insert(0, str(ROOT / "webhook"))
 
-from apply_contract import KINDS, compute_model_seal
+from apply_contract import (KINDS, ApplyContractError, build_contract,
+                            compute_model_seal, validate_contract)
 from earned_selection import VERSION_VECTOR, canonical_digest
 from fulfillment_state import (
     APPROVED, EARNED_SELECTION_NON_WAIVABLE_RULES, NON_WAIVABLE_RULES,
@@ -127,6 +129,11 @@ def test_seal_v2_dual_constructors_and_v1_backward_constructor(tmp_path):
     manifest_digest = canonical_digest(manifest)
     (artifacts / "canonical_training_model.json").write_text(json.dumps(model))
     (root / "certification_manifest.json").write_text(json.dumps(manifest))
+    pin = {"snapshot_path": "certification_manifest.json",
+           "snapshot_digest": manifest_digest,
+           "manifest_version": "certification_manifest/v1",
+           "version_vector": None, "promotion_digests": []}
+    (artifacts / "final_plan_candidate.json").write_text(json.dumps({"manifest_pin": pin}))
     guide_sources = {}
     state = {"review_items": review_items}
 
@@ -147,6 +154,77 @@ def test_seal_v2_dual_constructors_and_v1_backward_constructor(tmp_path):
     with pytest.raises(FulfillmentStateError, match="unknown apply contract"):
         _canonical_model_seal_from_release(
             root, state, {"contract_version": "apply_contract/v99", "operations": []})
+
+
+def test_new_e1_apply_and_release_constructors_fail_closed_on_pin_faults(tmp_path):
+    athlete = tmp_path / "athlete"
+    athlete.mkdir()
+    manifest = {"schema_version": "certification_manifest/v1",
+                "version_vector": dict(VERSION_VECTOR),
+                "promotion_artifacts": [], "rows": []}
+    digest = canonical_digest(manifest)
+    pin = {"snapshot_path": "certification_manifest.json",
+           "snapshot_digest": digest,
+           "manifest_version": "certification_manifest/v1",
+           "version_vector": dict(VERSION_VECTOR), "promotion_digests": []}
+    (athlete / "certification_manifest.json").write_text(json.dumps(manifest))
+    (athlete / "final_plan_candidate.json").write_text(json.dumps({"manifest_pin": pin}))
+    (athlete / "training_guide.html").write_text("guide")
+    ir = {"weeks": [{"number": 1, "sessions": [{
+              "date": "2026-08-17", "title": "Endurance", "type": "cycling",
+              "duration_s": 3600, "description": "steady",
+              "workout_type_value_id": 2, "tss_planned": 40,
+              "structure": {"steps": []},
+          }]}], "notes": [], "entitlements": [], "attachments": []}
+    kwargs = dict(order_id="order-e1", tp_athlete_id="tp-e1",
+                  generation_revision=1,
+                  canonical_model={"model_version": "canonical_training_model/v2",
+                                   "sessions": []},
+                  review_items=[], guide_sources={}, athlete_dir=athlete)
+    valid = build_contract(ir, **kwargs)
+    assert valid["contract_version"] == "apply_contract/v2"
+    unknown = {**valid, "contract_version": "apply_contract/v99",
+               "compat": {"min_reader": "apply_contract/v99"}}
+    with pytest.raises(ApplyContractError, match="unknown apply contract version"):
+        validate_contract(unknown)
+
+    # A mutable/global manifest is irrelevant after the revision snapshot pin.
+    global_copy = tmp_path / "workout_certification.json"
+    global_copy.write_text(json.dumps({"mutated": True}))
+    assert build_contract(ir, **kwargs)["model_seal"] == valid["model_seal"]
+
+    snapshot = athlete / "certification_manifest.json"
+    snapshot.unlink()
+    with pytest.raises(ApplyContractError, match="MANIFEST_SNAPSHOT_UNAVAILABLE"):
+        build_contract(ir, **kwargs)
+    snapshot.write_text(json.dumps(manifest))
+
+    candidate_path = athlete / "final_plan_candidate.json"
+    candidate_path.write_text(json.dumps({}))
+    with pytest.raises(ApplyContractError, match="MANIFEST_PIN_MISSING"):
+        build_contract(ir, **kwargs)
+    candidate_path.write_text(json.dumps({"manifest_pin": {**pin, "snapshot_digest": "f" * 64}}))
+    with pytest.raises(ApplyContractError, match="MANIFEST_PIN_MISMATCH"):
+        build_contract(ir, **kwargs)
+
+    release = tmp_path / "release"
+    artifacts = release / "artifacts"
+    artifacts.mkdir(parents=True)
+    (artifacts / "canonical_training_model.json").write_text(json.dumps(kwargs["canonical_model"]))
+    (release / "certification_manifest.json").write_text(json.dumps(manifest))
+    state = {"review_items": []}
+    contract = {"contract_version": "apply_contract/v2",
+                "seal_version": "canonical_model_apply_contract/v2", "operations": []}
+    with pytest.raises(FulfillmentStateError, match="MANIFEST_PIN_MISSING"):
+        _canonical_model_seal_from_release(release, state, contract)
+    (artifacts / "final_plan_candidate.json").write_text(
+        json.dumps({"manifest_pin": {**pin, "snapshot_digest": "e" * 64}}))
+    with pytest.raises(FulfillmentStateError, match="MANIFEST_PIN_MISMATCH"):
+        _canonical_model_seal_from_release(release, state, contract)
+    (artifacts / "final_plan_candidate.json").write_text(json.dumps({"manifest_pin": pin}))
+    (release / "certification_manifest.json").unlink()
+    with pytest.raises(FulfillmentStateError, match="manifest unavailable"):
+        _canonical_model_seal_from_release(release, state, contract)
 
 
 def test_closed_nonwaivable_amendment_and_q0_tp_kind_inventory():

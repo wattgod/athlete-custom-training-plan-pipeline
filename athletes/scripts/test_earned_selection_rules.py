@@ -3,17 +3,24 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import itertools
 import sys
 from pathlib import Path
 
 import pytest
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from block_compliance import INTENSITY_TYPES, VO2MAX_TYPES, validate_plan
 from earned_selection_rules import (PRE_EXISTING, build_legacy_projection,
-                                    legacy_verdicts)
+                                    execute_rules, legacy_verdicts)
+from earned_selection import VERSION_VECTOR, canonical_digest
+from workout_quality_report import build_report
+sys.path.insert(0, str(REPO_ROOT / "webhook"))
+from fulfillment_state import write_generation
 
 
 def _day(day, name="Endurance", role="filler", duration=60, sessions=None):
@@ -144,3 +151,92 @@ def test_generated_a30_branch_boundary_corpus_is_exactly_equivalent():
         _assert_parity(plan, target_hours=hours, off_days=off_days,
                        max_intensity=maximum)
     assert len(cases) >= 300
+
+
+def test_all_nine_report_blockers_are_the_exact_fulfillment_authority(tmp_path):
+    bad_days = [
+        _day("Mon", "Threshold Steady", "intensity", sessions=[{"intensity": "hard"}]),
+        _day("Tue", "Threshold Steady", "intensity", sessions=[{"intensity": "hard"}]),
+        _day("Fri", "Endurance", "filler", 60),
+    ]
+    plan = {"all_violations": ["series"], "weeks": [
+        _week(1, tss=300, duration=1200, days=bad_days),
+        _week(2, tss=300, duration=1200, days=bad_days),
+        _week(3, week_type="recovery", tss=250, duration=1200, days=bad_days),
+        _week(4, tss=300, duration=1200, days=bad_days),
+        _week(5, tss=300, duration=1200, days=bad_days),
+    ]}
+    projection = build_legacy_projection(
+        plan, target_hours=1, off_days=["Fri"], max_intensity=1)
+    assert {rule for rule, passed in legacy_verdicts(projection).items() if not passed} == PRE_EXISTING
+    manifest = {"schema_version": "certification_manifest/v1",
+                "version_vector": dict(VERSION_VECTOR),
+                "promotion_artifacts": [], "rows": []}
+    pin = {"snapshot_path": "certification_manifest.json",
+           "snapshot_digest": canonical_digest(manifest),
+           "manifest_version": "certification_manifest/v1",
+           "version_vector": dict(VERSION_VECTOR), "promotion_digests": []}
+    candidate = {"generation_revision": 1, "generated_at": "2026-08-13T00:00:00Z",
+                 "manifest_pin": pin, "legacy_compliance_projection": projection,
+                 "sessions": [], "weeks": [], "guide_inputs": [],
+                 "config_digests": {
+                     "rollout": hashlib.sha256(
+                         (Path(__file__).resolve().parents[1] / "config" /
+                          "earned_selection_rollout.yaml").read_bytes()).hexdigest()
+                 }}
+    report, findings, blockers = build_report(
+        candidate, "0" * 64, manifest, b"<html></html>")
+    routed = [row for row in report["gate_summary"]["rubric"]
+              if row["routed_to_blocking_issues"]]
+    assert {row["rule_id"] for row in routed} == PRE_EXISTING
+    state = write_generation(
+        tmp_path / "state.json", "athlete-rules", blockers,
+        order_id="order-rules", quality_findings=findings)
+    by_id = {item["id"]: item for item in state["blocking_issues"]}
+    assert len(by_id) == len(routed) == 9
+    for row in routed:
+        issue = by_id[row["output_code"]]
+        assert issue["source"] == "earned_selection_rules"
+        assert issue["review_value"]["rule_id"] == row["rule_id"]
+        assert issue["review_value"]["result"] == row["result"] == "FAIL"
+        assert issue["review_value"]["subject_ids"] == row["subject_ids"]
+
+
+def test_r07_and_r25_are_bound_to_each_paid_weeks_monday_note():
+    projection = build_legacy_projection(
+        {"weeks": []}, target_hours=0, off_days=[], max_intensity=0)
+    candidate = {"legacy_compliance_projection": projection, "sessions": [],
+                 "weeks": [{"week": 1, "is_paid": True,
+                             "block_note_template_id": "recovery"},
+                            {"week": 2, "is_paid": True,
+                             "block_note_template_id": "load"}]}
+    present = """
+      <div data-plan-week="1" data-weekday="monday"
+           data-block-note-template="recovery">Don't be afraid to shorten workouts</div>
+      <div data-plan-week="2" data-weekday="monday"
+           data-block-note-template="load">Prioritize sleep (8+ hours)</div>
+    """
+    rows = {row["rule_id"]: row for row in execute_rules(
+        candidate, guide_html=present, stage="POST_GUIDE")}
+    assert rows["R07"]["result"] == "PASS"
+    assert rows["R25"]["result"] == "FAIL"
+    assert rows["R25"]["subject_ids"] == ["2"]
+
+    both_marked = present.replace(
+        "Prioritize sleep (8+ hours)",
+        "If anything feels wrong (sharp pain, illness), STOP immediately")
+    rows = {row["rule_id"]: row for row in execute_rules(
+        candidate, guide_html=both_marked, stage="POST_GUIDE")}
+    assert rows["R07"]["result"] == rows["R25"]["result"] == "PASS"
+
+    duplicate = both_marked + (
+        '<div data-plan-week="1" data-weekday="monday" '
+        'data-block-note-template="recovery">duplicate</div>')
+    rows = {row["rule_id"]: row for row in execute_rules(
+        candidate, guide_html=duplicate, stage="POST_GUIDE")}
+    assert rows["R07"]["result"] == "FAIL"
+
+    unavailable = {row["rule_id"]: row for row in execute_rules(
+        candidate, guide_html=None, stage="POST_GUIDE")}
+    assert unavailable["R07"]["result"] == "UNAVAILABLE"
+    assert unavailable["R25"]["result"] == "UNAVAILABLE"

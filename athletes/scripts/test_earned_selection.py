@@ -24,6 +24,9 @@ from nate_workout_generator import (generate_blocks_from_archetype,
                                     select_archetype_for_workout)
 import nate_workout_generator as nate
 from workout_mapper import WORKOUT_MAP, _resolve_for_discipline
+from workout_mapper import render_workout
+from selection_migration_proof import (_selection, iter_reachable_selection_cases,
+                                       projected_filename, selection_case_count)
 import generate_athlete_package
 import select_methodology
 
@@ -216,6 +219,61 @@ def test_reachable_mapper_selection_is_exhaustively_name_equivalent(monkeypatch)
                         migrated = select_archetype_for_workout(
                             nate_type, "POLARIZED", variation)
                     assert (migrated or {}).get("name") == (legacy or {}).get("name")
+
+
+def test_exhaustive_reachable_tuple_category_name_filename_and_zwo_bytes(monkeypatch):
+    """Binding §5.2 proof: every 70,656 reachable tuple, including N wrap."""
+    assert selection_case_count() == 70_656
+    original = nate.get_archetype_by_category_and_index
+    legacy_mode = False
+
+    def resolver(category, index=0):
+        if legacy_mode:
+            rows = ALL_ARCHETYPES[category]
+            return copy.deepcopy(rows[index % len(rows)])
+        return original(category, index)
+
+    monkeypatch.setattr(nate, "get_archetype_by_category_and_index", resolver)
+    cache = {}
+    compared = 0
+    for case in iter_reachable_selection_cases():
+        key = (case.render_style, case.discipline, case.workout_type,
+               case.variation_offset, case.level)
+        if key not in cache:
+            legacy_mode = True
+            legacy = _selection(case.workout_type, case.discipline,
+                                case.render_style, case.variation_offset)
+            legacy_bytes = render_workout(
+                case.workout_type, level=case.level,
+                methodology=case.render_style,
+                variation_offset=case.variation_offset,
+                discipline=case.discipline,
+                workout_name="selection_migration_proof")
+            legacy_mode = False
+            migrated = _selection(case.workout_type, case.discipline,
+                                  case.render_style, case.variation_offset)
+            migrated_bytes = render_workout(
+                case.workout_type, level=case.level,
+                methodology=case.render_style,
+                variation_offset=case.variation_offset,
+                discipline=case.discipline,
+                workout_name="selection_migration_proof")
+            legacy_category = get_archetype(legacy["name"])[0]
+            migrated_category = get_archetype(migrated["name"])[0]
+            legacy_filename = projected_filename(case, legacy)
+            migrated_filename = projected_filename(case, migrated)
+            cache[key] = (legacy_category, legacy["name"], legacy_filename,
+                          legacy_bytes, migrated_category, migrated["name"],
+                          migrated_filename, migrated_bytes)
+        (legacy_category, legacy_name, legacy_filename, legacy_bytes,
+         migrated_category, migrated_name, migrated_filename,
+         migrated_bytes) = cache[key]
+        assert migrated_category == legacy_category
+        assert migrated_name == legacy_name
+        assert migrated_filename == legacy_filename
+        assert migrated_bytes.encode("utf-8") == legacy_bytes.encode("utf-8")
+        compared += 1
+    assert compared == 70_656
 
 
 @pytest.mark.parametrize("render_style", ["", "polarized", "UNKNOWN"])

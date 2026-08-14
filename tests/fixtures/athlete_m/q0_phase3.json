@@ -1,0 +1,29 @@
+{
+  "baseline_commit": "9b1f052",
+  "fixed_environment": {
+    "clock": "2026-08-06T15:00:00Z",
+    "timezone": "America/Denver",
+    "locale": "C.UTF-8",
+    "python_hash_seed": "0",
+    "zip_timestamp": "1980-01-01T00:00:00"
+  },
+  "surface_sha256": {
+    "availability/dashboard.html": "d99aac089da3cddf1b23df748aec14a3073326048ecbebfb006cbabaf7fb6c61",
+    "availability/published-guide": "4f6522dc87507804454babb3fadb506fb6032074c3007b74a414a7177edb61c1",
+    "availability/training_guide.pdf": "d99aac089da3cddf1b23df748aec14a3073326048ecbebfb006cbabaf7fb6c61",
+    "bundle/customer.zip": "96ddd81278a94559995d9f54f9594a667b8f833595ffb988095512f9ec5a73b5",
+    "bundle/member_inventory.json": "05ab3977c2b4f2918d1da14ba4a5f42ac081cbbb7e21edf968ee1243a425cf72",
+    "endure/payload.json": "7c3d70db55fd2b8d4f0f272785aba3def28279caabd2ab5ad7ec0aa12796638d",
+    "file/fueling.yaml": "2e04df479af3f655067224e05dc6602a2129386c49cf695536bb4368eaeb7597",
+    "file/plan_preview.html": "78bbb021a27c359dcc2c42c4c1c128d07a8e25dce7f0432f26c460926ddf6f76",
+    "file/training_guide.html": "ea580763529fcd45ceb4c2b1a2957d71881aa28d8d65a2ea5ea4c13ef094935f",
+    "followups/day-1-3-7.json": "b9b1506535a57d1c677f9a0354f9d1623f445904b9f821059d4e64413ef2d3a6",
+    "gmail/draft.eml": "1aadd87a28ebe95d655694f4d5cebe9e29752cb9f44824ce96fb429af33cf80c",
+    "trainingpeaks/operations.json": "73e73d03ab7a2ab92437f9dfdc7041805396022f2addfb309a9317ec2ee05b2c"
+  },
+  "owner_signoff_required": [
+    "training_guide.pdf: renderer unavailable in the sandboxed golden run",
+    "dashboard.html: the Phase 3 HR-only golden does not emit this file",
+    "published guide HTML/PDF: guide publishing is disabled in E1"
+  ]
+}

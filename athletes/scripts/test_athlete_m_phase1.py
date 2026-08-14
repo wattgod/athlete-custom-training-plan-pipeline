@@ -1,11 +1,12 @@
 """Deterministic Phase 3 replay retaining every Phase 1 negative gate."""
 
 import json
+import copy
 import os
 import sys
 import zipfile
 import re
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,10 +14,16 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "webhook"))
 sys.path.insert(0, str(ROOT / "athletes" / "scripts"))
 
-from fulfillment_state import APPROVED, FulfillmentStateError, transition
+from fulfillment_state import (
+    APPROVED,
+    FulfillmentStateError,
+    transition,
+    write_generation,
+)
 
 FIXTURE = ROOT / "tests" / "fixtures" / "athlete_m"
 
@@ -49,6 +56,8 @@ def test_athlete_m_phase3_golden(monkeypatch, tmp_path):
         "GG_RACE_SNAPSHOT_FIXTURE", str(FIXTURE / "race_snapshot.json"))
     monkeypatch.setenv("CRON_SECRET", "fixture-secret")
     monkeypatch.setenv("DOWNLOAD_TOKEN_SECRET", "fixture-token-secret")
+    order_spy = tmp_path / "e1-order-spy.txt"
+    monkeypatch.setenv("GG_E1_ORDER_SPY", str(order_spy))
 
     result = webhook_app.run_pipeline(
         "athlete-m", deliver=True, intake_data=intake,
@@ -60,6 +69,20 @@ def test_athlete_m_phase3_golden(monkeypatch, tmp_path):
         },
     )
     assert result["success"], result.get("stderr") or result.get("stdout")
+    assert order_spy.read_text().splitlines() == [
+        "w00_fueling_persisted",
+        "revision_manifest_pinned",
+        "d1_frozen",
+            "pre_guide_evaluated",
+            "canonical_projected",
+            "planir_projected",
+            "guide_built_once",
+        "d2_guide_bound",
+            "post_guide_evaluated",
+        "post_render_validated",
+        "merged_report_written",
+        "state_and_catalog_updated_once",
+    ]
     source = Path(result["artifact_dir"])
     profile = yaml.safe_load((source / "profile.yaml").read_text())
     fueling = yaml.safe_load((source / "fueling.yaml").read_text())
@@ -135,7 +158,51 @@ def test_athlete_m_phase3_golden(monkeypatch, tmp_path):
         (source / "canonical_training_model.json").read_text())
     certification = json.loads(
         (source / "certification_manifest.json").read_text())
+
+    # Closed §6 Q0 replay against bytes captured from the last Phase 3 commit.
+    from email_delivery import EmailDelivery
+    from email_templates import FOLLOWUP_SEQUENCE
+    from endure_delivery import build_delivery_payload
+    from q0_surface_inventory import (
+        capture_q0, deterministic_mime_bytes, digest_inventory, followup_bytes,
+    )
+    emailer = EmailDelivery()
+    plain_body, html_body = emailer._build_email_body(
+        profile["name"], has_attachment=True)
+    guide_bytes = (source / "training_guide.html").read_bytes()
+    mime_bytes = deterministic_mime_bytes(
+        order_id="test_athlete_m", revision=1,
+        sender="Gravel God Coaching <coach@gravelgod.com>",
+        recipient=profile["email"], subject=EmailDelivery.SUBJECT,
+        plain_body=plain_body, html_body=html_body,
+        guide_name="training_guide.html", guide_bytes=guide_bytes,
+        at=datetime.fromisoformat(clock["generation_at"].replace("Z", "+00:00")),
+    )
+    q0 = capture_q0(
+        athlete_dir=source, contract=contract,
+        endure_payload=build_delivery_payload(profile, "test_athlete_m"),
+        mime_bytes=mime_bytes,
+        followups=followup_bytes(FOLLOWUP_SEQUENCE, profile["name"].split()[0]),
+    )
+    q0_baseline = _load("q0_phase3.json")
+    assert digest_inventory(q0) == q0_baseline["surface_sha256"]
+    assert q0_baseline["owner_signoff_required"]
+    revision_snapshot = (data_dir / "deliveries" / "orders" / "test_athlete_m"
+                         / "revisions" / "r1" / "certification_manifest.json")
+    assert revision_snapshot.is_file()
+    assert json.loads(revision_snapshot.read_text()) == certification
     assert candidate["mode"] == "A"
+    w00_templates = {session["provenance"]["template_id"]
+                     for session in candidate["sessions"]
+                     if session["week"] == 0}
+    # Saturday is unavailable in this golden, so its tuple must be absent;
+    # the all-days-reachable golden covers the complete four-tuple set.
+    assert w00_templates == {
+        "pre_plan_easy", "pre_plan_strength_prep", "pre_plan_rest",
+    }
+    assert "pre_plan_endurance" not in w00_templates
+    assert {session["origin"] for session in candidate["sessions"]
+            if session["week"] == 0} == {"PRE_PLAN_GENERATOR"}
     assert quality_report["rollout_phase"] == "E1"
     assert candidate["manifest_pin"] == quality_report["manifest_pin"]
     assert candidate["manifest_pin"]["snapshot_digest"] == (
@@ -144,6 +211,18 @@ def test_athlete_m_phase3_golden(monkeypatch, tmp_path):
     assert candidate_ids == [item["id"] for item in canonical_model["sessions"]]
     assert candidate_ids == [item["session_id"] for item in
                              quality_report["gate_summary"]["sessions"]]
+    from final_plan_candidate import FinalPlanCandidateError, validate_candidate
+    for mutation in (
+        lambda value: value["sessions"][0].__setitem__("unexpected", True),
+        lambda value: value["sessions"][0]["provenance"].__setitem__(
+            "producer_version", "v999"),
+        lambda value: value["sessions"][0]["segments"][0]["target"].pop("off"),
+        lambda value: value["weeks"][0].__setitem__("session_ids", []),
+    ):
+        invalid = copy.deepcopy(candidate)
+        mutation(invalid)
+        with pytest.raises(FinalPlanCandidateError):
+            validate_candidate(invalid, manifest=certification, athlete_dir=source)
     assert all(gate["effective_verdict"] == "NOT_ENFORCED"
                for row in certification["rows"] for gate in row["gates"])
     assert all(gate["effective_verdict"] == "NOT_ENFORCED"
@@ -401,6 +480,59 @@ def test_athlete_m_phase4_golden(monkeypatch, tmp_path):
                 "reason": "fixture remains blocked",
             },
         )
+
+
+def test_e1_snapshot_uses_exact_next_order_revision(monkeypatch, tmp_path):
+    """The pin is created at the revision the order state will actually write."""
+    import app as webhook_app
+
+    intake = _load("intake.json")
+    clock = _load("clock.json")
+    intake["generation_clock"] = clock["generation_at"]
+    data_dir = tmp_path / "data"
+    order_id = "test_athlete_m_revision_two"
+
+    monkeypatch.setattr(webhook_app, "DATA_DIR", str(data_dir))
+    monkeypatch.setattr(webhook_app, "DELIVERIES_DIR", str(data_dir / "deliveries"))
+    monkeypatch.setattr(webhook_app, "JOBS_DIR", str(data_dir / "jobs"))
+    monkeypatch.setattr(
+        webhook_app, "SCRIPTS_DIR", str(ROOT / "athletes" / "scripts"))
+    monkeypatch.setenv("GG_FIXED_NOW", clock["generation_at"])
+    monkeypatch.setenv(
+        "GG_RACE_SNAPSHOT_FIXTURE", str(FIXTURE / "race_snapshot.json"))
+
+    order_dir = data_dir / "deliveries" / "orders" / order_id
+    write_generation(
+        order_dir / "fulfillment_status.json",
+        "athlete-m",
+        order_id=order_id,
+        delivery_platform="trainingpeaks",
+    )
+
+    result = webhook_app.run_pipeline(
+        "athlete-m",
+        deliver=True,
+        intake_data=intake,
+        order_data={
+            "order_id": order_id,
+            "delivery_platform": "trainingpeaks",
+            "order_created_at": clock["order_created_at"],
+            "weeks_purchased": 7,
+        },
+    )
+    assert result["success"], result.get("stderr") or result.get("stdout")
+    assert result["artifact_dir"], result
+    source = Path(result["artifact_dir"])
+    candidate = json.loads((source / "final_plan_candidate.json").read_text())
+    state = json.loads((source / "fulfillment_status.json").read_text())
+    snapshot = order_dir / "revisions" / "r2" / "certification_manifest.json"
+    assert state["generation_revision"] == 2
+    assert candidate["generation_revision"] == 2
+    assert snapshot.is_file()
+    manifest = json.loads(snapshot.read_text())
+    assert candidate["manifest_pin"]["snapshot_digest"] == (
+        __import__("earned_selection").canonical_digest(manifest))
+    assert candidate["manifest_pin"]["manifest_version"] == manifest["schema_version"]
 
 
 def test_facts_omitted_regeneration_never_rehydrates_catalog_facts(

@@ -22,6 +22,8 @@ split (defensive correctness if the architecture ever changes), and are
 covered here with direct unit tests against the underlying functions
 instead of forcing unreachable integration paths.
 """
+
+import json
 import datetime
 import re
 import sys
@@ -268,6 +270,43 @@ def test_every_reachable_branch_is_represented(full_plan, w00_plan):
     assert any(re.search(r'\(\d+ of \d+\)', v) for v in names.values()), \
         'no series suffix produced -- series-suffix coverage lost'
     assert any(f.name.startswith('W00_') for f in w00_files), 'W00 branch not exercised'
+
+
+def test_w00_reachability_uses_all_four_exact_producer_tuples(w00_plan):
+    athlete_dir, _, _, w00_files = w00_plan
+    assert {next(part for part in path.stem.split('_') if part in {
+        'Easy', 'Endurance', 'Strength', 'Rest'
+    }) for path in w00_files if path.name.startswith('W00_')} == {
+        'Easy', 'Endurance', 'Strength', 'Rest'
+    }
+    naming = json.loads((athlete_dir / 'workouts' / 'naming_manifest.json').read_text())
+    rows = [row for stem, row in naming.items() if stem.startswith('W00_')]
+    assert {(row['origin'], row['producer_id'], row['producer_version'],
+             row['template_id'], row['template_version']) for row in rows} == {
+        ('PRE_PLAN_GENERATOR', 'generate_athlete_package.pre_plan', 'v1',
+         template, 'v1')
+        for template in {
+            'pre_plan_easy', 'pre_plan_endurance',
+            'pre_plan_strength_prep', 'pre_plan_rest',
+        }
+    }
+    by_template = {row['template_id']: row for row in rows}
+    assert by_template['pre_plan_endurance']['transformation_parameters'] == {
+        'authored_duration_minutes': 80, 'power': 0.65,
+        'workout_type': 'Easy', 'rounded_duration_minutes': 80,
+    }
+    assert by_template['pre_plan_strength_prep']['transformation_parameters'] == {
+        'authored_duration_minutes': 35, 'power': 0,
+        'workout_type': 'Easy', 'rounded_duration_minutes': 40,
+    }
+    assert by_template['pre_plan_rest']['transformation_parameters'] == {
+        'authored_duration_minutes': 0, 'final_duration_seconds': 60,
+        'renderer': 'FreeRide',
+    }
+    assert {row['template_id'] for row in rows
+            if row['template_id'] == 'pre_plan_easy'
+            and row['transformation_parameters'][
+                'authored_duration_minutes'] in {40, 45}} == {'pre_plan_easy'}
 
 
 # ===========================================================================
