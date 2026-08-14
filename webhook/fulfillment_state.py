@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, BinaryIO, Callable, Dict, Iterator, Optional, Tuple
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 GENERATED = "GENERATED"
 BLOCKED_REVIEW = "BLOCKED_REVIEW"
 APPROVED = "APPROVED"
@@ -35,11 +35,13 @@ DELIVERY_PLATFORMS = {"trainingpeaks", "endure", "manual"}
 PHASE1_APPLIED_PLATFORMS = {"trainingpeaks", "manual"}
 RELEASE_STATUSES = {APPROVED, APPLIED, CONFIRMED}
 TRANSITIONAL_SEAL_VERSION = "transitional_artifact_bytes/v1"
-CANONICAL_SEAL_VERSION = "canonical_model_apply_contract/v1"
-REVIEW_CATALOG_VERSION = "review_catalog/v1"
-APPROVAL_SNAPSHOT_VERSION = "approval_snapshot/v2"
+CANONICAL_SEAL_VERSION_V1 = "canonical_model_apply_contract/v1"
+CANONICAL_SEAL_VERSION = "canonical_model_apply_contract/v2"
+REVIEW_CATALOG_VERSION = "review_catalog/v2"
+APPROVAL_SNAPSHOT_VERSION = "approval_snapshot/v3"
 REVIEW_ITEM_TYPES = {
-    "blocker", "required_confirmation", "soft_confirmation", "verified_fact",
+    "blocker", "required_confirmation", "soft_confirmation", "quality_finding",
+    "verified_fact",
 }
 REVIEW_SENSITIVITIES = {"public", "internal", "personal", "sensitive"}
 SENSITIVE_REDACTION = "[REDACTED — open authenticated review]"
@@ -60,6 +62,12 @@ NON_WAIVABLE_RULES = {
     "D2_REGENERATION_REQUIRED",
     "D2_CANNOT_RESOLVE",
     "D2_INSPECTION_FAILED",
+    "LIBRARY_UNCERTIFIED",
+    "WORKOUT_DOSE_MISMATCH",
+    "WORKOUT_ORIGIN_UNKNOWN",
+    "MANIFEST_PIN_MISSING",
+    "MANIFEST_PIN_MISMATCH",
+    "MANIFEST_SNAPSHOT_UNAVAILABLE",
 }
 
 NON_WAIVABLE_REMEDIATIONS = {
@@ -80,6 +88,21 @@ NON_WAIVABLE_REMEDIATIONS = {
     "D2_REGENERATION_REQUIRED": "Finish regeneration and review the new sealed revision.",
     "D2_CANNOT_RESOLVE": "Correct the account or intake inconsistency before approval.",
     "D2_INSPECTION_FAILED": "Repair the read-only worker inspection and retry.",
+    "LIBRARY_UNCERTIFIED": "Fix, re-classify, or retire the uncertified library entry and regenerate this revision.",
+    "WORKOUT_DOSE_MISMATCH": "Fix the final workout or its purpose contract and regenerate this revision.",
+    "WORKOUT_ORIGIN_UNKNOWN": "Classify or repair the workout-emitting path and regenerate this revision.",
+    "MANIFEST_PIN_MISSING": "Generate and pin the current certified manifest, then regenerate this revision.",
+    "MANIFEST_PIN_MISMATCH": "Repair manifest selection or digest construction and regenerate this revision.",
+    "MANIFEST_SNAPSHOT_UNAVAILABLE": "Restore revision-local snapshot creation and regenerate this revision; do not copy evidence into a sealed revision manually.",
+}
+
+EARNED_SELECTION_NON_WAIVABLE_RULES = {
+    "LIBRARY_UNCERTIFIED",
+    "WORKOUT_DOSE_MISMATCH",
+    "WORKOUT_ORIGIN_UNKNOWN",
+    "MANIFEST_PIN_MISSING",
+    "MANIFEST_PIN_MISMATCH",
+    "MANIFEST_SNAPSHOT_UNAVAILABLE",
 }
 
 _REVIEW_METADATA_KEYS = (
@@ -116,8 +139,11 @@ def review_catalog_digest(
         state_or_items.get("review_items") or []
         if isinstance(state_or_items, dict) else state_or_items
     )
+    version = (state_or_items.get("review_catalog_version")
+               if isinstance(state_or_items, dict) else REVIEW_CATALOG_VERSION)
+    version = version or REVIEW_CATALOG_VERSION
     return canonical_digest({
-        "version": REVIEW_CATALOG_VERSION,
+        "version": version,
         "items": items,
     })
 
@@ -260,6 +286,54 @@ def _validate_confirmation(item: Dict[str, Any]) -> Dict[str, Any]:
     return normalized
 
 
+_QUALITY_FINDING_KEYS = {
+    "schema_version", "id", "generation_revision", "source", "code",
+    "severity", "subject", "metric", "basis", "sensitivity", "message",
+    "version_vector",
+}
+_QUALITY_VERSION_VECTOR = {
+    "purpose_registry_version": "purpose_registry/v1",
+    "gate_registry_version": "quality_gates/v1",
+    "scorer_version": "earned_selection_scorer/v1",
+    "rule_registry_version": "rule_registry/v1",
+}
+
+
+def _validate_quality_finding(item: Dict[str, Any], *, source: str = "",
+                              revision: Optional[int] = None) -> Dict[str, Any]:
+    if not isinstance(item, dict) or set(item) != _QUALITY_FINDING_KEYS:
+        raise FulfillmentStateError("quality finding has unknown or missing fields")
+    normalized = copy.deepcopy(item)
+    if source and normalized.get("source") != source:
+        raise FulfillmentStateError("quality finding source mismatch")
+    if normalized.get("schema_version") != "quality_finding/v1":
+        raise FulfillmentStateError("unknown quality finding version")
+    if not isinstance(normalized.get("generation_revision"), int) or normalized[
+            "generation_revision"] < 1:
+        raise FulfillmentStateError("quality finding revision is invalid")
+    if revision is not None and normalized["generation_revision"] != revision:
+        raise FulfillmentStateError("quality finding revision mismatch")
+    if normalized.get("severity") not in {"warning", "critical"}:
+        raise FulfillmentStateError("quality finding severity is invalid")
+    if any(not str(normalized.get(key) or "").strip()
+           for key in ("id", "source", "code", "basis", "message")):
+        raise FulfillmentStateError("quality finding identity/provenance is required")
+    if normalized.get("sensitivity") not in REVIEW_SENSITIVITIES:
+        raise FulfillmentStateError("quality finding sensitivity is invalid")
+    subject = normalized.get("subject")
+    if (not isinstance(subject, dict) or set(subject) != {"kind", "ids"}
+            or not str(subject.get("kind") or "").strip()
+            or not isinstance(subject.get("ids"), list)
+            or any(not isinstance(value, str) or not value for value in subject["ids"])):
+        raise FulfillmentStateError("quality finding subject is invalid")
+    if not isinstance(normalized.get("metric"), dict):
+        raise FulfillmentStateError("quality finding metric must be an object")
+    _canonical_review_value(normalized["metric"])
+    if normalized.get("version_vector") != _QUALITY_VERSION_VECTOR:
+        raise FulfillmentStateError("quality finding version vector mismatch")
+    return normalized
+
+
 def _validate_derived_value(item: Dict[str, Any]) -> Dict[str, Any]:
     """Validate one materialized A3 provenance record stored server-side."""
     required = ("id", "field", "class", "basis", "inputs", "sensitivity", "at", "value")
@@ -374,6 +448,19 @@ def _expected_review_catalog(state: Dict[str, Any]) -> list[Dict[str, Any]]:
         (item, "soft_confirmation")
         for item in state.get("soft_confirmations", [])
     )
+    for finding in state.get("quality_findings", []):
+        sources.append(({
+            "id": finding["id"], "source": finding["source"],
+            "basis": finding["basis"], "sensitivity": finding["sensitivity"],
+            "message": finding["message"],
+            "review_value": {
+                "code": finding["code"], "severity": finding["severity"],
+                "subject": finding["subject"], "metric": finding["metric"],
+                "generation_revision": finding["generation_revision"],
+                "version_vector": finding["version_vector"],
+            },
+            "display_unit": None, "resolution_choices": [],
+        }, "quality_finding"))
     for derived in state.get("derived_values", []):
         sources.append(({
             "id": f"DERIVED_{derived['id']}",
@@ -418,13 +505,16 @@ def _expected_review_catalog(state: Dict[str, Any]) -> list[Dict[str, Any]]:
         "blocker": 0,
         "required_confirmation": 1,
         "soft_confirmation": 2,
-        "verified_fact": 3,
+        "quality_finding": 3,
+        "verified_fact": 4,
     }
     return sorted(items, key=lambda item: (rank[item["type"]], item["item_id"]))
 
 
 def _refresh_review_catalog(state: Dict[str, Any]) -> None:
-    state["review_catalog_version"] = REVIEW_CATALOG_VERSION
+    state["review_catalog_version"] = (
+        "review_catalog/v1" if state.get("schema_version") == 2
+        else REVIEW_CATALOG_VERSION)
     state["review_items"] = _expected_review_catalog(state)
     state["review_catalog_digest"] = review_catalog_digest(state["review_items"])
 
@@ -433,7 +523,10 @@ def _approval_snapshot_is_complete(state: Dict[str, Any]) -> bool:
     approval = state.get("approval")
     if not isinstance(approval, dict):
         return False
-    if approval.get("snapshot_version") != APPROVAL_SNAPSHOT_VERSION:
+    expected_snapshot = ("approval_snapshot/v2"
+                         if state.get("schema_version") == 2
+                         else APPROVAL_SNAPSHOT_VERSION)
+    if approval.get("snapshot_version") != expected_snapshot:
         return False
     if approval.get("revision") != state.get("generation_revision"):
         return False
@@ -460,6 +553,8 @@ def _approval_snapshot_is_complete(state: Dict[str, Any]) -> bool:
         if reviewed_item != item:
             return False
         disposition = str(snapshot.get("disposition") or "")
+        if item["type"] == "quality_finding" and disposition != "observed":
+            return False
         if item["type"] == "blocker" and disposition != "resolved:waived":
             return False
         resolved_choice = (
@@ -482,7 +577,7 @@ def _approval_snapshot_is_complete(state: Dict[str, Any]) -> bool:
 def _validate_state(state: Any) -> Dict[str, Any]:
     if not isinstance(state, dict):
         raise FulfillmentStateError("fulfillment state must be an object")
-    if state.get("schema_version") != SCHEMA_VERSION:
+    if state.get("schema_version") not in {2, SCHEMA_VERSION}:
         raise FulfillmentStateError("unsupported fulfillment state schema")
     if not str(state.get("athlete_id", "")).strip():
         raise FulfillmentStateError("fulfillment state has no athlete_id")
@@ -509,6 +604,13 @@ def _validate_state(state: Any) -> Dict[str, Any]:
         raise FulfillmentStateError("soft_confirmations must be a list")
     state["soft_confirmations"] = [
         _validate_confirmation(item) for item in soft_confirmations
+    ]
+    findings = state.get("quality_findings", [])
+    if not isinstance(findings, list):
+        raise FulfillmentStateError("quality_findings must be a list")
+    state["quality_findings"] = [
+        _validate_quality_finding(item, revision=state["generation_revision"])
+        for item in findings
     ]
     derived_values = state.get("derived_values", [])
     if not isinstance(derived_values, list):
@@ -545,12 +647,19 @@ def _validate_state(state: Any) -> Dict[str, Any]:
     existing_catalog = state.get("review_items")
     if existing_catalog is not None and existing_catalog != expected_catalog:
         raise FulfillmentStateError("review catalog does not match authoritative state")
-    expected_catalog_digest = review_catalog_digest(expected_catalog)
+    expected_version = ("review_catalog/v1"
+                        if state["schema_version"] == 2
+                        else REVIEW_CATALOG_VERSION)
+    if (state.get("review_catalog_version") is not None
+            and state.get("review_catalog_version") != expected_version):
+        raise FulfillmentStateError("review catalog version is invalid")
+    expected_catalog_digest = canonical_digest({
+        "version": expected_version, "items": expected_catalog})
     existing_catalog_digest = state.get("review_catalog_digest")
     if (existing_catalog_digest is not None
             and existing_catalog_digest != expected_catalog_digest):
         raise FulfillmentStateError("review catalog digest does not match catalog")
-    state["review_catalog_version"] = REVIEW_CATALOG_VERSION
+    state["review_catalog_version"] = expected_version
     state["review_items"] = expected_catalog
     state["review_catalog_digest"] = expected_catalog_digest
     return state
@@ -706,6 +815,7 @@ def write_generation(
                 [{**item, "revision": revision} for item in derived],
                 key=lambda item: item["id"],
             ),
+            "quality_findings": [],
             "approval": None,
             "waiver": None,
             "application": None,
@@ -865,6 +975,51 @@ def merge_generation_blockers(
         return copy.deepcopy(state)
 
 
+def merge_quality_findings_v1(
+    path: os.PathLike[str] | str,
+    expected_revision: int,
+    source: str,
+    findings: list[Dict[str, Any]],
+    *,
+    replace_source: bool = True,
+) -> Dict[str, Any]:
+    """Generation-owned, revision-bound quality-finding merge rail."""
+    source = str(source or "").strip()
+    if not source:
+        raise FulfillmentStateError("quality finding source is required")
+    incoming = [
+        _validate_quality_finding(
+            item, source=source, revision=expected_revision)
+        for item in findings
+    ]
+    incoming_ids = [item["id"] for item in incoming]
+    if len(incoming_ids) != len(set(incoming_ids)):
+        raise FulfillmentStateError("duplicate quality finding id")
+    with locked_state(path) as (state_path, state):
+        if state is None:
+            raise FulfillmentStateError("missing or malformed fulfillment state")
+        if state["generation_revision"] != expected_revision:
+            raise FulfillmentStateError("generation revision mismatch")
+        if state["status"] not in (GENERATED, BLOCKED_REVIEW):
+            raise FulfillmentStateError("cannot alter findings after review begins")
+        if state.get("model_seal") or state.get("release_manifest"):
+            raise FulfillmentStateError(
+                "sealed review catalog is immutable; use write_generation")
+        existing = state.get("quality_findings", [])
+        preserved = ([item for item in existing if item.get("source") != source]
+                     if replace_source else list(existing))
+        combined = preserved + incoming
+        keys = [(item["generation_revision"], item["id"]) for item in combined]
+        if len(keys) != len(set(keys)):
+            raise FulfillmentStateError("duplicate quality finding id")
+        state["quality_findings"] = sorted(combined, key=lambda item: item["id"])
+        _refresh_review_catalog(state)
+        _history(state, "QUALITY_FINDINGS_MERGED", source=source,
+                 finding_ids=sorted(incoming_ids))
+        _atomic_write(state_path, state)
+        return copy.deepcopy(state)
+
+
 def _artifact_records(artifact_root: Path) -> list[Dict[str, Any]]:
     excluded_names = {
         "fulfillment_status.json",
@@ -908,12 +1063,26 @@ def _canonical_model_seal_from_release(
         "logical_id": op["logical_id"], "kind": op["kind"],
         "disposition": op["disposition"], "payload": op["payload"],
     } for op in contract.get("operations", [])]
-    return canonical_digest({
+    sources = {
         "canonical_model": canonical_model,
         "review_items": review_items,
         "guide_sources": guide_sources,
         "operation_payloads": operation_payloads,
-    })
+    }
+    version = contract.get("contract_version")
+    if version == "apply_contract/v2":
+        if contract.get("seal_version") != CANONICAL_SEAL_VERSION:
+            raise FulfillmentStateError("unknown canonical seal version")
+        try:
+            snapshot = json.loads((artifact_root / "certification_manifest.json")
+                                  .read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise FulfillmentStateError(
+                "certification manifest unavailable for seal") from exc
+        sources["certification_manifest"] = canonical_digest(snapshot)
+    elif version != "apply_contract/v1":
+        raise FulfillmentStateError("unknown apply contract version")
+    return canonical_digest(sources)
 
 
 def finalize_transitional_release(
@@ -935,7 +1104,13 @@ def finalize_transitional_release(
             contract = json.loads(contract_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise FulfillmentStateError("apply contract unavailable for seal") from exc
-        seal_version = CANONICAL_SEAL_VERSION
+        contract_version = contract.get("contract_version")
+        if contract_version == "apply_contract/v2":
+            seal_version = CANONICAL_SEAL_VERSION
+        elif contract_version == "apply_contract/v1":
+            seal_version = CANONICAL_SEAL_VERSION_V1
+        else:
+            raise FulfillmentStateError("unknown apply contract version")
         # State validation under the lock below repeats identity checks before
         # granting authority; this early value only builds the manifest.
         model_seal = None
@@ -1002,7 +1177,9 @@ def verify_release_manifest(
     if not isinstance(records, list) or not records:
         raise FulfillmentStateError("release manifest has no artifacts")
     manifest_seal_version = manifest.get("seal_version")
-    if (manifest_seal_version not in {TRANSITIONAL_SEAL_VERSION, CANONICAL_SEAL_VERSION}
+    if (manifest_seal_version not in {
+            TRANSITIONAL_SEAL_VERSION, CANONICAL_SEAL_VERSION_V1,
+            CANONICAL_SEAL_VERSION}
             or manifest.get("model_seal") != state["model_seal"]
             or canonical_digest(records) != state["release_manifest_digest"]):
         raise FulfillmentStateError("release manifest seal mismatch")
@@ -1329,6 +1506,11 @@ def transition(
                 item_type = item["type"]
                 if item_type == "blocker":
                     disposition = "resolved:waived"
+                elif item_type == "quality_finding":
+                    if decision is not None:
+                        raise FulfillmentStateError(
+                            "coach cannot disposition a quality finding")
+                    disposition = "observed"
                 elif item_type == "soft_confirmation" and decision is None:
                     disposition = "unconfirmed"
                 else:
@@ -1391,7 +1573,9 @@ def transition(
                 "credential": approval_credential,
                 "at": now_iso(),
                 "revision": state["generation_revision"],
-                "snapshot_version": APPROVAL_SNAPSHOT_VERSION,
+                "snapshot_version": ("approval_snapshot/v2"
+                                     if state.get("schema_version") == 2
+                                     else APPROVAL_SNAPSHOT_VERSION),
                 "review_catalog_digest": current_catalog_digest,
                 "model_seal": state["model_seal"],
                 "release_manifest_digest": state["release_manifest_digest"],
@@ -1514,6 +1698,7 @@ def migrate_v1_to_quarantine(
         "required_confirmations": [],
         "soft_confirmations": [],
         "derived_values": [],
+        "quality_findings": [],
         "approval": original.get("approval"),
         "waiver": original.get("waiver"),
         "application": original.get("application"),

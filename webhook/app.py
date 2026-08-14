@@ -1944,6 +1944,8 @@ PRIVATE_DELIVERABLES = [
     'plan_ir.json',
     'tp_manifest.json',
     'canonical_training_model.json',
+    'final_plan_candidate.json',
+    'workout_quality_report.json',
     'apply_contract.json',
 ]
 
@@ -2175,6 +2177,12 @@ def persist_deliverables(order_id: str, athlete_id: str = '', source_dir: Path |
         shutil.rmtree(revision_dir)
     artifact_dir = revision_dir / 'artifacts'
     artifact_dir.mkdir(parents=True)
+
+    # E1 evidence is revision-local and deliberately outside artifacts/ so the
+    # canonical v2 seal can bind the exact selected certification snapshot.
+    certification_src = athlete_dir / 'certification_manifest.json'
+    if certification_src.is_file():
+        shutil.copy2(certification_src, revision_dir / 'certification_manifest.json')
 
     copied = []
     missing = []

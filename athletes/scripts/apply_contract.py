@@ -1,4 +1,4 @@
-"""D0 offline projection for the normative ``apply_contract/v1``.
+"""D0 offline projection with v1 read compatibility and v2 E1 seals.
 
 This module deliberately has no HTTP, browser, credential, or apply code.  It
 turns the canonical PlanIR projection plus an optional fake-server inspection
@@ -20,7 +20,10 @@ import re
 from jsonschema import Draft202012Validator
 
 
-CONTRACT_VERSION = "apply_contract/v1"
+LEGACY_CONTRACT_VERSION = "apply_contract/v1"
+CONTRACT_VERSION = "apply_contract/v2"
+CANONICAL_SEAL_VERSION_V1 = "canonical_model_apply_contract/v1"
+CANONICAL_SEAL_VERSION = "canonical_model_apply_contract/v2"
 DATED_KINDS = {
     "workout_upsert", "calendar_note_upsert", "attachment_upsert",
     "mental_task_upsert",
@@ -195,7 +198,10 @@ def _operation_branch(kind: str, disposition: str) -> Dict[str, Any]:
     }
 
 
-def contract_schema() -> Dict[str, Any]:
+def contract_schema(version: str = CONTRACT_VERSION) -> Dict[str, Any]:
+    if version not in {LEGACY_CONTRACT_VERSION, CONTRACT_VERSION}:
+        raise ApplyContractError("unknown apply contract version")
+    is_v2 = version == CONTRACT_VERSION
     branches = []
     for kind in sorted(DATED_KINDS):
         for disposition in ("create", "update", "keep", "delete"):
@@ -205,23 +211,26 @@ def contract_schema() -> Dict[str, Any]:
             branches.append(_operation_branch(kind, disposition))
     for disposition in ("create", "keep"):
         branches.append(_operation_branch(ENTITLEMENT_KIND, disposition))
-    return {
+    schema = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://gravelgod.com/schemas/apply_contract-v1.json",
-        "title": "Gravel God apply_contract/v1", "type": "object",
+        "$id": f"https://gravelgod.com/schemas/apply_contract-{'v2' if is_v2 else 'v1'}.json",
+        "title": f"Gravel God {version}", "type": "object",
         "additionalProperties": False,
         "required": ["contract_version", "order_id", "tp_athlete_id",
-                     "generation_revision", "model_seal", "operations", "compat"],
+                     "generation_revision", "model_seal", "operations", "compat"]
+                    + (["seal_version"] if is_v2 else []),
         "properties": {
-            "contract_version": {"const": CONTRACT_VERSION},
+            "contract_version": {"const": version},
             "order_id": {"type": "string", "minLength": 1},
             "tp_athlete_id": {"type": "string", "minLength": 1},
             "generation_revision": {"type": "integer", "minimum": 1},
             "model_seal": {"type": "string"},
+            "seal_version": ({"const": CANONICAL_SEAL_VERSION}
+                             if is_v2 else False),
             "operations": {"type": "array", "items": {"oneOf": branches}},
             "compat": {"type": "object", "additionalProperties": False,
                        "required": ["min_reader"],
-                       "properties": {"min_reader": {"const": CONTRACT_VERSION}}},
+                       "properties": {"min_reader": {"const": version}}},
         },
         "$defs": {
             "dated_predecessor": {"type": "object", "additionalProperties": False,
@@ -234,6 +243,9 @@ def contract_schema() -> Dict[str, Any]:
                     "remote_id": {"type": "null"}}},
         },
     }
+    if not is_v2:
+        schema["properties"].pop("seal_version")
+    return schema
 
 
 def schema_path() -> Path:
@@ -242,13 +254,16 @@ def schema_path() -> Path:
 
 def assert_checked_schema_current() -> None:
     checked = json.loads(schema_path().read_text(encoding="utf-8"))
-    if checked != contract_schema():
+    if checked != contract_schema(LEGACY_CONTRACT_VERSION):
         raise ApplyContractError("checked apply-contract schema is not generated definition")
 
 
 def _schema_validate(contract: Dict[str, Any]) -> None:
-    assert_checked_schema_current()
-    errors = sorted(Draft202012Validator(contract_schema()).iter_errors(contract),
+    version = contract.get("contract_version")
+    if version == LEGACY_CONTRACT_VERSION:
+        assert_checked_schema_current()
+    schema = contract_schema(version)
+    errors = sorted(Draft202012Validator(schema).iter_errors(contract),
                     key=lambda error: list(error.absolute_path))
     if errors:
         error = errors[0]
@@ -693,19 +708,28 @@ def validate_contract(
 def model_seal_sources(
     canonical_model: Dict[str, Any], review_items: Iterable[Dict[str, Any]],
     guide_sources: Dict[str, Any], operations: Iterable[Dict[str, Any]],
+    certification_manifest_digest: Optional[str] = None,
 ) -> Dict[str, Any]:
-    return {"canonical_model": canonical_model, "review_items": list(review_items),
+    result = {"canonical_model": canonical_model, "review_items": list(review_items),
             "guide_sources": guide_sources,
             "operation_payloads": [{"logical_id": op["logical_id"], "kind": op["kind"],
                                     "disposition": op["disposition"], "payload": op["payload"]}
                                    for op in operations]}
+    if certification_manifest_digest is not None:
+        if not re.fullmatch(r"[0-9a-f]{64}", certification_manifest_digest):
+            raise ApplyContractError("certification manifest digest is invalid")
+        result["certification_manifest"] = certification_manifest_digest
+    return result
 
 
 def compute_model_seal(
     canonical_model: Dict[str, Any], review_items: Iterable[Dict[str, Any]],
     guide_sources: Dict[str, Any], operations: Iterable[Dict[str, Any]],
+    certification_manifest_digest: Optional[str] = None,
 ) -> str:
-    return digest_payload(model_seal_sources(canonical_model, review_items, guide_sources, operations))
+    return digest_payload(model_seal_sources(
+        canonical_model, review_items, guide_sources, operations,
+        certification_manifest_digest))
 
 
 def guide_source_digests(athlete_dir: Path | str) -> Dict[str, str]:
@@ -729,6 +753,7 @@ def build_contract(
     singleton_desires: Optional[Mapping[str, Dict[str, Any]]] = None,
     payload_snapshot_reader: Optional[SnapshotReader] = None,
     last_operation_reader: Optional[OperationReader] = None,
+    certification_manifest_digest: Optional[str] = None,
 ) -> Dict[str, Any]:
     revision = int(generation_revision)
     inventory = _validate_inventory(
@@ -747,11 +772,24 @@ def build_contract(
         for logical_id in sorted(set(desired) | set(inventory))
     ]
     operations.sort(key=_sort_key)
-    seal = compute_model_seal(canonical_model, review_items, guide_sources, operations)
-    contract = {"contract_version": CONTRACT_VERSION, "order_id": str(order_id),
+    if certification_manifest_digest is None and athlete_dir is not None:
+        snapshot = Path(athlete_dir) / "certification_manifest.json"
+        if snapshot.is_file():
+            try:
+                certification_manifest_digest = digest_payload(
+                    json.loads(snapshot.read_text(encoding="utf-8")))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise ApplyContractError("certification manifest snapshot is malformed") from exc
+    version = CONTRACT_VERSION if certification_manifest_digest else LEGACY_CONTRACT_VERSION
+    seal = compute_model_seal(
+        canonical_model, review_items, guide_sources, operations,
+        certification_manifest_digest)
+    contract = {"contract_version": version, "order_id": str(order_id),
                 "tp_athlete_id": str(tp_athlete_id),
                 "generation_revision": revision, "model_seal": seal,
-                "operations": operations, "compat": {"min_reader": CONTRACT_VERSION}}
+                "operations": operations, "compat": {"min_reader": version}}
+    if version == CONTRACT_VERSION:
+        contract["seal_version"] = CANONICAL_SEAL_VERSION
     return validate_contract(
         contract, effective_remote_inventory=inventory,
         last_operation_reader=last_operation_reader)
