@@ -83,6 +83,7 @@ class TestHealthEndpoint:
         data = response.get_json()
         assert data['status'] == 'ok'
         assert data['service'] == 'gravel-god-webhook'
+        assert data['runtime_files']['apply_contract_schema'] is True
 
     def test_health_degraded_missing_dirs(self, client):
         """Health check returns 503 when directories missing."""
@@ -91,6 +92,18 @@ class TestHealthEndpoint:
             response = client.get('/health')
             # Note: This test may pass with 200 if app caches the path
             assert response.status_code in [200, 503]
+
+    def test_health_fails_when_apply_contract_schema_missing(self, client, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(
+            app_module, '_required_runtime_paths',
+            lambda: {'apply_contract_schema': Path(
+                '/nonexistent/apply_contract_v1.schema.json')})
+        response = client.get('/health')
+        assert response.status_code == 503
+        data = response.get_json()
+        assert data['status'] == 'degraded'
+        assert data['runtime_files']['apply_contract_schema'] is False
 
 
 class TestDeliveryArtifactResolution:
@@ -2618,6 +2631,10 @@ class TestMultiBrand:
     def test_railway_image_copies_registry_parent_directory(self):
         dockerfile = (Path(__file__).parents[1] / 'Dockerfile').read_text()
         assert 'COPY athletes/ ./athletes/' in dockerfile
+
+    def test_railway_image_copies_apply_contract_schema(self):
+        dockerfile = (Path(__file__).parents[1] / 'Dockerfile').read_text()
+        assert 'COPY schemas/ ./schemas/' in dockerfile
 
     def test_checkout_uses_brand_success_url(self, client, tmp_path):
         """A checkout created from roadielabs.com sends the customer back

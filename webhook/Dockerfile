@@ -31,6 +31,9 @@ RUN pip install --no-cache-dir -r webhook/requirements.txt && \
 COPY webhook/ ./webhook/
 COPY athletes/ ./athletes/
 COPY delivery/ ./delivery/
+# apply_contract.schema_path() resolves to /app/schemas/apply_contract_v1.schema.json.
+# Omitting this directory fails every real order closed with APPLY_CONTRACT_INVALID.
+COPY schemas/ ./schemas/
 # Read-only host audit only. The calendar-mutating historical tools remain out
 # of the production image; this file scans durable JSON and emits redacted data.
 COPY tools/audit_fulfillment_states.py ./tools/
