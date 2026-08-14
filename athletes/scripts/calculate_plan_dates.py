@@ -38,6 +38,11 @@ def generation_now() -> datetime:
     return datetime.now()
 
 
+def monday_on_or_after(day: datetime) -> datetime:
+    """Monday of `day` when it is Monday; otherwise the following Monday."""
+    return day + timedelta(days=(7 - day.weekday()) % 7)
+
+
 def validate_plan_dates(plan_dates: dict, race_date_str: str) -> list:
     """
     Validate plan dates for sanity.
@@ -121,7 +126,8 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
                          meso_pattern: str = None,
                          travel_dates: list = None,
                          generation_revision: int = 1,
-                         derived_at: str = None) -> dict:
+                         derived_at: str = None,
+                         clamp_past_start: bool = True) -> dict:
     """
     Calculate all plan dates working backwards from race date.
 
@@ -132,6 +138,10 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         heavy_training_end: Optional date when heavy training must end (e.g., "2026-06-01")
                            Weeks after this date will be maintenance/taper instead of build/peak
         b_events: Optional list of B-priority events from profile, each with 'name' and 'date'
+        clamp_past_start: When True (fulfillment default), Week 1 never
+            starts before the generation date. Endure season planning
+            passes False so a mid-week request can still include the
+            current Monday.
 
     Returns:
         Dict with plan timing information
@@ -157,31 +167,34 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
     # Week 1 Monday is (plan_weeks - 1) weeks before race week Monday
     week1_monday = race_week_monday - timedelta(weeks=plan_weeks - 1)
 
-    # Check if we need to adjust for preferred start
+    # Preferred start may only delay the plan. Snap mid-week values forward
+    # to a Monday, and never honor a preferred Monday that is already past.
     if preferred_start:
-        preferred = datetime.strptime(preferred_start, '%Y-%m-%d')
-        # If preferred start is after calculated Week 1, we have fewer weeks
+        preferred = monday_on_or_after(
+            datetime.strptime(preferred_start, '%Y-%m-%d'))
+        if clamp_past_start and preferred < today:
+            preferred = monday_on_or_after(today)
         if preferred > week1_monday:
-            # Recalculate plan_weeks based on available time
             days_available = (race_week_monday - preferred).days
-            available_weeks = days_available // 7 + 1  # +1 for race week
+            available_weeks = days_available // 7 + 1
             if available_weeks < plan_weeks:
-                plan_weeks = max(6, available_weeks)  # Minimum 6-week plan
+                plan_weeks = max(4, available_weeks)
                 week1_monday = race_week_monday - timedelta(weeks=plan_weeks - 1)
 
-    # If Week 1 would be in the past, start from next Monday
-    if week1_monday < today and not preferred_start:
-        # Find next Monday
-        days_until_monday = (7 - today.weekday()) % 7
-        if days_until_monday == 0:
-            days_until_monday = 7  # If today is Monday, start next Monday
-        adjusted_start = today + timedelta(days=days_until_monday)
-
-        # Recalculate available weeks
-        days_available = (race_week_monday - adjusted_start).days
-        available_weeks = days_available // 7 + 1
-        plan_weeks = max(6, available_weeks)
-        week1_monday = adjusted_start
+    # SESSION_PREDATES_GENERATION is a real blocker. A 6-week floor working
+    # backwards from race week can land Week 1 before today when the athlete
+    # has a mid-week preferred_start — that clamp used to be skipped whenever
+    # preferred_start was set. Always finish with a Week 1 on or after today.
+    if clamp_past_start and week1_monday < today:
+        week1_monday = monday_on_or_after(today)
+        days_available = (race_week_monday - week1_monday).days
+        plan_weeks = max(4, days_available // 7 + 1)
+        recomputed = race_week_monday - timedelta(weeks=plan_weeks - 1)
+        if recomputed >= today:
+            week1_monday = recomputed
+        else:
+            week1_monday = monday_on_or_after(today)
+            plan_weeks = max(4, (race_week_monday - week1_monday).days // 7 + 1)
 
     # Month abbreviations
     month_abbrev = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',

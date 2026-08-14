@@ -422,7 +422,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--cleanup", action="store_true",
-        help="cancel yesterday's non-terminal drill before sending today's order")
+        help="cancel yesterday's and today's leftover non-terminal drills before sending")
     parser.add_argument("--date", type=date.fromisoformat, help="UTC drill date")
     parser.add_argument("--timeout", type=int, default=720)
     parser.add_argument("--poll-interval", type=float, default=10.0)
@@ -455,6 +455,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.cleanup:
             assertions.extend(cleanup_previous_order(
                 config, day, transport=requests))
+            # Same-day leftovers (a failed morning run, a pre-fix image)
+            # must not be asserted against as if they were today's generation.
+            assertions.extend(cleanup_previous_order(
+                config, day + timedelta(days=1), transport=requests))
         assertions.extend(send_and_verify_order(
             config, day, transport=requests,
             timeout_seconds=args.timeout,

@@ -1,8 +1,8 @@
 # Daily real-path order drill
 
 Owner: pipeline operator. The coach owns every review, waiver, and approval
-decision. The workflow owns only submission, observation, and yesterday's safe
-pre-apply cancellation.
+decision. The workflow owns only submission, observation, and safe pre-apply
+cancellation of yesterday's drill and any leftover same-day drill.
 
 ## Setup
 

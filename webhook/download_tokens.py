@@ -70,6 +70,13 @@ def _keyring() -> Dict[str, Dict[str, str]]:
     }
 
 
+def keys_configured() -> bool:
+    try:
+        return bool(_keyring())
+    except DownloadTokenError:
+        return False
+
+
 def _key(audience: str, kid: str) -> bytes:
     try:
         value = _keyring()[audience][kid]

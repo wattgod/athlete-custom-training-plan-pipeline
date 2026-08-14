@@ -400,6 +400,7 @@ def generate_season(params: Dict[str, Any]) -> Dict[str, Any]:
         preferred_start=params['start_monday'],
         b_events=b_events,
         meso_pattern=_methodology_meso_patterns().get(params['methodology']),
+        clamp_past_start=False,
     )
 
     critical = [e for e in validate_plan_dates(plan, anchor['date'])

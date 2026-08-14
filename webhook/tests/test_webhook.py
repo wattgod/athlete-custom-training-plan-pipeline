@@ -105,6 +105,20 @@ class TestHealthEndpoint:
         assert data['status'] == 'degraded'
         assert data['runtime_files']['apply_contract_schema'] is False
 
+    def test_health_fails_in_production_without_token_keys(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'IS_PRODUCTION', True)
+        monkeypatch.delenv('DOWNLOAD_TOKEN_SECRET', raising=False)
+        monkeypatch.delenv('DOWNLOAD_TOKEN_KEYS', raising=False)
+        monkeypatch.delenv('REVIEW_TOKEN_SECRET', raising=False)
+        monkeypatch.delenv('REVIEW_TOKEN_KEYS', raising=False)
+        response = client.get('/health')
+        assert response.status_code == 503
+        data = response.get_json()
+        assert data['token_config']['review'] is False
+        assert data['token_config']['download'] is False
+
 
 class TestDeliveryArtifactResolution:
     """Coach packages must use the generated profile, not webhook scaffolding."""
@@ -2995,6 +3009,25 @@ class TestAsyncPipelineJobs:
                         json=_stripe_event('cs_async_idem'),
                         content_type='application/json')
         assert app_module.check_idempotency('cs_async_idem')
+
+    def test_cancelled_synthetic_drill_may_be_reprocessed(
+            self, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        from fulfillment_state import CANCELLED, transition, write_generation
+        monkeypatch.setattr(app_module, 'DATA_DIR', str(temp_athletes_dir))
+        monkeypatch.setattr(
+            app_module, 'DELIVERIES_DIR', str(temp_athletes_dir / 'deliveries'))
+        order_id = 'drill-20260814'
+        path = app_module._fulfillment_status_path(order_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_generation(path, 'daily-drill', order_id=order_id)
+        transition(
+            path, CANCELLED, 'daily-drill-cleanup',
+            credential='operator-secret', metadata={'reason': 'same-day leftover'})
+        app_module.mark_order_processed(order_id, 'daily-drill')
+        assert app_module.check_idempotency(order_id) is False
+        app_module.mark_order_processed('cs_live_paid', 'someone')
+        assert app_module.check_idempotency('cs_live_paid') is True
 
     def test_duplicate_webhook_does_not_double_run(
             self, client, temp_athletes_dir, jobs_dir):
