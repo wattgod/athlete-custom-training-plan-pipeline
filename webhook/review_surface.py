@@ -210,7 +210,17 @@ def render_review_page(
     required_cards = _cards(
         by_type["required_confirmation"], controls="required", order_id=order_id)
     soft_cards = _cards(by_type["soft_confirmation"], controls="soft", order_id=order_id)
-    fact_cards = _cards(by_type["verified_fact"], controls="fact", order_id=order_id)
+    fact_count = len(by_type["verified_fact"])
+    fact_cards = _cards(by_type["verified_fact"])
+    fact_section = (
+        f'<p>These {fact_count} values are sealed system facts. '
+        'Approve records them with this decision; they do not need '
+        'individual checkboxes.</p>'
+        f'<details><summary>{fact_count} sealed facts</summary>'
+        f'{fact_cards}</details>'
+        if fact_count
+        else fact_cards
+    )
     waiver_reason = ""
     if any(item.get("waivable") for item in by_type["blocker"]):
         waiver_reason = """
@@ -273,7 +283,7 @@ order-bound worker inspection.</p>
 <section><h2>1. Blockers</h2>{blocker_cards}{waiver_reason}</section>
 <section><h2>2. Required confirmations</h2>{required_cards}</section>
 <section><h2>3. Soft confirmations</h2>{soft_cards}</section>
-<section><h2>4. Verified facts</h2>{fact_cards}</section>
+<section><h2>4. Verified facts</h2>{fact_section}</section>
 <div class="actions">{download_html}<button class="button" type="submit"{disabled}>Approve sealed revision</button></div>
 </form>"""
     else:
@@ -282,7 +292,7 @@ order-bound worker inspection.</p>
 <section><h2>Blockers reviewed</h2>{_cards(by_type['blocker'])}</section>
 <section><h2>Required confirmations</h2>{_cards(by_type['required_confirmation'])}</section>
 <section><h2>Soft confirmations</h2>{_cards(by_type['soft_confirmation'])}</section>
-<section><h2>Verified facts</h2>{_cards(by_type['verified_fact'])}</section>
+<section><h2>Verified facts</h2>{fact_section}</section>
 <form method="post" action="/review/{_e(state.get('order_id'))}/bundle">
 <input type="hidden" name="csrf_token" value="{_e(csrf_token)}">
 <div class="actions">{download_html}</div>

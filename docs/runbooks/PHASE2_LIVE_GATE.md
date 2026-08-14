@@ -29,8 +29,9 @@ Endure write.
       reopen the new revision; do not use the operator transition endpoint.
 - [ ] Enter a substantive reason for each waivable blocker. Never attempt to
       waive a non-waivable blocker.
-- [ ] Confirm every required item and verified fact; deliberately choose the
-      disposition of each soft item.
+- [ ] Confirm every required confirmation; deliberately choose the
+      disposition of each soft item. Sealed verified facts are recorded by
+      Approve — do not inventory them one by one.
 - [ ] Click **Approve sealed revision** once. This is the human approval action.
 - [ ] After redirect, require the Approved banner to name the same revision and
       say the decision is bound to its seal and displayed values.

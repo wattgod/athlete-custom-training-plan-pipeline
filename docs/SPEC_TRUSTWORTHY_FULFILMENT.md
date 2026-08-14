@@ -409,11 +409,13 @@ flagged. Fail-closed extends from confirm to notify/download.
 
 `/review/<order_id>`, served by the webhook. Ranked: header → blockers (with
 waive controls for waivable ids; non-waivable ids show remediation, not a
-control) → required confirmations → soft confirmations → verified facts →
-(post-approval) apply → (post-apply) verify + draft/confirm. Non-goals: no
-multi-coach roles; no in-browser plan editing — **which is exactly why D2
-resolutions are state-changing commands, not edits (§D2)**. Target: clean
-order < 3 minutes.
+control) → required confirmations → soft confirmations → verified facts
+(collapsed, display-only; Approve records every sealed fact — no per-fact
+checkbox) → (post-approval) apply → (post-apply) verify + draft/confirm.
+Non-goals: no multi-coach roles; no in-browser plan editing — **which is
+exactly why D2 resolutions are state-changing commands, not edits (§D2)**.
+Target: clean order < 3 minutes. The coach decides exceptions (blockers +
+required confirmations), not an inventory of derived calendar abbreviations.
 
 ### C2. Blockers, confirmations, and the post-render validator
 

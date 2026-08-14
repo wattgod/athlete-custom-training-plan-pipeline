@@ -1331,12 +1331,16 @@ def transition(
                     disposition = "resolved:waived"
                 elif item_type == "soft_confirmation" and decision is None:
                     disposition = "unconfirmed"
+                elif item_type == "verified_fact" and decision is None:
+                    # Approve is the acknowledgment. Per-fact checkboxes
+                    # turned a <3 minute exception review into an 80-click
+                    # inventory of sealed calendar abbreviations.
+                    disposition = "confirmed"
                 else:
                     if decision is None:
-                        label = ("required confirmation" if item_type ==
-                                 "required_confirmation" else "verified fact")
                         raise FulfillmentStateError(
-                            f"{label} is unresolved: {item['item_id']}"
+                            "required confirmation is unresolved: "
+                            f"{item['item_id']}"
                         )
                     disposition = str(decision.get("disposition") or "").strip()
                     authoritative_choice = item.get("resolved_resolution")

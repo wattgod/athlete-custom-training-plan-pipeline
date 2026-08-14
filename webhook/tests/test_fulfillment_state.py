@@ -257,6 +257,38 @@ def test_review_catalog_and_approval_snapshot_store_typed_values(tmp_path):
     assert approved['approval']['credential'] == 'review-link:kid:jti-issued-to'
 
 
+def test_approval_auto_confirms_verified_facts_without_per_item_decisions(tmp_path):
+    path = tmp_path / 'status.json'
+    state = write_generation(
+        path, 'athlete-m', order_id='cs_auto_facts',
+        required_confirmations=[{
+            'id': 'SCHEDULE_MISMATCH_CONFIRM', 'source': 'post_render',
+            'message': 'Sunday intensity needs confirmation.',
+        }],
+    )
+    state = _seal(path, tmp_path)
+    required_only = [
+        decision for decision in _decisions(state)
+        if decision['item_id'] == 'SCHEDULE_MISMATCH_CONFIRM'
+    ]
+    approved = transition(
+        path, APPROVED, 'review-link-credential', expected_revision=1,
+        expected_catalog_digest=state['review_catalog_digest'],
+        review_decisions=required_only,
+        credential='review-link:kid:jti-issued-to',
+    )
+    snapshots = {item['item_id']: item
+                 for item in approved['approval']['confirmations']}
+    assert snapshots['SCHEDULE_MISMATCH_CONFIRM']['disposition'] == 'confirmed'
+    fact_ids = [
+        item['item_id'] for item in state['review_items']
+        if item['type'] == 'verified_fact'
+    ]
+    assert fact_ids
+    for item_id in fact_ids:
+        assert snapshots[item_id]['disposition'] == 'confirmed'
+
+
 @pytest.mark.parametrize('decisions, message', [
     ([{'item_id': 'UNKNOWN', 'revision': 1, 'disposition': 'confirmed'}],
      'unknown review item'),
