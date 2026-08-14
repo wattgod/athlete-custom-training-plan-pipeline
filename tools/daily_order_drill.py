@@ -165,6 +165,38 @@ def _operator_headers(config: DrillConfig) -> dict[str, str]:
     return {"X-Cron-Secret": config.cron_secret}
 
 
+_TRANSIENT_HTTP_CODES = frozenset({429, 500, 502, 503, 504})
+
+
+def _request_with_retry(
+    send, *, attempts: int = 4, backoff_seconds: float = 5.0,
+    sleep=time.sleep,
+) -> Any:
+    """Retry edge/cold-start errors (Railway wakes on request).
+
+    ``send`` is a zero-argument callable performing the request. Only use
+    for requests that are safe to repeat: reads, or the idempotent
+    WooCommerce intake (a replay lands as ``duplicate`` = accepted).
+    """
+    response = None
+    for attempt in range(attempts):
+        response = send()
+        if response.status_code not in _TRANSIENT_HTTP_CODES:
+            return response
+        if attempt < attempts - 1:
+            sleep(backoff_seconds * (attempt + 1))
+    return response
+
+
+def _get_with_retry(
+    transport: Any, url: str, *, headers: dict[str, str],
+    timeout: int, sleep=time.sleep,
+) -> Any:
+    return _request_with_retry(
+        lambda: transport.get(url, headers=headers, timeout=timeout),
+        sleep=sleep)
+
+
 def cleanup_previous_order(
     config: DrillConfig, day: date, *, transport: Any,
 ) -> list[dict[str, Any]]:
@@ -172,8 +204,8 @@ def cleanup_previous_order(
     assertions: list[dict[str, Any]] = []
     previous_id = order_id_for(day - timedelta(days=1))
     base = _api_base(config.webhook_url)
-    status_response = transport.get(
-        f"{base}/api/order-status/{previous_id}",
+    status_response = _get_with_retry(
+        transport, f"{base}/api/order-status/{previous_id}",
         headers=_operator_headers(config), timeout=20)
     if status_response.status_code == 404:
         assertions.append(_assertion(
@@ -181,7 +213,9 @@ def cleanup_previous_order(
             "previous drill order is absent; no cancellation was required"))
         return assertions
     if status_response.status_code != 200:
-        raise DrillError("previous drill status lookup failed")
+        raise DrillError(
+            "previous drill status lookup failed "
+            f"(HTTP {status_response.status_code})")
     status_data = _response_json(status_response)
     prior_status = status_data.get("fulfillment_status")
     if prior_status in TERMINAL_STATUSES:
@@ -243,24 +277,31 @@ def send_and_verify_order(
     payload_bytes = encode_payload(payload)
     order_id = order_id_for(day)
     base = _api_base(config.webhook_url)
-    webhook_response = transport.post(
-        config.webhook_url,
-        data=payload_bytes,
-        headers={
-            "Content-Type": "application/json",
-            "X-WC-Webhook-Signature": sign_payload(
-                payload_bytes, config.webhook_secret),
-        },
-        timeout=30,
-    )
-    webhook_data = _response_json(webhook_response)
+    webhook_response = _request_with_retry(
+        lambda: transport.post(
+            config.webhook_url,
+            data=payload_bytes,
+            headers={
+                "Content-Type": "application/json",
+                "X-WC-Webhook-Signature": sign_payload(
+                    payload_bytes, config.webhook_secret),
+            },
+            timeout=30,
+        ),
+        sleep=sleep)
+    webhook_data = (
+        _response_json(webhook_response)
+        if webhook_response.status_code == 200 else {})
     accepted = (
         webhook_response.status_code == 200
         and webhook_data.get("status") in {"accepted", "success", "duplicate"}
     )
     assertions.append(_assertion(
         "signed_woocommerce_order_accepted", accepted,
-        "production WooCommerce intake accepted the signed synthetic order"))
+        "production WooCommerce intake accepted the signed synthetic order"
+        if accepted else
+        "production WooCommerce intake rejected the signed synthetic order "
+        f"(HTTP {webhook_response.status_code})"))
     if not accepted:
         return assertions
 

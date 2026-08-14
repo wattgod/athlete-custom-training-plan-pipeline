@@ -162,6 +162,33 @@ def test_cleanup_passes_when_previous_drill_never_existed(tmp_path, monkeypatch)
     assert "nothing to cancel" in assertions[0]["detail"]
 
 
+def test_request_retry_survives_cold_start_then_succeeds():
+    """Railway cold starts answer 502/503 on the first request; the drill
+    must retry instead of failing the whole run."""
+    responses = [Mock(status_code=503), Mock(status_code=502), Mock(status_code=200)]
+    calls = iter(responses)
+    naps: list[float] = []
+
+    result = drill._request_with_retry(
+        lambda: next(calls), sleep=naps.append)
+
+    assert result.status_code == 200
+    assert naps == [5.0, 10.0]
+
+
+def test_request_retry_gives_up_after_bounded_attempts():
+    attempts = []
+
+    def send():
+        attempts.append(1)
+        return Mock(status_code=503)
+
+    result = drill._request_with_retry(send, sleep=lambda _: None)
+
+    assert result.status_code == 503
+    assert len(attempts) == 4
+
+
 def test_artifact_redacts_all_configured_values():
     assertions = [{
         "name": "failure", "passed": False,
