@@ -38,6 +38,12 @@
 # BASE level so every load week of a block picks the same name (R14 series
 # coherence). Long rides are exempt — structure must not change.
 
+render_styles:
+  time_crunched: POLARIZED
+  g_spot: G_SPOT
+  polarized_80_20: POLARIZED
+  traditional_pyramidal: PYRAMIDAL
+
 profiles:
   # 80/20 polarized: the hard days are HARD (VO2 / anaerobic), everything
   # else is strictly Z1-Z2. Tempo and sweet-spot are the "moderate trap"

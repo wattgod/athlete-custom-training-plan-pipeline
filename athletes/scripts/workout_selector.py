@@ -89,7 +89,12 @@ def load_methodology_profile(methodology: str) -> Optional[Dict[str, Any]]:
 
     Returned dict is shared cached config — callers must NOT mutate it.
     """
-    profiles = _load_config('methodology_profiles.yaml').get('profiles') or {}
+    payload = _load_config('methodology_profiles.yaml')
+    if not isinstance(payload, dict) or set(payload.get('render_styles') or {}) != set(_METHODOLOGY_SECONDARY):
+        raise ValueError('methodology_profiles.yaml is missing the closed render map')
+    profiles = payload.get('profiles')
+    if not isinstance(profiles, dict) or set(profiles) != set(_METHODOLOGY_SECONDARY):
+        raise ValueError('methodology_profiles.yaml is missing a customer profile')
     return profiles.get(methodology)
 
 

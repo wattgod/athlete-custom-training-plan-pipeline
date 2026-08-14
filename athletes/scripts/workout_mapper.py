@@ -253,6 +253,42 @@ def render_workout(
     return None
 
 
+def resolve_archetype_contract(
+    name: str, *, level: int, methodology: str, variation_offset: int = 0,
+    discipline: str = 'gravel',
+) -> Optional[dict]:
+    """Resolve the same immutable native identity used by ``render_workout``.
+
+    The simple-endurance branch is deliberately non-native and returns None.
+    """
+    mapping = _resolve_for_discipline(name, discipline)
+    if mapping is None or name == 'Endurance':
+        return None
+    nate_type, base_variation = mapping
+    pinned = {'Openers', 'FTP Test', 'Rest Day', 'Endurance with Surges',
+              'NP/IF Target', 'Race Simulation', 'Kitchen Sink - Drain Cleaner',
+              'La Balanguera', 'Hyttevask', 'Thunder Quads', 'Blood Pistons'}
+    variation = base_variation
+    if name not in pinned and variation_offset > 0:
+        variation += variation_offset
+    from nate_workout_generator import select_archetype_for_workout
+    archetype = select_archetype_for_workout(nate_type, methodology, variation)
+    if archetype is None and methodology != 'POLARIZED':
+        archetype = select_archetype_for_workout(nate_type, 'POLARIZED', variation)
+    if archetype is None:
+        return None
+    from archetype_registry import get_archetype
+    resolved = get_archetype(archetype['name'])
+    if not resolved:
+        return None
+    category, _ = resolved
+    return {
+        'archetype_id': archetype['archetype_id'], 'category': category,
+        'level': int(level), 'variation': int(variation),
+        'manifest_row_id': f"{archetype['archetype_id']}@L{int(level)}",
+    }
+
+
 # TP Library Endurance: steady Z2 + cooldown. Level scales duration only.
 _ENDURANCE_LEVELS = {
     1: {'duration_min': 70,  'power': 0.68},
@@ -344,11 +380,9 @@ def resolve_display_name(
     try:
         from nate_workout_generator import select_archetype_for_workout
         arch = select_archetype_for_workout(nate_type, methodology, effective_variation)
-        if not arch:
-            arch = select_archetype_for_workout(nate_type, 'POLARIZED', effective_variation)
         if arch and arch.get('name'):
             return arch['name']
-    except Exception:
+    except (ImportError, KeyError, TypeError):
         pass
     return name
 

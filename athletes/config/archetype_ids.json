@@ -1,0 +1,153 @@
+{
+  "schema_version": "archetype_ids/v1",
+  "categories": {
+    "VO2max": [
+      {"archetype_id":"vo2max--5x3-vo2-classic","name":"5x3 VO2 Classic","status":"active","replacement_id":null},
+      {"archetype_id":"vo2max--descending-vo2-pyramid","name":"Descending VO2 Pyramid","status":"active","replacement_id":null},
+      {"archetype_id":"vo2max--norwegian-4x8","name":"Norwegian 4x8","status":"active","replacement_id":null},
+      {"archetype_id":"vo2max--vo2max-with-loaded-recovery","name":"VO2max with Loaded Recovery","status":"active","replacement_id":null},
+      {"archetype_id":"vo2max--vo2max-30-30","name":"VO2max 30/30","status":"active","replacement_id":null},
+      {"archetype_id":"vo2max--vo2max-40-20","name":"VO2max 40/20","status":"active","replacement_id":null},
+      {"archetype_id":"vo2max--vo2max-extended","name":"VO2max Extended","status":"active","replacement_id":null},
+      {"archetype_id":"vo2max--ronnestad-30-15","name":"Ronnestad 30/15","status":"active","replacement_id":null},
+      {"archetype_id":"vo2max--ronnestad-40-20","name":"Ronnestad 40/20","status":"active","replacement_id":null},
+      {"archetype_id":"vo2max--float-sets","name":"Float Sets","status":"active","replacement_id":null}
+    ],
+    "TT_Threshold": [
+      {"archetype_id":"tt-threshold--single-sustained-threshold","name":"Single Sustained Threshold","status":"active","replacement_id":null},
+      {"archetype_id":"tt-threshold--threshold-ramps","name":"Threshold Ramps","status":"active","replacement_id":null},
+      {"archetype_id":"tt-threshold--descending-threshold","name":"Descending Threshold","status":"active","replacement_id":null},
+      {"archetype_id":"tt-threshold--threshold-accumulation","name":"Threshold Accumulation","status":"active","replacement_id":null},
+      {"archetype_id":"tt-threshold--threshold-touch","name":"Threshold Touch","status":"active","replacement_id":null},
+      {"archetype_id":"tt-threshold--criss-cross-intervals","name":"Criss-Cross Intervals","status":"active","replacement_id":null},
+      {"archetype_id":"tt-threshold--tte-extension","name":"TTE Extension","status":"active","replacement_id":null},
+      {"archetype_id":"tt-threshold--bpa-best-possible-average","name":"BPA (Best Possible Average)","status":"active","replacement_id":null}
+    ],
+    "Sprint_Neuromuscular": [
+      {"archetype_id":"sprint-neuromuscular--attack-repeats","name":"Attack Repeats","status":"active","replacement_id":null},
+      {"archetype_id":"sprint-neuromuscular--sprint-buildups","name":"Sprint Buildups","status":"active","replacement_id":null},
+      {"archetype_id":"sprint-neuromuscular--peak-and-fade","name":"Peak and Fade","status":"active","replacement_id":null},
+      {"archetype_id":"sprint-neuromuscular--ilt-single-leg-training","name":"ILT Single Leg Training","status":"active","replacement_id":null},
+      {"archetype_id":"sprint-neuromuscular--stomps","name":"Stomps","status":"active","replacement_id":null},
+      {"archetype_id":"sprint-neuromuscular--burst-intervals","name":"Burst Intervals","status":"active","replacement_id":null}
+    ],
+    "Anaerobic_Capacity": [
+      {"archetype_id":"anaerobic-capacity--2min-killers","name":"2min Killers","status":"active","replacement_id":null},
+      {"archetype_id":"anaerobic-capacity--90sec-repeats","name":"90sec Repeats","status":"active","replacement_id":null},
+      {"archetype_id":"anaerobic-capacity--1min-all-out-repeats","name":"1min All-Out Repeats","status":"active","replacement_id":null}
+    ],
+    "Durability": [
+      {"archetype_id":"durability--tired-vo2max","name":"Tired VO2max","status":"active","replacement_id":null},
+      {"archetype_id":"durability--double-day-simulation","name":"Double Day Simulation","status":"active","replacement_id":null},
+      {"archetype_id":"durability--progressive-fatigue-threshold","name":"Progressive Fatigue Threshold","status":"active","replacement_id":null},
+      {"archetype_id":"durability--vo2-bookend","name":"VO2 Bookend","status":"active","replacement_id":null},
+      {"archetype_id":"durability--buffer-workout","name":"Buffer Workout","status":"active","replacement_id":null},
+      {"archetype_id":"durability--tired-30-30s","name":"Tired 30/30s","status":"active","replacement_id":null},
+      {"archetype_id":"durability--tired-40-20s","name":"Tired 40/20s","status":"active","replacement_id":null},
+      {"archetype_id":"durability--tired-threshold","name":"Tired Threshold","status":"active","replacement_id":null},
+      {"archetype_id":"durability--tired-threshold-repeats","name":"Tired Threshold Repeats","status":"active","replacement_id":null},
+      {"archetype_id":"durability--g-spot-into-threshold","name":"G-Spot into Threshold","status":"active","replacement_id":null},
+      {"archetype_id":"durability--tempo-into-threshold","name":"Tempo into Threshold","status":"active","replacement_id":null},
+      {"archetype_id":"durability--full-simulation-combo","name":"Full Simulation Combo","status":"active","replacement_id":null},
+      {"archetype_id":"durability--late-race-vo2max","name":"Late-Race VO2max","status":"active","replacement_id":null}
+    ],
+    "Endurance": [
+      {"archetype_id":"endurance--pre-race-openers","name":"Pre-Race Openers","status":"active","replacement_id":null},
+      {"archetype_id":"endurance--terrain-simulation-z2","name":"Terrain Simulation Z2","status":"active","replacement_id":null},
+      {"archetype_id":"endurance--endurance-with-surges","name":"Endurance with Surges","status":"active","replacement_id":null},
+      {"archetype_id":"endurance--endurance-blocks","name":"Endurance Blocks","status":"active","replacement_id":null},
+      {"archetype_id":"endurance--heat-acclimation-protocol","name":"Heat Acclimation Protocol","status":"active","replacement_id":null}
+    ],
+    "Race_Simulation": [
+      {"archetype_id":"race-simulation--breakaway-simulation","name":"Breakaway Simulation","status":"active","replacement_id":null},
+      {"archetype_id":"race-simulation--variable-pace-chaos","name":"Variable Pace Chaos","status":"active","replacement_id":null},
+      {"archetype_id":"race-simulation--sector-simulation","name":"Sector Simulation","status":"active","replacement_id":null},
+      {"archetype_id":"race-simulation--race-simulation","name":"Race Simulation","status":"active","replacement_id":null},
+      {"archetype_id":"race-simulation--hard-starts","name":"Hard Starts","status":"active","replacement_id":null},
+      {"archetype_id":"race-simulation--structured-fartlek","name":"Structured Fartlek","status":"active","replacement_id":null},
+      {"archetype_id":"race-simulation--attacks-and-repeatability","name":"Attacks and Repeatability","status":"active","replacement_id":null},
+      {"archetype_id":"race-simulation--kitchen-sink-all-systems","name":"Kitchen Sink All-Systems","status":"active","replacement_id":null}
+    ],
+    "G_Spot": [
+      {"archetype_id":"g-spot--g-spot-intervals","name":"G-Spot Intervals","status":"active","replacement_id":null},
+      {"archetype_id":"g-spot--g-spot-criss-cross","name":"G-Spot Criss-Cross","status":"active","replacement_id":null},
+      {"archetype_id":"g-spot--g-spot-progressive","name":"G-Spot Progressive","status":"active","replacement_id":null}
+    ],
+    "LT1_MAF": [
+      {"archetype_id":"lt1-maf--lt1-capped-endurance","name":"LT1 Capped Endurance","status":"active","replacement_id":null},
+      {"archetype_id":"lt1-maf--maf-test-protocol","name":"MAF Test Protocol","status":"active","replacement_id":null}
+    ],
+    "Critical_Power": [
+      {"archetype_id":"critical-power--above-cp-repeats","name":"Above CP Repeats","status":"active","replacement_id":null},
+      {"archetype_id":"critical-power--w-prime-depletion","name":"W-Prime Depletion","status":"active","replacement_id":null}
+    ],
+    "Norwegian_Double": [
+      {"archetype_id":"norwegian-double--norwegian-4x8-classic","name":"Norwegian 4x8 Classic","status":"active","replacement_id":null},
+      {"archetype_id":"norwegian-double--norwegian-double-am","name":"Norwegian Double AM","status":"active","replacement_id":null},
+      {"archetype_id":"norwegian-double--norwegian-double-pm","name":"Norwegian Double PM","status":"active","replacement_id":null}
+    ],
+    "HVLI_Extended": [
+      {"archetype_id":"hvli-extended--hvli-extended-z2","name":"HVLI Extended Z2","status":"active","replacement_id":null},
+      {"archetype_id":"hvli-extended--hvli-terrain-simulation","name":"HVLI Terrain Simulation","status":"active","replacement_id":null}
+    ],
+    "Testing": [
+      {"archetype_id":"testing--ftp-ramp-test","name":"FTP Ramp Test","status":"active","replacement_id":null},
+      {"archetype_id":"testing--20min-ftp-test","name":"20min FTP Test","status":"active","replacement_id":null},
+      {"archetype_id":"testing--cp-test-protocol","name":"CP Test Protocol","status":"active","replacement_id":null}
+    ],
+    "Recovery": [
+      {"archetype_id":"recovery--active-recovery-spin","name":"Active Recovery Spin","status":"active","replacement_id":null},
+      {"archetype_id":"recovery--rest-day","name":"Rest Day","status":"active","replacement_id":null}
+    ],
+    "INSCYD": [
+      {"archetype_id":"inscyd--vlamax-reduction","name":"VLamax Reduction","status":"active","replacement_id":null},
+      {"archetype_id":"inscyd--fatmax-development","name":"FatMax Development","status":"active","replacement_id":null},
+      {"archetype_id":"inscyd--fatmax-vlamax-suppression","name":"FatMax VLamax Suppression","status":"active","replacement_id":null},
+      {"archetype_id":"inscyd--glycolytic-power","name":"Glycolytic Power","status":"active","replacement_id":null}
+    ],
+    "Gravel_Specific": [
+      {"archetype_id":"gravel-specific--surge-and-settle","name":"Surge and Settle","status":"active","replacement_id":null},
+      {"archetype_id":"gravel-specific--terrain-microbursts","name":"Terrain Microbursts","status":"active","replacement_id":null},
+      {"archetype_id":"gravel-specific--gravel-grind","name":"Gravel Grind","status":"active","replacement_id":null},
+      {"archetype_id":"gravel-specific--late-race-surge-protocol","name":"Late Race Surge Protocol","status":"active","replacement_id":null},
+      {"archetype_id":"gravel-specific--gravel-race-simulation","name":"Gravel Race Simulation","status":"active","replacement_id":null}
+    ],
+    "SFR_Muscle_Force": [
+      {"archetype_id":"sfr-muscle-force--5x4-sfr","name":"5x4 SFR","status":"active","replacement_id":null},
+      {"archetype_id":"sfr-muscle-force--sfr-cadence-contrast","name":"SFR Cadence Contrast","status":"active","replacement_id":null}
+    ],
+    "Over_Under": [
+      {"archetype_id":"over-under--climbing-over-under","name":"Climbing Over/Under","status":"active","replacement_id":null},
+      {"archetype_id":"over-under--overunder-threshold","name":"OverUnder Threshold","status":"active","replacement_id":null}
+    ],
+    "Mixed_Climbing": [
+      {"archetype_id":"mixed-climbing--mixed-climbing","name":"Mixed Climbing","status":"active","replacement_id":null},
+      {"archetype_id":"mixed-climbing--mixed-climbing-variations","name":"Mixed Climbing Variations","status":"active","replacement_id":null}
+    ],
+    "Cadence_Work": [
+      {"archetype_id":"cadence-work--high-cadence-intervals","name":"High Cadence Intervals","status":"active","replacement_id":null}
+    ],
+    "Blended": [
+      {"archetype_id":"blended--blended-30-30-sfr","name":"Blended 30/30 + SFR","status":"active","replacement_id":null},
+      {"archetype_id":"blended--blended-vo2-g-spot","name":"Blended VO2 + G-Spot","status":"active","replacement_id":null},
+      {"archetype_id":"blended--blended-endurance-threshold-sprints","name":"Blended Endurance/Threshold/Sprints","status":"active","replacement_id":null}
+    ],
+    "Tempo": [
+      {"archetype_id":"tempo--tempo-accelerations","name":"Tempo Accelerations","status":"active","replacement_id":null},
+      {"archetype_id":"tempo--tempo-sprints","name":"Tempo Sprints","status":"active","replacement_id":null},
+      {"archetype_id":"tempo--3x15-tempo","name":"3x15 Tempo","status":"active","replacement_id":null},
+      {"archetype_id":"tempo--bookend-tempo","name":"Bookend Tempo","status":"active","replacement_id":null},
+      {"archetype_id":"tempo--tempo-lift","name":"Tempo Lift","status":"active","replacement_id":null},
+      {"archetype_id":"tempo--tired-tempo","name":"Tired Tempo","status":"active","replacement_id":null}
+    ],
+    "Kitchen_Sink": [
+      {"archetype_id":"kitchen-sink--drain-cleaner","name":"Drain Cleaner","status":"active","replacement_id":null},
+      {"archetype_id":"kitchen-sink--la-balanguera","name":"La Balanguera","status":"active","replacement_id":null},
+      {"archetype_id":"kitchen-sink--hyttevask","name":"Hyttevask","status":"active","replacement_id":null}
+    ],
+    "SFR_Series": [
+      {"archetype_id":"sfr-series--thunder-quads","name":"Thunder Quads","status":"active","replacement_id":null},
+      {"archetype_id":"sfr-series--blood-pistons","name":"Blood Pistons","status":"active","replacement_id":null}
+    ]
+  }
+}

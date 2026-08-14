@@ -528,18 +528,11 @@ PROGRESSION_STYLES = {
 # =============================================================================
 
 def get_archetype_by_category_and_index(category: str, index: int = 0) -> Optional[Dict]:
-    """Get a specific archetype from a category by index (wraps via modulo)."""
+    """Resolve an immutable ordered slot (wrapping via modulo) to live content."""
     if category not in NEW_ARCHETYPES:
         return None
-
-    archetypes = NEW_ARCHETYPES[category]
-    if not archetypes:
-        return None
-
-    # Modulo wrapping so incrementing counters cycle through all archetypes
-    index = index % len(archetypes)
-
-    return archetypes[index]
+    from archetype_identity import resolve_live
+    return resolve_live(category, index, NEW_ARCHETYPES)
 
 
 def get_all_archetypes_for_category(category: str) -> List[Dict]:
@@ -727,11 +720,10 @@ def select_archetype_for_workout(
 
     method_config = TRAINING_METHODOLOGIES.get(methodology)
     if not method_config:
-        get_logger().warning(
-            f"Unknown methodology '{methodology}'. "
-            f"Falling back to POLARIZED. Valid: {list(TRAINING_METHODOLOGIES.keys())}"
+        raise ValueError(
+            f"Unknown render style {methodology!r}; expected one of "
+            f"{sorted(TRAINING_METHODOLOGIES)}"
         )
-        method_config = TRAINING_METHODOLOGIES["POLARIZED"]
 
     # Check if this category is avoided by the methodology
     avoided_categories = method_config.get("avoid", [])
@@ -885,7 +877,10 @@ def calculate_level_from_week(
         4
     """
     # Get progression style from methodology
-    method_config = TRAINING_METHODOLOGIES.get(methodology, TRAINING_METHODOLOGIES["POLARIZED"])
+    try:
+        method_config = TRAINING_METHODOLOGIES[methodology]
+    except KeyError as exc:
+        raise ValueError(f"Unknown render style {methodology!r}") from exc
     progression_style = method_config.get("progression_style", "volume_first")
     meso_pattern = method_config.get("meso_pattern", "3:1")
 
@@ -3381,7 +3376,10 @@ def generate_weekly_workout_schedule(
     Returns:
         List of workout specifications for each day.
     """
-    method_config = TRAINING_METHODOLOGIES.get(methodology, TRAINING_METHODOLOGIES["POLARIZED"])
+    try:
+        method_config = TRAINING_METHODOLOGIES[methodology]
+    except KeyError as exc:
+        raise ValueError(f"Unknown render style {methodology!r}") from exc
     level = calculate_level_from_week(week_num, total_weeks)
     primary_workouts = method_config.get("primary_workouts", ["VO2max", "TT_Threshold"])
     quality_sessions = method_config.get("weekly_quality_sessions", 2)

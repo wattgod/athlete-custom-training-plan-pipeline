@@ -48,16 +48,21 @@ from derived_registry import assert_registry_covers, entry as derived_entry
 def _load_methodologies() -> Dict:
     """Load methodology definitions from YAML config."""
     config_path = Path(__file__).parent / "config" / "methodologies.yaml"
-    if config_path.exists():
-        with open(config_path, 'r') as f:
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f)
-            # Convert ideal_hours from list to tuple for compatibility
-            for key, method in data.items():
-                if isinstance(method.get('ideal_hours'), list):
-                    method['ideal_hours'] = tuple(method['ideal_hours'])
-            return data
-    # Fallback to inline definition if config missing
-    return _METHODOLOGIES_FALLBACK
+    except (OSError, yaml.YAMLError) as exc:
+        raise RuntimeError("methodologies.yaml is unavailable or malformed") from exc
+    if not isinstance(data, dict) or set(data) != {
+            'time_crunched', 'g_spot', 'polarized_80_20',
+            'traditional_pyramidal'}:
+        raise RuntimeError("methodologies.yaml does not contain the closed customer IDs")
+    for key, method in data.items():
+        if not isinstance(method, dict):
+            raise RuntimeError(f"methodology {key!r} is malformed")
+        if isinstance(method.get('ideal_hours'), list):
+            method['ideal_hours'] = tuple(method['ideal_hours'])
+    return data
 
 
 @dataclass
@@ -139,7 +144,7 @@ _METHODOLOGIES_FALLBACK = {
 }
 
 # Load from YAML config, fall back to inline definition
-METHODOLOGIES = _load_methodologies() if Path(Path(__file__).parent / "config" / "methodologies.yaml").exists() else _METHODOLOGIES_FALLBACK
+METHODOLOGIES = _load_methodologies()
 
 
 def calculate_methodology_score(
