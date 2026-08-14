@@ -136,7 +136,7 @@ class Config:
                 'ftp_max': 500,
                 'weight_min': 40,
                 'weight_max': 150,
-                'plan_weeks_min': 4,
+                'plan_weeks_min': 1,
                 'plan_weeks_max': 52,
             },
             'workouts': {

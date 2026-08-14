@@ -362,3 +362,25 @@ def test_short_clamped_plan_passes_sanity_checks(monkeypatch):
         '2026-09-19', 12, preferred_start='2026-08-14')
     assert 4 <= result['plan_weeks'] < 6
     assert run_sanity_checks(result, '2026-09-19', 'late-order') is True
+
+
+def test_one_week_paid_plan_succeeds(monkeypatch):
+    """A 1-week paid plan targeting race week is valid."""
+    from calculate_plan_dates import run_sanity_checks
+
+    monkeypatch.setenv('GG_FIXED_NOW', '2026-09-14T15:00:00Z')
+    result = calculate_plan_dates('2026-09-19', 1)
+    assert result['plan_weeks'] == 1
+    assert len(result['weeks']) == 1
+    assert result['weeks'][0]['is_race_week'] is True
+    assert result['week1_monday'] == result['race_week_monday'] == '2026-09-14'
+    assert run_sanity_checks(result, '2026-09-19', 'one-week') is True
+
+
+def test_race_this_weekend_delivers_race_week(monkeypatch):
+    """When start would be after race week, deliver 1 week targeting race week."""
+    monkeypatch.setenv('GG_FIXED_NOW', '2026-09-18T15:00:00Z')
+    result = calculate_plan_dates('2026-09-19', 4)
+    assert result['plan_weeks'] == 1
+    assert result['week1_monday'] == '2026-09-14'
+    assert result['weeks'][0]['is_race_week'] is True

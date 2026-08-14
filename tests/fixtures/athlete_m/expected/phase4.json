@@ -3,13 +3,13 @@
   "blockers": [
     {"id": "COURSE_UNRESOLVED", "waivable": false},
     {"id": "RACE_STALE", "waivable": true},
-    {"id": "SESSION_PREDATES_GENERATION", "waivable": true},
-    {"id": "WEEKS_MISMATCH", "waivable": true}
+    {"id": "SESSION_PREDATES_GENERATION", "waivable": true}
   ],
   "required_confirmations": [
     "D2_DEMOGRAPHIC_AGE_MISMATCH",
     "D2_THRESHOLD_LTHR_STALE_MISMATCH",
-    "SCHEDULE_MISMATCH_CONFIRM"
+    "SCHEDULE_MISMATCH_CONFIRM",
+    "WEEKS_CALENDAR_SHORT"
   ],
   "identity_outcome": "bound",
   "tp_athlete_id": "fixture-athlete-m",
@@ -33,7 +33,8 @@
     "THIN_RACE_WEEK",
     "DUPLICATE_FIELD_TEST",
     "SESSION_PREDATES_ORDER",
-    "SCHEDULE_CONTRADICTION"
+    "SCHEDULE_CONTRADICTION",
+    "WEEKS_MISMATCH"
   ],
   "profile_devices": ["power_meter", "hr_strap"],
   "fueling_week_labels": ["W00", "W1", "W2", "W3", "W4", "W5", "W6"]

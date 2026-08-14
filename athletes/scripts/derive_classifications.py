@@ -12,8 +12,11 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
+from calculate_plan_dates import generation_now, monday_on_or_after
 from constants import (
     DAY_ORDER_FULL,
+    PLAN_WEEKS_MAX,
+    PLAN_WEEKS_MIN,
     TIER_HOURS_AYAHUASCA_MAX,
     TIER_HOURS_FINISHER_MAX,
     TIER_HOURS_COMPETE_MAX,
@@ -61,38 +64,48 @@ def derive_tier(profile: Dict) -> str:
 
 
 def calculate_plan_weeks(profile: Dict) -> int:
-    """Calculate plan duration in weeks."""
+    """Calculate requested plan duration in weeks.
+
+    Purchased length is authoritative when set. Calendar clamping (Week 1
+    never starts before generation) happens in calculate_plan_dates.
+    Unpurchased fallback uses remaining Mondays through race week, bounded
+    only by PLAN_WEEKS_MIN/MAX (1–52). There is no 4/6/8 floor.
+    """
+    fulfillment = profile.get("fulfillment") or {}
+    raw_purchased = fulfillment.get("weeks_purchased")
+    try:
+        purchased_weeks = int(raw_purchased) if raw_purchased not in (None, "") else 0
+    except (TypeError, ValueError):
+        purchased_weeks = 0
+    if purchased_weeks > 0:
+        return max(PLAN_WEEKS_MIN, min(PLAN_WEEKS_MAX, purchased_weeks))
+
     target_race = profile.get("target_race")
     if not target_race or not target_race.get("date"):
-        # No race date - default to 12 weeks
         return 12
-    
-    race_date_str = target_race["date"]
+
     try:
-        race_date = datetime.strptime(race_date_str, "%Y-%m-%d")
+        race_date = datetime.strptime(target_race["date"], "%Y-%m-%d")
     except ValueError:
         return 12
-    
-    # Get start date
+
+    today = generation_now().replace(hour=0, minute=0, second=0, microsecond=0)
     plan_start = profile.get("plan_start", {}).get("preferred_start", "next_monday")
-    if plan_start == "next_monday":
-        # Calculate next Monday
-        today = datetime.now()
-        days_until_monday = (7 - today.weekday()) % 7
-        if days_until_monday == 0:
-            days_until_monday = 7
-        start_date = today + timedelta(days=days_until_monday)
-    else:
+    if plan_start and plan_start != "next_monday":
         try:
-            start_date = datetime.strptime(plan_start, "%Y-%m-%d")
+            start_date = monday_on_or_after(datetime.strptime(plan_start, "%Y-%m-%d"))
         except ValueError:
-            start_date = datetime.now()
-    
-    # Calculate weeks
-    delta = race_date - start_date
-    weeks = max(8, min(24, delta.days // 7))  # Clamp between 8-24 weeks
-    
-    return weeks
+            start_date = monday_on_or_after(today)
+    else:
+        start_date = monday_on_or_after(today)
+    if start_date < today:
+        start_date = monday_on_or_after(today)
+
+    race_week_monday = race_date - timedelta(days=race_date.weekday())
+    weeks = (race_week_monday - start_date).days // 7 + 1
+    if weeks < 1 and race_date >= today:
+        weeks = 1
+    return max(PLAN_WEEKS_MIN, min(PLAN_WEEKS_MAX, weeks))
 
 
 def determine_starting_phase(profile: Dict) -> str:

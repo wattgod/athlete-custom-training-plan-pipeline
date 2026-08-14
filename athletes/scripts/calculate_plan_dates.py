@@ -21,7 +21,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from constants import DAY_ORDER, DAY_ORDER_DISPLAY, DAY_FULL_TO_ABBREV
+from constants import (
+    DAY_ORDER, DAY_ORDER_DISPLAY, DAY_FULL_TO_ABBREV,
+    PLAN_WEEKS_MIN, PLAN_WEEKS_MAX,
+)
 from derived_registry import assert_registry_covers, entry as derived_entry
 
 
@@ -41,6 +44,49 @@ def generation_now() -> datetime:
 def monday_on_or_after(day: datetime) -> datetime:
     """Monday of `day` when it is Monday; otherwise the following Monday."""
     return day + timedelta(days=(7 - day.weekday()) % 7)
+
+
+def paid_weeks_calendar_max(race_date_str: str, generation_at: str = None) -> int:
+    """Max paid weeks that fit without Week 1 starting before generation.
+
+    Week 1 Monday = monday_on_or_after(generation_date).
+    Race-week Monday = Monday of the race date.
+    calendar_max = (race_week_monday - week1_monday).days // 7 + 1
+    Floored at 1 when the race is still in the future.
+    """
+    if generation_at:
+        generation_date = datetime.fromisoformat(
+            str(generation_at).replace('Z', '+00:00')).replace(tzinfo=None)
+    else:
+        generation_date = generation_now()
+    generation_date = generation_date.replace(
+        hour=0, minute=0, second=0, microsecond=0)
+    week1_monday = monday_on_or_after(generation_date)
+    race_date = datetime.strptime(race_date_str, '%Y-%m-%d')
+    race_week_monday = race_date - timedelta(days=race_date.weekday())
+    calendar_max = (race_week_monday - week1_monday).days // 7 + 1
+    if calendar_max < 1 and race_date >= generation_date:
+        return 1
+    return calendar_max
+
+
+def _fit_weeks_to_calendar(
+    requested_weeks: int,
+    race_week_monday: datetime,
+    start_monday: datetime,
+) -> tuple:
+    """Clamp requested weeks to Mondays that fit; never invent a 4-week floor.
+
+    If the start Monday is after race week (race this weekend), deliver 1
+    week targeting race week.
+    """
+    days_available = (race_week_monday - start_monday).days
+    available_weeks = days_available // 7 + 1
+    if available_weeks < 1:
+        return 1, race_week_monday
+    plan_weeks = min(requested_weeks, available_weeks)
+    week1_monday = race_week_monday - timedelta(weeks=plan_weeks - 1)
+    return plan_weeks, week1_monday
 
 
 def validate_plan_dates(plan_dates: dict, race_date_str: str) -> list:
@@ -147,13 +193,13 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         Dict with plan timing information
 
     Raises:
-        ValueError: If plan_weeks < 4 (can't fit base+build+taper) or > 52 (unreasonable)
+        ValueError: If plan_weeks < 1 or > 52 (unreasonable to generate 2 years)
     """
-    # Sanity bounds on plan_weeks
-    if plan_weeks < 4:
-        raise ValueError("Plan must be at least 4 weeks")
-    if plan_weeks > 52:
-        raise ValueError("Plan cannot exceed 52 weeks")
+    # Sanity bounds on plan_weeks — 1+ paid weeks are valid; 52 is the hard cap.
+    if plan_weeks < PLAN_WEEKS_MIN:
+        raise ValueError(f"Plan must be at least {PLAN_WEEKS_MIN} week")
+    if plan_weeks > PLAN_WEEKS_MAX:
+        raise ValueError(f"Plan cannot exceed {PLAN_WEEKS_MAX} weeks")
 
     # Parse race date
     race_date = datetime.strptime(race_date_str, '%Y-%m-%d')
@@ -175,26 +221,16 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         if clamp_past_start and preferred < today:
             preferred = monday_on_or_after(today)
         if preferred > week1_monday:
-            days_available = (race_week_monday - preferred).days
-            available_weeks = days_available // 7 + 1
-            if available_weeks < plan_weeks:
-                plan_weeks = max(4, available_weeks)
-                week1_monday = race_week_monday - timedelta(weeks=plan_weeks - 1)
+            plan_weeks, week1_monday = _fit_weeks_to_calendar(
+                plan_weeks, race_week_monday, preferred)
 
-    # SESSION_PREDATES_GENERATION is a real blocker. A 6-week floor working
-    # backwards from race week can land Week 1 before today when the athlete
-    # has a mid-week preferred_start — that clamp used to be skipped whenever
-    # preferred_start was set. Always finish with a Week 1 on or after today.
+    # SESSION_PREDATES_GENERATION is a real blocker. Working backwards from
+    # race week can land Week 1 before today when the athlete has a mid-week
+    # preferred_start. Always finish with a Week 1 on or after today when
+    # clamp_past_start is True. Endure season planning passes False.
     if clamp_past_start and week1_monday < today:
-        week1_monday = monday_on_or_after(today)
-        days_available = (race_week_monday - week1_monday).days
-        plan_weeks = max(4, days_available // 7 + 1)
-        recomputed = race_week_monday - timedelta(weeks=plan_weeks - 1)
-        if recomputed >= today:
-            week1_monday = recomputed
-        else:
-            week1_monday = monday_on_or_after(today)
-            plan_weeks = max(4, (race_week_monday - week1_monday).days // 7 + 1)
+        plan_weeks, week1_monday = _fit_weeks_to_calendar(
+            plan_weeks, race_week_monday, monday_on_or_after(today))
 
     # Month abbreviations
     month_abbrev = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -442,7 +478,7 @@ def run_sanity_checks(plan_dates: dict, race_date_str: str, athlete_id: str) -> 
     checks = [
         ("Race date", race_date_str, True),
         ("Race day of week", plan_dates['race_weekday'], True),
-        ("Plan weeks", plan_dates['plan_weeks'], plan_dates['plan_weeks'] >= 4),
+        ("Plan weeks", plan_dates['plan_weeks'], plan_dates['plan_weeks'] >= PLAN_WEEKS_MIN),
         ("Plan start", plan_dates['plan_start'], plan_start <= race_date),
         ("Plan end", plan_dates['plan_end'], True),
         ("W01 starts on", plan_dates['week1_monday'], plan_dates['week1_monday'] == plan_dates['plan_start']),

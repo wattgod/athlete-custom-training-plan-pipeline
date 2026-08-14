@@ -422,7 +422,8 @@ order < 3 minutes.
 (pinned assembly `intake_to_plan.py:3307-3330`), plus `FTP_ESTIMATED`
 (non-waivable, transitional), `COURSE_UNRESOLVED` (non-waivable; remediation
 = facts-omitted regeneration; interim for the `courses[]` ticket),
-`WEEKS_MISMATCH` (F6).
+`WEEKS_MISMATCH` (F6; non-calendar count bugs only). Calendar-forced
+shortfall is confirmation `WEEKS_CALENDAR_SHORT`.
 
 **Post-render validator** (source `post_render`; Phase 1 it validates the
 *named transitional artifacts* PlanIR + `tp_manifest.json`, both already
@@ -988,9 +989,15 @@ send). The send is human; the primitive records it once.
 - **F5 — Multi-brand**: sender identity, guide host, templates, secrets
   brand-keyed; unknown brand fails closed (blocker), replacing
   default-to-gravelgod.
-- **F6 — Weeks sold vs delivered**: `WEEKS_MISMATCH` blocker (waivable —
-  business judgment with recorded reason) when plan weeks (excluding
-  lead-in) ≠ weeks purchased.
+- **F6 — Weeks sold vs delivered**: deliver the purchased week count when
+  the calendar allows (Week 1 never starts before generation;
+  `clamp_past_start=True`). 1+ week paid plans are valid; the hard
+  generator cap is 52 weeks; there is no 4/6/8 minimum. If the race is
+  too soon to fit purchased weeks without past sessions, deliver the
+  maximum weeks that fit and emit confirmation `WEEKS_CALENDAR_SHORT`
+  (not a critical blocker). `WEEKS_MISMATCH` remains a waivable blocker
+  when generated ≠ purchased for a **non-calendar** reason (SKU/mapping/
+  generator bug). Example: purchased 7, calendar allows 10+, generated 6.
 - **F7 — intel-stats**: the fixed 24 h window (`webhook/app.py:4022-4042`)
   becomes `?hours=` (validated int, default 24, max 720; malformed/negative
   → 400) — `limit` is rejected as a design (one knob); ordering is
@@ -1045,26 +1052,30 @@ day lists; the week arithmetic was ambiguous.)
 - Status `BLOCKED_REVIEW`. Blockers **exactly** (ordered by rule id):
   `COURSE_UNRESOLVED` (non-waivable), `FTP_ESTIMATED` (non-waivable),
   `RACE_STALE`, `SESSION_PREDATES_GENERATION` (the 2026-08-05 W00 workout
-  precedes the 2026-08-06 generation date in `America/Denver`),
-  `WEEKS_MISMATCH` (6 paid weeks generated ≠ 7 purchased; W00 excluded per
-  F6).
+  precedes the 2026-08-06 generation date in `America/Denver`).
+  Calendar-forced shortfall is confirmation `WEEKS_CALENDAR_SHORT` (6 paid
+  weeks generated of 7 purchased; Week 1 Monday 2026-08-10 through
+  race-week Monday 2026-09-14 is 6; W00 excluded per F6).
+  `WEEKS_MISMATCH` remains for non-calendar count bugs only.
 - Blockers that must **not** fire: `NO_RACE_DAY_WORKOUT` (race-day entry
   exists), `THIN_RACE_WEEK` (counted entries ≥ 3), `DUPLICATE_FIELD_TEST`
   (one test), `SESSION_PREDATES_ORDER` (2026-08-05 is after the
   2026-08-04 order date — this discriminates the two date rules),
   `SCHEDULE_CONTRADICTION` (the only entry on the stated Saturday off-day
-  is the race-day entry, which C2's normative race-day exemption permits).
+  is the race-day entry, which C2's normative race-day exemption permits),
+  `WEEKS_MISMATCH` (the 7→6 shortfall is calendar-forced).
 - Required confirmations **exactly**: `SCHEDULE_MISMATCH_CONFIRM` (the
-  golden plan places a VO2 session on Sunday, a long-ride-only day). D2
+  golden plan places a VO2 session on Sunday, a long-ride-only day),
+  `WEEKS_CALENDAR_SHORT` (purchased 7, delivered 6, calendar max 6). D2
   confirmations do not appear here — worker probes are Phase 4 (r4 blocker
   5: a phase's closed set may contain only outputs that exist in that
   phase).
-- Surface assertions: coach email lists the five blockers with waivability,
+- Surface assertions: coach email lists the four blockers with waivability,
   contains no import steps and no confirm control; review bundle contains
   zero `.zwo` entries; customer download → 409; order-status "processing";
   `/api/confirm` → 409; profile devices == `["power_meter", "hr_strap"]`
   (from the form string only); fueling phase labels reference only
-  W00/W1–W6; an approval attempt whose waiver covers all five ids is
+  W00/W1–W6; an approval attempt whose waiver covers all four ids is
   rejected (two are non-waivable).
 
 **Phase 3 golden (`expected/phase3.json`):** `FTP_ESTIMATED` absent from
@@ -1073,11 +1084,13 @@ in every artifact (fueling.yaml, guide, preview, plan payloads, ZIP
 listing); HR field test in W1; all Phase 1 negative assertions still hold.
 
 **Phase 4 golden (`expected/phase4.json`):** with `worker_probes.json`
-active, required confirmations **exactly**: `SCHEDULE_MISMATCH_CONFIRM`
-(carried), D2 threshold staleness/mismatch (`lthr`: account 148 bpm dated
-2019 for control metric `hr`), D2 demographic mismatch (account age 19 vs
-intake age 45). Identity resolution outcome `bound`; approval remains
-rejected until the D2 items carry a resolution.
+active, required confirmations **exactly**: `D2_DEMOGRAPHIC_AGE_MISMATCH`,
+`D2_THRESHOLD_LTHR_STALE_MISMATCH`, `SCHEDULE_MISMATCH_CONFIRM` (carried),
+`WEEKS_CALENDAR_SHORT` (calendar-forced 7→6). D2 threshold staleness
+(`lthr`: account 148 bpm dated 2019 for control metric `hr`); D2
+demographic mismatch (account age 19 vs intake age 45). Identity
+resolution outcome `bound`; approval remains rejected until the D2 items
+carry a resolution.
 
 No real person's name, email, ids, or free text anywhere in the fixture.
 

@@ -3,17 +3,17 @@
   "blockers": [
     {"id": "COURSE_UNRESOLVED", "waivable": false},
     {"id": "RACE_STALE", "waivable": true},
-    {"id": "SESSION_PREDATES_GENERATION", "waivable": true},
-    {"id": "WEEKS_MISMATCH", "waivable": true}
+    {"id": "SESSION_PREDATES_GENERATION", "waivable": true}
   ],
-  "required_confirmations": ["POWER_BASIS_NONE_CONFIRM", "SCHEDULE_MISMATCH_CONFIRM"],
+  "required_confirmations": ["POWER_BASIS_NONE_CONFIRM", "SCHEDULE_MISMATCH_CONFIRM", "WEEKS_CALENDAR_SHORT"],
   "absent_blockers": [
     "FTP_ESTIMATED",
     "NO_RACE_DAY_WORKOUT",
     "THIN_RACE_WEEK",
     "DUPLICATE_FIELD_TEST",
     "SESSION_PREDATES_ORDER",
-    "SCHEDULE_CONTRADICTION"
+    "SCHEDULE_CONTRADICTION",
+    "WEEKS_MISMATCH"
   ],
   "profile_devices": ["power_meter", "hr_strap"],
   "fueling_week_labels": ["W00", "W1", "W2", "W3", "W4", "W5", "W6"]

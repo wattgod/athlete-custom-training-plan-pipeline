@@ -163,7 +163,7 @@ FTP_MAX_WATTS: int = 500
 WEIGHT_MIN_KG: float = 40.0
 WEIGHT_MAX_KG: float = 150.0
 
-PLAN_WEEKS_MIN: int = 4
+PLAN_WEEKS_MIN: int = 1
 PLAN_WEEKS_MAX: int = 52
 
 AGE_MIN: int = 16
