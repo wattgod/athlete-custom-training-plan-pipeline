@@ -3863,6 +3863,38 @@ def _gravel_race_data_dirs(scripts_dir: Path) -> List[Path]:
     ]
 
 
+def stage_guide_race_input(athlete_dir: Path) -> Optional[Path]:
+    """Freeze the optional external race-catalog read before E1's D1 boundary."""
+    import hashlib
+    import json
+    import yaml
+
+    athlete_dir = Path(athlete_dir)
+    profile = yaml.safe_load((athlete_dir / 'profile.yaml').read_text()) or {}
+    derived = yaml.safe_load((athlete_dir / 'derived.yaml').read_text()) or {}
+    if _course_facts_are_omitted(profile):
+        return None
+    scripts_dir = Path(__file__).parent
+    race_name = derived.get('race_name') or ''
+    race_data, verified_location = _resolve_race_data(
+        race_name, _gravel_race_data_dirs(scripts_dir))
+    date_xref = _cross_reference_race_date(
+        race_name, derived.get('race_date', ''))
+    payload = {
+        'race_data': race_data,
+        'verified_location': verified_location,
+        'date_xref': date_xref,
+    }
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False,
+        allow_nan=False).encode('utf-8')
+    digest = hashlib.sha256(encoded).hexdigest()
+    destination = athlete_dir / 'guide_inputs' / f'{digest}.json'
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(encoded)
+    return destination
+
+
 def _climate_text(climate) -> str:
     """Read every climate shape currently emitted by the race catalog."""
     if not isinstance(climate, dict):
@@ -3876,7 +3908,7 @@ def _climate_text(climate) -> str:
 
 
 def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool = False,
-                            canonical_model=None):
+                            canonical_model=None, staged_race_input=None):
     """
     CURRENT GUIDE BUILDER — produces the branded training guide with:
     - Radar chart, non-negotiables, phase badges
@@ -4089,6 +4121,21 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
         }
         verified_location = None
         date_xref = {}
+    elif staged_race_input is not None:
+        staged_path = Path(staged_race_input).resolve()
+        staged_root = (athlete_dir / 'guide_inputs').resolve()
+        if staged_path.parent != staged_root:
+            raise ValueError('staged guide race input is outside the athlete directory')
+        raw_staged = staged_path.read_bytes()
+        import hashlib
+        if staged_path.stem != hashlib.sha256(raw_staged).hexdigest():
+            raise ValueError('staged guide race input digest mismatch')
+        staged = json.loads(raw_staged)
+        if set(staged) != {'race_data', 'verified_location', 'date_xref'}:
+            raise ValueError('staged guide race input is malformed')
+        race_data = staged['race_data']
+        verified_location = staged['verified_location']
+        date_xref = staged['date_xref']
     else:
         race_data, verified_location = _resolve_race_data(
             race_name,

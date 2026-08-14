@@ -8,6 +8,7 @@ of this authority. Each segment has exactly one typed prescription source.
 
 from __future__ import annotations
 
+import copy
 import json
 import html
 import math
@@ -22,7 +23,7 @@ from derived_registry import entry as derived_entry, validate_registry
 from tp_polyline import compute_polyline
 
 
-MODEL_VERSION = "canonical_training_model/v1"
+MODEL_VERSION = "canonical_training_model/v2"
 TARGET_TYPES = {"power_pct_ftp", "pct_lthr", "pct_hrmax", "rpe", "free"}
 
 
@@ -301,6 +302,15 @@ def _compiler_session(
         series_total=entry.get("series_total"), order_on_day=entry.get("order_on_day"),
         strength_template=entry.get("strength_template"),
         archetype_id=entry.get("archetype_id"),
+        archetype=copy.deepcopy(entry.get("archetype")),
+        producer_origin=entry.get("origin"),
+        producer_id=entry.get("producer_id"),
+        producer_version=entry.get("producer_version"),
+        template_id=entry.get("template_id"),
+        template_version=entry.get("template_version"),
+        progression_level=entry.get("progression_level"),
+        is_assessment=entry.get("is_assessment"),
+        fueling_source_tier=entry.get("fueling_source_tier"),
         display_name=entry.get("display_name") or title, filename_stem=stem,
         race=entry.get("race"), zwo_author=structure.get("author"),
         zwo_sport_type=structure.get("sport_type"),
@@ -346,6 +356,12 @@ def _compile_authored_weeks(
                     total_time_planned=float(raw.get("duration_min", 0)) / 60,
                     series_id=None, series_index=None, series_total=None,
                     order_on_day=None, strength_template=None, archetype_id=None,
+                    archetype=None, producer_origin="ATHLETE_FIXED",
+                    producer_id="canonical_training_model.athlete_fixed",
+                    producer_version="v1", template_id="athlete_fixed",
+                    template_version="v1", progression_level=None,
+                    is_assessment=bool(raw.get("is_assessment", False)),
+                    fueling_source_tier="empty",
                     display_name=raw.get("title") or "Fixed external session",
                     filename_stem=None, race=None, zwo_author=None,
                     zwo_sport_type=None,
@@ -498,7 +514,13 @@ def build_canonical_model(
                                "record the measured result, and update future targets.").strip()
             segments = [_canonical_segment(segment, control) for segment in raw_segments]
             summaries = [target_summary(segment["target"]) for segment in segments]
+            is_canonical_rest = (
+                raw_session.source_file is None
+                and raw_session.type in {"rest", "off"}
+                and getattr(raw_session, "producer_origin", None) is None
+            )
             sessions.append({
+                "id": f"w{int(week.number):02d}.{raw_session.date}.{ordinal:02d}",
                 "week": week.number,
                 "phase": week.phase,
                 "date": raw_session.date,
@@ -508,6 +530,10 @@ def build_canonical_model(
                 "sport": raw_session.sport,
                 "session_type": raw_session.type,
                 "origin": raw_session.origin,
+                "producer_origin": ("CANONICAL_REST" if is_canonical_rest else
+                                    getattr(raw_session, "producer_origin", None)),
+                "is_assessment": bool(getattr(raw_session, "is_assessment", False)),
+                "fueling_source_tier": getattr(raw_session, "fueling_source_tier", None),
                 "duration_s": raw_session.duration_s,
                 "tss": raw_session.tss,
                 "segments": segments,
@@ -524,6 +550,16 @@ def build_canonical_model(
                 "order_on_day": raw_session.order_on_day,
                 "strength_template": raw_session.strength_template,
                 "archetype_id": raw_session.archetype_id,
+                "archetype": copy.deepcopy(getattr(raw_session, "archetype", None)),
+                "progression_level": getattr(raw_session, "progression_level", None),
+                "producer_id": ("plan_ir.canonical_rest" if is_canonical_rest else
+                                getattr(raw_session, "producer_id", None)),
+                "producer_version": ("v1" if is_canonical_rest else
+                                     getattr(raw_session, "producer_version", None)),
+                "template_id": ("canonical_rest_zero" if is_canonical_rest else
+                                getattr(raw_session, "template_id", None)),
+                "template_version": ("v1" if is_canonical_rest else
+                                     getattr(raw_session, "template_version", None)),
                 "display_name": title,
                 "race": raw_session.race,
                 "zwo_projection": ({
@@ -599,7 +635,25 @@ def validate_canonical_model(model: Dict[str, Any]) -> None:
         raise CanonicalModelError("invalid power basis")
     if athlete.get("power_basis") == "none" and athlete.get("ftp_watts") is not None:
         raise CanonicalModelError("null-power model carries an FTP value")
+    seen_session_ids = set()
+    seen_order_keys = set()
     for session in model.get("sessions") or []:
+        date = session.get("date")
+        ordinal = session.get("daily_ordinal")
+        week = session.get("week")
+        if (not isinstance(date, str)
+                or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date)
+                or not isinstance(ordinal, int) or ordinal < 1
+                or not isinstance(week, int)):
+            raise CanonicalModelError("invalid canonical session date/order")
+        expected_id = f"w{week:02d}.{date}.{ordinal:02d}"
+        if session.get("id") != expected_id or expected_id in seen_session_ids:
+            raise CanonicalModelError("invalid or duplicate canonical session id")
+        order_key = (week, date, ordinal)
+        if order_key in seen_order_keys:
+            raise CanonicalModelError("duplicate canonical week/date/ordinal")
+        seen_session_ids.add(expected_id)
+        seen_order_keys.add(order_key)
         for segment in session.get("segments") or []:
             target = segment.get("target") or {}
             if target.get("type") not in TARGET_TYPES:

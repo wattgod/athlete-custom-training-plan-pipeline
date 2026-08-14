@@ -143,7 +143,9 @@ _STRENGTH_FAMILY_BY_PHASE = {
 }
 
 
-def _strength_template_key(phase: str, ab_ordinal: int) -> Optional[str]:
+def _strength_template_key(phase: str, ab_ordinal: int, *,
+                           phase_block_index: int = 0,
+                           is_recovery: bool = False) -> Optional[str]:
     """Deterministic strength-template KEY for a session (key only -- rx
     content/API is out of scope for this workstream).
 
@@ -152,14 +154,25 @@ def _strength_template_key(phase: str, ab_ordinal: int) -> Optional[str]:
     displacement -- never the raw per-render ``session`` loop variable
     (assigned before conflict-skipping, not guaranteed chronological).
     """
-    family = _STRENGTH_FAMILY_BY_PHASE.get(phase)
-    if family is None:
-        return None
-    if family == 'maintenance':
-        if phase in ('taper', 'race') and ab_ordinal > 0:
-            return None  # capped at one session/week
-        return 'maintenance_a'
-    return f"{family}_{'a' if ab_ordinal == 0 else 'b'}"
+    if is_recovery:
+        # E1 is audit-only and cannot delete a pre-existing second emitted
+        # strength file. Bind it to the closed deload contract; R11-R13 report
+        # the frequency contradiction for E2 disposition.
+        return 'deload_a'
+    if phase == 'base':
+        family = 'aa' if phase_block_index == 0 else 'max_strength'
+        return f"{family}_{'abc'[min(ab_ordinal, 2)]}"
+    if phase == 'build':
+        return f"maintenance_{'a' if ab_ordinal == 0 else 'b'}"
+    if phase == 'maintenance':
+        return f"maintenance_{'a' if ab_ordinal == 0 else 'b'}"
+    if phase == 'peak':
+        return f"maintenance_reduced_{'a' if ab_ordinal == 0 else 'b'}"
+    if phase in ('taper', 'race'):
+        return 'key_lifts_a' if ab_ordinal == 0 else None
+    if phase == 'pre_plan':
+        return 'deload_a' if ab_ordinal == 0 else None
+    return None
 
 
 def _display_words(raw: str) -> str:
@@ -188,9 +201,10 @@ def _patch_zwo_name(filepath: Path, new_name: str) -> str:
     return patched
 
 
-def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min: float = None,
-                           week_num: int = None) -> str:
-    """Return fuel guidance string for a workout type, or empty string.
+def _get_fuel_tag_and_tier(workout_type: str, fueling: dict = None,
+                           duration_min: float = None,
+                           week_num: int = None) -> tuple[str, str]:
+    """Return the existing athlete tag plus its internal policy tier.
 
     ``duration_min`` gates the long-ride banner: an aerobic ride under 90 min
     gets no fuel banner, matching the guide's "short rides (<90 min): water is
@@ -213,7 +227,7 @@ def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min
             if len(tr) == 2:
                 phase_ceiling = tr[1]
     if workout_type in RACE_SIM_WORKOUT_TYPES or 'race_sim' in wt_lower or 'race simulation' in wt_lower:
-        return render_workout_fueling(prescription, 'race_sim', phase_ceiling)
+        return render_workout_fueling(prescription, 'race_sim', phase_ceiling), 'race_sim'
     elif workout_type in INTENSITY_WORKOUT_TYPES or any(k in wt_lower for k in [
         'vo2max', 'threshold', 'sprint', 'anaerobic', 'kitchen sink', 'drain cleaner',
         'la balanguera', 'hyttevask', 'blended', 'mixed', 'sfr', 'thunder quads',
@@ -221,15 +235,23 @@ def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min
         'ftp',
     ]):
         # FTP tests are quality efforts (57 g/hr), not long rides (62 g/hr).
-        return render_workout_fueling(prescription, 'quality', phase_ceiling)
+        return render_workout_fueling(prescription, 'quality', phase_ceiling), 'quality'
     elif any(k in wt_lower for k in ['recovery', 'easy', 'shakeout', 'rest', 'openers', 'off']):
-        return ''
+        return '', 'empty'
     else:
         # Aerobic/endurance rides carry the long-ride banner only when actually
         # long (>=90 min); shorter ones need no in-workout fuelling.
         if duration_min is not None and duration_min < 90:
-            return ''
-        return render_workout_fueling(prescription, 'long_ride', phase_ceiling)
+            return '', 'empty'
+        return render_workout_fueling(prescription, 'long_ride', phase_ceiling), 'long_ride'
+
+
+def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None,
+                           duration_min: float = None,
+                           week_num: int = None) -> str:
+    """Backward-compatible athlete-copy projection of the tiered producer."""
+    return _get_fuel_tag_and_tier(
+        workout_type, fueling, duration_min, week_num)[0]
 
 
 # Get config and set up paths
@@ -243,7 +265,7 @@ if GUIDES_DIR and (GUIDES_DIR / 'generators').exists():
 # PRODUCTION guide builder. generate_html_guide.py is RETIRED (Jun 2026)
 # — no silent ImportError fallback: fallbacks here mask real failures and
 # would ship the un-print-styled legacy guide to a paying customer.
-from training_guide_builder import generate_training_guide
+from training_guide_builder import generate_training_guide, stage_guide_race_input
 from workout_library import (
     WorkoutLibrary,
     generate_progressive_interval_blocks,
@@ -355,18 +377,25 @@ def round_zwo_durations(zwo_xml: str) -> str:
     return zwo_xml
 
 
-# Map athlete methodology IDs to Nate generator methodology names
-METHODOLOGY_MAP = {
-    # Keys match config/methodologies.yaml IDs (returned by select_methodology.py)
-    # FOUR customer-fit methods (June 2026). The block-builder is the engine;
-    # these map to the Nate render IDs that exist. Time-Crunched renders via
-    # POLARIZED — its density comes from the time-crunched ARCHETYPE (hours-
-    # driven), not the methodology. (Legacy IDs HIT/MAF/BLOCK/etc. retired.)
-    'time_crunched': 'POLARIZED',
-    'g_spot': 'G_SPOT',
-    'polarized_80_20': 'POLARIZED',
-    'traditional_pyramidal': 'PYRAMIDAL',
-}
+def _load_methodology_map() -> dict:
+    path = Path(__file__).parent.parent / 'config' / 'methodology_profiles.yaml'
+    try:
+        payload = yaml.safe_load(path.read_text(encoding='utf-8'))
+    except (OSError, yaml.YAMLError) as exc:
+        raise RuntimeError('methodology_profiles.yaml is unavailable or malformed') from exc
+    mapping = payload.get('render_styles') if isinstance(payload, dict) else None
+    expected = {
+        'time_crunched': 'POLARIZED', 'g_spot': 'G_SPOT',
+        'polarized_80_20': 'POLARIZED',
+        'traditional_pyramidal': 'PYRAMIDAL',
+    }
+    if mapping != expected:
+        raise RuntimeError('methodology render-style map is not the closed E1 map')
+    return mapping
+
+
+# Checked config is the sole customer-ID -> render-style authority.
+METHODOLOGY_MAP = _load_methodology_map()
 
 
 # Workout description templates per type (following v6.0 spec format)
@@ -599,7 +628,10 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
     # Map athlete methodology to Nate generator methodology
     methodology_id = methodology.get('methodology_id', 'polarized')
-    nate_methodology = METHODOLOGY_MAP.get(methodology_id, 'POLARIZED')
+    try:
+        nate_methodology = METHODOLOGY_MAP[methodology_id]
+    except KeyError as exc:
+        raise ValueError(f"Unknown customer methodology ID {methodology_id!r}") from exc
     total_weeks = plan_dates.get('plan_weeks', 12)
 
     # Extract athlete context for personalized workouts
@@ -820,7 +852,12 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             off_days=_bb_off_days,
             max_intensity=max_intensity_per_week,
         )
-        if not _compliance['critical_pass']:
+        from earned_selection_rules import PRE_EXISTING
+        _pre_existing_failures = {
+            rule_id: rule for rule_id, rule in _compliance['rules'].items()
+            if rule_id in PRE_EXISTING and not rule.get('passed')
+        }
+        if _pre_existing_failures:
             report = _bb_report(_compliance)
             log.error("COMPLIANCE GATE FLAGGED (delivering for coach review)\n" + report)
             # BUSINESS RULE: never deliver NOTHING. The block-builder produced a
@@ -861,8 +898,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 },
                 'basis': 'production block-compliance validation of the generated calendar',
                 'sensitivity': 'internal',
-            } for rule_id, rule in _compliance['rules'].items()
-              if rule.get('severity') == 'CRITICAL' and not rule.get('passed'))
+            } for rule_id, rule in _pre_existing_failures.items())
         else:
             log.info(f"Compliance gate: {_compliance['critical_score']} critical, "
                      f"score {_compliance['score']}%")
@@ -1973,8 +2009,19 @@ Stay loose, {athlete_name}!"""
                 'is_race_day': False,
             })
             _tp_kind = 'day_off' if workout_type == 'Pre_Plan_Rest' else 'bike'
+            _pre_template = {
+                'Pre_Plan_Easy': 'pre_plan_easy',
+                'Pre_Plan_Endurance': 'pre_plan_endurance',
+                'Pre_Plan_Strength_Prep': 'pre_plan_strength_prep',
+                'Pre_Plan_Rest': 'pre_plan_rest',
+            }[workout_type]
             _record_tp_session(zwo_path, current_date.strftime('%Y-%m-%d'), 0, 'pre_plan',
-                                _tp_kind, display_name=display_name)
+                                _tp_kind, display_name=display_name,
+                                origin='PRE_PLAN_GENERATOR',
+                                producer_id='generate_athlete_package.pre_plan',
+                                producer_version='v1', template_id=_pre_template,
+                                template_version='v1', is_assessment=False,
+                                fueling_source_tier='empty')
 
         w00_week_entry = None
         if _w00_days:
@@ -2092,7 +2139,12 @@ GO RACE SMART, {athlete_name.upper()}!
                 _emit_authored_document(filepath, b_race_zwo)
                 generated_files.append(filepath)
                 _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
-                                    display_name=b_race_display_name, race={'priority': 'B'})
+                                    display_name=b_race_display_name, race={'priority': 'B'},
+                                    origin='B_RACE_FREERIDE',
+                                    producer_id='generate_athlete_package.b_race',
+                                    producer_version='v1', template_id='b_race_freeride',
+                                    template_version='v1', is_assessment=False,
+                                    fueling_source_tier='race_sim')
                 # B-race is intensity — update compliance trackers
                 plan_last_intensity_day = day_abbrev
                 week_intensity_count += 1
@@ -2141,7 +2193,12 @@ TIPS:
                 _emit_authored_document(filepath, travel_zwo)
                 generated_files.append(filepath)
                 _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
-                                    display_name=travel_display_name)
+                                    display_name=travel_display_name,
+                                    origin='TRAVEL_SHAKEOUT',
+                                    producer_id='generate_athlete_package.travel_shakeout',
+                                    producer_version='v1', template_id='travel_shakeout_30m',
+                                    template_version='v1', is_assessment=False,
+                                    fueling_source_tier='empty')
                 continue  # Travel day handled
 
             # Skip ZWO generation for unavailable days (integrity checker rejects them)
@@ -2306,7 +2363,8 @@ TIPS:
                         f"{weeks_to_race} weeks to {race_name}\n"
                         f"Phase: {phase.upper()}\n\n"
                     )
-                    fuel_tag = _get_fuel_tag_for_type(bb_name, fueling, bb_duration, week_num)
+                    fuel_tag, _bb_fuel_tier = _get_fuel_tag_and_tier(
+                        bb_name, fueling, bb_duration, week_num)
                     fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
                     zwo_content = zwo_content.replace(
                         '<description>',
@@ -2330,7 +2388,23 @@ TIPS:
                         })
                     _record_tp_session(
                         filepath, day_info.get('date'), week_num, phase, 'bike',
-                        display_name=display_name, archetype_id=bb_name,
+                        display_name=display_name,
+                        origin=('MAPPER_SIMPLE_ENDURANCE' if bb_name == 'Endurance'
+                                else 'NATIVE_ARCHETYPE'),
+                        producer_id=('workout_mapper.simple_endurance' if bb_name == 'Endurance'
+                                     else 'nate_workout_generator.native_archetype'),
+                        producer_version='v1',
+                        template_id=('simple_endurance' if bb_name == 'Endurance'
+                                     else 'native_archetype'),
+                        template_version='v1', progression_level=bb_level,
+                        is_assessment=False,
+                        fueling_source_tier=_bb_fuel_tier,
+                        archetype=(None if bb_name == 'Endurance' else
+                                   __import__('workout_mapper').resolve_archetype_contract(
+                                       bb_name, level=bb_level,
+                                       methodology=nate_methodology,
+                                       variation_offset=var_offset,
+                                       discipline=_bb_discipline)),
                         series_id=('|'.join(str(x) for x in _series_id) if _series_id else None),
                         series_index=_series_rank_hint,
                     )
@@ -2492,7 +2566,11 @@ Trust the process, {athlete_name}."""
                 _emit_authored_document(filepath, rest_content)
                 generated_files.append(filepath)
                 _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'day_off',
-                                    display_name='Rest Day')
+                                    display_name='Rest Day', origin='REST_SENTINEL_ZWO',
+                                    producer_id='generate_athlete_package.rest_sentinel',
+                                    producer_version='v1', template_id='rest_60s_30pct',
+                                    template_version='v1', is_assessment=False,
+                                    fueling_source_tier='empty')
                 continue
 
             # FTP TEST INJECTION:
@@ -2676,7 +2754,12 @@ GO GET IT, {athlete_name.upper()}!
                 _emit_authored_document(filepath, race_zwo)
                 generated_files.append(filepath)
                 _record_tp_session(filepath, day_info['date'], week_num, phase, 'race',
-                                    display_name=race_display_name, race={'priority': 'A'})
+                                    display_name=race_display_name, race={'priority': 'A'},
+                                    origin='A_RACE_FREERIDE',
+                                    producer_id='generate_athlete_package.a_race',
+                                    producer_version='v1', template_id='a_race_freeride',
+                                    template_version='v1', is_assessment=False,
+                                    fueling_source_tier='race_sim')
                 continue  # Done with race day
 
             # Round duration to nearest 10 minutes for clean workout lengths
@@ -2776,7 +2859,8 @@ GO GET IT, {athlete_name.upper()}!
                             heat_reminder = "\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance\n\n"
 
                         # Insert fuel tag + header after <description> tag
-                        fuel_tag = _get_fuel_tag_for_type(workout_type, fueling, duration, week_num)
+                        fuel_tag, _legacy_fuel_tier = _get_fuel_tag_and_tier(
+                            workout_type, fueling, duration, week_num)
                         fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
                         zwo_content = zwo_content.replace(
                             '<description>',
@@ -2797,7 +2881,18 @@ GO GET IT, {athlete_name.upper()}!
                         _emit_authored_document(filepath, zwo_content)
                         generated_files.append(filepath)
                         _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
-                                            display_name=display_name)
+                                            display_name=display_name,
+                                            origin='LEGACY_NATE_ARCHETYPE',
+                                            producer_id='nate_workout_generator.native_archetype',
+                                            producer_version='v1', template_id='native_archetype',
+                                            template_version='v1', progression_level=level,
+                                            is_assessment=False,
+                                            fueling_source_tier=_legacy_fuel_tier,
+                                            archetype=__import__('workout_mapper').resolve_archetype_contract(
+                                                workout_type, level=level,
+                                                methodology=nate_methodology,
+                                                variation_offset=variation,
+                                                discipline=_bb_discipline))
                         continue  # Skip the standard generation below
                 except Exception as e:
                     # Fall back to standard generation if Nate generator fails
@@ -2839,7 +2934,8 @@ GO GET IT, {athlete_name.upper()}!
                 heat_reminder = "\n\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance"
 
             # Add fuel tag
-            fuel_tag = _get_fuel_tag_for_type(workout_type, fueling, duration, week_num)
+            fuel_tag, _standard_fuel_tier = _get_fuel_tag_and_tier(
+                workout_type, fueling, duration, week_num)
             fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
 
             full_description = fuel_prefix + personal_header + full_description + heat_reminder
@@ -2865,7 +2961,25 @@ GO GET IT, {athlete_name.upper()}!
 
             generated_files.append(filepath)
             _record_tp_session(filepath, day_info.get('date'), week_num, phase, 'bike',
-                                display_name=display_name)
+                                display_name=display_name,
+                                origin=('PROGRESSIVE_INTERVAL_GENERATOR'
+                                        if workout_type in ('Intervals', 'VO2max') else
+                                        'PROGRESSIVE_ENDURANCE_GENERATOR'
+                                        if workout_type == 'Endurance' and phase == 'base' else
+                                        'STANDARD_BLOCK_GENERATOR'),
+                                producer_id=('workout_library.progressive_interval'
+                                             if workout_type in ('Intervals', 'VO2max') else
+                                             'workout_library.progressive_endurance'
+                                             if workout_type == 'Endurance' and phase == 'base' else
+                                             'generate_athlete_package.standard_blocks'),
+                                producer_version='v1',
+                                template_id=(re.sub(r'[^a-z0-9]+', '_', display_name.lower()).strip('_')
+                                             if workout_type in ('Intervals', 'VO2max')
+                                             or (workout_type == 'Endurance' and phase == 'base')
+                                             else workout_type),
+                                template_version='v1',
+                                is_assessment=(workout_type == 'FTP_Test'),
+                                fueling_source_tier=_standard_fuel_tier)
 
     # ===================================================================
     # SERIES SUFFIX PATCH (D2): block-builder intensity days that belong
@@ -2997,7 +3111,12 @@ GO GET IT, {athlete_name.upper()}!
 
                 generated_files.append(filepath)
                 _record_tp_session(filepath, date_full, week_num, phase, 'strength',
-                                    display_name=display_name)
+                                    display_name=display_name, origin='STRENGTH_TEMPLATE',
+                                    producer_id='generate_athlete_package.strength_template',
+                                    producer_version='v2',
+                                    template_id=re.sub(r'[^a-z0-9]+', '_', display_name.lower()).strip('_'),
+                                    template_version='strength_periodization/v2',
+                                    is_assessment=False, fueling_source_tier=None)
 
     # ===================================================================
     # TP PROJECTION POST-PASS (D1/D3): order_on_day + strength A/B template
@@ -3029,10 +3148,28 @@ GO GET IT, {athlete_name.upper()}!
         for _rec in _tp_manifest_records:
             if _rec['tp_kind'] == 'strength':
                 _strength_by_week[_rec['week_num']].append(_rec)
-        for _week_recs in _strength_by_week.values():
+        _phase_block_by_week = {}
+        _phase_counts = defaultdict(int)
+        _active_phase = None
+        _active_phase_block = 0
+        for _week in sorted(weeks, key=lambda item: item.get('week', 0)):
+            _number = int(_week.get('week', 0))
+            _phase = _week.get('phase')
+            if (_active_phase != _phase or (_number > 0 and (_number - 1) % 4 == 0)):
+                _active_phase = _phase
+                _active_phase_block = _phase_counts[_phase]
+                _phase_counts[_phase] += 1
+            _phase_block_by_week[_number] = (
+                _active_phase_block, bool(_week.get('is_recovery_week')))
+        for _week_num, _week_recs in _strength_by_week.items():
             _week_recs.sort(key=lambda r: r['date'] or '')
+            _phase_block, _is_recovery = _phase_block_by_week.get(
+                _week_num, (0, False))
             for _ordinal, _rec in enumerate(_week_recs):
-                _rec['strength_template'] = _strength_template_key(_rec['phase'], _ordinal)
+                _rec['strength_template'] = _strength_template_key(
+                    _rec['phase'], _ordinal,
+                    phase_block_index=_phase_block,
+                    is_recovery=_is_recovery)
 
         _series_counts = defaultdict(int)
         for _rec in _tp_manifest_records:
@@ -3056,6 +3193,10 @@ GO GET IT, {athlete_name.upper()}!
     generate_zwo_files.last_naming_manifest = {
         record['filename_stem']: dict(record) for record in _tp_manifest_records
     }
+    from earned_selection_rules import build_legacy_projection
+    generate_zwo_files.last_legacy_compliance_projection = build_legacy_projection(
+        _bb_plan, target_hours=cycling_hours_target, off_days=_bb_off_days,
+        max_intensity=max_intensity_per_week)
     return generated_files
 
 
@@ -3146,10 +3287,11 @@ def generate_athlete_package(athlete_id: str) -> dict:
     # a short-lived directory for every metric. The exact typed canonical model
     # is then finalized and validated; only afterward may its power projection
     # publish ZWOs. Published artifacts are never inputs to canonicalization.
-    from copy import deepcopy
     from canonical_training_model import (build_canonical_model,
                                           publish_zwo_projection)
-    _canonical_dates = deepcopy(plan_dates)
+    quality_report = None
+    quality_findings = []
+    quality_blockers = []
     for _stale_zwo in (athlete_dir / 'workouts').glob('*.zwo'):
         _stale_zwo.unlink()
     _authoring_context = tempfile.TemporaryDirectory(
@@ -3161,15 +3303,40 @@ def generate_athlete_package(athlete_id: str) -> dict:
             _authored_dir, plan_dates, methodology, derived, profile, fueling)
         _pre_plan_week = getattr(generate_zwo_files, 'last_pre_plan_week', None)
         if (_pre_plan_week and not any(
-                w.get('week') == 0 for w in _canonical_dates.get('weeks', []))):
-            _canonical_dates.setdefault('weeks', []).insert(0, _pre_plan_week)
+                w.get('week') == 0 for w in plan_dates.get('weeks', []))):
+            plan_dates.setdefault('weeks', []).insert(0, _pre_plan_week)
+            with open(athlete_dir / 'plan_dates.yaml', 'w') as f:
+                yaml.dump(plan_dates, f, default_flow_style=False, sort_keys=False)
+            detail("Saved: plan_dates.yaml (W00 pre-plan week)")
+
+        # E1 D1 boundary: both calendar augmentation and fueling alignment are
+        # finalized before the immutable candidate, canonical model, or guide.
+        from calculate_fueling import align_fueling_to_plan
+        align_fueling_to_plan(athlete_dir)
+        fueling = load_yaml(athlete_dir / 'fueling.yaml')
+        athlete_data['fueling'] = fueling
+        athlete_data['plan_dates'] = plan_dates
         step(3.5, "Finalizing canonical training model...")
         canonical_model = build_canonical_model(
-            athlete_id, athlete_dir, plan_dates=_canonical_dates,
+            athlete_id, athlete_dir, plan_dates=plan_dates,
             authored_documents=getattr(
                 generate_zwo_files, 'last_authored_documents', {}),
             naming_manifest=getattr(
                 generate_zwo_files, 'last_naming_manifest', {}))
+
+        _staged_guide_race_input = stage_guide_race_input(athlete_dir)
+
+        from final_plan_candidate import build_candidate, freeze_candidate
+        certification_manifest, manifest_pin = __import__(
+            'final_plan_candidate', fromlist=['snapshot_manifest']).snapshot_manifest(
+                athlete_dir)
+        final_candidate = build_candidate(
+            athlete_id, athlete_dir, canonical_model,
+            legacy_compliance_projection=getattr(
+                generate_zwo_files, 'last_legacy_compliance_projection'),
+            manifest=certification_manifest, manifest_pin=manifest_pin)
+        candidate_sha256 = freeze_candidate(
+            athlete_dir / 'final_plan_candidate.json', final_candidate)
         zwo_files = publish_zwo_projection(canonical_model, athlete_dir)
         private_review = _authored_dir / 'NEEDS_REVIEW.txt'
         if private_review.is_file():
@@ -3186,7 +3353,14 @@ def generate_athlete_package(athlete_id: str) -> dict:
     step(4, "Generating training guide...")
     guide_path = athlete_dir / 'training_guide.html'
     generate_training_guide(
-        athlete_id, output_path=guide_path, canonical_model=canonical_model)
+        athlete_id, output_path=guide_path, canonical_model=canonical_model,
+        staged_race_input=_staged_guide_race_input)
+
+    from workout_quality_report import build_report, write_report
+    quality_report, quality_findings, quality_blockers = build_report(
+        final_candidate, candidate_sha256, certification_manifest,
+        guide_path.read_bytes())
+    write_report(athlete_dir / 'workout_quality_report.json', quality_report)
 
     # Generate plan summary
     step(5, "Generating plan summary...")
@@ -3318,40 +3492,13 @@ def generate_athlete_package(athlete_id: str) -> dict:
 
     detail(f"Saved: {summary_path}")
 
-    # W00 (D1/D2): persist the pre-plan week into plan_dates.yaml on disk so
-    # PlanIR can match W00 ZWOs by calendar-day workout_prefix like any other
-    # session. Deferred until AFTER guide (step 4) and summary (step 5) have
-    # already read plan_dates.yaml from disk -- an extra week=0 entry is
-    # untested territory for those consumers, so it must not be visible to
-    # them. Uses the SAME in-memory plan_dates object already loaded above.
-    _pre_plan_week = getattr(generate_zwo_files, 'last_pre_plan_week', None)
-    if _pre_plan_week and not any(w.get('week') == 0 for w in plan_dates.get('weeks', [])):
-        plan_dates.setdefault('weeks', []).insert(0, _pre_plan_week)
-        try:
-            with open(athlete_dir / 'plan_dates.yaml', 'w') as f:
-                yaml.dump(plan_dates, f, default_flow_style=False, sort_keys=False)
-            detail("Saved: plan_dates.yaml (W00 pre-plan week)")
-        except Exception as exc:
-            warning(f"Could not persist W00 pre-plan week to plan_dates.yaml: {exc}")
-
-    # F2: derive gut-training labels from the actual persisted plan calendar
-    # (including W00), then rebuild the guide so its canonical fueling card and
-    # the serialized fueling artifact describe the same weeks and targets.
-    try:
-        from calculate_fueling import align_fueling_to_plan
-        align_fueling_to_plan(athlete_dir)
-        generate_training_guide(
-            athlete_id, output_path=guide_path, canonical_model=canonical_model)
-        detail("Aligned fueling labels to plan_dates.yaml and refreshed guide")
-    except Exception as exc:
-        warning(f"Could not align fueling labels to plan dates: {exc}")
-
     # J1: write the catalog only after the final W00 calendar and fueling
     # alignment are persisted, so state materializes the artifacts the coach
     # actually reviews.  This remains non-fatal for package delivery and fail-
     # closed for confirmation when durable state is unavailable.
     try:
         from derived_registry import materialize
+        from workout_quality_report import report_derived_records
         fueling = load_yaml(athlete_dir / 'fueling.yaml')
         weekly_structure = load_yaml(athlete_dir / 'weekly_structure.yaml')
         derived_values = (
@@ -3372,6 +3519,11 @@ def generate_athlete_package(athlete_id: str) -> dict:
                 namespace='canonical',
             )
         )
+        # These are plan-level audit values. They intentionally remain absent
+        # from athlete-facing artifacts and therefore materialize directly.
+        for record in report_derived_records(quality_report):
+            derived_values.append({**record,
+                'value': quality_report[record['field']]})
         write_generation(
             athlete_dir / 'fulfillment_status.json', athlete_id,
             getattr(generate_zwo_files, 'last_fulfillment_issues', []),
@@ -3379,6 +3531,10 @@ def generate_athlete_package(athlete_id: str) -> dict:
             delivery_platform=str(profile.get('delivery_platform') or 'manual'),
             derived_values=derived_values,
         )
+        from fulfillment_state import merge_quality_findings_v1
+        merge_quality_findings_v1(
+            athlete_dir / 'fulfillment_status.json', summary_revision,
+            'workout_quality_report', quality_findings)
         detail("Saved: fulfillment_status.json")
     except Exception as exc:
         warning(f"Could not write fulfillment state (confirmation will fail closed): {exc}")
