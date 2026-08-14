@@ -190,7 +190,14 @@ def cleanup_previous_order(
             "previous drill order was already terminal"))
         return assertions
     if not prior_status:
-        raise DrillError("previous drill has no authoritative fulfillment state")
+        # /api/order-status answers 200 "processing" (never 404) for session
+        # refs the webhook has not processed — the honest customer-facing
+        # contract. No fulfillment state means there is nothing to cancel;
+        # a genuinely stuck pre-state order is the state audit's job.
+        assertions.append(_assertion(
+            "previous_order_cleanup", True,
+            "previous drill order has no fulfillment state; nothing to cancel"))
+        return assertions
 
     cancel_response = transport.post(
         f"{base}/api/fulfillment/{previous_id}/transition",

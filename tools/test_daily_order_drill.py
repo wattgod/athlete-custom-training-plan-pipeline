@@ -148,6 +148,20 @@ def test_cleanup_cancels_previous_order_and_verifies_state(tmp_path, monkeypatch
     assert state["cancellation"]["worker_stop_acknowledged"] is True
 
 
+def test_cleanup_passes_when_previous_drill_never_existed(tmp_path, monkeypatch):
+    """First-run case: /api/order-status answers 200 "processing" (never 404)
+    for session refs the webhook has not processed, so cleanup must treat a
+    missing fulfillment state as nothing-to-cancel, not an error."""
+    client = _configure_app(tmp_path, monkeypatch)
+
+    assertions = drill.cleanup_previous_order(
+        _config(), DAY, transport=FlaskTransport(client))
+
+    assert len(assertions) == 1
+    assert assertions[0]["passed"] is True
+    assert "nothing to cancel" in assertions[0]["detail"]
+
+
 def test_artifact_redacts_all_configured_values():
     assertions = [{
         "name": "failure", "passed": False,
