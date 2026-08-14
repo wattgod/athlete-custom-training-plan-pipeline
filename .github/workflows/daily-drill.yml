@@ -32,10 +32,14 @@ jobs:
 
       - name: Cancel yesterday, send today, and verify the gate
         env:
-          DRILL_WEBHOOK_URL: ${{ secrets.DRILL_WEBHOOK_URL }}
+          # DRILL_WEBHOOK_SECRET must equal the Railway WOOCOMMERCE_SECRET env
+          # var (the webhook verifies the WooCommerce HMAC signature with it).
+          # CRON_SECRET matches the Railway CRON_SECRET env var, same contract
+          # as daily-followup-emails.yml.
+          DRILL_WEBHOOK_URL: https://athlete-custom-training-plan-pipeline-production.up.railway.app/webhook/woocommerce
           DRILL_WEBHOOK_SECRET: ${{ secrets.DRILL_WEBHOOK_SECRET }}
-          DRILL_CUSTOMER_EMAIL: ${{ secrets.DRILL_CUSTOMER_EMAIL }}
-          DRILL_CRON_SECRET: ${{ secrets.DRILL_CRON_SECRET }}
+          DRILL_CUSTOMER_EMAIL: ${{ vars.DRILL_CUSTOMER_EMAIL || 'gravelgodcoaching@gmail.com' }}
+          DRILL_CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           python tools/daily_order_drill.py \
             --cleanup \

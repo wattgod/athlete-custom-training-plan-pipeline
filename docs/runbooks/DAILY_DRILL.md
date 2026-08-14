@@ -6,16 +6,16 @@ pre-apply cancellation.
 
 ## Setup
 
-Set these GitHub Actions repository secrets:
+Both workflows hardcode the production Railway URLs and reuse the existing
+`CRON_SECRET` repository secret (same value as the Railway `CRON_SECRET` env
+var, the contract `daily-followup-emails.yml` already relies on). Required
+configuration:
 
-| Name | Value |
-|---|---|
-| `DRILL_WEBHOOK_URL` | Full production URL ending in `/webhook/woocommerce` |
-| `DRILL_WEBHOOK_SECRET` | Same value as Railway `WOOCOMMERCE_SECRET` |
-| `DRILL_CUSTOMER_EMAIL` | A mailbox that supports plus addressing; the tool derives `local+drill@domain` |
-| `DRILL_CRON_SECRET` | Same value as Railway `CRON_SECRET`; used only for status, pre-approval download assertion, and cancellation |
-| `STATE_AUDIT_URL` | Full production URL ending in `/api/cron/state-audit` |
-| `STATE_AUDIT_CRON_SECRET` | Same value as Railway `CRON_SECRET` |
+| Name | Kind | Value |
+|---|---|---|
+| `CRON_SECRET` | secret (already set) | Same value as Railway `CRON_SECRET`; used for status, pre-approval download assertion, cancellation, and the state audit |
+| `DRILL_WEBHOOK_SECRET` | secret | Same value as Railway `WOOCOMMERCE_SECRET` |
+| `DRILL_CUSTOMER_EMAIL` | variable (optional) | Defaults to `gravelgodcoaching@gmail.com`; must support plus addressing — the tool derives `local+drill@domain` |
 
 Railway must have the matching `WOOCOMMERCE_SECRET` and `CRON_SECRET`, a
 persistent `DATA_DIR` volume, working review/download token keys, and the real
