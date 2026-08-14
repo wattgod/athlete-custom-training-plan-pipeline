@@ -66,6 +66,8 @@ from constants import (
     WEIGHT_MAX_KG,
     AGE_MIN,
     AGE_MAX,
+    PLAN_WEEKS_MIN,
+    PLAN_WEEKS_MAX,
 )
 from known_races import (KNOWN_RACES, RACE_ALIASES, match_race,
                          match_race_scored, lookup_by_slug,
@@ -1435,22 +1437,20 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                   else (goals.get('discipline', '') or '').strip().lower())
     _disc_hint = _disc_hint if _disc_hint in ('road', 'gravel', 'mtb') else ''
 
-    # Calculate weeks to target race (with clamping to 4-26 range)
-    MIN_PLAN_WEEKS = 4
-    MAX_PLAN_WEEKS = 26
+    # Calculate weeks to target race (1–52; same bounds as PLAN_WEEKS_*)
     race_date_str = target_race_info.get('date', '')
     plan_notes = f"Submitted {submitted}." if submitted else ''
     if race_date_str:
         race_dt = datetime.strptime(race_date_str, '%Y-%m-%d').date()
         weeks_to_race_raw = (race_dt - plan_start).days // 7
-        weeks_to_race = max(MIN_PLAN_WEEKS, min(MAX_PLAN_WEEKS, weeks_to_race_raw))
-        if weeks_to_race_raw < MIN_PLAN_WEEKS:
+        weeks_to_race = max(PLAN_WEEKS_MIN, min(PLAN_WEEKS_MAX, weeks_to_race_raw))
+        if weeks_to_race_raw < PLAN_WEEKS_MIN:
             print(f"{YELLOW}WARNING: Only {weeks_to_race_raw} weeks to race — "
-                  f"clamping plan to minimum {MIN_PLAN_WEEKS} weeks. "
+                  f"clamping plan to minimum {PLAN_WEEKS_MIN} week. "
                   f"Race is very soon; plan will be compressed.{RESET}")
-        elif weeks_to_race_raw > MAX_PLAN_WEEKS:
+        elif weeks_to_race_raw > PLAN_WEEKS_MAX:
             print(f"{YELLOW}WARNING: {weeks_to_race_raw} weeks to race — "
-                  f"clamping plan to maximum {MAX_PLAN_WEEKS} weeks (6 months). "
+                  f"clamping plan to maximum {PLAN_WEEKS_MAX} weeks. "
                   f"Extra lead time will not be structured.{RESET}")
         if plan_notes:
             plan_notes += f" ~{weeks_to_race} weeks to {target_race_info.get('name', 'target race')} on {race_date_str}."
@@ -3340,21 +3340,47 @@ def assemble_intake_review_items(
         })
     purchased_weeks = int(
         (profile.get('fulfillment') or {}).get('weeks_purchased') or 0)
+    weeks_confirmation = None
     if purchased_weeks and delivered_weeks and purchased_weeks != delivered_weeks:
-        blockers.append({
-            'id': 'WEEKS_MISMATCH', 'source': 'intake',
-            'severity': 'CRITICAL',
-            'message': (f'Generated {delivered_weeks} paid weeks but the order '
-                        f'purchased {purchased_weeks}; W00 excluded.'),
-            'review_value': {
-                'generated_paid_weeks': delivered_weeks,
-                'purchased_weeks': purchased_weeks,
-                'lead_in_excluded': True,
-            },
-            'display_unit': 'weeks',
-            'basis': 'generated plan calendar compared with paid order metadata',
-            'sensitivity': 'internal',
-        })
+        from calculate_plan_dates import paid_weeks_calendar_max
+        fulfillment = profile.get('fulfillment') or {}
+        race_date = target_race.get('date')
+        calendar_max = (
+            paid_weeks_calendar_max(race_date, fulfillment.get('generation_at') or None)
+            if race_date else 0)
+        calendar_forced = (
+            purchased_weeks > delivered_weeks
+            and delivered_weeks == calendar_max
+            and delivered_weeks > 0)
+        weeks_value = {
+            'generated_paid_weeks': delivered_weeks,
+            'purchased_weeks': purchased_weeks,
+            'calendar_max_weeks': calendar_max,
+            'lead_in_excluded': True,
+        }
+        if calendar_forced:
+            weeks_confirmation = {
+                'id': 'WEEKS_CALENDAR_SHORT', 'source': 'intake',
+                'message': (
+                    f'Calendar fits {delivered_weeks} paid weeks before the race '
+                    f'(purchased {purchased_weeks}); Week 1 cannot start before '
+                    f'generation.'),
+                'review_value': weeks_value,
+                'display_unit': 'weeks',
+                'basis': 'purchased weeks exceed Mondays remaining before race week',
+                'sensitivity': 'internal',
+            }
+        else:
+            blockers.append({
+                'id': 'WEEKS_MISMATCH', 'source': 'intake',
+                'severity': 'CRITICAL',
+                'message': (f'Generated {delivered_weeks} paid weeks but the order '
+                            f'purchased {purchased_weeks}; W00 excluded.'),
+                'review_value': weeks_value,
+                'display_unit': 'weeks',
+                'basis': 'generated plan calendar compared with paid order metadata',
+                'sensitivity': 'internal',
+            })
 
     confirmations = [
         {
@@ -3383,6 +3409,8 @@ def assemble_intake_review_items(
             'basis': 'null FTP intake projected without estimating watts',
             'sensitivity': 'personal',
         })
+    if weeks_confirmation:
+        confirmations.append(weeks_confirmation)
     return (
         sorted({item['id']: item for item in blockers}.values(),
                key=lambda item: item['id']),

@@ -1799,7 +1799,7 @@ class TestExtractDistanceFromName:
 # ===========================================================================
 
 class TestPlanWeeksClamping:
-    """Tests for plan_weeks clamping to 4-26 range."""
+    """Tests for plan_weeks clamping to 1-52 range."""
 
     def _make_parsed_with_date(self, race_date_str):
         """Build a minimal parsed dict with a known race but override date."""
@@ -1822,8 +1822,8 @@ class TestPlanWeeksClamping:
         }
 
     def test_plan_weeks_clamped_to_range(self):
-        """Race 2 weeks away should produce 4-week plan note,
-        race 40 weeks away should cap at 26 in plan notes."""
+        """Race 2 weeks away should produce a 2-week plan note,
+        race 40 weeks away should report ~40 (under the 52-week cap)."""
         from datetime import date, timedelta
 
         today = date.today()
@@ -1832,7 +1832,7 @@ class TestPlanWeeksClamping:
             days_until_monday = 7
         plan_start = today + timedelta(days=days_until_monday)
 
-        # Race very close (2 weeks away) — should clamp to 4
+        # Race very close (2 weeks away) — no 4-week floor; notes report ~2
         close_race_date = (plan_start + timedelta(weeks=2)).isoformat()
         parsed_close = self._make_parsed_with_date(close_race_date)
         # Override the known race date with a close date
@@ -1853,13 +1853,12 @@ class TestPlanWeeksClamping:
             mock_match.return_value = (
                 ('unbound_gravel_200', close_races['unbound_gravel_200']), _meta)
             profile_close = build_profile(parsed_close)
-            # The plan_notes should reference ~4 weeks (clamped from 2)
             notes = profile_close['plan_start']['notes']
-            assert '~4 weeks' in notes, (
-                f"Expected '~4 weeks' in notes for close race, got: {notes}"
+            assert '~2 weeks' in notes, (
+                f"Expected '~2 weeks' in notes for close race, got: {notes}"
             )
 
-        # Race very far (40 weeks away) — should clamp to 26
+        # Race very far (40 weeks away) — under the 52-week cap, notes report ~40
         far_race_date = (plan_start + timedelta(weeks=40)).isoformat()
         parsed_far = self._make_parsed_with_date(far_race_date)
         far_races = {
@@ -1876,15 +1875,17 @@ class TestPlanWeeksClamping:
                 ('unbound_gravel_200', far_races['unbound_gravel_200']), _meta)
             profile_far = build_profile(parsed_far)
             notes = profile_far['plan_start']['notes']
-            assert '~26 weeks' in notes, (
-                f"Expected '~26 weeks' in notes for far race, got: {notes}"
+            assert '~40 weeks' in notes, (
+                f"Expected '~40 weeks' in notes for far race, got: {notes}"
             )
 
     def test_calculate_plan_dates_rejects_too_few_weeks(self):
-        """calculate_plan_dates should raise ValueError for plan_weeks < 4."""
+        """calculate_plan_dates should raise ValueError for plan_weeks < 1."""
         from calculate_plan_dates import calculate_plan_dates
-        with pytest.raises(ValueError, match="at least 4 weeks"):
-            calculate_plan_dates('2026-06-01', plan_weeks=3)
+        with pytest.raises(ValueError, match="at least 1 week"):
+            calculate_plan_dates('2026-06-01', plan_weeks=0)
+        with pytest.raises(ValueError, match="at least 1 week"):
+            calculate_plan_dates('2026-06-01', plan_weeks=-1)
 
     def test_calculate_plan_dates_rejects_too_many_weeks(self):
         """calculate_plan_dates should raise ValueError for plan_weeks > 52."""
@@ -1893,15 +1894,51 @@ class TestPlanWeeksClamping:
             calculate_plan_dates('2026-06-01', plan_weeks=53)
 
     def test_calculate_plan_dates_accepts_boundary_values(self):
-        """calculate_plan_dates should accept 4 and 52 weeks."""
+        """calculate_plan_dates should accept 1 and 52 weeks."""
         from calculate_plan_dates import calculate_plan_dates
-        # 4 weeks should work
-        result_4 = calculate_plan_dates('2027-06-01', plan_weeks=4)
-        assert result_4['plan_weeks'] >= 4
+        result_1 = calculate_plan_dates('2027-06-01', plan_weeks=1)
+        assert result_1['plan_weeks'] >= 1
 
-        # 52 weeks should work
         result_52 = calculate_plan_dates('2028-06-01', plan_weeks=52)
         assert result_52 is not None
+
+
+def _weeks_review_profile(*, race_date, generation_at, purchased=7):
+    return {
+        'fulfillment': {
+            'weeks_purchased': purchased,
+            'generation_at': generation_at,
+        },
+        'target_race': {'date': race_date, 'name': 'Test Race'},
+        'devices': {},
+        'fitness_markers': {},
+    }
+
+
+def test_assemble_calendar_shortfall_is_confirmation_not_blocker():
+    """Purchased 7, delivered 6, calendar max 6 → WEEKS_CALENDAR_SHORT."""
+    profile = _weeks_review_profile(
+        race_date='2026-09-19', generation_at='2026-08-06T15:00:00Z')
+    blockers, confirmations = assemble_intake_review_items(
+        profile, delivered_weeks=6)
+    assert 'WEEKS_MISMATCH' not in {item['id'] for item in blockers}
+    short = next(item for item in confirmations if item['id'] == 'WEEKS_CALENDAR_SHORT')
+    assert short['review_value']['purchased_weeks'] == 7
+    assert short['review_value']['generated_paid_weeks'] == 6
+    assert short['review_value']['calendar_max_weeks'] == 6
+
+
+def test_assemble_non_calendar_mismatch_still_blocks():
+    """Purchased 7, delivered 6, but calendar allows 8+ → WEEKS_MISMATCH."""
+    profile = _weeks_review_profile(
+        race_date='2026-12-19', generation_at='2026-08-06T15:00:00Z')
+    blockers, confirmations = assemble_intake_review_items(
+        profile, delivered_weeks=6)
+    assert 'WEEKS_CALENDAR_SHORT' not in {item['id'] for item in confirmations}
+    mismatch = next(item for item in blockers if item['id'] == 'WEEKS_MISMATCH')
+    assert mismatch['review_value']['purchased_weeks'] == 7
+    assert mismatch['review_value']['generated_paid_weeks'] == 6
+    assert mismatch['review_value']['calendar_max_weeks'] >= 8
 
 
 # ===========================================================================
