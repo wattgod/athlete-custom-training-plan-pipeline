@@ -281,8 +281,11 @@ def test_strength_race_day_off_never_carry_structure(structure_plan):
 # ===========================================================================
 
 _VALID_STRENGTH_TEMPLATES = {
-    'foundation_a', 'foundation_b', 'max_strength_a', 'max_strength_b',
-    'power_a', 'power_b', 'maintenance_a',
+    'aa_a', 'aa_b', 'aa_c',
+    'max_strength_a', 'max_strength_b', 'max_strength_c',
+    'maintenance_a', 'maintenance_b',
+    'maintenance_reduced_a', 'maintenance_reduced_b',
+    'key_lifts_a', 'deload_a',
 }
 
 
@@ -314,9 +317,17 @@ def test_strength_ab_alternates_by_week(structure_plan):
         sessions.sort(key=lambda s: s.date or '')
         templates = [s.strength_template for s in sessions]
         # Same family, alternating letters (A then B) by chronological/
-        # emitted ordinal -- never both A or both B.
+        # emitted ordinal -- except recovery weeks.  E1 is audit-only, so a
+        # pre-existing second recovery strength file is retained and both
+        # sessions bind to the sole registered deload template.  R11/R12
+        # surface the frequency contradiction as a quality finding.
         assert templates[0].endswith('_a'), f"week {week_num}: first strength session not A: {templates}"
-        assert templates[1].endswith('_b'), f"week {week_num}: second strength session not B: {templates}"
+        if templates[0] == 'deload_a':
+            assert templates[1] == 'deload_a', (
+                f"week {week_num}: recovery strength must remain deload: {templates}"
+            )
+        else:
+            assert templates[1].endswith('_b'), f"week {week_num}: second strength session not B: {templates}"
         assert templates[0][:-2] == templates[1][:-2], f"week {week_num}: A/B family mismatch: {templates}"
     assert saw_a_pair, "no week with 2 strength sessions found -- A/B alternation not exercised"
 

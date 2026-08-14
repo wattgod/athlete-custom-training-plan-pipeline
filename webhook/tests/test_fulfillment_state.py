@@ -170,7 +170,7 @@ def test_order_identity_is_immutable_across_regeneration(tmp_path):
     first = write_generation(
         path, 'athlete-m', order_id='cs_order_1',
         delivery_platform='trainingpeaks')
-    assert first['schema_version'] == 2
+    assert first['schema_version'] == 3
     assert first['order_id'] == 'cs_order_1'
     second = write_generation(
         path, 'athlete-m', order_id='cs_order_1',

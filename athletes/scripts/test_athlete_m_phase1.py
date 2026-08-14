@@ -129,7 +129,36 @@ def test_athlete_m_phase3_golden(monkeypatch, tmp_path):
     assert not re.search(r"\b\d+(?:\.\d+)?\s*kJ\b", json.dumps(fueling), re.I)
     assert not list((source / "workouts").glob("*.zwo"))
     contract = json.loads((source / "apply_contract.json").read_text())
-    assert contract["contract_version"] == "apply_contract/v1"
+    candidate = json.loads((source / "final_plan_candidate.json").read_text())
+    quality_report = json.loads((source / "workout_quality_report.json").read_text())
+    canonical_model = json.loads(
+        (source / "canonical_training_model.json").read_text())
+    certification = json.loads(
+        (source / "certification_manifest.json").read_text())
+    assert candidate["mode"] == "A"
+    assert quality_report["rollout_phase"] == "E1"
+    assert candidate["manifest_pin"] == quality_report["manifest_pin"]
+    assert candidate["manifest_pin"]["snapshot_digest"] == (
+        __import__('earned_selection').canonical_digest(certification))
+    candidate_ids = [item["id"] for item in candidate["sessions"]]
+    assert candidate_ids == [item["id"] for item in canonical_model["sessions"]]
+    assert candidate_ids == [item["session_id"] for item in
+                             quality_report["gate_summary"]["sessions"]]
+    assert all(gate["effective_verdict"] == "NOT_ENFORCED"
+               for row in certification["rows"] for gate in row["gates"])
+    assert all(gate["effective_verdict"] == "NOT_ENFORCED"
+               for item in quality_report["gate_summary"]["sessions"]
+               for gate in item["final_gates"])
+    routed = [row for row in quality_report["gate_summary"]["rubric"]
+              if row["routed_to_blocking_issues"]]
+    assert all(row["blocking_since"] == "pre-existing" for row in routed)
+    assert not ({"LIBRARY_UNCERTIFIED", "WORKOUT_DOSE_MISMATCH",
+                 "WORKOUT_ORIGIN_UNKNOWN", "MANIFEST_PIN_MISSING",
+                 "MANIFEST_PIN_MISMATCH", "MANIFEST_SNAPSHOT_UNAVAILABLE"}
+                & {item["id"] for item in issues})
+    assert {"QUALITY_GATE_SUMMARY", "QUALITY_MANIFEST_PIN"} <= catalog_ids
+    assert contract["contract_version"] == "apply_contract/v2"
+    assert contract["seal_version"] == "canonical_model_apply_contract/v2"
     assert contract["model_seal"]
     assert all(op["kind"] != "threshold_update" for op in contract["operations"])
     for path in source.rglob("*"):
@@ -153,8 +182,11 @@ def test_athlete_m_phase3_golden(monkeypatch, tmp_path):
     assert {
         'artifacts/plan_ir.json', 'artifacts/tp_manifest.json',
         'artifacts/canonical_training_model.json', 'artifacts/apply_contract.json',
+        'artifacts/final_plan_candidate.json',
+        'artifacts/workout_quality_report.json',
+        'certification_manifest.json',
     } <= sealed_paths
-    assert release_manifest['seal_version'] == 'canonical_model_apply_contract/v1'
+    assert release_manifest['seal_version'] == 'canonical_model_apply_contract/v2'
     assert release_manifest['model_seal'] == contract['model_seal'] == state['model_seal']
 
     with zipfile.ZipFile(persisted["review_zip"]) as archive:

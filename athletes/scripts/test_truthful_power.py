@@ -263,5 +263,9 @@ def test_target_union_rejects_missing_mixed_forbidden_shapes(target, kind):
 def test_exact_target_union_accepts_each_branch(athlete, segments):
     validate_canonical_model({
         'model_version': MODEL_VERSION, 'athlete': athlete,
-        'sessions': [{'segments': segments}],
+        'sessions': [{
+            'id': 'w01.2026-01-05.01', 'week': 1,
+            'date': '2026-01-05', 'daily_ordinal': 1,
+            'segments': segments,
+        }],
     })
