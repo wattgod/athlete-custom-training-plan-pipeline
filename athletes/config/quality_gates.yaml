@@ -1,0 +1,155 @@
+schema_version: quality_gates/v1
+registry_version: quality_gates/v1
+purpose_registry_version: purpose_registry/v1
+scorer_version: earned_selection_scorer/v1
+rule_registry_version: rule_registry/v1
+owner_id: matti-gravel-god
+evaluation_order:
+  - PURPOSE_T_AT_VO2MAX/v1
+  - PURPOSE_WBAL_NADIR/v1
+  - PURPOSE_DOSE_TOTALITY/v1
+  - PURPOSE_IDENTITY_STRUCTURE/v1
+  - Q3_MIN_DESIGN_TSS_DELTA/v1
+  - Q3_MIN_DENSITY_DELTA/v1
+gates:
+  - gate_id: PURPOSE_T_AT_VO2MAX
+    gate_version: v1
+    purpose_subtype: vo2max/*
+    metric: t_at_vo2max_seconds
+    operator: inclusive_between
+    threshold: {minimum: 480, maximum: 840}
+    unit: seconds
+    applicability:
+      scope: native_row_and_final_cycling_session
+      archetype_ids:
+        - vo2max--5x3-vo2-classic
+        - vo2max--vo2max-30-30
+        - vo2max--ronnestad-40-20
+        - race-simulation--hard-starts
+        - vo2max--descending-vo2-pyramid
+        - durability--tired-vo2max
+        - vo2max--vo2max-with-loaded-recovery
+        - durability--late-race-vo2max
+        - durability--tired-30-30s
+      levels: [1, 2, 3, 4, 5, 6]
+      require_power_control: true
+      exclude_is_assessment: true
+    aggregation: per_row_or_session_main_set
+    evidence_basis: experimental_scorer_vo2_set_and_band
+    owner_id: matti-gravel-god
+    status: hypothesis
+    effective_from: null
+
+  - gate_id: PURPOSE_WBAL_NADIR
+    gate_version: v1
+    purpose_subtype: wprime_drain/*
+    metric: wbal_nadir_kj
+    operator: inclusive_between
+    threshold: {minimum: 0.0, maximum: 6.0}
+    unit: kilojoules
+    applicability:
+      scope: native_row_and_final_cycling_session
+      archetype_ids:
+        - g-spot--g-spot-criss-cross
+        - vo2max--float-sets
+        - tt-threshold--criss-cross-intervals
+        - critical-power--above-cp-repeats
+        - critical-power--w-prime-depletion
+        - anaerobic-capacity--2min-killers
+        - inscyd--glycolytic-power
+        - sprint-neuromuscular--peak-and-fade
+      levels: [1, 2, 3, 4, 5, 6]
+      require_power_control: true
+      exclude_is_assessment: true
+    aggregation: per_row_or_session_main_set
+    evidence_basis: experimental_scorer_wbal_set_band_and_sibling_recurrence
+    owner_id: matti-gravel-god
+    status: hypothesis
+    effective_from: null
+
+  - gate_id: PURPOSE_DOSE_TOTALITY
+    gate_version: v1
+    purpose_subtype: '*'
+    metric: prescribed_dose_record
+    operator: totality_and_native_adjacent_nonregression
+    threshold: {minimum_trace_seconds: 1, require_design_if: true, require_design_tss: true, require_design_kj: true, native_min_design_tss_delta: 0.0, native_min_trace_seconds_delta: 0}
+    unit: canonical_dose_record
+    applicability:
+      scope: native_row_and_final_cycling_session
+      include_purpose_classes: [vo2max, wprime_drain, threshold, endurance, recovery, openers, race_sim, mixed]
+      exclude_archetype_ids:
+        - vo2max--5x3-vo2-classic
+        - vo2max--vo2max-30-30
+        - vo2max--ronnestad-40-20
+        - race-simulation--hard-starts
+        - vo2max--descending-vo2-pyramid
+        - durability--tired-vo2max
+        - vo2max--vo2max-with-loaded-recovery
+        - durability--late-race-vo2max
+        - durability--tired-30-30s
+        - g-spot--g-spot-criss-cross
+        - vo2max--float-sets
+        - tt-threshold--criss-cross-intervals
+        - critical-power--above-cp-repeats
+        - critical-power--w-prime-depletion
+        - anaerobic-capacity--2min-killers
+        - inscyd--glycolytic-power
+        - sprint-neuromuscular--peak-and-fade
+      exclude_is_assessment: true
+      exclude_pure_free: true
+    aggregation: native_L1_totality_then_each_adjacent_level;final_session_totality
+    evidence_basis: experimental_scorer_dose_only_plus_r4_totality_contract
+    owner_id: matti-gravel-god
+    status: hypothesis
+    effective_from: null
+
+  - gate_id: PURPOSE_IDENTITY_STRUCTURE
+    gate_version: v1
+    purpose_subtype: assessment/*|free/*
+    metric: identity_structure_record
+    operator: exact_contract_match
+    threshold: {require_declared_duration: true, require_intended_structure: true, require_truthful_free_targets: true}
+    unit: contract_record
+    applicability:
+      scope: native_row_and_final_cycling_session
+      include_purpose_classes: [assessment, free]
+      dose_gate: false
+    aggregation: per_row_or_session
+    evidence_basis: r4_assessment_and_free_contract
+    owner_id: matti-gravel-god
+    status: hypothesis
+    effective_from: null
+
+  - gate_id: Q3_MIN_DESIGN_TSS_DELTA
+    gate_version: v1
+    purpose_subtype: '*'
+    metric: next_design_tss_minus_prior_design_tss
+    operator: greater_than_or_equal
+    threshold: 1.0
+    unit: design_tss
+    applicability:
+      scope: native_adjacent_level_transition
+      levels: [L1_to_L2, L2_to_L3, L3_to_L4, L4_to_L5, L5_to_L6]
+      require_both_prescribed_traces_nonempty: true
+    aggregation: fail_archetype_and_all_six_rows_on_any_failed_transition
+    evidence_basis: r4_initial_q3_hypothesis
+    owner_id: matti-gravel-god
+    status: hypothesis
+    effective_from: null
+
+  - gate_id: Q3_MIN_DENSITY_DELTA
+    gate_version: v1
+    purpose_subtype: '*'
+    metric: next_design_tss_per_minute_minus_prior_design_tss_per_minute
+    operator: greater_than_or_equal
+    threshold: -0.05
+    unit: design_tss_per_minute
+    applicability:
+      scope: native_adjacent_level_transition
+      levels: [L1_to_L2, L2_to_L3, L3_to_L4, L4_to_L5, L5_to_L6]
+      require_both_prescribed_traces_nonempty: true
+    aggregation: fail_archetype_and_all_six_rows_on_any_failed_transition
+    evidence_basis: r4_initial_q3_hypothesis
+    owner_id: matti-gravel-god
+    status: hypothesis
+    effective_from: null

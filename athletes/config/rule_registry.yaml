@@ -1,0 +1,267 @@
+schema_version: rule_registry/v1
+registry_version: rule_registry/v1
+owner:
+  owner_id: matti-gravel-god
+  display_name: Matti / Gravel God
+execution_order:
+- R01
+- R02
+- R03
+- R04
+- R05
+- R06
+- R08
+- R09
+- R10
+- R11
+- R12
+- R13
+- R14
+- R15
+- R16
+- R17
+- R18
+- R19
+- R20
+- R21
+- R22
+- R23
+- R24
+- R26
+- R07
+- R25
+rules:
+- rule_id: R01
+  stage: PRE_GUIDE
+  blocking_since: pre-existing
+  status: ACTIVE
+  severity: CRITICAL
+  legacy_equivalent_algorithm: A3.0/R01
+  target_algorithm: A3.6/R01
+  algorithm_since: E3
+  output_code: R01_BACK_TO_BACK_INTENSITY
+- rule_id: R02
+  stage: PRE_GUIDE
+  blocking_since: pre-existing
+  status: ACTIVE
+  severity: CRITICAL
+  legacy_equivalent_algorithm: A3.0/R02
+  target_algorithm: A3.1/R02
+  algorithm_since: E3
+  output_code: R02_VO2_GAP
+- rule_id: R03
+  stage: PRE_GUIDE
+  blocking_since: pre-existing
+  status: ACTIVE
+  severity: CRITICAL
+  legacy_equivalent_algorithm: A3.0/R03
+  target_algorithm: A3.1/R03
+  algorithm_since: E3
+  output_code: R03_RECOVERY_TSS_RATIO
+- rule_id: R04
+  stage: PRE_GUIDE
+  blocking_since: pre-existing
+  status: ACTIVE
+  severity: CRITICAL
+  legacy_equivalent_algorithm: A3.0/R04
+  target_algorithm: A3.1/R04
+  algorithm_since: E3
+  output_code: R04_RECOVERY_PURITY
+- rule_id: R05
+  stage: PRE_GUIDE
+  blocking_since: pre-existing
+  status: ACTIVE
+  severity: CRITICAL
+  legacy_equivalent_algorithm: A3.0/R05
+  target_algorithm: A3.6/R05
+  algorithm_since: E3
+  output_code: R05_INTENSITY_COUNT
+- rule_id: R06
+  stage: PRE_GUIDE
+  blocking_since: pre-existing
+  status: ACTIVE
+  severity: CRITICAL
+  legacy_equivalent_algorithm: A3.0/R06
+  target_algorithm: A3.1/R06
+  algorithm_since: E3
+  output_code: R06_LONG_RIDE_MISSING
+- rule_id: R07
+  stage: POST_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: WARNING
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.6/R07
+  algorithm_since: E1
+  output_code: R07_BLOCK_NOTE
+- rule_id: R08
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: CRITICAL
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.6/R08
+  algorithm_since: E1
+  output_code: R08_FUEL_TAG_MISSING
+- rule_id: R09
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: WARNING
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.6/R09
+  algorithm_since: E1
+  output_code: R09_INTENSITY_FUEL
+- rule_id: R10
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: WARNING
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.6/R10
+  algorithm_since: E1
+  output_code: R10_FUEL_SCOPE
+- rule_id: R11
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: CRITICAL
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.2/R11
+  algorithm_since: E1
+  output_code: R11_STRENGTH_TRACK
+- rule_id: R12
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: WARNING
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.2/R12
+  algorithm_since: E1
+  output_code: R12_STRENGTH_PHASE
+- rule_id: R13
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: WARNING
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.6/R13
+  algorithm_since: E1
+  output_code: R13_STRENGTH_INTERVAL_CONFLICT
+- rule_id: R14
+  stage: PRE_GUIDE
+  blocking_since: pre-existing
+  status: ACTIVE
+  severity: CRITICAL
+  legacy_equivalent_algorithm: A3.0/R14
+  target_algorithm: A3.3/R14
+  algorithm_since: E3
+  output_code: R14_SERIES_COHERENCE
+- rule_id: R15
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: WARNING
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.6/R15
+  algorithm_since: E1
+  output_code: R15_LEVEL_PROGRESSION
+- rule_id: R16
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: WARNING
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.6/R16
+  algorithm_since: E1
+  output_code: R16_TSS_GUARDRAIL
+- rule_id: R17
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: CRITICAL
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.4/R17
+  algorithm_since: E1
+  output_code: R17_PHASE_MISMATCH
+- rule_id: R18
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: DEFERRED
+  severity: WARNING
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.6/R18
+  algorithm_since: E1
+  output_code: R18_PHASE_DISTRIBUTION
+- rule_id: R19
+  stage: PRE_GUIDE
+  blocking_since: pre-existing
+  status: ACTIVE
+  severity: CRITICAL
+  legacy_equivalent_algorithm: A3.0/R19
+  target_algorithm: A3.6/R19
+  algorithm_since: E3
+  output_code: R19_HOURS_EXCEEDED
+- rule_id: R20
+  stage: PRE_GUIDE
+  blocking_since: pre-existing
+  status: ACTIVE
+  severity: CRITICAL
+  legacy_equivalent_algorithm: A3.0/R20
+  target_algorithm: A3.6/R20
+  algorithm_since: E3
+  output_code: R20_OFF_DAY_VIOLATION
+- rule_id: R21
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: CRITICAL
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.6/R21
+  algorithm_since: E1
+  output_code: R21_WORKOUT_EXISTS
+- rule_id: R22
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: DEFERRED
+  severity: WARNING
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.6/R22
+  algorithm_since: E1
+  output_code: R22_DUAL_ESCALATION
+- rule_id: R23
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: WARNING
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.6/R23
+  algorithm_since: E1
+  output_code: R23_PROGRESSIVE_OVERLOAD
+- rule_id: R24
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: WARNING
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.6/R24
+  algorithm_since: E1
+  output_code: R24_TRAINING_AGE
+- rule_id: R25
+  stage: POST_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: WARNING
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.5/R25
+  algorithm_since: E1
+  output_code: R25_READINESS_GUIDANCE
+- rule_id: R26
+  stage: PRE_GUIDE
+  blocking_since: E3
+  status: ACTIVE
+  severity: CRITICAL
+  legacy_equivalent_algorithm: null
+  target_algorithm: A3.6/R26
+  algorithm_since: E1
+  output_code: R26_TSS_INTEGRITY

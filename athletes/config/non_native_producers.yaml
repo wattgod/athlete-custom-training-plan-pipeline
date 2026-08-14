@@ -1,0 +1,252 @@
+schema_version: non_native_producers/v1
+registry_version: non_native_producers/v1
+assignment_status: hypothesis
+producers:
+  MAPPER_SIMPLE_ENDURANCE:
+    producer_id: workout_mapper.simple_endurance
+    producer_version: v1
+    templates:
+      simple_endurance:
+        template_version: v1
+        purpose: endurance/steady
+        role: filler
+        is_assessment: false
+        long_ride_registered: true
+        main_set_rule: SOURCE_BODY
+        progression_level: bb_level_1_6
+  PROGRESSIVE_INTERVAL_GENERATOR:
+    producer_id: workout_library.progressive_interval
+    producer_version: v1
+    role: intensity
+    templates:
+      tempo_intervals: threshold/long_intervals
+      sweet_spot_blocks: threshold/sweet_spot
+      threshold_builders: threshold/long_intervals
+      over_unders: wprime_drain/over_under
+      threshold_classics: threshold/long_intervals
+      race_pace_blocks: threshold/race_pace
+      vo2_starters: vo2max/steady
+      vo2_builders: vo2max/steady
+      vo2_classics: vo2max/steady
+      vo2_extended: vo2max/steady
+      vo2_race_prep: vo2max/steady
+  PROGRESSIVE_ENDURANCE_GENERATOR:
+    producer_id: workout_library.progressive_endurance
+    producer_version: v1
+    role: filler
+    templates:
+      z2_steady: endurance/steady
+      z2_cadence: endurance/cadence
+      z2_single_leg: endurance/drills
+      z2_big_gear: endurance/strength_endurance
+      z2_spin_ups: endurance/spinups
+      z2_tempo_touch: mixed/endurance_surges
+  STANDARD_BLOCK_GENERATOR:
+    producer_id: generate_athlete_package.standard_blocks
+    producer_version: v1
+    templates:
+      Recovery:
+      - recovery/steady
+      - filler
+      - false
+      - false
+      Easy:
+      - recovery/easy
+      - filler
+      - false
+      - false
+      Shakeout:
+      - recovery/shakeout
+      - filler
+      - false
+      - false
+      Endurance:
+      - endurance/steady
+      - filler
+      - false
+      - false
+      Tempo:
+      - threshold/tempo
+      - intensity
+      - false
+      - false
+      Openers:
+      - openers/short
+      - intensity
+      - false
+      - false
+      FTP_Test:
+      - assessment/ftp
+      - intensity
+      - true
+      - false
+      Long_Ride:
+      - endurance/long
+      - long_ride
+      - false
+      - true
+      Race_Sim:
+      - race_sim/standard
+      - intensity
+      - false
+      - false
+      Sweet_Spot:
+      - threshold/sweet_spot
+      - intensity
+      - false
+      - false
+      G_Spot:
+      - threshold/g_spot
+      - intensity
+      - false
+      - false
+      Over_Under:
+      - wprime_drain/over_under
+      - intensity
+      - false
+      - false
+      Blended:
+      - mixed/blended
+      - intensity
+      - false
+      - false
+      Threshold:
+      - threshold/steady
+      - intensity
+      - false
+      - false
+      Anaerobic:
+      - wprime_drain/anaerobic
+      - intensity
+      - false
+      - false
+      Sprints:
+      - wprime_drain/sprint
+      - intensity
+      - false
+      - false
+      Over_Unders:
+      - wprime_drain/over_under
+      - intensity
+      - false
+      - false
+      SFR:
+      - threshold/sfr
+      - intensity
+      - false
+      - false
+      Mixed_Climbing:
+      - mixed/climbing
+      - intensity
+      - false
+      - false
+      Cadence_Work:
+      - endurance/cadence
+      - filler
+      - false
+      - false
+      Durability:
+      - mixed/durability
+      - intensity
+      - false
+      - false
+      Pre_Plan_Easy_Blocks:
+      - recovery/easy
+      - filler
+      - false
+      - false
+  PRE_PLAN_GENERATOR:
+    producer_id: generate_athlete_package.pre_plan
+    producer_version: v1
+    templates:
+      pre_plan_easy:
+      - recovery/easy
+      - filler
+      - false
+      - false
+      pre_plan_endurance:
+      - endurance/steady
+      - long_ride
+      - false
+      - false
+      pre_plan_strength_prep:
+      - recovery/strength_prep
+      - filler
+      - false
+      - false
+      pre_plan_rest:
+      - free/rest
+      - false
+      - false
+      - false
+  REST_SENTINEL_ZWO:
+    producer_id: generate_athlete_package.rest_sentinel
+    producer_version: v1
+    templates:
+      rest_60s_30pct:
+      - recovery/rest_sentinel
+      - false
+      - false
+      - false
+  A_RACE_FREERIDE:
+    producer_id: generate_athlete_package.a_race
+    producer_version: v1
+    templates:
+      a_race_freeride:
+      - free/race_event
+      - race
+      - false
+      - false
+  B_RACE_FREERIDE:
+    producer_id: generate_athlete_package.b_race
+    producer_version: v1
+    templates:
+      b_race_freeride:
+      - free/race_event
+      - race
+      - false
+      - false
+  TRAVEL_SHAKEOUT:
+    producer_id: generate_athlete_package.travel_shakeout
+    producer_version: v1
+    templates:
+      travel_shakeout_30m:
+      - recovery/shakeout
+      - travel
+      - false
+      - false
+  ATHLETE_FIXED:
+    producer_id: canonical_training_model.athlete_fixed
+    producer_version: v1
+    templates:
+      athlete_fixed:
+      - free/external_fixed
+      - athlete_fixed
+      - false
+      - false
+  CANONICAL_REST:
+    producer_id: plan_ir.canonical_rest
+    producer_version: v1
+    templates:
+      canonical_rest_zero:
+      - free/rest
+      - false
+      - false
+      - false
+  STRENGTH_TEMPLATE:
+    producer_id: generate_athlete_package.strength_template
+    producer_version: v2
+    template_version: strength_periodization/v2
+    templates:
+    - aa_a
+    - aa_b
+    - aa_c
+    - max_strength_a
+    - max_strength_b
+    - max_strength_c
+    - maintenance_a
+    - maintenance_b
+    - maintenance_reduced_a
+    - maintenance_reduced_b
+    - key_lifts_a
+    - deload_a

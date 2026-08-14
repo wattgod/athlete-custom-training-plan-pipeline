@@ -1,0 +1,126 @@
+schema_version: phase_purpose_registry/v1
+registry_version: phase_purpose_registry/v1
+owner_id: matti-gravel-god
+phases:
+  transition:
+    allowed:
+    - free
+    - recovery
+    - endurance
+    require_any:
+    - recovery
+    - endurance
+  base:
+    allowed:
+    - free
+    - recovery
+    - endurance
+    - threshold
+    - vo2max
+    - wprime_drain
+    - openers
+    - assessment
+    require_all_groups:
+    - - endurance
+    - - threshold
+      - vo2max
+      - wprime_drain
+  build:
+    allowed:
+    - free
+    - recovery
+    - endurance
+    - threshold
+    - vo2max
+    - wprime_drain
+    - mixed
+    - openers
+    - assessment
+    require_any:
+    - threshold
+    - vo2max
+  maintenance:
+    allowed:
+    - free
+    - recovery
+    - endurance
+    - threshold
+    - vo2max
+    - openers
+    - assessment
+    require_any:
+    - threshold
+    - vo2max
+    - openers
+  race_prep:
+    allowed:
+    - free
+    - recovery
+    - endurance
+    - threshold
+    - vo2max
+    - wprime_drain
+    - mixed
+    - race_sim
+    - openers
+    - assessment
+    require_any:
+    - race_sim
+    - vo2max
+    - threshold
+    excluded_subtypes:
+    - threshold/sfr
+    - threshold/cadence
+    - endurance/cadence
+  racing:
+    allowed:
+    - free
+    - recovery
+    - endurance
+    - threshold
+    - race_sim
+    - openers
+    - assessment
+    require_any:
+    - race_sim
+    - openers
+    - threshold
+week_type_overrides:
+  recovery:
+    allowed:
+    - free
+    - recovery
+    - endurance
+    - openers
+    require_any:
+    - recovery
+    - endurance
+  testing:
+    allowed:
+    - free
+    - recovery
+    - endurance
+    - assessment
+    require_any:
+    - assessment
+  taper:
+    allowed:
+    - free
+    - recovery
+    - endurance
+    - openers
+    require_any:
+    - openers
+  race:
+    allowed:
+    - free
+    - recovery
+    - endurance
+    - openers
+    - race_sim
+    - assessment
+    require_exactly_one_race_event: true
+  medium:
+    inherit_phase_allowed: true
+  uber_load:
+    inherit_phase: true

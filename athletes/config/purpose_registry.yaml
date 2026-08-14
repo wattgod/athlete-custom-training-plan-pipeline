@@ -1,0 +1,4805 @@
+schema_version: purpose_registry/v1
+registry_version: purpose_registry/v1
+owner_id: matti-gravel-god
+assignment_status: hypothesis
+rows:
+- row_id: vo2max--5x3-vo2-classic@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/steady
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--5x3-vo2-classic@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/steady
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--5x3-vo2-classic@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/steady
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--5x3-vo2-classic@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/steady
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--5x3-vo2-classic@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/steady
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--5x3-vo2-classic@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/steady
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--descending-vo2-pyramid@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/pyramid
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--descending-vo2-pyramid@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/pyramid
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--descending-vo2-pyramid@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/pyramid
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--descending-vo2-pyramid@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/pyramid
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--descending-vo2-pyramid@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/pyramid
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--descending-vo2-pyramid@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/pyramid
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--norwegian-4x8@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/long_intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--norwegian-4x8@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/long_intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--norwegian-4x8@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/long_intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--norwegian-4x8@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/long_intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--norwegian-4x8@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/long_intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--norwegian-4x8@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/long_intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-with-loaded-recovery@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/loaded_recovery
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-with-loaded-recovery@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/loaded_recovery
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-with-loaded-recovery@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/loaded_recovery
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-with-loaded-recovery@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/loaded_recovery
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-with-loaded-recovery@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/loaded_recovery
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-with-loaded-recovery@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/loaded_recovery
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-30-30@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_30
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-30-30@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_30
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-30-30@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_30
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-30-30@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_30
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-30-30@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_30
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-30-30@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_30
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-40-20@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-40-20@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-40-20@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-40-20@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-40-20@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-40-20@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-extended@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/steady
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-extended@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/steady
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-extended@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/steady
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-extended@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/steady
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-extended@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/steady
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--vo2max-extended@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/steady
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--ronnestad-30-15@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_15
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--ronnestad-30-15@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_15
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--ronnestad-30-15@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_15
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--ronnestad-30-15@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_15
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--ronnestad-30-15@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_15
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--ronnestad-30-15@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_15
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--ronnestad-40-20@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--ronnestad-40-20@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--ronnestad-40-20@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--ronnestad-40-20@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--ronnestad-40-20@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--ronnestad-40-20@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--float-sets@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--float-sets@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--float-sets@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--float-sets@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--float-sets@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: vo2max--float-sets@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--single-sustained-threshold@L1
+  purpose:
+    class: threshold
+    subtype: threshold/single_effort
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--single-sustained-threshold@L2
+  purpose:
+    class: threshold
+    subtype: threshold/single_effort
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--single-sustained-threshold@L3
+  purpose:
+    class: threshold
+    subtype: threshold/single_effort
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--single-sustained-threshold@L4
+  purpose:
+    class: threshold
+    subtype: threshold/single_effort
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--single-sustained-threshold@L5
+  purpose:
+    class: threshold
+    subtype: threshold/single_effort
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--single-sustained-threshold@L6
+  purpose:
+    class: threshold
+    subtype: threshold/single_effort
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-ramps@L1
+  purpose:
+    class: threshold
+    subtype: threshold/ramp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-ramps@L2
+  purpose:
+    class: threshold
+    subtype: threshold/ramp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-ramps@L3
+  purpose:
+    class: threshold
+    subtype: threshold/ramp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-ramps@L4
+  purpose:
+    class: threshold
+    subtype: threshold/ramp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-ramps@L5
+  purpose:
+    class: threshold
+    subtype: threshold/ramp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-ramps@L6
+  purpose:
+    class: threshold
+    subtype: threshold/ramp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--descending-threshold@L1
+  purpose:
+    class: threshold
+    subtype: threshold/descending
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--descending-threshold@L2
+  purpose:
+    class: threshold
+    subtype: threshold/descending
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--descending-threshold@L3
+  purpose:
+    class: threshold
+    subtype: threshold/descending
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--descending-threshold@L4
+  purpose:
+    class: threshold
+    subtype: threshold/descending
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--descending-threshold@L5
+  purpose:
+    class: threshold
+    subtype: threshold/descending
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--descending-threshold@L6
+  purpose:
+    class: threshold
+    subtype: threshold/descending
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-accumulation@L1
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-accumulation@L2
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-accumulation@L3
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-accumulation@L4
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-accumulation@L5
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-accumulation@L6
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-touch@L1
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-touch@L2
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-touch@L3
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-touch@L4
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-touch@L5
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--threshold-touch@L6
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--criss-cross-intervals@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--criss-cross-intervals@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--criss-cross-intervals@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--criss-cross-intervals@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--criss-cross-intervals@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--criss-cross-intervals@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--tte-extension@L1
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--tte-extension@L2
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--tte-extension@L3
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--tte-extension@L4
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--tte-extension@L5
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--tte-extension@L6
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--bpa-best-possible-average@L1
+  purpose:
+    class: threshold
+    subtype: threshold/single_effort
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--bpa-best-possible-average@L2
+  purpose:
+    class: threshold
+    subtype: threshold/single_effort
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--bpa-best-possible-average@L3
+  purpose:
+    class: threshold
+    subtype: threshold/single_effort
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--bpa-best-possible-average@L4
+  purpose:
+    class: threshold
+    subtype: threshold/single_effort
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--bpa-best-possible-average@L5
+  purpose:
+    class: threshold
+    subtype: threshold/single_effort
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tt-threshold--bpa-best-possible-average@L6
+  purpose:
+    class: threshold
+    subtype: threshold/single_effort
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--attack-repeats@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--attack-repeats@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--attack-repeats@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--attack-repeats@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--attack-repeats@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--attack-repeats@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--sprint-buildups@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--sprint-buildups@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--sprint-buildups@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--sprint-buildups@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--sprint-buildups@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--sprint-buildups@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--peak-and-fade@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/peak_fade
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--peak-and-fade@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/peak_fade
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--peak-and-fade@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/peak_fade
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--peak-and-fade@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/peak_fade
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--peak-and-fade@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/peak_fade
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--peak-and-fade@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/peak_fade
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--ilt-single-leg-training@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--ilt-single-leg-training@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--ilt-single-leg-training@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--ilt-single-leg-training@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--ilt-single-leg-training@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--ilt-single-leg-training@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--stomps@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--stomps@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--stomps@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--stomps@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--stomps@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--stomps@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--burst-intervals@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--burst-intervals@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--burst-intervals@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--burst-intervals@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--burst-intervals@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sprint-neuromuscular--burst-intervals@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--2min-killers@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--2min-killers@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--2min-killers@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--2min-killers@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--2min-killers@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--2min-killers@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--90sec-repeats@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--90sec-repeats@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--90sec-repeats@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--90sec-repeats@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--90sec-repeats@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--90sec-repeats@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--1min-all-out-repeats@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--1min-all-out-repeats@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--1min-all-out-repeats@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--1min-all-out-repeats@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--1min-all-out-repeats@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: anaerobic-capacity--1min-all-out-repeats@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-vo2max@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-vo2max@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-vo2max@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-vo2max@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-vo2max@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-vo2max@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--double-day-simulation@L1
+  purpose:
+    class: mixed
+    subtype: mixed/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--double-day-simulation@L2
+  purpose:
+    class: mixed
+    subtype: mixed/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--double-day-simulation@L3
+  purpose:
+    class: mixed
+    subtype: mixed/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--double-day-simulation@L4
+  purpose:
+    class: mixed
+    subtype: mixed/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--double-day-simulation@L5
+  purpose:
+    class: mixed
+    subtype: mixed/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--double-day-simulation@L6
+  purpose:
+    class: mixed
+    subtype: mixed/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--progressive-fatigue-threshold@L1
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--progressive-fatigue-threshold@L2
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--progressive-fatigue-threshold@L3
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--progressive-fatigue-threshold@L4
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--progressive-fatigue-threshold@L5
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--progressive-fatigue-threshold@L6
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--vo2-bookend@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--vo2-bookend@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--vo2-bookend@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--vo2-bookend@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--vo2-bookend@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--vo2-bookend@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--buffer-workout@L1
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--buffer-workout@L2
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--buffer-workout@L3
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--buffer-workout@L4
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--buffer-workout@L5
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--buffer-workout@L6
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-30-30s@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_30
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-30-30s@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_30
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-30-30s@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_30
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-30-30s@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_30
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-30-30s@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_30
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-30-30s@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/30_30
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-40-20s@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-40-20s@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-40-20s@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-40-20s@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-40-20s@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-40-20s@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/40_20
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-threshold@L1
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-threshold@L2
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-threshold@L3
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-threshold@L4
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-threshold@L5
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-threshold@L6
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-threshold-repeats@L1
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-threshold-repeats@L2
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-threshold-repeats@L3
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-threshold-repeats@L4
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-threshold-repeats@L5
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tired-threshold-repeats@L6
+  purpose:
+    class: threshold
+    subtype: threshold/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--g-spot-into-threshold@L1
+  purpose:
+    class: threshold
+    subtype: threshold/blended
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--g-spot-into-threshold@L2
+  purpose:
+    class: threshold
+    subtype: threshold/blended
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--g-spot-into-threshold@L3
+  purpose:
+    class: threshold
+    subtype: threshold/blended
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--g-spot-into-threshold@L4
+  purpose:
+    class: threshold
+    subtype: threshold/blended
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--g-spot-into-threshold@L5
+  purpose:
+    class: threshold
+    subtype: threshold/blended
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--g-spot-into-threshold@L6
+  purpose:
+    class: threshold
+    subtype: threshold/blended
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tempo-into-threshold@L1
+  purpose:
+    class: threshold
+    subtype: threshold/blended
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tempo-into-threshold@L2
+  purpose:
+    class: threshold
+    subtype: threshold/blended
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tempo-into-threshold@L3
+  purpose:
+    class: threshold
+    subtype: threshold/blended
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tempo-into-threshold@L4
+  purpose:
+    class: threshold
+    subtype: threshold/blended
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tempo-into-threshold@L5
+  purpose:
+    class: threshold
+    subtype: threshold/blended
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--tempo-into-threshold@L6
+  purpose:
+    class: threshold
+    subtype: threshold/blended
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--full-simulation-combo@L1
+  purpose:
+    class: race_sim
+    subtype: race_sim/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--full-simulation-combo@L2
+  purpose:
+    class: race_sim
+    subtype: race_sim/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--full-simulation-combo@L3
+  purpose:
+    class: race_sim
+    subtype: race_sim/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--full-simulation-combo@L4
+  purpose:
+    class: race_sim
+    subtype: race_sim/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--full-simulation-combo@L5
+  purpose:
+    class: race_sim
+    subtype: race_sim/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--full-simulation-combo@L6
+  purpose:
+    class: race_sim
+    subtype: race_sim/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--late-race-vo2max@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--late-race-vo2max@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--late-race-vo2max@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--late-race-vo2max@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--late-race-vo2max@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: durability--late-race-vo2max@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/durability
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: endurance--pre-race-openers@L1
+  purpose:
+    class: openers
+    subtype: openers/short
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: endurance--pre-race-openers@L2
+  purpose:
+    class: openers
+    subtype: openers/short
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: endurance--pre-race-openers@L3
+  purpose:
+    class: openers
+    subtype: openers/short
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: endurance--pre-race-openers@L4
+  purpose:
+    class: openers
+    subtype: openers/short
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: endurance--pre-race-openers@L5
+  purpose:
+    class: openers
+    subtype: openers/short
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: endurance--pre-race-openers@L6
+  purpose:
+    class: openers
+    subtype: openers/short
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: endurance--terrain-simulation-z2@L1
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--terrain-simulation-z2@L2
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--terrain-simulation-z2@L3
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--terrain-simulation-z2@L4
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--terrain-simulation-z2@L5
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--terrain-simulation-z2@L6
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--endurance-with-surges@L1
+  purpose:
+    class: mixed
+    subtype: mixed/endurance_surges
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--endurance-with-surges@L2
+  purpose:
+    class: mixed
+    subtype: mixed/endurance_surges
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--endurance-with-surges@L3
+  purpose:
+    class: mixed
+    subtype: mixed/endurance_surges
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--endurance-with-surges@L4
+  purpose:
+    class: mixed
+    subtype: mixed/endurance_surges
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--endurance-with-surges@L5
+  purpose:
+    class: mixed
+    subtype: mixed/endurance_surges
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--endurance-with-surges@L6
+  purpose:
+    class: mixed
+    subtype: mixed/endurance_surges
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--endurance-blocks@L1
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--endurance-blocks@L2
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--endurance-blocks@L3
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--endurance-blocks@L4
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--endurance-blocks@L5
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--endurance-blocks@L6
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: true
+- row_id: endurance--heat-acclimation-protocol@L1
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: endurance--heat-acclimation-protocol@L2
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: endurance--heat-acclimation-protocol@L3
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: endurance--heat-acclimation-protocol@L4
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: endurance--heat-acclimation-protocol@L5
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: endurance--heat-acclimation-protocol@L6
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--breakaway-simulation@L1
+  purpose:
+    class: race_sim
+    subtype: race_sim/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--breakaway-simulation@L2
+  purpose:
+    class: race_sim
+    subtype: race_sim/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--breakaway-simulation@L3
+  purpose:
+    class: race_sim
+    subtype: race_sim/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--breakaway-simulation@L4
+  purpose:
+    class: race_sim
+    subtype: race_sim/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--breakaway-simulation@L5
+  purpose:
+    class: race_sim
+    subtype: race_sim/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--breakaway-simulation@L6
+  purpose:
+    class: race_sim
+    subtype: race_sim/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--variable-pace-chaos@L1
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--variable-pace-chaos@L2
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--variable-pace-chaos@L3
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--variable-pace-chaos@L4
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--variable-pace-chaos@L5
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--variable-pace-chaos@L6
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--sector-simulation@L1
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--sector-simulation@L2
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--sector-simulation@L3
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--sector-simulation@L4
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--sector-simulation@L5
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--sector-simulation@L6
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--race-simulation@L1
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--race-simulation@L2
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--race-simulation@L3
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--race-simulation@L4
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--race-simulation@L5
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--race-simulation@L6
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--hard-starts@L1
+  purpose:
+    class: vo2max
+    subtype: vo2max/hard_start
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--hard-starts@L2
+  purpose:
+    class: vo2max
+    subtype: vo2max/hard_start
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--hard-starts@L3
+  purpose:
+    class: vo2max
+    subtype: vo2max/hard_start
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--hard-starts@L4
+  purpose:
+    class: vo2max
+    subtype: vo2max/hard_start
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--hard-starts@L5
+  purpose:
+    class: vo2max
+    subtype: vo2max/hard_start
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--hard-starts@L6
+  purpose:
+    class: vo2max
+    subtype: vo2max/hard_start
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--structured-fartlek@L1
+  purpose:
+    class: race_sim
+    subtype: race_sim/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--structured-fartlek@L2
+  purpose:
+    class: race_sim
+    subtype: race_sim/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--structured-fartlek@L3
+  purpose:
+    class: race_sim
+    subtype: race_sim/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--structured-fartlek@L4
+  purpose:
+    class: race_sim
+    subtype: race_sim/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--structured-fartlek@L5
+  purpose:
+    class: race_sim
+    subtype: race_sim/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--structured-fartlek@L6
+  purpose:
+    class: race_sim
+    subtype: race_sim/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--attacks-and-repeatability@L1
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--attacks-and-repeatability@L2
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--attacks-and-repeatability@L3
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--attacks-and-repeatability@L4
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--attacks-and-repeatability@L5
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--attacks-and-repeatability@L6
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--kitchen-sink-all-systems@L1
+  purpose:
+    class: mixed
+    subtype: mixed/kitchen_sink
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--kitchen-sink-all-systems@L2
+  purpose:
+    class: mixed
+    subtype: mixed/kitchen_sink
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--kitchen-sink-all-systems@L3
+  purpose:
+    class: mixed
+    subtype: mixed/kitchen_sink
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--kitchen-sink-all-systems@L4
+  purpose:
+    class: mixed
+    subtype: mixed/kitchen_sink
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--kitchen-sink-all-systems@L5
+  purpose:
+    class: mixed
+    subtype: mixed/kitchen_sink
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: race-simulation--kitchen-sink-all-systems@L6
+  purpose:
+    class: mixed
+    subtype: mixed/kitchen_sink
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-intervals@L1
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-intervals@L2
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-intervals@L3
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-intervals@L4
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-intervals@L5
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-intervals@L6
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-criss-cross@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-criss-cross@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-criss-cross@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-criss-cross@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-criss-cross@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-criss-cross@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/over_under
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-progressive@L1
+  purpose:
+    class: threshold
+    subtype: threshold/ramp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-progressive@L2
+  purpose:
+    class: threshold
+    subtype: threshold/ramp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-progressive@L3
+  purpose:
+    class: threshold
+    subtype: threshold/ramp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-progressive@L4
+  purpose:
+    class: threshold
+    subtype: threshold/ramp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-progressive@L5
+  purpose:
+    class: threshold
+    subtype: threshold/ramp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: g-spot--g-spot-progressive@L6
+  purpose:
+    class: threshold
+    subtype: threshold/ramp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: lt1-maf--lt1-capped-endurance@L1
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: lt1-maf--lt1-capped-endurance@L2
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: lt1-maf--lt1-capped-endurance@L3
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: lt1-maf--lt1-capped-endurance@L4
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: lt1-maf--lt1-capped-endurance@L5
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: lt1-maf--lt1-capped-endurance@L6
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: lt1-maf--maf-test-protocol@L1
+  purpose:
+    class: assessment
+    subtype: assessment/maf
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: lt1-maf--maf-test-protocol@L2
+  purpose:
+    class: assessment
+    subtype: assessment/maf
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: lt1-maf--maf-test-protocol@L3
+  purpose:
+    class: assessment
+    subtype: assessment/maf
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: lt1-maf--maf-test-protocol@L4
+  purpose:
+    class: assessment
+    subtype: assessment/maf
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: lt1-maf--maf-test-protocol@L5
+  purpose:
+    class: assessment
+    subtype: assessment/maf
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: lt1-maf--maf-test-protocol@L6
+  purpose:
+    class: assessment
+    subtype: assessment/maf
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: critical-power--above-cp-repeats@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/above_cp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: critical-power--above-cp-repeats@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/above_cp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: critical-power--above-cp-repeats@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/above_cp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: critical-power--above-cp-repeats@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/above_cp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: critical-power--above-cp-repeats@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/above_cp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: critical-power--above-cp-repeats@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/above_cp
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: critical-power--w-prime-depletion@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/w_prime
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: critical-power--w-prime-depletion@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/w_prime
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: critical-power--w-prime-depletion@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/w_prime
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: critical-power--w-prime-depletion@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/w_prime
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: critical-power--w-prime-depletion@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/w_prime
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: critical-power--w-prime-depletion@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/w_prime
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-4x8-classic@L1
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-4x8-classic@L2
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-4x8-classic@L3
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-4x8-classic@L4
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-4x8-classic@L5
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-4x8-classic@L6
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-double-am@L1
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-double-am@L2
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-double-am@L3
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-double-am@L4
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-double-am@L5
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-double-am@L6
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-double-pm@L1
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-double-pm@L2
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-double-pm@L3
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-double-pm@L4
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-double-pm@L5
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: norwegian-double--norwegian-double-pm@L6
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: hvli-extended--hvli-extended-z2@L1
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: hvli-extended--hvli-extended-z2@L2
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: hvli-extended--hvli-extended-z2@L3
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: hvli-extended--hvli-extended-z2@L4
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: hvli-extended--hvli-extended-z2@L5
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: hvli-extended--hvli-extended-z2@L6
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: hvli-extended--hvli-terrain-simulation@L1
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: hvli-extended--hvli-terrain-simulation@L2
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: hvli-extended--hvli-terrain-simulation@L3
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: hvli-extended--hvli-terrain-simulation@L4
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: hvli-extended--hvli-terrain-simulation@L5
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: hvli-extended--hvli-terrain-simulation@L6
+  purpose:
+    class: endurance
+    subtype: endurance/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: testing--ftp-ramp-test@L1
+  purpose:
+    class: assessment
+    subtype: assessment/ramp
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--ftp-ramp-test@L2
+  purpose:
+    class: assessment
+    subtype: assessment/ramp
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--ftp-ramp-test@L3
+  purpose:
+    class: assessment
+    subtype: assessment/ramp
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--ftp-ramp-test@L4
+  purpose:
+    class: assessment
+    subtype: assessment/ramp
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--ftp-ramp-test@L5
+  purpose:
+    class: assessment
+    subtype: assessment/ramp
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--ftp-ramp-test@L6
+  purpose:
+    class: assessment
+    subtype: assessment/ramp
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--20min-ftp-test@L1
+  purpose:
+    class: assessment
+    subtype: assessment/20min
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--20min-ftp-test@L2
+  purpose:
+    class: assessment
+    subtype: assessment/20min
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--20min-ftp-test@L3
+  purpose:
+    class: assessment
+    subtype: assessment/20min
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--20min-ftp-test@L4
+  purpose:
+    class: assessment
+    subtype: assessment/20min
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--20min-ftp-test@L5
+  purpose:
+    class: assessment
+    subtype: assessment/20min
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--20min-ftp-test@L6
+  purpose:
+    class: assessment
+    subtype: assessment/20min
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--cp-test-protocol@L1
+  purpose:
+    class: assessment
+    subtype: assessment/cp
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--cp-test-protocol@L2
+  purpose:
+    class: assessment
+    subtype: assessment/cp
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--cp-test-protocol@L3
+  purpose:
+    class: assessment
+    subtype: assessment/cp
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--cp-test-protocol@L4
+  purpose:
+    class: assessment
+    subtype: assessment/cp
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--cp-test-protocol@L5
+  purpose:
+    class: assessment
+    subtype: assessment/cp
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: testing--cp-test-protocol@L6
+  purpose:
+    class: assessment
+    subtype: assessment/cp
+    assignment_status: hypothesis
+    main_set_rule: ASSESSMENT_BODY
+  is_assessment: true
+  long_ride_registered: false
+- row_id: recovery--active-recovery-spin@L1
+  purpose:
+    class: recovery
+    subtype: recovery/recovery
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: recovery--active-recovery-spin@L2
+  purpose:
+    class: recovery
+    subtype: recovery/recovery
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: recovery--active-recovery-spin@L3
+  purpose:
+    class: recovery
+    subtype: recovery/recovery
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: recovery--active-recovery-spin@L4
+  purpose:
+    class: recovery
+    subtype: recovery/recovery
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: recovery--active-recovery-spin@L5
+  purpose:
+    class: recovery
+    subtype: recovery/recovery
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: recovery--active-recovery-spin@L6
+  purpose:
+    class: recovery
+    subtype: recovery/recovery
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: recovery--rest-day@L1
+  purpose:
+    class: free
+    subtype: free/rest
+    assignment_status: hypothesis
+    main_set_rule: NONE
+  is_assessment: false
+  long_ride_registered: false
+- row_id: recovery--rest-day@L2
+  purpose:
+    class: free
+    subtype: free/rest
+    assignment_status: hypothesis
+    main_set_rule: NONE
+  is_assessment: false
+  long_ride_registered: false
+- row_id: recovery--rest-day@L3
+  purpose:
+    class: free
+    subtype: free/rest
+    assignment_status: hypothesis
+    main_set_rule: NONE
+  is_assessment: false
+  long_ride_registered: false
+- row_id: recovery--rest-day@L4
+  purpose:
+    class: free
+    subtype: free/rest
+    assignment_status: hypothesis
+    main_set_rule: NONE
+  is_assessment: false
+  long_ride_registered: false
+- row_id: recovery--rest-day@L5
+  purpose:
+    class: free
+    subtype: free/rest
+    assignment_status: hypothesis
+    main_set_rule: NONE
+  is_assessment: false
+  long_ride_registered: false
+- row_id: recovery--rest-day@L6
+  purpose:
+    class: free
+    subtype: free/rest
+    assignment_status: hypothesis
+    main_set_rule: NONE
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--vlamax-reduction@L1
+  purpose:
+    class: endurance
+    subtype: endurance/vlamax_reduction
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--vlamax-reduction@L2
+  purpose:
+    class: endurance
+    subtype: endurance/vlamax_reduction
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--vlamax-reduction@L3
+  purpose:
+    class: endurance
+    subtype: endurance/vlamax_reduction
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--vlamax-reduction@L4
+  purpose:
+    class: endurance
+    subtype: endurance/vlamax_reduction
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--vlamax-reduction@L5
+  purpose:
+    class: endurance
+    subtype: endurance/vlamax_reduction
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--vlamax-reduction@L6
+  purpose:
+    class: endurance
+    subtype: endurance/vlamax_reduction
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--fatmax-development@L1
+  purpose:
+    class: endurance
+    subtype: endurance/fatmax
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--fatmax-development@L2
+  purpose:
+    class: endurance
+    subtype: endurance/fatmax
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--fatmax-development@L3
+  purpose:
+    class: endurance
+    subtype: endurance/fatmax
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--fatmax-development@L4
+  purpose:
+    class: endurance
+    subtype: endurance/fatmax
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--fatmax-development@L5
+  purpose:
+    class: endurance
+    subtype: endurance/fatmax
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--fatmax-development@L6
+  purpose:
+    class: endurance
+    subtype: endurance/fatmax
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--fatmax-vlamax-suppression@L1
+  purpose:
+    class: endurance
+    subtype: endurance/fatmax
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--fatmax-vlamax-suppression@L2
+  purpose:
+    class: endurance
+    subtype: endurance/fatmax
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--fatmax-vlamax-suppression@L3
+  purpose:
+    class: endurance
+    subtype: endurance/fatmax
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--fatmax-vlamax-suppression@L4
+  purpose:
+    class: endurance
+    subtype: endurance/fatmax
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--fatmax-vlamax-suppression@L5
+  purpose:
+    class: endurance
+    subtype: endurance/fatmax
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--fatmax-vlamax-suppression@L6
+  purpose:
+    class: endurance
+    subtype: endurance/fatmax
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--glycolytic-power@L1
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/anaerobic
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--glycolytic-power@L2
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/anaerobic
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--glycolytic-power@L3
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/anaerobic
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--glycolytic-power@L4
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/anaerobic
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--glycolytic-power@L5
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/anaerobic
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: inscyd--glycolytic-power@L6
+  purpose:
+    class: wprime_drain
+    subtype: wprime_drain/anaerobic
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--surge-and-settle@L1
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--surge-and-settle@L2
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--surge-and-settle@L3
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--surge-and-settle@L4
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--surge-and-settle@L5
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--surge-and-settle@L6
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--terrain-microbursts@L1
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--terrain-microbursts@L2
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--terrain-microbursts@L3
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--terrain-microbursts@L4
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--terrain-microbursts@L5
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--terrain-microbursts@L6
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--gravel-grind@L1
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--gravel-grind@L2
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--gravel-grind@L3
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--gravel-grind@L4
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--gravel-grind@L5
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--gravel-grind@L6
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--late-race-surge-protocol@L1
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--late-race-surge-protocol@L2
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--late-race-surge-protocol@L3
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--late-race-surge-protocol@L4
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--late-race-surge-protocol@L5
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--late-race-surge-protocol@L6
+  purpose:
+    class: race_sim
+    subtype: race_sim/category_default
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--gravel-race-simulation@L1
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--gravel-race-simulation@L2
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--gravel-race-simulation@L3
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--gravel-race-simulation@L4
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--gravel-race-simulation@L5
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: gravel-specific--gravel-race-simulation@L6
+  purpose:
+    class: race_sim
+    subtype: race_sim/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-muscle-force--5x4-sfr@L1
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-muscle-force--5x4-sfr@L2
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-muscle-force--5x4-sfr@L3
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-muscle-force--5x4-sfr@L4
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-muscle-force--5x4-sfr@L5
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-muscle-force--5x4-sfr@L6
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-muscle-force--sfr-cadence-contrast@L1
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-muscle-force--sfr-cadence-contrast@L2
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-muscle-force--sfr-cadence-contrast@L3
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-muscle-force--sfr-cadence-contrast@L4
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-muscle-force--sfr-cadence-contrast@L5
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-muscle-force--sfr-cadence-contrast@L6
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: over-under--climbing-over-under@L1
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: over-under--climbing-over-under@L2
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: over-under--climbing-over-under@L3
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: over-under--climbing-over-under@L4
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: over-under--climbing-over-under@L5
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: over-under--climbing-over-under@L6
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: over-under--overunder-threshold@L1
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: over-under--overunder-threshold@L2
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: over-under--overunder-threshold@L3
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: over-under--overunder-threshold@L4
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: over-under--overunder-threshold@L5
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: over-under--overunder-threshold@L6
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: mixed-climbing--mixed-climbing@L1
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: mixed-climbing--mixed-climbing@L2
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: mixed-climbing--mixed-climbing@L3
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: mixed-climbing--mixed-climbing@L4
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: mixed-climbing--mixed-climbing@L5
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: mixed-climbing--mixed-climbing@L6
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: mixed-climbing--mixed-climbing-variations@L1
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: mixed-climbing--mixed-climbing-variations@L2
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: mixed-climbing--mixed-climbing-variations@L3
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: mixed-climbing--mixed-climbing-variations@L4
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: mixed-climbing--mixed-climbing-variations@L5
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: mixed-climbing--mixed-climbing-variations@L6
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: cadence-work--high-cadence-intervals@L1
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: cadence-work--high-cadence-intervals@L2
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: cadence-work--high-cadence-intervals@L3
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: cadence-work--high-cadence-intervals@L4
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: cadence-work--high-cadence-intervals@L5
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: cadence-work--high-cadence-intervals@L6
+  purpose:
+    class: endurance
+    subtype: endurance/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-30-30-sfr@L1
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-30-30-sfr@L2
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-30-30-sfr@L3
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-30-30-sfr@L4
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-30-30-sfr@L5
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-30-30-sfr@L6
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-vo2-g-spot@L1
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-vo2-g-spot@L2
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-vo2-g-spot@L3
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-vo2-g-spot@L4
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-vo2-g-spot@L5
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-vo2-g-spot@L6
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-endurance-threshold-sprints@L1
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-endurance-threshold-sprints@L2
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-endurance-threshold-sprints@L3
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-endurance-threshold-sprints@L4
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-endurance-threshold-sprints@L5
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: blended--blended-endurance-threshold-sprints@L6
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-accelerations@L1
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-accelerations@L2
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-accelerations@L3
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-accelerations@L4
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-accelerations@L5
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-accelerations@L6
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-sprints@L1
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-sprints@L2
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-sprints@L3
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-sprints@L4
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-sprints@L5
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-sprints@L6
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--3x15-tempo@L1
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--3x15-tempo@L2
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--3x15-tempo@L3
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--3x15-tempo@L4
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--3x15-tempo@L5
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--3x15-tempo@L6
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--bookend-tempo@L1
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--bookend-tempo@L2
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--bookend-tempo@L3
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--bookend-tempo@L4
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--bookend-tempo@L5
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--bookend-tempo@L6
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-lift@L1
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-lift@L2
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-lift@L3
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-lift@L4
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-lift@L5
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tempo-lift@L6
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tired-tempo@L1
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tired-tempo@L2
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tired-tempo@L3
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tired-tempo@L4
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tired-tempo@L5
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: tempo--tired-tempo@L6
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--drain-cleaner@L1
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--drain-cleaner@L2
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--drain-cleaner@L3
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--drain-cleaner@L4
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--drain-cleaner@L5
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--drain-cleaner@L6
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--la-balanguera@L1
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--la-balanguera@L2
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--la-balanguera@L3
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--la-balanguera@L4
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--la-balanguera@L5
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--la-balanguera@L6
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--hyttevask@L1
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--hyttevask@L2
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--hyttevask@L3
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--hyttevask@L4
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--hyttevask@L5
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: kitchen-sink--hyttevask@L6
+  purpose:
+    class: mixed
+    subtype: mixed/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-series--thunder-quads@L1
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-series--thunder-quads@L2
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-series--thunder-quads@L3
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-series--thunder-quads@L4
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-series--thunder-quads@L5
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-series--thunder-quads@L6
+  purpose:
+    class: threshold
+    subtype: threshold/intervals
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-series--blood-pistons@L1
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-series--blood-pistons@L2
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-series--blood-pistons@L3
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-series--blood-pistons@L4
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-series--blood-pistons@L5
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
+- row_id: sfr-series--blood-pistons@L6
+  purpose:
+    class: threshold
+    subtype: threshold/segments
+    assignment_status: hypothesis
+    main_set_rule: SOURCE_BODY
+  is_assessment: false
+  long_ride_registered: false
