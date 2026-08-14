@@ -738,6 +738,7 @@ def write_generation(
     required_confirmations: Optional[list[Dict[str, Any]]] = None,
     soft_confirmations: Optional[list[Dict[str, Any]]] = None,
     derived_values: Optional[list[Dict[str, Any]]] = None,
+    quality_findings: Optional[list[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Start a revision while preserving immutable order identity."""
     issues = [_validate_issue(issue) for issue in (blocking_issues or [])]
@@ -815,7 +816,10 @@ def write_generation(
                 [{**item, "revision": revision} for item in derived],
                 key=lambda item: item["id"],
             ),
-            "quality_findings": [],
+            "quality_findings": sorted([
+                _validate_quality_finding(item, revision=revision)
+                for item in (quality_findings or [])
+            ], key=lambda item: item["id"]),
             "approval": None,
             "waiver": None,
             "application": None,
@@ -1079,7 +1083,26 @@ def _canonical_model_seal_from_release(
         except (OSError, json.JSONDecodeError) as exc:
             raise FulfillmentStateError(
                 "certification manifest unavailable for seal") from exc
-        sources["certification_manifest"] = canonical_digest(snapshot)
+        try:
+            frozen_candidate = json.loads(
+                (artifact_dir / "final_plan_candidate.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise FulfillmentStateError("MANIFEST_PIN_MISSING") from exc
+        pin = frozen_candidate.get("manifest_pin")
+        expected_pin = {
+            "snapshot_path": "certification_manifest.json",
+            "snapshot_digest": canonical_digest(snapshot),
+            "manifest_version": snapshot.get("schema_version"),
+            "version_vector": snapshot.get("version_vector"),
+            "promotion_digests": [
+                item.get("digest") for item in snapshot.get("promotion_artifacts", [])
+            ],
+        }
+        if not isinstance(pin, dict):
+            raise FulfillmentStateError("MANIFEST_PIN_MISSING")
+        if pin != expected_pin:
+            raise FulfillmentStateError("MANIFEST_PIN_MISMATCH")
+        sources["certification_manifest"] = expected_pin["snapshot_digest"]
     elif version != "apply_contract/v1":
         raise FulfillmentStateError("unknown apply contract version")
     return canonical_digest(sources)

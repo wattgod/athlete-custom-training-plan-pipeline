@@ -27,6 +27,13 @@ from zwo_parser import parse_zwo
 from brand_config import workout_author
 
 
+def _generation_now() -> datetime:
+    fixed = os.environ.get("GG_FIXED_NOW", "").strip()
+    if fixed:
+        return datetime.fromisoformat(fixed.replace("Z", "+00:00")).replace(tzinfo=None)
+    return datetime.now()
+
+
 # ===========================================================================
 # ZWO Parsing + TSS Calculation
 # ===========================================================================
@@ -259,7 +266,7 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
         'control_metric': control_metric,
         'control_basis': control_basis,
         'checks': checks,
-        'generated': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        'generated': _generation_now().strftime('%Y-%m-%d %H:%M'),
     }
 
 

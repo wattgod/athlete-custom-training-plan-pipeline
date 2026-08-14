@@ -11,6 +11,7 @@ Creates a coach-first dashboard prioritizing decision-critical information:
 6. Details (equipment, preferences, etc.)
 """
 
+import os
 import yaml
 import json
 import sys
@@ -20,6 +21,13 @@ from typing import Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from constants import DAY_ORDER_FULL, get_athlete_file, get_athlete_current_plan_dir, load_athlete_yaml
+
+
+def _generation_now() -> datetime:
+    fixed = os.environ.get("GG_FIXED_NOW", "").strip()
+    if fixed:
+        return datetime.fromisoformat(fixed.replace("Z", "+00:00")).replace(tzinfo=None)
+    return datetime.now()
 
 
 def _load_dashboard_data(athlete_id: str) -> Dict:
@@ -903,7 +911,7 @@ def generate_dashboard(athlete_id: str) -> Path:
     </div>
 
     <div style="text-align: center; margin-top: 48px; padding-top: 24px; border-top: 3px solid var(--border); font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted);">
-        GENERATED {datetime.now().strftime('%B %d, %Y AT %H:%M').upper()}
+        GENERATED {_generation_now().strftime('%B %d, %Y AT %H:%M').upper()}
     </div>
 </body>
 </html>'''

@@ -6,8 +6,10 @@ import copy
 import datetime as dt
 import math
 import re
+import unicodedata
 from collections import defaultdict
 from functools import lru_cache
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping, Optional
 
@@ -179,8 +181,70 @@ def legacy_verdicts(projection: Mapping[str, Any]) -> Dict[str, bool]:
     return result
 
 
+class _MondayNoteParser(HTMLParser):
+    """Extract the closed per-week Monday note envelope."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.notes: list[dict[str, Any]] = []
+        self._active: Optional[dict[str, Any]] = None
+        self._depth = 0
+
+    def handle_starttag(self, _tag: str,
+                        attrs: list[tuple[str, Optional[str]]]) -> None:
+        values = dict(attrs)
+        if self._active is not None:
+            self._depth += 1
+            return
+        if (values.get("data-plan-week") is None
+                or values.get("data-weekday", "").casefold() != "monday"
+                or values.get("data-block-note-template") is None):
+            return
+        try:
+            week = int(values["data-plan-week"] or "")
+        except ValueError:
+            return
+        self._active = {"week": week,
+                        "template_id": values["data-block-note-template"],
+                        "text_parts": []}
+        self._depth = 1
+
+    def handle_endtag(self, _tag: str) -> None:
+        if self._active is None:
+            return
+        self._depth -= 1
+        if self._depth == 0:
+            active = self._active
+            active["text"] = "".join(active.pop("text_parts"))
+            self.notes.append(active)
+            self._active = None
+
+    def handle_data(self, data: str) -> None:
+        if self._active is not None:
+            self._active["text_parts"].append(data)
+
+
+def _normalized_note(value: str) -> str:
+    return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
+
+
+def _paid_monday_notes(guide_html: str) -> Optional[dict[int, list[dict[str, Any]]]]:
+    try:
+        parser = _MondayNoteParser()
+        parser.feed(guide_html)
+        parser.close()
+    except Exception:
+        return None
+    by_week: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for note in parser.notes:
+        by_week[note["week"]].append(note)
+    return by_week
+
+
 def _new_rule_result(rule_id: str, candidate: Mapping[str, Any],
-                     guide_html: Optional[str]) -> tuple[str, list[str], Dict[str, Any], str]:
+                     guide_html: Optional[str],
+                     manifest: Optional[Mapping[str, Any]] = None
+                     ) -> tuple[str, list[str], Dict[str, Any], str]:
     sessions, weeks = candidate.get("sessions", []), candidate.get("weeks", [])
     cycling = [session for session in sessions if session.get("sport") == "cycling"]
     week_by_number = {week.get("week"): week for week in weeks}
@@ -192,15 +256,21 @@ def _new_rule_result(rule_id: str, candidate: Mapping[str, Any],
     if rule_id == "R07":
         if guide_html is None:
             return "UNAVAILABLE", [], {}, "Guide evidence unavailable."
-        titles = {"load": "load week", "medium": "medium week",
-                  "recovery": "recovery week", "race": "race week",
-                  "uber_load": "uber load week"}
-        normalized = " ".join(guide_html.casefold().split())
-        bad = [str(week["week"]) for week in weeks if week.get("is_paid")
-               and (week.get("block_note_template_id") not in titles
-                    or titles[week["block_note_template_id"]] not in normalized)]
-        return ("FAIL" if bad else "PASS", bad, {"missing_week_count": len(bad)},
-                "Guide block-note structure audit.")
+        notes = _paid_monday_notes(guide_html)
+        if notes is None:
+            return "UNAVAILABLE", [], {}, "Guide block-note markup is malformed."
+        bad = []
+        for week in weeks:
+            if not week.get("is_paid"):
+                continue
+            emitted = notes.get(int(week["week"]), [])
+            if (week.get("block_note_template_id") is None or len(emitted) != 1
+                    or emitted[0]["template_id"] != week["block_note_template_id"]):
+                bad.append(str(week["week"]))
+        return ("FAIL" if bad else "PASS", bad,
+                {"invalid_week_count": len(bad),
+                 "observed_monday_note_count": sum(len(value) for value in notes.values())},
+                "Per-paid-week Monday block-note structure audit.")
     if rule_id == "R08":
         if not cycling:
             return "NOT_APPLICABLE", [], {}, "No cycling sessions."
@@ -369,11 +439,19 @@ def _new_rule_result(rule_id: str, candidate: Mapping[str, Any],
         return ("FAIL" if bad else "PASS", sorted(set(bad)),
                 {"invalid_session_count": len(set(bad))}, "Phase-purpose audit.")
     if rule_id == "R21":
+        if manifest is None:
+            return "UNAVAILABLE", [], {}, "Revision-local certification manifest unavailable."
+        try:
+            from earned_selection import validate_manifest_pin
+            validate_manifest_pin(candidate.get("manifest_pin") or {}, manifest)
+        except Exception:
+            return "UNAVAILABLE", [], {}, "Candidate manifest pin mismatch."
         try:
             producers = (yaml.safe_load(
                 (CONFIG_DIR / "non_native_producers.yaml").read_text()) or {}).get("producers") or {}
         except (OSError, yaml.YAMLError):
             return "UNAVAILABLE", [], {}, "Producer registry unavailable."
+        manifest_rows = {row.get("row_id"): row for row in manifest.get("rows", [])}
         bad = []
         for session in sessions:
             provenance = session.get("provenance")
@@ -385,6 +463,8 @@ def _new_rule_result(rule_id: str, candidate: Mapping[str, Any],
                 if (provenance.get("producer_id"), provenance.get("producer_version"),
                     provenance.get("template_id"), provenance.get("template_version")) != (
                         "nate_workout_generator.native_archetype", "v1", "native_archetype", "v1"):
+                    bad.append(session.get("id"))
+                if (session.get("archetype") or {}).get("manifest_row_id") not in manifest_rows:
                     bad.append(session.get("id"))
                 continue
             producer = producers.get(session.get("origin"))
@@ -424,11 +504,33 @@ def _new_rule_result(rule_id: str, candidate: Mapping[str, Any],
     if rule_id == "R25":
         if guide_html is None:
             return "UNAVAILABLE", [], {}, "Guide evidence unavailable."
-        normalized = " ".join(guide_html.casefold().split())
-        markers = ["don't be afraid to shorten workouts",
-                   "if anything feels wrong (sharp pain, illness), stop immediately"]
-        observed = any(marker in normalized for marker in markers)
-        return ("PASS" if observed else "FAIL", [], {"marker_present": observed}, "Readiness marker audit.")
+        try:
+            block_notes = yaml.safe_load(
+                (CONFIG_DIR / "block_notes.yaml").read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            return "UNAVAILABLE", [], {}, "Block-note registry unavailable."
+        if not isinstance(block_notes, dict):
+            return "UNAVAILABLE", [], {}, "Block-note registry malformed."
+        notes = _paid_monday_notes(guide_html)
+        if notes is None:
+            return "UNAVAILABLE", [], {}, "Guide block-note markup is malformed."
+        markers = [_normalized_note("don't be afraid to shorten workouts"),
+                   _normalized_note("if anything feels wrong (sharp pain, illness), stop immediately")]
+        bad = []
+        for week in weeks:
+            if not week.get("is_paid"):
+                continue
+            template_id = week.get("block_note_template_id")
+            if template_id not in block_notes:
+                return "UNAVAILABLE", [str(week["week"])], {}, "Block-note template unavailable."
+            emitted = notes.get(int(week["week"]), [])
+            if len(emitted) != 1:
+                return "UNAVAILABLE", [str(week["week"])], {}, "Monday note evidence unavailable."
+            if not any(marker in _normalized_note(emitted[0]["text"]) for marker in markers):
+                bad.append(str(week["week"]))
+        return ("FAIL" if bad else "PASS", bad,
+                {"weeks_without_marker": len(bad)},
+                "Per-paid-week readiness marker audit.")
     if rule_id == "R26":
         bad = []
         by_week = defaultdict(list)
@@ -451,7 +553,8 @@ def _new_rule_result(rule_id: str, candidate: Mapping[str, Any],
 
 
 def execute_rules(candidate: Mapping[str, Any], *, guide_html: Optional[str] = None,
-                  stage: Optional[str] = None) -> list[Dict[str, Any]]:
+                  stage: Optional[str] = None,
+                  manifest: Optional[Mapping[str, Any]] = None) -> list[Dict[str, Any]]:
     legacy = legacy_verdicts(candidate["legacy_compliance_projection"])
     projection_digest = candidate["legacy_compliance_projection"]["projection_sha256"]
     rows = []
@@ -465,7 +568,7 @@ def execute_rules(candidate: Mapping[str, Any], *, guide_html: Optional[str] = N
             message = "A3.0 production-equivalent verdict."
         else:
             result, subject_ids, metric, message = _new_rule_result(
-                rule_id, candidate, guide_html)
+                rule_id, candidate, guide_html, manifest)
         routed = (registry_row["severity"] == "CRITICAL" and result == "FAIL"
                   and (registry_row["blocking_since"] == "pre-existing"
                        or candidate.get("rollout_phase") == "E3"))

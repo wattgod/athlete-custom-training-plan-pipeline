@@ -14,6 +14,8 @@ import re
 import os
 import sys
 import json
+import copy
+import hashlib
 import yaml
 import contextlib
 import tempfile
@@ -24,12 +26,25 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 # Add script path for local imports
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'webhook'))
 
 from fulfillment_state import write_generation
 from workout_spec import rewrite_zwo_description
 from availability_ledger import (AvailabilityLedgerError, build_ledger,
                                  materialize_fixed_sessions)
+
+_E1_STAGE_OBSERVER = None
+
+
+def _e1_boundary(name: str) -> None:
+    """Test-only order spy seam; production has no side effect."""
+    if _E1_STAGE_OBSERVER is not None:
+        _E1_STAGE_OBSERVER(name)
+    spy_path = os.environ.get('GG_E1_ORDER_SPY', '').strip()
+    if spy_path:
+        with open(spy_path, 'a', encoding='utf-8') as handle:
+            handle.write(name + '\n')
 
 
 def generation_now() -> datetime:
@@ -858,47 +873,11 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             if rule_id in PRE_EXISTING and not rule.get('passed')
         }
         if _pre_existing_failures:
+            # A3.0 over the frozen D1 projection is the sole blocker authority.
+            # This live result is retained only as a later asserted parity
+            # oracle; it must not write state, review files, or fulfillment IDs.
             report = _bb_report(_compliance)
-            log.error("COMPLIANCE GATE FLAGGED (delivering for coach review)\n" + report)
-            # BUSINESS RULE: never deliver NOTHING. The block-builder produced a
-            # real, complete plan that missed one or more CRITICAL checks.
-            # Hard-failing here = a refunded order + a 2am fire drill. Instead we
-            # DELIVER the plan and LOUDLY flag it for the coach's normal pre-send
-            # review (the 24h window the customer was already promised). The
-            # failure is RECORDED, not silent — which was the whole reason this
-            # gate used to hard-fail. (This is NOT the feared ungated
-            # legacy-template fallback; the block-builder-EXCEPTION path above
-            # still raises, because a crash means there is no plan to deliver.)
-            # Set GG_STRICT_COMPLIANCE=1 to restore hard-fail (CI / debugging).
-            if os.environ.get('GG_STRICT_COMPLIANCE') == '1':
-                raise RuntimeError(
-                    f"Plan failed compliance gate "
-                    f"({_compliance['critical_score']} critical rules passed):\n{report}"
-                )
-            try:
-                (athlete_dir / 'NEEDS_REVIEW.txt').write_text(
-                    "AUTO-CHECK FLAGGED — REVIEW BEFORE SENDING\n"
-                    "=================================================\n\n"
-                    "The plan was built and delivered, but the automatic coach "
-                    "checks flagged "
-                    f"{_compliance['critical_score']} critical rule(s). Review the "
-                    "flagged weeks and adjust before sending to the athlete.\n\n"
-                    + report + "\n")
-            except Exception:
-                pass
-            _fulfillment_issues.extend({
-                'id': rule_id,
-                'source': 'block_compliance',
-                'severity': rule.get('severity', 'CRITICAL'),
-                'message': rule.get('message', 'Compliance rule failed'),
-                'review_value': {
-                    'rule_id': rule_id,
-                    'message': rule.get('message', 'Compliance rule failed'),
-                    'passed': False,
-                },
-                'basis': 'production block-compliance validation of the generated calendar',
-                'sensitivity': 'internal',
-            } for rule_id, rule in _pre_existing_failures.items())
+            log.warning("Live compliance parity oracle observed failures:\n" + report)
         else:
             log.info(f"Compliance gate: {_compliance['critical_score']} critical, "
                      f"score {_compliance['score']}%")
@@ -2015,13 +1994,28 @@ Stay loose, {athlete_name}!"""
                 'Pre_Plan_Strength_Prep': 'pre_plan_strength_prep',
                 'Pre_Plan_Rest': 'pre_plan_rest',
             }[workout_type]
+            _pre_parameters = ({
+                'authored_duration_minutes': 0,
+                'final_duration_seconds': 60,
+                'renderer': 'FreeRide',
+            } if duration == 0 else {
+                'authored_duration_minutes': (
+                    80 if workout_type == 'Pre_Plan_Endurance' else
+                    35 if workout_type == 'Pre_Plan_Strength_Prep' else
+                    45 if day_abbrev in ['Mon', 'Wed'] else 40),
+                'power': power,
+                'workout_type': 'Easy',
+                'rounded_duration_minutes': duration,
+            })
             _record_tp_session(zwo_path, current_date.strftime('%Y-%m-%d'), 0, 'pre_plan',
                                 _tp_kind, display_name=display_name,
                                 origin='PRE_PLAN_GENERATOR',
                                 producer_id='generate_athlete_package.pre_plan',
                                 producer_version='v1', template_id=_pre_template,
                                 template_version='v1', is_assessment=False,
-                                fueling_source_tier='empty')
+                                fueling_source_tier='empty',
+                                transformation_parameters=_pre_parameters,
+                                overlay_ids=[])
 
         w00_week_entry = None
         if _w00_days:
@@ -3197,6 +3191,7 @@ GO GET IT, {athlete_name.upper()}!
     generate_zwo_files.last_legacy_compliance_projection = build_legacy_projection(
         _bb_plan, target_hours=cycling_hours_target, off_days=_bb_off_days,
         max_intensity=max_intensity_per_week)
+    generate_zwo_files.last_live_compliance = copy.deepcopy(_compliance)
     return generated_files
 
 
@@ -3316,27 +3311,57 @@ def generate_athlete_package(athlete_id: str) -> dict:
         fueling = load_yaml(athlete_dir / 'fueling.yaml')
         athlete_data['fueling'] = fueling
         athlete_data['plan_dates'] = plan_dates
-        step(3.5, "Finalizing canonical training model...")
-        canonical_model = build_canonical_model(
+        _e1_boundary("w00_fueling_persisted")
+        # This compiler projection is deliberately not persisted. D1 freezes
+        # first; only then may the canonical authority be finalized.
+        authored_model = build_canonical_model(
             athlete_id, athlete_dir, plan_dates=plan_dates,
             authored_documents=getattr(
                 generate_zwo_files, 'last_authored_documents', {}),
             naming_manifest=getattr(
-                generate_zwo_files, 'last_naming_manifest', {}))
+                generate_zwo_files, 'last_naming_manifest', {}),
+            persist=False)
 
         _staged_guide_race_input = stage_guide_race_input(athlete_dir)
 
-        from final_plan_candidate import build_candidate, freeze_candidate
-        certification_manifest, manifest_pin = __import__(
-            'final_plan_candidate', fromlist=['snapshot_manifest']).snapshot_manifest(
-                athlete_dir)
+        from final_plan_candidate import (
+            build_candidate, freeze_candidate, revision_dir_for_candidate,
+            snapshot_manifest,
+        )
+        summary_revision = int(
+            (profile.get('fulfillment') or {}).get('generation_revision') or 1)
+        revision_dir = revision_dir_for_candidate(athlete_dir, summary_revision)
+        certification_manifest, manifest_pin = snapshot_manifest(
+            athlete_dir, revision_dir=revision_dir, revision=summary_revision)
+        _e1_boundary("revision_manifest_pinned")
         final_candidate = build_candidate(
-            athlete_id, athlete_dir, canonical_model,
+            athlete_id, athlete_dir, authored_model,
             legacy_compliance_projection=getattr(
                 generate_zwo_files, 'last_legacy_compliance_projection'),
             manifest=certification_manifest, manifest_pin=manifest_pin)
         candidate_sha256 = freeze_candidate(
             athlete_dir / 'final_plan_candidate.json', final_candidate)
+        _e1_boundary("d1_frozen")
+        from workout_quality_report import evaluate_pre_guide
+        pre_guide_evaluation = evaluate_pre_guide(
+            final_candidate, certification_manifest)
+        _e1_boundary("pre_guide_evaluated")
+
+        # The mutable-plan validator is now only an asserted parity oracle.
+        from earned_selection_rules import PRE_EXISTING
+        live = getattr(generate_zwo_files, 'last_live_compliance', {}).get('rules', {})
+        report_rows = {row['rule_id']: row for row in pre_guide_evaluation['rubric']
+                       if row['rule_id'] in PRE_EXISTING}
+        if any((report_rows[rule_id]['result'] == 'PASS')
+               != bool(live.get(rule_id, {}).get('passed'))
+               for rule_id in PRE_EXISTING):
+            raise RuntimeError("A3.0 frozen-projection/live compliance parity mismatch")
+
+        step(3.5, "Finalizing canonical training model from D1...")
+        from canonical_training_model import project_canonical_model_from_candidate
+        canonical_model = project_canonical_model_from_candidate(
+            authored_model, final_candidate, athlete_dir)
+        _e1_boundary("canonical_projected")
         zwo_files = publish_zwo_projection(canonical_model, athlete_dir)
         private_review = _authored_dir / 'NEEDS_REVIEW.txt'
         if private_review.is_file():
@@ -3348,6 +3373,14 @@ def generate_athlete_package(athlete_id: str) -> dict:
     if control['control_metric'] != 'power':
         detail("Executable ZWO projection suppressed: no measured power control")
 
+    # Stage 5: project PlanIR from the candidate-finalized canonical model
+    # before the sole guide invocation.  Post-render validation below consumes
+    # this exact projection.
+    from plan_ir import build_plan_ir, build_tp_manifest
+    build_plan_ir(athlete_id)
+    build_tp_manifest(athlete_id)
+    _e1_boundary("planir_projected")
+
     # The guide receives the finalized canonical authority explicitly. Power
     # ZWOs may already exist, but they are never its prescription source.
     step(4, "Generating training guide...")
@@ -3355,12 +3388,73 @@ def generate_athlete_package(athlete_id: str) -> dict:
     generate_training_guide(
         athlete_id, output_path=guide_path, canonical_model=canonical_model,
         staged_race_input=_staged_guide_race_input)
+    _e1_boundary("guide_built_once")
+    from earned_selection import canonical_digest
+    expected_guide_evidence = canonical_digest({
+        'candidate_sha256': candidate_sha256,
+        'guide_sha256': hashlib.sha256(guide_path.read_bytes()).hexdigest(),
+        'guide_source_digests': {
+            item['path']: item['sha256'] for item in final_candidate['guide_inputs']},
+    })
+    _e1_boundary("d2_guide_bound")
+    from earned_selection_rules import execute_rules
+    post_guide_evaluation = execute_rules(
+        final_candidate, guide_html=guide_path.read_text(encoding='utf-8'),
+        stage='POST_GUIDE', manifest=certification_manifest)
+    _e1_boundary("post_guide_evaluated")
+
+    # D2-bound post-render validation happens before the one merged report and
+    # state/catalog write. The projections are rebuilt once after state so the
+    # fulfillment status field follows the final gate without re-evaluation.
+    post_render_results = []
+    post_render_issues = []
+    post_render_confirmations = []
+    package_issues = []
+    validator_issues = []
+    validator_confirmations = []
+    try:
+        from validate_plan_package import validate_plan_package
+        package_issues = validate_plan_package(athlete_dir)
+        post_render_results.append({
+            "validator": "validate_plan_package", "result": "FAIL" if package_issues else "PASS",
+            "issue_ids": [item["id"] for item in package_issues],
+        })
+        post_render_issues.extend(package_issues)
+        from post_render_validator import build_validator_input, validate_transitional_input
+        validator_input = build_validator_input(athlete_dir)
+        validator_issues, validator_confirmations = validate_transitional_input(validator_input)
+        post_render_results.append({
+            "validator": "post_render_validator", "result": "FAIL" if validator_issues else "PASS",
+            "issue_ids": [item["id"] for item in validator_issues],
+            "confirmation_ids": [item["id"] for item in validator_confirmations],
+        })
+        post_render_issues.extend(validator_issues)
+        post_render_confirmations.extend(validator_confirmations)
+    except Exception as exc:
+        crash = {
+            'id': 'POST_RENDER_VALIDATOR_CRASH', 'source': 'post_render',
+            'severity': 'CRITICAL',
+            'message': f'Post-render validator failed closed: {type(exc).__name__}',
+            'review_value': {'exception_type': type(exc).__name__, 'failed_closed': True},
+            'basis': 'production post-render validator execution result',
+            'sensitivity': 'internal',
+        }
+        post_render_issues.append(crash)
+        post_render_results.append({"validator": "post_render", "result": "CRASH",
+                                    "issue_ids": [crash["id"]]})
+    _e1_boundary("post_render_validated")
 
     from workout_quality_report import build_report, write_report
     quality_report, quality_findings, quality_blockers = build_report(
         final_candidate, candidate_sha256, certification_manifest,
-        guide_path.read_bytes())
+        guide_path.read_bytes(), pre_guide=pre_guide_evaluation,
+        post_guide=post_guide_evaluation,
+        post_render_results=post_render_results)
+    quality_blockers.extend(post_render_issues)
+    if quality_report['guide_evidence_sha256'] != expected_guide_evidence:
+        raise RuntimeError('D2 guide evidence changed during report merge')
     write_report(athlete_dir / 'workout_quality_report.json', quality_report)
+    _e1_boundary("merged_report_written")
 
     # Generate plan summary
     step(5, "Generating plan summary...")
@@ -3524,49 +3618,57 @@ def generate_athlete_package(athlete_id: str) -> dict:
         for record in report_derived_records(quality_report):
             derived_values.append({**record,
                 'value': quality_report[record['field']]})
+        if quality_blockers:
+            (athlete_dir / 'NEEDS_REVIEW.txt').write_text(
+                "AUTO-CHECK FLAGGED — REVIEW BEFORE SENDING\n"
+                "=================================================\n\n"
+                "The built plan has report-routed review blockers. Review the "
+                "workout_quality_report.json evidence before sending.\n\n"
+                + "\n".join(
+                    f"- {item['id']}: {item['message']}" for item in quality_blockers)
+                + "\n", encoding='utf-8')
         write_generation(
             athlete_dir / 'fulfillment_status.json', athlete_id,
-            getattr(generate_zwo_files, 'last_fulfillment_issues', []),
+            quality_blockers,
             order_id=str(profile.get('order_id') or ''),
             delivery_platform=str(profile.get('delivery_platform') or 'manual'),
             derived_values=derived_values,
+            quality_findings=quality_findings,
+            required_confirmations=post_render_confirmations,
         )
-        from fulfillment_state import merge_quality_findings_v1
-        merge_quality_findings_v1(
-            athlete_dir / 'fulfillment_status.json', summary_revision,
-            'workout_quality_report', quality_findings)
+        _e1_boundary("state_and_catalog_updated_once")
         detail("Saved: fulfillment_status.json")
     except Exception as exc:
         warning(f"Could not write fulfillment state (confirmation will fail closed): {exc}")
 
-    # G0 reflection only: aggregate the artifacts just generated.  PlanIR is
-    # deliberately advisory until later tickets make serializers project it;
-    # a malformed historical/optional artifact must never block delivery.
+    # Refresh projections after the single state/catalog write, then prove the
+    # post-render verdict set is unchanged. No second merge is permitted.
     step(6, "Assembling PlanIR...")
     try:
-        from plan_ir import build_plan_ir
+        from plan_ir import build_plan_ir, build_tp_manifest
         build_plan_ir(athlete_id)
         detail("Saved: plan_ir.json")
-        # G5: serializers are checked against the just-assembled PlanIR.  A
-        # mismatch is a blocking review issue, not an order-killing exception.
         from validate_plan_package import validate_plan_package
-        semantic_issues = validate_plan_package(athlete_dir)
-        if semantic_issues:
-            from fulfillment_state import load as load_fulfillment_state, merge_generation_blockers
-            current = load_fulfillment_state(athlete_dir / 'fulfillment_status.json')
-            merge_generation_blockers(
-                athlete_dir / 'fulfillment_status.json',
-                current['generation_revision'], 'package_consistency', semantic_issues,
-            )
-            build_plan_ir(athlete_id)  # PlanIR's fulfillment projection follows the gate.
-            warning(f"Package consistency gate flagged {len(semantic_issues)} issue(s)")
+        build_tp_manifest(athlete_id)
+        final_package_issues = validate_plan_package(athlete_dir)
+        from post_render_validator import build_validator_input, validate_transitional_input
+        final_validator_issues, final_validator_confirmations = validate_transitional_input(
+            build_validator_input(athlete_dir))
+        if ([item['id'] for item in final_package_issues]
+                != [item['id'] for item in package_issues]
+                or [item['id'] for item in final_validator_issues]
+                != [item['id'] for item in validator_issues]
+                or [item['id'] for item in final_validator_confirmations]
+                != [item['id'] for item in validator_confirmations]):
+            raise RuntimeError('post-render findings changed after final projection rewrite')
+        if final_package_issues or final_validator_issues:
+            warning(f"Post-render gates flagged "
+                    f"{len(final_package_issues) + len(final_validator_issues)} issue(s)")
         from fulfillment_manifest import build_fulfillment_manifest
         build_fulfillment_manifest(athlete_dir)
         detail("Saved: fulfillment_manifest.json")
         # Architecture rule #1: tp_manifest is a versioned PROJECTION of the
         # PlanIR just assembled above -- never a parallel truth.
-        from plan_ir import build_tp_manifest
-        build_tp_manifest(athlete_id)
         detail("Saved: tp_manifest.json")
     except Exception as exc:
         warning(f"PlanIR aggregation failed (package delivery continues): {exc}")

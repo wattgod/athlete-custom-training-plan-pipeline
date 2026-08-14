@@ -1784,6 +1784,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 - Delivery Platform: {fulfillment.get('delivery_platform', 'manual')}
 - Order Created At: {fulfillment.get('order_created_at', '')}
 - Generation At: {fulfillment.get('generation_at', datetime.now().isoformat())}
+- Generation Revision: {fulfillment.get('generation_revision', 1)}
 - Weeks Purchased: {fulfillment.get('weeks_purchased', '')}
 - Athlete Timezone: {fulfillment.get('athlete_timezone', intake_data.get('athlete_timezone', ''))}
 """
@@ -1822,12 +1823,38 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
     if intake_data.get('generation_clock'):
         pipeline_env['GG_FIXED_NOW'] = str(intake_data['generation_clock'])
     work_athletes_dir = None
+    next_generation_revision = 1
     if intake_data and order_data and order_data.get('order_id'):
+        safe_order_id = _safe_order_id(order_data['order_id'])
         work_athletes_dir = (Path(DATA_DIR) / 'order-work'
-                             / _safe_order_id(order_data['order_id']) / 'athletes')
+                             / safe_order_id / 'athletes')
         work_athletes_dir.mkdir(parents=True, exist_ok=True)
         pipeline_env['GG_ATHLETES_BASE_DIR'] = str(work_athletes_dir)
         pipeline_env['GG_DELIVERY_DIR'] = str(work_athletes_dir.parent / 'review')
+        prior_revision = 0
+        # DATA_DIR is the runtime authority and is also what isolated pipeline
+        # tests replace.  DELIVERIES_DIR is derived at import time and may be a
+        # stale container default after that replacement.
+        pipeline_orders_root = Path(DATA_DIR) / 'deliveries' / 'orders'
+        order_state_path = (pipeline_orders_root / safe_order_id
+                            / 'fulfillment_status.json')
+        if order_state_path.is_file():
+            try:
+                prior_revision = int(load_fulfillment_state(
+                    order_state_path).get('generation_revision') or 0)
+            except Exception:
+                prior_revision = 0
+            # Generation happens in an order-private workspace. Give that
+            # workspace the authoritative prior state so its one
+            # write_generation call advances the same revision we pin below.
+            # The intake process performs the copy only after resolving the
+            # generated athlete slug.
+            pipeline_env['GG_PRIOR_FULFILLMENT_STATE'] = str(order_state_path)
+        revision_dir = (pipeline_orders_root / safe_order_id / 'revisions'
+                        / f'r{prior_revision + 1}')
+        next_generation_revision = prior_revision + 1
+        revision_dir.mkdir(parents=True, exist_ok=True)
+        pipeline_env['GG_E1_REVISION_DIR'] = str(revision_dir)
 
     # Generate markdown input for intake pipeline
     stdin_data = None
@@ -1843,6 +1870,7 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
                     'delivery_platform', order_data.get('delivery_target', 'manual')),
                 'order_created_at': order_data.get('order_created_at', ''),
                 'generation_at': intake_data.get('generation_clock') or datetime.now().isoformat(),
+                'generation_revision': next_generation_revision,
                 'weeks_purchased': order_data.get(
                     'weeks_purchased', intake_data.get('computed_weeks', '')),
                 'athlete_timezone': intake_data.get('athlete_timezone', ''),
@@ -1921,6 +1949,20 @@ CUSTOMER_DELIVERABLES = [
     'plan_preview.html',
     'fueling.yaml',
 ]
+
+_Q0_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+
+
+def _write_deterministic_zip(path: Path, members) -> None:
+    """Write Phase-3-compatible file members with Q0-fixed ZIP metadata."""
+    with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for source, arcname in members:
+            info = zipfile.ZipInfo(str(arcname).replace(os.sep, '/'),
+                                   _Q0_ZIP_TIMESTAMP)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.create_system = 3
+            info.external_attr = (0o100644 & 0xFFFF) << 16
+            archive.writestr(info, Path(source).read_bytes())
 # Review-bundle files are human-readable and non-executable by construction.
 REVIEW_DELIVERABLES = [
     'plan_preview.html',
@@ -2174,15 +2216,31 @@ def persist_deliverables(order_id: str, athlete_id: str = '', source_dir: Path |
             raise FulfillmentStateError(
                 'sealed revision directory is immutable; call write_generation first'
             )
-        shutil.rmtree(revision_dir)
+        # E1 creates the exact revision-local certification snapshot before D1.
+        # Preserve that authority while clearing only retryable persistence
+        # outputs from an unsealed attempt.
+        stale_artifacts = revision_dir / 'artifacts'
+        if stale_artifacts.exists():
+            shutil.rmtree(stale_artifacts)
+        for stale in revision_dir.glob('*.zip'):
+            stale.unlink()
+        for stale_name in ('release_manifest.json',):
+            stale = revision_dir / stale_name
+            if stale.exists():
+                stale.unlink()
     artifact_dir = revision_dir / 'artifacts'
-    artifact_dir.mkdir(parents=True)
+    artifact_dir.mkdir(parents=True, exist_ok=False)
 
     # E1 evidence is revision-local and deliberately outside artifacts/ so the
     # canonical v2 seal can bind the exact selected certification snapshot.
     certification_src = athlete_dir / 'certification_manifest.json'
-    if certification_src.is_file():
-        shutil.copy2(certification_src, revision_dir / 'certification_manifest.json')
+    certification_dst = revision_dir / 'certification_manifest.json'
+    e1_candidate = athlete_dir / 'final_plan_candidate.json'
+    if e1_candidate.is_file():
+        if not certification_src.is_file() or not certification_dst.is_file():
+            raise FulfillmentStateError('MANIFEST_SNAPSHOT_UNAVAILABLE')
+        if certification_src.read_bytes() != certification_dst.read_bytes():
+            raise FulfillmentStateError('MANIFEST_PIN_MISMATCH')
 
     copied = []
     missing = []
@@ -2216,22 +2274,23 @@ def persist_deliverables(order_id: str, athlete_id: str = '', source_dir: Path |
             missing.append(fname)
 
     review_zip = revision_dir / f'{order_id}-review-bundle.zip'
-    with zipfile.ZipFile(review_zip, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for fname in REVIEW_DELIVERABLES:
-            path = artifact_dir / fname
-            if path.exists():
-                archive.write(path, fname)
+    _write_deterministic_zip(review_zip, [
+        (artifact_dir / fname, fname) for fname in REVIEW_DELIVERABLES
+        if (artifact_dir / fname).exists()
+    ])
 
     customer_zip = revision_dir / f'{order_id}-customer-bundle.zip'
-    with zipfile.ZipFile(customer_zip, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for fname in CUSTOMER_DELIVERABLES:
-            path = artifact_dir / fname
-            if path.exists():
-                archive.write(path, fname)
-        if (artifact_dir / 'workouts').exists():
-            for workout in sorted((artifact_dir / 'workouts').rglob('*')):
-                if workout.is_file():
-                    archive.write(workout, workout.relative_to(artifact_dir))
+    customer_members = [
+        (artifact_dir / fname, fname) for fname in CUSTOMER_DELIVERABLES
+        if (artifact_dir / fname).exists()
+    ]
+    if (artifact_dir / 'workouts').exists():
+        customer_members.extend(
+            (workout, workout.relative_to(artifact_dir))
+            for workout in sorted((artifact_dir / 'workouts').rglob('*'))
+            if workout.is_file()
+        )
+    _write_deterministic_zip(customer_zip, customer_members)
 
     state = finalize_transitional_release(
         state_path, revision_dir, expected_revision=revision)

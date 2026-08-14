@@ -308,6 +308,9 @@ def _compiler_session(
         producer_version=entry.get("producer_version"),
         template_id=entry.get("template_id"),
         template_version=entry.get("template_version"),
+        transformation_parameters=copy.deepcopy(
+            entry.get("transformation_parameters") or {}),
+        overlay_ids=copy.deepcopy(entry.get("overlay_ids") or []),
         progression_level=entry.get("progression_level"),
         is_assessment=entry.get("is_assessment"),
         fueling_source_tier=entry.get("fueling_source_tier"),
@@ -417,6 +420,7 @@ def build_canonical_model(
     authored_dir: Path | str | None = None,
     authored_documents: Optional[Dict[str, str]] = None,
     naming_manifest: Optional[Dict[str, Any]] = None,
+    persist: bool = True,
 ) -> Dict[str, Any]:
     """Finalize the authority from private compiler documents before publish."""
     athlete_dir = Path(athlete_dir)
@@ -560,6 +564,10 @@ def build_canonical_model(
                                 getattr(raw_session, "template_id", None)),
                 "template_version": ("v1" if is_canonical_rest else
                                      getattr(raw_session, "template_version", None)),
+                "transformation_parameters": copy.deepcopy(
+                    getattr(raw_session, "transformation_parameters", {}) or {}),
+                "overlay_ids": copy.deepcopy(
+                    getattr(raw_session, "overlay_ids", []) or []),
                 "display_name": title,
                 "race": raw_session.race,
                 "zwo_projection": ({
@@ -617,11 +625,76 @@ def build_canonical_model(
         ]),
     }
     validate_canonical_model(model)
-    _atomic_json(athlete_dir / "canonical_training_model.json", model)
+    if persist:
+        _atomic_json(athlete_dir / "canonical_training_model.json", model)
 
-    if control["control_metric"] != "power":
+    if persist and control["control_metric"] != "power":
         for zwo in (athlete_dir / "workouts").glob("*.zwo"):
             zwo.unlink()
+    return model
+
+
+def project_canonical_model_from_candidate(
+    authored_model: Dict[str, Any], candidate: Dict[str, Any],
+    athlete_dir: Path | str,
+) -> Dict[str, Any]:
+    """Finalize the persisted canonical authority as a D1 projection.
+
+    Compiler-only filename/ZWO projection fields remain on their authored row;
+    every training-content field shared with Appendix 7 is replaced from the
+    frozen candidate and then equality-checked.
+    """
+    model = copy.deepcopy(authored_model)
+    authored = {item["id"]: item for item in model.get("sessions", [])}
+    projected = []
+    shared = {
+        "id", "week", "date", "daily_ordinal", "title", "description",
+        "sport", "session_type", "is_assessment", "fueling_source_tier",
+        "duration_s", "tss", "target_summary", "tp_kind",
+        "workout_type_value_id", "tss_planned", "total_time_planned", "race",
+        "progression_level",
+    }
+    for frozen in candidate.get("sessions", []):
+        current = authored.get(frozen["id"])
+        if current is None:
+            raise CanonicalModelError("candidate/canonical session identity mismatch")
+        row = copy.deepcopy(current)
+        for key in shared:
+            row[key] = copy.deepcopy(frozen.get(key))
+        row["producer_origin"] = frozen["origin"]
+        row["archetype"] = copy.deepcopy(frozen.get("archetype"))
+        row["archetype_id"] = (frozen.get("archetype") or {}).get("archetype_id")
+        provenance = frozen["provenance"]
+        for key in ("producer_id", "producer_version", "template_id", "template_version"):
+            row[key] = provenance[key]
+        row["transformation_parameters"] = copy.deepcopy(
+            provenance["transformation_parameters"])
+        row["overlay_ids"] = copy.deepcopy(provenance["overlay_ids"])
+        projected.append(row)
+    if len(projected) != len(authored):
+        raise CanonicalModelError("candidate/canonical session count mismatch")
+    model["sessions"] = projected
+    validate_canonical_model(model)
+    for frozen, row in zip(candidate["sessions"], model["sessions"]):
+        if any(row.get(key) != frozen.get(key) for key in shared):
+            raise CanonicalModelError("candidate/canonical content projection mismatch")
+        def tp_segment(value: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                "name": value.get("name"), "seconds": value.get("seconds"),
+                "kind": ("steady" if value.get("kind") == "steady_state"
+                         else value.get("kind")),
+                "target": {key: item for key, item in
+                           (value.get("target") or {}).items() if item is not None},
+                **{key: value.get(key) for key in
+                   ("repeat", "on_seconds", "off_seconds")
+                   if value.get(key) is not None},
+            }
+        frozen_segments = [tp_segment(value) for value in frozen.get("segments", [])]
+        canonical_segments = [tp_segment(value) for value in row.get("segments", [])]
+        if frozen_segments != canonical_segments:
+            raise CanonicalModelError(
+                "candidate/canonical TP-content segment digest mismatch")
+    _atomic_json(Path(athlete_dir) / "canonical_training_model.json", model)
     return model
 
 

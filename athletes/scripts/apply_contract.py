@@ -754,6 +754,8 @@ def build_contract(
     payload_snapshot_reader: Optional[SnapshotReader] = None,
     last_operation_reader: Optional[OperationReader] = None,
     certification_manifest_digest: Optional[str] = None,
+    manifest_pin: Optional[Mapping[str, Any]] = None,
+    legacy_reader: bool = False,
 ) -> Dict[str, Any]:
     revision = int(generation_revision)
     inventory = _validate_inventory(
@@ -772,14 +774,45 @@ def build_contract(
         for logical_id in sorted(set(desired) | set(inventory))
     ]
     operations.sort(key=_sort_key)
-    if certification_manifest_digest is None and athlete_dir is not None:
+    candidate_path = (Path(athlete_dir) / "final_plan_candidate.json"
+                      if athlete_dir is not None else None)
+    if candidate_path is not None and candidate_path.is_file():
         snapshot = Path(athlete_dir) / "certification_manifest.json"
-        if snapshot.is_file():
-            try:
-                certification_manifest_digest = digest_payload(
-                    json.loads(snapshot.read_text(encoding="utf-8")))
-            except (OSError, json.JSONDecodeError) as exc:
-                raise ApplyContractError("certification manifest snapshot is malformed") from exc
+        try:
+            snapshot_payload = json.loads(snapshot.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ApplyContractError("MANIFEST_SNAPSHOT_UNAVAILABLE") from exc
+        try:
+            candidate_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ApplyContractError("MANIFEST_PIN_MISSING") from exc
+        candidate_pin = candidate_payload.get("manifest_pin")
+        if manifest_pin is not None and dict(manifest_pin) != candidate_pin:
+            raise ApplyContractError("MANIFEST_PIN_MISMATCH")
+        manifest_pin = candidate_pin
+        if not isinstance(manifest_pin, Mapping):
+            raise ApplyContractError("MANIFEST_PIN_MISSING")
+        expected_pin = {
+            "snapshot_path": "certification_manifest.json",
+            "snapshot_digest": digest_payload(snapshot_payload),
+            "manifest_version": snapshot_payload.get("schema_version"),
+            "version_vector": snapshot_payload.get("version_vector"),
+            "promotion_digests": [
+                item.get("digest") for item in snapshot_payload.get("promotion_artifacts", [])
+            ],
+        }
+        if dict(manifest_pin) != expected_pin:
+            raise ApplyContractError("MANIFEST_PIN_MISMATCH")
+        if (certification_manifest_digest is not None
+                and certification_manifest_digest != expected_pin["snapshot_digest"]):
+            raise ApplyContractError("MANIFEST_PIN_MISMATCH")
+        certification_manifest_digest = expected_pin["snapshot_digest"]
+    elif certification_manifest_digest is None and not legacy_reader:
+        # Absence of an E1 candidate is the legacy discriminator. Every new
+        # generation freezes that candidate before this constructor; once the
+        # marker exists, the branch above cannot downgrade on a missing pin or
+        # snapshot. Historical/read-compatibility callers remain v1.
+        legacy_reader = True
     version = CONTRACT_VERSION if certification_manifest_digest else LEGACY_CONTRACT_VERSION
     seal = compute_model_seal(
         canonical_model, review_items, guide_sources, operations,

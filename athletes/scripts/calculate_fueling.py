@@ -20,6 +20,7 @@ Based on sports nutrition research:
 - Gut training required to absorb high carb rates
 """
 
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +30,13 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent))
 from constants import get_athlete_file
 from fueling_policy import build_fueling_prescription, tolerated_intake_from_profile
+
+
+def _generation_now() -> datetime:
+    fixed = os.environ.get("GG_FIXED_NOW", "").strip()
+    if fixed:
+        return datetime.fromisoformat(fixed.replace("Z", "+00:00")).replace(tzinfo=None)
+    return datetime.now()
 
 
 # =============================================================================
@@ -545,7 +553,7 @@ def generate_fueling_context(
             hourly_carbs=carb_data["hourly_target"],
             total_carbs=carb_data["total_grams"]
         ) | {"hydration": p["hydration"]},
-        "generated_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        "generated_date": _generation_now().strftime("%Y-%m-%d %H:%M:%S")
     }
     from derived_registry import (assert_registry_covers,
                                   entry as derived_entry)

@@ -3608,8 +3608,12 @@ def main():
     # would leave the authoritative artifacts falsely claiming revision 1.
     prospective_id = generate_athlete_id(athlete_name)
     existing_state_path = get_athlete_dir(prospective_id) / 'fulfillment_status.json'
-    next_revision = 1
-    if existing_state_path.is_file():
+    injected_revision = (parsed.get('fulfillment') or {}).get('generation_revision')
+    try:
+        next_revision = int(injected_revision) if injected_revision is not None else 1
+    except (TypeError, ValueError):
+        next_revision = 1
+    if injected_revision is None and existing_state_path.is_file():
         try:
             prior_state = json.loads(existing_state_path.read_text())
             next_revision = int(prior_state.get('generation_revision') or 0) + 1
@@ -3617,6 +3621,8 @@ def main():
             # The later state write fails closed on malformed state. Keep the
             # source revision valid so package generation remains recoverable.
             next_revision = 1
+    if next_revision < 1:
+        next_revision = 1
     parsed.setdefault('fulfillment', {})['generation_revision'] = next_revision
 
     sections = [k for k in parsed if k not in ('athlete_name', '__header__')]
@@ -3672,6 +3678,18 @@ def main():
 
     write_profile_yaml(profile, profile_path)
     materialize_brand_discipline_review(profile, athlete_dir)
+
+    prior_state_source = os.environ.get('GG_PRIOR_FULFILLMENT_STATE', '').strip()
+    if prior_state_source:
+        prior_state_path = Path(prior_state_source)
+        local_state_path = athlete_dir / 'fulfillment_status.json'
+        if not prior_state_path.is_file():
+            raise IntakeValidationError(
+                'authoritative prior fulfillment state is unavailable')
+        if local_state_path.exists():
+            raise IntakeValidationError(
+                'isolated generation workspace already contains fulfillment state')
+        shutil.copy2(prior_state_path, local_state_path)
 
     if args.skip_pipeline:
         print(f"\n{GREEN}Profile written. Pipeline skipped (--skip-pipeline).{RESET}")

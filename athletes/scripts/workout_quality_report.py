@@ -7,7 +7,7 @@ import hashlib
 import json
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any, Dict, Mapping
+from typing import Any, Dict, Mapping, Optional
 
 import yaml
 
@@ -65,9 +65,12 @@ def _finding(identifier: str, revision: int, code: str, severity: str,
     }
 
 
-def build_report(candidate: Mapping[str, Any], candidate_sha256: str,
-                 manifest: Mapping[str, Any], guide_bytes: bytes) -> tuple[Dict[str, Any], list[Dict[str, Any]], list[Dict[str, Any]]]:
+def evaluate_pre_guide(candidate: Mapping[str, Any],
+                       manifest: Mapping[str, Any]) -> Dict[str, Any]:
+    """Run every D1-only check before canonical/guide projection."""
     revision = candidate["generation_revision"]
+    from earned_selection import validate_manifest_pin
+    validate_manifest_pin(candidate["manifest_pin"], manifest)
     manifest_rows = {row["row_id"]: row for row in manifest["rows"]}
     sessions = []
     findings: list[Dict[str, Any]] = []
@@ -137,27 +140,6 @@ def build_report(candidate: Mapping[str, Any], candidate_sha256: str,
             "quality_finding_ids": sorted(finding_ids),
         })
 
-    guide_sha = hashlib.sha256(guide_bytes).hexdigest()
-    guide_sources = {item["path"]: item["sha256"] for item in candidate["guide_inputs"]}
-    guide_evidence_sha = canonical_digest({
-        "candidate_sha256": candidate_sha256, "guide_sha256": guide_sha,
-        "guide_source_digests": guide_sources,
-    })
-    rubric = execute_rules(candidate, guide_html=guide_bytes.decode("utf-8"))
-    for row in rubric:
-        if row["finding_id"]:
-            findings.append(_finding(
-                row["finding_id"], revision, row["output_code"],
-                row["severity"].lower(), row["subject_ids"], row["metric"],
-                row["message"]))
-    blockers = [{
-        "id": row["output_code"], "source": "earned_selection_rules",
-        "severity": row["severity"], "message": row["message"],
-        "review_value": {"rule_id": row["rule_id"], "metric": row["metric"]},
-        "basis": "Appendix 3 A3.0 production-equivalent verdict",
-        "sensitivity": "internal",
-    } for row in rubric if row["routed_to_blocking_issues"]]
-
     plan_series = []
     grouped = defaultdict(list)
     session_by_id = {item["session_id"]: item for item in sessions}
@@ -187,6 +169,56 @@ def build_report(candidate: Mapping[str, Any], candidate_sha256: str,
                             "design_tss": doses, "result": result,
                             "finding_id": finding_id})
 
+    rubric = execute_rules(candidate, stage="PRE_GUIDE", manifest=manifest)
+    for row in rubric:
+        if row["finding_id"]:
+            findings.append(_finding(
+                row["finding_id"], revision, row["output_code"],
+                row["severity"].lower(), row["subject_ids"], row["metric"],
+                row["message"]))
+    return {"sessions": sessions, "findings": findings,
+            "manifest_records": manifest_records, "final_records": final_records,
+            "plan_series": plan_series, "rubric": rubric}
+
+
+def build_report(candidate: Mapping[str, Any], candidate_sha256: str,
+                 manifest: Mapping[str, Any], guide_bytes: bytes, *,
+                 pre_guide: Optional[Mapping[str, Any]] = None,
+                 post_guide: Optional[list[Mapping[str, Any]]] = None,
+                 post_render_results: Optional[list[Mapping[str, Any]]] = None
+                 ) -> tuple[Dict[str, Any], list[Dict[str, Any]], list[Dict[str, Any]]]:
+    revision = candidate["generation_revision"]
+    pre = copy.deepcopy(pre_guide or evaluate_pre_guide(candidate, manifest))
+    sessions = pre["sessions"]
+    findings = pre["findings"]
+    manifest_records = pre["manifest_records"]
+    final_records = pre["final_records"]
+    plan_series = pre["plan_series"]
+    rubric = sorted(pre["rubric"] + copy.deepcopy(post_guide or execute_rules(
+        candidate, guide_html=guide_bytes.decode("utf-8"), stage="POST_GUIDE",
+        manifest=manifest)), key=lambda row: row["rule_id"])
+    if [row["rule_id"] for row in rubric] != [f"R{i:02d}" for i in range(1, 27)]:
+        raise WorkoutQualityReportError("pre/post rubric merge is incomplete")
+    for row in rubric:
+        if row["stage"] == "POST_GUIDE" and row["finding_id"]:
+            findings.append(_finding(
+                row["finding_id"], revision, row["output_code"],
+                row["severity"].lower(), row["subject_ids"], row["metric"],
+                row["message"]))
+    blockers = [{
+        "id": row["output_code"], "source": "earned_selection_rules",
+        "severity": row["severity"], "message": row["message"],
+        "review_value": {"rule_id": row["rule_id"], "result": row["result"],
+                         "subject_ids": row["subject_ids"], "metric": row["metric"]},
+        "basis": "Appendix 3 A3.0 production-equivalent verdict",
+        "sensitivity": "internal",
+    } for row in rubric if row["routed_to_blocking_issues"]]
+    guide_sha = hashlib.sha256(guide_bytes).hexdigest()
+    guide_sources = {item["path"]: item["sha256"] for item in candidate["guide_inputs"]}
+    guide_evidence_sha = canonical_digest({
+        "candidate_sha256": candidate_sha256, "guide_sha256": guide_sha,
+        "guide_source_digests": guide_sources,
+    })
     finding_by_id = {finding["id"]: finding for finding in findings}
     if len(finding_by_id) != len(findings):
         raise WorkoutQualityReportError("duplicate quality finding ID")
@@ -216,6 +248,7 @@ def build_report(candidate: Mapping[str, Any], candidate_sha256: str,
                     for key in ("PASS", "FAIL", "WARNING", "NOT_APPLICABLE", "UNAVAILABLE")}},
             },
             "sessions": sessions, "rubric": rubric, "plan_series": plan_series,
+            "post_render_results": copy.deepcopy(post_render_results or []),
         },
         "manifest_pin": copy.deepcopy(candidate["manifest_pin"]),
     }
@@ -240,6 +273,16 @@ def validate_report(report: Mapping[str, Any], candidate: Mapping[str, Any]) -> 
     sessions = report["gate_summary"]["sessions"]
     if [item["session_id"] for item in sessions] != [item["id"] for item in candidate["sessions"]]:
         raise WorkoutQualityReportError("report/candidate session identity mismatch")
+    for frozen, observed in zip(candidate["sessions"], sessions):
+        purpose = frozen.get("purpose")
+        expected = (evaluate_purpose_gate(
+            archetype_id=(frozen.get("archetype") or {}).get("archetype_id"),
+            purpose=purpose, is_assessment=frozen["is_assessment"],
+            dose=observed["dose"], final_session=True)
+            if frozen.get("sport") == "cycling" and purpose else [])
+        if [gate["gate_id"] for gate in observed["final_gates"]] != [
+                gate["gate_id"] for gate in expected]:
+            raise WorkoutQualityReportError("final applicable gate set mismatch")
     counts = report["gate_summary"]["counts"]
     if (counts["sessions"] != len(sessions) or sum(counts[key] for key in
             ("pass", "fail", "pass_with_observed_fail", "not_applicable", "unavailable"))
