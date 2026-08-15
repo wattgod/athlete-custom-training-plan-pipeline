@@ -211,6 +211,84 @@ def test_briefing_keeps_the_weeks_simulation_when_three_weekday_sessions_are_key
     assert "Dress rehearsal" in briefing["body"]
 
 
+def test_briefing_keeps_a_weekend_field_test_in_the_key_session_list():
+    plan = _plan()
+    week = plan["weeks"][0]
+    monday = date.fromisoformat(week["sessions"][0]["date"])
+    week["sessions"] = [
+        {"date": str(monday + timedelta(days=1)), "title": "Anaerobic Test",
+         "tp_kind": "bike", "duration_s": 30 * 60, "is_field_test": True},
+        {"date": str(monday + timedelta(days=5)), "title": "FTP Test",
+         "tp_kind": "bike", "duration_s": 60 * 60, "is_field_test": True},
+    ]
+
+    briefing = next(note for note in _notes(plan)
+                    if note["type"] == "weekly_briefing" and note["title"].startswith("WEEK 1"))
+    key_sessions = briefing["body"].split("THE WEEK IN SEQUENCE", 1)[0]
+    assert "Anaerobic Test" in key_sessions
+    assert "FTP Test" in key_sessions
+
+
+def test_briefing_lists_every_simulation_and_marks_the_dress_rehearsal():
+    plan = _plan()
+    week = plan["weeks"][3]
+    monday = date.fromisoformat(week["sessions"][0]["date"])
+    week["sessions"] = [
+        {"date": str(monday + timedelta(days=3)), "title": "40/15s",
+         "tp_kind": "bike", "duration_s": 50 * 60},
+        {"date": str(monday + timedelta(days=4)), "title": "Short Race Simulation",
+         "tp_kind": "bike", "duration_s": 90 * 60, "is_simulation": True},
+        {"date": str(monday + timedelta(days=6)), "title": "Race Simulation — Full Course",
+         "tp_kind": "bike", "duration_s": 210 * 60, "is_simulation": True,
+         "is_dress_rehearsal": True},
+    ]
+
+    briefing = next(note for note in _notes(plan)
+                    if note["type"] == "weekly_briefing" and note["title"].startswith("WEEK 4"))
+    key_sessions = briefing["body"].split("THE WEEK IN SEQUENCE", 1)[0]
+    assert "Short Race Simulation" in key_sessions
+    assert "Race Simulation — Full Course" in key_sessions
+    assert "Dress rehearsal" in key_sessions
+
+
+def test_taper_briefing_names_the_sharp_cadence_and_burst_sessions():
+    plan = _plan()
+    week = plan["weeks"][2]
+    monday = date.fromisoformat(week["sessions"][0]["date"])
+    week.update({"phase": "taper", "week_type": "taper", "sessions": [
+        {"date": str(monday + timedelta(days=1)), "title": "Thirty-Fifteens",
+         "tp_kind": "bike", "duration_s": 45 * 60},
+        {"date": str(monday + timedelta(days=3)), "title": "Cadence Work",
+         "tp_kind": "bike", "duration_s": 45 * 60},
+        {"date": str(monday + timedelta(days=6)), "title": "Taper Burst Endurance",
+         "tp_kind": "bike", "duration_s": 90 * 60},
+    ]})
+
+    briefing = next(note for note in _notes(plan)
+                    if note["type"] == "weekly_briefing" and note["title"].startswith("WEEK 3"))
+    assert "Thirty-Fifteens" in briefing["body"]
+    assert "Cadence Work" in briefing["body"]
+    assert "Taper Burst Endurance" in briefing["body"]
+
+
+def test_week_sequence_uses_the_actual_quality_weekday_without_a_stock_day_name():
+    plan = _plan()
+    week = plan["weeks"][1]
+    monday = date.fromisoformat(week["sessions"][0]["date"])
+    week["sessions"] = [
+        {"date": str(monday + timedelta(days=3)), "title": "Threshold Work",
+         "tp_kind": "bike", "duration_s": 60 * 60},
+        {"date": str(monday + timedelta(days=6)), "title": "Endurance Ride",
+         "tp_kind": "bike", "duration_s": 180 * 60},
+    ]
+
+    briefing = next(note for note in _notes(plan)
+                    if note["type"] == "weekly_briefing" and note["title"].startswith("WEEK 2"))
+    sequence = briefing["body"].split("THE WEEK IN SEQUENCE\n", 1)[1].split("\n\nFUEL LADDER", 1)[0]
+    assert "Thursday's 60-minute Threshold Work" in sequence
+    assert "Tuesday" not in sequence
+
+
 def test_start_here_uses_singular_week_and_grit_has_no_fixture_date_residue():
     notes = _notes(_plan(weeks=1))
     assert "1 week to High Country Gravel" in _by_type(notes)["start_here"]["body"]

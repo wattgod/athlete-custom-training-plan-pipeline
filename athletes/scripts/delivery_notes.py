@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import math
+import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -200,35 +201,83 @@ def _is_quality_session(session: Any) -> bool:
     return any(token in _session_title(session).lower() for token in _QUALITY_KEYWORDS)
 
 
-def _quality_sessions(week: Any) -> List[Any]:
-    """Return up to two weekday quality sessions plus the week's simulation.
+def _ordered_sessions(week: Any) -> List[Any]:
+    """Return the calendar's sessions in date order, retaining input order for ties."""
+    indexed = enumerate(_get(week, "sessions", []) or [])
+    return [session for _, session in sorted(
+        indexed, key=lambda item: (_session_date(item[1]) or date.max, item[0]))]
 
-    A simulation is the week's rehearsal and has its own protected briefing
-    slot.  It must not disappear just because a week contains three weekday
-    quality sessions.
+
+def _is_taper_week(week: Any) -> bool:
+    return any(str(_get(week, name) or "").strip().lower() == "taper"
+               for name in ("week_type", "phase"))
+
+
+def _taper_specialty(session: Any) -> Optional[str]:
+    """Return the taper-specific stimulus a session protects in the briefing.
+
+    Titles are the durable delivery fact for imported and freshly-built plans;
+    the 30/15 structure check covers plans whose title has been localized or
+    otherwise renamed after generation.
     """
-    weekday_quality, simulations = [], []
-    for session in _get(week, "sessions", []) or []:
-        if not _is_quality_session(session):
-            continue
-        if _get(session, "is_simulation"):
-            simulations.append(session)
-            continue
-        session_day = _session_date(session)
-        if session_day and session_day.weekday() < 5:
-            weekday_quality.append(session)
-    # The briefing promise is two weekday sessions plus *the* simulation.
-    # When a week carries more than one simulation (a mini-sim plus the long
-    # rehearsal), the dress rehearsal is the one that matters — it must
-    # never lose the slot to the smaller session.
-    def _sim_key(s):
+    if _kind(session) != "bike":
+        return None
+    # Names and archetype only — NEVER the description. A plain endurance
+    # ride whose description carries a "Cadence: 85-95rpm" line must not
+    # classify as taper cadence work (description-grep disease).
+    text = " ".join(str(_get(session, name) or "") for name in (
+        "title", "display_name", "archetype_id", "workout_type",
+    )).lower()
+    def _is_thirty_fifteen(segment: Any) -> bool:
         try:
-            seconds = float(_get(s, "duration_s") or 0)
+            return (str(_get(segment, "kind") or "").lower() == "intervals" and
+                    int(_get(segment, "on_seconds") or 0) == 30 and
+                    int(_get(segment, "off_seconds") or 0) == 15)
         except (TypeError, ValueError):
-            seconds = 0.0
-        return (not _get(s, "is_dress_rehearsal"), -seconds)
-    simulations.sort(key=_sim_key)
-    return weekday_quality[:2] + simulations[:1]
+            return False
+
+    if (re.search(r"\b(?:thirty[- ]?fifteens?|30\s*[-/]\s*15)\b", text) or
+            any(_is_thirty_fifteen(segment)
+                for segment in (_get(session, "segments", []) or []))):
+        return "sharpness"
+    if re.search(r"\b(?:cadence|neuromuscular|microbursts?|stomps?)\b", text):
+        return "cadence"
+    if re.search(r"\bbursts?\b", text):
+        return "bursts"
+    return None
+
+
+def _quality_sessions(week: Any) -> List[Any]:
+    """Return a concise, calendar-ordered key-session list for one week.
+
+    Tests and simulations are protected facts: they are never dropped because
+    they land on a weekend or because a dress rehearsal shares a week with a
+    shorter simulation. Taper specialty sessions are protected for the same
+    reason. In an unusual week where protected sessions alone exceed four,
+    honesty wins over the approximate four-item cap.
+    """
+    sessions = _ordered_sessions(week)
+    protected = [
+        session for session in sessions
+        if (_get(session, "is_field_test") or _get(session, "is_simulation") or
+            (_is_taper_week(week) and _taper_specialty(session)))
+    ]
+    selected_ids = {id(session) for session in protected}
+    # A normal week still reads quickly: two conventional weekday quality
+    # sessions are enough once the protected facts have been named. Taper
+    # specialty work already tells that week's story, so it needs no filler.
+    added_quality = 0
+    for session in sessions:
+        session_day = _session_date(session)
+        if (_is_taper_week(week) or added_quality >= 2 or
+                id(session) in selected_ids or
+                not _is_quality_session(session) or not session_day or
+                session_day.weekday() >= 5):
+            continue
+        protected.append(session)
+        selected_ids.add(id(session))
+        added_quality += 1
+    return [session for session in sessions if id(session) in selected_ids]
 
 
 def _briefing_session_title(session: Any) -> str:
@@ -237,6 +286,83 @@ def _briefing_session_title(session: Any) -> str:
     if _get(session, "is_dress_rehearsal") and "dress rehearsal" not in title.lower():
         return f"Dress rehearsal — {title}"
     return title
+
+
+def _session_reference(session: Any) -> str:
+    """Render a prose-ready, fact-only reference to an emitted session."""
+    title = _briefing_session_title(session)
+    duration = _duration_minutes(session)
+    day = _session_date(session)
+    detail = f"{duration}-minute {title}" if duration else title
+    return f"{day.strftime('%A')}'s {detail}" if day else detail
+
+
+def _join_references(references: List[str]) -> str:
+    if len(references) < 2:
+        return references[0] if references else ""
+    if len(references) == 2:
+        return " and ".join(references)
+    return ", ".join(references[:-1]) + f", and {references[-1]}"
+
+
+def _week_sequence(week: Any, key_sessions: List[Any]) -> str:
+    """Explain the actual week's order without inventing a stock schedule."""
+    sessions = _ordered_sessions(week)
+    tests = [session for session in sessions if _get(session, "is_field_test")]
+    simulations = [session for session in sessions if _get(session, "is_simulation")]
+    specialties = [(session, _taper_specialty(session)) for session in sessions
+                   if _is_taper_week(week) and _taper_specialty(session)]
+    test_ids = {id(session) for session in tests}
+    simulation_ids = {id(session) for session in simulations}
+    specialty_ids = {id(session) for session, _ in specialties}
+    protected_ids = test_ids | simulation_ids | specialty_ids
+    quality = [session for session in key_sessions
+               if id(session) not in protected_ids]
+    bikes = [session for session in sessions if _kind(session) == "bike"]
+    long_ride = max(bikes, key=_duration_minutes) if bikes else None
+
+    if tests:
+        test_refs = _join_references([_session_reference(session) for session in tests])
+        noun = "test" if len(tests) == 1 else "tests"
+        sentence = f"{test_refs} {'is' if len(tests) == 1 else 'are'} this week's {noun}."
+        if simulations:
+            sim_refs = _join_references([_session_reference(session) for session in simulations])
+            rehearsal = "rehearsal" if len(simulations) == 1 else "rehearsals"
+            sentence += f" {sim_refs} {'is' if len(simulations) == 1 else 'are'} the {rehearsal}."
+        return sentence
+
+    if _is_taper_week(week) and specialties:
+        by_kind: Dict[str, List[str]] = {}
+        for session, specialty in specialties:
+            by_kind.setdefault(str(specialty), []).append(_session_reference(session))
+        pieces = []
+        if by_kind.get("sharpness"):
+            pieces.append(f"sharpness from {_join_references(by_kind['sharpness'])}")
+        if by_kind.get("cadence"):
+            pieces.append(f"cadence from {_join_references(by_kind['cadence'])}")
+        if by_kind.get("bursts"):
+            pieces.append(f"bursts from {_join_references(by_kind['bursts'])}")
+        return "This taper keeps " + _join_references(pieces) + "."
+
+    if simulations:
+        sim_refs = _join_references([_session_reference(session) for session in simulations])
+        if quality:
+            return (f"{_session_reference(quality[0])} carries this week's structured work; "
+                    f"{sim_refs} {'is' if len(simulations) == 1 else 'are'} the "
+                    f"{'rehearsal' if len(simulations) == 1 else 'rehearsals'}.")
+        return (f"{sim_refs} {'is' if len(simulations) == 1 else 'are'} the week's "
+                f"{'rehearsal' if len(simulations) == 1 else 'rehearsals'}.")
+
+    if quality and long_ride:
+        quality_refs = _join_references([_session_reference(session) for session in quality[:2]])
+        verb = "carries" if len(quality[:2]) == 1 else "carry"
+        return (f"{quality_refs} {verb} this week's structured work. "
+                f"{_session_reference(long_ride)} is the long ride.")
+    if quality:
+        return f"{_session_reference(quality[0])} carries this week's structured work."
+    if long_ride:
+        return f"{_session_reference(long_ride)} is the week's longest ride."
+    return ""
 
 
 def _weekly_pattern(plan_ir: Any) -> str:
@@ -486,11 +612,14 @@ def _weekly_briefing(plan_ir: Any, candidate: Dict[str, Any], fueling: Any,
             seen_types.add(week_type)
     quality = _quality_sessions(week)
     sessions = ", ".join(_briefing_session_title(session) for session in quality)
+    sequence = _week_sequence(week, quality)
     ladder = _safe_ladder(plan_ir, fueling)
     rung = next((ladder.get(str(_get(session, "date")))
                  for session in (_get(week, "sessions", []) or [])
                  if ladder.get(str(_get(session, "date"))) not in (None, "")), None)
     append = (f"\n\nTHIS WEEK'S KEY SESSIONS\n{sessions}." if sessions else "")
+    if sequence:
+        append += f"\n\nTHE WEEK IN SEQUENCE\n{sequence}"
     if rung:
         append += f"\n\nFUEL LADDER\nThis week's long ride: {rung} g/hr."
     return f"WEEK {week_number} — {label}", descriptor.strip() + append

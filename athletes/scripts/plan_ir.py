@@ -279,6 +279,9 @@ _FIELD_TEST_PATTERNS = (
     re.compile(r"\b(?:ftp|power)\b.*\btest\b|\btest\b.*\bftp\b", re.I),
     re.compile(r"\b(?:lthr|heart rate|hr)\b.*\btest\b|\btest\b.*\blthr\b", re.I),
     re.compile(r"\brpe\b.*\btest\b|\bfield test\b", re.I),
+    # The anaerobic repeatability assessment is a test (it measures and
+    # records), and briefings must treat it like one.
+    re.compile(r"\banaerobic\b.*\btest\b", re.I),
 )
 _SIMULATION_PATTERN = re.compile(r"\brace\s+sim\b|\bsimulation\b|\bact\s", re.I)
 
