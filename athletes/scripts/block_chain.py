@@ -33,6 +33,159 @@ CALENDAR_PHASE_MAP = {
 }
 
 
+def _sync_week_totals(week: Dict[str, Any]) -> None:
+    week['total_tss'] = sum(day.get('tss', 0) for day in week.get('days', []))
+    week['total_duration'] = sum(day.get('duration', 0) for day in week.get('days', []))
+
+
+def _raise_recovery_tss_floor(
+    week: Dict[str, Any], preceding_load_average: float,
+    day_caps: Optional[Dict[str, int]],
+) -> None:
+    """Bring a recovery week into the 50-65% house band with easy volume.
+
+    Recovery weeks may use only Endurance L1/L2, Rest Day, and Openers.  The
+    previous trim-only implementation could leave them at 41% of the actual
+    preceding load.  Restore easy endurance first; never add intensity.
+    """
+    from workout_selector import get_workout_duration, get_workout_tss
+
+    floor = preceding_load_average * 0.50
+    ceiling = preceding_load_average * 0.65
+    _sync_week_totals(week)
+
+    # The initial recovery template can be above the ceiling for a
+    # time-crunched athlete.  Remove only easy volume (never Openers) until
+    # it is inside the same house band we enforce below.
+    while week['total_tss'] > ceiling:
+        candidates = []
+        for day in week.get('days', []):
+            if day.get('name') != 'Endurance':
+                continue
+            if day.get('level', 1) > 1:
+                next_name, next_level = 'Endurance', day['level'] - 1
+            elif day.get('role') == 'filler':
+                next_name, next_level = 'Rest Day', 1
+            else:
+                continue
+            next_duration = (get_workout_duration(next_name, next_level)
+                             if next_name == 'Endurance' else 0)
+            next_tss = (get_workout_tss(next_name, next_level)
+                        if next_name == 'Endurance' else 0)
+            reduction = day.get('tss', 0) - next_tss
+            if reduction > 0 and week['total_tss'] - reduction >= floor:
+                candidates.append((reduction, day, next_name, next_level,
+                                   next_duration, next_tss))
+        if not candidates:
+            break
+        excess = week['total_tss'] - ceiling
+        sufficient = [item for item in candidates if item[0] >= excess]
+        chosen = min(sufficient or candidates,
+                     key=lambda item: item[0] if sufficient else -item[0])
+        _, day, name, level, duration, tss = chosen
+        day.update(name=name, level=level, duration=duration, tss=tss,
+                   role='filler' if name == 'Rest Day' else day.get('role', 'filler'))
+        _sync_week_totals(week)
+
+    while week['total_tss'] < floor:
+        candidates = []
+        for day in week.get('days', []):
+            name, level = day.get('name'), day.get('level', 1)
+            if name == 'Rest Day':
+                next_name, next_level = 'Endurance', 1
+            elif name == 'Endurance' and level < 2:
+                next_name, next_level = 'Endurance', level + 1
+            else:
+                continue
+            next_duration = get_workout_duration(next_name, next_level)
+            next_tss = get_workout_tss(next_name, next_level)
+            cap = (day_caps or {}).get(day.get('day'), 0)
+            if cap and next_duration > cap:
+                continue
+            delta = next_tss - day.get('tss', 0)
+            if delta > 0 and week['total_tss'] + delta <= ceiling:
+                candidates.append((delta, day, next_name, next_level,
+                                   next_duration, next_tss))
+        if not candidates:
+            break
+        # Prefer the smallest sufficient addition; if none is sufficient,
+        # grow steadily with the largest available easy-volume increment.
+        remaining = floor - week['total_tss']
+        sufficient = [item for item in candidates if item[0] >= remaining]
+        chosen = min(sufficient or candidates,
+                     key=lambda item: item[0] if sufficient else -item[0])
+        _, day, name, level, duration, tss = chosen
+        day.update(name=name, level=level, duration=duration, tss=tss,
+                   role='long_ride' if day.get('role') == 'long_ride' else 'filler')
+        _sync_week_totals(week)
+
+
+def protect_post_simulation_recovery(
+    plan: Dict[str, Any], preferred_interval_days: Optional[List[str]] = None,
+) -> set[tuple[int, str]]:
+    """Make the calendar day after a long/dress simulation an easy bike day.
+
+    A displaced sharpener is moved to a stated interval weekday in the same
+    week when one is safe and available.  The returned ``(plan_week, day)``
+    pairs are also blocked from strength placement by the package renderer.
+    """
+    from workout_selector import get_workout_duration, get_workout_tss
+
+    preferred_interval_days = preferred_interval_days or ['Tue', 'Thu']
+    flattened = [(week, day) for week in plan.get('weeks', [])
+                 for day in week.get('days', [])]
+    protected = set()
+    changed_weeks = set()
+    for index, (week, day) in enumerate(flattened[:-1]):
+        simulation = day.get('act_simulation') or {}
+        is_dress = bool(simulation.get('dress_rehearsal')
+                        or day.get('is_dress_rehearsal'))
+        is_long_sim = bool(simulation or day.get('is_simulation')) and day.get('duration', 0) >= 180
+        if not (is_dress or is_long_sim):
+            continue
+        day['is_simulation'] = True
+        day['is_dress_rehearsal'] = is_dress
+        # A hard simulation also needs a clean runway.  This catches a
+        # Sunday interval → Monday simulation across a week boundary.
+        if index:
+            previous_week, previous_day = flattened[index - 1]
+            if previous_day.get('role') == 'intensity':
+                previous_day.update(name='Endurance', level=1,
+                                    duration=get_workout_duration('Endurance', 1),
+                                    tss=get_workout_tss('Endurance', 1),
+                                    role='filler', pre_sim_recovery=True)
+                changed_weeks.add(id(previous_week))
+        next_week, next_day = flattened[index + 1]
+        protected.add((next_week.get('plan_week'), next_day.get('day')))
+        next_day['post_sim_recovery'] = True
+
+        displaced = dict(next_day) if next_day.get('role') == 'intensity' else None
+        next_day.update(name='Endurance', level=1,
+                        duration=get_workout_duration('Endurance', 1),
+                        tss=get_workout_tss('Endurance', 1), role='filler')
+        changed_weeks.add(id(next_week))
+
+        # In the usual Sunday-simulation → taper-week shape this carries the
+        # sharp stimulus from Monday to Thursday, the athlete's interval day.
+        # Do not manufacture another hard workout when there was none.
+        if displaced:
+            for candidate in next_week.get('days', []):
+                if (candidate.get('day') not in preferred_interval_days
+                        or candidate.get('role') in ('off', 'long_ride', 'race')
+                        or candidate.get('post_sim_recovery')):
+                    continue
+                candidate.update(
+                    name=displaced['name'], level=displaced.get('level', 1),
+                    duration=displaced.get('duration', 0),
+                    tss=displaced.get('tss', 0), role='intensity')
+                changed_weeks.add(id(next_week))
+                break
+    for week in plan.get('weeks', []):
+        if id(week) in changed_weeks:
+            _sync_week_totals(week)
+    return protected
+
+
 def derive_week_descriptors(plan_dates: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Derive calendar week descriptors from a plan_dates dict.
 
@@ -160,6 +313,7 @@ def build_plan_from_calendar(
     # a phase started at a high block number.
     phase_block_index = max(1, phase_block_start)
     prev_phase = None
+    cadence_skill_level = 0
 
     for desc in week_descriptors:
         plan_week = desc['plan_week']
@@ -193,7 +347,7 @@ def build_plan_from_calendar(
         target_multiplier = {
             'load': 1.10 if hours_per_week >= 6 else 1.15,
             'testing': 1.10 if hours_per_week >= 6 else 1.15,
-            'recovery': 0.55, 'taper': 0.70, 'race': 0.60,
+            'recovery': 0.80, 'taper': 0.70, 'race': 0.60,
         }.get(week_type, 1.0)
         prescribed_hours = max(0.0, hours_per_week - fixed_minutes / (60 * target_multiplier))
 
@@ -223,6 +377,52 @@ def build_plan_from_calendar(
         )
         week['plan_week'] = plan_week
         week['block_number'] = block_number
+
+        # Cadence Work is a learned skill, unlike a phase-specific interval
+        # series.  A new phase must not reissue its Level-1 introductory
+        # copy after the athlete has already progressed through the pattern.
+        for day in week.get('days', []):
+            if day.get('name') != 'Cadence Work':
+                continue
+            level = max(day.get('level', 1), cadence_skill_level)
+            if level != day.get('level', 1):
+                from workout_selector import get_workout_duration, get_workout_tss
+                day['level'] = level
+                day['duration'] = get_workout_duration('Cadence Work', level)
+                day['tss'] = get_workout_tss('Cadence Work', level)
+            cadence_skill_level = max(cadence_skill_level, day['level'])
+
+        if week_type == 'recovery':
+            previous_loads = []
+            for previous in reversed(all_weeks):
+                if previous.get('week_type') != 'load':
+                    break
+                previous_loads.append(previous.get('total_tss', 0))
+            if previous_loads:
+                _raise_recovery_tss_floor(
+                    week, sum(previous_loads) / len(previous_loads), day_caps)
+
+        # Skill-floor corrections happen after the weekly builder's budget
+        # pass.  Keep a raised cadence level from leaking a few extra minutes
+        # over the athlete's calendar allowance by proportionally trimming
+        # the longest remaining bike session (the renderer applies this cap).
+        weekly_multiplier = {
+            'load': 1.10 if hours_per_week >= 6 else 1.15,
+            'testing': 1.10 if hours_per_week >= 6 else 1.15,
+            'recovery': 0.80, 'taper': 0.70, 'race': 0.60,
+        }.get(week_type)
+        if weekly_multiplier is not None:
+            budget = int(hours_per_week * 60 * weekly_multiplier)
+            overflow = sum(d.get('duration', 0) for d in week.get('days', [])) - budget
+            if overflow > 0:
+                candidates = [d for d in week.get('days', [])
+                              if d.get('duration', 0) > 0 and d.get('name') != 'Rest Day']
+                if candidates:
+                    longest = max(candidates, key=lambda d: d['duration'])
+                    old_duration = longest['duration']
+                    longest['duration'] = max(1, old_duration - overflow)
+                    longest['tss'] = round(longest['tss'] * longest['duration'] / old_duration)
+        _sync_week_totals(week)
         all_weeks.append(week)
 
         # Block bookkeeping: a recovery/taper/race week closes the block.

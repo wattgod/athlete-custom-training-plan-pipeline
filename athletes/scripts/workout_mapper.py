@@ -359,6 +359,7 @@ def render_workout(
     discipline: str = 'gravel',
     display_name: Optional[str] = None,
     training_age: Optional[str] = None,
+    endurance_variant: Optional[int] = None,
 ) -> Optional[str]:
     """Render a block-builder workout name to ZWO XML.
 
@@ -404,7 +405,9 @@ def render_workout(
     # This is what a real coach prescribes for easy days.
     # ----------------------------------------------------------------
     if name == 'Endurance':
-        return _render_simple_endurance(level, workout_name, author, display_name=display_name)
+        return _render_simple_endurance(
+            level, workout_name, author, display_name=display_name,
+            variant=endurance_variant)
 
     # Pin certain workout types to their exact archetype — no variation cycling.
     PINNED_TYPES = {'Openers', 'FTP Test', 'Anaerobic Test', 'Rest Day', 'Endurance with Surges', 'Taper Burst Endurance', 'Thirty-Fifteens', 'Stars In Your Eyes', 'NP/IF Target',
@@ -507,9 +510,39 @@ def _render_taper_burst_endurance(level: int, workout_name: Optional[str] = None
   </workout>
 </workout_file>'''
 
+_ENDURANCE_FOCUS_VARIANTS = (
+    ('Endurance — Position Focus',
+     'Position: Alternate every 30 min: drops (aero) → hoods (power)',
+     'Cadence: self-selected, comfortable endurance cadence'),
+    ('Endurance — Cadence Focus',
+     'Position: Stay relaxed on the hoods; keep shoulders quiet',
+     'Cadence: Every 10 min, spin 30 sec at 100-110rpm, then settle smoothly'),
+    ('Endurance — Terrain Focus',
+     'Position: Change hoods/drops with the terrain; stay seated over rollers',
+     'Cadence: 80-90rpm on rises, 90-100rpm on descents'),
+    ('Endurance — Negative Split',
+     'Position: Use your sustainable race position for the final half',
+     'Cadence: Smooth and controlled; finish stronger without straining'),
+    ('Endurance — Burst Focus',
+     'Position: Stay stable through each short acceleration, then reset fully',
+     'Cadence: Every 12 min, add a relaxed 6 sec high-cadence burst; return immediately to easy Z2'),
+    ('Endurance — Spin-Up Focus',
+     'Position: Relax hands and shoulders while the legs turn over',
+     'Cadence: Every 8 min, spin 20 sec at 105-115rpm without increasing effort'),
+)
+
+
+def endurance_focus_title(variant: Optional[int]) -> str:
+    """Visible name for a planned endurance-focus rotation."""
+    if variant is None:
+        return 'Endurance'
+    return _ENDURANCE_FOCUS_VARIANTS[variant % len(_ENDURANCE_FOCUS_VARIANTS)][0]
+
+
 def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
                              author: str = 'Gravel God Training',
-                             display_name: Optional[str] = None) -> str:
+                             display_name: Optional[str] = None,
+                             variant: Optional[int] = None) -> str:
     """Render a simple endurance workout matching the TP library.
 
     Structure: Warmup → Steady Z2 → Cooldown.
@@ -529,18 +562,40 @@ def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
         warmup_sec = 300
         cooldown_sec = 300
 
-    name = display_name or workout_name or f'Endurance_L{level}'
+    variant_title, position_note, cadence_note = (
+        _ENDURANCE_FOCUS_VARIANTS[variant % len(_ENDURANCE_FOCUS_VARIANTS)]
+        if variant is not None else ('Endurance',
+                                     'Position: Alternate every 30 min: drops (aero) → hoods (power)',
+                                     'Cadence: self-selected, comfortable endurance cadence')
+    )
+    name = display_name or (variant_title if variant is not None else workout_name) or f'Endurance_L{level}'
+    if variant is not None and variant % len(_ENDURANCE_FOCUS_VARIANTS) == 3:
+        first_half = main_sec // 2
+        second_half = main_sec - first_half
+        main_blocks = (f'    <SteadyState Duration="{first_half}" Power="0.66"/>\n'
+                       f'    <SteadyState Duration="{second_half}" Power="0.72"/>')
+        main_set = (f"- {first_half // 60}min @ 66% FTP, then "
+                    f"{second_half // 60}min @ 72% FTP (RPE 3-4)")
+    elif variant is not None and variant % len(_ENDURANCE_FOCUS_VARIANTS) == 2:
+        half = main_sec // 2
+        main_blocks = (f'    <SteadyState Duration="{half}" Power="0.68"/>\n'
+                       f'    <SteadyState Duration="{main_sec - half}" Power="0.74"/>')
+        main_set = (f"- {half // 60}min @ 68% FTP, then "
+                    f"{(main_sec - half) // 60}min @ 74% FTP (RPE 3-4)")
+    else:
+        main_blocks = f'    <SteadyState Duration="{main_sec}" Power="{power:.2f}"/>'
+        main_set = f"- {main_sec // 60}min @ 66-75% FTP (RPE 3-4)"
     desc = (
         f"MAIN SET:\n"
-        f"- {main_sec // 60}min @ 66-75% FTP (RPE 3-4)\n"
-        f"- Position: Alternate every 30 min: drops (aero) → hoods (power)\n"
-        f"- Cadence: self-selected, comfortable endurance cadence\n\n"
+        f"{main_set}\n"
+        f"- {position_note}\n"
+        f"- {cadence_note}\n\n"
         f"COOL-DOWN:\n"
         f"- {cooldown_sec // 60}min easy spin Z1-Z2 (RPE 2-3)\n\n"
         f"PURPOSE:\n"
         f"Aerobic base building. Easy riding builds mitochondrial density "
         f"and fat oxidation — the foundation everything else rests on.\n\n"
-        f"Level {level}: Cadence and position focus. Same structure — refine the execution."
+        f"Level {level}: {variant_title}. Refine the execution without adding strain."
     )
 
     return f"""<?xml version='1.0' encoding='UTF-8'?>
@@ -551,7 +606,7 @@ def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
   <sportType>bike</sportType>
   <workout>
     <Warmup Duration="{warmup_sec}" PowerLow="0.50" PowerHigh="{power:.2f}"/>
-    <SteadyState Duration="{main_sec}" Power="{power:.2f}"/>
+{main_blocks}
     <Cooldown Duration="{cooldown_sec}" PowerLow="{power:.2f}" PowerHigh="0.45"/>
   </workout>
 </workout_file>"""
@@ -562,6 +617,7 @@ def resolve_display_name(
     methodology: str = 'POLARIZED',
     variation_offset: int = 0,
     discipline: str = 'gravel',
+    endurance_variant: Optional[int] = None,
 ) -> str:
     """Resolve the personality name of the archetype a workout renders as.
 
@@ -571,7 +627,7 @@ def resolve_display_name(
     the rendered content. Falls back to the canonical name.
     """
     if name == 'Endurance':
-        return 'Endurance'
+        return endurance_focus_title(endurance_variant)
 
     mapping = _resolve_for_discipline(name, discipline)
     if mapping is None:

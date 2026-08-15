@@ -71,10 +71,22 @@ def _day_is_intensity(day_data: dict) -> bool:
            {'hard', 'threshold', 'vo2', 'anaerobic', 'race'}
            for s in day_data.get('sessions', [])):
         return True
+    if _day_is_long_simulation(day_data):
+        # A long simulation is a hard session even though its assigned role
+        # is ``long_ride``.  Counting it closes the Sunday→Monday blind spot.
+        return True
     role = day_data.get('role')
     if role is not None:
         return role == 'intensity'
     return day_data.get('name', '') in INTENSITY_TYPES
+
+
+def _day_is_long_simulation(day_data: dict) -> bool:
+    simulation = day_data.get('act_simulation') or {}
+    return bool((simulation or day_data.get('is_simulation'))
+                and (simulation.get('dress_rehearsal')
+                     or day_data.get('is_dress_rehearsal')
+                     or day_data.get('duration', 0) >= 180))
 
 
 def _week_has_race_day(week: dict) -> bool:
@@ -93,18 +105,22 @@ def _week_has_race_day(week: dict) -> bool:
 
 
 def r01_no_back_to_back_intensity(weeks: List[dict]) -> Tuple[bool, str]:
-    """R01 [CRITICAL]: No back-to-back intensity days."""
+    """R01 [CRITICAL]: No back-to-back intensity days, including week seams."""
     violations = []
 
-    for week in weeks:
-        prev_was_intensity = False
-        prev_day = None
+    # The calendar is continuous.  Resetting these at every week boundary
+    # made a hard Sunday simulation → hard Monday interval invisible to the
+    # gate, which is exactly when the rule matters most.
+    prev_was_intensity = False
+    prev_label = None
+    for week_index, week in enumerate(weeks):
         for day_data in week.get('days', []):
             is_intensity = _day_is_intensity(day_data)
             if prev_was_intensity and is_intensity:
-                violations.append(f"W{week.get('plan_week', '?')}: {prev_day}→{day_data['day']}")
+                violations.append(
+                    f"{prev_label}→W{week.get('plan_week', '?')} {day_data['day']}")
             prev_was_intensity = is_intensity
-            prev_day = day_data.get('day', '?')
+            prev_label = f"W{week.get('plan_week', '?')} {day_data.get('day', '?')}"
 
     if violations:
         return False, f"Back-to-back intensity: {'; '.join(violations)}"
@@ -124,7 +140,7 @@ def r02_vo2max_frequency(weeks: List[dict]) -> Tuple[bool, str]:
         return True, "Racing phase — VO2max rule exempt"
 
     vo2_weeks = []
-    for week in weeks:
+    for week_index, week in enumerate(weeks):
         if week.get('week_type') == 'recovery':
             continue
         if week.get('phase') in ('racing', 'taper'):
@@ -155,47 +171,48 @@ def r02_vo2max_frequency(weeks: List[dict]) -> Tuple[bool, str]:
     return True, f"VO2max every {max_gap} weeks (max gap)"
 
 
+def _preceding_load_average(weeks: List[dict], recovery_index: int) -> float:
+    """Average the contiguous load weeks immediately before a recovery week."""
+    preceding = []
+    for week in reversed(weeks[:recovery_index]):
+        if week.get('week_type') != 'load':
+            break
+        if week.get('phase') in ('racing', 'taper') or _week_has_race_day(week):
+            break
+        preceding.append(week.get('total_tss', 0))
+    return sum(preceding) / len(preceding) if preceding else 0
+
+
 def r03_recovery_tss_ceiling(weeks: List[dict]) -> Tuple[bool, str]:
     """R03 [CRITICAL]: Recovery week TSS = 50-65% of load week average.
     Exception: racing/taper phase — load weeks are already easy, so recovery
     ratio doesn't apply.
     """
-    load_tss = []
-    recovery_tss = []
-
-    for week in weeks:
-        tss = week.get('total_tss', 0)
-        if _week_has_race_day(week):
-            continue  # Race-day TSS is race-shaped, not a load/recovery signal
-        if week.get('week_type') == 'recovery':
-            # Only check recovery weeks in non-racing phases
-            if week.get('phase') not in ('racing', 'taper'):
-                recovery_tss.append((week.get('plan_week'), tss))
-        elif week.get('week_type') == 'load':
-            # Only count load weeks from non-racing phases
-            if week.get('phase') not in ('racing', 'taper'):
-                load_tss.append(tss)
-
-    if not load_tss or not recovery_tss:
-        return True, "No load/recovery pair to check"
-
-    avg_load = sum(load_tss) / len(load_tss)
-    if avg_load == 0:
-        return True, "Zero load TSS"
-
     violations = []
-    # Dynamic ceiling: low-TSS plans (time-crunched) get more tolerance
-    # because the absolute difference between load and recovery is small
-    ceiling = 0.85 if avg_load < 300 else 0.75 if avg_load < 400 else 0.70 if avg_load < 500 else 0.65
-    floor = 0.30
-
-    for plan_week, rec_tss in recovery_tss:
-        ratio = rec_tss / avg_load if avg_load > 0 else 0
+    checked = 0
+    # This is a house coaching band, not a variable ceiling.  Compare each
+    # recovery week to the load weeks it actually unloads, rather than a
+    # diluted whole-plan average that can hide an under-filled recovery.
+    floor, ceiling = 0.50, 0.65
+    for index, week in enumerate(weeks):
+        if (week.get('week_type') != 'recovery'
+                or week.get('phase') in ('racing', 'taper')
+                or _week_has_race_day(week)):
+            continue
+        avg_load = _preceding_load_average(weeks, index)
+        if not avg_load:
+            continue
+        checked += 1
+        rec_tss = week.get('total_tss', 0)
+        ratio = rec_tss / avg_load
+        plan_week = week.get('plan_week')
         if ratio > ceiling:
             violations.append(f"W{plan_week}: {ratio:.0%} of load avg (max {ceiling:.0%})")
         elif ratio < floor:
             violations.append(f"W{plan_week}: {ratio:.0%} of load avg (min {floor:.0%})")
 
+    if not checked:
+        return True, "No load/recovery pair to check"
     if violations:
         return False, f"Recovery TSS out of range: {'; '.join(violations)}"
     return True, f"Recovery TSS within 50-65% of load avg"
@@ -204,7 +221,7 @@ def r03_recovery_tss_ceiling(weeks: List[dict]) -> Tuple[bool, str]:
 def r04_recovery_intensity_ceiling(weeks: List[dict]) -> Tuple[bool, str]:
     """R04 [CRITICAL]: Recovery week has ZERO sustained intensity except openers."""
     violations = []
-    for week in weeks:
+    for week_index, week in enumerate(weeks):
         if week.get('week_type') != 'recovery':
             continue
         for day_data in week.get('days', []):
@@ -223,7 +240,7 @@ def r05_intensity_count(weeks: List[dict], max_per_week: int = 3) -> Tuple[bool,
     Exception: beginner (max_intensity=1) can have 1.
     """
     violations = []
-    for week in weeks:
+    for week_index, week in enumerate(weeks):
         if week.get('week_type') != 'load':
             continue
         # Racing/taper exempt from minimum
@@ -233,9 +250,25 @@ def r05_intensity_count(weeks: List[dict], max_per_week: int = 3) -> Tuple[bool,
         # overlay) — exempt exactly like the racing phase above.
         if _week_has_race_day(week):
             continue
-        # Count by role (pipeline-assigned), not by workout name
-        count = sum(1 for d in week.get('days', []) if _day_is_intensity(d))
+        # The long simulation is a hard day for R01 adjacency, but it
+        # occupies the long-ride slot rather than adding a third interval
+        # session to this week's prescribed intensity allocation.
+        count = sum(1 for d in week.get('days', [])
+                    if _day_is_intensity(d) and not _day_is_long_simulation(d))
         min_intensity = min(2, max_per_week)  # Beginners: min=1 if max=1
+        # A long/dress simulation is still a hard day for R01, but occupies
+        # the long-ride slot rather than a normal interval allocation.  One
+        # conventional interval is sufficient alongside it; requiring two
+        # more would turn the week into three hard bike days.
+        if any(_day_is_long_simulation(d) for d in week.get('days', [])):
+            min_intensity = min(1, max_per_week)
+        # A deliberate next-day long simulation makes the preceding Sunday's
+        # interval unsafe.  The preceding week therefore has one fewer
+        # interval slot by design, rather than a silent R05 failure.
+        if (week_index + 1 < len(weeks)
+                and weeks[week_index + 1].get('days')
+                and _day_is_long_simulation(weeks[week_index + 1]['days'][0])):
+            min_intensity = min(1, max_per_week)
         if count < min_intensity or count > max_per_week:
             violations.append(f"W{week.get('plan_week')}: {count} intensity (need {min_intensity}-{max_per_week})")
 
