@@ -319,7 +319,14 @@ def _strength_template(session: Any) -> str:
     template = _clean_text(_get(session, "strength_template") or _get(session, "display_name") or _get(session, "title"))
     template = re.sub(r"\s*[-–—]?\s*\d+\s*min(?:utes?)?\b", "", template, flags=re.I)
     template = re.sub(r"\s*[-–—]?\s*RPE\s*\d+(?:\s*[-–]\s*\d+)?\b", "", template, flags=re.I)
-    return template.strip(" -–—") or "Strength"
+    template = template.strip(" -–—")
+    # Naming-manifest strength templates are stable keys (``foundation_a``),
+    # while authored titles are already coach-facing. Normalize only an all-
+    # lowercase key; never recase an authored template that carries deliberate
+    # capitalization.
+    if template and template == template.lower():
+        template = template.replace("_", " ").title()
+    return template or "Strength"
 
 
 def _race_name(session: Any) -> str:

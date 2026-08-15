@@ -387,7 +387,20 @@ def _weekly_briefing(plan_ir: Any, candidate: Dict[str, Any], fueling: Any,
     week_number = _get(week, "number", "")
     week_type = _week_type(week)
     phase = str(_get(week, "phase") or week_type or "").strip() or week_type
-    label = "RACE WEEK" if phase.lower() == "race" else phase.upper().replace("_", " ")
+    # The phase describes the training block, but special calendar weeks are
+    # the thing the athlete needs to see at a glance.  A recovery embedded in
+    # Base is therefore RECOVERY, not BASE; copy selection still follows the
+    # normalized week_type below.
+    declared_type = str(_get(week, "week_type") or "").strip().lower()
+    special_labels = {
+        "recovery": "RECOVERY",
+        "taper": "TAPER",
+        "race": "RACE WEEK",
+    }
+    label = special_labels.get(
+        declared_type,
+        "RACE WEEK" if phase.lower() == "race" else phase.upper().replace("_", " "),
+    )
     source = _load_week_copy()
     # The full block-notes wall lands once per week type; repeats get a
     # one-liner (eight identical monk-mode walls is not coaching).

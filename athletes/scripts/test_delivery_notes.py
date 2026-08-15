@@ -97,3 +97,14 @@ def test_roadie_uses_generic_mental_skills_branding():
     plan["brand"] = "roadielabs"
     note = _by_type(_notes(plan, "roadielabs"))["grit_1"]
     assert note["title"].startswith("MENTAL SKILLS")
+
+
+def test_recovery_week_briefing_label_outranks_base_phase():
+    plan = _plan()
+    plan["weeks"][1]["phase"] = "base"
+    plan["weeks"][1]["week_type"] = "recovery"
+    notes = render_notes(plan, {"prescription": {"race_target_g_per_hour": 70}},
+                         load_brand("gravelgod"), None)
+    recovery = next(note for note in notes if note["type"] == "weekly_briefing"
+                    and note["title"].startswith("WEEK 2 —"))
+    assert recovery["title"] == "WEEK 2 — RECOVERY"
