@@ -111,7 +111,10 @@ def _segment_value(segment: Any, name: str, default: Any = None) -> Any:
 
 def _work_blocks_from_segments(session: Any) -> List[Tuple[int, int, Optional[str]]]:
     """Return ``(total_work_seconds, reps, percent)`` candidates from segments."""
-    blocks: List[Tuple[int, int, Optional[str]]] = []
+    # Group identical work across segments: generators may emit 15 separate
+    # one-rep interval segments for a surge ride — the title must say
+    # "15x6s", not "6s" (a real graded delivery lost the rep count).
+    grouped: Dict[Tuple[int, Optional[str]], int] = {}
     for segment in _get(session, "segments", []) or []:
         kind = str(_segment_value(segment, "kind") or "").lower()
         if kind == "intervals":
@@ -119,13 +122,16 @@ def _work_blocks_from_segments(session: Any) -> List[Tuple[int, int, Optional[st
             on_seconds = int(_number(_segment_value(segment, "on_seconds")) or 0)
             percent = _format_percent(_segment_value(segment, "on_power"))
             if on_seconds:
-                blocks.append((reps * on_seconds, reps, percent))
+                grouped[(on_seconds, percent)] = grouped.get(
+                    (on_seconds, percent), 0) + reps
         elif kind == "steady_state":
             seconds = int(_number(_segment_value(segment, "seconds")) or 0)
             percent = _format_percent(_segment_value(segment, "power_target"))
             if seconds and percent:
-                blocks.append((seconds, 1, percent))
-    return blocks
+                grouped[(seconds, percent)] = grouped.get(
+                    (seconds, percent), 0) + 1
+    return [(seconds * reps, reps, percent)
+            for (seconds, percent), reps in grouped.items()]
 
 
 def _iter_tp_steps(structure: Any) -> Iterable[Dict[str, Any]]:
@@ -349,8 +355,39 @@ def render_title(session: Any, brand_cfg: Dict[str, Any]) -> str:
     duration = _duration_minutes(session)
     if _is_plain_endurance(session, name, defining_set):
         return f"Endurance - {duration}min - RPE3"
-    defining_set = defining_set or name
-    return f"{name} - {defining_set} - {duration}min - {_rpe(session, name)}"
+    rpe = _rpe(session, name)
+    # Honesty rule: the defining set must not contradict the RPE beside it.
+    # A test whose work is a target-free all-out block once titled itself
+    # "Anaerobic Test - 29min @55% - RPE9-10" — the filler spin, not the
+    # test. Prefer the all-out effort from the description; otherwise drop
+    # the set rather than headline easy riding on a hard session.
+    if rpe in ("RPE8-9", "RPE9-10", "RPE10") and defining_set:
+        if _set_percent(defining_set) is not None and _set_percent(defining_set) < 88:
+            all_out = _all_out_set_from_description(_get(session, "description"))
+            defining_set = all_out  # may be None -> set omitted below
+    if defining_set is None:
+        return f"{name} - {duration}min - {rpe}"
+    return f"{name} - {defining_set} - {duration}min - {rpe}"
+
+
+_ALL_OUT_SET = re.compile(
+    r"(?P<minutes>\d+)\s*[- ]?\s*min(?:ute)?s?\s*(?:free\s*ride|all[- ]?out)"
+    r"|(?:free\s*ride|all[- ]?out)\D{0,12}(?P<minutes2>\d+)\s*[- ]?\s*min",
+    re.IGNORECASE,
+)
+
+
+def _set_percent(defining_set: str) -> Optional[float]:
+    match = re.search(r"@\s*(\d+(?:\.\d+)?)\s*%", defining_set or "")
+    return float(match.group(1)) if match else None
+
+
+def _all_out_set_from_description(description: Any) -> Optional[str]:
+    match = _ALL_OUT_SET.search(str(description or ""))
+    if not match:
+        return None
+    minutes = match.group("minutes") or match.group("minutes2")
+    return f"{minutes}min all-out"
 
 
 def _has_power_structure(session: Any) -> bool:

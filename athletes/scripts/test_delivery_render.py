@@ -162,3 +162,35 @@ def test_guillermo_structured_workouts_keep_fixture_duration_segment():
 def test_unknown_brand_fails_closed():
     with pytest.raises(ValueError, match="Unknown delivery brand"):
         load_brand("not-a-brand")
+
+
+def test_defining_set_never_contradicts_hard_rpe():
+    # Real graded card: "Anaerobic Test - 29min @55% - RPE9-10" — the filler
+    # spin headlined a test whose work is a target-free 3min all-out.
+    session = Session(
+        date="2026-08-20", title="Anaerobic Test", display_name="Anaerobic Test",
+        sport="cycling", type="workout", origin="prescribed", tp_kind="bike",
+        duration_s=62 * 60, tss=36, is_field_test=True,
+        description="MAIN SET:\n- 29min @ 55% FTP\n- 3min free ride\n\n"
+                    "-3-minute all-out test - go hard from the start, hold on",
+        segments=[Segment(name="spin", kind="steady_state", seconds=29 * 60,
+                          power_target=".55")],
+    )
+    title = render_title(session, BRAND)
+    assert "@55" not in title
+    assert "3min all-out" in title
+    assert title.endswith("RPE9-10")
+
+
+def test_repeated_single_rep_segments_group_into_rep_count():
+    # Surge rides emit 15 separate one-rep interval segments; the title must
+    # carry 15x, not a bare 6s.
+    surges = [Segment(name=f"burst{i}", kind="intervals", seconds=6, repeat=1,
+                      on_seconds=6, on_power=1.5) for i in range(15)]
+    session = Session(
+        date="2026-09-20", title="Endurance with Surges",
+        display_name="Endurance with Surges", sport="cycling", type="workout",
+        origin="prescribed", tp_kind="bike", duration_s=248 * 60, tss=212,
+        segments=surges,
+    )
+    assert "15x6s @150%" in render_title(session, BRAND)
