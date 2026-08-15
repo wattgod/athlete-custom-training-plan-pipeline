@@ -182,3 +182,129 @@ def test_production_shaped_altitude_snapshot_requires_guide_section():
     document['context']['guide_html'] += '<h2>Altitude Training</h2>'
     issues, _ = validate_transitional_input(document)
     assert 'ALTITUDE_SECTION_MISSING' not in {item['id'] for item in issues}
+
+
+def _mirror_to_manifest(document):
+    document['tp_manifest']['sessions'] = [
+        copy.deepcopy(session)
+        for week in document['plan_ir']['weeks']
+        for session in week['sessions']
+    ]
+    sessions = document['tp_manifest']['sessions']
+    counts = {kind: sum(s['tp_kind'] == kind for s in sessions)
+              for kind in ('bike', 'strength', 'day_off', 'race')}
+    document['tp_manifest']['expected'] = {
+        **counts, 'total': sum(counts.values())}
+
+
+def test_intensity_outside_stated_interval_days_is_disclosed():
+    # Real-order shape: intervals stated Wednesday-only, generator trained
+    # Tuesday — previously silent because Tuesday is not a long-ride day.
+    document = _document()
+    document['plan_ir']['weeks'][1]['sessions'].append(
+        _session('2026-08-11', 'Threshold Over-Unders'))
+    _mirror_to_manifest(document)
+    _, confirmations = validate_transitional_input(document)
+    item = next(c for c in confirmations if c['id'] == 'SCHEDULE_MISMATCH_CONFIRM')
+    assert any(
+        'tuesday' in entry and 'outside stated interval days' in entry
+        for entry in item['review_value']['generated_mismatches'])
+
+
+def test_no_interval_days_stated_means_no_outside_disclosure():
+    document = _document()
+    document['plan_ir']['weeks'][1]['sessions'].append(
+        _session('2026-08-11', 'Threshold Over-Unders'))
+    document['context']['profile']['availability_roles']['interval_days'] = []
+    _mirror_to_manifest(document)
+    _, confirmations = validate_transitional_input(document)
+    entries = [
+        entry for c in confirmations if c['id'] == 'SCHEDULE_MISMATCH_CONFIRM'
+        for entry in c['review_value']['generated_mismatches']]
+    assert not any('outside stated interval days' in entry for entry in entries)
+
+
+def test_day_total_over_stated_cap_is_disclosed():
+    # Real-order shape: 30min strength stacked on a 120min ride against a
+    # 120min Thursday cap (2.5h scheduled into a 2h window) — was silent.
+    document = _document()
+    document['plan_ir']['weeks'][1]['sessions'].extend([
+        _session('2026-08-13', 'Big Interval Ride', hours=2.0),
+        _session('2026-08-13', 'Foundation Strength', 'strength', 'strength', 0.5),
+    ])
+    document['context']['profile']['preferred_days'] = {
+        'thursday': {'availability': 'available', 'max_duration_min': 120},
+    }
+    _mirror_to_manifest(document)
+    _, confirmations = validate_transitional_input(document)
+    item = next(c for c in confirmations if c['id'] == 'DAY_DURATION_OVER_CAP')
+    violation = item['review_value']['violations'][0]
+    assert violation['date'] == '2026-08-13'
+    assert violation['total_min'] == 150
+    assert violation['cap_min'] == 120
+
+
+def test_day_at_cap_race_day_and_uncapped_days_are_not_flagged():
+    document = _document()
+    document['plan_ir']['weeks'][1]['sessions'].append(
+        _session('2026-08-13', 'Exactly At Cap', hours=2.0))
+    document['context']['profile']['preferred_days'] = {
+        'thursday': {'availability': 'available', 'max_duration_min': 120},
+        # Race Saturday: 5h race vs 120 cap must NOT flag (race exempt).
+        'saturday': {'availability': 'available', 'max_duration_min': 120},
+        # Monday unavailable AND covered by the off_days role: owned by
+        # SCHEDULE_CONTRADICTION, so the cap rule must stay quiet (HR Field
+        # Test lands Monday in the fixture).
+        'monday': {'availability': 'unavailable', 'max_duration_min': 0},
+    }
+    document['context']['profile']['availability_roles']['off_days'] = [
+        'saturday', 'monday']
+    _mirror_to_manifest(document)
+    _, confirmations = validate_transitional_input(document)
+    assert not any(c['id'] == 'DAY_DURATION_OVER_CAP' for c in confirmations)
+
+
+def test_unavailable_day_not_covered_by_off_role_is_disclosed():
+    # preferred_days and availability_roles are duplicated by intake and can
+    # drift: unavailable Monday with off_days missing it must not be silent.
+    document = _document()
+    document['context']['profile']['preferred_days'] = {
+        'monday': {'availability': 'unavailable', 'max_duration_min': 0},
+    }
+    _mirror_to_manifest(document)
+    issues, confirmations = validate_transitional_input(document)
+    assert 'SCHEDULE_CONTRADICTION' not in {item['id'] for item in issues}
+    item = next(c for c in confirmations if c['id'] == 'DAY_DURATION_OVER_CAP')
+    violation = item['review_value']['violations'][0]
+    assert violation['weekday'] == 'monday'
+    assert violation['unavailable_day'] is True
+
+
+def test_structureless_canonical_intensity_is_disclosed_for_rpe_athletes():
+    # RPE-controlled sessions carry structure=None (project_tp_structure) and
+    # 'Cadence Work' matches no title regex — canonical identity must catch it.
+    document = _document()
+    document['plan_ir']['weeks'][1]['sessions'].append(
+        _session('2026-08-11', 'Cadence Work'))
+    _mirror_to_manifest(document)
+    _, confirmations = validate_transitional_input(document)
+    item = next(c for c in confirmations if c['id'] == 'SCHEDULE_MISMATCH_CONFIRM')
+    assert any(
+        'tuesday' in entry and 'outside stated interval days' in entry
+        for entry in item['review_value']['generated_mismatches'])
+
+
+def test_openers_with_hot_structure_are_not_intensity():
+    # Openers carry >=85% steps but are explicitly NOT intensity — they must
+    # not create a systematically-false required confirmation on taper days.
+    document = _document()
+    session = _session('2026-08-11', 'Openers')
+    session['structure'] = {'structure': [
+        {'steps': [{'targets': [{'minValue': 110}]}]}]}
+    document['plan_ir']['weeks'][1]['sessions'].append(session)
+    _mirror_to_manifest(document)
+    _, confirmations = validate_transitional_input(document)
+    entries = [
+        entry for c in confirmations if c['id'] == 'SCHEDULE_MISMATCH_CONFIRM'
+        for entry in c['review_value']['generated_mismatches']]
+    assert not any('tuesday' in entry for entry in entries)

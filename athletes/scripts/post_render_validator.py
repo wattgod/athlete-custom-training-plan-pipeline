@@ -223,12 +223,42 @@ def _field_test_metric(session: Dict[str, Any]) -> str | None:
     return None
 
 
+try:
+    from block_compliance import INTENSITY_TYPES as _CANONICAL_INTENSITY_TYPES
+    _CANONICAL_INTENSITY = re.compile(
+        r"\b(?:" + "|".join(
+            re.escape(name) for name in sorted(_CANONICAL_INTENSITY_TYPES)
+        ) + r")\b",
+        re.I,
+    )
+except ImportError:  # degrade to the regex + structure fallback below
+    _CANONICAL_INTENSITY = None
+OPENERS_TITLE = re.compile(r"\bopeners?\b", re.I)
+
+
 def _is_intensity(session: Dict[str, Any]) -> bool:
     if session.get("tp_kind") != "bike" or _field_test_metric(session):
         return False
     title = str(session.get("title") or session.get("display_name") or "")
+    # Openers are explicitly NOT intensity (constants.INTENSITY_WORKOUT_TYPES
+    # note) — a taper opener with 30s @ 110% must not generate a
+    # systematically-false schedule-mismatch confirmation.
+    if OPENERS_TITLE.search(title):
+        return False
+    # Canonical workout identity first: RPE-controlled sessions carry NO
+    # structure (project_tp_structure returns None), so names like Tempo,
+    # Cadence Work, SFR, Mixed Intervals would otherwise slip through and
+    # repeat the partial-disclosure failure for RPE athletes.
+    haystack = " ".join(
+        str(session.get(field) or "")
+        for field in ("title", "display_name", "archetype_id")
+    )
+    if _CANONICAL_INTENSITY is not None and _CANONICAL_INTENSITY.search(
+            haystack.replace("_", " ")):
+        return True
     if INTENSITY_TITLE.search(title):
         return True
+    # Documented fallback: any structured step targeting >= 85% FTP.
     structure = (session.get("structure") or {}).get("structure") or []
     for block in structure:
         for step in block.get("steps") or []:
@@ -269,6 +299,16 @@ def _schedule_findings(
             mismatch.append(f"intensity on {weekday} ({session_day.isoformat()})")
         if weekday in interval_days and weekday not in long_days and _is_long_ride(session):
             mismatch.append(f"long ride on {weekday} ({session_day.isoformat()})")
+        # An athlete who named explicit interval days gets told about EVERY
+        # intensity session outside them, not only the ones that collided
+        # with a long-ride day. On a real order (intervals: wednesday) the
+        # generator trained Tue/Thu/Fri and this item disclosed only the two
+        # Saturdays — the coach confirmed on partial information.
+        if (interval_days and weekday not in interval_days
+                and weekday not in long_days and _is_intensity(session)):
+            mismatch.append(
+                f"intensity on {weekday} ({session_day.isoformat()}) "
+                "outside stated interval days")
     blockers = []
     confirmations = []
     if contradiction:
@@ -292,6 +332,80 @@ def _schedule_findings(
             },
         ))
     return blockers, confirmations
+
+
+def _day_cap_findings(
+    plan_ir: Dict[str, Any], profile: Dict[str, Any]
+) -> List[Dict[str, str]]:
+    """Flag calendar days whose combined sessions exceed the athlete's
+    stated per-day duration cap (profile.preferred_days.*.max_duration_min).
+
+    On a real order a 30-minute strength session stacked on a 120-minute
+    interval ride produced a 150-minute Thursday against a 120-minute cap
+    and nothing surfaced it. Race day and day-off entries are exempt; a
+    missing or non-positive cap means the day is not cap-checked — EXCEPT
+    when preferred_days marks the day unavailable. An unavailable day not
+    covered by availability_roles.off_days (the two fields are duplicated
+    by intake and can drift) would otherwise be completely silent, so it is
+    treated as a zero cap here; when off_days DOES cover the weekday,
+    SCHEDULE_CONTRADICTION owns it and this rule stays quiet.
+    """
+    preferred_days = profile.get("preferred_days") or {}
+    role_off_days = set(
+        (profile.get("availability_roles") or {}).get("off_days") or [])
+    totals: Dict[date, Dict[str, Any]] = {}
+    for _, session in _sessions(plan_ir):
+        session_day = _session_date(session)
+        if not session_day:
+            continue
+        if session.get("tp_kind") in ("race", "day_off"):
+            continue
+        seconds = int(session.get("duration_s") or 0)
+        if not seconds:
+            seconds = int(float(session.get("total_time_planned") or 0) * 3600)
+        entry = totals.setdefault(
+            session_day, {"minutes": 0.0, "titles": []})
+        entry["minutes"] += seconds / 60.0
+        entry["titles"].append(str(session.get("title") or ""))
+    violations = []
+    for session_day in sorted(totals):
+        weekday = session_day.strftime("%A").lower()
+        day_prefs = preferred_days.get(weekday) or {}
+        try:
+            cap = int(day_prefs.get("max_duration_min") or 0)
+        except (TypeError, ValueError):
+            cap = 0
+        unavailable = (
+            str(day_prefs.get("availability") or "").lower() == "unavailable"
+            and weekday not in role_off_days
+        )
+        if unavailable:
+            cap = 0
+        total_min = int(round(totals[session_day]["minutes"]))
+        if (cap > 0 and total_min > cap) or (unavailable and total_min > 0):
+            violations.append({
+                "date": session_day.isoformat(),
+                "weekday": weekday,
+                "total_min": total_min,
+                "cap_min": cap,
+                "unavailable_day": unavailable,
+                "sessions": totals[session_day]["titles"],
+            })
+    if not violations:
+        return []
+    detail = "; ".join(
+        (f"{item['date']} ({item['weekday']}) {item['total_min']}min "
+         "scheduled on a stated-unavailable day")
+        if item["unavailable_day"] else
+        (f"{item['date']} ({item['weekday']}) {item['total_min']}min > "
+         f"{item['cap_min']}min cap")
+        for item in violations)
+    return [_confirmation(
+        "DAY_DURATION_OVER_CAP",
+        "Scheduled day totals exceed the athlete's stated daily caps: " + detail,
+        review_value={"violations": violations},
+        basis="generated day totals compared with stated per-day duration caps",
+    )]
 
 
 def validate_transitional_input(
@@ -399,6 +513,7 @@ def validate_transitional_input(
     schedule_issues, schedule_confirmations = _schedule_findings(plan_ir, profile)
     issues.extend(schedule_issues)
     confirmations.extend(schedule_confirmations)
+    confirmations.extend(_day_cap_findings(plan_ir, profile))
 
     fueling = context.get("fueling") or {}
     labels = [
