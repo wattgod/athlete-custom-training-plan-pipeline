@@ -100,7 +100,7 @@ WORKOUT_MAP = {
     'Rest Day':                 ('recovery', 1),   # Rest Day
     'Openers':                  ('endurance', 0),  # Pre-Race Openers
     'FTP Test':                 ('testing', 1),    # 20min FTP Test
-    'Anaerobic Test':           ('testing', 2),    # CP Test Protocol
+    'Anaerobic Test':           ('testing', 2),    # House 360 anaerobic protocol
     'NP/IF Target':             ('endurance', 1),  # Terrain Simulation Z2
 
     # === Tier 3: Kitchen Sink + SFR series (new archetypes) ===
@@ -215,7 +215,7 @@ def render_workout(
         return _render_simple_endurance(level, workout_name, author, display_name=display_name)
 
     # Pin certain workout types to their exact archetype — no variation cycling.
-    PINNED_TYPES = {'Openers', 'FTP Test', 'Rest Day', 'Endurance with Surges', 'NP/IF Target',
+    PINNED_TYPES = {'Openers', 'FTP Test', 'Anaerobic Test', 'Rest Day', 'Endurance with Surges', 'NP/IF Target',
                      'Race Simulation', 'Kitchen Sink - Drain Cleaner', 'La Balanguera',
                      'Hyttevask', 'Thunder Quads', 'Blood Pistons'}
     effective_variation = base_variation

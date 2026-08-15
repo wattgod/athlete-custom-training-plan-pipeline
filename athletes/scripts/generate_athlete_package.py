@@ -864,6 +864,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     try:
         from archetype import determine_archetype, determine_phase, derive_discipline
         from block_chain import build_plan_from_calendar, derive_week_descriptors
+        from plan_ir import training_age_class
         from workout_mapper import render_workout as _bb_render
 
         _bb_archetype = determine_archetype(cycling_hours_target)
@@ -937,6 +938,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             methodology=methodology_id,
             fixed_minutes=_fixed_minutes if '_fixed_minutes' in locals() else 0,
             event_format=_bb_event_format,
+            training_age=training_age_class(profile or {}),
         )
         if '_ledger' in locals():
             materialize_fixed_sessions(_bb_plan, _ledger)

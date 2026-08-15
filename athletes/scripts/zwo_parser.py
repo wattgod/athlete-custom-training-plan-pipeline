@@ -128,8 +128,14 @@ def parse_zwo_structure_text(xml_text: str, *, source_name: str = "session") -> 
             # Keep the preview's established estimate for TSS only; PlanIR
             # correctly records that the XML has no target power.
             estimated_power = 0.65 if duration > 3600 else 0.55
+            # A FreeRide has no target, but test generators place a semantic
+            # text event inside maximal efforts.  Preserve that name so the
+            # canonical TP projector can give all-out/max efforts its visible
+            # display band without ever inventing a power target.
+            label = next((child.get("message", "") for child in element
+                          if child.tag == "textevent" and child.get("message")), "")
             segments.append({
-                "name": "Free Ride",
+                "name": label or "Free Ride",
                 "kind": "free_ride",
                 "seconds": int(duration),
                 "zwo": render_data,
