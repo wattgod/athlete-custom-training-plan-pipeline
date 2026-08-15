@@ -1036,8 +1036,8 @@ CADENCE_WORK_IMPORTED = [
         'levels': {
             '1': {
                 'structure': '3x4min @ 85% FTP with 3min recovery',
-                'execution': '',
-                'cadence_prescription': 'Self-selected',
+                'execution': 'Hold 100-120rpm through each work block; spin 100-110rpm on recovery.',
+                'cadence_prescription': '100-120rpm blocks; 100-110rpm recoveries',
                 'cadence': 90,
                 'position_prescription': 'Seated, hoods',
                 'timing_prescription': 'Fresh',
@@ -1049,7 +1049,8 @@ CADENCE_WORK_IMPORTED = [
             },
             '2': {
                 'structure': '3x5min @ 85% FTP with 5min recovery',
-                'execution': '',
+                'execution': 'Hold 100-120rpm through each work block; spin 100-110rpm on recovery.',
+                'cadence_prescription': '100-120rpm blocks; 100-110rpm recoveries',
                 'segments': [
                     {'type': 'steady', 'duration': 600, 'power': 0.88, 'cadence_low': 100, 'cadence_high': 120},
                     {'type': 'intervals', 'repeats': 3, 'on_duration': 300, 'on_power': 0.85, 'off_duration': 180, 'off_power': 0.55, 'cadence_low': 100, 'cadence_high': 110},
@@ -1057,7 +1058,8 @@ CADENCE_WORK_IMPORTED = [
             },
             '3': {
                 'structure': '4x4min @ 85% FTP with 3min recovery',
-                'execution': '',
+                'execution': 'Hold 100-120rpm through each work block; spin 100-110rpm on recovery.',
+                'cadence_prescription': '100-120rpm blocks; 100-110rpm recoveries',
                 'segments': [
                     {'type': 'steady', 'duration': 300, 'power': 0.87, 'cadence_low': 100, 'cadence_high': 120},
                     {'type': 'steady', 'duration': 60, 'power': 0.7},
@@ -1067,7 +1069,8 @@ CADENCE_WORK_IMPORTED = [
             },
             '4': {
                 'structure': '4x5min @ 85% FTP with 5min recovery',
-                'execution': '',
+                'execution': 'Hold 100-120rpm through each work block; spin 100-110rpm on recovery.',
+                'cadence_prescription': '100-120rpm blocks; 100-110rpm recoveries',
                 'segments': [
                     {'type': 'steady', 'duration': 600, 'power': 0.88, 'cadence_low': 100, 'cadence_high': 120},
                     {'type': 'intervals', 'repeats': 4, 'on_duration': 300, 'on_power': 0.85, 'off_duration': 180, 'off_power': 0.55, 'cadence_low': 105, 'cadence_high': 115},
@@ -1075,7 +1078,8 @@ CADENCE_WORK_IMPORTED = [
             },
             '5': {
                 'structure': '5x4min @ 85% FTP with 3min recovery',
-                'execution': '',
+                'execution': 'Hold 100-120rpm through each work block; spin 100-110rpm on recovery.',
+                'cadence_prescription': '100-120rpm blocks; 100-110rpm recoveries',
                 'segments': [
                     {'type': 'steady', 'duration': 600, 'power': 0.88, 'cadence_low': 100, 'cadence_high': 120},
                     {'type': 'intervals', 'repeats': 5, 'on_duration': 240, 'on_power': 0.85, 'off_duration': 180, 'off_power': 0.55, 'cadence_low': 110, 'cadence_high': 120},
@@ -1083,7 +1087,8 @@ CADENCE_WORK_IMPORTED = [
             },
             '6': {
                 'structure': '5x5min @ 85% FTP with 5min recovery',
-                'execution': '',
+                'execution': 'Hold 100-120rpm through each work block; spin 100-110rpm on recovery.',
+                'cadence_prescription': '100-120rpm blocks; 100-110rpm recoveries',
                 'segments': [
                     {'type': 'steady', 'duration': 600, 'power': 0.88, 'cadence_low': 100, 'cadence_high': 120},
                     {'type': 'intervals', 'repeats': 5, 'on_duration': 300, 'on_power': 0.85, 'off_duration': 180, 'off_power': 0.55, 'cadence_low': 110, 'cadence_high': 120},

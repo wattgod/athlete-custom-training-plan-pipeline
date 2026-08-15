@@ -134,8 +134,17 @@ def render_main_set(segments: Iterable[Dict[str, Any]]) -> str:
 def replace_main_set(description: str, segments: Iterable[Dict[str, Any]]) -> str:
     rendered = 'MAIN SET:\n' + render_main_set(segments)
     pattern = r'MAIN SET:\n.*?(?=\n\n(?:COOL-DOWN|PROGRESSION|PURPOSE|EXECUTION|RPE|NUTRITION|HYDRATION):|\Z)'
-    if re.search(pattern, description, flags=re.S):
-        return re.sub(pattern, rendered, description, flags=re.S)
+    match = re.search(pattern, description, flags=re.S)
+    if match:
+        # MAIN SET prose is replaced from executable ZWO blocks, but cadence
+        # is a dimension of execution rather than a power segment.  Retain
+        # its authored line so the projection cannot silently strip an rpm
+        # prescription (notably Cadence_Work sessions).
+        cadence_lines = [line for line in match.group(0).splitlines()
+                         if line.strip().lower().startswith('-cadence:')]
+        if cadence_lines:
+            rendered += '\n' + '\n'.join(cadence_lines)
+        return description[:match.start()] + rendered + description[match.end():]
     return rendered + '\n\n' + description
 
 

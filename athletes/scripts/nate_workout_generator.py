@@ -2572,8 +2572,9 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
             blocks.append(generate_steady_state_block(300, ZWODefaults.RECOVERY_POWER))
             blocks.append(free_effort(60, "1min all-out anaerobic capacity test"))
             blocks.append(generate_steady_state_block(300, ZWODefaults.RECOVERY_POWER))
+            repeatability_reps = 10 if level <= 1 else 15 if level == 2 else 20
             blocks.append(generate_intervals_block(
-                10, 30, 1.20, 30, ZWODefaults.RECOVERY_POWER))
+                repeatability_reps, 30, 1.20, 30, ZWODefaults.RECOVERY_POWER))
             blocks.append(generate_cooldown_block(600))
             return "".join(blocks)
 
@@ -2705,7 +2706,28 @@ def get_execution_tips(archetype: Dict, level_data: Dict) -> str:
     archetype_name = archetype.get("name", "").lower()
 
     if "vo2" in archetype_name:
-        return "Hit target from the start, but don't hero interval 1. Full recovery between (4-5min Z1)."
+        # Micro-intervals deliberately use short float recoveries; saying
+        # "full recovery, 4-5min" over an emitted 15-20sec recovery is both
+        # impossible to execute and erodes trust in every other instruction.
+        interval_specs = []
+        if isinstance(level_data.get('intervals'), tuple):
+            repeats, on_seconds = level_data['intervals']
+            interval_specs.append((repeats, level_data.get('duration', on_seconds),
+                                   level_data.get('off_duration', on_seconds)))
+        for segment in level_data.get('segments') or []:
+            if segment.get('type') == 'intervals':
+                interval_specs.append((segment.get('repeats', 1),
+                                       segment.get('on_duration', 0),
+                                       segment.get('off_duration', 0)))
+        if interval_specs:
+            pieces = []
+            for repeats, on_seconds, off_seconds in interval_specs:
+                on_label = f"{on_seconds // 60}min" if on_seconds and on_seconds % 60 == 0 else f"{on_seconds}sec"
+                off_label = f"{off_seconds // 60}min" if off_seconds and off_seconds % 60 == 0 else f"{off_seconds}sec"
+                pieces.append(f"{repeats}x{on_label} with {off_label} recovery")
+            return ("Ride the emitted " + "; then ".join(pieces)
+                    + ". Do not add recovery beyond the prescribed structure.")
+        return "Ride the emitted work/recovery structure exactly; do not turn a micro-interval session into full-recovery repeats."
 
     if "threshold" in archetype_name or "sustained" in archetype_name:
         return "Find your rhythm early. Break long efforts into mental thirds."
@@ -3120,11 +3142,15 @@ def generate_description(
         lines.append(f"-{cooldown_mins}min easy spin Z1-Z2")
         lines.append("")
 
-    # PROGRESSION (Level context)
-    lines.append("PROGRESSION:")
-    lines.append(f"-Level {level}/6: {get_progression_context(level)}")
-    lines.append(f"-{level_data.get('execution', 'Progressive development')}")
-    lines.append("")
+    # Tests are protocol-versioned assessments, not progression-ladder
+    # workouts.  A "Level 1/6 Introductory" label tells the athlete to treat
+    # a comparable field test as developmental training and undermines repeat
+    # testing.  Preserve the level data for rendering only; omit progression.
+    if not level_data.get('testing'):
+        lines.append("PROGRESSION:")
+        lines.append(f"-Level {level}/6: {get_progression_context(level)}")
+        lines.append(f"-{level_data.get('execution', 'Progressive development')}")
+        lines.append("")
 
     # PURPOSE
     lines.append("PURPOSE:")

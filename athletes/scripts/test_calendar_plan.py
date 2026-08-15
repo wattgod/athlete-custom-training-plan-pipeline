@@ -179,19 +179,40 @@ class TestRaceAndTaperHouseTemplates:
         assert compliance['critical_pass']
 
     def test_house_sessions_render_the_required_stimulus(self):
-        from workout_mapper import render_workout
+        from workout_mapper import (RACE_WEEK_SHARPENER_WINDOW,
+                                    calibrate_race_week_sharpener,
+                                    render_workout)
+        from zwo_parser import parse_zwo_text
 
         sharpener = render_workout('Stars In Your Eyes', 2)
-        assert all(token in sharpener for token in ('OnDuration="20"', 'OnDuration="30"', 'OnDuration="40"'))
-        assert 'OnPower="1.42"' in sharpener and 'OffDuration="60"' in sharpener
+        sharpener_metrics = parse_zwo_text(sharpener)
+        sharpener_root = ET.fromstring(sharpener)
+        sharpener_steps = list(sharpener_root.find('workout'))
+        efforts = [(step.get('Duration'), step.get('Power')) for step in sharpener_steps
+                   if step.tag == 'SteadyState' and step.get('Power') in ('1.40', '1.50', '1.55')]
+        assert efforts == [('20', '1.40'), ('30', '1.50'), ('40', '1.55')] * 2
+        assert sum(1 for step in sharpener_steps
+                   if step.tag == 'SteadyState' and step.get('Duration') == '180'
+                   and step.get('Power') == '0.55') == 1
+        assert RACE_WEEK_SHARPENER_WINDOW['min_if'] <= sharpener_metrics['intensity_factor'] <= RACE_WEEK_SHARPENER_WINDOW['max_if']
+        assert RACE_WEEK_SHARPENER_WINDOW['min_tss'] <= sharpener_metrics['tss'] <= RACE_WEEK_SHARPENER_WINDOW['max_tss']
+
+        # The final dose is selected after the race-week slot is chosen.
+        # Masters/high-stress athletes receive the lighter activation variant.
+        assert calibrate_race_week_sharpener()['level'] == 2
+        reduced = calibrate_race_week_sharpener(athlete_age=52)
+        assert reduced['level'] == 1
+        assert reduced['tss'] < sharpener_metrics['tss']
 
         openers = render_workout('Openers', 2)
-        assert 'Duration="300" Power="0.95"' in openers
-        assert 'Duration="120" Power="1.20"' in openers
-        assert openers.count('Duration="10" Power="2.40"') == 2
+        opener_metrics = parse_zwo_text(openers)
+        assert opener_metrics['tss'] <= 40
+        assert opener_metrics['intensity_factor'] <= 0.80
+        assert 'OnDuration="30" OnPower="1.25"' in openers
 
         cadence = render_workout('Cadence Work', 1)
         assert 'Power="0.88" CadenceLow="100" CadenceHigh="120"' in cadence
+        assert 'Cadence: 100-120rpm blocks; 100-110rpm recoveries' in cadence
 
         bursts = render_workout('Taper Burst Endurance', 3)
         assert bursts.count('Duration="6" Power="1.50"') >= 2
@@ -550,6 +571,29 @@ class TestTestingWeek:
             step['steps'][0]['targets'] == [{'minValue': 120, 'maxValue': 170}]
             for step in structure['structure']
         )
+
+    def test_anaerobic_repeatability_protocol_scales_without_progression_labels(self):
+        """The 360 test changes its repeatability dose, not its test status."""
+        from workout_mapper import render_workout
+
+        expected_repeats = {1: '10', 2: '15', 3: '20', 4: '20', 5: '20', 6: '20'}
+        for level, repeats in expected_repeats.items():
+            root = ET.fromstring(render_workout('Anaerobic Test', level=level))
+            repeatability = next(node for node in root.find('workout')
+                                 if node.tag == 'IntervalsT')
+            assert repeatability.get('Repeat') == repeats
+            description = root.findtext('description') or ''
+            assert 'PROGRESSION:' not in description
+            assert 'Level ' not in description
+
+    def test_vo2_execution_text_uses_emitted_micro_interval_recovery(self):
+        """T5: instructions must never inherit 4-5min recovery prose."""
+        from workout_mapper import render_workout
+
+        root = ET.fromstring(render_workout('VO2max 40/20', level=2))
+        description = root.findtext('description') or ''
+        assert '8x40sec with 15sec recovery' in description
+        assert '4-5min' not in description
 
     def test_metabolism_test_scales_with_experience(self):
         """Beginners ~2h, intermediates ~3h, advanced ~4h (coach spec)."""

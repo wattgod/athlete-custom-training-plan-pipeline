@@ -328,12 +328,12 @@ workouts:
   Stars In Your Eyes:
     category: anaerobic
     levels:
-      1: {duration: 44, tss: 48}
-      2: {duration: 52, tss: 58}
-      3: {duration: 52, tss: 61}
-      4: {duration: 55, tss: 64}
-      5: {duration: 66, tss: 76}
-      6: {duration: 66, tss: 80}
+      1: {duration: 58, tss: 61}
+      2: {duration: 62, tss: 70}
+      3: {duration: 62, tss: 70}
+      4: {duration: 62, tss: 70}
+      5: {duration: 62, tss: 70}
+      6: {duration: 62, tss: 70}
 
   Rest Day:
     category: recovery

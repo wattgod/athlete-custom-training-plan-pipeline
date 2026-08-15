@@ -89,6 +89,8 @@ def build_plan_from_calendar(
     fixed_minutes: int = 0,
     event_format: str = None,
     training_age: Optional[str] = None,
+    athlete_age: Optional[int] = None,
+    stress_level: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -216,6 +218,8 @@ def build_plan_from_calendar(
             methodology_profile=methodology_profile,
             event_format=event_format,
             race_day=desc.get('race_day'),
+            athlete_age=athlete_age,
+            stress_level=stress_level,
         )
         week['plan_week'] = plan_week
         week['block_number'] = block_number
