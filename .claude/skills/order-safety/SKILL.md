@@ -101,6 +101,23 @@ result instead of blocking at `validate_parsed_intake()`. Ask **"does this
 field failing lose us the order, or just precision we can dial in during
 week 1?"** — only race clears that bar today.
 
+## Shipping ≠ delivering (Guillermo Romero, 2026-08-14)
+
+A second failure class, discovered on a real order that passed every gate:
+the pipeline's approved output was placed on TrainingPeaks as-is and the
+coach rejected it — bare titles, blank dates, no notes, flat fuel rate,
+Level-1 doses on a short plan, race-blind sims. **The gates measure
+correctness; the coach measures quality against the house-standard
+calendar.** Before calling any custom delivery done:
+
+1. Read `docs/runbooks/CUSTOM_DELIVERY_RUNBOOK.md` and run its checklist.
+2. Diff against the CURRENT reference athlete's live calendar (dump it
+   fresh — the standard ratchets with every hand-build; memory is stale).
+3. Field reconciliation proves transport, not quality. Both are required.
+
+The permanent fix is `docs/SPEC_DELIVERY_LAYER.md` (DeliveryIR +
+delivery_lint); until it ships, the runbook is the floor.
+
 ## When NOT to use this
 
 - Pure algorithm/scoring changes inside the block-builder engine that don't
