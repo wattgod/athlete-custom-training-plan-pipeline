@@ -188,6 +188,24 @@ class WorkoutLibrary:
                 ],
             ],
         },
+        'power': {
+            'title': 'Power', 'duration_min': 35,
+            'focus': 'Express existing strength with fast, controlled compound lifts',
+            'sessions': [
+                [
+                    ('Back Squat', '3x3 @ 55-65% 1RM, RPE6 — drive the concentric fast; lower under control'),
+                    ('Romanian Deadlift', '3x4 @ 55-65% 1RM, RPE6 — stand fast; lower under control'),
+                    ('Barbell Hip Thrust', '3x4 @ 55-65% 1RM, RPE6 — drive the concentric fast; lower under control'),
+                    ('Pallof Press', '2x8 each @ light, controlled effort'),
+                ],
+                [
+                    ('Trap Bar Deadlift', '3x3 @ 55-65% 1RM, RPE6 — stand fast; lower under control'),
+                    ('Bulgarian Split Squat', '3x4 each @ 55-65% 1RM, RPE6 — drive up fast; lower under control'),
+                    ('Barbell Bench Press', '3x4 @ 55-65% 1RM, RPE6 — press fast; lower under control'),
+                    ('Bent Over Row', '2x6 @ moderate, controlled effort'),
+                ],
+            ],
+        },
         'deload': {
             'title': 'Deload', 'duration_min': 30,
             'focus': 'Rehearse the movement patterns with intentionally easy loads',
@@ -338,6 +356,8 @@ class WorkoutLibrary:
             return 'anatomical_adaptation'
         if phase == 'build':
             return 'max_strength'
+        if phase == 'peak':
+            return 'power'
         return 'maintenance'
 
 

@@ -436,6 +436,12 @@ def _build_week(
                                 break
                         else:
                             f_name = 'Endurance'
+                if f_name == 'Cadence Work' and week_type == 'load':
+                    # Cadence is a skill series, not disposable filler: keep
+                    # its familiar session but progress one level per load
+                    # week (longer work blocks / higher-rpm holds) just like
+                    # the named intensity series.
+                    f_level = min(f_level + max(0, week_in_block - 1), max_level)
                 tss = get_workout_tss(f_name, f_level)
                 dur = get_workout_duration(f_name, f_level)
                 workout = {
