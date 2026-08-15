@@ -77,3 +77,13 @@ scheduling:
   min_hours_between_strength_and_cycling: 6
   preferred_days: ["off_days", "easy_cycling_days"]
   recovery_week_is_always_deload: true
+  # Athlete-requested frequency is the load-week ceiling. Deliberately reduce
+  # fatigue as the cycling calendar unloads: recovery and taper get one
+  # session, while race week gets none. These rules apply regardless of
+  # equipment tier; a 2x/week request therefore means 2 in base/build load
+  # weeks, 1 in recovery/taper, and 0 in race week.
+  frequency_by_week_type:
+    load: athlete_requested
+    recovery: 1
+    taper: 1
+    race: 0

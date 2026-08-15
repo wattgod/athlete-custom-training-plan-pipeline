@@ -6,7 +6,7 @@ Provides varied workout structures that progress across the training plan.
 No more identical workouts week after week.
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import random
 
 
@@ -131,6 +131,100 @@ class WorkoutLibrary:
         },
     ]
 
+    # Full-gym sessions intentionally live beside, rather than replace, the
+    # long-standing home-basic library above.  A customer who selected
+    # home-basic keeps that exact dumbbell/bodyweight rotation; only an
+    # explicit full-gym answer receives barbell/trap-bar programming.
+    _FULL_GYM_PROGRAMS = {
+        'anatomical_adaptation': {
+            'title': 'Anatomical Adaptation', 'duration_min': 45,
+            'focus': 'Build durable movement patterns with submaximal compound lifts',
+            'sessions': [
+                [
+                    ('Back Squat', '3x10 @ RPE6 — leave 4 reps in reserve'),
+                    ('Romanian Deadlift', '3x10 @ RPE6 — leave 4 reps in reserve'),
+                    ('Barbell Hip Thrust', '3x10 @ RPE6 — leave 4 reps in reserve'),
+                    ('Pallof Press', '3x10 each @ light, controlled effort — leave 4 reps in reserve'),
+                ],
+                [
+                    ('Trap Bar Deadlift', '3x8 @ RPE6 — leave 4 reps in reserve'),
+                    ('Bulgarian Split Squat', '3x8 each @ RPE6 — leave 4 reps in reserve'),
+                    ('Barbell Bench Press', '3x10 @ RPE6 — leave 4 reps in reserve'),
+                    ('Bent Over Row', '3x10 @ RPE6 — leave 4 reps in reserve'),
+                ],
+            ],
+        },
+        'max_strength': {
+            'title': 'Max Strength', 'duration_min': 45,
+            'focus': 'Build force with controlled, non-grinding compound lifts',
+            'sessions': [
+                [
+                    ('Back Squat', '4x6 @ RPE7 — leave 2 reps in reserve'),
+                    ('Romanian Deadlift', '3x8 @ RPE7 — leave 2 reps in reserve'),
+                    ('Barbell Hip Thrust', '3x8 @ RPE7 — leave 2 reps in reserve'),
+                    ('Pallof Press', '3x10 each @ moderate effort — leave 2 reps in reserve'),
+                ],
+                [
+                    ('Trap Bar Deadlift', '4x5 @ RPE7 — leave 2 reps in reserve'),
+                    ('Bulgarian Split Squat', '3x6 each @ RPE7 — leave 2 reps in reserve'),
+                    ('Barbell Bench Press', '3x6 @ RPE7 — leave 2 reps in reserve'),
+                    ('Bent Over Row', '3x8 @ RPE7 — leave 2 reps in reserve'),
+                ],
+            ],
+        },
+        'maintenance': {
+            'title': 'Maintenance', 'duration_min': 40,
+            'focus': 'Keep strength while preserving freshness for cycling quality',
+            'sessions': [
+                [
+                    ('Back Squat', '3x5 @ RPE7 — leave 2 reps in reserve'),
+                    ('Romanian Deadlift', '3x6 @ RPE7 — leave 2 reps in reserve'),
+                    ('Pallof Press', '3x8 each @ moderate effort — leave 2 reps in reserve'),
+                ],
+                [
+                    ('Trap Bar Deadlift', '3x5 @ RPE7 — leave 2 reps in reserve'),
+                    ('Barbell Hip Thrust', '3x6 @ RPE7 — leave 2 reps in reserve'),
+                    ('Bent Over Row', '3x8 @ RPE7 — leave 2 reps in reserve'),
+                ],
+            ],
+        },
+        'deload': {
+            'title': 'Deload', 'duration_min': 30,
+            'focus': 'Rehearse the movement patterns with intentionally easy loads',
+            'sessions': [
+                [
+                    ('Back Squat', '2x8 @ RPE5 — leave 5 reps in reserve'),
+                    ('Romanian Deadlift', '2x8 @ RPE5 — leave 5 reps in reserve'),
+                    ('Pallof Press', '2x8 each @ easy effort — leave 5 reps in reserve'),
+                ],
+                [
+                    ('Trap Bar Deadlift', '2x6 @ RPE5 — leave 5 reps in reserve'),
+                    ('Barbell Hip Thrust', '2x8 @ RPE5 — leave 5 reps in reserve'),
+                    ('Bent Over Row', '2x8 @ RPE5 — leave 5 reps in reserve'),
+                ],
+            ],
+        },
+    }
+
+    _BODYWEIGHT_PROGRAMS = {
+        'title': 'Bodyweight Strength', 'duration_min': 30,
+        'focus': 'Maintain movement quality without external load',
+        'sessions': [
+            [
+                ('Bodyweight Squat', '3x12 @ controlled bodyweight effort — leave 3 reps in reserve'),
+                ('Single-Leg Glute Bridge', '3x10 each @ controlled bodyweight effort — leave 3 reps in reserve'),
+                ('Push-Up', '3x8 @ controlled bodyweight effort — leave 3 reps in reserve'),
+                ('Dead Bug', '3x10 each @ controlled bodyweight effort — leave 3 reps in reserve'),
+            ],
+            [
+                ('Reverse Lunge', '3x8 each @ controlled bodyweight effort — leave 3 reps in reserve'),
+                ('Single-Leg Calf Raise', '3x12 each @ controlled bodyweight effort — leave 3 reps in reserve'),
+                ('Bird Dog', '3x10 each @ controlled bodyweight effort — leave 3 reps in reserve'),
+                ('Side Plank', '3x30sec each @ controlled bodyweight effort — leave 3 reps in reserve'),
+            ],
+        ],
+    }
+
     @classmethod
     def get_interval_workout(cls, phase: str, week_in_phase: int) -> Dict:
         """Get appropriate interval workout for the phase and week."""
@@ -177,11 +271,51 @@ class WorkoutLibrary:
         }
 
     @classmethod
-    def get_strength_workout(cls, week_num: int, session_num: int = 1) -> Dict:
+    def get_strength_workout(
+        cls,
+        week_num: int,
+        session_num: int = 1,
+        equipment_tier: str = 'home-basic',
+        phase: str = 'base',
+        is_recovery_week: bool = False,
+        is_masters: bool = False,
+    ) -> Dict:
         """Get strength workout for the week.
 
-        session_num: 1 or 2 for first or second session of the week
+        ``home-basic`` deliberately returns the legacy library unchanged.
+        ``full-gym`` returns periodized compound lifts; ``none`` returns a
+        bodyweight-only session. ``session_num`` is 1 or 2 within a week.
         """
+        tier = (equipment_tier or 'home-basic').strip().lower()
+        if tier == 'full-gym':
+            program_key = cls._full_gym_program_key(phase, is_recovery_week)
+            program = cls._FULL_GYM_PROGRAMS[program_key]
+            exercises = list(program['sessions'][(session_num - 1) % 2])
+            if is_masters:
+                exercises = [
+                    (exercise, prescription.replace(
+                        'leave 2 reps in reserve',
+                        'leave at least 3 reps in reserve'))
+                    for exercise, prescription in exercises
+                ]
+            letter = 'A' if session_num == 1 else 'B'
+            return {
+                'name': f"{program['title']} {letter} - {program['duration_min']}min",
+                'focus': program['focus'],
+                'duration_min': program['duration_min'],
+                'exercises': exercises,
+            }
+
+        if tier == 'none':
+            program = cls._BODYWEIGHT_PROGRAMS
+            letter = 'A' if session_num == 1 else 'B'
+            return {
+                'name': f"{program['title']} {letter} - {program['duration_min']}min",
+                'focus': program['focus'],
+                'duration_min': program['duration_min'],
+                'exercises': list(program['sessions'][(session_num - 1) % 2]),
+            }
+
         # Rotate through workouts, alternating A/B pattern
         if session_num == 1:
             # First session: Foundation A, Power, Cycling-Specific (cycle)
@@ -194,6 +328,17 @@ class WorkoutLibrary:
         workout = cls.STRENGTH_WORKOUTS[options[idx]]
 
         return workout
+
+    @staticmethod
+    def _full_gym_program_key(phase: str, is_recovery_week: bool) -> str:
+        """Map the cycling calendar to AA → Max → Maintenance → Deload."""
+        if is_recovery_week:
+            return 'deload'
+        if phase == 'base':
+            return 'anatomical_adaptation'
+        if phase == 'build':
+            return 'max_strength'
+        return 'maintenance'
 
 
 def generate_progressive_interval_blocks(
@@ -322,12 +467,23 @@ def generate_strength_workout_text(week_num: int, session_num: int = 1) -> str:
     return '\n'.join(lines)
 
 
-def generate_strength_zwo(week_num: int, session_num: int = 1, duration_min: int = 30) -> str:
+def generate_strength_zwo(
+    week_num: int,
+    session_num: int = 1,
+    duration_min: int = 30,
+    equipment_tier: str = 'home-basic',
+    phase: str = 'base',
+    is_recovery_week: bool = False,
+    is_masters: bool = False,
+) -> str:
     """Generate a strength-focused ZWO file (very low power, prompts for exercises).
 
     CRITICAL: No nested textevent in SteadyState, Warmup, or Cooldown - breaks TrainingPeaks.
     """
-    workout = WorkoutLibrary.get_strength_workout(week_num, session_num)
+    workout = WorkoutLibrary.get_strength_workout(
+        week_num, session_num, equipment_tier=equipment_tier, phase=phase,
+        is_recovery_week=is_recovery_week, is_masters=is_masters)
+    duration_min = workout.get('duration_min', duration_min)
 
     blocks = []
 
