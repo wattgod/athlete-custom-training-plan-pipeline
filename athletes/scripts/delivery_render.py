@@ -178,32 +178,41 @@ def _repeating_pyramid_from_segments(session: Any) -> Optional[str]:
     complete family is the defining set; adding together every later family
     would turn ``3x(20/30/40s)`` into the less useful ``6x`` label.
     """
-    family: List[Tuple[int, int, Optional[str]]] = []
+    # Collect every short, hard rung in order — the generator may emit
+    # pyramid efforts as one-rep steady_state segments with easy recoveries
+    # between them (no 'intervals' kind at all), and sets may run up-down.
+    # The rung-duration multiset is the identity: k complete copies of the
+    # same >=3 distinct durations render as "kx(20/30/40s)".
+    rungs: List[Tuple[int, float]] = []
     for segment in _get(session, "segments", []) or []:
-        if str(_segment_value(segment, "kind") or "").lower() != "intervals":
-            if len(family) >= 3:
-                break
-            family = []
+        kind = str(_segment_value(segment, "kind") or "").lower()
+        if kind == "intervals":
+            seconds = int(_number(_segment_value(segment, "on_seconds")) or 0)
+            repeats = int(_number(_segment_value(segment, "repeat")) or 1)
+            power = _number(_segment_value(segment, "on_power")) or 0
+        elif kind == "steady_state":
+            seconds = int(_number(_segment_value(segment, "seconds")) or 0)
+            repeats = 1
+            power = _number(_segment_value(segment, "power_target")) or 0
+        else:
             continue
-        seconds = int(_number(_segment_value(segment, "on_seconds")) or 0)
-        repeats = int(_number(_segment_value(segment, "repeat")) or 1)
-        percent = _format_percent(_segment_value(segment, "on_power"))
-        if not seconds or not percent:
-            if len(family) >= 3:
-                break
-            family = []
-            continue
-        family.append((seconds, repeats, percent))
-        if len(family) < 3:
-            continue
-        candidate = family[-3:]
-        durations = [item[0] for item in candidate]
-        repeat_counts = {item[1] for item in candidate}
-        if (durations == [20, 30, 40] and len(repeat_counts) == 1):
-            powers = [float(item[2].rstrip("%")) for item in candidate]
-            power_text = (f"{min(powers):g}%" if min(powers) == max(powers)
-                          else f"{min(powers):g}-{max(powers):g}%")
-            return f"{candidate[0][1]}x(20/30/40s) @{power_text}"
+        if power and power <= 3:
+            power *= 100
+        if 0 < seconds < 90 and power >= 110:
+            rungs.extend([(seconds, power)] * max(1, repeats))
+    if len(rungs) < 3:
+        return None
+    from collections import Counter
+    counts = Counter(seconds for seconds, _ in rungs)
+    distinct = sorted(counts)
+    sets = min(counts.values())
+    if (len(distinct) >= 3 and sets >= 1
+            and all(value == sets for value in counts.values())):
+        powers = [power for _, power in rungs]
+        power_text = (f"{min(powers):g}%" if min(powers) == max(powers)
+                      else f"{min(powers):g}-{max(powers):g}%")
+        rung_text = "/".join(str(d) for d in distinct)
+        return f"{sets}x({rung_text}s) @{power_text}"
     return None
 
 
@@ -393,9 +402,21 @@ def _power_values(session: Any) -> List[float]:
 
 
 def _dominant_work_percent(session: Any) -> float:
-    """Return the target of the largest work block, not a warm-up maximum."""
+    """Return the target of the hardest MEANINGFUL work block.
+
+    Largest-by-volume picks the easy padding on short-effort sessions (a
+    Stars sharpener read RPE6-7 because 40 minutes of Z2 outweighed the
+    155% efforts). The hardest block with >= 60 cumulative work seconds
+    defines the session; volume only breaks the no-qualifier case.
+    """
     blocks = _work_blocks_from_segments(session) or _work_blocks_from_structure(session)
     if blocks:
+        def _pct(block):
+            value = _number(str(block[2] or "").rstrip("%"))
+            return value if value is not None else 0.0
+        meaningful = [b for b in blocks if b[0] >= 60 and _pct(b) > 0]
+        if meaningful:
+            return max(_pct(b) for b in meaningful)
         _, _, percent = max(blocks, key=lambda block: block[0])
         value = _number(str(percent or "").rstrip("%"))
         if value is not None:
