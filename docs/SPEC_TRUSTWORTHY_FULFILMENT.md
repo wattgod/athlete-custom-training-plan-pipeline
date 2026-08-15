@@ -792,10 +792,12 @@ intake field (single question, not gated on the v2 rewrite); coach-entered
 identity on the review page. Outcomes: `bound` / `multiple-candidates`
 (coach selects) / `not-coached` (`ATHLETE_UNLINKED`) / `not-found`
 (`ATHLETE_NO_ACCOUNT`) / `unresolved`. Binding → `platform_identity` in
-state (S1 order-scoped); **required before APPROVED only for orders whose
-`delivery_platform` is automated** (manual orders record delivery evidence
-at APPLIED instead — resolves the r2 phase-inversion on identity). Probes
-revalidate immediately before write.
+state (S1 order-scoped); **required before APPROVED only when `d2_active`
+is true** (the identity probe has actually run). When D2 is inactive,
+automated apply is not live: approval is the plan decision, and the
+review page / coaching brief / pre-delivery checklist carry the
+TrainingPeaks loading steps. Manual orders still record delivery evidence
+at APPLIED. Probes revalidate immediately before write.
 
 **Resolutions are state-changing commands (codex r2 blocker 4).** The plan is
 generated from intake before review (`generate_athlete_package.py:2989-3052`),

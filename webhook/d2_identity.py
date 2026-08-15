@@ -845,13 +845,15 @@ def d2_contract_inputs(state: Mapping[str, Any]) -> tuple[str, dict[str, Any], d
 
 def validate_d2_approval(state: Mapping[str, Any]) -> None:
     """Server-side approval legality for identity and account consistency."""
+    if not state.get("d2_active"):
+        # Automated apply is not running. Approval is the plan decision;
+        # TrainingPeaks loading is the coach checklist in the pipeline.
+        return
     if _automated(state):
         binding = state.get("platform_identity") or {}
         if (not str(binding.get("tp_athlete_id") or "").strip()
                 or binding.get("order_id") != state.get("order_id")):
             raise FulfillmentStateError("approval requires a bound platform identity")
-    if not state.get("d2_active"):
-        return
     if state.get("regeneration_request"):
         raise FulfillmentStateError("D2 regeneration is pending")
     if state.get("d2_pending_requirements"):

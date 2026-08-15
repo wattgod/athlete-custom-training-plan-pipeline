@@ -668,6 +668,10 @@ def test_automated_approval_requires_order_scoped_platform_identity(tmp_path, pl
         path, "athlete-m", order_id=f"order-{platform}",
         delivery_platform=platform)
     state = _seal(path, tmp_path)
+    raw = json.loads(path.read_text())
+    raw["d2_active"] = True
+    path.write_text(json.dumps(raw))
+    state = load(path)
     with pytest.raises(FulfillmentStateError, match="bound platform identity"):
         transition(
             path, APPROVED, "coach",
@@ -675,6 +679,23 @@ def test_automated_approval_requires_order_scoped_platform_identity(tmp_path, pl
             expected_catalog_digest=state["review_catalog_digest"],
             review_decisions=_approval_decisions(state),
         )
+
+
+@pytest.mark.parametrize("platform", ["trainingpeaks", "endure"])
+def test_inactive_d2_allows_approval_without_platform_binding(tmp_path, platform):
+    path = tmp_path / f"{platform}-manual-tp.json"
+    state = write_generation(
+        path, "athlete-m", order_id=f"inactive-{platform}",
+        delivery_platform=platform)
+    state = _seal(path, tmp_path)
+    assert state.get("d2_active") is False
+    approved = transition(
+        path, APPROVED, "coach",
+        expected_revision=state["generation_revision"],
+        expected_catalog_digest=state["review_catalog_digest"],
+        review_decisions=_approval_decisions(state),
+    )
+    assert approved["status"] == APPROVED
 
 
 @pytest.mark.parametrize("platform", ["trainingpeaks", "endure"])

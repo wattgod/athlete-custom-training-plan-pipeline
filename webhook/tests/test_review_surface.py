@@ -188,7 +188,7 @@ def test_d2_identity_panel_and_resolution_selector_execute_state_command(
     webhook_app._record_order_lookup(order_id, 'athlete-m')
 
     body, csrf = _login(review_client, order_id)
-    assert '<h2>Platform identity</h2>' in body
+    assert '<h2>TrainingPeaks delivery</h2>' in body
     assert '<dd>bound</dd>' in body
     assert 'fixture-athlete-m' in body
     assert THRESHOLD_ITEM_ID in body
@@ -595,6 +595,28 @@ def test_page_approval_rejects_missing_required_confirmation(review_client):
     assert response.status_code == 409
     assert 'required confirmation is unresolved' in response.get_data(as_text=True)
     assert load(state_path)['status'] == GENERATED
+
+
+def test_review_page_shows_trainingpeaks_steps_when_d2_is_inactive(review_client):
+    order_id = 'test_tp_delivery_steps'
+    state_path = webhook_app._fulfillment_status_path(order_id)
+    state = write_generation(
+        state_path, 'athlete-m', [], order_id=order_id,
+        delivery_platform='trainingpeaks')
+    revision = (webhook_app._order_dir(order_id) / 'revisions'
+                / f"r{state['generation_revision']}")
+    revision.mkdir(parents=True)
+    (revision / 'reviewed-values.txt').write_text('sealed review source')
+    with zipfile.ZipFile(revision / f'{order_id}-review-bundle.zip', 'w') as archive:
+        archive.writestr('plan_preview.txt', 'non-executable review preview')
+    finalize_transitional_release(
+        state_path, revision, expected_revision=state['generation_revision'])
+    webhook_app._record_order_lookup(order_id, 'athlete-m')
+    body, _ = _login(review_client, order_id)
+    assert 'TrainingPeaks delivery' in body
+    assert 'Automated calendar apply is not live' in body
+    assert 'full package download' in body
+    assert 'not the review bundle' in body
 
 
 def test_review_page_does_not_require_per_fact_checkboxes(review_client):
