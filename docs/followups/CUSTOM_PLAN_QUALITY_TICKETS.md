@@ -121,3 +121,38 @@ repeats individually, so the 15x prefix is lost); day-off synthesized from
 a rest ZWO can carry 1min/1TSS; identical endurance days are
 indistinguishable ("Endurance - 70min - RPE3" x19 — consider varying by
 week context once notes exist).
+
+---
+
+# Round 3 — from the Sonja v2 regrade (2026-08-15, delivery layer live)
+
+Dual regrade after steps 1-3b + T9/T10/T12: overall F -> D (sol) / C+
+(orchestrator). Delivery-layer dimensions all A/B; substance unchanged
+(T1-T4/T14 in flight). New defects:
+
+## T15 — Strength track is placeholder programming
+12 sessions landed but not consistently 2/week (weeks 1 and 4 got one), and
+"full-gym" athletes receive unloaded jumps/hops/lunges and push-up/row
+mobility circuits with no load prescriptions. strength_periodization must
+respect the athlete's stated frequency and equipment tier (full-gym ->
+loaded compound progressions with prescriptions), and title-case its names.
+
+## T16 — Notes must cross-check the calendar they describe
+The Sep 14 briefing led with the surge ride instead of Thursday's key
+session, and the rehearsal debrief pointed at a "rehearsal" that is (until
+T4 lands) a generic surge ride. Weekly-briefing key sessions should order
+weekday quality first, and a consistency pass (future delivery_lint rule)
+must verify every note reference (session names, ladder rungs, rehearsal
+dates) against the placed calendar. Also: ladder note rounds to 5 while
+workout tags carry raw prescription values (45/50/55 vs 46/51/56) — one
+authoritative ladder, one rounding rule (Task I in flight); long rides
+must carry the per-ride fuel/hydration description blocks; day-off cards
+synthesized from rest ZWOs still carry 1min/1TSS; race-day card TSS 394 vs
+description 393.
+
+## T17 — Race-day pacing must match the goal and the day's length
+A 52-year-old finisher facing ~9.3 hours was told to hit 88-94% FTP on
+climbs and "increase effort as others fade." Race-day copy needs goal-type
+and duration dispatch: finisher/long-day copy caps climb intensity, leads
+with the ceiling decision rule, and frames the final third as holding
+form, not attacking.
