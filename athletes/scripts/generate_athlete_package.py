@@ -75,7 +75,6 @@ from constants import (
     DAY_ABBREV_TO_FULL,
     DAY_ORDER,
     FTP_TEST_DURATION_MIN,
-    STRENGTH_PHASES,
     INTENSITY_WORKOUT_TYPES,
     RACE_SIM_WORKOUT_TYPES,
     MASTERS_AGE_THRESHOLD,
@@ -710,6 +709,72 @@ def select_strength_days(is_available, strength_only_abbrevs=None) -> list:
             if abs(DAY_ORDER.index(a) - DAY_ORDER.index(b)) >= 2:
                 return [a, b]
     return avail[:2]
+
+
+def strength_sessions_for_week(requested_sessions: int, phase: str,
+                               is_recovery_week: bool = False) -> int:
+    """Apply the documented strength-frequency reduction rule to one week.
+
+    The athlete's stated frequency is honored in load weeks (up to the
+    supported two-session maximum). Recovery and taper weeks deliberately
+    reduce to one session; race week has none.
+    """
+    try:
+        requested = max(0, min(int(requested_sessions), 2))
+    except (TypeError, ValueError):
+        requested = 0
+    if phase == 'race':
+        return 0
+    if is_recovery_week or phase == 'taper':
+        return min(requested, 1)
+    return requested
+
+
+def place_strength_days(is_available, requested_sessions: int,
+                        blocked_days=None, strength_only_abbrevs=None) -> list:
+    """Place the requested sessions without using off/long/blocked days.
+
+    ``select_strength_days`` supplies the coach-preferred pair. If an FTP
+    test blocks one of those days, continue through other eligible days
+    instead of silently dropping the athlete's requested session.
+    """
+    blocked = set(blocked_days or [])
+    preferred = select_strength_days(is_available, strength_only_abbrevs)
+    candidates = preferred + [
+        day for day in DAY_ORDER if day not in preferred and is_available(day)
+    ]
+    eligible = [day for day in candidates if day not in blocked]
+    # Preserve the established recovery spacing: first try to leave one full
+    # day between sessions, only relaxing if the athlete's availability makes
+    # that impossible.
+    for minimum_gap in (2, 1):
+        selected = []
+        for day in eligible:
+            if all(abs(DAY_ORDER.index(day) - DAY_ORDER.index(other)) >= minimum_gap
+                   for other in selected):
+                selected.append(day)
+            if len(selected) == requested_sessions:
+                return selected
+    return selected
+
+
+def strength_equipment_tier(profile: dict) -> str:
+    """Resolve intake equipment answers to the three rendered libraries."""
+    preferences = (profile or {}).get('strength_preferences', {}) or {}
+    raw = ((profile or {}).get('strength_equipment')
+           or preferences.get('equipment')
+           or preferences.get('equipment_tier')
+           or preferences.get('strength_equipment')
+           or [])
+    if isinstance(raw, str):
+        raw = [raw]
+    labels = {str(item).strip().lower() for item in raw if str(item).strip()}
+    if 'full-gym' in labels or 'full gym' in labels:
+        return 'full-gym'
+    if labels & {'none', 'no-equipment', 'no equipment'}:
+        return 'none'
+    # The legacy `minimal` intake value is a home-basic program too.
+    return 'home-basic'
 
 
 def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, derived: dict, profile: dict = None, fueling: dict = None) -> list:
@@ -3065,28 +3130,15 @@ GO GET IT, {athlete_name.upper()}!
         # Find days suitable for strength workouts based on athlete schedule
         # CRITICAL: Strength days must be separated by at least 1 day for recovery
         # CRITICAL: Don't put strength on the same day as FTP tests or very hard workouts
-        def get_strength_days() -> list:
-            """
-            Find appropriate days for strength workouts.
-
-            Rules:
-            1. Days must be separated (Mon/Wed, Mon/Thu, Tue/Thu, Tue/Fri - NOT Wed/Thu)
-            2. Avoid days with FTP tests
-            3. Prefer easy/recovery bike days for strength
-            4. If athlete specified strength_only_days, use those
-            """
+        def strength_day_is_available(d: str) -> bool:
+            """Strength may use available non-long-ride days only."""
             # Strength must land on days the athlete is actually available —
             # NOT their declared off days, and not the long-ride day. (The
             # old code hardcoded Tue/Thu, putting strength on off days and
             # failing the Off-Days check for athletes who rest Tue/Thu.)
-            def _strength_ok(d):
-                avail = get_day_availability(d)
-                return (avail.get('availability') not in ('unavailable', 'rest')
-                        and d != long_day_abbrev)
-
-            return select_strength_days(_strength_ok, strength_only_abbrevs)
-
-        strength_days = get_strength_days()
+            avail = get_day_availability(d)
+            return (avail.get('availability') not in ('unavailable', 'rest')
+                    and d != long_day_abbrev)
 
         # Track which days have FTP tests (don't schedule strength on these)
         # Use ftp_test_target_weeks computed earlier + the preferred FTP day.
@@ -3112,19 +3164,32 @@ GO GET IT, {athlete_name.upper()}!
             week_num = week['week']
             phase = week['phase']
 
-            # Skip strength during taper and race weeks (use STRENGTH_PHASES from constants)
-            if phase not in STRENGTH_PHASES:
+            # Frequency follows the athlete in load weeks, then deliberately
+            # reduces with the calendar: recovery/taper = 1, race = 0.
+            sessions_this_week = strength_sessions_for_week(
+                strength_sessions, phase, week.get('is_recovery_week', False))
+            if not sessions_this_week:
                 continue
 
-            for session in range(1, min(strength_sessions + 1, 3)):  # Max 2 sessions
-                strength_blocks, strength_workout = generate_strength_zwo(week_num, session)
+            # Re-evaluate placement every week. An FTP test must not erase a
+            # requested session; choose another eligible (non-off/non-long)
+            # day instead.
+            strength_days = place_strength_days(
+                strength_day_is_available,
+                sessions_this_week,
+                blocked_days={day for candidate_week, day in ftp_test_days
+                              if candidate_week == week_num},
+                strength_only_abbrevs=strength_only_abbrevs,
+            )
 
-                # Use athlete-appropriate strength day
-                strength_day = strength_days[session - 1] if session <= len(strength_days) else strength_days[0]
-
-                # Skip strength if this day has an FTP test
-                if (week_num, strength_day) in ftp_test_days:
-                    continue  # Don't add strength on FTP test day
+            for session, strength_day in enumerate(strength_days, start=1):
+                strength_blocks, strength_workout = generate_strength_zwo(
+                    week_num, session,
+                    equipment_tier=strength_equipment_tier(profile),
+                    phase=phase,
+                    is_recovery_week=week.get('is_recovery_week', False),
+                    is_masters=is_masters,
+                )
 
                 # Get the date for this strength day from the week's days list
                 date_short = ""
