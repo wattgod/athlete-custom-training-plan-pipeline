@@ -1,3 +1,4 @@
+import re
 import sys
 from pathlib import Path
 
@@ -160,6 +161,23 @@ def test_authored_fuel_tags_match_delivery_ladder_and_final_rehearsal_hits_race_
     assert rates[2] == 70  # final pre-taper long ride = race prescription
     assert rates[3] < 70   # taper deliberately steps back
     assert ladder["2026-08-29"] == 70
+
+
+def test_ladder_rewrites_conflicting_generator_fuel_rates_on_the_same_card():
+    documents, manifest, dates = _delivery_calendar()
+    documents["W03_Sat"] = _authored_zwo(
+        "Final Rehearsal", 246,
+        "[HIGH FUEL: Target 51g carbs/hr. Practice this prescription.]\n\n"
+        "ACT 1\nFuel at 50 g/hr.\n\nFUELLING: 51 g carbs/hr on the timer.",
+    )
+    _apply_delivery_fuel_ladder(
+        documents, manifest, dates,
+        {"race": {"duration_hours": 9.3}, "prescription": {"race_target_g_per_hour": 70}},
+    )
+
+    card = documents["W03_Sat"]
+    rates = re.findall(r"\b(\d+)\s*g\s*(?:carbs?\s*)?/\s*(?:hr|h|hour)\b", card, re.I)
+    assert set(rates) == {"70"}
 
 
 def test_race_day_ceiling_note_uses_longest_training_ride_and_threshold():

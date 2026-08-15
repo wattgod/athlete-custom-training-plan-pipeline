@@ -134,6 +134,115 @@ def _work_blocks_from_segments(session: Any) -> List[Tuple[int, int, Optional[st
             for (seconds, percent), reps in grouped.items()]
 
 
+def _dominant_work_rest_pattern(session: Any) -> Optional[Tuple[int, int]]:
+    """Return the dominant emitted interval work/rest pair, when available."""
+    grouped: Dict[Tuple[int, int], int] = {}
+    for segment in _get(session, "segments", []) or []:
+        if str(_segment_value(segment, "kind") or "").lower() != "intervals":
+            continue
+        on_seconds = int(_number(_segment_value(segment, "on_seconds")) or 0)
+        off_seconds = int(_number(_segment_value(segment, "off_seconds")) or 0)
+        repeats = int(_number(_segment_value(segment, "repeat")) or 1)
+        if on_seconds and off_seconds:
+            key = (on_seconds, off_seconds)
+            grouped[key] = grouped.get(key, 0) + on_seconds * repeats
+    if not grouped:
+        structure = _get(session, "structure")
+        roots = structure.get("structure", structure.get("steps", [])) if isinstance(structure, dict) else []
+        for root in roots or []:
+            if not isinstance(root, dict):
+                continue
+            steps = root.get("steps") or []
+            active = next((step for step in steps if isinstance(step, dict) and
+                           str(step.get("intensityClass") or "").lower() in {"active", "interval"}), None)
+            rest = next((step for step in steps if isinstance(step, dict) and
+                         str(step.get("intensityClass") or "").lower() == "rest"), None)
+            if not active or not rest:
+                continue
+            active_length = active.get("length") or {}
+            rest_length = rest.get("length") or {}
+            on_seconds = int(_number(active_length.get("value")) or 0)
+            off_seconds = int(_number(rest_length.get("value")) or 0)
+            repeats = int(_number((root.get("length") or {}).get("value")) or 1)
+            if on_seconds and off_seconds:
+                key = (on_seconds, off_seconds)
+                grouped[key] = grouped.get(key, 0) + on_seconds * repeats
+    return max(grouped, key=grouped.get) if grouped else None
+
+
+def _repeating_pyramid_from_segments(session: Any) -> Optional[str]:
+    """Render a compact short-effort pyramid instead of flattening one rung.
+
+    A Stars-style set is emitted as adjacent interval blocks with equal repeat
+    counts (20s, 30s, 40s), sometimes repeated after a short reset.  The first
+    complete family is the defining set; adding together every later family
+    would turn ``3x(20/30/40s)`` into the less useful ``6x`` label.
+    """
+    family: List[Tuple[int, int, Optional[str]]] = []
+    for segment in _get(session, "segments", []) or []:
+        if str(_segment_value(segment, "kind") or "").lower() != "intervals":
+            if len(family) >= 3:
+                break
+            family = []
+            continue
+        seconds = int(_number(_segment_value(segment, "on_seconds")) or 0)
+        repeats = int(_number(_segment_value(segment, "repeat")) or 1)
+        percent = _format_percent(_segment_value(segment, "on_power"))
+        if not seconds or not percent:
+            if len(family) >= 3:
+                break
+            family = []
+            continue
+        family.append((seconds, repeats, percent))
+        if len(family) < 3:
+            continue
+        candidate = family[-3:]
+        durations = [item[0] for item in candidate]
+        repeat_counts = {item[1] for item in candidate}
+        if (durations == [20, 30, 40] and len(repeat_counts) == 1):
+            powers = [float(item[2].rstrip("%")) for item in candidate]
+            power_text = (f"{min(powers):g}%" if min(powers) == max(powers)
+                          else f"{min(powers):g}-{max(powers):g}%")
+            return f"{candidate[0][1]}x(20/30/40s) @{power_text}"
+    return None
+
+
+def _repeating_pyramid_from_structure(session: Any) -> Optional[str]:
+    """Find the same short-effort pyramid in TP's captured structure shape."""
+    structure = _get(session, "structure")
+    roots = structure.get("structure", structure.get("steps", [])) if isinstance(structure, dict) else []
+    family: List[Tuple[int, int, Optional[str]]] = []
+    for root in roots or []:
+        if not isinstance(root, dict):
+            continue
+        steps = root.get("steps") or []
+        active = next((step for step in steps if isinstance(step, dict) and
+                       str(step.get("intensityClass") or "").lower() in {"active", "interval"}), None)
+        if not active:
+            if len(family) >= 3:
+                break
+            family = []
+            continue
+        seconds = int(_number((active.get("length") or {}).get("value")) or 0)
+        targets = active.get("targets") or []
+        target = targets[0] if targets and isinstance(targets[0], dict) else {}
+        percent = _format_percent(target.get("maxValue", target.get("minValue")))
+        repeats = int(_number((root.get("length") or {}).get("value")) or 1)
+        if not seconds or not percent:
+            continue
+        family.append((seconds, repeats, percent))
+        if len(family) < 3:
+            continue
+        candidate = family[-3:]
+        if ([item[0] for item in candidate] == [20, 30, 40] and
+                len({item[1] for item in candidate}) == 1):
+            powers = [float(item[2].rstrip("%")) for item in candidate]
+            power_text = (f"{min(powers):g}%" if min(powers) == max(powers)
+                          else f"{min(powers):g}-{max(powers):g}%")
+            return f"{candidate[0][1]}x(20/30/40s) @{power_text}"
+    return None
+
+
 def _iter_tp_steps(structure: Any) -> Iterable[Dict[str, Any]]:
     """Yield the leaf steps in TP's captured structure shape."""
     if not isinstance(structure, dict):
@@ -172,6 +281,10 @@ def _work_blocks_from_structure(session: Any) -> List[Tuple[int, int, Optional[s
 
 
 def _defining_set_from_structure(session: Any) -> Optional[str]:
+    pyramid = (_repeating_pyramid_from_segments(session) or
+               _repeating_pyramid_from_structure(session))
+    if pyramid:
+        return pyramid
     blocks = _work_blocks_from_segments(session) or _work_blocks_from_structure(session)
     if not blocks:
         return None
@@ -233,7 +346,12 @@ def _defining_set_from_description(description: Any) -> Optional[str]:
 
 def _interval_tokens(value: str) -> List[str]:
     return [f"{match.group(1)}x{match.group(2)}" for match in re.finditer(
-        r"\b(\d+)\s*[x×]\s*(\d+)\s*(?:min(?:utes?)?|m)?\b", value, re.I)]
+        r"\b(\d+)\s*[x×]\s*(\d+)\s*(?:min(?:utes?)?|m|s(?:ec(?:onds?)?)?)?\b",
+        value, re.I)]
+
+
+_WORK_REST_TOKEN = re.compile(r"\b(?P<work>\d+)\s*(?:s(?:ec(?:onds?)?)?)?\s*/\s*"
+                                r"(?P<rest>\d+)\s*(?:s(?:ec(?:onds?)?)?)?\b", re.I)
 
 
 def _display_name(session: Any, defining_set: Optional[str]) -> str:
@@ -242,7 +360,19 @@ def _display_name(session: Any, defining_set: Optional[str]) -> str:
     expected = set(_interval_tokens(defining_set or ""))
     for token in _interval_tokens(name):
         if token not in expected:
-            name = re.sub(rf"\b{re.escape(token.split('x')[0])}\s*[x×]\s*{re.escape(token.split('x')[1])}\s*(?:min(?:utes?)?|m)?\b", "", name, flags=re.I)
+            name = re.sub(
+                rf"\b{re.escape(token.split('x')[0])}\s*[x×]\s*{re.escape(token.split('x')[1])}"
+                r"\s*(?:min(?:utes?)?|m|s(?:ec(?:onds?)?)?)?\b",
+                "", name, flags=re.I)
+    work_rest = _dominant_work_rest_pattern(session)
+    if work_rest:
+        rendered = f"{work_rest[0]}/{work_rest[1]}"
+
+        def _replace_if_stale(match: re.Match[str]) -> str:
+            claimed = (int(match.group("work")), int(match.group("rest")))
+            return rendered if claimed != work_rest else match.group(0)
+
+        name = _WORK_REST_TOKEN.sub(_replace_if_stale, name)
     name = re.sub(r"\s+", " ", name)
     name = re.sub(r"\s*[-–—]\s*[-–—]\s*", " - ", name)
     return name.strip(" -–—") or "Workout"
@@ -272,6 +402,11 @@ def _dominant_work_percent(session: Any) -> float:
             return value
     values = _power_values(session)
     return max(values) if values else 0
+
+
+def has_structured_work(session: Any) -> bool:
+    """Whether a session carries emitted, inspectable workout structure."""
+    return bool(_get(session, "segments", []) or _get(session, "structure"))
 
 
 def _rpe(session: Any, name: str) -> str:
@@ -353,13 +488,15 @@ def render_title(session: Any, brand_cfg: Dict[str, Any]) -> str:
     if kind == "race":
         return f"RACE DAY — {_race_name(session)}"
     if kind == "strength":
-        return f"{_strength_template(session)} - 30min"
+        return f"{_strength_template(session)} - {_duration_minutes(session)}min"
 
     defining_set = _defining_set_from_structure(session)
     if defining_set is None:
         defining_set = _defining_set_from_description(_get(session, "description"))
     name = _display_name(session, defining_set)
     duration = _duration_minutes(session)
+    if _get(session, "is_simulation"):
+        return f"{name} - {duration}min - {_rpe(session, name)}"
     if _is_plain_endurance(session, name, defining_set):
         return f"Endurance - {duration}min - RPE3"
     rpe = _rpe(session, name)

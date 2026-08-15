@@ -17,7 +17,13 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import yaml
 
-from delivery_render import build_fuel_ladder, load_brand, render_hydration_block
+from delivery_render import (
+    _dominant_work_percent,
+    build_fuel_ladder,
+    has_structured_work,
+    load_brand,
+    render_hydration_block,
+)
 
 
 _BLOCK_NOTES_PATH = Path(__file__).resolve().parent.parent / "config" / "block_notes.yaml"
@@ -165,19 +171,37 @@ def _session_title(session: Any) -> str:
     return str(_get(session, "display_name") or _get(session, "title") or "Workout").strip()
 
 
+_QUALITY_KEYWORDS = (
+    "vo2", "threshold", "tempo", "over-under", "test", "opener",
+    "interval", "30/15", "stars", "cadence",
+)
+
+
+def _is_quality_session(session: Any) -> bool:
+    """Classify quality from emitted facts before falling back to old titles."""
+    if _kind(session) != "bike":
+        return False
+    if _get(session, "is_field_test") or _get(session, "is_simulation"):
+        return True
+    if (_get(session, "level") not in (None, "") and
+            has_structured_work(session) and _dominant_work_percent(session) >= 88):
+        return True
+    # Older imported plans did not retain level/segment facts. Keep this
+    # narrow title fallback so their briefings remain useful.
+    return any(token in _session_title(session).lower() for token in _QUALITY_KEYWORDS)
+
+
 def _quality_sessions(week: Any) -> List[Any]:
+    """Return fact-classified key sessions, with simulations after weekday work."""
     # Weekday quality leads, simulations last — a briefing once led with the
     # Saturday surge ride while the actual Thursday key session went unnamed.
     keyed, sims = [], []
     for session in _get(week, "sessions", []) or []:
-        title = _session_title(session).lower()
-        if _kind(session) != "bike":
+        if not _is_quality_session(session):
             continue
         if _get(session, "is_simulation"):
             sims.append(session)
-        elif (_get(session, "is_field_test") or any(token in title for token in
-                ("vo2", "threshold", "tempo", "over-under", "test", "opener",
-                 "interval", "30/15", "stars", "cadence"))):
+        else:
             keyed.append(session)
     return (keyed + sims)[:3]
 
@@ -208,7 +232,12 @@ def _weekly_pattern(plan_ir: Any) -> str:
         if bikes:
             _, long_day = max(bikes, key=lambda item: _duration_minutes(item[0]))
             long_count[long_day.strftime("%A")] += 1
-        for session in _quality_sessions(week):
+        for session in _get(week, "sessions", []) or []:
+            # The long day is already named in the preceding clause. A race
+            # simulation is a key session for its briefing, but should not be
+            # presented as a recurring midweek quality-day pattern.
+            if not _is_quality_session(session) or _get(session, "is_simulation"):
+                continue
             day = _session_date(session)
             if day:
                 quality_days[day.strftime("%A")] += 1
@@ -372,7 +401,8 @@ def _start_here(plan_ir: Any, brand: Dict[str, Any], guide_url: Optional[str]) -
         reading = "Each workout gives you heart-rate bands and RPE. Heart rate lags on climbs and drifts late in a long ride; when it disagrees with RPE, trust RPE."
     else:
         reading = "Each workout gives you an RPE. RPE 3 is easy conversation, 5-6 is controlled work, 7-8 is hard, and 9-10 is reserved for short efforts and tests."
-    body = (f"{weeks} weeks to {race_name}" + (f", {_display_date(race_day)}." if race_day else ".") + guide +
+    week_label = "week" if weeks == 1 else "weeks"
+    body = (f"{weeks} {week_label} to {race_name}" + (f", {_display_date(race_day)}." if race_day else ".") + guide +
             f"\n\n———\n\nHOW THE WEEK WORKS\n{_weekly_pattern(plan_ir)}\n\nIf a week falls apart, protect the long ride and the first quality session, then let the rest go."
             f"\n\n———\n\nREADING THE WORKOUTS\n{reading}"
             f"\n\n———\n\nNEED THIS ADJUSTED?\nEmail me at {_email(brand)}. Tell me what happened and what you want changed — travel, illness, a session that felt wrong, or a day that no longer works. Adjusting a plan is normal.")
@@ -488,7 +518,7 @@ You do not have to argue with any of it. Arguing is playing the game. The move i
 PERFORMANCE STATEMENTS
 Have two or three short phrases ready before race day. Not affirmations — instructions. Things like: "Smooth and steady." "Eat now." "Ride your own effort."
 
-Short, specific, actionable. Write them down this week and use them on your long rides, so by 19 September they are a habit rather than something you are trying for the first time while suffering."""),
+Short, specific, actionable. Write them down this week and use them on your long rides, so by race day they are a habit rather than something you are trying for the first time while suffering."""),
     3: ("Your Highlight Reel", """———
 
 BUILD IT NOW
