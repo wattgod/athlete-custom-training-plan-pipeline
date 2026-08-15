@@ -626,9 +626,16 @@ def _weekly_briefing(plan_ir: Any, candidate: Dict[str, Any], fueling: Any,
 
 
 def _after_test(plan_ir: Any, brand: Dict[str, Any], session: Any) -> tuple[str, str]:
+    # Dispatch on the session NAME, not the description: an anaerobic test's
+    # description contains "20x0:30" and "120% FTP", which once matched the
+    # FTP branch and told the athlete to compute FTP from a repeatability test.
+    name = " ".join(str(_get(session, field) or "") for field in
+                    ("title", "display_name", "archetype_id")).lower()
     text = (" ".join([_session_title(session), str(_get(session, "description") or "")])).lower()
     metric = _control_metric(plan_ir)
-    if "20" in text and any(token in text for token in ("ftp", "power", "20-minute", "20 min")):
+    if "anaerobic" in name:
+        instruction = ("Record three things: your best 10-second peak power, your 1-minute average power, and the fade across the 30/30s (first five vs last five average; (first-last)/first x 100). No FTP math today — this test measures repeatability, not threshold.")
+    elif ("ftp" in name or "threshold" in name) or ("20" in text and any(token in text for token in ("ftp", "power", "20-minute", "20 min"))):
         instruction = "Take your average power for the 20-minute effort and multiply it by 0.95. That is your FTP. Put it into TrainingPeaks: Settings > Zones > Power."
     elif metric in {"lthr", "hr", "heart_rate"} or "lthr" in text:
         instruction = "Use the sustained heart rate from the protocol as instructed to update your threshold heart rate in TrainingPeaks: Settings > Zones > Heart Rate. Do not turn it into an FTP number."
