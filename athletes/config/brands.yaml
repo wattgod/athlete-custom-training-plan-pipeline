@@ -10,6 +10,7 @@ brands:
     allowed_disciplines: [gravel, mtb]
     name: Gravel God Cycling
     coaching_name: Gravel God Coaching
+    coaching_email: gravelgodcoaching@gmail.com
     site: https://gravelgodcycling.com
     questionnaire_path: /training-plans/questionnaire/
     subject_prefix: "[GG]"
