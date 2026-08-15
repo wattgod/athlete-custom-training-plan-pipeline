@@ -106,12 +106,36 @@ def test_capture_normalizes_both_raw_shapes_and_scrubs_pii(raw: dict):
 
 
 def test_capture_is_byte_deterministic(tmp_path: Path):
-    raw = ROOT / "_staging" / "monika_reference.json"
+    # Self-contained: the raw dumps live outside the repo (they carry real
+    # athlete PII and are never committed), so the test synthesizes its own
+    # raw input — which also exercises sanitization end to end.
+    raw = tmp_path / "raw.json"
+    raw.write_text(json.dumps({
+        "workouts": [
+            {"workoutId": 42, "athleteId": 2947583,
+             "workoutDay": "2026-08-06T00:00:00", "workoutTypeValueId": 2,
+             "title": "VO2max - Testy Special - 60min - RPE9",
+             "totalTimePlanned": 1.0, "tssPlanned": 70.0, "ifPlanned": 0.8,
+             "description": "Testy Athlete rides hard. Mail testy@example.com. "
+                            "Guide: https://intake.gravelgodcoaching.com/guides/testy-athlete/",
+             "structure": None},
+            {"workoutId": 43, "athleteId": 2947583,
+             "workoutDay": "2026-08-07T00:00:00", "workoutTypeValueId": 7,
+             "title": "Day Off", "totalTimePlanned": None, "tssPlanned": None,
+             "ifPlanned": None, "description": "Rest, Testy.", "structure": None},
+        ],
+        "notes": [
+            {"id": 9, "athleteId": 2947583,
+             "noteDate": "2026-08-06T00:00:00",
+             "title": "START HERE — Testy Athlete",
+             "description": "Welcome Testy — reply to testy@example.com."},
+        ],
+    }))
     first = tmp_path / "first.json"
     second = tmp_path / "second.json"
     command = [
-        sys.executable, str(CAPTURE), str(raw), "--athlete-name", "Monika Renk",
-        "--slug", "monika-renk", "--out",
+        sys.executable, str(CAPTURE), str(raw), "--athlete-name", "Testy Athlete",
+        "--slug", "testy-athlete", "--out",
     ]
 
     subprocess.run(command + [str(first)], check=True, cwd=ROOT)
@@ -119,3 +143,7 @@ def test_capture_is_byte_deterministic(tmp_path: Path):
 
     assert first.read_bytes() == second.read_bytes()
     assert hashlib.sha256(first.read_bytes()).digest() == hashlib.sha256(second.read_bytes()).digest()
+    scrubbed = first.read_text()
+    for token in ("Testy", "Athlete", "testy@example.com", "2947583",
+                  "guides/testy-athlete"):
+        assert token not in scrubbed, token
