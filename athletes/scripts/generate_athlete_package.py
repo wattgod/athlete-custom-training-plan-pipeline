@@ -326,6 +326,27 @@ def _race_day_ceiling_paragraph(longest_name: str, longest_minutes: int,
     )
 
 
+def _race_day_pacing_strategy(goal_type: str, expected_duration_hours: float) -> str:
+    """Return race-day pacing matched to the athlete's aim and event length.
+
+    Long days and finisher goals share the same success condition: protect the
+    all-day ceiling early so nutrition, handling, and form still exist late.
+    A short compete/podium day keeps the deliberately more assertive cue.
+    """
+    conservative = (str(goal_type or '').strip().lower() in {'finish', 'finisher'}
+                    or expected_duration_hours >= 6)
+    if conservative:
+        return """- Ceiling rule: on every climb, choose the effort you can repeat all day. If breathing stops being controlled, back off before the crest.
+- First third: deliberately conservative (RPE 4-5). Let the day come to you; fuel on the timer and do not answer early surges.
+- Middle third: settle into sustainable RPE 5-6, protect smooth cadence, and keep eating before hunger appears.
+- Final third: hold form, keep eating, and make only measured decisions that preserve a strong finish.
+- Technical sections: Smooth > Fast. Avoid mechanicals."""
+    return """- First 30 min: EASY. Let others burn matches. You're playing the long game.
+- Mile 10-40: Find your rhythm. Target G SPOT zone (88-94% FTP) on climbs.
+- Final third: This is where you pass people. Increase effort as others fade.
+- Technical sections: Smooth > Fast. Avoid mechanicals."""
+
+
 def _apply_delivery_fuel_ladder(authored_documents: dict, naming_manifest: dict,
                                 plan_dates: dict, fueling: dict) -> dict:
     """Reconcile authored fuel tags and the race ceiling before canonicalization.
@@ -1005,6 +1026,52 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             event_format=_bb_event_format,
             training_age=training_age_class(profile or {}),
         )
+
+        # T4: Build/peak long rides are not generic surge loops.  Mark the
+        # calendar-approved long-ride slots for the Act renderer here, after
+        # the builder has applied its level ladder, weekly budget, and day
+        # caps.  The renderer therefore receives the real duration budget;
+        # it never alters week typing or invents a race fact from a name.
+        from act_race_sim import (act_sim_title, is_act_sim_eligible,
+                                  race_facts_from_profile)
+        _act_race_facts = race_facts_from_profile(profile or {})
+        _descriptor_by_week = {
+            descriptor['plan_week']: descriptor for descriptor in _bb_descriptors
+        }
+        _act_sim_days = []
+        for _bb_week in _bb_plan.get('weeks', []):
+            _descriptor = _descriptor_by_week.get(_bb_week.get('plan_week'), {})
+            for _bb_day in _bb_week.get('days', []):
+                if is_act_sim_eligible(
+                        _descriptor.get('phase', ''),
+                        _descriptor.get('week_type', ''),
+                        _bb_day.get('role', '')):
+                    _act_sim_days.append(_bb_day)
+        # The selection matrix can legitimately land every long ride on the
+        # same top library level.  A sim series must still have a visible
+        # runway, so use the final long-ride budget as its ceiling and step
+        # earlier Act rides up toward it.  This only shortens earlier rides;
+        # it never exceeds the builder's final/capped long-day allowance.
+        _final_sim_minutes = (_act_sim_days[-1].get('duration', 0)
+                              if _act_sim_days else 0)
+        _first_sim_minutes = min(
+            _final_sim_minutes,
+            max(120, _final_sim_minutes - 20 * max(0, len(_act_sim_days) - 1)),
+        )
+        _sim_step_minutes = ((_final_sim_minutes - _first_sim_minutes)
+                             / max(1, len(_act_sim_days) - 1))
+        for _act_index, _act_day in enumerate(_act_sim_days, start=1):
+            _original_duration = _act_day.get('duration', 0) or 1
+            _sim_duration = round(_first_sim_minutes + _sim_step_minutes * (_act_index - 1))
+            if _sim_duration > 0:
+                _act_day['duration'] = _sim_duration
+                _act_day['tss'] = round(_act_day.get('tss', 0) * _sim_duration / _original_duration)
+            _act_day['name'] = 'Act Race Simulation'
+            _act_day['act_simulation'] = {
+                'index': _act_index,
+                'total': len(_act_sim_days),
+                'dress_rehearsal': _act_index == len(_act_sim_days),
+            }
         if '_ledger' in locals():
             materialize_fixed_sessions(_bb_plan, _ledger)
 
@@ -2411,6 +2478,7 @@ TIPS:
                 bb_name = bb_day['name']
                 bb_level = bb_day.get('level', 3)
                 bb_duration = bb_day.get('duration', 60)
+                _act_simulation = bb_day.get('act_simulation')
 
                 if (bb_name == 'Anaerobic Test'
                         and week_num in ftp_test_target_weeks
@@ -2477,6 +2545,11 @@ TIPS:
                 _filename_name = bb_name
                 _series_id = None
                 _series_rank_hint = None
+                if _act_simulation:
+                    display_name = act_sim_title(
+                        _act_simulation['index'], _act_simulation['total'],
+                        _act_simulation.get('dress_rehearsal', False))
+                    _filename_name = display_name
                 if bb_role == 'intensity' and bb_name not in ('FTP Test', 'Anaerobic Test', 'Openers'):
                     from workout_mapper import resolve_display_name
                     display_name = resolve_display_name(
@@ -2499,16 +2572,33 @@ TIPS:
                 _safe = re.sub(r'[^A-Za-z0-9 _-]', '', _filename_name)
                 workout_name = f"{workout_prefix}_{_safe.replace(' ', '_')}"
 
-                zwo_content = _bb_render(
-                    name=bb_name,
-                    level=bb_level,
-                    methodology=nate_methodology,
-                    workout_name=workout_name,
-                    display_name=display_name,
-                    variation_offset=var_offset,
-                    author=_workout_author,
-                    discipline=_bb_discipline,
-                )
+                if _act_simulation:
+                    from act_race_sim import render_act_sim_zwo
+                    from fueling_policy import prescription_from_fueling
+                    _race_rate = prescription_from_fueling(fueling or {}).get(
+                        'race_target_g_per_hour')
+                    zwo_content = render_act_sim_zwo(
+                        workout_name=workout_name,
+                        display_name=display_name,
+                        duration_min=bb_duration,
+                        index=_act_simulation['index'],
+                        total=_act_simulation['total'],
+                        facts=_act_race_facts,
+                        author=_workout_author,
+                        dress_rehearsal=_act_simulation.get('dress_rehearsal', False),
+                        race_rate_g_per_hour=_race_rate,
+                    )
+                else:
+                    zwo_content = _bb_render(
+                        name=bb_name,
+                        level=bb_level,
+                        methodology=nate_methodology,
+                        workout_name=workout_name,
+                        display_name=display_name,
+                        variation_offset=var_offset,
+                        author=_workout_author,
+                        discipline=_bb_discipline,
+                    )
 
                 if not zwo_content:
                     # A planned workout that fails to render is a bug, not a
@@ -2839,6 +2929,10 @@ Trust the process, {athlete_name}."""
                 total_carbs = prescription.get('total_g')
                 hourly_range = prescription.get('race_range_g_per_hour', [])
                 hydration = prescription.get('hydration', {})
+                pacing_strategy = _race_day_pacing_strategy(
+                    target_race.get('goal_type', target_race.get('goal', '')),
+                    float(duration_hours or 0),
+                )
 
                 # Estimate TSS consistently with how zwo_parser scores this
                 # race-day FreeRide (no power target) — otherwise the header
@@ -2863,10 +2957,7 @@ FUELING PLAN:
 - Pre-race: 100-150g carbs 3-4 hours before start
 
 PACING STRATEGY:
-- First 30 min: EASY. Let others burn matches. You're playing the long game.
-- Mile 10-40: Find your rhythm. Target G SPOT zone (88-94% FTP) on climbs.
-- Final third: This is where you pass people. Increase effort as others fade.
-- Technical sections: Smooth > Fast. Avoid mechanicals.
+{pacing_strategy}
 
 HYDRATION:
 - Drink to thirst — 500-750 ml/hr is a starting estimate to adjust for heat and sweat rate, not a quota. 500-1000 mg sodium per hour. Do not force fluid beyond thirst; you should finish a shade lighter than you started, never heavier.
