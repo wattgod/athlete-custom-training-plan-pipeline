@@ -306,3 +306,16 @@ def test_block_notes_avoid_banned_hydration_doctrine_language():
     notes = (Path(__file__).resolve().parent.parent / "config" / "block_notes.yaml").read_text()
     banned = ("clear urine", "don't wait until thirsty", "hydrate aggressively")
     assert not any(phrase in notes.lower() for phrase in banned)
+
+
+def test_anaerobic_after_test_note_never_gives_ftp_math():
+    plan = _plan()
+    session = plan["weeks"][0]["sessions"][1]
+    session["title"] = "Anaerobic Test"
+    session["display_name"] = "Anaerobic Test"
+    session["is_field_test"] = True
+    session["description"] = "MAIN SET:\n- 20x0:30 @ 120% FTP, 0:30 recovery\n- 20min build"
+    notes = _notes(plan)
+    note = _by_type(notes)["after_test"]
+    assert "repeatability" in note["body"]
+    assert "0.95" not in note["body"]
