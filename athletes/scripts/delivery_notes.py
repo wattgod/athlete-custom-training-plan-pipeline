@@ -23,6 +23,7 @@ from delivery_render import (
     has_structured_work,
     load_brand,
     render_hydration_block,
+    render_session_name,
 )
 
 
@@ -168,7 +169,7 @@ def _week_type(week: Any) -> str:
 
 
 def _session_title(session: Any) -> str:
-    return str(_get(session, "display_name") or _get(session, "title") or "Workout").strip()
+    return render_session_name(session)
 
 
 _QUALITY_KEYWORDS = (
@@ -177,12 +178,20 @@ _QUALITY_KEYWORDS = (
 )
 
 
+_SKILLS_ARCHETYPES = {"cadence work"}
+
+
 def _is_quality_session(session: Any) -> bool:
     """Classify quality from emitted facts before falling back to old titles."""
     if _kind(session) != "bike":
         return False
     if _get(session, "is_field_test") or _get(session, "is_simulation"):
         return True
+    # R01: cadence/skills archetypes are classified by role, not by their
+    # sub-threshold work percent — as fillers they are easy days and must
+    # not read as a standing quality day in athlete-facing notes.
+    if str(_get(session, "archetype_id") or "").strip().lower() in _SKILLS_ARCHETYPES:
+        return False
     if (_get(session, "level") not in (None, "") and
             has_structured_work(session) and _dominant_work_percent(session) >= 88):
         return True
@@ -192,18 +201,42 @@ def _is_quality_session(session: Any) -> bool:
 
 
 def _quality_sessions(week: Any) -> List[Any]:
-    """Return fact-classified key sessions, with simulations after weekday work."""
-    # Weekday quality leads, simulations last — a briefing once led with the
-    # Saturday surge ride while the actual Thursday key session went unnamed.
-    keyed, sims = [], []
+    """Return up to two weekday quality sessions plus the week's simulation.
+
+    A simulation is the week's rehearsal and has its own protected briefing
+    slot.  It must not disappear just because a week contains three weekday
+    quality sessions.
+    """
+    weekday_quality, simulations = [], []
     for session in _get(week, "sessions", []) or []:
         if not _is_quality_session(session):
             continue
         if _get(session, "is_simulation"):
-            sims.append(session)
-        else:
-            keyed.append(session)
-    return (keyed + sims)[:3]
+            simulations.append(session)
+            continue
+        session_day = _session_date(session)
+        if session_day and session_day.weekday() < 5:
+            weekday_quality.append(session)
+    # The briefing promise is two weekday sessions plus *the* simulation.
+    # When a week carries more than one simulation (a mini-sim plus the long
+    # rehearsal), the dress rehearsal is the one that matters — it must
+    # never lose the slot to the smaller session.
+    def _sim_key(s):
+        try:
+            seconds = float(_get(s, "duration_s") or 0)
+        except (TypeError, ValueError):
+            seconds = 0.0
+        return (not _get(s, "is_dress_rehearsal"), -seconds)
+    simulations.sort(key=_sim_key)
+    return weekday_quality[:2] + simulations[:1]
+
+
+def _briefing_session_title(session: Any) -> str:
+    """Name key sessions exactly as the calendar does, flagging rehearsals."""
+    title = _session_title(session)
+    if _get(session, "is_dress_rehearsal") and "dress rehearsal" not in title.lower():
+        return f"Dress rehearsal — {title}"
+    return title
 
 
 def _weekly_pattern(plan_ir: Any) -> str:
@@ -243,7 +276,12 @@ def _weekly_pattern(plan_ir: Any) -> str:
                 quality_days[day.strftime("%A")] += 1
     half = len(training_weeks) / 2.0
     off_days = sorted(day for day, count in off_count.items() if count >= half)
-    quality = [day for day, _ in quality_days.most_common(2)]
+    # A standing pattern needs to RECUR: a day only counts if it carries
+    # quality in at least half the training weeks — one-off tests and
+    # floating cadence placements belong in their weekly briefings, not in
+    # START HERE's description of a normal week.
+    quality = [day for day, count in quality_days.most_common(2)
+               if count >= max(2, half)]
     pieces = []
     if long_count:
         pieces.append(f"{long_count.most_common(1)[0][0]} is the long day and "
@@ -447,7 +485,7 @@ def _weekly_briefing(plan_ir: Any, candidate: Dict[str, Any], fueling: Any,
         if seen_types is not None:
             seen_types.add(week_type)
     quality = _quality_sessions(week)
-    sessions = ", ".join(_session_title(session) for session in quality[:3])
+    sessions = ", ".join(_briefing_session_title(session) for session in quality)
     ladder = _safe_ladder(plan_ir, fueling)
     rung = next((ladder.get(str(_get(session, "date")))
                  for session in (_get(week, "sessions", []) or [])

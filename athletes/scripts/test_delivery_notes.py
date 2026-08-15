@@ -2,11 +2,12 @@
 
 from collections import Counter
 from datetime import date, timedelta
+from pathlib import Path
 
 import pytest
 
 from delivery_notes import render_notes
-from delivery_render import load_brand
+from delivery_render import load_brand, render_title
 
 
 def _plan(*, weeks=5, metric="power", altitude=True, later_event=True):
@@ -151,6 +152,65 @@ def test_start_here_quality_weekdays_use_fact_classification_and_exclude_simulat
     assert "quality lands on saturday" not in start_here.lower()
 
 
+def test_start_here_omits_one_off_quality_weekdays_from_the_standing_pattern():
+    plan = _plan()
+    for number, week in enumerate(plan["weeks"], start=1):
+        # Thursday is the recurring quality day. Saturday is a one-off FTP
+        # test in week 1, not a normal quality-day pattern.
+        monday = date.fromisoformat(week["sessions"][0]["date"])
+        week["phase"] = "build"
+        week["sessions"] = [
+            {"date": str(monday + timedelta(days=3)), "title": "Threshold Work",
+             "tp_kind": "bike", "duration_s": 60 * 60},
+            {"date": str(monday + timedelta(days=5)),
+             "title": "FTP Test" if number == 1 else "Endurance Ride",
+             "tp_kind": "bike", "duration_s": 60 * 60,
+             "is_field_test": number == 1},
+            {"date": str(monday + timedelta(days=6)), "title": "Day Off", "tp_kind": "day_off"},
+        ]
+    start_here = _by_type(_notes(plan))["start_here"]["body"].lower()
+    assert "quality lands on thursday" in start_here
+    assert "saturday" not in start_here
+
+
+def test_briefing_uses_the_same_corrected_name_as_the_rendered_calendar_card():
+    plan = _plan()
+    session = plan["weeks"][1]["sessions"][0]
+    session.update({
+        "title": "VO2max 40/20", "display_name": "VO2max 40/20",
+        "segments": [{"kind": "intervals", "repeat": 6, "on_seconds": 40,
+                      "on_power": 1.20, "off_seconds": 15, "off_power": .5}],
+    })
+    briefing = next(note for note in _notes(plan)
+                    if note["type"] == "weekly_briefing" and note["title"].startswith("WEEK 2"))
+    rendered_name = render_title(session, load_brand("gravelgod")).split(" - ", 1)[0]
+    assert rendered_name in briefing["body"]
+    assert "VO2max 40/20" not in briefing["body"]
+
+
+def test_briefing_keeps_the_weeks_simulation_when_three_weekday_sessions_are_keyed():
+    plan = _plan()
+    week = plan["weeks"][3]
+    monday = date.fromisoformat(week["sessions"][0]["date"])
+    week["sessions"] = [
+        {"date": str(monday + timedelta(days=1)), "title": "VO2 Intervals", "tp_kind": "bike",
+         "duration_s": 60 * 60},
+        {"date": str(monday + timedelta(days=2)), "title": "Threshold Work", "tp_kind": "bike",
+         "duration_s": 60 * 60},
+        {"date": str(monday + timedelta(days=3)), "title": "Tempo Work", "tp_kind": "bike",
+         "duration_s": 60 * 60},
+        {"date": str(monday + timedelta(days=5)), "title": "Race Simulation — Act 2", "tp_kind": "bike",
+         "duration_s": 4 * 60 * 60, "is_simulation": True, "is_dress_rehearsal": True},
+    ]
+    briefing = next(note for note in _notes(plan)
+                    if note["type"] == "weekly_briefing" and note["title"].startswith("WEEK 4"))
+    assert "VO2 Intervals" in briefing["body"]
+    assert "Threshold Work" in briefing["body"]
+    assert "Tempo Work" not in briefing["body"]
+    assert "Race Simulation — Act 2" in briefing["body"]
+    assert "Dress rehearsal" in briefing["body"]
+
+
 def test_start_here_uses_singular_week_and_grit_has_no_fixture_date_residue():
     notes = _notes(_plan(weeks=1))
     assert "1 week to High Country Gravel" in _by_type(notes)["start_here"]["body"]
@@ -162,3 +222,9 @@ def test_start_here_uses_singular_week_and_grit_has_no_fixture_date_residue():
 def test_hydration_block_owns_its_single_heading_in_the_fuel_ladder_note():
     fuel_note = _by_type(_notes(_plan()))["fuel_ladder"]["body"]
     assert fuel_note.count("HYDRATION") == 1
+
+
+def test_block_notes_avoid_banned_hydration_doctrine_language():
+    notes = (Path(__file__).resolve().parent.parent / "config" / "block_notes.yaml").read_text()
+    banned = ("clear urine", "don't wait until thirsty", "hydrate aggressively")
+    assert not any(phrase in notes.lower() for phrase in banned)
