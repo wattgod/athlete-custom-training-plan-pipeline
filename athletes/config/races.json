@@ -75,6 +75,10 @@
       "elevation_ft": 5500,
       "location": "Pyr\u00e9n\u00e9es, France",
       "name": "66\u00b0 South Pyr\u00e9n\u00e9es",
+      "race_metadata": {
+        "avg_elevation_feet": 6200,
+        "start_elevation_feet": 5774
+      },
       "slug": "66-south-pyrenees"
     },
     "gravel:947-ride-joburg": {
@@ -138,6 +142,10 @@
       "elevation_ft": 4500,
       "location": "Alentejo, Portugal",
       "name": "Alentejo Gravel",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 700
+      },
       "slug": "alentejo-gravel"
     },
     "gravel:algarve-gran-fondo": {
@@ -372,6 +380,10 @@
       "elevation_ft": 4000,
       "location": "Flagstaff, Arizona",
       "name": "Bear Howard Gravel",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 6950
+      },
       "slug": "bear-howard-gravel"
     },
     "gravel:beaver-dam-gravel-grinder": {
@@ -471,6 +483,10 @@
       "elevation_ft": 6200,
       "location": "Bentonville, Arkansas",
       "name": "Big Sugar",
+      "race_metadata": {
+        "avg_elevation_feet": 1300,
+        "start_elevation_feet": 1300
+      },
       "slug": "big-sugar"
     },
     "gravel:bighorn-gravel": {
@@ -480,6 +496,10 @@
       "elevation_ft": 6000,
       "location": "Gypsum, Colorado",
       "name": "Bighorn Gravel",
+      "race_metadata": {
+        "avg_elevation_feet": 8500,
+        "start_elevation_feet": 6300
+      },
       "slug": "bighorn-gravel"
     },
     "gravel:bike-abu-dhabi-gran-fondo": {
@@ -669,6 +689,10 @@
       "elevation_ft": 6500,
       "location": "Cedar City, Utah",
       "name": "Belgian Waffle Ride Cedar City",
+      "race_metadata": {
+        "avg_elevation_feet": 6000,
+        "start_elevation_feet": 5846
+      },
       "slug": "bwr-cedar-city"
     },
     "gravel:bwr-montana": {
@@ -678,6 +702,10 @@
       "elevation_ft": 9186,
       "location": "Missoula, Montana",
       "name": "BWR Montana",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 4800
+      },
       "slug": "bwr-montana"
     },
     "gravel:bwr-north-carolina": {
@@ -705,6 +733,10 @@
       "elevation_ft": 9843,
       "location": "Cedar City, Utah",
       "name": "BWR Utah",
+      "race_metadata": {
+        "avg_elevation_feet": 6800,
+        "start_elevation_feet": 5846
+      },
       "slug": "bwr-utah"
     },
     "gravel:cadel-evans-great-ocean-road-ride": {
@@ -1011,6 +1043,10 @@
       "elevation_ft": 6000,
       "location": "Winter Park, Colorado",
       "name": "Crooked Gravel",
+      "race_metadata": {
+        "avg_elevation_feet": 9600,
+        "start_elevation_feet": 8700
+      },
       "slug": "crooked-gravel"
     },
     "gravel:crusher-in-the-tushar": {
@@ -1020,6 +1056,10 @@
       "elevation_ft": 10000,
       "location": "Beaver, Utah",
       "name": "Crusher in the Tushar",
+      "race_metadata": {
+        "avg_elevation_feet": 8000,
+        "start_elevation_feet": 5900
+      },
       "slug": "crusher-in-the-tushar"
     },
     "gravel:crystal-bear": {
@@ -1137,6 +1177,10 @@
       "elevation_ft": 3500,
       "location": "Sheridan, Wyoming",
       "name": "Dead Swede Gravel",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 3750
+      },
       "slug": "dead-swede-gravel"
     },
     "gravel:death-ride": {
@@ -1326,6 +1370,10 @@
       "elevation_ft": 5500,
       "location": "Luxembourg",
       "name": "Eislek Gravel",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 656
+      },
       "slug": "eislek-gravel"
     },
     "gravel:el-tour-de-tucson": {
@@ -1344,6 +1392,10 @@
       "elevation_ft": 13123,
       "location": "Zernez, Engadin Valley, Graubunden, Switzerland",
       "name": "Engadin Radmarathon",
+      "race_metadata": {
+        "avg_elevation_feet": 5840,
+        "start_elevation_feet": 4836
+      },
       "slug": "engadin-radmarathon"
     },
     "gravel:epic-gran-canaria": {
@@ -1524,6 +1576,10 @@
       "elevation_ft": 4000,
       "location": "Flanders, Belgium",
       "name": "Flanders Legacy Gravel",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 200
+      },
       "slug": "flanders-legacy-gravel"
     },
     "gravel:flandrien-ride": {
@@ -2793,6 +2849,10 @@
       "elevation_ft": 4500,
       "location": "Whitmire, South Carolina",
       "name": "Gravel Battle of Sumter Forest",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 430
+      },
       "slug": "gravel-battle-of-sumter-forest"
     },
     "gravel:gravel-bogota": {
@@ -2883,6 +2943,10 @@
       "elevation_ft": 2000,
       "location": "Halmstad, Sweden",
       "name": "Gravel Grit 'n Grind",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 150
+      },
       "slug": "gravel-grit-n-grind"
     },
     "gravel:gravel-locos": {
@@ -3117,6 +3181,10 @@
       "elevation_ft": 10000,
       "location": "Gunnison, Colorado",
       "name": "Gunni Grinder",
+      "race_metadata": {
+        "avg_elevation_feet": 8754,
+        "start_elevation_feet": 7694
+      },
       "slug": "gunni-grinder"
     },
     "gravel:haervejslobet": {
@@ -3342,6 +3410,10 @@
       "elevation_ft": 6000,
       "location": "Hot Springs, North Carolina",
       "name": "Hot Springs Gravel Gauntlet",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 1326
+      },
       "slug": "hot-springs-gravel-gauntlet"
     },
     "gravel:hottern-hell-hundred": {
@@ -3360,6 +3432,10 @@
       "elevation_ft": 4500,
       "location": "Houffalize, Belgian Ardennes",
       "name": "Houffa Gravel",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 1519
+      },
       "slug": "houffa-gravel"
     },
     "gravel:hungry-bear-100": {
@@ -3369,6 +3445,10 @@
       "elevation_ft": 4500,
       "location": "Cable, Wisconsin",
       "name": "Hungry Bear 100",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 1350
+      },
       "slug": "hungry-bear-100"
     },
     "gravel:iceman-cometh": {
@@ -3522,6 +3602,10 @@
       "elevation_ft": 7000,
       "location": "British Columbia, Canada",
       "name": "Kettle Mettle",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 2100
+      },
       "slug": "kettle-mettle"
     },
     "gravel:king-of-the-lake": {
@@ -3729,6 +3813,10 @@
       "elevation_ft": 11900,
       "location": "Leadville, Colorado",
       "name": "Leadville Trail 100 MTB",
+      "race_metadata": {
+        "avg_elevation_feet": 11000,
+        "start_elevation_feet": 10200
+      },
       "slug": "leadville-100"
     },
     "gravel:leroica": {
@@ -4026,6 +4114,10 @@
       "elevation_ft": 3000,
       "location": "Manhattan, Illinois",
       "name": "Little Apple 100",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 600
+      },
       "slug": "little-apple-100"
     },
     "gravel:little-sugar-mtb": {
@@ -4071,6 +4163,10 @@
       "elevation_ft": 6000,
       "location": "Portola, California",
       "name": "Lost and Found Gravel",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 4856
+      },
       "slug": "lost-and-found-gravel"
     },
     "gravel:lost-river-classic": {
@@ -4144,6 +4240,10 @@
       "event_year": 2026,
       "location": "Mammoth Lakes, California",
       "name": "Mammoth Tuff",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 8100
+      },
       "slug": "mammoth-tuff",
       "source_type": "official",
       "source_urls": [
@@ -4204,6 +4304,10 @@
       "elevation_ft": 10400,
       "location": "Cesana Torinese, Piedmont, Italy",
       "name": "Marmotte Granfondo Sestriere",
+      "race_metadata": {
+        "avg_elevation_feet": 4560,
+        "start_elevation_feet": 4442
+      },
       "slug": "marmotte-granfondo-sestriere"
     },
     "gravel:marmotte-pyrenees": {
@@ -4285,6 +4389,10 @@
       "elevation_ft": 8202,
       "location": "Monaco",
       "name": "Monaco Gravel Race",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 2133
+      },
       "slug": "monaco-gravel-race"
     },
     "gravel:montana-gravel-challenge": {
@@ -4384,6 +4492,10 @@
       "elevation_ft": 6000,
       "location": "Nederland, Colorado",
       "name": "Ned Gravel",
+      "race_metadata": {
+        "avg_elevation_feet": 8800,
+        "start_elevation_feet": 8230
+      },
       "slug": "ned-gravel"
     },
     "gravel:neusiedlersee-radmarathon": {
@@ -4636,6 +4748,10 @@
       "elevation_ft": 7800,
       "location": "Ouray, Colorado",
       "name": "Ouray Gravel Grinder",
+      "race_metadata": {
+        "avg_elevation_feet": 8600,
+        "start_elevation_feet": 7792
+      },
       "slug": "ouray-gravel-grinder"
     },
     "gravel:ozark-gravel": {
@@ -5005,6 +5121,10 @@
       "elevation_ft": 5500,
       "location": "Walhalla, South Carolina",
       "name": "Race to Valhalla",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 1025
+      },
       "slug": "race-to-valhalla"
     },
     "gravel:rad-am-ring": {
@@ -5131,6 +5251,10 @@
       "elevation_ft": 8500,
       "location": "Ketchum, Idaho",
       "name": "Rebecca's Private Idaho",
+      "race_metadata": {
+        "avg_elevation_feet": 7108,
+        "start_elevation_feet": 5883
+      },
       "slug": "rebeccas-private-idaho"
     },
     "gravel:red-granite-grinder": {
@@ -5293,6 +5417,10 @@
       "elevation_ft": 5000,
       "location": "Lamoille, Nevada",
       "name": "Ruby Roubaix",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 5460
+      },
       "slug": "ruby-roubaix"
     },
     "gravel:rule-of-three": {
@@ -5329,6 +5457,10 @@
       "elevation_ft": 5000,
       "location": "Kenya",
       "name": "Safari Gravel Race",
+      "race_metadata": {
+        "avg_elevation_feet": 6400,
+        "start_elevation_feet": 6181
+      },
       "slug": "safari-gravel-race"
     },
     "gravel:sagan-fondo": {
@@ -5347,6 +5479,10 @@
       "elevation_ft": 6000,
       "location": "Salida, CO",
       "name": "Salida 76",
+      "race_metadata": {
+        "avg_elevation_feet": 7500,
+        "start_elevation_feet": 7080
+      },
       "slug": "salida-76"
     },
     "gravel:salty-lizard": {
@@ -5419,6 +5555,10 @@
       "elevation_ft": 5500,
       "location": "Girona, Spain",
       "name": "Sea Otter Europe Gravel",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 230
+      },
       "slug": "sea-otter-europe-gravel"
     },
     "gravel:sea-otter-gravel": {
@@ -5536,6 +5676,10 @@
       "elevation_ft": 3500,
       "location": "Arizona",
       "name": "Spirit World 100",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 4050
+      },
       "slug": "spirit-world-100"
     },
     "gravel:sportful-dolomiti-race": {
@@ -5599,6 +5743,10 @@
       "elevation_ft": 8189,
       "location": "Steamboat Springs, Colorado",
       "name": "SBT GRVL",
+      "race_metadata": {
+        "avg_elevation_feet": 7200,
+        "start_elevation_feet": 6732
+      },
       "slug": "steamboat-gravel"
     },
     "gravel:stellenbosch-cycle-tour": {
@@ -5851,6 +5999,10 @@
       "elevation_ft": 10613,
       "location": "Trinidad, Colorado",
       "name": "The Rad",
+      "race_metadata": {
+        "avg_elevation_feet": 6800,
+        "start_elevation_feet": 6025
+      },
       "slug": "the-rad"
     },
     "gravel:the-range": {
@@ -6375,6 +6527,26 @@
       "name": "Trough Creek Gravel Grinder",
       "slug": "trough-creek-gravel-grinder"
     },
+    "gravel:truckee-tahoe-gravel": {
+      "category": null,
+      "course_variant": null,
+      "date": "2026-06-27",
+      "discipline": "gravel",
+      "distance_mi": 66,
+      "elevation_ft": 4604,
+      "event_year": 2026,
+      "location": "Truckee, California",
+      "name": "Truckee Tahoe Gravel",
+      "race_metadata": {
+        "avg_elevation_feet": 6076,
+        "start_elevation_feet": 5800
+      },
+      "sex": null,
+      "slug": "truckee-tahoe-gravel",
+      "source_type": "race_database",
+      "source_urls": [],
+      "verified_at": null
+    },
     "gravel:turkcell-granfondo-izmir": {
       "date": "2026-10-04",
       "discipline": "gravel",
@@ -6436,6 +6608,10 @@
       "elevation_ft": 2756,
       "location": "Kanchanaburi, Thailand",
       "name": "UCI Gravel Dustman",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 200
+      },
       "slug": "uci-gravel-dustman"
     },
     "gravel:uci-gravel-worlds": {
@@ -6517,6 +6693,10 @@
       "elevation_ft": 4000,
       "location": "Central North Carolina (Uwharrie National Forest)",
       "name": "Uwharrie Forest Gravel Grinder",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 550
+      },
       "slug": "uwharrie-forest-gravel-grinder"
     },
     "gravel:valley-granfondo": {
@@ -6634,6 +6814,10 @@
       "elevation_ft": 12000,
       "location": "C\u00f3rdoba, Argentina",
       "name": "Vuelta Altas Cumbres",
+      "race_metadata": {
+        "avg_elevation_feet": 7450,
+        "start_elevation_feet": 2953
+      },
       "slug": "vuelta-altas-cumbres"
     },
     "gravel:vuelta-cicloturista-ibiza": {
@@ -6679,6 +6863,10 @@
       "elevation_ft": 6000,
       "location": "Francis, Utah",
       "name": "Wasatch All-Road",
+      "race_metadata": {
+        "avg_elevation_feet": 8613,
+        "start_elevation_feet": 5795
+      },
       "slug": "wasatch-all-road"
     },
     "gravel:waucheesi-bike-race": {
@@ -6688,6 +6876,10 @@
       "elevation_ft": 5000,
       "location": "Tellico Plains, Tennessee",
       "name": "Waucheesi Bike Race",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 900
+      },
       "slug": "waucheesi-bike-race"
     },
     "gravel:waukon-100": {
@@ -6769,6 +6961,10 @@
       "elevation_ft": 3500,
       "location": "De Beque, Colorado",
       "name": "Wild Horse Gravel",
+      "race_metadata": {
+        "avg_elevation_feet": 6500,
+        "start_elevation_feet": 5250
+      },
       "slug": "wild-horse-gravel"
     },
     "gravel:wish-one-millau": {
@@ -6778,6 +6974,10 @@
       "elevation_ft": 4500,
       "location": "Millau Grands Causses, France",
       "name": "Wish One Millau",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 1608
+      },
       "slug": "wish-one-millau"
     },
     "gravel:wollombi-gravel-fest": {
@@ -6796,6 +6996,10 @@
       "elevation_ft": 6000,
       "location": "W\u00f6rthersee, Austria",
       "name": "W\u00f6rthersee Gravel Race",
+      "race_metadata": {
+        "avg_elevation_feet": 0,
+        "start_elevation_feet": 1476
+      },
       "slug": "worthersee-gravel-race"
     },
     "gravel:wyo-131": {
@@ -7435,6 +7639,10 @@
       "elevation_ft": 13123.0,
       "location": "Zernez, Engadin Valley, Graubunden, Switzerland",
       "name": "Engadin Radmarathon",
+      "race_metadata": {
+        "avg_elevation_feet": 5840,
+        "start_elevation_feet": 4836
+      },
       "slug": "engadin-radmarathon"
     },
     "road:epic-gran-canaria": {
@@ -9325,6 +9533,10 @@
       "elevation_ft": 10400.0,
       "location": "Cesana Torinese, Piedmont, Italy",
       "name": "Marmotte Granfondo Sestriere",
+      "race_metadata": {
+        "avg_elevation_feet": 4560,
+        "start_elevation_feet": 4442
+      },
       "slug": "marmotte-granfondo-sestriere"
     },
     "road:marmotte-pyrenees": {
