@@ -24,7 +24,7 @@ from zwo_parser import parse_zwo, parse_zwo_structure
 from tp_polyline import compute_polyline
 
 
-PLAN_IR_VERSION = "0.1"
+PLAN_IR_VERSION = "0.2"
 ATHLETES_DIR = Path(os.environ.get(
     'GG_ATHLETES_BASE_DIR', Path(__file__).resolve().parent.parent))
 
@@ -52,6 +52,7 @@ class RaceSnapshot:
     verified_at: Optional[str] = None
     event_year: Optional[int] = None
     course_variant: Optional[str] = None
+    race_metadata: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -110,6 +111,10 @@ class Session:
     control_metric: Optional[str] = None
     control_basis: Optional[str] = None
     target_summary: Optional[str] = None
+    level: Optional[int] = None
+    is_simulation: bool = False
+    is_dress_rehearsal: bool = False
+    is_field_test: bool = False
 
 
 @dataclass
@@ -117,6 +122,7 @@ class Week:
     number: int
     phase: Optional[str] = None
     sessions: List[Session] = field(default_factory=list)
+    week_type: Optional[str] = None
 
 
 @dataclass
@@ -135,6 +141,9 @@ class PlanIR:
     attachments: List[Dict[str, Any]] = field(default_factory=list)
     fulfillment: Fulfillment = field(default_factory=Fulfillment)
     plan_ir_version: str = PLAN_IR_VERSION
+    brand: Optional[str] = None
+    training_age_class: Optional[str] = None
+    events: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a JSON-ready representation of this versioned IR."""
@@ -149,6 +158,7 @@ class PlanIR:
             Week(
                 number=week["number"],
                 phase=week.get("phase"),
+                week_type=week.get("week_type"),
                 sessions=[
                     Session(
                         **{
@@ -171,6 +181,9 @@ class PlanIR:
             attachments=list(data.get("attachments", [])),
             fulfillment=Fulfillment(**data.get("fulfillment", {})),
             plan_ir_version=data.get("plan_ir_version", PLAN_IR_VERSION),
+            brand=data.get("brand"),
+            training_age_class=data.get("training_age_class"),
+            events=list(data.get("events", [])),
         )
 
 
@@ -255,7 +268,127 @@ def _race_from_artifacts(profile: Dict[str, Any], fueling: Dict[str, Any], plan_
         verified_at=_first(target, "verified_at") or _first(race, "verified_at"),
         event_year=event_year,
         course_variant=_first(target, "course_variant") or _first(race, "course_variant"),
+        race_metadata=target.get("race_metadata"),
     )
+
+
+_LEVEL_PATTERN = re.compile(r"-Level\s+(\d+)\s*/\s*6\s*:", re.I)
+# Ported from post_render_validator.FIELD_TEST_PATTERNS.  Keep this local so
+# PlanIR remains independent of the webhook/render validation path.
+_FIELD_TEST_PATTERNS = (
+    re.compile(r"\b(?:ftp|power)\b.*\btest\b|\btest\b.*\bftp\b", re.I),
+    re.compile(r"\b(?:lthr|heart rate|hr)\b.*\btest\b|\btest\b.*\blthr\b", re.I),
+    re.compile(r"\brpe\b.*\btest\b|\bfield test\b", re.I),
+)
+_SIMULATION_PATTERN = re.compile(r"\brace\s+sim\b|\bsimulation\b|\bact\s", re.I)
+
+
+def _level_from_description(description: Optional[str]) -> Optional[int]:
+    """Extract the emitted progression level from a ZWO description."""
+    match = _LEVEL_PATTERN.search(description or "")
+    return int(match.group(1)) if match else None
+
+
+def _normalize_years(value: Any) -> Optional[float]:
+    """Return the conservative lower bound represented by a years answer."""
+    if isinstance(value, bool) or value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    match = re.match(
+        r"^\s*(\d+(?:\.\d+)?)\s*(?:\+|(?:-\s*\d+(?:\.\d+)?)?)\s*$",
+        str(value),
+    )
+    return float(match.group(1)) if match else None
+
+
+def training_age_class(profile: Dict[str, Any]) -> Optional[str]:
+    """Classify athlete experience from the supplied training history."""
+    history = profile.get("training_history") or {}
+    years_cycling = _normalize_years(history.get("years_cycling"))
+    years_structured = _normalize_years(history.get("years_structured"))
+    if years_cycling is None and years_structured is None:
+        return None
+    if (years_cycling is not None and years_cycling >= 5) or (
+            years_structured is not None and years_structured >= 3):
+        return "experienced"
+    return "developing"
+
+
+def _brand_from_profile(profile: Dict[str, Any]) -> Optional[str]:
+    brand = profile.get("brand")
+    if brand not in (None, ""):
+        return str(brand)
+    brands = _load_yaml(Path(__file__).resolve().parent.parent / "config" / "brands.yaml")
+    default_brand = brands.get("default_brand")
+    return str(default_brand) if default_brand not in (None, "") else None
+
+
+def _event_ledger(profile: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Project athlete-supplied A/B/C event facts without derived details."""
+    events: List[Dict[str, Any]] = []
+    for key, priority in (("a_events", "A"), ("b_events", "B"), ("c_events", "C")):
+        for event in profile.get(key) or []:
+            if not isinstance(event, dict):
+                continue
+            events.append({
+                "name": event.get("name"),
+                "date": event.get("date"),
+                "priority": event.get("priority") or priority,
+            })
+    return events
+
+
+def _week_type_lookup(plan_dates: Dict[str, Any]) -> Dict[int, str]:
+    """Read explicit calendar types, else use plan_dates' canonical mapping."""
+    from block_chain import derive_week_descriptors
+
+    derived = {
+        int(descriptor["plan_week"]): descriptor["week_type"]
+        for descriptor in derive_week_descriptors(plan_dates)
+    }
+    week_types = {}
+    for week in plan_dates.get("weeks", []):
+        try:
+            number = int(week["week"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        explicit = week.get("week_type")
+        week_types[number] = str(explicit) if explicit not in (None, "") else derived.get(number)
+    return week_types
+
+
+def _is_simulation(session: Session, week_type: Optional[str]) -> bool:
+    label = " ".join(filter(None, (session.archetype_id, session.title)))
+    label = label.replace("_", " ").replace("-", " ")
+    return bool(_SIMULATION_PATTERN.search(label)) or (
+        session.tp_kind == "bike" and session.duration_s >= 4 * 60 * 60 and week_type == "load")
+
+
+def _annotate_delivery_context(weeks: List[Week]) -> None:
+    """Populate session-only delivery facts once calendar weeks are assembled."""
+    for week in weeks:
+        for session in week.sessions:
+            session.level = _level_from_description(session.description)
+            session.is_simulation = _is_simulation(session, week.week_type)
+            session.is_field_test = session.type == "ftp_test" or any(
+                pattern.search(session.title) for pattern in _FIELD_TEST_PATTERNS)
+
+    first_taper_or_race = next(
+        (index for index, week in enumerate(weeks)
+         if week.week_type in {"taper", "race"}),
+        None,
+    )
+    if first_taper_or_race is None:
+        return
+    simulations = [
+        session
+        for week in weeks[:first_taper_or_race]
+        for session in week.sessions
+        if session.is_simulation
+    ]
+    if simulations:
+        simulations[-1].is_dress_rehearsal = True
 
 
 def _segment_from_dict(segment: Dict[str, Any]) -> Segment:
@@ -461,6 +594,7 @@ def _session_from_zwo(zwo_path: Path, date: Optional[str], is_race_day: bool, ft
         display_name=entry.get("display_name") or title,
         filename_stem=zwo_path.stem,
         race=entry.get("race"),
+        level=_level_from_description(zwo_structure.get("description")),
     )
 
 
@@ -499,8 +633,14 @@ def _build_weeks(
     manifest = _load_naming_manifest(athlete_dir)
     remaining = set(zwo_paths)
     weeks: List[Week] = []
+    week_types = _week_type_lookup(plan_dates)
     for week_data in plan_dates.get("weeks", []):
-        week = Week(number=int(week_data.get("week", len(weeks) + 1)), phase=week_data.get("phase"))
+        week_number = int(week_data.get("week", len(weeks) + 1))
+        week = Week(
+            number=week_number,
+            phase=week_data.get("phase"),
+            week_type=week_types.get(week_number),
+        )
         for day in week_data.get("days", []):
             prefix = day.get("workout_prefix", "")
             matches = sorted(path for path in remaining if path.stem.startswith(prefix)) if prefix else []
@@ -571,10 +711,15 @@ def _plan_ir_from_canonical(
     athlete = _athlete_from_profile(athlete_id, profile)
     control = model.get("athlete") or {}
     by_week: Dict[int, Week] = {}
+    week_types = _week_type_lookup(plan_dates)
     for raw in model.get("sessions") or []:
         week_number = int(raw.get("week") or 0)
         week = by_week.setdefault(
-            week_number, Week(number=week_number, phase=raw.get("phase")))
+            week_number, Week(
+                number=week_number,
+                phase=raw.get("phase"),
+                week_type=week_types.get(week_number),
+            ))
         segments = []
         for segment in raw.get("segments") or []:
             target = segment.get("target") or {}
@@ -629,12 +774,16 @@ def _plan_ir_from_canonical(
             control_metric=control.get("control_metric"),
             control_basis=control.get("control_basis"),
             target_summary=raw.get("target_summary"),
+            level=_level_from_description(description),
         ))
     prescription_data = model.get("fueling") or (
         prescription_from_fueling(fueling_data) if fueling_data else None)
     fueling = FuelingPrescription(**prescription_data) if prescription_data else None
-    race_data = model.get("race_snapshot") or {}
-    return PlanIR(
+    race_data = dict(model.get("race_snapshot") or {})
+    target_race = profile.get("target_race") or {}
+    if "race_metadata" in target_race:
+        race_data["race_metadata"] = target_race["race_metadata"]
+    plan_ir = PlanIR(
         athlete=athlete,
         race_snapshot=RaceSnapshot(**{
             key: value for key, value in race_data.items()
@@ -645,7 +794,12 @@ def _plan_ir_from_canonical(
         entitlements=list(model.get("entitlements") or []),
         attachments=list(model.get("attachments") or []),
         fulfillment=_fulfillment_from_file(athlete_dir),
+        brand=_brand_from_profile(profile),
+        training_age_class=training_age_class(profile),
+        events=_event_ledger(profile),
     )
+    _annotate_delivery_context(plan_ir.weeks)
+    return plan_ir
 
 
 def build_plan_ir(
@@ -696,7 +850,11 @@ def build_plan_ir(
                            'race_date': target.get('date'), 'race_id': target.get('race_id')}],
             attachments=[{'id': 'guide', 'kind': 'guide', 'path': guide_path}],
             fulfillment=_fulfillment_from_file(athlete_dir),
+            brand=_brand_from_profile(profile),
+            training_age_class=training_age_class(profile),
+            events=_event_ledger(profile),
         )
+        _annotate_delivery_context(plan_ir.weeks)
     output_path = athlete_dir / "plan_ir.json"
     payload = json.dumps(plan_ir.to_dict(), indent=2, sort_keys=True) + "\n"
     # Atomic write: a sibling temp file then os.replace, so an I/O failure or a
