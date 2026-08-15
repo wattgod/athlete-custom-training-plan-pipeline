@@ -2636,10 +2636,7 @@ PACING STRATEGY:
 - Technical sections: Smooth > Fast. Avoid mechanicals.
 
 HYDRATION:
-- {hydration.get('target_ml_per_hour', 'Use guide target')}ml/hour baseline; adjust from measured sweat rate and conditions
-- {hydration.get('electrolytes', 'Use the personalized electrolyte guidance')}
-- Start hydrated (clear urine morning of race)
-- Don't wait until thirsty
+- Drink to thirst — 500-750 ml/hr is a starting estimate to adjust for heat and sweat rate, not a quota. 500-1000 mg sodium per hour. Do not force fluid beyond thirst; you should finish a shade lighter than you started, never heavier.
 
 PRE-RACE CHECKLIST:
 - [ ] Bike mechanically sound

@@ -551,6 +551,39 @@ class TestRaceDistanceEdgeCases:
         lr_check = next((c for c in checks if c['name'] == 'Long Ride vs Race Duration'), None)
         assert lr_check is not None, "Should include long ride check for 50-mile race"
 
+    def test_long_ride_check_excludes_race_day_duration(self):
+        """The race entry cannot certify the plan's longest training ride."""
+        profile = {
+            'weekly_availability': {'cycling_hours_target': 10},
+            'schedule_constraints': {'preferred_off_days': [], 'preferred_long_day': 'saturday'},
+            'b_events': [],
+            'target_race': {'distance_miles': 500},
+        }
+        weeks = self._make_mock_weeks(8.0)
+        weeks[-1]['days'].append({
+            'day': 'Sun', 'date': '',
+            'workout': {
+                'name': 'W10_Sun_RACE_DAY_Fixture',
+                'duration_min': 560, 'duration_sec': 560 * 60,
+                'tss': 600, 'intensity_factor': 0.65, 'zone': 'Z2',
+                'tp_kind': 'race',
+            },
+            'is_off': False, 'is_race': True, 'is_b_race': False,
+            'is_b_opener': False,
+        })
+
+        checks = _run_verification_checks(
+            profile=profile, derived={}, methodology={'configuration': {}},
+            plan_dates={'weeks': []}, weekly_structure={'days': {}},
+            weeks_data=weeks,
+        )
+        lr_check = next(c for c in checks if c['name'] == 'Long Ride vs Race Duration')
+
+        assert lr_check['status'] == 'FAIL'
+        assert 'Max long ride: 180min' in lr_check['detail']
+        assert 'Ratio: 9%' in lr_check['detail']
+        assert '560min' not in lr_check['detail']
+
 
 # ===========================================================================
 # Edge Case: Missing YAML files (edge case 6)

@@ -101,6 +101,52 @@ def test_absent_devices_produce_no_profile_device_token(minimal_valid_parsed):
     assert profile['cycling_equipment']['hr_monitor'] is False
 
 
+def test_strength_questionnaire_labels_map_to_profile_strength_block():
+    """Production questionnaire labels must not silently default strength away."""
+    parsed = parse_intake_markdown("""# Athlete Intake: Strength Alias
+
+## Goals
+- Races: Unbound 200
+
+## Strength
+- Strength Training: yes
+- Current Strength: 2x-week
+- Strength Equipment: full-gym
+""")
+
+    profile = build_profile(parsed)
+
+    assert profile['strength']['currently_training'] is True
+    assert profile['strength']['include_in_plan'] is True
+    assert profile['strength']['sessions_per_week'] == 2
+    assert profile['strength_equipment'] == ['full-gym']
+    assert not profile['availability_review_issues']
+
+
+def test_unmapped_strength_answers_are_coach_visible():
+    """A non-empty but unknown strength answer must be loud, never a silent default."""
+    parsed = parse_intake_markdown("""# Athlete Intake: Strength Unknown
+
+## Goals
+- Races: Unbound 200
+
+## Strength
+- Strength Moonshot: titanium kettlebell protocol
+""")
+
+    profile = build_profile(parsed)
+    blockers, _ = assemble_intake_review_items(profile)
+
+    assert profile['strength']['currently_training'] is False
+    assert profile['strength']['include_in_plan'] is False
+    assert profile['strength']['sessions_per_week'] == 0
+    issue = next(item for item in profile['availability_review_issues']
+                 if item['id'] == 'STRENGTH_INTAKE_UNMAPPED')
+    assert issue['review_value'] == {
+        'strength_moonshot': 'titanium kettlebell protocol'}
+    assert 'STRENGTH_INTAKE_UNMAPPED' in {item['id'] for item in blockers}
+
+
 def test_unresolved_course_omits_matched_facts_and_athlete_only_regeneration_clears(
     minimal_valid_parsed, monkeypatch,
 ):

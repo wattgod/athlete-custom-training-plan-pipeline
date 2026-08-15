@@ -510,12 +510,23 @@ def _run_verification_checks(
         # Estimate race duration: 200-mile gravel ~14-18h, use 15 mph avg for gravel
         estimated_race_hrs = race_distance_mi / 15.0
         estimated_race_min = estimated_race_hrs * 60
-        # Find max long ride duration across the plan
+        # Find the longest *training* ride across the plan. Race-day FreeRide
+        # entries are intentionally long and must not certify their own
+        # readiness check.
         max_long_ride_min = 0
         for w in weeks_data:
             for d in w['days']:
                 wo = d.get('workout')
-                if wo and wo.get('duration_min', 0) > max_long_ride_min:
+                stem = str((wo or {}).get('_stem') or (wo or {}).get('name') or '')
+                is_race_entry = (
+                    d.get('is_race')
+                    or str(d.get('kind') or '').lower() == 'race'
+                    or str((wo or {}).get('kind') or '').lower() == 'race'
+                    or str((wo or {}).get('tp_kind') or '').lower() == 'race'
+                    or stem.upper().startswith('RACE_DAY')
+                    or '_RACE_DAY_' in stem.upper()
+                )
+                if wo and not is_race_entry and wo.get('duration_min', 0) > max_long_ride_min:
                     max_long_ride_min = wo['duration_min']
         if estimated_race_min > 0 and max_long_ride_min > 0:
             long_ride_pct = (max_long_ride_min / estimated_race_min) * 100

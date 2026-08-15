@@ -663,6 +663,17 @@ class TestZWOPowerSanity:
 
         assert not errors, "Invalid template power values:\n" + "\n".join(errors)
 
+    def test_race_day_hydration_copy_is_thirst_led(self, fresh_sample_workouts):
+        """Race-day templates must not reintroduce exercise-associated hyponatremia risks."""
+        race_files = list(fresh_sample_workouts.glob('*RACE_DAY*.zwo'))
+        assert race_files, "Fresh sample did not generate an A-race day"
+        description = race_files[0].read_text()
+
+        assert 'Drink to thirst' in description
+        assert 'never heavier' in description
+        assert 'clear urine' not in description.lower()
+        assert "don't wait until thirsty" not in description.lower()
+
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
