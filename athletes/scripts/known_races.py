@@ -64,6 +64,11 @@ def _snapshot_races() -> Dict[str, Dict[str, Any]]:
             "course_variant": e.get("course_variant"),
             "category": e.get("category"),
             "sex": e.get("sex"),
+            # Above-sea-level altitude (never climbing gain): consumed by
+            # profile target_race, the guide's Altitude Training trigger,
+            # and the ALTITUDE_SECTION_MISSING post-render check. Dropping
+            # it here silently killed all three.
+            "race_metadata": e.get("race_metadata") or {},
         }
     return out
 

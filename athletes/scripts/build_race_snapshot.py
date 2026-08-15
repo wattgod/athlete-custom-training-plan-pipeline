@@ -95,6 +95,19 @@ def build():
                 "category": r.get("category") or vit.get("category"),
                 "sex": r.get("sex") or vit.get("sex"),
             }
+            # True above-sea-level altitude (NOT climbing gain): the guide's
+            # Altitude Training trigger and the post-render
+            # ALTITUDE_SECTION_MISSING check both read
+            # race_metadata.start_elevation_feet / avg_elevation_feet, and
+            # the snapshot is the only race source in the production
+            # container. Omitting this left the check dead for every race.
+            start_asl = vit.get("start_elevation_asl_ft")
+            avg_asl = vit.get("avg_elevation_asl_ft")
+            if start_asl or avg_asl:
+                entry["race_metadata"] = {
+                    "start_elevation_feet": int(start_asl or 0),
+                    "avg_elevation_feet": int(avg_asl or 0),
+                }
             # gravel + road can share a slug — namespace by discipline
             key = f"{discipline}:{slug}"
             # Championship records may legitimately share a slug while having

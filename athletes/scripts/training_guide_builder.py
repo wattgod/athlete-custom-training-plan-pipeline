@@ -3850,6 +3850,48 @@ def _resolve_race_data(race_name, race_data_dirs):
     return race_data, verified_location
 
 
+def _overlay_snapshot_race_metadata(
+        race_data: Dict, race_name: str, profile: Dict | None = None) -> None:
+    """Fill altitude-above-sea-level metadata when the file-based race DB
+    did not provide it.
+
+    The production container has no gravel/road race-data checkouts, so
+    file resolution yields {} and the Altitude Training trigger
+    (race_metadata.start_elevation_feet / avg_elevation_feet) could never
+    fire there — an 8,100 ft race shipped a guide with no altitude section.
+
+    Source order matters: profile.target_race.race_metadata FIRST — it was
+    resolved by slug at intake and is exactly what the post-render
+    ALTITUDE_SECTION_MISSING check compares the guide against. A name-based
+    match_race here can resolve to a curated alias with no metadata
+    (Leadville, SBT) while the profile carries 10,000+ ft, making the guide
+    and validator disagree and blocking the order. The snapshot match is
+    only a fallback for callers with no profile. Never overwrite
+    file-sourced values; callers must skip this under course-facts-omitted
+    (S4: never resolve the catalog)."""
+    meta = race_data.setdefault('race_metadata', {})
+    if meta.get('start_elevation_feet') or meta.get('avg_elevation_feet'):
+        return
+    sources = []
+    profile_meta = (
+        ((profile or {}).get('target_race') or {}).get('race_metadata') or {})
+    if profile_meta:
+        sources.append(profile_meta)
+    else:
+        try:
+            from known_races import match_race
+            hit = match_race(race_name)
+        except Exception:
+            hit = None
+        if hit:
+            sources.append(hit[1].get('race_metadata') or {})
+    for source in sources:
+        for key in ('start_elevation_feet', 'avg_elevation_feet'):
+            value = source.get(key)
+            if value and not meta.get(key):
+                meta[key] = value
+
+
 def _gravel_race_data_dirs(scripts_dir: Path) -> List[Path]:
     """Authoritative race-data lookup order for guide generation.
 
@@ -4141,6 +4183,9 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
             _rm['location'] = verified_location
         if not race_data.get('location'):
             race_data['location'] = verified_location
+
+    if not facts_omitted:
+        _overlay_snapshot_race_metadata(race_data, race_name, profile)
 
     # ── Generate the guide ──
     html = _build_full_guide(
