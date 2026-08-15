@@ -69,3 +69,46 @@ voice). Currently the plan just stops.
 
 Related: `MONIKA_RENK_PIPELINE_FINDINGS.md` (boundary failures),
 `RACE_COURSES_SCHEMA_TICKET.md` (multi-course schema).
+
+---
+
+# Round 2 — from the Sonja Field synthetic end-to-end (2026-08-15)
+
+A fully synthetic order (Big Sugar, 9 weeks, female 52) generated, placed on
+the TP test athlete via apply_contract + shipped delivery_render only, then
+independently graded by two reviewers against the Monika fixture. Consensus:
+transport shell strong (calendar completeness A, titles B-/C), coaching
+product failing (overall F as a customer deliverable). New defects:
+
+## T9 — Strength answers silently dropped at intake parse
+Questionnaire said `Strength Training: yes / Current Strength: 2x-week /
+Strength Equipment: full-gym`; the built profile carries
+`currently_training: false, include_in_plan: false, sessions_per_week: 0`
+with NO flag, and the plan ships zero strength. Silent field loss is the
+order-killer family: parse failures must surface as coach-visible flags,
+never defaults masquerading as answers.
+
+## T10 — "Long Ride vs Race Duration" preview check counts the race itself
+The check passed at "140%" because max long ride = 560min — which IS the
+race-day entry. Real longest training ride: 249min vs a 560min race (44%).
+Exclude race-day entries from the max; the check exists precisely to catch
+this athlete (longest-ever ride 4-5h, 9.3h race) and it self-certified.
+
+## T11 — Fuel ladder exists but never reaches race rate on a long ride
+Tags progress 46 -> 51 -> 56 g/hr, but every 4h+ ride stays at 46-51 and the
+only session at race rate is a 61-minute "simulation". The final long ride
+before taper must rehearse the race prescription (see delivery_render
+build_fuel_ladder for the target algorithm).
+
+## T12 — Race-day template still ships the prohibited hydration copy
+"clear urine morning of race" + "Don't wait until thirsty" are generated
+fresh on every order (hand-purged for Guillermo, regenerated for Sonja).
+Replace at the template source with drink-to-thirst + sodium +
+finish-lighter-never-heavier.
+
+## T13 — Renderer nits from live grading
+Surge rides title as "6s @150%" without the rep count (structure lists
+repeats individually, so the 15x prefix is lost); day-off synthesized from
+a rest ZWO can carry 1min/1TSS; identical endurance days are
+indistinguishable ("Endurance - 70min - RPE3" x19 — consider varying by
+week context once notes exist).
