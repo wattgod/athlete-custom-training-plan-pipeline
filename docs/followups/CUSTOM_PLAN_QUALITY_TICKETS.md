@@ -106,6 +106,15 @@ fresh on every order (hand-purged for Guillermo, regenerated for Sonja).
 Replace at the template source with drink-to-thirst + sodium +
 finish-lighter-never-heavier.
 
+## T14 — The Anaerobic Test archetype is not a test, it's an hour of nothing
+Coach-flagged on the live card: 62 minutes = 20min warmup + 29min @55% +
+ONE 3-minute all-out + cooldown — 36 TSS, 95% soft-pedaling, a single
+unmeasured effort with no repeatability component. The house 360 protocol's
+anaerobic day is 10s sprint + 1min capacity + 20x30/30 repeatability with
+explicit fade measurement. Replace the archetype's structure (and justify
+the 29-minute 55% block or delete it); a "test" must produce numbers the
+plan can use.
+
 ## T13 — Renderer nits from live grading
 Surge rides title as "6s @150%" without the rep count (structure lists
 repeats individually, so the 15x prefix is lost); day-off synthesized from
