@@ -2806,6 +2806,16 @@ def generate_coaching_brief(
     # =====================================================================
     # SECTION 10: PIPELINE OUTPUT FILES
     # =====================================================================
+    from trainingpeaks_delivery import (
+        plan_dates_for_delivery, trainingpeaks_delivery_markdown,
+    )
+    delivery_dates = plan_dates_for_delivery(plan_dates_data)
+    md += trainingpeaks_delivery_markdown(
+        plan_start=delivery_dates['plan_start'],
+        race_week_monday=delivery_dates['race_week_monday'],
+    )
+    md += "\n"
+
     md += f"## 10. Pipeline Output Files\n"
     md += f"| File | Status |\n"
     md += f"|------|--------|\n"

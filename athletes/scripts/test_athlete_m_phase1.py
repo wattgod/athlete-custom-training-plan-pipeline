@@ -346,7 +346,7 @@ def test_athlete_m_phase4_golden(monkeypatch, tmp_path):
         data={"token": review_token}).status_code == 303
     review_html = client.get(
         "/review/test_athlete_m_phase4").get_data(as_text=True)
-    assert "Platform identity" in review_html
+    assert "TrainingPeaks delivery" in review_html
     assert "<dd>bound</dd>" in review_html
     assert "Resolution command" in review_html
     assert "D2_THRESHOLD_LTHR_STALE_MISMATCH" in review_html

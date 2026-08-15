@@ -244,12 +244,18 @@ def render_review_page(
 <input type="hidden" name="generation_revision" value="{_e(state.get('generation_revision'))}">
 {candidate_controls}<button class="button secondary" type="submit">Bind selected account</button>
 </form>"""
+    delivery_html = ""
+    if str(state.get("delivery_platform") or "") == "trainingpeaks" and not state.get("d2_active"):
+        from trainingpeaks_delivery import trainingpeaks_delivery_html
+        delivery_html = trainingpeaks_delivery_html()
     identity_panel = f"""
-<section class="action"><h2>Platform identity</h2>
-<dl class="meta"><div><dt>Outcome</dt><dd>{_e(identity_outcome)}</dd></div>
-<div><dt>Bound TP athlete</dt><dd>{_e(binding.get('tp_athlete_id') or 'not bound')}</dd></div>
+<section class="action"><h2>TrainingPeaks delivery</h2>
+<dl class="meta"><div><dt>Platform</dt><dd>{_e(state.get('delivery_platform'))}</dd></div>
+<div><dt>Identity probe</dt><dd>{_e('active' if state.get('d2_active') else 'not running')}</dd></div>
+<div><dt>Outcome</dt><dd>{_e(identity_outcome)}</dd></div>
+<div><dt>Bound TP athlete</dt><dd>{_e(binding.get('tp_athlete_id') or 'not bound — load by hand after Approve')}</dd></div>
 <div><dt>Candidate count</dt><dd>{_e(len(candidates))}</dd></div></dl>
-{binding_control}</section>"""
+{delivery_html}{binding_control}</section>"""
     pending_readbacks = state.get("d2_pending_requirements") or {}
     readback_controls = "".join(
         f"""

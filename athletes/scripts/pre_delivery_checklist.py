@@ -234,6 +234,28 @@ def generate_checklist(athlete_id: str) -> str:
         lines.append(f"    cp {athlete_dir}/workouts/*.zwo ~/Downloads/{athlete_id}-training-plan/workouts/")
 
     lines.append("")
+
+    from trainingpeaks_delivery import (
+        plan_dates_for_delivery, trainingpeaks_delivery_steps,
+    )
+    plan_dates = {}
+    plan_dates_path = athlete_dir / 'plan_dates.yaml'
+    if plan_dates_path.exists():
+        with open(plan_dates_path, 'r') as handle:
+            plan_dates = yaml.safe_load(handle) or {}
+    delivery_dates = plan_dates_for_delivery(plan_dates)
+    lines.append("## 5. TRAININGPEAKS DELIVERY")
+    lines.append("")
+    lines.append("  Automated apply is not live. After Approve, load the plan in TrainingPeaks.")
+    for index, step in enumerate(
+        trainingpeaks_delivery_steps(
+            plan_start=delivery_dates['plan_start'],
+            race_week_monday=delivery_dates['race_week_monday'],
+        ),
+        1,
+    ):
+        lines.append(f"  [ ] {index}. {step}")
+    lines.append("")
     lines.append("-" * 70)
     lines.append("")
 
