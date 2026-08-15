@@ -166,14 +166,20 @@ def _session_title(session: Any) -> str:
 
 
 def _quality_sessions(week: Any) -> List[Any]:
-    sessions = []
+    # Weekday quality leads, simulations last — a briefing once led with the
+    # Saturday surge ride while the actual Thursday key session went unnamed.
+    keyed, sims = [], []
     for session in _get(week, "sessions", []) or []:
         title = _session_title(session).lower()
-        if (_kind(session) == "bike" and (_get(session, "is_field_test") or
-                _get(session, "is_simulation") or any(token in title for token in
-                ("vo2", "threshold", "tempo", "over-under", "test", "opener", "interval")))):
-            sessions.append(session)
-    return sessions[:3]
+        if _kind(session) != "bike":
+            continue
+        if _get(session, "is_simulation"):
+            sims.append(session)
+        elif (_get(session, "is_field_test") or any(token in title for token in
+                ("vo2", "threshold", "tempo", "over-under", "test", "opener",
+                 "interval", "30/15", "stars", "cadence"))):
+            keyed.append(session)
+    return (keyed + sims)[:3]
 
 
 def _weekly_pattern(plan_ir: Any) -> str:

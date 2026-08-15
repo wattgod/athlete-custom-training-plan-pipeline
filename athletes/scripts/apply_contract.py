@@ -279,9 +279,15 @@ def _desired_resources(
                     "date": session.get("date"), "title": str(session.get("title") or "Untitled session"),
                     "description": session.get("description"),
                     "tp_workout_type": session.get("workout_type_value_id"),
-                    "total_seconds": int(session.get("duration_s") or 0),
-                    "tss_planned": session.get("tss_planned"),
-                    "structure": session.get("structure"),
+                    # Day-off cards must never carry residual duration/TSS
+                    # from a rest ZWO (a 1-minute 1-TSS Day Off shipped on a
+                    # graded delivery).
+                    "total_seconds": (0 if str(session.get("tp_kind") or "") == "day_off"
+                                      else int(session.get("duration_s") or 0)),
+                    "tss_planned": (None if str(session.get("tp_kind") or "") == "day_off"
+                                    else session.get("tss_planned")),
+                    "structure": (None if str(session.get("tp_kind") or "") == "day_off"
+                                  else session.get("structure")),
                 }}
             note_key = f"session-{date}-{per_date[date]}"
             note_id = _logical_id(order_id, "calendar_note_upsert", note_key)
