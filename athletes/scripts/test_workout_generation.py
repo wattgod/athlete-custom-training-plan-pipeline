@@ -2094,10 +2094,10 @@ class TestAdvancedArchetypes:
     # =========================================================================
 
     def test_total_archetype_count(self):
-        """Total archetypes should be 95 (79 original + 16 advanced)."""
+        """The catalog includes the race-week Stars In Your Eyes sharpener."""
         from new_archetypes import NEW_ARCHETYPES
         total = sum(len(archs) for archs in NEW_ARCHETYPES.values())
-        assert total == 100, f"Expected 100 total archetypes, got {total}"
+        assert total == 101, f"Expected 101 total archetypes, got {total}"
 
     def test_total_category_count(self):
         """Total categories should be 24 (22 original + Kitchen_Sink + SFR_Series)."""
@@ -3016,7 +3016,7 @@ class TestArchetypeRegistry(unittest.TestCase):
         """All 3 source files contributed archetypes."""
         from archetype_registry import list_archetypes
         for source_file, expected_count in [
-            ('new_archetypes.py', 50),  # 45 original + 3 Kitchen Sink + 2 SFR Series
+            ('new_archetypes.py', 51),  # + Stars In Your Eyes race-week sharpener
             ('imported_archetypes.py', 34),
             ('advanced_archetypes.py', 16),
         ]:

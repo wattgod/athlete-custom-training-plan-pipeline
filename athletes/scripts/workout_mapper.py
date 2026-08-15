@@ -47,6 +47,7 @@ WORKOUT_MAP = {
     'VO2max 30/30':             ('vo2max', 4),   # VO2max 30/30 archetype
     'VO2max 40/20':             ('vo2max', 5),   # VO2max 40/20 archetype
     'VO2max Extended':          ('vo2max', 6),   # VO2max Extended archetype
+    'Thirty-Fifteens':          ('vo2max', 7),   # Ronnestad 30/15 taper stimulus
     'VO2max Steady Intervals':  ('vo2max', 0),   # 5x3 VO2 Classic
     'VO2 Bookend':              ('durability', 3),  # Durability: VO2 Bookend
 
@@ -97,10 +98,12 @@ WORKOUT_MAP = {
     'Endurance':                ('endurance', 3),  # Endurance Blocks
     'Endurance Blocks':         ('endurance', 3),  # Endurance Blocks (same)
     'Endurance with Surges':    ('endurance', 2),  # Endurance with Surges
+    'Taper Burst Endurance':    ('endurance', 2),  # Z2 with 6s alactic bursts
     'Rest Day':                 ('recovery', 1),   # Rest Day
     'Openers':                  ('endurance', 0),  # Pre-Race Openers
     'FTP Test':                 ('testing', 1),    # 20min FTP Test
     'Anaerobic Test':           ('testing', 2),    # House 360 anaerobic protocol
+    'Stars In Your Eyes':       ('anaerobic', 3),  # 20/30/40 race-week sharpener
     'NP/IF Target':             ('endurance', 1),  # Terrain Simulation Z2
 
     # === Tier 3: Kitchen Sink + SFR series (new archetypes) ===
@@ -203,6 +206,14 @@ def render_workout(
     if mapping is None:
         return None
 
+    # Scaling the old long-ride surge archetype down to a taper duration also
+    # shortened its 14-minute gaps, turning the intended alactic seasoning
+    # into a much denser session.  This dedicated renderer keeps the six-second
+    # bursts about fourteen minutes apart at every taper duration.
+    if name == 'Taper Burst Endurance':
+        return _render_taper_burst_endurance(
+            level, workout_name, author, display_name=display_name)
+
     nate_type, base_variation = mapping
 
     # ----------------------------------------------------------------
@@ -215,7 +226,7 @@ def render_workout(
         return _render_simple_endurance(level, workout_name, author, display_name=display_name)
 
     # Pin certain workout types to their exact archetype — no variation cycling.
-    PINNED_TYPES = {'Openers', 'FTP Test', 'Anaerobic Test', 'Rest Day', 'Endurance with Surges', 'NP/IF Target',
+    PINNED_TYPES = {'Openers', 'FTP Test', 'Anaerobic Test', 'Rest Day', 'Endurance with Surges', 'Taper Burst Endurance', 'Thirty-Fifteens', 'Stars In Your Eyes', 'NP/IF Target',
                      'Race Simulation', 'Kitchen Sink - Drain Cleaner', 'La Balanguera',
                      'Hyttevask', 'Thunder Quads', 'Blood Pistons'}
     effective_variation = base_variation
@@ -262,6 +273,56 @@ _ENDURANCE_LEVELS = {
     5: {'duration_min': 190, 'power': 0.70},
     6: {'duration_min': 250, 'power': 0.70},
 }
+
+_TAPER_BURST_LEVELS = {1: 90, 2: 120, 3: 150, 4: 180, 5: 210, 6: 240}
+_TAPER_BURST_COUNTS = {1: 5, 2: 7, 3: 9, 4: 11, 5: 13, 6: 15}
+
+
+def _render_taper_burst_endurance(level: int, workout_name: Optional[str] = None,
+                                  author: str = 'Gravel God Training',
+                                  display_name: Optional[str] = None) -> str:
+    """Z2 endurance with one 6-second alactic burst every ~14 minutes."""
+    total_sec = _TAPER_BURST_LEVELS.get(level, _TAPER_BURST_LEVELS[3]) * 60
+    burst_count = _TAPER_BURST_COUNTS.get(level, _TAPER_BURST_COUNTS[3])
+    # Offset the warmup by the short-burst remainder so every visible Z2
+    # segment stays on a whole minute.  The post-render description checker
+    # (and, more importantly, athlete readability) should never say 13:48.
+    warmup_sec = 600 - ((burst_count * 6) % 60)
+    cooldown_sec = 600
+    main_sec = max(840, total_sec - warmup_sec - cooldown_sec)
+    # Keep all *between-burst* gaps at fourteen minutes.  Any remainder is
+    # split before the first and after the final burst, where it does not
+    # change the prescribed cadence.
+    edge_total = main_sec - burst_count * 6 - max(0, burst_count - 1) * 840
+    first_edge = edge_total // 2
+    final_edge = edge_total - first_edge
+    main_blocks = []
+    main_blocks.append(f'    <SteadyState Duration="{first_edge}" Power="0.70"/>')
+    for i in range(burst_count):
+        main_blocks.append('    <SteadyState Duration="6" Power="1.50"/>')
+        if i < burst_count - 1:
+            main_blocks.append('    <SteadyState Duration="840" Power="0.70"/>')
+    main_blocks.append(f'    <SteadyState Duration="{final_edge}" Power="0.70"/>')
+    name = display_name or workout_name or f'Taper_Burst_Endurance_L{level}'
+    description = (
+        'MAIN SET:\n'
+        '- Ride Z2 at 70% FTP\n'
+        '- Every ~14min: 6sec full-gas alactic burst, then settle immediately\n\n'
+        'PURPOSE:\n'
+        'Keep neuromuscular snap during the taper without accumulating fatigue.'
+    )
+    return f'''<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>{author}</author>
+  <name>{name}</name>
+  <description>{description}</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="{warmup_sec}" PowerLow="0.50" PowerHigh="0.70"/>
+{chr(10).join(main_blocks)}
+    <Cooldown Duration="{cooldown_sec}" PowerLow="0.70" PowerHigh="0.45"/>
+  </workout>
+</workout_file>'''
 
 def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
                              author: str = 'Gravel God Training',
@@ -334,7 +395,7 @@ def resolve_display_name(
         return name
 
     nate_type, base_variation = mapping
-    PINNED = {'Openers', 'FTP Test', 'Rest Day', 'Endurance with Surges',
+    PINNED = {'Openers', 'FTP Test', 'Rest Day', 'Endurance with Surges', 'Taper Burst Endurance', 'Thirty-Fifteens', 'Stars In Your Eyes',
               'NP/IF Target', 'Race Simulation', 'Kitchen Sink - Drain Cleaner',
               'La Balanguera', 'Hyttevask', 'Thunder Quads', 'Blood Pistons'}
     effective_variation = base_variation

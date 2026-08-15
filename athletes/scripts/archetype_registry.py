@@ -60,7 +60,7 @@ from advanced_archetypes import ADVANCED_ARCHETYPES
 ALL_ARCHETYPES = NEW_ARCHETYPES
 
 # Expected counts — tests use these as guards
-EXPECTED_TOTAL = 100  # 95 original + 3 Kitchen Sink + 2 SFR Series
+EXPECTED_TOTAL = 101  # 100 catalogued + Stars In Your Eyes race-week sharpener
 EXPECTED_CATEGORIES = 24  # 22 original + Kitchen_Sink + SFR_Series
 EXPECTED_VARIATIONS = EXPECTED_TOTAL * 6  # 600
 

@@ -35,6 +35,16 @@ workouts:
       5: {duration: 55, tss: 74}
       6: {duration: 61, tss: 83}
 
+  Thirty-Fifteens:
+    category: vo2max
+    levels:
+      1: {duration: 37, tss: 37}
+      2: {duration: 42, tss: 42}
+      3: {duration: 46, tss: 46}
+      4: {duration: 51, tss: 50}
+      5: {duration: 58, tss: 58}
+      6: {duration: 62, tss: 63}
+
   VO2max Steady Intervals:
     category: vo2max
     levels:
@@ -285,6 +295,16 @@ workouts:
       5: {duration: 369, tss: 309}
       6: {duration: 369, tss: 311}
 
+  Taper Burst Endurance:
+    category: endurance
+    levels:
+      1: {duration: 90, tss: 65}
+      2: {duration: 120, tss: 86}
+      3: {duration: 150, tss: 108}
+      4: {duration: 180, tss: 130}
+      5: {duration: 210, tss: 151}
+      6: {duration: 240, tss: 173}
+
   NP/IF Target:
     category: endurance
     levels:
@@ -304,6 +324,16 @@ workouts:
       4: {duration: 45, tss: 30}
       5: {duration: 45, tss: 32}
       6: {duration: 45, tss: 34}
+
+  Stars In Your Eyes:
+    category: anaerobic
+    levels:
+      1: {duration: 44, tss: 48}
+      2: {duration: 52, tss: 58}
+      3: {duration: 52, tss: 61}
+      4: {duration: 55, tss: 64}
+      5: {duration: 66, tss: 76}
+      6: {duration: 66, tss: 80}
 
   Rest Day:
     category: recovery

@@ -163,6 +163,7 @@ def build_calendar_week(
     avoid_series: set = None,
     methodology_profile: Dict[str, Any] = None,
     event_format: str = None,
+    race_day: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build one week whose type and phase come from the calendar (plan_dates).
 
@@ -202,6 +203,7 @@ def build_calendar_week(
         avoid_series=avoid_series,
         methodology_profile=methodology_profile,
         event_format=event_format,
+        race_day=race_day,
     )
     week['block_number'] = block_number
     return week
@@ -304,8 +306,22 @@ def _build_week(
     avoid_series: set = None,
     methodology_profile: Dict[str, Any] = None,
     event_format: str = None,
+    race_day: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build a single week with day-by-day workout assignments."""
+
+    # Race day itself still defers to the legacy A-race overlay at render
+    # time.  The block builder only supplies the deliberate house shape
+    # around it: sharpener, easy endurance, day-before openers, and explicit
+    # rest on every other available day.
+    if week_type == 'race':
+        return _build_race_week(
+            week_num=week_num,
+            phase=phase,
+            off_days=[d for d, role in day_roles.items() if role == 'off'],
+            race_day=race_day,
+            day_caps=day_caps,
+        )
 
     # Get workout menu for this week
     workout_menu = select_workouts_for_week(
@@ -558,5 +574,75 @@ def _build_week(
         'phase': phase,
         'total_tss': total_tss,
         'total_duration': sum(d.get('duration', 0) for d in days),
+        'days': days,
+    }
+
+
+def _build_race_week(
+    week_num: int,
+    phase: str,
+    off_days: List[str],
+    race_day: Optional[str],
+    day_caps: Optional[Dict[str, int]],
+) -> Dict[str, Any]:
+    """Build the coach-approved race-week microcycle.
+
+    The race is represented as a zero-load placeholder because the existing
+    rendering overlay owns the actual race-day plan.  That keeps the planner
+    and renderer responsibilities separate while making every surrounding
+    rest day explicit in the calendar model.
+    """
+    race_day = race_day if race_day in DAY_ORDER else 'Sat'
+    race_index = DAY_ORDER.index(race_day)
+    opener_day = DAY_ORDER[(race_index - 1) % len(DAY_ORDER)]
+
+    def _session(name, level, role, duration=None, tss=None):
+        duration = get_workout_duration(name, level) if duration is None else duration
+        tss = get_workout_tss(name, level) if tss is None else tss
+        return {'name': name, 'level': level, 'tss': tss, 'duration': duration, 'role': role}
+
+    # Quality-day preference is intentionally the same as the normal week
+    # template.  Do not place the sharpener adjacent to day-before openers.
+    sharpener_day = next(
+        (day for day in ('Tue', 'Thu', 'Mon', 'Wed', 'Fri', 'Sat', 'Sun')
+         if day not in off_days and day not in (race_day, opener_day)
+         and DAY_ORDER.index(day) < race_index
+         and abs(DAY_ORDER.index(day) - DAY_ORDER.index(opener_day)) > 1),
+        None,
+    )
+    easy_day = next(
+        (day for day in ('Wed', 'Thu', 'Tue', 'Mon', 'Fri', 'Sat', 'Sun')
+         if day not in off_days and day not in (race_day, opener_day, sharpener_day)
+         and DAY_ORDER.index(day) < race_index),
+        None,
+    )
+
+    days = []
+    for day in DAY_ORDER:
+        if day == race_day:
+            workout = {'name': 'RACE_DAY', 'level': 0, 'tss': 0, 'duration': 0, 'role': 'race'}
+        elif day in off_days:
+            workout = {'name': 'OFF', 'level': 0, 'tss': 0, 'duration': 0, 'role': 'off'}
+        elif day == opener_day:
+            workout = _session('Openers', 2, 'intensity')
+        elif day == sharpener_day:
+            workout = _session('Stars In Your Eyes', 2, 'intensity')
+        elif day == easy_day:
+            # Keep this deliberate middle-of-week ride in the 45-60min house
+            # range rather than emitting a normal 70min Endurance L1.
+            workout = _session('Endurance', 1, 'filler', duration=50, tss=39)
+        else:
+            workout = {'name': 'Rest Day', 'level': 1, 'tss': 0, 'duration': 0, 'role': 'rest'}
+
+        if day_caps and workout['role'] not in ('off', 'race') and workout['duration'] > 0:
+            workout = _fit_workout_to_cap(workout, day_caps.get(day, 0))
+        days.append({'day': day, **workout})
+
+    return {
+        'week_num': week_num,
+        'week_type': 'race',
+        'phase': phase,
+        'total_tss': sum(d['tss'] for d in days),
+        'total_duration': sum(d['duration'] for d in days),
         'days': days,
     }

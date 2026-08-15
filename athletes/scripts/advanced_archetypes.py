@@ -117,58 +117,66 @@ VO2MAX_ADVANCED = [
         'name': 'Ronnestad 30/15',
         'levels': {
             '1': {
-                'structure': '15min warmup Z2, 1 set: 6x 30sec ON @ 105% FTP / 15sec OFF',
-                'execution': 'Intro to short-short intervals. Smooth power, high cadence, no surging',
+                'structure': '15min warmup Z2, 2 sets: 6x 30sec ON @ 110% FTP / 15sec OFF, 3min easy between sets',
+                'execution': 'Taper-friendly short-short intervals. Smooth power, high cadence, no surging',
                 'cadence_prescription': '95-105rpm (high turnover)',
                 'cadence': 100,
                 'position_prescription': 'Seated, hands on hoods',
                 'timing_prescription': 'Fresh',
                 'fueling': '60-70g CHO/hr',
                 'segments': [
-                    {'type': 'intervals', 'repeats': 6, 'on_duration': 30, 'on_power': 1.05, 'off_duration': 15, 'off_power': 0.55}
+                    {'type': 'intervals', 'repeats': 6, 'on_duration': 30, 'on_power': 1.10, 'off_duration': 15, 'off_power': 0.55},
+                    {'type': 'steady', 'duration': 180, 'power': 0.55},
+                    {'type': 'intervals', 'repeats': 6, 'on_duration': 30, 'on_power': 1.10, 'off_duration': 15, 'off_power': 0.55},
                 ]
             },
             '2': {
-                'structure': '15min warmup Z2, 1 set: 9x 30sec ON @ 110% FTP / 15sec OFF',
+                'structure': '15min warmup Z2, 2 sets: 7x 30sec ON @ 111% FTP / 15sec OFF, 3min easy between sets',
                 'execution': 'Building rep count. Keep ON power consistent through all reps',
                 'segments': [
-                    {'type': 'intervals', 'repeats': 9, 'on_duration': 30, 'on_power': 1.10, 'off_duration': 15, 'off_power': 0.55}
+                    {'type': 'intervals', 'repeats': 7, 'on_duration': 30, 'on_power': 1.11, 'off_duration': 15, 'off_power': 0.55},
+                    {'type': 'steady', 'duration': 180, 'power': 0.55},
+                    {'type': 'intervals', 'repeats': 7, 'on_duration': 30, 'on_power': 1.11, 'off_duration': 15, 'off_power': 0.55}
                 ]
             },
             '3': {
-                'structure': '15min warmup Z2, 1 set: 13x 30sec ON @ 115% FTP / 15sec OFF',
-                'execution': 'Full Ronnestad set. 9.75min accumulated VO2max time',
+                'structure': '15min warmup Z2, 2 sets: 8x 30sec ON @ 112% FTP / 15sec OFF, 3min easy between sets',
+                'execution': 'High stimulus, low damage. Keep the final repetitions controlled.',
                 'segments': [
-                    {'type': 'intervals', 'repeats': 13, 'on_duration': 30, 'on_power': 1.15, 'off_duration': 15, 'off_power': 0.55}
+                    {'type': 'intervals', 'repeats': 8, 'on_duration': 30, 'on_power': 1.12, 'off_duration': 15, 'off_power': 0.55},
+                    {'type': 'steady', 'duration': 180, 'power': 0.55},
+                    {'type': 'intervals', 'repeats': 8, 'on_duration': 30, 'on_power': 1.12, 'off_duration': 15, 'off_power': 0.55}
                 ]
             },
             '4': {
-                'structure': '15min warmup Z2, 2 sets: 9x 30sec ON @ 120% FTP / 15sec OFF, 3min rest between sets',
-                'execution': 'Multi-set protocol. Recover well between sets, hold form in second set',
+                'structure': '15min warmup Z2, 2 sets: 9x 30sec ON @ 113% FTP / 15sec OFF, 3min easy between sets',
+                'execution': 'The standard taper session. High stimulus, low damage; keep it smooth.',
                 'segments': [
-                    {'type': 'intervals', 'repeats': 9, 'on_duration': 30, 'on_power': 1.20, 'off_duration': 15, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 9, 'on_duration': 30, 'on_power': 1.13, 'off_duration': 15, 'off_power': 0.55},
                     {'type': 'steady', 'duration': 180, 'power': 0.55},
-                    {'type': 'intervals', 'repeats': 9, 'on_duration': 30, 'on_power': 1.20, 'off_duration': 15, 'off_power': 0.55}
+                    {'type': 'intervals', 'repeats': 9, 'on_duration': 30, 'on_power': 1.13, 'off_duration': 15, 'off_power': 0.55}
                 ]
             },
             '5': {
-                'structure': '15min warmup Z2, 2 sets: 13x 30sec ON @ 125% FTP / 15sec OFF, 3min rest between sets',
-                'execution': 'Full double Ronnestad. Massive VO2max accumulation',
+                'structure': '15min warmup Z2, 3 sets: 8x 30sec ON @ 114% FTP / 15sec OFF, 3min easy between sets',
+                'execution': 'Three controlled sets. Stop after two if the work becomes a fight.',
                 'segments': [
-                    {'type': 'intervals', 'repeats': 13, 'on_duration': 30, 'on_power': 1.25, 'off_duration': 15, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 8, 'on_duration': 30, 'on_power': 1.14, 'off_duration': 15, 'off_power': 0.55},
                     {'type': 'steady', 'duration': 180, 'power': 0.55},
-                    {'type': 'intervals', 'repeats': 13, 'on_duration': 30, 'on_power': 1.25, 'off_duration': 15, 'off_power': 0.55}
+                    {'type': 'intervals', 'repeats': 8, 'on_duration': 30, 'on_power': 1.14, 'off_duration': 15, 'off_power': 0.55},
+                    {'type': 'steady', 'duration': 180, 'power': 0.55},
+                    {'type': 'intervals', 'repeats': 8, 'on_duration': 30, 'on_power': 1.14, 'off_duration': 15, 'off_power': 0.55}
                 ]
             },
             '6': {
-                'structure': '15min warmup Z2, 3 sets: 13x 30sec ON @ 130% FTP / 15sec OFF, 3min rest between sets',
-                'execution': 'Maximum protocol. 3 full Ronnestad sets. Elite VO2max stimulus',
+                'structure': '15min warmup Z2, 3 sets: 9x 30sec ON @ 115% FTP / 15sec OFF, 3min easy between sets',
+                'execution': 'Maximum taper progression. Keep it a sharpener, never a test.',
                 'segments': [
-                    {'type': 'intervals', 'repeats': 13, 'on_duration': 30, 'on_power': 1.30, 'off_duration': 15, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 9, 'on_duration': 30, 'on_power': 1.15, 'off_duration': 15, 'off_power': 0.55},
                     {'type': 'steady', 'duration': 180, 'power': 0.55},
-                    {'type': 'intervals', 'repeats': 13, 'on_duration': 30, 'on_power': 1.30, 'off_duration': 15, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 9, 'on_duration': 30, 'on_power': 1.15, 'off_duration': 15, 'off_power': 0.55},
                     {'type': 'steady', 'duration': 180, 'power': 0.55},
-                    {'type': 'intervals', 'repeats': 13, 'on_duration': 30, 'on_power': 1.30, 'off_duration': 15, 'off_power': 0.55}
+                    {'type': 'intervals', 'repeats': 9, 'on_duration': 30, 'on_power': 1.15, 'off_duration': 15, 'off_power': 0.55}
                 ]
             }
         }
