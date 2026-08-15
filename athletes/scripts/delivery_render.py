@@ -363,7 +363,18 @@ _WORK_REST_TOKEN = re.compile(r"\b(?P<work>\d+)\s*(?:s(?:ec(?:onds?)?)?)?\s*/\s*
                                 r"(?P<rest>\d+)\s*(?:s(?:ec(?:onds?)?)?)?\b", re.I)
 
 
-def _display_name(session: Any, defining_set: Optional[str]) -> str:
+def render_session_name(session: Any, defining_set: Optional[str] = None) -> str:
+    """Return the calendar-facing session name from the emitted session facts.
+
+    This is intentionally shared with briefing copy.  A PlanIR title can be
+    stale (for example, ``VO2max 40/20`` after its emitted intervals changed
+    to 40/15); every delivery surface must therefore use this correction rather
+    than repeat the raw title.
+    """
+    if defining_set is None:
+        defining_set = _defining_set_from_structure(session)
+        if defining_set is None:
+            defining_set = _defining_set_from_description(_get(session, "description"))
     name = _clean_text(_get(session, "display_name") or _get(session, "title"))
     name = re.sub(r"\s*[-–—]?\s*(?:level|l)\s*\d+(?:\s*/\s*\d+)?\s*$", "", name, flags=re.I)
     expected = set(_interval_tokens(defining_set or ""))
@@ -385,6 +396,10 @@ def _display_name(session: Any, defining_set: Optional[str]) -> str:
     name = re.sub(r"\s+", " ", name)
     name = re.sub(r"\s*[-–—]\s*[-–—]\s*", " - ", name)
     return name.strip(" -–—") or "Workout"
+
+
+# Kept as a private compatibility alias for existing in-module callers.
+_display_name = render_session_name
 
 
 def _power_values(session: Any) -> List[float]:
@@ -514,7 +529,7 @@ def render_title(session: Any, brand_cfg: Dict[str, Any]) -> str:
     defining_set = _defining_set_from_structure(session)
     if defining_set is None:
         defining_set = _defining_set_from_description(_get(session, "description"))
-    name = _display_name(session, defining_set)
+    name = render_session_name(session, defining_set)
     duration = _duration_minutes(session)
     if _get(session, "is_simulation"):
         return f"{name} - {duration}min - {_rpe(session, name)}"
