@@ -13,6 +13,7 @@ Regression coverage for the Jesse Couch pipeline bugs (June 2026):
 """
 
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
@@ -440,6 +441,49 @@ class TestTestingWeek:
         assert render_workout('Anaerobic Test', level=1,
                               methodology='POLARIZED') is not None
 
+    def test_anaerobic_test_is_a_measured_360_protocol(self):
+        """The testing archetype must produce usable peak, capacity, and fade data."""
+        from workout_mapper import render_workout
+        from zwo_parser import parse_zwo_structure_text
+        from plan_ir import _segment_from_dict, _tp_structure_from_segments
+
+        zwo = render_workout('Anaerobic Test', level=1, methodology='POLARIZED')
+        root = ET.fromstring(zwo)  # ZWO must remain valid XML.
+        workout = list(root.find('workout'))
+
+        assert any(node.tag == 'Ramp' and node.get('Duration') == '900'
+                   for node in workout)
+        free_rides = [node for node in workout if node.tag == 'FreeRide']
+        assert [node.get('Duration') for node in free_rides] == ['10', '10', '10', '60']
+        repeatability = next(node for node in workout if node.tag == 'IntervalsT')
+        assert (repeatability.get('Repeat'), repeatability.get('OnDuration'),
+                repeatability.get('OffDuration'), repeatability.get('OnPower')) == (
+                    '10', '30', '30', '1.20')
+
+        duration = sum(
+            int(node.get('Duration', 0)) if node.tag != 'IntervalsT'
+            else int(node.get('Repeat')) * (int(node.get('OnDuration')) + int(node.get('OffDuration')))
+            for node in workout
+        )
+        assert 50 * 60 <= duration <= 65 * 60
+        description = root.findtext('description')
+        for heading in ('WHAT IT MEASURES:', 'WHAT TO RECORD:', 'WHAT GOOD LOOKS LIKE:'):
+            assert heading in description
+
+        # Preserve max/all-out names into the canonical projection so free
+        # efforts get its visible hard display band without a fake target.
+        parsed = parse_zwo_structure_text(zwo)
+        free_segments = [segment for segment in parsed['segments']
+                         if segment['kind'] == 'free_ride']
+        assert all(('max' in segment['name'].lower() or 'all-out' in segment['name'].lower())
+                   for segment in free_segments)
+        structure = _tp_structure_from_segments(
+            [_segment_from_dict(segment) for segment in parsed['segments']])
+        assert any(
+            step['steps'][0]['targets'] == [{'minValue': 120, 'maxValue': 170}]
+            for step in structure['structure']
+        )
+
     def test_metabolism_test_scales_with_experience(self):
         """Beginners ~2h, intermediates ~3h, advanced ~4h (coach spec)."""
         from workout_selector import _select_testing_week, get_workout_duration
@@ -457,6 +501,55 @@ class TestTestingWeek:
         lr = next(w for w in menu if w['role'] == 'long_ride')
         dur = get_workout_duration('Endurance', lr['level'])
         assert dur <= 8 * 60 * 0.45 + 30  # small slack for level granularity
+
+
+class TestSeriesEntryLevelPolicy:
+    """Short plans enter a series high enough to deliver meaningful work."""
+
+    @staticmethod
+    def _descriptors(weeks):
+        return [
+            {'plan_week': week, 'phase': 'build',
+             'week_type': 'recovery' if week in (3, 6, 10, 14) else 'load'}
+            for week in range(1, weeks + 1)
+        ]
+
+    def _plan(self, weeks, training_age):
+        return build_plan_from_calendar(
+            week_descriptors=self._descriptors(weeks), archetype='specialist',
+            max_level=6, max_intensity=2, off_days=['Sun'], long_ride_day='Sat',
+            hours_per_week=10, training_age=training_age)
+
+    def test_five_week_experienced_emits_level_three_vo2_content(self):
+        from workout_mapper import render_workout
+
+        plan = self._plan(5, 'experienced')
+        first_vo2 = next(
+            day for week in plan['weeks'] for day in week['days']
+            if day['name'].startswith('VO2max')
+        )
+        zwo = render_workout(first_vo2['name'], first_vo2['level'],
+                              methodology='POLARIZED')
+        emitted_description = ET.fromstring(zwo).findtext('description')
+        assert first_vo2['level'] >= 3
+        assert f"Level {first_vo2['level']}/6" in emitted_description
+        assert not plan['all_violations']
+
+    def test_sixteen_week_developing_athlete_still_enters_at_level_one(self):
+        plan = self._plan(16, 'developing')
+        first_vo2 = next(
+            day for week in plan['weeks'] for day in week['days']
+            if day['name'].startswith('VO2max')
+        )
+        assert first_vo2['level'] == 1
+
+    def test_unknown_training_age_keeps_the_conservative_default(self):
+        plan = self._plan(5, None)
+        first_vo2 = next(
+            day for week in plan['weeks'] for day in week['days']
+            if day['name'].startswith('VO2max')
+        )
+        assert first_vo2['level'] == 1
 
 
 class TestTravelDates:

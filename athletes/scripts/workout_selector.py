@@ -206,6 +206,26 @@ def _load_library():
     return _load_config('workout_library.yaml')
 
 
+def series_entry_level(total_weeks: int, training_age: Optional[str]) -> int:
+    """Return the first load-week level for a plan's workout series.
+
+    The series ladder needs enough runway to start at Level 1.  Short plans
+    do not have that runway, so experienced athletes enter a little further
+    up the *series* while normal +1-per-load-week progression remains owned
+    by the calendar builder.  Per-day ramp-in, budget trimming, and duration
+    caps deliberately apply afterwards and may still lower an emitted day.
+    """
+    # A missing history is not evidence that the athlete is developing.  Keep
+    # the established L1 default until intake supplies a shared classifier.
+    if training_age not in {'experienced', 'developing'}:
+        return 1
+    if total_weeks <= 8:
+        return 3 if training_age == 'experienced' else 2
+    if total_weeks <= 12:
+        return 2 if training_age == 'experienced' else 1
+    return 1
+
+
 # ============================================================
 # Workout slot selection
 # ============================================================

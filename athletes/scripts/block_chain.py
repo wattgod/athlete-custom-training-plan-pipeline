@@ -78,6 +78,7 @@ def build_plan_from_calendar(
     methodology_profile: Dict[str, Any] = None,
     fixed_minutes: int = 0,
     event_format: str = None,
+    training_age: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -112,6 +113,10 @@ def build_plan_from_calendar(
         fixed_minutes: Immutable recurring load present in every week. The
             prescribed budget is reduced from *each week type's total target*,
             so recovery ratios operate on prescribed + external load.
+        training_age: ``experienced`` or ``developing`` from the shared
+            profile classifier.  It sets only the initial series entry level;
+            all normal block progression and day-level adjustments remain in
+            place.
 
     Returns:
         Plan dict shaped like chain_blocks() output: {'weeks': [...], ...}
@@ -119,12 +124,22 @@ def build_plan_from_calendar(
     if off_days is None:
         off_days = ['Mon']
 
+    # A short plan cannot progress an experienced athlete from an introductory
+    # L1 series to meaningful work before race day.  Set the series BASE once
+    # at the calendar seam; selector progression still adds +1 per load week,
+    # and the existing ramp-in/trim/cap logic can still down-level individual
+    # emitted sessions.
+    from workout_selector import series_entry_level
+
     tracker = SeriesTracker()
     tracker.start_block()
 
     all_weeks = []
     block_number = 1
-    block_base_level = starting_level
+    block_base_level = max(
+        starting_level,
+        series_entry_level(len(week_descriptors), training_age),
+    )
     week_in_block = 1
     violations = []
     # Phase-local block index: rotation through workout alternatives uses

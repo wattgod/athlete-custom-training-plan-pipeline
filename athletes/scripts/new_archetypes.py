@@ -2850,87 +2850,43 @@ TESTING_PROTOCOLS = [
         }
     },
     {
-        'name': 'CP Test Protocol',
+        'name': 'Anaerobic Test',
+        # This is a fixed assessment protocol, not a progression ladder.  The
+        # plan's Level still appears in the description, while each test asks
+        # for comparable measurements across athletes and retests.
         'levels': {
-            '1': {
-                'structure': '3-minute all-out test after warmup. Establishes CP and W\'.',
-                'execution': '3-minute all-out test - go hard from the start, hold on',
-                'cadence_prescription': '100-110rpm - high turnover',
-                'position_prescription': 'Drops, aggressive',
-                'timing_prescription': 'Fresh legs required',
-                'fueling': 'Light or fasted',
+            str(level): {
+                'structure': (
+                    '15min ramp warmup (Z1 to Z2); 3x (10sec max sprint, '
+                    '3min easy); 5min easy reset; 1min all-out, 5min easy; '
+                    '10x (30sec hard @ 120% FTP / 30sec easy); 10min cooldown'
+                ),
+                'execution': (
+                    'Treat every sprint and the 1-minute effort as a measured '
+                    'maximal effort; keep the 30/30s controlled enough to make '
+                    'the first-five versus last-five comparison meaningful.'
+                ),
+                'cadence_prescription': 'Self-selected for max power; stay smooth on the 30/30s',
+                'position_prescription': 'Sprint from a safe, repeatable gear and position',
+                'timing_prescription': 'Fresh legs, after an easy or rest day',
+                'fueling': 'Use the plan-provided fuel tag; keep retests consistent',
                 'testing': True,
-                'test_type': 'cp_3min',
-                'warmup_duration': 1200,
-                'test_duration': 180
-            },
-            '2': {
-                'structure': '12-minute all-out test. Alternative CP determination.',
-                'execution': '12-minute maximal effort - pace more conservatively',
-                'cadence_prescription': '90-95rpm',
-                'cadence': 92,
-                'position_prescription': 'TT position',
-                'timing_prescription': 'Fresh',
-                'fueling': 'Light meal before',
-                'testing': True,
-                'test_type': 'cp_12min',
-                'warmup_duration': 1200,
-                'test_duration': 720
-            },
-            '3': {
-                'structure': '3-12 combo: 3min all-out, rest 30min, 12min all-out',
-                'execution': 'Full CP/W\' determination - two efforts same day',
-                'cadence_prescription': 'Match effort duration',
-                'cadence': 90,
-                'position_prescription': 'Consistent between tests',
-                'timing_prescription': 'Dedicated test day',
-                'fueling': 'Refuel between efforts',
-                'testing': True,
-                'test_type': 'cp_combo',
-                'warmup_duration': 1200,
-                'test_1_duration': 180,
-                'rest_duration': 1800,
-                'test_2_duration': 720
-            },
-            '4': {
-                'structure': 'CP test - baseline establishment',
-                'execution': 'Baseline CP/W\' for training block',
-                'cadence_prescription': 'Consistent',
-                'cadence': 90,
-                'position_prescription': 'Standard',
-                'timing_prescription': 'Block start',
-                'fueling': 'Standardized',
-                'testing': True,
-                'test_type': 'cp_3min',
-                'warmup_duration': 1200,
-                'test_duration': 180
-            },
-            '5': {
-                'structure': 'CP test - progress check',
-                'execution': 'Mid-block CP assessment',
-                'cadence_prescription': 'Match baseline',
-                'cadence': 90,
-                'position_prescription': 'Match baseline',
-                'timing_prescription': 'Mid-block',
-                'fueling': 'Match baseline',
-                'testing': True,
-                'test_type': 'cp_3min',
-                'warmup_duration': 1200,
-                'test_duration': 180
-            },
-            '6': {
-                'structure': 'CP test - race readiness',
-                'execution': 'Final CP confirmation',
-                'cadence_prescription': 'Race cadence',
-                'cadence': 90,
-                'position_prescription': 'Race position',
-                'timing_prescription': 'Pre-race',
-                'fueling': 'Race prep',
-                'testing': True,
-                'test_type': 'cp_3min',
-                'warmup_duration': 1200,
-                'test_duration': 180
+                'test_type': 'anaerobic_360',
+                'warmup_duration': 900,
+                'assessment_notes': (
+                    'WHAT IT MEASURES:\n'
+                    '- Peak 10-second power, 1-minute anaerobic capacity, and repeatability.\n\n'
+                    'WHAT TO RECORD:\n'
+                    '- Best 10-second peak power.\n'
+                    '- 1-minute average power.\n'
+                    '- First-five versus last-five 30/30 average power; record fade % '\
+                    '((first five - last five) / first five x 100).\n\n'
+                    'WHAT GOOD LOOKS LIKE:\n'
+                    '- A strong peak, a repeatable 1-minute effort, and a small, controlled '\
+                    '30/30 fade rather than an early collapse.'
+                ),
             }
+            for level in range(1, 7)
         }
     }
 ]

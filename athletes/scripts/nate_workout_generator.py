@@ -32,7 +32,7 @@ Categories
 - Critical_Power (3 archetypes): Above CP Repeats, W' Depletion, CP Test
 - Norwegian_Double (3 archetypes): 4x8 Classic, Double AM, Double PM
 - HVLI_Extended (2 archetypes): Extended Z2, Terrain Simulation
-- Testing (3 archetypes): Ramp Test, 20min FTP, CP Test Protocol
+- Testing (3 archetypes): Ramp Test, 20min FTP, Anaerobic 360 Test
 - Recovery (3 archetypes): Active Recovery, Flush Ride, Rest Day
 - INSCYD (2 archetypes): VLamax Reduction, Carb Tolerance
 
@@ -2527,6 +2527,33 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
             blocks.append(generate_cooldown_block(cooldown_duration))
             return "".join(blocks)
 
+        elif test_type == "anaerobic_360":
+            # House 360-style anaerobic assessment: discrete, measurable
+            # peak-power, capacity, and repeatability efforts.  FreeRide is
+            # intentional for the maximal efforts; the text event preserves a
+            # semantic all-out/max name when ZWO is canonicalized for TP.
+            def free_effort(duration: int, label: str) -> str:
+                return (
+                    f'    <FreeRide Duration="{duration}" FlatRoad="1">\n'
+                    f'{generate_text_event(0, label)}'
+                    '    </FreeRide>\n'
+                )
+
+            blocks.append(generate_ramp_block(900, 0.50, 0.70))
+            for sprint_number in range(1, 4):
+                blocks.append(free_effort(10, f"10sec all-out max sprint {sprint_number}/3"))
+                blocks.append(generate_steady_state_block(180, ZWODefaults.RECOVERY_POWER))
+            # A short reset makes the protocol 55.5 minutes and lets the
+            # one-minute capacity result stand on its own instead of merely
+            # reflecting the final sprint recovery.
+            blocks.append(generate_steady_state_block(300, ZWODefaults.RECOVERY_POWER))
+            blocks.append(free_effort(60, "1min all-out anaerobic capacity test"))
+            blocks.append(generate_steady_state_block(300, ZWODefaults.RECOVERY_POWER))
+            blocks.append(generate_intervals_block(
+                10, 30, 1.20, 30, ZWODefaults.RECOVERY_POWER))
+            blocks.append(generate_cooldown_block(600))
+            return "".join(blocks)
+
     # =====================================================================
     # INSCYD / METABOLIC WORKOUTS
     # =====================================================================
@@ -3084,6 +3111,14 @@ def generate_description(
     # EXECUTION
     lines.append("EXECUTION:")
     lines.append(f"-{get_execution_tips(archetype, level_data)}")
+
+    # Testing protocols can carry the exact measurements a coach needs to
+    # prescribe the next block.  Keep this data-owned so assessment content
+    # stays with its executable structure instead of drifting into templates.
+    assessment_notes = level_data.get('assessment_notes')
+    if assessment_notes:
+        lines.append("")
+        lines.append(assessment_notes.strip())
 
     # Fuelling is owned by the single personalized [...FUEL...] banner injected
     # at package assembly (scaled to the athlete + workout duration). The old

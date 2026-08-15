@@ -447,9 +447,12 @@ def _pct(value: Optional[float]) -> int:
 
 
 def _tp_step(name: str, seconds: int, low: Optional[float], high: Optional[float],
-             flat: Optional[float], intensity_class: str, begin: int) -> Dict[str, Any]:
+             flat: Optional[float], intensity_class: str, begin: int,
+             all_out: bool = False) -> Dict[str, Any]:
     seconds = int(seconds)
-    if low is not None and high is not None and _pct(high) > _pct(low):
+    if all_out:
+        targets = [{"minValue": 120, "maxValue": 170}]
+    elif low is not None and high is not None and _pct(high) > _pct(low):
         targets = [{"minValue": _pct(low), "maxValue": _pct(high)}]
     else:
         target_value = flat if flat is not None else (high if high is not None else low)
@@ -495,7 +498,10 @@ def _tp_structure_from_segments(segments: List[Segment]) -> Optional[Dict[str, A
                 t = off_step["end"]
             continue  # begin/end already advanced per on/off step above
         elif seg.kind == "free_ride":
-            steps.append(_tp_step("Free Ride", seg.seconds, None, None, 0.0, "active", t))
+            all_out = bool(re.search(r"all[- ]?out|max(?:imal)? effort|\bmax sprint\b",
+                                     seg.name or "", re.I))
+            steps.append(_tp_step(seg.name or "Free Ride", seg.seconds, None, None,
+                                  0.0, "active", t, all_out=all_out))
         else:
             continue
         t = steps[-1]["end"]
