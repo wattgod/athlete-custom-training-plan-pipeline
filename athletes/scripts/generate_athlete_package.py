@@ -232,6 +232,172 @@ def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min
         return render_workout_fueling(prescription, 'long_ride', phase_ceiling)
 
 
+_FUEL_TAG_PREFIX = re.compile(
+    r'^\[(?P<label>(?:HIGH|LONG-RIDE|RACE) FUEL|FUEL): Target '\
+    r'\d+(?:\.\d+)?g carbs/hr\. Practice this prescription\.\]\n\n'
+)
+
+
+def _calendar_week_types(plan_dates: dict) -> dict:
+    """Return the delivery-facing type for every generated calendar week."""
+    # PlanIR owns the calendar descriptor mapping consumed by delivery notes
+    # and ``build_fuel_ladder`` (base/build/peak -> medium/load/load). Reuse
+    # it here rather than creating a near-identical authoring-time version.
+    from plan_ir import _week_type_lookup
+    return {number: str(kind or '').lower()
+            for number, kind in _week_type_lookup(plan_dates).items()}
+
+
+def _fuel_ladder_plan_from_authored_documents(authored_documents: dict,
+                                              naming_manifest: dict,
+                                              plan_dates: dict) -> dict:
+    """Build the minimal dated session projection required by the ladder.
+
+    This runs after every authoring pass (including strength and series title
+    patches), but before canonicalization.  It deliberately measures the
+    emitted private documents so a duration cap or a displaced session cannot
+    leave the workout tag on a different rung from DeliveryIR.
+    """
+    from types import SimpleNamespace
+    from plan_ir import _is_simulation
+    from zwo_parser import parse_zwo_structure_text, parse_zwo_text
+
+    week_types = _calendar_week_types(plan_dates)
+    by_week = {}
+    for stem, record in naming_manifest.items():
+        xml_text = authored_documents.get(stem)
+        if not xml_text:
+            continue
+        try:
+            duration_s = int(parse_zwo_text(xml_text, source_name=stem)['duration_sec'])
+            title = parse_zwo_structure_text(xml_text, source_name=stem)['name']
+        except Exception:
+            # Canonicalization will report malformed private XML with the
+            # source stem. This enhancement must not hide that primary error.
+            continue
+        week_num = int(record.get('week_num') or 0)
+        week = by_week.setdefault(week_num, {
+            'week_type': week_types.get(week_num), 'sessions': [],
+        })
+        session = {
+            'date': record.get('date'),
+            'tp_kind': record.get('tp_kind'),
+            'duration_s': duration_s,
+        }
+        # Match PlanIR's delivery-context enrichment exactly. A simulation can
+        # be the dress rehearsal even when a later non-simulation endurance
+        # ride exists in the same pre-taper block.
+        session['is_simulation'] = _is_simulation(
+            SimpleNamespace(title=title, archetype_id=record.get('archetype_id'),
+                            tp_kind=record.get('tp_kind'), duration_s=duration_s),
+            week['week_type'])
+        week['sessions'].append(session)
+    race_date = plan_dates.get('race_date')
+    return {
+        'race_snapshot': {'date': race_date},
+        'weeks': list(by_week.values()),
+    }
+
+
+def _replace_fuel_tag(xml_text: str, rate: int) -> str:
+    """Set one authored workout's opening tag to its calendar ladder rung."""
+    match = re.search(r'(<description>)(.*?)(</description>)', xml_text, flags=re.S)
+    if not match:
+        return xml_text
+    description = match.group(2)
+    existing = _FUEL_TAG_PREFIX.match(description)
+    label = existing.group('label') if existing else 'FUEL'
+    tag = f'[{label}: Target {rate}g carbs/hr. Practice this prescription.]\n\n'
+    if existing:
+        description = tag + description[existing.end():]
+    else:
+        description = tag + description
+    return xml_text[:match.start(2)] + description + xml_text[match.end(2):]
+
+
+def _race_day_ceiling_paragraph(longest_name: str, longest_minutes: int,
+                                expected_hours: float) -> str:
+    """Return the short ultra-distance execution cue used only when needed."""
+    return (
+        '\n\nRACE-DAY CEILING:\n'
+        f'Your longest rehearsal ride is {longest_name} ({longest_minutes / 60:.1f} hours); '
+        f'race day is expected to take {expected_hours:.1f} hours. First third conservative, '
+        'fuel on the timer, and remember: the final rehearsal is proof the distance is '
+        'coverable in pieces.\n'
+    )
+
+
+def _apply_delivery_fuel_ladder(authored_documents: dict, naming_manifest: dict,
+                                plan_dates: dict, fueling: dict) -> dict:
+    """Reconcile authored fuel tags and the race ceiling before canonicalization.
+
+    Sessions shorter than 90 minutes retain their author-time tag behavior.
+    Every dated bike session at least that long receives exactly the rung
+    DeliveryIR will render for its date. The A-race description independently
+    receives its ceiling cue when the plan's actual longest training ride is
+    too short relative to its expected duration.
+    """
+    from delivery_render import build_fuel_ladder
+    from zwo_parser import parse_zwo_structure_text, parse_zwo_text
+
+    plan = _fuel_ladder_plan_from_authored_documents(
+        authored_documents, naming_manifest, plan_dates)
+    ladder = build_fuel_ladder(plan, fueling)
+    for stem, record in naming_manifest.items():
+        xml_text = authored_documents.get(stem)
+        if not xml_text or record.get('tp_kind') != 'bike':
+            continue
+        try:
+            duration_s = parse_zwo_text(xml_text, source_name=stem)['duration_sec']
+        except Exception:
+            continue
+        session_date = str(record.get('date') or '')
+        if duration_s >= 90 * 60 and session_date in ladder:
+            authored_documents[stem] = _replace_fuel_tag(xml_text, int(ladder[session_date]))
+
+    try:
+        expected_hours = float((fueling or {}).get('race', {}).get('duration_hours') or 0)
+    except (TypeError, ValueError):
+        expected_hours = 0
+    training_sessions = []
+    race_stem = None
+    for stem, record in naming_manifest.items():
+        xml_text = authored_documents.get(stem)
+        if not xml_text:
+            continue
+        race = record.get('race') or {}
+        if record.get('tp_kind') == 'race' and race.get('priority') == 'A':
+            race_stem = stem
+            continue
+        # B-races are bike-shaped sessions in the TP projection, but they are
+        # events, not rehearsals. Do not let any race entry certify the race-
+        # day ceiling.
+        if race:
+            continue
+        if record.get('tp_kind') != 'bike':
+            continue
+        try:
+            duration_s = parse_zwo_text(xml_text, source_name=stem)['duration_sec']
+            title = parse_zwo_structure_text(xml_text, source_name=stem)['name']
+        except Exception:
+            continue
+        training_sessions.append((duration_s, title))
+    if race_stem and training_sessions and expected_hours > 0:
+        longest_seconds, longest_name = max(training_sessions, key=lambda item: item[0])
+        if expected_hours * 60 > 1.5 * (longest_seconds / 60):
+            race_xml = authored_documents[race_stem]
+            if 'RACE-DAY CEILING:' not in race_xml:
+                paragraph = _race_day_ceiling_paragraph(
+                    longest_name, round(longest_seconds / 60), expected_hours)
+                marker = '\nPRE-RACE CHECKLIST:'
+                if marker in race_xml:
+                    race_xml = race_xml.replace(marker, paragraph + marker, 1)
+                else:
+                    race_xml = race_xml.replace('</description>', paragraph + '</description>', 1)
+                authored_documents[race_stem] = race_xml
+    return ladder
+
+
 # Get config and set up paths
 config = get_config()
 GUIDES_DIR = config.get_guides_dir()
@@ -3043,6 +3209,23 @@ GO GET IT, {athlete_name.upper()}!
         _manifest_by_stem = {_rec['filename_stem']: _rec for _rec in _tp_manifest_records}
         _manifest_path.write_text(
             json.dumps(_manifest_by_stem, indent=2, sort_keys=True) + '\n')
+
+        # The delivery ladder is calculated from the complete, emitted
+        # calendar. Apply it only after all duration caps, race replacements,
+        # and strength/series post-passes have settled, then hand these exact
+        # documents to canonicalization. This prevents the guide, notes, and
+        # ZWO descriptions from each inventing a different fuel progression.
+        try:
+            _apply_delivery_fuel_ladder(
+                _authored_documents, _manifest_by_stem, plan_dates, fueling or {})
+            for _stem, _xml_text in _authored_documents.items():
+                _path = zwo_dir / f"{_stem}.zwo"
+                if _path.exists():
+                    _path.write_text(_xml_text, encoding='utf-8')
+        except ValueError as exc:
+            # A deferred/malformed prescription remains coach-reviewable; it
+            # must not turn a recoverable fulfillment issue into an order kill.
+            warning(f"Could not reconcile delivery fuel ladder: {exc}")
 
     # The caller owns the final write once guide/summary generation succeeds.
     # Keep this on the function rather than changing the long-standing return

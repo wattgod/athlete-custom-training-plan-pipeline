@@ -72,6 +72,14 @@ def test_title_grammar_per_kind(session, expected):
     assert render_title(session, BRAND) == expected
 
 
+def test_strength_title_normalizes_lowercase_template_key_without_changing_words():
+    session = Session(
+        None, "Strength", "strength", "strength", "prescribed", 60, 0,
+        tp_kind="strength", strength_template="foundation_a",
+    )
+    assert render_title(session, BRAND) == "Foundation A - 30min"
+
+
 def test_if_planned_is_power_structure_only():
     structured = Session(
         None, "Intervals", "cycling", "workout", "prescribed", 60 * 60, 64,
