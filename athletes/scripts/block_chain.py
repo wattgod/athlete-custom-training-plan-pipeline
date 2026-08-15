@@ -52,10 +52,20 @@ def derive_week_descriptors(plan_dates: Dict[str, Any]) -> List[Dict[str, Any]]:
             week_type = 'recovery'
         else:
             week_type = 'load'
+        # The block builder owns the shape around an A-race, but the calendar
+        # remains the source of truth for *which day* is race day.  Keeping
+        # that weekday here lets it put openers on day -1 without taking over
+        # the renderer's race-day overlay.
+        race_day = next(
+            (d.get('day_abbrev') or d.get('day', '')[:3].title()
+             for d in w.get('days', []) if d.get('is_race_day')),
+            None,
+        )
         descriptors.append({
             'plan_week': w['week'],
             'phase': phase,
             'week_type': week_type,
+            'race_day': race_day,
         })
     return descriptors
 
@@ -171,7 +181,7 @@ def build_plan_from_calendar(
         elif week_type == 'testing':
             wk_intensity = 2  # assessment battery (e.g. FTP + a second test)
         elif week_type == 'taper':
-            wk_intensity = 1  # a single opener, matching the recovery-week cap
+            wk_intensity = 2  # Thirty-Fifteens + cadence; taper is not recovery
         else:  # recovery, race
             wk_intensity = 1
 
@@ -205,6 +215,7 @@ def build_plan_from_calendar(
             avoid_series=avoid_series,
             methodology_profile=methodology_profile,
             event_format=event_format,
+            race_day=desc.get('race_day'),
         )
         week['plan_week'] = plan_week
         week['block_number'] = block_number

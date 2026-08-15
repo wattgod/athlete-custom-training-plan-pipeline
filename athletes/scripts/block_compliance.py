@@ -28,6 +28,7 @@ INTENSITY_TYPES = {
     'Blended Endurance, Threshold, and Sprints',
     'Kitchen Sink - Drain Cleaner', 'La Balanguera', 'Hyttevask',
     'Thunder Quads', 'Blood Pistons',
+    'Thirty-Fifteens', 'Stars In Your Eyes',
 }
 
 VO2MAX_TYPES = {
@@ -40,6 +41,7 @@ VO2MAX_TYPES = {
     'Kitchen Sink - Drain Cleaner', 'La Balanguera', 'Hyttevask',
     # Race Simulation at high levels has VO2-range surges
     'Race Simulation',
+    'Thirty-Fifteens',
 }
 
 RECOVERY_ALLOWED = {'Endurance', 'Openers', 'Rest Day', 'OFF'}

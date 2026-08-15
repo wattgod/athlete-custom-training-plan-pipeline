@@ -996,6 +996,112 @@ ANAEROBIC_CAPACITY = [
                 'off_duration': 90
             }
         }
+    },
+    {
+        # House race-week sharpener.  The 20/30/40-second pyramid gives a
+        # little anaerobic snap without asking the athlete to chase a maximal
+        # fifth percent the week of the event.  Recoveries are equal or longer
+        # than the efforts, and levels grow by rounds and set count.
+        'name': 'Stars In Your Eyes',
+        'levels': {
+            '1': {
+                'structure': '2 sets of 2x (20sec @ 140%, 30sec @ 150%, 40sec @ 160%) with equal-or-longer recovery',
+                'execution': 'Go hard, but leave the last five percent alone. Finish sharper than you started.',
+                'cadence_prescription': '100-110rpm; spin the efforts, do not grind them',
+                'cadence': 105,
+                'position_prescription': 'Seated or lightly out of the saddle for the 40-second efforts',
+                'timing_prescription': 'Race-week sharpener, early in the week',
+                'fueling': 'Normal hydration; this is not a depletion session',
+                'warmup_duration': 900,
+                'cooldown_duration': 600,
+                'segments': [
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 20, 'on_power': 1.40, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 30, 'on_power': 1.50, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                    {'type': 'steady', 'duration': 180, 'power': 0.55},
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 20, 'on_power': 1.40, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 30, 'on_power': 1.50, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                ],
+            },
+            '2': {
+                'structure': '2 sets of 3x (20sec @ 142%, 30sec @ 152%, 40sec @ 160%) with equal-or-longer recovery',
+                'execution': 'The house race-week sharpener: crisp, controlled, and never a test.',
+                'segments': [
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 20, 'on_power': 1.42, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 30, 'on_power': 1.52, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                    {'type': 'steady', 'duration': 180, 'power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 20, 'on_power': 1.42, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 30, 'on_power': 1.52, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                ],
+            },
+            '3': {
+                'structure': '2 sets of 3x (20sec @ 145%, 30sec @ 155%, 40sec @ 160%) with equal-or-longer recovery',
+                'execution': 'Same controlled shape, slightly sharper starts.',
+                'segments': [
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 20, 'on_power': 1.45, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 30, 'on_power': 1.55, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                    {'type': 'steady', 'duration': 180, 'power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 20, 'on_power': 1.45, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 30, 'on_power': 1.55, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                ],
+            },
+            '4': {
+                'structure': '3 sets of 2x (20sec @ 147%, 30sec @ 157%, 40sec @ 160%) with equal-or-longer recovery',
+                'execution': 'Three compact sets; stop if snap becomes strain.',
+                'segments': [
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 20, 'on_power': 1.47, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 30, 'on_power': 1.57, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                    {'type': 'steady', 'duration': 180, 'power': 0.55},
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 20, 'on_power': 1.47, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 30, 'on_power': 1.57, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                    {'type': 'steady', 'duration': 180, 'power': 0.55},
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 20, 'on_power': 1.47, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 30, 'on_power': 1.57, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 2, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                ],
+            },
+            '5': {
+                'structure': '3 sets of 3x (20sec @ 150%, 30sec @ 158%, 40sec @ 160%) with equal-or-longer recovery',
+                'execution': 'Full race-week sharpener; still finish with something held back.',
+                'segments': [
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 20, 'on_power': 1.50, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 30, 'on_power': 1.58, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                    {'type': 'steady', 'duration': 180, 'power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 20, 'on_power': 1.50, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 30, 'on_power': 1.58, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                    {'type': 'steady', 'duration': 180, 'power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 20, 'on_power': 1.50, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 30, 'on_power': 1.58, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                ],
+            },
+            '6': {
+                'structure': '3 sets of 3x (20sec @ 152%, 30sec @ 160%, 40sec @ 160%) with equal-or-longer recovery',
+                'execution': 'Maximum progression, reserved for athletes who still feel fresh.',
+                'segments': [
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 20, 'on_power': 1.52, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 30, 'on_power': 1.60, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                    {'type': 'steady', 'duration': 180, 'power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 20, 'on_power': 1.52, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 30, 'on_power': 1.60, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                    {'type': 'steady', 'duration': 180, 'power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 20, 'on_power': 1.52, 'off_duration': 40, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 30, 'on_power': 1.60, 'off_duration': 45, 'off_power': 0.55},
+                    {'type': 'intervals', 'repeats': 3, 'on_duration': 40, 'on_power': 1.60, 'off_duration': 60, 'off_power': 0.55},
+                ],
+            },
+        },
     }
 ]
 
@@ -1249,15 +1355,18 @@ ENDURANCE_NEW = [
                 'cooldown_duration': 300
             },
             '2': {
-                'structure': '25min Z1-Z2 easy, 3x30sec @ 110% FTP with 2min easy, 5min Z1 cooldown',
-                'execution': 'Standard openers - 3 short efforts to activate',
+                'structure': '5min @ 95%, 2min @ 120%, 2x10sec sprints inside an easy 40min ride',
+                'execution': 'Race-eve openers: prime the legs without reaching for the last five percent.',
                 'openers': True,
-                'warmup_duration': 1500,
+                'warmup_duration': 900,
                 'warmup_power': 0.65,
-                'efforts': (3, 30),
-                'effort_power': 1.10,
-                'effort_recovery': 120,
-                'cooldown_duration': 300
+                'opener_sequence': [
+                    (300, 0.95, 180, '5min at 95% FTP'),
+                    (120, 1.20, 180, '2min at 120% FTP'),
+                    (10, 2.40, 180, 'Sprint 1 of 2'),
+                    (10, 2.40, 0, 'Sprint 2 of 2'),
+                ],
+                'cooldown_duration': 480
             },
             '3': {
                 'structure': '30min Z1-Z2 easy, 3x45sec @ 110% FTP with 2min easy, 5min Z1 cooldown',

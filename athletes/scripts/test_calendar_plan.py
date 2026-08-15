@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from block_chain import build_plan_from_calendar, CALENDAR_PHASE_MAP
 from block_builder import build_calendar_week
+from block_compliance import validate_plan
 from workout_selector import (
     select_workouts_for_week,
     _select_recovery_week,
@@ -115,13 +116,15 @@ class TestRecoveryWeekSelection:
 
 
 class TestTaperWeekSelection:
-    def test_taper_returns_openers_and_short_ride(self):
+    def test_taper_returns_stimulus_mix_and_burst_ride(self):
         menu = _select_taper_week(hours_per_week=12)
         roles = [w['role'] for w in menu]
-        assert roles.count('intensity') == 1  # a single taper opener (matches recovery-week cap)
+        assert roles.count('intensity') == 2
         assert 'long_ride' in roles
         names = [w['name'] for w in menu if w['role'] == 'intensity']
-        assert all(n == 'Openers' for n in names)
+        assert set(names) == {'Thirty-Fifteens', 'Cadence Work'}
+        assert next(w['name'] for w in menu if w['role'] == 'long_ride') == \
+            'Taper Burst Endurance'
 
     def test_select_workouts_for_week_accepts_taper(self):
         menu = select_workouts_for_week(
@@ -129,6 +132,70 @@ class TestTaperWeekSelection:
             week_in_block=1, base_level=3,
         )
         assert any(w['role'] == 'long_ride' for w in menu)
+
+
+class TestRaceAndTaperHouseTemplates:
+    """Coach-built Monika race/taper shapes, using calendar race-day truth."""
+
+    @staticmethod
+    def _plan(**overrides):
+        kwargs = dict(
+            week_descriptors=[
+                {'plan_week': 1, 'phase': 'taper', 'week_type': 'taper'},
+                {'plan_week': 2, 'phase': 'race', 'week_type': 'race', 'race_day': 'Sat'},
+            ],
+            archetype='specialist', max_intensity=3, off_days=['Mon'],
+            long_ride_day='Sat', hours_per_week=10,
+        )
+        kwargs.update(overrides)
+        return build_plan_from_calendar(**kwargs)
+
+    def test_race_week_has_sharpener_day_before_openers_and_explicit_rest(self):
+        week = _week(self._plan(), 2)
+        by_day = {d['day']: d for d in week['days']}
+        assert by_day['Tue']['name'] == 'Stars In Your Eyes'
+        assert by_day['Wed']['name'] == 'Endurance'
+        assert by_day['Fri']['name'] == 'Openers'
+        assert by_day['Sat']['role'] == 'race'  # legacy overlay still owns it
+        assert [by_day[day]['name'] for day in ('Thu', 'Sun')] == ['Rest Day', 'Rest Day']
+        assert all(day in by_day for day in ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'))
+
+    def test_race_week_respects_caps_and_off_days(self):
+        plan = self._plan(day_caps={'Tue': 45, 'Wed': 45, 'Fri': 40})
+        week = _week(plan, 2)
+        by_day = {d['day']: d for d in week['days']}
+        assert by_day['Mon']['role'] == 'off'
+        assert by_day['Tue']['duration'] <= 45
+        assert by_day['Wed']['duration'] <= 45
+        assert by_day['Fri']['duration'] <= 40
+
+    def test_taper_has_short_short_cadence_and_burst_endurance(self):
+        plan = self._plan()
+        week = _week(plan, 1)
+        names = {d['name'] for d in week['days']}
+        assert {'Thirty-Fifteens', 'Cadence Work', 'Taper Burst Endurance'} <= names
+        assert 'Endurance' in names  # remaining available day stays easy
+        compliance = validate_plan(plan, target_hours=10, off_days=['Mon'], max_intensity=3)
+        assert compliance['critical_pass']
+
+    def test_house_sessions_render_the_required_stimulus(self):
+        from workout_mapper import render_workout
+
+        sharpener = render_workout('Stars In Your Eyes', 2)
+        assert all(token in sharpener for token in ('OnDuration="20"', 'OnDuration="30"', 'OnDuration="40"'))
+        assert 'OnPower="1.42"' in sharpener and 'OffDuration="60"' in sharpener
+
+        openers = render_workout('Openers', 2)
+        assert 'Duration="300" Power="0.95"' in openers
+        assert 'Duration="120" Power="1.20"' in openers
+        assert openers.count('Duration="10" Power="2.40"') == 2
+
+        cadence = render_workout('Cadence Work', 1)
+        assert 'Power="0.88" CadenceLow="100" CadenceHigh="120"' in cadence
+
+        bursts = render_workout('Taper Burst Endurance', 3)
+        assert bursts.count('Duration="6" Power="1.50"') >= 2
+        assert 'Duration="840" Power="0.70"' in bursts
 
 
 class TestCalendarPlan:

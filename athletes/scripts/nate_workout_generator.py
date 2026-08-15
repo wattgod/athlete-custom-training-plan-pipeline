@@ -1982,6 +1982,31 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
     elif "openers" in level_data:
         opener_warmup = level_data.get("warmup_duration", 1200)
         warmup_power = level_data.get("warmup_power", PowerZones.ENDURANCE_MID)
+        opener_cooldown = level_data.get("cooldown_duration", 300)
+        # The house race-eve sequence has mixed efforts, unlike the older
+        # repeated 30-second opener format.  Preserve the tuple format below
+        # for the other progression levels.
+        opener_sequence = level_data.get("opener_sequence")
+        if opener_sequence:
+            blocks.append(generate_steady_state_block(
+                opener_warmup, warmup_power, cadence_range=cadence_range,
+                text="Easy warmup for openers"
+            ))
+            for duration, power, recovery, label in opener_sequence:
+                blocks.append(generate_steady_state_block(
+                    duration, power, cadence_range=cadence_range, text=label
+                ))
+                if recovery:
+                    blocks.append(generate_steady_state_block(
+                        recovery, ZWODefaults.RECOVERY_POWER,
+                        cadence_range=cadence_range
+                    ))
+            blocks.append(generate_steady_state_block(
+                opener_cooldown, PowerZones.RECOVERY_MID,
+                cadence_range=cadence_range, text="Spin out"
+            ))
+            return "".join(blocks)
+
         efforts_data = level_data.get("efforts", (3, 30))
         if isinstance(efforts_data, tuple):
             effort_count, effort_dur = efforts_data
@@ -1989,8 +2014,6 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
             effort_count, effort_dur = 3, 30
         effort_power = level_data.get("effort_power", 1.10)
         effort_recovery = level_data.get("effort_recovery", 120)
-        opener_cooldown = level_data.get("cooldown_duration", 300)
-
         blocks.append(generate_steady_state_block(
             opener_warmup, warmup_power, cadence_range=cadence_range,
             text="Easy warmup for openers"

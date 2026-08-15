@@ -607,15 +607,21 @@ def _select_recovery_week(config: dict, hours_per_week: float = 10) -> List[Dict
 
 
 def _select_taper_week(hours_per_week: float = 10) -> List[Dict[str, Any]]:
-    """Taper week: a single opener, short Z2 rides, reduced long ride.
+    """Taper week: retain sharpness without recovery-week restrictions.
 
-    ~60% volume of a load week, intensity limited to one opener (matching the
-    recovery-week cap), and a final medium ride on the long-ride day for
-    equipment/fueling rehearsal.
+    Taper is intentionally distinct from recovery: Thirty-Fifteens and high
+    cadence work keep the neuromuscular system awake, while the long ride is
+    Z2 with 6-second alactic bursts roughly every 14 minutes.  The builder's
+    0.70 taper budget trims easy fillers first if availability is tight.
     """
+    # This is a taper long ride, not the plan's normal long-ride progression.
+    # Keep it long enough for the alactic seasoning but compact enough that
+    # the two quality sessions and easy days still unload versus peak volume.
+    long_level = 1 if hours_per_week < 9 else 2
     return [
-        {'slot': 'openers', 'name': 'Openers', 'level': 2, 'role': 'intensity'},
-        {'slot': 'long_ride', 'name': 'Endurance', 'level': 2, 'role': 'long_ride'},
+        {'slot': 'thirty_fifteens', 'name': 'Thirty-Fifteens', 'level': 4, 'role': 'intensity'},
+        {'slot': 'cadence', 'name': 'Cadence Work', 'level': 1, 'role': 'intensity'},
+        {'slot': 'long_ride', 'name': 'Taper Burst Endurance', 'level': long_level, 'role': 'long_ride'},
         {'slot': 'filler', 'name': 'Endurance', 'level': 1, 'role': 'filler'},
     ]
 
@@ -651,14 +657,14 @@ def _select_testing_week(hours_per_week: float = 10, max_level: int = 6) -> List
 
 
 def _select_race_week() -> List[Dict[str, Any]]:
-    """Race week: Openers mid-week + 1 easy ride + mostly rest.
+    """Race-week menu marker.
 
-    Block-builder spec: Mon OFF, Tue Openers, Wed Easy 45-60min,
-    Thu OFF, Fri OFF (travel), Sat RACE, Sun OFF.
+    Placement is handled by ``block_builder._build_race_week`` because it
+    needs the calendar's race weekday to put Openers on day -1.
     """
     return [
+        {'slot': 'sharpener', 'name': 'Stars In Your Eyes', 'level': 2, 'role': 'intensity'},
         {'slot': 'openers', 'name': 'Openers', 'level': 2, 'role': 'intensity'},
-        {'slot': 'filler', 'name': 'Rest Day', 'level': 1, 'role': 'rest'},
     ]
 
 
