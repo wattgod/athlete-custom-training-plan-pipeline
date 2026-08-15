@@ -60,9 +60,9 @@ def test_title_parses_main_set_for_structure_free_rpe_athlete():
 @pytest.mark.parametrize(("session", "expected"), [
     (Session(None, "Endurance", "cycling", "workout", "prescribed", 90 * 60, 40,
              tp_kind="bike", display_name="Endurance"), "Endurance - 90min - RPE3"),
-    (Session(None, "Strength", "strength", "strength", "prescribed", 60, 0,
+    (Session(None, "Strength", "strength", "strength", "prescribed", 45 * 60, 0,
              tp_kind="strength", strength_template="Foundation Strength A"),
-     "Foundation Strength A - 30min"),
+     "Foundation Strength A - 45min"),
     (Session(None, "Rest Day", "cycling", "rest", "rest", 0, 0,
              tp_kind="day_off"), "Day Off"),
     (Session(None, "RACE_DAY_Mammoth Tuff", "cycling", "race", "event", 0, 0,
@@ -74,10 +74,74 @@ def test_title_grammar_per_kind(session, expected):
 
 def test_strength_title_normalizes_lowercase_template_key_without_changing_words():
     session = Session(
-        None, "Strength", "strength", "strength", "prescribed", 60, 0,
+        None, "Strength", "strength", "strength", "prescribed", 45 * 60, 0,
         tp_kind="strength", strength_template="foundation_a",
     )
-    assert render_title(session, BRAND) == "Foundation A - 30min"
+    assert render_title(session, BRAND) == "Foundation A - 45min"
+
+
+def test_simulation_title_uses_act_name_not_an_arbitrary_interval_set():
+    session = Session(
+        date="2026-08-29", title="Race Simulation — Act 1 of 3",
+        display_name="Race Simulation — Act 1 of 3", sport="cycling",
+        type="workout", origin="prescribed", tp_kind="bike", duration_s=300 * 60,
+        tss=250, is_simulation=True,
+        segments=[Segment(name="pyramid rep", kind="intervals", seconds=9 * 60,
+                          repeat=3, on_seconds=3 * 60, on_power=.90,
+                          off_seconds=60, off_power=.5)],
+    )
+
+    assert render_title(session, BRAND) == "Race Simulation — Act 1 of 3 - 300min - RPE6-7"
+
+
+def test_title_corrects_stale_work_rest_pattern_from_emitted_intervals():
+    session = Session(
+        date="2026-08-27", title="VO2max 40/20", display_name="VO2max 40/20",
+        sport="cycling", type="workout", origin="prescribed", tp_kind="bike",
+        duration_s=35 * 60, tss=50,
+        segments=[Segment(name="VO2", kind="intervals", seconds=6 * 55,
+                          repeat=6, on_seconds=40, on_power=1.20,
+                          off_seconds=15, off_power=.5)],
+    )
+
+    assert render_title(session, BRAND) == "VO2max 40/15 - 6x40s @120% - 35min - RPE8-9"
+
+
+def test_title_corrects_stale_work_rest_pattern_from_captured_tp_structure():
+    session = Session(
+        date="2026-08-27", title="VO2max 40/20", display_name="VO2max 40/20",
+        sport="cycling", type="workout", origin="prescribed", tp_kind="bike",
+        duration_s=35 * 60, tss=50,
+        structure={"primaryIntensityMetric": "percentOfFtp", "structure": [{
+            "length": {"unit": "repetition", "value": 6}, "steps": [
+                {"intensityClass": "active", "length": {"unit": "second", "value": 40},
+                 "targets": [{"minValue": 120}]},
+                {"intensityClass": "rest", "length": {"unit": "second", "value": 15},
+                 "targets": [{"maxValue": 50}]},
+            ],
+        }]},
+    )
+
+    assert render_title(session, BRAND).startswith("VO2max 40/15 - ")
+
+
+def test_title_renders_repeating_short_effort_pyramid_as_one_set():
+    session = Session(
+        date="2026-09-15", title="Stars In Your Eyes 6x40s",
+        display_name="Stars In Your Eyes 6x40s", sport="cycling", type="workout",
+        origin="prescribed", tp_kind="bike", duration_s=60 * 60, tss=70,
+        segments=[
+            Segment(name="20s", kind="intervals", seconds=180, repeat=3,
+                    on_seconds=20, on_power=1.50, off_seconds=40, off_power=.55),
+            Segment(name="30s", kind="intervals", seconds=225, repeat=3,
+                    on_seconds=30, on_power=1.55, off_seconds=45, off_power=.55),
+            Segment(name="40s", kind="intervals", seconds=300, repeat=3,
+                    on_seconds=40, on_power=1.60, off_seconds=60, off_power=.55),
+        ],
+    )
+
+    assert render_title(session, BRAND) == (
+        "Stars In Your Eyes - 3x(20/30/40s) @150-160% - 60min - RPE8-9")
 
 
 def test_if_planned_is_power_structure_only():

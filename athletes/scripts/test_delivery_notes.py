@@ -108,3 +108,57 @@ def test_recovery_week_briefing_label_outranks_base_phase():
     recovery = next(note for note in notes if note["type"] == "weekly_briefing"
                     and note["title"].startswith("WEEK 2 —"))
     assert recovery["title"] == "WEEK 2 — RECOVERY"
+
+
+def test_briefing_includes_level_bearing_structured_float_sets_without_keyword_match():
+    plan = _plan()
+    float_sets = plan["weeks"][0]["sessions"][0]
+    float_sets.update({
+        "title": "Float Sets", "display_name": "Float Sets", "level": 4,
+        "segments": [{"kind": "intervals", "repeat": 3, "on_seconds": 600,
+                      "on_power": .92, "off_seconds": 120, "off_power": .5}],
+    })
+
+    first_briefing = next(note for note in _notes(plan)
+                          if note["type"] == "weekly_briefing" and note["title"].startswith("WEEK 1"))
+    assert "Float Sets" in first_briefing["body"]
+
+
+def test_start_here_quality_weekdays_use_fact_classification_and_exclude_simulations():
+    start = date(2026, 8, 10)
+    weeks = []
+    for number in (1, 2):
+        monday = start + timedelta(days=(number - 1) * 7)
+        weeks.append({
+            "number": number, "phase": "build", "week_type": "build",
+            "sessions": [
+                {"date": str(monday + timedelta(days=1)), "title": "Float Sets",
+                 "tp_kind": "bike", "duration_s": 60 * 60, "level": 3,
+                 "segments": [{"kind": "intervals", "repeat": 3, "on_seconds": 600,
+                               "on_power": .90, "off_seconds": 120, "off_power": .5}]},
+                {"date": str(monday + timedelta(days=5)), "title": "Race Simulation",
+                 "tp_kind": "bike", "duration_s": 4 * 60 * 60, "is_simulation": True},
+                {"date": str(monday), "title": "Day Off", "tp_kind": "day_off"},
+            ],
+        })
+    plan = {
+        "brand": "gravelgod", "athlete": {"name": "Test Athlete"}, "weeks": weeks,
+        "race_snapshot": {"name": "Test Race", "date": "2026-08-29"},
+    }
+
+    start_here = _by_type(_notes(plan))["start_here"]["body"]
+    assert "quality lands on tuesday" in start_here.lower()
+    assert "quality lands on saturday" not in start_here.lower()
+
+
+def test_start_here_uses_singular_week_and_grit_has_no_fixture_date_residue():
+    notes = _notes(_plan(weeks=1))
+    assert "1 week to High Country Gravel" in _by_type(notes)["start_here"]["body"]
+    grit_body = "\n".join(note["body"] for note in notes if note["type"].startswith("grit_"))
+    assert "19 September" not in grit_body
+    assert "by race day" in grit_body
+
+
+def test_hydration_block_owns_its_single_heading_in_the_fuel_ladder_note():
+    fuel_note = _by_type(_notes(_plan()))["fuel_ladder"]["body"]
+    assert fuel_note.count("HYDRATION") == 1

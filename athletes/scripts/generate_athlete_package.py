@@ -235,6 +235,11 @@ _FUEL_TAG_PREFIX = re.compile(
     r'^\[(?P<label>(?:HIGH|LONG-RIDE|RACE) FUEL|FUEL): Target '\
     r'\d+(?:\.\d+)?g carbs/hr\. Practice this prescription\.\]\n\n'
 )
+_FUEL_RATE = re.compile(
+    r'\b\d+(?:\.\d+)?(?:\s*-\s*\d+(?:\.\d+)?)?(?:\s*\([^\n)]*\))?\s*'
+    r'g\s*(?:carbs?\s*)?/\s*(?:hr|h|hour)\b',
+    re.IGNORECASE,
+)
 
 
 def _calendar_week_types(plan_dates: dict) -> dict:
@@ -299,7 +304,13 @@ def _fuel_ladder_plan_from_authored_documents(authored_documents: dict,
 
 
 def _replace_fuel_tag(xml_text: str, rate: int) -> str:
-    """Set one authored workout's opening tag to its calendar ladder rung."""
+    """Set one authored workout's fuel copy to its calendar ladder rung.
+
+    Sim descriptions can carry both their generator-time fuelling prose and
+    the package-time ladder tag. Once a dated ladder exists it is the sole
+    prescription, so normalize every other per-hour carbohydrate rate in the
+    body instead of merely warning the athlete which one to follow.
+    """
     match = re.search(r'(<description>)(.*?)(</description>)', xml_text, flags=re.S)
     if not match:
         return xml_text
@@ -307,10 +318,9 @@ def _replace_fuel_tag(xml_text: str, rate: int) -> str:
     existing = _FUEL_TAG_PREFIX.match(description)
     label = existing.group('label') if existing else 'FUEL'
     tag = f'[{label}: Target {rate}g carbs/hr. Practice this prescription.]\n\n'
-    if existing:
-        description = tag + description[existing.end():]
-    else:
-        description = tag + description
+    body = description[existing.end():] if existing else description
+    body = _FUEL_RATE.sub(f'{rate} g/hr', body)
+    description = tag + body
     return xml_text[:match.start(2)] + description + xml_text[match.end(2):]
 
 
