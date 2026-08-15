@@ -4115,6 +4115,15 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
             'location': vitals.get('location', ''),
             'elevation_feet': vitals.get('elevation_ft', 0),
         })
+        # Altitude trigger reads race_metadata.start_elevation_feet (above
+        # sea level), but the race JSON carries it as
+        # vitals.start_elevation_asl_ft — unmapped, the Altitude Training
+        # section could never fire (shipped an 8,100 ft race with no
+        # altitude section; same class as MONIKA_RENK_PIPELINE_FINDINGS 12b).
+        race_data['race_metadata'].setdefault(
+            'start_elevation_feet', vitals.get('start_elevation_asl_ft', 0) or 0)
+        race_data['race_metadata'].setdefault(
+            'avg_elevation_feet', vitals.get('avg_elevation_asl_ft', 0) or 0)
         # Create race_characteristics for terrain/climate
         terrain = inner.get('terrain', {})
         climate = inner.get('climate', {})

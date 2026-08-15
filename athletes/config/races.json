@@ -4137,13 +4137,20 @@
       "slug": "mallorca-312"
     },
     "gravel:mammoth-tuff": {
-      "date": "2026-06-28",
+      "date": "2026-09-19",
       "discipline": "gravel",
-      "distance_mi": 100,
+      "distance_mi": 89,
       "elevation_ft": 7500,
+      "event_year": 2026,
       "location": "Mammoth Lakes, California",
       "name": "Mammoth Tuff",
-      "slug": "mammoth-tuff"
+      "slug": "mammoth-tuff",
+      "source_type": "official",
+      "source_urls": [
+        "https://www.tuff.ventures/mtuff/schedule",
+        "https://www.uci.org/competition-details/2026/GRA/78856"
+      ],
+      "verified_at": "2026-08-14"
     },
     "gravel:manali-khardungla-cycling-championship": {
       "date": null,
