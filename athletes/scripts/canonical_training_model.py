@@ -753,10 +753,20 @@ def load_canonical_model(path: Path | str) -> Dict[str, Any]:
     return model
 
 
-def _step_target(target: Dict[str, Any], key: str = "value") -> List[Dict[str, int]]:
+def _step_target(target: Dict[str, Any], key: str = "value",
+                 all_out: bool = False) -> List[Dict[str, int]]:
     kind = target.get("type")
     if kind == "free":
-        return []
+        # A target-less step is invisible: TP accepts the POST but the
+        # calendar mini-chart draws a GAP, the polyline omits the step, and
+        # the workout-detail builder can refuse the whole structure (found
+        # on a live graded delivery). Free efforts get an explicit display
+        # band: all-out efforts a hard band, anything else the floor. The
+        # canonical target itself stays the pure {"type": "free"} branch —
+        # all_out is a projection-time display decision.
+        if all_out:
+            return [{"minValue": 120, "maxValue": 170}]
+        return [{"minValue": 0}]
     if key in {"on", "off"}:
         value = target.get(key)
         return [{"minValue": int(round(float(value) * 100))}] if kind != "rpe" else []
@@ -777,7 +787,8 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
     steps: List[Dict[str, Any]] = []
     cursor = 0
 
-    def append(name: str, seconds: int, target: Dict[str, Any], intensity: str, key: str = "value") -> None:
+    def append(name: str, seconds: int, target: Dict[str, Any], intensity: str,
+               key: str = "value", all_out: bool = False) -> None:
         nonlocal cursor
         block = {
             "type": "step",
@@ -785,8 +796,11 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
             "steps": [{
                 "name": name,
                 "length": {"value": int(seconds), "unit": "second"},
-                "targets": _step_target(target, key),
+                "targets": _step_target(target, key, all_out=all_out),
                 "intensityClass": intensity,
+                # TP's builder expects the full imported-step shape; steps
+                # without notes rendered fine on cards but not in detail.
+                "notes": "",
             }],
             "begin": cursor,
             "end": cursor + int(seconds),
@@ -803,7 +817,13 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
         else:
             intensity = "warmUp" if segment.get("kind") == "warmup" else (
                 "coolDown" if segment.get("kind") == "cooldown" else "active")
-            append(segment.get("name") or "Step", int(segment.get("seconds") or 0), target, intensity)
+            all_out = bool(re.search(
+                r"all[- ]?out|max(?:imal)? effort",
+                " ".join(str(segment.get(f) or "")
+                         for f in ("name", "description")),
+                re.I))
+            append(segment.get("name") or "Step", int(segment.get("seconds") or 0),
+                   target, intensity, all_out=all_out)
     if not steps:
         return None
     metric = {
@@ -821,6 +841,7 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
         "primaryIntensityMetric": metric,
         "primaryIntensityTargetOrRange": "target",
         "polyline": compute_polyline(steps),
+        "importedFromZwo": True,
     }
 
 
