@@ -607,6 +607,34 @@ def parse_day_list(val: str) -> List[str]:
     return days
 
 
+# Intake labels have evolved with the questionnaire. Keep their aliases in
+# one place so an accepted answer never silently falls through to a default.
+_STRENGTH_FIELD_ALIASES = {
+    'current': ('current', 'current_strength', 'strength_current'),
+    'include': (
+        'include', 'want', 'strength_want', 'strength_training',
+        'strength_trains', 'strength_interest', 'strength_training_interest',
+    ),
+    'equipment': ('equipment', 'strength_equipment'),
+}
+
+
+def _strength_answer(strength: Dict[str, Any], field: str, default: str = '') -> str:
+    """Return the first non-empty answer for a canonical strength field."""
+    for label in _STRENGTH_FIELD_ALIASES[field]:
+        value = strength.get(label)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return default
+
+
+def _strength_sessions_from_current(value: str) -> Optional[int]:
+    """Extract an athlete-reported weekly strength frequency when supplied."""
+    match = re.search(r'\b([1-7])\s*(?:x|times?)?\s*(?:[-/ ]?week|/wk|weekly)\b',
+                      value.lower())
+    return int(match.group(1)) if match else None
+
+
 # ===========================================================================
 # Unknown Race Helpers
 # ===========================================================================
@@ -1283,15 +1311,44 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             print(f"{YELLOW}WARNING: {volume_warning}{RESET}")
 
     # -- Strength --
-    strength_current = strength.get('current', 'none').lower()
-    strength_include = strength.get('include', 'no').lower()
-    strength_equip_raw = strength.get('equipment', 'minimal').lower()
+    strength_current = _strength_answer(strength, 'current', 'none').lower()
+    strength_include = _strength_answer(strength, 'include', 'no').lower()
+    strength_equip_raw = _strength_answer(strength, 'equipment', 'minimal').lower()
     currently_training = strength_current not in ('none', 'no', '')
-    include_in_plan = strength_include in ('yes', 'true', '1')
-    strength_sessions = 0 if not include_in_plan else 2
+    include_in_plan = strength_include in ('yes', 'true', '1', 'willing', 'eager')
+    reported_strength_sessions = _strength_sessions_from_current(strength_current)
+    if not include_in_plan:
+        strength_sessions = 0
+    elif reported_strength_sessions is not None:
+        strength_sessions = reported_strength_sessions
+    elif strength_include == 'willing':
+        strength_sessions = 1
+    else:
+        strength_sessions = 2
     strength_equipment = [s.strip() for s in strength_equip_raw.split(',') if s.strip()]
     if not strength_equipment:
         strength_equipment = ['minimal']
+
+    recognized_strength_labels = {
+        label for aliases in _STRENGTH_FIELD_ALIASES.values() for label in aliases
+    }
+    unmapped_strength_answers = {
+        label: str(value).strip()
+        for label, value in strength.items()
+        if label not in recognized_strength_labels and str(value or '').strip()
+    }
+    strength_review_issues = []
+    if unmapped_strength_answers:
+        strength_review_issues.append({
+            'id': 'STRENGTH_INTAKE_UNMAPPED',
+            'source': 'intake',
+            'severity': 'CRITICAL',
+            'message': ('Strength answers could not be mapped into the plan; '
+                        'coach review is required before delivery.'),
+            'review_value': unmapped_strength_answers,
+            'basis': 'non-empty athlete strength-section answers with no supported label',
+            'sensitivity': 'personal',
+        })
 
     total_hours = cycling_hours_target + (2 if include_in_plan else 0)
 
@@ -1566,8 +1623,11 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'off_days': off_days,
         },
         'recurring_sessions': recurring_sessions,
-        'availability_review_issues': contradiction_issues(
-            recurring_sessions, schedule.get('notes', '') or additional.get('notes', '')),
+        'availability_review_issues': (
+            contradiction_issues(
+                recurring_sessions, schedule.get('notes', '') or additional.get('notes', ''))
+            + strength_review_issues
+        ),
         'travel_dates': parse_travel_dates(
             schedule.get('travel_dates', '') or additional.get('travel_dates', '')
         ),

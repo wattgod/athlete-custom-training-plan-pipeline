@@ -719,7 +719,7 @@ def generate_fueling_recommendations(
         "hydration": {
             "target_ml_per_hour": 500 + (100 if duration_hours > 6 else 0),
             "electrolytes": "500-1000mg sodium per hour depending on sweat rate",
-            "notes": "Sip consistently. Don't wait until thirsty."
+            "notes": "Drink to thirst; 500-750 ml/hr is a starting estimate, not a quota."
         },
         "pre_race": {
             "meal_timing": "3-4 hours before start",
