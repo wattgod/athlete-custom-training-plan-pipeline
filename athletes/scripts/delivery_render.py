@@ -534,7 +534,11 @@ def render_title(session: Any, brand_cfg: Dict[str, Any]) -> str:
     if _get(session, "is_simulation"):
         return f"{name} - {duration}min - {_rpe(session, name)}"
     if _is_plain_endurance(session, name, defining_set):
-        return f"Endurance - {duration}min - RPE3"
+        # Keep a focus-variant name ("Endurance — Cadence Focus") — the
+        # variety is real content, and collapsing every easy ride to the
+        # same title is the loudest "generated plan" tell.
+        plain_name = name if re.search(r"endurance\s*[—–-]\s*\S", name.lower()) else "Endurance"
+        return f"{plain_name} - {duration}min - RPE3"
     rpe = _rpe(session, name)
     # Honesty rule: the defining set must not contradict the RPE beside it.
     # A test whose work is a target-free all-out block once titled itself

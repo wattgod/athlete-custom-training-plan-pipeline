@@ -411,12 +411,12 @@ def _build_week(
         else:
             # Race week: mostly rest. One easy ride (Wed), rest of filler = Rest Day.
             if week_type == 'race' and filler_count != 1:
-                workout = {'name': 'Rest Day', 'level': 1, 'tss': 23, 'duration': 35, 'role': 'filler'}
+                workout = {'name': 'Rest Day', 'level': 1, 'tss': 0, 'duration': 0, 'role': 'filler'}
             elif week_type == 'race' and filler_count == 1:
                 # One easy ride mid-week
                 workout = {'name': 'Endurance', 'level': 1, 'tss': 55, 'duration': 50, 'role': 'filler'}
             elif week_type == 'recovery' and filler_count > 0 and filler_count % 3 == 0:
-                workout = {'name': 'Rest Day', 'level': 1, 'tss': 23, 'duration': 35, 'role': 'filler'}
+                workout = {'name': 'Rest Day', 'level': 1, 'tss': 0, 'duration': 0, 'role': 'filler'}
             else:
                 w = filler_workout or {'name': 'Endurance', 'level': 1}
                 f_name = w['name']
@@ -425,7 +425,7 @@ def _build_week(
                 # Shift the cycle by week so the same weekday doesn't get the
                 # same variant every single week.
                 pool = w.get('pool')
-                if pool and week_type == 'load':
+                if pool and week_type in ('load', 'testing', 'taper'):
                     f_name = pool[(filler_count + week_in_block - 1) % len(pool)]
                     if get_workout_duration(f_name, f_level) <= 0:
                         # Unknown level for this variant — clamp to a level
@@ -442,6 +442,16 @@ def _build_week(
                     # week (longer work blocks / higher-rpm holds) just like
                     # the named intensity series.
                     f_level = min(f_level + max(0, week_in_block - 1), max_level)
+                # The generic Endurance Blocks renderer snaps its component
+                # segments to whole minutes and can render one minute longer
+                # than its catalog duration.  Do not put that variant exactly
+                # on a stated cap; choose the standard Endurance member of the
+                # same existing filler pool so the emitted file stays within
+                # the athlete's availability, not merely the planner card.
+                cap = (day_caps or {}).get(day, 0)
+                if (f_name == 'Endurance Blocks' and cap
+                        and get_workout_duration(f_name, f_level) >= cap):
+                    f_name, f_level = 'Endurance', 1
                 tss = get_workout_tss(f_name, f_level)
                 dur = get_workout_duration(f_name, f_level)
                 workout = {
@@ -473,10 +483,10 @@ def _build_week(
         tolerance = 1.15 if hours_per_week < 6 else 1.10
         max_minutes = hours_per_week * 60 * tolerance
     elif week_type == 'recovery':
-        # 0.55 of HOURS ≈ 50-70% of actual load volume across athletes
-        # (load weeks land at 0.79-1.10 of stated hours), keeping recovery
-        # inside the 50-65%-of-load coaching band.
-        max_minutes = hours_per_week * 60 * 0.55
+        # Preserve enough low-intensity volume to meet the 50-65% recovery
+        # TSS floor against the preceding load block.  The old 0.55 cap,
+        # combined with Rest-Day pseudo-TSS, emitted closer to 40%.
+        max_minutes = hours_per_week * 60 * 0.80
     elif week_type == 'taper':
         max_minutes = hours_per_week * 60 * 0.70
     elif week_type == 'race':
@@ -495,10 +505,10 @@ def _build_week(
                     removed_tss = days[i]['tss']
                     days[i] = {
                         'day': days[i]['day'], 'name': 'Rest Day', 'level': 1,
-                        'tss': 23, 'duration': 35, 'role': 'filler',
+                        'tss': 0, 'duration': 0, 'role': 'filler',
                     }
-                    total_duration -= (removed_dur - 35)
-                    total_tss -= (removed_tss - 23)
+                    total_duration -= removed_dur
+                    total_tss -= removed_tss
 
         # Fillers exhausted but still over budget (time-crunched athletes in
         # high-level blocks): step the longest intensity/long-ride workout
@@ -523,6 +533,21 @@ def _build_week(
             longest['level'] = new_level
             longest['duration'] = new_dur
             longest['tss'] = new_tss
+
+        # A library can leave a small remainder after every eligible session
+        # is at L1 (for example, 397 min against a 396-min budget).  The
+        # emitted renderer already supports duration scaling, so trim the
+        # longest remaining ride rather than shipping an over-budget week.
+        total_duration = sum(d.get('duration', 0) for d in days)
+        if total_duration > max_minutes:
+            candidates = [d for d in days if d.get('duration', 0) > 0
+                          and d.get('name') != 'Rest Day']
+            if candidates:
+                longest = max(candidates, key=lambda d: d['duration'])
+                old_duration = longest['duration']
+                new_duration = max(1, old_duration - (total_duration - max_minutes))
+                longest['duration'] = new_duration
+                longest['tss'] = round(longest['tss'] * new_duration / old_duration)
 
     # Grow-to-floor: the trim above only shrinks. Without growth, LOAD
     # weeks for high-volume athletes filled at ~50% of stated hours (a
@@ -581,6 +606,22 @@ def _build_week(
                 break
             if not grew:
                 break
+
+    # The grow-to-floor pass can land on a floating-point budget boundary
+    # (e.g. 396.00000000000006) and reintroduce a one-minute overage. Keep
+    # the emitted calendar within the integer-minute availability contract.
+    if max_minutes is not None:
+        total_duration = sum(d.get('duration', 0) for d in days)
+        integer_budget = int(max_minutes)
+        if total_duration > integer_budget:
+            candidates = [d for d in days if d.get('duration', 0) > 0
+                          and d.get('name') != 'Rest Day']
+            if candidates:
+                longest = max(candidates, key=lambda d: d['duration'])
+                old_duration = longest['duration']
+                new_duration = max(1, old_duration - (total_duration - integer_budget))
+                longest['duration'] = new_duration
+                longest['tss'] = round(longest['tss'] * new_duration / old_duration)
 
     return {
         'week_num': week_num,

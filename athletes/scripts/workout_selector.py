@@ -622,7 +622,8 @@ def _select_taper_week(hours_per_week: float = 10) -> List[Dict[str, Any]]:
         {'slot': 'thirty_fifteens', 'name': 'Thirty-Fifteens', 'level': 4, 'role': 'intensity'},
         {'slot': 'cadence', 'name': 'Cadence Work', 'level': 1, 'role': 'intensity'},
         {'slot': 'long_ride', 'name': 'Taper Burst Endurance', 'level': long_level, 'role': 'long_ride'},
-        {'slot': 'filler', 'name': 'Endurance', 'level': 1, 'role': 'filler'},
+        {'slot': 'filler', 'name': 'Endurance', 'level': 1, 'role': 'filler',
+         'pool': ['Endurance', 'Cadence Work', 'Endurance Blocks', 'Taper Burst Endurance']},
     ]
 
 
@@ -652,7 +653,8 @@ def _select_testing_week(hours_per_week: float = 10, max_level: int = 6) -> List
         {'slot': 'intensity_1', 'name': 'FTP Test', 'level': 1, 'role': 'intensity'},
         {'slot': 'intensity_2', 'name': 'Anaerobic Test', 'level': 1, 'role': 'intensity'},
         {'slot': 'long_ride', 'name': 'Endurance', 'level': long_level, 'role': 'long_ride'},
-        {'slot': 'filler', 'name': 'Endurance', 'level': 1, 'role': 'filler'},
+        {'slot': 'filler', 'name': 'Endurance', 'level': 1, 'role': 'filler',
+         'pool': ['Endurance', 'Cadence Work', 'Endurance Blocks', 'Taper Burst Endurance']},
     ]
 
 

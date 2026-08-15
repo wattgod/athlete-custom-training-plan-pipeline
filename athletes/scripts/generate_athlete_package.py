@@ -123,6 +123,12 @@ def _race_countdown(weeks_to_race: int, race_name: str) -> str:
     return f"{weeks_to_race} {unit} to {race_name}"
 
 
+def race_day_tss_from_emitted_minutes(duration_minutes: int) -> int:
+    """Match zwo_parser's FreeRide estimate for the emitted race-day card."""
+    intensity_factor = 0.65 if duration_minutes * 60 > 3600 else 0.55
+    return round((duration_minutes / 60) * (intensity_factor ** 2) * 100)
+
+
 # =============================================================================
 # TP PROJECTION (D1/D3): deterministic tp_kind -> TP workoutTypeValueId and
 # phase -> strength-template-family mapping. Consumed by _record_tp_session
@@ -997,6 +1003,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     # Structured failures are carried to the package-level fulfillment state
     # only after all required artifacts have rendered successfully.
     _fulfillment_issues = []
+    _post_sim_recovery_days = set()
 
     # ===================================================================
     # BLOCK-BUILDER PLAN: pre-compute workout assignments for all weeks.
@@ -1133,6 +1140,18 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 'total': len(_act_sim_days),
                 'dress_rehearsal': _act_index == len(_act_sim_days),
             }
+
+        # A long simulation is a hard session even when it occupies the
+        # long-ride role.  Protect the following calendar day before the
+        # compliance gate sees the plan, and retain a displaced taper
+        # sharpener on the athlete's stated interval day (Thu for the
+        # Sunday-long/Tue-off profile) rather than simply dropping it.
+        from block_chain import protect_post_simulation_recovery
+        _interval_abbrevs = [DAY_FULL_TO_ABBREV.get(str(day).lower(), str(day))
+                             for day in ((profile or {}).get('availability_roles') or {}).get(
+                                 'interval_days', [])]
+        _post_sim_recovery_days = protect_post_simulation_recovery(
+            _bb_plan, _interval_abbrevs or ['Tue', 'Thu'])
         if '_ledger' in locals():
             materialize_fixed_sessions(_bb_plan, _ledger)
 
@@ -2625,6 +2644,23 @@ TIPS:
                         if display_name not in GENERIC_NO_SUFFIX:
                             _series_id = (bb_day.get('_block_number', 1), day_abbrev, display_name)
                             _series_rank_hint = series_no
+                elif not _act_simulation and bb_name == 'Endurance' and bb_role == 'filler':
+                    from workout_mapper import resolve_display_name
+                    display_name = resolve_display_name(
+                        bb_name, methodology=nate_methodology,
+                        variation_offset=var_offset, discipline=_bb_discipline,
+                        endurance_variant=var_offset)
+                    _filename_name = display_name
+                elif not _act_simulation and bb_name not in ('Endurance', 'Rest Day'):
+                    # Filler-pool rotations are real mapped archetypes too.
+                    # Resolve the visible title from the same renderer choice
+                    # so a Terrain/6-second-burst card never ships labelled
+                    # as a generic Endurance Blocks card.
+                    from workout_mapper import resolve_display_name
+                    display_name = resolve_display_name(
+                        bb_name, methodology=nate_methodology,
+                        variation_offset=var_offset, discipline=_bb_discipline)
+                    _filename_name = display_name
 
                 # Render ZWO through block-builder workout mapper. The
                 # filename is derived from _filename_name (bug-compatible
@@ -2660,6 +2696,8 @@ TIPS:
                         author=_workout_author,
                         discipline=_bb_discipline,
                         training_age=_bb_training_age,
+                        endurance_variant=(var_offset if bb_name == 'Endurance'
+                                           and bb_role == 'filler' else None),
                     )
 
                 if not zwo_content:
@@ -3000,8 +3038,12 @@ Trust the process, {athlete_name}."""
                 # race-day FreeRide (no power target) — otherwise the header
                 # (65 TSS/hr) and the parsed value in plan_ir/preview (IF 0.65)
                 # disagree by ~50%.
-                _race_if = 0.65 if duration_hours * 3600 > 3600 else 0.55
-                estimated_tss = round(duration_hours * (_race_if ** 2) * 100)
+                # Round once for the emitted FreeRide, then calculate the
+                # description from that exact card duration/IF.  PlanIR uses
+                # the same parser calculation for tss_planned, so the two
+                # customer-visible figures cannot drift by a rounding point.
+                race_duration_min = round_duration_to_10(int(round(duration_hours * 60)))
+                estimated_tss = race_day_tss_from_emitted_minutes(race_duration_min)
 
                 # Build race day plan description
                 race_description = f"""RACE DAY: {race_name}
@@ -3051,7 +3093,7 @@ GO GET IT, {athlete_name.upper()}!
   <description>{race_description}</description>
   <sportType>bike</sportType>
   <workout>
-    <FreeRide Duration="{round_duration_to_10(int(round(duration_hours * 60))) * 60}"/>
+    <FreeRide Duration="{race_duration_min * 60}"/>
   </workout>
 </workout_file>"""
 
@@ -3336,8 +3378,10 @@ GO GET IT, {athlete_name.upper()}!
             strength_days = place_strength_days(
                 strength_day_is_available,
                 sessions_this_week,
-                blocked_days={day for candidate_week, day in ftp_test_days
-                              if candidate_week == week_num},
+                blocked_days=({day for candidate_week, day in ftp_test_days
+                               if candidate_week == week_num}
+                              | {day for candidate_week, day in _post_sim_recovery_days
+                                 if candidate_week == week_num}),
                 strength_only_abbrevs=strength_only_abbrevs,
             )
 
