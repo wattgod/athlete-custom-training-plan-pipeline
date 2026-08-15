@@ -16,8 +16,9 @@ Usage:
 """
 
 import sys
+import html
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 # Ensure script dir on path (flat layout — all files in athletes/scripts/)
 _SCRIPT_DIR = str(Path(__file__).parent.resolve())
@@ -25,6 +26,178 @@ if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
 from nate_workout_generator import generate_nate_zwo
+
+
+# Race-week sharpness is a session-dose policy, not an archetype-progression
+# prize.  These are deliberately evaluated after the calendar has selected the
+# sharpener slot, against the rendered ZWO's actual duration/TSS/IF.  That
+# protects us from a future archetype or duration-scaling change quietly
+# turning race week into a hard training session again.
+RACE_WEEK_SHARPENER_WINDOW = {
+    'min_if': 0.78,
+    'max_if': 0.86,
+    'min_tss': 55,
+    'max_tss': 75,
+}
+
+# Levels are dose variants for the same race-week session.  They are not the
+# usual six-level development ladder: race week calls for the smallest dose
+# that preserves snap.  Each variant retains two short pyramids, three-minute
+# easy recovery between sets, and generous easy-riding padding.
+_RACE_WEEK_SHARPENER_DOSES = {
+    1: {'duration_min': 58, 'powers': (1.40, 1.50, 1.55)},
+    2: {'duration_min': 62, 'powers': (1.40, 1.50, 1.55)},
+}
+
+
+def _render_race_eve_openers(
+    workout_name: Optional[str] = None,
+    author: str = 'Gravel God Training',
+    display_name: Optional[str] = None,
+) -> str:
+    """Race-eve activation with a whole-session dose below 40 TSS / 0.80 IF."""
+    name = html.escape(display_name or workout_name or 'Openers', quote=False)
+    escaped_author = html.escape(author or 'Gravel God Training', quote=False)
+    description = '''WARM-UP:
+-10min building from Z1 to Z2
+
+MAIN SET:
+-7min relaxed Z2, then 2min @ 120% FTP
+-3min easy Z1
+-3x30sec @ 125% FTP with 2min easy Z1 between efforts
+-Cadence: 100-120rpm on the short stabs; 90-100rpm while riding easy
+
+COOL-DOWN:
+-10min easy spin Z1-Z2
+
+PURPOSE:
+Race-eve activation: wake the legs without creating fatigue.
+
+EXECUTION:
+-The 2-minute effort is controlled, not a test. Finish feeling more ready than tired.'''
+    return f'''<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>{escaped_author}</author>
+  <name>{name}</name>
+  <description>{description}</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="600" PowerLow="0.50" PowerHigh="0.70" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="420" Power="0.65" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="120" Power="1.20" CadenceLow="100" CadenceHigh="120"/>
+    <SteadyState Duration="180" Power="0.55" CadenceLow="90" CadenceHigh="100"/>
+    <IntervalsT Repeat="3" OnDuration="30" OnPower="1.25" CadenceLow="100" CadenceHigh="120" OffDuration="120" OffPower="0.55"/>
+    <Cooldown Duration="600" PowerLow="0.65" PowerHigh="0.45" CadenceLow="90" CadenceHigh="100"/>
+  </workout>
+</workout_file>'''
+
+
+def _render_race_week_sharpener(
+    level: int,
+    workout_name: Optional[str] = None,
+    author: str = 'Gravel God Training',
+    display_name: Optional[str] = None,
+) -> str:
+    """Render the coach-approved 20/30/40 race-week sharpener.
+
+    The deliberately long easy padding is part of the prescription: it keeps
+    a few high-quality efforts inside a whole-session dose that freshens the
+    athlete rather than adding a final hard workout before the event.
+    """
+    dose = _RACE_WEEK_SHARPENER_DOSES.get(
+        min(level, max(_RACE_WEEK_SHARPENER_DOSES)), _RACE_WEEK_SHARPENER_DOSES[2])
+    target = dose['duration_min'] * 60
+    p20, p30, p40 = dose['powers']
+    warmup, cooldown = 900, 600
+    # One set is 20/30/40sec with real Z1 recoveries.  The three-minute reset
+    # is retained between the two sets; any remaining time is low-Z2 padding.
+    set_seconds = (20 + 60) + (30 + 120) + (40 + 120)
+    between_sets = 180
+    fixed_seconds = warmup + cooldown + 2 * set_seconds + between_sets
+    padding = max(0, target - fixed_seconds)
+    # Long easy blocks are whole minutes so the executable description never
+    # produces misleading ``M:SS`` prose for a session the athlete reads in
+    # minutes.  Sub-minute efforts remain exact below.
+    pre_padding = (padding // 120) * 60
+    post_padding = padding - pre_padding
+    cadence = ' CadenceLow="100" CadenceHigh="120"'
+    set_xml = f'''    <SteadyState Duration="20" Power="{p20:.2f}"{cadence}/>
+    <SteadyState Duration="60" Power="0.55" CadenceLow="100" CadenceHigh="110"/>
+    <SteadyState Duration="30" Power="{p30:.2f}"{cadence}/>
+    <SteadyState Duration="120" Power="0.55" CadenceLow="100" CadenceHigh="110"/>
+    <SteadyState Duration="40" Power="{p40:.2f}"{cadence}/>
+    <SteadyState Duration="120" Power="0.55" CadenceLow="100" CadenceHigh="110"/>'''
+    name = html.escape(display_name or workout_name or 'Stars In Your Eyes', quote=False)
+    escaped_author = html.escape(author or 'Gravel God Training', quote=False)
+    description = (
+        'WARM-UP:\n'
+        '-15min building from Z1 to Z2\n\n'
+        'MAIN SET:\n'
+        '-2 x (20sec @ {p20:.0%}, 30sec @ {p30:.0%}, 40sec @ {p40:.0%} FTP)\n'
+        '-1min / 2min / 2min easy Z1 between the 20sec / 30sec / 40sec efforts\n'
+        '-3min easy Z1 between sets; use the remaining ride as relaxed Z2 padding\n'
+        '-Cadence: 100-120rpm on efforts; 100-110rpm on recoveries\n\n'
+        'COOL-DOWN:\n'
+        '-10min easy spin Z1-Z2\n\n'
+        'PURPOSE:\n'
+        'Race-week activation: arrive sharp without accumulating fatigue.\n\n'
+        'EXECUTION:\n'
+        '-Keep every effort crisp, never maximal. The easy riding and full set break are prescribed recovery, not optional.'
+    ).format(p20=p20, p30=p30, p40=p40)
+    return f'''<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>{escaped_author}</author>
+  <name>{name}</name>
+  <description>{description}</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="{warmup}" PowerLow="0.50" PowerHigh="0.70" CadenceLow="90" CadenceHigh="100"/>
+    <SteadyState Duration="{pre_padding}" Power="0.65" CadenceLow="90" CadenceHigh="100"/>
+{set_xml}
+    <SteadyState Duration="{between_sets}" Power="0.55" CadenceLow="100" CadenceHigh="110"/>
+{set_xml}
+    <SteadyState Duration="{post_padding}" Power="0.65" CadenceLow="90" CadenceHigh="100"/>
+    <Cooldown Duration="{cooldown}" PowerLow="0.65" PowerHigh="0.45" CadenceLow="90" CadenceHigh="100"/>
+  </workout>
+</workout_file>'''
+
+
+def calibrate_race_week_sharpener(
+    requested_level: int = 2,
+    athlete_age: Optional[int] = None,
+    stress_level: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Return the post-selection sharpener dose that passes its rendered cap.
+
+    Masters athletes and athletes reporting high life stress begin one dose
+    lower.  Their safety policy is an upper cap (not a minimum stimulus): a
+    slightly easier activation is preferable to manufacturing intensity just
+    to hit a numerical floor in race week.
+    """
+    from zwo_parser import parse_zwo_text
+
+    is_reduced = (athlete_age is not None and athlete_age >= 50) or (
+        str(stress_level or '').lower() in {'high', 'very_high'})
+    start_level = min(max(_RACE_WEEK_SHARPENER_DOSES), max(1, requested_level))
+    if is_reduced:
+        start_level = max(1, start_level - 1)
+
+    candidates = []
+    for level in range(start_level, 0, -1):
+        metrics = parse_zwo_text(_render_race_week_sharpener(level))
+        candidate = {'level': level, **metrics}
+        candidates.append(candidate)
+        if (metrics['intensity_factor'] <= RACE_WEEK_SHARPENER_WINDOW['max_if']
+                and metrics['tss'] <= RACE_WEEK_SHARPENER_WINDOW['max_tss']
+                and (is_reduced or (
+                    metrics['intensity_factor'] >= RACE_WEEK_SHARPENER_WINDOW['min_if']
+                    and metrics['tss'] >= RACE_WEEK_SHARPENER_WINDOW['min_tss']))):
+            return candidate
+
+    # Never make the race-week load stronger to chase a floor.  This fallback
+    # is intentionally the lightest candidate, with the measured values kept
+    # for the caller/test report.
+    return candidates[-1]
 
 
 # =============================================================================
@@ -205,6 +378,13 @@ def render_workout(
     mapping = _resolve_for_discipline(name, discipline)
     if mapping is None:
         return None
+
+    if name == 'Stars In Your Eyes':
+        return _render_race_week_sharpener(
+            level, workout_name, author, display_name=display_name)
+
+    if name == 'Openers' and level >= 2:
+        return _render_race_eve_openers(workout_name, author, display_name=display_name)
 
     # Scaling the old long-ride surge archetype down to a taper duration also
     # shortened its 14-minute gaps, turning the intended alactic seasoning

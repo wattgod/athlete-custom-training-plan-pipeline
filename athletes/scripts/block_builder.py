@@ -164,6 +164,8 @@ def build_calendar_week(
     methodology_profile: Dict[str, Any] = None,
     event_format: str = None,
     race_day: Optional[str] = None,
+    athlete_age: Optional[int] = None,
+    stress_level: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build one week whose type and phase come from the calendar (plan_dates).
 
@@ -204,6 +206,8 @@ def build_calendar_week(
         methodology_profile=methodology_profile,
         event_format=event_format,
         race_day=race_day,
+        athlete_age=athlete_age,
+        stress_level=stress_level,
     )
     week['block_number'] = block_number
     return week
@@ -307,6 +311,8 @@ def _build_week(
     methodology_profile: Dict[str, Any] = None,
     event_format: str = None,
     race_day: Optional[str] = None,
+    athlete_age: Optional[int] = None,
+    stress_level: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build a single week with day-by-day workout assignments."""
 
@@ -321,6 +327,8 @@ def _build_week(
             off_days=[d for d, role in day_roles.items() if role == 'off'],
             race_day=race_day,
             day_caps=day_caps,
+            athlete_age=athlete_age,
+            stress_level=stress_level,
         )
 
     # Get workout menu for this week
@@ -584,6 +592,8 @@ def _build_race_week(
     off_days: List[str],
     race_day: Optional[str],
     day_caps: Optional[Dict[str, int]],
+    athlete_age: Optional[int] = None,
+    stress_level: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build the coach-approved race-week microcycle.
 
@@ -600,6 +610,13 @@ def _build_race_week(
         duration = get_workout_duration(name, level) if duration is None else duration
         tss = get_workout_tss(name, level) if tss is None else tss
         return {'name': name, 'level': level, 'tss': tss, 'duration': duration, 'role': role}
+
+    # The sharpener is selected as a race-week slot first, then calibrated
+    # against the actual rendered ZWO dose.  This avoids relying on a stale
+    # library estimate or a single hand-tuned archetype level.
+    from workout_mapper import calibrate_race_week_sharpener
+    sharpener_dose = calibrate_race_week_sharpener(
+        requested_level=2, athlete_age=athlete_age, stress_level=stress_level)
 
     # Quality-day preference is intentionally the same as the normal week
     # template.  Do not place the sharpener adjacent to day-before openers.
@@ -626,7 +643,11 @@ def _build_race_week(
         elif day == opener_day:
             workout = _session('Openers', 2, 'intensity')
         elif day == sharpener_day:
-            workout = _session('Stars In Your Eyes', 2, 'intensity')
+            workout = _session(
+                'Stars In Your Eyes', sharpener_dose['level'], 'intensity',
+                duration=round(sharpener_dose['duration_min']),
+                tss=sharpener_dose['tss'],
+            )
         elif day == easy_day:
             # Keep this deliberate middle-of-week ride in the 45-60min house
             # range rather than emitting a normal 70min Endurance L1.

@@ -1035,6 +1035,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             fixed_minutes=_fixed_minutes if '_fixed_minutes' in locals() else 0,
             event_format=_bb_event_format,
             training_age=training_age_class(profile or {}),
+            athlete_age=athlete_age,
+            stress_level=(profile.get('health_factors', {}) or {}).get('stress_level'),
         )
 
         # T4: Build/peak long rides are not generic surge loops.  Mark the
