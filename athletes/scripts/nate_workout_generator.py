@@ -1666,7 +1666,8 @@ def _snap_long_segment_seconds(seconds) -> int:
     return seconds
 
 
-def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
+def generate_blocks_from_archetype(archetype: Dict, level: int,
+                                   training_age: Optional[str] = None) -> str:
     """
     Generate ZWO XML blocks from a Nate archetype level.
 
@@ -2572,7 +2573,10 @@ def generate_blocks_from_archetype(archetype: Dict, level: int) -> str:
             blocks.append(generate_steady_state_block(300, ZWODefaults.RECOVERY_POWER))
             blocks.append(free_effort(60, "1min all-out anaerobic capacity test"))
             blocks.append(generate_steady_state_block(300, ZWODefaults.RECOVERY_POWER))
-            repeatability_reps = 10 if level <= 1 else 15 if level == 2 else 20
+            # The standard 360 repeatability measure is 20x30/30. A shorter
+            # set is reserved for developing athletes; display level is not
+            # a training-age proxy.
+            repeatability_reps = 10 if training_age == 'developing' else 20
             blocks.append(generate_intervals_block(
                 repeatability_reps, 30, 1.20, 30, ZWODefaults.RECOVERY_POWER))
             blocks.append(generate_cooldown_block(600))
@@ -2750,11 +2754,13 @@ def get_execution_tips(archetype: Dict, level_data: Dict) -> str:
     if "endurance" in archetype_name or "hvli" in archetype_name:
         return "Conversational pace. Nose breathing = right intensity. This builds your foundation."
 
-    if "breakaway" in archetype_name or "race" in archetype_name:
-        return "Simulate race intensity. Practice fueling and pacing under pressure."
-
+    # Openers must outrank the race branch: "Race Openers" is a leg-opener,
+    # and race-sim execution copy contradicts its no-fatigue purpose.
     if "opener" in archetype_name:
         return "Short sharp efforts to activate legs. Don't dig deep - save it for race day."
+
+    if "breakaway" in archetype_name or "race" in archetype_name:
+        return "Simulate race intensity. Practice fueling and pacing under pressure."
 
     if "durability" in archetype_name or "tired" in archetype_name:
         return "Quality when fatigued. This is where gravel races are won."
@@ -3110,8 +3116,13 @@ def generate_description(
     warmup_duration = get_workout_warmup_duration(archetype, level_data)
     cooldown_duration = get_workout_cooldown_duration(archetype, level_data)
 
+    # Openers use ordinary steady segments for the entire session. Their
+    # executable projection owns all timing, so fixed warm-up/cool-down
+    # prose would duplicate those segments after scaling.
+    is_openers = bool(level_data.get('openers'))
+
     # WARM-UP
-    if warmup_duration > 0:
+    if warmup_duration > 0 and not is_openers:
         warmup_mins = warmup_duration // 60
         lines.append("WARM-UP:")
         lines.append(f"-{warmup_mins}min building from Z1 to Z2")
@@ -3136,7 +3147,7 @@ def generate_description(
     lines.append("")
 
     # COOL-DOWN
-    if cooldown_duration > 0:
+    if cooldown_duration > 0 and not is_openers:
         cooldown_mins = cooldown_duration // 60
         lines.append("COOL-DOWN:")
         lines.append(f"-{cooldown_mins}min easy spin Z1-Z2")
@@ -3258,6 +3269,7 @@ def generate_nate_workout(
     variation: int = 0,
     workout_name: Optional[str] = None,
     display_name: Optional[str] = None,
+    training_age: Optional[str] = None,
 ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
     Generate a complete Nate workout.
@@ -3334,7 +3346,7 @@ def generate_nate_workout(
     name = display_name or workout_name or f"{archetype['name']} {level}"
 
     # Generate blocks
-    blocks = generate_blocks_from_archetype(archetype, level)
+    blocks = generate_blocks_from_archetype(archetype, level, training_age)
 
     # Coaching context remains archetype-authored, while the MAIN SET is a
     # projection of the executable intervals that the XML will carry.
@@ -3376,6 +3388,7 @@ def generate_nate_zwo(
     author: str = "Gravel God Training",
     discipline: str = "gravel",
     display_name: Optional[str] = None,
+    training_age: Optional[str] = None,
 ) -> Optional[str]:
     """
     Generate a complete ZWO file from a Nate archetype.
@@ -3411,6 +3424,7 @@ def generate_nate_zwo(
     name, description, blocks = generate_nate_workout(
         workout_type, level, methodology, variation, workout_name,
         display_name=display_name,
+        training_age=training_age,
     )
 
     if name is None or blocks is None:

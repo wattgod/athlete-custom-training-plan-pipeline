@@ -358,6 +358,7 @@ def render_workout(
     author: str = 'Gravel God Training',
     discipline: str = 'gravel',
     display_name: Optional[str] = None,
+    training_age: Optional[str] = None,
 ) -> Optional[str]:
     """Render a block-builder workout name to ZWO XML.
 
@@ -422,6 +423,7 @@ def render_workout(
         author=author,
         discipline=discipline,
         display_name=display_name,
+        training_age=training_age,
     )
     if zwo:
         return zwo
@@ -440,6 +442,7 @@ def render_workout(
             author=author,
             discipline=discipline,
             display_name=display_name,
+            training_age=training_age,
         )
     return None
 

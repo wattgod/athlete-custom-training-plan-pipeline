@@ -348,12 +348,14 @@ workouts:
   Anaerobic Test:
     category: testing
     levels:
-      1: {duration: 56, tss: 68}
-      2: {duration: 56, tss: 68}
-      3: {duration: 56, tss: 68}
-      4: {duration: 56, tss: 68}
-      5: {duration: 56, tss: 68}
-      6: {duration: 56, tss: 68}
+      # The standard 360 assessment includes 20x30/30 repeatability
+      # (65.5min total); only developing athletes receive the shorter 10x set.
+      1: {duration: 66, tss: 68}
+      2: {duration: 66, tss: 68}
+      3: {duration: 66, tss: 68}
+      4: {duration: 66, tss: 68}
+      5: {duration: 66, tss: 68}
+      6: {duration: 66, tss: 68}
 
   FTP Test:
     category: testing

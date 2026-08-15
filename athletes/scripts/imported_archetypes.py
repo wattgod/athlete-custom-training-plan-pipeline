@@ -3709,7 +3709,7 @@ RACE_SIM_IMPORTED = [
         'levels': {
             '1': {
                 'structure': '5min @ 76-87% FTP, RPE 5-6; 20min @ 76-87% FTP, RPE 5-6; 1min @ 106-120% FTP, RPE 9; 5min @ 56-75% FTP, RPE 3-4; 1min @ 106-120% FTP, RPE 9; Cadence: variable (match race demands); Position: Race position',
-                'execution': 'Race simulation. Practicing race-day execution—pacing, fueling, mental strategies. This is dress rehearsal. Level 1: Introduction to the pattern. Focus on execution quality over power targets.',
+                'execution': 'Race simulation. Practicing race-day execution—pacing, fueling, mental strategies. Level 1: Introduction to the pattern. Focus on execution quality over power targets.',
                 'cadence_prescription': 'variable (match race demands)',
                 'cadence': 90,
                 'position_prescription': 'Race position',
@@ -3724,7 +3724,7 @@ RACE_SIM_IMPORTED = [
             },
             '2': {
                 'structure': '5min @ 76-87% FTP, RPE 5-6; 20min @ 76-87% FTP, RPE 5-6; 1min @ 106-120% FTP, RPE 9; 3min @ 56-75% FTP, RPE 3-4; 1min @ 106-120% FTP, RPE 9; 3min @ 56-75% FTP, RPE 3-4; 1min @ 106-120% FTP, RPE 9; 3min @ 56-75% FTP, RPE 3-4; 1min @ 106-120% FTP, RPE 9; 3min @ 56-75% FTP, RPE 3-4; Cadence: variable (match race demands); Position: Race position',
-                'execution': 'Race simulation. Practicing race-day execution—pacing, fueling, mental strategies. This is dress rehearsal. Level 2: Building volume. Same pattern, more work. The fitness is in the accumulation.',
+                'execution': 'Race simulation. Practicing race-day execution—pacing, fueling, mental strategies. Level 2: Building volume. Same pattern, more work. The fitness is in the accumulation.',
                 'segments': [
                     {'type': 'steady', 'duration': 1200, 'power': 0.85},
                     {'type': 'steady', 'duration': 60, 'power': 1.1},
@@ -3739,7 +3739,7 @@ RACE_SIM_IMPORTED = [
             },
             '3': {
                 'structure': '5min @ 76-87% FTP, RPE 5-6; 20min @ 76-87% FTP, RPE 5-6; 10min @ 93-105% FTP, RPE 7-8; 3min @ 106-120% FTP, RPE 9; 5min @ 56-75% FTP, RPE 3-4; Cadence: variable (match race demands); Position: Race position',
-                'execution': 'Race simulation. Practicing race-day execution—pacing, fueling, mental strategies. This is dress rehearsal. Level 3: Cadence and position focus. Same structure—now refine the execution.',
+                'execution': 'Race simulation. Practicing race-day execution—pacing, fueling, mental strategies. Level 3: Cadence and position focus. Same structure—now refine the execution.',
                 'segments': [
                     {'type': 'steady', 'duration': 1200, 'power': 0.85},
                     {'type': 'steady', 'duration': 600, 'power': 1.0},
@@ -3749,7 +3749,7 @@ RACE_SIM_IMPORTED = [
             },
             '4': {
                 'structure': '5min @ 76-87% FTP, RPE 5-6; 30min @ 76-87% FTP, RPE 5-6; 1min @ 106-120% FTP, RPE 9; 3min @ 56-75% FTP, RPE 3-4; 1min @ 106-120% FTP, RPE 9; 3min @ 56-75% FTP, RPE 3-4; 1min @ 106-120% FTP, RPE 9; 3min @ 56-75% FTP, RPE 3-4; 1min @ 106-120% FTP, RPE 9; 3min @ 56-75% FTP, RPE 3-4; 1min @ 106-120% FTP, RPE 9; 3min @ 56-75% FTP, RPE 3-4; Cadence: variable (match race demands); Position: Race position',
-                'execution': 'Race simulation. Practicing race-day execution—pacing, fueling, mental strategies. This is dress rehearsal. Level 4: Consolidation. Let the body absorb the previous weeks\' work. Quality over ambition.',
+                'execution': 'Race simulation. Practicing race-day execution—pacing, fueling, mental strategies. Level 4: Consolidation. Let the body absorb the previous weeks\' work. Quality over ambition.',
                 'segments': [
                     {'type': 'steady', 'duration': 1800, 'power': 0.85},
                     {'type': 'steady', 'duration': 60, 'power': 1.1},
@@ -3766,7 +3766,7 @@ RACE_SIM_IMPORTED = [
             },
             '5': {
                 'structure': '5min @ 76-87% FTP, RPE 5-6; 30min @ 76-87% FTP, RPE 5-6; 10min @ 93-105% FTP, RPE 7-8; 3min @ 106-120% FTP, RPE 9; 5min @ 56-75% FTP, RPE 3-4; 5min @ 93-105% FTP, RPE 7-8; Cadence: variable (match race demands); Position: Race position',
-                'execution': 'Race simulation. Practicing race-day execution—pacing, fueling, mental strategies. This is dress rehearsal. Level 5: Extended sets. More work per set. This is where real adaptations lock in.',
+                'execution': 'Race simulation. Practicing race-day execution—pacing, fueling, mental strategies. Level 5: Extended sets. More work per set. This is where real adaptations lock in.',
                 'segments': [
                     {'type': 'steady', 'duration': 1800, 'power': 0.85},
                     {'type': 'steady', 'duration': 600, 'power': 1.0},
@@ -3777,7 +3777,7 @@ RACE_SIM_IMPORTED = [
             },
             '6': {
                 'structure': '5min @ 76-87% FTP, RPE 5-6; 30min @ 76-87% FTP, RPE 5-6; 10min @ 93-105% FTP, RPE 7-8; 3min @ 106-120% FTP, RPE 9; 5min @ 56-75% FTP, RPE 3-4; 5min @ 93-105% FTP, RPE 7-8; 2min @ 106-120% FTP, RPE 9; Cadence: variable (match race demands); Position: Race position',
-                'execution': 'Race simulation. Practicing race-day execution—pacing, fueling, mental strategies. This is dress rehearsal. Level 6: Peak volume. Maximum training load. You\'re building the capacity race day demands.',
+                'execution': 'Race simulation. Practicing race-day execution—pacing, fueling, mental strategies. Level 6: Peak volume. Maximum training load. You\'re building the capacity race day demands.',
                 'segments': [
                     {'type': 'steady', 'duration': 1800, 'power': 0.85},
                     {'type': 'steady', 'duration': 600, 'power': 1.0},

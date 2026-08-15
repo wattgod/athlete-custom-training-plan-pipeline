@@ -2735,7 +2735,7 @@ HVLI_EXTENDED = [
             },
             '6': {
                 'structure': '6hr variable Z2 matching race-day power profile',
-                'execution': 'Full race-day terrain simulation - dress rehearsal at Z2',
+                'execution': 'Full race-day terrain simulation at Z2 with controlled, repeatable pacing.',
                 'cadence_prescription': 'Race-day cadence targets',
                 'position_prescription': 'Full race position',
                 'timing_prescription': 'Final long ride before taper',

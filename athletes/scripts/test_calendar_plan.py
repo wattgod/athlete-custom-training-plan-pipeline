@@ -546,14 +546,16 @@ class TestTestingWeek:
         repeatability = next(node for node in workout if node.tag == 'IntervalsT')
         assert (repeatability.get('Repeat'), repeatability.get('OnDuration'),
                 repeatability.get('OffDuration'), repeatability.get('OnPower')) == (
-                    '10', '30', '30', '1.20')
+                    '20', '30', '30', '1.20')
 
         duration = sum(
             int(node.get('Duration', 0)) if node.tag != 'IntervalsT'
             else int(node.get('Repeat')) * (int(node.get('OnDuration')) + int(node.get('OffDuration')))
             for node in workout
         )
-        assert 50 * 60 <= duration <= 65 * 60
+        # The full 20x30/30 repeatability block makes the standard protocol
+        # 65.5 minutes; that is intentional (developing athletes use 10x).
+        assert 50 * 60 <= duration <= 66 * 60
         description = root.findtext('description')
         for heading in ('WHAT IT MEASURES:', 'WHAT TO RECORD:', 'WHAT GOOD LOOKS LIKE:'):
             assert heading in description
@@ -573,18 +575,23 @@ class TestTestingWeek:
         )
 
     def test_anaerobic_repeatability_protocol_scales_without_progression_labels(self):
-        """The 360 test changes its repeatability dose, not its test status."""
+        """Standard athletes get 20 reps; developing athletes get 10."""
         from workout_mapper import render_workout
 
-        expected_repeats = {1: '10', 2: '15', 3: '20', 4: '20', 5: '20', 6: '20'}
-        for level, repeats in expected_repeats.items():
+        for level in range(1, 7):
             root = ET.fromstring(render_workout('Anaerobic Test', level=level))
             repeatability = next(node for node in root.find('workout')
                                  if node.tag == 'IntervalsT')
-            assert repeatability.get('Repeat') == repeats
+            assert repeatability.get('Repeat') == '20'
             description = root.findtext('description') or ''
             assert 'PROGRESSION:' not in description
             assert 'Level ' not in description
+
+        developing = ET.fromstring(render_workout(
+            'Anaerobic Test', level=1, training_age='developing'))
+        repeatability = next(node for node in developing.find('workout')
+                             if node.tag == 'IntervalsT')
+        assert repeatability.get('Repeat') == '10'
 
     def test_vo2_execution_text_uses_emitted_micro_interval_recovery(self):
         """T5: instructions must never inherit 4-5min recovery prose."""

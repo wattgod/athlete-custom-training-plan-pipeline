@@ -27,7 +27,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'webhook'))
 
 from fulfillment_state import write_generation
-from workout_spec import rewrite_zwo_description
+from workout_spec import (normalize_zwo_blocks, render_main_set,
+                          rewrite_zwo_description)
 from availability_ledger import (AvailabilityLedgerError, build_ledger,
                                  materialize_fixed_sessions)
 
@@ -114,6 +115,12 @@ GENERIC_NO_SUFFIX = {
     'Endurance', 'Recovery', 'Race Day', 'Rest Day', 'Openers',
     'FTP Test', 'Anaerobic Test', 'Easy',
 }
+
+
+def _race_countdown(weeks_to_race: int, race_name: str) -> str:
+    """Render a grammatical, reusable countdown from the calendar value."""
+    unit = 'week' if weeks_to_race == 1 else 'weeks'
+    return f"{weeks_to_race} {unit} to {race_name}"
 
 
 # =============================================================================
@@ -231,8 +238,8 @@ def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min
         return render_workout_fueling(prescription, 'long_ride', phase_ceiling)
 
 
-_FUEL_TAG_PREFIX = re.compile(
-    r'^\[(?P<label>(?:HIGH|LONG-RIDE|RACE) FUEL|FUEL): Target '\
+_FUEL_TAG = re.compile(
+    r'\[(?P<label>(?:HIGH|LONG-RIDE|RACE) FUEL|FUEL): Target '\
     r'\d+(?:\.\d+)?g carbs/hr\. Practice this prescription\.\]\n\n'
 )
 _FUEL_RATE = re.compile(
@@ -315,10 +322,15 @@ def _replace_fuel_tag(xml_text: str, rate: int) -> str:
     if not match:
         return xml_text
     description = match.group(2)
-    existing = _FUEL_TAG_PREFIX.match(description)
-    label = existing.group('label') if existing else 'FUEL'
+    # Description projection can place the generated MAIN SET ahead of a
+    # package-time tag, so banners are not reliably at character zero. Remove
+    # every exact authored banner wherever it landed before emitting the one
+    # calendar-authoritative tag.
+    labels = [match_tag.group('label') for match_tag in _FUEL_TAG.finditer(description)]
+    body = _FUEL_TAG.sub('', description)
+    label = next((item for item in labels if item == 'RACE FUEL'),
+                 labels[-1] if labels else 'FUEL')
     tag = f'[{label}: Target {rate}g carbs/hr. Practice this prescription.]\n\n'
-    body = description[existing.end():] if existing else description
     body = _FUEL_RATE.sub(f'{rate} g/hr', body)
     description = tag + body
     return xml_text[:match.start(2)] + description + xml_text[match.end(2):]
@@ -640,7 +652,10 @@ WORKOUT_DESCRIPTIONS = {
         'rpe': 'RPE 10 (all-out)',
     },
     'FTP_Test': {
-        'structure': '60 min FTP test protocol: 15 min warmup, 5 min blowout, 5 min recovery, 20 min ALL OUT test, 15 min cooldown',
+        # The executable protocol is rendered below from the final ZWO blocks.
+        # Keep this template free of duration figures: availability caps and
+        # renderer changes must never make prose disagree with the assessment.
+        'structure': '{duration} min FTP test protocol; see the emitted warm-up, main set, and cool-down below.',
         'purpose': 'Establish your training zones. The 20-minute effort sets everything.',
         'execution': 'Start controlled, settle in, suffer through the middle, finish strong. Average power × 0.95 = FTP.',
         'rpe': 'RPE 9/10 for the 20-minute test (very hard, barely sustainable)',
@@ -652,7 +667,9 @@ WORKOUT_DESCRIPTIONS = {
         'rpe': 'RPE 3-5 (easy to moderate)',
     },
     'Openers': {
-        'structure': '{duration} min with 4x30sec openers @ 120% FTP',
+        # Openers are frequently capped for recovery/taper weeks. The exact
+        # activation sequence is rendered from the final blocks below.
+        'structure': '{duration} min leg activation; see the emitted warm-up, main set, and cool-down below.',
         'purpose': 'Pre-race activation. Wake up the legs without creating fatigue.',
         'execution': 'Short, sharp efforts. Full recovery between. Done when you feel snappy.',
         'rpe': 'RPE 7-8 for efforts (short and controlled)',
@@ -694,6 +711,37 @@ RPE:
                        .replace('Real gravel demands', 'Road racing demands'))
 
     return description
+
+
+def _format_block_derived_description(workout_type: str, blocks: str) -> str:
+    """Render duration-sensitive test/opener prose from final XML blocks.
+
+    The pre-render templates remain useful for purpose and execution cues, but
+    the ZWO is authoritative for warm-up, cool-down, and interval figures.
+    This is deliberately limited to the two hand-authored templates whose
+    fixed protocol prose used to drift when their blocks changed or scaled.
+    """
+    template = WORKOUT_DESCRIPTIONS[workout_type]
+    segments = normalize_zwo_blocks(blocks)
+    warmup = next((segment for segment in segments
+                   if segment['kind'] == 'warmup'), None)
+    cooldown = next((segment for segment in reversed(segments)
+                     if segment['kind'] == 'cooldown'), None)
+    main_segments = [segment for segment in segments
+                     if segment['kind'] not in ('warmup', 'cooldown')]
+
+    lines = []
+    if warmup:
+        lines.extend(['WARM-UP:',
+                      f"-{round(warmup['seconds'] / 60)}min building from Z1 to Z2", ''])
+    lines.extend(['MAIN SET:', render_main_set(main_segments), ''])
+    if cooldown:
+        lines.extend(['COOL-DOWN:',
+                      f"-{round(cooldown['seconds'] / 60)}min easy spin Z1-Z2", ''])
+    lines.extend(['PURPOSE:', template['purpose'], '',
+                  'EXECUTION:', template['execution'], '',
+                  'RPE:', template['rpe']])
+    return '\n'.join(lines)
 
 
 def load_yaml(path: Path) -> dict:
@@ -1020,6 +1068,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                                         'sensitivity': 'personal'})
             _builder_hours = cycling_hours_target
 
+        _bb_training_age = training_age_class(profile or {})
         _bb_plan = build_plan_from_calendar(
             week_descriptors=_bb_descriptors,
             archetype=_bb_archetype,
@@ -1034,7 +1083,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             methodology=methodology_id,
             fixed_minutes=_fixed_minutes if '_fixed_minutes' in locals() else 0,
             event_format=_bb_event_format,
-            training_age=training_age_class(profile or {}),
+            training_age=_bb_training_age,
             athlete_age=athlete_age,
             stress_level=(profile.get('health_factors', {}) or {}).get('stress_level'),
         )
@@ -2610,6 +2659,7 @@ TIPS:
                         variation_offset=var_offset,
                         author=_workout_author,
                         discipline=_bb_discipline,
+                        training_age=_bb_training_age,
                     )
 
                 if not zwo_content:
@@ -2638,7 +2688,7 @@ TIPS:
                     weeks_to_race = total_weeks - week_num + 1
                     personal_header = (
                         f"{athlete_name} - Week {week_num}/{total_weeks} - "
-                        f"{weeks_to_race} weeks to {race_name}\n"
+                        f"{_race_countdown(weeks_to_race, race_name)}\n"
                         f"Phase: {phase.upper()}\n\n"
                     )
                     fuel_tag = _get_fuel_tag_for_type(bb_name, fueling, bb_duration, week_num)
@@ -2797,7 +2847,7 @@ TIPS:
                 weeks_to_race = total_weeks - week_num + 1
                 rest_description = f"""REST DAY - {athlete_name}
 
-COUNTDOWN: {weeks_to_race} weeks to {race_name}
+COUNTDOWN: {_race_countdown(weeks_to_race, race_name)}
 
 TODAY'S FOCUS:
 - Complete rest from cycling
@@ -3101,7 +3151,9 @@ GO GET IT, {athlete_name.upper()}!
                         )
                         # Inject personalized header into description
                         weeks_to_race = total_weeks - week_num + 1
-                        personal_header = f"{athlete_name} - Week {week_num}/{total_weeks} - {weeks_to_race} weeks to {race_name}\nPhase: {phase.upper()}\n\n"
+                        personal_header = (f"{athlete_name} - Week {week_num}/{total_weeks} - "
+                                           f"{_race_countdown(weeks_to_race, race_name)}\n"
+                                           f"Phase: {phase.upper()}\n\n")
 
                         # Add heat training reminder (weeks 4-8 before race)
                         heat_reminder = ""
@@ -3164,7 +3216,9 @@ GO GET IT, {athlete_name.upper()}!
 
             # Add personalized header to description
             weeks_to_race = total_weeks - week_num + 1
-            personal_header = f"{athlete_name} - Week {week_num}/{total_weeks} - {weeks_to_race} weeks to {race_name}\nPhase: {phase.upper()}\n\n"
+            personal_header = (f"{athlete_name} - Week {week_num}/{total_weeks} - "
+                               f"{_race_countdown(weeks_to_race, race_name)}\n"
+                               f"Phase: {phase.upper()}\n\n")
 
             # Add heat training reminder (weeks 4-8 before race)
             heat_reminder = ""
@@ -3175,6 +3229,8 @@ GO GET IT, {athlete_name.upper()}!
             fuel_tag = _get_fuel_tag_for_type(workout_type, fueling, duration, week_num)
             fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
 
+            if workout_type in ('FTP_Test', 'Openers'):
+                full_description = _format_block_derived_description(workout_type, blocks)
             full_description = fuel_prefix + personal_header + full_description + heat_reminder
 
             # Create ZWO content
