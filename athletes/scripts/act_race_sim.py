@@ -162,28 +162,28 @@ def compose_act_simulation(duration_min: int, index: int, total: int,
 
     segments: List[Dict[str, Any]] = []
     _append_steady(segments, 10 * 60, 0.58, "Warm-up")
-    _append_steady(segments, 10 * 60, 0.82, "Act 1 — high-cadence Z3", cadence=105)
-    _append_intervals(segments, 5, 30, 1.20, 30, 0.50, "Act 1 — 30/30s")
+    _append_steady(segments, 10 * 60, 0.82, "Part 1 — high-cadence Z3", cadence=105)
+    _append_intervals(segments, 5, 30, 1.20, 30, 0.50, "Part 1 — 30/30s")
     for _ in range(attack_count):
-        _append_steady(segments, 20, 1.60, "Act 1 — short attack")
-        _append_steady(segments, 30, 1.08, "Act 1 — hard hold")
-        _append_steady(segments, 40, 0.55, "Act 1 — reset")
-    _append_steady(segments, 10 * 60, 0.65, "Act 1 — settle")
-    _append_steady(segments, act1_short_settle, 0.65, "Act 1 — settle into the grind")
+        _append_steady(segments, 20, 1.60, "Part 1 — short attack")
+        _append_steady(segments, 30, 1.08, "Part 1 — hard hold")
+        _append_steady(segments, 40, 0.55, "Part 1 — reset")
+    _append_steady(segments, 10 * 60, 0.65, "Part 1 — settle")
+    _append_steady(segments, act1_short_settle, 0.65, "Part 1 — settle into the grind")
 
     for block in range(int(grind_count)):
         _append_steady(segments, z2_per_grind, 0.68,
-                       f"Act 2 — Z2 grind {block + 1}")
+                       f"Part 2 — Z2 grind {block + 1}")
         _append_steady(segments, climb_seconds, climb_power,
-                       f"Act 2 — seated low-cadence climb {block + 1}", cadence=55)
-    _append_steady(segments, remainder, 0.68, "Act 2 — Z2 to finale")
+                       f"Part 2 — seated low-cadence climb {block + 1}", cadence=55)
+    _append_steady(segments, remainder, 0.68, "Part 2 — Z2 to finale")
 
     for pyramid in range(pyramid_count):
         for power in (0.80, 0.90, 1.00, 0.90, 0.80):
             _append_steady(segments, 3 * 60, power,
-                           f"Act 3 — tired-legs pyramid {pyramid + 1}")
+                           f"Part 3 — tired-legs pyramid {pyramid + 1}")
         if pyramid + 1 < pyramid_count:
-            _append_steady(segments, 5 * 60, 0.65, "Act 3 — pyramid reset")
+            _append_steady(segments, 5 * 60, 0.65, "Part 3 — pyramid reset")
     _append_steady(segments, cooldown_seconds, 0.50, "Cooldown")
 
     # Keep the caller's duration budget exact.  Under normal long-ride budgets
@@ -193,7 +193,7 @@ def compose_act_simulation(duration_min: int, index: int, total: int,
         else item["repeat"] * (item["on_seconds"] + item["off_seconds"])
         for item in segments)
     if delta:
-        _append_steady(segments, delta, 0.68, "Act 2 — Z2 to duration")
+        _append_steady(segments, delta, 0.68, "Part 2 — Z2 to duration")
     return segments
 
 
@@ -204,8 +204,8 @@ def act_sim_description(index: int, total: int, facts: RaceFacts,
     climb_line = {
         "high": "The course density supports long seated climbs: make each low-cadence block patient and unbroken.",
         "moderate": "The course carries sustained climbing: keep the low-cadence blocks smooth rather than muscling them.",
-        "flat": "This is a rolling course: keep Act 1 punchy and make the low-cadence blocks short, controlled strength work.",
-        "unknown": "Use the supplied route facts, not a made-up terrain story: keep Act 2 controlled and repeatable.",
+        "flat": "This is a rolling course: keep Part 1 punchy and make the low-cadence blocks short, controlled strength work.",
+        "unknown": "Use the supplied route facts, not a made-up terrain story: keep Part 2 controlled and repeatable.",
     }[facts.climbing_emphasis]
     altitude_line = ""
     if facts.high_altitude:
@@ -221,12 +221,12 @@ def act_sim_description(index: int, total: int, facts: RaceFacts,
             f"Use race food at the ladder's race rate{rate}; nothing on race day should be new."
         )
     return (
-        f"ACT RACE SIMULATION {index} OF {total}\n\n"
-        "ACT 1 — punchy start: high-cadence Z3, 30/30s, then short attacks and hard holds.\n"
-        "ACT 2 — the grind: long Z2 blocks, each ending in a 50-60 rpm seated climbing block.\n"
-        "ACT 3 — finale: 3-minute pyramid steps at 80/90/100/90/80% on tired legs, then Z2 to the cooldown.\n\n"
+        f"RACE SIMULATION — ACT {index} OF {total}\n\n"
+        "PART 1 — punchy start: high-cadence Z3, 30/30s, then short attacks and hard holds.\n"
+        "PART 2 — the grind: long Z2 blocks, each ending in a 50-60 rpm seated climbing block.\n"
+        "PART 3 — finale: 3-minute pyramid steps at 80/90/100/90/80% on tired legs, then Z2 to the cooldown.\n\n"
         f"{climb_line}{altitude_line}{rehearsal_line}\n\n"
-        "Ride Acts 1 and 3 at their targets; ride Act 2 disciplined and bored. Boredom is the skill."
+        "Ride Parts 1 and 3 at their targets; ride Part 2 disciplined and bored. Boredom is the skill."
     )
 
 

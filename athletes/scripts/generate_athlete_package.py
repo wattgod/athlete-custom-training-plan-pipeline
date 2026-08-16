@@ -2646,10 +2646,14 @@ TIPS:
                             _series_rank_hint = series_no
                 elif not _act_simulation and bb_name == 'Endurance' and bb_role == 'filler':
                     from workout_mapper import resolve_display_name
+                    # The day beside a long simulation is a recovery ride,
+                    # not a focus session — no burst/spin-up flavors there.
+                    _sim_recovery = bool(bb_day.get('post_sim_recovery')
+                                         or bb_day.get('pre_sim_recovery'))
                     display_name = resolve_display_name(
                         bb_name, methodology=nate_methodology,
                         variation_offset=var_offset, discipline=_bb_discipline,
-                        endurance_variant=var_offset)
+                        endurance_variant=None if _sim_recovery else var_offset)
                     _filename_name = display_name
                 elif not _act_simulation and bb_name not in ('Endurance', 'Rest Day'):
                     # Filler-pool rotations are real mapped archetypes too.
@@ -2697,7 +2701,10 @@ TIPS:
                         discipline=_bb_discipline,
                         training_age=_bb_training_age,
                         endurance_variant=(var_offset if bb_name == 'Endurance'
-                                           and bb_role == 'filler' else None),
+                                           and bb_role == 'filler'
+                                           and not (bb_day.get('post_sim_recovery')
+                                                    or bb_day.get('pre_sim_recovery'))
+                                           else None),
                     )
 
                 if not zwo_content:
