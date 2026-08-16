@@ -2778,6 +2778,18 @@ TIPS:
                                            else None),
                         phase=phase,
                     )
+                    # The ride beside a long simulation is a recovery spin
+                    # with a job, not generic base building — say so, or
+                    # three identical Mondays read as generator filler.
+                    if zwo_content and bb_day.get('post_sim_recovery'):
+                        zwo_content = zwo_content.replace(
+                            'PURPOSE:\nAerobic base building. Easy riding builds '
+                            'mitochondrial density and fat oxidation — the '
+                            'foundation everything else rests on.',
+                            'PURPOSE:\nRecovery spin. Yesterday was the biggest '
+                            'ride of the block — today is deliberately boring. '
+                            'Spin, don\'t train; the adaptation happens while '
+                            'you hold back.', 1)
 
                 if not zwo_content:
                     # A planned workout that fails to render is a bug, not a

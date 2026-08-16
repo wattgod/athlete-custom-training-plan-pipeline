@@ -554,6 +554,27 @@ def render_title(session: Any, brand_cfg: Dict[str, Any]) -> str:
     return f"{name} - {defining_set} - {duration}min - {rpe}"
 
 
+def render_card_name(session: Any) -> str:
+    """The name portion of render_title — what the placed card calls the session.
+
+    Notes must reference sessions by the calendar's own names: the archetype
+    name ("Endurance Blocks") collapses to plain "Endurance" on the card, and
+    a note that says "Endurance Blocks" points at a workout that does not
+    exist from the athlete's seat.
+    """
+    if _session_kind(session) != "bike":
+        return render_session_name(session)
+    defining_set = _defining_set_from_structure(session)
+    if defining_set is None:
+        defining_set = _defining_set_from_description(_get(session, "description"))
+    name = render_session_name(session, defining_set)
+    # Only collapse when the session carries structured facts to judge by;
+    # imported plans without segments keep their authored names.
+    if has_structured_work(session) and _is_plain_endurance(session, name, defining_set):
+        return name if re.search(r"endurance\s*[—–-]\s*\S", name.lower()) else "Endurance"
+    return name
+
+
 _ALL_OUT_SET = re.compile(
     r"(?P<minutes>\d+)\s*[- ]?\s*min(?:ute)?s?\s*(?:free\s*ride|all[- ]?out)"
     r"|(?:free\s*ride|all[- ]?out)\D{0,12}(?P<minutes2>\d+)\s*[- ]?\s*min",
