@@ -29,7 +29,7 @@ def test_consecutive_act_sims_change_structure_and_duration():
     assert _duration(first) == 180 * 60
     assert _duration(second) == 240 * 60
     assert first != second
-    assert any(item['label'].startswith('Act 1') for item in first)
+    assert any(item['label'].startswith('Part 1') for item in first)
     assert any('low-cadence climb' in item['label'] and item['cadence'] == 55
                for item in second if item['kind'] == 'steady')
 
