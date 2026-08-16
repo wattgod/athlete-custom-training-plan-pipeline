@@ -369,3 +369,16 @@ def test_anaerobic_after_test_note_never_gives_ftp_math():
     note = _by_type(notes)["after_test"]
     assert "repeatability" in note["body"]
     assert "0.95" not in note["body"]
+
+
+def test_briefing_long_ride_uses_the_cards_collapsed_name_not_the_archetype():
+    plan = _plan()
+    long_ride = plan["weeks"][0]["sessions"][2]
+    long_ride["title"] = "Endurance Blocks"
+    long_ride["display_name"] = "Endurance Blocks"
+    long_ride["duration_s"] = 9480
+    long_ride["segments"] = [
+        {"kind": "steady_state", "duration_s": 9480, "work_percent_ftp": 68},
+    ]
+    body = " ".join(n["body"] for n in _notes(plan) if n["type"] == "weekly_briefing")
+    assert "Endurance Blocks" not in body

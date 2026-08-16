@@ -23,6 +23,7 @@ from delivery_render import (
     build_fuel_ladder,
     has_structured_work,
     load_brand,
+    render_card_name,
     render_hydration_block,
     render_session_name,
 )
@@ -287,7 +288,7 @@ def _quality_sessions(week: Any) -> List[Any]:
 
 def _briefing_session_title(session: Any) -> str:
     """Name key sessions exactly as the calendar does, flagging rehearsals."""
-    title = _session_title(session)
+    title = render_card_name(session)
     if _get(session, "is_dress_rehearsal") and "dress rehearsal" not in title.lower():
         return f"Dress rehearsal — {title}"
     return title
@@ -349,6 +350,8 @@ def _week_sequence(week: Any, key_sessions: List[Any]) -> str:
             sim_refs = _join_references([_session_reference(session) for session in simulations])
             rehearsal = "rehearsal" if len(simulations) == 1 else "rehearsals"
             sentence += f" {sim_refs} {'is' if len(simulations) == 1 else 'are'} the {rehearsal}."
+        elif long_ride and long_ride not in tests:
+            sentence += f" {_session_reference(long_ride)} is the long ride."
         return sentence
 
     if _is_taper_week(week) and specialties:
@@ -596,8 +599,16 @@ def _start_here(plan_ir: Any, brand: Dict[str, Any], guide_url: Optional[str]) -
     else:
         reading = "Each workout gives you an RPE. RPE 3 is easy conversation, 5-6 is controlled work, 7-8 is hard, and 9-10 is reserved for short efforts and tests."
     week_label = "week" if weeks == 1 else "weeks"
+    # Strength sits ON TOP of riding hours, not inside them — say so up
+    # front, or the athlete adds up a peak week and thinks the plan broke
+    # its own hours promise.
+    has_strength = any(_kind(session) == "strength"
+                       for _, session in _iter_sessions(plan_ir))
+    hours_note = ("\n\nBig weeks run to the top of your riding hours; the "
+                  "strength sessions you asked for sit on top of that, not "
+                  "inside it." if has_strength else "")
     body = (f"{weeks} {week_label} to {race_name}" + (f", {_display_date(race_day)}." if race_day else ".") + guide +
-            f"\n\n———\n\nHOW THE WEEK WORKS\n{_weekly_pattern(plan_ir)}\n\nIf a week falls apart, protect the long ride and the first quality session, then let the rest go."
+            f"\n\n———\n\nHOW THE WEEK WORKS\n{_weekly_pattern(plan_ir)}{hours_note}\n\nIf a week falls apart, protect the long ride and the first quality session, then let the rest go."
             f"\n\n———\n\nREADING THE WORKOUTS\n{reading}"
             f"\n\n———\n\nNEED THIS ADJUSTED?\nEmail me at {_email(brand)}. Tell me what happened and what you want changed — travel, illness, a session that felt wrong, or a day that no longer works. Adjusting a plan is normal.")
     return f"START HERE — Your {race_name} Plan", body
