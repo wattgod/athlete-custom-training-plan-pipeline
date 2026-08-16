@@ -305,9 +305,54 @@ def r06_long_ride_present(weeks: List[dict], target_hours: float = 0) -> Tuple[b
 
 
 def r08_fuel_tags(weeks: List[dict]) -> Tuple[bool, str]:
-    """R08 [CRITICAL]: Fuel tags on every cycling workout (checked during render)."""
-    # This is validated at render time, not plan time
-    return True, "Fuel tags checked during render"
+    """R08 [CRITICAL]: Fuel tags on every cycling workout.
+
+    Was a stub that always passed ("checked during render") -- nothing ever
+    actually checked it, which is how Ronnestad 30/15, Stars In Your Eyes,
+    and Pre-Race Openers shipped with no [...FUEL...] tag while the gate
+    still reported PASS. This calls the SAME classifier used at render time
+    (``generate_athlete_package.classify_fuel_tier``), keyed off each day's
+    assigned ROLE (matching R01's "classify by role, not name" pattern) so a
+    routing gap in that classifier fails this gate instead of silently
+    shipping an untagged card.
+
+    Only 'intensity' and 'long_ride' roles are checked -- those are the days
+    with real training stimulus. They are held to different bars, because
+    the classifier's duration gate is intentional policy, not a defect:
+      - 'intensity' is real quality work (interval/threshold/sharpener/
+        opener) that is never "just an easy ride" -- it must classify to a
+        taggable tier ('quality' or 'race_sim') regardless of duration.
+        Falling into the 'endurance' catch-all (which no-tags anything
+        under 90min) or 'exempt' is exactly the routing gap that let
+        Ronnestad 30/15, Stars In Your Eyes, and Pre-Race Openers ship
+        untagged.
+      - 'long_ride' legitimately no-tags a short ride (a trimmed recovery-
+        week long ride under 90min: "water is fine", the same policy
+        Endurance fillers get) -- only 'exempt' (the day misclassified as
+        pure rest) is a genuine violation there.
+    """
+    from generate_athlete_package import classify_fuel_tier
+
+    violations = []
+    for week in weeks:
+        plan_week = week.get('plan_week')
+        for day_data in week.get('days', []):
+            role = day_data.get('role')
+            name = day_data.get('name', '')
+            if not name:
+                continue
+            if role == 'intensity':
+                if classify_fuel_tier(name) not in ('quality', 'race_sim'):
+                    violations.append(
+                        f"W{plan_week} {day_data.get('day')}: {name} (no fuel tag)")
+            elif role == 'long_ride':
+                if classify_fuel_tier(name) == 'exempt':
+                    violations.append(
+                        f"W{plan_week} {day_data.get('day')}: {name} (no fuel tag)")
+
+    if violations:
+        return False, f"Missing fuel tags: {'; '.join(violations[:5])}"
+    return True, "Fuel tags present on every intensity/long-ride workout"
 
 
 def r11_strength_present(weeks: List[dict]) -> Tuple[bool, str]:
