@@ -131,19 +131,42 @@ def render_main_set(segments: Iterable[Dict[str, Any]]) -> str:
     return '\n'.join(f'- {line}' for line in lines) or '- Recovery / rest as scheduled'
 
 
+_DIMENSION_LABELS = ('cadence', 'position')
+
+
+def _is_dimension_line(line: str) -> bool:
+    """True for an authored '-Cadence: ...' / '- Position: ...' bullet.
+
+    Two conventions coexist in this codebase: the Nate generator emits
+    ``-Cadence: ...`` (no space after the dash); the block-mapper's
+    focus-variant endurance renderer emits ``- Position: ...`` /
+    ``- Cadence: ...`` (a space after the dash). The old no-space-only check
+    silently dropped every space-formatted cadence line and never
+    recognized Position at all -- so a focus-variant card's title promised
+    "Position Focus" / "Cadence Focus" while the rendered description
+    carried neither instruction.
+    """
+    stripped = line.strip()
+    if not stripped.startswith('-'):
+        return False
+    rest = stripped[1:].lstrip().lower()
+    return any(rest.startswith(f'{label}:') for label in _DIMENSION_LABELS)
+
+
 def replace_main_set(description: str, segments: Iterable[Dict[str, Any]]) -> str:
     rendered = 'MAIN SET:\n' + render_main_set(segments)
     pattern = r'MAIN SET:\n.*?(?=\n\n(?:COOL-DOWN|PROGRESSION|PURPOSE|EXECUTION|RPE|NUTRITION|HYDRATION):|\Z)'
     match = re.search(pattern, description, flags=re.S)
     if match:
         # MAIN SET prose is replaced from executable ZWO blocks, but cadence
-        # is a dimension of execution rather than a power segment.  Retain
-        # its authored line so the projection cannot silently strip an rpm
-        # prescription (notably Cadence_Work sessions).
-        cadence_lines = [line for line in match.group(0).splitlines()
-                         if line.strip().lower().startswith('-cadence:')]
-        if cadence_lines:
-            rendered += '\n' + '\n'.join(cadence_lines)
+        # and position are dimensions of execution rather than power
+        # segments.  Retain their authored lines so the projection cannot
+        # silently strip an rpm/position prescription (notably Cadence_Work
+        # sessions and focus-variant endurance rides).
+        dimension_lines = [line for line in match.group(0).splitlines()
+                           if _is_dimension_line(line)]
+        if dimension_lines:
+            rendered += '\n' + '\n'.join(dimension_lines)
         return description[:match.start()] + rendered + description[match.end():]
     return rendered + '\n\n' + description
 

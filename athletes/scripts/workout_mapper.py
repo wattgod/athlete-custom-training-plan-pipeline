@@ -360,6 +360,7 @@ def render_workout(
     display_name: Optional[str] = None,
     training_age: Optional[str] = None,
     endurance_variant: Optional[int] = None,
+    phase: Optional[str] = None,
 ) -> Optional[str]:
     """Render a block-builder workout name to ZWO XML.
 
@@ -394,7 +395,7 @@ def render_workout(
     # bursts about fourteen minutes apart at every taper duration.
     if name == 'Taper Burst Endurance':
         return _render_taper_burst_endurance(
-            level, workout_name, author, display_name=display_name)
+            level, workout_name, author, display_name=display_name, phase=phase)
 
     nate_type, base_variation = mapping
 
@@ -463,10 +464,31 @@ _ENDURANCE_LEVELS = {
 _TAPER_BURST_LEVELS = {1: 90, 2: 120, 3: 150, 4: 180, 5: 210, 6: 240}
 _TAPER_BURST_COUNTS = {1: 5, 2: 7, 3: 9, 4: 11, 5: 13, 6: 15}
 
+# This archetype is placed by the calendar in two contexts: the taper long
+# ride (_select_taper_week) and the testing-week filler pool
+# (_select_testing_week), which can land in a base/build/peak phase. The
+# purpose line must match wherever it actually landed -- a fixed "during the
+# taper" claim was showing up on cards whose header read Phase: BASE/BUILD/
+# PEAK.
+_TAPER_BURST_PURPOSE_BY_PHASE = {
+    'taper': 'Keep neuromuscular snap during the taper without accumulating fatigue.',
+    'base': 'Keep neuromuscular snap alive while the aerobic base builds.',
+    'build': 'Keep neuromuscular snap alive while the volume builds.',
+    'peak': 'Keep neuromuscular snap alive heading into peak load.',
+    'race': 'Keep neuromuscular snap alive during race week without adding fatigue.',
+}
+
+
+def _taper_burst_purpose(phase: Optional[str]) -> str:
+    return _TAPER_BURST_PURPOSE_BY_PHASE.get(
+        str(phase or '').strip().lower(),
+        'Keep neuromuscular snap alive without accumulating fatigue.')
+
 
 def _render_taper_burst_endurance(level: int, workout_name: Optional[str] = None,
                                   author: str = 'Gravel God Training',
-                                  display_name: Optional[str] = None) -> str:
+                                  display_name: Optional[str] = None,
+                                  phase: Optional[str] = None) -> str:
     """Z2 endurance with one 6-second alactic burst every ~14 minutes."""
     total_sec = _TAPER_BURST_LEVELS.get(level, _TAPER_BURST_LEVELS[3]) * 60
     burst_count = _TAPER_BURST_COUNTS.get(level, _TAPER_BURST_COUNTS[3])
@@ -495,7 +517,7 @@ def _render_taper_burst_endurance(level: int, workout_name: Optional[str] = None
         '- Ride Z2 at 70% FTP\n'
         '- Every ~14min: 6sec full-gas alactic burst, then settle immediately\n\n'
         'PURPOSE:\n'
-        'Keep neuromuscular snap during the taper without accumulating fatigue.'
+        f'{_taper_burst_purpose(phase)}'
     )
     return f'''<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
@@ -537,6 +559,36 @@ def endurance_focus_title(variant: Optional[int]) -> str:
     if variant is None:
         return 'Endurance'
     return _ENDURANCE_FOCUS_VARIANTS[variant % len(_ENDURANCE_FOCUS_VARIANTS)][0]
+
+
+def _endurance_burst_blocks(main_sec: int, base_power: float, gap_sec: int = 720,
+                            burst_power: float = 1.20) -> Tuple[str, int]:
+    """Z2 main-set XML with a short high-cadence burst about every ``gap_sec``.
+
+    Backs the Burst Focus endurance variant, whose title/description
+    explicitly promise a periodic burst ("Every 12 min, add a relaxed 6 sec
+    high-cadence burst") -- a claim the rendered ZWO structure must actually
+    deliver, not just describe in prose. Returns ``(xml_blocks, burst_count)``;
+    ``burst_count == 0`` means the main set was too short for even one full
+    gap, so it rendered as a flat block instead (a title should not promise
+    a burst rhythm it can't fit).
+    """
+    burst_dur = 6
+    if main_sec < gap_sec + burst_dur:
+        return f'    <SteadyState Duration="{main_sec}" Power="{base_power:.2f}"/>', 0
+    burst_count = max(1, main_sec // (gap_sec + burst_dur))
+    edge_total = main_sec - burst_count * burst_dur - max(0, burst_count - 1) * gap_sec
+    first_edge = edge_total // 2
+    final_edge = edge_total - first_edge
+    blocks = [f'    <SteadyState Duration="{first_edge}" Power="{base_power:.2f}"/>']
+    for i in range(burst_count):
+        blocks.append(
+            f'    <SteadyState Duration="{burst_dur}" Power="{burst_power:.2f}" '
+            f'CadenceLow="105" CadenceHigh="115"/>')
+        if i < burst_count - 1:
+            blocks.append(f'    <SteadyState Duration="{gap_sec}" Power="{base_power:.2f}"/>')
+    blocks.append(f'    <SteadyState Duration="{final_edge}" Power="{base_power:.2f}"/>')
+    return '\n'.join(blocks), burst_count
 
 
 def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
@@ -582,6 +634,27 @@ def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
                        f'    <SteadyState Duration="{main_sec - half}" Power="0.74"/>')
         main_set = (f"- {half // 60}min @ 68% FTP, then "
                     f"{(main_sec - half) // 60}min @ 74% FTP (RPE 3-4)")
+    elif variant is not None and variant % len(_ENDURANCE_FOCUS_VARIANTS) == 4:
+        _gap_sec, _burst_dur = 720, 6
+        if main_sec >= _gap_sec + _burst_dur:
+            # burst_count * 6sec is rarely a multiple of 60, which would
+            # otherwise leave the edge Z2 blocks on a ragged, non-whole
+            # minute ("6:48") -- description prose must never show that.
+            # Borrow the remainder from the cool-down (never rendered as a
+            # MAIN SET bullet, so its exact seconds are never prose-checked)
+            # into the main set instead, same technique
+            # _render_taper_burst_endurance uses via its Warmup segment.
+            _probe_count = max(1, main_sec // (_gap_sec + _burst_dur))
+            _remainder = (_probe_count * _burst_dur) % 60
+            if _remainder and cooldown_sec > _remainder:
+                cooldown_sec -= _remainder
+                main_sec += _remainder
+        main_blocks, burst_count = _endurance_burst_blocks(main_sec, power, gap_sec=_gap_sec)
+        if burst_count:
+            main_set = (f"- {main_sec // 60}min @ 66-75% FTP (RPE 3-4) with a 6sec "
+                        f"high-cadence burst every ~12min ({burst_count} total)")
+        else:
+            main_set = f"- {main_sec // 60}min @ 66-75% FTP (RPE 3-4)"
     else:
         main_blocks = f'    <SteadyState Duration="{main_sec}" Power="{power:.2f}"/>'
         main_set = f"- {main_sec // 60}min @ 66-75% FTP (RPE 3-4)"
@@ -618,6 +691,7 @@ def resolve_display_name(
     variation_offset: int = 0,
     discipline: str = 'gravel',
     endurance_variant: Optional[int] = None,
+    days_to_race: Optional[int] = None,
 ) -> str:
     """Resolve the personality name of the archetype a workout renders as.
 
@@ -628,6 +702,17 @@ def resolve_display_name(
     """
     if name == 'Endurance':
         return endurance_focus_title(endurance_variant)
+
+    if name == 'Openers':
+        # The underlying archetype library entry for this slot is literally
+        # named "Pre-Race Openers" -- fine for a genuine race-eve session,
+        # dishonest on a recovery-week opener with no race within reach.
+        # Only claim "pre-race" when a race day is actually within 2 days;
+        # the plain 'Openers' name carries recovery-week framing already
+        # (get_category_purpose's 'Opener'/'Pre-Race' copy is placement-
+        # neutral, so the content underneath doesn't need to change).
+        if not (days_to_race is not None and 0 <= days_to_race <= 2):
+            return 'Openers'
 
     mapping = _resolve_for_discipline(name, discipline)
     if mapping is None:

@@ -213,6 +213,11 @@ def _is_taper_week(week: Any) -> bool:
                for name in ("week_type", "phase"))
 
 
+def _is_recovery_week(week: Any) -> bool:
+    return any(str(_get(week, name) or "").strip().lower() == "recovery"
+               for name in ("week_type", "phase"))
+
+
 def _taper_specialty(session: Any) -> Optional[str]:
     """Return the taper-specific stimulus a session protects in the briefing.
 
@@ -319,7 +324,22 @@ def _week_sequence(week: Any, key_sessions: List[Any]) -> str:
     quality = [session for session in key_sessions
                if id(session) not in protected_ids]
     bikes = [session for session in sessions if _kind(session) == "bike"]
-    long_ride = max(bikes, key=_duration_minutes) if bikes else None
+    long_candidate = max(bikes, key=_duration_minutes) if bikes else None
+    # Only a genuine base/build/peak load week earns the "long ride" label,
+    # and only when the actual longest bike session is at least 90min.
+    # Recovery weeks trim volume by design (a 70min Endurance ride is not
+    # "the long ride"); race week replaces the long ride with a sharpener
+    # (Stars In Your Eyes is not "the long ride" either). week_type is
+    # checked first because a recovery/taper/race week can carry the
+    # surrounding block's phase (e.g. phase=base, week_type=recovery).
+    week_type_norm = str(_get(week, "week_type") or "").strip().lower()
+    phase_norm = str(_get(week, "phase") or "").strip().lower()
+    is_load_shaped_week = (week_type_norm not in ("recovery", "taper", "race")
+                           and phase_norm not in ("recovery", "taper", "race"))
+    long_ride = (long_candidate
+                if long_candidate and is_load_shaped_week
+                and _duration_minutes(long_candidate) >= 90
+                else None)
 
     if tests:
         test_refs = _join_references([_session_reference(session) for session in tests])
@@ -352,6 +372,16 @@ def _week_sequence(week: Any, key_sessions: List[Any]) -> str:
                     f"{'rehearsal' if len(simulations) == 1 else 'rehearsals'}.")
         return (f"{sim_refs} {'is' if len(simulations) == 1 else 'are'} the week's "
                 f"{'rehearsal' if len(simulations) == 1 else 'rehearsals'}.")
+
+    if _is_recovery_week(week):
+        # Describe the week's actual job rather than inheriting the
+        # base/build/peak "carries structured work ... is the long ride"
+        # phrasing, which mislabelled a 70min recovery-week Endurance ride
+        # as "the long ride".
+        if quality:
+            return (f"This is a recovery week: easy volume through the week, plus "
+                    f"{_session_reference(quality[0])} to keep the legs sharp.")
+        return "This is a recovery week: easy volume through the week."
 
     if quality and long_ride:
         quality_refs = _join_references([_session_reference(session) for session in quality[:2]])

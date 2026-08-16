@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from delivery_notes import render_notes
+from delivery_notes import render_notes, _week_sequence, _quality_sessions
 from delivery_render import load_brand, render_title
 
 
@@ -109,6 +109,56 @@ def test_recovery_week_briefing_label_outranks_base_phase():
     recovery = next(note for note in notes if note["type"] == "weekly_briefing"
                     and note["title"].startswith("WEEK 2 —"))
     assert recovery["title"] == "WEEK 2 — RECOVERY"
+
+
+def _bike_session(session_date, title, duration_min, **extra):
+    return {"date": str(session_date), "title": title, "tp_kind": "bike",
+            "duration_s": duration_min * 60, **extra}
+
+
+def test_recovery_week_sequence_never_calls_a_short_ride_the_long_ride():
+    """Regression: Week 4 (recovery) used to say 'Monday's 70-minute
+    Endurance — Position Focus is the long ride' -- a recovery week's
+    trimmed long ride is not "the long ride" and the sequence should
+    describe the week's actual job instead."""
+    week = {
+        "number": 4, "phase": "base", "week_type": "recovery",
+        "sessions": [
+            _bike_session(date(2026, 9, 7), "Endurance — Position Focus", 70),
+            _bike_session(date(2026, 9, 8), "Openers", 20),
+        ],
+    }
+    sequence = _week_sequence(week, _quality_sessions(week))
+    assert "is the long ride" not in sequence
+    assert "recovery week" in sequence.lower()
+
+
+def test_race_week_sequence_never_calls_the_sharpener_the_long_ride():
+    """Regression: race week used to say 'Monday's 58-minute Stars In Your
+    Eyes is the long ride' -- the sharpener is not a long ride."""
+    week = {
+        "number": 9, "phase": "race", "week_type": "race",
+        "sessions": [
+            _bike_session(date(2026, 10, 13), "Stars In Your Eyes", 58),
+            _bike_session(date(2026, 10, 15), "Openers", 20),
+        ],
+    }
+    sequence = _week_sequence(week, _quality_sessions(week))
+    assert "is the long ride" not in sequence
+
+
+def test_normal_load_week_still_gets_the_long_ride_label():
+    """The fix must not remove the label from a week that actually earns it:
+    base/build/peak, week_type load, bike >= 90min."""
+    week = {
+        "number": 3, "phase": "build", "week_type": "load",
+        "sessions": [
+            _bike_session(date(2026, 9, 1), "VO2 Intervals", 60),
+            _bike_session(date(2026, 9, 6), "Endurance", 200),
+        ],
+    }
+    sequence = _week_sequence(week, _quality_sessions(week))
+    assert "is the long ride" in sequence
 
 
 def test_briefing_includes_level_bearing_structured_float_sets_without_keyword_match():

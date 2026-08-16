@@ -262,3 +262,149 @@ def render_act_sim_zwo(*, workout_name: str, display_name: str,
 {chr(10).join(lines)}
   </workout>
 </workout_file>'''
+
+
+# =============================================================================
+# MIDWEEK (COMPRESSED) RACE SIMULATION
+#
+# compose_act_simulation refuses to render under a 120min floor -- it owns
+# the long-ride slot, where that floor is correct. A "Race Simulation" bb_name
+# also gets selected onto ordinary midweek intensity slots (intensity_1/2/3
+# in build/peak/race_prep, ~45-90min) via workout_selection.yaml. Those cards
+# used to fall through to the generic Nate 'race_sim' archetype -- a flat
+# over-under set with none of the race-shaped Act logic, despite being
+# briefed to the athlete as a rehearsal. This composer keeps the same
+# three-part coach language (punchy start / grind / finale) and the same
+# race-fact inputs, sized to a normal midweek quality-day budget instead of
+# a long-ride budget.
+# =============================================================================
+
+def compose_midweek_sim(duration_min: int, facts: RaceFacts) -> List[Dict[str, Any]]:
+    """Return exact-duration ZWO-ready segments for a compressed midweek sim."""
+    total_seconds = max(30 * 60, int(round(duration_min)) * 60)
+    high_altitude = facts.high_altitude
+
+    warmup_seconds = min(600, max(300, (int(total_seconds * 0.10) // 60) * 60))
+    cooldown_seconds = min(480, max(300, (int(total_seconds * 0.08) // 60) * 60))
+
+    # PART 1 — a short punchy start: brief high-cadence Z3 then a handful of
+    # short attacks (fewer/tighter than the long-ride Act's opening).
+    attack_count = 3
+    attack_seconds = attack_count * 90  # 20s attack + 30s hold + 40s reset
+    z3_seconds = 180
+    # attack_count * 90s is rarely a multiple of 60 (90 * odd count leaves a
+    # 30s remainder) -- left uncorrected, that remainder propagates into
+    # Part 2's Z2-fill block and renders as ragged, non-whole-minute prose
+    # ("22:30"). A short settle segment (< 60s, which formats fine as
+    # "0:30") absorbs it here so every downstream Part 2/Part 3 block lands
+    # on a whole minute, same technique compose_act_simulation uses for its
+    # own Part 1 settle.
+    settle_seconds = (60 - (z3_seconds + attack_seconds) % 60) % 60
+    part1_seconds = z3_seconds + attack_seconds + settle_seconds
+
+    # PART 3 — a short finale: one compact tired-legs pyramid.
+    part3_seconds = 3 * 3 * 60  # 85/95/85% x 3min
+
+    part2_seconds = (total_seconds - warmup_seconds - cooldown_seconds
+                     - part1_seconds - part3_seconds)
+    if part2_seconds < 8 * 60:
+        # Very tight budget: drop the finale pyramid first -- the grind is
+        # the session's whole race-specificity point and is protected below.
+        part3_seconds = 0
+        part2_seconds = (total_seconds - warmup_seconds - cooldown_seconds
+                         - part1_seconds)
+    if part2_seconds < 5 * 60:
+        attack_count = 2
+        attack_seconds = attack_count * 90
+        settle_seconds = (60 - (z3_seconds + attack_seconds) % 60) % 60
+        part1_seconds = z3_seconds + attack_seconds + settle_seconds
+        part2_seconds = (total_seconds - warmup_seconds - cooldown_seconds
+                         - part1_seconds - part3_seconds)
+    part2_seconds = max(5 * 60, part2_seconds)
+
+    if facts.climbing_emphasis == "high":
+        climb_power = 0.80
+    elif facts.climbing_emphasis == "moderate":
+        climb_power = 0.77
+    else:  # flat or unknown: short, controlled climb exposure
+        climb_power = 0.74
+    if high_altitude:
+        climb_power = min(0.80, climb_power + 0.01)
+
+    # One low-cadence grind block -- a third of Part 2's budget, whole
+    # minutes, with the rest as Z2 fill around it.
+    climb_seconds = max(300, min(part2_seconds - 300, (part2_seconds // 3 // 60) * 60))
+    z2_fill_seconds = max(0, part2_seconds - climb_seconds)
+
+    segments: List[Dict[str, Any]] = []
+    _append_steady(segments, warmup_seconds, 0.58, "Warm-up")
+    _append_steady(segments, z3_seconds, 0.82, "Part 1 — high-cadence Z3", cadence=105)
+    for _ in range(attack_count):
+        _append_steady(segments, 20, 1.60, "Part 1 — short attack")
+        _append_steady(segments, 30, 1.08, "Part 1 — hard hold")
+        _append_steady(segments, 40, 0.55, "Part 1 — reset")
+    _append_steady(segments, settle_seconds, 0.65, "Part 1 — settle into the grind")
+    if z2_fill_seconds:
+        _append_steady(segments, z2_fill_seconds, 0.68, "Part 2 — Z2 grind")
+    _append_steady(segments, climb_seconds, climb_power,
+                   "Part 2 — seated low-cadence climb", cadence=55)
+    if part3_seconds:
+        for power in (0.85, 0.95, 0.85):
+            _append_steady(segments, part3_seconds // 3, power,
+                           "Part 3 — tired-legs pyramid")
+    _append_steady(segments, cooldown_seconds, 0.50, "Cooldown")
+
+    # Keep the caller's duration budget exact, same guard as the long-ride
+    # Act composer.
+    delta = total_seconds - sum(item.get("seconds", 0) for item in segments)
+    if delta:
+        _append_steady(segments, delta, 0.68, "Part 2 — Z2 to duration")
+    return segments
+
+
+def midweek_sim_description(facts: RaceFacts) -> str:
+    """Coach-facing execution copy for the compressed midweek rehearsal."""
+    climb_line = {
+        "high": "The course density supports long seated climbs: make the low-cadence block patient and unbroken.",
+        "moderate": "The course carries sustained climbing: keep the low-cadence block smooth rather than muscling it.",
+        "flat": "This is a rolling course: keep Part 1 punchy and make the low-cadence block short, controlled strength work.",
+        "unknown": "Use the supplied route facts, not a made-up terrain story: keep Part 2 controlled and repeatable.",
+    }[facts.climbing_emphasis]
+    altitude_line = ""
+    if facts.high_altitude:
+        altitude_line = (
+            "\n\nALTITUDE: This route's supplied above-sea-level elevation is over 5,000 ft. "
+            "On the seated grind, ride to RPE rather than chasing home-altitude power."
+        )
+    return (
+        "RACE SIMULATION — MIDWEEK\n\n"
+        "PART 1 — punchy start: high-cadence Z3, then short attacks and hard holds.\n"
+        "PART 2 — the grind: Z2 with a seated low-cadence climbing block.\n"
+        "PART 3 — finale: a short tired-legs pyramid, then cooldown.\n\n"
+        f"{climb_line}{altitude_line}\n\n"
+        "Same shape as your long-ride simulations, compressed for a midweek slot: "
+        "ride Parts 1 and 3 at their targets, ride Part 2 disciplined and bored."
+    )
+
+
+def render_midweek_sim_zwo(*, workout_name: str, display_name: str,
+                           duration_min: int, facts: RaceFacts, author: str) -> str:
+    """Render an exact-duration compressed midweek sim as valid ZWO XML."""
+    lines = []
+    for segment in compose_midweek_sim(duration_min, facts):
+        label = html.escape(segment["label"], quote=True)
+        cadence = (f' Cadence="{segment["cadence"]}"' if segment.get("cadence") else "")
+        lines.append(
+            f'    <SteadyState Duration="{segment["seconds"]}" Power="{segment["power"]:.2f}"{cadence} />'
+            f'<!-- {label} -->')
+    description = midweek_sim_description(facts)
+    return f'''<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>{html.escape(author)}</author>
+  <name>{html.escape(display_name)}</name>
+  <description>{html.escape(description)}</description>
+  <sportType>bike</sportType>
+  <workout>
+{chr(10).join(lines)}
+  </workout>
+</workout_file>'''

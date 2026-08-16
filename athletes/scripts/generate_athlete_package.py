@@ -123,6 +123,23 @@ def _race_countdown(weeks_to_race: int, race_name: str) -> str:
     return f"{weeks_to_race} {unit} to {race_name}"
 
 
+def _days_until_race(race_date: Optional[str], session_date: Optional[str]) -> Optional[int]:
+    """Whole calendar days from a session date to the race date, or None.
+
+    Used to gate the "Pre-Race Openers" title onto sessions actually within
+    reach of a race day, instead of a recovery-week opener claiming
+    pre-race framing with no race nearby.
+    """
+    if not race_date or not session_date:
+        return None
+    try:
+        race_dt = datetime.fromisoformat(str(race_date)[:10])
+        session_dt = datetime.fromisoformat(str(session_date)[:10])
+        return (race_dt - session_dt).days
+    except (TypeError, ValueError):
+        return None
+
+
 def race_day_tss_from_emitted_minutes(duration_minutes: int) -> int:
     """Match zwo_parser's FreeRide estimate for the emitted race-day card."""
     intensity_factor = 0.65 if duration_minutes * 60 > 3600 else 0.55
@@ -200,6 +217,48 @@ def _patch_zwo_name(filepath: Path, new_name: str) -> str:
     return patched
 
 
+# Names/keywords that always carry a fuel tag regardless of duration -- these
+# are real quality efforts, just short ones (High Cadence Intervals is the
+# reference case). 'thirty-fifteens'/'stars in your eyes'/'openers' were
+# missing here: none of them matched an existing keyword, so they fell
+# through to the duration-gated catch-all below and rendered no tag at all
+# (Ronnestad 30/15, Stars In Your Eyes, and both Pre-Race Openers cards
+# shipped with no [...FUEL...] banner while every other bike card had one).
+_QUALITY_FUEL_KEYWORDS = [
+    'vo2max', 'threshold', 'sprint', 'anaerobic', 'kitchen sink', 'drain cleaner',
+    'la balanguera', 'hyttevask', 'blended', 'mixed', 'sfr', 'thunder quads',
+    'blood pistons', 'cadence work', 'tempo', 'stomps', 'microbursts', 'buffer',
+    'ftp', 'thirty-fifteens', 'thirty fifteens', 'ronnestad', 'stars in your eyes',
+    'openers', 'g-spot', 'g spot', 'sweet spot', 'vo2 bookend',
+]
+# Names that never carry a fuel tag -- true rest/off/easy-spin days. 'openers'
+# used to live here (blanket-excluding Pre-Race Openers too); it now lives in
+# the quality bucket above instead.
+_EXEMPT_FUEL_KEYWORDS = ['recovery', 'easy', 'shakeout', 'rest', 'off']
+
+
+def classify_fuel_tier(workout_type: str) -> str:
+    """Classify a workout type/name into its per-workout fuel-tag bucket.
+
+    Shared by ``_get_fuel_tag_for_type`` (render-time tag injection) and
+    ``block_compliance.r08_fuel_tags`` (the plan-gate check) so a routing gap
+    in this classifier fails the compliance gate instead of silently shipping
+    an untagged card -- the exact hole that let R08 pass while Ronnestad
+    30/15, Stars In Your Eyes, and Pre-Race Openers rendered with no tag.
+
+    Returns one of: 'race_sim', 'quality' (tag regardless of duration),
+    'exempt' (never tagged), 'endurance' (tag only if duration >= 90min).
+    """
+    wt_lower = workout_type.lower()
+    if workout_type in RACE_SIM_WORKOUT_TYPES or 'race_sim' in wt_lower or 'race simulation' in wt_lower:
+        return 'race_sim'
+    if workout_type in INTENSITY_WORKOUT_TYPES or any(k in wt_lower for k in _QUALITY_FUEL_KEYWORDS):
+        return 'quality'
+    if any(k in wt_lower for k in _EXEMPT_FUEL_KEYWORDS):
+        return 'exempt'
+    return 'endurance'
+
+
 def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min: float = None,
                            week_num: int = None) -> str:
     """Return fuel guidance string for a workout type, or empty string.
@@ -212,7 +271,6 @@ def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min
     ``week_num`` applies the week's gut-training ceiling so per-workout targets
     follow the plan's gut progression instead of a flat tier value.
     """
-    wt_lower = workout_type.lower()
     from fueling_policy import prescription_from_fueling, render_workout_fueling
     prescription = prescription_from_fueling(fueling or {})
     # This week's gut-training ceiling (g/hr) — clamps early-plan targets down.
@@ -224,24 +282,19 @@ def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min
             tr = (wp[week_num - 1] or {}).get('target_range') or []
             if len(tr) == 2:
                 phase_ceiling = tr[1]
-    if workout_type in RACE_SIM_WORKOUT_TYPES or 'race_sim' in wt_lower or 'race simulation' in wt_lower:
+    tier = classify_fuel_tier(workout_type)
+    if tier == 'race_sim':
         return render_workout_fueling(prescription, 'race_sim', phase_ceiling)
-    elif workout_type in INTENSITY_WORKOUT_TYPES or any(k in wt_lower for k in [
-        'vo2max', 'threshold', 'sprint', 'anaerobic', 'kitchen sink', 'drain cleaner',
-        'la balanguera', 'hyttevask', 'blended', 'mixed', 'sfr', 'thunder quads',
-        'blood pistons', 'cadence work', 'tempo', 'stomps', 'microbursts', 'buffer',
-        'ftp',
-    ]):
+    if tier == 'quality':
         # FTP tests are quality efforts (57 g/hr), not long rides (62 g/hr).
         return render_workout_fueling(prescription, 'quality', phase_ceiling)
-    elif any(k in wt_lower for k in ['recovery', 'easy', 'shakeout', 'rest', 'openers', 'off']):
+    if tier == 'exempt':
         return ''
-    else:
-        # Aerobic/endurance rides carry the long-ride banner only when actually
-        # long (>=90 min); shorter ones need no in-workout fuelling.
-        if duration_min is not None and duration_min < 90:
-            return ''
-        return render_workout_fueling(prescription, 'long_ride', phase_ceiling)
+    # 'endurance': aerobic/endurance rides carry the long-ride banner only
+    # when actually long (>=90 min); shorter ones need no in-workout fuelling.
+    if duration_min is not None and duration_min < 90:
+        return ''
+    return render_workout_fueling(prescription, 'long_ride', phase_ceiling)
 
 
 _FUEL_TAG = re.compile(
@@ -2663,7 +2716,8 @@ TIPS:
                     from workout_mapper import resolve_display_name
                     display_name = resolve_display_name(
                         bb_name, methodology=nate_methodology,
-                        variation_offset=var_offset, discipline=_bb_discipline)
+                        variation_offset=var_offset, discipline=_bb_discipline,
+                        days_to_race=_days_until_race(race_date, day_info.get('date')))
                     _filename_name = display_name
 
                 # Render ZWO through block-builder workout mapper. The
@@ -2689,6 +2743,23 @@ TIPS:
                         dress_rehearsal=_act_simulation.get('dress_rehearsal', False),
                         race_rate_g_per_hour=_race_rate,
                     )
+                elif bb_name == 'Race Simulation':
+                    # Midweek quality-slot placement (role != long_ride --
+                    # the Act composer above owns the long-ride slot and
+                    # refuses to render under 120min). Without this, a Tue/
+                    # Thu "Race Simulation" card rendered a flat over-under
+                    # set with none of the race-shaped Act logic despite
+                    # being briefed as a rehearsal. Same race facts, same
+                    # three-part coach language, compressed to fit a normal
+                    # midweek duration budget.
+                    from act_race_sim import render_midweek_sim_zwo
+                    zwo_content = render_midweek_sim_zwo(
+                        workout_name=workout_name,
+                        display_name=display_name,
+                        duration_min=bb_duration,
+                        facts=_act_race_facts,
+                        author=_workout_author,
+                    )
                 else:
                     zwo_content = _bb_render(
                         name=bb_name,
@@ -2705,6 +2776,7 @@ TIPS:
                                            and not (bb_day.get('post_sim_recovery')
                                                     or bb_day.get('pre_sim_recovery'))
                                            else None),
+                        phase=phase,
                     )
 
                 if not zwo_content:
