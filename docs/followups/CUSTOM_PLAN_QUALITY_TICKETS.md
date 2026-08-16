@@ -156,3 +156,20 @@ climbs and "increase effort as others fade." Race-day copy needs goal-type
 and duration dispatch: finisher/long-day copy caps climb intensity, leads
 with the ceiling decision rule, and frames the final third as holding
 form, not attacking.
+
+## T18 — Same-day hard-bike + strength needs sequencing guidance
+Round-8 grader (verdict A, filed as polish): six strength sessions land on
+the same day as the week's hardest bike interval with no stated order or
+minimum gap. Add one line to strength cards that share a day with an RPE8+
+ride: "Ride first; lift at least 4 hours later — or move the lift to
+tomorrow if the day is tight."
+
+## T19 — Race-week briefing sequence must walk every listed key session
+Week 9's key list names Stars In Your Eyes and Pre-Race Openers, but THE
+WEEK IN SEQUENCE only walks Stars. Every listed key session gets its
+day+duration in the sequence prose, race week included.
+
+## T20 — Strength rest intervals must follow the phase
+"Rest 60-90 sec between sets" is boilerplate across all phases; Power-phase
+ballistic work at 55-65% 1RM warrants 2-3 min between sets for output
+quality. Rest prescription derives from the periodization phase.
