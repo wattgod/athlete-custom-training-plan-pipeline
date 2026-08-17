@@ -58,7 +58,12 @@ class TestFuelTagRoutingGaps:
     ])
     def test_short_race_week_archetypes_get_a_tag_regardless_of_duration(self, name, duration):
         tag = _get_fuel_tag_for_type(name, _fueling(), duration)
-        assert 'FUEL: Target' in tag
+        # Superseded policy (v13 regrade): short quality sessions still carry
+        # a tag (R08), but a SOFT one — the rigid ladder target contradicted
+        # the ladder's own under-90-minute scope.
+        assert 'FUEL' in tag
+        assert 'Under 90 minutes' in tag
+        assert 'Target' not in tag
 
     def test_rest_day_and_true_recovery_stay_untagged(self):
         assert _get_fuel_tag_for_type('Rest Day', _fueling(), 0) == ''
