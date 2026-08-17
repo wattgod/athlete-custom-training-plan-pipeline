@@ -289,8 +289,9 @@ def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min
     # standard keeps fuel copy light on short hard days. Gut training lives
     # on the long rides.
     if tier in ('race_sim', 'quality') and duration_min is not None and duration_min < 90:
-        label = 'RACE FUEL' if tier == 'race_sim' else 'FUEL'
-        return (f"{label}: Under 90 minutes — arrive fueled and bring one "
+        # Plain FUEL label: no race-rate target applies under 90 minutes,
+        # so the RACE FUEL prefix would over-promise.
+        return ("FUEL: Under 90 minutes — arrive fueled and bring one "
                 "bottle with carbs. The ladder lives on the long rides.")
     if tier == 'race_sim':
         return render_workout_fueling(prescription, 'race_sim', phase_ceiling)
@@ -2789,6 +2790,11 @@ TIPS:
                     # three-part coach language, compressed to fit a normal
                     # midweek duration budget.
                     from act_race_sim import render_midweek_sim_zwo
+                    # Title carries the same qualifier the description header
+                    # uses — "Race Simulation" bare implied an Act-class
+                    # long-ride rehearsal it is not.
+                    display_name = 'Race Simulation — Midweek'
+                    _filename_name = display_name
                     zwo_content = render_midweek_sim_zwo(
                         workout_name=workout_name,
                         display_name=display_name,
@@ -3322,9 +3328,13 @@ GO GET IT, {athlete_name.upper()}!
                                            f"{_race_countdown(weeks_to_race, race_name)}\n"
                                            f"Phase: {phase.upper()}\n\n")
 
-                        # Add heat training reminder (weeks 4-8 before race)
+                        # Add heat training reminder (weeks 4-8 before race).
+                        # Never on tests — a test card carries nothing but
+                        # the test; heat prep lives on the heat ride and in
+                        # its own note.
                         heat_reminder = ""
-                        if needs_heat_training and 4 <= weeks_to_race <= 8:
+                        if (needs_heat_training and 4 <= weeks_to_race <= 8
+                                and 'test' not in str(workout_type).lower()):
                             heat_reminder = "\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance\n\n"
 
                         # Insert fuel tag + header after <description> tag
@@ -3387,9 +3397,10 @@ GO GET IT, {athlete_name.upper()}!
                                f"{_race_countdown(weeks_to_race, race_name)}\n"
                                f"Phase: {phase.upper()}\n\n")
 
-            # Add heat training reminder (weeks 4-8 before race)
+            # Add heat training reminder (weeks 4-8 before race); never on tests.
             heat_reminder = ""
-            if needs_heat_training and 4 <= weeks_to_race <= 8:
+            if (needs_heat_training and 4 <= weeks_to_race <= 8
+                    and 'test' not in str(workout_type).lower()):
                 heat_reminder = "\n\nHEAT ACCLIMATION:\n- Add 15-20 min sauna post-workout OR\n- Extra layers during warmup\n- Improves thermoregulation and race performance"
 
             # Add fuel tag

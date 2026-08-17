@@ -554,7 +554,10 @@ def schedule_notes(plan_ir: Any, fueling: Any = None) -> List[Dict[str, Any]]:
         if start:
             phase = str(_get(week, "phase") or "").lower()
             if phase in {"pre_plan", "lead_in"}:
-                continue  # START HERE covers arrival; no LOAD wall before the plan exists
+                # Monika's calendar opens with a WEEK 0 note; the lead-in
+                # deserves its own framing, not silence under START HERE.
+                candidates.append({"type": "week_zero", "date": _monday(start), "week": week})
+                continue
             candidates.append({"type": "weekly_briefing", "date": _monday(start), "week": week})
     for _, session in _iter_sessions(plan_ir):
         if _get(session, "is_field_test") and _session_date(session):
@@ -564,6 +567,16 @@ def schedule_notes(plan_ir: Any, fueling: Any = None) -> List[Dict[str, Any]]:
         candidates.append({"type": "fuel_ladder", "date": _session_date(long_rides[0]) - timedelta(days=1)})
     if race_day and _altitude_qualifies(snapshot):
         candidates.append({"type": "altitude_heat", "date": race_day - timedelta(days=17)})
+    # A plan that schedules heat-acclimation work gets the doctrine note the
+    # day before that session — derived from a plan fact, not a race guess.
+    heat_session = next(
+        (session for _, session in _iter_sessions(plan_ir)
+         if "heat acclimation" in str(_get(session, "display_name")
+                                      or _get(session, "archetype_id") or "").lower()),
+        None)
+    if heat_session and _session_date(heat_session):
+        candidates.append({"type": "heat_prep",
+                           "date": _session_date(heat_session) - timedelta(days=1)})
     if race_day:
         grit_dates = [
             _monday(starts[0]),
@@ -826,6 +839,31 @@ def _render_candidate(plan_ir: Any, fueling: Any, brand: Dict[str, Any], guide_u
     if kind == "fuel_ladder": return _fuel_ladder(plan_ir, fueling)
     if kind == "altitude_heat":
         return ("ALTITUDE AND HEAT — Two Different Problems", "High altitude sun and a changing day can make a familiar effort cost more. Sunscreen before the start, a layer you can carry, and no experiments with heat work this close to the race. Drink to thirst, and add sodium rather than volume when it is hot.")
+    if kind == "heat_prep":
+        # Day-agnostic wording: the collision scheduler may shift this
+        # note onto the ride's own day, so "tomorrow" could lie.
+        return ("HEAT PREP — Why The Heat Ride Is Overdressed",
+                "One of this week's rides carries deliberate thermal-stress blocks. The"
+                " adaptation is real — better sweat response, lower heart rate"
+                " at the same effort in warm conditions — and it compounds"
+                " over 10-14 days.\n\nHOW\nRide the marked blocks with an"
+                " extra layer on, or finish the ride with 15-20 minutes of"
+                " sauna. One or the other, not both.\n\nRULES\nEasy days"
+                " only — never stack heat onto a test or interval day. Drink"
+                " to thirst throughout. Feeling dizzy or nauseous means stop"
+                " and cool down; the adaptation is not worth a bad day.")
+    if kind == "week_zero":
+        week = candidate.get("week") or {}
+        sessions = [s for s in (_get(week, "sessions", []) or []) if _kind(s) == "bike"]
+        ride_count = len(sessions)
+        return ("WEEK 0 — Rolling In",
+                f"The plan proper starts Monday. This week is a rolling start:"
+                f" {ride_count} easy ride{'s' if ride_count != 1 else ''},"
+                " nothing measured, nothing hard.\n\nUSE IT FOR\n- Zones in"
+                " TrainingPeaks and devices charged and syncing\n- A first"
+                " read of the guide (sections 1 and 2)\n- Legs that arrive at"
+                " week one fresh, not flat\n\nIf life eats one of these"
+                " rides, let it go. The plan has not started yet.")
     if kind.startswith("grit_"):
         number = int(kind.rsplit("_", 1)[1]); prefix = brand.get("mental_skills_name") or ("GRAVEL GRIT" if brand.get("_delivery_key") == "gravelgod" else "MENTAL SKILLS")
         suffix, body = _GRIT[number]
