@@ -229,7 +229,7 @@ _QUALITY_FUEL_KEYWORDS = [
     'la balanguera', 'hyttevask', 'blended', 'mixed', 'sfr', 'thunder quads',
     'blood pistons', 'cadence work', 'tempo', 'stomps', 'microbursts', 'buffer',
     'ftp', 'thirty-fifteens', 'thirty fifteens', 'ronnestad', 'stars in your eyes',
-    'openers', 'g-spot', 'g spot', 'sweet spot', 'vo2 bookend',
+    'openers', 'tune-up', 'g-spot', 'g spot', 'sweet spot', 'vo2 bookend',
 ]
 # Names that never carry a fuel tag -- true rest/off/easy-spin days. 'openers'
 # used to live here (blanket-excluding Pre-Race Openers too); it now lives in
@@ -2703,10 +2703,20 @@ TIPS:
                     # not a focus session — no burst/spin-up flavors there.
                     _sim_recovery = bool(bb_day.get('post_sim_recovery')
                                          or bb_day.get('pre_sim_recovery'))
+                    # Recovery weeks are easy, not flat: rotate only the
+                    # drill-bearing variants (cadence, spin-up, bursts) so
+                    # the week keeps dimension without metabolic strain
+                    # (coach ruling, Aug 2026).
+                    if _sim_recovery:
+                        _e_variant = None
+                    elif week.get('is_recovery_week', False):
+                        _e_variant = (1, 5, 4)[var_offset % 3]
+                    else:
+                        _e_variant = var_offset
                     display_name = resolve_display_name(
                         bb_name, methodology=nate_methodology,
                         variation_offset=var_offset, discipline=_bb_discipline,
-                        endurance_variant=None if _sim_recovery else var_offset)
+                        endurance_variant=_e_variant)
                     _filename_name = display_name
                 elif not _act_simulation and bb_name not in ('Endurance', 'Rest Day'):
                     # Filler-pool rotations are real mapped archetypes too.
@@ -2771,11 +2781,8 @@ TIPS:
                         author=_workout_author,
                         discipline=_bb_discipline,
                         training_age=_bb_training_age,
-                        endurance_variant=(var_offset if bb_name == 'Endurance'
-                                           and bb_role == 'filler'
-                                           and not (bb_day.get('post_sim_recovery')
-                                                    or bb_day.get('pre_sim_recovery'))
-                                           else None),
+                        endurance_variant=(_e_variant if bb_name == 'Endurance'
+                                           and bb_role == 'filler' else None),
                         phase=phase,
                     )
                     # The ride beside a long simulation is a recovery spin
