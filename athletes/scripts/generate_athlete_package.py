@@ -1271,10 +1271,27 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
                      and not (d.get('post_sim_recovery') or d.get('pre_sim_recovery'))]
             if not cands:
                 break
-            cands.sort(key=lambda d: d.get('tss', 0), reverse=not need_more)
+            # When adding volume, spend the day with the most cap headroom
+            # (the long day absorbs a big deficit; a 120-cap weekday can't);
+            # when shedding, start from the biggest session.
+            if need_more:
+                cands.sort(key=lambda d: ((day_caps or {}).get(d.get('day')) or 600)
+                           - (d.get('duration') or 0), reverse=True)
+            else:
+                cands.sort(key=lambda d: d.get('tss', 0), reverse=True)
             day = cands[0]
             old = day['library_resolution']
-            budget = (int(old['duration_min'] * (1.3 if need_more else 0.75)))
+            # Size the re-fit from the actual deficit (easy riding ~= 45
+            # TSS/hr), CLAMPED so the duration-fit window stays inside the
+            # day cap (an unclamped 177min budget on a 120-cap weekday made
+            # the window empty and the rebalance silently bail at 39%).
+            target_mid = (floor + ceiling) / 2.0
+            deficit_tss = abs(target_mid - total)
+            delta_min = max(20, int(deficit_tss * 60 / 45))
+            cap = (day_caps or {}).get(day.get('day')) or 600
+            budget = (min(int(old['duration_min'] + delta_min), int(cap / 0.9))
+                      if need_more
+                      else max(30, int(old['duration_min'] - delta_min)))
             slot = {
                 'canonical_name': day.get('name'), 'level': day.get('level') or 1,
                 'budget_min': budget,

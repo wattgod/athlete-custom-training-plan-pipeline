@@ -279,12 +279,23 @@ _FILLER_POWER_CEILING_PCT_RECOVERY = 110.0
 
 
 def _filler_ceilings(slot: Mapping[str, Any]) -> Optional[tuple[float, float]]:
-    """(if_ceiling, power_ceiling_pct) for a filler-role slot, tighter again
-    in a recovery week; None for any other role (intensity/long_ride keep
-    current behavior -- unchanged by this fix wave)."""
-    if slot.get("role") != "filler":
+    """(if_ceiling, power_ceiling_pct) for an easy-context slot.
+
+    Fillers are ceilinged everywhere (tighter in recovery weeks). The
+    long-ride slot is ceilinged ONLY in recovery weeks: a deload Sunday
+    once resolved to a 5x30s @125% blended session at IF 0.746 — the
+    hardest ride of its own recovery week — because long_ride carried no
+    ceiling anywhere. Build/peak long rides stay unceilinged: hard
+    durability long rides are the house signature there."""
+    role = slot.get("role")
+    week_type = slot.get("week_type")
+    if role == "long_ride":
+        if week_type == "recovery":
+            return (_FILLER_IF_CEILING_RECOVERY, _FILLER_POWER_CEILING_PCT_RECOVERY)
         return None
-    if slot.get("week_type") == "recovery":
+    if role != "filler":
+        return None
+    if week_type == "recovery":
         return (_FILLER_IF_CEILING_RECOVERY, _FILLER_POWER_CEILING_PCT_RECOVERY)
     return (_FILLER_IF_CEILING, _FILLER_POWER_CEILING_PCT)
 
@@ -309,6 +320,33 @@ def _max_power_target_pct(structure: Any) -> float:
     return highest
 
 
+# Hard-work-volume budget for ceilinged slots: IF ceilings cannot catch
+# BACK-LOADED intensity (an hour of Z2 dilutes 4x3min @110% down to IF
+# 0.68 — 12 minutes of genuine VO2 work that once landed on a deload
+# Sunday). Total seconds at >=92% FTP is the honest measure: recovery
+# slots allow only opener-class touches; regular fillers a little more.
+_HARD_WORK_PCT_FLOOR = 92.0
+_HARD_WORK_SECONDS_RECOVERY = 150
+_HARD_WORK_SECONDS_FILLER = 360
+
+
+def _hard_work_seconds(structure: Any) -> float:
+    total = 0.0
+    if not isinstance(structure, Mapping):
+        return total
+    for step in structure.get("structure") or []:
+        reps = ((step.get("length") or {}).get("value") or 1)
+        for sub in step.get("steps") or []:
+            target = next((t for t in sub.get("targets") or []
+                           if t.get("unit") != "roundOrStridePerMinute"), None)
+            if not target:
+                continue
+            pct = target.get("maxValue") or target.get("minValue") or 0
+            if pct >= _HARD_WORK_PCT_FLOOR:
+                total += reps * ((sub.get("length") or {}).get("value") or 0)
+    return total
+
+
 def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bool:
     ceilings = _filler_ceilings(slot)
     if ceilings is None:
@@ -317,7 +355,11 @@ def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bo
     if_planned = item.get("if_planned")
     if if_planned is not None and if_planned > if_ceiling:
         return False
-    return _max_power_target_pct(item.get("structure")) <= power_ceiling_pct
+    if _max_power_target_pct(item.get("structure")) > power_ceiling_pct:
+        return False
+    budget = (_HARD_WORK_SECONDS_RECOVERY if slot.get("week_type") == "recovery"
+              else _HARD_WORK_SECONDS_FILLER)
+    return _hard_work_seconds(item.get("structure")) <= budget
 
 
 def _percentile(sorted_vals: Sequence[float], pct: float) -> float:
