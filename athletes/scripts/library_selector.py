@@ -162,7 +162,12 @@ def resolve_library_keys(slot: Mapping[str, Any]) -> tuple[str, ...]:
     if canonical_name in _ENDURANCE_TYPES:
         keys = list(_endurance_library_keys(float(slot.get("budget_min") or 0)))
         phase = slot.get("phase")
-        if _is_long_ride_role(slot.get("role")) and phase in _LONG_RIDE_PHASES:
+        if (_is_long_ride_role(slot.get("role")) and phase in _LONG_RIDE_PHASES
+                and slot.get("week_type") != "recovery"):
+            # A recovery week nested inside a build/peak block carries the
+            # block's phase — its long ride must never draw from the
+            # hard-by-design durability pools ("Sting in the Tail" with a
+            # 2-minute near-max finisher once landed on a deload Sunday).
             keys.extend(_DURABILITY_ALTERNATIVE_LIBRARIES)
     else:
         keys = list(ROUTING_TABLE[canonical_name])
@@ -230,9 +235,17 @@ def _rotate_index(pool_len: int, *seed_parts: Any) -> int:
 # Duration fit + level filtering
 # ---------------------------------------------------------------------------
 
-def _duration_bounds(budget_min: float, day_cap_min: Optional[float]) -> tuple[float, float]:
+def _duration_bounds(budget_min: float, day_cap_min: Optional[float],
+                     canonical_name: Optional[str] = None) -> tuple[float, float]:
     lo = 0.85 * budget_min
     hi = 1.15 * budget_min
+    # Cadence/skills slots get a wider window: the curated torque pool
+    # skews longer than the ~50min weekday cadence budget, and the tight
+    # window exhausted the pool into three identical synthetic fallbacks.
+    # Drill sessions tolerate duration flex better than interval doses.
+    if canonical_name and 'cadence' in canonical_name.lower():
+        lo = 0.70 * budget_min
+        hi = 1.30 * budget_min
     if day_cap_min is not None:
         hi = min(hi, day_cap_min)
     return lo, hi
@@ -248,7 +261,8 @@ def _qualifying_pool(
     ``_passes_role_ceiling``) on top of the duration-fit filter."""
     if not library_keys:
         return []
-    lo, hi = _duration_bounds(budget_min, day_cap_min)
+    lo, hi = _duration_bounds(budget_min, day_cap_min,
+                              (slot or {}).get('canonical_name'))
     key_set = set(library_keys)
     pool = [
         item

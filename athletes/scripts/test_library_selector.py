@@ -735,3 +735,21 @@ def test_internal_only_names_never_ship():
     from library_selector import _is_internal_only
     assert _is_internal_only({"name_base": "The Happy Ending"})
     assert not _is_internal_only({"name_base": "This is Uncomfortable"})
+
+
+
+def test_recovery_week_long_ride_never_draws_durability_pools():
+    from library_selector import resolve_library_keys
+    slot_rec = {"canonical_name": "Endurance", "role": "long_ride",
+                "phase": "build", "week_type": "recovery", "budget_min": 150}
+    slot_load = dict(slot_rec, week_type="load")
+    assert not any("durability" in k for k in resolve_library_keys(slot_rec))
+    assert any("durability" in k for k in resolve_library_keys(slot_load))
+
+
+def test_cadence_slots_use_wider_duration_window():
+    from library_selector import _duration_bounds
+    lo, hi = _duration_bounds(50, 120, "Cadence Work")
+    assert abs(lo - 35.0) < 0.01 and abs(hi - 65.0) < 0.01
+    lo2, hi2 = _duration_bounds(50, 120, "Endurance")
+    assert lo2 == 42.5 and abs(hi2 - 57.5) < 0.01
