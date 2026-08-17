@@ -691,3 +691,40 @@ class TestRealismSweep:
         print(f"{'OVERALL':38s} {total_trials:6d} {total_fallbacks:9d} {overall_rate:6.1%}")
 
         assert overall_rate < 0.25, f"overall fallback rate {overall_rate:.1%} >= 25%"
+
+
+
+def test_recovery_week_long_ride_is_ceilinged():
+    """A deload Sunday must never draw sprint-loaded content (v18 regrade)."""
+    from library_selector import _filler_ceilings
+    assert _filler_ceilings({"role": "long_ride", "week_type": "recovery"}) is not None
+    assert _filler_ceilings({"role": "long_ride", "week_type": "load"}) is None
+    assert _filler_ceilings({"role": "long_ride", "week_type": None}) is None
+
+
+
+def test_backloaded_intensity_fails_recovery_ceiling():
+    """4x3min @110% hiding behind an hour of Z2 must not pass (v18 regrade)."""
+    from library_selector import _passes_role_ceiling
+    item = {
+        "if_planned": 0.676,
+        "structure": {"structure": [
+            {"length": {"value": 1}, "steps": [{"length": {"value": 3600},
+             "targets": [{"minValue": 62}]}]},
+            {"length": {"value": 4}, "steps": [
+                {"length": {"value": 180}, "targets": [{"minValue": 110}]},
+                {"length": {"value": 180}, "targets": [{"minValue": 50}]}]},
+        ]},
+    }
+    slot = {"role": "long_ride", "week_type": "recovery"}
+    assert not _passes_role_ceiling(item, slot)
+    # opener-class touches (2x30s) stay allowed
+    touch = {
+        "if_planned": 0.62,
+        "structure": {"structure": [
+            {"length": {"value": 2}, "steps": [
+                {"length": {"value": 30}, "targets": [{"minValue": 110}]},
+                {"length": {"value": 120}, "targets": [{"minValue": 55}]}]},
+        ]},
+    }
+    assert _passes_role_ceiling(touch, slot)

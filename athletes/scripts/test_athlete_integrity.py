@@ -121,13 +121,20 @@ def validate_workout_schedule_alignment(workouts_dir: Path, profile: dict, plan_
         # RACE_DAY and B-race overlay sessions land on the race's actual
         # date — weekly availability does not apply to them.
         availability = day_prefs.get('availability', 'available')
-        if availability == 'unavailable' and 'RACE_DAY' not in filename:
+        # A rest-day card on an unavailable day is the CORRECT artifact —
+        # the calendar covers every date and the athlete's off day gets an
+        # explicit Day Off / Pre-Plan Rest card, not silence.
+        _is_rest_card = 'Rest' in filename or 'Day_Off' in filename
+        if availability == 'unavailable' and 'RACE_DAY' not in filename and not _is_rest_card:
             errors.append(IntegrityError("ERROR",
                 f"Workout on unavailable day: {filename} ({day_full} marked unavailable)"))
 
         # === CHECK 2: Duration doesn't exceed max ===
         max_duration = day_prefs.get('max_duration_min')
-        if max_duration:
+        # Race day runs as long as the race runs; weekly training caps
+        # never apply to it (a 9h race on a 240min-cap Saturday is not a
+        # planning error, and the noise buries real cap breaches).
+        if max_duration and 'RACE_DAY' not in filename:
             # Parse actual duration from ZWO file
             workout_duration = get_zwo_duration(workout_file)
             # Long rides in later phases can be longer - allow 1.5x max for Long_Ride
