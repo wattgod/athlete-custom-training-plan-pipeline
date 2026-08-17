@@ -925,6 +925,161 @@ def strength_equipment_tier(profile: dict) -> str:
     return 'home-basic'
 
 
+# =============================================================================
+# LIBRARY SELECTION (C4 -- docs/SPEC_LIBRARY_SELECTION.md D1/D2/D10):
+# resolves in-scope block-builder days to curated TrainingPeaks library
+# items (C3's library_selector) BEFORE the compliance gate. Kept at module
+# level (not nested in generate_zwo_files) so the resolution pass is
+# directly unit-testable against a synthetic plan dict.
+# =============================================================================
+
+# D1 scope: only intensity, long_ride, and ENDURANCE filler days are
+# candidates. Canonical names that are always synthetic-only (tests,
+# openers, race/act-sim, rest) are excluded outright rather than sent
+# through library_selector (which would also return None for them via its
+# own SYNTHETIC_ONLY set -- excluding them here keeps those non-candidates
+# out of the D9 fallback report, which should only name genuine misses).
+_LIBRARY_OUT_OF_SCOPE_NAMES = frozenset({
+    'FTP Test', 'Anaerobic Test', 'Openers', 'Rest Day', 'OFF',
+    'RACE_DAY', 'Race Simulation', 'Act Race Simulation',
+})
+
+# JUDGMENT CALL: D1 says "endurance fillers", not "all fillers" -- the
+# filler role also carries pool-rotation types (e.g. Cadence Work) per
+# workout_selector.py's pool mechanism. Read narrowly: only canonical name
+# 'Endurance' (the dominant/default filler, block_builder.py:417) is
+# in-scope for a filler-role day. Flagged for coach review per the spec's
+# convention for judgment calls in this workstream.
+_LIBRARY_ENDURANCE_FILLER_NAME = 'Endurance'
+
+
+def _library_selection_in_scope(bd: dict) -> bool:
+    """D1: is this block-builder day dict a library-selection candidate?
+
+    Only ``role``/``name``/``act_simulation`` live on a block-builder day
+    dict itself -- B-race/A-race/pre-plan exclusion (also named in D1) is
+    handled by the caller via a cross-reference against the plan_dates
+    calendar, since those flags live there, not on the block-builder day.
+    """
+    if bd.get('act_simulation'):
+        return False
+    role = bd.get('role')
+    name = bd.get('name') or ''
+    if role not in ('intensity', 'long_ride', 'filler'):
+        return False
+    if name in _LIBRARY_OUT_OF_SCOPE_NAMES:
+        return False
+    if 'strength' in name.lower():
+        return False
+    if role == 'filler' and name != _LIBRARY_ENDURANCE_FILLER_NAME:
+        return False
+    return True
+
+
+def _recompute_library_week_totals(week: dict) -> None:
+    """D2: recompute a touched week's total_duration/total_tss, mirroring
+    availability_ledger.materialize_fixed_sessions (availability_ledger.py
+    :112-117) -- prescribed (sum of day-level duration/tss, where library
+    resolution's mutations land) plus whatever fixed-session load that
+    function already recorded on the week (0 when it never ran, e.g. a
+    synthetic plan dict in a unit test)."""
+    days = week.get('days', [])
+    prescribed_duration = sum(int(d.get('duration') or 0) for d in days)
+    prescribed_tss = sum(int(d.get('tss') or 0) for d in days)
+    fixed_duration = int(week.get('fixed_duration') or 0)
+    fixed_tss = int(week.get('fixed_tss') or 0)
+    week['prescribed_duration'] = prescribed_duration
+    week['prescribed_tss'] = prescribed_tss
+    week['total_duration'] = prescribed_duration + fixed_duration
+    week['total_tss'] = prescribed_tss + fixed_tss
+
+
+def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None,
+                               athlete_seed=None,
+                               excluded_calendar_slots: Optional[set] = None,
+                               index=None) -> list:
+    """C4/D1/D2: resolve in-scope block-builder days to curated TP library
+    items via ``library_selector.select``.
+
+    Mutates ``bb_plan`` in place: a resolved day gets its item's real
+    ``duration``/``tss`` written onto ``day['duration']``/``day['tss']``
+    and the full resolution stashed under ``day['library_resolution']``.
+    ``day['name']``/``day['role']`` are NEVER touched (R02/R04/R08 read
+    them -- D1). Every touched week's ``total_duration``/``total_tss`` is
+    recomputed (D2). Series continuity (D8) is tracked via a series_state
+    dict threaded across the whole plan, keyed identically to the
+    canonical series bookkeeping (block_number, day, canonical name).
+
+    Raises whatever ``library_selector``/``tp_library_snapshot`` raise --
+    callers must not swallow exceptions here (Jesse Couch rule: the
+    compliance gate stays outside any try/except).
+
+    Returns the list of D9 fallback records for in-scope days with no
+    qualifying library item.
+    """
+    import library_selector
+    from tp_library_snapshot import load_index
+
+    idx = index if index is not None else load_index()
+    day_caps = day_caps or {}
+    excluded_calendar_slots = excluded_calendar_slots or set()
+    series_state: dict = {}
+    fallbacks: list = []
+
+    for bw in bb_plan.get('weeks', []):
+        plan_week = bw.get('plan_week', bw.get('week_num', 0))
+        week_in_block = bw.get('week_num', 1)
+        block_number = bw.get('block_number', 1)
+        phase = bw.get('phase')
+        touched = False
+        for bd in bw.get('days', []):
+            day_abbrev = bd.get('day')
+            if (plan_week, day_abbrev) in excluded_calendar_slots:
+                continue
+            if not _library_selection_in_scope(bd):
+                continue
+
+            canonical_name = bd.get('name')
+            slot = {
+                'canonical_name': canonical_name,
+                'level': bd.get('level') or 1,
+                'budget_min': bd.get('duration') or 0,
+                'day_cap_min': day_caps.get(day_abbrev),
+                'role': bd.get('role'),
+                'phase': phase,
+                'series_key': (block_number, day_abbrev, canonical_name),
+                'week_in_block': week_in_block,
+                'athlete_seed': athlete_seed,
+                # JUDGMENT CALL (T22): no clean race-demands signal is
+                # plumbed to this integration point for matched races (see
+                # executor report) -- left False, which only affects the
+                # extra anaerobic_capacity/sprint_attacks rotation for the
+                # single canonical type "Stars In Your Eyes"; its base
+                # routing (anaerobic_capacity) is unaffected.
+                'race_demands': False,
+            }
+            resolution = library_selector.select(slot, series_state=series_state, index=idx)
+            if resolution is None:
+                fallbacks.append({
+                    'plan_week': plan_week,
+                    'day': day_abbrev,
+                    'canonical_name': canonical_name,
+                    'role': bd.get('role'),
+                    'phase': phase,
+                })
+                continue
+
+            bd['duration'] = resolution['duration_min']
+            bd['tss'] = resolution['tss']
+            bd['library_resolution'] = resolution
+            touched = True
+
+        if touched:
+            _recompute_library_week_totals(bw)
+
+    return fallbacks
+
+
 def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, derived: dict, profile: dict = None, fueling: dict = None) -> list:
     """
     Generate ZWO workout files based on plan_dates, methodology, and athlete schedule preferences.
@@ -1217,6 +1372,49 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             _bb_plan, _interval_abbrevs or ['Tue', 'Thu'])
         if '_ledger' in locals():
             materialize_fixed_sessions(_bb_plan, _ledger)
+
+        # ===============================================================
+        # C4 LIBRARY SELECTION (D1/D2/D10): resolve in-scope block-builder
+        # days to curated TP library items. Runs AFTER
+        # materialize_fixed_sessions and BEFORE _bb_lookup is built (the
+        # lookup below shallow-copies each day dict, so resolution must
+        # land on the source day dicts first or the copies go stale) and
+        # BEFORE the compliance gate (still outside this try/except --
+        # Jesse Couch rule; exceptions here propagate through the
+        # `except Exception` below, which re-raises unconditionally).
+        # ===============================================================
+        _library_selection_enabled = os.environ.get('GG_LIBRARY_SELECTION', '1') != '0'
+        _library_fallbacks = []
+        if _library_selection_enabled:
+            # B-race/A-race day flags live on the plan_dates calendar
+            # (`weeks`), not on the block-builder's own day dict -- cross
+            # reference so those D1-excluded days are never sent to the
+            # selector even though block_builder itself doesn't know about
+            # them.
+            _library_excluded_slots = {
+                (w.get('week'), d.get('day'))
+                for w in weeks
+                for d in w.get('days', [])
+                if (d.get('is_race_day') or d.get('is_b_race_day')
+                    or d.get('is_b_race_opener') or d.get('is_b_race_easy'))
+            }
+            _library_fallbacks = resolve_library_selections(
+                _bb_plan,
+                day_caps=_bb_day_caps,
+                athlete_seed=athlete_dir.name,
+                excluded_calendar_slots=_library_excluded_slots,
+            )
+            # NOTE: `athlete_dir` here is the caller's parameter -- in the
+            # production authoring flow that's a SHORT-LIVED temp directory
+            # (canonical_training_model's authoring context), same as
+            # NEEDS_REVIEW.txt below. generate_athlete_package() copies this
+            # file to the real athlete_dir after that temp dir is gone (see
+            # the "Authoring canonical workout sessions" step).
+            try:
+                (athlete_dir / 'library_fallbacks.json').write_text(
+                    json.dumps(_library_fallbacks, indent=2) + '\n')
+            except OSError:
+                pass
 
         # Build lookup: (plan_week, day_abbrev) → block plan day data.
         # week_in_block rides along for series numbering in workout titles
@@ -2639,6 +2837,9 @@ TIPS:
                 bb_level = bb_day.get('level', 3)
                 bb_duration = bb_day.get('duration', 60)
                 _act_simulation = bb_day.get('act_simulation')
+                # C4/D3: the resolution pass (before the compliance gate,
+                # above) stashed a curated TP library item on this day.
+                _library_resolution = bb_day.get('library_resolution')
 
                 if (bb_name == 'Anaerobic Test'
                         and week_num in ftp_test_target_weeks
@@ -2757,6 +2958,17 @@ TIPS:
                         days_to_race=_days_until_race(race_date, day_info.get('date')))
                     _filename_name = display_name
 
+                if _library_resolution:
+                    # D3: curated name_base replaces the resolved archetype
+                    # title for library-selected days -- ZWO <name>,
+                    # _record_tp_session's display_name, and the series-
+                    # suffix patch's base_name all read `display_name` from
+                    # here on. _filename_name/_series_id above are computed
+                    # from the canonical flow and are UNCHANGED -- filename
+                    # shape and series-suffix bookkeeping never depend on
+                    # which renderer produced the file.
+                    display_name = _library_resolution['name_base']
+
                 # Render ZWO through block-builder workout mapper. The
                 # filename is derived from _filename_name (bug-compatible
                 # bare-ordinal shape) so filenames never change; the ZWO
@@ -2764,7 +2976,23 @@ TIPS:
                 _safe = re.sub(r'[^A-Za-z0-9 _-]', '', _filename_name)
                 workout_name = f"{workout_prefix}_{_safe.replace(' ', '_')}"
 
-                if _act_simulation:
+                if _library_resolution:
+                    # D3/D4: render the C2-converted structure with the
+                    # curated name_base/description -- INTERNAL ONLY (feeds
+                    # this local ZWO, preview, TSS calc, plan_ir); the
+                    # athlete-facing TP placement job looks up the item's
+                    # verbatim structure/description by library_item_id
+                    # (carried on the manifest record below) directly from
+                    # the TP library index (C1), not from this ZWO.
+                    from tp_structure_to_zwo import convert_structure, render_full_zwo
+                    _converted = convert_structure(_library_resolution['structure'])
+                    zwo_content = render_full_zwo(
+                        _converted['blocks_xml'],
+                        author=_workout_author,
+                        name=display_name,
+                        description=_library_resolution.get('description') or '',
+                    )
+                elif _act_simulation:
                     from act_race_sim import render_act_sim_zwo
                     from fueling_policy import prescription_from_fueling
                     _race_rate = prescription_from_fueling(fueling or {}).get(
@@ -2847,7 +3075,13 @@ TIPS:
                     # snap_to=60 lands scaled blocks on whole minutes (14:03 -> 14min)
                     # instead of the raw proportional-scale second count; segments
                     # already under one minute (e.g. a surge) are left exact.
-                    if bb_duration > 0:
+                    # D3: library-resolved sessions skip the duration-scale
+                    # pass -- the curated structure's duration is already
+                    # the item's real, TSS-calibrated duration (that's what
+                    # the resolution pass wrote onto day['duration']/
+                    # bb_duration itself); scaling it would perturb the
+                    # curated power/duration data C2 exists to preserve.
+                    if bb_duration > 0 and not _library_resolution:
                         from workout_templates import scale_zwo_to_target_duration
                         zwo_content = scale_zwo_to_target_duration(
                             zwo_content, bb_duration, bb_name, snap_to=60
@@ -2866,10 +3100,15 @@ TIPS:
                         f'<description>{fuel_prefix}{personal_header}',
                         1
                     )
-                    zwo_content = rewrite_zwo_description(
-                        zwo_content, plan_week=week_num,
-                        session_date=day_info.get('date'), event_date=race_date,
-                    )
+                    # D3: rewrite_zwo_description unconditionally regenerates
+                    # MAIN SET prose from ZWO blocks -- library-resolved
+                    # sessions keep the coach's curated description verbatim
+                    # (it was authored together with the structure in TP).
+                    if not _library_resolution:
+                        zwo_content = rewrite_zwo_description(
+                            zwo_content, plan_week=week_num,
+                            session_date=day_info.get('date'), event_date=race_date,
+                        )
 
                     filepath = zwo_dir / f"{workout_name}.zwo"
                     _emit_authored_document(filepath, zwo_content)
@@ -2887,6 +3126,15 @@ TIPS:
                         series_id=('|'.join(str(x) for x in _series_id) if _series_id else None),
                         series_index=_series_rank_hint,
                         role=bb_role, is_sim=bool(_act_simulation),
+                        # D4: PlanIR session carries library_item_id so a
+                        # downstream TP placement job can look up the
+                        # item's verbatim structure/description by ID (C1).
+                        # Not the structure/description themselves -- this
+                        # projection's own structure/description stay the
+                        # normal (already-unrolled) ZWO-derived shape, same
+                        # invariant every other session honors.
+                        **({'library_item_id': _library_resolution['item_id']}
+                           if _library_resolution else {}),
                     )
                     continue  # Skip legacy path entirely
 
@@ -3785,6 +4033,13 @@ def generate_athlete_package(athlete_id: str) -> dict:
         if private_review.is_file():
             (athlete_dir / 'NEEDS_REVIEW.txt').write_text(
                 private_review.read_text(encoding='utf-8'), encoding='utf-8')
+        # C4 (D9): library-selection fallback list was written into the
+        # temp authoring dir (same reasoning as NEEDS_REVIEW.txt above) --
+        # copy it out before that directory is cleaned up.
+        _private_fallbacks = _authored_dir / 'library_fallbacks.json'
+        if _private_fallbacks.is_file():
+            (athlete_dir / 'library_fallbacks.json').write_text(
+                _private_fallbacks.read_text(encoding='utf-8'), encoding='utf-8')
     detail(f"Authored {len(zwo_files)} canonical workout sessions")
     control = canonical_model['athlete']
     detail(f"Canonical control: {control['control_metric']} ({control['control_basis']})")

@@ -50,8 +50,11 @@ def _raise_recovery_tss_floor(
     """
     from workout_selector import get_workout_duration, get_workout_tss
 
-    floor = preceding_load_average * 0.50
-    ceiling = preceding_load_average * 0.65
+    # Internal band is tighter than the R03 gate (50-65%): filling to the
+    # exact gate edge left emitted plans at 66% after rounding drift, which
+    # flags NEEDS_REVIEW on a boundary composition. Land mid-band.
+    floor = preceding_load_average * 0.52
+    ceiling = preceding_load_average * 0.63
     _sync_week_totals(week)
 
     # The initial recovery template can be above the ceiling for a

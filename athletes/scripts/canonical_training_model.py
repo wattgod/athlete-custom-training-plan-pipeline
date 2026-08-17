@@ -304,6 +304,11 @@ def _compiler_session(
         display_name=entry.get("display_name") or title, filename_stem=stem,
         race=entry.get("race"), zwo_author=structure.get("author"),
         zwo_sport_type=structure.get("sport_type"),
+        # C4 (docs/SPEC_LIBRARY_SELECTION.md D4): role and library_item_id
+        # carry through from the naming manifest so the canonical model (and
+        # everything projected from it -- plan_ir.json, tp_manifest.json)
+        # can identify library-resolved sessions.
+        role=entry.get("role"), library_item_id=entry.get("library_item_id"),
     )
 
 
@@ -526,6 +531,12 @@ def build_canonical_model(
                 "archetype_id": raw_session.archetype_id,
                 "display_name": title,
                 "race": raw_session.race,
+                # C4 (D4): getattr defaults -- the non-authored-documents
+                # reflection branches build plain PlanIR Session objects,
+                # which don't carry `role` (block-builder-only concept) and
+                # may predate the `library_item_id` field.
+                "role": getattr(raw_session, "role", None),
+                "library_item_id": getattr(raw_session, "library_item_id", None),
                 "zwo_projection": ({
                     "author": getattr(raw_session, "zwo_author", None),
                     "sport_type": getattr(raw_session, "zwo_sport_type", None),
@@ -739,6 +750,10 @@ def publish_zwo_projection(
                 "workout_type_value_id", "series_id", "series_index",
                 "series_total", "order_on_day", "strength_template",
                 "archetype_id", "display_name", "race",
+                # C4 (D4): published naming_manifest.json must keep carrying
+                # role/library_item_id -- plan_ir.py's _load_naming_manifest
+                # reads this on-disk file, not the in-memory authoring one.
+                "role", "library_item_id",
             ) if session.get(key) is not None
         }
         manifest[path.stem]["week_num"] = manifest[path.stem].pop("week", None)

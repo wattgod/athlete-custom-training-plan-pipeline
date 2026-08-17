@@ -2364,6 +2364,30 @@ def generate_coaching_brief(
                "with the athlete. If it IS a known race, add an alias to "
                "known_races.py and regenerate.\n\n")
 
+    # D9 (docs/SPEC_LIBRARY_SELECTION.md): library selection is loud about
+    # slots it couldn't resolve to a curated TP item -- the plan still
+    # delivers on the synthetic render for those days, but the coach should
+    # know which slots fell back before sending. Written by the resolution
+    # pass in generate_athlete_package.py (generate_zwo_files).
+    if athlete_dir:
+        _fallbacks_path = Path(athlete_dir) / 'library_fallbacks.json'
+        if _fallbacks_path.exists():
+            try:
+                _fallbacks = json.loads(_fallbacks_path.read_text())
+            except Exception:
+                _fallbacks = []
+            if _fallbacks:
+                md += "> ## 📋 LIBRARY FALLBACKS — SYNTHETIC RENDER USED\n"
+                md += (f"> {len(_fallbacks)} in-scope slot(s) had no qualifying "
+                       "curated TrainingPeaks library item and rendered on the "
+                       "synthetic (archetype) path instead:\n>\n")
+                md += "> | Week | Day | Workout | Phase |\n"
+                md += "> |------|-----|---------|-------|\n"
+                for _fb in _fallbacks:
+                    md += (f"> | {_fb.get('plan_week', '?')} | {_fb.get('day', '?')} "
+                           f"| {_fb.get('canonical_name', '?')} | {_fb.get('phase', '?')} |\n")
+                md += "\n"
+
     md += f"## 1. Plan Overview\n"
     md += f"| Field | Value |\n"
     md += f"|-------|-------|\n"
