@@ -455,7 +455,9 @@ def _rpe(session: Any, name: str) -> str:
         return "RPE10"
     if _get(session, "is_field_test") or re.search(r"\b(?:anaerobic|ftp|field)\b.*\btest\b", text):
         return "RPE9-10"
-    if "opener" in text:
+    if "opener" in text or "tune-up" in text or "tune up" in text:
+        # Openers and their mid-plan sibling (Tune-Up) are short touches —
+        # a couple of 30s efforts never make the day an RPE8-9 session.
         return "RPE7"
     if re.search(r"\b(?:cadence|skill|technique)\b", text):
         return "RPE5-6"
