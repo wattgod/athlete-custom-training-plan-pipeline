@@ -2757,7 +2757,9 @@ def get_execution_tips(archetype: Dict, level_data: Dict) -> str:
     # Openers must outrank the race branch: "Race Openers" is a leg-opener,
     # and race-sim execution copy contradicts its no-fatigue purpose.
     if "opener" in archetype_name:
-        return "Short sharp efforts to activate legs. Don't dig deep - save it for race day."
+        # Placement-neutral: this line also ships on mid-plan Tune-Up
+        # sessions where there is no race to save it for.
+        return "Short sharp efforts to keep the legs remembering speed. Don't dig deep - this should feel like play, not training."
 
     if "breakaway" in archetype_name or "race" in archetype_name:
         return "Simulate race intensity. Practice fueling and pacing under pressure."

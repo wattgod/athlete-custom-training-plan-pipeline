@@ -655,6 +655,22 @@ def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
                         f"high-cadence burst every ~12min ({burst_count} total)")
         else:
             main_set = f"- {main_sec // 60}min @ 66-75% FTP (RPE 3-4)"
+    elif variant is not None and variant % len(_ENDURANCE_FOCUS_VARIANTS) == 1:
+        # Cadence Focus: the drill IS the workout. It rides on a preserved
+        # "- Drill:" line (power structure cannot express cadence, and the
+        # duration-fitting rewrite rebuilds the main duration line).
+        main_blocks = f'    <SteadyState Duration="{main_sec}" Power="{power:.2f}"/>'
+        # No absolute rep count: duration fitting can trim the ride after
+        # this text is authored, and a stale "(N total)" would then lie.
+        # The period IS the instruction.
+        main_set = (f"- {main_sec // 60}min @ 66-75% FTP (RPE 3-4)\n"
+                    f"- Drill: 30sec spin-up @ 100-110rpm every 10min — "
+                    f"no extra power, just leg speed")
+    elif variant is not None and variant % len(_ENDURANCE_FOCUS_VARIANTS) == 5:
+        main_blocks = f'    <SteadyState Duration="{main_sec}" Power="{power:.2f}"/>'
+        main_set = (f"- {main_sec // 60}min @ 66-75% FTP (RPE 3-4)\n"
+                    f"- Drill: 20sec spin-up @ 105-115rpm every 8min — "
+                    f"hold the effort steady, spin the legs faster")
     else:
         main_blocks = f'    <SteadyState Duration="{main_sec}" Power="{power:.2f}"/>'
         main_set = f"- {main_sec // 60}min @ 66-75% FTP (RPE 3-4)"
@@ -712,7 +728,11 @@ def resolve_display_name(
         # (get_category_purpose's 'Opener'/'Pre-Race' copy is placement-
         # neutral, so the content underneath doesn't need to change).
         if not (days_to_race is not None and 0 <= days_to_race <= 2):
-            return 'Openers'
+            # "Openers" is classically the day-before-race session. A short
+            # sharp-legs touch in the middle of a recovery week is a
+            # tune-up, and calling it openers implies a race that isn't
+            # there (coach ruling, Aug 2026).
+            return 'Tune-Up'
 
     mapping = _resolve_for_discipline(name, discipline)
     if mapping is None:

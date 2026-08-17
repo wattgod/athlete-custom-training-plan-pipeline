@@ -131,7 +131,7 @@ def render_main_set(segments: Iterable[Dict[str, Any]]) -> str:
     return '\n'.join(f'- {line}' for line in lines) or '- Recovery / rest as scheduled'
 
 
-_DIMENSION_LABELS = ('cadence', 'position')
+_DIMENSION_LABELS = ('cadence', 'position', 'drill')
 
 
 def _is_dimension_line(line: str) -> bool:
