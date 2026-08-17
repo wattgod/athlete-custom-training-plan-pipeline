@@ -334,11 +334,24 @@ def _week_sequence_base(week: Any, key_sessions: List[Any]) -> str:
     """Explain the actual week's order without inventing a stock schedule."""
     sessions = _ordered_sessions(week)
     tests = [session for session in sessions if _get(session, "is_field_test")]
-    simulations = [session for session in sessions if _get(session, "is_simulation")]
+    # "Rehearsal" language belongs only to the Act-class simulations (the
+    # numbered long sims and the dress rehearsal). A curated midweek
+    # race_sim touch ("Peak and Fade") is a sharpener — pooling it under
+    # the same word once briefed it as a co-equal rehearsal beside the
+    # actual dress rehearsal.
+    simulations = [session for session in sessions
+                   if _get(session, "is_simulation")
+                   and (_get(session, "is_dress_rehearsal")
+                        or "act" in str(_get(session, "display_name")
+                                        or _get(session, "title") or "").lower())]
+    sim_touches = [session for session in sessions
+                   if _get(session, "is_simulation")
+                   and session not in simulations]
     specialties = [(session, _taper_specialty(session)) for session in sessions
                    if _is_taper_week(week) and _taper_specialty(session)]
     test_ids = {id(session) for session in tests}
-    simulation_ids = {id(session) for session in simulations}
+    simulation_ids = {id(session) for session in simulations} | {
+        id(session) for session in sim_touches}
     specialty_ids = {id(session) for session, _ in specialties}
     protected_ids = test_ids | simulation_ids | specialty_ids
     quality = [session for session in key_sessions
@@ -386,14 +399,18 @@ def _week_sequence_base(week: Any, key_sessions: List[Any]) -> str:
             pieces.append(f"bursts from {_join_references(by_kind['bursts'])}")
         return "This taper keeps " + _join_references(pieces) + "."
 
-    if simulations:
-        sim_refs = _join_references([_session_reference(session) for session in simulations])
+    if simulations or sim_touches:
+        parts = []
         if quality:
-            return (f"{_session_reference(quality[0])} carries this week's structured work; "
-                    f"{sim_refs} {'is' if len(simulations) == 1 else 'are'} the "
-                    f"{'rehearsal' if len(simulations) == 1 else 'rehearsals'}.")
-        return (f"{sim_refs} {'is' if len(simulations) == 1 else 'are'} the week's "
-                f"{'rehearsal' if len(simulations) == 1 else 'rehearsals'}.")
+            parts.append(f"{_session_reference(quality[0])} carries this week's structured work")
+        if sim_touches:
+            touch_refs = _join_references([_session_reference(s) for s in sim_touches])
+            parts.append(f"{touch_refs} sharpens the race shape")
+        if simulations:
+            sim_refs = _join_references([_session_reference(s) for s in simulations])
+            parts.append(f"{sim_refs} {'is' if len(simulations) == 1 else 'are'} the "
+                         f"{'rehearsal' if len(simulations) == 1 else 'rehearsals'}")
+        return "; ".join(parts) + "."
 
     if str(_get(week, "week_type") or "").strip().lower() == "race":
         # Race week walks EVERY key session by day and duration — the

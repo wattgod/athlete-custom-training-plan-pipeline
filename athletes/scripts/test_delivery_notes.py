@@ -382,3 +382,26 @@ def test_briefing_long_ride_uses_the_cards_collapsed_name_not_the_archetype():
     ]
     body = " ".join(n["body"] for n in _notes(plan) if n["type"] == "weekly_briefing")
     assert "Endurance Blocks" not in body
+
+
+
+def test_sim_touch_is_not_a_rehearsal():
+    """A curated midweek race_sim touch sharpens; only Act-class sims and
+    the dress rehearsal earn 'rehearsal' language (v21 regrade)."""
+    plan = _plan()
+    wk = plan["weeks"][0]
+    touch = dict(wk["sessions"][1])
+    touch.update(title="Peak and Fade", display_name="Peak and Fade",
+                 is_simulation=True, is_dress_rehearsal=False,
+                 library_item_id=999, date=touch["date"])
+    reh = dict(wk["sessions"][2])
+    reh.update(title="Race Simulation — Act 2 of 2 — Dress Rehearsal",
+               display_name="Race Simulation — Act 2 of 2 — Dress Rehearsal",
+               is_simulation=True, is_dress_rehearsal=True, duration_s=15000)
+    wk["sessions"] = [wk["sessions"][0], touch, reh]
+    body = next(n["body"] for n in _notes(plan) if n["type"] == "weekly_briefing")
+    import re
+    seq = re.search(r"THE WEEK IN SEQUENCE\n([^\n]+)", body).group(1)
+    assert "sharpens the race shape" in seq
+    assert "Peak and Fade" in seq
+    assert seq.index("sharpens") < seq.index("rehearsal")

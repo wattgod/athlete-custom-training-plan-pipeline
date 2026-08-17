@@ -481,6 +481,14 @@ def _rpe(session: Any, name: str) -> str:
         return "RPE7"
     if re.search(r"\b(?:endurance|recovery|easy spin)\b", text):
         return "RPE3"
+    # Curated names rarely contain our keywords ("Heat Acclimation
+    # Protocol", "Atkins Revenge") — when structured facts exist, derive
+    # the band from the dominant work instead of defaulting to RPE6-7,
+    # which once labeled a Z2 heat ride RPE6-7 against its own body copy.
+    if has_structured_work(session):
+        if dominant < 76:
+            return "RPE3"
+        return "RPE5-6"
     return "RPE6-7"
 
 
