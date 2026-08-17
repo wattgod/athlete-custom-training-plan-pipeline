@@ -376,6 +376,16 @@ def _week_sequence(week: Any, key_sessions: List[Any]) -> str:
         return (f"{sim_refs} {'is' if len(simulations) == 1 else 'are'} the week's "
                 f"{'rehearsal' if len(simulations) == 1 else 'rehearsals'}.")
 
+    if str(_get(week, "week_type") or "").strip().lower() == "race":
+        # Race week walks EVERY key session by day and duration — the
+        # sharpener and the day-before openers are both part of the story.
+        refs = [_session_reference(session) for session in key_sessions
+                if _kind(session) == "bike"]
+        if refs:
+            return (f"{_join_references(refs)} keep the legs sharp without "
+                    "adding fatigue. Everything else stays easy — freshness "
+                    "is the work this week.")
+
     if _is_recovery_week(week):
         # Describe the week's actual job rather than inheriting the
         # base/build/peak "carries structured work ... is the long ride"
