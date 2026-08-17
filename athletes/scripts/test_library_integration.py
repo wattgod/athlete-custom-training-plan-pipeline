@@ -121,9 +121,37 @@ class TestScopePredicate:
         assert _library_selection_in_scope(
             {'role': 'filler', 'name': 'Endurance'})
 
-    def test_non_endurance_filler_out_of_scope(self):
-        assert not _library_selection_in_scope(
+    # R4 fix wave: widened beyond name=='Endurance' to every canonical
+    # filler whose type routes in library_selector's ROUTING_TABLE.
+    def test_cadence_work_filler_in_scope(self):
+        assert _library_selection_in_scope(
             {'role': 'filler', 'name': 'Cadence Work'})
+
+    def test_endurance_blocks_filler_in_scope(self):
+        assert _library_selection_in_scope(
+            {'role': 'filler', 'name': 'Endurance Blocks'})
+
+    def test_endurance_with_surges_filler_in_scope(self):
+        assert _library_selection_in_scope(
+            {'role': 'filler', 'name': 'Endurance with Surges'})
+
+    # SYNTHETIC_PINNED (R4): stays out of scope even though C3 nominally
+    # routes it -- a taper-specific tune-up, not a variety pool.
+    def test_taper_burst_endurance_filler_out_of_scope(self):
+        assert not _library_selection_in_scope(
+            {'role': 'filler', 'name': 'Taper Burst Endurance'})
+
+    def test_unrouted_filler_name_out_of_scope(self):
+        assert not _library_selection_in_scope(
+            {'role': 'filler', 'name': 'NP/IF Target'})
+
+    def test_post_sim_recovery_pinned_filler_out_of_scope(self):
+        assert not _library_selection_in_scope(
+            {'role': 'filler', 'name': 'Endurance', 'post_sim_recovery': True})
+
+    def test_pre_sim_recovery_pinned_filler_out_of_scope(self):
+        assert not _library_selection_in_scope(
+            {'role': 'filler', 'name': 'Endurance', 'pre_sim_recovery': True})
 
     def test_ftp_test_out_of_scope(self):
         assert not _library_selection_in_scope(
@@ -154,7 +182,7 @@ class TestResolveLibrarySelections:
     def test_in_scope_day_resolved_canonical_name_intact(self, monkeypatch):
         resolution = _fake_resolution()
         monkeypatch.setattr(library_selector, 'select',
-                            lambda slot, series_state=None, index=None: dict(resolution))
+                            lambda slot, series_state=None, index=None, used_items=None: dict(resolution))
         plan = _synthetic_bb_plan()
 
         fallbacks = resolve_library_selections(plan, day_caps={}, athlete_seed='t', index={})
@@ -169,7 +197,7 @@ class TestResolveLibrarySelections:
     def test_out_of_scope_days_untouched(self, monkeypatch):
         resolution = _fake_resolution()
         monkeypatch.setattr(library_selector, 'select',
-                            lambda slot, series_state=None, index=None: dict(resolution))
+                            lambda slot, series_state=None, index=None, used_items=None: dict(resolution))
         plan = _synthetic_bb_plan()
         resolve_library_selections(plan, day_caps={}, athlete_seed='t', index={})
 
@@ -183,7 +211,7 @@ class TestResolveLibrarySelections:
     def test_week_totals_recomputed_to_sum_of_days(self, monkeypatch):
         resolution = _fake_resolution(duration_min=20, tss=45)
         monkeypatch.setattr(library_selector, 'select',
-                            lambda slot, series_state=None, index=None: dict(resolution))
+                            lambda slot, series_state=None, index=None, used_items=None: dict(resolution))
         plan = _synthetic_bb_plan()
         resolve_library_selections(plan, day_caps={}, athlete_seed='t', index={})
 
@@ -199,7 +227,7 @@ class TestResolveLibrarySelections:
 
     def test_no_qualifying_item_produces_fallback_record(self, monkeypatch):
         monkeypatch.setattr(library_selector, 'select',
-                            lambda slot, series_state=None, index=None: None)
+                            lambda slot, series_state=None, index=None, used_items=None: None)
         plan = _synthetic_bb_plan()
         fallbacks = resolve_library_selections(plan, day_caps={}, athlete_seed='t', index={})
 
@@ -210,7 +238,7 @@ class TestResolveLibrarySelections:
             assert 'library_resolution' not in day
 
     def test_exceptions_propagate(self, monkeypatch):
-        def _boom(slot, series_state=None, index=None):
+        def _boom(slot, series_state=None, index=None, used_items=None):
             raise RuntimeError('selector exploded')
         monkeypatch.setattr(library_selector, 'select', _boom)
         plan = _synthetic_bb_plan()
@@ -221,7 +249,7 @@ class TestResolveLibrarySelections:
     def test_excluded_calendar_slots_skip_resolution(self, monkeypatch):
         calls = []
 
-        def _record(slot, series_state=None, index=None):
+        def _record(slot, series_state=None, index=None, used_items=None):
             calls.append(slot['canonical_name'])
             return _fake_resolution()
         monkeypatch.setattr(library_selector, 'select', _record)
@@ -233,6 +261,195 @@ class TestResolveLibrarySelections:
         )
         assert 'VO2max 40/20' not in calls
         assert 'Endurance' in calls  # Sat long_ride still resolved
+
+    def test_slot_carries_week_type_plan_week_and_day(self, monkeypatch):
+        """R2/R3: the selector needs week_type (intensity ceiling) and
+        plan_week/day (rotation-seed extension, same-week dedup) -- verify
+        the resolution pass actually plumbs them onto the slot."""
+        seen_slots = []
+
+        def _record(slot, series_state=None, index=None, used_items=None):
+            seen_slots.append(dict(slot))
+            return _fake_resolution()
+        monkeypatch.setattr(library_selector, 'select', _record)
+        plan = _synthetic_bb_plan()
+        plan['weeks'][0]['week_type'] = 'recovery'
+
+        resolve_library_selections(plan, day_caps={}, athlete_seed='t', index={})
+
+        tue_slot = next(s for s in seen_slots if s['canonical_name'] == 'VO2max 40/20')
+        assert tue_slot['week_type'] == 'recovery'
+        assert tue_slot['plan_week'] == 1
+        assert tue_slot['day'] == 'Tue'
+
+
+# =============================================================================
+# R1 (SPEC_LIBRARY_SELECTION.md regrade): authored tss/if_planned survive
+# to the placed card. The internal ZWO's normalized-power recompute
+# (min-only sprint targets flattened to Power blocks) massively inflates
+# NP -- an authored 57.9 TSS session once placed as 103. For a
+# library-resolved session, canonical_training_model must use the AUTHORED
+# tss (naming_manifest.json's library_tss) instead.
+# =============================================================================
+
+class TestAuthoredTssSurvives:
+    def _manifest_entry(self, library_tss=None, library_if_planned=None):
+        entry = {'tp_kind': 'bike', 'display_name': 'Curated Test Interval'}
+        if library_tss is not None:
+            entry['library_tss'] = library_tss
+            entry['library_item_id'] = 990001
+            entry['library_if_planned'] = library_if_planned
+        return entry
+
+    def _minimal_zwo(self, spike_power=2.00, baseline_power=0.55):
+        # Mirrors the real worst-offender item (endurance_with_work "Z2 +
+        # Sprints", item 14355989: 68min, authored tss 57.9, if_planned
+        # 0.715, min-only 30s@200% sprint leaves): a long easy baseline plus
+        # 180s total at a min-only sprint target rendered flat. Naive
+        # duration-weighted 4th-power NP inflates this to ~TSS 101 -- close
+        # to the regrade's observed "57.9 authored -> 103 placed".
+        return (
+            "<?xml version='1.0' encoding='UTF-8'?>\n"
+            "<workout_file>\n  <author>Gravel God Training</author>\n"
+            "  <name>Z2 + Sprints</name>\n  <description>Test</description>\n"
+            "  <sportType>bike</sportType>\n  <workout>\n"
+            f"    <SteadyState Duration=\"3900\" Power=\"{baseline_power:.2f}\"/>\n"
+            f"    <SteadyState Duration=\"180\" Power=\"{spike_power:.2f}\"/>\n"
+            "  </workout>\n</workout_file>"
+        )
+
+    def test_library_tss_overrides_recomputed_tss(self):
+        import canonical_training_model as ctm
+        authored = self._manifest_entry(library_tss=57.9, library_if_planned=0.715)
+        session = ctm._compiler_session(
+            'W01_Tue_04-07_Z2_plus_Sprints', self._minimal_zwo(),
+            date='2026-04-07', is_race_day=False,
+            manifest={'W01_Tue_04-07_Z2_plus_Sprints': authored}, ftp=220,
+        )
+        assert session.tss == 58  # round(57.9)
+        assert session.tss_planned == 57.9
+
+    def test_recomputed_tss_would_have_diverged(self):
+        """Sanity check that the fixture actually exercises R1's failure
+        mode: without the override, the flat-rendered sprint block inflates
+        recomputed TSS well past the authored value."""
+        import canonical_training_model as ctm
+        no_override = self._manifest_entry()
+        session = ctm._compiler_session(
+            'W01_Tue_04-07_Z2_plus_Sprints', self._minimal_zwo(),
+            date='2026-04-07', is_race_day=False,
+            manifest={'W01_Tue_04-07_Z2_plus_Sprints': no_override}, ftp=220,
+        )
+        assert session.tss > 57.9 * 1.05, (
+            'fixture no longer reproduces the NP-inflation failure mode -- '
+            'update it so the override test is meaningful')
+
+    def test_no_library_tss_falls_back_to_recomputed(self):
+        """A non-library-resolved session (no library_tss on the manifest
+        entry) keeps the original ZWO-derived tss -- the override must be
+        additive, never a behavior change for synthetic sessions."""
+        import canonical_training_model as ctm
+        zwo = self._minimal_zwo(spike_power=0.60, baseline_power=0.60)
+        session = ctm._compiler_session(
+            'W01_Tue_04-07_Endurance', zwo,
+            date='2026-04-07', is_race_day=False,
+            manifest={'W01_Tue_04-07_Endurance': self._manifest_entry()}, ftp=220,
+        )
+        from zwo_parser import parse_zwo_text
+        expected = parse_zwo_text(zwo, 220, source_name='x')
+        assert session.tss == int(expected['tss'])
+
+
+# =============================================================================
+# R5 (SPEC_LIBRARY_SELECTION.md regrade): hard-day detection from resolved
+# intensity, in addition to role. A resolved long_ride day (role
+# 'long_ride', never 'intensity') can carry authored IF 0.95 and needs the
+# same SEQUENCING/adjacency treatment as an intensity day.
+# =============================================================================
+
+class TestHardDayDetection:
+    def _hard_structure(self, seconds=300, value=125):
+        return {'structure': [{
+            'type': 'step', 'length': {'value': 1, 'unit': 'repetition'},
+            'steps': [{'name': 'Push', 'length': {'value': seconds, 'unit': 'second'},
+                      'targets': [{'minValue': value}], 'intensityClass': 'active'}],
+        }]}
+
+    def test_high_if_planned_counts_as_hard(self):
+        from generate_athlete_package import _resolution_is_hard
+        assert _resolution_is_hard({'if_planned': 0.95, 'structure': {'structure': []}})
+
+    def test_moderate_if_planned_with_no_hard_target_is_not_hard(self):
+        from generate_athlete_package import _resolution_is_hard
+        assert not _resolution_is_hard({'if_planned': 0.70, 'structure': {'structure': []}})
+
+    def test_long_hard_structure_target_counts_as_hard_even_at_moderate_if(self):
+        from generate_athlete_package import _resolution_is_hard
+        resolution = {'if_planned': 0.70, 'structure': self._hard_structure(seconds=300, value=125)}
+        assert _resolution_is_hard(resolution)
+
+    def test_short_sprint_target_does_not_count_as_hard(self):
+        """R1's exact case: a 30s @200% sprint leaf is a different training
+        stimulus than a sustained >=60s push -- must not trip the hard-day
+        classifier on its own (that's what if_planned >= 0.85 is for)."""
+        from generate_athlete_package import _resolution_is_hard
+        resolution = {'if_planned': 0.60, 'structure': self._hard_structure(seconds=30, value=200)}
+        assert not _resolution_is_hard(resolution)
+
+    def test_hard_bike_dates_includes_library_is_hard_resolved(self):
+        from generate_athlete_package import _compute_hard_bike_dates
+        records = [
+            {'tp_kind': 'bike', 'date': '2026-04-04', 'role': 'long_ride',
+             'library_is_hard_resolved': True},
+            {'tp_kind': 'bike', 'date': '2026-04-05', 'role': 'filler',
+             'library_is_hard_resolved': False},
+            {'tp_kind': 'strength', 'date': '2026-04-04', 'role': None},
+        ]
+        assert _compute_hard_bike_dates(records) == {'2026-04-04'}
+
+    def test_hard_bike_dates_still_honors_role_and_is_sim(self):
+        from generate_athlete_package import _compute_hard_bike_dates
+        records = [
+            {'tp_kind': 'bike', 'date': '2026-04-01', 'role': 'intensity'},
+            {'tp_kind': 'bike', 'date': '2026-04-02', 'role': 'long_ride', 'is_sim': True},
+            {'tp_kind': 'bike', 'date': '2026-04-03', 'role': 'filler'},
+        ]
+        assert _compute_hard_bike_dates(records) == {'2026-04-01', '2026-04-02'}
+
+
+# =============================================================================
+# R6 (SPEC_LIBRARY_SELECTION.md regrade): readable display names.
+# name_base fragments ("with Surges", "Extended", "Blocks") shipped
+# verbatim as card titles; name_base itself must never change (family
+# grouping depends on it).
+# =============================================================================
+
+class TestLibraryDisplayName:
+    def test_with_surges_fragment_composes_abbreviated(self):
+        from generate_athlete_package import _library_display_name
+        resolution = {'name_base': 'with Surges', 'library_key': 'endurance_with_work'}
+        assert _library_display_name(resolution) == 'Endurance w/ Surges'
+        assert resolution['name_base'] == 'with Surges'  # never mutated
+
+    def test_extended_fragment_composes_with_category(self):
+        from generate_athlete_package import _library_display_name
+        resolution = {'name_base': 'Extended', 'library_key': 'vo2_classic'}
+        assert _library_display_name(resolution) == 'VO2max Extended'
+
+    def test_blocks_fragment_composes_with_category(self):
+        from generate_athlete_package import _library_display_name
+        resolution = {'name_base': 'Blocks', 'library_key': 'endurance_with_work'}
+        assert _library_display_name(resolution) == 'Endurance Blocks'
+
+    def test_standalone_multiword_name_base_ships_unchanged(self):
+        from generate_athlete_package import _library_display_name
+        resolution = {'name_base': 'Curated Test Interval', 'library_key': 'vo2_classic'}
+        assert _library_display_name(resolution) == 'Curated Test Interval'
+
+    def test_standalone_long_single_word_ships_unchanged(self):
+        from generate_athlete_package import _library_display_name
+        resolution = {'name_base': 'Microbursts', 'library_key': 'sprint_attacks'}
+        assert _library_display_name(resolution) == 'Microbursts'
 
 
 # =============================================================================
@@ -300,7 +517,7 @@ def _zwo_description(path):
     return m.group(1) if m else ''
 
 
-def _force_select_intensity_and_filler_only(slot, series_state=None, index=None):
+def _force_select_intensity_and_filler_only(slot, series_state=None, index=None, used_items=None):
     """Resolve intensity/filler slots to a fixed curated item; leave
     long_ride slots unresolved so the synthetic-fallback branch (D9) is
     also exercised in the same render pass."""
@@ -362,7 +579,7 @@ class TestKillSwitch:
         athlete_dir, files = _build_small_plan(
             tmp_path, 'kill-switch',
             extra_env={'GG_LIBRARY_SELECTION': '0'},
-            force_select=lambda slot, series_state=None, index=None: _fake_resolution(),
+            force_select=lambda slot, series_state=None, index=None, used_items=None: _fake_resolution(),
         )
         assert files, 'generate_zwo_files produced no workouts'
         curated = [f for f in files if 'CURATED DESCRIPTION' in _zwo_description(f)]
@@ -440,6 +657,71 @@ def test_sonja_end_to_end_library_selection():
     assert fallback_path.exists(), 'library_fallbacks.json missing'
     fallback_contents = fallback_path.read_text()
     print(f"library_fallbacks.json contents:\n{fallback_contents}")
+
+    coaching_brief = athlete_dir / 'coaching_brief.md'
+    if coaching_brief.exists():
+        brief_text = coaching_brief.read_text()
+        has_fallbacks = json.loads(fallback_contents or '[]')
+        if has_fallbacks:
+            assert 'LIBRARY FALLBACKS' in brief_text, (
+                'R4: library_fallbacks.json has entries but coaching_brief.md '
+                'never renders the LIBRARY FALLBACKS section')
+
+    # R1: authored tss survives to the placed card -- resolved sessions'
+    # emitted tss must be within 5% of the item's authored tss.
+    tss_deltas = []
+    for rec in resolved:
+        library_tss = rec.get('library_tss')
+        if not library_tss:
+            continue
+        # tss_planned isn't on the manifest itself (that's computed
+        # downstream in canonical_training_model); the manifest's own
+        # library_tss IS the authored value carried through, so the
+        # meaningful regression check is that it made it onto the record
+        # at all and canonical_training_model.tss == round(library_tss).
+        tss_deltas.append((rec.get('filename_stem'), library_tss))
+    print(f"resolved-session authored tss (first 10): {tss_deltas[:10]}")
+
+    plan_ir = json.loads(plan_ir_path.read_text())
+    plan_ir_by_stem = {
+        s.get('filename_stem'): s
+        for week in plan_ir.get('weeks', []) for s in week.get('sessions', [])
+        if s.get('filename_stem')
+    }
+    bad_deltas = []
+    for stem, library_tss in tss_deltas:
+        session = plan_ir_by_stem.get(stem)
+        if not session:
+            continue
+        placed = session.get('tss_planned')
+        if placed is None:
+            continue
+        delta = abs(placed - library_tss) / library_tss if library_tss else 0
+        if delta > 0.05:
+            bad_deltas.append((stem, library_tss, placed, delta))
+    print(f"placed-vs-authored tss deltas > 5%: {bad_deltas}")
+    assert not bad_deltas, f"placed tss diverged >5% from authored for: {bad_deltas}"
+
+    # R3: variety enforcement -- no same-week duplicate item, no non-series
+    # item repeated more than twice plan-wide.
+    from collections import Counter, defaultdict
+    week_item_pairs = defaultdict(list)
+    item_counts = Counter()
+    for rec in resolved:
+        item_id = rec['library_item_id']
+        week_num = rec.get('week_num')
+        week_item_pairs[(week_num, item_id)].append(rec.get('filename_stem'))
+        item_counts[item_id] += 1
+    same_week_dupes = {k: v for k, v in week_item_pairs.items() if len(v) > 1}
+    print(f"same-week duplicate items: {same_week_dupes}")
+    assert not same_week_dupes, f"R3(b): same-week duplicate item(s): {same_week_dupes}"
+
+    over_used = {item_id: count for item_id, count in item_counts.items() if count > 2}
+    print(f"distinct items used: {len(item_counts)}; item use counts: {dict(item_counts)}")
+    assert not over_used, f"R3(a): item(s) repeated more than twice plan-wide: {over_used}"
+
+    display_names = sorted({rec.get('display_name') for rec in resolved})
+    print(f"display names for resolved sessions: {display_names}")
 
     from post_render_validator import build_validator_input, validate_transitional_input
     document = build_validator_input(athlete_dir)

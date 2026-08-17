@@ -24,6 +24,7 @@ from library_selector import (  # noqa: E402
     ROUTING_TABLE,
     SYNTHETIC_ONLY,
     _apply_level,
+    _ENDURANCE_TYPES,
     _if_band,
     _qualifying_pool,
     _rank,
@@ -440,6 +441,184 @@ class TestDynamicRouting:
 
 
 # ---------------------------------------------------------------------------
+# R2 fix wave: role/week-type intensity ceilings, against the REAL index.
+# "Z2 + Sprints" (endurance_with_work, item 14355989, tss 57.9, if_planned
+# 0.715) is the real offender named in the regrade -- a 30s @200% FTP leaf
+# in an otherwise-moderate-IF endurance ride. It must be excluded from an
+# easy/filler slot (by the structure-target ceiling, since its if_planned
+# alone is under 0.78) and remain selectable for an intensity slot.
+# ---------------------------------------------------------------------------
+
+class TestRoleWeekTypeCeiling:
+    def _z2_sprints_slot(self, **overrides):
+        return base_slot(
+            canonical_name="Endurance",
+            budget_min=68, day_cap_min=None, series_key=None, **overrides,
+        )
+
+    def test_z2_sprints_excluded_from_filler_slot(self):
+        index = load_index()
+        pool = _qualifying_pool(
+            index["items"], ("endurance_with_work",), budget_min=68, day_cap_min=None,
+            slot=self._z2_sprints_slot(role="filler", week_type="load"),
+        )
+        assert pool, "expected the endurance_with_work pool to be non-empty at this duration"
+        assert not any(item["name_base"] == "Z2 + Sprints" for item in pool)
+
+    def test_z2_sprints_selectable_for_intensity_slot(self):
+        index = load_index()
+        pool = _qualifying_pool(
+            index["items"], ("endurance_with_work",), budget_min=68, day_cap_min=None,
+            slot=self._z2_sprints_slot(role="intensity"),
+        )
+        assert any(item["name_base"] == "Z2 + Sprints" for item in pool)
+
+    def test_z2_sprints_excluded_from_long_ride_slot(self):
+        index = load_index()
+        pool = _qualifying_pool(
+            index["items"], ("endurance_with_work",), budget_min=68, day_cap_min=None,
+            slot=self._z2_sprints_slot(role="long_ride"),
+        )
+        assert any(item["name_base"] == "Z2 + Sprints" for item in pool), (
+            "long_ride slots keep current (unceilinged) behavior per the fix spec"
+        )
+
+    def test_recovery_week_tightens_filler_ceiling_further(self):
+        # if_planned 0.715 clears the load-week filler ceiling (<=0.78) but
+        # not the tighter recovery-week one (<=0.70) -- belt-and-suspenders
+        # with the structure-target ceiling above.
+        index = load_index()
+        pool = _qualifying_pool(
+            index["items"], ("endurance_with_work",), budget_min=68, day_cap_min=None,
+            slot=self._z2_sprints_slot(role="filler", week_type="recovery"),
+        )
+        assert not any(item["name_base"] == "Z2 + Sprints" for item in pool)
+
+    def test_cadence_and_low_intensity_drills_survive_the_ceiling(self):
+        """Drills/spin-ups (cadence targets, not power) are fine on an easy
+        day -- the ceiling must not blanket-reject every filler candidate."""
+        items = [
+            make_item(1, library_key="endurance_z2_short", duration_min=50, if_planned=0.65,
+                      structure={"structure": [{
+                          "type": "step", "length": {"value": 1, "unit": "repetition"},
+                          "steps": [{"name": "Spin-ups", "length": {"value": 60, "unit": "second"},
+                                    "targets": [{"minValue": 60},
+                                                {"minValue": 100, "maxValue": 110,
+                                                 "unit": "roundOrStridePerMinute"}],
+                                    "intensityClass": "active"}],
+                      }]}),
+        ]
+        index = make_index(items)
+        pool = _qualifying_pool(
+            index["items"], ("endurance_z2_short",), budget_min=50, day_cap_min=None,
+            slot=base_slot(canonical_name="Endurance", role="filler", week_type="recovery",
+                           budget_min=50, series_key=None),
+        )
+        assert len(pool) == 1
+
+
+# ---------------------------------------------------------------------------
+# R3 fix wave: within-plan used-item memory, same-week hard dedup, and the
+# non-series rotation seed extension (plan_week, day).
+# ---------------------------------------------------------------------------
+
+class TestUsedItemMemory:
+    def _pool_of_six(self):
+        return [make_item(i, duration_min=50, dimension_score=1, if_planned=0.8) for i in range(1, 7)]
+
+    def test_same_week_hard_duplicate_never(self):
+        items = [make_item(1, duration_min=50, dimension_score=5, if_planned=0.8),
+                 make_item(2, duration_min=50, dimension_score=1, if_planned=0.8)]
+        index = make_index(items)
+        used_items: dict = {}
+        slot_a = base_slot(series_key=None, plan_week=1, day="Mon", athlete_seed="x")
+        slot_b = base_slot(series_key=None, plan_week=1, day="Tue", athlete_seed="x")
+        first = select(slot_a, series_state=None, index=index, used_items=used_items)
+        second = select(slot_b, series_state=None, index=index, used_items=used_items)
+        assert first is not None and second is not None
+        assert first["item_id"] != second["item_id"]
+
+    def test_same_item_reusable_in_a_later_week(self):
+        # (b) is a same-WEEK ban only -- a different plan_week may reuse an
+        # item (within the plan-wide reuse cap).
+        items = [make_item(1, duration_min=50, dimension_score=1, if_planned=0.8)]
+        index = make_index(items)
+        used_items: dict = {}
+        slot_week1 = base_slot(series_key=None, plan_week=1, day="Mon", athlete_seed="x")
+        slot_week2 = base_slot(series_key=None, plan_week=2, day="Mon", athlete_seed="x")
+        first = select(slot_week1, series_state=None, index=index, used_items=used_items)
+        second = select(slot_week2, series_state=None, index=index, used_items=used_items)
+        assert first["item_id"] == second["item_id"] == 1
+
+    def test_plan_wide_reuse_cap_redirects_when_alternative_exists(self):
+        items = [make_item(1, duration_min=50, dimension_score=5, if_planned=0.8),
+                 make_item(2, duration_min=50, dimension_score=1, if_planned=0.8)]
+        index = make_index(items)
+        used_items = {1: {"count": 2, "weeks": {1, 2}}}
+        slot = base_slot(series_key=None, plan_week=3, day="Mon", athlete_seed="x")
+        result = select(slot, series_state=None, index=index, used_items=used_items)
+        # Item 1 ranks first on dimension_score but is over the reuse cap;
+        # item 2 is the only remaining candidate.
+        assert result["item_id"] == 2
+
+    def test_plan_wide_reuse_cap_is_absolute_when_no_alternative_exists(self):
+        """A tiny single-item pool must fall back to D9's loud None, not
+        silently exceed the cap -- a real regression once let a scarce
+        Cadence Work item repeat 5x plan-wide because the cap softened."""
+        items = [make_item(1, duration_min=50, dimension_score=1, if_planned=0.8)]
+        index = make_index(items)
+        used_items = {1: {"count": 2, "weeks": {1, 2}}}
+        slot = base_slot(series_key=None, plan_week=3, day="Mon", athlete_seed="x")
+        result = select(slot, series_state=None, index=index, used_items=used_items)
+        assert result is None
+
+    def test_series_continuation_is_exempt_from_the_reuse_cap(self):
+        items = [
+            make_item(10, library_key="torque_sfr", name_base="Big Gear Ladder", explicit_level=1,
+                      duration_min=50, if_planned=0.7),
+            make_item(11, library_key="torque_sfr", name_base="Big Gear Ladder", explicit_level=2,
+                      duration_min=50, if_planned=0.75),
+        ]
+        index = make_index(items)
+        used_items = {10: {"count": 2, "weeks": {1}}}
+        series_state = {
+            "s1": {"family_key": "torque_sfr||Big Gear Ladder", "library_key": "torque_sfr",
+                  "item_id": 10, "rung": 1, "if_planned": 0.7, "singleton": False},
+        }
+        slot = base_slot(canonical_name="SFR", series_key="s1", budget_min=50, level=1, plan_week=2, day="Mon")
+        result = select(slot, series_state=series_state, index=index, used_items=used_items)
+        assert result["item_id"] == 11  # continuation still progresses despite item 10's cap
+
+    def test_no_used_items_arg_preserves_prior_behavior(self):
+        items = self._pool_of_six()
+        index = make_index(items)
+        slot = base_slot(athlete_seed="athlete-fixed")
+        result = select(slot, series_state=None, index=index)
+        assert result is not None
+
+
+class TestNonSeriesRotationSeedExtension:
+    def test_identity_differs_by_plan_week_and_day(self):
+        from library_selector import _slot_identity
+        slot_a = base_slot(series_key=None, plan_week=1, day="Mon")
+        slot_b = base_slot(series_key=None, plan_week=2, day="Mon")
+        assert _slot_identity(slot_a) != _slot_identity(slot_b)
+
+    def test_different_weeks_draw_different_items_from_same_pool(self):
+        items = [make_item(i, duration_min=50, dimension_score=1, if_planned=0.8) for i in range(1, 7)]
+        index = make_index(items)
+        seen = set()
+        for week in range(1, 21):
+            slot = base_slot(series_key=None, plan_week=week, day="Mon", athlete_seed="fixed-athlete")
+            result = select(slot, series_state=None, index=index)
+            seen.add(result["item_id"])
+        assert len(seen) > 1, (
+            "a fixed athlete_seed across many plan_weeks should still see "
+            "variety once (plan_week, day) is part of the rotation identity"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Realism sweep against the REAL index
 # ---------------------------------------------------------------------------
 
@@ -451,6 +630,12 @@ class TestRealismSweep:
         day_caps = (120, 600)
 
         routed_types = sorted(t for t in ROUTING_TABLE if t not in SYNTHETIC_ONLY)
+        # R2 fix wave: the filler-role intensity ceiling is role-gated, so
+        # the sweep must use the role each canonical type is realistically
+        # assigned in production -- blanket role="filler" (pre-R2) now
+        # over-constrains VO2max/SFR/etc. types that are never actually
+        # filler-role days.
+        _filler_types = set(_ENDURANCE_TYPES) | {"Cadence Work"}
 
         table = {}
         total_trials = 0
@@ -460,6 +645,7 @@ class TestRealismSweep:
             trials = 0
             fallbacks = 0
             pool_sizes = []
+            sweep_role = "filler" if canonical_name in _filler_types else "intensity"
             for level in levels:
                 for budget in budgets:
                     for day_cap in day_caps:
@@ -468,7 +654,7 @@ class TestRealismSweep:
                             level=level,
                             budget_min=budget,
                             day_cap_min=day_cap,
-                            role="filler",
+                            role=sweep_role,
                             phase="build",
                             series_key=None,
                             athlete_seed="sweep",

@@ -592,6 +592,14 @@ def _session_from_zwo(zwo_path: Path, date: Optional[str], is_race_day: bool, ft
     # invariant applies uniformly, resolved or not).
     library_item_id = entry.get("library_item_id")
 
+    # R1 fix wave (SPEC_LIBRARY_SELECTION.md regrade): same override as
+    # canonical_training_model._compiler_session -- for a library-resolved
+    # session the AUTHORED tss/if_planned (naming_manifest.json's
+    # library_tss/library_if_planned) are authoritative, not the internal
+    # C2-ZWO-derived normalized-power recompute.
+    _library_tss = entry.get("library_tss")
+    _tss_value = _library_tss if _library_tss is not None else metrics["tss"]
+
     return Session(
         date=date,
         title=title,
@@ -599,13 +607,13 @@ def _session_from_zwo(zwo_path: Path, date: Optional[str], is_race_day: bool, ft
         type=session_type,
         origin=_session_origin(session_type),
         duration_s=int(duration_sec),
-        tss=int(metrics["tss"]),
+        tss=int(round(_tss_value)),
         segments=segments,
         source_file=zwo_path.name,
         description=zwo_structure.get("description"),
         tp_kind=tp_kind,
         workout_type_value_id=workout_type_value_id,
-        tss_planned=round(float(metrics["tss"]), 1),
+        tss_planned=round(float(_tss_value), 1),
         total_time_planned=_round_time_planned_hours(duration_sec),
         structure=structure,
         series_id=entry.get("series_id"),
