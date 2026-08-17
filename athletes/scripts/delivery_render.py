@@ -490,6 +490,12 @@ def _is_plain_endurance(session: Any, name: str, defining_set: Optional[str]) ->
     # FTP Test into "Endurance - RPE3" on a real generated plan.
     if _get(session, "is_field_test") or _get(session, "is_simulation"):
         return False
+    # Curated library sessions keep their curated identity: "3x15 Tempo" at
+    # 79-85% FTP once collapsed to bare "Endurance - 80min - RPE3" because
+    # its targets sit under 88% — structured tempo is not a flat filler,
+    # and the coach named it for a reason.
+    if _get(session, "library_item_id"):
+        return False
     named_easy = bool(re.search(
         r"\b(?:endurance|recovery|easy spin|pre-plan)\b", name.lower()))
     if not named_easy:
