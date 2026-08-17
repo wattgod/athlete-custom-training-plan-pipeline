@@ -8,22 +8,22 @@ workouts:
   VO2max 30/30:
     category: vo2max
     levels:
-      1: {duration: 33, tss: 32}
-      2: {duration: 34, tss: 35}
-      3: {duration: 35, tss: 38}
-      4: {duration: 36, tss: 41}
-      5: {duration: 36, tss: 42}
-      6: {duration: 38, tss: 46}
+      1: {duration: 45, tss: 41}
+      2: {duration: 50, tss: 47}
+      3: {duration: 55, tss: 53}
+      4: {duration: 58, tss: 58}
+      5: {duration: 60, tss: 60}
+      6: {duration: 62, tss: 64}
 
   VO2max 40/20:
     category: vo2max
     levels:
-      1: {duration: 31, tss: 31}
-      2: {duration: 32, tss: 35}
-      3: {duration: 34, tss: 38}
-      4: {duration: 35, tss: 41}
-      5: {duration: 35, tss: 42}
-      6: {duration: 37, tss: 47}
+      1: {duration: 45, tss: 42}
+      2: {duration: 50, tss: 49}
+      3: {duration: 55, tss: 54}
+      4: {duration: 58, tss: 59}
+      5: {duration: 60, tss: 61}
+      6: {duration: 62, tss: 66}
 
   VO2max Extended:
     category: vo2max
@@ -38,8 +38,8 @@ workouts:
   Thirty-Fifteens:
     category: vo2max
     levels:
-      1: {duration: 37, tss: 37}
-      2: {duration: 42, tss: 42}
+      1: {duration: 45, tss: 43}
+      2: {duration: 46, tss: 45}
       3: {duration: 46, tss: 46}
       4: {duration: 51, tss: 50}
       5: {duration: 58, tss: 58}
