@@ -843,7 +843,7 @@ ENDURANCE_ADVANCED = [
             },
             '2': {
                 'structure': '10min warmup Z2, 60min ride: endurance @ 66% FTP with 3x 5min thermal blocks @ 73% FTP',
-                'execution': 'Three thermal stress blocks. Monitor RPE — stop if dizzy or nauseous',
+                'execution': 'Three thermal stress blocks. Ride the marked blocks overdressed (extra layers) or finish with 15-20min sauna — that is the adaptation. Drink to thirst throughout. Monitor RPE and stop if dizzy or nauseous; heat adaptation compounds over 10-14 days and pays off on any warm race day.',
                 'segments': _base_with_efforts(3600, [(300, 0.73)] * 3, 0.66),
             },
             '3': {
