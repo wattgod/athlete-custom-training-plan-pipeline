@@ -2871,6 +2871,7 @@ TIPS:
                         display_name=display_name, archetype_id=bb_name,
                         series_id=('|'.join(str(x) for x in _series_id) if _series_id else None),
                         series_index=_series_rank_hint,
+                        role=bb_role, is_sim=bool(_act_simulation),
                     )
                     continue  # Skip legacy path entirely
 
@@ -3477,16 +3478,16 @@ GO GET IT, {athlete_name.upper()}!
             ftp_test_days.add((tw, _ftp_day_for_strength))
 
         # T18: strength that shares a day with the week's hard bike work
-        # needs explicit sequencing guidance on the card.
-        _hard_bike_days = set()
-        try:
-            for _hw in (_bb_plan.get('weeks', []) or []):
-                for _hd in (_hw.get('days', []) or []):
-                    if (_hd.get('role') == 'intensity' or _hd.get('act_simulation')
-                            or _hd.get('is_simulation')):
-                        _hard_bike_days.add((_hw.get('plan_week'), _hd.get('day')))
-        except NameError:
-            pass
+        # needs explicit sequencing guidance on the card. Classify from the
+        # EMITTED session records, not the block-builder's planned roles —
+        # test-week overlays rewrite days after planning, and a planned
+        # intensity Monday once shipped as an easy ride carrying a false
+        # "today also carries your hard ride" claim.
+        _hard_bike_dates = set()
+        for _rec in _tp_manifest_records:
+            if _rec.get('tp_kind') == 'bike' and _rec.get('date') and (
+                    _rec.get('role') == 'intensity' or _rec.get('is_sim')):
+                _hard_bike_dates.add(str(_rec['date']))
 
         for week in weeks:
             week_num = week['week']
@@ -3552,7 +3553,7 @@ GO GET IT, {athlete_name.upper()}!
                     rest_line = "Rest 60-90 sec between sets."
                 full_description = f"FOCUS: {strength_workout['focus']}\n\nEXERCISES:\n{exercises_text}\n\nEXECUTION:\nComplete all sets with good form. {rest_line}"
                 # T18: never leave a bike+lift day without an order.
-                if (week_num, strength_day) in _hard_bike_days:
+                if str(date_full) in _hard_bike_dates:
                     full_description += ("\n\nSEQUENCING:\nToday also carries your hard ride. "
                                          "Ride first; lift at least 4 hours later — or move this "
                                          "lift to tomorrow if the day is tight.")

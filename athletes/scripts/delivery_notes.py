@@ -312,6 +312,25 @@ def _join_references(references: List[str]) -> str:
 
 
 def _week_sequence(week: Any, key_sessions: List[Any]) -> str:
+    """Explain the week's order, walking EVERY key session.
+
+    The branch prose leads with the week's defining shape; any keyed
+    session it didn't mention gets an explicit closing reference — a key
+    list that names a session the sequence never walks reads as a
+    forgotten one.
+    """
+    sentence = _week_sequence_base(week, key_sessions)
+    missing = [session for session in key_sessions
+               if _kind(session) == "bike"
+               and _briefing_session_title(session).split(" (")[0] not in sentence]
+    if missing:
+        refs = _join_references([_session_reference(session) for session in missing])
+        verb = "rounds" if len(missing) == 1 else "round"
+        sentence = f"{sentence} {refs} {verb} out the week's key work."
+    return sentence
+
+
+def _week_sequence_base(week: Any, key_sessions: List[Any]) -> str:
     """Explain the actual week's order without inventing a stock schedule."""
     sessions = _ordered_sessions(week)
     tests = [session for session in sessions if _get(session, "is_field_test")]

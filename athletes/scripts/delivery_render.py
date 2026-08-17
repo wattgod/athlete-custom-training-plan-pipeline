@@ -310,6 +310,15 @@ def _defining_set_from_structure(session: Any) -> Optional[str]:
         seconds, _, pct = block
         return (1 if _pct_value(pct) >= 88 else 0, seconds)
     total_seconds, reps, percent = max(blocks, key=_key)
+    # A repeated set is the session's identity: when the hardest block is a
+    # single lead-in only marginally harder than a bigger repeated main set
+    # (8min @88% vs 3x5min @85%), headline the repeats.
+    if reps == 1:
+        rep_blocks = [b for b in blocks
+                      if b[1] > 1 and b[0] >= total_seconds
+                      and _pct_value(percent) - _pct_value(b[2]) <= 4]
+        if rep_blocks:
+            total_seconds, reps, percent = max(rep_blocks, key=_key)
     if not percent:
         return None
     each_seconds = total_seconds / max(1, reps)
