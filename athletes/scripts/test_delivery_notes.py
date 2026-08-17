@@ -393,6 +393,7 @@ def test_sim_touch_is_not_a_rehearsal():
     touch = dict(wk["sessions"][1])
     touch.update(title="Peak and Fade", display_name="Peak and Fade",
                  is_simulation=True, is_dress_rehearsal=False,
+                 is_field_test=False,
                  library_item_id=999, date=touch["date"])
     reh = dict(wk["sessions"][2])
     reh.update(title="Race Simulation — Act 2 of 2 — Dress Rehearsal",
