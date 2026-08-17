@@ -3452,6 +3452,18 @@ GO GET IT, {athlete_name.upper()}!
         for tw in ftp_test_target_weeks:
             ftp_test_days.add((tw, _ftp_day_for_strength))
 
+        # T18: strength that shares a day with the week's hard bike work
+        # needs explicit sequencing guidance on the card.
+        _hard_bike_days = set()
+        try:
+            for _hw in (_bb_plan.get('weeks', []) or []):
+                for _hd in (_hw.get('days', []) or []):
+                    if (_hd.get('role') == 'intensity' or _hd.get('act_simulation')
+                            or _hd.get('is_simulation')):
+                        _hard_bike_days.add((_hw.get('plan_week'), _hd.get('day')))
+        except NameError:
+            pass
+
         for week in weeks:
             week_num = week['week']
             phase = week['phase']
@@ -3507,7 +3519,19 @@ GO GET IT, {athlete_name.upper()}!
                     else:
                         exercises_lines.append(f"- {ex} - {reps}")
                 exercises_text = '\n'.join(exercises_lines)
-                full_description = f"FOCUS: {strength_workout['focus']}\n\nEXERCISES:\n{exercises_text}\n\nEXECUTION:\nComplete all sets with good form. Rest 60-90 sec between sets."
+                # T20: rest follows the phase — heavy/ballistic work needs
+                # full recovery between sets for output quality.
+                _sname = str(strength_workout['name'])
+                if _sname.startswith(('Power', 'Max Strength')):
+                    rest_line = "Rest 2-3 min between sets — full recovery keeps the bar speed and quality high."
+                else:
+                    rest_line = "Rest 60-90 sec between sets."
+                full_description = f"FOCUS: {strength_workout['focus']}\n\nEXERCISES:\n{exercises_text}\n\nEXECUTION:\nComplete all sets with good form. {rest_line}"
+                # T18: never leave a bike+lift day without an order.
+                if (week_num, strength_day) in _hard_bike_days:
+                    full_description += ("\n\nSEQUENCING:\nToday also carries your hard ride. "
+                                         "Ride first; lift at least 4 hours later — or move this "
+                                         "lift to tomorrow if the day is tight.")
 
                 zwo_content = ZWO_TEMPLATE.format(
                     author=_workout_author,
