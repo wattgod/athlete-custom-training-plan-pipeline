@@ -63,6 +63,7 @@ from consult_intake_tokens import (ConsultIntakeTokenError,
                                    verify_intake_token as verify_consult_intake_token)
 from email_templates import (TP_INVITE_LINK as CONSULT_TP_INVITE_LINK,
                              build_consult_welcome_email,
+                             build_consult_runner_alarm_email,
                              CONSULT_INTAKE_NUDGE_SUBJECT, CONSULT_INTAKE_NUDGE_TEMPLATE,
                              CONSULT_TP_NUDGE_SUBJECT, CONSULT_TP_NUDGE_TEMPLATE,
                              CONSULT_ADDON_OFFER_SUBJECT, CONSULT_ADDON_OFFER_TEMPLATE)
@@ -253,6 +254,8 @@ CONSULT_BOOKING_URL = os.environ.get('CONSULT_BOOKING_URL', '')
 CONSULT_RUNNER_SECRET = os.environ.get('CONSULT_RUNNER_SECRET', '')
 CONSULT_ANALYSIS_LEASE_MINUTES = 90
 CONSULT_ANALYSIS_MAX_ATTEMPTS = 3
+CONSULT_RUNNER_HEARTBEAT_STALE_HOURS = 6   # §6: "Railway emails Matti if silent > 6 h"
+CONSULT_RUNNER_ALARM_COOLDOWN_HOURS = 24   # at most one alarm per day
 
 # Stripe Tax — requires Stripe Tax to be enabled at account level first.
 # Set ENABLE_AUTOMATIC_TAX=true in Railway env vars after completing Stripe Tax setup.
@@ -5498,9 +5501,18 @@ def process_consult_followups() -> dict:
     stats = {
         'checked': 0, 'welcome_resent': 0, 'intake_nudged': 0,
         'tp_nudged': 0, 'plan_reminded': 0, 'addon_offered': 0,
-        'closed_no_data': 0, 'errors': 0,
+        'closed_no_data': 0, 'errors': 0, 'runner_alarm_sent': False,
     }
     now = datetime.now(timezone.utc)
+
+    # Runner heartbeat alarm (§6): missing/stale heartbeat or ok=false,
+    # at most once per CONSULT_RUNNER_ALARM_COOLDOWN_HOURS. One check per
+    # cron run, independent of any individual consultation record.
+    try:
+        stats['runner_alarm_sent'] = _check_consult_runner_alarm(now)
+    except Exception:
+        logger.exception("Failed to check consult runner heartbeat")
+        stats['errors'] += 1
 
     for record in consultations.list_records(DELIVERIES_DIR):
         if record.get('status') == 'closed':
@@ -5712,6 +5724,70 @@ def consult_jobs_pending():
             'intake_tp_email': intake_tp_email,
         })
     return jsonify({'pending': pending})
+
+
+@app.route('/api/consult/jobs/ready', methods=['GET'])
+@limiter.limit("60/minute")
+def consult_jobs_ready():
+    """TP-linked records ready for analysis (§5): status open, or
+    analysis_running with an EXPIRED lease (a safety net ahead of the
+    hourly sweep_stuck_consultations() sweep — a record can sit
+    analysis_running with a dead lease for up to an hour otherwise),
+    attempts under the max, never closed. A missing lease_expires_at on an
+    analysis_running record counts as expired too, matching /claim's own
+    "no live lease" check. Oldest first by created_at so the runner works
+    the queue in order."""
+    auth_err = _require_runner_secret()
+    if auth_err:
+        return auth_err
+
+    now = datetime.now(timezone.utc)
+    ready = []
+    for record in consultations.list_records(DELIVERIES_DIR):
+        if record.get('status') == 'closed':
+            continue
+        athlete = record.get('athlete') or {}
+        if not athlete.get('tp_matched_at'):
+            continue
+
+        analysis = record.get('analysis') or {}
+        attempts = int(analysis.get('attempts', 0))
+        if attempts >= CONSULT_ANALYSIS_MAX_ATTEMPTS:
+            continue
+
+        status = record.get('status')
+        if status == 'analysis_running':
+            lease_raw = analysis.get('lease_expires_at')
+            lease_expires = consultations._parse_iso(lease_raw) if lease_raw else None
+            if lease_expires is not None and lease_expires > now:
+                continue  # live lease — someone else has it
+        elif status != 'open':
+            continue  # report_ready / needs_attention are not analysis-ready
+
+        intake_answers = None
+        intake_id = (record.get('intake') or {}).get('intake_id')
+        if intake_id:
+            intake_data = load_intake(intake_id) or {}
+            answers = intake_data.get('answers')
+            if isinstance(answers, dict):
+                intake_answers = answers
+
+        plan_addon = (record.get('products') or {}).get('plan_addon') or {}
+        ready.append((record.get('created_at') or '', {
+            'order_id': record['order_id'],
+            'tp_athlete_id': athlete.get('tp_athlete_id'),
+            'email': athlete.get('email', ''),
+            'intake_answers': intake_answers,
+            'plan_addon': {
+                'purchased': bool(plan_addon.get('purchased')),
+                'purchased_at': plan_addon.get('purchased_at'),
+            },
+            'call_at': record.get('call_at'),
+            'attempts': attempts,
+        }))
+
+    ready.sort(key=lambda pair: (pair[0], pair[1]['order_id']))
+    return jsonify({'ready': [item for _, item in ready]})
 
 
 @app.route('/api/consult/jobs/<order_id>/tp-linked', methods=['POST'])
@@ -5936,6 +6012,99 @@ def consult_job_get(order_id):
     if record is None:
         return jsonify({'error': 'not found'}), 404
     return jsonify(record)
+
+
+def _consult_runner_heartbeat_path() -> Path:
+    return Path(DELIVERIES_DIR) / 'consult_runner_heartbeat.json'
+
+
+def _write_consult_runner_heartbeat(data: dict) -> None:
+    """Atomically persist the runner heartbeat (temp file + os.replace),
+    same pattern as _write_job / consultations.write_record."""
+    path = _consult_runner_heartbeat_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f'.{path.name}.tmp')
+    with open(tmp, 'w') as f:
+        json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def _read_consult_runner_heartbeat() -> dict:
+    path = _consult_runner_heartbeat_path()
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+@app.route('/api/consult/runner/heartbeat', methods=['POST'])
+@limiter.limit("60/minute")
+def consult_runner_heartbeat():
+    """Runner liveness ping (§6: posted "every poll"). Persisted to
+    DELIVERIES_DIR/consult_runner_heartbeat.json so
+    process_consult_followups() can alert the coach when the runner goes
+    silent (>CONSULT_RUNNER_HEARTBEAT_STALE_HOURS) or reports ok=false."""
+    auth_err = _require_runner_secret()
+    if auth_err:
+        return auth_err
+
+    data = request.get_json(silent=True) or {}
+    runner_id = str(data.get('runner_id') or '').strip()
+    ok = bool(data.get('ok'))
+    detail = str(data.get('detail') or '').strip()[:2000]
+
+    # Carry the alarm cooldown timestamp forward — it lives in this same
+    # file so the 24h suppression survives across heartbeat writes.
+    existing = _read_consult_runner_heartbeat()
+    payload = {
+        'runner_id': runner_id,
+        'ok': ok,
+        'detail': detail,
+        'at': datetime.now(timezone.utc).isoformat(),
+        'last_runner_alarm_at': existing.get('last_runner_alarm_at'),
+    }
+    _write_consult_runner_heartbeat(payload)
+    return jsonify({'status': 'ok'})
+
+
+def _check_consult_runner_alarm(now: datetime) -> bool:
+    """Called from process_consult_followups(). Coach email when the
+    heartbeat file is missing/stale (>CONSULT_RUNNER_HEARTBEAT_STALE_HOURS)
+    or the latest heartbeat reports ok=false — at most once per
+    CONSULT_RUNNER_ALARM_COOLDOWN_HOURS (cooldown persisted in the same
+    heartbeat file). Returns True iff an alarm was sent."""
+    heartbeat = _read_consult_runner_heartbeat()
+    at = consultations._parse_iso(heartbeat.get('at'))
+    stale = at is None or (now - at) >= timedelta(hours=CONSULT_RUNNER_HEARTBEAT_STALE_HOURS)
+    failed = heartbeat.get('ok') is False
+    if not (stale or failed):
+        return False
+
+    last_alarm = consultations._parse_iso(heartbeat.get('last_runner_alarm_at'))
+    if last_alarm and (now - last_alarm) < timedelta(hours=CONSULT_RUNNER_ALARM_COOLDOWN_HOURS):
+        return False
+
+    if at is None:
+        age = 'no heartbeat received yet'
+    else:
+        age = f'{(now - at).total_seconds() / 3600:.1f}h old'
+    detail = heartbeat.get('detail') or ('runner reported ok=false' if failed else '')
+
+    subject, body = build_consult_runner_alarm_email(detail=detail, age=age)
+    sent = True
+    if NOTIFICATION_EMAIL:
+        sent = _send_email(NOTIFICATION_EMAIL, subject, body, brand=DEFAULT_BRAND)
+    else:
+        logger.critical(f"CONSULT RUNNER ALARM: {subject}\n{body}")
+
+    if sent:
+        heartbeat['last_runner_alarm_at'] = now.isoformat()
+        _write_consult_runner_heartbeat(heartbeat)
+    return sent
 
 
 @app.route('/api/consult/<order_id>/op', methods=['POST'])
