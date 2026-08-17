@@ -57,6 +57,15 @@ from review_auth import (ReviewAuthError, create_review_session,
                          issue_review_token, keys_configured as review_keys_configured,
                          load_review_session, verify_review_token)
 from review_surface import render_bootstrap, render_review_page
+import consultations
+from consult_intake_tokens import (ConsultIntakeTokenError,
+                                   issue_intake_token as issue_consult_intake_token,
+                                   verify_intake_token as verify_consult_intake_token)
+from email_templates import (TP_INVITE_LINK as CONSULT_TP_INVITE_LINK,
+                             build_consult_welcome_email,
+                             CONSULT_INTAKE_NUDGE_SUBJECT, CONSULT_INTAKE_NUDGE_TEMPLATE,
+                             CONSULT_TP_NUDGE_SUBJECT, CONSULT_TP_NUDGE_TEMPLATE,
+                             CONSULT_ADDON_OFFER_SUBJECT, CONSULT_ADDON_OFFER_TEMPLATE)
 
 import endure_delivery
 
@@ -70,6 +79,12 @@ from brand_config import default_brand, load_brands, normalize_brand
 from apply_contract import schema_path as apply_contract_schema_path
 
 app = Flask(__name__)
+
+# App-wide request body cap. Nothing today needs more than the consult
+# runner's report bundle (report.md + report.json + receipts.zip), so that
+# 25MB figure (docs/CONSULT_ENGINE_SPEC.md §5) also serves as the global
+# ceiling — Flask returns 413 automatically for any request over this.
+app.config['MAX_CONTENT_LENGTH'] = 25 * 1024 * 1024
 
 
 def _get_real_ip():
@@ -225,7 +240,19 @@ COACHING_PRICE_IDS = {
 COACHING_SETUP_FEE_PRICE_ID = 'price_1T2yzQLoaHDbEqSqXKe6gNuF'  # $99 one-time (live)
 COACHING_SETUP_FEE_CENTS = 9900
 
-CONSULTING_PRICE_ID = 'price_1T2ekVLoaHDbEqSq0GGfoBEX'  # $150/hr
+CONSULTING_PRICE_ID = 'price_1T2ekVLoaHDbEqSq0GGfoBEX'  # $150/hr, quantity=hours
+CONSULTING_PRICE_CENTS = 15000  # $150/hr — used to seed the consult record when
+                                # Stripe's amount_total is absent (see docs/CONSULT_ENGINE_SPEC.md §1)
+
+# CONSULT-ENGINE C1 (docs/CONSULT_ENGINE_SPEC.md). All optional/off by
+# default: unset envs disable the add-on line item, the runner routes
+# (503), and leave the booking link blank (never a broken link).
+CONSULT_PLAN_ADDON_PRICE_ID = os.environ.get('CONSULT_PLAN_ADDON_PRICE_ID', '')
+CONSULT_PLAN_ADDON_AMOUNT_CENTS = 10000  # $100 custom-plan add-on (Matti, 2026-08-17)
+CONSULT_BOOKING_URL = os.environ.get('CONSULT_BOOKING_URL', '')
+CONSULT_RUNNER_SECRET = os.environ.get('CONSULT_RUNNER_SECRET', '')
+CONSULT_ANALYSIS_LEASE_MINUTES = 90
+CONSULT_ANALYSIS_MAX_ATTEMPTS = 3
 
 # Stripe Tax — requires Stripe Tax to be enabled at account level first.
 # Set ENABLE_AUTOMATIC_TAX=true in Railway env vars after completing Stripe Tax setup.
@@ -303,6 +330,12 @@ def _periodic_intake_cleanup():
                 logger.warning(f"Periodic job sweep: {stats}")
         except Exception as e:
             logger.error(f"Periodic job sweep failed: {e}")
+        try:
+            consult_stats = sweep_stuck_consultations()
+            if consult_stats.get('reopened') or consult_stats.get('needs_attention'):
+                logger.warning(f"Periodic consult sweep: {consult_stats}")
+        except Exception as e:
+            logger.error(f"Periodic consult sweep failed: {e}")
 
 
 # =============================================================================
@@ -2737,6 +2770,58 @@ def sweep_stuck_jobs() -> dict:
     return stats
 
 
+def sweep_stuck_consultations() -> dict:
+    """Expired analysis leases: back to open (attempts < max) or
+    needs_attention (copies the JOB_STUCK_AFTER_MINUTES pattern above, for
+    the runner's claim lease instead of a pipeline job). Runs on the same
+    hourly before_request cadence as sweep_stuck_jobs(); no dedicated
+    endpoint in C1 — the operator lever is POST /api/consult/<id>/op."""
+    stats = {'scanned': 0, 'reopened': 0, 'needs_attention': 0}
+    now = datetime.now(timezone.utc)
+    for record in consultations.list_records(DELIVERIES_DIR):
+        if record.get('status') != 'analysis_running':
+            continue
+        analysis = record.get('analysis') or {}
+        lease_raw = analysis.get('lease_expires_at')
+        if not lease_raw:
+            continue
+        try:
+            lease_expires = datetime.fromisoformat(lease_raw)
+        except (TypeError, ValueError):
+            continue
+        if lease_expires.tzinfo is None:
+            lease_expires = lease_expires.replace(tzinfo=timezone.utc)
+        if lease_expires > now:
+            continue
+
+        stats['scanned'] += 1
+        order_id = record['order_id']
+        attempts = int(analysis.get('attempts', 0))
+
+        if attempts < CONSULT_ANALYSIS_MAX_ATTEMPTS:
+            def _reopen(r):
+                a = r.setdefault('analysis', {})
+                a['claimed_by'] = None
+                a['lease_expires_at'] = None
+                r['status'] = 'open'
+                consultations.append_timeline(r, 'error', 'lease expired — reopened')
+            consultations.update_record(DELIVERIES_DIR, order_id, _reopen)
+            stats['reopened'] += 1
+        else:
+            def _flag(r):
+                r['status'] = 'needs_attention'
+                consultations.append_timeline(r, 'error', f'lease expired after {attempts} attempts')
+            updated = consultations.update_record(DELIVERIES_DIR, order_id, _flag)
+            try:
+                _notify_consult_needs_attention(
+                    updated, reason=f'analysis lease expired after {attempts} attempts')
+            except Exception:
+                logger.exception(f"Failed to notify needs_attention for {order_id}")
+            stats['needs_attention'] += 1
+
+    return stats
+
+
 # =============================================================================
 # ROUTES
 # =============================================================================
@@ -4295,8 +4380,12 @@ def create_coaching_checkout():
 def create_consulting_checkout():
     """Create a Stripe Checkout Session for consulting.
 
-    Expects JSON: {email, name, hours: 1}
+    Expects JSON: {email, name, hours: 1, plan_addon: false}
     Returns: {checkout_url}
+
+    plan_addon adds the $100 custom-plan add-on as a second line item —
+    gated on CONSULT_PLAN_ADDON_PRICE_ID being configured (Stripe-before-
+    display: the sell page must not offer what isn't priced yet).
     """
     if request.method == 'OPTIONS':
         return '', 204
@@ -4321,11 +4410,24 @@ def create_consulting_checkout():
     except (ValueError, TypeError):
         return jsonify({'error': 'Invalid hours value'}), 400
 
+    plan_addon = bool(data.get('plan_addon')) and bool(CONSULT_PLAN_ADDON_PRICE_ID)
+
+    # Brand from the requesting site, same as /api/create-checkout.
+    brand = _brand_from_origin(request.headers.get('Origin', ''))
+    brand_cfg = _brand_config(brand)
+
     try:
         expires_at = int((datetime.now() + timedelta(minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
 
+        line_items = [{'price': CONSULTING_PRICE_ID, 'quantity': hours}]
+        if plan_addon:
+            line_items.append({'price': CONSULT_PLAN_ADDON_PRICE_ID, 'quantity': 1})
+
+        consulting_path = brand_cfg.get('consulting_path', '/consulting/')
+        consulting_success_path = brand_cfg.get('consulting_success_path', '/consulting/confirmed/')
+
         session_kwargs = dict(
-            line_items=[{'price': CONSULTING_PRICE_ID, 'quantity': hours}],
+            line_items=line_items,
             mode='payment',
             customer_email=email,
             customer_creation='always',
@@ -4333,9 +4435,11 @@ def create_consulting_checkout():
                 'product_type': 'consulting',
                 'athlete_name': name,
                 'hours': str(hours),
+                'plan_addon': '1' if plan_addon else '0',
+                'brand': brand,
             },
-            success_url='https://gravelgodcycling.com/consulting/confirmed/?session_id={CHECKOUT_SESSION_ID}',
-            cancel_url='https://gravelgodcycling.com/consulting/',
+            success_url=f"{brand_cfg['site']}{consulting_success_path}?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{brand_cfg['site']}{consulting_path}",
             expires_at=expires_at,
             after_expiration={
                 'recovery': {
@@ -4353,7 +4457,7 @@ def create_consulting_checkout():
         checkout_session = stripe.checkout.Session.create(**session_kwargs)
 
         logger.info(f"Created consulting checkout {checkout_session.id} "
-                     f"({hours}hr, {_mask_email(email)})")
+                     f"({hours}hr, addon={plan_addon}, brand={brand}, {_mask_email(email)})")
 
         return jsonify({'checkout_url': checkout_session.url})
 
@@ -4362,6 +4466,86 @@ def create_consulting_checkout():
         return jsonify({'error': 'Payment service error. Please try again.'}), 502
     except Exception as e:
         logger.exception(f"Consulting checkout error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/create-consult-addon-checkout', methods=['POST', 'OPTIONS'])
+@limiter.limit("20/minute")
+def create_consult_addon_checkout():
+    """Post-call add-on purchase: Checkout for the $100 plan add-on only.
+
+    Expects JSON: {ref}  — the consult order_id. Returns {checkout_url}.
+    Purchasable up to 7 days after the call (enforced by the offer email's
+    expiry and by Matti's own follow-up, not re-validated server-side here
+    — a late purchase still delivers a plan, it's just outside the SLA).
+    """
+    if request.method == 'OPTIONS':
+        return '', 204
+
+    if not CONSULT_PLAN_ADDON_PRICE_ID:
+        return jsonify({'error': 'CONSULT_PLAN_ADDON_PRICE_ID not configured'}), 503
+
+    data = request.get_json(silent=True) or {}
+    ref = str(data.get('ref') or '').strip()
+    if not ref:
+        return jsonify({'error': 'ref is required'}), 400
+    try:
+        safe_ref = consultations._safe_order_id(ref)
+    except consultations.ConsultationError:
+        return jsonify({'error': 'invalid ref'}), 400
+
+    record = consultations.read_record(DELIVERIES_DIR, safe_ref)
+    if record is None:
+        return jsonify({'error': 'consultation not found'}), 404
+
+    brand = normalize_brand(record.get('brand'))
+    brand_cfg = _brand_config(brand)
+    email = (record.get('athlete') or {}).get('email', '')
+
+    try:
+        expires_at = int((datetime.now() + timedelta(minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
+
+        consulting_path = brand_cfg.get('consulting_path', '/consulting/')
+        consulting_success_path = brand_cfg.get('consulting_success_path', '/consulting/confirmed/')
+
+        session_kwargs = dict(
+            line_items=[{'price': CONSULT_PLAN_ADDON_PRICE_ID, 'quantity': 1}],
+            mode='payment',
+            customer_creation='always',
+            metadata={
+                'product_type': 'consult_addon',
+                'consult_order_id': safe_ref,
+                'brand': brand,
+            },
+            success_url=f"{brand_cfg['site']}{consulting_success_path}?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{brand_cfg['site']}{consulting_path}",
+            expires_at=expires_at,
+            after_expiration={
+                'recovery': {
+                    'enabled': True,
+                    'allow_promotion_codes': True,
+                }
+            },
+            consent_collection={
+                'promotions': 'auto',
+            },
+        )
+        if email:
+            session_kwargs['customer_email'] = email
+        if ENABLE_AUTOMATIC_TAX:
+            session_kwargs['automatic_tax'] = {'enabled': True}
+
+        checkout_session = stripe.checkout.Session.create(**session_kwargs)
+
+        logger.info(f"Created consult add-on checkout {checkout_session.id} for {safe_ref}")
+
+        return jsonify({'checkout_url': checkout_session.url})
+
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error creating consult add-on checkout: {e}")
+        return jsonify({'error': 'Payment service error. Please try again.'}), 502
+    except Exception as e:
+        logger.exception(f"Consult add-on checkout error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
 
@@ -4482,6 +4666,8 @@ def stripe_webhook():
             return _handle_coaching_webhook(session, metadata, order_id)
         elif product_type == 'consulting':
             return _handle_consulting_webhook(session, metadata, order_id)
+        elif product_type == 'consult_addon':
+            return _handle_consult_addon_webhook(session, metadata, order_id)
         else:
             return _handle_training_plan_webhook(data, order_id)
 
@@ -4725,32 +4911,275 @@ def _handle_coaching_webhook(session: dict, metadata: dict, order_id: str):
     })
 
 
+def _apply_brand_signature(body: str, brand: str) -> str:
+    """Swap the GG signature block + site links for the brand's own.
+
+    Shared by the day-1/3/7 sequence (inline in process_followup_emails)
+    and the CONSULT-ENGINE athlete emails below — factored out here so the
+    new consult copy doesn't fork the substitution logic a third time.
+    """
+    if brand == DEFAULT_BRAND:
+        return body
+    brand_cfg = _brand_config(brand)
+    signature = brand_cfg.get('email', {})
+    return body.replace(
+        '— Matti\nGravel God Coaching\ngravelgodcycling.com',
+        f"— {signature.get('signature_name', 'Matti')}\n"
+        f"{signature.get('signature_organization', brand_cfg['name'])}\n"
+        f"{signature.get('signature_site', brand_cfg['site'].replace('https://', ''))}",
+    ).replace('https://gravelgodcycling.com', brand_cfg['site'])
+
+
+def _consult_intake_link(order_id: str, brand_cfg: dict) -> str:
+    """Fragment-carried intake link — credentials never go in the query
+    string (app.py:103-105 / :3286; only `token=` is log-redacted)."""
+    try:
+        token = issue_consult_intake_token(order_id=order_id)
+    except ConsultIntakeTokenError as e:
+        logger.error(f"Cannot mint consult intake token for {order_id}: {e}")
+        return ''
+    return f"{brand_cfg['site']}/consulting/intake/#ref={order_id}&t={token}"
+
+
+def _send_consult_welcome(record: dict, brand: str) -> bool:
+    """Athlete welcome for a paid consult: booking link, fragment-carried
+    intake link, TP invite + three-step copy, no-TP fallback, add-on terms
+    if bought. See docs/CONSULT_ENGINE_SPEC.md §3.2."""
+    athlete = record.get('athlete') or {}
+    email = athlete.get('email') or ''
+    if not email:
+        logger.warning(f"No athlete email for consult {record.get('order_id')} — skipping welcome")
+        return False
+    name = athlete.get('name') or ''
+    first_name = name.split()[0] if name else 'there'
+    order_id = record.get('order_id', '')
+    brand_cfg = _brand_config(brand)
+    plan_addon_bought = bool((record.get('products', {}).get('plan_addon') or {}).get('purchased'))
+
+    subject, body = build_consult_welcome_email(
+        first_name=first_name,
+        booking_link=CONSULT_BOOKING_URL,
+        intake_link=_consult_intake_link(order_id, brand_cfg),
+        plan_addon_bought=plan_addon_bought,
+        tp_invite_link=CONSULT_TP_INVITE_LINK,
+    )
+    body = _apply_brand_signature(body, brand)
+    return _send_email(email, subject, body, reply_to=NOTIFICATION_EMAIL, brand=brand)
+
+
+def _send_consult_intake_nudge(record: dict, brand: str, first_name: str) -> bool:
+    athlete = record.get('athlete') or {}
+    email = athlete.get('email') or ''
+    if not email:
+        return False
+    brand_cfg = _brand_config(brand)
+    intake_link = _consult_intake_link(record.get('order_id', ''), brand_cfg)
+    if not intake_link:
+        return False
+    body = _apply_brand_signature(
+        CONSULT_INTAKE_NUDGE_TEMPLATE.format(first_name=first_name, intake_link=intake_link),
+        brand)
+    return _send_email(email, CONSULT_INTAKE_NUDGE_SUBJECT, body,
+                       reply_to=NOTIFICATION_EMAIL, brand=brand)
+
+
+def _send_consult_tp_nudge(record: dict, brand: str, first_name: str) -> bool:
+    athlete = record.get('athlete') or {}
+    email = athlete.get('email') or ''
+    if not email:
+        return False
+    body = _apply_brand_signature(
+        CONSULT_TP_NUDGE_TEMPLATE.format(first_name=first_name, tp_invite_link=CONSULT_TP_INVITE_LINK),
+        brand)
+    return _send_email(email, CONSULT_TP_NUDGE_SUBJECT, body,
+                       reply_to=NOTIFICATION_EMAIL, brand=brand)
+
+
+def _send_consult_addon_offer(record: dict, brand: str, first_name: str) -> bool:
+    athlete = record.get('athlete') or {}
+    email = athlete.get('email') or ''
+    if not email:
+        return False
+    body = _apply_brand_signature(
+        CONSULT_ADDON_OFFER_TEMPLATE.format(first_name=first_name), brand)
+    return _send_email(email, CONSULT_ADDON_OFFER_SUBJECT, body,
+                       reply_to=NOTIFICATION_EMAIL, brand=brand)
+
+
+def _send_consult_plan_reminder(record: dict) -> bool:
+    """Coach-facing (Matti), +1 day after the call: send the plan-of-action."""
+    order_id = record.get('order_id', '')
+    name = (record.get('athlete') or {}).get('name', 'Unknown')
+    subject = f"[GG] Plan-of-action due: {name} ({order_id})"
+    text = (f"It's been a day since the consult call with {name} "
+            f"(order {order_id}). Send the plan-of-action if you haven't.")
+    brand = normalize_brand(record.get('brand'))
+    if NOTIFICATION_EMAIL:
+        return _send_email(NOTIFICATION_EMAIL, subject, text, brand=brand)
+    logger.critical(f"CONSULT PLAN REMINDER: {subject}\n{text}")
+    return False
+
+
+def _notify_consult_needs_attention(record: dict, reason: str) -> None:
+    """Coach-facing alert with the operator curl one-liners (§5)."""
+    order_id = record.get('order_id', '')
+    name = (record.get('athlete') or {}).get('name', 'Unknown')
+    subject = f"[GG] Consult needs attention: {name} ({order_id})"
+    text = (
+        f"Consult {order_id} for {name} needs attention: {reason}\n\n"
+        "Operator actions (X-Cron-Secret header):\n"
+        f"  Set call time:  curl -X POST -H 'X-Cron-Secret: ...' "
+        f"-d '{{\"call_at\": \"2026-01-01T15:00:00+00:00\"}}' "
+        f".../api/consult/{order_id}/op\n"
+        f"  Retry analysis: curl -X POST -H 'X-Cron-Secret: ...' "
+        f"-d '{{\"retry\": true}}' .../api/consult/{order_id}/op\n"
+        f"  Close:          curl -X POST -H 'X-Cron-Secret: ...' "
+        f"-d '{{\"close\": \"reason\"}}' .../api/consult/{order_id}/op"
+    )
+    brand = normalize_brand(record.get('brand'))
+    if NOTIFICATION_EMAIL:
+        if _send_email(NOTIFICATION_EMAIL, subject, text, brand=brand):
+            return
+    logger.critical(f"CONSULT NEEDS ATTENTION: {subject}\n{text}")
+
+
 def _handle_consulting_webhook(session: dict, metadata: dict, order_id: str):
-    """Handle consulting checkout completion — log + notify."""
+    """Handle consulting checkout completion.
+
+    Order matters (docs/CONSULT_ENGINE_SPEC.md §3): the consultation record
+    and athlete welcome email happen BEFORE mark_order_processed, so a
+    Resend timeout can't silently lose the welcome forever on Stripe's
+    retry — the follow-up cron re-sends whenever welcome_sent_at is still
+    null. Tolerates missing fields throughout and never raises — a broken
+    email must not turn into a 500 that makes Stripe retry the whole
+    handler (and risk a duplicate coach notification).
+    """
     name = metadata.get('athlete_name', 'Unknown')
-    hours = metadata.get('hours', '1')
-    email = session.get('customer_details', {}).get('email', '')
+    try:
+        hours = int(metadata.get('hours', '1'))
+    except (TypeError, ValueError):
+        hours = 1
+    email = (session.get('customer_details') or {}).get('email', '')
+    brand = normalize_brand(metadata.get('brand'))
+    plan_addon = metadata.get('plan_addon') == '1'
 
     logger.info(f"Consulting booked: {name} ({_mask_email(email)}), {hours}hr")
 
+    # 1. Write the consultation record — atomic, BEFORE mark_order_processed.
+    record = None
+    try:
+        record = consultations.new_record(
+            order_id=order_id, brand=brand, athlete_name=name,
+            athlete_email=email, hours=hours,
+            amount_cents=int(session.get('amount_total') or 0) or (CONSULTING_PRICE_CENTS * hours),
+            plan_addon=plan_addon,
+            plan_addon_amount_cents=CONSULT_PLAN_ADDON_AMOUNT_CENTS,
+        )
+        consultations.write_record(DELIVERIES_DIR, record)
+    except Exception:
+        logger.exception(f"Failed to write consultation record for {order_id}")
+        record = None
+
+    # 2. Athlete welcome email — leaves welcome_sent_at null on failure so
+    #    process_consult_followups() retries it.
+    if record is not None:
+        try:
+            sent = _send_consult_welcome(record, brand)
+        except Exception:
+            logger.exception(f"Consult welcome email failed for {order_id}")
+            sent = False
+        if sent:
+            try:
+                def _mark_welcome_sent(r):
+                    r['welcome_sent_at'] = consultations._now_iso()
+                    consultations.append_timeline(r, 'welcome_sent')
+                record = consultations.update_record(DELIVERIES_DIR, order_id, _mark_welcome_sent)
+            except Exception:
+                logger.exception(f"Failed to record welcome_sent_at for {order_id}")
+
+    # 3. Idempotency marker LAST.
     mark_order_processed(order_id, sanitize_athlete_id(name))
-    _send_ga4_purchase(order_id, session.get('amount_total'),
-                       'consulting', 'Consulting Session',
-                       brand=metadata.get('brand', DEFAULT_BRAND))
-    _log_product_event('consulting', order_id,
-                       name=name, email=email, hours=hours)
-    _notify_new_order('consulting', {
-        'name': name,
-        'email': email,
-        'hours': hours,
-        'order_id': order_id,
-    })
+
+    # Best-effort telemetry — never critical for retry safety.
+    try:
+        _send_ga4_purchase(order_id, session.get('amount_total'),
+                           'consulting', 'Consulting Session', brand=brand)
+    except Exception:
+        logger.exception("GA4 purchase event failed for consulting")
+    try:
+        _log_product_event('consulting', order_id, name=name, email=email, hours=str(hours))
+    except Exception:
+        logger.exception("Failed to log consulting product event")
+
+    # 4. Coach email via _send_email directly — NOT _notify_new_order,
+    #    whose external_notification_projection nulls athlete PII and
+    #    replaces raw errors (fulfillment_state.py:159-190). This mail is
+    #    coach-only and needs the real details.
+    try:
+        subject, text, html = _build_consulting_email({
+            'name': name, 'email': email, 'hours': str(hours), 'order_id': order_id,
+        })
+        if NOTIFICATION_EMAIL:
+            _send_email(NOTIFICATION_EMAIL, subject, text, html=html, brand=brand)
+        else:
+            logger.critical(f"NEW ORDER: {subject}\n{text}")
+    except Exception:
+        logger.exception("Failed to send consulting coach notification")
 
     return jsonify({
         'status': 'success',
         'product_type': 'consulting',
-        'hours': hours,
+        'hours': str(hours),
         'message': f'Consulting ({hours}hr) booked for {name}'
+    })
+
+
+def _handle_consult_addon_webhook(session: dict, metadata: dict, order_id: str):
+    """Post-call add-on purchase — flips products.plan_addon on the
+    EXISTING consult record. Idempotent on purchased_at: a Stripe retry
+    for the same session finds the flag already set and sends no second
+    coach email."""
+    consult_order_id = str(metadata.get('consult_order_id') or '')
+    email = (session.get('customer_details') or {}).get('email', '')
+    brand = normalize_brand(metadata.get('brand'))
+
+    mark_order_processed(order_id, sanitize_athlete_id(consult_order_id or 'consult-addon'))
+
+    record = None
+    already_purchased = False
+    if consult_order_id:
+        try:
+            def _mutate(r):
+                nonlocal already_purchased
+                addon = r.setdefault('products', {}).setdefault('plan_addon', {})
+                if addon.get('purchased_at'):
+                    already_purchased = True
+                    return
+                addon['purchased'] = True
+                addon['purchased_at'] = consultations._now_iso()
+                consultations.append_timeline(r, 'addon_paid')
+            record = consultations.update_record(DELIVERIES_DIR, consult_order_id, _mutate)
+        except consultations.ConsultationError:
+            logger.warning(f"consult add-on webhook: no record for {consult_order_id}")
+        except Exception:
+            logger.exception(f"consult add-on webhook failed for {consult_order_id}")
+
+    if record is not None and not already_purchased:
+        try:
+            subject = f"[GG] Add-on plan purchased for consult {consult_order_id}"
+            text = (f"Add-on custom plan purchased ({_mask_email(email)}) "
+                    f"for consult order {consult_order_id}.")
+            if NOTIFICATION_EMAIL:
+                _send_email(NOTIFICATION_EMAIL, subject, text, brand=brand)
+            else:
+                logger.critical(f"NEW ORDER: {subject}\n{text}")
+        except Exception:
+            logger.exception("Failed to notify coach of consult add-on purchase")
+
+    return jsonify({
+        'status': 'success',
+        'product_type': 'consult_addon',
+        'consult_order_id': consult_order_id,
     })
 
 
@@ -5043,6 +5472,518 @@ def process_followup_emails():
 
     stats['skipped'] = stats['checked'] * len(FOLLOWUP_SEQUENCE) - stats['sent'] - stats['errors']
     return stats
+
+
+def _mark_consult_nudge_sent(order_id: str, nudge: str) -> None:
+    def _mutate(r):
+        nudges = set(r.get('nudges_sent') or [])
+        nudges.add(nudge)
+        r['nudges_sent'] = sorted(nudges)
+    consultations.update_record(DELIVERIES_DIR, order_id, _mutate)
+
+
+def process_consult_followups() -> dict:
+    """State-conditional follow-ups for paid consultations.
+
+    Unlike FOLLOWUP_SEQUENCE (fixed day-offset, training_plan orders only —
+    it hard-filters product_type=='training_plan' above and is keyed
+    (order_id, day)), this walks consultations/*.json and applies rules
+    keyed on record STATE: welcome missing → resend; +24h no intake →
+    nudge; +48h no TP link → nudge with fallback; each nudge fires at most
+    once (tracked in record['nudges_sent']). Call-relative rules only run
+    when call_at is set: +1d → plan-of-action reminder to the coach if not
+    closed; +2d → add-on offer if not purchased. Also applies the 30-day
+    give-up rule. See docs/CONSULT_ENGINE_SPEC.md §3.5.
+    """
+    stats = {
+        'checked': 0, 'welcome_resent': 0, 'intake_nudged': 0,
+        'tp_nudged': 0, 'plan_reminded': 0, 'addon_offered': 0,
+        'closed_no_data': 0, 'errors': 0,
+    }
+    now = datetime.now(timezone.utc)
+
+    for record in consultations.list_records(DELIVERIES_DIR):
+        if record.get('status') == 'closed':
+            continue
+        stats['checked'] += 1
+        order_id = record['order_id']
+        brand = normalize_brand(record.get('brand'))
+        athlete = record.get('athlete') or {}
+        name = athlete.get('name') or ''
+        first_name = name.split()[0] if name else 'there'
+        nudges_sent = set(record.get('nudges_sent') or [])
+
+        # Give-up rule: no TP link 30 days after paid.
+        if consultations.should_give_up(record, now=now):
+            try:
+                def _close(r):
+                    r['status'] = 'closed'
+                    r['closed_reason'] = 'no_data_30d'
+                    consultations.append_timeline(r, 'closed', 'no_data_30d')
+                closed = consultations.update_record(DELIVERIES_DIR, order_id, _close)
+                _notify_consult_needs_attention(closed, reason='no_data_30d — auto-closed')
+                stats['closed_no_data'] += 1
+            except Exception:
+                logger.exception(f"Failed to close stale consult {order_id}")
+                stats['errors'] += 1
+            continue
+
+        # Welcome missing → resend (idempotent: only marks welcome_sent_at
+        # on success, so a Resend outage keeps retrying every cron run).
+        if not record.get('welcome_sent_at'):
+            try:
+                if _send_consult_welcome(record, brand):
+                    def _mark_welcome(r):
+                        r['welcome_sent_at'] = consultations._now_iso()
+                        consultations.append_timeline(r, 'welcome_sent', 'cron resend')
+                    record = consultations.update_record(DELIVERIES_DIR, order_id, _mark_welcome)
+                    stats['welcome_resent'] += 1
+                else:
+                    stats['errors'] += 1
+            except Exception:
+                logger.exception(f"Consult welcome resend failed for {order_id}")
+                stats['errors'] += 1
+
+        created_at = consultations._parse_iso(record.get('created_at'))
+        if created_at:
+            age = now - created_at
+
+            if (age >= timedelta(hours=24)
+                    and not (record.get('intake') or {}).get('received_at')
+                    and 'intake_nudge' not in nudges_sent):
+                try:
+                    if _send_consult_intake_nudge(record, brand, first_name):
+                        _mark_consult_nudge_sent(order_id, 'intake_nudge')
+                        stats['intake_nudged'] += 1
+                    else:
+                        stats['errors'] += 1
+                except Exception:
+                    logger.exception(f"Consult intake nudge failed for {order_id}")
+                    stats['errors'] += 1
+
+            if (age >= timedelta(hours=48)
+                    and not athlete.get('tp_matched_at')
+                    and 'tp_nudge' not in nudges_sent):
+                try:
+                    if _send_consult_tp_nudge(record, brand, first_name):
+                        _mark_consult_nudge_sent(order_id, 'tp_nudge')
+                        stats['tp_nudged'] += 1
+                    else:
+                        stats['errors'] += 1
+                except Exception:
+                    logger.exception(f"Consult TP nudge failed for {order_id}")
+                    stats['errors'] += 1
+
+        # Call-relative rules — ONLY when call_at is set (§3.5).
+        call_at = consultations._parse_iso(record.get('call_at'))
+        if call_at:
+            since_call = now - call_at
+
+            if (since_call >= timedelta(days=1)
+                    and record.get('status') != 'closed'
+                    and 'plan_reminder' not in nudges_sent):
+                try:
+                    if _send_consult_plan_reminder(record):
+                        _mark_consult_nudge_sent(order_id, 'plan_reminder')
+                        stats['plan_reminded'] += 1
+                    else:
+                        stats['errors'] += 1
+                except Exception:
+                    logger.exception(f"Consult plan reminder failed for {order_id}")
+                    stats['errors'] += 1
+
+            if (since_call >= timedelta(days=2)
+                    and not (record.get('products', {}).get('plan_addon') or {}).get('purchased')
+                    and 'addon_offer' not in nudges_sent):
+                try:
+                    if _send_consult_addon_offer(record, brand, first_name):
+                        offer_expires_at = (call_at + timedelta(days=7)).isoformat()
+
+                        def _set_offer_expiry(r):
+                            r.setdefault('products', {}).setdefault('plan_addon', {})['offer_expires_at'] = offer_expires_at
+                        consultations.update_record(DELIVERIES_DIR, order_id, _set_offer_expiry)
+                        _mark_consult_nudge_sent(order_id, 'addon_offer')
+                        stats['addon_offered'] += 1
+                    else:
+                        stats['errors'] += 1
+                except Exception:
+                    logger.exception(f"Consult add-on offer failed for {order_id}")
+                    stats['errors'] += 1
+
+    return stats
+
+
+# =============================================================================
+# CONSULT-ENGINE C1 ROUTES (docs/CONSULT_ENGINE_SPEC.md §4, §5)
+# =============================================================================
+
+@app.route('/api/consult-intake', methods=['POST', 'OPTIONS'])
+@limiter.limit("10/minute")
+def consult_intake():
+    """Intake submission for a paid consult.
+
+    Body: {ref, t, answers}. The token (`t`) is a purpose-scoped,
+    fragment-carried credential (consult_intake_tokens.py) — CORS
+    Allow-Headers stays Content-Type only (set_security_headers, above)
+    because the token travels in the body, not a header or the query
+    string. Idempotent: a second submission for the same ref replaces the
+    stored intake and appends another timeline event. Never synthesizes an
+    unanswered field — whatever the athlete sent (including "don't know")
+    is stored verbatim; the runner is responsible for labeling any
+    TrainingPeaks-sourced numbers as such rather than as the athlete's
+    answer.
+    """
+    if request.method == 'OPTIONS':
+        return '', 204
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Invalid JSON'}), 400
+
+    ref = str(data.get('ref') or '').strip()
+    token = str(data.get('t') or '').strip()
+    answers = data.get('answers')
+    if not ref or not token or not isinstance(answers, dict):
+        return jsonify({'error': 'ref, t, and answers are required'}), 400
+
+    try:
+        safe_ref = consultations._safe_order_id(ref)
+    except consultations.ConsultationError:
+        return jsonify({'error': 'invalid ref'}), 400
+
+    try:
+        verify_consult_intake_token(token, expected_order_id=safe_ref)
+    except ConsultIntakeTokenError:
+        return jsonify({'error': 'invalid or expired token'}), 401
+
+    record = consultations.read_record(DELIVERIES_DIR, safe_ref)
+    if record is None:
+        return jsonify({'error': 'consultation not found'}), 404
+
+    intake_id = str(uuid.uuid4())
+    store_intake(intake_id, {'answers': answers, 'consult_order_id': safe_ref})
+
+    def _mutate(r):
+        replaced = bool((r.get('intake') or {}).get('intake_id'))
+        r['intake'] = {'intake_id': intake_id, 'received_at': consultations._now_iso()}
+        consultations.append_timeline(r, 'intake_received', 'replaced prior intake' if replaced else '')
+    consultations.update_record(DELIVERIES_DIR, safe_ref, _mutate)
+
+    logger.info(f"Consult intake received for {safe_ref}")
+    return jsonify({'status': 'ok'})
+
+
+def _require_runner_secret():
+    """503 when CONSULT_RUNNER_SECRET is unset, 401 when the header is
+    wrong — same pattern as CRON_SECRET (cron_followup_emails, above).
+    Returns a Flask response to short-circuit the caller, or None."""
+    if not CONSULT_RUNNER_SECRET:
+        return jsonify({'error': 'CONSULT_RUNNER_SECRET not configured'}), 503
+    supplied = request.headers.get('X-Runner-Secret', '')
+    if not hmac.compare_digest(supplied, CONSULT_RUNNER_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    return None
+
+
+@app.route('/api/consult/jobs/pending', methods=['GET'])
+@limiter.limit("60/minute")
+def consult_jobs_pending():
+    """Open records lacking tp_matched_at — the runner's roster matcher
+    does ONE poll and matches by email, not one lookup per record."""
+    auth_err = _require_runner_secret()
+    if auth_err:
+        return auth_err
+
+    pending = []
+    for record in consultations.list_records(DELIVERIES_DIR):
+        if record.get('status') == 'closed':
+            continue
+        athlete = record.get('athlete') or {}
+        if athlete.get('tp_matched_at'):
+            continue
+        intake_tp_email = ''
+        intake_id = (record.get('intake') or {}).get('intake_id')
+        if intake_id:
+            intake_data = load_intake(intake_id) or {}
+            intake_tp_email = str((intake_data.get('answers') or {}).get('tp_email') or '')
+        pending.append({
+            'order_id': record['order_id'],
+            'email': athlete.get('email', ''),
+            'intake_tp_email': intake_tp_email,
+        })
+    return jsonify({'pending': pending})
+
+
+@app.route('/api/consult/jobs/<order_id>/tp-linked', methods=['POST'])
+@limiter.limit("60/minute")
+def consult_job_tp_linked(order_id):
+    """Runner match confirmed — sets tp_matched_at. Idempotent: a repeat
+    call for an already-matched record is a no-op (no second timestamp)."""
+    auth_err = _require_runner_secret()
+    if auth_err:
+        return auth_err
+
+    data = request.get_json(silent=True) or {}
+    tp_athlete_id = str(data.get('tp_athlete_id') or '').strip()
+    if not tp_athlete_id:
+        return jsonify({'error': 'tp_athlete_id is required'}), 400
+
+    def _mutate(r):
+        athlete = r.setdefault('athlete', {})
+        if not athlete.get('tp_matched_at'):
+            athlete['tp_athlete_id'] = tp_athlete_id
+            athlete['tp_matched_at'] = consultations._now_iso()
+            consultations.append_timeline(r, 'tp_linked', tp_athlete_id)
+    try:
+        record = consultations.update_record(DELIVERIES_DIR, order_id, _mutate)
+    except consultations.ConsultationError:
+        return jsonify({'error': 'not found'}), 404
+
+    return jsonify({'status': 'ok', 'tp_matched_at': record['athlete']['tp_matched_at']})
+
+
+@app.route('/api/consult/jobs/<order_id>/claim', methods=['POST'])
+@limiter.limit("60/minute")
+def consult_job_claim(order_id):
+    """Lease the record for analysis: claimed_by, lease_expires_at = now +
+    90min, attempts+1, status → analysis_running. Refuses (409) if a live
+    lease already exists; sweep_stuck_consultations() reclaims expired
+    leases."""
+    auth_err = _require_runner_secret()
+    if auth_err:
+        return auth_err
+
+    data = request.get_json(silent=True) or {}
+    claimed_by = str(data.get('claimed_by') or 'runner').strip() or 'runner'
+    now = datetime.now(timezone.utc)
+    outcome = {}
+
+    def _mutate(r):
+        analysis = r.setdefault('analysis', {})
+        lease_raw = analysis.get('lease_expires_at')
+        live_lease = False
+        if lease_raw:
+            try:
+                lease_expires = datetime.fromisoformat(lease_raw)
+                if lease_expires.tzinfo is None:
+                    lease_expires = lease_expires.replace(tzinfo=timezone.utc)
+                live_lease = lease_expires > now
+            except (TypeError, ValueError):
+                live_lease = False
+        if live_lease:
+            outcome['conflict'] = True
+            return
+        analysis['claimed_by'] = claimed_by
+        analysis['lease_expires_at'] = (now + timedelta(minutes=CONSULT_ANALYSIS_LEASE_MINUTES)).isoformat()
+        analysis['attempts'] = int(analysis.get('attempts', 0)) + 1
+        analysis['started_at'] = now.isoformat()
+        r['status'] = 'analysis_running'
+        consultations.append_timeline(r, 'claimed', claimed_by)
+        outcome['conflict'] = False
+
+    try:
+        record = consultations.update_record(DELIVERIES_DIR, order_id, _mutate)
+    except consultations.ConsultationError:
+        return jsonify({'error': 'not found'}), 404
+
+    if outcome.get('conflict'):
+        return jsonify({'error': 'already claimed',
+                        'claimed_by': record['analysis']['claimed_by']}), 409
+
+    return jsonify({'status': 'claimed', 'lease_expires_at': record['analysis']['lease_expires_at']})
+
+
+def _consult_report_to_html(markdown_text: str) -> str:
+    """Minimal, dependency-free markdown→HTML for the coach report email
+    (no markdown library in requirements.txt — full rendering lives in
+    the attached report.md itself)."""
+    escaped = html_escape(markdown_text)
+    lines = []
+    for line in escaped.split('\n'):
+        if line.startswith('## '):
+            lines.append(f"<h3>{line[3:]}</h3>")
+        elif line.startswith('# '):
+            lines.append(f"<h2>{line[2:]}</h2>")
+        else:
+            lines.append(line)
+    body = '<br>'.join(lines)
+    return f'<div style="font-family: Helvetica, Arial, sans-serif; white-space: pre-wrap;">{body}</div>'
+
+
+@app.route('/api/consult/jobs/<order_id>/report', methods=['POST'])
+@limiter.limit("60/minute")
+def consult_job_report(order_id):
+    """Multipart upload {report_md, report_json?, receipts?} → status
+    report_ready + coach email (markdown→html) with attachments. Athlete
+    gets nothing automatically. Idempotent: a repeat post for an already
+    report_ready record still 200s but sends no second email — runner
+    retries with backoff are guaranteed to hit this twice on occasion."""
+    auth_err = _require_runner_secret()
+    if auth_err:
+        return auth_err
+
+    try:
+        safe_id = consultations._safe_order_id(order_id)
+    except consultations.ConsultationError:
+        return jsonify({'error': 'invalid order_id'}), 400
+
+    record = consultations.read_record(DELIVERIES_DIR, safe_id)
+    if record is None:
+        return jsonify({'error': 'not found'}), 404
+
+    report_md_file = request.files.get('report_md')
+    if not report_md_file:
+        return jsonify({'error': 'report_md is required'}), 400
+    report_json_file = request.files.get('report_json')
+    receipts_file = request.files.get('receipts')
+
+    already_ready = (record.get('status') == 'report_ready'
+                     and bool((record.get('analysis') or {}).get('report_path')))
+
+    report_dir = Path(DELIVERIES_DIR) / 'consultations' / safe_id
+    report_dir.mkdir(parents=True, exist_ok=True)
+
+    report_md_bytes = report_md_file.read()
+    report_md_path = report_dir / 'report.md'
+    report_md_path.write_bytes(report_md_bytes)
+
+    if report_json_file:
+        (report_dir / 'report.json').write_bytes(report_json_file.read())
+
+    receipts_path = None
+    if receipts_file:
+        receipts_path = report_dir / 'receipts.zip'
+        receipts_path.write_bytes(receipts_file.read())
+
+    def _mutate(r):
+        r['status'] = 'report_ready'
+        analysis = r.setdefault('analysis', {})
+        analysis['report_path'] = str(report_md_path)
+        analysis['finished_at'] = consultations._now_iso()
+        analysis['error'] = None
+        consultations.append_timeline(r, 'report')
+    record = consultations.update_record(DELIVERIES_DIR, safe_id, _mutate)
+
+    if not already_ready:
+        try:
+            report_text = report_md_bytes.decode('utf-8', errors='replace')
+            attachments = [('report.md', report_md_bytes)]
+            if receipts_path:
+                attachments.append(('receipts.zip', receipts_path))
+            name = (record.get('athlete') or {}).get('name', 'Unknown')
+            subject = f"[GG] Consult report ready: {name} ({safe_id})"
+            if NOTIFICATION_EMAIL:
+                _send_email(NOTIFICATION_EMAIL, subject, report_text,
+                           html=_consult_report_to_html(report_text),
+                           attachments=attachments,
+                           brand=normalize_brand(record.get('brand')))
+            else:
+                logger.critical(f"CONSULT REPORT READY: {subject}")
+        except Exception:
+            logger.exception(f"Failed to send report-ready email for {safe_id}")
+
+    return jsonify({'status': 'ok', 'record_status': record['status']})
+
+
+@app.route('/api/consult/jobs/<order_id>/error', methods=['POST'])
+@limiter.limit("60/minute")
+def consult_job_error(order_id):
+    """Runner-reported failure → needs_attention + coach email (error text
+    included — this mail is coach-only, no projection). Idempotent: the
+    same error text posted twice sends only one alert."""
+    auth_err = _require_runner_secret()
+    if auth_err:
+        return auth_err
+
+    data = request.get_json(silent=True) or {}
+    error_text = str(data.get('error') or '').strip()[:5000]
+
+    record = consultations.read_record(DELIVERIES_DIR, order_id)
+    if record is None:
+        return jsonify({'error': 'not found'}), 404
+
+    already_flagged = (record.get('status') == 'needs_attention'
+                       and (record.get('analysis') or {}).get('error') == error_text)
+
+    def _mutate(r):
+        r['status'] = 'needs_attention'
+        analysis = r.setdefault('analysis', {})
+        analysis['error'] = error_text
+        analysis['finished_at'] = consultations._now_iso()
+        consultations.append_timeline(r, 'error', error_text[:200])
+    record = consultations.update_record(DELIVERIES_DIR, order_id, _mutate)
+
+    if not already_flagged:
+        try:
+            _notify_consult_needs_attention(record, reason=error_text or 'runner reported error')
+        except Exception:
+            logger.exception(f"Failed to notify consult error for {order_id}")
+
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/api/consult/jobs/<order_id>', methods=['GET'])
+@limiter.limit("60/minute")
+def consult_job_get(order_id):
+    """Full record read — X-Runner-Secret ONLY. The athlete intake token
+    (consult_intake_tokens.py) is scoped to /api/consult-intake and can
+    never read this."""
+    auth_err = _require_runner_secret()
+    if auth_err:
+        return auth_err
+
+    record = consultations.read_record(DELIVERIES_DIR, order_id)
+    if record is None:
+        return jsonify({'error': 'not found'}), 404
+    return jsonify(record)
+
+
+@app.route('/api/consult/<order_id>/op', methods=['POST'])
+@limiter.limit("20/minute")
+def consult_operator_op(order_id):
+    """Matti's only lever until a review surface exists (§5): {call_at} |
+    {close: reason} | {retry: true}, via X-Cron-Secret. The coach's
+    needs_attention email includes the curl one-liners for this."""
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not hmac.compare_digest(secret, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json(silent=True) or {}
+    if not any(k in data for k in ('call_at', 'close', 'retry')):
+        return jsonify({'error': 'call_at, close, or retry is required'}), 400
+
+    applied = []
+
+    def _mutate(r):
+        if data.get('call_at'):
+            r['call_at'] = str(data['call_at'])
+            consultations.append_timeline(r, 'call_set', r['call_at'])
+            applied.append('call_at')
+        if data.get('close'):
+            r['status'] = 'closed'
+            r['closed_reason'] = str(data['close'])
+            consultations.append_timeline(r, 'closed', str(data['close']))
+            applied.append('close')
+        if data.get('retry'):
+            r['status'] = 'open'
+            analysis = r.setdefault('analysis', {})
+            analysis['claimed_by'] = None
+            analysis['lease_expires_at'] = None
+            analysis['error'] = None
+            consultations.append_timeline(r, 'error', 'operator retry')
+            applied.append('retry')
+
+    try:
+        record = consultations.update_record(DELIVERIES_DIR, order_id, _mutate)
+    except consultations.ConsultationError:
+        return jsonify({'error': 'not found'}), 404
+
+    if not applied:
+        return jsonify({'error': 'no recognized operation'}), 400
+
+    return jsonify({'status': 'ok', 'applied': applied, 'record_status': record['status']})
 
 
 # =============================================================================
@@ -5419,8 +6360,11 @@ def cron_followup_emails():
         logger.info(f"Follow-up cron complete: {stats}")
         tp_stats = process_touchpoint_emails()
         logger.info(f"Touchpoint cron complete: {tp_stats}")
+        consult_stats = process_consult_followups()
+        logger.info(f"Consult follow-up cron complete: {consult_stats}")
         return jsonify({'status': 'ok', **stats,
-                        'touchpoints': tp_stats})
+                        'touchpoints': tp_stats,
+                        'consult': consult_stats})
     except Exception as e:
         logger.exception(f"Follow-up cron error: {e}")
         return jsonify({'error': 'Internal error'}), 500

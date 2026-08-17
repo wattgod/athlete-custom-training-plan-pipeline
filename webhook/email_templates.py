@@ -103,3 +103,107 @@ FOLLOWUP_SEQUENCE = [
         ),
     },
 ]
+
+
+# =============================================================================
+# CONSULT-ENGINE copy (docs/CONSULT_ENGINE_SPEC.md)
+#
+# Athlete-facing copy for the post-pay consult flow: the welcome email sent
+# right after checkout, plus the state-conditional nudges fired by
+# process_consult_followups() (webhook/app.py). Coach-facing copy (order
+# notifications, needs_attention alerts, the plan-of-action reminder) stays
+# inline in app.py, matching the existing coaching/consulting notification
+# pattern — it's operational, not brand voice.
+#
+# Same copy rules as FOLLOWUP_SEQUENCE above: plain language, no jargon, no
+# hype, one clear next action. Never invent a number the athlete didn't
+# give — "don't know" stays "don't know."
+# =============================================================================
+
+TP_INVITE_LINK = "https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU"
+
+CONSULT_ADDON_TERMS = (
+    "You also bought the custom plan add-on: a 12-week plan built from "
+    "this consult plus your data, delivered on TrainingPeaks within 7 "
+    "days of the call, with one adjustment round in the 14 days after.\n\n"
+)
+
+CONSULT_WELCOME_SUBJECT = "Your consult is booked — here's what happens next"
+
+CONSULT_WELCOME_TEMPLATE = (
+    "Hey {first_name},\n\n"
+    "Your consult is booked. Here's exactly what to do next.\n\n"
+    "1. Book your time: {booking_link}\n"
+    "Pick whatever slot works for you.\n\n"
+    "2. Fill in the intake form, about 10 minutes: {intake_link}\n"
+    "The more specific you are, the more useful the call is. If you "
+    "don't know a number — FTP, LTHR, whatever — say so. \"Don't know\" "
+    "is a fine answer.\n\n"
+    "3. Connect TrainingPeaks: {tp_invite_link}\n"
+    "That link attaches your account to mine as coach. Nothing to "
+    "confirm on your end — once you click it, I can pull your training "
+    "history into the read before we talk.\n"
+    "Don't use TrainingPeaks? Reply to this email and tell me what you "
+    "do use instead. I'll work with what you've got.\n\n"
+    "{addon_clause}"
+    "Questions before the call? Reply here.\n\n"
+    + SIGNATURE
+)
+
+CONSULT_INTAKE_NUDGE_SUBJECT = "Quick thing before your consult"
+
+CONSULT_INTAKE_NUDGE_TEMPLATE = (
+    "Hey {first_name},\n\n"
+    "Haven't seen your intake form yet. It's the difference between the "
+    "call being a get-to-know-you chat and it being useful.\n\n"
+    "About 10 minutes: {intake_link}\n\n"
+    "If a question stumps you, answer \"don't know\" and move on. That's "
+    "useful information too.\n\n"
+    + SIGNATURE
+)
+
+CONSULT_TP_NUDGE_SUBJECT = "One more thing before we talk"
+
+CONSULT_TP_NUDGE_TEMPLATE = (
+    "Hey {first_name},\n\n"
+    "Haven't seen a TrainingPeaks connection yet. If you use TP, this "
+    "link attaches your account to mine as coach — nothing to confirm "
+    "on your end: {tp_invite_link}\n\n"
+    "Don't use TrainingPeaks? No problem. Reply and tell me what you do "
+    "use instead — Strava, a bike computer export, or just your memory. "
+    "I'll work with what you've got.\n\n"
+    + SIGNATURE
+)
+
+CONSULT_ADDON_OFFER_SUBJECT = "Add a plan to your consult — 7 days only"
+
+CONSULT_ADDON_OFFER_TEMPLATE = (
+    "Hey {first_name},\n\n"
+    "Now that we've talked, here's the offer: a custom 12-week plan "
+    "built from everything we covered on the call plus your data — $100, "
+    "delivered on TrainingPeaks within 7 days, with one adjustment round "
+    "in the two weeks after.\n\n"
+    "Reply to this email and I'll send the checkout link. This offer is "
+    "open for 7 days after the call.\n\n"
+    "If the consult alone gave you what you needed, that's a fine answer "
+    "too.\n\n"
+    + SIGNATURE
+)
+
+
+def build_consult_welcome_email(
+    first_name: str,
+    booking_link: str,
+    intake_link: str,
+    plan_addon_bought: bool = False,
+    tp_invite_link: str = TP_INVITE_LINK,
+) -> tuple:
+    """Subject + plain-text body for the post-checkout consult welcome."""
+    body = CONSULT_WELCOME_TEMPLATE.format(
+        first_name=first_name or 'there',
+        booking_link=booking_link or '(booking link not yet configured — reply and I will send it)',
+        intake_link=intake_link or '(intake link not yet available — reply and I will send it)',
+        tp_invite_link=tp_invite_link,
+        addon_clause=CONSULT_ADDON_TERMS if plan_addon_bought else '',
+    )
+    return CONSULT_WELCOME_SUBJECT, body

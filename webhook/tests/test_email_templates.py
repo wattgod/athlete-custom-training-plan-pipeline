@@ -21,7 +21,12 @@ import pytest
 # Import the module directly — it has no Flask/app dependencies.
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from email_templates import FOLLOWUP_SEQUENCE, SIGNATURE
+from email_templates import (FOLLOWUP_SEQUENCE, SIGNATURE, TP_INVITE_LINK,
+                             CONSULT_WELCOME_SUBJECT, CONSULT_WELCOME_TEMPLATE,
+                             CONSULT_ADDON_TERMS, build_consult_welcome_email,
+                             CONSULT_INTAKE_NUDGE_SUBJECT, CONSULT_INTAKE_NUDGE_TEMPLATE,
+                             CONSULT_TP_NUDGE_SUBJECT, CONSULT_TP_NUDGE_TEMPLATE,
+                             CONSULT_ADDON_OFFER_SUBJECT, CONSULT_ADDON_OFFER_TEMPLATE)
 
 
 # Phrases that must never appear in customer email copy (case-insensitive).
@@ -169,3 +174,92 @@ class TestVoiceRules:
             assert '!' not in f['template'], (
                 f"day {f['day']} body uses exclamation-point cheerleading"
             )
+
+
+# =============================================================================
+# CONSULT-ENGINE copy (docs/CONSULT_ENGINE_SPEC.md §3, §9)
+# =============================================================================
+
+def _consult_copy():
+    """Yield (label, text) for every consult subject/template."""
+    yield 'welcome subject', CONSULT_WELCOME_SUBJECT
+    yield 'welcome template', CONSULT_WELCOME_TEMPLATE
+    yield 'intake nudge subject', CONSULT_INTAKE_NUDGE_SUBJECT
+    yield 'intake nudge template', CONSULT_INTAKE_NUDGE_TEMPLATE
+    yield 'tp nudge subject', CONSULT_TP_NUDGE_SUBJECT
+    yield 'tp nudge template', CONSULT_TP_NUDGE_TEMPLATE
+    yield 'addon offer subject', CONSULT_ADDON_OFFER_SUBJECT
+    yield 'addon offer template', CONSULT_ADDON_OFFER_TEMPLATE
+
+
+class TestConsultWelcomeEmail:
+    def test_contains_booking_intake_and_tp_links(self):
+        subject, body = build_consult_welcome_email(
+            first_name='Jesse',
+            booking_link='https://cal.example/matti/consult',
+            intake_link='https://gravelgodcycling.com/consulting/intake/#ref=cs_123&t=abc',
+            tp_invite_link=TP_INVITE_LINK,
+        )
+        assert 'https://cal.example/matti/consult' in body
+        assert 'https://gravelgodcycling.com/consulting/intake/#ref=cs_123&t=abc' in body
+        assert TP_INVITE_LINK in body
+        assert 'Jesse' in body
+
+    def test_no_tp_fallback_present(self):
+        _, body = build_consult_welcome_email(
+            first_name='Jesse', booking_link='https://cal.example',
+            intake_link='https://example.com/intake#ref=x&t=y')
+        assert "don't use trainingpeaks" in body.lower()
+
+    def test_addon_terms_only_when_bought(self):
+        _, body_without = build_consult_welcome_email(
+            first_name='Jesse', booking_link='https://cal.example',
+            intake_link='https://example.com/intake#ref=x&t=y',
+            plan_addon_bought=False)
+        assert 'add-on' not in body_without.lower()
+
+        _, body_with = build_consult_welcome_email(
+            first_name='Jesse', booking_link='https://cal.example',
+            intake_link='https://example.com/intake#ref=x&t=y',
+            plan_addon_bought=True)
+        assert 'add-on' in body_with.lower()
+        assert '12-week' in body_with
+
+    def test_degrades_gracefully_without_links(self):
+        """Never renders a bare/broken URL when booking or intake links are
+        unavailable (e.g. CONSULT_BOOKING_URL unset)."""
+        subject, body = build_consult_welcome_email(
+            first_name='Jesse', booking_link='', intake_link='')
+        assert '{' not in body and '}' not in body
+        assert subject == CONSULT_WELCOME_SUBJECT
+
+    def test_templates_format_cleanly(self):
+        for f in (CONSULT_INTAKE_NUDGE_TEMPLATE, CONSULT_TP_NUDGE_TEMPLATE):
+            body = f.format(first_name='Jesse', intake_link='https://x/y',
+                            tp_invite_link=TP_INVITE_LINK)
+            assert '{' not in body and '}' not in body
+        body = CONSULT_ADDON_OFFER_TEMPLATE.format(first_name='Jesse')
+        assert '{' not in body and '}' not in body
+
+
+class TestConsultVoiceRules:
+    @pytest.mark.parametrize('label,text', list(_consult_copy()))
+    def test_no_banned_phrases(self, label, text):
+        lowered = text.lower()
+        for phrase in BANNED_PHRASES:
+            assert phrase not in lowered, f"banned phrase {phrase!r} in {label}"
+
+    @pytest.mark.parametrize('label,text', list(_consult_copy()))
+    def test_no_emoji(self, label, text):
+        assert not _contains_emoji(text), f"emoji found in {label}"
+
+    def test_subjects_are_plain(self):
+        for subject in (CONSULT_WELCOME_SUBJECT, CONSULT_INTAKE_NUDGE_SUBJECT,
+                        CONSULT_TP_NUDGE_SUBJECT, CONSULT_ADDON_OFFER_SUBJECT):
+            assert '!' not in subject
+            assert not subject.isupper()
+
+    def test_never_synthesizes_dont_know(self):
+        """Retro rule (§4): 'don't know' stays 'don't know' — the welcome
+        copy must invite it explicitly, not paper over missing data."""
+        assert "don't know" in CONSULT_WELCOME_TEMPLATE.lower()
