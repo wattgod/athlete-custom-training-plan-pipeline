@@ -193,3 +193,28 @@ library items, so TP curation doesn't compound into custom orders. Coach
 decision: keep composing (and close T21/T22 gaps) or build library-item
 selection by exerciseLibraryItemId with a metadata index. Full analysis:
 docs/followups/LIBRARY_SELECTION_EVALUATION.md.
+
+## T24 — Taper briefings open with "Recovery week" wording
+_WEEK_TYPE_ALIASES maps taper→recovery for copy selection, so the W7
+taper banner opens "Recovery week" before self-correcting ("This taper
+keeps sharpness..."). Give taper its own short-copy entry.
+
+## T25 — Preview gate false-positives on by-design shapes
+"TSS Progression" warns when BUILD < BASE because BUILD absorbs the
+recovery week; "Taper Intensity" warns at IF ratio 117% vs a 105%
+threshold when reduce-volume-hold-intensity is the house taper. Teach
+both checks the design (exclude recovery weeks from phase averages;
+raise the taper IF threshold or compare taper TSS instead).
+
+## T26 — Coach review note: Saturday as second key day for novice/high-stress
+The questionnaire's "key day candidates: Thursday, Saturday, Sunday"
+gives some athletes back-to-back weekend hard days (Monika's own calendar
+does the same, so not a defect) — worth a coach look for zero-structured-
+training + high-life-stress intakes specifically.
+
+## T27 — Library curation hygiene (from regrade rounds)
+Item 14357243 "Torque - HC - ref - 40min" carries metadata inconsistent
+with its own structure (35min, 82% cap); desc/structure drift exists in
+at least one item (Lung Bomb: desc 4x2m vs structure 3x). An index-build
+lint report for name/duration/desc-vs-structure drift would pay for
+itself as a curation aid.
