@@ -18,6 +18,7 @@ Usage:
 import sys
 import html
 from pathlib import Path
+import re
 from typing import Any, Dict, Optional, Tuple
 
 # Ensure script dir on path (flat layout — all files in athletes/scripts/)
@@ -430,14 +431,14 @@ def render_workout(
         training_age=training_age,
     )
     if zwo:
-        return zwo
+        return _pad_vo2_to_library_duration(name, level, zwo)
 
     # The planner (block-builder) explicitly requested this workout; the
     # Nate generator's methodology avoid-list must not veto it into None
     # (MAF_LT1 refused VO2max work, silently dropping those days to legacy
     # templates). The planner's selection wins — render under POLARIZED.
     if methodology != 'POLARIZED':
-        return generate_nate_zwo(
+        fallback = generate_nate_zwo(
             workout_type=nate_type,
             level=level,
             methodology='POLARIZED',
@@ -448,7 +449,40 @@ def render_workout(
             display_name=display_name,
             training_age=training_age,
         )
+        return _pad_vo2_to_library_duration(name, level, fallback) if fallback else fallback
     return None
+
+
+_VO2_PAD_TYPES = {'VO2max 30/30', 'VO2max 40/20', 'Thirty-Fifteens'}
+
+
+def _pad_vo2_to_library_duration(name: str, level: int, zwo: str) -> str:
+    """Extend short VO2 renders with Z2 to the library's session duration.
+
+    Coach ruling (Aug 2026): a 30-minute VO2 session is only right when the
+    day is actually constrained to 30 minutes — the average working athlete
+    has 45-90 weekday minutes, and the curated GG TrainingPeaks library's
+    VO2 median is ~69 minutes. The archetypes' interval sets are correct;
+    the missing time is aerobic, so the pad is a steady Z2 block before the
+    cooldown, which the description projection then reports honestly.
+    """
+    if name not in _VO2_PAD_TYPES:
+        return zwo
+    try:
+        from workout_selector import get_workout_duration
+        target_sec = int(get_workout_duration(name, level)) * 60
+    except Exception:
+        return zwo
+    durations = [int(float(v)) for v in re.findall(r'Duration="(\d+)"', zwo)]
+    actual_sec = sum(durations)
+    pad = target_sec - actual_sec
+    if pad < 120:  # under two minutes is not worth a block
+        return zwo
+    block = f'    <SteadyState Duration="{pad}" Power="0.68"/>\n'
+    cooldown_at = zwo.rfind('    <Cooldown')
+    if cooldown_at == -1:
+        return zwo
+    return zwo[:cooldown_at] + block + zwo[cooldown_at:]
 
 
 # TP Library Endurance: steady Z2 + cooldown. Level scales duration only.

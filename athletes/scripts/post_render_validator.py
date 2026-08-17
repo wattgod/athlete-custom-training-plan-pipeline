@@ -334,6 +334,63 @@ def _schedule_findings(
     return blockers, confirmations
 
 
+def _short_quality_findings(
+    plan_ir: Dict[str, Any], profile: Dict[str, Any]
+) -> List[Dict[str, str]]:
+    """Flag hard sessions far shorter than the day allows.
+
+    Coach ruling (Aug 2026): a 30-minute VO2 session is only right when the
+    day is genuinely constrained — the average working athlete has 45-90
+    weekday minutes, and the curated GG library's VO2 median is ~69min. An
+    intense ride under 45 minutes on a day with >=60 minutes available is a
+    generator under-fill, not a plan. Openers/tune-up priming sessions are
+    deliberately short and exempt.
+    """
+    preferred_days = profile.get("preferred_days") or {}
+    findings: List[Dict[str, str]] = []
+    for _, session in _sessions(plan_ir):
+        if session.get("tp_kind") not in (None, "bike"):
+            continue
+        title = str(session.get("title") or session.get("display_name") or "")
+        if any(token in title.lower() for token in ("opener", "tune-up", "tune up")):
+            continue
+        seconds = int(session.get("duration_s") or 0)
+        if not seconds or seconds >= 45 * 60:
+            continue
+        hard = False
+        for segment in session.get("segments") or []:
+            for key in ("on_power", "work_percent_ftp", "power_target"):
+                try:
+                    value = float(segment.get(key) or 0)
+                except (TypeError, ValueError):
+                    continue
+                if value <= 2:
+                    value *= 100
+                if value >= 105:
+                    hard = True
+        if not hard:
+            continue
+        session_day = _session_date(session)
+        if not session_day:
+            continue
+        weekday = session_day.strftime("%A").lower()
+        cap = (preferred_days.get(weekday) or {}).get("max_duration_min")
+        try:
+            cap = float(cap)
+        except (TypeError, ValueError):
+            cap = None
+        if cap is not None and cap < 60:
+            continue  # genuinely constrained day — a short session is right
+        findings.append(_issue(
+            "SHORT_QUALITY_SESSION",
+            f"{session_day.isoformat()}: '{title}' is {seconds // 60} minutes of "
+            f"hard work on a day with "
+            f"{'no stated cap' if cap is None else f'{cap:.0f} minutes available'} — "
+            "weekday quality should land 45-90 minutes unless the day is constrained.",
+        ))
+    return findings
+
+
 def _day_cap_findings(
     plan_ir: Dict[str, Any], profile: Dict[str, Any]
 ) -> List[Dict[str, str]]:
@@ -514,6 +571,7 @@ def validate_transitional_input(
     issues.extend(schedule_issues)
     confirmations.extend(schedule_confirmations)
     confirmations.extend(_day_cap_findings(plan_ir, profile))
+    issues.extend(_short_quality_findings(plan_ir, profile))
 
     fueling = context.get("fueling") or {}
     labels = [

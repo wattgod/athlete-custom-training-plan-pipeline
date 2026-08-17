@@ -173,3 +173,23 @@ day+duration in the sequence prose, race week included.
 "Rest 60-90 sec between sets" is boilerplate across all phases; Power-phase
 ballistic work at 55-65% 1RM warrants 2-3 min between sets for output
 quality. Rest prescription derives from the periodization phase.
+
+## T21 — Durability tired-intervals barely exist in the generator
+The GG library's "Durability · Tired Intervals" (56 curated workouts,
+median 147min — end-of-long-ride interval work, a house signature) maps to
+only VO2 Bookend + Buffer Workout in the pipeline. Build 2-3 tired-
+interval archetypes (long Z2 into threshold/VO2 sets on tired legs) and
+wire them into build/peak long-ride alternatives.
+
+## T22 — No sprint/attack work; anaerobic capacity is one archetype
+"GG | Sprint & Attacks" (65 curated) has no generator counterpart beyond
+Microbursts; "GG | Anaerobic · Capacity" (48) maps to Stars In Your Eyes
+alone. Add sprint/attack and 2-3 anaerobic-capacity types for athletes
+whose race demands them.
+
+## T23 — Decide: grow the synthetic library vs select from the TP library
+The generator renders its own 36 archetypes and never places curated TP
+library items, so TP curation doesn't compound into custom orders. Coach
+decision: keep composing (and close T21/T22 gaps) or build library-item
+selection by exerciseLibraryItemId with a metadata index. Full analysis:
+docs/followups/LIBRARY_SELECTION_EVALUATION.md.
