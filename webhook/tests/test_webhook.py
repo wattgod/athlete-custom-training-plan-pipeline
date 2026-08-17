@@ -3903,6 +3903,8 @@ class TestConsultRunnerAuth:
         ('post', '/api/consult/jobs/cs_x/report'),
         ('post', '/api/consult/jobs/cs_x/error'),
         ('get', '/api/consult/jobs/cs_x'),
+        ('get', '/api/consult/jobs/ready'),
+        ('post', '/api/consult/runner/heartbeat'),
     ])
     def test_all_runner_routes_503_unset(self, client, temp_athletes_dir, method, path):
         with patch('app.CONSULT_RUNNER_SECRET', ''):
@@ -3915,6 +3917,8 @@ class TestConsultRunnerAuth:
         ('post', '/api/consult/jobs/cs_x/report'),
         ('post', '/api/consult/jobs/cs_x/error'),
         ('get', '/api/consult/jobs/cs_x'),
+        ('get', '/api/consult/jobs/ready'),
+        ('post', '/api/consult/runner/heartbeat'),
     ])
     def test_all_runner_routes_401_wrong(self, client, temp_athletes_dir, method, path):
         with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
@@ -3947,6 +3951,175 @@ class TestConsultRunnerJobsPending:
         assert r.status_code == 200
         order_ids = [p['order_id'] for p in r.get_json()['pending']]
         assert order_ids == ['cs_unmatched']
+
+
+class TestConsultRunnerJobsReady:
+    """GET /api/consult/jobs/ready (docs/CONSULT_ENGINE_SPEC.md §5, C1.1)."""
+
+    def _matched(self, order_id, created_at=None, status='open', **overrides):
+        import consultations
+        record = consultations.new_record(order_id=order_id, brand='gravelgod',
+                                          athlete_email=f'{order_id}@test.com')
+        record['athlete']['tp_matched_at'] = consultations.now_iso()
+        record['athlete']['tp_athlete_id'] = f'tp-{order_id}'
+        record['status'] = status
+        if created_at:
+            record['created_at'] = created_at
+        for key, value in overrides.items():
+            record[key] = value
+        return record
+
+    def test_unmatched_record_excluded(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        d = _consult_dir(app_module)
+        unmatched = consultations.new_record(order_id='cs_unmatched', brand='gravelgod')
+        consultations.write_record(d, unmatched)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/ready', headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 200
+        assert r.get_json()['ready'] == []
+
+    def test_matched_open_record_included(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        d = _consult_dir(app_module)
+        consultations.write_record(d, self._matched('cs_open'))
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/ready', headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 200
+        ready = r.get_json()['ready']
+        assert len(ready) == 1
+        item = ready[0]
+        assert item['order_id'] == 'cs_open'
+        assert item['tp_athlete_id'] == 'tp-cs_open'
+        assert item['email'] == 'cs_open@test.com'
+        assert item['intake_answers'] is None
+        assert item['plan_addon'] == {'purchased': False, 'purchased_at': None}
+        assert item['call_at'] is None
+        assert item['attempts'] == 0
+
+    def test_analysis_running_with_expired_lease_included(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        d = _consult_dir(app_module)
+        record = self._matched('cs_expired', status='analysis_running')
+        record['analysis']['lease_expires_at'] = (
+            datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        record['analysis']['attempts'] = 1
+        consultations.write_record(d, record)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/ready', headers={'X-Runner-Secret': 'shhh'})
+        order_ids = [item['order_id'] for item in r.get_json()['ready']]
+        assert order_ids == ['cs_expired']
+
+    def test_analysis_running_with_live_lease_excluded(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        d = _consult_dir(app_module)
+        record = self._matched('cs_live', status='analysis_running')
+        record['analysis']['lease_expires_at'] = (
+            datetime.now(timezone.utc) + timedelta(minutes=60)).isoformat()
+        record['analysis']['attempts'] = 1
+        consultations.write_record(d, record)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/ready', headers={'X-Runner-Secret': 'shhh'})
+        assert r.get_json()['ready'] == []
+
+    def test_attempts_at_max_excluded(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        d = _consult_dir(app_module)
+        record = self._matched('cs_maxed')
+        record['analysis']['attempts'] = app_module.CONSULT_ANALYSIS_MAX_ATTEMPTS
+        consultations.write_record(d, record)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/ready', headers={'X-Runner-Secret': 'shhh'})
+        assert r.get_json()['ready'] == []
+
+    def test_closed_excluded(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        d = _consult_dir(app_module)
+        consultations.write_record(d, self._matched('cs_closed', status='closed'))
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/ready', headers={'X-Runner-Secret': 'shhh'})
+        assert r.get_json()['ready'] == []
+
+    def test_report_ready_and_needs_attention_excluded(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        d = _consult_dir(app_module)
+        consultations.write_record(d, self._matched('cs_report_ready', status='report_ready'))
+        consultations.write_record(d, self._matched('cs_needs_attention', status='needs_attention'))
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/ready', headers={'X-Runner-Secret': 'shhh'})
+        assert r.get_json()['ready'] == []
+
+    def test_intake_answers_passthrough(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        d = _consult_dir(app_module)
+        intake_id = str(uuid.uuid4())
+        app_module.store_intake(intake_id, {
+            'answers': {'goal_event': 'Unbound 200', 'ftp': 'don\'t know'},
+            'consult_order_id': 'cs_intake',
+        })
+        record = self._matched('cs_intake')
+        record['intake'] = {'intake_id': intake_id, 'received_at': consultations.now_iso()}
+        consultations.write_record(d, record)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/ready', headers={'X-Runner-Secret': 'shhh'})
+        item = r.get_json()['ready'][0]
+        assert item['intake_answers'] == {'goal_event': 'Unbound 200', 'ftp': "don't know"}
+
+    def test_no_intake_yields_null(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        d = _consult_dir(app_module)
+        consultations.write_record(d, self._matched('cs_no_intake'))
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/ready', headers={'X-Runner-Secret': 'shhh'})
+        assert r.get_json()['ready'][0]['intake_answers'] is None
+
+    def test_oldest_first(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        d = _consult_dir(app_module)
+        newer = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        older = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat()
+        consultations.write_record(d, self._matched('cs_newer', created_at=newer))
+        consultations.write_record(d, self._matched('cs_older', created_at=older))
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/ready', headers={'X-Runner-Secret': 'shhh'})
+        order_ids = [item['order_id'] for item in r.get_json()['ready']]
+        assert order_ids == ['cs_older', 'cs_newer']
+
+    def test_plan_addon_purchased_shown(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        d = _consult_dir(app_module)
+        record = self._matched('cs_addon')
+        record['products']['plan_addon'] = {
+            'purchased': True, 'amount': 10000,
+            'purchased_at': '2026-08-01T00:00:00+00:00', 'offer_expires_at': None,
+        }
+        consultations.write_record(d, record)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/ready', headers={'X-Runner-Secret': 'shhh'})
+        item = r.get_json()['ready'][0]
+        assert item['plan_addon'] == {'purchased': True, 'purchased_at': '2026-08-01T00:00:00+00:00'}
 
 
 class TestConsultRunnerTpLinked:
@@ -4181,6 +4354,140 @@ class TestConsultRunnerGet:
         assert r.status_code == 404
 
 
+class TestConsultRunnerHeartbeat:
+    """POST /api/consult/runner/heartbeat (docs/CONSULT_ENGINE_SPEC.md §6, C1.1)."""
+
+    def _path(self, app_module):
+        return app_module._consult_runner_heartbeat_path()
+
+    def test_persists_ok_true(self, client, temp_athletes_dir, app):
+        import app as app_module
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.post('/api/consult/runner/heartbeat',
+                            json={'runner_id': 'mac-mini', 'ok': True},
+                            headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 200
+        stored = app_module._read_consult_runner_heartbeat()
+        assert stored['runner_id'] == 'mac-mini'
+        assert stored['ok'] is True
+        assert stored['detail'] == ''
+        assert stored['at']
+
+    def test_persists_ok_false_with_detail(self, client, temp_athletes_dir, app):
+        import app as app_module
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.post('/api/consult/runner/heartbeat',
+                            json={'runner_id': 'mac-mini', 'ok': False,
+                                  'detail': 'TP session expired'},
+                            headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 200
+        stored = app_module._read_consult_runner_heartbeat()
+        assert stored['ok'] is False
+        assert stored['detail'] == 'TP session expired'
+
+    def test_preserves_alarm_cooldown_across_writes(self, client, temp_athletes_dir, app):
+        import app as app_module
+        app_module._write_consult_runner_heartbeat({
+            'runner_id': 'mac-mini', 'ok': True, 'detail': '',
+            'at': '2026-08-01T00:00:00+00:00',
+            'last_runner_alarm_at': '2026-08-01T01:00:00+00:00',
+        })
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            client.post('/api/consult/runner/heartbeat', json={'runner_id': 'mac-mini', 'ok': True},
+                        headers={'X-Runner-Secret': 'shhh'})
+        stored = app_module._read_consult_runner_heartbeat()
+        assert stored['last_runner_alarm_at'] == '2026-08-01T01:00:00+00:00'
+
+
+class TestConsultRunnerAlarm:
+    """process_consult_followups() runner-heartbeat alarm (C1.1)."""
+
+    def test_fires_when_heartbeat_missing(self, temp_athletes_dir, app):
+        import app as app_module
+        now = datetime.now(timezone.utc)
+        with patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            fired = app_module._check_consult_runner_alarm(now)
+        assert fired is True
+        assert mock_send.call_count == 1
+        assert mock_send.call_args.args[0] == 'coach@example.com'
+        assert mock_send.call_args.args[1] == '[GG] Consult runner needs attention'
+
+    def test_fires_when_heartbeat_stale(self, temp_athletes_dir, app):
+        import app as app_module
+        now = datetime.now(timezone.utc)
+        stale_at = now - timedelta(hours=7)
+        app_module._write_consult_runner_heartbeat({
+            'runner_id': 'mac-mini', 'ok': True, 'detail': '',
+            'at': stale_at.isoformat(), 'last_runner_alarm_at': None,
+        })
+        with patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            fired = app_module._check_consult_runner_alarm(now)
+        assert fired is True
+        assert mock_send.call_count == 1
+
+    def test_fires_when_ok_false_even_if_recent(self, temp_athletes_dir, app):
+        import app as app_module
+        now = datetime.now(timezone.utc)
+        app_module._write_consult_runner_heartbeat({
+            'runner_id': 'mac-mini', 'ok': False, 'detail': 'auth failed 3x',
+            'at': now.isoformat(), 'last_runner_alarm_at': None,
+        })
+        with patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            fired = app_module._check_consult_runner_alarm(now)
+        assert fired is True
+        body = mock_send.call_args.args[2]
+        assert 'auth failed 3x' in body
+
+    def test_no_alarm_when_recent_and_ok(self, temp_athletes_dir, app):
+        import app as app_module
+        now = datetime.now(timezone.utc)
+        app_module._write_consult_runner_heartbeat({
+            'runner_id': 'mac-mini', 'ok': True, 'detail': '',
+            'at': now.isoformat(), 'last_runner_alarm_at': None,
+        })
+        with patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            fired = app_module._check_consult_runner_alarm(now)
+        assert fired is False
+        assert mock_send.call_count == 0
+
+    def test_fires_at_most_once_per_24h(self, temp_athletes_dir, app):
+        import app as app_module
+        now = datetime.now(timezone.utc)
+        with patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            first = app_module._check_consult_runner_alarm(now)
+            second = app_module._check_consult_runner_alarm(now + timedelta(hours=1))
+        assert first is True
+        assert second is False
+        assert mock_send.call_count == 1
+        stored = app_module._read_consult_runner_heartbeat()
+        assert stored['last_runner_alarm_at'] is not None
+
+    def test_fires_again_after_cooldown_expires(self, temp_athletes_dir, app):
+        import app as app_module
+        now = datetime.now(timezone.utc)
+        with patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            app_module._check_consult_runner_alarm(now)
+            fired_again = app_module._check_consult_runner_alarm(now + timedelta(hours=25))
+        assert fired_again is True
+        assert mock_send.call_count == 2
+
+    def test_process_consult_followups_wires_alarm(self, temp_athletes_dir, app):
+        import app as app_module
+        with patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            stats = app_module.process_consult_followups()
+        assert stats['runner_alarm_sent'] is True
+        alarm_calls = [c for c in mock_send.call_args_list
+                       if c.args[1] == '[GG] Consult runner needs attention']
+        assert len(alarm_calls) == 1
+
+
 class TestConsultOperatorEndpoint:
     """POST /api/consult/<order_id>/op — X-Cron-Secret operator lever."""
 
@@ -4335,7 +4642,8 @@ class TestConsultFollowupsStateMachine:
 
         with patch('app.RESEND_API_KEY', 'test-key'), \
              patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
-             patch('app._send_email', return_value=True) as mock_send:
+             patch('app._send_email', return_value=True) as mock_send, \
+             patch('app._check_consult_runner_alarm', return_value=False):
             stats1 = app_module.process_consult_followups()
             stats2 = app_module.process_consult_followups()
 

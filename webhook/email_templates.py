@@ -191,6 +191,29 @@ CONSULT_ADDON_OFFER_TEMPLATE = (
 )
 
 
+CONSULT_RUNNER_ALARM_SUBJECT = "[GG] Consult runner needs attention"
+
+CONSULT_RUNNER_ALARM_TEMPLATE = (
+    "The consult runner (~/gg-consult-runner) hasn't checked in.\n\n"
+    "{detail}\n"
+    "Heartbeat age: {age}\n\n"
+    "Likely causes: the TrainingPeaks Chrome session expired (re-login + "
+    "MFA on the Mac), the launchd job stopped, or the network dropped. "
+    "Check the Mac before consult analyses back up.\n"
+)
+
+
+def build_consult_runner_alarm_email(detail: str, age: str) -> tuple:
+    """Subject + plain-text body for the coach alarm fired when the consult
+    runner heartbeat (POST /api/consult/runner/heartbeat) goes stale or
+    reports ok=false. See process_consult_followups() in app.py."""
+    body = CONSULT_RUNNER_ALARM_TEMPLATE.format(
+        detail=detail or 'No detail supplied.',
+        age=age,
+    )
+    return CONSULT_RUNNER_ALARM_SUBJECT, body
+
+
 def build_consult_welcome_email(
     first_name: str,
     booking_link: str,

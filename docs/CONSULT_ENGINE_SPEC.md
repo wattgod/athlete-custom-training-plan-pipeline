@@ -114,6 +114,12 @@ retries with backoff are guaranteed): repeated `tp-linked`/`report`/`error` for 
 return 200 and send NO second email.
 - `GET /api/consult/jobs/pending` → open records lacking `tp_matched_at` (emails + intake TP-email
   hints) so the runner does ONE roster fetch per poll, not one per record.
+- `GET /api/consult/jobs/ready` → TP-matched records ready for analysis: status `open`, or
+  `analysis_running` with an EXPIRED lease (a safety net ahead of the hourly
+  `sweep_stuck_consultations()` sweep), `analysis.attempts < 3`, never `closed`. Returns
+  `{ready:[{order_id, tp_athlete_id, email, intake_answers, plan_addon:{purchased, purchased_at},
+  call_at, attempts}]}`, oldest (`created_at`) first. `intake_answers` is the stored intake
+  `answers` dict or `null` — never synthesized (§4's no-synthesis rule).
 - `POST /api/consult/jobs/<order_id>/tp-linked` `{tp_athlete_id}` → sets `tp_matched_at`.
 - `POST /api/consult/jobs/<order_id>/claim` → lease (`claimed_by`, `lease_expires_at = now+90 min`,
   `attempts+1`, status `analysis_running`); refuse if a live lease exists. Stuck sweep: expired lease
@@ -125,6 +131,11 @@ return 200 and send NO second email.
   in the mail, since this is coach-only — no projection).
 - `GET /api/consult/jobs/<order_id>` (X-Runner-Secret ONLY — the athlete intake token never reads
   the record).
+- `POST /api/consult/runner/heartbeat` `{runner_id, ok, detail?}` → persisted to
+  `DELIVERIES_DIR/consult_runner_heartbeat.json` (atomic temp+replace) as `{runner_id, ok, detail,
+  at}`. `process_consult_followups()` checks it once per cron run: heartbeat missing or older than
+  6 h, or the latest heartbeat has `ok: false`, sends the coach `[GG] Consult runner needs
+  attention` — at most once per 24 h (`last_runner_alarm_at` recorded in the same file).
 - **Operator endpoint** `POST /api/consult/<order_id>/op` (X-Cron-Secret) `{call_at? | close?:reason | retry?}`
   — Matti's only lever until a review surface exists (curl one-liners in the coach email).
 
