@@ -12,9 +12,11 @@ import json
 import hmac
 import hashlib
 import tempfile
+import uuid
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -3433,3 +3435,1005 @@ class TestSyncPipelineEscapeHatch:
         # And the job record reflects the completed run
         import app as app_module
         assert app_module._read_job('async_tester')['status'] == 'succeeded'
+
+
+# =============================================================================
+# CONSULT-ENGINE C1 (docs/CONSULT_ENGINE_SPEC.md)
+# =============================================================================
+
+def _consult_dir(app_module):
+    return Path(app_module.DELIVERIES_DIR)
+
+
+def _consulting_stripe_event(session_id='cs_consult_engine', name='Jesse Couch',
+                             email='jesse@example.com', hours='1',
+                             plan_addon='0', brand=None, amount_total=15000):
+    metadata = {
+        'product_type': 'consulting',
+        'athlete_name': name,
+        'hours': hours,
+        'plan_addon': plan_addon,
+    }
+    if brand:
+        metadata['brand'] = brand
+    return {
+        'type': 'checkout.session.completed',
+        'data': {
+            'object': {
+                'id': session_id,
+                'amount_total': amount_total,
+                'customer_details': {'name': name, 'email': email},
+                'metadata': metadata,
+            }
+        }
+    }
+
+
+class TestConsultingCheckoutAddon:
+    """POST /api/create-consulting-checkout — add-on line item + brand."""
+
+    def test_addon_not_added_when_env_unset(self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe, patch('app.CONSULT_PLAN_ADDON_PRICE_ID', ''):
+            mock_session = MagicMock(id='cs_x', url='https://checkout.stripe.com/x')
+            mock_stripe.checkout.Session.create.return_value = mock_session
+            client.post('/api/create-consulting-checkout',
+                        json={'name': 'T', 'email': 't@test.com', 'plan_addon': True},
+                        content_type='application/json')
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert len(call_kwargs['line_items']) == 1
+            assert call_kwargs['metadata']['plan_addon'] == '0'
+
+    def test_addon_added_when_env_set_and_requested(self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe, \
+             patch('app.CONSULT_PLAN_ADDON_PRICE_ID', 'price_addon_test'):
+            mock_session = MagicMock(id='cs_x', url='https://checkout.stripe.com/x')
+            mock_stripe.checkout.Session.create.return_value = mock_session
+            client.post('/api/create-consulting-checkout',
+                        json={'name': 'T', 'email': 't@test.com', 'plan_addon': True},
+                        content_type='application/json')
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert len(call_kwargs['line_items']) == 2
+            assert call_kwargs['line_items'][1]['price'] == 'price_addon_test'
+            assert call_kwargs['metadata']['plan_addon'] == '1'
+
+    def test_addon_not_added_when_env_set_but_not_requested(self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe, \
+             patch('app.CONSULT_PLAN_ADDON_PRICE_ID', 'price_addon_test'):
+            mock_session = MagicMock(id='cs_x', url='https://checkout.stripe.com/x')
+            mock_stripe.checkout.Session.create.return_value = mock_session
+            client.post('/api/create-consulting-checkout',
+                        json={'name': 'T', 'email': 't@test.com'},
+                        content_type='application/json')
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert len(call_kwargs['line_items']) == 1
+
+    def test_brand_from_origin_in_metadata_and_urls(self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock(id='cs_x', url='https://checkout.stripe.com/x')
+            mock_stripe.checkout.Session.create.return_value = mock_session
+            client.post('/api/create-consulting-checkout',
+                        json={'name': 'T', 'email': 't@test.com'},
+                        content_type='application/json',
+                        headers={'Origin': 'https://gravelgodcycling.com'})
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert call_kwargs['metadata']['brand'] == 'gravelgod'
+            assert call_kwargs['success_url'].startswith(
+                'https://gravelgodcycling.com/consulting/confirmed/')
+            assert call_kwargs['cancel_url'] == 'https://gravelgodcycling.com/consulting/'
+
+    def test_existing_default_hour_and_multi_hour_contract_unchanged(self, client, temp_athletes_dir):
+        """Regression: pre-C1 behavior for the base line item must be untouched."""
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock(id='cs_x', url='https://checkout.stripe.com/x')
+            mock_stripe.checkout.Session.create.return_value = mock_session
+            client.post('/api/create-consulting-checkout',
+                        json={'name': 'T', 'email': 't@test.com', 'hours': 3},
+                        content_type='application/json')
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert call_kwargs['line_items'][0]['price'] == 'price_1T2ekVLoaHDbEqSq0GGfoBEX'
+            assert call_kwargs['line_items'][0]['quantity'] == 3
+
+
+class TestConsultAddonCheckoutRoute:
+    """POST /api/create-consult-addon-checkout — post-call add-on purchase."""
+
+    def test_503_when_addon_price_unconfigured(self, client, temp_athletes_dir):
+        with patch('app.CONSULT_PLAN_ADDON_PRICE_ID', ''):
+            r = client.post('/api/create-consult-addon-checkout',
+                            json={'ref': 'cs_1'}, content_type='application/json')
+            assert r.status_code == 503
+
+    def test_400_missing_ref(self, client, temp_athletes_dir):
+        with patch('app.CONSULT_PLAN_ADDON_PRICE_ID', 'price_addon'):
+            r = client.post('/api/create-consult-addon-checkout',
+                            json={}, content_type='application/json')
+            assert r.status_code == 400
+
+    def test_404_unknown_consultation(self, client, temp_athletes_dir):
+        with patch('app.CONSULT_PLAN_ADDON_PRICE_ID', 'price_addon'):
+            r = client.post('/api/create-consult-addon-checkout',
+                            json={'ref': 'cs_does_not_exist'},
+                            content_type='application/json')
+            assert r.status_code == 404
+
+    def test_creates_addon_only_checkout_for_existing_record(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_addon_ref', brand='gravelgod',
+                                          athlete_email='j@test.com')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.CONSULT_PLAN_ADDON_PRICE_ID', 'price_addon'), \
+             patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock(id='cs_x', url='https://checkout.stripe.com/addon')
+            mock_stripe.checkout.Session.create.return_value = mock_session
+            r = client.post('/api/create-consult-addon-checkout',
+                            json={'ref': 'cs_addon_ref'}, content_type='application/json')
+            assert r.status_code == 200
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert call_kwargs['line_items'] == [{'price': 'price_addon', 'quantity': 1}]
+            assert call_kwargs['metadata']['product_type'] == 'consult_addon'
+            assert call_kwargs['metadata']['consult_order_id'] == 'cs_addon_ref'
+            assert call_kwargs['customer_email'] == 'j@test.com'
+
+    def test_options_preflight(self, client):
+        r = client.options('/api/create-consult-addon-checkout')
+        assert r.status_code == 204
+
+
+class TestConsultingWebhookRecordOrder:
+    """Record + welcome happen BEFORE mark_order_processed (§3)."""
+
+    def test_existing_response_shape_still_green(self, client, temp_athletes_dir):
+        """test_consulting_webhook_processes_payment, reproduced here to
+        pin the exact regression the spec calls out — tolerate missing
+        amount_total/customer_email/brand, never 500, response unchanged."""
+        stripe_event = {
+            'type': 'checkout.session.completed',
+            'data': {'object': {
+                'id': 'cs_consulting_123',
+                'customer_details': {'name': 'Consult Client', 'email': 'consult@example.com'},
+                'metadata': {'product_type': 'consulting', 'athlete_name': 'Consult Client',
+                            'hours': '2'},
+            }}
+        }
+        response = client.post('/webhook/stripe', json=stripe_event, content_type='application/json')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['status'] == 'success'
+        assert data['product_type'] == 'consulting'
+        assert data['hours'] == '2'
+
+    def test_record_written_before_mark_order_processed(self, client, temp_athletes_dir, app):
+        import app as app_module
+        call_order = []
+        orig_mark = app_module.mark_order_processed
+        orig_write = app_module.consultations.write_record
+
+        def spy_mark(*a, **kw):
+            call_order.append('mark_order_processed')
+            return orig_mark(*a, **kw)
+
+        def spy_write(*a, **kw):
+            call_order.append('write_record')
+            return orig_write(*a, **kw)
+
+        with patch('app.mark_order_processed', side_effect=spy_mark), \
+             patch.object(app_module.consultations, 'write_record', side_effect=spy_write):
+            r = client.post('/webhook/stripe',
+                            json=_consulting_stripe_event(session_id='cs_order_test'),
+                            content_type='application/json')
+        assert r.status_code == 200
+        assert call_order.index('write_record') < call_order.index('mark_order_processed')
+
+    def test_record_persisted_with_open_status(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        client.post('/webhook/stripe',
+                    json=_consulting_stripe_event(session_id='cs_persist_test'),
+                    content_type='application/json')
+        record = consultations.read_record(_consult_dir(app_module), 'cs_persist_test')
+        assert record is not None
+        assert record['status'] == 'open'
+        assert record['athlete']['email'] == 'jesse@example.com'
+        assert record['timeline'][0]['event'] == 'paid'
+
+    def test_never_500_on_email_failure(self, client, temp_athletes_dir):
+        with patch('app._send_email', side_effect=RuntimeError('resend down')):
+            r = client.post('/webhook/stripe',
+                            json=_consulting_stripe_event(session_id='cs_email_fail'),
+                            content_type='application/json')
+        assert r.status_code == 200
+        assert r.get_json()['status'] == 'success'
+
+
+class TestConsultWelcomeContent:
+    """Welcome email: fragment intake link, TP link, booking link, null on failure."""
+
+    def test_welcome_content_has_booking_intake_and_tp_links(self, client, temp_athletes_dir, app):
+        with patch('app.CONSULT_BOOKING_URL', 'https://cal.example/matti'), \
+             patch.dict(os.environ, {'CONSULT_INTAKE_TOKEN_SECRET': 'test-secret'}), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app.RESEND_API_KEY', 'test-key'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            client.post('/webhook/stripe',
+                        json=_consulting_stripe_event(session_id='cs_welcome_test'),
+                        content_type='application/json')
+
+        welcome_calls = [c for c in mock_send.call_args_list
+                         if c.args[0] == 'jesse@example.com']
+        assert len(welcome_calls) == 1
+        body = welcome_calls[0].args[2]
+        assert 'https://cal.example/matti' in body
+        assert '/consulting/intake/#ref=cs_welcome_test&t=' in body
+        assert 'https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU' in body
+
+    def test_welcome_sent_at_null_on_resend_failure_then_cron_resends(
+            self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+
+        with patch('app.RESEND_API_KEY', ''):  # _send_email returns False
+            client.post('/webhook/stripe',
+                        json=_consulting_stripe_event(session_id='cs_resend_fail'),
+                        content_type='application/json')
+
+        record = consultations.read_record(_consult_dir(app_module), 'cs_resend_fail')
+        assert record['welcome_sent_at'] is None
+
+        with patch('app.CRON_SECRET', 'shhh'), \
+             patch('app.RESEND_API_KEY', 'test-key'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True):
+            r = client.post('/api/cron/followup-emails',
+                            headers={'X-Cron-Secret': 'shhh'})
+        assert r.status_code == 200
+        assert r.get_json()['consult']['welcome_resent'] == 1
+
+        record = consultations.read_record(_consult_dir(app_module), 'cs_resend_fail')
+        assert record['welcome_sent_at'] is not None
+
+
+class TestConsultAddonWebhook:
+    """consult_addon webhook branch: idempotent flip on the existing record."""
+
+    def test_flips_plan_addon_purchased_on_existing_record(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_addon_flip', brand='gravelgod',
+                                          athlete_email='j@test.com')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        event = {
+            'type': 'checkout.session.completed',
+            'data': {'object': {
+                'id': 'cs_addon_purchase_1',
+                'customer_details': {'email': 'j@test.com'},
+                'metadata': {'product_type': 'consult_addon', 'consult_order_id': 'cs_addon_flip'},
+            }}
+        }
+        r = client.post('/webhook/stripe', json=event, content_type='application/json')
+        assert r.status_code == 200
+        assert r.get_json()['status'] == 'success'
+
+        updated = consultations.read_record(_consult_dir(app_module), 'cs_addon_flip')
+        assert updated['products']['plan_addon']['purchased'] is True
+        assert updated['products']['plan_addon']['purchased_at'] is not None
+
+    def test_repeat_webhook_sends_no_second_email(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_addon_dup', brand='gravelgod',
+                                          athlete_email='j@test.com')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            event1 = {
+                'type': 'checkout.session.completed',
+                'data': {'object': {
+                    'id': 'cs_addon_dup_1',
+                    'customer_details': {'email': 'j@test.com'},
+                    'metadata': {'product_type': 'consult_addon', 'consult_order_id': 'cs_addon_dup'},
+                }}
+            }
+            client.post('/webhook/stripe', json=event1, content_type='application/json')
+            first_call_count = mock_send.call_count
+            assert first_call_count >= 1
+
+            record_reloaded = consultations.read_record(_consult_dir(app_module), 'cs_addon_dup')
+            assert record_reloaded['products']['plan_addon']['purchased'] is True
+
+            event2 = {
+                'type': 'checkout.session.completed',
+                'data': {'object': {
+                    'id': 'cs_addon_dup_2',
+                    'customer_details': {'email': 'j@test.com'},
+                    'metadata': {'product_type': 'consult_addon', 'consult_order_id': 'cs_addon_dup'},
+                }}
+            }
+            client.post('/webhook/stripe', json=event2, content_type='application/json')
+            assert mock_send.call_count == first_call_count  # no second notify
+
+    def test_missing_consult_order_id_does_not_crash(self, client, temp_athletes_dir):
+        event = {
+            'type': 'checkout.session.completed',
+            'data': {'object': {
+                'id': 'cs_addon_orphan',
+                'customer_details': {'email': 'j@test.com'},
+                'metadata': {'product_type': 'consult_addon'},
+            }}
+        }
+        r = client.post('/webhook/stripe', json=event, content_type='application/json')
+        assert r.status_code == 200
+
+
+class TestConsultIntakeEndpoint:
+    """POST /api/consult-intake — body-token intake submission."""
+
+    def _seed_record(self, app_module, order_id='cs_intake_test'):
+        import consultations
+        record = consultations.new_record(order_id=order_id, brand='gravelgod',
+                                          athlete_email='j@test.com')
+        consultations.write_record(_consult_dir(app_module), record)
+        return record
+
+    def _token(self, order_id):
+        from consult_intake_tokens import issue_intake_token
+        return issue_intake_token(order_id=order_id)
+
+    def test_options_preflight(self, client):
+        r = client.options('/api/consult-intake')
+        assert r.status_code == 204
+
+    def test_missing_fields_400(self, client, temp_athletes_dir):
+        r = client.post('/api/consult-intake', json={'ref': 'x'}, content_type='application/json')
+        assert r.status_code == 400
+
+    def test_invalid_token_401(self, client, temp_athletes_dir, app):
+        import app as app_module
+        with patch.dict(os.environ, {'CONSULT_INTAKE_TOKEN_SECRET': 'test-secret'}):
+            self._seed_record(app_module)
+            r = client.post('/api/consult-intake',
+                            json={'ref': 'cs_intake_test', 't': 'garbage', 'answers': {'goal': 'x'}},
+                            content_type='application/json')
+        assert r.status_code == 401
+
+    def test_unknown_ref_404(self, client, temp_athletes_dir):
+        with patch.dict(os.environ, {'CONSULT_INTAKE_TOKEN_SECRET': 'test-secret'}):
+            token = self._token('cs_no_such_ref')
+            r = client.post('/api/consult-intake',
+                            json={'ref': 'cs_no_such_ref', 't': token, 'answers': {'goal': 'x'}},
+                            content_type='application/json')
+        assert r.status_code == 404
+
+    def test_valid_submission_stores_intake_and_updates_record(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        with patch.dict(os.environ, {'CONSULT_INTAKE_TOKEN_SECRET': 'test-secret'}):
+            self._seed_record(app_module)
+            token = self._token('cs_intake_test')
+            r = client.post('/api/consult-intake',
+                            json={'ref': 'cs_intake_test', 't': token,
+                                 'answers': {'goal_event': 'Unbound', 'ftp': "don't know"}},
+                            content_type='application/json')
+        assert r.status_code == 200
+
+        record = consultations.read_record(_consult_dir(app_module), 'cs_intake_test')
+        assert record['intake']['intake_id'] is not None
+        assert record['intake']['received_at'] is not None
+        assert any(e['event'] == 'intake_received' for e in record['timeline'])
+
+        stored = app_module.load_intake(record['intake']['intake_id'])
+        assert stored['answers']['goal_event'] == 'Unbound'
+
+    def test_never_synthesizes_dont_know(self, client, temp_athletes_dir, app):
+        """Retro rule (§4): 'don't know' is stored verbatim, never replaced
+        with a guessed number."""
+        import app as app_module
+        with patch.dict(os.environ, {'CONSULT_INTAKE_TOKEN_SECRET': 'test-secret'}):
+            self._seed_record(app_module)
+            token = self._token('cs_intake_test')
+            client.post('/api/consult-intake',
+                        json={'ref': 'cs_intake_test', 't': token,
+                             'answers': {'ftp': "don't know", 'lthr': "don't know"}},
+                        content_type='application/json')
+        import consultations
+        record = consultations.read_record(_consult_dir(app_module), 'cs_intake_test')
+        stored = app_module.load_intake(record['intake']['intake_id'])
+        assert stored['answers']['ftp'] == "don't know"
+        assert stored['answers']['lthr'] == "don't know"
+
+    def test_second_submission_replaces_and_appends_timeline(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        with patch.dict(os.environ, {'CONSULT_INTAKE_TOKEN_SECRET': 'test-secret'}):
+            self._seed_record(app_module)
+            token = self._token('cs_intake_test')
+            client.post('/api/consult-intake',
+                        json={'ref': 'cs_intake_test', 't': token, 'answers': {'goal_event': 'First'}},
+                        content_type='application/json')
+            first_id = consultations.read_record(
+                _consult_dir(app_module), 'cs_intake_test')['intake']['intake_id']
+
+            client.post('/api/consult-intake',
+                        json={'ref': 'cs_intake_test', 't': token, 'answers': {'goal_event': 'Second'}},
+                        content_type='application/json')
+
+        record = consultations.read_record(_consult_dir(app_module), 'cs_intake_test')
+        second_id = record['intake']['intake_id']
+        assert second_id != first_id
+        assert [e['event'] for e in record['timeline']].count('intake_received') == 2
+        stored = app_module.load_intake(second_id)
+        assert stored['answers']['goal_event'] == 'Second'
+
+    def test_token_scope_rejected_on_runner_routes(self, client, temp_athletes_dir, app):
+        """An intake token must not double as X-Runner-Secret."""
+        import app as app_module
+        with patch.dict(os.environ, {'CONSULT_INTAKE_TOKEN_SECRET': 'test-secret'}), \
+             patch('app.CONSULT_RUNNER_SECRET', 'runner-secret'):
+            self._seed_record(app_module)
+            token = self._token('cs_intake_test')
+            r = client.get('/api/consult/jobs/pending',
+                           headers={'X-Runner-Secret': token})
+        assert r.status_code == 401
+
+
+class TestConsultRunnerAuth:
+    """X-Runner-Secret: 503 unset, 401 wrong — same pattern as X-Cron-Secret."""
+
+    def test_pending_503_when_unset(self, client, temp_athletes_dir):
+        with patch('app.CONSULT_RUNNER_SECRET', ''):
+            r = client.get('/api/consult/jobs/pending')
+        assert r.status_code == 503
+
+    def test_pending_401_when_wrong(self, client, temp_athletes_dir):
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/pending', headers={'X-Runner-Secret': 'nope'})
+        assert r.status_code == 401
+
+    def test_pending_200_when_correct(self, client, temp_athletes_dir):
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/pending', headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 200
+
+    @pytest.mark.parametrize('method,path', [
+        ('post', '/api/consult/jobs/cs_x/tp-linked'),
+        ('post', '/api/consult/jobs/cs_x/claim'),
+        ('post', '/api/consult/jobs/cs_x/report'),
+        ('post', '/api/consult/jobs/cs_x/error'),
+        ('get', '/api/consult/jobs/cs_x'),
+    ])
+    def test_all_runner_routes_503_unset(self, client, temp_athletes_dir, method, path):
+        with patch('app.CONSULT_RUNNER_SECRET', ''):
+            r = getattr(client, method)(path)
+        assert r.status_code == 503
+
+    @pytest.mark.parametrize('method,path', [
+        ('post', '/api/consult/jobs/cs_x/tp-linked'),
+        ('post', '/api/consult/jobs/cs_x/claim'),
+        ('post', '/api/consult/jobs/cs_x/report'),
+        ('post', '/api/consult/jobs/cs_x/error'),
+        ('get', '/api/consult/jobs/cs_x'),
+    ])
+    def test_all_runner_routes_401_wrong(self, client, temp_athletes_dir, method, path):
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = getattr(client, method)(path, headers={'X-Runner-Secret': 'nope'})
+        assert r.status_code == 401
+
+
+class TestConsultRunnerJobsPending:
+    def test_lists_only_open_records_lacking_tp_match(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        d = _consult_dir(app_module)
+
+        matched = consultations.new_record(order_id='cs_matched', brand='gravelgod',
+                                           athlete_email='m@test.com')
+        matched['athlete']['tp_matched_at'] = consultations.now_iso()
+        consultations.write_record(d, matched)
+
+        unmatched = consultations.new_record(order_id='cs_unmatched', brand='gravelgod',
+                                             athlete_email='u@test.com')
+        consultations.write_record(d, unmatched)
+
+        closed = consultations.new_record(order_id='cs_closed', brand='gravelgod',
+                                          athlete_email='c@test.com')
+        closed['status'] = 'closed'
+        consultations.write_record(d, closed)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/pending', headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 200
+        order_ids = [p['order_id'] for p in r.get_json()['pending']]
+        assert order_ids == ['cs_unmatched']
+
+
+class TestConsultRunnerTpLinked:
+    def test_sets_tp_matched_at(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_link', brand='gravelgod')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.post('/api/consult/jobs/cs_link/tp-linked',
+                            json={'tp_athlete_id': '12345'},
+                            headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 200
+        updated = consultations.read_record(_consult_dir(app_module), 'cs_link')
+        assert updated['athlete']['tp_athlete_id'] == '12345'
+        assert updated['athlete']['tp_matched_at'] is not None
+
+    def test_idempotent_repeat_call_keeps_original_timestamp(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_link2', brand='gravelgod')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            client.post('/api/consult/jobs/cs_link2/tp-linked',
+                        json={'tp_athlete_id': '1'}, headers={'X-Runner-Secret': 'shhh'})
+            first = consultations.read_record(
+                _consult_dir(app_module), 'cs_link2')['athlete']['tp_matched_at']
+
+            client.post('/api/consult/jobs/cs_link2/tp-linked',
+                        json={'tp_athlete_id': '1'}, headers={'X-Runner-Secret': 'shhh'})
+            second = consultations.read_record(
+                _consult_dir(app_module), 'cs_link2')['athlete']['tp_matched_at']
+
+        assert first == second
+
+    def test_404_unknown_order(self, client, temp_athletes_dir):
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.post('/api/consult/jobs/cs_missing/tp-linked',
+                            json={'tp_athlete_id': '1'}, headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 404
+
+
+class TestConsultRunnerClaim:
+    def test_claim_sets_lease(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_claim', brand='gravelgod')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.post('/api/consult/jobs/cs_claim/claim',
+                            json={'claimed_by': 'mac-mini'}, headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 200
+        updated = consultations.read_record(_consult_dir(app_module), 'cs_claim')
+        assert updated['status'] == 'analysis_running'
+        assert updated['analysis']['claimed_by'] == 'mac-mini'
+        assert updated['analysis']['attempts'] == 1
+
+    def test_second_claim_conflicts_409(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_claim2', brand='gravelgod')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            client.post('/api/consult/jobs/cs_claim2/claim',
+                        json={'claimed_by': 'runner-a'}, headers={'X-Runner-Secret': 'shhh'})
+            r2 = client.post('/api/consult/jobs/cs_claim2/claim',
+                             json={'claimed_by': 'runner-b'}, headers={'X-Runner-Secret': 'shhh'})
+        assert r2.status_code == 409
+
+    def test_stuck_sweep_reopens_expired_lease_under_max_attempts(self, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_stuck', brand='gravelgod')
+        record['status'] = 'analysis_running'
+        record['analysis'].update(
+            claimed_by='mac-mini', attempts=1,
+            lease_expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat())
+        consultations.write_record(_consult_dir(app_module), record)
+
+        stats = app_module.sweep_stuck_consultations()
+        assert stats['reopened'] == 1
+        updated = consultations.read_record(_consult_dir(app_module), 'cs_stuck')
+        assert updated['status'] == 'open'
+        assert updated['analysis']['claimed_by'] is None
+
+    def test_stuck_sweep_flags_needs_attention_at_max_attempts(self, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_stuck_max', brand='gravelgod')
+        record['status'] = 'analysis_running'
+        record['analysis'].update(
+            claimed_by='mac-mini', attempts=app_module.CONSULT_ANALYSIS_MAX_ATTEMPTS,
+            lease_expires_at=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat())
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True):
+            stats = app_module.sweep_stuck_consultations()
+        assert stats['needs_attention'] == 1
+        updated = consultations.read_record(_consult_dir(app_module), 'cs_stuck_max')
+        assert updated['status'] == 'needs_attention'
+
+
+class TestConsultRunnerReport:
+    def _seed(self, app_module, order_id='cs_report'):
+        import consultations
+        record = consultations.new_record(order_id=order_id, brand='gravelgod',
+                                          athlete_name='Jesse Couch')
+        consultations.write_record(_consult_dir(app_module), record)
+
+    def test_report_upload_sets_status_and_sends_one_email(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        self._seed(app_module)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            data = {'report_md': (BytesIO(b'# ONE thing\n\nDo the work.'), 'report.md')}
+            r = client.post('/api/consult/jobs/cs_report/report',
+                            data=data, content_type='multipart/form-data',
+                            headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 200
+        assert mock_send.call_count == 1
+        updated = consultations.read_record(_consult_dir(app_module), 'cs_report')
+        assert updated['status'] == 'report_ready'
+        assert updated['analysis']['report_path']
+
+    def test_repeat_report_upload_is_idempotent_no_second_email(self, client, temp_athletes_dir, app):
+        import app as app_module
+        self._seed(app_module, order_id='cs_report_dup')
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            for _ in range(2):
+                data = {'report_md': (BytesIO(b'# ONE thing'), 'report.md')}
+                client.post('/api/consult/jobs/cs_report_dup/report',
+                            data=data, content_type='multipart/form-data',
+                            headers={'X-Runner-Secret': 'shhh'})
+        assert mock_send.call_count == 1
+
+    def test_missing_report_md_400(self, client, temp_athletes_dir, app):
+        import app as app_module
+        self._seed(app_module, order_id='cs_report_missing')
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.post('/api/consult/jobs/cs_report_missing/report',
+                            data={}, content_type='multipart/form-data',
+                            headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 400
+
+    def test_max_content_length_rejects_oversized_upload(self, client, temp_athletes_dir, app):
+        import app as app_module
+        self._seed(app_module, order_id='cs_report_big')
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'), \
+             patch.object(app_module.app.config, '__getitem__',
+                          wraps=app_module.app.config.__getitem__):
+            # Shrink the cap for the test instead of generating a 25MB body.
+            original = app_module.app.config['MAX_CONTENT_LENGTH']
+            app_module.app.config['MAX_CONTENT_LENGTH'] = 10
+            try:
+                data = {'report_md': (BytesIO(b'x' * 1000), 'report.md')}
+                r = client.post('/api/consult/jobs/cs_report_big/report',
+                                data=data, content_type='multipart/form-data',
+                                headers={'X-Runner-Secret': 'shhh'})
+            finally:
+                app_module.app.config['MAX_CONTENT_LENGTH'] = original
+        assert r.status_code == 413
+
+
+class TestConsultRunnerError:
+    def test_error_sets_needs_attention_and_notifies(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_err', brand='gravelgod')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            r = client.post('/api/consult/jobs/cs_err/error',
+                            json={'error': 'TP session expired'},
+                            headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 200
+        assert mock_send.call_count == 1
+        updated = consultations.read_record(_consult_dir(app_module), 'cs_err')
+        assert updated['status'] == 'needs_attention'
+        assert updated['analysis']['error'] == 'TP session expired'
+
+    def test_repeat_same_error_sends_no_second_email(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_err2', brand='gravelgod')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            for _ in range(2):
+                client.post('/api/consult/jobs/cs_err2/error',
+                            json={'error': 'same failure'},
+                            headers={'X-Runner-Secret': 'shhh'})
+        assert mock_send.call_count == 1
+
+    def test_404_unknown_order(self, client, temp_athletes_dir):
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.post('/api/consult/jobs/cs_nope/error',
+                            json={'error': 'x'}, headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 404
+
+
+class TestConsultRunnerGet:
+    def test_returns_full_record(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_get', brand='gravelgod',
+                                          athlete_email='j@test.com')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/cs_get', headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 200
+        assert r.get_json()['athlete']['email'] == 'j@test.com'
+
+    def test_404_unknown_order(self, client, temp_athletes_dir):
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/cs_nope', headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 404
+
+
+class TestConsultOperatorEndpoint:
+    """POST /api/consult/<order_id>/op — X-Cron-Secret operator lever."""
+
+    def test_503_when_cron_secret_unset(self, client, temp_athletes_dir):
+        with patch('app.CRON_SECRET', ''):
+            r = client.post('/api/consult/cs_x/op', json={'retry': True})
+        assert r.status_code == 503
+
+    def test_401_when_wrong_secret(self, client, temp_athletes_dir):
+        with patch('app.CRON_SECRET', 'shhh'):
+            r = client.post('/api/consult/cs_x/op', json={'retry': True},
+                            headers={'X-Cron-Secret': 'nope'})
+        assert r.status_code == 401
+
+    def test_400_when_no_recognized_op(self, client, temp_athletes_dir):
+        with patch('app.CRON_SECRET', 'shhh'):
+            r = client.post('/api/consult/cs_x/op', json={},
+                            headers={'X-Cron-Secret': 'shhh'})
+        assert r.status_code == 400
+
+    def test_sets_call_at(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_op_call', brand='gravelgod')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.CRON_SECRET', 'shhh'):
+            r = client.post('/api/consult/cs_op_call/op',
+                            json={'call_at': '2026-09-01T15:00:00+00:00'},
+                            headers={'X-Cron-Secret': 'shhh'})
+        assert r.status_code == 200
+        updated = consultations.read_record(_consult_dir(app_module), 'cs_op_call')
+        assert updated['call_at'] == '2026-09-01T15:00:00+00:00'
+
+    def test_closes_with_reason(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_op_close', brand='gravelgod')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.CRON_SECRET', 'shhh'):
+            r = client.post('/api/consult/cs_op_close/op',
+                            json={'close': 'delivered'},
+                            headers={'X-Cron-Secret': 'shhh'})
+        assert r.status_code == 200
+        updated = consultations.read_record(_consult_dir(app_module), 'cs_op_close')
+        assert updated['status'] == 'closed'
+        assert updated['closed_reason'] == 'delivered'
+
+    def test_retry_reopens_and_clears_lease(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_op_retry', brand='gravelgod')
+        record['status'] = 'needs_attention'
+        record['analysis'].update(claimed_by='mac-mini', lease_expires_at='2026-01-01T00:00:00+00:00',
+                                  error='boom')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.CRON_SECRET', 'shhh'):
+            r = client.post('/api/consult/cs_op_retry/op',
+                            json={'retry': True},
+                            headers={'X-Cron-Secret': 'shhh'})
+        assert r.status_code == 200
+        updated = consultations.read_record(_consult_dir(app_module), 'cs_op_retry')
+        assert updated['status'] == 'open'
+        assert updated['analysis']['claimed_by'] is None
+        assert updated['analysis']['error'] is None
+
+    def test_404_unknown_order(self, client, temp_athletes_dir):
+        with patch('app.CRON_SECRET', 'shhh'):
+            r = client.post('/api/consult/cs_missing/op',
+                            json={'retry': True}, headers={'X-Cron-Secret': 'shhh'})
+        assert r.status_code == 404
+
+
+class TestConsultFollowupsStateMachine:
+    """process_consult_followups() — state-conditional, not day-offset."""
+
+    def _seed(self, app_module, order_id, **overrides):
+        import consultations
+        record = consultations.new_record(order_id=order_id, brand='gravelgod',
+                                          athlete_name='Jesse Couch',
+                                          athlete_email='jesse@example.com')
+        record['welcome_sent_at'] = consultations.now_iso()  # welcome already sent
+        for key, value in overrides.items():
+            record[key] = value
+        consultations.write_record(_consult_dir(app_module), record)
+        return record
+
+    def test_intake_nudge_fires_once_after_24h(self, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        old = (datetime.now(timezone.utc) - timedelta(hours=30)).isoformat()
+        self._seed(app_module, 'cs_intake_nudge', created_at=old)
+
+        with patch('app.RESEND_API_KEY', 'test-key'), \
+             patch.dict(os.environ, {'CONSULT_INTAKE_TOKEN_SECRET': 'test-secret'}), \
+             patch('app._send_email', return_value=True) as mock_send:
+            stats1 = app_module.process_consult_followups()
+            stats2 = app_module.process_consult_followups()
+
+        assert stats1['intake_nudged'] == 1
+        assert stats2['intake_nudged'] == 0  # fired at most once
+        record = consultations.read_record(_consult_dir(app_module), 'cs_intake_nudge')
+        assert 'intake_nudge' in record['nudges_sent']
+
+    def test_no_intake_nudge_before_24h(self, temp_athletes_dir, app):
+        import app as app_module
+        recent = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        self._seed(app_module, 'cs_intake_too_soon', created_at=recent)
+
+        with patch('app.RESEND_API_KEY', 'test-key'), patch('app._send_email', return_value=True):
+            stats = app_module.process_consult_followups()
+        assert stats['intake_nudged'] == 0
+
+    def test_tp_nudge_fires_once_after_48h(self, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        old = (datetime.now(timezone.utc) - timedelta(hours=50)).isoformat()
+        record = self._seed(app_module, 'cs_tp_nudge', created_at=old)
+        # Intake already received so only the TP nudge is under test.
+        record['intake'] = {'intake_id': str(uuid.uuid4()), 'received_at': consultations.now_iso()}
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.RESEND_API_KEY', 'test-key'), \
+             patch('app._send_email', return_value=True):
+            stats1 = app_module.process_consult_followups()
+            stats2 = app_module.process_consult_followups()
+
+        assert stats1['tp_nudged'] == 1
+        assert stats2['tp_nudged'] == 0
+
+    def test_call_relative_rules_only_run_when_call_at_set(self, temp_athletes_dir, app):
+        import app as app_module
+        # No call_at — even though "created" long ago, no call-relative
+        # nudges should fire.
+        old = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+        self._seed(app_module, 'cs_no_call', created_at=old)
+
+        with patch('app.RESEND_API_KEY', 'test-key'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True):
+            stats = app_module.process_consult_followups()
+
+        assert stats['plan_reminded'] == 0
+        assert stats['addon_offered'] == 0
+
+    def test_plan_reminder_fires_1d_after_call(self, temp_athletes_dir, app):
+        import app as app_module
+        call_at = (datetime.now(timezone.utc) - timedelta(days=1, hours=1)).isoformat()
+        self._seed(app_module, 'cs_call_1d', call_at=call_at)
+
+        with patch('app.RESEND_API_KEY', 'test-key'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            stats1 = app_module.process_consult_followups()
+            stats2 = app_module.process_consult_followups()
+
+        assert stats1['plan_reminded'] == 1
+        assert stats2['plan_reminded'] == 0
+        coach_calls = [c for c in mock_send.call_args_list if c.args[0] == 'coach@example.com']
+        assert len(coach_calls) == 1
+
+    def test_addon_offer_fires_2d_after_call_sets_expiry(self, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        call_at_dt = datetime.now(timezone.utc) - timedelta(days=2, hours=1)
+        self._seed(app_module, 'cs_call_2d', call_at=call_at_dt.isoformat())
+
+        with patch('app.RESEND_API_KEY', 'test-key'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True):
+            stats1 = app_module.process_consult_followups()
+            stats2 = app_module.process_consult_followups()
+
+        assert stats1['addon_offered'] == 1
+        assert stats2['addon_offered'] == 0
+        record = consultations.read_record(_consult_dir(app_module), 'cs_call_2d')
+        expires_at = record['products']['plan_addon']['offer_expires_at']
+        assert expires_at is not None
+        assert datetime.fromisoformat(expires_at) - call_at_dt == timedelta(days=7)
+
+    def test_addon_offer_skipped_if_already_purchased(self, temp_athletes_dir, app):
+        import app as app_module
+        call_at = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+        record = self._seed(app_module, 'cs_call_bought', call_at=call_at)
+        record['products']['plan_addon']['purchased'] = True
+        import consultations
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.RESEND_API_KEY', 'test-key'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True):
+            stats = app_module.process_consult_followups()
+        assert stats['addon_offered'] == 0
+
+    def test_give_up_rule_closes_after_30_days_no_tp_link(self, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        old = (datetime.now(timezone.utc) - timedelta(days=31)).isoformat()
+        self._seed(app_module, 'cs_give_up', created_at=old)
+
+        with patch('app.RESEND_API_KEY', 'test-key'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True):
+            stats = app_module.process_consult_followups()
+
+        assert stats['closed_no_data'] == 1
+        record = consultations.read_record(_consult_dir(app_module), 'cs_give_up')
+        assert record['status'] == 'closed'
+        assert record['closed_reason'] == 'no_data_30d'
+
+    def test_give_up_rule_does_not_close_when_tp_linked(self, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        old = (datetime.now(timezone.utc) - timedelta(days=31)).isoformat()
+        record = self._seed(app_module, 'cs_no_give_up', created_at=old)
+        record['athlete']['tp_matched_at'] = consultations.now_iso()
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.RESEND_API_KEY', 'test-key'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True):
+            stats = app_module.process_consult_followups()
+
+        assert stats['closed_no_data'] == 0
+        record = consultations.read_record(_consult_dir(app_module), 'cs_no_give_up')
+        assert record['status'] != 'closed'
+
+    def test_closed_records_are_skipped_entirely(self, temp_athletes_dir, app):
+        import app as app_module
+        old = (datetime.now(timezone.utc) - timedelta(days=31)).isoformat()
+        self._seed(app_module, 'cs_already_closed', created_at=old, status='closed')
+
+        with patch('app.RESEND_API_KEY', 'test-key'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True):
+            stats = app_module.process_consult_followups()
+
+        assert stats['checked'] == 0
+
+
+class TestConsultCronWiring:
+    def test_cron_followup_emails_includes_consult_stats(self, client, temp_athletes_dir):
+        with patch('app.CRON_SECRET', 'shhh'):
+            r = client.post('/api/cron/followup-emails', headers={'X-Cron-Secret': 'shhh'})
+        assert r.status_code == 200
+        data = r.get_json()
+        assert 'consult' in data
+        assert 'checked' in data['consult']
+
+
+class TestMaxContentLengthAppWide:
+    def test_config_set_to_25mb(self, app):
+        import app as app_module
+        assert app_module.app.config['MAX_CONTENT_LENGTH'] == 25 * 1024 * 1024
