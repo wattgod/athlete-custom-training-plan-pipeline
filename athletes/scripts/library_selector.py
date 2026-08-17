@@ -93,6 +93,11 @@ def _base_routing_table() -> dict[str, tuple[str, ...]]:
     # sprint_attacks joins it under race_demands per T22 (see
     # _apply_race_demands_extras). JUDGMENT CALL, flagged for coach review.
     table["Stars In Your Eyes"] = ("anaerobic_capacity",)
+    # Midweek mini race-sims draw the curated race_sim library (47 items
+    # under 120min incl. authored level ladders); the numbered Act long
+    # sims + dress rehearsal stay composed from race facts (act_simulation
+    # days never reach the selector). Coach ruling, Aug 17.
+    table["Race Simulation"] = ("race_sim",)
     return table
 
 
@@ -106,8 +111,8 @@ ROUTING_TABLE: dict[str, tuple[str, ...]] = _base_routing_table()
 # silently unrouted, to satisfy routing totality; flagged for coach review.
 SYNTHETIC_ONLY: frozenset[str] = frozenset(
     {
-        # D5 explicit
-        "Race Simulation",
+        # D5 explicit (midweek sims route to race_sim as of Aug 17;
+        # Act long sims are excluded upstream via the act_simulation flag)
         "FTP Test",
         "Anaerobic Test",
         "Openers",
@@ -139,9 +144,12 @@ def _is_long_ride_role(role: Optional[str]) -> bool:
 
 
 def _endurance_library_keys(budget_min: float) -> tuple[str, ...]:
+    # The skills library (101 curated technique/specialty items) joins the
+    # easy-day rotation — the role ceilings and hard-work budget admit only
+    # genuinely easy skills sessions onto easy days. Coach ruling, Aug 17.
     if budget_min < _ENDURANCE_BUDGET_SPLIT_MIN:
-        return ("endurance_z2_short", "endurance_with_work")
-    return ("endurance_z2_long", "endurance_with_work")
+        return ("endurance_z2_short", "endurance_with_work", "skills")
+    return ("endurance_z2_long", "endurance_with_work", "skills")
 
 
 def resolve_library_keys(slot: Mapping[str, Any]) -> tuple[str, ...]:
