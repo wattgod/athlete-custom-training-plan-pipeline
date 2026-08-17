@@ -258,7 +258,7 @@ def _qualifying_pool(
         and lo <= item["duration_min"] <= hi
     ]
     if slot is not None:
-        pool = [item for item in pool if _passes_role_ceiling(item, slot)]
+        pool = [item for item in pool if not _is_internal_only(item) and _passes_role_ceiling(item, slot)]
     return pool
 
 
@@ -325,6 +325,19 @@ def _max_power_target_pct(structure: Any) -> float:
 # 0.68 — 12 minutes of genuine VO2 work that once landed on a deload
 # Sunday). Total seconds at >=92% FTP is the honest measure: recovery
 # slots allow only opener-class touches; regular fillers a little more.
+# Coach-curated internal-only names (voice rule: "anything crude or
+# requiring context to not be weird on a stranger's calendar stays
+# internal or gets renamed" — 'The Happy Ending' is the documented
+# example). These items stay in the library for the coach's own use but
+# never ship on a customer calendar.
+_INTERNAL_ONLY_NAMES = {"the happy ending"}
+
+
+def _is_internal_only(item: Mapping[str, Any]) -> bool:
+    name = (item.get("name_base") or item.get("name_raw") or "").lower()
+    return any(blocked in name for blocked in _INTERNAL_ONLY_NAMES)
+
+
 _HARD_WORK_PCT_FLOOR = 92.0
 _HARD_WORK_SECONDS_RECOVERY = 150
 _HARD_WORK_SECONDS_FILLER = 360

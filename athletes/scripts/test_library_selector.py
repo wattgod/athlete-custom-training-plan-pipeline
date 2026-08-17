@@ -728,3 +728,10 @@ def test_backloaded_intensity_fails_recovery_ceiling():
         ]},
     }
     assert _passes_role_ceiling(touch, slot)
+
+
+
+def test_internal_only_names_never_ship():
+    from library_selector import _is_internal_only
+    assert _is_internal_only({"name_base": "The Happy Ending"})
+    assert not _is_internal_only({"name_base": "This is Uncomfortable"})
