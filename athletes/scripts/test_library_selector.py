@@ -753,3 +753,21 @@ def test_cadence_slots_use_wider_duration_window():
     assert abs(lo - 35.0) < 0.01 and abs(hi - 65.0) < 0.01
     lo2, hi2 = _duration_bounds(50, 120, "Endurance")
     assert lo2 == 42.5 and abs(hi2 - 57.5) < 0.01
+
+
+
+def test_midweek_sim_routes_to_race_sim_library():
+    from library_selector import resolve_library_keys, SYNTHETIC_ONLY
+    assert "Race Simulation" not in SYNTHETIC_ONLY
+    keys = resolve_library_keys({"canonical_name": "Race Simulation",
+                                 "role": "intensity", "phase": "peak",
+                                 "week_type": "load", "budget_min": 60})
+    assert "race_sim" in keys
+
+
+def test_skills_join_easy_rotation_behind_ceilings():
+    from library_selector import resolve_library_keys
+    keys = resolve_library_keys({"canonical_name": "Endurance",
+                                 "role": "filler", "phase": "base",
+                                 "week_type": "load", "budget_min": 70})
+    assert "skills" in keys

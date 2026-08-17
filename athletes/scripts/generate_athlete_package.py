@@ -941,7 +941,10 @@ def strength_equipment_tier(profile: dict) -> str:
 # out of the D9 fallback report, which should only name genuine misses).
 _LIBRARY_OUT_OF_SCOPE_NAMES = frozenset({
     'FTP Test', 'Anaerobic Test', 'Openers', 'Rest Day', 'OFF',
-    'RACE_DAY', 'Race Simulation', 'Act Race Simulation',
+    'RACE_DAY', 'Act Race Simulation',
+    # 'Race Simulation' (the MIDWEEK mini-sim) is in scope as of Aug 17 —
+    # it routes to the curated race_sim library; the long Act sims are
+    # excluded via the act_simulation flag, not by name.
 })
 
 # R4 fix wave (SPEC_LIBRARY_SELECTION.md regrade): the original C4 judgment
