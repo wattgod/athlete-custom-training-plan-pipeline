@@ -314,9 +314,12 @@ def _defining_set_from_structure(session: Any) -> Optional[str]:
     # single lead-in only marginally harder than a bigger repeated main set
     # (8min @88% vs 3x5min @85%), headline the repeats.
     if reps == 1:
+        # Volume bar is half the single block: a 3x30s @125% opener set
+        # defines the session over its 2min @120% lead-in even though the
+        # lead-in carries more raw seconds.
         rep_blocks = [b for b in blocks
-                      if b[1] > 1 and b[0] >= total_seconds
-                      and _pct_value(percent) - _pct_value(b[2]) <= 4]
+                      if b[1] > 1 and b[0] >= 0.5 * total_seconds
+                      and _pct_value(b[2]) >= _pct_value(percent) - 4]
         if rep_blocks:
             total_seconds, reps, percent = max(rep_blocks, key=_key)
     if not percent:

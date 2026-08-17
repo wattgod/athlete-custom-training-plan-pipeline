@@ -55,7 +55,11 @@ def _line_for_segment(segment: Dict[str, Any]) -> Optional[str]:
     if kind == 'steady':
         return f"{_mins(segment['seconds'])} @ {round(segment['power'] * 100)}% FTP"
     if kind == 'free_ride':
-        return f"{_mins(segment['seconds'])} free ride"
+        # Target-free blocks in emitted workouts are max-effort test segments
+        # (sprints, capacity efforts). "Free ride" reads as no-effort-required
+        # and risks the athlete soft-pedaling exactly where the test needs
+        # everything; say what the block is for.
+        return f"{_mins(segment['seconds'])} all-out (no target — empty the tank)"
     return None
 
 

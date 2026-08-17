@@ -283,6 +283,15 @@ def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min
             if len(tr) == 2:
                 phase_ceiling = tr[1]
     tier = classify_fuel_tier(workout_type)
+    # Short quality/test/sim sessions get honest, soft guidance — a rigid
+    # "Target Ng/hr. Practice this prescription" on a 60-minute FTP test
+    # contradicts the fuel ladder's own under-90-minute scope, and the house
+    # standard keeps fuel copy light on short hard days. Gut training lives
+    # on the long rides.
+    if tier in ('race_sim', 'quality') and duration_min is not None and duration_min < 90:
+        label = 'RACE FUEL' if tier == 'race_sim' else 'FUEL'
+        return (f"{label}: Under 90 minutes — arrive fueled and bring one "
+                "bottle with carbs. The ladder lives on the long rides.")
     if tier == 'race_sim':
         return render_workout_fueling(prescription, 'race_sim', phase_ceiling)
     if tier == 'quality':
