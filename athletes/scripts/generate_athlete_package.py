@@ -944,13 +944,33 @@ _LIBRARY_OUT_OF_SCOPE_NAMES = frozenset({
     'RACE_DAY', 'Race Simulation', 'Act Race Simulation',
 })
 
-# JUDGMENT CALL: D1 says "endurance fillers", not "all fillers" -- the
-# filler role also carries pool-rotation types (e.g. Cadence Work) per
-# workout_selector.py's pool mechanism. Read narrowly: only canonical name
-# 'Endurance' (the dominant/default filler, block_builder.py:417) is
-# in-scope for a filler-role day. Flagged for coach review per the spec's
-# convention for judgment calls in this workstream.
-_LIBRARY_ENDURANCE_FILLER_NAME = 'Endurance'
+# R4 fix wave (SPEC_LIBRARY_SELECTION.md regrade): the original C4 judgment
+# call narrowed in-scope fillers to name=='Endurance' only, which silently
+# excluded (not failed) 'Cadence Work' (6 occurrences, routed to a 40-item
+# pool), 'Endurance Blocks', and 'Endurance with Surges' -- they never
+# reached the selector at all, and because they were excluded rather than
+# failed, the D9 fallback report never named them either. Widened to every
+# canonical filler whose type actually routes in library_selector's
+# ROUTING_TABLE (C3).
+_LIBRARY_IN_SCOPE_FILLER_NAMES = frozenset({
+    'Endurance', 'Cadence Work', 'Endurance Blocks', 'Endurance with Surges',
+})
+
+# SYNTHETIC_PINNED (R4): filler-role canonical types/day-flags that stay
+# synthetic by design even though C3 nominally routes them (or would, given
+# a plain Endurance name) -- these are not genuine library misses, so they
+# stay OUT of scope entirely rather than landing in the D9 fallback report.
+#   - 'Taper Burst Endurance': a taper-specific tune-up, the same family as
+#     Openers (D5), not a variety pool -- JUDGMENT CALL, flagged for coach
+#     review per this workstream's convention.
+#   - post_sim_recovery / pre_sim_recovery: block_chain.
+#     protect_post_simulation_recovery renames the day to 'Endurance' but
+#     the render path (generate_zwo_files) gives it a deliberately-boring
+#     "recovery spin" description precisely because a hard simulation
+#     preceded or follows it -- a curated library pick doesn't know that job
+#     and could hand back cadence work or surges instead.
+_LIBRARY_SYNTHETIC_PINNED_FILLER_NAMES = frozenset({'Taper Burst Endurance'})
+_LIBRARY_SYNTHETIC_PINNED_DAY_FLAGS = ('post_sim_recovery', 'pre_sim_recovery')
 
 
 def _library_selection_in_scope(bd: dict) -> bool:
@@ -971,9 +991,131 @@ def _library_selection_in_scope(bd: dict) -> bool:
         return False
     if 'strength' in name.lower():
         return False
-    if role == 'filler' and name != _LIBRARY_ENDURANCE_FILLER_NAME:
-        return False
+    if role == 'filler':
+        if name in _LIBRARY_SYNTHETIC_PINNED_FILLER_NAMES:
+            return False
+        if name not in _LIBRARY_IN_SCOPE_FILLER_NAMES:
+            return False
+        if any(bd.get(flag) for flag in _LIBRARY_SYNTHETIC_PINNED_DAY_FLAGS):
+            return False
     return True
+
+
+# R6 fix wave (SPEC_LIBRARY_SELECTION.md regrade): name_base FRAGMENTS
+# ("with Surges", "Extended", "Blocks") were shipping verbatim as card
+# titles. name_base itself is never touched (family grouping in
+# library_selector/tp_library_snapshot depends on the exact string) -- only
+# the DISPLAY name composes a readable title when name_base doesn't stand
+# on its own.
+#
+# library_key -> the coach-vocabulary category word used to compose
+# "{Category} {name_base}" (e.g. vo2_classic -> "VO2max Extended",
+# endurance_with_work -> "Endurance Blocks"). Covers every library_key
+# reachable via library_selector.ROUTING_TABLE.
+_LIBRARY_KEY_DISPLAY_CATEGORY = {
+    'vo2_3030_micro': 'VO2max',
+    'vo2_classic': 'VO2max',
+    'vo2_blends': 'VO2max',
+    'threshold_intervals': 'Threshold',
+    'threshold_sustained': 'Threshold',
+    'threshold_floats_ou': 'Threshold',
+    'sweet_spot_gspot': 'Sweet Spot',
+    'tempo': 'Tempo',
+    'torque_sfr': 'SFR',
+    'torque_stomps': 'Stomps',
+    'torque_starts_cadence': 'Cadence',
+    'sprint_attacks': 'Sprints',
+    'endurance_z2_short': 'Endurance',
+    'endurance_z2_long': 'Endurance',
+    'endurance_with_work': 'Endurance',
+    'anaerobic_capacity': 'Anaerobic',
+    'durability_long_sims': 'Durability',
+    'durability_tired_intervals': 'Durability',
+}
+
+# JUDGMENT CALL: the spec's literal length threshold ("len >= 8") would
+# leave a bare "Extended" (exactly 8 chars) standing alone, but the spec's
+# own required fix for that offender is the composed "VO2max Extended" --
+# the concrete example is the more reliable signal, so the gate below reads
+# as "len > 8" (i.e. 9+) to satisfy it. Flagged for coach review per this
+# workstream's convention for judgment calls that resolve a spec ambiguity.
+_LIBRARY_DISPLAY_STANDALONE_MIN_LEN = 8
+
+
+def _library_name_reads_standalone(name_base: str) -> bool:
+    """A name_base "reads standalone" (ships as-is) when it's multiword with
+    an uppercase lead word, or a single word that's both capitalized and
+    long enough to be a real title on its own -- short/lowercase fragments
+    ("with Surges", "Extended", "Blocks") need a category word composed in
+    front of them instead (see ``_library_display_name``)."""
+    if not name_base:
+        return False
+    words = name_base.split()
+    if len(words) > 1:
+        return words[0][:1].isupper()
+    return name_base[:1].isupper() and len(name_base) > _LIBRARY_DISPLAY_STANDALONE_MIN_LEN
+
+
+def _library_display_name(resolution: dict) -> str:
+    """R6: readable card title for a library-resolved session. Never
+    mutates ``resolution['name_base']`` -- returns a new string only."""
+    name_base = (resolution.get('name_base') or '').strip()
+    # Curation residue: trailing dashes/punctuation from the name parser
+    # ("TT Base -") must never reach a card title.
+    name_base = name_base.rstrip(' -–—·:').strip()
+    if _library_name_reads_standalone(name_base):
+        return name_base
+    category = _LIBRARY_KEY_DISPLAY_CATEGORY.get(resolution.get('library_key'), '')
+    if not category:
+        return name_base
+    # Don't stutter when the fragment already carries the category token
+    # ("30/30 VO2" under the VO2max library must not become
+    # "VO2max 30/30 VO2").
+    _cat_root = category.lower().replace('max', '')
+    if any(_cat_root and _cat_root in tok.lower()
+           for tok in name_base.split()):
+        return name_base
+    # Natural joining: "with Surges" reads better abbreviated than
+    # concatenated ("Endurance w/ Surges", not "Endurance with Surges").
+    joined = name_base
+    if joined.lower().startswith('with '):
+        joined = 'w/' + joined[4:]
+    return f"{category} {joined}".strip()
+
+
+def _compute_hard_bike_dates(tp_manifest_records: list) -> set:
+    """T18/R5: dates carrying a hard bike session, for the strength
+    SEQUENCING block. Classify from the EMITTED session records, not the
+    block-builder's planned roles -- test-week overlays rewrite days after
+    planning, and a planned intensity Monday once shipped as an easy ride
+    carrying a false "today also carries your hard ride" claim.
+
+    R5 fix wave: role/is_sim alone miss a library-resolved long_ride
+    (durability long ride, build/peak) that carries authored IF 0.95 --
+    ``library_is_hard_resolved`` (set at emission from the item's AUTHORED
+    if_planned/structure, not the internal ZWO's inflated NP) closes that
+    gap in addition to the existing role classification.
+    """
+    hard_dates = set()
+    for rec in tp_manifest_records:
+        if rec.get('tp_kind') == 'bike' and rec.get('date') and (
+                rec.get('role') == 'intensity' or rec.get('is_sim')
+                or rec.get('library_is_hard_resolved')):
+            hard_dates.add(str(rec['date']))
+    return hard_dates
+
+
+def _resolution_is_hard(resolution: dict) -> bool:
+    """R5 fix wave: a resolved session counts as hard for SEQUENCING/
+    adjacency purposes when its authored intensity is genuinely hard, in
+    ADDITION to the existing role-based classification -- role alone misses
+    a build/peak durability long ride (role 'long_ride', never 'intensity')
+    that the library resolved to authored IF 0.95."""
+    if_planned = resolution.get('if_planned')
+    if if_planned is not None and if_planned >= 0.85:
+        return True
+    from tp_structure_to_zwo import structure_has_hard_effort
+    return structure_has_hard_effort(resolution.get('structure'))
 
 
 def _recompute_library_week_totals(week: dict) -> None:
@@ -1009,6 +1151,7 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     recomputed (D2). Series continuity (D8) is tracked via a series_state
     dict threaded across the whole plan, keyed identically to the
     canonical series bookkeeping (block_number, day, canonical name).
+    Variety (R3) is tracked via a used_items dict threaded the same way.
 
     Raises whatever ``library_selector``/``tp_library_snapshot`` raise --
     callers must not swallow exceptions here (Jesse Couch rule: the
@@ -1024,6 +1167,7 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     day_caps = day_caps or {}
     excluded_calendar_slots = excluded_calendar_slots or set()
     series_state: dict = {}
+    used_items: dict = {}
     fallbacks: list = []
 
     for bw in bb_plan.get('weeks', []):
@@ -1031,6 +1175,7 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
         week_in_block = bw.get('week_num', 1)
         block_number = bw.get('block_number', 1)
         phase = bw.get('phase')
+        week_type = bw.get('week_type')
         touched = False
         for bd in bw.get('days', []):
             day_abbrev = bd.get('day')
@@ -1047,8 +1192,15 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
                 'day_cap_min': day_caps.get(day_abbrev),
                 'role': bd.get('role'),
                 'phase': phase,
+                # R2: week_type ('load'/'recovery'/'taper'/'race') gates the
+                # filler-role intensity ceiling.
+                'week_type': week_type,
                 'series_key': (block_number, day_abbrev, canonical_name),
                 'week_in_block': week_in_block,
+                # R3: plan_week/day extend the non-series rotation seed and
+                # key the same-week hard-duplicate check.
+                'plan_week': plan_week,
+                'day': day_abbrev,
                 'athlete_seed': athlete_seed,
                 # JUDGMENT CALL (T22): no clean race-demands signal is
                 # plumbed to this integration point for matched races (see
@@ -1058,7 +1210,8 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
                 # routing (anaerobic_capacity) is unaffected.
                 'race_demands': False,
             }
-            resolution = library_selector.select(slot, series_state=series_state, index=idx)
+            resolution = library_selector.select(
+                slot, series_state=series_state, index=idx, used_items=used_items)
             if resolution is None:
                 fallbacks.append({
                     'plan_week': plan_week,
@@ -1077,7 +1230,72 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
         if touched:
             _recompute_library_week_totals(bw)
 
+    _rebalance_recovery_weeks_post_resolution(
+        bb_plan, day_caps=day_caps, athlete_seed=athlete_seed,
+        series_state=series_state, used_items=used_items, index=idx)
+
     return fallbacks
+
+
+def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed,
+                                              series_state, used_items, index):
+    """Keep recovery weeks inside R03's band AFTER resolution moves TSS.
+
+    The build-time recovery fill works with yaml numbers; resolution then
+    swaps in authored item TSS, which can drift the week outside the
+    50-65%-of-load-average band (48% and 66% both shipped as NEEDS_REVIEW
+    flags on real generations). Re-fit ONE easy resolved day at a time
+    toward the band midpoint using the same selector machinery, never
+    touching intensity or synthetic-pinned days.
+    """
+    from block_compliance import _preceding_load_average
+    import library_selector
+    weeks = bb_plan.get('weeks', [])
+    for idx_w, bw in enumerate(weeks):
+        if bw.get('week_type') != 'recovery':
+            continue
+        preceding = _preceding_load_average(weeks, idx_w)
+        if not preceding:
+            continue
+        floor, ceiling = preceding * 0.52, preceding * 0.63
+        for _ in range(4):
+            total = bw.get('total_tss', 0)
+            if floor <= total <= ceiling:
+                break
+            need_more = total < floor
+            # candidate easy resolved days, sorted so we adjust the one
+            # whose swap moves us the right direction the most
+            cands = [d for d in bw.get('days', [])
+                     if d.get('library_resolution')
+                     and d.get('role') in ('filler', 'long_ride')
+                     and not (d.get('post_sim_recovery') or d.get('pre_sim_recovery'))]
+            if not cands:
+                break
+            cands.sort(key=lambda d: d.get('tss', 0), reverse=not need_more)
+            day = cands[0]
+            old = day['library_resolution']
+            budget = (int(old['duration_min'] * (1.3 if need_more else 0.75)))
+            slot = {
+                'canonical_name': day.get('name'), 'level': day.get('level') or 1,
+                'budget_min': budget,
+                'day_cap_min': (day_caps or {}).get(day.get('day')),
+                'role': day.get('role'), 'phase': bw.get('phase'),
+                'series_key': None, 'week_in_block': bw.get('week_num', 1),
+                'athlete_seed': athlete_seed, 'race_demands': False,
+                'week_type': 'recovery',
+                'plan_week': bw.get('plan_week'), 'day': day.get('day'),
+            }
+            replacement = library_selector.select(
+                slot, series_state=series_state, index=index,
+                used_items=used_items)
+            if (replacement is None or replacement['item_id'] == old['item_id']
+                    or (need_more and replacement['tss'] <= old['tss'])
+                    or (not need_more and replacement['tss'] >= old['tss'])):
+                break
+            day['duration'] = replacement['duration_min']
+            day['tss'] = replacement['tss']
+            day['library_resolution'] = replacement
+            _recompute_library_week_totals(bw)
 
 
 def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, derived: dict, profile: dict = None, fueling: dict = None) -> list:
@@ -2959,15 +3177,17 @@ TIPS:
                     _filename_name = display_name
 
                 if _library_resolution:
-                    # D3: curated name_base replaces the resolved archetype
-                    # title for library-selected days -- ZWO <name>,
-                    # _record_tp_session's display_name, and the series-
-                    # suffix patch's base_name all read `display_name` from
-                    # here on. _filename_name/_series_id above are computed
-                    # from the canonical flow and are UNCHANGED -- filename
-                    # shape and series-suffix bookkeeping never depend on
-                    # which renderer produced the file.
-                    display_name = _library_resolution['name_base']
+                    # D3/R6: curated name_base (composed into a readable
+                    # title -- see _library_display_name) replaces the
+                    # resolved archetype title for library-selected days --
+                    # ZWO <name>, _record_tp_session's display_name, and the
+                    # series-suffix patch's base_name all read
+                    # `display_name` from here on. _filename_name/_series_id
+                    # above are computed from the canonical flow and are
+                    # UNCHANGED -- filename shape and series-suffix
+                    # bookkeeping never depend on which renderer produced
+                    # the file.
+                    display_name = _library_display_name(_library_resolution)
 
                 # Render ZWO through block-builder workout mapper. The
                 # filename is derived from _filename_name (bug-compatible
@@ -3133,7 +3353,28 @@ TIPS:
                         # projection's own structure/description stay the
                         # normal (already-unrolled) ZWO-derived shape, same
                         # invariant every other session honors.
-                        **({'library_item_id': _library_resolution['item_id']}
+                        #
+                        # R1 fix wave: library_tss/library_if_planned carry
+                        # the item's AUTHORED numbers end-to-end so
+                        # canonical_training_model can use them instead of
+                        # recomputing tss/tss_planned from the internal C2
+                        # ZWO -- min-only sprint targets rendered as flat
+                        # Power blocks there massively inflate 4th-power NP
+                        # (an authored 57.9 TSS session placed as 103). The
+                        # internal ZWO stays as-is for preview visuals; only
+                        # the athlete-facing numbers are overridden.
+                        #
+                        # R5 fix wave: library_is_hard_resolved lets
+                        # _hard_bike_dates below classify a resolved session
+                        # as hard from its AUTHORED intensity, in addition
+                        # to role -- a durability long ride (role
+                        # 'long_ride', never 'intensity') can resolve to
+                        # authored IF 0.95 and still needs SEQUENCING
+                        # guidance against a same-day strength session.
+                        **({'library_item_id': _library_resolution['item_id'],
+                            'library_tss': _library_resolution['tss'],
+                            'library_if_planned': _library_resolution['if_planned'],
+                            'library_is_hard_resolved': _resolution_is_hard(_library_resolution)}
                            if _library_resolution else {}),
                     )
                     continue  # Skip legacy path entirely
@@ -3745,17 +3986,10 @@ GO GET IT, {athlete_name.upper()}!
         for tw in ftp_test_target_weeks:
             ftp_test_days.add((tw, _ftp_day_for_strength))
 
-        # T18: strength that shares a day with the week's hard bike work
-        # needs explicit sequencing guidance on the card. Classify from the
-        # EMITTED session records, not the block-builder's planned roles —
-        # test-week overlays rewrite days after planning, and a planned
-        # intensity Monday once shipped as an easy ride carrying a false
-        # "today also carries your hard ride" claim.
-        _hard_bike_dates = set()
-        for _rec in _tp_manifest_records:
-            if _rec.get('tp_kind') == 'bike' and _rec.get('date') and (
-                    _rec.get('role') == 'intensity' or _rec.get('is_sim')):
-                _hard_bike_dates.add(str(_rec['date']))
+        # T18/R5: strength that shares a day with the week's hard bike work
+        # needs explicit sequencing guidance on the card -- see
+        # _compute_hard_bike_dates.
+        _hard_bike_dates = _compute_hard_bike_dates(_tp_manifest_records)
 
         for week in weeks:
             week_num = week['week']

@@ -192,7 +192,14 @@ def _seed_int(*parts: Any) -> int:
 
 
 def _slot_identity(slot: Mapping[str, Any]) -> Any:
-    """series_key when present, else a stable identity for the slot itself."""
+    """series_key when present, else a stable identity for the slot itself.
+
+    R3(c) fix wave: the non-series identity is extended with
+    (plan_week, day) -- without it, two different weeks sharing the same
+    (canonical_name, role, phase, week_in_block) tuple (e.g. week_in_block
+    resets every block) would rotate to the identical index and draw the
+    identical item, which is exactly the variety bug this fix wave closes.
+    """
     series_key = slot.get("series_key")
     if series_key:
         return series_key
@@ -201,6 +208,8 @@ def _slot_identity(slot: Mapping[str, Any]) -> Any:
         slot.get("role"),
         slot.get("phase"),
         slot.get("week_in_block"),
+        slot.get("plan_week"),
+        slot.get("day"),
     )
 
 
@@ -230,19 +239,85 @@ def _duration_bounds(budget_min: float, day_cap_min: Optional[float]) -> tuple[f
 
 
 def _qualifying_pool(
-    items: Sequence[Mapping[str, Any]], library_keys: Sequence[str], budget_min: float, day_cap_min: Optional[float]
+    items: Sequence[Mapping[str, Any]], library_keys: Sequence[str], budget_min: float, day_cap_min: Optional[float],
+    *, slot: Optional[Mapping[str, Any]] = None,
 ) -> list[Mapping[str, Any]]:
+    """``slot`` is optional and keyword-only so existing positional callers
+    (including the realism sweep and unit tests) are unaffected; passing it
+    applies the R2 role/week-type intensity ceiling (see
+    ``_passes_role_ceiling``) on top of the duration-fit filter."""
     if not library_keys:
         return []
     lo, hi = _duration_bounds(budget_min, day_cap_min)
     key_set = set(library_keys)
-    return [
+    pool = [
         item
         for item in items
         if item["library_key"] in key_set
         and item.get("duration_min") is not None
         and lo <= item["duration_min"] <= hi
     ]
+    if slot is not None:
+        pool = [item for item in pool if _passes_role_ceiling(item, slot)]
+    return pool
+
+
+# ---------------------------------------------------------------------------
+# R2 fix wave: role/week-type intensity ceilings.
+#
+# Easy-role (filler) slots were drawing sprint-loaded items -- "Z2 + Sprints"
+# 6x30s @200% FTP, RPE8-9 -- into what the week briefing calls an easy
+# endurance day, twice in a RECOVERY week. Intensity-role and long_ride slots
+# are unaffected (a hard durability long ride in build/peak is the house
+# signature, per SPEC_LIBRARY_SELECTION.md T21).
+# ---------------------------------------------------------------------------
+
+_FILLER_IF_CEILING = 0.78
+_FILLER_IF_CEILING_RECOVERY = 0.70
+_FILLER_POWER_CEILING_PCT = 115.0
+_FILLER_POWER_CEILING_PCT_RECOVERY = 110.0
+
+
+def _filler_ceilings(slot: Mapping[str, Any]) -> Optional[tuple[float, float]]:
+    """(if_ceiling, power_ceiling_pct) for a filler-role slot, tighter again
+    in a recovery week; None for any other role (intensity/long_ride keep
+    current behavior -- unchanged by this fix wave)."""
+    if slot.get("role") != "filler":
+        return None
+    if slot.get("week_type") == "recovery":
+        return (_FILLER_IF_CEILING_RECOVERY, _FILLER_POWER_CEILING_PCT_RECOVERY)
+    return (_FILLER_IF_CEILING, _FILLER_POWER_CEILING_PCT)
+
+
+def _max_power_target_pct(structure: Any) -> float:
+    """Highest %FTP POWER target anywhere in a TP structure (0.0 if none).
+
+    Cadence targets (unit ``roundOrStridePerMinute``) and non-%FTP labeled
+    targets (Power Zone / RPE, per tp_structure_to_zwo._classify_leaf) are
+    not power and never count against the ceiling -- drills and spin-ups
+    with a cadence prescription are fine on an easy day."""
+    highest = 0.0
+    blocks = structure.get("structure") if isinstance(structure, dict) else structure
+    for block in (blocks or []):
+        for leaf in (block.get("steps") or []):
+            for target in (leaf.get("targets") or []):
+                if target.get("unit") == "roundOrStridePerMinute" or "label" in target:
+                    continue
+                value = target.get("maxValue", target.get("minValue"))
+                if value is not None:
+                    highest = max(highest, float(value))
+    return highest
+
+
+def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bool:
+    ceilings = _filler_ceilings(slot)
+    if ceilings is None:
+        return True
+    if_ceiling, power_ceiling_pct = ceilings
+    if_planned = item.get("if_planned")
+    if if_planned is not None and if_planned > if_ceiling:
+        return False
+    return _max_power_target_pct(item.get("structure")) <= power_ceiling_pct
 
 
 def _percentile(sorted_vals: Sequence[float], pct: float) -> float:
@@ -336,10 +411,51 @@ def _family_key(item: Mapping[str, Any]) -> str:
 # select()
 # ---------------------------------------------------------------------------
 
+# R3 fix wave: within-plan used-item memory. 24 placements once drew only
+# 16 items ("with Surges" x4, "Z2 + Sprints" x3 with zero progression and
+# two same-week duplicates) -- different FRESH (non-series) picks across the
+# plan kept converging on the same top-ranked item for a given
+# duration/level band. A series is exempt (D8's monotone progression
+# already guarantees distinct items week to week); this cap only ever
+# constrains the first pick of a new series/slot.
+_PLAN_WIDE_REUSE_CAP = 2
+
+
+def _filter_used_items(
+    pool: Sequence[Mapping[str, Any]], slot: Mapping[str, Any], used_items: Mapping[Any, Mapping[str, Any]],
+) -> list[Mapping[str, Any]]:
+    """R3(a)/(b): both the same-week duplicate ban (b) and the plan-wide
+    reuse cap (a) are hard exclusions with no softening -- a small pool
+    (e.g. Cadence Work's ~7-item torque_starts_cadence library) once fell
+    back to unlimited reuse of its only duration-qualified candidate 5x
+    plan-wide when the cap was allowed to soften; a real library miss
+    belongs in D9's loud fallback report, not a silent 3rd-plus repeat.
+    "An item may repeat in the same plan only as part of a progressing
+    series" -- a continuing series is exempt (see select()), never this
+    fresh-pick path."""
+    plan_week = slot.get("plan_week")
+    same_week_free = [
+        item for item in pool
+        if plan_week not in used_items.get(item["item_id"], {}).get("weeks", ())
+    ]
+    return [
+        item for item in same_week_free
+        if used_items.get(item["item_id"], {}).get("count", 0) < _PLAN_WIDE_REUSE_CAP
+    ]
+
+
+def _record_used_item(used_items: dict[Any, dict[str, Any]], item_id: Any, plan_week: Any) -> None:
+    entry = used_items.setdefault(item_id, {"count": 0, "weeks": set()})
+    entry["count"] += 1
+    if plan_week is not None:
+        entry["weeks"].add(plan_week)
+
+
 def select(
     slot: Mapping[str, Any],
     series_state: Optional[dict[str, Any]] = None,
     index: Optional[Mapping[str, Any]] = None,
+    used_items: Optional[dict[Any, dict[str, Any]]] = None,
 ) -> Optional[dict[str, Any]]:
     """Resolve a canonical slot to a curated TP library item, or None (D9).
 
@@ -347,6 +463,12 @@ def select(
     calls (D8). It is mutated in place to record/advance per-series state;
     pass a fresh {} (or None, treated as a scratch dict) for a non-series
     slot or a slot's first call. Never raises for "no fit" -- returns None.
+
+    ``used_items`` (R3) is the caller's dict, threaded the same way as
+    ``series_state``, tracking {item_id: {"count": int, "weeks": set}}
+    across the whole plan. It constrains only FRESH (non-continuation)
+    picks -- a continuing series is exempt (D8) but still records into it so
+    a later fresh pick elsewhere in the plan won't collide with it.
     """
     index = index if index is not None else load_index()
     items = index["items"]
@@ -359,7 +481,7 @@ def select(
     budget_min = float(slot.get("budget_min") or 0)
     day_cap_min = slot.get("day_cap_min")
 
-    pool = _qualifying_pool(items, library_keys, budget_min, day_cap_min)
+    pool = _qualifying_pool(items, library_keys, budget_min, day_cap_min, slot=slot)
     if not pool:
         return None
 
@@ -367,13 +489,21 @@ def select(
     if series_state is not None and series_key and series_key in series_state:
         resolution = _select_series_continuation(slot, series_state, index, pool)
         if resolution is not None:
+            if used_items is not None:
+                _record_used_item(used_items, resolution["item_id"], slot.get("plan_week"))
             return resolution
         # Series continuation had nothing to progress to (e.g. ladder top,
         # or no qualifying candidate) -- loud fallback, per D9.
         return None
 
+    candidate_pool = pool
+    if used_items is not None:
+        candidate_pool = _filter_used_items(pool, slot, used_items)
+        if not candidate_pool:
+            return None
+
     level = int(slot.get("level") or 1)
-    leveled_pool = _apply_level(pool, level)
+    leveled_pool = _apply_level(candidate_pool, level)
     ranked = _rank(leveled_pool)
     if not ranked:
         return None
@@ -381,6 +511,8 @@ def select(
     idx = _rotate_index(len(ranked), slot.get("athlete_seed"), _slot_identity(slot))
     chosen = ranked[idx]
 
+    if used_items is not None:
+        _record_used_item(used_items, chosen["item_id"], slot.get("plan_week"))
     if series_state is not None and series_key:
         _record_series_state(series_state, series_key, chosen, index)
 
@@ -442,7 +574,12 @@ def _select_singleton_continuation(
         # No strictly-higher-IF candidate within the duration-qualified
         # pool for this slot -- try the same library ignoring duration fit
         # (series coherence over strict duration precision) before giving up.
-        all_in_library = [item for item in index["items"] if item["library_key"] == library_key]
+        # R2: still honors the role/week-type ceiling -- duration drift is
+        # an acceptable coherence trade, a recovery-week sprint item is not.
+        all_in_library = [
+            item for item in index["items"]
+            if item["library_key"] == library_key and _passes_role_ceiling(item, slot)
+        ]
         if last_if is not None:
             higher = [
                 item for item in all_in_library if item.get("if_planned") is not None and item["if_planned"] > last_if
@@ -516,7 +653,7 @@ def refit(
     budget_min = float(slot.get("budget_min") or 0)
     day_cap_min = slot.get("day_cap_min")
 
-    pool = _qualifying_pool(items, library_keys, budget_min, day_cap_min)
+    pool = _qualifying_pool(items, library_keys, budget_min, day_cap_min, slot=slot)
     if not pool:
         return None
 

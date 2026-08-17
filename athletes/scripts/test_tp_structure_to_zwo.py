@@ -19,7 +19,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from tp_structure_to_zwo import convert_structure, render_full_zwo, verify_round_trip
+from tp_structure_to_zwo import (convert_structure, render_full_zwo,
+                                 structure_has_hard_effort, verify_round_trip)
 from workout_spec import normalize_zwo_blocks
 
 REAL_DUMP_PATH = Path.home() / 'Downloads' / 'guillermo-romero-delivery' / 'gg_tp_library_full.json'
@@ -423,3 +424,61 @@ def test_round_trip_sweep_over_real_dump():
         f'round-trip pass rate {pass_rate:.2%} below 95% threshold '
         f'({len(failures)}/{total} failed); see '
         f'{FAILURES_REPORT_PATH} for failing item ids')
+
+
+# =============================================================================
+# R5 (SPEC_LIBRARY_SELECTION.md regrade): structure_has_hard_effort, the
+# hard-day detector fed into generate_athlete_package's SEQUENCING/adjacency
+# classification for library-resolved sessions.
+# =============================================================================
+
+def _leaf(name, seconds, min_value, intensity_class='active'):
+    return {
+        'name': name,
+        'length': {'value': seconds, 'unit': 'second'},
+        'targets': [{'minValue': min_value}],
+        'intensityClass': intensity_class,
+    }
+
+
+def test_sustained_hard_target_is_hard():
+    structure = _wrap([
+        {'type': 'step', 'length': {'value': 1, 'unit': 'repetition'},
+         'steps': [_leaf('Push', 300, 125)]},
+    ])
+    assert structure_has_hard_effort(structure)
+
+
+def test_moderate_sustained_target_is_not_hard():
+    structure = _wrap([
+        {'type': 'step', 'length': {'value': 1, 'unit': 'repetition'},
+         'steps': [_leaf('Steady', 600, 90)]},
+    ])
+    assert not structure_has_hard_effort(structure)
+
+
+def test_short_sprint_target_is_not_hard():
+    # R1's exact case: 30s @200% is a different stimulus than a sustained
+    # push -- must not trip the classifier on duration alone.
+    structure = _wrap([
+        {'type': 'repetition', 'length': {'value': 6, 'unit': 'repetition'},
+         'steps': [_leaf('On', 30, 200), _leaf('Off', 90, 60, 'rest')]},
+    ])
+    assert not structure_has_hard_effort(structure)
+
+
+def test_cadence_target_never_counts_toward_hard_effort():
+    structure = _wrap([
+        {'type': 'step', 'length': {'value': 1, 'unit': 'repetition'},
+         'steps': [{
+             'name': 'Spin-up', 'length': {'value': 300, 'unit': 'second'},
+             'targets': [{'minValue': 60},
+                        {'minValue': 100, 'maxValue': 110, 'unit': 'roundOrStridePerMinute'}],
+             'intensityClass': 'active',
+         }]},
+    ])
+    assert not structure_has_hard_effort(structure)
+
+
+def test_empty_structure_is_not_hard():
+    assert not structure_has_hard_effort(_wrap([]))

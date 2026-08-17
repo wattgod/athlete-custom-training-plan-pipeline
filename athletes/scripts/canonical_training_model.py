@@ -287,15 +287,28 @@ def _compiler_session(
     if workout_type_id is None:
         workout_type_id = plan_ir_module.TP_WORKOUT_TYPE_VALUE_ID.get(tp_kind)
     duration_s = int(metrics["duration_sec"])
+    # R1 fix wave (SPEC_LIBRARY_SELECTION.md regrade, worst offender +78%):
+    # `metrics["tss"]` is recomputed from the internal C2-converted ZWO via
+    # normalized power -- min-only sprint targets render as flat Power
+    # blocks there, which massively inflates 4th-power NP (an authored 57.9
+    # TSS session placed as 103). For a library-resolved session the
+    # AUTHORED tss/if_planned (carried through the naming manifest as
+    # library_tss/library_if_planned, generate_athlete_package.py's
+    # resolution pass) are authoritative end-to-end for every
+    # athlete-facing number; the internal ZWO-derived metrics stay
+    # untouched for the preview renderer, which is the only other consumer
+    # of this same parse.
+    _library_tss = entry.get("library_tss")
+    _tss_value = _library_tss if _library_tss is not None else metrics["tss"]
     return SimpleNamespace(
         date=date, title=title,
         sport=plan_ir_module._sport_for_type(session_type), type=session_type,
         origin=plan_ir_module._session_origin(session_type), duration_s=duration_s,
-        tss=int(metrics["tss"]),
+        tss=int(round(_tss_value)),
         segments=[SimpleNamespace(**segment) for segment in structure["segments"]],
         source_file=f"{stem}.zwo", description=structure.get("description"),
         tp_kind=tp_kind, workout_type_value_id=workout_type_id,
-        tss_planned=round(float(metrics["tss"]), 1),
+        tss_planned=round(float(_tss_value), 1),
         total_time_planned=plan_ir_module._round_time_planned_hours(duration_s),
         series_id=entry.get("series_id"), series_index=entry.get("series_index"),
         series_total=entry.get("series_total"), order_on_day=entry.get("order_on_day"),

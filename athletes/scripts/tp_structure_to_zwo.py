@@ -335,6 +335,38 @@ def render_full_zwo(blocks_xml: str, *, author: str = 'Gravel God Training',
     )
 
 
+# R5 fix wave (SPEC_LIBRARY_SELECTION.md): hard-day detection for
+# SEQUENCING/adjacency guidance, checked against a resolved session's raw
+# structure directly (not the converted ZWO -- min-only sprint targets
+# rendering as flat blocks is exactly the R1 problem this sidesteps).
+_HARD_EFFORT_POWER_PCT = 120.0
+_HARD_EFFORT_MIN_SECONDS = 60
+
+
+def structure_has_hard_effort(structure: Any, power_pct: float = _HARD_EFFORT_POWER_PCT,
+                               min_seconds: int = _HARD_EFFORT_MIN_SECONDS) -> bool:
+    """True when any single leaf carries a POWER target (cadence/label
+    targets excluded, matching ``_classify_leaf``) at or above ``power_pct``
+    %FTP sustained for at least ``min_seconds``.
+
+    Per-leaf, not repeat-multiplied: a repeated short interval (e.g. 6x30s
+    @200%) is a different training stimulus than one continuous >=60s push,
+    and per-rep duration is what R1 flagged as inflating NP when flattened
+    -- it must not also inflate hard-day detection here.
+    """
+    for block in _extract_blocks(structure):
+        for leaf in (block.get('steps') or []):
+            power_target, _cadence_target, _bad = _classify_leaf(leaf)
+            if power_target is None:
+                continue
+            if _leaf_seconds(leaf) < min_seconds:
+                continue
+            value = power_target.get('maxValue', power_target.get('minValue'))
+            if value is not None and float(value) >= power_pct:
+                return True
+    return False
+
+
 def verify_round_trip(structure: Any) -> Tuple[bool, Dict[str, Any]]:
     """Round-trip contract: parse C2's own output back through
     workout_spec.normalize_zwo_blocks and check (a) total seconds match the

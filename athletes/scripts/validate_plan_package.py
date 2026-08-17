@@ -90,6 +90,17 @@ def validate_plan_package(athlete_dir: Path | str) -> List[Dict[str, Any]]:
             parsed = parse_zwo_structure(path)
             if _canon_segments(parsed['segments']) != _canon_segments(session.get('segments', [])):
                 issues.append(_issue('zwo', f'{filename}.segments', session.get('segments', []), parsed['segments']))
+            if session.get('library_item_id'):
+                # Library-resolved sessions place the coach's AUTHORED
+                # description verbatim (D3/D4) — it was written together
+                # with the structure in TrainingPeaks and deliberately does
+                # not use the pipeline's mechanical main-set phrasing.
+                # Structure fidelity is enforced elsewhere (byte-compare vs
+                # the index at placement + the converter's round-trip
+                # contract); prose-equality here would flag every curated
+                # card and once cascaded into the tp_manifest write being
+                # skipped entirely.
+                continue
             main_set = _main_set_text(parsed.get('description', ''))
             for segment in parsed['segments']:
                 if segment['kind'] == 'intervals':
