@@ -115,6 +115,11 @@ class Session:
     is_simulation: bool = False
     is_dress_rehearsal: bool = False
     is_field_test: bool = False
+    # C4 (docs/SPEC_LIBRARY_SELECTION.md D4): set when this session was
+    # resolved to a curated TrainingPeaks library item. Carried from
+    # naming_manifest.json (generate_athlete_package.py's resolution pass
+    # writes it as an extra _record_tp_session field for resolved days).
+    library_item_id: Optional[Any] = None
 
 
 @dataclass
@@ -578,6 +583,15 @@ def _session_from_zwo(zwo_path: Path, date: Optional[str], is_race_day: bool, ft
     structure = _tp_structure_from_segments(segments) if tp_kind == "bike" else None
     duration_sec = metrics["duration_sec"]
 
+    # C4 (D4): library-resolved sessions carry library_item_id straight
+    # from the naming manifest -- the browser-based TP placement job looks
+    # up the item's verbatim structure/description by this ID (C1); this
+    # projection's own structure/description/segments stay the normal
+    # ZWO-derived (already-unrolled, C2-converted) representation, matching
+    # every other session (test_tp_projection.py's unrolled-structure
+    # invariant applies uniformly, resolved or not).
+    library_item_id = entry.get("library_item_id")
+
     return Session(
         date=date,
         title=title,
@@ -604,6 +618,7 @@ def _session_from_zwo(zwo_path: Path, date: Optional[str], is_race_day: bool, ft
         filename_stem=zwo_path.stem,
         race=entry.get("race"),
         level=_level_from_description(zwo_structure.get("description")),
+        library_item_id=library_item_id,
     )
 
 
@@ -784,6 +799,7 @@ def _plan_ir_from_canonical(
             control_basis=control.get("control_basis"),
             target_summary=raw.get("target_summary"),
             level=_level_from_description(description),
+            library_item_id=raw.get("library_item_id"),
         ))
     prescription_data = model.get("fueling") or (
         prescription_from_fueling(fueling_data) if fueling_data else None)
@@ -926,6 +942,7 @@ def project_tp_manifest(plan_ir: PlanIR) -> Dict[str, Any]:
                 "control_metric": session.control_metric,
                 "control_basis": session.control_basis,
                 "target_summary": session.target_summary,
+                "library_item_id": session.library_item_id,
             })
 
     plan_weeks = max((w.number for w in plan_ir.weeks if w.number and w.number > 0), default=0)
