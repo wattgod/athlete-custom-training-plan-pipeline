@@ -2251,14 +2251,31 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             date_short = current_date.strftime('%b%-d')  # Feb11, Feb12, etc.
             days_to_plan_start = days_until_start - day_offset
 
-            # Skip unavailable days in pre-plan week
+            # The athlete's scheduled off day still gets a card — a blank
+            # calendar date reads as a forgotten one (a real order shipped a
+            # blank Tuesday when the pre-plan week grew to cover it).
+            _preplan_scheduled_rest = False
             if use_custom_schedule:
                 day_avail = get_day_availability(day_abbrev)
                 if day_avail.get('availability') in ('unavailable', 'rest'):
-                    continue
+                    _preplan_scheduled_rest = True
 
             # Pre-plan week workout structure
-            if day_abbrev == 'Sat':
+            if _preplan_scheduled_rest:
+                workout_type = 'Pre_Plan_Rest'
+                duration = 0
+                power = 0
+                description = f"""PRE-PLAN WEEK: Rest Day
+{athlete_name} - {days_to_plan_start} days until plan starts
+
+PURPOSE:
+Your scheduled day off. Nothing today.
+
+TODAY:
+- OFF the bike
+- Light stretching or a walk if you feel like it
+- Sleep and eat normally"""
+            elif day_abbrev == 'Sat':
                 # Longer endurance ride
                 workout_type = 'Pre_Plan_Endurance'
                 duration = 80
