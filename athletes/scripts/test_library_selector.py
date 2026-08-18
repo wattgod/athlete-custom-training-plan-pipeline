@@ -989,3 +989,28 @@ def test_taper_slots_reject_sustained_threshold_regardless_of_role():
     assert not _passes_role_ceiling(threshold_item, taper_slot)
     assert _passes_role_ceiling(burst_item, taper_slot)      # 30/30 sharpener OK
     assert _passes_role_ceiling(threshold_item, load_slot)   # load weeks unaffected
+
+
+def test_family_coherence_outranks_level_banding():
+    """Live v26 defect completion: the build-week slot's level-1 band
+    contained ONLY the family's softest variant (.694) while base had
+    already placed .714 -- coherence must reach outside the level band
+    rather than silently losing to it."""
+    import library_selector as ls
+    soft = {"item_id": 1, "name_base": "Ladder", "library_key": "torque_starts_cadence",
+            "duration_min": 54, "tss": 48, "if_planned": 0.694, "structure": {"structure": []},
+            "description": "", "dimension_score": 3, "explicit_level": 1, "rpe_text": None}
+    hard = {"item_id": 2, "name_base": "Ladder", "library_key": "torque_starts_cadence",
+            "duration_min": 64, "tss": 54, "if_planned": 0.714, "structure": {"structure": []},
+            "description": "", "dimension_score": 3, "explicit_level": 2, "rpe_text": None}
+    pool = [soft, hard]
+    used = {ls._FAMILY_MAX_IF_KEY: {ls._family_key(soft): 0.714}}
+    slot = {"phase": "build", "week_type": "load", "level": 1,
+            "athlete_seed": "x", "plan_week": 5, "canonical_name": "Cadence Work"}
+    leveled = ls._apply_level(pool, 1)
+    # level-1 band prefers the soft variant; coherent subset of that band is empty
+    strict_leveled = ls._family_coherent_subset(leveled, slot, used)
+    strict_full = ls._family_coherent_subset(pool, slot, used)
+    assert strict_full == [hard]
+    if strict_leveled:
+        assert all(i["if_planned"] >= 0.709 for i in strict_leveled)

@@ -674,21 +674,24 @@ def _filter_used_items(
 _FAMILY_MAX_IF_KEY = "__family_max_if__"
 
 
-def _filter_family_coherence(
+def _family_coherent_subset(
     pool: Sequence[Mapping[str, Any]], slot: Mapping[str, Any], used_items: Mapping[Any, Any],
-) -> list[Mapping[str, Any]]:
-    """Soft preference: in build/peak, candidates of an already-placed
-    family are filtered to if_planned >= (that family's prior max - 0.005)
-    when at least one such candidate exists. If filtering would eliminate
-    every candidate, the full pool is kept rather than falling back to
-    nothing -- this is a preference, not a hard exclusion."""
+) -> Optional[list[Mapping[str, Any]]]:
+    """Items whose family history permits them (if_planned >= prior family
+    max - 0.005) in a build/peak non-recovery slot. Returns None when the
+    coherence constraint does not apply at all (wrong phase/week, or no
+    family history yet); returns a possibly-EMPTY list when it applies --
+    the caller decides the fallback, because the correct fallback differs
+    by stage (level banding must not undercut coherence: a level-1 band
+    once contained only the softest variant of a family Base had already
+    placed harder, and the coherence preference silently lost)."""
     phase = str(slot.get("phase") or "").lower()
     week_type = str(slot.get("week_type") or "").lower()
     if phase not in {"build", "peak"} or week_type in {"taper", "recovery"}:
-        return list(pool)
+        return None
     family_max = used_items.get(_FAMILY_MAX_IF_KEY) or {}
     if not family_max:
-        return list(pool)
+        return None
     filtered = []
     for item in pool:
         prior_max = family_max.get(_family_key(item))
@@ -696,7 +699,18 @@ def _filter_family_coherence(
         if (prior_max is None or if_planned is None
                 or if_planned >= prior_max - 0.005):
             filtered.append(item)
-    return filtered if filtered else list(pool)
+    return filtered
+
+
+def _filter_family_coherence(
+    pool: Sequence[Mapping[str, Any]], slot: Mapping[str, Any], used_items: Mapping[Any, Any],
+) -> list[Mapping[str, Any]]:
+    """Soft preference wrapper: strict subset when satisfiable, else the
+    full pool (a preference, not a hard exclusion)."""
+    subset = _family_coherent_subset(pool, slot, used_items)
+    if subset is None or not subset:
+        return list(pool)
+    return subset
 
 
 def _record_family_if(used_items: dict[Any, Any], item: Mapping[str, Any]) -> None:
@@ -783,10 +797,21 @@ def select(
         candidate_pool = _filter_used_items(pool, slot, used_items)
         if not candidate_pool:
             return None
-        candidate_pool = _filter_family_coherence(candidate_pool, slot, used_items)
 
     level = int(slot.get("level") or 1)
     leveled_pool = _apply_level(candidate_pool, level)
+    if used_items is not None:
+        # Family coherence outranks level banding: prefer coherent items
+        # WITHIN the level band, else coherent items from the full
+        # candidate pool (level banding must not force a family softer
+        # than its own prior placement), else keep the level band.
+        coherent_leveled = _family_coherent_subset(leveled_pool, slot, used_items)
+        if coherent_leveled:
+            leveled_pool = coherent_leveled
+        elif coherent_leveled is not None:
+            coherent_full = _family_coherent_subset(candidate_pool, slot, used_items)
+            if coherent_full:
+                leveled_pool = coherent_full
     ranked = _rank(leveled_pool)
     if not ranked:
         return None
