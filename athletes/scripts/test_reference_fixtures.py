@@ -105,6 +105,33 @@ def test_capture_normalizes_both_raw_shapes_and_scrubs_pii(raw: dict):
     assert not any(token in contents for token in ("monika", "renk", "@", "2947583"))
 
 
+def test_public_coach_email_survives_sanitization_verbatim():
+    # Real defect: gravelgodcoaching@gmail.com -- the public coach contact
+    # every note tells the athlete to write to -- came out of the sanitizer
+    # as "gravelgodcoachingatgmail.com" and/or "{coach_email}", which a
+    # downstream grader then reported as a false defect. It is not athlete
+    # PII and must survive untouched.
+    raw = {
+        "workouts": [{
+            "workoutId": 99, "athleteId": 2947583,
+            "workoutDay": "2026-08-01T00:00:00", "workoutTypeValueId": 2,
+            "title": "Monika's Ride",
+            "description": "Questions? Email gravelgodcoaching@gmail.com any time.",
+            "structure": None,
+        }],
+        "notes": [{
+            "id": 44, "athleteId": 2947583, "noteDate": "2026-08-01T00:00:00",
+            "title": "Renk note",
+            "description": "Send it to gravelgodcoaching@gmail.com.",
+        }],
+    }
+    fixture = capture_fixture(raw, athlete_name="Monika Renk", slug="monika-renk")
+    assert "gravelgodcoaching@gmail.com" in fixture["workouts"][0]["description"]
+    assert "gravelgodcoaching@gmail.com" in fixture["notes"][0]["description"]
+    assert "{coach_email}" not in fixture["workouts"][0]["description"]
+    assert "gravelgodcoachingatgmail.com" not in fixture["workouts"][0]["description"]
+
+
 def test_capture_is_byte_deterministic(tmp_path: Path):
     # Self-contained: the raw dumps live outside the repo (they carry real
     # athlete PII and are never committed), so the test synthesizes its own

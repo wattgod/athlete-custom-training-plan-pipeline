@@ -120,6 +120,10 @@ class Session:
     # naming_manifest.json (generate_athlete_package.py's resolution pass
     # writes it as an extra _record_tp_session field for resolved days).
     library_item_id: Optional[Any] = None
+    # The coach-authored RPE token from the curated item's canonical name
+    # (e.g. "3-4"); the delivery renderer must prefer it over any
+    # structure-derived RPE guess.
+    library_rpe_text: Optional[str] = None
 
 
 @dataclass
@@ -627,6 +631,7 @@ def _session_from_zwo(zwo_path: Path, date: Optional[str], is_race_day: bool, ft
         race=entry.get("race"),
         level=_level_from_description(zwo_structure.get("description")),
         library_item_id=library_item_id,
+        library_rpe_text=entry.get("library_rpe_text"),
     )
 
 
@@ -808,6 +813,7 @@ def _plan_ir_from_canonical(
             target_summary=raw.get("target_summary"),
             level=_level_from_description(description),
             library_item_id=raw.get("library_item_id"),
+            library_rpe_text=raw.get("library_rpe_text"),
         ))
     prescription_data = model.get("fueling") or (
         prescription_from_fueling(fueling_data) if fueling_data else None)
@@ -951,6 +957,7 @@ def project_tp_manifest(plan_ir: PlanIR) -> Dict[str, Any]:
                 "control_basis": session.control_basis,
                 "target_summary": session.target_summary,
                 "library_item_id": session.library_item_id,
+                "library_rpe_text": session.library_rpe_text,
             })
 
     plan_weeks = max((w.number for w in plan_ir.weeks if w.number and w.number > 0), default=0)

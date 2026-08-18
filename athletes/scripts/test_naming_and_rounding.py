@@ -34,7 +34,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import calculate_plan_dates as cpd
 import plan_ir
-from generate_athlete_package import generate_zwo_files, _display_words, GENERIC_NO_SUFFIX
+from generate_athlete_package import (
+    generate_zwo_files, _display_words, _phase_header_line, GENERIC_NO_SUFFIX,
+)
 from nate_workout_generator import generate_nate_zwo
 from plan_ir import build_plan_ir
 from workout_library import generate_progressive_interval_blocks
@@ -96,6 +98,30 @@ class TestSnapToOption(object):
         # every Duration= value present here belongs to a snapped block.
         for d in durations:
             assert d % 60 == 0, f"unsnapped duration: {d}s"
+
+
+class TestPhaseHeaderLine:
+    """Real defect: a recovery week's ZWO card said 'Phase: BUILD' while the
+    weekly note called it a RECOVERY WEEK. The Phase header must agree with
+    the week's own is_recovery_week flag."""
+
+    def test_recovery_week_appends_recovery_suffix(self):
+        line = _phase_header_line('build', {'is_recovery_week': True})
+        assert line == "Phase: BUILD — RECOVERY WEEK\n\n"
+
+    def test_non_recovery_week_keeps_plain_phase_line(self):
+        line = _phase_header_line('build', {'is_recovery_week': False})
+        assert line == "Phase: BUILD\n\n"
+
+    def test_taper_week_never_marked_recovery_keeps_plain_phase_line(self):
+        # calculate_plan_dates.py never sets is_recovery_week for taper/race
+        # phases -- taper/race weeks always take this branch.
+        line = _phase_header_line('taper', {'is_recovery_week': False})
+        assert line == "Phase: TAPER\n\n"
+
+    def test_missing_flag_defaults_to_plain_phase_line(self):
+        line = _phase_header_line('base', {})
+        assert line == "Phase: BASE\n\n"
 
 
 # ===========================================================================

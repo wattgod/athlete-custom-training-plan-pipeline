@@ -389,6 +389,11 @@ def render_session_name(session: Any, defining_set: Optional[str] = None) -> str
             defining_set = _defining_set_from_description(_get(session, "description"))
     name = _clean_text(_get(session, "display_name") or _get(session, "title"))
     name = re.sub(r"\s*[-–—]?\s*(?:level|l)\s*\d+(?:\s*/\s*\d+)?\s*$", "", name, flags=re.I)
+    if _get(session, "library_item_id"):
+        # The authored RPE token (see _authored_rpe_token) is re-appended
+        # by _rpe()/render_title -- strip it here so it doesn't survive
+        # twice in the final "name - set - duration - rpe" title.
+        name = _AUTHORED_RPE_RE.sub("", name).strip(" -–—")
     expected = set(_interval_tokens(defining_set or ""))
     for token in _interval_tokens(name):
         if token not in expected:
@@ -457,7 +462,44 @@ def has_structured_work(session: Any) -> bool:
     return bool(_get(session, "segments", []) or _get(session, "structure"))
 
 
+# Right-anchored, matches tp_library_snapshot._RPE_RE's authoring
+# convention ("... - RPE3-4"). Library items carry the coach's own RPE call
+# in their canonical name; when present it must win over any dominant-power
+# derivation below (a Z3 curated session once got overridden to RPE5-6).
+_AUTHORED_RPE_RE = re.compile(r"[-–—]?\s*RPE\s*(\d{1,2})(?:\s*-\s*(\d{1,2}))?\s*\Z", re.I)
+
+
+def _authored_rpe_token(session: Any) -> Optional[str]:
+    """The library item's own authored RPE token, verbatim, or None.
+
+    Library-resolved sessions (``library_item_id`` set) carry their
+    canonical TrainingPeaks name on ``display_name``/``title`` -- when that
+    name ends in a coach-authored RPE token, it is the ground truth and
+    must not be replaced by structure-derived guessing.
+    """
+    if not _get(session, "library_item_id"):
+        return None
+    # Preferred carrier: the resolution pass copies the canonical name's
+    # RPE token onto the session as library_rpe_text ("3-4"), because the
+    # generated display_name is rebuilt without the token.
+    carried = _clean_text(_get(session, "library_rpe_text") or "")
+    if carried:
+        return f"RPE{carried}"
+    raw = _clean_text(_get(session, "display_name") or _get(session, "title") or "")
+    match = _AUTHORED_RPE_RE.search(raw)
+    if not match:
+        return None
+    if match.group(2):
+        return f"RPE{match.group(1)}-{match.group(2)}"
+    return f"RPE{match.group(1)}"
+
+
 def _rpe(session: Any, name: str) -> str:
+    # Library-resolved sessions: the coach's own authored RPE call wins over
+    # every heuristic below -- see _authored_rpe_token.
+    authored = _authored_rpe_token(session)
+    if authored:
+        return authored
     # NAME only for categorical matches — descriptions of interval workouts
     # almost always contain "recovery", which once demoted a 120% VO2 session
     # to RPE3. Dominant work intensity outranks everything except tests.

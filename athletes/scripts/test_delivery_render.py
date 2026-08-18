@@ -46,6 +46,26 @@ def test_title_uses_emitted_structure_not_archetype_lie():
     assert render_title(session, BRAND) == "Tempo - 3x8min @90% - 60min - RPE6-7"
 
 
+def test_library_session_authored_rpe_wins_over_structure_derived_rpe():
+    # Real graded defect: a library-resolved session with dominant power 80%
+    # (structure-derived RPE5-6) carried the coach's own authored "RPE3-4"
+    # in its canonical name. The card must honor the authored call, not
+    # overwrite it with the dominant-power heuristic.
+    session = Session(
+        date="2026-08-27", title="High Cadence Intervals - RPE3-4",
+        display_name="High Cadence Intervals - RPE3-4",
+        sport="cycling", type="workout", origin="prescribed", tp_kind="bike",
+        duration_s=51 * 60, tss=50, library_item_id=42001,
+        segments=[Segment(name="cadence", kind="intervals", seconds=25 * 60,
+                          repeat=4, on_seconds=5 * 60, on_power=.80,
+                          off_seconds=60, off_power=.5)],
+    )
+    title = render_title(session, BRAND)
+    assert title.endswith("RPE3-4")
+    assert "RPE5-6" not in title
+    assert title.count("RPE") == 1
+
+
 def test_title_parses_main_set_for_structure_free_rpe_athlete():
     session = Session(
         date="2026-08-27", title="Tempo", display_name="Tempo - Level 2/6",

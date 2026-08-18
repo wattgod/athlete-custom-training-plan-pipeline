@@ -123,6 +123,20 @@ def _race_countdown(weeks_to_race: int, race_name: str) -> str:
     return f"{weeks_to_race} {unit} to {race_name}"
 
 
+def _phase_header_line(phase: str, week: dict) -> str:
+    """Render the ZWO description's "Phase: X" line, week-type aware.
+
+    A recovery week previously said "Phase: BUILD" while the weekly note
+    called it a RECOVERY WEEK -- the same contradiction the athlete would
+    see on the card vs. the briefing. Taper/race weeks are never marked
+    ``is_recovery_week`` (calculate_plan_dates.py never sets it for those
+    phases), so they keep the plain phase line unchanged.
+    """
+    if week.get('is_recovery_week'):
+        return f"Phase: {phase.upper()} — RECOVERY WEEK\n\n"
+    return f"Phase: {phase.upper()}\n\n"
+
+
 def _days_until_race(race_date: Optional[str], session_date: Optional[str]) -> Optional[int]:
     """Whole calendar days from a session date to the race date, or None.
 
@@ -172,23 +186,34 @@ _STRENGTH_FAMILY_BY_PHASE = {
 }
 
 
-def _strength_template_key(phase: str, ab_ordinal: int) -> Optional[str]:
+def _strength_template_key(phase: str, week_ordinal: int, ab_ordinal: int) -> Optional[str]:
     """Deterministic strength-template KEY for a session (key only -- rx
     content/API is out of scope for this workstream).
 
-    ``ab_ordinal`` is the session's 0-indexed position among a WEEK's
-    emitted strength sessions, sorted chronologically after FTP-conflict
-    displacement -- never the raw per-render ``session`` loop variable
-    (assigned before conflict-skipping, not guaranteed chronological).
+    Two different ordinals, for two different jobs:
+
+    ``week_ordinal`` is the session's 0-indexed position among its own
+    WEEK's emitted strength sessions, sorted chronologically after
+    FTP-conflict displacement. Used only by the taper/race weekly cap
+    below (never the raw per-render ``session`` loop variable, which is
+    assigned before conflict-skipping and not guaranteed chronological).
+
+    ``ab_ordinal`` is the session's 0-indexed position among its
+    PHASE's emitted strength sessions (continuing across every week in
+    the phase, never reset at a week boundary) -- the A/B alternation
+    signal. R7 fix wave: a week-scoped ordinal here once made a
+    recovery week's single strength session restart alternation at A,
+    producing "Max Strength A" on two consecutive weeks whenever a
+    recovery week fell between two load weeks.
     """
     family = _STRENGTH_FAMILY_BY_PHASE.get(phase)
     if family is None:
         return None
     if family == 'maintenance':
-        if phase in ('taper', 'race') and ab_ordinal > 0:
+        if phase in ('taper', 'race') and week_ordinal > 0:
             return None  # capped at one session/week
         return 'maintenance_a'
-    return f"{family}_{'a' if ab_ordinal == 0 else 'b'}"
+    return f"{family}_{'a' if ab_ordinal % 2 == 0 else 'b'}"
 
 
 def _display_words(raw: str) -> str:
@@ -3331,7 +3356,7 @@ TIPS:
                     personal_header = (
                         f"{athlete_name} - Week {week_num}/{total_weeks} - "
                         f"{_race_countdown(weeks_to_race, race_name)}\n"
-                        f"Phase: {phase.upper()}\n\n"
+                        f"{_phase_header_line(phase, week)}"
                     )
                     fuel_tag = _get_fuel_tag_for_type(bb_name, fueling, bb_duration, week_num)
                     fuel_prefix = f"[{fuel_tag}]\n\n" if fuel_tag else ""
@@ -3394,6 +3419,7 @@ TIPS:
                         **({'library_item_id': _library_resolution['item_id'],
                             'library_tss': _library_resolution['tss'],
                             'library_if_planned': _library_resolution['if_planned'],
+                            'library_rpe_text': _library_resolution.get('rpe_text'),
                             'library_is_hard_resolved': _resolution_is_hard(_library_resolution)}
                            if _library_resolution else {}),
                     )
@@ -3835,7 +3861,7 @@ GO GET IT, {athlete_name.upper()}!
                         weeks_to_race = total_weeks - week_num + 1
                         personal_header = (f"{athlete_name} - Week {week_num}/{total_weeks} - "
                                            f"{_race_countdown(weeks_to_race, race_name)}\n"
-                                           f"Phase: {phase.upper()}\n\n")
+                                           f"{_phase_header_line(phase, week)}")
 
                         # Add heat training reminder (weeks 4-8 before race).
                         # Never on tests — a test card carries nothing but
@@ -3904,7 +3930,7 @@ GO GET IT, {athlete_name.upper()}!
             weeks_to_race = total_weeks - week_num + 1
             personal_header = (f"{athlete_name} - Week {week_num}/{total_weeks} - "
                                f"{_race_countdown(weeks_to_race, race_name)}\n"
-                               f"Phase: {phase.upper()}\n\n")
+                               f"{_phase_header_line(phase, week)}")
 
             # Add heat training reminder (weeks 4-8 before race); never on tests.
             heat_reminder = ""
@@ -4124,10 +4150,25 @@ GO GET IT, {athlete_name.upper()}!
         for _rec in _tp_manifest_records:
             if _rec['tp_kind'] == 'strength':
                 _strength_by_week[_rec['week_num']].append(_rec)
+        _week_ordinals = {}
         for _week_recs in _strength_by_week.values():
             _week_recs.sort(key=lambda r: r['date'] or '')
-            for _ordinal, _rec in enumerate(_week_recs):
-                _rec['strength_template'] = _strength_template_key(_rec['phase'], _ordinal)
+            for _week_ordinal, _rec in enumerate(_week_recs):
+                _week_ordinals[id(_rec)] = _week_ordinal
+
+        # R7 fix wave: the A/B ordinal continues across every week in the
+        # phase (sorted chronologically, not just within one week) so a
+        # recovery week's single strength session doesn't reset alternation
+        # back to A -- see _strength_template_key's docstring.
+        _strength_by_phase = defaultdict(list)
+        for _rec in _tp_manifest_records:
+            if _rec['tp_kind'] == 'strength':
+                _strength_by_phase[_rec['phase']].append(_rec)
+        for _phase_recs in _strength_by_phase.values():
+            _phase_recs.sort(key=lambda r: (r['date'] or '', r['week_num']))
+            for _ab_ordinal, _rec in enumerate(_phase_recs):
+                _rec['strength_template'] = _strength_template_key(
+                    _rec['phase'], _week_ordinals[id(_rec)], _ab_ordinal)
 
         _series_counts = defaultdict(int)
         for _rec in _tp_manifest_records:

@@ -137,7 +137,7 @@
       "date": "2026-09-16",
       "description": "———\n\nMUSIC\nIf music helps you, build the playlist this week rather than on the drive up. Be deliberate: something calm for the morning, something that lifts you for the last hour. What you listen to before a start genuinely shifts how you feel at it — pick accordingly rather than by accident.\n\n———\n\nTHE NIGHT BEFORE\nRead your highlight reel. Run through your performance statements. Then stop thinking about the race — the work is done and rehearsing it further only costs sleep.\n\n———\n\nON THE LINE\nTwo minutes of 6-2-7 breathing. Everyone around you will look faster and more organised than you feel. They are not.\n\nYour first job is to start easier than feels right. Everything after that is eating on time and riding your own effort.\n\nYou have done the work. Go and use it.",
       "id": 18,
-      "title": "GRAVEL GRIT 4 — The Last Three Days"
+      "title": "GRAVEL GRIT 4 — The Home Stretch"
     },
     {
       "athleteId": 1000001,
@@ -147,7 +147,7 @@
       "title": "AFTER — Tell Me How It Went"
     }
   ],
-  "payload_sha256": "844256da5ad4a4ff7599c591e2f75a934d02a992a3bc36052649670c0854816e",
+  "payload_sha256": "7539ef3ab6807ac7496667f1888275f8445466dc65dd92466b46f5d141020cc7",
   "reference_capture_version": "reference_capture/v1",
   "source": "{athlete_slug}-2026-08",
   "workouts": [
