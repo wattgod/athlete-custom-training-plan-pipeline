@@ -477,6 +477,10 @@ def _to_resolution(item: Mapping[str, Any]) -> dict[str, Any]:
         "structure": item["structure"],
         "description": item["description"],
         "dimension_score": item["dimension_score"],
+        # The coach's own authored RPE call from the canonical item name
+        # ("... - RPE3-4"); carried through to the placed card title so the
+        # renderer never overrides it with structure-derived guessing.
+        "rpe_text": item.get("rpe_text"),
     }
 
 

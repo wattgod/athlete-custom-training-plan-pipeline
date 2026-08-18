@@ -479,6 +479,12 @@ def _authored_rpe_token(session: Any) -> Optional[str]:
     """
     if not _get(session, "library_item_id"):
         return None
+    # Preferred carrier: the resolution pass copies the canonical name's
+    # RPE token onto the session as library_rpe_text ("3-4"), because the
+    # generated display_name is rebuilt without the token.
+    carried = _clean_text(_get(session, "library_rpe_text") or "")
+    if carried:
+        return f"RPE{carried}"
     raw = _clean_text(_get(session, "display_name") or _get(session, "title") or "")
     match = _AUTHORED_RPE_RE.search(raw)
     if not match:

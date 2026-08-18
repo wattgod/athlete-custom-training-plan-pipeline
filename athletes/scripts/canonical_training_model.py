@@ -322,6 +322,7 @@ def _compiler_session(
         # everything projected from it -- plan_ir.json, tp_manifest.json)
         # can identify library-resolved sessions.
         role=entry.get("role"), library_item_id=entry.get("library_item_id"),
+        library_rpe_text=entry.get("library_rpe_text"),
     )
 
 
@@ -550,6 +551,7 @@ def build_canonical_model(
                 # may predate the `library_item_id` field.
                 "role": getattr(raw_session, "role", None),
                 "library_item_id": getattr(raw_session, "library_item_id", None),
+                "library_rpe_text": getattr(raw_session, "library_rpe_text", None),
                 "zwo_projection": ({
                     "author": getattr(raw_session, "zwo_author", None),
                     "sport_type": getattr(raw_session, "zwo_sport_type", None),
@@ -766,7 +768,7 @@ def publish_zwo_projection(
                 # C4 (D4): published naming_manifest.json must keep carrying
                 # role/library_item_id -- plan_ir.py's _load_naming_manifest
                 # reads this on-disk file, not the in-memory authoring one.
-                "role", "library_item_id",
+                "role", "library_item_id", "library_rpe_text",
             ) if session.get(key) is not None
         }
         manifest[path.stem]["week_num"] = manifest[path.stem].pop("week", None)

@@ -3419,6 +3419,7 @@ TIPS:
                         **({'library_item_id': _library_resolution['item_id'],
                             'library_tss': _library_resolution['tss'],
                             'library_if_planned': _library_resolution['if_planned'],
+                            'library_rpe_text': _library_resolution.get('rpe_text'),
                             'library_is_hard_resolved': _resolution_is_hard(_library_resolution)}
                            if _library_resolution else {}),
                     )
