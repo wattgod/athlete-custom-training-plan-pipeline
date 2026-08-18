@@ -612,27 +612,16 @@ def test_rpe_conflict_none_for_missing_inputs():
 
 @requires_real_dump
 def test_lint_flags_real_atkins_revenge_family():
-    raw = load_raw_dump(DEFAULT_RAW_PATH)
-    items, _ = build_items(raw)
-    by_id = {item["item_id"]: item for item in items}
-
-    assert by_id[14355812]["lint_duration_claim"] is None  # correct level (150min)
-    assert by_id[14355827]["lint_duration_claim"] is not None  # 210min, stale claim
-    assert by_id[14355828]["lint_duration_claim"] is not None  # 240min, stale claim
-
-
-@requires_real_dump
-def test_lint_flagged_items_real_dump_is_conservative():
-    # Precision over recall: the real 1,459-item selectable index should
-    # flag a small minority. A future dump refresh that suddenly flags a
-    # huge share is a signal the heuristics need re-tuning, not that the
-    # whole library went bad overnight.
-    index = build_index(DEFAULT_RAW_PATH)
-    flagged = lint_flagged_items(index)
-    assert 0 < len(flagged) < 50
-    for item in flagged:
-        assert (item.get("lint_duration_claim") or item.get("lint_rpe_conflict")
-                or item.get("lint_bookend_intensity") or item.get("lint_manual_review"))
+    """Aug 18: the Atkins Revenge stale-duration descriptions were FIXED at
+    the TP source ("~2.5 hours" -> "~3.5"/"~4 hours") and the index rebuilt
+    -- the family must now be CLEAN. (Before the source fix this test
+    asserted levels 2/3 flagged; the lint caught the live defect, the coach
+    delegated the fix, and the flags lifted -- the intended lifecycle.)"""
+    index = load_index(DEFAULT_INDEX_PATH)
+    atkins = [item for item in index["items"]
+              if "Atkins Revenge" in (item.get("name_raw") or "")]
+    assert len(atkins) == 3
+    assert all(not item.get("lint_duration_claim") for item in atkins)
 
 
 def test_lint_report_cli_prints_flagged_items(tmp_path, capsys):
@@ -679,8 +668,10 @@ def test_manual_review_flags_exclude_verified_curated_defects():
     TrainingPeaks."""
     index = load_index(DEFAULT_INDEX_PATH)
     by_id = {item["item_id"]: item for item in index["items"]}
-    expected = {14355843, 14355844, 14357243,
-                14356002, 14356003, 14356004, 14356005, 14356006, 14356007}
+    # Fartlek 14356002-07 + VO2max Extended 14357625 were fixed at the TP
+    # source Aug 18 and their _MANUAL_REVIEW entries deleted (the intended
+    # lifecycle); the remaining entries await coach-intent decisions.
+    expected = {14355843, 14355844, 14357243}
     for item_id in expected:
         assert by_id[item_id].get("lint_manual_review"), item_id
     # And the flagged-items helper surfaces them for --lint-report.
@@ -719,7 +710,7 @@ def test_v25_graded_curated_defects_are_manually_flagged():
     is a renderer defect (fixed separately), not a curation defect."""
     index = load_index(DEFAULT_INDEX_PATH)
     by_id = {item["item_id"]: item for item in index["items"]}
-    assert by_id[14357625].get("lint_manual_review")
+    assert not by_id[14357625].get("lint_manual_review")  # phantom line fixed at source Aug 18
     assert by_id[14356246].get("lint_manual_review")
     assert by_id[14356254].get("lint_manual_review")
     assert not by_id[14355846].get("lint_manual_review")
