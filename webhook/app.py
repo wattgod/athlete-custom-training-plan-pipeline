@@ -64,6 +64,7 @@ from consult_intake_tokens import (ConsultIntakeTokenError,
 from email_templates import (TP_INVITE_LINK as CONSULT_TP_INVITE_LINK,
                              build_consult_welcome_email,
                              build_consult_runner_alarm_email,
+                             build_consult_endure_delivered_email,
                              CONSULT_INTAKE_NUDGE_SUBJECT, CONSULT_INTAKE_NUDGE_TEMPLATE,
                              CONSULT_TP_NUDGE_SUBJECT, CONSULT_TP_NUDGE_TEMPLATE,
                              CONSULT_ADDON_OFFER_SUBJECT, CONSULT_ADDON_OFFER_TEMPLATE)
@@ -6014,6 +6015,151 @@ def consult_job_get(order_id):
     return jsonify(record)
 
 
+def _consult_delivery_findings(report: dict) -> list:
+    """Findings for the Endure delivery payload (CD-1b §6 /
+    endurelabs specs/consult-delivery/spec.md §3.1): the ONE thing first,
+    then up to 7 non-placeholder data_bullets, each shaped
+    {title, body, kind, confidence}. Read from the runner's stored
+    report.json — never recomputed here."""
+    findings = []
+    one_thing = report.get('one_thing') or {}
+    text = one_thing.get('text')
+    if text:
+        kind = 'physiological_limiter' if one_thing.get('label') == 'durability' else 'pattern'
+        title = str(one_thing.get('label') or 'primary-finding').replace('-', ' ').title()
+        findings.append({'title': title, 'body': text, 'kind': kind, 'confidence': 0.85})
+
+    bullets = [
+        str(b) for b in (report.get('data_bullets') or [])
+        if b and not str(b).startswith('not available')
+    ]
+    for bullet_text in bullets[:7]:
+        title = bullet_text if len(bullet_text) <= 60 else bullet_text[:57] + '...'
+        findings.append({'title': title, 'body': bullet_text, 'kind': 'pattern', 'confidence': 0.75})
+
+    return findings
+
+
+def _consult_delivery_prefill(report: dict) -> dict:
+    """ftp/lthr/max_hr(/weight if present) from report.json's athlete_card
+    (CD-1b §6). Keys absent from athlete_card are simply omitted."""
+    card = report.get('athlete_card') or {}
+    prefill = {}
+    for key in ('ftp', 'lthr', 'max_hr', 'weight'):
+        value = card.get(key)
+        if value is not None:
+            prefill[key] = value
+    return prefill
+
+
+@app.route('/api/consult/jobs/deliver', methods=['GET'])
+@limiter.limit("60/minute")
+def consult_jobs_deliver():
+    """Records flagged for Endure delivery by the operator endpoint (§6):
+    endure.requested_at set, endure.delivered_at still null. Findings +
+    prefill come from the report.json the runner already uploaded via
+    /report (build_report.py, ~/gg-consult-runner/report/) — this route
+    never recomputes analysis."""
+    auth_err = _require_runner_secret()
+    if auth_err:
+        return auth_err
+
+    items = []
+    for record in consultations.list_records(DELIVERIES_DIR):
+        endure = record.get('endure') or {}
+        if not endure.get('requested_at') or endure.get('delivered_at'):
+            continue
+
+        order_id = record['order_id']
+        athlete = record.get('athlete') or {}
+        name = str(athlete.get('name') or '').strip()
+        name_parts = name.split(None, 1)
+        first_name = name_parts[0] if name_parts else ''
+        last_name = name_parts[1] if len(name_parts) > 1 else ''
+
+        goal_event = None
+        intake_id = (record.get('intake') or {}).get('intake_id')
+        if intake_id:
+            intake_data = load_intake(intake_id) or {}
+            answers = intake_data.get('answers')
+            if isinstance(answers, dict):
+                goal_event = answers.get('goal_event') or None
+
+        report = {}
+        report_path = Path(DELIVERIES_DIR) / 'consultations' / order_id / 'report.json'
+        try:
+            report = json.loads(report_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            report = {}
+
+        plan_addon = bool(((record.get('products') or {}).get('plan_addon') or {}).get('purchased'))
+
+        items.append({
+            'order_id': order_id,
+            'tp_athlete_id': athlete.get('tp_athlete_id'),
+            'email': athlete.get('email', ''),
+            'first_name': first_name,
+            'last_name': last_name,
+            'consult_date': record.get('call_at') or record.get('created_at'),
+            'goal_event': goal_event,
+            'plan_addon': plan_addon,
+            'plan_of_action_md': endure.get('plan_of_action_md', ''),
+            'findings': _consult_delivery_findings(report),
+            'prefill': _consult_delivery_prefill(report),
+        })
+
+    return jsonify({'deliver': items})
+
+
+@app.route('/api/consult/jobs/<order_id>/endure-delivered', methods=['POST'])
+@limiter.limit("60/minute")
+def consult_job_endure_delivered(order_id):
+    """Runner confirms delivery to Endure (§6): {result} → endure.
+    delivered_at + endure.result, timeline, coach email with the invite
+    URL when present. Idempotent: delivered_at is set once; a repeat post
+    (runner retry with backoff) sends no second email."""
+    auth_err = _require_runner_secret()
+    if auth_err:
+        return auth_err
+
+    data = request.get_json(silent=True) or {}
+    result = data.get('result') if isinstance(data.get('result'), dict) else {}
+
+    existing = consultations.read_record(DELIVERIES_DIR, order_id)
+    if existing is None:
+        return jsonify({'error': 'not found'}), 404
+    already_delivered = bool((existing.get('endure') or {}).get('delivered_at'))
+
+    def _mutate(r):
+        endure = r.setdefault('endure', {
+            'requested_at': None, 'plan_of_action_md': '', 'delivered_at': None, 'result': None,
+        })
+        if not endure.get('delivered_at'):
+            endure['delivered_at'] = consultations._now_iso()
+        endure['result'] = result
+        consultations.append_timeline(r, 'endure_delivered')
+
+    try:
+        record = consultations.update_record(DELIVERIES_DIR, order_id, _mutate)
+    except consultations.ConsultationError:
+        return jsonify({'error': 'not found'}), 404
+
+    if not already_delivered:
+        try:
+            name = (record.get('athlete') or {}).get('name', 'Unknown')
+            invitation = result.get('invitation') if isinstance(result.get('invitation'), dict) else {}
+            invite_url = str(invitation.get('url') or '')
+            subject, body = build_consult_endure_delivered_email(order_id, name, invite_url)
+            if NOTIFICATION_EMAIL:
+                _send_email(NOTIFICATION_EMAIL, subject, body, brand=normalize_brand(record.get('brand')))
+            else:
+                logger.critical(f"CONSULT ENDURE DELIVERED: {subject}")
+        except Exception:
+            logger.exception(f"Failed to send endure-delivered email for {order_id}")
+
+    return jsonify({'status': 'ok', 'delivered_at': record['endure']['delivered_at']})
+
+
 def _consult_runner_heartbeat_path() -> Path:
     return Path(DELIVERIES_DIR) / 'consult_runner_heartbeat.json'
 
@@ -6111,8 +6257,9 @@ def _check_consult_runner_alarm(now: datetime) -> bool:
 @limiter.limit("20/minute")
 def consult_operator_op(order_id):
     """Matti's only lever until a review surface exists (§5): {call_at} |
-    {close: reason} | {retry: true}, via X-Cron-Secret. The coach's
-    needs_attention email includes the curl one-liners for this."""
+    {close: reason} | {retry: true} | {deliver_endure: {plan_of_action_md}},
+    via X-Cron-Secret. The coach's needs_attention email includes the curl
+    one-liners for this."""
     secret = request.headers.get('X-Cron-Secret', '')
     if not CRON_SECRET:
         return jsonify({'error': 'CRON_SECRET not configured'}), 503
@@ -6120,8 +6267,8 @@ def consult_operator_op(order_id):
         return jsonify({'error': 'Unauthorized'}), 401
 
     data = request.get_json(silent=True) or {}
-    if not any(k in data for k in ('call_at', 'close', 'retry')):
-        return jsonify({'error': 'call_at, close, or retry is required'}), 400
+    if not any(k in data for k in ('call_at', 'close', 'retry', 'deliver_endure')):
+        return jsonify({'error': 'call_at, close, retry, or deliver_endure is required'}), 400
 
     applied = []
 
@@ -6143,6 +6290,16 @@ def consult_operator_op(order_id):
             analysis['error'] = None
             consultations.append_timeline(r, 'error', 'operator retry')
             applied.append('retry')
+        if isinstance(data.get('deliver_endure'), dict):
+            plan_of_action_md = str(data['deliver_endure'].get('plan_of_action_md') or '')
+            r['endure'] = {
+                'requested_at': consultations._now_iso(),
+                'plan_of_action_md': plan_of_action_md,
+                'delivered_at': None,
+                'result': None,
+            }
+            consultations.append_timeline(r, 'endure_requested')
+            applied.append('deliver_endure')
 
     try:
         record = consultations.update_record(DELIVERIES_DIR, order_id, _mutate)
