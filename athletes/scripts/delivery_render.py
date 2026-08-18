@@ -523,27 +523,18 @@ def _authored_rpe_token(session: Any) -> Optional[str]:
 
 
 _CADENCE_SKILL_RE = re.compile(r"\b(?:cadence|skill|technique)\b")
-# Cadence/skill/technique drills are coordination work, not a physiological
-# hammer -- the coach never intends an RPE above this, so it caps both the
-# structure-derived heuristic below AND an authored library token that
-# overshoots it (a curated "Torque - HC" item once carried its neighboring
-# "Blood Pistons"-style RPE8-9 title on a 65%-FTP high-cadence set --
-# apparently copy-pasted RPE, not a deliberate coach call).
-_CADENCE_RPE_CAP = 6
 
 
 def _rpe(session: Any, name: str) -> str:
     text = name.lower()
     is_cadence_named = bool(_CADENCE_SKILL_RE.search(text))
     # Library-resolved sessions: the coach's own authored RPE call wins over
-    # every heuristic below -- see _authored_rpe_token -- except the cadence
-    # cap immediately above, which an authored token cannot exceed.
+    # every heuristic below -- see _authored_rpe_token. A suspect authored
+    # token (RPE8-9 on a 65% cadence drill) is a CURATION defect: it gets a
+    # lint_manual_review entry in tp_library_snapshot and the item never
+    # ships -- the renderer does not silently overrule the coach.
     authored = _authored_rpe_token(session)
     if authored:
-        if is_cadence_named:
-            authored_low = re.match(r"RPE(\d+)", authored)
-            if authored_low and int(authored_low.group(1)) > _CADENCE_RPE_CAP:
-                return "RPE5-6"
         return authored
     # NAME only for categorical matches — descriptions of interval workouts
     # almost always contain "recovery", which once demoted a 120% VO2 session

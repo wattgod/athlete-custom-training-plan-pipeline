@@ -95,13 +95,14 @@ def test_library_session_authored_rpe_wins_over_structure_derived_rpe():
     assert title.count("RPE") == 1
 
 
-def test_cadence_named_session_caps_an_overshooting_authored_rpe():
-    # Real graded defect: a curated library item ("Torque - HC - ref -
-    # 40min - RPE8-9", item_id 14357243) carries a mislabeled authored RPE
-    # for a 65%-FTP high-cadence drill (5x1min @82% with Z2 spins) -- the
-    # card shipped as "Cadence HC - 35min - RPE8-9". Authored RPE still
-    # wins in general (see the RPE3-4 test above), but cadence/skill/
-    # technique work cannot ship above the RPE5-6 cap.
+def test_suspect_authored_rpe_is_a_lint_matter_not_a_renderer_override():
+    # Real graded defect: curated item 14357243 ("Torque - HC") carries an
+    # authored RPE8-9 on a 65%-FTP high-cadence drill. The renderer does
+    # NOT overrule the coach's authored token -- the item is excluded from
+    # selection via tp_library_snapshot's lint_manual_review entry instead,
+    # so it can never ship until fixed at the source in TrainingPeaks.
+    from tp_library_snapshot import _MANUAL_REVIEW
+    assert 14357243 in _MANUAL_REVIEW
     session = Session(
         date="2026-08-28", title="Cadence HC - RPE8-9",
         display_name="Cadence HC - RPE8-9",
@@ -112,8 +113,7 @@ def test_cadence_named_session_caps_an_overshooting_authored_rpe():
                           off_seconds=180, off_power=.55)],
     )
     title = render_title(session, BRAND)
-    assert "RPE8-9" not in title
-    assert title.endswith("RPE5-6")
+    assert title.endswith("RPE8-9")  # authored always wins at render time
 
 
 def test_title_parses_main_set_for_structure_free_rpe_athlete():

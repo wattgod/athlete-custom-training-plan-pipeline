@@ -678,9 +678,42 @@ def write_index(index: Mapping[str, Any], out_path: Path) -> None:
         handle.write(payload)
 
 
+# ---------------------------------------------------------------------------
+# T27 manual-review flags (applied at READ time, not baked into the file).
+#
+# These are curated-content defects a human (or a grader) verified but the
+# automated lint heuristics cannot detect. The coach fixes them at the
+# source in TrainingPeaks; entries here exclude the item from selection and
+# put it on the --lint-report until the corrected item lands in a fresh
+# snapshot (at which point the entry should be deleted). NEVER edit the
+# authored description/structure inside the index instead -- the index
+# mirrors the coach's library verbatim and hand-edits silently revert on
+# the next rebuild.
+_MANUAL_REVIEW: dict[int, str] = {
+    # Aug 17 2026 adversarial grade (Sonja v23):
+    14355843: "description says 'on the TT bike'/aero position in a gravel context; rep count '4x 5min' disagrees with structure",
+    14355844: "description says 'on the TT bike'/aero position in a gravel context",
+    14357243: "authored RPE8-9 on a 65%-FTP high-cadence drill (IF ~0.65, no >92% work) -- suspected copy-pasted RPE",
+    14356002: "description surge count 'Nx' counts steady blocks, structure has N-1 surges",
+    14356003: "description surge count 'Nx' counts steady blocks, structure has N-1 surges",
+    14356004: "description surge count 'Nx' counts steady blocks, structure has N-1 surges",
+    14356005: "description surge count 'Nx' counts steady blocks, structure has N-1 surges",
+    14356006: "description surge count 'Nx' counts steady blocks, structure has N-1 surges",
+    14356007: "description surge count 'Nx' counts steady blocks, structure has N-1 surges",
+}
+
+
+def _apply_manual_review(index: dict) -> dict:
+    for item in index.get("items", []):
+        reason = _MANUAL_REVIEW.get(item.get("item_id"))
+        if reason:
+            item["lint_manual_review"] = {"reason": reason}
+    return index
+
+
 def read_index(path: Path) -> dict[str, Any]:
     with gzip.open(path, "rb") as handle:
-        return json.loads(handle.read().decode("utf-8"))
+        return _apply_manual_review(json.loads(handle.read().decode("utf-8")))
 
 
 def reconcile(raw_path: Path, index_path: Path, extra_exclusions: Any = None) -> dict[str, Any]:
@@ -784,6 +817,7 @@ def lint_flagged_items(index: Mapping[str, Any]) -> list[dict[str, Any]]:
     flagged = [
         item for item in index["items"]
         if item.get("lint_duration_claim") or item.get("lint_rpe_conflict")
+        or item.get("lint_manual_review")
     ]
     return sorted(flagged, key=lambda item: item["item_id"])
 
@@ -801,6 +835,9 @@ def _print_lint_report(index: Mapping[str, Any]) -> None:
                 f"('{duration_claim['claim_text']}'), authored {duration_claim['authored_min']}min "
                 f"({duration_claim['rel_diff']:.0%} off)"
             )
+        manual = item.get("lint_manual_review")
+        if manual:
+            print(f"  {label}: lint_manual_review -- {manual['reason']}")
         rpe_conflict = item.get("lint_rpe_conflict")
         if rpe_conflict:
             print(

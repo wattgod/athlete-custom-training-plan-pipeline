@@ -668,43 +668,30 @@ def test_load_index_returns_items_and_families_and_is_cached(tmp_path):
     assert "families" in loaded_a
 
 
-def test_structured_fartlek_description_rep_count_matches_its_own_structure():
-    """Real graded defect: every "Structured Fartlek" level's description
-    counted the surge reps by the number of STEADY blocks (e.g. level 1:
-    "7x (4:51 -> 1min surge)"), but the structure only pairs a surge after
-    each steady block except the last -- 7 steady blocks, 6 surges. The
-    structure-derived title already said "6x60s" correctly; the
-    description must count the actual surge reps, not the steady blocks."""
-    import re
+def test_manual_review_flags_exclude_verified_curated_defects():
+    """Real graded defects live in the COACH'S authored items (Fartlek levels
+    count surges by steady blocks; "This is Uncomfortable" instructs a TT
+    bike in a gravel context; "Torque - HC" carries a suspect RPE8-9 on a
+    65% drill). The index mirrors the coach's library VERBATIM -- the fix
+    is never to edit the index; it is a lint_manual_review entry that
+    excludes the item from selection and reports it for a source fix in
+    TrainingPeaks."""
     index = load_index(DEFAULT_INDEX_PATH)
-    fartlek_items = [item for item in index["items"]
-                     if (item.get("name_base") or "") == "Structured Fartlek"]
-    assert len(fartlek_items) == 6, "expected all 6 Structured Fartlek levels in the index"
-    for item in fartlek_items:
-        match = re.search(r"(\d+)x \(([^)]+)\)", item["description"])
-        assert match, item
-        desc_reps = int(match.group(1))
-
-        durations = [step["length"]["value"]
-                    for block in item["structure"]["structure"]
-                    for step in block.get("steps", [])
-                    if step.get("name") == "Steady State"]
-        surge_duration = min(durations)
-        surge_reps = durations.count(surge_duration)
-        assert desc_reps == surge_reps, (
-            f"item {item['item_id']}: description says {desc_reps}x but "
-            f"structure has {surge_reps} surge reps"
-        )
+    by_id = {item["item_id"]: item for item in index["items"]}
+    expected = {14355843, 14355844, 14357243,
+                14356002, 14356003, 14356004, 14356005, 14356006, 14356007}
+    for item_id in expected:
+        assert by_id[item_id].get("lint_manual_review"), item_id
+    # And the flagged-items helper surfaces them for --lint-report.
+    flagged_ids = {item["item_id"] for item in lint_flagged_items(index)}
+    assert expected <= flagged_ids
 
 
-def test_no_curated_description_instructs_a_tt_bike_in_the_committed_index():
-    """Real graded defect: the curated library item "This is Uncomfortable"
-    (item_id 14355843/14355844) told gravel athletes to ride "on the TT
-    bike" and "focus on best aero position" -- these plans go to gravel-
-    discipline athletes on drop-bar bikes, not time-trial bikes. Items are
-    placed byte-verbatim, so a bad description in the committed index ships
-    directly to the athlete."""
+def test_manual_review_never_edits_authored_content():
+    """The authored description must remain byte-verbatim in the index even
+    for manually flagged items -- 'This is Uncomfortable' still says 'TT
+    bike' until the coach fixes it in TrainingPeaks and a fresh snapshot
+    lands (at which point its _MANUAL_REVIEW entry is deleted)."""
     index = load_index(DEFAULT_INDEX_PATH)
-    offenders = [item["item_id"] for item in index["items"]
-                if "tt bike" in (item.get("description") or "").lower()]
-    assert offenders == []
+    by_id = {item["item_id"]: item for item in index["items"]}
+    assert "tt bike" in (by_id[14355843]["description"] or "").lower()
