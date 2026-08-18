@@ -695,3 +695,13 @@ def test_manual_review_never_edits_authored_content():
     index = load_index(DEFAULT_INDEX_PATH)
     by_id = {item["item_id"]: item for item in index["items"]}
     assert "tt bike" in (by_id[14355843]["description"] or "").lower()
+
+
+def test_v24_graded_curated_defects_are_manually_flagged():
+    """Cadence Work 14356288 (desc/structure drift + suspect off-step) and
+    General + HC (TT bike) 14356260 (TT-bike name, meaningless derived
+    title) -- verified on the Sonja v24 adversarial grade."""
+    index = load_index(DEFAULT_INDEX_PATH)
+    by_id = {item["item_id"]: item for item in index["items"]}
+    assert by_id[14356288].get("lint_manual_review")
+    assert by_id[14356260].get("lint_manual_review")

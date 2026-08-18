@@ -624,3 +624,27 @@ def test_no_uk_spellings_in_athlete_facing_copy():
                 f"{filename}: UK spelling {match.group(0)!r} found in "
                 f"string constant: {value[:80]!r}"
             )
+
+
+def test_start_here_carries_masters_line_for_50_plus():
+    plan = _plan()
+    plan["athlete"]["age"] = 52
+    notes = _notes(plan)
+    body = next(n["body"] for n in notes if n["title"].startswith("START HERE"))
+    assert "at 52" in body and "load-bearing" in body
+    plan["athlete"]["age"] = 34
+    body_young = next(n["body"] for n in _notes(plan) if n["title"].startswith("START HERE"))
+    assert "load-bearing at your age" not in body_young
+
+
+def test_taper_bursts_label_requires_actual_hard_work():
+    from delivery_notes import _taper_specialty
+    easy = {"tp_kind": "bike", "title": "FatMax Development - 100min @60%",
+            "display_name": "FatMax Development", "archetype_id": "fatmax_bursts",
+            "segments": [{"kind": "steady", "seconds": 6000, "power": 0.6}]}
+    hard = {"tp_kind": "bike", "title": "Alactic Bursts - 8x8s",
+            "display_name": "Alactic Bursts", "archetype_id": "alactic_bursts",
+            "segments": [{"kind": "intervals", "repeat": 8, "on_seconds": 8,
+                          "on_power": 1.8, "off_seconds": 172, "off_power": 0.55}]}
+    assert _taper_specialty(easy) is None
+    assert _taper_specialty(hard) == "bursts"
