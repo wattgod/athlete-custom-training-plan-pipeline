@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from typing import Any, Mapping, Optional, Sequence
 
 from tp_library_snapshot import load_index
@@ -614,6 +615,21 @@ def _family_key(item: Mapping[str, Any]) -> str:
 # constrains the first pick of a new series/slot.
 _PLAN_WIDE_REUSE_CAP = 2
 
+# FIX 7 (Aug 17 2026 adversarial grade): a recovery week once drew BOTH
+# "Heat Acclimation Protocol" (Mon) and "Base - + Heat Training" (Sun long
+# ride) -- two deliberate systemic heat stressors stacked in the same
+# recovery week. Heat-tagged items are identified by name only (no library
+# metadata field exists for it); recovery weeks get at most one. This reuses
+# the same used_items "variety memory" dict R3 already threads through the
+# whole plan, under a sentinel key that can never collide with a real
+# (integer) item_id.
+_HEAT_RE = re.compile(r"heat", re.I)
+_HEAT_WEEKS_KEY = "__heat_weeks__"
+
+
+def _is_heat_tagged(item: Mapping[str, Any]) -> bool:
+    return bool(_HEAT_RE.search(str(item.get("name_base") or item.get("name_raw") or "")))
+
 
 def _filter_used_items(
     pool: Sequence[Mapping[str, Any]], slot: Mapping[str, Any], used_items: Mapping[Any, Mapping[str, Any]],
@@ -626,23 +642,38 @@ def _filter_used_items(
     belongs in D9's loud fallback report, not a silent 3rd-plus repeat.
     "An item may repeat in the same plan only as part of a progressing
     series" -- a continuing series is exempt (see select()), never this
-    fresh-pick path."""
+    fresh-pick path.
+
+    FIX 7: a recovery week's slot also excludes further heat-tagged
+    candidates once one heat-tagged item has already been placed THIS
+    plan_week -- see ``_HEAT_WEEKS_KEY``.
+    """
     plan_week = slot.get("plan_week")
     same_week_free = [
         item for item in pool
         if plan_week not in used_items.get(item["item_id"], {}).get("weeks", ())
     ]
-    return [
+    plan_wide_free = [
         item for item in same_week_free
         if used_items.get(item["item_id"], {}).get("count", 0) < _PLAN_WIDE_REUSE_CAP
     ]
+    if slot.get("week_type") == "recovery" and plan_week in used_items.get(_HEAT_WEEKS_KEY, set()):
+        return [item for item in plan_wide_free if not _is_heat_tagged(item)]
+    return plan_wide_free
 
 
-def _record_used_item(used_items: dict[Any, dict[str, Any]], item_id: Any, plan_week: Any) -> None:
+def _record_used_item(
+    used_items: dict[Any, dict[str, Any]], item_id: Any, plan_week: Any,
+    *, is_heat: bool = False, week_type: Optional[str] = None,
+) -> None:
     entry = used_items.setdefault(item_id, {"count": 0, "weeks": set()})
     entry["count"] += 1
     if plan_week is not None:
         entry["weeks"].add(plan_week)
+        # FIX 7: record a recovery week's heat-tagged pick so the NEXT
+        # fresh pick in the same week excludes further heat-tagged items.
+        if is_heat and week_type == "recovery":
+            used_items.setdefault(_HEAT_WEEKS_KEY, set()).add(plan_week)
 
 
 def select(
@@ -693,7 +724,8 @@ def select(
         resolution = _select_series_continuation(slot, series_state, index, pool, excluded_ids)
         if resolution is not None:
             if used_items is not None:
-                _record_used_item(used_items, resolution["item_id"], slot.get("plan_week"))
+                _record_used_item(used_items, resolution["item_id"], slot.get("plan_week"),
+                                  is_heat=_is_heat_tagged(resolution), week_type=slot.get("week_type"))
             return resolution
         # Series continuation had nothing to progress to (e.g. ladder top,
         # or no qualifying candidate) -- loud fallback, per D9.
@@ -715,7 +747,8 @@ def select(
     chosen = ranked[idx]
 
     if used_items is not None:
-        _record_used_item(used_items, chosen["item_id"], slot.get("plan_week"))
+        _record_used_item(used_items, chosen["item_id"], slot.get("plan_week"),
+                          is_heat=_is_heat_tagged(chosen), week_type=slot.get("week_type"))
     if series_state is not None and series_key:
         _record_series_state(series_state, series_key, chosen, index)
 

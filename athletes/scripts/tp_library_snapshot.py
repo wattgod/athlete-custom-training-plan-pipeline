@@ -703,6 +703,10 @@ _MANUAL_REVIEW: dict[int, str] = {
     # Aug 17 2026 adversarial grade (Sonja v24):
     14356288: "Cadence Work: desc lists a 5min @76-87% segment absent from structure; off-step targets 70% FTP @115rpm (harder cadence than the work step, no recovery floor); name RPE8-9 vs body RPE 6-7",
     14356260: "name says '(TT bike)' in a gravel context; whole-ride 0-75% open target derives a meaningless '8x7min @38%' title",
+    # Aug 17 2026 adversarial grade (Sonja v25):
+    14357625: "VO2max Extended: desc MAIN SET lists a '5min @76-87%' block absent from structure (phantom line)",
+    14356246: "Base - + Heat Training: desc says '~150min' on a 180min item (under the 20% lint threshold), promises warm-up/cool-down absent from the single-block structure; title says Heat Training but desc carries no heat instructions",
+    14356254: "Better Late Than Cadence: missing primaryIntensityTargetOrRange; min-only targets with no ceilings on the 90min block and the 10x60s reps",
 }
 
 

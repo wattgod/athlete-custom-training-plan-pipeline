@@ -705,3 +705,20 @@ def test_v24_graded_curated_defects_are_manually_flagged():
     by_id = {item["item_id"]: item for item in index["items"]}
     assert by_id[14356288].get("lint_manual_review")
     assert by_id[14356260].get("lint_manual_review")
+
+
+def test_v25_graded_curated_defects_are_manually_flagged():
+    """VO2max Extended 14357625 (phantom MAIN SET line absent from
+    structure), Base - + Heat Training 14356246 (duration understatement +
+    missing warm-up/cool-down structure + no heat instructions despite the
+    title), and Better Late Than Cadence 14356254 (missing
+    primaryIntensityTargetOrRange, min-only targets with no ceilings) --
+    verified on the Sonja v25 adversarial grade. Discount Fair 14355846 is
+    deliberately NOT flagged here -- its structure is fine; the title bug
+    is a renderer defect (fixed separately), not a curation defect."""
+    index = load_index(DEFAULT_INDEX_PATH)
+    by_id = {item["item_id"]: item for item in index["items"]}
+    assert by_id[14357625].get("lint_manual_review")
+    assert by_id[14356246].get("lint_manual_review")
+    assert by_id[14356254].get("lint_manual_review")
+    assert not by_id[14355846].get("lint_manual_review")

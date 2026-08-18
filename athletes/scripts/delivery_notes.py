@@ -182,6 +182,31 @@ _QUALITY_KEYWORDS = (
 
 _SKILLS_ARCHETYPES = {"cadence work"}
 
+_TITLE_RPE_RE = re.compile(r"RPE\s*(\d{1,2})", re.I)
+
+
+def _authored_rpe_at_least(session: Any, threshold: int) -> bool:
+    """Whether the session's own carried RPE fact meets/exceeds threshold.
+
+    Checks the curated library's authored RPE token (``library_rpe_text``,
+    the coach's own call -- see delivery_render._authored_rpe_token) as well
+    as a literal ``RPE\\d`` in the session's display_name/title, so both
+    library-resolved and hand-authored sessions are covered.
+    """
+    carried = str(_get(session, "library_rpe_text") or "").strip()
+    text = " ".join(filter(None, [
+        f"RPE{carried}" if carried else "",
+        str(_get(session, "display_name") or ""),
+        str(_get(session, "title") or ""),
+    ]))
+    match = _TITLE_RPE_RE.search(text)
+    if not match:
+        return False
+    try:
+        return int(match.group(1)) >= threshold
+    except ValueError:
+        return False
+
 
 def _is_quality_session(session: Any) -> bool:
     """Classify quality from emitted facts before falling back to old titles."""
@@ -194,8 +219,18 @@ def _is_quality_session(session: Any) -> bool:
     # not read as a standing quality day in athlete-facing notes.
     if str(_get(session, "archetype_id") or "").strip().lower() in _SKILLS_ARCHETYPES:
         return False
-    if (_get(session, "level") not in (None, "") and
-            has_structured_work(session) and _dominant_work_percent(session) >= 88):
+    # FIX 3/4 (Aug 17 2026 adversarial grade): the dominant-work check used
+    # to be gated behind `level`, a field only synthesized-plan sessions
+    # carry. A real curated "Ronnestad 30-15" (IF .78-.80, RPE8-9) has no
+    # `level` and its hyphenated title matched none of the slash-formatted
+    # _QUALITY_KEYWORDS below, so it silently fell out of both the weekly
+    # pattern (FIX 3) and the key-session briefing (FIX 4) -- the same gap
+    # _race_week_is_key_session already worked around for race week alone.
+    # Any bike session with dominant work >=88% FTP, or an authored RPE>=8,
+    # is quality regardless of whether `level` is present.
+    if has_structured_work(session) and _dominant_work_percent(session) >= 88:
+        return True
+    if _authored_rpe_at_least(session, 8):
         return True
     # Older imported plans did not retain level/segment facts. Keep this
     # narrow title fallback so their briefings remain useful.
@@ -989,15 +1024,22 @@ def _render_candidate(plan_ir: Any, fueling: Any, brand: Dict[str, Any], guide_u
     if kind == "heat_prep":
         # Day-agnostic wording: the collision scheduler may shift this
         # note onto the ride's own day, so "tomorrow" could lie.
+        #
+        # FIX 8 (Aug 17 2026 adversarial grade): the note promised
+        # "deliberate thermal-stress blocks" and told the athlete to "ride
+        # the marked blocks" -- but the referenced workout is one
+        # undifferentiated Z2 ride with nothing marked. The whole ride is
+        # the heat session; the note must describe it that way.
         return ("HEAT PREP — Why The Heat Ride Is Overdressed",
-                "One of this week's rides carries deliberate thermal-stress blocks. The"
-                " adaptation is real — better sweat response, lower heart rate"
-                " at the same effort in warm conditions — and it compounds"
-                " over 10-14 days.\n\nHOW\nRide the marked blocks with an"
-                " extra layer on, or finish the ride with 15-20 minutes of"
-                " sauna. One or the other, not both.\n\nRULES\nEasy days"
-                " only — never stack heat onto a test or interval day. Drink"
-                " to thirst throughout. Feeling dizzy or nauseous means stop"
+                "One of this week's rides is a deliberate thermal-stress"
+                " session. The adaptation is real — better sweat response,"
+                " lower heart rate at the same effort in warm conditions —"
+                " and it compounds over 10-14 days.\n\nHOW\nThe whole ride"
+                " is the block: add the extra layer after the warm-up and"
+                " hold it, or finish the ride with 15-20 minutes of sauna."
+                " One or the other, not both.\n\nRULES\nEasy days only —"
+                " never stack heat onto a test or interval day. Drink to"
+                " thirst throughout. Feeling dizzy or nauseous means stop"
                 " and cool down; the adaptation is not worth a bad day.")
     if kind == "week_zero":
         week = candidate.get("week") or {}

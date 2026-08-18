@@ -216,6 +216,44 @@ def _strength_template_key(phase: str, week_ordinal: int, ab_ordinal: int) -> Op
     return f"{family}_{'a' if ab_ordinal % 2 == 0 else 'b'}"
 
 
+def _strength_ab_ordinals(strength_records, phase_key='phase',
+                          week_key='week_num', date_key='date'):
+    """Compute (ab_ordinal_by_date, week_ordinal_by_date) for a set of
+    strength session records, sorted phase-wide and week-wide by date.
+
+    FIX 2 (Aug 17 2026 adversarial grade): the exercise CONTENT (which
+    template pick -- squat-family "A" vs deadlift-family "B") was chosen
+    at authoring time from the week-LOCAL session number (resets to 1 at
+    the top of every week), while the delivered card TITLE ("Max Strength
+    B") was assigned afterward from a PHASE-WIDE continuous ordinal (see
+    ``_strength_template_key``'s docstring -- it never resets at a week
+    boundary, so a recovery week's single session doesn't restart
+    alternation). A recovery week between two load weeks shifts the
+    phase-wide parity relative to the week-local parity, so the two
+    diverged: "Max Strength B" titled cards carried squat-family "A"
+    content and vice versa. Both the content-authoring pass and the later
+    TP-projection post-pass call THIS SAME function -- against the same
+    date-keyed records -- so label and content can never disagree again.
+    """
+    from collections import defaultdict
+    ab_ordinal_by_date = {}
+    week_ordinal_by_date = {}
+    by_week = defaultdict(list)
+    for rec in strength_records:
+        by_week[rec[week_key]].append(rec)
+    for week_recs in by_week.values():
+        for idx, rec in enumerate(sorted(week_recs, key=lambda r: r[date_key] or '')):
+            week_ordinal_by_date[rec[date_key]] = idx
+    by_phase = defaultdict(list)
+    for rec in strength_records:
+        by_phase[rec[phase_key]].append(rec)
+    for phase_recs in by_phase.values():
+        sorted_recs = sorted(phase_recs, key=lambda r: (r[date_key] or '', r[week_key]))
+        for idx, rec in enumerate(sorted_recs):
+            ab_ordinal_by_date[rec[date_key]] = idx
+    return ab_ordinal_by_date, week_ordinal_by_date
+
+
 def _display_words(raw: str) -> str:
     """Turn an internal snake_case/token workout label into a clean,
     coach-facing display name (spaces instead of underscores, no
@@ -1145,9 +1183,23 @@ def _resolution_is_hard(resolution: dict) -> bool:
     adjacency purposes when its authored intensity is genuinely hard, in
     ADDITION to the existing role-based classification -- role alone misses
     a build/peak durability long ride (role 'long_ride', never 'intensity')
-    that the library resolved to authored IF 0.95."""
+    that the library resolved to authored IF 0.95.
+
+    FIX 5 (Aug 17 2026 adversarial grade): the 0.85 IF floor was too high
+    and inconsistent with the other SEQUENCING signals -- "Endurance
+    Tempo" (IF .729) and "Discount Fair" (IF .76) both missed a same-day
+    strength SEQUENCING note despite carrying real tempo work, while a
+    .714 day elsewhere got one (via role='intensity', a separate signal).
+    The documented, consistent rule across every SEQUENCING trigger is:
+    authored/resolved IF >= 0.72, OR >=180 hard-work seconds (see
+    ``_library_resolution_has_surge_work``), OR torque/low-cadence focus
+    (see ``_library_resolution_is_torque_focused``) -- this function covers
+    the IF leg (plus the pre-existing single-effort structure check, kept
+    as a floor for short/low-average-IF sessions that still carry one
+    genuinely hard sustained push).
+    """
     if_planned = resolution.get('if_planned')
-    if if_planned is not None and if_planned >= 0.85:
+    if if_planned is not None and if_planned >= 0.72:
         return True
     from tp_structure_to_zwo import structure_has_hard_effort
     return structure_has_hard_effort(resolution.get('structure'))
@@ -4302,6 +4354,14 @@ GO GET IT, {athlete_name.upper()}!
         # _compute_hard_bike_dates.
         _hard_bike_dates = _compute_hard_bike_dates(_tp_manifest_records)
 
+        # PASS 1 (placement only, no content): FIX 2 -- the exercise family
+        # (A vs B) must key off the SAME phase-wide ordinal the delivered
+        # title uses (see _strength_ab_ordinals), and that ordinal is only
+        # knowable once every week's placement is known (a recovery week's
+        # single session shifts the phase-wide parity for every week after
+        # it). Placement itself doesn't depend on content, so it can run to
+        # completion first with no side effects.
+        _strength_placements = []
         for week in weeks:
             week_num = week['week']
             phase = week['phase']
@@ -4326,16 +4386,7 @@ GO GET IT, {athlete_name.upper()}!
                 strength_only_abbrevs=strength_only_abbrevs,
             )
 
-            for session, strength_day in enumerate(strength_days, start=1):
-                strength_blocks, strength_workout = generate_strength_zwo(
-                    week_num, session,
-                    equipment_tier=strength_equipment_tier(profile),
-                    phase=phase,
-                    is_recovery_week=week.get('is_recovery_week', False),
-                    is_masters=is_masters,
-                )
-
-                # Get the date for this strength day from the week's days list
+            for strength_day in strength_days:
                 date_short = ""
                 date_full = None
                 for day_info in week.get('days', []):
@@ -4343,47 +4394,76 @@ GO GET IT, {athlete_name.upper()}!
                         date_short = day_info['date_short']
                         date_full = day_info['date']
                         break
+                _strength_placements.append({
+                    'week_num': week_num, 'phase': phase, 'week': week,
+                    'strength_day': strength_day,
+                    'date_short': date_short, 'date': date_full,
+                })
 
-                workout_name = f"W{week_num:02d}_{strength_day}_{date_short}_Strength_{strength_workout['name'].replace(' ', '_')}"
-                filename = f"{workout_name}.zwo"
-                display_name = strength_workout['name']
+        _strength_ab_by_date, _strength_week_ord_by_date = _strength_ab_ordinals(
+            _strength_placements)
 
-                # Build description with exercises and video links
-                exercises_lines = []
-                for ex, reps in strength_workout['exercises']:
-                    video_url = get_video_url(ex)
-                    if video_url:
-                        exercises_lines.append(f"- {ex} - {reps}\n  Video: {video_url}")
-                    else:
-                        exercises_lines.append(f"- {ex} - {reps}")
-                exercises_text = '\n'.join(exercises_lines)
-                # T20: rest follows the phase — heavy/ballistic work needs
-                # full recovery between sets for output quality.
-                _sname = str(strength_workout['name'])
-                if _sname.startswith(('Power', 'Max Strength')):
-                    rest_line = "Rest 2-3 min between sets — full recovery keeps the bar speed and quality high."
+        # PASS 2 (content): the family pick uses the SAME phase-wide ordinal
+        # as the label (session_num = (ab_ordinal % 2) + 1), so content and
+        # title can never disagree again.
+        for _placement in _strength_placements:
+            week_num = _placement['week_num']
+            phase = _placement['phase']
+            week = _placement['week']
+            strength_day = _placement['strength_day']
+            date_short = _placement['date_short']
+            date_full = _placement['date']
+            ab_ordinal = _strength_ab_by_date[date_full]
+            session = (ab_ordinal % 2) + 1
+
+            strength_blocks, strength_workout = generate_strength_zwo(
+                week_num, session,
+                equipment_tier=strength_equipment_tier(profile),
+                phase=phase,
+                is_recovery_week=week.get('is_recovery_week', False),
+                is_masters=is_masters,
+            )
+
+            workout_name = f"W{week_num:02d}_{strength_day}_{date_short}_Strength_{strength_workout['name'].replace(' ', '_')}"
+            filename = f"{workout_name}.zwo"
+            display_name = strength_workout['name']
+
+            # Build description with exercises and video links
+            exercises_lines = []
+            for ex, reps in strength_workout['exercises']:
+                video_url = get_video_url(ex)
+                if video_url:
+                    exercises_lines.append(f"- {ex} - {reps}\n  Video: {video_url}")
                 else:
-                    rest_line = "Rest 60-90 sec between sets."
-                full_description = f"FOCUS: {strength_workout['focus']}\n\nEXERCISES:\n{exercises_text}\n\nEXECUTION:\nComplete all sets with good form. {rest_line}"
-                # T18: never leave a bike+lift day without an order.
-                if str(date_full) in _hard_bike_dates:
-                    full_description += ("\n\nSEQUENCING:\nToday also carries your hard ride. "
-                                         "Ride first; lift at least 4 hours later — or move this "
-                                         "lift to tomorrow if the day is tight.")
+                    exercises_lines.append(f"- {ex} - {reps}")
+            exercises_text = '\n'.join(exercises_lines)
+            # T20: rest follows the phase — heavy/ballistic work needs
+            # full recovery between sets for output quality.
+            _sname = str(strength_workout['name'])
+            if _sname.startswith(('Power', 'Max Strength')):
+                rest_line = "Rest 2-3 min between sets — full recovery keeps the bar speed and quality high."
+            else:
+                rest_line = "Rest 60-90 sec between sets."
+            full_description = f"FOCUS: {strength_workout['focus']}\n\nEXERCISES:\n{exercises_text}\n\nEXECUTION:\nComplete all sets with good form. {rest_line}"
+            # T18: never leave a bike+lift day without an order.
+            if str(date_full) in _hard_bike_dates:
+                full_description += ("\n\nSEQUENCING:\nToday also carries your hard ride. "
+                                     "Ride first; lift at least 4 hours later — or move this "
+                                     "lift to tomorrow if the day is tight.")
 
-                zwo_content = ZWO_TEMPLATE.format(
-                    author=_workout_author,
-                    name=display_name,
-                    description=full_description,
-                    blocks=strength_blocks
-                )
+            zwo_content = ZWO_TEMPLATE.format(
+                author=_workout_author,
+                name=display_name,
+                description=full_description,
+                blocks=strength_blocks
+            )
 
-                filepath = strength_dir / filename
-                _emit_authored_document(filepath, zwo_content)
+            filepath = strength_dir / filename
+            _emit_authored_document(filepath, zwo_content)
 
-                generated_files.append(filepath)
-                _record_tp_session(filepath, date_full, week_num, phase, 'strength',
-                                    display_name=display_name)
+            generated_files.append(filepath)
+            _record_tp_session(filepath, date_full, week_num, phase, 'strength',
+                                display_name=display_name)
 
     # ===================================================================
     # TP PROJECTION POST-PASS (D1/D3): order_on_day + strength A/B template
@@ -4411,29 +4491,19 @@ GO GET IT, {athlete_name.upper()}!
             for _idx, _rec in enumerate(_strength_first):
                 _rec['order_on_day'] = _idx
 
-        _strength_by_week = defaultdict(list)
-        for _rec in _tp_manifest_records:
-            if _rec['tp_kind'] == 'strength':
-                _strength_by_week[_rec['week_num']].append(_rec)
-        _week_ordinals = {}
-        for _week_recs in _strength_by_week.values():
-            _week_recs.sort(key=lambda r: r['date'] or '')
-            for _week_ordinal, _rec in enumerate(_week_recs):
-                _week_ordinals[id(_rec)] = _week_ordinal
-
         # R7 fix wave: the A/B ordinal continues across every week in the
         # phase (sorted chronologically, not just within one week) so a
         # recovery week's single strength session doesn't reset alternation
         # back to A -- see _strength_template_key's docstring.
-        _strength_by_phase = defaultdict(list)
-        for _rec in _tp_manifest_records:
-            if _rec['tp_kind'] == 'strength':
-                _strength_by_phase[_rec['phase']].append(_rec)
-        for _phase_recs in _strength_by_phase.values():
-            _phase_recs.sort(key=lambda r: (r['date'] or '', r['week_num']))
-            for _ab_ordinal, _rec in enumerate(_phase_recs):
-                _rec['strength_template'] = _strength_template_key(
-                    _rec['phase'], _week_ordinals[id(_rec)], _ab_ordinal)
+        # FIX 2: reuse the SAME _strength_ab_ordinals helper the content
+        # pass above already used (keyed by date) -- computing the ordinal
+        # twice, from two different record sets, is exactly how the label
+        # and the exercise content diverged in the first place.
+        _strength_recs = [_rec for _rec in _tp_manifest_records if _rec['tp_kind'] == 'strength']
+        _ab_by_date, _week_ord_by_date = _strength_ab_ordinals(_strength_recs)
+        for _rec in _strength_recs:
+            _rec['strength_template'] = _strength_template_key(
+                _rec['phase'], _week_ord_by_date[_rec['date']], _ab_by_date[_rec['date']])
 
         _series_counts = defaultdict(int)
         for _rec in _tp_manifest_records:

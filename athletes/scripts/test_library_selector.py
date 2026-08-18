@@ -600,6 +600,33 @@ class TestUsedItemMemory:
         result = select(slot, series_state=None, index=index)
         assert result is not None
 
+    def test_recovery_week_heat_stressors_do_not_stack(self):
+        # FIX 7 (Aug 17 2026 adversarial grade): a recovery week once drew
+        # BOTH "Heat Acclimation Protocol" (Mon) and "Base - + Heat
+        # Training" (Sun long ride) -- two deliberate systemic heat
+        # stressors stacked in the same recovery week. Two heat-tagged
+        # items rank top for both eligible slots; recovery weeks get at
+        # most one heat-tagged pick.
+        items = [
+            make_item(1, name_base="Heat Acclimation Protocol", duration_min=50,
+                      dimension_score=5, if_planned=0.8),
+            make_item(2, name_base="Base - + Heat Training", duration_min=50,
+                      dimension_score=4, if_planned=0.75),
+            make_item(3, name_base="Plain Endurance", duration_min=50,
+                      dimension_score=1, if_planned=0.65),
+        ]
+        index = make_index(items)
+        used_items: dict = {}
+        slot_a = base_slot(series_key=None, plan_week=4, day="Mon",
+                           athlete_seed="x", week_type="recovery")
+        slot_b = base_slot(series_key=None, plan_week=4, day="Sun",
+                           athlete_seed="x", week_type="recovery")
+        first = select(slot_a, series_state=None, index=index, used_items=used_items)
+        second = select(slot_b, series_state=None, index=index, used_items=used_items)
+        assert first is not None and second is not None
+        assert first["item_id"] in (1, 2)  # both candidates rank top and are heat-tagged
+        assert second["item_id"] == 3  # the remaining heat-tagged item is excluded
+
 
 class TestNonSeriesRotationSeedExtension:
     def test_identity_differs_by_plan_week_and_day(self):
