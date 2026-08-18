@@ -19,6 +19,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent))
 
 from tp_library_snapshot import (  # noqa: E402
+    DEFAULT_INDEX_PATH,
     DEFAULT_RAW_PATH,
     build_family_index,
     build_index,
@@ -665,3 +666,16 @@ def test_load_index_returns_items_and_families_and_is_cached(tmp_path):
     assert loaded_a is loaded_b  # cached: same object identity
     assert {item["item_id"] for item in loaded_a["items"]} == {101, 102}
     assert "families" in loaded_a
+
+
+def test_no_curated_description_instructs_a_tt_bike_in_the_committed_index():
+    """Real graded defect: the curated library item "This is Uncomfortable"
+    (item_id 14355843/14355844) told gravel athletes to ride "on the TT
+    bike" and "focus on best aero position" -- these plans go to gravel-
+    discipline athletes on drop-bar bikes, not time-trial bikes. Items are
+    placed byte-verbatim, so a bad description in the committed index ships
+    directly to the athlete."""
+    index = load_index(DEFAULT_INDEX_PATH)
+    offenders = [item["item_id"] for item in index["items"]
+                if "tt bike" in (item.get("description") or "").lower()]
+    assert offenders == []

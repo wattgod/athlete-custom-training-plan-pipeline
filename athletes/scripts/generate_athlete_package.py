@@ -2920,7 +2920,13 @@ Good prep work, {athlete_name}!"""
             else:
                 # Easy spin days (Mon, Tue, Wed, Fri)
                 workout_type = 'Pre_Plan_Easy'
-                duration = 45 if day_abbrev in ['Mon', 'Wed'] else 40
+                # Rounded up front: the description below quotes {duration}
+                # directly, and the blanket round_duration_to_10() pass further
+                # down ran AFTER this f-string was built, so a 45min card
+                # (Mon/Wed) said "45 min easy spin" in the text while the
+                # emitted ZWO structure (built from the rounded value) was
+                # actually 40 minutes long.
+                duration = round_duration_to_10(45 if day_abbrev in ['Mon', 'Wed'] else 40)
                 power = 0.60  # Z2 low — easy but not recovery
                 description = f"""PRE-PLAN WEEK: Easy Spin
 {athlete_name} - {days_to_plan_start} days until plan starts
@@ -2950,7 +2956,22 @@ Stay loose, {athlete_name}!"""
             filename = f"W00_{day_abbrev}_{date_short}_{workout_type}.zwo"
             display_name = _display_words(workout_type)
 
-            if duration > 0:
+            if workout_type == 'Pre_Plan_Strength_Prep':
+                # Floor mobility/activation circuit, not a ride -- ZWO is a
+                # bike-only format, so this uses the same low-power "virtual
+                # trainer" placeholder pattern real strength sessions use
+                # elsewhere (workout_library.generate_strength_zwo), not the
+                # steady-state bike profile create_workout_blocks() builds
+                # (that produced a real-looking "Endurance" ride card for a
+                # floor circuit).
+                _warmup_s, _cooldown_s = 300, 300
+                _body_s = max(60, duration * 60 - _warmup_s - _cooldown_s)
+                blocks = (
+                    f'    <Warmup Duration="{_warmup_s}" PowerLow="0.30" PowerHigh="0.40"/>\n'
+                    f'    <SteadyState Duration="{_body_s}" Power="0.35"/>\n'
+                    f'    <Cooldown Duration="{_cooldown_s}" PowerLow="0.40" PowerHigh="0.30"/>\n'
+                )
+            elif duration > 0:
                 blocks = create_workout_blocks(duration, power, 'Easy')
             else:
                 blocks = "    <FreeRide Duration=\"60\"/>\n"
@@ -2974,7 +2995,12 @@ Stay loose, {athlete_name}!"""
                 'workout_prefix': workout_prefix,
                 'is_race_day': False,
             })
-            _tp_kind = 'day_off' if workout_type == 'Pre_Plan_Rest' else 'bike'
+            if workout_type == 'Pre_Plan_Rest':
+                _tp_kind = 'day_off'
+            elif workout_type == 'Pre_Plan_Strength_Prep':
+                _tp_kind = 'strength'
+            else:
+                _tp_kind = 'bike'
             _record_tp_session(zwo_path, current_date.strftime('%Y-%m-%d'), 0, 'pre_plan',
                                 _tp_kind, display_name=display_name)
 

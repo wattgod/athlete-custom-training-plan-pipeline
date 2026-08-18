@@ -482,17 +482,38 @@ def _week_sequence_base(week: Any, key_sessions: List[Any]) -> str:
     return ""
 
 
+def _training_weeks(plan_ir: Any) -> List[Any]:
+    return [w for w in (_get(plan_ir, "weeks", []) or [])
+           if str(_get(w, "phase") or "").lower() in {"base", "build", "peak"}]
+
+
+def _modal_off_days(plan_ir: Any) -> List[str]:
+    """Weekday names that recur as an off day in at least half of the plan's
+    base/build/peak training weeks -- the plan's standing rest-day pattern.
+    Recovery/taper/race weeks are excluded so an extra rest day they add
+    doesn't get baked into the "normal week" pattern."""
+    from collections import Counter
+    training_weeks = _training_weeks(plan_ir)
+    if not training_weeks:
+        return []
+    off_count: Counter = Counter()
+    for week in training_weeks:
+        for session in _get(week, "sessions", []) or []:
+            day = _session_date(session)
+            if day and _kind(session) == "day_off":
+                off_count[day.strftime("%A")] += 1
+    half = len(training_weeks) / 2.0
+    return sorted(day for day, count in off_count.items() if count >= half)
+
+
 def _weekly_pattern(plan_ir: Any) -> str:
     # Modal weekdays over TRAINING weeks only. Summing day-offs across the
     # whole plan once told an athlete she had six off days (race week's rest
     # days polluted the set) and listed a quality day twice.
     from collections import Counter
-    training_weeks = [w for w in (_get(plan_ir, "weeks", []) or [])
-                      if str(_get(w, "phase") or "").lower()
-                      in {"base", "build", "peak"}]
+    training_weeks = _training_weeks(plan_ir)
     if not training_weeks:
         return "Use the calendar as written. Protect the quality sessions and the long ride."
-    off_count: Counter = Counter()
     long_count: Counter = Counter()
     quality_days: Counter = Counter()
     for week in training_weeks:
@@ -501,9 +522,7 @@ def _weekly_pattern(plan_ir: Any) -> str:
             day = _session_date(session)
             if not day:
                 continue
-            if _kind(session) == "day_off":
-                off_count[day.strftime("%A")] += 1
-            elif _kind(session) == "bike":
+            if _kind(session) == "bike":
                 bikes.append((session, day))
         if bikes:
             _, long_day = max(bikes, key=lambda item: _duration_minutes(item[0]))
@@ -518,7 +537,7 @@ def _weekly_pattern(plan_ir: Any) -> str:
             if day:
                 quality_days[day.strftime("%A")] += 1
     half = len(training_weeks) / 2.0
-    off_days = sorted(day for day, count in off_count.items() if count >= half)
+    off_days = _modal_off_days(plan_ir)
     # A standing pattern needs to RECUR: a day only counts if it carries
     # quality in at least half the training weeks — one-off tests and
     # floating cadence placements belong in their weekly briefings, not in
@@ -533,7 +552,13 @@ def _weekly_pattern(plan_ir: Any) -> str:
         pieces.append("quality lands on " + " and ".join(quality))
     if off_days:
         label = "off day is" if len(off_days) == 1 else "off days are"
-        pieces.append(f"{label} " + " and ".join(off_days))
+        # Blanket "off day is Tuesday" once read as an unconditional rule --
+        # recovery/taper weeks deliberately add a second rest day, and the
+        # weekly briefing calls that out per-week (see _weekly_briefing).
+        # This caveat softens the standing pattern so it doesn't read as a
+        # promise every week keeps.
+        pieces.append(f"{label} " + " and ".join(off_days) +
+                      " (recovery and taper weeks may add a second rest day)")
     if not pieces:
         return "Use the calendar as written."
     return ". ".join(piece[0].upper() + piece[1:] for piece in pieces) + "."
@@ -764,14 +789,38 @@ def _weekly_briefing(plan_ir: Any, candidate: Dict[str, Any], fueling: Any,
     sessions = ", ".join(_briefing_session_title(session) for session in quality)
     sequence = _week_sequence(week, quality)
     ladder = _safe_ladder(plan_ir, fueling)
-    rung = next((ladder.get(str(_get(session, "date")))
-                 for session in (_get(week, "sessions", []) or [])
-                 if ladder.get(str(_get(session, "date"))) not in (None, "")), None)
+    week_sessions = _get(week, "sessions", []) or []
+    # Cite the rate the ladder pins for the week's LONGEST ride, not merely
+    # the first session in sessions-list order (that could be a Saturday
+    # filler ride, leaving Sunday's actual long ride quoting the wrong rung).
+    week_bikes = [session for session in week_sessions if _kind(session) == "bike"]
+    longest_bike = max(week_bikes, key=_duration_minutes) if week_bikes else None
+    rung = (ladder.get(str(_get(longest_bike, "date")))
+            if longest_bike is not None else None)
+    if rung in (None, ""):
+        rung = next((ladder.get(str(_get(session, "date")))
+                     for session in week_sessions
+                     if ladder.get(str(_get(session, "date"))) not in (None, "")), None)
     append = (f"\n\nTHIS WEEK'S KEY SESSIONS\n{sessions}." if sessions else "")
     if sequence:
         append += f"\n\nTHE WEEK IN SEQUENCE\n{sequence}"
     if rung:
         append += f"\n\nFUEL LADDER\nThis week's long ride: {rung} g/hr."
+    # START HERE describes the plan's standing off-day pattern; a week whose
+    # actual off-day set adds to it (recovery/taper commonly add a Saturday)
+    # should say so explicitly rather than silently deviating from what the
+    # athlete was told to expect.
+    week_off_days = sorted({
+        day.strftime("%A") for day in
+        (_session_date(session) for session in week_sessions if _kind(session) == "day_off")
+        if day
+    })
+    extra_off_days = [day for day in week_off_days if day not in _modal_off_days(plan_ir)]
+    if extra_off_days:
+        noun = "rest day" if len(extra_off_days) == 1 else "rest days"
+        article = "a " if len(extra_off_days) == 1 else ""
+        append += (f"\n\nThis week adds {article}" + " and ".join(extra_off_days) +
+                  f" {noun} — that's deliberate.")
     return f"WEEK {week_number} — {label}", descriptor.strip() + append
 
 
@@ -893,7 +942,7 @@ def _race_week(plan_ir: Any, brand: Dict[str, Any], guide_url: Optional[str]) ->
     body = (f"Nothing you do this week adds fitness. Plenty could subtract it. {facts}"
             f"{altitude}\n\nPACING\nFirst third RPE 4-5, middle third RPE 5-6, and spend what is left in the last third. People will come past early. Ride your own effort."
             "\n\nWHEN IT GETS BAD\nBreak what remains into ten-mile pieces and ride the piece you are in. Eat something. Chest pain, confusion, or a headache that keeps building means stop and find a medic."
-            "\n\nFRIDAY NIGHT\nBottles mixed. Food in pockets and counted. Kit laid out. Tyres checked. Computer charged. Then stop." + guide +
+            "\n\nFRIDAY NIGHT\nBottles mixed. Food in pockets and counted. Kit laid out. Tires checked. Computer charged. Then stop." + guide +
             f"\n\nANY LAST QUESTIONS\nSend them this week rather than Friday night — {_email(brand)}.")
     return f"RACE WEEK — {race_name}" + (f", {_display_date(race_day)}" if race_day else ""), body
 

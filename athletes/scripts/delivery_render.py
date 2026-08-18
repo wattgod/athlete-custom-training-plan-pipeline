@@ -494,16 +494,32 @@ def _authored_rpe_token(session: Any) -> Optional[str]:
     return f"RPE{match.group(1)}"
 
 
+_CADENCE_SKILL_RE = re.compile(r"\b(?:cadence|skill|technique)\b")
+# Cadence/skill/technique drills are coordination work, not a physiological
+# hammer -- the coach never intends an RPE above this, so it caps both the
+# structure-derived heuristic below AND an authored library token that
+# overshoots it (a curated "Torque - HC" item once carried its neighboring
+# "Blood Pistons"-style RPE8-9 title on a 65%-FTP high-cadence set --
+# apparently copy-pasted RPE, not a deliberate coach call).
+_CADENCE_RPE_CAP = 6
+
+
 def _rpe(session: Any, name: str) -> str:
+    text = name.lower()
+    is_cadence_named = bool(_CADENCE_SKILL_RE.search(text))
     # Library-resolved sessions: the coach's own authored RPE call wins over
-    # every heuristic below -- see _authored_rpe_token.
+    # every heuristic below -- see _authored_rpe_token -- except the cadence
+    # cap immediately above, which an authored token cannot exceed.
     authored = _authored_rpe_token(session)
     if authored:
+        if is_cadence_named:
+            authored_low = re.match(r"RPE(\d+)", authored)
+            if authored_low and int(authored_low.group(1)) > _CADENCE_RPE_CAP:
+                return "RPE5-6"
         return authored
     # NAME only for categorical matches — descriptions of interval workouts
     # almost always contain "recovery", which once demoted a 120% VO2 session
     # to RPE3. Dominant work intensity outranks everything except tests.
-    text = name.lower()
     dominant = _dominant_work_percent(session)
     if re.search(r"\ball[- ]?out\b", text):
         return "RPE10"
@@ -513,7 +529,7 @@ def _rpe(session: Any, name: str) -> str:
         # Openers and their mid-plan sibling (Tune-Up) are short touches —
         # a couple of 30s efforts never make the day an RPE8-9 session.
         return "RPE7"
-    if re.search(r"\b(?:cadence|skill|technique)\b", text):
+    if is_cadence_named:
         return "RPE5-6"
     if dominant >= 105:
         return "RPE8-9"
