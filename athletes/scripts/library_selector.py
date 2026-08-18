@@ -384,6 +384,8 @@ def _lint_flags(item: Mapping[str, Any]) -> list[str]:
         flags.append("lint_duration_claim")
     if item.get("lint_rpe_conflict"):
         flags.append("lint_rpe_conflict")
+    if item.get("lint_manual_review"):
+        flags.append("lint_manual_review")
     return flags
 
 

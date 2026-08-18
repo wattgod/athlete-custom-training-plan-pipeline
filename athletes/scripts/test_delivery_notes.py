@@ -409,12 +409,114 @@ def test_week_sequence_uses_the_actual_quality_weekday_without_a_stock_day_name(
     assert "Tuesday" not in sequence
 
 
+def test_start_here_off_day_line_carries_recovery_taper_caveat():
+    """Regression: 'Off day is Tuesday.' read as a blanket rule even though
+    recovery/taper weeks routinely add a second rest day."""
+    start = date(2026, 8, 10)  # Monday
+    weeks = []
+    for number in (1, 2):
+        monday = start + timedelta(days=(number - 1) * 7)
+        weeks.append({
+            "number": number, "phase": "build", "week_type": "build",
+            "sessions": [
+                {"date": str(monday + timedelta(days=1)), "title": "Day Off", "tp_kind": "day_off"},
+                {"date": str(monday + timedelta(days=3)), "title": "Threshold Work",
+                 "tp_kind": "bike", "duration_s": 60 * 60},
+                {"date": str(monday + timedelta(days=5)), "title": "Endurance Ride",
+                 "tp_kind": "bike", "duration_s": 180 * 60},
+            ],
+        })
+    plan = {
+        "brand": "gravelgod", "athlete": {"name": "Test Athlete"}, "weeks": weeks,
+        "race_snapshot": {"name": "Test Race", "date": "2026-08-29"},
+    }
+    start_here = _by_type(_notes(plan))["start_here"]["body"]
+    assert "Off day is Tuesday (recovery and taper weeks may add a second rest day)" in start_here
+
+
+def test_weekly_briefing_calls_out_a_recovery_weeks_added_off_day():
+    """Regression: a recovery week that adds a Saturday off day beyond the
+    plan's normal Tuesday-only pattern gave no transparency about the
+    schedule deviation in its own weekly briefing."""
+    start = date(2026, 8, 10)  # Monday
+    weeks = []
+    for number in (1, 2, 3, 4):
+        monday = start + timedelta(days=(number - 1) * 7)
+        is_recovery = number == 3
+        sessions = [
+            {"date": str(monday + timedelta(days=1)), "title": "Day Off", "tp_kind": "day_off"},
+            {"date": str(monday + timedelta(days=3)), "title": "Threshold Work",
+             "tp_kind": "bike", "duration_s": 60 * 60},
+        ]
+        if is_recovery:
+            sessions.append({"date": str(monday + timedelta(days=5)), "title": "Day Off",
+                             "tp_kind": "day_off"})
+        else:
+            sessions.append({"date": str(monday + timedelta(days=5)), "title": "Endurance Ride",
+                             "tp_kind": "bike", "duration_s": 180 * 60})
+        weeks.append({
+            "number": number, "phase": "build",
+            "week_type": "recovery" if is_recovery else "build",
+            "sessions": sessions,
+        })
+    plan = {
+        "brand": "gravelgod", "athlete": {"name": "Test Athlete"}, "weeks": weeks,
+        "race_snapshot": {"name": "Test Race", "date": "2026-10-10"},
+    }
+    notes = _notes(plan)
+    recovery_briefing = next(note for note in notes if note["type"] == "weekly_briefing"
+                             and note["title"].startswith("WEEK 3"))
+    normal_briefing = next(note for note in notes if note["type"] == "weekly_briefing"
+                           and note["title"].startswith("WEEK 1"))
+    assert "This week adds a Saturday rest day — that's deliberate." in recovery_briefing["body"]
+    assert "This week adds" not in normal_briefing["body"]
+
+
 def test_start_here_uses_singular_week_and_grit_has_no_fixture_date_residue():
     notes = _notes(_plan(weeks=1))
     assert "1 week to High Country Gravel" in _by_type(notes)["start_here"]["body"]
     grit_body = "\n".join(note["body"] for note in notes if note["type"].startswith("grit_"))
     assert "19 September" not in grit_body
     assert "by race day" in grit_body
+
+
+def test_weekly_briefing_fuel_ladder_cites_the_weeks_longest_ride():
+    """Regression: the briefing's FUEL LADDER line quoted whichever session
+    in the week's sessions list matched a ladder date first (a shorter
+    Saturday ride) instead of the rate the ladder pins for the week's
+    actual longest ride (Sunday's Race Simulation)."""
+    week1_sat, week1_sun = date(2026, 8, 15), date(2026, 8, 16)
+    week2_sat, week2_sun = date(2026, 8, 22), date(2026, 8, 23)
+    race_day = week2_sun + timedelta(days=14)
+    plan = {
+        "brand": "gravelgod",
+        "athlete": {"name": "Test Athlete", "key_markers": {"control_metric": "power"}},
+        "race_snapshot": {"name": "Test Gravel", "date": str(race_day), "distance_miles": 80},
+        "events": [],
+        "weeks": [
+            {
+                "number": 1, "phase": "build", "week_type": "build",
+                "sessions": [
+                    _bike_session(week1_sat, "Endurance", 120),
+                    _bike_session(week1_sun, "Race Simulation", 230, is_simulation=True),
+                ],
+            },
+            {
+                "number": 2, "phase": "build", "week_type": "build",
+                "sessions": [
+                    _bike_session(week2_sat, "Endurance", 120),
+                    _bike_session(week2_sun, "Dress Rehearsal", 230,
+                                  is_simulation=True, is_dress_rehearsal=True),
+                ],
+            },
+        ],
+    }
+    notes = render_notes(plan, {"prescription": {"race_target_g_per_hour": 70}},
+                         load_brand("gravelgod"), None)
+    briefing = next(note for note in notes if note["type"] == "weekly_briefing"
+                    and note["title"].startswith("WEEK 1"))
+    assert "This week's long ride: 55 g/hr." in briefing["body"]
+    assert "50 g/hr" not in briefing["body"]
 
 
 def test_hydration_block_owns_its_single_heading_in_the_fuel_ladder_note():
@@ -479,7 +581,7 @@ def test_sim_touch_is_not_a_rehearsal():
 
 
 _UK_SPELLING_RE = re.compile(
-    r"practis|organis|fuell|colour|behaviour|centre", re.IGNORECASE,
+    r"practis|organis|fuell|colour|behaviour|centre|tyre", re.IGNORECASE,
 )
 
 
@@ -500,6 +602,15 @@ def test_grit_4_is_titled_home_stretch_not_last_three_days():
     note = _by_type(_notes(_plan()))["grit_4"]
     assert "The Home Stretch" in note["title"]
     assert "The Last Three Days" not in note["title"]
+
+
+def test_uk_spelling_regex_catches_capitalized_tyre_forms():
+    """Regression: 'Tyres checked.' shipped in the race-week FRIDAY NIGHT
+    note (delivery_notes.py) and the UK-spelling regex had no 'tyre'
+    pattern at all, so the existing scan test never flagged it."""
+    assert _UK_SPELLING_RE.search("Tyres checked.")
+    assert _UK_SPELLING_RE.search("Tyre pressure")
+    assert _UK_SPELLING_RE.search("tyre pressure")
 
 
 def test_no_uk_spellings_in_athlete_facing_copy():

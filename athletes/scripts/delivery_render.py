@@ -309,6 +309,34 @@ def _defining_set_from_structure(session: Any) -> Optional[str]:
     def _key(block):
         seconds, _, pct = block
         return (1 if _pct_value(pct) >= 88 else 0, seconds)
+
+    # Continuous-alternating endurance archetypes ("Aerobic Base" alternates
+    # gently between ~68% and ~72% every 20min "so it doesn't go dead") group
+    # into two same-duration, equal-rank blocks by the (seconds, percent) key
+    # above -- picking just one of them arbitrarily undercounted the total
+    # reps (a real defect: the title said "4x20min @68%" for a structure
+    # that actually held EIGHT 20-min alternating blocks). When multiple
+    # blocks tie for the top rank and none of them individually reaches the
+    # hard threshold, and their power bands sit close together (a real
+    # interval contrast, e.g. over/under, sits much further apart), combine
+    # them: the reps sum, the percent becomes the range actually ridden.
+    top_key = max(_key(block) for block in blocks)
+    tied_at_top = [block for block in blocks if _key(block) == top_key]
+    if len(tied_at_top) > 1 and top_key[0] == 0:
+        tied_pcts = [_pct_value(block[2]) for block in tied_at_top]
+        if max(tied_pcts) - min(tied_pcts) <= 10:
+            total_seconds = sum(block[0] for block in tied_at_top)
+            reps = sum(block[1] for block in tied_at_top)
+            each_seconds = total_seconds / max(1, reps)
+            if each_seconds < 90:
+                each = f"{int(round(each_seconds))}s"
+            else:
+                each = f"{max(1, int(round(each_seconds / 60.0)))}min"
+            prefix = f"{reps}x" if reps > 1 else ""
+            low, high = min(tied_pcts), max(tied_pcts)
+            pct_display = f"{low:g}-{high:g}" if low != high else f"{low:g}"
+            return f"{prefix}{each} @{pct_display}%"
+
     total_seconds, reps, percent = max(blocks, key=_key)
     # A repeated set is the session's identity: when the hardest block is a
     # single lead-in only marginally harder than a bigger repeated main set
@@ -494,16 +522,23 @@ def _authored_rpe_token(session: Any) -> Optional[str]:
     return f"RPE{match.group(1)}"
 
 
+_CADENCE_SKILL_RE = re.compile(r"\b(?:cadence|skill|technique)\b")
+
+
 def _rpe(session: Any, name: str) -> str:
+    text = name.lower()
+    is_cadence_named = bool(_CADENCE_SKILL_RE.search(text))
     # Library-resolved sessions: the coach's own authored RPE call wins over
-    # every heuristic below -- see _authored_rpe_token.
+    # every heuristic below -- see _authored_rpe_token. A suspect authored
+    # token (RPE8-9 on a 65% cadence drill) is a CURATION defect: it gets a
+    # lint_manual_review entry in tp_library_snapshot and the item never
+    # ships -- the renderer does not silently overrule the coach.
     authored = _authored_rpe_token(session)
     if authored:
         return authored
     # NAME only for categorical matches — descriptions of interval workouts
     # almost always contain "recovery", which once demoted a 120% VO2 session
     # to RPE3. Dominant work intensity outranks everything except tests.
-    text = name.lower()
     dominant = _dominant_work_percent(session)
     if re.search(r"\ball[- ]?out\b", text):
         return "RPE10"
@@ -513,7 +548,7 @@ def _rpe(session: Any, name: str) -> str:
         # Openers and their mid-plan sibling (Tune-Up) are short touches —
         # a couple of 30s efforts never make the day an RPE8-9 session.
         return "RPE7"
-    if re.search(r"\b(?:cadence|skill|technique)\b", text):
+    if is_cadence_named:
         return "RPE5-6"
     if dominant >= 105:
         return "RPE8-9"

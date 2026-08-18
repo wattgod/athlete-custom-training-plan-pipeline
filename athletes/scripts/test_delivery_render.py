@@ -46,6 +46,35 @@ def test_title_uses_emitted_structure_not_archetype_lie():
     assert render_title(session, BRAND) == "Tempo - 3x8min @90% - 60min - RPE6-7"
 
 
+def test_alternating_two_power_endurance_archetype_counts_every_block():
+    # Real graded defect: "Aerobic Base" alternates gently between ~68%
+    # and ~72% every 20min across a 3h ride ("so it doesn't go dead") --
+    # eight 20-min blocks total, four at each power. The title-deriving
+    # tie-break grouped them into two separate 4-rep bands and arbitrarily
+    # picked one, undercounting the title to "4x20min @68%". Both bands
+    # tie for defining-block rank and sit close together (a real hard/easy
+    # interval contrast sits much further apart), so they must combine
+    # into one count spanning the actual range ridden.
+    session = Session(
+        date="2026-08-27", title="Aerobic Base", display_name="Aerobic Base",
+        sport="cycling", type="workout", origin="prescribed", tp_kind="bike",
+        duration_s=180 * 60, tss=142, library_item_id=14416906,
+        segments=[
+            Segment(name="steady", kind="steady_state", seconds=1200, power_target=.68),
+            Segment(name="steady", kind="steady_state", seconds=1200, power_target=.72),
+            Segment(name="steady", kind="steady_state", seconds=1200, power_target=.68),
+            Segment(name="steady", kind="steady_state", seconds=1200, power_target=.72),
+            Segment(name="steady", kind="steady_state", seconds=1200, power_target=.68),
+            Segment(name="steady", kind="steady_state", seconds=1200, power_target=.72),
+            Segment(name="steady", kind="steady_state", seconds=1200, power_target=.68),
+            Segment(name="steady", kind="steady_state", seconds=1200, power_target=.72),
+        ],
+    )
+    title = render_title(session, BRAND)
+    assert "8x20min" in title
+    assert "4x20min" not in title
+
+
 def test_library_session_authored_rpe_wins_over_structure_derived_rpe():
     # Real graded defect: a library-resolved session with dominant power 80%
     # (structure-derived RPE5-6) carried the coach's own authored "RPE3-4"
@@ -64,6 +93,27 @@ def test_library_session_authored_rpe_wins_over_structure_derived_rpe():
     assert title.endswith("RPE3-4")
     assert "RPE5-6" not in title
     assert title.count("RPE") == 1
+
+
+def test_suspect_authored_rpe_is_a_lint_matter_not_a_renderer_override():
+    # Real graded defect: curated item 14357243 ("Torque - HC") carries an
+    # authored RPE8-9 on a 65%-FTP high-cadence drill. The renderer does
+    # NOT overrule the coach's authored token -- the item is excluded from
+    # selection via tp_library_snapshot's lint_manual_review entry instead,
+    # so it can never ship until fixed at the source in TrainingPeaks.
+    from tp_library_snapshot import _MANUAL_REVIEW
+    assert 14357243 in _MANUAL_REVIEW
+    session = Session(
+        date="2026-08-28", title="Cadence HC - RPE8-9",
+        display_name="Cadence HC - RPE8-9",
+        sport="cycling", type="workout", origin="prescribed", tp_kind="bike",
+        duration_s=35 * 60, tss=30, library_item_id=14357243, library_rpe_text="8-9",
+        segments=[Segment(name="intervals", kind="intervals", seconds=1200,
+                          repeat=5, on_seconds=60, on_power=.82,
+                          off_seconds=180, off_power=.55)],
+    )
+    title = render_title(session, BRAND)
+    assert title.endswith("RPE8-9")  # authored always wins at render time
 
 
 def test_title_parses_main_set_for_structure_free_rpe_athlete():

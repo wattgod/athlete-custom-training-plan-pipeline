@@ -19,6 +19,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent))
 
 from tp_library_snapshot import (  # noqa: E402
+    DEFAULT_INDEX_PATH,
     DEFAULT_RAW_PATH,
     build_family_index,
     build_index,
@@ -665,3 +666,32 @@ def test_load_index_returns_items_and_families_and_is_cached(tmp_path):
     assert loaded_a is loaded_b  # cached: same object identity
     assert {item["item_id"] for item in loaded_a["items"]} == {101, 102}
     assert "families" in loaded_a
+
+
+def test_manual_review_flags_exclude_verified_curated_defects():
+    """Real graded defects live in the COACH'S authored items (Fartlek levels
+    count surges by steady blocks; "This is Uncomfortable" instructs a TT
+    bike in a gravel context; "Torque - HC" carries a suspect RPE8-9 on a
+    65% drill). The index mirrors the coach's library VERBATIM -- the fix
+    is never to edit the index; it is a lint_manual_review entry that
+    excludes the item from selection and reports it for a source fix in
+    TrainingPeaks."""
+    index = load_index(DEFAULT_INDEX_PATH)
+    by_id = {item["item_id"]: item for item in index["items"]}
+    expected = {14355843, 14355844, 14357243,
+                14356002, 14356003, 14356004, 14356005, 14356006, 14356007}
+    for item_id in expected:
+        assert by_id[item_id].get("lint_manual_review"), item_id
+    # And the flagged-items helper surfaces them for --lint-report.
+    flagged_ids = {item["item_id"] for item in lint_flagged_items(index)}
+    assert expected <= flagged_ids
+
+
+def test_manual_review_never_edits_authored_content():
+    """The authored description must remain byte-verbatim in the index even
+    for manually flagged items -- 'This is Uncomfortable' still says 'TT
+    bike' until the coach fixes it in TrainingPeaks and a fresh snapshot
+    lands (at which point its _MANUAL_REVIEW entry is deleted)."""
+    index = load_index(DEFAULT_INDEX_PATH)
+    by_id = {item["item_id"]: item for item in index["items"]}
+    assert "tt bike" in (by_id[14355843]["description"] or "").lower()

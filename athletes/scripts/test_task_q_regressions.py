@@ -172,6 +172,18 @@ class TestEnduranceFocusVariantContent:
         assert 'Duration="6" Power="1.20"' not in zwo
         assert rewritten  # still renders
 
+    @pytest.mark.parametrize('variant', range(6))
+    def test_focus_variant_description_names_its_warmup(self, variant):
+        """Real graded defect: "Endurance — Position Focus" (and every
+        sibling focus variant, since they share one description builder)
+        opened straight into MAIN SET despite the ZWO structure always
+        opening with a <Warmup> ramp -- the description never told the
+        athlete a warm-up existed."""
+        zwo = render_workout('Endurance', level=1, endurance_variant=variant)
+        description = re.search(r'<description>(.*?)</description>', zwo, re.S).group(1)
+        assert 'WARM-UP:' in description
+        assert description.index('WARM-UP:') < description.index('MAIN SET:')
+
 
 # ============================================================
 # Item 5: midweek race-simulation gets a compressed race shape

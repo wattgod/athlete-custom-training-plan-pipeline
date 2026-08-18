@@ -1123,12 +1123,19 @@ def _compute_hard_bike_dates(tp_manifest_records: list) -> set:
     ``library_is_hard_resolved`` (set at emission from the item's AUTHORED
     if_planned/structure, not the internal ZWO's inflated NP) closes that
     gap in addition to the existing role classification.
+
+    v24 fix wave: ``library_hard_work`` (see
+    ``_library_resolution_is_hard_work``) closes a further gap --
+    back-loaded-surge fillers (Structured Fartlek) and low-cadence torque
+    work (Descending-Cadence Ladder), where role is 'filler' and authored
+    IF sits well under every threshold above.
     """
     hard_dates = set()
     for rec in tp_manifest_records:
         if rec.get('tp_kind') == 'bike' and rec.get('date') and (
                 rec.get('role') == 'intensity' or rec.get('is_sim')
-                or rec.get('library_is_hard_resolved')):
+                or rec.get('library_is_hard_resolved')
+                or rec.get('library_hard_work')):
             hard_dates.add(str(rec['date']))
     return hard_dates
 
@@ -1144,6 +1151,41 @@ def _resolution_is_hard(resolution: dict) -> bool:
         return True
     from tp_structure_to_zwo import structure_has_hard_effort
     return structure_has_hard_effort(resolution.get('structure'))
+
+
+def _library_resolution_has_surge_work(resolution: dict) -> bool:
+    """v24 fix wave: >=180s of accumulated >=92% FTP work.
+
+    ``_resolution_is_hard`` needs a single continuous leaf >=120% FTP for
+    60s+ (``structure_has_hard_effort``) or an authored IF >=0.85. Neither
+    fires for "Structured Fartlek" (six 60s surges at ~100% FTP threaded
+    through long ~66% steady blocks, authored IF ~0.68) -- role='filler',
+    surges back-loaded across many short reps, none individually meeting
+    either bar. ``library_selector._hard_work_seconds`` (the filler-ceiling
+    budget check C3 already uses, >=92% FTP floor) sums accumulated hard
+    seconds across every rep, catching exactly this shape.
+    """
+    from library_selector import _hard_work_seconds
+    return _hard_work_seconds(resolution.get('structure')) >= 180
+
+
+def _library_resolution_is_torque_focused(resolution: dict) -> bool:
+    """v24 fix wave: the torque_starts_cadence family ("Descending-Cadence
+    Ladder", etc.) is hard by muscular/torque load, not %FTP -- its
+    targets sit well under even the 92% hard-work-seconds floor, so
+    ``_library_resolution_has_surge_work`` reads zero. Its own library_key
+    identifies it directly. Torque-focused work needs SEQUENCING guidance
+    against a same-day strength session, but is not itself "surge"
+    content -- a short, low-IF torque drill can be perfectly appropriate
+    the day before an FTP test, so this signal is kept separate from
+    ``has_surge_work`` (see FTP-TEST DAY-BEFORE ENFORCEMENT below)."""
+    return resolution.get('library_key') == 'torque_starts_cadence'
+
+
+def _library_resolution_is_hard_work(resolution: dict) -> bool:
+    """SEQUENCING/adjacency hard-day signal: either family above."""
+    return (_library_resolution_has_surge_work(resolution)
+            or _library_resolution_is_torque_focused(resolution))
 
 
 def _recompute_library_week_totals(week: dict) -> None:
@@ -2558,6 +2600,10 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
     # Track FTP test injection across the plan
     ftp_tests_added = set()  # Set of week numbers where FTP tests were injected
+    # v24 fix wave: exact calendar dates an FTP test actually landed on, so
+    # the post-pass below (after every bike day is emitted) can enforce an
+    # easy day-before -- see "FTP-TEST DAY-BEFORE ENFORCEMENT".
+    _ftp_test_dates = set()
     first_build_week = None
     first_peak_week = None
 
@@ -2920,7 +2966,13 @@ Good prep work, {athlete_name}!"""
             else:
                 # Easy spin days (Mon, Tue, Wed, Fri)
                 workout_type = 'Pre_Plan_Easy'
-                duration = 45 if day_abbrev in ['Mon', 'Wed'] else 40
+                # Rounded up front: the description below quotes {duration}
+                # directly, and the blanket round_duration_to_10() pass further
+                # down ran AFTER this f-string was built, so a 45min card
+                # (Mon/Wed) said "45 min easy spin" in the text while the
+                # emitted ZWO structure (built from the rounded value) was
+                # actually 40 minutes long.
+                duration = round_duration_to_10(45 if day_abbrev in ['Mon', 'Wed'] else 40)
                 power = 0.60  # Z2 low — easy but not recovery
                 description = f"""PRE-PLAN WEEK: Easy Spin
 {athlete_name} - {days_to_plan_start} days until plan starts
@@ -2950,7 +3002,22 @@ Stay loose, {athlete_name}!"""
             filename = f"W00_{day_abbrev}_{date_short}_{workout_type}.zwo"
             display_name = _display_words(workout_type)
 
-            if duration > 0:
+            if workout_type == 'Pre_Plan_Strength_Prep':
+                # Floor mobility/activation circuit, not a ride -- ZWO is a
+                # bike-only format, so this uses the same low-power "virtual
+                # trainer" placeholder pattern real strength sessions use
+                # elsewhere (workout_library.generate_strength_zwo), not the
+                # steady-state bike profile create_workout_blocks() builds
+                # (that produced a real-looking "Endurance" ride card for a
+                # floor circuit).
+                _warmup_s, _cooldown_s = 300, 300
+                _body_s = max(60, duration * 60 - _warmup_s - _cooldown_s)
+                blocks = (
+                    f'    <Warmup Duration="{_warmup_s}" PowerLow="0.30" PowerHigh="0.40"/>\n'
+                    f'    <SteadyState Duration="{_body_s}" Power="0.35"/>\n'
+                    f'    <Cooldown Duration="{_cooldown_s}" PowerLow="0.40" PowerHigh="0.30"/>\n'
+                )
+            elif duration > 0:
                 blocks = create_workout_blocks(duration, power, 'Easy')
             else:
                 blocks = "    <FreeRide Duration=\"60\"/>\n"
@@ -2974,7 +3041,12 @@ Stay loose, {athlete_name}!"""
                 'workout_prefix': workout_prefix,
                 'is_race_day': False,
             })
-            _tp_kind = 'day_off' if workout_type == 'Pre_Plan_Rest' else 'bike'
+            if workout_type == 'Pre_Plan_Rest':
+                _tp_kind = 'day_off'
+            elif workout_type == 'Pre_Plan_Strength_Prep':
+                _tp_kind = 'strength'
+            else:
+                _tp_kind = 'bike'
             _record_tp_session(zwo_path, current_date.strftime('%Y-%m-%d'), 0, 'pre_plan',
                                 _tp_kind, display_name=display_name)
 
@@ -3483,6 +3555,10 @@ TIPS:
                         series_id=('|'.join(str(x) for x in _series_id) if _series_id else None),
                         series_index=_series_rank_hint,
                         role=bb_role, is_sim=bool(_act_simulation),
+                        # v24 fix wave: duration_min lets the FTP-TEST
+                        # DAY-BEFORE ENFORCEMENT post-pass below check the
+                        # day's actual length without re-reading the ZWO.
+                        duration_min=bb_duration,
                         # D4: PlanIR session carries library_item_id so a
                         # downstream TP placement job can look up the
                         # item's verbatim structure/description by ID (C1).
@@ -3508,11 +3584,23 @@ TIPS:
                         # 'long_ride', never 'intensity') can resolve to
                         # authored IF 0.95 and still needs SEQUENCING
                         # guidance against a same-day strength session.
+                        #
+                        # v24 fix wave: library_hard_work closes a further
+                        # gap -- see _library_resolution_is_hard_work.
+                        # library_has_surges is the surge-only half of that
+                        # (excludes the torque_starts_cadence family -- see
+                        # _library_resolution_is_torque_focused) for the
+                        # FTP-TEST DAY-BEFORE ENFORCEMENT post-pass, which
+                        # must not downgrade a legitimately easy, low-IF
+                        # torque/cadence drill just because its library
+                        # family is also flagged hard for SEQUENCING.
                         **({'library_item_id': _library_resolution['item_id'],
                             'library_tss': _library_resolution['tss'],
                             'library_if_planned': _library_resolution['if_planned'],
                             'library_rpe_text': _library_resolution.get('rpe_text'),
-                            'library_is_hard_resolved': _resolution_is_hard(_library_resolution)}
+                            'library_is_hard_resolved': _resolution_is_hard(_library_resolution),
+                            'library_hard_work': _library_resolution_is_hard_work(_library_resolution),
+                            'library_has_surges': _library_resolution_has_surge_work(_library_resolution)}
                            if _library_resolution else {}),
                     )
                     continue  # Skip legacy path entirely
@@ -3760,6 +3848,8 @@ Trust the process, {athlete_name}."""
                     duration = FTP_TEST_DURATION_MIN
                     power = 0.82
                     ftp_tests_added.add(week_num)
+                    if day_info.get('date'):
+                        _ftp_test_dates.add(str(day_info['date']))
 
             if is_race_day:
                 # Create RACE DAY PLAN - not a workout, but a race execution guide
@@ -4083,6 +4173,89 @@ GO GET IT, {athlete_name.upper()}!
             for _rank, _rec in enumerate(_group, start=1):
                 _authored_documents[_rec['filepath'].stem] = _patch_zwo_name(
                     _rec['filepath'], f"{_rec['base_name']} ({_rank} of {_total})")
+
+    # ===================================================================
+    # FTP-TEST DAY-BEFORE ENFORCEMENT (v24 fix wave): a fresh FTP test
+    # needs fresh legs. FTP test injection (legacy overlay, above) has no
+    # visibility into what the block-builder already scheduled the day
+    # before -- a real defect shipped a 2-hour "Endurance with Surges"
+    # (TSS 100) the day before a Week 3 retest. Runs as a post-pass
+    # (mirrors SERIES SUFFIX PATCH above) because every bike ZWO for the
+    # week is already written by the time an FTP test date is known.
+    #
+    # The opening 360 Testing Week's Thu-anaerobic/Fri-easy/Sat-FTP house
+    # protocol is untouched: Friday there is already an authored easy day,
+    # so it never trips the hard-day check below and this pass is a no-op
+    # for it.
+    # ===================================================================
+    if _ftp_test_dates:
+        from collections import defaultdict as _defaultdict
+        _records_by_date = _defaultdict(list)
+        for _rec in _tp_manifest_records:
+            if _rec.get('date'):
+                _records_by_date[str(_rec['date'])].append(_rec)
+        for _ftp_date_str in sorted(_ftp_test_dates):
+            try:
+                _ftp_dt = datetime.strptime(_ftp_date_str, '%Y-%m-%d')
+            except (TypeError, ValueError):
+                continue
+            _day_before_str = (_ftp_dt - timedelta(days=1)).strftime('%Y-%m-%d')
+            for _rec in _records_by_date.get(_day_before_str, []):
+                if _rec.get('tp_kind') != 'bike':
+                    continue
+                # The house-protocol easy Friday (and any other genuinely
+                # easy day) is left alone: role='intensity'/is_sim catch
+                # unambiguous hard block-builder days; duration/IF/surge
+                # content are checked directly against the stated bar
+                # (<=60min, IF<=0.65, no surges) rather than reusing
+                # _library_resolution_is_hard_work, which ALSO flags the
+                # torque_starts_cadence family (a short, low-IF cadence
+                # drill can be perfectly appropriate here -- it needs
+                # SEQUENCING guidance against strength, not a day-before
+                # downgrade; see _library_resolution_is_torque_focused).
+                _duration_min = _rec.get('duration_min')
+                _if_planned = _rec.get('library_if_planned')
+                _needs_downgrade = (
+                    _rec.get('role') == 'intensity'
+                    or _rec.get('is_sim')
+                    or _rec.get('library_has_surges')
+                    or (_duration_min is not None and _duration_min > 60)
+                    or (_if_planned is not None and _if_planned > 0.65)
+                )
+                if not _needs_downgrade:
+                    continue
+                _filepath = zwo_dir / f"{_rec['filename_stem']}.zwo"
+                # Respect the athlete's own per-day duration cap -- a
+                # blanket 40min once tripped DAY_DURATION_OVER_CAP on a
+                # day the athlete capped shorter.
+                _day_abbrev_before = datetime.strptime(_day_before_str, '%Y-%m-%d').strftime('%a')[:3]
+                _day_cap = get_day_availability(_day_abbrev_before).get('max_duration_min', 40)
+                _easy_duration = round_duration_to_10(max(20, min(40, _day_cap)))
+                _easy_name = 'Easy Spin — Pre-Test'
+                _easy_blocks = create_workout_blocks(_easy_duration, 0.55, 'Easy')
+                _easy_description = (
+                    f"{athlete_name} - Week {_rec.get('week_num')}/{total_weeks}\n\n"
+                    "PURPOSE:\nFresh legs for tomorrow's FTP test. Keep this easy "
+                    "-- today is not the day to chase numbers.\n\n"
+                    f"WORKOUT:\n- {_easy_duration}min easy Z1-Z2, conversational pace"
+                )
+                _easy_zwo = ZWO_TEMPLATE.format(
+                    author=_workout_author,
+                    name=_easy_name,
+                    description=_easy_description,
+                    blocks=_easy_blocks,
+                )
+                _emit_authored_document(_filepath, _easy_zwo)
+                _rec['display_name'] = _easy_name
+                _rec['archetype_id'] = _easy_name
+                _rec['role'] = 'filler'
+                _rec['is_sim'] = False
+                _rec['duration_min'] = _easy_duration
+                _rec['library_is_hard_resolved'] = False
+                _rec['library_hard_work'] = False
+                _rec['library_has_surges'] = False
+                for _stale_key in ('library_item_id', 'library_tss', 'library_if_planned', 'library_rpe_text'):
+                    _rec.pop(_stale_key, None)
 
     # Generate strength workouts - respect athlete availability
     strength_sessions = profile.get('strength', {}).get('sessions_per_week', 2) if profile else 2
