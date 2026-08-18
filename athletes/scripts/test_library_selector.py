@@ -628,6 +628,73 @@ class TestUsedItemMemory:
         assert second["item_id"] == 3  # the remaining heat-tagged item is excluded
 
 
+class TestFamilyIFCoherence:
+    def test_build_phase_reselection_does_not_soften_below_prior_family_max(self):
+        """FIX 5 (Aug 17 2026 adversarial grade): 'Descending-Cadence Ladder'
+        placed fresh (non-series) at IF .714 in base, then a SOFTER .694
+        variant of the same family in a later build week, then back to
+        .714 in peak -- an incoherent zig-zag a real coach would never
+        author. A repeat family recurring outside a series must not pick
+        an item with lower authored IF than a previously placed item of
+        that family, in build/peak."""
+        seed_index = make_index([
+            make_item(1, library_key="vo2_3030_micro", name_base="Descending-Cadence Ladder",
+                      duration_min=50, if_planned=0.714, dimension_score=1),
+        ])
+        build_index = make_index([
+            # Without the coherence filter, item 2's higher dimension_score
+            # would outrank item 3 and win -- the softer, incoherent variant.
+            make_item(2, library_key="vo2_3030_micro", name_base="Descending-Cadence Ladder",
+                      duration_min=50, if_planned=0.694, dimension_score=5),
+            make_item(3, library_key="vo2_3030_micro", name_base="Descending-Cadence Ladder",
+                      duration_min=50, if_planned=0.72, dimension_score=1),
+        ])
+        used_items: dict = {}
+        base_pick_slot = base_slot(series_key=None, plan_week=1, day="Mon",
+                                   athlete_seed="x", phase="base", week_type="base")
+        seeded = select(base_pick_slot, series_state=None, index=seed_index, used_items=used_items)
+        assert seeded["item_id"] == 1
+
+        build_pick_slot = base_slot(series_key=None, plan_week=6, day="Mon",
+                                    athlete_seed="x", phase="build", week_type="build")
+        result = select(build_pick_slot, series_state=None, index=build_index, used_items=used_items)
+        assert result["item_id"] == 3
+
+    def test_taper_and_recovery_weeks_are_exempt_from_family_coherence(self):
+        """Softening in taper/recovery is correct -- the volume drop IS the
+        training -- so the coherence filter must not apply there."""
+        seed_index = make_index([
+            make_item(1, library_key="vo2_3030_micro", name_base="Descending-Cadence Ladder",
+                      duration_min=50, if_planned=0.714, dimension_score=1),
+        ])
+        taper_index = make_index([
+            make_item(2, library_key="vo2_3030_micro", name_base="Descending-Cadence Ladder",
+                      duration_min=50, if_planned=0.60, dimension_score=5),
+        ])
+        used_items: dict = {}
+        base_pick_slot = base_slot(series_key=None, plan_week=1, day="Mon",
+                                   athlete_seed="x", phase="base", week_type="base")
+        select(base_pick_slot, series_state=None, index=seed_index, used_items=used_items)
+
+        taper_slot = base_slot(series_key=None, plan_week=10, day="Mon",
+                               athlete_seed="x", phase="taper", week_type="taper")
+        result = select(taper_slot, series_state=None, index=taper_index, used_items=used_items)
+        assert result["item_id"] == 2  # the only candidate, softer or not
+
+    def test_family_never_placed_before_is_unaffected(self):
+        """A family with no prior placement must pass through untouched --
+        the filter only ever constrains an ALREADY-PLACED family."""
+        index = make_index([
+            make_item(1, library_key="vo2_3030_micro", name_base="Fresh Family",
+                      duration_min=50, if_planned=0.5, dimension_score=5),
+        ])
+        used_items: dict = {}
+        slot = base_slot(series_key=None, plan_week=6, day="Mon",
+                         athlete_seed="x", phase="build", week_type="build")
+        result = select(slot, series_state=None, index=index, used_items=used_items)
+        assert result["item_id"] == 1
+
+
 class TestNonSeriesRotationSeedExtension:
     def test_identity_differs_by_plan_week_and_day(self):
         from library_selector import _slot_identity

@@ -1,6 +1,7 @@
 """Contract tests for the pure DeliveryIR rendering helpers."""
 
 import json
+import math
 import re
 from pathlib import Path
 
@@ -347,7 +348,21 @@ def test_if_planned_is_power_structure_only():
     assert render_if_planned(structured) == .8
     assert render_if_planned(rpe) is None
     assert render_if_planned(strength) is None
-    assert render_if_planned(race) is None
+    # Regression: race day is a bike-typed FreeRide with no power structure --
+    # it must not be the one bike card left with a null IF. IF is derived
+    # from TSS/duration the same way TP derives it: sqrt(TSS / (hours*100)).
+    assert render_if_planned(race) == round(math.sqrt(250 / (4 * 100.0)), 4)
+
+
+def test_race_day_card_emits_if_planned_from_snapshot_tss_and_duration():
+    """Regression: verified live, the race day card was the only bike-typed
+    card with ifPlanned null. 394 TSS over an expected 9.3333h race ->
+    IF = sqrt(394 / (9.3333*100)) ~= 0.65."""
+    race = Session(None, "Race Day", "cycling", "race", "event",
+                   int(9.3333 * 3600), 394, tp_kind="race", tss_planned=394)
+    if_planned = render_if_planned(race)
+    assert if_planned is not None
+    assert round(if_planned, 2) == 0.65
 
 
 def test_day_off_decoration_variants():

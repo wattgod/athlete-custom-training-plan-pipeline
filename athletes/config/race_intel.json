@@ -1,0 +1,181 @@
+{
+  "belgian_waffle_ride": {
+    "aid_stations": "6 feed zones on the 2026 Waffle course. Comprehensive course marking.",
+    "features": [
+      "Single-track sections",
+      "Sand sectors (Sandy Bandy)",
+      "Rock gardens",
+      "Water crossings",
+      "20%+ grades",
+      "Technical descents",
+      "Belgian-themed sector names"
+    ],
+    "rider_intel_notes": [
+      "The course included quite a bit more rough off-road sections, which meant more people considered it a gravel race instead of a road race with off-road sectors."
+    ],
+    "surface": "53% unroad and 47% pavement on the 2026 Waffle, mixing gravel, deep sand, rocks, doubletrack, decomposed granite, dirt, and singletrack across 30 unroad sectors.",
+    "top_tire": {
+      "name": "Schwalbe G-One Bite",
+      "width_mm": 45
+    }
+  },
+  "big_sugar": {
+    "aid_stations": "Well-stocked aid stations throughout course",
+    "features": [
+      "Sugar Creek descent",
+      "War Eagle Mill",
+      "Punchy Ozark climbs",
+      "Creek crossings"
+    ],
+    "rider_intel_notes": [
+      "The course has a reputation for category 2 or category 3 type gravel with particularly sharp rocks that cause frequent flats.",
+      "The 50-mile course is actually a lot smoother than the 100 mile course, according to pros."
+    ],
+    "surface": "Loose, rocky gravel on rarely maintained Ozark roads. The course includes a few pavement sections, water crossings, and bridges.",
+    "top_tire": {
+      "name": "Schwalbe G-One Bite",
+      "width_mm": 45
+    }
+  },
+  "boulder_roubaix": {
+    "aid_stations": "Neutral support based on volunteer availability \u2014 unlikely. Self-supported. Bring pump, spare tube, and do a bolt check.",
+    "features": [
+      "Unpaved county roads \u2014 ranging from smooth to extremely rutted depending on weather",
+      "Rolling terrain with no sustained major climbs but constant undulation",
+      "Mixed-surface transitions between pavement and dirt \u2014 the defining tactical element",
+      "Winding curves through North Boulder County open space and farmland",
+      "New 2026 finish along Boulder Feeder Canal and across reservoir dams"
+    ],
+    "surface": "61% unpaved, 39% paved (2026 course). The unpaved sections are real working county and farm roads \u2014 not manicured gravel. Surface quality ranges from smooth hard-pack to deeply rutted washboard depending on weather conditions leading up to race day. The 2026 course adds a challenging finish along the Boulder Feeder Canal and across the Boulder Reservoir dams."
+  },
+  "dirty_kanza_200": {
+    "aid_stations": "2 full checkpoints + 2 water oases. Everything between those points is on you, your crew, and whatever you can fix in the ditch.",
+    "features": [
+      "Sustained rollers",
+      "Cattle guard crossings",
+      "Exposed ridgelines",
+      "Creek crossings in wet years"
+    ],
+    "surface": "Chunky limestone that shreds tires and hands",
+    "top_tire": {
+      "name": "Specialized Pathfinder Pro",
+      "width_mm": 42
+    }
+  },
+  "gravel_worlds": {
+    "aid_stations": "Multiple aid stations at key points",
+    "features": [
+      "Endless horizon",
+      "Farm crossings",
+      "Rolling terrain",
+      "Prairie isolation"
+    ],
+    "rider_intel_notes": [
+      "Roads are in primo shape for much of the course but there are many sections of deep gravel that require you to stay relaxed and let the bike float to avoid slipping and sliding.",
+      "The terrain is more relentless than Unbound with constant up and down roller coasters. There are no flat roads in Nebraska and the surfing motion over hills zaps your legs."
+    ],
+    "surface": "Loose gravel, some rough minimum maintenance, occasional sand/mud",
+    "top_tire": {
+      "name": "Schwalbe G-One Ultrabite",
+      "width_mm": 40
+    }
+  },
+  "leadville_100": {
+    "aid_stations": "8+ aid stations with crew access points",
+    "features": [
+      "Powerline climb",
+      "Columbine Mine summit",
+      "Sugarloaf descent",
+      "Pipeline"
+    ],
+    "rider_intel_notes": [
+      "It's more of a dirt road race done on mountain bikes rather than traditional mountain biking terrain."
+    ],
+    "surface": "Variable: buffed singletrack to rocky jeep roads to pavement",
+    "top_tire": {
+      "name": "Pirelli Cinturato Gravel S",
+      "width_mm": 45
+    }
+  },
+  "mid_south": {
+    "aid_stations": "Miles ~30, 60. Water, snacks, neutral support. Sparse but sufficient.",
+    "features": [
+      "Constant rolling terrain",
+      "No sustained climbs",
+      "Exposed ridgelines",
+      "Iconic red dirt roads",
+      "Surface quality depends entirely on weather"
+    ],
+    "rider_intel_notes": [
+      "Red dirt roads that can be chunky in sections. If the mud gets wet, it becomes very problematic for traction and bike handling.",
+      "Surprisingly not sketchy on descents despite being DIY roads, though riders report being puckered up on the descents due to conditions."
+    ],
+    "surface": "98-99% unpaved Oklahoma red clay (iron oxide). Hard-pack when dry = slick center tread tires work well. 'Peanut butter mud' when wet\u2014wheels stop spinning. Not the chunky gravel of Unbound.",
+    "top_tire": {
+      "name": "Schwalbe G-One Ultrabite",
+      "width_mm": 40
+    }
+  },
+  "sbt_grvl": {
+    "rider_intel_notes": [
+      "The champagne gravel is described as fine little pebbles like bubbles in champagne. It's fast, so fast, making Steamboat Gravel historically a fast course.",
+      "Course becomes extremely dusty immediately after the first gravel section. Riders report being covered in dust and bikes becoming completely filthy very early in the race."
+    ],
+    "top_tire": {
+      "name": "Specialized Pathfinder Pro",
+      "width_mm": 38
+    }
+  },
+  "unbound_gravel_100": {
+    "aid_stations": "1 full checkpoint (Council Grove, ~mi 50)",
+    "features": [
+      "Tire-slicing flint",
+      "Washed-out gullies",
+      "Punchy rolling hills",
+      "Rivers to ford",
+      "Primitive unmaintained roads"
+    ],
+    "rider_intel_notes": [
+      "There are rocks flying everywhere. There are crashes happening. It's just a beatdown. To race 200 miles on this terrain is just so destructive.",
+      "The conditions are completely unexpected. It's so different to everything we do. There's a lot of different sections to approach. Some are famous for being really fast. Some are famous for people notoriously having punctures non-stop and some are just famous for being real tough, gritty sections."
+    ],
+    "surface": "~90% unpaved chunky flint rock roads, ~10% paved transfers. Sharp stones slice sidewalls. Clay mud when wet becomes 'peanut butter' that stops bikes.",
+    "top_tire": {
+      "name": "Schwalbe G-One Ultrabite",
+      "width_mm": 40
+    }
+  },
+  "unbound_gravel_200": {
+    "aid_stations": "2 full checkpoints + 2 water oases. Everything between those points is on you, your crew, and whatever you can fix in the ditch.",
+    "features": [
+      "Sustained rollers",
+      "Cattle guard crossings",
+      "Exposed ridgelines",
+      "Creek crossings in wet years"
+    ],
+    "surface": "Chunky limestone that shreds tires and hands",
+    "top_tire": {
+      "name": "Specialized Pathfinder Pro",
+      "width_mm": 42
+    }
+  },
+  "unbound_xl": {
+    "features": [
+      "Sharp limestone edges",
+      "Chunky gravel",
+      "Rolling Flint Hills prairie",
+      "Tire-destroying terrain",
+      "Creek crossings",
+      "Sustained rolling terrain"
+    ],
+    "rider_intel_notes": [
+      "Sharp rocks are a constant hazard on the course that riders must navigate.",
+      "The course features rolling terrain that becomes more challenging as heat builds throughout the day."
+    ],
+    "surface": "350 miles of sharp, chunky Flint Hills limestone that shreds tires. Rolling prairie terrain.",
+    "top_tire": {
+      "name": "Schwalbe G-One Overland",
+      "width_mm": 45
+    }
+  }
+}

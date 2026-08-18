@@ -662,6 +662,53 @@ def _filter_used_items(
     return plan_wide_free
 
 
+# FIX 5 (Aug 17 2026 adversarial grade): "Descending-Cadence Ladder" placed
+# fresh (non-series) at IF .714 in base, again at .714 in an early build
+# week, then a SOFTER .694 variant in a later build week, then back to .714
+# in peak -- an incoherent zig-zag a real coach would never author. A repeat
+# family recurring outside a series must not authored-soften below a
+# family member already placed earlier in build/peak (taper/recovery weeks
+# are exempt -- softening there is correct, the volume drop IS the
+# training). Reuses the same used_items dict R3/FIX7 already thread, under a
+# sentinel key that can never collide with a real (integer) item_id.
+_FAMILY_MAX_IF_KEY = "__family_max_if__"
+
+
+def _filter_family_coherence(
+    pool: Sequence[Mapping[str, Any]], slot: Mapping[str, Any], used_items: Mapping[Any, Any],
+) -> list[Mapping[str, Any]]:
+    """Soft preference: in build/peak, candidates of an already-placed
+    family are filtered to if_planned >= (that family's prior max - 0.005)
+    when at least one such candidate exists. If filtering would eliminate
+    every candidate, the full pool is kept rather than falling back to
+    nothing -- this is a preference, not a hard exclusion."""
+    phase = str(slot.get("phase") or "").lower()
+    week_type = str(slot.get("week_type") or "").lower()
+    if phase not in {"build", "peak"} or week_type in {"taper", "recovery"}:
+        return list(pool)
+    family_max = used_items.get(_FAMILY_MAX_IF_KEY) or {}
+    if not family_max:
+        return list(pool)
+    filtered = []
+    for item in pool:
+        prior_max = family_max.get(_family_key(item))
+        if_planned = item.get("if_planned")
+        if (prior_max is None or if_planned is None
+                or if_planned >= prior_max - 0.005):
+            filtered.append(item)
+    return filtered if filtered else list(pool)
+
+
+def _record_family_if(used_items: dict[Any, Any], item: Mapping[str, Any]) -> None:
+    if_planned = item.get("if_planned")
+    if if_planned is None:
+        return
+    family_max = used_items.setdefault(_FAMILY_MAX_IF_KEY, {})
+    fam_key = _family_key(item)
+    if if_planned > family_max.get(fam_key, float("-inf")):
+        family_max[fam_key] = if_planned
+
+
 def _record_used_item(
     used_items: dict[Any, dict[str, Any]], item_id: Any, plan_week: Any,
     *, is_heat: bool = False, week_type: Optional[str] = None,
@@ -736,6 +783,7 @@ def select(
         candidate_pool = _filter_used_items(pool, slot, used_items)
         if not candidate_pool:
             return None
+        candidate_pool = _filter_family_coherence(candidate_pool, slot, used_items)
 
     level = int(slot.get("level") or 1)
     leveled_pool = _apply_level(candidate_pool, level)
@@ -749,6 +797,7 @@ def select(
     if used_items is not None:
         _record_used_item(used_items, chosen["item_id"], slot.get("plan_week"),
                           is_heat=_is_heat_tagged(chosen), week_type=slot.get("week_type"))
+        _record_family_if(used_items, chosen)
     if series_state is not None and series_key:
         _record_series_state(series_state, series_key, chosen, index)
 

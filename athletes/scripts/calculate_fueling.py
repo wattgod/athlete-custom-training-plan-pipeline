@@ -160,7 +160,16 @@ def estimate_race_duration(distance_miles: float, goal_type: str,
 
     duration_hours = distance_miles / adjusted_speed
 
-    return round(duration_hours, 1)
+    # Full precision, deliberately NOT rounded here: this value feeds the
+    # race-card total-carbs multiplication (hourly rate x duration) further
+    # downstream. Rounding to 1 decimal at the source made that multiplication
+    # round twice -- once here, once on the total -- and the two roundings
+    # could disagree with the "round the full product once" arithmetic a
+    # customer would do by hand (e.g. 56g/hr x a duration that reads "9.3
+    # hours" underdelivered by 2g versus the true full-precision product).
+    # Display sites format with .1f, which rounds for presentation without
+    # needing this function to pre-round.
+    return duration_hours
 
 
 def calculate_race_calories(

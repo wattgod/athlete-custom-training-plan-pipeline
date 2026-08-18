@@ -126,14 +126,16 @@ def _race_countdown(weeks_to_race: int, race_name: str) -> str:
 def _phase_header_line(phase: str, week: dict) -> str:
     """Render the ZWO description's "Phase: X" line, week-type aware.
 
-    A recovery week previously said "Phase: BUILD" while the weekly note
-    called it a RECOVERY WEEK -- the same contradiction the athlete would
-    see on the card vs. the briefing. Taper/race weeks are never marked
-    ``is_recovery_week`` (calculate_plan_dates.py never sets it for those
-    phases), so they keep the plain phase line unchanged.
+    A recovery week previously said "Phase: BUILD — RECOVERY WEEK" while the
+    weekly note's label was just "RECOVERY" -- the leading token disagreed
+    (card led with the phase, note led with RECOVERY). The card now leads
+    with RECOVERY WEEK, same as the note, with the block kept as trailing
+    context. Taper/race weeks are never marked ``is_recovery_week``
+    (calculate_plan_dates.py never sets it for those phases), so they keep
+    the plain phase line unchanged.
     """
     if week.get('is_recovery_week'):
-        return f"Phase: {phase.upper()} — RECOVERY WEEK\n\n"
+        return f"Phase: RECOVERY WEEK ({phase.title()} block)\n\n"
     return f"Phase: {phase.upper()}\n\n"
 
 
@@ -466,6 +468,55 @@ def _replace_fuel_tag(xml_text: str, rate: int) -> str:
     body = _FUEL_RATE.sub(f'{rate} g/hr', body)
     description = tag + body
     return xml_text[:match.start(2)] + description + xml_text[match.end(2):]
+
+
+# FIX 8 (Aug 17 2026 adversarial grade): the pipeline runs without the
+# race-DB repo (gravel-race-automation) checked out, so course-specific
+# facts (surface, features, aid, house tire pick, rider intel) are bundled
+# ahead of time by sync_race_intel.py into this checked-in JSON, keyed by
+# the pipeline's own race_id. Never read the source repo at request time.
+_RACE_INTEL_PATH = Path(__file__).resolve().parent.parent / 'config' / 'race_intel.json'
+_race_intel_cache: Optional[dict] = None
+
+
+def _load_race_intel() -> dict:
+    global _race_intel_cache
+    if _race_intel_cache is None:
+        try:
+            _race_intel_cache = json.loads(_RACE_INTEL_PATH.read_text())
+        except (OSError, json.JSONDecodeError):
+            _race_intel_cache = {}
+    return _race_intel_cache
+
+
+def _course_intel_section(race_id: str) -> str:
+    """Render a COURSE INTEL section from the bundled race database extract,
+    fact-conservative: only fields actually present for the matched race
+    render, and nothing is invented beyond the data. A race absent from the
+    bundle (unmatched, or an entry with no tracked fields) renders nothing.
+    """
+    intel = _load_race_intel().get(str(race_id or '')) or {}
+    lines = []
+    surface = intel.get('surface')
+    if surface:
+        lines.append(f'- Surface: {surface}')
+    features = intel.get('features') or []
+    if features:
+        lines.append(f'- Features: {", ".join(features)}')
+    aid_stations = intel.get('aid_stations')
+    if aid_stations:
+        lines.append(f'- Aid: {aid_stations}')
+    top_tire = intel.get('top_tire') or {}
+    tire_name = top_tire.get('name')
+    if tire_name:
+        width = top_tire.get('width_mm')
+        width_text = f' {width}mm' if width else ''
+        lines.append(f'- House pick: {tire_name}{width_text}')
+    for note in intel.get('rider_intel_notes') or []:
+        lines.append(f'- Riders report: {note}')
+    if not lines:
+        return ''
+    return '\nCOURSE INTEL:\n' + '\n'.join(lines) + '\n'
 
 
 def _race_day_ceiling_paragraph(longest_name: str, longest_minutes: int,
@@ -1595,6 +1646,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     # only after all required artifacts have rendered successfully.
     _fulfillment_issues = []
     _post_sim_recovery_days = set()
+    _pre_sim_strength_block_days = set()
 
     # ===================================================================
     # BLOCK-BUILDER PLAN: pre-compute workout assignments for all weeks.
@@ -1792,12 +1844,19 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         # compliance gate sees the plan, and retain a displaced taper
         # sharpener on the athlete's stated interval day (Thu for the
         # Sunday-long/Tue-off profile) rather than simply dropping it.
-        from block_chain import protect_post_simulation_recovery
+        from block_chain import (protect_post_simulation_recovery,
+                                 pre_simulation_strength_block_days)
         _interval_abbrevs = [DAY_FULL_TO_ABBREV.get(str(day).lower(), str(day))
                              for day in ((profile or {}).get('availability_roles') or {}).get(
                                  'interval_days', [])]
         _post_sim_recovery_days = protect_post_simulation_recovery(
             _bb_plan, _interval_abbrevs or ['Tue', 'Thu'])
+        # A loaded strength session (heavy lifts/ballistic work) the day
+        # before the plan's biggest simulation days needs a clean runway too
+        # -- unlike the AFTER protection above, an easy bike spin the day
+        # before is fine, so this only blocks strength placement, never the
+        # bb day's ride itself.
+        _pre_sim_strength_block_days = pre_simulation_strength_block_days(_bb_plan)
         if '_ledger' in locals():
             materialize_fixed_sessions(_bb_plan, _ledger)
 
@@ -3933,6 +3992,7 @@ Trust the process, {athlete_name}."""
                     target_race.get('goal_type', target_race.get('goal', '')),
                     float(duration_hours or 0),
                 )
+                course_intel = _course_intel_section(target_race.get('race_id', ''))
 
                 # Estimate TSS consistently with how zwo_parser scores this
                 # race-day FreeRide (no power target) — otherwise the header
@@ -3962,7 +4022,7 @@ FUELING PLAN:
 
 PACING STRATEGY:
 {pacing_strategy}
-
+{course_intel}
 HYDRATION:
 - Drink to thirst — 500-750 ml/hr is a starting estimate to adjust for heat and sweat rate, not a quota. 500-1000 mg sodium per hour. Do not force fluid beyond thirst; you should finish a shade lighter than you started, never heavier.
 
@@ -4382,6 +4442,15 @@ GO GET IT, {athlete_name.upper()}!
                 blocked_days=({day for candidate_week, day in ftp_test_days
                                if candidate_week == week_num}
                               | {day for candidate_week, day in _post_sim_recovery_days
+                                 if candidate_week == week_num}
+                              # No loaded strength session the day immediately
+                              # before an Act-class simulation day (dress
+                              # rehearsal etc) -- an easy bike day there is
+                              # fine, a heavy lift day is not. Blocking here
+                              # lets place_strength_days' own candidate
+                              # selection relocate it earlier in the week, or
+                              # drop it for the week if nothing else fits.
+                              | {day for candidate_week, day in _pre_sim_strength_block_days
                                  if candidate_week == week_num}),
                 strength_only_abbrevs=strength_only_abbrevs,
             )

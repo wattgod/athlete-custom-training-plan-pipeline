@@ -101,13 +101,21 @@ class TestSnapToOption(object):
 
 
 class TestPhaseHeaderLine:
-    """Real defect: a recovery week's ZWO card said 'Phase: BUILD' while the
-    weekly note called it a RECOVERY WEEK. The Phase header must agree with
-    the week's own is_recovery_week flag."""
+    """Real defect: a recovery week's ZWO card said 'Phase: BUILD —
+    RECOVERY WEEK' while the weekly note's label was just 'RECOVERY' --
+    the leading token disagreed between card and note. The card must now
+    lead with RECOVERY WEEK, same as the note, with the block preserved as
+    trailing context."""
 
-    def test_recovery_week_appends_recovery_suffix(self):
+    def test_recovery_week_leads_with_recovery_week_and_keeps_block_context(self):
         line = _phase_header_line('build', {'is_recovery_week': True})
-        assert line == "Phase: BUILD — RECOVERY WEEK\n\n"
+        assert line == "Phase: RECOVERY WEEK (Build block)\n\n"
+
+    def test_recovery_week_adapts_block_context_to_actual_phase(self):
+        assert _phase_header_line('base', {'is_recovery_week': True}) == (
+            "Phase: RECOVERY WEEK (Base block)\n\n")
+        assert _phase_header_line('peak', {'is_recovery_week': True}) == (
+            "Phase: RECOVERY WEEK (Peak block)\n\n")
 
     def test_non_recovery_week_keeps_plain_phase_line(self):
         line = _phase_header_line('build', {'is_recovery_week': False})
