@@ -86,3 +86,58 @@ brands:
       measurement_id: ""
       measurement_id_env: GA4_MEASUREMENT_ID_RL
       api_secret_env: GA4_MP_API_SECRET_RL
+
+  xcskilabs:
+    discipline: xc_ski
+    allowed_disciplines: [xc_ski]
+    name: XC Ski Labs
+    coaching_name: XC Ski Labs
+    coaching_email: gravelgodcoaching@gmail.com
+    site: https://xcskilabs.com
+    # No plan questionnaire exists for this brand yet — training-plan
+    # generation is not supported (see consulting_only below). Key kept for
+    # loader/schema parity with the other brands; unused while
+    # consulting_only is set.
+    questionnaire_path: /questionnaire/
+    consulting_path: /consulting/
+    consulting_success_path: /consulting/confirmed/
+    subject_prefix: "[XC]"
+    workout_author: XC Ski Labs Training
+    system_name: XC Ski Labs Training System
+    # Sells the $150 consult (+ $100 plan add-on) through the shared GG
+    # Stripe account / Railway webhook, but does NOT support training-plan
+    # generation — /api/create-checkout and the training-plan webhook both
+    # refuse (400) for this brand instead of building a plan.
+    consulting_only: true
+    guide:
+      logo: XC SKI LABS
+      tagline: Custom training plans for cross-country ski racing
+      taglines:
+        xc_ski: Custom training plans for cross-country ski racing
+      skills_titles:
+        xc_ski: Ski Skills
+    paths:
+      guides_repo: ../guides/xc-ski-labs-guides
+      guides_repo_env: XC_GUIDES_DIR
+      brand_repo: ../nordic-labs-brand
+      guides_repo_name: xc-ski-labs-guides
+      github_pages_base: https://wattgod.github.io
+    email:
+      from_email: coaching@xcskilabs.com
+      from_name: XC Ski Labs
+      # Left blank deliberately (not the brand's own noreply@xcskilabs.com):
+      # the xcskilabs.com Resend sending domain is not yet verified. When
+      # RESEND_FROM_XCSKILABS is unset, load_brands() would otherwise fall
+      # back to this literal resend_from value (see brand_config.py); an
+      # empty value here falls through to _send_email()'s `or RESEND_FROM`
+      # and uses the verified Gravel God sender instead. Set
+      # RESEND_FROM_XCSKILABS once the domain is verified.
+      resend_from: ""
+      resend_from_env: RESEND_FROM_XCSKILABS
+      signature_name: Matti
+      signature_organization: XC Ski Labs
+      signature_site: xcskilabs.com
+    analytics:
+      measurement_id: ""
+      measurement_id_env: GA4_MEASUREMENT_ID_XC
+      api_secret_env: GA4_MP_API_SECRET_XC
