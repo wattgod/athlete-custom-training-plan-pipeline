@@ -182,7 +182,7 @@ class TestResolveLibrarySelections:
     def test_in_scope_day_resolved_canonical_name_intact(self, monkeypatch):
         resolution = _fake_resolution()
         monkeypatch.setattr(library_selector, 'select',
-                            lambda slot, series_state=None, index=None, used_items=None: dict(resolution))
+                            lambda slot, series_state=None, index=None, used_items=None, lint_exclusions=None: dict(resolution))
         plan = _synthetic_bb_plan()
 
         fallbacks = resolve_library_selections(plan, day_caps={}, athlete_seed='t', index={})
@@ -197,7 +197,7 @@ class TestResolveLibrarySelections:
     def test_out_of_scope_days_untouched(self, monkeypatch):
         resolution = _fake_resolution()
         monkeypatch.setattr(library_selector, 'select',
-                            lambda slot, series_state=None, index=None, used_items=None: dict(resolution))
+                            lambda slot, series_state=None, index=None, used_items=None, lint_exclusions=None: dict(resolution))
         plan = _synthetic_bb_plan()
         resolve_library_selections(plan, day_caps={}, athlete_seed='t', index={})
 
@@ -211,7 +211,7 @@ class TestResolveLibrarySelections:
     def test_week_totals_recomputed_to_sum_of_days(self, monkeypatch):
         resolution = _fake_resolution(duration_min=20, tss=45)
         monkeypatch.setattr(library_selector, 'select',
-                            lambda slot, series_state=None, index=None, used_items=None: dict(resolution))
+                            lambda slot, series_state=None, index=None, used_items=None, lint_exclusions=None: dict(resolution))
         plan = _synthetic_bb_plan()
         resolve_library_selections(plan, day_caps={}, athlete_seed='t', index={})
 
@@ -227,7 +227,7 @@ class TestResolveLibrarySelections:
 
     def test_no_qualifying_item_produces_fallback_record(self, monkeypatch):
         monkeypatch.setattr(library_selector, 'select',
-                            lambda slot, series_state=None, index=None, used_items=None: None)
+                            lambda slot, series_state=None, index=None, used_items=None, lint_exclusions=None: None)
         plan = _synthetic_bb_plan()
         fallbacks = resolve_library_selections(plan, day_caps={}, athlete_seed='t', index={})
 
@@ -238,7 +238,7 @@ class TestResolveLibrarySelections:
             assert 'library_resolution' not in day
 
     def test_exceptions_propagate(self, monkeypatch):
-        def _boom(slot, series_state=None, index=None, used_items=None):
+        def _boom(slot, series_state=None, index=None, used_items=None, lint_exclusions=None):
             raise RuntimeError('selector exploded')
         monkeypatch.setattr(library_selector, 'select', _boom)
         plan = _synthetic_bb_plan()
@@ -249,7 +249,7 @@ class TestResolveLibrarySelections:
     def test_excluded_calendar_slots_skip_resolution(self, monkeypatch):
         calls = []
 
-        def _record(slot, series_state=None, index=None, used_items=None):
+        def _record(slot, series_state=None, index=None, used_items=None, lint_exclusions=None):
             calls.append(slot['canonical_name'])
             return _fake_resolution()
         monkeypatch.setattr(library_selector, 'select', _record)
@@ -268,7 +268,7 @@ class TestResolveLibrarySelections:
         the resolution pass actually plumbs them onto the slot."""
         seen_slots = []
 
-        def _record(slot, series_state=None, index=None, used_items=None):
+        def _record(slot, series_state=None, index=None, used_items=None, lint_exclusions=None):
             seen_slots.append(dict(slot))
             return _fake_resolution()
         monkeypatch.setattr(library_selector, 'select', _record)
@@ -517,7 +517,8 @@ def _zwo_description(path):
     return m.group(1) if m else ''
 
 
-def _force_select_intensity_and_filler_only(slot, series_state=None, index=None, used_items=None):
+def _force_select_intensity_and_filler_only(slot, series_state=None, index=None, used_items=None,
+                                            lint_exclusions=None):
     """Resolve intensity/filler slots to a fixed curated item; leave
     long_ride slots unresolved so the synthetic-fallback branch (D9) is
     also exercised in the same render pass."""
@@ -579,7 +580,8 @@ class TestKillSwitch:
         athlete_dir, files = _build_small_plan(
             tmp_path, 'kill-switch',
             extra_env={'GG_LIBRARY_SELECTION': '0'},
-            force_select=lambda slot, series_state=None, index=None, used_items=None: _fake_resolution(),
+            force_select=lambda slot, series_state=None, index=None, used_items=None,
+                                lint_exclusions=None: _fake_resolution(),
         )
         assert files, 'generate_zwo_files produced no workouts'
         curated = [f for f in files if 'CURATED DESCRIPTION' in _zwo_description(f)]

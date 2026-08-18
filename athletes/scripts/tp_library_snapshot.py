@@ -203,6 +203,237 @@ def compute_if_planned(tss: float | None, hours: float | None, existing: float |
 
 
 # ---------------------------------------------------------------------------
+# T27: curation-consistency lint
+#
+# Items are placed BYTE-VERBATIM -- the authored description ships to the
+# athlete untouched. A curated item whose description contradicts its own
+# duration or its own title RPE ships wrong prose to a paying customer (the
+# live catch: "Endurance - Atkins Revenge - 2 - 210min" and "- 3 - 240min"
+# both carry level 1's description "Z2 for ~2.5 hours", correct only for the
+# 150min level 1). These two lints compute PER-ITEM flags from the item's own
+# fields; ``library_selector`` excludes flagged items from selection pools.
+# Precision over recall throughout -- a false flag excludes a good item from
+# selection, so every heuristic below is deliberately conservative.
+# ---------------------------------------------------------------------------
+
+# Duration-claim token: optional leading '~', a number (decimals allowed),
+# an optional connecting space/tab/hyphen (NEVER a newline -- a bare '\s'
+# connector let "2" on one line and an unrelated "Hour 2:" section label
+# several lines below it glue into a garbage "2 ... Hour" match against the
+# real dump), then hours or minutes. Matches "~2.5 hours", "3 hrs",
+# "2-hour", "5min", "5 minutes".
+_DURATION_CLAIM_RE = re.compile(
+    r"~?(?P<value>\d+(?:\.\d+)?)[ \t]*-?[ \t]*(?P<unit>hours?|hrs?|min(?:ute)?s?)\b",
+    re.IGNORECASE,
+)
+
+# A duration token immediately followed by '@'/'%' or the words power/watts/
+# FTP, or immediately preceded by an interval-count "NxN" token, describes a
+# single interval step ("5min @ 90%", "6x5min"), never the whole session.
+_DURATION_INTERVAL_BEFORE_RE = re.compile(r"\d\s*[x×]\s*\Z", re.IGNORECASE)
+_DURATION_INTERVAL_AFTER_RE = re.compile(r"\A\s*[@%]|\A\s*(?:power|watts?|ftp)\b", re.IGNORECASE)
+# A duration token whose immediately preceding word is "first"/"last"/
+# "final"/"remaining" is a temporal sub-segment qualifier ("First 2 hours Z2
+# easy", "In the last 3 hours"), not a whole-session claim.
+_DURATION_SUB_SEGMENT_BEFORE_RE = re.compile(r"\b(?:first|last|final|remaining)\s+\Z", re.IGNORECASE)
+# A "STRUCTURE:" label or a "->"/unicode arrow is this dump's convention for
+# a warmup->work->cooldown breakdown authored with prime-notation minutes
+# (15', 20') that a plain min/hour regex can't see -- the prose sentence
+# elsewhere in the same description ("40 minutes total work") is then a
+# WORK-only summary, not a whole-session claim (real "G-Spot" fixtures).
+_STRUCTURE_MARKER_RE = re.compile(r"\bstructure\s*:|->|→", re.IGNORECASE)
+
+_DURATION_CLAIM_RELATIVE_TOLERANCE = 0.20
+# A claim "plausibly describes the whole session" only when it's within
+# 0.5x-1.5x of the item's own authored total. Real-dump evidence ruled out
+# an additional "line opens with '<word> for'" bypass (as in "Z2 for ~2.5
+# hours"): the exact same surface shape ("Z1/Z2 for 30 min", "Z1/Z2 Warm up
+# for 20 min minimum") is also how these curated descriptions open their
+# WARM-UP sub-segment inside a longer structured item ("Bakken", "La
+# Balanguera") -- treating that as a whole-session claim produced false
+# positives the range check alone correctly avoids (a 30min opener is nowhere
+# near 0.5x-1.5x of a 150-300min authored total). The real Atkins Revenge
+# catch is caught by the range check alone (150min claim vs 210/240min
+# authored, both within 0.5x-1.5x). Precision over recall -- flagged as a
+# deviation from the literal spec wording in the executor report.
+_DURATION_CLAIM_PLAUSIBLE_LO = 0.5
+_DURATION_CLAIM_PLAUSIBLE_HI = 1.5
+
+# A description built from multiple dash/bullet/blank-line-divided segments,
+# where MORE THAN ONE of those segments carries its own duration number, is a
+# structured multi-part prescription (warmup + main + cooldown, or a
+# multi-block torque/endurance ride) -- its FIRST segment's number is a piece
+# of the total, not a claim about the whole session ("150 minutes Z2" opening
+# a "Torque Toking" item whose 4 further segments add up the rest of the
+# authored 300min; "40 minutes total" of G-Spot WORK inside a description
+# that separately states a 15min warmup + 10min cooldown). A plain
+# single-instruction description (Atkins Revenge: one Z2 duration, the rest
+# fueling prose with no other exercise-duration numbers) has at most one such
+# segment and is unaffected.
+_SEGMENT_DIVIDER_RE = re.compile(r"\n[ \t]*[-•*★►=]{1,3}[ \t]*\n|\n{2,}")
+
+
+def _duration_claim_is_interval_context(description: str, start: int, end: int) -> bool:
+    """True when the duration token at [start, end) is attached to
+    @/%/power/watts/FTP, an interval-count prefix, or a first/last/final/
+    remaining temporal qualifier -- an interval- or sub-segment-level
+    mention, never a whole-session claim."""
+    before = description[max(0, start - 20):start]
+    after = description[end:end + 20]
+    if _DURATION_INTERVAL_BEFORE_RE.search(before):
+        return True
+    if _DURATION_SUB_SEGMENT_BEFORE_RE.search(before):
+        return True
+    if _DURATION_INTERVAL_AFTER_RE.search(after):
+        return True
+    return False
+
+
+def _duration_claim_should_skip_description(description: str) -> bool:
+    """True when the description reads as a structured multi-part
+    prescription rather than a single whole-session instruction -- either
+    more than one dash/bullet/blank-line-divided segment carries its own
+    duration number (see _SEGMENT_DIVIDER_RE), or the description uses this
+    dump's "STRUCTURE:"/arrow convention for a prime-notation (15', 20')
+    warmup->work->cooldown breakdown that the min/hour regex can't see on
+    its own."""
+    if _STRUCTURE_MARKER_RE.search(description):
+        return True
+    segments_with_duration = sum(
+        1 for segment in _SEGMENT_DIVIDER_RE.split(description) if _DURATION_CLAIM_RE.search(segment)
+    )
+    return segments_with_duration > 1
+
+
+def compute_duration_claim_flag(description: str | None, authored_min: float | None) -> dict[str, Any] | None:
+    """Return evidence when the description's whole-session duration claim
+    differs from the item's own authored duration by more than 20%, else
+    None.
+
+    Interval- and sub-segment-level mentions ("5min @ 90%", "First 2 hours
+    Z2 easy") are never candidates; only claims within 0.5x-1.5x of the
+    authored total are read as plausibly describing the whole session (see
+    _DURATION_CLAIM_PLAUSIBLE_* docstring above); a structured multi-part
+    description is skipped entirely (see
+    _duration_claim_should_skip_description); and if ANY qualifying claim in
+    the description agrees with the authored duration, the description
+    isn't lying about its own length even if another looser mention (a
+    different unit style the regex missed, a race-context aside) would
+    otherwise look like a contradiction -- no flag."""
+    if not description or not authored_min:
+        return None
+    description = description.replace("\r\n", "\n").replace("\r", "\n")
+    if _duration_claim_should_skip_description(description):
+        return None
+    qualifying: list[tuple[re.Match, float, float]] = []
+    for match in _DURATION_CLAIM_RE.finditer(description):
+        if _duration_claim_is_interval_context(description, match.start(), match.end()):
+            continue
+        value = float(match.group("value"))
+        unit = match.group("unit").lower()
+        claimed_min = value * 60 if unit.startswith("h") else value
+        if not (_DURATION_CLAIM_PLAUSIBLE_LO * authored_min <= claimed_min <= _DURATION_CLAIM_PLAUSIBLE_HI * authored_min):
+            continue
+        rel_diff = abs(claimed_min - authored_min) / authored_min
+        qualifying.append((match, claimed_min, rel_diff))
+    if not qualifying:
+        return None
+    if any(rel_diff <= _DURATION_CLAIM_RELATIVE_TOLERANCE for _, _, rel_diff in qualifying):
+        return None
+    match, claimed_min, rel_diff = qualifying[0]
+    return {
+        "claim_text": match.group(0).strip(),
+        "claimed_min": claimed_min,
+        "authored_min": authored_min,
+        "rel_diff": round(rel_diff, 3),
+    }
+
+
+# RPE mentions in the body ("RPE 2-3", "RPE: 6-7"). Reuses the title-token
+# shape (bare int or int-int) but is not right-anchored -- it scans anywhere.
+_RPE_BODY_RE = re.compile(r"\bRPE:?\s*(\d{1,2})(?:\s*-\s*(\d{1,2}))?\b", re.IGNORECASE)
+_WARMUP_COOLDOWN_WORD_RE = re.compile(r"\bwarm[\s-]?up\b|\bcool[\s-]?down\b", re.IGNORECASE)
+# Leading decoration ("★ ", "• ", "- ", "* ") stripped before testing a line
+# against _SECTION_HEADER_RE -- real fixtures use "★ Warm-up:" / "► Main Set"
+# style bullets, and a header regex that requires the line to START with a
+# letter would silently miss every one of them.
+_LINE_DECORATION_RE = re.compile(r"^[^A-Za-z0-9]+")
+# A line that's just a section label ("WARM-UP:", "MAIN SET:", "COOL-DOWN:")
+# -- everything under a warm-up/cool-down header is excluded until the next
+# header, catching real fixtures where the warmup RPE sits several bullet
+# lines below the header rather than glued to the mention itself.
+_SECTION_HEADER_RE = re.compile(r"^([A-Za-z][A-Za-z0-9 /\-]{2,40}):\s*\Z")
+# A body RPE mention on a line that also carries interval-structure cues
+# (a specific %/zone/pace target, a rep count, or a hard/easy/recovery
+# work-vs-rest label) describes ONE step of a structured interval set, not
+# the whole session -- real fixtures ("AnCap Sets": "30s @ Z6 (Max Effort),
+# RPE 9-10" against a title of RPE9-10, "60s @ Z1 (RPE 1-2) recovery")
+# produced false whole-session-conflict flags without this exclusion.
+_RPE_INTERVAL_LINE_RE = re.compile(
+    r"@|\bZ\d\b|\bzone\s*\d\b|\d+\s*[x×]\s*\d+|\bsets?\b|\breps?\b"
+    r"|\beasy\b|\bhard\b|\brecovery\b|\bmax\s*effort\b",
+    re.IGNORECASE,
+)
+
+_RPE_CONFLICT_BAND_GAP = 2
+
+
+def _parse_rpe_range(rpe_text: str) -> tuple[int, int]:
+    parts = rpe_text.split("-")
+    lo = int(parts[0])
+    hi = int(parts[1]) if len(parts) > 1 else lo
+    return lo, hi
+
+
+def _body_rpe_mentions(description: str) -> list[tuple[int, int]]:
+    """Whole-session RPE mentions in the body: skips anything under a
+    warm-up/cool-down section header, on a line that itself names
+    warm-up/cool-down, or on a line carrying interval-structure cues
+    (a specific zone/pace/% target, a rep count, or a hard/easy/recovery
+    work-vs-rest label)."""
+    mentions: list[tuple[int, int]] = []
+    section_excluded = False
+    for line in description.splitlines():
+        stripped = line.strip()
+        header_candidate = _LINE_DECORATION_RE.sub("", stripped)
+        header_match = _SECTION_HEADER_RE.match(header_candidate)
+        if header_match:
+            section_excluded = bool(_WARMUP_COOLDOWN_WORD_RE.search(header_match.group(1)))
+            continue
+        if (section_excluded or _WARMUP_COOLDOWN_WORD_RE.search(line)
+                or _RPE_INTERVAL_LINE_RE.search(line)):
+            continue
+        for match in _RPE_BODY_RE.finditer(line):
+            lo = int(match.group(1))
+            hi = int(match.group(2)) if match.group(2) else lo
+            mentions.append((lo, hi))
+    return mentions
+
+
+def compute_rpe_conflict_flag(rpe_text: str | None, description: str | None) -> dict[str, Any] | None:
+    """Return evidence when the title's trailing RPE token contradicts an
+    explicit whole-session RPE statement in the body by >=2 bands, else
+    None. Warm-up/cool-down RPE mentions never count."""
+    if not rpe_text or not description:
+        return None
+    title_lo, title_hi = _parse_rpe_range(rpe_text)
+    for body_lo, body_hi in _body_rpe_mentions(description):
+        if body_lo > title_hi:
+            gap = body_lo - title_hi
+        elif title_lo > body_hi:
+            gap = title_lo - body_hi
+        else:
+            gap = 0
+        if gap >= _RPE_CONFLICT_BAND_GAP:
+            return {
+                "title_rpe": rpe_text,
+                "body_rpe": f"{body_lo}-{body_hi}" if body_lo != body_hi else str(body_lo),
+                "gap": gap,
+            }
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Item selection + exclusion
 # ---------------------------------------------------------------------------
 
@@ -293,6 +524,7 @@ def build_items(
             tss = raw_item.get("tssPlanned")
             structure = raw_item.get("structure")
             description = raw_item.get("description")
+            duration_min = round(hours * 60) if hours else None
 
             items.append(
                 {
@@ -301,7 +533,7 @@ def build_items(
                     "name_raw": name_raw,
                     "name_base": parsed["name_base"],
                     "explicit_level": parsed["explicit_level"],
-                    "duration_min": round(hours * 60) if hours else None,
+                    "duration_min": duration_min,
                     "tss": tss,
                     "if_planned": compute_if_planned(tss, hours, raw_item.get("ifPlanned")),
                     "rpe_text": parsed["rpe_text"],
@@ -310,6 +542,8 @@ def build_items(
                     "structure": structure,
                     "description": description,
                     "workout_type_id": raw_item.get("workoutTypeId"),
+                    "lint_duration_claim": compute_duration_claim_flag(description, duration_min),
+                    "lint_rpe_conflict": compute_rpe_conflict_flag(parsed["rpe_text"], description),
                 }
             )
 
@@ -475,6 +709,8 @@ def reconcile(raw_path: Path, index_path: Path, extra_exclusions: Any = None) ->
         "if_planned",
         "dimension_score",
         "has_cadence_targets",
+        "lint_duration_claim",
+        "lint_rpe_conflict",
     )
     for item_id in sorted(set(fresh_by_id) & set(existing_by_id)):
         fresh_item, existing_item = fresh_by_id[item_id], existing_by_id[item_id]
@@ -543,6 +779,36 @@ def _print_summary(index: Mapping[str, Any]) -> None:
     print(f"dimension_score min/median/max: {dist['min']}/{dist['median']}/{dist['max']}")
 
 
+def lint_flagged_items(index: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Every item in ``index`` carrying a lint flag, in item_id order."""
+    flagged = [
+        item for item in index["items"]
+        if item.get("lint_duration_claim") or item.get("lint_rpe_conflict")
+    ]
+    return sorted(flagged, key=lambda item: item["item_id"])
+
+
+def _print_lint_report(index: Mapping[str, Any]) -> None:
+    flagged = lint_flagged_items(index)
+    print(f"lint-flagged items: {len(flagged)} / {len(index['items'])}")
+    for item in flagged:
+        name = item.get("name_base") or item.get("name_raw")
+        label = f"[{item['library_key']}] {name} (id={item['item_id']})"
+        duration_claim = item.get("lint_duration_claim")
+        if duration_claim:
+            print(
+                f"  {label}: lint_duration_claim -- claims ~{duration_claim['claimed_min']:.0f}min "
+                f"('{duration_claim['claim_text']}'), authored {duration_claim['authored_min']}min "
+                f"({duration_claim['rel_diff']:.0%} off)"
+            )
+        rpe_conflict = item.get("lint_rpe_conflict")
+        if rpe_conflict:
+            print(
+                f"  {label}: lint_rpe_conflict -- title RPE{rpe_conflict['title_rpe']} vs "
+                f"body RPE{rpe_conflict['body_rpe']} (gap {rpe_conflict['gap']})"
+            )
+
+
 def _print_reconcile_report(report: Mapping[str, Any]) -> None:
     for section in ("added", "removed", "changed"):
         print(f"{section}:")
@@ -580,7 +846,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="compare a fresh raw dump against the existing index at --out and print drift",
     )
+    parser.add_argument(
+        "--lint-report",
+        action="store_true",
+        help="print every T27 lint-flagged item in the existing index at --out and exit "
+        "(does not rebuild the index)",
+    )
     args = parser.parse_args(argv)
+
+    if args.lint_report:
+        _print_lint_report(read_index(args.out))
+        return 0
 
     extra_exclusions = _load_extra_exclusions_file(args.extra_exclusions)
 

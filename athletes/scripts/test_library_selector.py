@@ -53,6 +53,8 @@ def make_item(
     dimension_score=0,
     description="",
     structure=None,
+    lint_duration_claim=None,
+    lint_rpe_conflict=None,
 ):
     return {
         "item_id": item_id,
@@ -69,6 +71,8 @@ def make_item(
         "structure": structure or {"structure": []},
         "description": description,
         "workout_type_id": 2,
+        "lint_duration_claim": lint_duration_claim,
+        "lint_rpe_conflict": lint_rpe_conflict,
     }
 
 
@@ -771,3 +775,100 @@ def test_skills_join_easy_rotation_behind_ceilings():
                                  "role": "filler", "phase": "base",
                                  "week_type": "load", "budget_min": 70})
     assert "skills" in keys
+
+
+# ---------------------------------------------------------------------------
+# T27: curation-consistency lint exclusion
+# ---------------------------------------------------------------------------
+
+_LINT_DURATION_EVIDENCE = {
+    "claim_text": "25 min", "claimed_min": 25, "authored_min": 50, "rel_diff": 0.5,
+}
+_LINT_RPE_EVIDENCE = {"title_rpe": "6-7", "body_rpe": "2-3", "gap": 3}
+
+
+class TestLintExclusion:
+    def test_lint_flagged_item_excluded_from_selection_pool(self):
+        clean = make_item(1, duration_min=50)
+        flagged = make_item(2, duration_min=50, lint_duration_claim=_LINT_DURATION_EVIDENCE)
+        index = make_index([clean, flagged])
+        resolution = select(base_slot(budget_min=50), index=index)
+        assert resolution is not None
+        assert resolution["item_id"] == 1
+
+    def test_lint_flagged_rpe_conflict_item_excluded_from_selection_pool(self):
+        clean = make_item(1, duration_min=50)
+        flagged = make_item(2, duration_min=50, lint_rpe_conflict=_LINT_RPE_EVIDENCE)
+        index = make_index([clean, flagged])
+        resolution = select(base_slot(budget_min=50), index=index)
+        assert resolution["item_id"] == 1
+
+    def test_only_lint_flagged_candidate_yields_none(self):
+        flagged = make_item(1, duration_min=50, lint_rpe_conflict=_LINT_RPE_EVIDENCE)
+        index = make_index([flagged])
+        assert select(base_slot(budget_min=50), index=index) is None
+
+    def test_refit_also_excludes_lint_flagged_items(self):
+        clean = make_item(1, duration_min=40)
+        flagged = make_item(2, duration_min=45, lint_duration_claim=_LINT_DURATION_EVIDENCE)
+        index = make_index([clean, flagged])
+        resolution = refit(base_slot(budget_min=45), index=index)
+        assert resolution["item_id"] == 1
+
+    def test_lint_exclusions_collector_records_deduplicated_evidence(self):
+        clean = make_item(1, duration_min=50)
+        flagged = make_item(2, duration_min=50, lint_duration_claim=_LINT_DURATION_EVIDENCE)
+        index = make_index([clean, flagged])
+        slot = base_slot(budget_min=50)
+        lint_exclusions: dict = {}
+        select(slot, index=index, lint_exclusions=lint_exclusions)
+        assert list(lint_exclusions) == [2]
+        record = lint_exclusions[2]
+        assert record["reason"] == "lint_excluded"
+        assert record["flags"] == ["lint_duration_claim"]
+        assert record["lint_duration_claim"] == _LINT_DURATION_EVIDENCE
+        assert record["canonical_name"] == slot["canonical_name"]
+
+        # A second call touching the same flagged item must not duplicate
+        # the entry (loud but deduplicated -- D9-style reporting).
+        select(slot, index=index, lint_exclusions=lint_exclusions)
+        assert list(lint_exclusions) == [2]
+
+    def test_series_continuation_never_advances_onto_a_lint_flagged_rung(self):
+        clean = make_item(1, name_base="Ramp", explicit_level=1, duration_min=50, if_planned=0.6)
+        flagged = make_item(2, name_base="Ramp", explicit_level=2, duration_min=50, if_planned=0.9,
+                            lint_duration_claim=_LINT_DURATION_EVIDENCE)
+        index = make_index([clean, flagged])
+        slot = base_slot(budget_min=50, series_key="s1")
+        series_state: dict = {}
+
+        first = select(slot, series_state=series_state, index=index)
+        assert first["item_id"] == 1
+
+        # The only rung to progress to is lint-flagged -- no legitimate
+        # continuation exists, so the series call is a loud D9 fallback
+        # (None), never a silent advance onto the flagged item.
+        second = select(slot, series_state=series_state, index=index)
+        assert second is None
+
+    def test_gg_library_lint_0_kill_switch_disables_exclusion(self, monkeypatch):
+        monkeypatch.setenv("GG_LIBRARY_LINT", "0")
+        flagged = make_item(1, duration_min=50, lint_rpe_conflict=_LINT_RPE_EVIDENCE)
+        index = make_index([flagged])
+        resolution = select(base_slot(budget_min=50), index=index)
+        assert resolution is not None
+        assert resolution["item_id"] == 1
+
+    def test_gg_library_lint_0_kill_switch_disables_refit_exclusion_too(self, monkeypatch):
+        monkeypatch.setenv("GG_LIBRARY_LINT", "0")
+        flagged = make_item(1, duration_min=50, lint_duration_claim=_LINT_DURATION_EVIDENCE)
+        index = make_index([flagged])
+        resolution = refit(base_slot(budget_min=50), index=index)
+        assert resolution is not None
+        assert resolution["item_id"] == 1
+
+    def test_kill_switch_off_by_default(self):
+        # No env var set: exclusion is ON (the default posture).
+        flagged = make_item(1, duration_min=50, lint_rpe_conflict=_LINT_RPE_EVIDENCE)
+        index = make_index([flagged])
+        assert select(base_slot(budget_min=50), index=index) is None
