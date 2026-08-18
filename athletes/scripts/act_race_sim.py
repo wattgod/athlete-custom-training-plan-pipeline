@@ -440,7 +440,7 @@ def _audible_line(unit: DemandUnit, n_units: int, dress_rehearsal: bool) -> str:
 def _dress_rehearsal_block(race_rate_g_per_hour: Optional[float]) -> str:
     rate = f" ({round(race_rate_g_per_hour)}g carbs/hr)" if race_rate_g_per_hour else ""
     return (
-        "DRESS REHEARSAL: Ride in race kit, on the race bike and tyre "
+        "DRESS REHEARSAL: Ride in race kit, on the race bike and tire "
         f"pressure. Use race food at the ladder's race rate{rate}; nothing "
         "on race day should be new."
     )
