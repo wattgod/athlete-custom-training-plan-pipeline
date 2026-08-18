@@ -202,6 +202,25 @@ def _is_quality_session(session: Any) -> bool:
     return any(token in _session_title(session).lower() for token in _QUALITY_KEYWORDS)
 
 
+def _race_week_is_key_session(session: Any) -> bool:
+    """Race week must walk EVERY intensity-role bike session in its note.
+
+    Root cause of a real defect: _is_quality_session's dominant-power check
+    is gated behind a ``level`` field that only synthesized-plan sessions
+    carry — a real "Glycolytic Power - 6x60s @145% - RPE8-9" Monday
+    sharpener with no ``level`` attribute failed that gate (and its curated
+    name matched none of _QUALITY_KEYWORDS either), silently dropping it
+    from the note while a Wed sharpener and Fri openers got named. Race
+    week's job is honesty about every hard day, so the dominant-power check
+    applies here without the ``level`` gate.
+    """
+    if _kind(session) != "bike":
+        return False
+    if has_structured_work(session) and _dominant_work_percent(session) >= 88:
+        return True
+    return _is_quality_session(session)
+
+
 def _ordered_sessions(week: Any) -> List[Any]:
     """Return the calendar's sessions in date order, retaining input order for ties."""
     indexed = enumerate(_get(week, "sessions", []) or [])
@@ -216,6 +235,11 @@ def _is_taper_week(week: Any) -> bool:
 
 def _is_recovery_week(week: Any) -> bool:
     return any(str(_get(week, name) or "").strip().lower() == "recovery"
+               for name in ("week_type", "phase"))
+
+
+def _is_race_week(week: Any) -> bool:
+    return any(str(_get(week, name) or "").strip().lower() == "race"
                for name in ("week_type", "phase"))
 
 
@@ -266,16 +290,19 @@ def _quality_sessions(week: Any) -> List[Any]:
     protected = [
         session for session in sessions
         if (_get(session, "is_field_test") or _get(session, "is_simulation") or
-            (_is_taper_week(week) and _taper_specialty(session)))
+            (_is_taper_week(week) and _taper_specialty(session)) or
+            (_is_race_week(week) and _race_week_is_key_session(session)))
     ]
     selected_ids = {id(session) for session in protected}
     # A normal week still reads quickly: two conventional weekday quality
     # sessions are enough once the protected facts have been named. Taper
     # specialty work already tells that week's story, so it needs no filler.
+    # Race week is protected the same way -- every intensity-role bike
+    # session in it is already in `protected` above.
     added_quality = 0
     for session in sessions:
         session_day = _session_date(session)
-        if (_is_taper_week(week) or added_quality >= 2 or
+        if (_is_taper_week(week) or _is_race_week(week) or added_quality >= 2 or
                 id(session) in selected_ids or
                 not _is_quality_session(session) or not session_day or
                 session_day.weekday() >= 5):
@@ -419,18 +446,29 @@ def _week_sequence_base(week: Any, key_sessions: List[Any]) -> str:
                 if _kind(session) == "bike"]
         if refs:
             return (f"{_join_references(refs)} keep the legs sharp without "
-                    "adding fatigue. Everything else stays easy — freshness "
+                    "adding fatigue. The remaining rides stay easy — freshness "
                     "is the work this week.")
 
     if _is_recovery_week(week):
         # Describe the week's actual job rather than inheriting the
         # base/build/peak "carries structured work ... is the long ride"
         # phrasing, which mislabelled a 70min recovery-week Endurance ride
-        # as "the long ride".
+        # as "the long ride". A recovery week can still carry a genuine long
+        # ride (90min+, same threshold _eligible_long_rides uses for the
+        # FUEL LADDER section) -- it was going unnamed here even when it
+        # was the week's single biggest session, contradicting the ladder's
+        # own "this week's long ride" reference a few paragraphs later.
+        recovery_long_ride = (long_candidate
+                              if long_candidate and _duration_minutes(long_candidate) >= 90
+                              else None)
+        sentence = "This is a recovery week: easy volume through the week"
         if quality:
-            return (f"This is a recovery week: easy volume through the week, plus "
-                    f"{_session_reference(quality[0])} to keep the legs sharp.")
-        return "This is a recovery week: easy volume through the week."
+            sentence += f", plus {_session_reference(quality[0])} to keep the legs sharp"
+        sentence += "."
+        if recovery_long_ride:
+            sentence += (f" {_session_reference(recovery_long_ride)} stays strictly "
+                         "Z2 — long but easy is the assignment.")
+        return sentence
 
     if quality and long_ride:
         quality_refs = _join_references([_session_reference(session) for session in quality[:2]])
@@ -677,6 +715,14 @@ _SHORT_WEEK_COPY = {
     "load": "Load week — same rules as before: eat more, sleep more, protect the key sessions, and finish the week tired but not destroyed.",
     "uber_load": "The biggest week of the block. Nothing new, everything deliberate.",
     "recovery": "Recovery week — the volume drop is the training. Do not add anything.",
+    # _week_type() aliases "taper" -> "recovery" for wall-copy sharing (no
+    # dedicated taper entry exists in block_notes.yaml), which once let a
+    # WEEK 7 TAPER briefing open with this same "Recovery week —" line --
+    # a taper is a sharpening week, not a recovery week, and needs its own
+    # short-form wording even though it shares the recovery family's full
+    # wall. Selected by `declared_type`, not the aliased `week_type` --
+    # see _weekly_briefing.
+    "taper": "Taper — the volume drop is the training. This is not a recovery week; it is a sharpening week.",
     "medium": "Steady week. Ride what is written.",
 }
 
@@ -703,9 +749,13 @@ def _weekly_briefing(plan_ir: Any, candidate: Dict[str, Any], fueling: Any,
     )
     source = _load_week_copy()
     # The full block-notes wall lands once per week type; repeats get a
-    # one-liner (eight identical monk-mode walls is not coaching).
-    if seen_types is not None and week_type in seen_types and week_type in _SHORT_WEEK_COPY:
-        descriptor = _SHORT_WEEK_COPY[week_type]
+    # one-liner (eight identical monk-mode walls is not coaching). Taper
+    # shares the "recovery" family's wall/seen-types bucket (week_type is
+    # aliased above), but gets its own one-liner keyed by declared_type so
+    # it never reuses the mid-plan "Recovery week —" phrasing.
+    short_copy_key = "taper" if declared_type == "taper" else week_type
+    if seen_types is not None and week_type in seen_types and short_copy_key in _SHORT_WEEK_COPY:
+        descriptor = _SHORT_WEEK_COPY[short_copy_key]
     else:
         descriptor = source.get(week_type, source.get("medium", ""))
         if seen_types is not None:
@@ -763,11 +813,11 @@ def _fuel_ladder(plan_ir: Any, fueling: Any) -> tuple[str, str]:
             "\n".join(rows) + "\n\nSessions under 90 minutes are not on the ladder. Where an individual workout quotes a different number, use the ladder."
             "\n\n———\n\nWHAT THAT LOOKS LIKE\nRoughly 25-35 g every 25-30 minutes, starting inside the first half hour. Set a timer and read the labels rather than counting items."
             "\n\n———\n\n" + render_hydration_block())
-    return "FUELLING — The Ladder", body
+    return "FUELING — The Ladder", body
 
 
 _GRIT = {
-    1: ("Breathing, And Why It Is First", """The mental side of this gets the same treatment as the physical: a few short things, practised until they are automatic. This is the first.
+    1: ("Breathing, And Why It Is First", """The mental side of this gets the same treatment as the physical: a few short things, practiced until they are automatic. This is the first.
 
 ———
 
@@ -779,7 +829,7 @@ Under stress your breathing goes shallow and fast, which tells your nervous syst
 THE 6-2-7 FORMULA
 Breathe in for 6, hold for 2, out for 7. The long exhale is the active ingredient — it is what drops your heart rate.
 
-Do it for two minutes before a hard session, and again in the first ten minutes of a race when everything feels too fast. Practise it now, on easy days, so it is available when you need it. A technique you have never rehearsed will not show up on race day."""),
+Do it for two minutes before a hard session, and again in the first ten minutes of a race when everything feels too fast. Practice it now, on easy days, so it is available when you need it. A technique you have never rehearsed will not show up on race day."""),
     2: ("You Are Not Your Thoughts", """———
 
 THE CHESS GAME
@@ -811,7 +861,7 @@ Read them the night before the race. Run one of them in your head on the start l
 
 WHO YOU ARE ON THE BIKE
 One more: finish the sentence "I am the kind of rider who ______" three times. How you describe yourself shapes what you attempt. If everything you write is about surviving, that is worth noticing before race day — you have done the work to say something better."""),
-    4: ("The Last Three Days", """———
+    4: ("The Home Stretch", """———
 
 MUSIC
 If music helps you, build the playlist this week rather than on the drive up. Be deliberate: something calm for the morning, something that lifts you for the last hour. What you listen to before a start genuinely shifts how you feel at it — pick accordingly rather than by accident.
@@ -824,7 +874,7 @@ Read your highlight reel. Run through your performance statements. Then stop thi
 ———
 
 ON THE LINE
-Two minutes of 6-2-7 breathing. Everyone around you will look faster and more organised than you feel. They are not.
+Two minutes of 6-2-7 breathing. Everyone around you will look faster and more organized than you feel. They are not.
 
 Your first job is to start easier than feels right. Everything after that is eating on time and riding your own effort.
 
@@ -888,7 +938,7 @@ def _render_candidate(plan_ir: Any, fueling: Any, brand: Dict[str, Any], guide_u
     if kind == "checkin":
         return ("CHECK-IN — How Is It Landing?", "Worth an honest audit:\n\n· Are you finishing the long rides, or surviving them?\n· Is your sleep holding up?\n· Is anything hurting that was not hurting three weeks ago?\n· Are you looking forward to riding, or dreading it?\n\nTwo or more of those pointing the wrong way and we should take something out now rather than later.\n\nNEED THIS ADJUSTED?\nEmail me at " + _email(brand) + ".")
     if kind == "rehearsal_debrief":
-        return ("REHEARSAL DEBRIEF — Write It Down And Send It", "While yesterday is still fresh, note:\n\n· What you ate and when. Did you hit the target, or drift?\n· What your stomach did late in the ride.\n· What chafed, rubbed, went numb or ached.\n· What you ran out of.\n· How the last hour felt, honestly.\n· What you would change about pacing.\n\nSend it to me. There is enough time to fix kit, fuelling and pacing — but only if we know what broke.\n\n" + _email(brand))
+        return ("REHEARSAL DEBRIEF — Write It Down And Send It", "While yesterday is still fresh, note:\n\n· What you ate and when. Did you hit the target, or drift?\n· What your stomach did late in the ride.\n· What chafed, rubbed, went numb or ached.\n· What you ran out of.\n· How the last hour felt, honestly.\n· What you would change about pacing.\n\nSend it to me. There is enough time to fix kit, fueling and pacing — but only if we know what broke.\n\n" + _email(brand))
     if kind == "race_week": return _race_week(plan_ir, brand, guide_url)
     if kind == "after_nurture":
         later = _later_event(plan_ir, _race(plan_ir)[0])

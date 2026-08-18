@@ -29,6 +29,15 @@ _EMAIL_RE = re.compile(
 _URL_RE = re.compile(r"(?:https?://|www\.)[^\s<>\"']+", re.IGNORECASE)
 _URL_TRAILING_PUNCTUATION = ".,;:!?)]}"
 
+# The coach's own public contact address -- not athlete PII. A downstream
+# grader once reported a false defect because this survived sanitization as
+# "gravelgodcoachingatgmail.com" / "{coach_email}" instead of verbatim.
+_PUBLIC_COACH_EMAIL = "gravelgodcoaching@gmail.com"
+_PUBLIC_COACH_EMAIL_RE = re.compile(re.escape(_PUBLIC_COACH_EMAIL), re.IGNORECASE)
+# Unicode Private Use Area -- exceedingly unlikely to appear in real captured
+# text, and round-trips cleanly through JSON string escaping.
+_PUBLIC_COACH_EMAIL_SENTINEL = "GG_PUBLIC_COACH_EMAIL"
+
 
 class CaptureError(ValueError):
     """Raised when a raw TrainingPeaks export cannot be captured safely."""
@@ -149,13 +158,20 @@ def _sanitizer(athlete_name: str, slug: str):
         return url + trailing
 
     def sanitize_text(value: str) -> str:
-        result = _URL_RE.sub(replace_url, value)
+        # Protect the coach's own public contact address before anything
+        # else touches it -- both _EMAIL_RE (-> "{coach_email}") and the
+        # final "@" -> "at" catch-all would otherwise mangle it, and it is
+        # the address every note tells the athlete to write to, not PII to
+        # scrub.
+        protected = _PUBLIC_COACH_EMAIL_RE.sub(_PUBLIC_COACH_EMAIL_SENTINEL, value)
+        result = _URL_RE.sub(replace_url, protected)
         result = _EMAIL_RE.sub("{coach_email}", result)
         for pattern, replacement in name_patterns:
             result = pattern.sub(replacement, result)
         # The fixture PII gate rejects every ``@``. This also covers an
         # unusual address the conservative email expression did not match.
-        return result.replace("@", "at")
+        result = result.replace("@", "at")
+        return result.replace(_PUBLIC_COACH_EMAIL_SENTINEL, _PUBLIC_COACH_EMAIL)
 
     return sanitize_text
 

@@ -313,12 +313,45 @@ def test_strength_ab_alternates_by_week(structure_plan):
         saw_a_pair = True
         sessions.sort(key=lambda s: s.date or '')
         templates = [s.strength_template for s in sessions]
-        # Same family, alternating letters (A then B) by chronological/
-        # emitted ordinal -- never both A or both B.
-        assert templates[0].endswith('_a'), f"week {week_num}: first strength session not A: {templates}"
-        assert templates[1].endswith('_b'), f"week {week_num}: second strength session not B: {templates}"
+        # Same family, alternating letters within the week -- never both A
+        # or both B. Which letter leads a given week depends on the
+        # running count from earlier weeks in the phase (R7 fix wave: the
+        # ordinal continues across weeks rather than resetting each week),
+        # so only relative alternation is asserted here.
+        assert templates[0][-1] != templates[1][-1], f"week {week_num}: both sessions same letter: {templates}"
         assert templates[0][:-2] == templates[1][:-2], f"week {week_num}: A/B family mismatch: {templates}"
     assert saw_a_pair, "no week with 2 strength sessions found -- A/B alternation not exercised"
+
+
+def test_strength_ab_alternates_continuously_across_weeks(structure_plan):
+    """R7 fix wave regression: the A/B ordinal must continue across every
+    week in a phase, not reset at each week boundary. Real defect: 'Max
+    Strength A' was placed on two consecutive weeks because a recovery
+    week's single strength session reset the per-week ordinal back to 0."""
+    _, ir, manifest, _ = structure_plan
+    by_phase = {}
+    for week in ir.weeks:
+        for session in week.sessions:
+            if session.tp_kind == 'strength':
+                by_phase.setdefault(week.phase, []).append((week.number, session))
+
+    saw_alternation = False
+    for phase, entries in by_phase.items():
+        entries.sort(key=lambda item: (item[1].date or '', item[0]))
+        templates = [session.strength_template for _, session in entries]
+        if len(templates) < 2:
+            continue
+        saw_alternation = True
+        for prev, cur in zip(templates, templates[1:]):
+            prev_family, prev_letter = prev.rsplit('_', 1)
+            cur_family, cur_letter = cur.rsplit('_', 1)
+            assert prev_family == cur_family, f"{phase}: family changed mid-phase: {templates}"
+            # maintenance (taper/race) has no B variant -- every session
+            # in it is deliberately 'maintenance_a'.
+            if prev_family != 'maintenance':
+                assert prev_letter != cur_letter, (
+                    f"{phase}: consecutive same-letter templates: {templates}")
+    assert saw_alternation, "no phase with 2+ strength sessions found -- continuous alternation not exercised"
 
 
 # ===========================================================================

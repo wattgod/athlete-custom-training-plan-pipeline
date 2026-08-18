@@ -1,5 +1,6 @@
 """Coverage for the pure, coach-facing DeliveryIR note renderer."""
 
+import re
 from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
@@ -100,6 +101,21 @@ def test_roadie_uses_generic_mental_skills_branding():
     assert note["title"].startswith("MENTAL SKILLS")
 
 
+def test_taper_briefing_uses_taper_wording_not_recovery_wording():
+    """Real defect: the WEEK 7 TAPER briefing opened with 'Recovery week —
+    the volume drop is the training', reusing the mid-plan recovery week's
+    short-form line -- taper aliases into the same 'recovery' word-copy
+    family internally, but athlete-facing wording must say TAPER."""
+    plan = _plan(weeks=8)
+    plan["weeks"][1]["week_type"] = "recovery"  # earlier recovery week
+    plan["weeks"][6]["week_type"] = "taper"      # week 7
+    notes = _notes(plan)
+    taper = next(note for note in notes if note["type"] == "weekly_briefing"
+                 and note["title"].startswith("WEEK 7"))
+    assert "Taper —" in taper["body"]
+    assert "Recovery week —" not in taper["body"]
+
+
 def test_recovery_week_briefing_label_outranks_base_phase():
     plan = _plan()
     plan["weeks"][1]["phase"] = "base"
@@ -133,6 +149,36 @@ def test_recovery_week_sequence_never_calls_a_short_ride_the_long_ride():
     assert "recovery week" in sequence.lower()
 
 
+def test_recovery_week_names_the_long_ride_when_present():
+    """Regression: a recovery week with a 210-minute Z2 long ride (the
+    week's biggest session, TSS 140) went unnamed in the briefing sequence
+    even though the same note's FUEL LADDER section referenced 'this
+    week's long ride' -- the same session, described two different ways."""
+    week = {
+        "number": 3, "phase": "build", "week_type": "recovery",
+        "sessions": [
+            _bike_session(date(2026, 9, 3), "Tune-Up", 35),
+            _bike_session(date(2026, 9, 6), "Endurance", 210),
+        ],
+    }
+    sequence = _week_sequence(week, _quality_sessions(week))
+    assert "210-minute" in sequence
+    assert "Sunday" in sequence  # 2026-09-06 is a Sunday
+    assert "stays strictly Z2 — long but easy is the assignment" in sequence
+
+
+def test_recovery_week_without_a_long_ride_omits_the_z2_sentence():
+    week = {
+        "number": 4, "phase": "base", "week_type": "recovery",
+        "sessions": [
+            _bike_session(date(2026, 9, 7), "Endurance — Position Focus", 70),
+            _bike_session(date(2026, 9, 8), "Openers", 20),
+        ],
+    }
+    sequence = _week_sequence(week, _quality_sessions(week))
+    assert "stays strictly Z2" not in sequence
+
+
 def test_race_week_sequence_never_calls_the_sharpener_the_long_ride():
     """Regression: race week used to say 'Monday's 58-minute Stars In Your
     Eyes is the long ride' -- the sharpener is not a long ride."""
@@ -145,6 +191,30 @@ def test_race_week_sequence_never_calls_the_sharpener_the_long_ride():
     }
     sequence = _week_sequence(week, _quality_sessions(week))
     assert "is the long ride" not in sequence
+
+
+def test_race_week_walks_every_intensity_session_including_monday_sharpener():
+    """Real defect: a race week's Monday RPE8-9 intensity session ('Glycolytic
+    Power', no ``level`` field, matching none of _QUALITY_KEYWORDS) was
+    silently dropped from key_sessions while a Wed sharpener and Fri
+    openers were named -- the note undersold the week and claimed
+    'Everything else stays easy' about a day that wasn't."""
+    week = {
+        "number": 9, "phase": "race", "week_type": "race",
+        "sessions": [
+            _bike_session(date(2026, 10, 12), "Glycolytic Power - 6x60s @145% - RPE8-9", 59,
+                          segments=[{"kind": "intervals", "repeat": 6, "on_seconds": 60,
+                                     "on_power": 1.45, "off_seconds": 120, "off_power": 0.5}]),
+            _bike_session(date(2026, 10, 14), "Stars In Your Eyes", 58),
+            _bike_session(date(2026, 10, 16), "Openers", 20),
+        ],
+    }
+    sequence = _week_sequence(week, _quality_sessions(week))
+    assert "Glycolytic Power" in sequence
+    assert "Stars In Your Eyes" in sequence
+    assert "Openers" in sequence
+    assert "The remaining rides stay easy" in sequence
+    assert "Everything else stays easy" not in sequence
 
 
 def test_normal_load_week_still_gets_the_long_ride_label():
@@ -406,3 +476,40 @@ def test_sim_touch_is_not_a_rehearsal():
     assert "sharpens the race shape" in seq
     assert "Peak and Fade" in seq
     assert seq.index("sharpens") < seq.index("rehearsal")
+
+
+_UK_SPELLING_RE = re.compile(
+    r"practis|organis|fuell|colour|behaviour|centre", re.IGNORECASE,
+)
+
+
+def _string_constants(module_path: Path):
+    """Every string literal in a module's AST -- brand copy lives in plain
+    string/docstring constants, never f-string expressions or comments."""
+    import ast
+    tree = ast.parse(module_path.read_text(encoding="utf-8"), filename=str(module_path))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            yield node.value
+
+
+def test_grit_4_is_titled_home_stretch_not_last_three_days():
+    # Regression: Gravel Grit note 4 posts on the race-week Tuesday, 4 days
+    # before a Saturday race -- "The Last Three Days" was inaccurate by a
+    # day. Renamed to "The Home Stretch".
+    note = _by_type(_notes(_plan()))["grit_4"]
+    assert "The Home Stretch" in note["title"]
+    assert "The Last Three Days" not in note["title"]
+
+
+def test_no_uk_spellings_in_athlete_facing_copy():
+    """Regression: 'FUELLING', 'practised', 'Practise', 'organised' shipped
+    in athlete-facing notes -- this pipeline's copy is American English."""
+    here = Path(__file__).resolve().parent
+    for filename in ("delivery_notes.py", "delivery_render.py"):
+        for value in _string_constants(here / filename):
+            match = _UK_SPELLING_RE.search(value)
+            assert not match, (
+                f"{filename}: UK spelling {match.group(0)!r} found in "
+                f"string constant: {value[:80]!r}"
+            )
