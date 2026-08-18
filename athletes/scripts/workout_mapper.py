@@ -716,7 +716,7 @@ def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
         f"- {position_note}\n"
         f"- {cadence_note}\n\n"
         f"COOL-DOWN:\n"
-        f"- {cooldown_sec // 60}min easy spin Z1-Z2 (RPE 2-3)\n\n"
+        f"- {cooldown_sec // 60}min easy spin Z1-Z2 (RPE 3-4)\n\n"
         f"PURPOSE:\n"
         f"Aerobic base building. Easy riding builds mitochondrial density "
         f"and fat oxidation — the foundation everything else rests on.\n\n"
