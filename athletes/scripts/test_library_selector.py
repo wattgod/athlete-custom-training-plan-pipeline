@@ -1014,3 +1014,23 @@ def test_family_coherence_outranks_level_banding():
     assert strict_full == [hard]
     if strict_leveled:
         assert all(i["if_planned"] >= 0.709 for i in strict_leveled)
+
+
+def test_base_long_rides_reject_threshold_sessions():
+    """'Dark is the Night' L3 (IF .821, 6x8min @98%) landed as the W1 BASE
+    long ride the day after the FTP test — endurance routing reaches it
+    (filed in endurance_z2_short) and long rides had no base ceiling."""
+    from library_selector import _passes_role_ceiling
+    night = {"if_planned": 0.821, "structure": {"structure": [
+        {"length": {"value": 6}, "steps": [
+            {"name": "On", "length": {"value": 480}, "targets": [{"minValue": 98}]},
+            {"name": "Off", "length": {"value": 180}, "targets": [{"minValue": 50}]}]}]}}
+    surges = {"if_planned": 0.75, "structure": {"structure": [
+        {"length": {"value": 8}, "steps": [
+            {"name": "On", "length": {"value": 20}, "targets": [{"minValue": 150}]},
+            {"name": "Off", "length": {"value": 880}, "targets": [{"minValue": 65}]}]}]}}
+    base_long = {"role": "long_ride", "week_type": "load", "phase": "base"}
+    build_long = {"role": "long_ride", "week_type": "load", "phase": "build"}
+    assert not _passes_role_ceiling(night, base_long)
+    assert _passes_role_ceiling(surges, base_long)   # short surges OK in base
+    assert _passes_role_ceiling(night, build_long)   # build durability untouched
