@@ -26,7 +26,7 @@ _SCRIPT_DIR = str(Path(__file__).parent.resolve())
 if _SCRIPT_DIR not in sys.path:
     sys.path.insert(0, _SCRIPT_DIR)
 
-from nate_workout_generator import generate_nate_zwo
+from nate_workout_generator import generate_nate_zwo, enforce_steady_workout_invariants
 
 
 # Race-week sharpness is a session-dose policy, not an archetype-progression
@@ -553,6 +553,15 @@ def _render_taper_burst_endurance(level: int, workout_name: Optional[str] = None
         'PURPOSE:\n'
         f'{_taper_burst_purpose(phase)}'
     )
+    # Bookends are derived from the main set (see enforce_steady_workout_
+    # invariants), not fixed at 50->70/70->45 -- a fixed cooldown start above
+    # this session's dominant Z2 pace would otherwise chart taller than the
+    # ride itself.
+    workout_body = enforce_steady_workout_invariants(
+        f'    <Warmup Duration="{warmup_sec}" PowerLow="0.50" PowerHigh="0.70"/>\n'
+        f'{chr(10).join(main_blocks)}\n'
+        f'    <Cooldown Duration="{cooldown_sec}" PowerLow="0.70" PowerHigh="0.45"/>'
+    )
     return f'''<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
   <author>{author}</author>
@@ -560,9 +569,7 @@ def _render_taper_burst_endurance(level: int, workout_name: Optional[str] = None
   <description>{description}</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="{warmup_sec}" PowerLow="0.50" PowerHigh="0.70"/>
-{chr(10).join(main_blocks)}
-    <Cooldown Duration="{cooldown_sec}" PowerLow="0.70" PowerHigh="0.45"/>
+{workout_body}
   </workout>
 </workout_file>'''
 
@@ -723,6 +730,16 @@ def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
         f"Level {level}: {variant_title}. Refine the execution without adding strain."
     )
 
+    # Bookends derive from the main set's hardest target (see
+    # enforce_steady_workout_invariants), not the level's base "power" alone
+    # -- the Burst Focus variant's 120% spikes must not be capped down to
+    # base pace, and a flat 70% main must not let its warmup/cooldown ramp
+    # past the 65/70 ceiling.
+    workout_body = enforce_steady_workout_invariants(
+        f'    <Warmup Duration="{warmup_sec}" PowerLow="0.50" PowerHigh="{power:.2f}"/>\n'
+        f'{main_blocks}\n'
+        f'    <Cooldown Duration="{cooldown_sec}" PowerLow="{power:.2f}" PowerHigh="0.45"/>'
+    )
     return f"""<?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
   <author>{author}</author>
@@ -730,9 +747,7 @@ def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
   <description>{desc}</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="{warmup_sec}" PowerLow="0.50" PowerHigh="{power:.2f}"/>
-{main_blocks}
-    <Cooldown Duration="{cooldown_sec}" PowerLow="{power:.2f}" PowerHigh="0.45"/>
+{workout_body}
   </workout>
 </workout_file>"""
 

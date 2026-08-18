@@ -183,7 +183,7 @@ def build_calendar_week(
         series_tracker = SeriesTracker()
         series_tracker.start_block()
 
-    day_roles = _build_day_template(off_days, long_ride_day, max_intensity)
+    day_roles = _build_day_template(off_days, long_ride_day, max_intensity, week_type=week_type)
 
     week = _build_week(
         week_num=week_in_block,
@@ -217,6 +217,7 @@ def _build_day_template(
     off_days: List[str],
     long_ride_day: str,
     max_intensity: int,
+    week_type: Optional[str] = None,
 ) -> Dict[str, str]:
     """Build a day-by-day role template from athlete preferences.
 
@@ -235,26 +236,59 @@ def _build_day_template(
     # Step 2: Long ride day
     roles[long_ride_day] = 'long_ride'
 
-    # Step 3: Place intensity on available non-consecutive days.
-    # Must not be adjacent to other intensity days OR to the long ride day.
+    # Step 3: Place intensity days.
     # Preference order matches coach practice: Tue/Thu are the canonical
     # quality days (fresh after Monday, buffered from the weekend long ride).
     PREFERRED_INTENSITY_ORDER = ['Tue', 'Thu', 'Mon', 'Wed', 'Fri', 'Sat', 'Sun']
     available = [d for d in PREFERRED_INTENSITY_ORDER if d not in roles]
-    hard_days = [long_ride_day]  # Long ride counts as "hard" for adjacency
-    intensity_days = []
-    for d in available:
-        if len(intensity_days) >= max_intensity:
-            break
-        d_idx = DAY_ORDER.index(d)
-        adjacent_to_hard = any(
-            abs(DAY_ORDER.index(existing) - d_idx) <= 1
-            for existing in hard_days
-        )
-        if not adjacent_to_hard:
-            intensity_days.append(d)
-            hard_days.append(d)
-            roles[d] = 'intensity'
+
+    if week_type == 'testing':
+        # Testing weeks are an assessment battery, not two interchangeable
+        # quality days: the coach's design intent (workout_selector's
+        # _select_testing_week docstring) is FTP earlier in the week,
+        # anaerobic later, because the anaerobic test's %FTP targets depend
+        # on a fresh FTP number. The generic preference-order pick below
+        # ("Tue/Thu are canonical") is chronologically blind -- on a
+        # Tue-off schedule it picked Thu then wrapped back to Monday, which
+        # a downstream chronological zip then read as FTP-Monday /
+        # Anaerobic-Thursday, ahead of the very FTP test meant to set its
+        # zones. Pick the earliest viable day for FTP, then the earliest
+        # LATER viable day (>= 2 days after when one exists) for anaerobic.
+        # This intentionally does NOT apply the long-ride adjacency
+        # exclusion used below -- a short anaerobic assessment the day
+        # before the long ride is coach-acceptable; wrapping it earlier
+        # than the FTP test it depends on is not.
+        if available:
+            ftp_day = available[0]
+            ftp_idx = DAY_ORDER.index(ftp_day)
+            later = sorted(
+                (d for d in available
+                 if d != ftp_day and DAY_ORDER.index(d) > ftp_idx),
+                key=lambda d: DAY_ORDER.index(d),
+            )
+            gapped = [d for d in later if DAY_ORDER.index(d) - ftp_idx >= 2]
+            anaerobic_day = (gapped or later or [None])[0]
+            intensity_days = [ftp_day] + ([anaerobic_day] if anaerobic_day else [])
+            intensity_days = intensity_days[:max(1, max_intensity)]
+            for d in intensity_days:
+                roles[d] = 'intensity'
+    else:
+        # Place intensity on available non-consecutive days. Must not be
+        # adjacent to other intensity days OR to the long ride day.
+        hard_days = [long_ride_day]  # Long ride counts as "hard" for adjacency
+        intensity_days = []
+        for d in available:
+            if len(intensity_days) >= max_intensity:
+                break
+            d_idx = DAY_ORDER.index(d)
+            adjacent_to_hard = any(
+                abs(DAY_ORDER.index(existing) - d_idx) <= 1
+                for existing in hard_days
+            )
+            if not adjacent_to_hard:
+                intensity_days.append(d)
+                hard_days.append(d)
+                roles[d] = 'intensity'
 
     # Step 4: Fill remaining with filler
     for day in DAY_ORDER:

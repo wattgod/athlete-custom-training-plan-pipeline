@@ -631,7 +631,8 @@ def test_lint_flagged_items_real_dump_is_conservative():
     flagged = lint_flagged_items(index)
     assert 0 < len(flagged) < 50
     for item in flagged:
-        assert item.get("lint_duration_claim") or item.get("lint_rpe_conflict")
+        assert (item.get("lint_duration_claim") or item.get("lint_rpe_conflict")
+                or item.get("lint_bookend_intensity") or item.get("lint_manual_review"))
 
 
 def test_lint_report_cli_prints_flagged_items(tmp_path, capsys):

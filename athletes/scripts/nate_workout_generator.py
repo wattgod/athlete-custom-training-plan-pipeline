@@ -1080,24 +1080,48 @@ def _is_steady_endurance_or_recovery(archetype: Dict, blocks: str = "") -> bool:
     return len(steady_bodies) == 1 and not has_variable_blocks
 
 
+_MAIN_BODY_POWER_RE = re.compile(r'\b(?:Power|OnPower|PowerHigh)="([0-9.]+)"')
+_WARMUP_TAG_RE = re.compile(r'<Warmup\b.*?(?:/>|</Warmup>)', re.DOTALL)
+_COOLDOWN_TAG_RE = re.compile(r'<Cooldown\b.*?(?:/>|</Cooldown>)', re.DOTALL)
+
+# Coach ruling (Aug 2026, "dumpster fire" pass): a bookend must never render
+# taller than the main set it brackets -- a live FatMax Development delivery
+# had its cooldown start at 70% FTP over a 55-65% main set, so TP's chart
+# showed the cool-down as the hardest part of the ride. Warmup tops out at
+# min(65%, hardest main-set target); cooldown starts at min(70%, same). Hard
+# workouts (any main-set target >= 76%) get back exactly the historical 65/70
+# defaults -- both mins resolve to the constant once main_high exceeds it.
+_WARMUP_CEILING = 0.65
+_COOLDOWN_CEILING = 0.70
+_BOOKEND_FLOOR = 0.50
+
+
 def enforce_steady_workout_invariants(blocks: str) -> str:
     """Keep easy rides physically monotonic: warm up into, never above, body."""
-    import re
-    steady = re.search(r'<SteadyState\b[^>]*\bDuration="([1-9]\d*)"[^>]*\bPower="([0-9.]+)"', blocks)
-    if not steady:
-        raise ValueError("steady workout has no nonzero main set")
-    main_high = float(steady.group(2))
+    warmup_tag = _WARMUP_TAG_RE.search(blocks)
+    cooldown_tag = _COOLDOWN_TAG_RE.search(blocks)
+    body_start = warmup_tag.end() if warmup_tag else 0
+    body_end = cooldown_tag.start() if cooldown_tag else len(blocks)
+    main_powers = [float(v) for v in _MAIN_BODY_POWER_RE.findall(blocks[body_start:body_end])]
+    if not main_powers:
+        steady = re.search(r'<SteadyState\b[^>]*\bDuration="([1-9]\d*)"[^>]*\bPower="([0-9.]+)"', blocks)
+        if not steady:
+            raise ValueError("steady workout has no nonzero main set")
+        main_powers = [float(steady.group(2))]
+    main_high = max(main_powers)
+    warmup_target = max(_BOOKEND_FLOOR, min(_WARMUP_CEILING, main_high))
+    cooldown_target = max(_BOOKEND_FLOOR, min(_COOLDOWN_CEILING, main_high))
+
     warmup = re.search(r'(<Warmup\b[^>]*\bPowerHigh=")([0-9.]+)(")', blocks)
-    if warmup and float(warmup.group(2)) > main_high:
-        blocks = blocks[:warmup.start(2)] + f"{main_high:.2f}" + blocks[warmup.end(2):]
+    if warmup:
+        blocks = blocks[:warmup.start(2)] + f"{warmup_target:.2f}" + blocks[warmup.end(2):]
     cooldown = re.search(r'(<Cooldown\b[^>]*\bPowerLow=")([0-9.]+)("\s+PowerHigh=")([0-9.]+)(")', blocks)
     if cooldown:
-        low, high = float(cooldown.group(2)), float(cooldown.group(4))
         # In this repo's ZWO convention PowerLow is the cooldown START and
-        # PowerHigh is the END. Keep start >= end while never starting above
-        # the steady ride body.
-        start_power, end_power = min(main_high, max(low, high)), min(low, high)
-        replacement = f'{cooldown.group(1)}{start_power:.2f}{cooldown.group(3)}{end_power:.2f}{cooldown.group(5)}'
+        # PowerHigh is the END. Start never exceeds the bookend ceiling;
+        # end never exceeds start.
+        end_power = min(float(cooldown.group(4)), cooldown_target)
+        replacement = f'{cooldown.group(1)}{cooldown_target:.2f}{cooldown.group(3)}{end_power:.2f}{cooldown.group(5)}'
         blocks = blocks[:cooldown.start()] + replacement + blocks[cooldown.end():]
     return blocks
 
