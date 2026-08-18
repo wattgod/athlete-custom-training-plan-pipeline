@@ -273,7 +273,22 @@ def _taper_specialty(session: Any) -> Optional[str]:
     if re.search(r"\b(?:cadence|neuromuscular|microbursts?|stomps?)\b", text):
         return "cadence"
     if re.search(r"\bbursts?\b", text):
-        return "bursts"
+        # Name alone is not enough WHEN segments are available: a "FatMax
+        # Development" ride (archetype family name carries "bursts") once
+        # classified here at RPE2-3 with zero hard content, and the taper
+        # briefing promised "bursts from" a plain endurance ride. With
+        # emitted segments, require actual >=92% work; without them
+        # (imported/renamed plans), the title stays the durable fact.
+        segments = _get(session, "segments", []) or []
+        if not segments:
+            return "bursts"
+        for segment in segments:
+            on_power = _get(segment, "on_power") or 0
+            power = _get(segment, "power") or 0
+            hi = _get(segment, "power_high") or 0
+            if max(float(on_power or 0), float(power or 0), float(hi or 0)) >= 0.92:
+                return "bursts"
+        return None
     return None
 
 
@@ -729,8 +744,24 @@ def _start_here(plan_ir: Any, brand: Dict[str, Any], guide_url: Optional[str]) -
     hours_note = ("\n\nBig weeks run to the top of your riding hours; the "
                   "strength sessions you asked for sit on top of that, not "
                   "inside it." if has_strength else "")
+    # Masters athletes should see that the plan's recovery architecture is
+    # deliberate for THEIR physiology, not generic-adult defaults -- a
+    # graded review found zero age-aware language on a 52-year-old's
+    # calendar. One line, factual, no pandering.
+    age = _get(_get(plan_ir, "athlete") or {}, "age")
+    masters_note = ""
+    if age is not None and int(age) >= 50:
+        masters_pieces = ["the full recovery weeks",
+                          "the easy day before every test"]
+        if has_strength:
+            masters_pieces.insert(0, "the strength work")
+        masters_note = ("\n\nBuilt for recovery at " + str(int(age)) + ": "
+                        + ", ".join(masters_pieces[:-1]) + " and "
+                        + masters_pieces[-1]
+                        + " are load-bearing at your age, not optional extras. "
+                          "Skip a hard day before you ever skip recovery.")
     body = (f"{weeks} {week_label} to {race_name}" + (f", {_display_date(race_day)}." if race_day else ".") + guide +
-            f"\n\n———\n\nHOW THE WEEK WORKS\n{_weekly_pattern(plan_ir)}{hours_note}\n\nIf a week falls apart, protect the long ride and the first quality session, then let the rest go."
+            f"\n\n———\n\nHOW THE WEEK WORKS\n{_weekly_pattern(plan_ir)}{hours_note}{masters_note}\n\nIf a week falls apart, protect the long ride and the first quality session, then let the rest go."
             f"\n\n———\n\nREADING THE WORKOUTS\n{reading}"
             f"\n\n———\n\nNEED THIS ADJUSTED?\nEmail me at {_email(brand)}. Tell me what happened and what you want changed — travel, illness, a session that felt wrong, or a day that no longer works. Adjusting a plan is normal.")
     return f"START HERE — Your {race_name} Plan", body

@@ -872,3 +872,26 @@ class TestLintExclusion:
         flagged = make_item(1, duration_min=50, lint_rpe_conflict=_LINT_RPE_EVIDENCE)
         index = make_index([flagged])
         assert select(base_slot(budget_min=50), index=index) is None
+
+
+def test_taper_slots_reject_sustained_threshold_regardless_of_role():
+    """Real graded defect: 'Dark is the Night' (6x8min @91-105%, IF 0.80,
+    ~48min of Z4) landed on the TAPER Sunday because its slot carried role
+    None -- no filler/recovery ceiling applied. Taper sharpness is short
+    touches: no single >=92% rep over 120s, total >=92% work <= 900s."""
+    from library_selector import _passes_role_ceiling
+    threshold_item = {"if_planned": 0.79, "structure": {"structure": [
+        {"length": {"value": 6}, "steps": [
+            {"name": "On", "length": {"value": 480}, "targets": [{"minValue": 98}]},
+            {"name": "Off", "length": {"value": 180}, "targets": [{"minValue": 50}]},
+        ]}]}}
+    burst_item = {"if_planned": 0.80, "structure": {"structure": [
+        {"length": {"value": 13}, "steps": [
+            {"name": "On", "length": {"value": 30}, "targets": [{"minValue": 118}]},
+            {"name": "Off", "length": {"value": 30}, "targets": [{"minValue": 50}]},
+        ]}]}}
+    taper_slot = {"role": None, "week_type": "taper"}
+    load_slot = {"role": None, "week_type": "load"}
+    assert not _passes_role_ceiling(threshold_item, taper_slot)
+    assert _passes_role_ceiling(burst_item, taper_slot)      # 30/30 sharpener OK
+    assert _passes_role_ceiling(threshold_item, load_slot)   # load weeks unaffected

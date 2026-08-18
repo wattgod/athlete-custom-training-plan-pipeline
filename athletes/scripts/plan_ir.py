@@ -34,6 +34,7 @@ class Athlete:
     id: str
     name: Optional[str] = None
     sex: Optional[str] = None
+    age: Optional[int] = None
     weight_kg: Optional[float] = None
     ftp: Optional[float] = None
     key_markers: Dict[str, Any] = field(default_factory=dict)
@@ -239,6 +240,9 @@ def _athlete_from_profile(athlete_id: str, profile: Dict[str, Any]) -> Athlete:
     if weight is None:
         weight = _first(markers, "weight_kg") or _first(athlete_values, "weight_kg")
     sex = _first(profile, "sex") or _first(markers, "sex") or _first(athlete_values, "sex")
+    age = (_first(profile.get("health_factors", {}) or {}, "age")
+           or _first(profile, "age") or _first(markers, "age")
+           or _first(athlete_values, "age"))
     ftp = _first(markers, "ftp_watts", "ftp")
     key_markers = {
         key: markers.get(key)
@@ -250,6 +254,7 @@ def _athlete_from_profile(athlete_id: str, profile: Dict[str, Any]) -> Athlete:
         id=athlete_id,
         name=profile.get("name"),
         sex=sex,
+        age=int(age) if age is not None else None,
         weight_kg=_number(weight),
         ftp=_number(ftp),
         key_markers=key_markers,

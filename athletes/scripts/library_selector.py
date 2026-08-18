@@ -443,6 +443,16 @@ def _record_lint_exclusions(
 _HARD_WORK_PCT_FLOOR = 92.0
 _HARD_WORK_SECONDS_RECOVERY = 150
 _HARD_WORK_SECONDS_FILLER = 360
+# Taper weeks: sharpness comes from SHORT touches (30/15s, alactic bursts,
+# openers — the coach's taper mix), never sustained threshold. A curated
+# "6x8min @98%" once landed on the taper Sunday (role None, so no filler
+# ceiling applied) and put 48 minutes of Z4 six days before a 9.3-hour
+# race. Two-part rule for EVERY taper slot regardless of role: no single
+# >=92% rep longer than _TAPER_MAX_HARD_REP_SECONDS, and total >=92% work
+# within _TAPER_HARD_WORK_SECONDS (generous enough for a full 30/30 VO2
+# sharpener set, far under a threshold block session).
+_TAPER_MAX_HARD_REP_SECONDS = 120
+_TAPER_HARD_WORK_SECONDS = 900
 
 
 def _hard_work_seconds(structure: Any) -> float:
@@ -462,7 +472,30 @@ def _hard_work_seconds(structure: Any) -> float:
     return total
 
 
+def _max_hard_rep_seconds(structure: Any) -> float:
+    """Longest single >=92%-FTP rep anywhere in a TP structure (0.0 if none)."""
+    longest = 0.0
+    if not isinstance(structure, Mapping):
+        return longest
+    for step in structure.get("structure") or []:
+        for sub in step.get("steps") or []:
+            target = next((t for t in sub.get("targets") or []
+                           if t.get("unit") != "roundOrStridePerMinute"), None)
+            if not target:
+                continue
+            pct = target.get("maxValue") or target.get("minValue") or 0
+            if pct >= _HARD_WORK_PCT_FLOOR:
+                longest = max(longest, float((sub.get("length") or {}).get("value") or 0))
+    return longest
+
+
 def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bool:
+    if slot.get("week_type") == "taper":
+        structure = item.get("structure")
+        if _max_hard_rep_seconds(structure) > _TAPER_MAX_HARD_REP_SECONDS:
+            return False
+        if _hard_work_seconds(structure) > _TAPER_HARD_WORK_SECONDS:
+            return False
     ceilings = _filler_ceilings(slot)
     if ceilings is None:
         return True
