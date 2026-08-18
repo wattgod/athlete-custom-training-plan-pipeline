@@ -559,6 +559,48 @@ def test_weekly_briefing_calls_out_a_recovery_weeks_added_off_day():
     assert "This week adds" not in normal_briefing["body"]
 
 
+def test_weekly_briefing_race_week_excludes_post_race_day_from_deviation_callout():
+    """Regression: the race-week deviation callout named the day AFTER the
+    race (an automatic recovery day, not a scheduling decision) alongside a
+    genuinely-added rest day, e.g. 'adds Sunday and Thursday rest days'
+    where Sunday is the day after a Saturday race. Only the deliberately
+    added day belongs in the callout."""
+    start = date(2026, 8, 10)  # Monday
+    weeks = []
+    for number in (1, 2):
+        monday = start + timedelta(days=(number - 1) * 7)
+        weeks.append({
+            "number": number, "phase": "build", "week_type": "build",
+            "sessions": [
+                {"date": str(monday + timedelta(days=1)), "title": "Day Off", "tp_kind": "day_off"},
+                {"date": str(monday + timedelta(days=3)), "title": "Threshold Work",
+                 "tp_kind": "bike", "duration_s": 60 * 60},
+                {"date": str(monday + timedelta(days=5)), "title": "Endurance Ride",
+                 "tp_kind": "bike", "duration_s": 180 * 60},
+            ],
+        })
+    race_monday = start + timedelta(days=2 * 7)
+    race_day = race_monday + timedelta(days=5)  # Saturday
+    weeks.append({
+        "number": 3, "phase": "race", "week_type": "race",
+        "sessions": [
+            {"date": str(race_monday + timedelta(days=1)), "title": "Day Off", "tp_kind": "day_off"},  # Tue -- modal
+            {"date": str(race_monday + timedelta(days=3)), "title": "Day Off", "tp_kind": "day_off"},  # Thu -- deliberate add
+            {"date": str(race_day), "title": "Race Day", "tp_kind": "race", "duration_s": 4 * 3600},
+            {"date": str(race_day + timedelta(days=1)), "title": "Day Off", "tp_kind": "day_off"},  # Sun -- day after race
+        ],
+    })
+    plan = {
+        "brand": "gravelgod", "athlete": {"name": "Test Athlete"}, "weeks": weeks,
+        "race_snapshot": {"name": "Test Race", "date": str(race_day)},
+    }
+    notes = _notes(plan)
+    race_briefing = next(note for note in notes if note["type"] == "weekly_briefing"
+                         and note["title"].startswith("WEEK 3"))
+    assert "This week adds a Thursday rest day — that's deliberate." in race_briefing["body"]
+    assert "Sunday" not in race_briefing["body"]
+
+
 def test_start_here_uses_singular_week_and_grit_has_no_fixture_date_residue():
     notes = _notes(_plan(weeks=1))
     assert "1 week to High Country Gravel" in _by_type(notes)["start_here"]["body"]
@@ -722,6 +764,41 @@ def test_start_here_carries_masters_line_for_50_plus():
     plan["athlete"]["age"] = 34
     body_young = next(n["body"] for n in _notes(plan) if n["title"].startswith("START HERE"))
     assert "load-bearing at your age" not in body_young
+
+
+def test_masters_line_pluralizes_recovery_weeks_by_actual_count():
+    """Regression: the masters line always said 'the full recovery weeks'
+    regardless of how many recovery weeks the plan actually has. A plan
+    with exactly one declared recovery week must read singular."""
+    plan = _plan(weeks=6)
+    plan["athlete"]["age"] = 52
+    plan["weeks"][2]["week_type"] = "recovery"
+    body = next(n["body"] for n in _notes(plan) if n["title"].startswith("START HERE"))
+    assert "the full recovery week:" not in body  # sanity: not mid-sentence artifact
+    assert "the full recovery week " in body or "the full recovery week," in body \
+        or "the full recovery week and" in body
+    assert "the full recovery weeks" not in body
+
+
+def test_masters_line_keeps_plural_for_multiple_recovery_weeks():
+    plan = _plan(weeks=9)
+    plan["athlete"]["age"] = 52
+    plan["weeks"][2]["week_type"] = "recovery"
+    plan["weeks"][5]["week_type"] = "recovery"
+    body = next(n["body"] for n in _notes(plan) if n["title"].startswith("START HERE"))
+    assert "the full recovery weeks" in body
+
+
+def test_masters_line_scopes_easy_day_promise_to_ftp_tests():
+    """Regression: only the FTP test carries an enforced easy lead-in under
+    the 360 testing-week protocol -- the Thursday anaerobic test's
+    Wednesday is a tempo ride, not an easy day. The masters line must not
+    overclaim across all tests."""
+    plan = _plan()
+    plan["athlete"]["age"] = 52
+    body = next(n["body"] for n in _notes(plan) if n["title"].startswith("START HERE"))
+    assert "the easy day before every FTP test" in body
+    assert "the easy day before every test" not in body
 
 
 def test_taper_bursts_label_requires_actual_hard_work():

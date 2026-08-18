@@ -780,8 +780,20 @@ def _has_power_structure(session: Any) -> bool:
 
 
 def render_if_planned(session: Any) -> Optional[float]:
-    """Return TP IF for a structured power bike session, otherwise ``None``."""
-    if _session_kind(session) != "bike" or not _has_power_structure(session):
+    """Return TP IF for a structured power bike session, otherwise ``None``.
+
+    Race day is the one bike-typed card with no power structure (it renders
+    as a FreeRide -- the effort is dictated by the course, not a target) and
+    used to fall out of the ``bike``-only gate below with a null IF. It still
+    carries an estimated TSS and expected duration from the race snapshot, so
+    IF is derived the same way TP derives it from TSS: IF = sqrt(TSS /
+    (hours x 100)).
+    """
+    kind = _session_kind(session)
+    if kind == "bike":
+        if not _has_power_structure(session):
+            return None
+    elif kind != "race":
         return None
     tss = _number(_get(session, "tss_planned"))
     if tss is None:

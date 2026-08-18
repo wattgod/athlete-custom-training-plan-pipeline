@@ -786,8 +786,20 @@ def _start_here(plan_ir: Any, brand: Dict[str, Any], guide_url: Optional[str]) -
     age = _get(_get(plan_ir, "athlete") or {}, "age")
     masters_note = ""
     if age is not None and int(age) >= 50:
-        masters_pieces = ["the full recovery weeks",
-                          "the easy day before every test"]
+        # Plurality follows the plan's own count of declared recovery weeks
+        # (taper is a distinct declared_type -- a sharpening week, not a
+        # recovery week -- and is deliberately excluded here). And only the
+        # FTP test carries an enforced easy lead-in day under the 360
+        # testing-week protocol; the Thursday anaerobic test's Wednesday is
+        # a tempo ride, not an easy day.
+        recovery_week_count = sum(
+            1 for w in _iter_weeks(plan_ir)
+            if str(_get(w, "week_type") or "").strip().lower() == "recovery"
+        )
+        recovery_phrase = ("the full recovery week" if recovery_week_count == 1
+                           else "the full recovery weeks")
+        masters_pieces = [recovery_phrase,
+                          "the easy day before every FTP test"]
         if has_strength:
             masters_pieces.insert(0, "the strength work")
         masters_note = ("\n\nBuilt for recovery at " + str(int(age)) + ": "
@@ -875,11 +887,15 @@ def _weekly_briefing(plan_ir: Any, candidate: Dict[str, Any], fueling: Any,
     # START HERE describes the plan's standing off-day pattern; a week whose
     # actual off-day set adds to it (recovery/taper commonly add a Saturday)
     # should say so explicitly rather than silently deviating from what the
-    # athlete was told to expect.
+    # athlete was told to expect. A rest day on or after race day is an
+    # automatic recovery day, not a scheduling decision -- it must never be
+    # named in this "that's deliberate" callout (race week's Sunday-after-
+    # the-race once got called out alongside a genuinely-added Thursday).
+    race_day, _ = _race(plan_ir)
     week_off_days = sorted({
         day.strftime("%A") for day in
         (_session_date(session) for session in week_sessions if _kind(session) == "day_off")
-        if day
+        if day and not (race_day and day >= race_day)
     })
     extra_off_days = [day for day in week_off_days if day not in _modal_off_days(plan_ir)]
     if extra_off_days:

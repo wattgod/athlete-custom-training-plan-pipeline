@@ -189,6 +189,34 @@ def protect_post_simulation_recovery(
     return protected
 
 
+def pre_simulation_strength_block_days(plan: Dict[str, Any]) -> set[tuple[int, str]]:
+    """Days immediately BEFORE an Act-class simulation day, blocked from
+    strength placement only.
+
+    Mirrors ``protect_post_simulation_recovery``'s AFTER-side protection, but
+    narrower: an easy bike spin the day before a dress rehearsal is fine (so
+    this never rewrites the bb day, unlike the post-sim pass), the loaded
+    strength session that lands there is the actual problem. "Act-class"
+    means the day carries an ``act_simulation`` overlay or is flagged
+    ``is_dress_rehearsal`` -- the plan's biggest simulation days, not every
+    long training ride. Returns ``(plan_week, day_abbrev)`` pairs for the
+    caller to fold into ``place_strength_days``'s ``blocked_days``, which
+    naturally relocates the session earlier in the week (or drops it if no
+    slot fits) through its existing candidate-selection logic.
+    """
+    flattened = [(week, day) for week in plan.get('weeks', [])
+                 for day in week.get('days', [])]
+    blocked = set()
+    for index, (_week, day) in enumerate(flattened):
+        if not (day.get('act_simulation') or day.get('is_dress_rehearsal')):
+            continue
+        if index == 0:
+            continue
+        previous_week, previous_day = flattened[index - 1]
+        blocked.add((previous_week.get('plan_week'), previous_day.get('day')))
+    return blocked
+
+
 def derive_week_descriptors(plan_dates: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Derive calendar week descriptors from a plan_dates dict.
 

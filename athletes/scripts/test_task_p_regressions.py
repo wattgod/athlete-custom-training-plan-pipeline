@@ -6,10 +6,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from block_chain import build_plan_from_calendar, protect_post_simulation_recovery
+from block_chain import (build_plan_from_calendar,
+                         protect_post_simulation_recovery,
+                         pre_simulation_strength_block_days)
 from block_compliance import (r01_no_back_to_back_intensity,
                               r03_recovery_tss_ceiling)
-from generate_athlete_package import race_day_tss_from_emitted_minutes
+from generate_athlete_package import (race_day_tss_from_emitted_minutes,
+                                      place_strength_days)
 from workout_mapper import endurance_focus_title
 
 
@@ -59,6 +62,76 @@ def test_post_simulation_day_is_easy_and_displaced_sharpener_moves_to_interval_d
     assert thursday['name'] == 'Thirty-Fifteens'
     assert thursday['role'] == 'intensity'
     assert r01_no_back_to_back_intensity(plan['weeks'])[0]
+
+
+def test_pre_simulation_strength_block_days_flags_the_day_before_dress_rehearsal():
+    """Regression: verified live, loaded strength (Power B -- Bulgarians +
+    trap-bar triples) landed on the Saturday immediately before a Sunday
+    Act 2 dress rehearsal -- the plan's biggest day -- while Act 1 got a
+    3-day strength buffer. The day before an Act-class simulation must be
+    flagged for strength placement to avoid."""
+    plan = {'weeks': [
+        {'plan_week': 1, 'days': [
+            _day('Mon', 'Threshold', 'intensity', 60, 70),
+            _day('Tue', 'OFF', 'off', 0, 0),
+            _day('Wed', 'Endurance', 'filler', 70, 55),
+            _day('Thu', 'Thirty-Fifteens', 'intensity', 55, 70),
+            _day('Fri', 'OFF', 'off', 0, 0),
+            _day('Sat', 'Endurance', 'filler', 90, 60),
+            _day('Sun', 'Act Race Simulation', 'long_ride', 250, 245,
+                 act_simulation={'dress_rehearsal': True}, is_dress_rehearsal=True),
+        ]},
+    ]}
+
+    blocked = pre_simulation_strength_block_days(plan)
+
+    assert blocked == {(1, 'Sat')}
+    # An easy bike day the day before is untouched -- only strength cares.
+    assert plan['weeks'][0]['days'][5]['name'] == 'Endurance'
+
+
+def test_strength_relocates_off_the_day_before_a_dress_rehearsal():
+    """Regression: a week with a Sunday act-sim and Saturday strength in the
+    naive layout must relocate strength to Thu or earlier once the pre-sim
+    day is blocked, using place_strength_days' own candidate selection."""
+    plan = {'weeks': [
+        {'plan_week': 1, 'days': [
+            _day('Mon', 'Threshold', 'intensity', 60, 70),
+            _day('Tue', 'OFF', 'off', 0, 0),
+            _day('Wed', 'Endurance', 'filler', 70, 55),
+            _day('Thu', 'Thirty-Fifteens', 'intensity', 55, 70),
+            _day('Fri', 'OFF', 'off', 0, 0),
+            _day('Sat', 'Endurance', 'filler', 90, 60),
+            _day('Sun', 'Act Race Simulation', 'long_ride', 250, 245,
+                 act_simulation={'dress_rehearsal': True}, is_dress_rehearsal=True),
+        ]},
+    ]}
+    protected_days = {day for week, day in pre_simulation_strength_block_days(plan)
+                      if week == 1}
+    assert protected_days == {'Sat'}
+
+    def is_available(day):
+        return day != 'Sun'  # Sunday is the long/act-sim day
+
+    naive = place_strength_days(is_available, 1, strength_only_abbrevs=['Sat'])
+    assert naive == ['Sat']  # confirms the naive layout really does land on Saturday
+
+    relocated = place_strength_days(is_available, 1, blocked_days=protected_days,
+                                    strength_only_abbrevs=['Sat'])
+    assert relocated and relocated[0] != 'Sat'
+    assert relocated[0] in ('Mon', 'Tue', 'Wed', 'Thu')
+
+
+def test_strength_drops_for_the_week_when_no_relocation_slot_fits():
+    """Relocation is preferred, but when the pre-sim day is the only
+    available day, the session must drop for that week rather than
+    silently keeping the blocked placement."""
+    def is_available(day):
+        return day == 'Sat'  # only the blocked day is available at all
+
+    relocated = place_strength_days(is_available, 1, blocked_days={'Sat'},
+                                    strength_only_abbrevs=['Sat'])
+    assert relocated == []
 
 
 def test_recovery_floor_uses_preceding_load_weeks_and_stays_in_house_band():

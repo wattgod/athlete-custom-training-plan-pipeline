@@ -31,6 +31,33 @@ def test_race_elevation_from_target_race_extends_duration_and_energy():
     assert f6["prescription"]["race_target_g_per_hour"] == f0["prescription"]["race_target_g_per_hour"]
 
 
+def test_race_total_carbs_round_full_product_not_accumulated_parts():
+    """Regression: the race-card total-carbs figure said '521g' for a
+    56g/hr x 9.3333h race, when the correct full-product rounding is
+    round(56 x 9.3333) = 523g. The bug was double-rounding -- duration got
+    pre-rounded to 1 decimal (9.3) before being multiplied by the hourly
+    rate, instead of rounding the full precision product exactly once."""
+    prescription = build_fueling_prescription(
+        duration_hours=9.3333, weight_kg=80, ftp_watts=150, goal_type="finish",
+    )
+    assert prescription.race_target_g_per_hour == 56
+    assert prescription.total_g == 523
+    assert prescription.total_g == round(prescription.race_target_g_per_hour * 9.3333)
+
+
+def test_estimate_race_duration_no_longer_pre_rounds_to_one_decimal():
+    """Regression: estimate_race_duration() used to round its own return
+    value to 1 decimal, which then double-rounded every downstream
+    multiplication (total carbs, calories) against an already-truncated
+    duration. It must now hand back full precision; display sites format
+    with .1f themselves."""
+    from calculate_fueling import estimate_race_duration
+    duration = estimate_race_duration(100, "finish", 6200, "gravel")
+    # The specific, previously-buggy live case: 100mi/6200ft gravel finish
+    # no longer collapses to an exact-tenth value at the source.
+    assert abs(duration - round(duration, 1)) > 1e-9
+
+
 def test_heather_scale_podium_is_not_flat_90g_per_hour():
     fueling = generate_fueling_context(_profile(61, 230))
     prescription = fueling["prescription"]
@@ -38,7 +65,11 @@ def test_heather_scale_podium_is_not_flat_90g_per_hour():
     assert prescription["race_target_g_per_hour"] != 90
     assert prescription["race_target_g_per_hour"] in range(
         prescription["race_range_g_per_hour"][0], prescription["race_range_g_per_hour"][1] + 1)
-    assert abs(prescription["total_g"] - prescription["race_target_g_per_hour"] * 5.6) <= 1
+    # Full-precision duration (not the display-rounded 5.6h) is what the
+    # total-carbs figure is actually computed from -- see
+    # test_race_total_carbs_round_full_product_not_accumulated_parts.
+    assert abs(prescription["total_g"]
+               - prescription["race_target_g_per_hour"] * fueling["race"]["duration_hours"]) <= 1
     assert any("tolerance was not captured" in item for item in prescription["assumptions"])
 
 
