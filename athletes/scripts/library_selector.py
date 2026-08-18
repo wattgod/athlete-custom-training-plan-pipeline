@@ -454,6 +454,15 @@ _HARD_WORK_SECONDS_FILLER = 360
 # sharpener set, far under a threshold block session).
 _TAPER_MAX_HARD_REP_SECONDS = 120
 _TAPER_HARD_WORK_SECONDS = 900
+# Base-phase long rides are aerobic: hard durability long rides are the
+# house signature for BUILD/PEAK only. Without a base ceiling, a curated
+# night-threshold session filed in an endurance library ("Dark is the
+# Night" L3: 137min, IF 0.821, 6x8min @98%) once landed as the Week 1
+# base long ride the day after the FTP test. Base long_ride slots cap
+# authored IF and sustained hard reps; short surges (Endurance with
+# Surges class) still pass.
+_BASE_LONG_RIDE_IF_CEILING = 0.76
+_BASE_LONG_RIDE_MAX_HARD_REP_SECONDS = 120
 
 
 def _hard_work_seconds(structure: Any) -> float:
@@ -491,6 +500,13 @@ def _max_hard_rep_seconds(structure: Any) -> float:
 
 
 def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bool:
+    if (str(slot.get("phase") or "").lower() == "base"
+            and _is_long_ride_role(slot.get("role"))):
+        if_planned = item.get("if_planned")
+        if if_planned is not None and if_planned > _BASE_LONG_RIDE_IF_CEILING:
+            return False
+        if _max_hard_rep_seconds(item.get("structure")) > _BASE_LONG_RIDE_MAX_HARD_REP_SECONDS:
+            return False
     if slot.get("week_type") == "taper":
         structure = item.get("structure")
         if _max_hard_rep_seconds(structure) > _TAPER_MAX_HARD_REP_SECONDS:
