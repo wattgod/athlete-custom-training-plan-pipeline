@@ -230,3 +230,27 @@ def build_consult_welcome_email(
         addon_clause=CONSULT_ADDON_TERMS if plan_addon_bought else '',
     )
     return CONSULT_WELCOME_SUBJECT, body
+
+
+CONSULT_ENDURE_DELIVERED_SUBJECT = "[GG] Consult delivered to Endure: {name} ({order_id})"
+
+CONSULT_ENDURE_DELIVERED_TEMPLATE = (
+    "Consult {order_id} for {name} has been delivered to Endure "
+    "(findings filed, plan-of-action posted).\n\n"
+    "{invite_line}"
+)
+
+
+def build_consult_endure_delivered_email(order_id: str, name: str, invite_url: str = '') -> tuple:
+    """Subject + plain-text body for the coach confirmation email sent once
+    a consult's findings + plan-of-action have landed on Endure
+    (POST /api/consult/jobs/<order_id>/endure-delivered, CD-1b §6)."""
+    invite_line = (
+        f"Invite link: {invite_url}\n" if invite_url
+        else "No invite link in the result (existing Endure user, or an invitation wasn't required).\n"
+    )
+    subject = CONSULT_ENDURE_DELIVERED_SUBJECT.format(order_id=order_id, name=name or 'Unknown')
+    body = CONSULT_ENDURE_DELIVERED_TEMPLATE.format(
+        order_id=order_id, name=name or 'Unknown', invite_line=invite_line,
+    )
+    return subject, body

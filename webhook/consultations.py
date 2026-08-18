@@ -29,6 +29,7 @@ STATUSES = {"open", "analysis_running", "report_ready", "needs_attention", "clos
 TIMELINE_EVENTS = {
     "paid", "welcome_sent", "intake_received", "tp_linked", "claimed",
     "report", "error", "call_set", "addon_paid", "closed",
+    "endure_requested", "endure_delivered",
 }
 
 GIVE_UP_DAYS = 30

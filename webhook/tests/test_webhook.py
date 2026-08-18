@@ -4562,6 +4562,260 @@ class TestConsultOperatorEndpoint:
                             json={'retry': True}, headers={'X-Cron-Secret': 'shhh'})
         assert r.status_code == 404
 
+    def test_deliver_endure_sets_block_and_timeline(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_op_endure', brand='gravelgod')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.CRON_SECRET', 'shhh'):
+            r = client.post('/api/consult/cs_op_endure/op',
+                            json={'deliver_endure': {'plan_of_action_md': '## Plan\n\nDo the work.'}},
+                            headers={'X-Cron-Secret': 'shhh'})
+        assert r.status_code == 200
+        assert r.get_json()['applied'] == ['deliver_endure']
+        updated = consultations.read_record(_consult_dir(app_module), 'cs_op_endure')
+        assert updated['endure']['plan_of_action_md'] == '## Plan\n\nDo the work.'
+        assert updated['endure']['requested_at']
+        assert updated['endure']['delivered_at'] is None
+        assert updated['endure']['result'] is None
+        assert updated['timeline'][-1]['event'] == 'endure_requested'
+
+
+class TestConsultJobsDeliver:
+    """GET /api/consult/jobs/deliver (docs/CONSULT_ENGINE_SPEC.md §5,
+    endurelabs specs/consult-delivery/spec.md §6, CD-1b)."""
+
+    def _seed(self, app_module, order_id='cs_deliver', **overrides):
+        import consultations
+        record = consultations.new_record(order_id=order_id, brand='gravelgod',
+                                          athlete_name='Jesse Couch',
+                                          athlete_email='jesse@example.com')
+        record['athlete']['tp_athlete_id'] = '999'
+        record['athlete']['tp_matched_at'] = consultations.now_iso()
+        record['endure'] = {
+            'requested_at': consultations.now_iso(),
+            'plan_of_action_md': '## Plan\n\nBase for 6 weeks.',
+            'delivered_at': None,
+            'result': None,
+        }
+        for key, value in overrides.items():
+            record[key] = value
+        consultations.write_record(_consult_dir(app_module), record)
+        return record
+
+    def _write_report(self, app_module, order_id, report):
+        report_dir = _consult_dir(app_module) / 'consultations' / order_id
+        report_dir.mkdir(parents=True, exist_ok=True)
+        (report_dir / 'report.json').write_text(json.dumps(report))
+
+    def test_503_when_runner_secret_unset(self, client, temp_athletes_dir):
+        with patch('app.CONSULT_RUNNER_SECRET', ''):
+            r = client.get('/api/consult/jobs/deliver')
+        assert r.status_code == 503
+
+    def test_401_when_wrong_secret(self, client, temp_athletes_dir):
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/deliver', headers={'X-Runner-Secret': 'nope'})
+        assert r.status_code == 401
+
+    def test_excludes_no_endure_requested(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        record = consultations.new_record(order_id='cs_no_endure', brand='gravelgod')
+        consultations.write_record(_consult_dir(app_module), record)
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/deliver', headers={'X-Runner-Secret': 'shhh'})
+        assert r.get_json()['deliver'] == []
+
+    def test_excludes_already_delivered(self, client, temp_athletes_dir, app):
+        import app as app_module
+        self._seed(app_module, order_id='cs_delivered_already',
+                   endure={'requested_at': 'x', 'plan_of_action_md': '', 'delivered_at': 'y', 'result': {}})
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/deliver', headers={'X-Runner-Secret': 'shhh'})
+        assert r.get_json()['deliver'] == []
+
+    def test_payload_shape_from_stored_report(self, client, temp_athletes_dir, app):
+        import app as app_module
+        self._seed(app_module, order_id='cs_deliver_shape',
+                   call_at='2026-09-01T15:00:00+00:00')
+        self._write_report(app_module, 'cs_deliver_shape', {
+            'one_thing': {'rule': 'e', 'label': 'durability', 'text': 'Durability is the limiter.'},
+            'data_bullets': [
+                'CTL ramp net +3.2 over the last 10 weeks.',
+                'not available: not enough analysis.json rows to compute a data bullet',
+            ],
+            'athlete_card': {'ftp': 250, 'lthr': 165, 'age': 42},
+        })
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/deliver', headers={'X-Runner-Secret': 'shhh'})
+        items = r.get_json()['deliver']
+        assert len(items) == 1
+        item = items[0]
+        assert item['order_id'] == 'cs_deliver_shape'
+        assert item['tp_athlete_id'] == '999'
+        assert item['email'] == 'jesse@example.com'
+        assert item['first_name'] == 'Jesse'
+        assert item['last_name'] == 'Couch'
+        assert item['consult_date'] == '2026-09-01T15:00:00+00:00'
+        assert item['plan_addon'] is False
+        assert item['plan_of_action_md'] == '## Plan\n\nBase for 6 weeks.'
+        assert item['prefill'] == {'ftp': 250, 'lthr': 165}
+        # ONE thing + 1 non-placeholder bullet ("not available:" is dropped)
+        assert len(item['findings']) == 2
+        assert item['findings'][0] == {
+            'title': 'Durability', 'body': 'Durability is the limiter.',
+            'kind': 'physiological_limiter', 'confidence': 0.85,
+        }
+        assert item['findings'][1] == {
+            'title': 'CTL ramp net +3.2 over the last 10 weeks.',
+            'body': 'CTL ramp net +3.2 over the last 10 weeks.',
+            'kind': 'pattern', 'confidence': 0.75,
+        }
+
+    def test_non_durability_one_thing_kind_is_pattern(self, client, temp_athletes_dir, app):
+        import app as app_module
+        self._seed(app_module, order_id='cs_deliver_pattern')
+        self._write_report(app_module, 'cs_deliver_pattern', {
+            'one_thing': {'rule': 'b', 'label': 'base-no-exit', 'text': 'Base has no exit.'},
+            'data_bullets': [],
+            'athlete_card': {},
+        })
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/deliver', headers={'X-Runner-Secret': 'shhh'})
+        item = r.get_json()['deliver'][0]
+        assert item['findings'][0]['kind'] == 'pattern'
+
+    def test_prefill_includes_max_hr_and_weight_when_present(self, client, temp_athletes_dir, app):
+        import app as app_module
+        self._seed(app_module, order_id='cs_deliver_prefill')
+        self._write_report(app_module, 'cs_deliver_prefill', {
+            'one_thing': {}, 'data_bullets': [],
+            'athlete_card': {'ftp': 250, 'lthr': 165, 'max_hr': 180, 'weight': 72.5},
+        })
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/deliver', headers={'X-Runner-Secret': 'shhh'})
+        item = r.get_json()['deliver'][0]
+        assert item['prefill'] == {'ftp': 250, 'lthr': 165, 'max_hr': 180, 'weight': 72.5}
+
+    def test_goal_event_from_intake(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        intake_id = str(uuid.uuid4())
+        app_module.store_intake(intake_id, {
+            'answers': {'goal_event': 'Unbound 200'},
+            'consult_order_id': 'cs_deliver_goal',
+        })
+        record = self._seed(app_module, order_id='cs_deliver_goal')
+        record['intake'] = {'intake_id': intake_id, 'received_at': consultations.now_iso()}
+        consultations.write_record(_consult_dir(app_module), record)
+        self._write_report(app_module, 'cs_deliver_goal',
+                           {'one_thing': {}, 'data_bullets': [], 'athlete_card': {}})
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/deliver', headers={'X-Runner-Secret': 'shhh'})
+        item = r.get_json()['deliver'][0]
+        assert item['goal_event'] == 'Unbound 200'
+
+    def test_missing_report_json_yields_empty_findings_and_prefill(self, client, temp_athletes_dir, app):
+        import app as app_module
+        self._seed(app_module, order_id='cs_deliver_no_report')
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.get('/api/consult/jobs/deliver', headers={'X-Runner-Secret': 'shhh'})
+        item = r.get_json()['deliver'][0]
+        assert item['findings'] == []
+        assert item['prefill'] == {}
+
+
+class TestConsultEndureDelivered:
+    """POST /api/consult/jobs/<order_id>/endure-delivered (§6)."""
+
+    def _seed(self, app_module, order_id='cs_endure_del'):
+        import consultations
+        record = consultations.new_record(order_id=order_id, brand='gravelgod',
+                                          athlete_name='Jesse Couch')
+        record['endure'] = {
+            'requested_at': consultations.now_iso(),
+            'plan_of_action_md': '## Plan',
+            'delivered_at': None,
+            'result': None,
+        }
+        consultations.write_record(_consult_dir(app_module), record)
+
+    def test_503_when_runner_secret_unset(self, client, temp_athletes_dir):
+        with patch('app.CONSULT_RUNNER_SECRET', ''):
+            r = client.post('/api/consult/jobs/cs_x/endure-delivered', json={'result': {}})
+        assert r.status_code == 503
+
+    def test_401_when_wrong_secret(self, client, temp_athletes_dir):
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.post('/api/consult/jobs/cs_x/endure-delivered', json={'result': {}},
+                            headers={'X-Runner-Secret': 'nope'})
+        assert r.status_code == 401
+
+    def test_404_unknown_order(self, client, temp_athletes_dir):
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'):
+            r = client.post('/api/consult/jobs/cs_missing/endure-delivered', json={'result': {}},
+                            headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 404
+
+    def test_sets_delivered_at_and_result_and_sends_one_email(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        self._seed(app_module, order_id='cs_endure_ok')
+
+        result = {'athlete_id': 'a1',
+                  'invitation': {'status': 'sent', 'url': 'https://endurelabs.app/invite/xyz'}}
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            r = client.post('/api/consult/jobs/cs_endure_ok/endure-delivered',
+                            json={'result': result},
+                            headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 200
+        assert mock_send.call_count == 1
+        assert 'https://endurelabs.app/invite/xyz' in mock_send.call_args[0][2]
+        updated = consultations.read_record(_consult_dir(app_module), 'cs_endure_ok')
+        assert updated['endure']['delivered_at']
+        assert updated['endure']['result'] == result
+        assert updated['timeline'][-1]['event'] == 'endure_delivered'
+
+    def test_repeat_post_is_idempotent_no_second_email(self, client, temp_athletes_dir, app):
+        import app as app_module
+        import consultations
+        self._seed(app_module, order_id='cs_endure_dup')
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            for _ in range(2):
+                client.post('/api/consult/jobs/cs_endure_dup/endure-delivered',
+                            json={'result': {'athlete_id': 'a1'}},
+                            headers={'X-Runner-Secret': 'shhh'})
+        assert mock_send.call_count == 1
+        updated = consultations.read_record(_consult_dir(app_module), 'cs_endure_dup')
+        assert updated['endure']['delivered_at']
+
+    def test_no_invitation_url_still_sends_email(self, client, temp_athletes_dir, app):
+        import app as app_module
+        self._seed(app_module, order_id='cs_endure_no_invite')
+
+        with patch('app.CONSULT_RUNNER_SECRET', 'shhh'), \
+             patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            r = client.post('/api/consult/jobs/cs_endure_no_invite/endure-delivered',
+                            json={'result': {'athlete_id': 'a1', 'existing_user': True}},
+                            headers={'X-Runner-Secret': 'shhh'})
+        assert r.status_code == 200
+        assert mock_send.call_count == 1
+
 
 class TestConsultFollowupsStateMachine:
     """process_consult_followups() — state-conditional, not day-offset."""

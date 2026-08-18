@@ -136,8 +136,32 @@ return 200 and send NO second email.
   at}`. `process_consult_followups()` checks it once per cron run: heartbeat missing or older than
   6 h, or the latest heartbeat has `ok: false`, sends the coach `[GG] Consult runner needs
   attention` — at most once per 24 h (`last_runner_alarm_at` recorded in the same file).
-- **Operator endpoint** `POST /api/consult/<order_id>/op` (X-Cron-Secret) `{call_at? | close?:reason | retry?}`
+- **Operator endpoint** `POST /api/consult/<order_id>/op` (X-Cron-Secret)
+  `{call_at? | close?:reason | retry? | deliver_endure?:{plan_of_action_md}}`
   — Matti's only lever until a review surface exists (curl one-liners in the coach email).
+  `deliver_endure` writes an `endure` block onto the record —
+  `{requested_at, plan_of_action_md, delivered_at:null, result:null}` — and appends timeline
+  event `endure_requested`. This is how Matti hands the pipeline a plan-of-action write-up
+  (drafted from the coach report) for delivery to Endure (C6, endurelabs
+  `specs/consult-delivery/spec.md` §6).
+- `GET /api/consult/jobs/deliver` (X-Runner-Secret) → records with `endure.requested_at` set and
+  `endure.delivered_at` still `null`:
+  `{order_id, tp_athlete_id, email, first_name, last_name, consult_date (call_at ?? created_at),
+  goal_event (from the stored intake answers, or null), plan_addon (bool), plan_of_action_md,
+  findings, prefill}`. `findings` is read from the runner's stored
+  `consultations/<order_id>/report.json` (`~/gg-consult-runner/report/build_report.py` shape): the
+  `one_thing` first (`kind: "physiological_limiter"` when `one_thing.label == "durability"`, else
+  `"pattern"`), then up to 7 non-placeholder `data_bullets` (`"not available: …"` strings are
+  dropped) each as `{title, body, kind: "pattern", confidence: 0.75}` — `title` is the bullet text
+  itself (truncated to 60 chars), `body` is the full bullet. `prefill` is `{ftp, lthr, max_hr,
+  weight}` read from `report.json.athlete_card`, keys omitted when absent (the current
+  `build_athlete_card()` only ever populates `ftp`/`lthr`; `max_hr`/`weight` are forward-compatible).
+  A record with no `report.json` yet on disk still appears, with `findings: []` and `prefill: {}`.
+- `POST /api/consult/jobs/<order_id>/endure-delivered` `{result}` → sets `endure.delivered_at` (once)
+  and `endure.result` (the full payload each call, even on repeats), appends timeline event
+  `endure_delivered`, and sends the coach ONE confirmation email (`[GG] Consult delivered to
+  Endure: …`) including `result.invitation.url` when present. Idempotent: `delivered_at` is set on
+  the first call only; a repeat post (runner retry with backoff) sends no second email.
 
 ## 6. Runner (`~/gg-consult-runner`, runs on the Mac with a logged-in TP Chrome)
 - Poll `/pending` every 10 min; ONE roster fetch (`coaches/v1/coaches/1248813/athletes`); match
