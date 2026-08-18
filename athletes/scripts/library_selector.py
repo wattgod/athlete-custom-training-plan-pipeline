@@ -387,6 +387,8 @@ def _lint_flags(item: Mapping[str, Any]) -> list[str]:
         flags.append("lint_rpe_conflict")
     if item.get("lint_manual_review"):
         flags.append("lint_manual_review")
+    if item.get("lint_bookend_intensity"):
+        flags.append("lint_bookend_intensity")
     return flags
 
 
@@ -407,6 +409,7 @@ def _lint_exclusion_record(item: Mapping[str, Any], slot: Optional[Mapping[str, 
         "flags": _lint_flags(item),
         "lint_duration_claim": item.get("lint_duration_claim"),
         "lint_rpe_conflict": item.get("lint_rpe_conflict"),
+        "lint_bookend_intensity": item.get("lint_bookend_intensity"),
         "reason": "lint_excluded",
     }
     if slot is not None:

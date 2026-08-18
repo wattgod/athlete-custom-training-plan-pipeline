@@ -434,6 +434,119 @@ def compute_rpe_conflict_flag(rpe_text: str | None, description: str | None) -> 
 
 
 # ---------------------------------------------------------------------------
+# T29: bookend-intensity lint
+#
+# Coach ruling ("a warm up harder than the main set is a critical error"): a
+# live delivered item (FatMax Development, main set ~55-65% FTP) had its
+# cool-down START at 70% FTP -- above the ENTIRE main set -- so TP's chart
+# rendered the cool-down as the hardest part of the ride. Scope is narrow by
+# design (precision over recall, same as the two lints above): only items
+# whose main content never exceeds 70% FTP are candidates at all, so a real
+# hard-finish opener or crit-warmup (dominant non-bookend target > 70%) is
+# exempt by construction, never reaching the comparison below.
+# ---------------------------------------------------------------------------
+
+_BOOKEND_INTENSITY_TOLERANCE_PCT = 2.0
+_BOOKEND_INTENSITY_EASY_MAX_PCT = 70.0
+_BOOKEND_INTENSITY_MIN_MAIN_BLOCKS = 3
+
+# Field tests (FTP/anaerobic assessments) author their all-out effort as an
+# untargeted (0%) leaf -- there is no %FTP number to describe "go as hard as
+# you can" -- so the heuristic below only ever sees the test's easy
+# reference-pace padding and reads the whole session as an easy main set.
+# A real "Anaerobic Test" item's 50-75% warmup/cooldown around that padding
+# is coach-appropriate ramp-into/out-of-a-near-maximal-effort design, not
+# the FIX1 defect (an easy RIDE whose bookends outrun its own body); name-
+# match the same way delivery_render._rpe already detects field tests.
+_FIELD_TEST_NAME_RE = re.compile(r"\b(?:anaerobic|ftp|field)\b.*\btest\b", re.IGNORECASE)
+
+
+def _bookend_intensity_elements(
+    structure: Mapping[str, Any] | None,
+) -> list[tuple[str, dict[str, float] | None]]:
+    """[(zwo_tag, expected_power_dict_or_None), ...] in session order.
+
+    Reuses tp_structure_to_zwo's already corpus-verified structure walker
+    (warmUp/coolDown -> Ramp bounds, active/rest -> SteadyState/IntervalsT,
+    target-free -> FreeRide) rather than re-deriving TP's structure shape.
+    """
+    if not structure:
+        return []
+    try:
+        from tp_structure_to_zwo import _build as _tp_build
+        xml_parts, expected, _dropped, _notes = _tp_build(structure)
+    except Exception:
+        return []
+    elements = []
+    for xml, exp in zip(xml_parts, expected):
+        match = re.match(r"<(\w+)", xml.lstrip())
+        elements.append((match.group(1) if match else "", exp))
+    return elements
+
+
+def compute_bookend_intensity_flag(
+    structure: Mapping[str, Any] | None, name: str | None = None
+) -> dict[str, Any] | None:
+    """Return evidence when a bookend renders harder than its own main set.
+
+    Flags when the session opens with a Warmup ramp whose peak, or closes
+    with a Cooldown ramp whose start, exceeds the main set's hardest
+    (non-bookend) target by more than _BOOKEND_INTENSITY_TOLERANCE_PCT
+    points -- but only for items whose main content is itself easy
+    (dominant non-bookend target <= 70% FTP; see module docstring above).
+    Skips items with fewer than _BOOKEND_INTENSITY_MIN_MAIN_BLOCKS
+    target-bearing blocks in the whole session (too little structure to
+    call this a "main set" at all), and field tests (see
+    _FIELD_TEST_NAME_RE above).
+    """
+    if name and _FIELD_TEST_NAME_RE.search(name):
+        return None
+    elements = _bookend_intensity_elements(structure)
+    # A leaf targeted at exactly 0% FTP is TP's "no fixed target -- give it
+    # everything" convention for open-ended field-test efforts (an
+    # untargeted all-out block survives _build() as a 0% SteadyState). That
+    # is not a real intensity prescription and must not read as this item's
+    # "easy" main-set body.
+    elements = [
+        (tag, (exp if exp and any(v > 0 for v in exp.values()) else None))
+        for tag, exp in elements
+    ]
+    # "Too little structure to call a main set" is a whole-session guard
+    # (warmup + a single flat body + cooldown is exactly 3 target-bearing
+    # blocks and IS the shape this lint exists to catch -- the machine-built
+    # "Endurance Blocks" ladder is one flat SteadyState between two ramps),
+    # not a main-set-only count.
+    target_bearing_total = [exp for _tag, exp in elements if exp]
+    if len(target_bearing_total) < _BOOKEND_INTENSITY_MIN_MAIN_BLOCKS:
+        return None
+
+    main = [(tag, exp) for tag, exp in elements if tag not in ("Warmup", "Cooldown")]
+    main_values = [
+        exp[key] for _tag, exp in main if exp
+        for key in ("power_pct", "on_power_pct", "off_power_pct") if key in exp
+    ]
+    if not main_values:
+        return None
+    main_max = max(main_values)
+    if main_max > _BOOKEND_INTENSITY_EASY_MAX_PCT:
+        return None  # Hard main set (openers/crit-warmup/race-prep) -- exempt.
+
+    first_tag, first_exp = elements[0]
+    last_tag, last_exp = elements[-1]
+    first_peak = first_exp.get("power_high_pct") if first_tag == "Warmup" and first_exp else None
+    last_start = last_exp.get("power_low_pct") if last_tag == "Cooldown" and last_exp else None
+
+    offenders = []
+    if first_peak is not None and first_peak > main_max + _BOOKEND_INTENSITY_TOLERANCE_PCT:
+        offenders.append({"block": "warmup", "target_pct": round(first_peak, 1)})
+    if last_start is not None and last_start > main_max + _BOOKEND_INTENSITY_TOLERANCE_PCT:
+        offenders.append({"block": "cooldown", "target_pct": round(last_start, 1)})
+    if not offenders:
+        return None
+    return {"main_max_pct": round(main_max, 1), "offenders": offenders}
+
+
+# ---------------------------------------------------------------------------
 # Item selection + exclusion
 # ---------------------------------------------------------------------------
 
@@ -544,6 +657,7 @@ def build_items(
                     "workout_type_id": raw_item.get("workoutTypeId"),
                     "lint_duration_claim": compute_duration_claim_flag(description, duration_min),
                     "lint_rpe_conflict": compute_rpe_conflict_flag(parsed["rpe_text"], description),
+                    "lint_bookend_intensity": compute_bookend_intensity_flag(structure, name_raw),
                 }
             )
 
@@ -751,6 +865,7 @@ def reconcile(raw_path: Path, index_path: Path, extra_exclusions: Any = None) ->
         "has_cadence_targets",
         "lint_duration_claim",
         "lint_rpe_conflict",
+        "lint_bookend_intensity",
     )
     for item_id in sorted(set(fresh_by_id) & set(existing_by_id)):
         fresh_item, existing_item = fresh_by_id[item_id], existing_by_id[item_id]
@@ -824,7 +939,7 @@ def lint_flagged_items(index: Mapping[str, Any]) -> list[dict[str, Any]]:
     flagged = [
         item for item in index["items"]
         if item.get("lint_duration_claim") or item.get("lint_rpe_conflict")
-        or item.get("lint_manual_review")
+        or item.get("lint_manual_review") or item.get("lint_bookend_intensity")
     ]
     return sorted(flagged, key=lambda item: item["item_id"])
 
@@ -850,6 +965,14 @@ def _print_lint_report(index: Mapping[str, Any]) -> None:
             print(
                 f"  {label}: lint_rpe_conflict -- title RPE{rpe_conflict['title_rpe']} vs "
                 f"body RPE{rpe_conflict['body_rpe']} (gap {rpe_conflict['gap']})"
+            )
+        bookend = item.get("lint_bookend_intensity")
+        if bookend:
+            offenders = ", ".join(
+                f"{o['block']} {o['target_pct']}%" for o in bookend["offenders"])
+            print(
+                f"  {label}: lint_bookend_intensity -- {offenders} vs main-set max "
+                f"{bookend['main_max_pct']}%"
             )
 
 

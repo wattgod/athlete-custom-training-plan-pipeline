@@ -1057,13 +1057,17 @@ class TestFTPTestDayBeforeIsEasy:
         orig_datetime = cpd.datetime
         cpd.datetime = _FrozenDatetime
         try:
-            plan_dates = cpd.calculate_plan_dates('2026-03-21', plan_weeks=8)
+            # v29 fix wave: a mid-plan retest now requires total_weeks >= 10
+            # AND a >= 5-week gap from Week 1 (an 8-week plan gets exactly
+            # one test). 12 weeks keeps this fixture's original intent (day
+            # before an FTP retest must be easy) exercised.
+            plan_dates = cpd.calculate_plan_dates('2026-05-16', plan_weeks=12)
         finally:
             cpd.datetime = orig_datetime
 
         profile = {
             'name': 'FTP DayBefore Sample', 'athlete_id': 'ftp-daybefore-sample',
-            'target_race': {'name': 'Sanity Gravel Race', 'date': '2026-03-21',
+            'target_race': {'name': 'Sanity Gravel Race', 'date': '2026-05-16',
                             'distance_miles': 60, 'discipline': 'gravel'},
             'fitness_markers': {'ftp_watts': 250, 'weight_kg': 75},
             'weekly_availability': {'cycling_hours_target': 8},
@@ -1080,7 +1084,7 @@ class TestFTPTestDayBeforeIsEasy:
                 'sunday': {'availability': 'rest'},
             },
         }
-        derived = {'plan_weeks': 8, 'ability_level': 'Intermediate'}
+        derived = {'plan_weeks': 12, 'ability_level': 'Intermediate'}
         methodology = {'methodology_id': 'polarized_80_20',
                        'configuration': {'intensity_distribution': {'z2': 0.80, 'z4': 0.15, 'z5': 0.05}}}
 

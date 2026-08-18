@@ -1173,6 +1173,37 @@ def _library_name_reads_standalone(name_base: str) -> bool:
     return name_base[:1].isupper() and len(name_base) > _LIBRARY_DISPLAY_STANDALONE_MIN_LEN
 
 
+_BLOCKS_WORD_RE = re.compile(r'\bBlocks\b', re.IGNORECASE)
+
+
+def _resolution_is_flat_single_block_main(resolution: dict) -> bool:
+    """True when the resolved item's placed structure has no real block
+    variation -- one steady body between its (optional) warmup/cooldown
+    ramps. The machine-built "Endurance Blocks" ladder renders exactly this
+    shape (zero blocks, a single flat SteadyState) while sharing its name
+    with the coach's authored "Endurance - Blocks" items, which DO carry
+    real 30-35min blocks with 10min pieces between -- those have multiple
+    main-content elements and are untouched by this check."""
+    structure = resolution.get('structure')
+    if not structure:
+        return False
+    try:
+        from tp_structure_to_zwo import _build as _tp_build
+    except Exception:
+        return False
+    try:
+        xml_parts, _expected, _dropped, _notes = _tp_build(structure)
+    except Exception:
+        return False
+    main_tags = []
+    for xml in xml_parts:
+        match = re.match(r'<(\w+)', xml.lstrip())
+        tag = match.group(1) if match else ''
+        if tag not in ('Warmup', 'Cooldown'):
+            main_tags.append(tag)
+    return main_tags == ['SteadyState']
+
+
 def _library_display_name(resolution: dict) -> str:
     """R6: readable card title for a library-resolved session. Never
     mutates ``resolution['name_base']`` -- returns a new string only."""
@@ -1180,6 +1211,14 @@ def _library_display_name(resolution: dict) -> str:
     # Curation residue: trailing dashes/punctuation from the name parser
     # ("TT Base -") must never reach a card title.
     name_base = name_base.rstrip(' -–—·:').strip()
+    # Coach ruling ("An endurance block workout doesn't make sense"): a
+    # display name never promises "Blocks" for a session whose PLACED
+    # structure is a single flat steady main -- zero blocks. Checked on the
+    # actual resolved structure (not the name alone) so the coach's real
+    # "Endurance - Blocks - 2/3" items, which do alternate, are unaffected.
+    if _BLOCKS_WORD_RE.search(name_base) and _resolution_is_flat_single_block_main(resolution):
+        name_base = _BLOCKS_WORD_RE.sub('', name_base)
+        name_base = re.sub(r'\s{2,}', ' ', name_base).strip(' -–—·:').strip()
     if _library_name_reads_standalone(name_base):
         return name_base
     category = _LIBRARY_KEY_DISPLAY_CATEGORY.get(resolution.get('library_key'), '')
@@ -2751,15 +2790,29 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     # ---------------------------------------------------------------
     ftp_test_target_weeks = [1]  # Always test Week 1
 
-    def _find_ftp_week(preferred: int, search_range: int = 2) -> int:
+    # Coach ruling (Aug 2026, "why are there 2 FTP tests two weeks apart?"):
+    # an 8-week plan's mid-plan retest was landing Week 3 -- two weeks after
+    # the Week 1 baseline, not enough time for the number to move or be
+    # worth re-testing. A retest now needs BOTH a plan long enough to make
+    # one worthwhile (>= 10 weeks) AND a real gap (>= 5 weeks) from the
+    # test before it. The same gap rule applies to the >= 16-week third
+    # test, measured from whichever week the mid-plan retest actually
+    # landed on (or Week 1, if the mid-plan retest didn't find a slot).
+    _FTP_RETEST_MIN_GAP_WEEKS = 5
+
+    def _find_ftp_week(preferred: int, search_range: int = 2,
+                        min_gap_from: int = 1, min_gap: int = 0) -> int:
         """Find best week for FTP test near preferred week, avoiding conflicts.
 
-        Searches preferred week first, then +/- 1, +/- 2 weeks.
+        Searches preferred week first, then +/- 1, +/- 2 weeks (widened
+        around the gap floor when min_gap pushes preferred later).
         Avoids B-race weeks, taper, and race phases.
         Returns 0 if no suitable week found.
         """
         if preferred is None or preferred < 1:
             return 0
+        if min_gap > 0:
+            preferred = max(preferred, min_gap_from + min_gap)
         candidates = [preferred]
         for offset in range(1, search_range + 1):
             candidates.append(preferred - offset)
@@ -2767,13 +2820,22 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         for w in candidates:
             if w < 1 or w > total_weeks:
                 continue
+            if min_gap > 0 and (w - min_gap_from) < min_gap:
+                continue
             # Check phase - no FTP tests during taper or race
             week_phase = None
+            week_is_recovery = False
             for wk in weeks:
                 if wk['week'] == w:
                     week_phase = wk['phase']
+                    week_is_recovery = wk.get('is_recovery_week', False)
                     break
             if week_phase in ('taper', 'race'):
+                continue
+            # A recovery week never gets an FTP test injected (the injection
+            # below explicitly skips is_recovery_week weeks) -- picking one
+            # here silently drops the retest instead of landing it nearby.
+            if week_is_recovery:
                 continue
             # No FTP tests on B-race weeks
             if w in b_race_weeks:
@@ -2784,17 +2846,20 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             return w
         return 0
 
-    if total_weeks >= 8:
+    if total_weeks >= 10:
         # Mid-plan retest: prefer the week before build starts
         mid_target = first_build_week - 1 if first_build_week and first_build_week > 2 else total_weeks // 2
-        mid_week = _find_ftp_week(mid_target)
+        mid_week = _find_ftp_week(mid_target, min_gap_from=1,
+                                   min_gap=_FTP_RETEST_MIN_GAP_WEEKS)
         if mid_week > 0:
             ftp_test_target_weeks.append(mid_week)
 
     if total_weeks >= 16:
         # Third test: prefer the week before peak starts
         late_target = first_peak_week - 1 if first_peak_week and first_peak_week > 2 else (total_weeks * 3) // 4
-        late_week = _find_ftp_week(late_target)
+        previous_test_week = ftp_test_target_weeks[-1]
+        late_week = _find_ftp_week(late_target, min_gap_from=previous_test_week,
+                                    min_gap=_FTP_RETEST_MIN_GAP_WEEKS)
         if late_week > 0:
             ftp_test_target_weeks.append(late_week)
 
@@ -2817,7 +2882,12 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                            if long_day_abbrev in _WEEK_ORDER else None)
         _ftp_key_days, _ftp_other_days, _ftp_post_long = [], [], []
         # Tue/Thu first — tests replace the quality session on a hard day.
-        # Iteration order MUST match get_ftp_day_candidates() below.
+        # Preference order (not duration) breaks ties within each group: a
+        # weekend day having more available minutes must never outrank Tue/
+        # Thu. Sorting by max_duration descending here once bumped a testing
+        # week's FTP test to Saturday while the block-builder's already-
+        # placed Anaerobic Test stayed on Thursday -- the FTP test landed
+        # AFTER the test whose zones it's supposed to refresh.
         for _d in ['Tue', 'Thu', 'Mon', 'Wed', 'Fri', 'Sat', 'Sun']:
             if _d in declared_long_days or not _ftp_day_viable(_d):
                 continue
@@ -2829,15 +2899,29 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 _ftp_key_days.append(_entry)
             else:
                 _ftp_other_days.append(_entry)
-        _ftp_key_days.sort(key=lambda x: x[1], reverse=True)
-        _ftp_other_days.sort(key=lambda x: x[1], reverse=True)
-        _ftp_post_long.sort(key=lambda x: x[1], reverse=True)
         _ftp_candidates_precomputed = ([d for d, _ in _ftp_key_days]
                                        + [d for d, _ in _ftp_other_days]
                                        + [d for d, _ in _ftp_post_long])
     else:
         _ftp_candidates_precomputed = ['Sat', 'Thu', 'Sun']
-    _ftp_slot_day = _ftp_candidates_precomputed[0] if _ftp_candidates_precomputed else None
+
+    # A calendar testing week (Week 1) already places 'FTP Test' on a
+    # specific day inside the block-builder plan, chosen chronologically
+    # earlier than its 'Anaerobic Test' companion (build_calendar_week's
+    # day-by-day zip in block_builder.py walks Mon->Sun in order and hands
+    # out testing-week slots in FTP-Test-then-Anaerobic-Test order). That
+    # placement is authoritative for Week 1: recomputing an independent
+    # candidate here and disagreeing with it both strips the block-builder's
+    # FTP day (demoted to Endurance below, since it no longer matches
+    # _ftp_slot_day) AND silently drops the Anaerobic Test the block builder
+    # put on the day this override then claims for itself. Fall back to the
+    # precomputed candidate list for weeks with no block-builder FTP Test
+    # placement (mid/late-plan solo retests, which aren't testing weeks).
+    _bb_ftp_day = next(
+        (_d for _d in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+         if _bb_lookup.get((1, _d), {}).get('name') == 'FTP Test'),
+        None)
+    _ftp_slot_day = _bb_ftp_day or (_ftp_candidates_precomputed[0] if _ftp_candidates_precomputed else None)
 
     # Total weeks per phase (used for long ride progression)
     phase_total_weeks = dict(phase_counters)  # snapshot after counting all weeks
@@ -3891,48 +3975,22 @@ Trust the process, {athlete_name}."""
                 return max_duration >= FTP_TEST_DURATION_MIN
 
             def get_ftp_day_candidates() -> list:
-                """Build FTP day candidates: key days first (excluding long day), then other days.
+                """FTP day candidates, first entry always _ftp_slot_day.
 
-                The long ride day is excluded -- in polarized training the long Z2 ride
-                is the single most important workout for durability. FTP tests should
-                land on a non-long key day (e.g. interval day or weekend non-long day).
-                Falls back to ['Sat', 'Thu', 'Sun'] for non-custom schedules.
+                _ftp_slot_day (hoisted above, before the day loop) is the
+                single source of truth -- it already resolved the correct day,
+                preferring the block-builder's own testing-week 'FTP Test'
+                placement when Week 1 has one. This used to be a second,
+                independent candidate computation that could disagree with
+                _ftp_slot_day (a duration-sort tie-break bumped Saturday ahead
+                of Tue/Thu here while the hoisted version picked Thursday) --
+                whichever day _defer_to_legacy gated on then found no
+                matching candidate[0] and rendered nothing for the FTP test.
                 """
-                if not use_custom_schedule:
-                    return ['Sat', 'Thu', 'Sun']
-
-                key_days = []
-                other_days = []
-                post_long_days = []
-                # An FTP test the day AFTER the long ride is not a fresh test;
-                # demote it below every other viable day (last resort only).
-                _wk = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-                day_after_long = (_wk[(_wk.index(long_day_abbrev) + 1) % 7]
-                                  if long_day_abbrev in _wk else None)
-                # Tue/Thu first: tests replace the quality session on a
-                # normal hard day (coach testing-week pattern) instead of
-                # adding a hard day. MUST match the hoisted _ftp_slot_day
-                # iteration order or the gated day never gets its test.
-                for d in ['Tue', 'Thu', 'Mon', 'Wed', 'Fri', 'Sat', 'Sun']:
-                    if d in declared_long_days:
-                        continue  # Never put FTP test on the long ride day
-                    if not is_day_available_for_ftp(d):
-                        continue
-                    avail = get_day_availability(d)
-                    dur = avail.get('max_duration_min', 120)
-                    if d == day_after_long:
-                        post_long_days.append((d, dur))
-                    elif avail.get('is_key_day_ok', False):
-                        key_days.append((d, dur))
-                    else:
-                        other_days.append((d, dur))
-                # Stable sort by max_duration desc preserves Tue/Thu
-                # preference among equal-duration days
-                key_days.sort(key=lambda x: x[1], reverse=True)
-                other_days.sort(key=lambda x: x[1], reverse=True)
-                post_long_days.sort(key=lambda x: x[1], reverse=True)
-                return ([d for d, _ in key_days] + [d for d, _ in other_days]
-                        + [d for d, _ in post_long_days])
+                if _ftp_slot_day is None:
+                    return list(_ftp_candidates_precomputed)
+                return [_ftp_slot_day] + [
+                    d for d in _ftp_candidates_precomputed if d != _ftp_slot_day]
 
             ftp_day_candidates = get_ftp_day_candidates()
 
