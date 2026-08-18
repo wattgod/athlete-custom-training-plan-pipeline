@@ -181,17 +181,23 @@ class TestMidweekRaceSimulation:
     def test_exact_duration_budget(self):
         facts = RaceFacts(distance_miles=100, elevation_ft=6200)
         segments = compose_midweek_sim(61, facts)
-        total = sum(s.get('seconds', 0) for s in segments)
+        total = sum(
+            s['seconds'] if s['kind'] == 'steady'
+            else s['repeat'] * (s['on_seconds'] + s['off_seconds'])
+            for s in segments)
         assert total == 61 * 60
 
-    def test_has_all_three_acts_and_no_negative_durations(self):
+    def test_has_warmup_unit_cooldown_and_no_negative_durations(self):
         facts = RaceFacts(distance_miles=100, elevation_ft=6200)
         for duration in (45, 61, 75, 90):
             segments = compose_midweek_sim(duration, facts)
-            assert all(s.get('seconds', 0) >= 0 for s in segments)
+            assert all(
+                (s.get('seconds', 0) if s['kind'] == 'steady'
+                 else s['repeat'] * (s['on_seconds'] + s['off_seconds'])) >= 0
+                for s in segments)
             labels = ' '.join(s['label'] for s in segments)
-            assert 'Part 1' in labels
-            assert 'seated low-cadence climb' in labels
+            assert 'Warm-up' in labels
+            assert 'Unit 1' in labels
             assert 'Cooldown' in labels
 
     def test_zwo_is_race_shaped_not_a_flat_over_under(self):

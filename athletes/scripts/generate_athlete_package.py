@@ -1378,6 +1378,9 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         _authored_documents[filepath.stem] = content
     from brand_config import workout_author
     _workout_author = workout_author(profile or {})
+    # D1: act/midweek sim descriptions print watts alongside %FTP when the
+    # athlete's FTP is known; bands-only otherwise.
+    _athlete_ftp = ((profile or {}).get('fitness') or {}).get('ftp_watts')
 
     # ===================================================================
     # TP PROJECTION (D1/D5): per-ZWO metadata that PlanIR can't re-derive
@@ -1595,8 +1598,16 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         # caps.  The renderer therefore receives the real duration budget;
         # it never alters week typing or invents a race fact from a name.
         from act_race_sim import (act_sim_title, is_act_sim_eligible,
-                                  race_facts_from_profile)
+                                  race_facts_from_profile, compose_act_simulation,
+                                  composed_if, resolve_race_sim_series,
+                                  RACE_SIM_SERIES)
         _act_race_facts = race_facts_from_profile(profile or {})
+        # D6: curated race-matched sim series (Natty Specific, Black Canyon
+        # (Waffles), Leather Bound) take precedence over the composer for a
+        # matched race_id -- see resolve_race_sim_series below.
+        _act_race_id = ((profile or {}).get('target_race') or {}).get('race_id')
+        _act_series_names = RACE_SIM_SERIES.get(_act_race_id)
+        _act_series_fallbacks = []
         _descriptor_by_week = {
             descriptor['plan_week']: descriptor for descriptor in _bb_descriptors
         }
@@ -1623,17 +1634,64 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         _sim_step_minutes = ((_final_sim_minutes - _first_sim_minutes)
                              / max(1, len(_act_sim_days) - 1))
         for _act_index, _act_day in enumerate(_act_sim_days, start=1):
-            _original_duration = _act_day.get('duration', 0) or 1
             _sim_duration = round(_first_sim_minutes + _sim_step_minutes * (_act_index - 1))
             if _sim_duration > 0:
                 _act_day['duration'] = _sim_duration
-                _act_day['tss'] = round(_act_day.get('tss', 0) * _sim_duration / _original_duration)
             _act_day['name'] = 'Act Race Simulation'
             _act_day['act_simulation'] = {
                 'index': _act_index,
                 'total': len(_act_sim_days),
                 'dress_rehearsal': _act_index == len(_act_sim_days),
             }
+
+            # D6: try the curated series first. It is placed byte-verbatim
+            # (structure + description + authored TSS/IF) via the SAME
+            # carrier field (`library_resolution`) the general library
+            # selector uses downstream -- but act days are never sent
+            # through resolve_library_selections() (act_simulation stays
+            # excluded there), so setting it here directly is safe.
+            _act_series_resolution = None
+            if _act_series_names:
+                _act_series_resolution = resolve_race_sim_series(
+                    _act_race_id, _act_index, len(_act_sim_days),
+                    day_cap_min=(_bb_day_caps or {}).get(_act_day.get('day')),
+                )
+            if _act_series_resolution:
+                _act_series_resolution = dict(_act_series_resolution)
+                # Titles stay pipeline-owned Act framing (act_sim_title, set
+                # at render time from `act_simulation` -- delivery_notes.py
+                # and plan_ir key rehearsal/simulation detection on "act"/
+                # "dress rehearsal" in the display name). The curated item's
+                # own name goes on the description's first line instead.
+                _act_series_resolution['description'] = (
+                    f"{_act_series_resolution['name_base']}\n\n"
+                    f"{_act_series_resolution.get('description') or ''}"
+                )
+                _act_day['library_resolution'] = _act_series_resolution
+                _act_day['duration'] = _act_series_resolution['duration_min']
+                _act_day['tss'] = _act_series_resolution['tss']
+            else:
+                if _act_series_names:
+                    _act_series_fallbacks.append({
+                        'day': _act_day.get('day'),
+                        'race_id': _act_race_id,
+                        'act_index': _act_index,
+                        'total_acts': len(_act_sim_days),
+                        'reason': 'race_sim_series_no_match_or_oversize',
+                    })
+                # D3: TSS honesty -- recompute from the ACTUAL composed
+                # segments with the same repo-NP formula, replacing the old
+                # duration-ratio scaling (tuned for the retired three-Act
+                # composer). Deterministic: identical inputs at planning
+                # time and render time always produce identical segments.
+                if _act_day.get('duration', 0) > 0:
+                    _act_composed_segments = compose_act_simulation(
+                        _act_day['duration'], _act_index, len(_act_sim_days),
+                        _act_race_facts)
+                    _act_day['tss'] = round(
+                        composed_if(_act_composed_segments) ** 2
+                        * (_act_day['duration'] / 60) * 100
+                    )
 
         # A long simulation is a hard session even when it occupies the
         # long-ride role.  Protect the following calendar day before the
@@ -1660,7 +1718,11 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         # `except Exception` below, which re-raises unconditionally).
         # ===============================================================
         _library_selection_enabled = os.environ.get('GG_LIBRARY_SELECTION', '1') != '0'
-        _library_fallbacks = []
+        # D6 fallback records (race-sim series entries that didn't match or
+        # were oversized) are surfaced regardless of GG_LIBRARY_SELECTION --
+        # they come from resolve_race_sim_series above, not the general
+        # selector this flag gates.
+        _library_fallbacks = list(_act_series_fallbacks)
         if _library_selection_enabled:
             # B-race/A-race day flags live on the plan_dates calendar
             # (`weeks`), not on the block-builder's own day dict -- cross
@@ -1674,18 +1736,24 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 if (d.get('is_race_day') or d.get('is_b_race_day')
                     or d.get('is_b_race_opener') or d.get('is_b_race_easy'))
             }
-            _library_fallbacks = resolve_library_selections(
+            _library_fallbacks.extend(resolve_library_selections(
                 _bb_plan,
                 day_caps=_bb_day_caps,
                 athlete_seed=athlete_dir.name,
                 excluded_calendar_slots=_library_excluded_slots,
-            )
+            ))
             # NOTE: `athlete_dir` here is the caller's parameter -- in the
             # production authoring flow that's a SHORT-LIVED temp directory
             # (canonical_training_model's authoring context), same as
             # NEEDS_REVIEW.txt below. generate_athlete_package() copies this
             # file to the real athlete_dir after that temp dir is gone (see
             # the "Authoring canonical workout sessions" step).
+            try:
+                (athlete_dir / 'library_fallbacks.json').write_text(
+                    json.dumps(_library_fallbacks, indent=2) + '\n')
+            except OSError:
+                pass
+        elif _act_series_fallbacks:
             try:
                 (athlete_dir / 'library_fallbacks.json').write_text(
                     json.dumps(_library_fallbacks, indent=2) + '\n')
@@ -3234,7 +3302,7 @@ TIPS:
                         days_to_race=_days_until_race(race_date, day_info.get('date')))
                     _filename_name = display_name
 
-                if _library_resolution:
+                if _library_resolution and not _act_simulation:
                     # D3/R6: curated name_base (composed into a readable
                     # title -- see _library_display_name) replaces the
                     # resolved archetype title for library-selected days --
@@ -3245,6 +3313,15 @@ TIPS:
                     # UNCHANGED -- filename shape and series-suffix
                     # bookkeeping never depend on which renderer produced
                     # the file.
+                    #
+                    # D6: an act-simulation day carrying a library_resolution
+                    # (curated race-sim series match) is exempt -- its title
+                    # stays the pipeline-owned act_sim_title set above
+                    # (delivery_notes.py/plan_ir key rehearsal detection on
+                    # "act"/"dress rehearsal" in the display name); the
+                    # curated item's name was already folded into the
+                    # description's first line when the resolution was
+                    # attached.
                     display_name = _library_display_name(_library_resolution)
 
                 # Render ZWO through block-builder workout mapper. The
@@ -3285,6 +3362,7 @@ TIPS:
                         author=_workout_author,
                         dress_rehearsal=_act_simulation.get('dress_rehearsal', False),
                         race_rate_g_per_hour=_race_rate,
+                        ftp=_athlete_ftp,
                     )
                 elif bb_name == 'Race Simulation':
                     # Midweek quality-slot placement (role != long_ride --
@@ -3307,6 +3385,7 @@ TIPS:
                         duration_min=bb_duration,
                         facts=_act_race_facts,
                         author=_workout_author,
+                        ftp=_athlete_ftp,
                     )
                 else:
                     zwo_content = _bb_render(
