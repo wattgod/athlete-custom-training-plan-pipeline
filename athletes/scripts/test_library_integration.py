@@ -418,6 +418,63 @@ class TestHardDayDetection:
 
 
 # =============================================================================
+# v24 fix wave: back-loaded surges and torque/low-cadence work are hard by
+# accumulated work-seconds or muscular load, not by role or authored IF --
+# _resolution_is_hard misses both (see TestHardDayDetection above: it needs
+# either IF >=0.85 or a single continuous >=120%-FTP leaf sustained 60s+).
+# Real graded defect: Max Strength B shared a day with "Structured Fartlek"
+# (6x60s @~100% surges threaded through long ~66% blocks, authored IF
+# ~0.68) with no SEQUENCING guidance on the strength card.
+# =============================================================================
+
+def _fartlek_like_structure(surge_reps=6, surge_seconds=60, surge_pct=100,
+                             steady_seconds=291, steady_pct=68):
+    """Mirrors the real curated "Structured Fartlek" TP structure shape:
+    alternating steady/surge steps, each its own top-level repetition-1
+    block (not a single repeated sub-block)."""
+    blocks = []
+    for _ in range(surge_reps):
+        blocks.append({'steps': [{'name': 'Steady State',
+                       'length': {'value': steady_seconds, 'unit': 'second'},
+                       'targets': [{'maxValue': steady_pct}]}]})
+        blocks.append({'steps': [{'name': 'Steady State',
+                       'length': {'value': surge_seconds, 'unit': 'second'},
+                       'targets': [{'maxValue': surge_pct}]}]})
+    return {'structure': blocks}
+
+
+class TestBackLoadedSurgeAndTorqueHardDetection:
+    def test_back_loaded_surges_below_role_and_if_thresholds_count_as_hard_work(self):
+        from generate_athlete_package import _library_resolution_is_hard_work
+        resolution = {'if_planned': 0.68, 'structure': _fartlek_like_structure()}
+        assert _library_resolution_is_hard_work(resolution)
+
+    def test_too_few_surge_reps_does_not_count_as_hard_work(self):
+        from generate_athlete_package import _library_resolution_is_hard_work
+        resolution = {'if_planned': 0.68,
+                      'structure': _fartlek_like_structure(surge_reps=2)}
+        assert not _library_resolution_is_hard_work(resolution)
+
+    def test_torque_low_cadence_library_key_counts_as_hard_work_regardless_of_power(self):
+        """"Descending-Cadence Ladder" is hard by muscular/torque load, not
+        %FTP -- its own targets sit well under the 92% hard-work floor."""
+        from generate_athlete_package import _library_resolution_is_hard_work
+        resolution = {'if_planned': 0.70, 'library_key': 'torque_starts_cadence',
+                      'structure': {'structure': []}}
+        assert _library_resolution_is_hard_work(resolution)
+
+    def test_hard_bike_dates_includes_library_hard_work(self):
+        from generate_athlete_package import _compute_hard_bike_dates
+        records = [
+            {'tp_kind': 'bike', 'date': '2026-04-06', 'role': 'filler',
+             'library_is_hard_resolved': False, 'library_hard_work': True},
+            {'tp_kind': 'bike', 'date': '2026-04-07', 'role': 'filler',
+             'library_is_hard_resolved': False, 'library_hard_work': False},
+        ]
+        assert _compute_hard_bike_dates(records) == {'2026-04-06'}
+
+
+# =============================================================================
 # R6 (SPEC_LIBRARY_SELECTION.md regrade): readable display names.
 # name_base fragments ("with Surges", "Extended", "Blocks") shipped
 # verbatim as card titles; name_base itself must never change (family

@@ -1038,6 +1038,90 @@ class TestFTPTestPlacement:
             f"Weeks {missing} are missing long rides (non-taper/race weeks need them)"
 
 
+class TestFTPTestDayBeforeIsEasy:
+    """v24 fix wave: real graded defect -- a Week 3 FTP retest (Saturday)
+    was preceded by a 2-hour "Endurance with Surges" (TSS 100) Friday.
+    A fresh test needs fresh legs; the day before any FTP test must be
+    easy (or a rest day). Uses a frozen calendar + direct generate_zwo_files
+    call so this is deterministic regardless of wall-clock date."""
+
+    def _generate(self, tmp_path):
+        import calculate_plan_dates as cpd
+        from generate_athlete_package import generate_zwo_files
+
+        class _FrozenDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 1, 1)
+
+        orig_datetime = cpd.datetime
+        cpd.datetime = _FrozenDatetime
+        try:
+            plan_dates = cpd.calculate_plan_dates('2026-03-21', plan_weeks=8)
+        finally:
+            cpd.datetime = orig_datetime
+
+        profile = {
+            'name': 'FTP DayBefore Sample', 'athlete_id': 'ftp-daybefore-sample',
+            'target_race': {'name': 'Sanity Gravel Race', 'date': '2026-03-21',
+                            'distance_miles': 60, 'discipline': 'gravel'},
+            'fitness_markers': {'ftp_watts': 250, 'weight_kg': 75},
+            'weekly_availability': {'cycling_hours_target': 8},
+            'schedule_constraints': {'preferred_long_day': 'saturday',
+                                     'preferred_off_days': ['sunday']},
+            'preferred_days': {
+                'monday': {'availability': 'available', 'is_key_day_ok': False, 'max_duration_min': 150},
+                'tuesday': {'availability': 'available', 'is_key_day_ok': True, 'max_duration_min': 90},
+                'wednesday': {'availability': 'available', 'is_key_day_ok': False, 'max_duration_min': 75},
+                'thursday': {'availability': 'available', 'is_key_day_ok': True, 'max_duration_min': 90},
+                'friday': {'availability': 'available', 'is_key_day_ok': False, 'max_duration_min': 75},
+                'saturday': {'availability': 'available', 'is_key_day_ok': True,
+                            'is_long_day': True, 'max_duration_min': 240},
+                'sunday': {'availability': 'rest'},
+            },
+        }
+        derived = {'plan_weeks': 8, 'ability_level': 'Intermediate'}
+        methodology = {'methodology_id': 'polarized_80_20',
+                       'configuration': {'intensity_distribution': {'z2': 0.80, 'z4': 0.15, 'z5': 0.05}}}
+
+        athlete_dir = tmp_path / 'ftp-daybefore-sample'
+        (athlete_dir / 'workouts').mkdir(parents=True)
+        generate_zwo_files(athlete_dir, plan_dates, methodology, derived, profile)
+        return athlete_dir, generate_zwo_files.last_naming_manifest
+
+    def test_day_before_every_ftp_retest_is_easy_or_rest(self, tmp_path):
+        athlete_dir, manifest = self._generate(tmp_path)
+        ftp_records = [rec for rec in manifest.values()
+                       if str(rec.get('filename_stem', '')).__contains__('FTP_Test')]
+        assert len(ftp_records) >= 2, "test setup did not produce a mid-plan FTP retest"
+
+        for ftp_rec in ftp_records:
+            ftp_date = datetime.strptime(ftp_rec['date'], '%Y-%m-%d')
+            day_before = (ftp_date - timedelta(days=1)).strftime('%Y-%m-%d')
+            day_before_bikes = [rec for rec in manifest.values()
+                                if rec.get('date') == day_before and rec.get('tp_kind') == 'bike']
+            for rec in day_before_bikes:
+                assert rec.get('role') != 'intensity', (
+                    f"{rec['filename_stem']}: intensity day before an FTP test")
+                assert not rec.get('is_sim'), (
+                    f"{rec['filename_stem']}: simulation day before an FTP test")
+                assert not rec.get('library_has_surges'), (
+                    f"{rec['filename_stem']}: surge content day before an FTP test")
+                duration = rec.get('duration_min')
+                if duration is not None:
+                    assert duration <= 60, (
+                        f"{rec['filename_stem']}: {duration}min day before an FTP test (>60min cap)")
+                if_planned = rec.get('library_if_planned')
+                if if_planned is not None:
+                    assert if_planned <= 0.65, (
+                        f"{rec['filename_stem']}: IF {if_planned} day before an FTP test (>0.65 cap)")
+                # No high-power interval/burst content in the actual ZWO.
+                zwo_path = athlete_dir / 'workouts' / f"{rec['filename_stem']}.zwo"
+                content = zwo_path.read_text()
+                assert 'IntervalsT' not in content, (
+                    f"{rec['filename_stem']}: interval structure day before an FTP test")
+
+
 class TestOutputCompleteness:
     """Every available day should have a workout — no silent gaps."""
 
