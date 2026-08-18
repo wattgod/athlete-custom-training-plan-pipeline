@@ -463,3 +463,22 @@ def test_repeated_single_rep_segments_group_into_rep_count():
         segments=surges,
     )
     assert "15x6s @150%" in render_title(session, BRAND)
+
+
+def test_rpe_metric_structure_never_renders_percent_title():
+    """Real shipped defect: 'Muscle Recruitment Progressions' (the plan's
+    only primaryIntensityMetric=='rpe' item) titled as '19x60s @5%' —
+    RPE-5 targets rendered through the %FTP grammar."""
+    session = Session(
+        date="2026-09-18", title="Muscle Recruitment Progressions",
+        display_name="Muscle Recruitment Progressions",
+        sport="cycling", type="workout", origin="prescribed", tp_kind="bike",
+        duration_s=3600, tss=40, library_item_id=14356256, library_rpe_text="5-6",
+        structure={"primaryIntensityMetric": "rpe", "structure": [
+            {"length": {"value": 19}, "steps": [
+                {"name": "On", "length": {"value": 60}, "targets": [{"minValue": 5}]},
+                {"name": "Off", "length": {"value": 120}, "targets": [{"minValue": 3}]}]}]},
+    )
+    title = render_title(session, BRAND)
+    assert "@5%" not in title and "@ 5%" not in title
+    assert title.endswith("RPE5-6")

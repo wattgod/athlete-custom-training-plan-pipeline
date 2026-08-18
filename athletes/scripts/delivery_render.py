@@ -290,6 +290,16 @@ def _work_blocks_from_structure(session: Any) -> List[Tuple[int, int, Optional[s
 
 
 def _defining_set_from_structure(session: Any) -> Optional[str]:
+    # RPE-metric structures (primaryIntensityMetric == "rpe") carry 0-10
+    # RPE values in their targets, not %FTP -- rendering them with the
+    # normal "@{n}%" grammar produced a real shipped title of "19x60s @5%"
+    # (literally: five percent of FTP) on an RPE-5 leg-speed session. Their
+    # summary drops the power clause entirely; the trailing RPE token
+    # already communicates intensity.
+    structure = _get(session, "structure")
+    if (isinstance(structure, dict)
+            and str(structure.get("primaryIntensityMetric") or "").lower() == "rpe"):
+        return None
     pyramid = (_repeating_pyramid_from_segments(session) or
                _repeating_pyramid_from_structure(session))
     if pyramid:
