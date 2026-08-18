@@ -793,8 +793,10 @@ def _build_consulting_email(details: dict) -> tuple:
     email = details.get('email', '')
     hours = details.get('hours', '1')
     order_id = details.get('order_id', '')
+    brand = normalize_brand(details.get('brand'))
+    subject_prefix = _brand_config(brand).get('subject_prefix', '[GG]')
 
-    subject = f"[GG] Consulting booked: {name} — {hours}hr"
+    subject = f"{subject_prefix} Consulting booked: {name} — {hours}hr"
     html = f"""
 <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
   <div style="background: #B7950B; color: white; padding: 16px 24px; border-radius: 4px 4px 0 0;">
@@ -4215,6 +4217,12 @@ def create_checkout():
     brand = _brand_from_origin(request.headers.get('Origin', ''))
     brand_cfg = _brand_config(brand)
 
+    if brand_cfg.get('consulting_only'):
+        return jsonify({
+            'error': f"{brand_cfg.get('name', brand)} does not support training-plan "
+                     "generation (consulting only)"
+        }), 400
+
     # Generate intake ID and store questionnaire data
     intake_id = str(uuid.uuid4())
     data['computed_price_cents'] = pricing['price_cents']
@@ -4818,6 +4826,15 @@ def _send_recovery_email(email: str, name: str, product_type: str,
 
 def _handle_training_plan_webhook(data: dict, order_id: str):
     """Handle training plan checkout completion — create profile + run pipeline."""
+    _webhook_brand = normalize_brand(
+        data.get('data', {}).get('object', {}).get('metadata', {}).get('brand', DEFAULT_BRAND))
+    if _brand_config(_webhook_brand).get('consulting_only'):
+        logger.error(f"Training plan webhook rejected: brand {_webhook_brand!r} is consulting_only")
+        return jsonify({
+            'error': f"{_brand_config(_webhook_brand).get('name', _webhook_brand)} does not "
+                     "support training-plan generation (consulting only)"
+        }), 400
+
     order_data = extract_stripe_data(data)
 
     is_valid, error_msg = validate_order_data(order_data)
@@ -5122,6 +5139,7 @@ def _handle_consulting_webhook(session: dict, metadata: dict, order_id: str):
     try:
         subject, text, html = _build_consulting_email({
             'name': name, 'email': email, 'hours': str(hours), 'order_id': order_id,
+            'brand': brand,
         })
         if NOTIFICATION_EMAIL:
             _send_email(NOTIFICATION_EMAIL, subject, text, html=html, brand=brand)

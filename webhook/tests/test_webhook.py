@@ -2637,12 +2637,16 @@ class TestMultiBrand:
 
     def test_registry_is_the_authoritative_brand_source(self):
         from app import BRANDS
-        assert set(BRANDS) == {'gravelgod', 'roadielabs'}
+        assert set(BRANDS) == {'gravelgod', 'roadielabs', 'xcskilabs'}
         assert BRANDS['roadielabs']['discipline'] == 'road'
         assert BRANDS['roadielabs']['allowed_disciplines'] == ['road']
         assert BRANDS['roadielabs']['subject_prefix'] == '[RL]'
         assert BRANDS['roadielabs']['email']['from_email'] == 'coach@roadielabs.com'
         assert set(BRANDS['gravelgod']['allowed_disciplines']) == {'gravel', 'mtb'}
+        assert BRANDS['xcskilabs']['discipline'] == 'xc_ski'
+        assert BRANDS['xcskilabs']['allowed_disciplines'] == ['xc_ski']
+        assert BRANDS['xcskilabs']['subject_prefix'] == '[XC]'
+        assert BRANDS['xcskilabs']['consulting_only'] is True
 
     def test_railway_image_copies_registry_parent_directory(self):
         dockerfile = (Path(__file__).parents[1] / 'Dockerfile').read_text()
@@ -2674,6 +2678,16 @@ class TestMultiBrand:
         assert kwargs['cancel_url'] == 'https://roadielabs.com/questionnaire/'
         assert kwargs['metadata']['brand'] == 'roadielabs'
 
+    def test_xcskilabs_origin_maps_to_brand(self):
+        from app import _brand_from_origin
+        assert _brand_from_origin('https://xcskilabs.com') == 'xcskilabs'
+        assert _brand_from_origin('https://www.xcskilabs.com') == 'xcskilabs'
+
+    def test_xcskilabs_in_cors_allowlist(self):
+        from app import ALLOWED_ORIGINS
+        assert 'https://xcskilabs.com' in ALLOWED_ORIGINS
+        assert 'https://www.xcskilabs.com' in ALLOWED_ORIGINS
+
     def test_checkout_defaults_to_gravel_urls(self, client, tmp_path):
         future = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
         with patch('app.DATA_DIR', str(tmp_path)), \
@@ -2692,6 +2706,113 @@ class TestMultiBrand:
         assert kwargs['success_url'].startswith(
             'https://gravelgodcycling.com/training-plans/success/')
         assert kwargs['metadata']['brand'] == 'gravelgod'
+
+
+class TestXcSkiLabsBrand:
+    """XC Ski Labs sells the $150 consult (+ $100 add-on) through the shared
+    GG Stripe account / Railway webhook, but does not support training-plan
+    generation (consulting_only: true in brands.yaml)."""
+
+    def test_consulting_checkout_uses_xcskilabs_success_url_and_metadata(
+            self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock(id='cs_xc', url='https://checkout.stripe.com/xc')
+            mock_stripe.checkout.Session.create.return_value = mock_session
+            resp = client.post(
+                '/api/create-consulting-checkout',
+                json={'name': 'XC Tester', 'email': 'xc@test.com'},
+                content_type='application/json',
+                headers={'Origin': 'https://xcskilabs.com'})
+
+        assert resp.status_code == 200
+        call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+        assert call_kwargs['success_url'].startswith(
+            'https://xcskilabs.com/consulting/confirmed/')
+        assert call_kwargs['cancel_url'] == 'https://xcskilabs.com/consulting/'
+        assert call_kwargs['metadata']['brand'] == 'xcskilabs'
+
+    def test_training_plan_checkout_rejected_for_consulting_only_brand(
+            self, client, tmp_path):
+        future = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
+        with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app.stripe.checkout.Session.create') as mock_create:
+            resp = client.post(
+                '/api/create-checkout',
+                json={'name': 'XC Tester', 'email': 'xc@test.com',
+                      'races': [{'name': 'Birkie', 'date': future,
+                                 'priority': 'A'}]},
+                headers={'Origin': 'https://xcskilabs.com'})
+
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert 'consult' in data['error'].lower()
+        mock_create.assert_not_called()
+
+    def test_training_plan_webhook_rejected_for_consulting_only_brand(
+            self, client, temp_athletes_dir):
+        stripe_event = {
+            'type': 'checkout.session.completed',
+            'data': {
+                'object': {
+                    'id': 'cs_xc_plan_reject',
+                    'customer_details': {'name': 'XC Tester', 'email': 'xc@test.com'},
+                    'metadata': {
+                        'product_type': 'training_plan',
+                        'brand': 'xcskilabs',
+                    },
+                }
+            }
+        }
+        resp = client.post('/webhook/stripe', json=stripe_event,
+                           content_type='application/json')
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert 'consult' in data['error'].lower()
+
+    def test_consult_coach_notification_subject_prefix_xc(
+            self, client, temp_athletes_dir):
+        with patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app.RESEND_API_KEY', 'test-key'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            client.post('/webhook/stripe',
+                        json=_consulting_stripe_event(session_id='cs_xc_coach',
+                                                      brand='xcskilabs'),
+                        content_type='application/json')
+
+        coach_calls = [c for c in mock_send.call_args_list
+                       if c.args[0] == 'coach@example.com']
+        assert len(coach_calls) == 1
+        assert coach_calls[0].args[1].startswith('[XC]')
+
+    def test_consult_welcome_renders_for_xcskilabs(self, client, temp_athletes_dir):
+        with patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app.RESEND_API_KEY', 'test-key'), \
+             patch('app._send_email', return_value=True) as mock_send:
+            resp = client.post(
+                '/webhook/stripe',
+                json=_consulting_stripe_event(session_id='cs_xc_welcome',
+                                              email='xcathlete@example.com',
+                                              brand='xcskilabs'),
+                content_type='application/json')
+
+        assert resp.status_code == 200
+        welcome_calls = [c for c in mock_send.call_args_list
+                         if c.args[0] == 'xcathlete@example.com']
+        assert len(welcome_calls) == 1
+        assert welcome_calls[0].kwargs.get('brand') == 'xcskilabs'
+
+    def test_send_email_sender_falls_back_to_gg_default_when_env_unset(
+            self, monkeypatch):
+        import app as app_module
+        monkeypatch.delenv('RESEND_FROM_XCSKILABS', raising=False)
+        with patch.object(app_module, 'RESEND_API_KEY', 'test-key'), \
+             patch.object(app_module.http_requests, 'post') as mock_post:
+            mock_post.return_value = MagicMock(status_code=200)
+            app_module._send_email('xc@test.com', 'subject', 'body',
+                                   brand='xcskilabs')
+
+        mock_post.assert_called_once()
+        assert mock_post.call_args.kwargs['json']['from'] == app_module.RESEND_FROM
 
 
 class TestPipelineTimeoutHeadroom:
