@@ -18,6 +18,7 @@ caller-supplied identity so two calls with identical inputs are byte-identical.
 from __future__ import annotations
 
 import hashlib
+import os
 from typing import Any, Mapping, Optional, Sequence
 
 from tp_library_snapshot import load_index
@@ -262,11 +263,16 @@ def _duration_bounds(budget_min: float, day_cap_min: Optional[float],
 def _qualifying_pool(
     items: Sequence[Mapping[str, Any]], library_keys: Sequence[str], budget_min: float, day_cap_min: Optional[float],
     *, slot: Optional[Mapping[str, Any]] = None,
+    excluded_ids: frozenset = frozenset(), lint_exclusions: Optional[dict[Any, dict[str, Any]]] = None,
 ) -> list[Mapping[str, Any]]:
     """``slot`` is optional and keyword-only so existing positional callers
     (including the realism sweep and unit tests) are unaffected; passing it
     applies the R2 role/week-type intensity ceiling (see
-    ``_passes_role_ceiling``) on top of the duration-fit filter."""
+    ``_passes_role_ceiling``) on top of the duration-fit filter.
+
+    ``excluded_ids``/``lint_exclusions`` (T27) drop items carrying a
+    curation-consistency lint flag and, when a collector is passed, record a
+    loud per-item exclusion reason."""
     if not library_keys:
         return []
     lo, hi = _duration_bounds(budget_min, day_cap_min,
@@ -279,6 +285,7 @@ def _qualifying_pool(
         and item.get("duration_min") is not None
         and lo <= item["duration_min"] <= hi
     ]
+    pool = _record_lint_exclusions(pool, excluded_ids, lint_exclusions, slot)
     if slot is not None:
         pool = [item for item in pool if not _is_internal_only(item) and _passes_role_ceiling(item, slot)]
     return pool
@@ -358,6 +365,77 @@ _INTERNAL_ONLY_NAMES = {"the happy ending"}
 def _is_internal_only(item: Mapping[str, Any]) -> bool:
     name = (item.get("name_base") or item.get("name_raw") or "").lower()
     return any(blocked in name for blocked in _INTERNAL_ONLY_NAMES)
+
+
+# ---------------------------------------------------------------------------
+# T27: curation-consistency lint exclusion.
+#
+# Items are placed byte-verbatim (D3) -- a curated item whose own
+# description contradicts its own duration or title RPE (tp_library_snapshot
+# lint_duration_claim / lint_rpe_conflict) ships wrong prose to the athlete.
+# Flagged items are excluded from every selection pool. GG_LIBRARY_LINT=0 is
+# the kill switch (flags stay computed upstream; only the exclusion here is
+# disabled).
+# ---------------------------------------------------------------------------
+
+def _lint_flags(item: Mapping[str, Any]) -> list[str]:
+    flags = []
+    if item.get("lint_duration_claim"):
+        flags.append("lint_duration_claim")
+    if item.get("lint_rpe_conflict"):
+        flags.append("lint_rpe_conflict")
+    return flags
+
+
+def _lint_excluded_ids(index: Mapping[str, Any]) -> frozenset:
+    """item_ids to exclude from every selection pool, or the empty set when
+    GG_LIBRARY_LINT=0 (the kill switch -- flags themselves are still
+    computed and stored on the index by tp_library_snapshot)."""
+    if os.environ.get("GG_LIBRARY_LINT") == "0":
+        return frozenset()
+    return frozenset(item["item_id"] for item in index["items"] if _lint_flags(item))
+
+
+def _lint_exclusion_record(item: Mapping[str, Any], slot: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "item_id": item["item_id"],
+        "library_key": item["library_key"],
+        "name": item.get("name_base") or item.get("name_raw"),
+        "flags": _lint_flags(item),
+        "lint_duration_claim": item.get("lint_duration_claim"),
+        "lint_rpe_conflict": item.get("lint_rpe_conflict"),
+        "reason": "lint_excluded",
+    }
+    if slot is not None:
+        record["canonical_name"] = slot.get("canonical_name")
+        record["plan_week"] = slot.get("plan_week")
+        record["day"] = slot.get("day")
+        record["role"] = slot.get("role")
+        record["phase"] = slot.get("phase")
+    return record
+
+
+def _record_lint_exclusions(
+    pool: Sequence[Mapping[str, Any]],
+    excluded_ids: frozenset,
+    lint_exclusions: Optional[dict[Any, dict[str, Any]]],
+    slot: Optional[Mapping[str, Any]],
+) -> list[Mapping[str, Any]]:
+    """Drop lint-excluded items from ``pool``; record a loud, deduplicated
+    exclusion entry per item_id into ``lint_exclusions`` (D9-style report,
+    surfaced to the coach via the same fallback/NEEDS_REVIEW mechanism as a
+    slot with no qualifying item -- see generate_athlete_package.
+    resolve_library_selections)."""
+    if not excluded_ids:
+        return list(pool)
+    kept = []
+    for item in pool:
+        if item["item_id"] in excluded_ids:
+            if lint_exclusions is not None and item["item_id"] not in lint_exclusions:
+                lint_exclusions[item["item_id"]] = _lint_exclusion_record(item, slot)
+            continue
+        kept.append(item)
+    return kept
 
 
 _HARD_WORK_PCT_FLOOR = 92.0
@@ -537,6 +615,7 @@ def select(
     series_state: Optional[dict[str, Any]] = None,
     index: Optional[Mapping[str, Any]] = None,
     used_items: Optional[dict[Any, dict[str, Any]]] = None,
+    lint_exclusions: Optional[dict[Any, dict[str, Any]]] = None,
 ) -> Optional[dict[str, Any]]:
     """Resolve a canonical slot to a curated TP library item, or None (D9).
 
@@ -550,9 +629,16 @@ def select(
     across the whole plan. It constrains only FRESH (non-continuation)
     picks -- a continuing series is exempt (D8) but still records into it so
     a later fresh pick elsewhere in the plan won't collide with it.
+
+    ``lint_exclusions`` (T27) is threaded the same way: pass the caller's
+    dict to collect a deduplicated {item_id: record} of every curated item
+    excluded from a pool this call touched because it carries a
+    curation-consistency lint flag (GG_LIBRARY_LINT=0 disables the
+    exclusion; flags are still computed upstream).
     """
     index = index if index is not None else load_index()
     items = index["items"]
+    excluded_ids = _lint_excluded_ids(index)
 
     canonical_name = slot["canonical_name"]
     if canonical_name in SYNTHETIC_ONLY:
@@ -562,13 +648,14 @@ def select(
     budget_min = float(slot.get("budget_min") or 0)
     day_cap_min = slot.get("day_cap_min")
 
-    pool = _qualifying_pool(items, library_keys, budget_min, day_cap_min, slot=slot)
+    pool = _qualifying_pool(items, library_keys, budget_min, day_cap_min, slot=slot,
+                            excluded_ids=excluded_ids, lint_exclusions=lint_exclusions)
     if not pool:
         return None
 
     series_key = slot.get("series_key")
     if series_state is not None and series_key and series_key in series_state:
-        resolution = _select_series_continuation(slot, series_state, index, pool)
+        resolution = _select_series_continuation(slot, series_state, index, pool, excluded_ids)
         if resolution is not None:
             if used_items is not None:
                 _record_used_item(used_items, resolution["item_id"], slot.get("plan_week"))
@@ -605,6 +692,7 @@ def _select_series_continuation(
     series_state: dict[str, Any],
     index: Mapping[str, Any],
     pool: Sequence[Mapping[str, Any]],
+    excluded_ids: frozenset = frozenset(),
 ) -> Optional[dict[str, Any]]:
     state = series_state[slot["series_key"]]
     qualifying_ids = {item["item_id"] for item in pool}
@@ -617,6 +705,9 @@ def _select_series_continuation(
             candidates = [entry for entry in ladder if entry["rung"] > current_rung]
         else:
             candidates = list(ladder)
+        # T27: a lint-excluded item can never continue a series, even on
+        # the "next rung regardless" fallback below.
+        candidates = [entry for entry in candidates if entry["item_id"] not in excluded_ids]
         # Prefer the next rung that's still duration-qualified for this
         # slot; if none qualify, fall back to the next rung regardless
         # (the family ladder itself is the strongest series-coherence
@@ -632,7 +723,7 @@ def _select_series_continuation(
         # Ladder exhausted (top rung already reached) -- degrade to
         # singleton-style same-library nearest-higher-IF continuation.
 
-    return _select_singleton_continuation(slot, series_state, index, pool)
+    return _select_singleton_continuation(slot, series_state, index, pool, excluded_ids)
 
 
 def _select_singleton_continuation(
@@ -640,6 +731,7 @@ def _select_singleton_continuation(
     series_state: dict[str, Any],
     index: Mapping[str, Any],
     pool: Sequence[Mapping[str, Any]],
+    excluded_ids: frozenset = frozenset(),
 ) -> Optional[dict[str, Any]]:
     state = series_state[slot["series_key"]]
     library_key = state["library_key"]
@@ -657,9 +749,11 @@ def _select_singleton_continuation(
         # (series coherence over strict duration precision) before giving up.
         # R2: still honors the role/week-type ceiling -- duration drift is
         # an acceptable coherence trade, a recovery-week sprint item is not.
+        # T27: never continue onto a lint-excluded item either.
         all_in_library = [
             item for item in index["items"]
-            if item["library_key"] == library_key and _passes_role_ceiling(item, slot)
+            if item["library_key"] == library_key and item["item_id"] not in excluded_ids
+            and _passes_role_ceiling(item, slot)
         ]
         if last_if is not None:
             higher = [
@@ -714,6 +808,7 @@ def refit(
     slot: Mapping[str, Any],
     series_state: Optional[dict[str, Any]] = None,
     index: Optional[Mapping[str, Any]] = None,
+    lint_exclusions: Optional[dict[Any, dict[str, Any]]] = None,
 ) -> Optional[dict[str, Any]]:
     """Trim-step resolution: same routing/series constraints, next-shorter fit.
 
@@ -722,9 +817,12 @@ def refit(
     rule as ``select``'s continuation path) so trimming doesn't jump the
     athlete to an unrelated workout mid-series. Returns None (never raises)
     when nothing qualifies -- D9's loud fallback.
+
+    ``lint_exclusions`` (T27): same threaded collector as ``select``.
     """
     index = index if index is not None else load_index()
     items = index["items"]
+    excluded_ids = _lint_excluded_ids(index)
 
     canonical_name = slot["canonical_name"]
     if canonical_name in SYNTHETIC_ONLY:
@@ -734,7 +832,8 @@ def refit(
     budget_min = float(slot.get("budget_min") or 0)
     day_cap_min = slot.get("day_cap_min")
 
-    pool = _qualifying_pool(items, library_keys, budget_min, day_cap_min, slot=slot)
+    pool = _qualifying_pool(items, library_keys, budget_min, day_cap_min, slot=slot,
+                            excluded_ids=excluded_ids, lint_exclusions=lint_exclusions)
     if not pool:
         return None
 

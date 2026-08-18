@@ -1186,7 +1186,11 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     compliance gate stays outside any try/except).
 
     Returns the list of D9 fallback records for in-scope days with no
-    qualifying library item.
+    qualifying library item, PLUS (T27) one record per curated item excluded
+    from a pool this call touched because it carries a curation-consistency
+    lint flag (description contradicts its own duration or title RPE) --
+    each tagged ``reason: "lint_excluded"`` so the coach can tell the two
+    apart in the same reported list / library_fallbacks.json.
     """
     import library_selector
     from tp_library_snapshot import load_index
@@ -1196,6 +1200,7 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     excluded_calendar_slots = excluded_calendar_slots or set()
     series_state: dict = {}
     used_items: dict = {}
+    lint_exclusions: dict = {}
     fallbacks: list = []
 
     for bw in bb_plan.get('weeks', []):
@@ -1239,7 +1244,8 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
                 'race_demands': False,
             }
             resolution = library_selector.select(
-                slot, series_state=series_state, index=idx, used_items=used_items)
+                slot, series_state=series_state, index=idx, used_items=used_items,
+                lint_exclusions=lint_exclusions)
             if resolution is None:
                 fallbacks.append({
                     'plan_week': plan_week,
@@ -1260,13 +1266,20 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
 
     _rebalance_recovery_weeks_post_resolution(
         bb_plan, day_caps=day_caps, athlete_seed=athlete_seed,
-        series_state=series_state, used_items=used_items, index=idx)
+        series_state=series_state, used_items=used_items, index=idx,
+        lint_exclusions=lint_exclusions)
+
+    # T27: fold the loud, deduplicated lint-exclusion report into the same
+    # list D9's fallback reporting already writes to library_fallbacks.json
+    # and renders under coaching_brief.md's LIBRARY FALLBACKS section.
+    fallbacks.extend(sorted(lint_exclusions.values(), key=lambda rec: rec['item_id']))
 
     return fallbacks
 
 
 def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed,
-                                              series_state, used_items, index):
+                                              series_state, used_items, index,
+                                              lint_exclusions=None):
     """Keep recovery weeks inside R03's band AFTER resolution moves TSS.
 
     The build-time recovery fill works with yaml numbers; resolution then
@@ -1332,7 +1345,7 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
             }
             replacement = library_selector.select(
                 slot, series_state=series_state, index=index,
-                used_items=used_items)
+                used_items=used_items, lint_exclusions=lint_exclusions)
             if (replacement is None or replacement['item_id'] == old['item_id']
                     or (need_more and replacement['tss'] <= old['tss'])
                     or (not need_more and replacement['tss'] >= old['tss'])):

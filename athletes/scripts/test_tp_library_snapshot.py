@@ -25,9 +25,12 @@ from tp_library_snapshot import (  # noqa: E402
     build_items,
     classify_dimension_cues,
     compute_dimension_score,
+    compute_duration_claim_flag,
     compute_if_planned,
+    compute_rpe_conflict_flag,
     family_stats,
     has_cadence_targets,
+    lint_flagged_items,
     load_index,
     load_raw_dump,
     main,
@@ -462,6 +465,189 @@ def test_cli_build_then_reconcile_round_trip(tmp_path, capsys):
 
     assert main([str(dump_path), "--out", str(out_path), "--reconcile"]) == 0
     assert "added:\n  none" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# T27: curation-consistency lint
+# ---------------------------------------------------------------------------
+
+def test_duration_claim_flags_atkins_revenge_case():
+    # The live catch: level 1's description ("Z2 for ~2.5 hours" == 150min)
+    # reused verbatim on the 210min and 240min levels.
+    description = (
+        "Z2 for ~2.5 hours. Eat and drink every 45 minutes. \r\n\r\n-\r\n"
+        "Goal is to take in 200 kcal/hour, keeping carbohydrate intake light "
+        "(<20g/hr).  Drink plenty.\r\n-\r\nAfter, make sure to eat a decent "
+        "portion of carbohydrates to top up glycogen stores\r\n-\r\n"
+        "Try not to push endurance pace here, as it defeats the purpose."
+    )
+    # Correct level: the claim matches its own authored duration -- no flag.
+    assert compute_duration_claim_flag(description, authored_min=150) is None
+    # Stale levels: same description, different authored duration.
+    flag_210 = compute_duration_claim_flag(description, authored_min=210)
+    assert flag_210 is not None
+    assert flag_210["claimed_min"] == 150
+    assert flag_210["authored_min"] == 210
+    assert flag_210["rel_diff"] == pytest.approx(60 / 210, abs=1e-3)
+
+    flag_240 = compute_duration_claim_flag(description, authored_min=240)
+    assert flag_240 is not None
+    assert flag_240["claimed_min"] == 150
+
+
+def test_duration_claim_ignores_interval_level_mentions():
+    # "5min @ 90%" is an interval step, never a whole-session claim, even
+    # though 5min would otherwise be wildly off a short authored duration.
+    description = "Warm up, then main set: 5min @ 90% FTP, 5min easy. Repeat."
+    assert compute_duration_claim_flag(description, authored_min=60) is None
+
+
+def test_duration_claim_matching_claim_never_flags():
+    # "~3 hours" on a 180min item: claim matches authored exactly -> no flag.
+    description = "Ride steady Z2 ~3 hours. Fuel every 45 minutes."
+    assert compute_duration_claim_flag(description, authored_min=180) is None
+
+
+def test_duration_claim_2_5_hours_on_210min_flags():
+    description = "Z2 for 2.5 hours straight, no breaks."
+    flag = compute_duration_claim_flag(description, authored_min=210)
+    assert flag is not None
+    assert flag["claimed_min"] == 150
+    assert flag["rel_diff"] > 0.20
+
+
+def test_duration_claim_none_for_missing_inputs():
+    assert compute_duration_claim_flag(None, authored_min=180) is None
+    assert compute_duration_claim_flag("Z2 for 3 hours", authored_min=None) is None
+    assert compute_duration_claim_flag("Z2 for 3 hours", authored_min=0) is None
+
+
+def test_duration_claim_skips_structured_multi_segment_descriptions():
+    # Real "Torque Toking" shape: an opening Z2 block is only PART of the
+    # authored total, not a whole-session claim -- each dash-divided segment
+    # below carries its own duration too.
+    description = (
+        "150 minutes Z2 - keep to the bottom of the Z2 range and keep eating.\n"
+        "-\n"
+        "4x15 min Z3, cadence 50-70; 5 min recovery in between intervals\n"
+        "-\n"
+        "10min Z2\n"
+    )
+    assert compute_duration_claim_flag(description, authored_min=300) is None
+
+
+def test_duration_claim_skips_structure_marker_descriptions():
+    # Real "G-Spot" shape: a "STRUCTURE:" block uses prime-notation minutes
+    # (15', 20') the regex can't see; the prose "40 minutes total" below it
+    # is a WORK-only summary, not the whole 75min session.
+    description = (
+        "• STRUCTURE:\n15' warmup → 2×20' @ 87-91% FTP, 5' easy between → 10' cooldown\n\n"
+        "• Extended G-Spot work. 40 minutes total. RPE 6-7/10."
+    )
+    assert compute_duration_claim_flag(description, authored_min=75) is None
+
+
+def test_duration_claim_ignores_first_last_final_sub_segment_qualifiers():
+    description = "First 2 hours Z2 easy, then intervals, then final 30 minutes easy."
+    assert compute_duration_claim_flag(description, authored_min=235) is None
+
+
+def test_duration_claim_suppressed_when_another_claim_agrees():
+    # "5 hours" describes the real RACE, not this session; "4 hours"
+    # (matching the 240min authored total) elsewhere in the same
+    # description means the item isn't actually lying about its own length.
+    description = (
+        "Nats is 8 climbs over 5 hours - we start at 4x in 4 hours and "
+        "progress from here."
+    )
+    assert compute_duration_claim_flag(description, authored_min=240) is None
+
+
+def test_rpe_conflict_flags_clear_whole_session_contradiction_both_directions():
+    # Title higher than body.
+    flag = compute_rpe_conflict_flag("6-7", "Hold RPE 2-3 for the entire ride, steady and controlled.")
+    assert flag is not None
+    assert flag["title_rpe"] == "6-7"
+    assert flag["body_rpe"] == "2-3"
+    assert flag["gap"] == 3
+
+    # Title lower than body.
+    flag = compute_rpe_conflict_flag("2-3", "Hold RPE 8-9 for the entire ride, all out effort.")
+    assert flag is not None
+    assert flag["gap"] == 5
+
+
+def test_rpe_conflict_ignores_warmup_cooldown_mentions():
+    description = (
+        "WARM-UP:\n- Build to Z2, RPE 3-4.\n\nMAIN SET:\n- RPE: 6-7 (uncomfortably sustainable)\n\n"
+        "COOL-DOWN:\n- Easy spin, RPE 2.\n"
+    )
+    assert compute_rpe_conflict_flag("6-7", description) is None
+
+
+def test_rpe_conflict_ignores_bulleted_warmup_cooldown_headers():
+    # Real "AnCap Sets" shape: decorated section headers ("★ Warm-up:")
+    # and per-interval zone-attached RPE mentions ("(RPE 1-2)" glued to a
+    # Zone token) must never read as a whole-session contradiction.
+    description = (
+        "★ Warm-up:\n- Build from Z1 (RPE 1-2) to Z2 (RPE 3-4) for 10 min @ 85+ rpm.\n\n"
+        "★ Main Set:\n- 2 sets x 6 reps (30s HARD, 60s Recovery):\n"
+        "  * 30s @ Z6 (Max Effort), RPE 9-10. Alternate seated/standing.\n"
+        "  * 60s @ Z1 (RPE 1-2) recovery.\n\n"
+        "★ Cool-down:\n- EASY base pace @ Z1 (RPE 1-2).\n"
+    )
+    assert compute_rpe_conflict_flag("9-10", description) is None
+
+
+def test_rpe_conflict_close_bands_do_not_flag():
+    # A 1-band gap is not a "clear" contradiction.
+    assert compute_rpe_conflict_flag("6-7", "Hold RPE 5 for the main work.") is None
+
+
+def test_rpe_conflict_none_for_missing_inputs():
+    assert compute_rpe_conflict_flag(None, "Hold RPE 2-3 for the main work.") is None
+    assert compute_rpe_conflict_flag("6-7", None) is None
+
+
+@requires_real_dump
+def test_lint_flags_real_atkins_revenge_family():
+    raw = load_raw_dump(DEFAULT_RAW_PATH)
+    items, _ = build_items(raw)
+    by_id = {item["item_id"]: item for item in items}
+
+    assert by_id[14355812]["lint_duration_claim"] is None  # correct level (150min)
+    assert by_id[14355827]["lint_duration_claim"] is not None  # 210min, stale claim
+    assert by_id[14355828]["lint_duration_claim"] is not None  # 240min, stale claim
+
+
+@requires_real_dump
+def test_lint_flagged_items_real_dump_is_conservative():
+    # Precision over recall: the real 1,459-item selectable index should
+    # flag a small minority. A future dump refresh that suddenly flags a
+    # huge share is a signal the heuristics need re-tuning, not that the
+    # whole library went bad overnight.
+    index = build_index(DEFAULT_RAW_PATH)
+    flagged = lint_flagged_items(index)
+    assert 0 < len(flagged) < 50
+    for item in flagged:
+        assert item.get("lint_duration_claim") or item.get("lint_rpe_conflict")
+
+
+def test_lint_report_cli_prints_flagged_items(tmp_path, capsys):
+    dump_path = tmp_path / "raw.json"
+    out_path = tmp_path / "index.json.gz"
+    raw = _tiny_raw_dump()
+    raw["lib_a"]["items"][0]["description"] = "Z2 for 2.5 hours straight, no breaks."
+    raw["lib_a"]["items"][0]["totalTimePlanned"] = 3.5  # 210min authored, claim 150min
+    dump_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    assert main([str(dump_path), "--out", str(out_path)]) == 0
+    capsys.readouterr()
+
+    assert main([str(dump_path), "--out", str(out_path), "--lint-report"]) == 0
+    out = capsys.readouterr().out
+    assert "lint-flagged items: 1 / 2" in out
+    assert "lint_duration_claim" in out
 
 
 # ---------------------------------------------------------------------------

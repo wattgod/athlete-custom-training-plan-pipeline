@@ -2377,16 +2377,45 @@ def generate_coaching_brief(
             except Exception:
                 _fallbacks = []
             if _fallbacks:
-                md += "> ## 📋 LIBRARY FALLBACKS — SYNTHETIC RENDER USED\n"
-                md += (f"> {len(_fallbacks)} in-scope slot(s) had no qualifying "
-                       "curated TrainingPeaks library item and rendered on the "
-                       "synthetic (archetype) path instead:\n>\n")
-                md += "> | Week | Day | Workout | Phase |\n"
-                md += "> |------|-----|---------|-------|\n"
-                for _fb in _fallbacks:
-                    md += (f"> | {_fb.get('plan_week', '?')} | {_fb.get('day', '?')} "
-                           f"| {_fb.get('canonical_name', '?')} | {_fb.get('phase', '?')} |\n")
-                md += "\n"
+                _lint_excluded = [fb for fb in _fallbacks if fb.get('reason') == 'lint_excluded']
+                _slot_fallbacks = [fb for fb in _fallbacks if fb.get('reason') != 'lint_excluded']
+                md += "> ## 📋 LIBRARY FALLBACKS\n>\n"
+                if _slot_fallbacks:
+                    md += "> ### Synthetic render used\n"
+                    md += (f"> {len(_slot_fallbacks)} in-scope slot(s) had no qualifying "
+                           "curated TrainingPeaks library item and rendered on the "
+                           "synthetic (archetype) path instead:\n>\n")
+                    md += "> | Week | Day | Workout | Phase |\n"
+                    md += "> |------|-----|---------|-------|\n"
+                    for _fb in _slot_fallbacks:
+                        md += (f"> | {_fb.get('plan_week', '?')} | {_fb.get('day', '?')} "
+                               f"| {_fb.get('canonical_name', '?')} | {_fb.get('phase', '?')} |\n")
+                    md += "\n"
+                if _lint_excluded:
+                    # T27: curated items excluded from selection because their
+                    # own description contradicts their own duration or title
+                    # RPE (they'd ship wrong prose byte-verbatim). Fix at the
+                    # source in TrainingPeaks, then refresh the index.
+                    md += "> ### 🚫 Items excluded — description/duration or RPE mismatch\n"
+                    md += (f"> {len(_lint_excluded)} curated item(s) were excluded from "
+                           "selection because their own description contradicts their own "
+                           "duration or title RPE:\n>\n")
+                    md += "> | Item | Library | Issue |\n"
+                    md += "> |------|---------|-------|\n"
+                    for _le in _lint_excluded:
+                        _dc = _le.get('lint_duration_claim')
+                        _rc = _le.get('lint_rpe_conflict')
+                        _issues = []
+                        if _dc:
+                            _issues.append(
+                                f"claims ~{_dc.get('claimed_min', '?')}min "
+                                f"('{_dc.get('claim_text', '?')}'), authored {_dc.get('authored_min', '?')}min")
+                        if _rc:
+                            _issues.append(
+                                f"title RPE{_rc.get('title_rpe', '?')} vs body RPE{_rc.get('body_rpe', '?')}")
+                        md += (f"> | {_le.get('name', '?')} | {_le.get('library_key', '?')} "
+                               f"| {'; '.join(_issues) or '?'} |\n")
+                    md += "\n"
 
     md += f"## 1. Plan Overview\n"
     md += f"| Field | Value |\n"
