@@ -58,3 +58,39 @@ def test_all_out_free_ride_gets_display_band_and_tops_polyline():
     assert max(ys) == 1.0
     # the warmup must NOT be the tallest block anymore
     assert s["polyline"][1][1] < 1.0
+
+
+def test_composed_session_boundaries_get_warmup_and_cooldown_intensity():
+    # FIX 10 (Aug 17 2026 adversarial grade): a composed Act/midweek sim's
+    # ZWO renderer emits its own warm-up/cool-down as plain <SteadyState>
+    # blocks (never a literal <Warmup>/<Cooldown> ZWO tag), so after the
+    # ZWO round-trip both boundary segments carry kind="steady_state" --
+    # the first and last projected structure blocks read as generic
+    # "active" work, identical to the hardest interval in between.
+    s = project_tp_structure(_session([
+        {"kind": "steady_state", "seconds": 600, "name": "Warm-up",
+         "target": {"type": "power_pct_ftp", "value": 0.55}},
+        {"kind": "intervals", "repeat": 2, "on_seconds": 300, "off_seconds": 180,
+         "target": {"type": "power_pct_ftp", "on": 0.95, "off": 0.55}},
+        {"kind": "steady_state", "seconds": 600, "name": "Cooldown",
+         "target": {"type": "power_pct_ftp", "value": 0.5}},
+    ]), CONTROL)
+    assert s["structure"][0]["steps"][0]["intensityClass"] == "warmUp"
+    assert s["structure"][-1]["steps"][0]["intensityClass"] == "coolDown"
+    # The interval work in between must be untouched.
+    assert s["structure"][1]["steps"][0]["intensityClass"] == "active"
+
+
+def test_free_ride_boundary_is_never_mislabeled_a_cooldown():
+    # A composed session's boundary is only tagged coolDown when it's a
+    # real cool-down -- an all-out test/effort at the end of a session
+    # must never read as a cool-down, even though it is structurally the
+    # LAST block.
+    s = project_tp_structure(_session([
+        {"kind": "steady_state", "seconds": 600,
+         "target": {"type": "power_pct_ftp", "value": 0.55}},
+        {"kind": "free_ride", "seconds": 180, "name": "3min all-out test",
+         "target": {"type": "free"}},
+    ]), CONTROL)
+    assert s["structure"][0]["steps"][0]["intensityClass"] == "warmUp"
+    assert s["structure"][-1]["steps"][0]["intensityClass"] == "active"

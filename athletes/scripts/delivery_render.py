@@ -310,6 +310,18 @@ def _defining_set_from_structure(session: Any) -> Optional[str]:
         seconds, _, pct = block
         return (1 if _pct_value(pct) >= 88 else 0, seconds)
 
+    def _rank_key(block):
+        # Real graded defect ("Discount Fair"): two 15min @66% Z2 bookends
+        # (1800s total) outranked 4x6min @83% tempo work (1440s total)
+        # because the fallback below ranked by raw duration alone. Duration
+        # rewards padding; the main-set winner among blocks that don't
+        # individually clear the hard threshold above must be the highest
+        # WORK -- power x time -- not the longest. seconds*pct: bookends
+        # 1800*66=118,800 vs tempo 1440*83=119,520 -- the tempo work wins,
+        # matching the coach's read of which block defines the session.
+        seconds, _, pct = block
+        return (1 if _pct_value(pct) >= 88 else 0, seconds * _pct_value(pct))
+
     # Continuous-alternating endurance archetypes ("Aerobic Base" alternates
     # gently between ~68% and ~72% every 20min "so it doesn't go dead") group
     # into two same-duration, equal-rank blocks by the (seconds, percent) key
@@ -337,7 +349,7 @@ def _defining_set_from_structure(session: Any) -> Optional[str]:
             pct_display = f"{low:g}-{high:g}" if low != high else f"{low:g}"
             return f"{prefix}{each} @{pct_display}%"
 
-    total_seconds, reps, percent = max(blocks, key=_key)
+    total_seconds, reps, percent = max(blocks, key=_rank_key)
     # A repeated set is the session's identity: when the hardest block is a
     # single lead-in only marginally harder than a bigger repeated main set
     # (8min @88% vs 3x5min @85%), headline the repeats.
@@ -349,7 +361,7 @@ def _defining_set_from_structure(session: Any) -> Optional[str]:
                       if b[1] > 1 and b[0] >= 0.5 * total_seconds
                       and _pct_value(b[2]) >= _pct_value(percent) - 4]
         if rep_blocks:
-            total_seconds, reps, percent = max(rep_blocks, key=_key)
+            total_seconds, reps, percent = max(rep_blocks, key=_rank_key)
     if not percent:
         return None
     each_seconds = total_seconds / max(1, reps)
@@ -359,6 +371,46 @@ def _defining_set_from_structure(session: Any) -> Optional[str]:
         each = f"{max(1, int(round(each_seconds / 60.0)))}min"
     prefix = f"{reps}x" if reps > 1 else ""
     return f"{prefix}{each} @{_pct_value(percent):g}%"
+
+
+def _openers_defining_set(session: Any) -> Optional[str]:
+    """FIX 9 (Aug 17 2026 adversarial grade), scoped to openers/race-week-
+    sharpener titles only: the main-set ranking above picks ONE winning
+    block group, which silently drops a standalone supra-threshold lead-in
+    -- "Pre-Race Openers" titled itself "3x30s @125%" and never mentioned
+    the standalone "2min @120%" effort that precedes it in the same
+    session. Openers must disclose every supra-threshold (>=88% FTP)
+    effort, led by the longest single occurrence.
+    """
+    blocks = _work_blocks_from_segments(session) or _work_blocks_from_structure(session)
+    if not blocks:
+        return None
+
+    def _pct_value(pct):
+        try:
+            return float(str(pct).strip().rstrip("%") or 0)
+        except ValueError:
+            return 0.0
+
+    def _each_seconds(block):
+        seconds, reps, _ = block
+        return seconds / max(1, reps)
+
+    hard_blocks = [block for block in blocks if _pct_value(block[2]) >= 88]
+    if len(hard_blocks) < 2:
+        return None
+    ordered = sorted(hard_blocks, key=_each_seconds, reverse=True)
+    parts = []
+    for block in ordered:
+        seconds, reps, percent = block
+        each_seconds = _each_seconds(block)
+        if each_seconds < 90:
+            each = f"{int(round(each_seconds))}s"
+        else:
+            each = f"{max(1, int(round(each_seconds / 60.0)))}min"
+        prefix = f"{reps}x" if reps > 1 else ""
+        parts.append(f"{prefix}{each} @{_pct_value(percent):g}%")
+    return " + ".join(parts)
 
 
 _MAIN_SET = re.compile(r"\bMAIN\s+SET\s*:\s*(.+)", re.IGNORECASE)
@@ -634,6 +686,15 @@ def render_title(session: Any, brand_cfg: Dict[str, Any]) -> str:
     defining_set = _defining_set_from_structure(session)
     if defining_set is None:
         defining_set = _defining_set_from_description(_get(session, "description"))
+    # FIX 9: openers must disclose their biggest effort, not just the
+    # main-set ranking's single winning block group -- scoped to the
+    # openers/race-week-sharpener template only (display name carries
+    # "opener"), never any other title grammar.
+    raw_name = str(_get(session, "display_name") or _get(session, "title") or "")
+    if "opener" in raw_name.lower():
+        opener_set = _openers_defining_set(session)
+        if opener_set:
+            defining_set = opener_set
     name = render_session_name(session, defining_set)
     duration = _duration_minutes(session)
     if _get(session, "is_simulation"):

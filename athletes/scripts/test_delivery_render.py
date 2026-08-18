@@ -75,6 +75,118 @@ def test_alternating_two_power_endurance_archetype_counts_every_block():
     assert "4x20min" not in title
 
 
+def test_main_set_prefers_highest_work_block_over_easy_bookends():
+    # Real graded defect: "Discount Fair" (curated item 14355846) is a
+    # 15min@56-75% bookend + 4x(6min Hard + 4min Easy, both targeted
+    # 76-90%) + 15min@56-75% bookend. The two Z2 bookends (1800s total)
+    # outranked the 4x6min tempo work (1440s total) because the ranking
+    # fallback picked the longest block, not the hardest. seconds x pct
+    # ("work") must decide: 1800*66=118,800 for the bookends vs
+    # 1440*83=119,520 for the tempo blocks -- the tempo work wins the
+    # title, not the padding.
+    session = Session(
+        date="2026-09-21", title="Discount Fair", display_name="Discount Fair",
+        sport="cycling", type="workout", origin="prescribed", tp_kind="bike",
+        duration_s=70 * 60, tss=60, library_item_id=14355846,
+        structure={
+            "primaryIntensityMetric": "percentOfFtp",
+            "structure": [
+                {"length": {"unit": "repetition", "value": 1}, "steps": [
+                    {"intensityClass": "active", "name": "Steady State",
+                     "length": {"unit": "second", "value": 900},
+                     "targets": [{"minValue": 66}]},
+                ]},
+                {"length": {"unit": "repetition", "value": 1}, "steps": [
+                    {"intensityClass": "active", "name": "Work",
+                     "length": {"unit": "second", "value": 360},
+                     "targets": [{"minValue": 83}]},
+                ]},
+                {"length": {"unit": "repetition", "value": 1}, "steps": [
+                    {"intensityClass": "rest", "name": "Recovery",
+                     "length": {"unit": "second", "value": 240},
+                     "targets": [{"minValue": 83}]},
+                ]},
+                {"length": {"unit": "repetition", "value": 1}, "steps": [
+                    {"intensityClass": "active", "name": "Work",
+                     "length": {"unit": "second", "value": 360},
+                     "targets": [{"minValue": 83}]},
+                ]},
+                {"length": {"unit": "repetition", "value": 1}, "steps": [
+                    {"intensityClass": "rest", "name": "Recovery",
+                     "length": {"unit": "second", "value": 240},
+                     "targets": [{"minValue": 83}]},
+                ]},
+                {"length": {"unit": "repetition", "value": 1}, "steps": [
+                    {"intensityClass": "active", "name": "Work",
+                     "length": {"unit": "second", "value": 360},
+                     "targets": [{"minValue": 83}]},
+                ]},
+                {"length": {"unit": "repetition", "value": 1}, "steps": [
+                    {"intensityClass": "rest", "name": "Recovery",
+                     "length": {"unit": "second", "value": 240},
+                     "targets": [{"minValue": 83}]},
+                ]},
+                {"length": {"unit": "repetition", "value": 1}, "steps": [
+                    {"intensityClass": "active", "name": "Work",
+                     "length": {"unit": "second", "value": 360},
+                     "targets": [{"minValue": 83}]},
+                ]},
+                {"length": {"unit": "repetition", "value": 1}, "steps": [
+                    {"intensityClass": "rest", "name": "Recovery",
+                     "length": {"unit": "second", "value": 240},
+                     "targets": [{"minValue": 83}]},
+                ]},
+                {"length": {"unit": "repetition", "value": 1}, "steps": [
+                    {"intensityClass": "active", "name": "Steady State",
+                     "length": {"unit": "second", "value": 900},
+                     "targets": [{"minValue": 66}]},
+                ]},
+            ],
+        },
+    )
+    title = render_title(session, BRAND)
+    assert "4x6min @83%" in title
+    assert "2x15min" not in title
+
+
+def test_openers_title_discloses_its_biggest_effort_not_just_the_reps():
+    # Real graded defect: "Pre-Race Openers" titled itself "3x30s @125%"
+    # and never mentioned the standalone "2min @120%" effort that precedes
+    # it in the same session (main-set ranking picks one winning block
+    # group, dropping the lead-in). Openers must lead with the longest
+    # supra-threshold effort. Scoped to display names carrying "opener".
+    session = Session(
+        date="2026-09-15", title="Pre-Race Openers", display_name="Pre-Race Openers",
+        sport="cycling", type="workout", origin="prescribed", tp_kind="bike",
+        duration_s=25 * 60, tss=20,
+        segments=[
+            Segment(name="lead-in", kind="steady_state", seconds=120, power_target=1.20),
+            Segment(name="stabs", kind="intervals", seconds=630, repeat=3,
+                    on_seconds=30, on_power=1.25, off_seconds=120, off_power=.55),
+        ],
+    )
+    title = render_title(session, BRAND)
+    assert "2min @120% + 3x30s @125%" in title
+
+
+def test_non_opener_title_unaffected_by_the_disclosure_rule():
+    # The same shape on a non-opener session must render exactly as before
+    # -- the disclosure rule is scoped to "opener" display names only.
+    session = Session(
+        date="2026-09-15", title="Race Simulation", display_name="Race Simulation",
+        sport="cycling", type="workout", origin="prescribed", tp_kind="bike",
+        duration_s=25 * 60, tss=20,
+        segments=[
+            Segment(name="lead-in", kind="steady_state", seconds=120, power_target=1.20),
+            Segment(name="stabs", kind="intervals", seconds=630, repeat=3,
+                    on_seconds=30, on_power=1.25, off_seconds=120, off_power=.55),
+        ],
+    )
+    title = render_title(session, BRAND)
+    assert "2min @120% + 3x30s @125%" not in title
+    assert "3x30s @125%" in title
+
+
 def test_library_session_authored_rpe_wins_over_structure_derived_rpe():
     # Real graded defect: a library-resolved session with dominant power 80%
     # (structure-derived RPE5-6) carried the coach's own authored "RPE3-4"

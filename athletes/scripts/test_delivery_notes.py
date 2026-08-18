@@ -67,6 +67,24 @@ def test_full_guillermo_render_has_complete_inventory_and_safe_copy():
     assert all("@" not in note["body"].replace("gravelgodcoaching@gmail.com", "") for note in notes)
 
 
+def test_heat_prep_note_describes_the_whole_ride_not_marked_blocks():
+    # FIX 8 (Aug 17 2026 adversarial grade): the note promised "deliberate
+    # thermal-stress blocks... ride the marked blocks with an extra layer"
+    # while the referenced workout is one undifferentiated Z2 block with
+    # nothing marked. The copy must describe the whole ride as the block.
+    plan = _plan()
+    week = plan["weeks"][1]
+    monday = date.fromisoformat(week["sessions"][0]["date"])
+    week["sessions"].append({
+        "date": str(monday + timedelta(days=2)), "title": "Heat Acclimation Protocol",
+        "display_name": "Heat Acclimation Protocol", "tp_kind": "bike",
+        "duration_s": 90 * 60,
+    })
+    heat_prep = next(note for note in _notes(plan) if note["type"] == "heat_prep")
+    assert "marked blocks" not in heat_prep["body"]
+    assert "the whole ride is the block" in heat_prep["body"].lower()
+
+
 def test_four_week_plan_converges_without_note_collisions_and_keeps_grit():
     notes = _notes(_plan(weeks=4))
     count = Counter(note["date"] for note in notes)
@@ -293,6 +311,44 @@ def test_start_here_omits_one_off_quality_weekdays_from_the_standing_pattern():
     assert "saturday" not in start_here
 
 
+def test_start_here_pattern_reflects_placed_calendar_not_profile_availability():
+    # FIX 3 (Aug 17 2026 adversarial grade): a real plan whose hard days
+    # actually land Thursday + Saturday once rendered "Quality lands on
+    # Friday and Thursday" -- a claim pulled from profile availability
+    # rather than the placed calendar. Thursday carries curated (level-less)
+    # interval work and Saturday carries hard threshold work across every
+    # training week; the standing pattern must name both, and never a day
+    # (Friday) that carries no quality work at all.
+    start = date(2026, 8, 10)
+    weeks = []
+    for number in (1, 2, 3):
+        monday = start + timedelta(days=(number - 1) * 7)
+        weeks.append({
+            "number": number, "phase": "build", "week_type": "build",
+            "sessions": [
+                {"date": str(monday + timedelta(days=1)), "title": "Endurance Ride",
+                 "tp_kind": "bike", "duration_s": 3 * 60 * 60},
+                {"date": str(monday + timedelta(days=3)), "title": "Ronnestad 30-15",
+                 "tp_kind": "bike", "duration_s": 61 * 60,
+                 "library_item_id": 14357661, "library_rpe_text": "8-9",
+                 "segments": [{"kind": "intervals", "repeat": 13, "on_seconds": 30,
+                               "on_power": 1.10, "off_seconds": 15, "off_power": .5}]},
+                {"date": str(monday + timedelta(days=5)), "title": "Threshold Work",
+                 "tp_kind": "bike", "duration_s": 90 * 60,
+                 "segments": [{"kind": "steady_state", "seconds": 20 * 60, "power_target": .92}]},
+                {"date": str(monday + timedelta(days=6)), "title": "Day Off", "tp_kind": "day_off"},
+            ],
+        })
+    plan = {
+        "brand": "gravelgod", "athlete": {"name": "Test Athlete"}, "weeks": weeks,
+        "race_snapshot": {"name": "Test Race", "date": "2026-09-05"},
+    }
+    start_here = _by_type(_notes(plan))["start_here"]["body"].lower()
+    assert "thursday" in start_here
+    assert "saturday" in start_here
+    assert "friday" not in start_here
+
+
 def test_briefing_uses_the_same_corrected_name_as_the_rendered_calendar_card():
     plan = _plan()
     session = plan["weeks"][1]["sessions"][0]
@@ -306,6 +362,37 @@ def test_briefing_uses_the_same_corrected_name_as_the_rendered_calendar_card():
     rendered_name = render_title(session, load_brand("gravelgod")).split(" - ", 1)[0]
     assert rendered_name in briefing["body"]
     assert "VO2max 40/20" not in briefing["body"]
+
+
+def test_briefing_names_the_weeks_hardest_ride_without_a_level_field():
+    # FIX 4 (Aug 17 2026 adversarial grade): a real "Ronnestad 30-15"
+    # (IF .778-.795, RPE8-9, 33x30s @110%) landing on base-week Thursdays
+    # never appeared in KEY SESSIONS or THE WEEK IN SEQUENCE -- it carries
+    # no `level` (curated items never do), and its hyphenated title matches
+    # none of the slash-formatted keyword fallback, so the level-gated
+    # dominant-work check silently skipped it.
+    plan = _plan()
+    week = plan["weeks"][1]
+    monday = date.fromisoformat(week["sessions"][0]["date"])
+    week["phase"] = "base"
+    week["sessions"] = [
+        {"date": str(monday + timedelta(days=1)), "title": "Endurance Ride",
+         "tp_kind": "bike", "duration_s": 90 * 60},
+        {"date": str(monday + timedelta(days=3)), "title": "Ronnestad 30-15",
+         "tp_kind": "bike", "duration_s": 61 * 60,
+         "library_item_id": 14357661, "library_rpe_text": "8-9",
+         "segments": [{"kind": "intervals", "repeat": 13, "on_seconds": 30,
+                       "on_power": 1.10, "off_seconds": 15, "off_power": .5}]},
+        {"date": str(monday + timedelta(days=6)), "title": "Day Off", "tp_kind": "day_off"},
+    ]
+    briefing = next(note for note in _notes(plan)
+                    if note["type"] == "weekly_briefing" and note["title"].startswith("WEEK 2"))
+    assert "Ronnestad 30-15" in briefing["body"]
+    key_sessions = briefing["body"].split("THIS WEEK'S KEY SESSIONS\n", 1)[1].split(".", 1)[0]
+    assert "Ronnestad 30-15" in key_sessions
+    assert "THE WEEK IN SEQUENCE" in briefing["body"]
+    sequence = briefing["body"].split("THE WEEK IN SEQUENCE\n", 1)[1]
+    assert "Ronnestad 30-15" in sequence
 
 
 def test_briefing_keeps_the_weeks_simulation_when_three_weekday_sessions_are_keyed():

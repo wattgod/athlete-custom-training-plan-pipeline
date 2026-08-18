@@ -856,6 +856,35 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
                    target, intensity, all_out=all_out)
     if not steps:
         return None
+    # FIX 10 (Aug 17 2026 adversarial grade): this function only ever
+    # projects COMPOSED sessions (Act sims, midweek sims, other
+    # synthesized cards) -- curated library items are placed byte-verbatim
+    # with their own TP structure and never reach this segments-based path.
+    # A composed session's ZWO renderer emits its literal warm-up/cool-down
+    # as plain <SteadyState> blocks (never a <Warmup>/<Cooldown> ZWO tag),
+    # so the round-tripped segment ``kind`` above is "steady_state" and the
+    # intensity check falls through to the generic "active" default -- the
+    # composed card's first and last blocks read exactly like its hardest
+    # interval. Every composed session structurally begins and ends with
+    # its own real warm-up/cool-down (see act_race_sim.py's
+    # _compose_with_units/_compose_midweek_with_units), so tag them
+    # explicitly here rather than trusting the per-segment kind alone. A
+    # single-block session has no distinct warm-up/cool-down to disclose.
+    # An "intervals"-kind boundary segment (its emitted last step is a
+    # Recovery/"rest" block, never "active") and a "free_ride" boundary
+    # segment (an unstructured effort -- e.g. an all-out test -- must never
+    # be mislabeled a cool-down) are excluded.
+    boundary_segments = session.get("segments") or []
+    if len(steps) >= 2 and boundary_segments:
+        for segment, block_index, boundary_intensity in (
+            (boundary_segments[0], 0, "warmUp"),
+            (boundary_segments[-1], -1, "coolDown"),
+        ):
+            if segment.get("kind") in ("intervals", "free_ride"):
+                continue
+            leaf_step = steps[block_index]["steps"][0]
+            if leaf_step["intensityClass"] == "active":
+                leaf_step["intensityClass"] = boundary_intensity
     metric = {
         "power": "percentOfFtp",
         "hr:lthr": "percentOfThresholdHr",

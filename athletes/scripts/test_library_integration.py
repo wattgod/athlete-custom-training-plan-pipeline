@@ -391,10 +391,21 @@ class TestHardDayDetection:
     def test_short_sprint_target_does_not_count_as_hard(self):
         """R1's exact case: a 30s @200% sprint leaf is a different training
         stimulus than a sustained >=60s push -- must not trip the hard-day
-        classifier on its own (that's what if_planned >= 0.85 is for)."""
+        classifier on its own (that's what the if_planned >= 0.72 floor --
+        FIX 5, Aug 17 2026 -- is for)."""
         from generate_athlete_package import _resolution_is_hard
         resolution = {'if_planned': 0.60, 'structure': self._hard_structure(seconds=30, value=200)}
         assert not _resolution_is_hard(resolution)
+
+    def test_tempo_if_at_the_lowered_threshold_counts_as_hard(self):
+        # FIX 5 (Aug 17 2026 adversarial grade): "Endurance Tempo" (IF .729)
+        # and "Discount Fair" (IF .76) both missed same-day strength
+        # SEQUENCING guidance because the old 0.85 floor was too high --
+        # the consistent, documented rule is IF >= 0.72.
+        from generate_athlete_package import _resolution_is_hard
+        assert _resolution_is_hard({'if_planned': 0.729, 'structure': {'structure': []}})
+        assert _resolution_is_hard({'if_planned': 0.76, 'structure': {'structure': []}})
+        assert not _resolution_is_hard({'if_planned': 0.71, 'structure': {'structure': []}})
 
     def test_hard_bike_dates_includes_library_is_hard_resolved(self):
         from generate_athlete_package import _compute_hard_bike_dates
