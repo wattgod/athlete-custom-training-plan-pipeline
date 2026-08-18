@@ -309,6 +309,34 @@ def _defining_set_from_structure(session: Any) -> Optional[str]:
     def _key(block):
         seconds, _, pct = block
         return (1 if _pct_value(pct) >= 88 else 0, seconds)
+
+    # Continuous-alternating endurance archetypes ("Aerobic Base" alternates
+    # gently between ~68% and ~72% every 20min "so it doesn't go dead") group
+    # into two same-duration, equal-rank blocks by the (seconds, percent) key
+    # above -- picking just one of them arbitrarily undercounted the total
+    # reps (a real defect: the title said "4x20min @68%" for a structure
+    # that actually held EIGHT 20-min alternating blocks). When multiple
+    # blocks tie for the top rank and none of them individually reaches the
+    # hard threshold, and their power bands sit close together (a real
+    # interval contrast, e.g. over/under, sits much further apart), combine
+    # them: the reps sum, the percent becomes the range actually ridden.
+    top_key = max(_key(block) for block in blocks)
+    tied_at_top = [block for block in blocks if _key(block) == top_key]
+    if len(tied_at_top) > 1 and top_key[0] == 0:
+        tied_pcts = [_pct_value(block[2]) for block in tied_at_top]
+        if max(tied_pcts) - min(tied_pcts) <= 10:
+            total_seconds = sum(block[0] for block in tied_at_top)
+            reps = sum(block[1] for block in tied_at_top)
+            each_seconds = total_seconds / max(1, reps)
+            if each_seconds < 90:
+                each = f"{int(round(each_seconds))}s"
+            else:
+                each = f"{max(1, int(round(each_seconds / 60.0)))}min"
+            prefix = f"{reps}x" if reps > 1 else ""
+            low, high = min(tied_pcts), max(tied_pcts)
+            pct_display = f"{low:g}-{high:g}" if low != high else f"{low:g}"
+            return f"{prefix}{each} @{pct_display}%"
+
     total_seconds, reps, percent = max(blocks, key=_key)
     # A repeated set is the session's identity: when the hardest block is a
     # single lead-in only marginally harder than a bigger repeated main set

@@ -709,6 +709,8 @@ def _render_simple_endurance(level: int, workout_name: Optional[str] = None,
         main_blocks = f'    <SteadyState Duration="{main_sec}" Power="{power:.2f}"/>'
         main_set = f"- {main_sec // 60}min @ 66-75% FTP (RPE 3-4)"
     desc = (
+        f"WARM-UP:\n"
+        f"- {warmup_sec // 60}min building from Z1 into the Z2 target\n\n"
         f"MAIN SET:\n"
         f"{main_set}\n"
         f"- {position_note}\n"

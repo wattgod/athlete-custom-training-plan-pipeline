@@ -668,6 +668,35 @@ def test_load_index_returns_items_and_families_and_is_cached(tmp_path):
     assert "families" in loaded_a
 
 
+def test_structured_fartlek_description_rep_count_matches_its_own_structure():
+    """Real graded defect: every "Structured Fartlek" level's description
+    counted the surge reps by the number of STEADY blocks (e.g. level 1:
+    "7x (4:51 -> 1min surge)"), but the structure only pairs a surge after
+    each steady block except the last -- 7 steady blocks, 6 surges. The
+    structure-derived title already said "6x60s" correctly; the
+    description must count the actual surge reps, not the steady blocks."""
+    import re
+    index = load_index(DEFAULT_INDEX_PATH)
+    fartlek_items = [item for item in index["items"]
+                     if (item.get("name_base") or "") == "Structured Fartlek"]
+    assert len(fartlek_items) == 6, "expected all 6 Structured Fartlek levels in the index"
+    for item in fartlek_items:
+        match = re.search(r"(\d+)x \(([^)]+)\)", item["description"])
+        assert match, item
+        desc_reps = int(match.group(1))
+
+        durations = [step["length"]["value"]
+                    for block in item["structure"]["structure"]
+                    for step in block.get("steps", [])
+                    if step.get("name") == "Steady State"]
+        surge_duration = min(durations)
+        surge_reps = durations.count(surge_duration)
+        assert desc_reps == surge_reps, (
+            f"item {item['item_id']}: description says {desc_reps}x but "
+            f"structure has {surge_reps} surge reps"
+        )
+
+
 def test_no_curated_description_instructs_a_tt_bike_in_the_committed_index():
     """Real graded defect: the curated library item "This is Uncomfortable"
     (item_id 14355843/14355844) told gravel athletes to ride "on the TT
