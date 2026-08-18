@@ -772,7 +772,7 @@ WORKOUT_DESCRIPTIONS = {
         'structure': '{duration} min easy spin @ Z1-Z2 (55-65% FTP)',
         'purpose': 'Recovery and aerobic maintenance. Easy means easy.',
         'execution': 'Smooth pedaling, relaxed. Could hold a conversation easily.',
-        'rpe': 'RPE 2-3 (easy)',
+        'rpe': 'RPE 3-4 (easy)',
     },
     'Endurance': {
         'structure': '{duration} min @ Z2 (65-75% FTP)',
