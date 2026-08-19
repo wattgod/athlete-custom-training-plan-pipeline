@@ -430,3 +430,31 @@ def test_finisher_nine_hour_pacing_has_no_aggressive_climb_or_pass_people_copy()
     assert '88-94% FTP' not in pacing
 
     assert '88-94% FTP' in _race_day_pacing_strategy('podium', 4)
+
+
+def test_bwr_california_resolves_the_waffles_sim_series():
+    """Coach ruling Aug 19: the 'Black Canyon (Waffles)' ladder is his BWR
+    California series (the item names carry a course landmark, not the race
+    name). Both the curated known_races id and the snapshot slug map to it,
+    and every named item must exist in the committed index."""
+    from act_race_sim import RACE_SIM_SERIES
+    from tp_library_snapshot import load_index
+    assert "black_canyon" not in RACE_SIM_SERIES
+    by_name = {item["name_raw"]: item for item in load_index()["items"]}
+    for race_id in ("belgian_waffle_ride", "bwr-california"):
+        series = RACE_SIM_SERIES[race_id]
+        assert len(series) == 4
+        for name in series:
+            assert name in by_name, f"{race_id}: {name} missing from index"
+
+
+def test_torque_hc_authored_rpe_corrected_at_source():
+    """Coach ruling Aug 19 ('wrong it seems'): item 14357243 carried RPE8-9
+    on a 5x1min @80-85% high-cadence drill (IF 0.645). Corrected to RPE5-6
+    in TrainingPeaks and its _MANUAL_REVIEW entry deleted, so it is
+    selectable again."""
+    from tp_library_snapshot import load_index, _MANUAL_REVIEW
+    assert 14357243 not in _MANUAL_REVIEW
+    item = next(i for i in load_index()["items"] if i["item_id"] == 14357243)
+    assert item["rpe_text"] == "5-6"
+    assert not item.get("lint_manual_review")

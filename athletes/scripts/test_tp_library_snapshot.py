@@ -671,7 +671,10 @@ def test_manual_review_flags_exclude_verified_curated_defects():
     # Fartlek 14356002-07 + VO2max Extended 14357625 were fixed at the TP
     # source Aug 18 and their _MANUAL_REVIEW entries deleted (the intended
     # lifecycle); the remaining entries await coach-intent decisions.
-    expected = {14355843, 14355844, 14357243}
+    # 14357243 (Torque - HC) was corrected at the TP source Aug 19 on the
+    # coach's ruling and its entry deleted -- see
+    # test_torque_hc_authored_rpe_corrected_at_source in test_act_race_sim.
+    expected = {14355843, 14355844}
     for item_id in expected:
         assert by_id[item_id].get("lint_manual_review"), item_id
     # And the flagged-items helper surfaces them for --lint-report.
