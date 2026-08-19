@@ -807,7 +807,6 @@ _MANUAL_REVIEW: dict[int, str] = {
     # Aug 17 2026 adversarial grade (Sonja v23):
     14355843: "description says 'on the TT bike'/aero position in a gravel context; rep count '4x 5min' disagrees with structure",
     14355844: "description says 'on the TT bike'/aero position in a gravel context",
-    14357243: "authored RPE8-9 on a 65%-FTP high-cadence drill (IF ~0.65, no >92% work) -- suspected copy-pasted RPE",
     # Aug 17 2026 adversarial grade (Sonja v24):
     14356288: "Cadence Work: desc lists a 5min @76-87% segment absent from structure; off-step targets 70% FTP @115rpm (harder cadence than the work step, no recovery floor); name RPE8-9 vs body RPE 6-7",
     14356260: "name says '(TT bike)' in a gravel context; whole-ride 0-75% open target derives a meaningless '8x7min @38%' title",

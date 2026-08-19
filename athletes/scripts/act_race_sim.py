@@ -540,15 +540,19 @@ RACE_SIM_SERIES: Dict[str, Tuple[str, ...]] = {
         "Natty Specific 3 - 5hr (full climb set)",
         "Natty Specific 4 - 5hr Dress Rehearsal (6 climbs)",
     ),
-    # Black Canyon (Waffles): the coach named this series in the Aug 17
-    # mandate ("I have other sims in the workout library, like Leather
-    # Bound") but no race by this name exists yet in known_races.py or the
-    # 1,185-race snapshot (config/races.json) -- verified during this
-    # implementation. Seeded per the spec's literal instruction; this entry
-    # is currently unreachable (no profile can ever carry this race_id)
-    # until a matching race is added to the database. Flagged for coach
-    # review.
-    "black_canyon": (
+    # Belgian Waffle Ride California: the coach's "Black Canyon (Waffles)"
+    # series is his BWR CA sim ladder (coach ruling, Aug 19 -- the item
+    # names carry a course landmark, not the race name, which is why an
+    # earlier pass could not find a matching race). Both the curated
+    # known_races id and the race-snapshot slug are mapped so either
+    # resolution path reaches it.
+    "belgian_waffle_ride": (
+        "Race Sim - Black Canyon (Waffles) - 1 - 180min - RPE6-7",
+        "Race Sim - Black Canyon (Waffles) - 2 - 225min - RPE6-7",
+        "Race Sim - Black Canyon (Waffles) - 3 - 240min - RPE6-7",
+        "Race Sim - Black Canyon (Waffles) - 4 - 255min - RPE6-7",
+    ),
+    "bwr-california": (
         "Race Sim - Black Canyon (Waffles) - 1 - 180min - RPE6-7",
         "Race Sim - Black Canyon (Waffles) - 2 - 225min - RPE6-7",
         "Race Sim - Black Canyon (Waffles) - 3 - 240min - RPE6-7",

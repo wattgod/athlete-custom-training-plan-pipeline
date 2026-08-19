@@ -214,8 +214,9 @@ def test_suspect_authored_rpe_is_a_lint_matter_not_a_renderer_override():
     # NOT overrule the coach's authored token -- the item is excluded from
     # selection via tp_library_snapshot's lint_manual_review entry instead,
     # so it can never ship until fixed at the source in TrainingPeaks.
-    from tp_library_snapshot import _MANUAL_REVIEW
-    assert 14357243 in _MANUAL_REVIEW
+    # (Item 14357243's suspect token was later corrected at the TP source
+    # on the coach's ruling; the invariant under test is unchanged --
+    # whatever the coach authors is what the card says.)
     session = Session(
         date="2026-08-28", title="Cadence HC - RPE8-9",
         display_name="Cadence HC - RPE8-9",
