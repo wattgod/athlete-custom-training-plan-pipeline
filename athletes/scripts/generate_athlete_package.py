@@ -22,9 +22,14 @@ from datetime import datetime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-# Add script path for local imports
+# Add the scripts, webhook, and repository roots for local imports. Existing
+# applied TrainingPeaks states activate D2 validation, whose modules import the
+# top-level ``delivery`` package. Fresh generation did not exercise that path,
+# so omitting the repository root made replacement revisions fail closed.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).parent))
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'webhook'))
+sys.path.insert(0, str(REPO_ROOT / 'webhook'))
+sys.path.insert(0, str(REPO_ROOT))
 
 from fulfillment_state import write_generation
 from workout_spec import (normalize_zwo_blocks, render_main_set,
