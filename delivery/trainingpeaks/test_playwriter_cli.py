@@ -35,6 +35,10 @@ elif args == ['session', 'list']:
     print('4   Chrome   coach@example.com install:Chrome:fixture123')
 elif len(args) == 4 and args[:3] == ['-s', '4', '-f']:
     source = Path(args[3]).read_text(encoding='utf-8')
+    if ('state.tpPhase5PayloadPath=' in source
+            or 'state.tpPhase5PayloadSource=' not in source
+            or 'state.tpPhase5PayloadSha256=' not in source):
+        raise SystemExit(10)
     match = re.search(r'state\\.tpPhase5ReceiptPath=(\"(?:[^\"\\\\]|\\\\.)*\")', source)
     if not match:
         raise SystemExit(9)

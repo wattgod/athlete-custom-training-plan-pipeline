@@ -13,26 +13,31 @@ await (async () => {
   const path = require('node:path');
   const receiptGlobal = '__GG_TP_PHASE5_RECEIPT__';
   const stateKeys = [
-    'tpPhase5RequestPath', 'tpPhase5ReceiptPath', 'tpPhase5PayloadPath', 'page',
+    'tpPhase5RequestPath', 'tpPhase5ReceiptPath', 'tpPhase5PayloadSource',
+    'tpPhase5PayloadSha256', 'page',
   ];
 
   try {
     const requestPath = path.resolve(String(state.tpPhase5RequestPath || ''));
     const receiptPath = path.resolve(String(state.tpPhase5ReceiptPath || ''));
-    const payloadPath = path.resolve(String(state.tpPhase5PayloadPath || ''));
-    if (!requestPath || !receiptPath || !payloadPath) {
-      throw new Error('Phase 5 request, receipt, and payload paths are required');
+    const source = String(state.tpPhase5PayloadSource || '');
+    const configuredPayloadSha256 = String(state.tpPhase5PayloadSha256 || '');
+    if (!requestPath || !receiptPath || !source
+        || !/^[0-9a-f]{64}$/.test(configuredPayloadSha256)) {
+      throw new Error('Phase 5 request, receipt, and payload binding are required');
     }
-    if (!fs.existsSync(requestPath) || !fs.existsSync(payloadPath)) {
-      throw new Error('Phase 5 request or browser payload is missing');
+    if (!fs.existsSync(requestPath)) {
+      throw new Error('Phase 5 request is missing');
     }
     if (fs.existsSync(receiptPath)) {
       throw new Error('refusing to overwrite an existing Phase 5 receipt');
     }
 
     const request = JSON.parse(fs.readFileSync(requestPath, 'utf8'));
-    const source = fs.readFileSync(payloadPath, 'utf8');
     const scriptSha256 = crypto.createHash('sha256').update(source).digest('hex');
+    if (scriptSha256 !== configuredPayloadSha256) {
+      throw new Error('Phase 5 browser payload binding changed');
+    }
     if (request.request_type !== 'trainingpeaks_playwright_request/v1') {
       throw new Error('unsupported Phase 5 Playwright request');
     }

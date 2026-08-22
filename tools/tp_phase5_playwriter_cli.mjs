@@ -84,6 +84,8 @@ if (!selected || selected[2] !== expectedProfile || selected[3] !== expectedBrow
 const here = path.dirname(fileURLToPath(import.meta.url));
 const runnerPath = path.join(here, 'tp_phase5_playwriter_run.js');
 const payloadPath = path.join(here, 'tp_phase5_browser_payload.js');
+const payloadSource = readFileSync(payloadPath, 'utf8');
+const payloadSha256 = createHash('sha256').update(payloadSource).digest('hex');
 const invocationPath = path.join(
   path.dirname(args.request),
   `.tp-phase5-invocation-${process.pid}-${randomBytes(8).toString('hex')}.js`,
@@ -91,7 +93,8 @@ const invocationPath = path.join(
 const preamble = [
   `state.tpPhase5RequestPath=${JSON.stringify(args.request)};`,
   `state.tpPhase5ReceiptPath=${JSON.stringify(args.receipt)};`,
-  `state.tpPhase5PayloadPath=${JSON.stringify(payloadPath)};`,
+  `state.tpPhase5PayloadSource=${JSON.stringify(payloadSource)};`,
+  `state.tpPhase5PayloadSha256=${JSON.stringify(payloadSha256)};`,
 ].join('\n');
 
 try {
