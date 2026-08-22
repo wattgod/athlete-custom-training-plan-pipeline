@@ -58,6 +58,54 @@ class Phase5Interrupted(Phase5Error):
     """Execution stopped in a resumable state after durable checkpointing."""
 
 
+@dataclass(frozen=True)
+class CanaryPolicy:
+    """Server-owned, exact-target lane used before global writes are enabled."""
+
+    allowed_tp_athlete_ids: frozenset[str]
+    allowed_kinds: frozenset[str] = frozenset({
+        "workout_upsert", "calendar_note_upsert",
+    })
+    max_mutating_operations: int = 6
+    required_order_prefix: str = "canary_"
+
+    @classmethod
+    def from_environment(cls, environ: Mapping[str, str] | None = None) -> "CanaryPolicy | None":
+        values = os.environ if environ is None else environ
+        if str(values.get("GG_TP_CANARY_ENABLED") or "").strip() != "1":
+            return None
+        athlete_ids = frozenset(
+            item.strip() for item in
+            str(values.get("GG_TP_CANARY_ATHLETE_IDS") or "").split(",")
+            if item.strip()
+        )
+        if not athlete_ids:
+            raise Phase5AuthorizationError(
+                "canary mode requires an exact athlete allowlist")
+        return cls(allowed_tp_athlete_ids=athlete_ids)
+
+    def authorize(
+        self, contract: Mapping[str, Any], claims: Mapping[str, Any],
+    ) -> None:
+        athlete_id = str(claims.get("tp_athlete_id") or "")
+        if athlete_id not in self.allowed_tp_athlete_ids:
+            raise Phase5AuthorizationError("target is not allowlisted for canary writes")
+        if not str(claims.get("order_id") or "").startswith(self.required_order_prefix):
+            raise Phase5AuthorizationError("canary order identity is invalid")
+        operations = contract.get("operations") or []
+        if any(operation.get("kind") not in self.allowed_kinds for operation in operations):
+            raise Phase5AuthorizationError("canary contract contains a forbidden operation kind")
+        mutating = [
+            operation for operation in operations
+            if operation.get("disposition") != "keep"
+        ]
+        if not mutating or len(mutating) > self.max_mutating_operations:
+            raise Phase5AuthorizationError("canary mutation count is outside policy")
+        if not any(operation.get("disposition") == "keep" for operation in operations):
+            raise Phase5AuthorizationError(
+                "canary contract must prove protected-item preservation")
+
+
 def _canonical_json(value: Any) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
@@ -275,11 +323,15 @@ class Phase5MutationService:
     def __init__(
         self, capability_codec: CapabilityCodec, grant_codec: ExecutionGrantCodec,
         root: Path | str, *, grant_kid: str,
+        live_writes_enabled: bool = False,
+        canary_policy: CanaryPolicy | None = None,
     ):
         self.capability_codec = capability_codec
         self.grant_codec = grant_codec
         self.root = Path(root).resolve()
         self.grant_kid = str(grant_kid)
+        self.live_writes_enabled = bool(live_writes_enabled)
+        self.canary_policy = canary_policy
 
     def _safe_paths(self, order_id: str, jti: str) -> tuple[Path, Path]:
         if not _SAFE_ID.fullmatch(order_id) or not _SAFE_ID.fullmatch(jti):
@@ -340,6 +392,11 @@ class Phase5MutationService:
             raise Phase5AuthorizationError(str(exc)) from exc
         request_digest = _validate_contract_binding(contract, capability)
         claims = capability.claims
+        if not self.live_writes_enabled:
+            if self.canary_policy is None:
+                raise Phase5AuthorizationError(
+                    "live TrainingPeaks writes are disabled and no canary lane is active")
+            self.canary_policy.authorize(contract, claims)
         state_path = Path(state_path)
         record_path, record_lock = self._safe_paths(claims["order_id"], claims["jti"])
 

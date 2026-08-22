@@ -17,6 +17,12 @@ The Phase 5 kernel lives in
 - `APPROVED -> APPLYING -> APPLIED` only after exact complete readback; and
 - a credential-free, zero-write browser-transport dry-run projection.
 
+Global writes default off. Before rollout, a server-owned canary lane may be
+enabled with `GG_TP_CANARY_ENABLED=1` and an exact
+`GG_TP_CANARY_ATHLETE_IDS` allowlist. It additionally requires a `canary_`
+order, a protected `keep` operation, approved resource kinds, and a bounded
+mutation count. This lane is not the public plugin capability flag.
+
 Focused evidence is in
 `delivery/trainingpeaks/test_phase5_service.py`. It covers exact binding,
 expiry, cancellation, partial execution resume, replay, stale fencing,

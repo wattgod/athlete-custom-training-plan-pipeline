@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "webhook"))
 
 from delivery.trainingpeaks.phase5_service import (
+    CanaryPolicy,
     ExecutionGrantCodec,
     Phase5AuthorizationError,
     Phase5Interrupted,
@@ -38,10 +39,10 @@ TP_ID = "fixture-phase5-athlete"
 ORDER_ID = "order_phase5_fixture"
 
 
-def _approved_state(tmp_path):
+def _approved_state(tmp_path, *, order_id=ORDER_ID):
     state_path = tmp_path / "fulfillment_status.json"
     state = write_generation(
-        state_path, "fixture-athlete", order_id=ORDER_ID,
+        state_path, "fixture-athlete", order_id=order_id,
         delivery_platform="trainingpeaks",
     )
     state = record_identity_result(
@@ -70,6 +71,7 @@ def _approved_state(tmp_path):
 
 
 def _contract(state):
+    order_id = state["order_id"]
     return {
         "contract_version": "apply_contract/v1",
         "order_id": state["order_id"],
@@ -78,20 +80,20 @@ def _contract(state):
         "model_seal": state["model_seal"],
         "operations": [
             {
-                "op_id": f"{ORDER_ID}:workout_upsert:keep@r1",
-                "logical_id": f"{ORDER_ID}:workout_upsert:keep",
+                "op_id": f"{order_id}:workout_upsert:keep@r1",
+                "logical_id": f"{order_id}:workout_upsert:keep",
                 "kind": "workout_upsert", "disposition": "keep",
                 "expected_digest": "1" * 64,
             },
             {
-                "op_id": f"{ORDER_ID}:workout_upsert:create@r1",
-                "logical_id": f"{ORDER_ID}:workout_upsert:create",
+                "op_id": f"{order_id}:workout_upsert:create@r1",
+                "logical_id": f"{order_id}:workout_upsert:create",
                 "kind": "workout_upsert", "disposition": "create",
                 "expected_digest": "2" * 64,
             },
             {
-                "op_id": f"{ORDER_ID}:calendar_note_upsert:delete@r1",
-                "logical_id": f"{ORDER_ID}:calendar_note_upsert:delete",
+                "op_id": f"{order_id}:calendar_note_upsert:delete@r1",
+                "logical_id": f"{order_id}:calendar_note_upsert:delete",
                 "kind": "calendar_note_upsert", "disposition": "delete",
                 "expected_digest": None,
             },
@@ -103,7 +105,8 @@ def _service(tmp_path):
     capability_codec = CapabilityCodec(CAPABILITY_KEYS, audience=AUDIENCE)
     grant_codec = ExecutionGrantCodec(GRANT_KEYS, audience="gg-tp-phase5-executor")
     return Phase5MutationService(
-        capability_codec, grant_codec, tmp_path / "worker", grant_kid="grant-k1")
+        capability_codec, grant_codec, tmp_path / "worker", grant_kid="grant-k1",
+        live_writes_enabled=True)
 
 
 def _capability(service, state, contract, **overrides):
@@ -380,3 +383,32 @@ def test_controlled_rollback_compensates_created_resource_and_clears_pending(tmp
     assert final["status"] == "CANCELLED"
     assert final["compensation_pending"] is False
     assert final["cancellation"]["worker_stop_acknowledged"] is True
+
+
+def test_disabled_global_writes_require_an_explicit_canary_lane(tmp_path):
+    state_path, state = _approved_state(tmp_path)
+    contract = _contract(state)
+    service = _service(tmp_path)
+    service.live_writes_enabled = False
+    with pytest.raises(Phase5AuthorizationError, match="no canary lane"):
+        service.exchange(
+            _capability(service, state, contract), contract, state_path, now=NOW)
+
+
+def test_canary_lane_allows_only_exact_target_bounded_contract(tmp_path):
+    state_path, state = _approved_state(tmp_path, order_id="canary_cheesehead")
+    contract = _contract(state)
+    service = _service(tmp_path)
+    service.live_writes_enabled = False
+    service.canary_policy = CanaryPolicy(
+        allowed_tp_athlete_ids=frozenset({TP_ID}))
+    capability = _capability(
+        service, state, contract, order_id="canary_cheesehead")
+    grant = service.exchange(capability, contract, state_path, now=NOW)
+    assert service.grant_codec.verify(grant, now=NOW).claims["tp_athlete_id"] == TP_ID
+
+    other_policy = CanaryPolicy(
+        allowed_tp_athlete_ids=frozenset({"different-fixture"}))
+    service.canary_policy = other_policy
+    with pytest.raises(Phase5AuthorizationError, match="not allowlisted"):
+        service.exchange(capability, contract, state_path, now=NOW + 1)
