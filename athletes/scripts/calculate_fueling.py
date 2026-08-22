@@ -496,6 +496,8 @@ def generate_fueling_context(
         gut_phase=profile.get("nutrition", {}).get("gut_training_phase", "build"),
         tolerated_g_per_hour=tolerated_intake_from_profile(profile),
         sex=sex,
+        prescribed_range_g_per_hour=(profile.get("nutrition", {})
+                                     .get("race_fueling_range_g_per_hour")),
     )
     p = prescription.to_dict()
     no_power = fitness.get("power_basis") == "none" or not fitness.get("ftp_watts")

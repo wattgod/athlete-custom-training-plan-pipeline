@@ -784,9 +784,27 @@ def load_canonical_model(path: Path | str) -> Dict[str, Any]:
 
 
 def _step_target(target: Dict[str, Any], key: str = "value",
-                 all_out: bool = False) -> List[Dict[str, int]]:
+                 all_out: bool = False,
+                 control_metric: Optional[str] = None) -> List[Dict[str, int]]:
     kind = target.get("type")
+    if kind == "rpe":
+        if key in {"on", "off"}:
+            value = target.get(key)
+            return [{"minValue": int(round(float(value))),
+                     "maxValue": int(round(float(value)))}]
+        low, high, value = target.get("low"), target.get("high"), target.get("value")
+        if low is not None and high is not None:
+            minimum, maximum = sorted((int(round(float(low))), int(round(float(high)))))
+        else:
+            chosen = value if value is not None else high if high is not None else low
+            minimum = maximum = int(round(float(chosen)))
+        minimum = max(0, min(10, minimum))
+        maximum = max(minimum, min(10, maximum))
+        return [{"minValue": minimum, "maxValue": maximum}]
     if kind == "free":
+        if control_metric == "rpe":
+            return ([{"minValue": 10, "maxValue": 10}] if all_out else
+                    [{"minValue": 1, "maxValue": 10}])
         # A target-less step is invisible: TP accepts the POST but the
         # calendar mini-chart draws a GAP, the polyline omits the step, and
         # the workout-detail builder can refuse the whole structure (found
@@ -799,10 +817,8 @@ def _step_target(target: Dict[str, Any], key: str = "value",
         return [{"minValue": 0}]
     if key in {"on", "off"}:
         value = target.get(key)
-        return [{"minValue": int(round(float(value) * 100))}] if kind != "rpe" else []
+        return [{"minValue": int(round(float(value) * 100))}]
     low, high, value = target.get("low"), target.get("high"), target.get("value")
-    if kind == "rpe":
-        return []
     if low is not None and high is not None and float(high) > float(low):
         return [{"minValue": int(round(float(low) * 100)),
                  "maxValue": int(round(float(high) * 100))}]
@@ -811,8 +827,8 @@ def _step_target(target: Dict[str, Any], key: str = "value",
 
 
 def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Project TP-native structure; RPE remains explicit in description."""
-    if session.get("tp_kind") != "bike" or control.get("control_metric") == "rpe":
+    """Project canonical bike segments into a TP-native structured workout."""
+    if session.get("tp_kind") != "bike":
         return None
     steps: List[Dict[str, Any]] = []
     cursor = 0
@@ -826,7 +842,9 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
             "steps": [{
                 "name": name,
                 "length": {"value": int(seconds), "unit": "second"},
-                "targets": _step_target(target, key, all_out=all_out),
+                "targets": _step_target(
+                    target, key, all_out=all_out,
+                    control_metric=control.get("control_metric")),
                 "intensityClass": intensity,
                 # TP's builder expects the full imported-step shape; steps
                 # without notes rendered fine on cards but not in detail.
@@ -888,7 +906,8 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
     metric = {
         "power": "percentOfFtp",
         "hr:lthr": "percentOfThresholdHr",
-        "hr:hrmax": "percentOfMaxHr",
+            "hr:hrmax": "percentOfMaxHr",
+            "rpe:rpe": "rpe",
     }.get(f"{control.get('control_metric')}:{control.get('control_basis')}")
     if control.get("control_metric") == "power":
         metric = "percentOfFtp"
@@ -898,7 +917,7 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
         "structure": steps,
         "primaryLengthMetric": "duration",
         "primaryIntensityMetric": metric,
-        "primaryIntensityTargetOrRange": "target",
+        "primaryIntensityTargetOrRange": "range" if metric == "rpe" else "target",
         "polyline": compute_polyline(steps),
         "importedFromZwo": True,
     }

@@ -549,6 +549,44 @@ def parse_range(val: str) -> Tuple[Optional[int], Optional[int]]:
     return None, None
 
 
+_MIDWEEK_CAP_NOTE_RE = re.compile(
+    r"\b(?:programmed\s+)?midweek(?:\s+sessions?)?\s+"
+    r"(?:must\s+not\s+exceed|max(?:imum)?(?:\s+of)?|capped?\s+at)\s*"
+    r"(\d{1,3})\s*(?:min|minutes?)\b",
+    re.IGNORECASE,
+)
+
+
+def _programmed_midweek_cap(
+    schedule: Mapping[str, Any], additional: Mapping[str, Any],
+) -> Optional[int]:
+    """Resolve one explicit weekday ceiling without interpreting broad prose."""
+    structured = (schedule.get('programmed_midweek_max_minutes')
+                  or schedule.get('midweek_max_minutes'))
+    structured_value = None
+    if structured not in (None, ''):
+        match = re.fullmatch(r'\s*(\d{1,3})\s*(?:min|minutes?)?\s*', str(structured), re.I)
+        if not match:
+            raise IntakeValidationError(
+                'Programmed midweek max minutes must be an explicit integer')
+        structured_value = int(match.group(1))
+
+    note_text = ' '.join(
+        str(additional.get(key) or '') for key in ('notes', 'other'))
+    note_values = {int(value) for value in _MIDWEEK_CAP_NOTE_RE.findall(note_text)}
+    if len(note_values) > 1:
+        raise IntakeValidationError('Conflicting midweek duration caps require coach review')
+    note_value = next(iter(note_values), None)
+    if (structured_value is not None and note_value is not None
+            and structured_value != note_value):
+        raise IntakeValidationError('Conflicting midweek duration caps require coach review')
+    value = structured_value if structured_value is not None else note_value
+    if value is not None and not 1 <= value <= 480:
+        raise IntakeValidationError(
+            'Programmed midweek max minutes must be between 1 and 480')
+    return value
+
+
 def parse_years(val: str) -> int:
     """Parse years field to integer: '10+' -> 10, '4+' -> 4, '3' -> 3."""
     m = re.search(r'(\d+)', str(val))
@@ -1198,6 +1236,9 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                     # — disclosed to the coach, never shown to the athlete.
                     'generic_demands': generic['demands'],
                     'race_match': match_meta,
+                    'coach_verified': str(
+                        goals.get('race_verification') or '').strip().lower()
+                        in {'coach_confirmed', 'coach-confirmed', 'confirmed'},
                 }
 
         if priority == 'A':
@@ -1292,6 +1333,21 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'max_duration_min': 600,
             'is_key_day_ok': True,
         }
+
+    # A single coach/athlete-supplied weekday ceiling is authoritative for
+    # every programmed Monday-Friday session. It is deliberately separate
+    # from weekly volume: athletes may self-select extra riding without the
+    # plan quietly turning that autonomy into prescribed duration.
+    midweek_cap = _programmed_midweek_cap(schedule, additional)
+    if midweek_cap is not None:
+        for day in DAY_ORDER_FULL[:5]:
+            day_info = preferred_days[day]
+            if day_info.get('availability') == 'unavailable':
+                continue
+            day_info['max_duration_min'] = min(
+                int(day_info.get('max_duration_min') or midweek_cap),
+                midweek_cap,
+            )
 
     # -- Volume capacity check --
     # Warn if cycling_hours_target exceeds what the schedule can support
@@ -1538,6 +1594,10 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'weeks_purchased': _safe_int(fulfillment.get('weeks_purchased', '')),
             'athlete_timezone': fulfillment.get('athlete_timezone', ''),
             'generation_revision': generation_revision,
+            'effective_date': fulfillment.get('effective_date', ''),
+            'planning_horizon_end': fulfillment.get('planning_horizon_end', ''),
+            'publication_horizon_weeks': _safe_int(
+                fulfillment.get('publication_horizon_weeks', '')),
         },
         'sex': sex,
         'height_cm': height_cm,
@@ -1639,6 +1699,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'seasonal_changes': '',
             'preferred_off_days': off_days,
             'preferred_long_day': preferred_long_day,
+            'strength_only_days': parse_day_list(
+                schedule.get('strength_only_days', '')),
         },
         'cycling_equipment': {
             'smart_trainer': smart_trainer,
@@ -1702,6 +1764,14 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'training_fuel': nutrition_intake.get('training_fuel',
                 nutrition_intake.get('current_carbs_g_per_hour',
                 additional.get('training_fuel', ''))),
+            'race_fueling_range_g_per_hour': (
+                [int(value) for value in re.search(
+                    r'(\d{1,3})\s*[-–]\s*(\d{1,3})',
+                    str(nutrition_intake.get('race_fueling_range') or '')
+                ).groups()]
+                if re.search(r'(\d{1,3})\s*[-–]\s*(\d{1,3})',
+                             str(nutrition_intake.get('race_fueling_range') or ''))
+                else None),
             'post_workout': '',
             'notes': '',
         },
@@ -1779,7 +1849,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'best_time_to_reach': '',
         },
         'plan_start': {
-            'preferred_start': plan_start_str,
+            'preferred_start': fulfillment.get('effective_date') or plan_start_str,
             'current_commitments': '',
             'notes': plan_notes,
         },
@@ -3401,7 +3471,8 @@ def assemble_intake_review_items(
     blockers: List[Dict] = []
     target_race = profile.get('target_race') or {}
     target_match = target_race.get('race_match') or {}
-    if target_match.get('method') == 'none':
+    if (target_match.get('method') == 'none'
+            and not target_race.get('coach_verified')):
         blockers.append({
             'id': 'RACE_UNMATCHED', 'source': 'intake_to_plan',
             'severity': 'CRITICAL',

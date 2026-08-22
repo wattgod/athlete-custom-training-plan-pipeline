@@ -1824,6 +1824,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 - Long Ride Days: {long_days}
 - Interval Days: {interval_days}
 - Off Days: {off_days or 'None'}
+- Programmed Midweek Max Minutes: {intake_data.get('programmed_midweek_max_minutes', '')}
 - Travel Dates: {intake_data.get('travel_dates', '') or 'None'}
 
 ## Strength
@@ -1841,13 +1842,16 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 - Training Fuel: {intake_data.get('training_fuel', intake_data.get('current_carbs_g_per_hour', ''))}
 
 ## Additional
-- Other: {intake_data.get('notes', '')}
+- Notes: {intake_data.get('notes', '')}
 
 ## Fulfillment
 - Order ID: {fulfillment.get('order_id', '')}
 - Delivery Platform: {fulfillment.get('delivery_platform', 'manual')}
 - Order Created At: {fulfillment.get('order_created_at', '')}
 - Generation At: {fulfillment.get('generation_at', datetime.now().isoformat())}
+- Effective Date: {fulfillment.get('effective_date', '')}
+- Planning Horizon End: {fulfillment.get('planning_horizon_end', '')}
+- Publication Horizon Weeks: {fulfillment.get('publication_horizon_weeks', '')}
 - Weeks Purchased: {fulfillment.get('weeks_purchased', '')}
 - Athlete Timezone: {fulfillment.get('athlete_timezone', intake_data.get('athlete_timezone', ''))}
 """

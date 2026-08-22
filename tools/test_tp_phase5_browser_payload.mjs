@@ -20,10 +20,6 @@ function digest(value) {
   return createHash('sha256').update(canonical(value)).digest('hex');
 }
 
-function marker(logicalId) {
-  return `[GG:${logicalId}]`;
-}
-
 function singleStepStructure(metric, seconds, low, high) {
   return {
     primaryIntensityMetric: metric,
@@ -62,7 +58,7 @@ function remoteWorkout(id, logicalId, payload) {
     workoutId: id,
     athleteId: 1522591,
     title: payload.title,
-    description: `${payload.description}\n\n${marker(logicalId)}`,
+    description: payload.description,
     workoutTypeValueId: payload.tp_workout_type,
     workoutDay: `${payload.date}T00:00:00`,
     totalTimePlanned: payload.total_seconds / 3600,
@@ -266,8 +262,10 @@ assert.equal(createCall.body.workoutId, 0);
 assert.equal(typeof createCall.body.structure, 'string');
 assert.deepEqual(JSON.parse(createCall.body.structure), rpeStructure);
 assert.equal('ifPlanned' in createCall.body, false);
+assert.equal(createCall.body.description, createPayload.description);
+assert.equal(applied.workouts.some(row => String(row.description).includes('[GG:')), false);
 
-const resumedApply = await runPayload(request(), applied.workouts);
+const resumedApply = await runPayload(request('apply', applied.receipt.operations), applied.workouts);
 assert.equal(resumedApply.receipt.failure, null);
 assert.equal(resumedApply.receipt.readback_verified, true);
 assert.equal(resumedApply.calls.some(call => call.method !== 'GET'), false);
@@ -283,13 +281,12 @@ assert.deepEqual(rolledBack.receipt.operations.map(row => row.status), [
   'restored', 'restored', 'absent',
 ]);
 assert.equal(rolledBack.workouts.some(row => (
-  String(row.description).includes(marker(createLogical))
+  String(row.description).includes('[GG:')
 )), false);
 assert.equal(rolledBack.workouts.find(row => row.workoutId === 'update-1')
   .structure.primaryIntensityMetric, 'rpe');
-assert.equal(rolledBack.workouts.some(row => (
-  String(row.description).includes(marker(deleteLogical))
-)), true);
+assert.equal(rolledBack.workouts.find(row => row.workoutId === 'created-100').description,
+  deleteBefore.description);
 assert.equal(rolledBack.workouts.find(row => row.workoutId === 'protected-1').title,
   protectedPayload.title);
 assert.equal(rolledBack.receipt.operations[0].remote_id, 'created-100');

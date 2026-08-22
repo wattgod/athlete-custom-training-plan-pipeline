@@ -12,7 +12,10 @@ Run with: python3 test_plan_dates.py
 
 import sys
 from datetime import datetime, timedelta
-from calculate_plan_dates import calculate_plan_dates, validate_plan_dates, PlanDateValidationError
+import pytest
+from calculate_plan_dates import (PlanDateValidationError, calculate_plan_dates,
+                                  post_event_recovery_weeks_for_horizon,
+                                  validate_plan_dates)
 
 
 def _next_sunday(weeks_out: int = 45) -> datetime:
@@ -384,3 +387,42 @@ def test_race_this_weekend_delivers_race_week(monkeypatch):
     assert result['plan_weeks'] == 1
     assert result['week1_monday'] == '2026-09-14'
     assert result['weeks'][0]['is_race_week'] is True
+
+
+def test_michael_race_plus_exact_post_event_recovery_horizon(monkeypatch):
+    monkeypatch.setenv('GG_FIXED_NOW', '2026-08-22T21:40:00Z')
+    recovery_weeks = post_event_recovery_weeks_for_horizon(
+        '2026-09-12', '2026-09-20')
+    result = calculate_plan_dates(
+        '2026-09-12', 3, preferred_start='2026-09-07',
+        b_events=[{'name': 'Mountain bike in Whistler',
+                   'date': '2026-09-13'}],
+        post_event_recovery_weeks=recovery_weeks)
+    assert result['plan_start'] == '2026-09-07'
+    assert result['plan_end'] == '2026-09-20'
+    assert result['plan_weeks'] == 2
+    assert [week['phase'] for week in result['weeks']] == ['race', 'recovery']
+    assert result['weeks'][0]['is_race_week'] is True
+    assert result['weeks'][0]['b_race']['date'] == '2026-09-13'
+    assert result['weeks'][1]['is_post_event_recovery'] is True
+    assert result['weeks'][1]['is_recovery_week'] is True
+    assert not [error for error in validate_plan_dates(result, '2026-09-12')
+                if error.startswith('CRITICAL')]
+
+
+def test_default_plan_horizon_remains_race_week_only(monkeypatch):
+    monkeypatch.setenv('GG_FIXED_NOW', '2026-08-22T21:40:00Z')
+    result = calculate_plan_dates(
+        '2026-09-12', 3, preferred_start='2026-09-07')
+    assert result['plan_weeks'] == 1
+    assert result['plan_end'] == '2026-09-13'
+    assert result['weeks'][-1]['is_race_week'] is True
+
+
+def test_post_event_recovery_rejects_later_b_event(monkeypatch):
+    monkeypatch.setenv('GG_FIXED_NOW', '2026-08-22T21:40:00Z')
+    with pytest.raises(ValueError, match='later B event'):
+        calculate_plan_dates(
+            '2026-09-12', 3, preferred_start='2026-09-07',
+            b_events=[{'name': 'Later event', 'date': '2026-09-19'}],
+            post_event_recovery_weeks=1)

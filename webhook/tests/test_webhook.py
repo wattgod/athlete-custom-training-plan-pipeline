@@ -2955,6 +2955,15 @@ class TestTravelDatesPassthrough:
             {'powerOrHr': 'hr'}, name='T', email='t@e.com')
         assert 'Training Metric: hr' in md
 
+    def test_markdown_preserves_programmed_midweek_ceiling_and_notes_role(self):
+        from app import _questionnaire_to_markdown
+        md = _questionnaire_to_markdown({
+            'programmed_midweek_max_minutes': 45,
+            'notes': 'Programmed midweek sessions must not exceed 45 minutes.',
+        }, name='Michael Beal', email='wmbeal@outlook.com')
+        assert 'Programmed Midweek Max Minutes: 45' in md
+        assert '- Notes: Programmed midweek sessions must not exceed 45 minutes.' in md
+
 
 class TestIntelStatsWindow:
     def test_validates_hours_and_rejects_limit(self, client, monkeypatch):

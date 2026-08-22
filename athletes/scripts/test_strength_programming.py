@@ -77,6 +77,16 @@ def test_equipment_tier_reads_both_intake_locations():
     assert strength_equipment_tier({'strength_equipment': ['home-basic']}) == 'home-basic'
 
 
+def test_home_basic_recovery_strength_is_mobility_not_ballistic():
+    workout = WorkoutLibrary.get_strength_workout(
+        2, 1, equipment_tier='home-basic', phase='recovery',
+        is_recovery_week=True)
+    assert workout['name'] == 'Mobility and Stability'
+    exercises = ' '.join(name for name, _ in workout['exercises'])
+    assert 'Jump Squat' not in exercises
+    assert 'Single Leg Hop' not in exercises
+
+
 def test_full_gym_two_per_load_week_and_reduced_calendar_weeks(tmp_path, monkeypatch):
     dates = _eight_week_dates(monkeypatch)
     athlete_dir = tmp_path / 'strength-fixture'

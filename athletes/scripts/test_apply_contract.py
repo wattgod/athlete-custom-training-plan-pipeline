@@ -92,6 +92,41 @@ def test_checked_schema_is_generated_definition_and_every_emission_validates(tmp
         validate_contract(broken)
 
 
+@pytest.mark.parametrize("type_id", [None, 100])
+def test_workout_type_must_be_supported_and_never_other(tmp_path, type_id):
+    contract = _contract(tmp_path)
+    operation = next(op for op in contract["operations"]
+                     if op["kind"] == "workout_upsert")
+    operation["payload"]["tp_workout_type"] = type_id
+    operation["expected_digest"] = digest_payload(operation["payload"])
+    with pytest.raises(ApplyContractError, match="schema validation"):
+        validate_contract(contract)
+
+
+def test_substantive_bike_requires_structure_or_planned_tss(tmp_path):
+    contract = _contract(tmp_path)
+    operation = next(op for op in contract["operations"]
+                     if op["kind"] == "workout_upsert")
+    operation["payload"]["structure"] = None
+    operation["payload"]["tss_planned"] = None
+    operation["expected_digest"] = digest_payload(operation["payload"])
+    with pytest.raises(ApplyContractError, match="lacks both structure and planned TSS"):
+        validate_contract(contract)
+
+
+def test_day_off_payload_must_be_internally_consistent(tmp_path):
+    contract = _contract(tmp_path)
+    operation = next(op for op in contract["operations"]
+                     if op["kind"] == "workout_upsert")
+    operation["payload"].update({
+        "tp_workout_type": 7, "total_seconds": 60,
+        "tss_planned": None, "structure": None,
+    })
+    operation["expected_digest"] = digest_payload(operation["payload"])
+    with pytest.raises(ApplyContractError, match="day-off payload is inconsistent"):
+        validate_contract(contract)
+
+
 def test_three_identities_are_stable_and_revision_scoped(tmp_path):
     first = _contract(tmp_path, generation_revision=1)
     second = _contract(tmp_path, generation_revision=2)

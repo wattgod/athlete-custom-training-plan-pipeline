@@ -101,6 +101,18 @@ def test_low_tolerance_never_produces_target_outside_range():
     assert low <= prescription["race_target_g_per_hour"] <= high
 
 
+def test_coach_locked_race_fueling_range_is_canonical():
+    profile = _profile(80, 230, "finish")
+    profile["nutrition"] = {
+        "training_fuel": "65 g/h",
+        "race_fueling_range_g_per_hour": [60, 70],
+    }
+    prescription = generate_fueling_context(profile)["prescription"]
+    assert prescription["race_target_g_per_hour"] == 65
+    assert prescription["race_range_g_per_hour"] == [60, 70]
+    assert prescription["inputs"]["prescribed_range_g_per_hour"] == [60, 70]
+
+
 def test_missing_tolerance_caps_large_untrained_athlete():
     prescription = build_fueling_prescription(
         duration_hours=4, weight_kg=100, ftp_watts=600, goal_type="podium",

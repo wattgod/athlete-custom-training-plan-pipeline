@@ -19,6 +19,8 @@ import re
 
 from jsonschema import Draft202012Validator
 
+from delivery_notes import render_coached_weekly_notes
+
 
 CONTRACT_VERSION = "apply_contract/v1"
 DATED_KINDS = {
@@ -33,6 +35,7 @@ DISPOSITIONS = {"create", "update", "keep", "delete"}
 INVENTORY_FIELDS = {
     "remote_id", "desired_digest", "payload_snapshot_ref", "kind", "last_op_id",
 }
+SUPPORTED_TP_WORKOUT_TYPES = frozenset({2, 7, 9})
 SnapshotReader = Callable[[str], Mapping[str, Any]]
 
 
@@ -102,7 +105,8 @@ PAYLOAD_SCHEMAS: Dict[str, Dict[str, Any]] = {
         "properties": {
             "date": {"type": ["string", "null"]}, "title": {"type": "string"},
             "description": {"type": ["string", "null"]},
-            "tp_workout_type": {"type": ["integer", "null"]},
+            "tp_workout_type": {"type": "integer",
+                                "enum": sorted(SUPPORTED_TP_WORKOUT_TYPES)},
             "total_seconds": {"type": "integer", "minimum": 0},
             "tss_planned": {"type": ["number", "null"]},
             "structure": {"type": ["object", "null"]},
@@ -256,6 +260,31 @@ def _schema_validate(contract: Dict[str, Any]) -> None:
         raise ApplyContractError(f"schema validation failed at {location}: {error.message}")
 
 
+def _validate_workout_payload(payload: Mapping[str, Any], context: str) -> None:
+    """Reject payloads that are schema-shaped but not publishable workouts."""
+    type_id = payload.get("tp_workout_type")
+    seconds = payload.get("total_seconds")
+    tss = payload.get("tss_planned")
+    structure = payload.get("structure")
+    if type_id not in SUPPORTED_TP_WORKOUT_TYPES:
+        raise ApplyContractError(f"{context} has unsupported tp_workout_type")
+    if type_id == 7:
+        if seconds != 0 or tss is not None or structure is not None:
+            raise ApplyContractError(f"{context} day-off payload is inconsistent")
+        return
+    if not isinstance(seconds, int) or isinstance(seconds, bool) or seconds <= 0:
+        raise ApplyContractError(
+            f"{context} substantive workout requires positive duration")
+    if type_id == 2 and structure is None and tss is None:
+        raise ApplyContractError(
+            f"{context} bike/race workout lacks both structure and planned TSS")
+    if structure is not None:
+        blocks = structure.get("structure")
+        if not isinstance(blocks, list) or not blocks:
+            raise ApplyContractError(
+                f"{context} workout structure must contain blocks")
+
+
 def _logical_id(order_id: str, kind: str, logical_key: str) -> str:
     return f"{order_id}:{kind}:{logical_key}"
 
@@ -289,12 +318,21 @@ def _desired_resources(
                     "structure": (None if str(session.get("tp_kind") or "") == "day_off"
                                   else session.get("structure")),
                 }}
-            note_key = f"session-{date}-{per_date[date]}"
-            note_id = _logical_id(order_id, "calendar_note_upsert", note_key)
-            desired[note_id] = {"kind": "calendar_note_upsert", "logical_key": note_key,
-                "date": session.get("date"), "payload": {"date": session.get("date"),
-                    "title": str(session.get("title") or "Untitled session"),
-                    "body": f"Week {week.get('number')} · {session.get('title') or 'Untitled session'} · {session.get('type') or 'workout'}"}}
+
+    for note in render_coached_weekly_notes(ir):
+        date = str(note["date"])
+        note_key = f"weekly-briefing-{date}"
+        note_id = _logical_id(order_id, "calendar_note_upsert", note_key)
+        desired[note_id] = {
+            "kind": "calendar_note_upsert",
+            "logical_key": note_key,
+            "date": date,
+            "payload": {
+                "date": date,
+                "title": str(note["title"]),
+                "body": str(note["body"]),
+            },
+        }
 
     for index, note in enumerate(ir.get("notes") or [], 1):
         if note.get("kind") not in {"mental_training", "mental_task"}:
@@ -676,6 +714,12 @@ def validate_contract(
             raise ApplyContractError("op_id does not bind logical_id and revision")
         if op["remote_marker"] is not None and op["logical_id"] not in op["remote_marker"]:
             raise ApplyContractError("remote marker does not embed logical_id")
+        if op["kind"] == "workout_upsert":
+            for payload_name in ("payload", "prior_payload"):
+                workout_payload = op.get(payload_name)
+                if workout_payload is not None:
+                    _validate_workout_payload(
+                        workout_payload, f"{op['op_id']} {payload_name}")
         if op["payload"] is not None and op["expected_digest"] != digest_payload(op["payload"]):
             raise ApplyContractError("expected_digest does not match payload")
         if inventory_supplied:

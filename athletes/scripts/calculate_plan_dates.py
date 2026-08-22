@@ -89,6 +89,25 @@ def _fit_weeks_to_calendar(
     return plan_weeks, week1_monday
 
 
+def post_event_recovery_weeks_for_horizon(
+    race_date_str: str, planning_horizon_end: str | None,
+) -> int:
+    """Map an exact Sunday horizon to the supported post-event extension."""
+    if not planning_horizon_end:
+        return 0
+    race_date = datetime.strptime(race_date_str, '%Y-%m-%d')
+    race_week_sunday = race_date + timedelta(days=6 - race_date.weekday())
+    horizon = datetime.strptime(str(planning_horizon_end), '%Y-%m-%d')
+    delta_days = (horizon - race_week_sunday).days
+    if delta_days < 0 or horizon.weekday() != 6 or delta_days % 7:
+        raise ValueError(
+            "planning_horizon_end must be a Sunday on or after race-week Sunday")
+    recovery_weeks = delta_days // 7
+    if recovery_weeks > 1:
+        raise ValueError("planning horizon requests more than one recovery week")
+    return recovery_weeks
+
+
 def validate_plan_dates(plan_dates: dict, race_date_str: str) -> list:
     """
     Validate plan dates for sanity.
@@ -103,8 +122,12 @@ def validate_plan_dates(plan_dates: dict, race_date_str: str) -> list:
     plan_weeks = plan_dates['plan_weeks']
     weeks = plan_dates.get('weeks', [])
 
-    # 1. Race date must be within race week
-    race_week = weeks[-1] if weeks else None
+    # 1. Exactly one race week must contain the target event. Recovery may
+    # follow it when the sealed planning horizon explicitly requests that.
+    race_weeks = [week for week in weeks if week.get('is_race_week')]
+    race_week = race_weeks[0] if len(race_weeks) == 1 else None
+    if len(race_weeks) != 1:
+        errors.append(f"CRITICAL: Expected exactly one race week, found {len(race_weeks)}")
     if race_week:
         race_week_monday = datetime.strptime(race_week['monday'], '%Y-%m-%d')
         race_week_sunday = datetime.strptime(race_week['sunday'], '%Y-%m-%d')
@@ -127,9 +150,19 @@ def validate_plan_dates(plan_dates: dict, race_date_str: str) -> list:
     if weeks and weeks[0]['monday'] != plan_dates['plan_start']:
         errors.append(f"CRITICAL: Week 1 Monday ({weeks[0]['monday']}) doesn't match plan_start ({plan_dates['plan_start']})")
 
-    # 6. Final week must be race week
-    if weeks and not weeks[-1]['is_race_week']:
-        errors.append(f"CRITICAL: Final week must be race week")
+    # 6. Weeks after race week must be explicit post-event recovery.
+    if race_week:
+        race_index = weeks.index(race_week)
+        for week in weeks[race_index + 1:]:
+            if (week.get('phase') != 'recovery'
+                    or not week.get('is_recovery_week')
+                    or not week.get('is_post_event_recovery')
+                    or week.get('is_race_week')):
+                errors.append(
+                    f"CRITICAL: Week {week.get('week')} after race must be post-event recovery")
+
+    if weeks and plan_dates['plan_end'] != weeks[-1]['sunday']:
+        errors.append("CRITICAL: Plan end must match final week Sunday")
 
     # 7. Weeks must be consecutive
     for i in range(1, len(weeks)):
@@ -173,7 +206,8 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
                          travel_dates: list = None,
                          generation_revision: int = 1,
                          derived_at: str = None,
-                         clamp_past_start: bool = True) -> dict:
+                         clamp_past_start: bool = True,
+                         post_event_recovery_weeks: int = 0) -> dict:
     """
     Calculate all plan dates working backwards from race date.
 
@@ -200,6 +234,10 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         raise ValueError(f"Plan must be at least {PLAN_WEEKS_MIN} week")
     if plan_weeks > PLAN_WEEKS_MAX:
         raise ValueError(f"Plan cannot exceed {PLAN_WEEKS_MAX} weeks")
+    if (not isinstance(post_event_recovery_weeks, int)
+            or isinstance(post_event_recovery_weeks, bool)
+            or not 0 <= post_event_recovery_weeks <= 1):
+        raise ValueError("post_event_recovery_weeks must be 0 or 1")
 
     # Parse race date
     race_date = datetime.strptime(race_date_str, '%Y-%m-%d')
@@ -232,18 +270,20 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         plan_weeks, week1_monday = _fit_weeks_to_calendar(
             plan_weeks, race_week_monday, monday_on_or_after(today))
 
+    race_plan_weeks = plan_weeks
+
     # Month abbreviations
     month_abbrev = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
     # Generate week-by-week dates
     week_dates = []
-    for week_num in range(1, plan_weeks + 1):
+    for week_num in range(1, race_plan_weeks + 1):
         week_monday = week1_monday + timedelta(weeks=week_num - 1)
         week_sunday = week_monday + timedelta(days=6)
 
         # Determine phase based on position in plan and constraints
-        progress = week_num / plan_weeks
+        progress = week_num / race_plan_weeks
 
         # Check if this week is after heavy_training_end constraint
         in_maintenance_period = False
@@ -253,9 +293,9 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
             if week_monday >= heavy_end_dt:
                 in_maintenance_period = True
 
-        if week_num == plan_weeks:
+        if week_num == race_plan_weeks:
             phase = 'race'
-        elif week_num >= plan_weeks - 1:
+        elif week_num >= race_plan_weeks - 1:
             phase = 'taper'
         elif in_maintenance_period:
             # After heavy training ends, switch to maintenance
@@ -290,7 +330,7 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
             'sunday': week_sunday.strftime('%Y-%m-%d'),
             'sunday_short': f"{month_abbrev[week_sunday.month - 1]}{week_sunday.day}",
             'phase': phase,
-            'is_race_week': week_num == plan_weeks,
+            'is_race_week': week_num == race_plan_weeks,
             'days': days
         })
 
@@ -307,7 +347,7 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
     for week_data in week_dates:
         week_data['is_recovery_week'] = False  # Default
 
-    if plan_weeks >= RECOVERY_WEEK_MIN_PLAN_WEEKS:
+    if race_plan_weeks >= RECOVERY_WEEK_MIN_PLAN_WEEKS:
         for week_data in week_dates:
             wn = week_data['week']
             phase = week_data['phase']
@@ -318,6 +358,51 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
             position_in_cycle = (wn - 1) % cycle_length
             if position_in_cycle >= load_weeks:
                 week_data['is_recovery_week'] = True
+
+    # A sealed horizon may explicitly add one complete recovery week after
+    # the target-event week. The race-week semantics above remain unchanged.
+    for offset in range(1, post_event_recovery_weeks + 1):
+        week_num = race_plan_weeks + offset
+        week_monday = race_week_monday + timedelta(weeks=offset)
+        week_sunday = week_monday + timedelta(days=6)
+        days = []
+        for day_offset in range(7):
+            day_date = week_monday + timedelta(days=day_offset)
+            day_abbrev = DAY_ORDER[day_offset]
+            month = month_abbrev[day_date.month - 1]
+            day_num = day_date.day
+            days.append({
+                'day': day_abbrev,
+                'date': day_date.strftime('%Y-%m-%d'),
+                'date_short': f"{month}{day_num}",
+                'workout_prefix': f"W{week_num:02d}_{day_abbrev}_{month}{day_num}",
+                'is_race_day': False,
+            })
+        week_dates.append({
+            'week': week_num,
+            'monday': week_monday.strftime('%Y-%m-%d'),
+            'monday_short': f"{month_abbrev[week_monday.month - 1]}{week_monday.day}",
+            'sunday': week_sunday.strftime('%Y-%m-%d'),
+            'sunday_short': f"{month_abbrev[week_sunday.month - 1]}{week_sunday.day}",
+            'phase': 'recovery',
+            'is_race_week': False,
+            'is_recovery_week': True,
+            'is_post_event_recovery': True,
+            'days': days,
+        })
+
+    total_plan_weeks = len(week_dates)
+
+    if post_event_recovery_weeks and b_events:
+        recovery_start = race_week_monday + timedelta(weeks=1)
+        recovery_end = datetime.strptime(week_dates[-1]['sunday'], '%Y-%m-%d')
+        for b_event in b_events:
+            if not b_event.get('date'):
+                continue
+            b_date = datetime.strptime(b_event['date'], '%Y-%m-%d')
+            if recovery_start <= b_date <= recovery_end:
+                raise ValueError(
+                    "post-event recovery week contains a later B event")
 
     # ---------------------------------------------------------------
     # B-race overlay: mark weeks containing B-priority events
@@ -383,10 +468,10 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
     result = {
         'race_date': race_date_str,
         'race_weekday': DAY_ORDER_DISPLAY[race_weekday],
-        'plan_weeks': plan_weeks,
+        'plan_weeks': total_plan_weeks,
         'plan_start': week1_monday.strftime('%Y-%m-%d'),
         'plan_start_short': f"{month_abbrev[week1_monday.month - 1]}{week1_monday.day}",
-        'plan_end': (race_week_monday + timedelta(days=6)).strftime('%Y-%m-%d'),
+        'plan_end': week_dates[-1]['sunday'],
         'week1_monday': week1_monday.strftime('%Y-%m-%d'),
         'race_week_monday': race_week_monday.strftime('%Y-%m-%d'),
         'weeks': week_dates,
@@ -400,12 +485,13 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
         derived_at or generation_now().isoformat().replace('+00:00', 'Z'))
     common_inputs = {
         'race_date': race_date_str,
-        'requested_plan_weeks': plan_weeks,
+        'requested_plan_weeks': race_plan_weeks,
         'preferred_start': preferred_start,
         'heavy_training_end': heavy_training_end,
         'meso_pattern': effective_pattern,
         'b_event_count': len(b_events or []),
         'travel_date_count': len(travel_dates or []),
+        'post_event_recovery_weeks': post_event_recovery_weeks,
     }
 
     def record(identifier, field, basis, inputs=None, sensitivity='personal'):
@@ -418,10 +504,11 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
     records = [
         record('CALENDAR_RACE_DATE', 'race_date', 'target race calendar fact'),
         record('CALENDAR_RACE_WEEKDAY', 'race_weekday', 'weekday derived from target race date'),
-        record('CALENDAR_PLAN_WEEKS', 'plan_weeks', 'available Mondays through race week'),
+        record('CALENDAR_PLAN_WEEKS', 'plan_weeks',
+               'available Mondays through race week plus explicit post-event recovery'),
         record('CALENDAR_PLAN_START', 'plan_start', 'first Monday in the final plan window'),
         record('CALENDAR_PLAN_START_SHORT', 'plan_start_short', 'display projection of plan start'),
-        record('CALENDAR_PLAN_END', 'plan_end', 'Sunday ending target race week'),
+        record('CALENDAR_PLAN_END', 'plan_end', 'Sunday ending the explicit planning horizon'),
         record('CALENDAR_WEEK1_MONDAY', 'week1_monday', 'canonical first-week boundary'),
         record('CALENDAR_RACE_WEEK_MONDAY', 'race_week_monday', 'Monday containing target race'),
         record('CALENDAR_WEEKS', 'weeks',
@@ -592,9 +679,12 @@ def main():
     fulfillment = profile.get('fulfillment') or {}
     generation_revision = int(fulfillment.get('generation_revision') or 1)
     derived_at = str(fulfillment.get('generation_at') or '') or None
+    post_event_recovery_weeks = post_event_recovery_weeks_for_horizon(
+        race_date, fulfillment.get('planning_horizon_end'))
     plan_dates = calculate_plan_dates(
         race_date, plan_weeks, preferred_start, heavy_training_end, b_events,
-        meso_pattern, travel_dates, generation_revision, derived_at)
+        meso_pattern, travel_dates, generation_revision, derived_at,
+        post_event_recovery_weeks=post_event_recovery_weeks)
 
     # Print summary
     print("=" * 60)
@@ -604,7 +694,7 @@ def main():
     print(f"Race Date: {plan_dates['race_date']} ({plan_dates['race_weekday']})")
     print(f"Plan Duration: {plan_dates['plan_weeks']} weeks")
     print(f"Plan Start: {plan_dates['plan_start']} (Week 1 Monday)")
-    print(f"Plan End: {plan_dates['plan_end']} (Race Week Sunday)")
+    print(f"Plan End: {plan_dates['plan_end']} (Planning Horizon Sunday)")
 
     print(f"\nWorkout Naming: {plan_dates['workout_naming_convention']}")
     print(f"Example: {plan_dates['workout_example']}")

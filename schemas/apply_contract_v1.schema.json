@@ -1127,10 +1127,12 @@
                     "type": "integer"
                   },
                   "tp_workout_type": {
-                    "type": [
-                      "integer",
-                      "null"
+                    "enum": [
+                      2,
+                      7,
+                      9
                     ]
+                    ,"type": "integer"
                   },
                   "tss_planned": {
                     "type": [
@@ -1240,10 +1242,12 @@
                     "type": "integer"
                   },
                   "tp_workout_type": {
-                    "type": [
-                      "integer",
-                      "null"
+                    "enum": [
+                      2,
+                      7,
+                      9
                     ]
+                    ,"type": "integer"
                   },
                   "tss_planned": {
                     "type": [
@@ -1295,10 +1299,12 @@
                     "type": "integer"
                   },
                   "tp_workout_type": {
-                    "type": [
-                      "integer",
-                      "null"
+                    "enum": [
+                      2,
+                      7,
+                      9
                     ]
+                    ,"type": "integer"
                   },
                   "tss_planned": {
                     "type": [
@@ -1471,10 +1477,12 @@
                     "type": "integer"
                   },
                   "tp_workout_type": {
-                    "type": [
-                      "integer",
-                      "null"
+                    "enum": [
+                      2,
+                      7,
+                      9
                     ]
+                    ,"type": "integer"
                   },
                   "tss_planned": {
                     "type": [

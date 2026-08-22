@@ -166,6 +166,7 @@ _FUELING_SHAPE = {
             "absolute_work_watts": _optional(DERIVED),
             "intensity_descriptor": _optional(DERIVED),
             "deferred_to_field_test": _optional(DERIVED),
+            "prescribed_range_g_per_hour": _optional(_list(DERIVED)),
         },
         "policy_version": DERIVED,
     },
@@ -222,6 +223,7 @@ _CALENDAR_WEEK = {
     "sunday": DERIVED, "sunday_short": DERIVED, "phase": DERIVED,
     "is_race_week": DERIVED, "days": _list(_CALENDAR_DAY),
     "is_recovery_week": DERIVED,
+    "is_post_event_recovery": _optional(DERIVED),
     "b_race": _optional({"name": DERIVED, "date": DERIVED, "phase": DERIVED}),
 }
 

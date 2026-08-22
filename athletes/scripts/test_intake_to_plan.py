@@ -993,6 +993,74 @@ class TestBlankFtpIsNotRequired:
         itp.validate_profile_sanity(prof)
 
 
+def test_programmed_midweek_ceiling_caps_interval_and_regular_weekdays():
+    import intake_to_plan as itp
+    parsed = itp.parse_intake_markdown("""## Basic Info
+- Name: Weekday Cap
+- Email: cap@example.com
+- Age: 36
+- Weight: 80 kg
+
+## Goals
+- Primary Goal: general_fitness
+
+## Schedule
+- Weekly Hours Available: 8-11
+- Long Ride Days: Saturday, Sunday
+- Interval Days: Tuesday, Thursday
+- Off Days: Monday
+- Programmed Midweek Max Minutes: 45
+""")
+    profile = itp.build_profile(parsed)
+    days = profile['preferred_days']
+    assert days['monday']['max_duration_min'] == 0
+    for day in ('tuesday', 'wednesday', 'thursday', 'friday'):
+        assert days[day]['max_duration_min'] == 45
+    assert days['saturday']['max_duration_min'] == 600
+    assert days['sunday']['max_duration_min'] == 600
+
+
+def test_michael_exact_notes_only_midweek_ceiling_is_promoted():
+    import intake_to_plan as itp
+    parsed = itp.parse_intake_markdown("""# Athlete Intake: Michael Beal
+## Basic Info
+- Email: wmbeal@outlook.com
+- Age: 36
+- Weight: 80 kg
+## Goals
+- Primary Goal: general_fitness
+## Schedule
+- Weekly Hours Available: 8-11
+- Long Ride Days: Saturday, Sunday
+- Interval Days: Tuesday, Thursday
+- Off Days: Monday
+## Additional
+- Notes: Programmed midweek sessions must not exceed 45 minutes. Friday openers are allowed.
+""")
+    days = itp.build_profile(parsed)['preferred_days']
+    assert [days[day]['max_duration_min'] for day in (
+        'tuesday', 'wednesday', 'thursday', 'friday')] == [45, 45, 45, 45]
+
+
+def test_conflicting_structured_and_notes_midweek_caps_fail_closed():
+    import intake_to_plan as itp
+    parsed = itp.parse_intake_markdown("""# Athlete Intake: Conflict Cap
+## Basic Info
+- Email: cap@example.com
+- Age: 36
+- Weight: 80 kg
+## Goals
+- Primary Goal: general_fitness
+## Schedule
+- Weekly Hours Available: 8
+- Programmed Midweek Max Minutes: 45
+## Additional
+- Notes: Midweek max 60 minutes.
+""")
+    with pytest.raises(itp.IntakeValidationError, match="Conflicting midweek"):
+        itp.build_profile(parsed)
+
+
 class TestBuildProfileTypes:
     """Verify all value types in the built profile are correct."""
 

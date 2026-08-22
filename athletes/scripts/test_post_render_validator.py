@@ -281,8 +281,8 @@ def test_unavailable_day_not_covered_by_off_role_is_disclosed():
 
 
 def test_structureless_canonical_intensity_is_disclosed_for_rpe_athletes():
-    # RPE-controlled sessions carry structure=None (project_tp_structure) and
-    # 'Cadence Work' matches no title regex — canonical identity must catch it.
+    # Canonical intensity identity remains authoritative even when an older
+    # transitional document lacks the now-required RPE structure.
     document = _document()
     document['plan_ir']['weeks'][1]['sessions'].append(
         _session('2026-08-11', 'Cadence Work'))

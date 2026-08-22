@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from canonical_training_model import project_tp_structure
 
 CONTROL = {"control_metric": "power", "control_basis": "ftp"}
+RPE_CONTROL = {"control_metric": "rpe", "control_basis": "rpe"}
 
 
 def _session(segments):
@@ -94,3 +95,37 @@ def test_free_ride_boundary_is_never_mislabeled_a_cooldown():
     ]), CONTROL)
     assert s["structure"][0]["steps"][0]["intensityClass"] == "warmUp"
     assert s["structure"][-1]["steps"][0]["intensityClass"] == "active"
+
+
+def test_rpe_bike_projects_live_accepted_timed_structure():
+    s = project_tp_structure(_session([
+        {"kind": "warmup", "seconds": 600,
+         "target": {"type": "rpe", "low": 2, "high": 4}},
+        {"kind": "intervals", "repeat": 2, "on_seconds": 30, "off_seconds": 180,
+         "target": {"type": "rpe", "on": 7, "off": 2}},
+        {"kind": "cooldown", "seconds": 300,
+         "target": {"type": "rpe", "low": 4, "high": 2}},
+    ]), RPE_CONTROL)
+    assert s["primaryIntensityMetric"] == "rpe"
+    assert s["primaryIntensityTargetOrRange"] == "range"
+    assert s["importedFromZwo"] is True
+    assert s["polyline"][0] == [0, 0]
+    assert s["polyline"][-1] == [1, 0]
+    targets = [block["steps"][0]["targets"][0] for block in s["structure"]]
+    assert targets == [
+        {"minValue": 2, "maxValue": 4},
+        {"minValue": 7, "maxValue": 7},
+        {"minValue": 2, "maxValue": 2},
+        {"minValue": 7, "maxValue": 7},
+        {"minValue": 2, "maxValue": 2},
+        {"minValue": 2, "maxValue": 4},
+    ]
+
+
+def test_rpe_all_out_free_ride_gets_honest_max_effort_target():
+    s = project_tp_structure(_session([
+        {"kind": "free_ride", "seconds": 60, "name": "1min all-out test",
+         "target": {"type": "free"}},
+    ]), RPE_CONTROL)
+    target = s["structure"][0]["steps"][0]["targets"][0]
+    assert target == {"minValue": 10, "maxValue": 10}

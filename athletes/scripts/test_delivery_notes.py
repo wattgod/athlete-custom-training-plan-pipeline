@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from delivery_notes import render_notes, _week_sequence, _quality_sessions
+from delivery_notes import (
+    render_coached_weekly_notes,
+    render_notes,
+    _week_sequence,
+    _quality_sessions,
+)
 from delivery_render import load_brand, render_title
 
 
@@ -46,6 +51,27 @@ def _notes(plan, brand="gravelgod"):
 
 def _by_type(notes):
     return {note["type"]: note for note in notes}
+
+
+def test_coached_weekly_notes_are_direct_clean_and_bounded():
+    plan = _plan(weeks=2, metric="rpe", later_event=False)
+    plan["athlete"]["name"] = "Michael Beal"
+    plan["fueling"] = {"race_range_g_per_hour": [60, 70]}
+    plan["events"] = [
+        {"name": "Vancouver Gran Fondo", "priority": "A", "date": "2026-08-22"},
+        {"name": "Whistler MTB", "priority": "B", "date": "2026-08-23"},
+    ]
+    notes = render_coached_weekly_notes(plan)
+    assert len(notes) == 2
+    race = notes[-1]
+    assert race["title"] == "Week 2: Race Week"
+    assert "openers before Vancouver Gran Fondo" in race["body"]
+    assert "60-70 g/hr" in race["body"]
+    assert "inside or out" in race["body"]
+    assert "[GG:" not in race["body"]
+    assert "THE INTENT" not in race["body"]
+    assert "YOUR CALL" not in race["body"]
+    assert len(race["body"].split()) <= 110
 
 
 def test_full_guillermo_render_has_complete_inventory_and_safe_copy():

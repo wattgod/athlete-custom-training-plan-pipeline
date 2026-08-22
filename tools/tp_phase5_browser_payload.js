@@ -161,15 +161,6 @@
     throw new Error('UNSUPPORTED_KIND');
   }
 
-  const marker = operation => `[GG:${operation.remote_marker}]`;
-  const withMarker = (text, operation) => {
-    const body = String(text || '').replace(/\s+$/u, '');
-    return `${body}${body ? '\n\n' : ''}${marker(operation)}`;
-  };
-  const stripMarker = (text, operation) => String(text || '')
-    .replace(new RegExp(`\\n?\\n?${marker(operation).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), '')
-    .replace(/\s+$/u, '');
-
   function workoutStructure(value) {
     if (typeof value !== 'string') return value ?? null;
     try {
@@ -185,7 +176,7 @@
       return {
         date: dateOnly(row.workoutDay),
         title: String(row.title || ''),
-        description: stripMarker(row.description, operation),
+        description: String(row.description || '').replace(/\s+$/u, ''),
         tp_workout_type: row.workoutTypeValueId ?? null,
         total_seconds: Math.round(hours * 3600),
         tss_planned: row.tssPlanned ?? null,
@@ -195,7 +186,7 @@
     return {
       date: dateOnly(row.noteDate),
       title: String(row.title || ''),
-      body: stripMarker(row.description, operation),
+      body: String(row.description || '').replace(/\s+$/u, ''),
     };
   }
 
@@ -210,7 +201,7 @@
         ...current,
         athleteId: Number(REQUEST.tp_athlete_id),
         title: payload.title,
-        description: withMarker(payload.description, operation),
+        description: String(payload.description || '').replace(/\s+$/u, ''),
         workoutTypeValueId: payload.tp_workout_type,
         workoutDay: `${payload.date}T00:00:00`,
         totalTimePlanned: durationHours,
@@ -223,7 +214,7 @@
       ...current,
       athleteId: Number(REQUEST.tp_athlete_id),
       title: payload.title,
-      description: withMarker(payload.body, operation),
+      description: String(payload.body || '').replace(/\s+$/u, ''),
       noteDate: `${payload.date}T00:00:00`,
     };
   }
@@ -263,12 +254,22 @@
   }
 
   async function exactRow(operation, id = null) {
+    if (!id) throw new Error('REMOTE_ID_REQUIRED');
     const candidates = await listOperation(operation);
-    const matches = id
-      ? candidates.filter(row => remoteId(row, operation.kind) === String(id))
-      : candidates.filter(row => String(row.description || '').includes(marker(operation)));
+    const matches = candidates.filter(
+      row => remoteId(row, operation.kind) === String(id));
     if (matches.length > 1) throw new Error('MULTIPLE_REMOTE_MATCHES');
     return matches[0] || null;
+  }
+
+  async function payloadMatches(operation, payload, excludedIds = new Set()) {
+    const expected = await sha256(payload);
+    const matches = [];
+    for (const row of await listOperation(operation)) {
+      if (excludedIds.has(remoteId(row, operation.kind))) continue;
+      if (await sha256(normalized(row, operation)) === expected) matches.push(row);
+    }
+    return matches;
   }
 
   async function observed(operation, row, payload) {
@@ -291,12 +292,19 @@
         reconciled_after_error: false };
     }
     if (disposition === 'create') {
-      const existing = await exactRow(operation);
-      if (existing) {
+      const receiptId = priorReceipt(operation)?.remote_id || null;
+      if (receiptId) {
+        const existing = await exactRow(operation, receiptId);
+        if (!existing) throw new Error('RECEIPT_TARGET_MISSING');
         const digest = await observed(operation, existing, operation.payload);
         return { op_id: operation.op_id, status: 'landed',
           remote_id: remoteId(existing, operation.kind), observed_digest: digest,
           reconciled_after_error: true };
+      }
+      const beforeRows = await listOperation(operation);
+      const beforeIds = new Set(beforeRows.map(row => remoteId(row, operation.kind)));
+      if ((await payloadMatches(operation, operation.payload)).length) {
+        throw new Error('UNATTRIBUTED_EXISTING_MATCH');
       }
       if (REQUEST.dry_run) return { op_id: operation.op_id, status: 'would_create',
         remote_id: null, observed_digest: operation.expected_digest,
@@ -309,7 +317,9 @@
         ambiguous = error?.name === 'AbortError' || error instanceof TypeError;
         if (!ambiguous) throw error;
       }
-      const row = await exactRow(operation);
+      const matches = await payloadMatches(operation, operation.payload, beforeIds);
+      if (matches.length > 1) throw new Error('MULTIPLE_REMOTE_MATCHES');
+      const row = matches[0] || null;
       if (!row) throw new Error(ambiguous ? 'AMBIGUOUS_POST' : 'CREATE_NOT_FOUND');
       const digest = await observed(operation, row, operation.payload);
       return { op_id: operation.op_id, status: 'landed',
@@ -336,9 +346,6 @@
     if (!current) throw new Error('UPDATE_TARGET_MISSING');
     const currentDigest = await sha256(normalized(current, operation));
     if (currentDigest === operation.expected_digest) {
-      if (!String(current.description || '').includes(marker(operation))) {
-        throw new Error('READBACK_DIGEST_MISMATCH');
-      }
       return { op_id: operation.op_id, status: 'landed',
         remote_id: String(targetId), observed_digest: currentDigest,
         reconciled_after_error: true };
@@ -364,7 +371,8 @@
     const prior = priorReceipt(operation);
     const id = operation.predecessor?.remote_id || prior?.remote_id || null;
     if (operation.disposition === 'delete') {
-      const row = id ? await exactRow(operation, id) : await exactRow(operation);
+      if (!id) throw new Error('PREDECESSOR_REMOTE_ID_MISSING');
+      const row = await exactRow(operation, id);
       if (row) throw new Error('VERIFY_DELETE_PRESENT');
       return { op_id: operation.op_id, status: 'absent', remote_id: id,
         observed_digest: null, reconciled_after_error: false };
@@ -391,9 +399,6 @@
       const current = await exactRow(operation, id);
       if (!current) return { op_id: operation.op_id, status: 'absent',
         remote_id: String(id), observed_digest: null, reconciled_after_error: true };
-      if (!String(current.description || '').includes(marker(operation))) {
-        throw new Error('ROLLBACK_MARKER_MISMATCH');
-      }
       const currentDigest = await sha256(normalized(current, operation));
       if (currentDigest !== prior.observed_digest) throw new Error('ROLLBACK_CONFLICT');
       if (!REQUEST.dry_run) await mutate('DELETE', itemPath(operation, id));
@@ -417,9 +422,6 @@
         return { op_id: operation.op_id, status: 'restored', remote_id: String(id),
           observed_digest: priorDigest, reconciled_after_error: true };
       }
-      if (!String(current.description || '').includes(marker(operation))) {
-        throw new Error('ROLLBACK_MARKER_MISMATCH');
-      }
       if (currentDigest !== prior?.observed_digest) throw new Error('ROLLBACK_CONFLICT');
       if (!REQUEST.dry_run) {
         const full = await fullCurrent(operation, id, current);
@@ -434,19 +436,29 @@
         observed_digest: digest, reconciled_after_error: false };
     }
     if (strategy === 'recreate_from_prior_payload') {
-      let row = await exactRow(operation);
       const priorDigest = await sha256(payload);
-      if (row) {
-        const currentDigest = await sha256(normalized(row, operation));
-        if (currentDigest !== priorDigest) throw new Error('ROLLBACK_CONFLICT');
-        return { op_id: operation.op_id, status: 'restored',
-          remote_id: remoteId(row, operation.kind), observed_digest: priorDigest,
-          reconciled_after_error: true };
+      const receiptId = prior?.remote_id || null;
+      if (receiptId) {
+        const byReceipt = await exactRow(operation, receiptId);
+        if (byReceipt) {
+          const currentDigest = await sha256(normalized(byReceipt, operation));
+          if (currentDigest !== priorDigest) throw new Error('ROLLBACK_CONFLICT');
+          return { op_id: operation.op_id, status: 'restored',
+            remote_id: remoteId(byReceipt, operation.kind), observed_digest: priorDigest,
+            reconciled_after_error: true };
+        }
       }
+      const beforeRows = await listOperation(operation);
+      const beforeIds = new Set(beforeRows.map(candidate => remoteId(candidate, operation.kind)));
+      const existing = await payloadMatches(operation, payload);
+      if (existing.length > 1) throw new Error('MULTIPLE_REMOTE_MATCHES');
+      let row = existing[0] || null;
       if (!row && !REQUEST.dry_run) {
         await mutate('POST', collectionPath(operation),
           wireBody(operation, projectedBody(payload, operation), true), false);
-        row = await exactRow(operation);
+        const created = await payloadMatches(operation, payload, beforeIds);
+        if (created.length > 1) throw new Error('MULTIPLE_REMOTE_MATCHES');
+        row = created[0] || null;
       }
       if (!row && !REQUEST.dry_run) throw new Error('ROLLBACK_RECREATE_MISSING');
       const digest = REQUEST.dry_run ? await sha256(payload)

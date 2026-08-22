@@ -123,6 +123,13 @@ def _race_countdown(weeks_to_race: int, race_name: str) -> str:
     return f"{weeks_to_race} {unit} to {race_name}"
 
 
+def _week_event_context(week: dict, weeks_to_race: int, race_name: str) -> str:
+    """Use post-event language after the target rather than a false countdown."""
+    if week.get('is_post_event_recovery'):
+        return f"Post-event recovery after {race_name}"
+    return _race_countdown(weeks_to_race, race_name)
+
+
 def _phase_header_line(phase: str, week: dict) -> str:
     """Render the ZWO description's "Phase: X" line, week-type aware.
 
@@ -1617,6 +1624,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
     # Use centralized day mappings from constants.py
     strength_only_abbrevs = [DAY_FULL_TO_ABBREV.get(d.lower(), d) for d in strength_only_days]
+    _requested_strength_sessions = int(
+        (profile.get('strength', {}) or {}).get('sessions_per_week', 2) or 0)
     long_day_abbrev = DAY_FULL_TO_ABBREV.get(preferred_long_day.lower(), 'Sat')
     declared_long_days = {
         DAY_FULL_TO_ABBREV.get(str(day).lower(), str(day))
@@ -3303,6 +3312,13 @@ Stay loose, {athlete_name}!"""
             day_abbrev = day_info['day']
             date_short = day_info['date_short']
             workout_prefix = day_info['workout_prefix']
+            if (day_abbrev in strength_only_abbrevs
+                    and strength_sessions_for_week(
+                        _requested_strength_sessions, phase,
+                        week.get('is_recovery_week', False)) > 0):
+                # A coach-designated strength-only day owns the daily budget.
+                # The strength pass below emits the sole calendar session.
+                continue
             is_race_day = day_info.get('is_race_day', False)
             is_b_race_day = day_info.get('is_b_race_day', False)
             is_b_race_opener = day_info.get('is_b_race_opener', False)
@@ -3452,6 +3468,30 @@ TIPS:
                 # above) stashed a curated TP library item on this day.
                 _library_resolution = bb_day.get('library_resolution')
 
+                # A post-event recovery week is not a normal mid-plan
+                # deload. Remove activation sessions and any curated item
+                # with hard work or surges, then cap the easy duration. This
+                # prevents openers, burst-focus endurance, and overlong rides
+                # from appearing after the target-event weekend.
+                if week.get('is_post_event_recovery', False):
+                    bb_day = dict(bb_day)
+                    recovery_cap = (
+                        90 if day_abbrev in declared_long_days else 45
+                    )
+                    if (bb_name != 'Endurance'
+                            or (_library_resolution and (
+                                _resolution_is_hard(_library_resolution)
+                                or _library_resolution_has_surge_work(
+                                    _library_resolution)))
+                            or (_library_resolution
+                                and bb_duration > recovery_cap)):
+                        bb_name = 'Endurance'
+                        bb_level = 1
+                        _library_resolution = None
+                    bb_day['name'] = bb_name
+                    bb_day['role'] = 'filler'
+                    bb_duration = min(bb_duration, recovery_cap)
+
                 if (bb_name == 'Anaerobic Test'
                         and week_num in ftp_test_target_weeks
                         and (profile.get('fitness_markers') or {}).get(
@@ -3546,7 +3586,7 @@ TIPS:
                     # drill-bearing variants (cadence, spin-up, bursts) so
                     # the week keeps dimension without metabolic strain
                     # (coach ruling, Aug 2026).
-                    if _sim_recovery:
+                    if _sim_recovery or week.get('is_post_event_recovery', False):
                         _e_variant = None
                     elif week.get('is_recovery_week', False):
                         _e_variant = (1, 5, 4)[var_offset % 3]
@@ -3714,7 +3754,7 @@ TIPS:
                     weeks_to_race = total_weeks - week_num + 1
                     personal_header = (
                         f"{athlete_name} - Week {week_num}/{total_weeks} - "
-                        f"{_race_countdown(weeks_to_race, race_name)}\n"
+                        f"{_week_event_context(week, weeks_to_race, race_name)}\n"
                         f"{_phase_header_line(phase, week)}"
                     )
                     fuel_tag = _get_fuel_tag_for_type(bb_name, fueling, bb_duration, week_num)
@@ -3841,12 +3881,19 @@ TIPS:
             # Recovery weeks have zero intensity above Z2 except Openers.
             # -----------------------------------------------------------
             is_recovery = week.get('is_recovery_week', False)
+            is_post_event_recovery = week.get('is_post_event_recovery', False)
             if is_recovery and workout_type not in ('Rest', 'Strength'):
                 vol_factor = sum(RECOVERY_WEEK_VOLUME_FACTOR) / 2  # midpoint ~0.575
 
                 if workout_type in INTENSITY_WORKOUT_TYPES or workout_type == 'FTP_Test':
-                    # First intensity slot → Openers; rest → Endurance
-                    if not week.get('_recovery_opener_added', False):
+                    # Post-event recovery contains no activation work. Normal
+                    # mid-plan recovery may keep one opener session.
+                    if is_post_event_recovery:
+                        workout_type = 'Endurance'
+                        description = 'Post-event recovery — easy spin only'
+                        duration = max(20, min(45, int(duration * vol_factor)))
+                        power = 0.58
+                    elif not week.get('_recovery_opener_added', False):
                         workout_type = 'Openers'
                         description = f'Recovery week openers — keep the legs sharp'
                         duration = min(duration, 35) if duration > 0 else 30
@@ -3858,8 +3905,12 @@ TIPS:
                         duration = max(20, int(duration * vol_factor))
                         power = 0.60
                 elif workout_type == 'Long_Ride':
-                    description = f'Recovery week long ride — shorter and easy'
-                    duration = max(30, int(duration * 0.60))
+                    description = ('Post-event recovery — easy endurance ceiling'
+                                   if is_post_event_recovery
+                                   else 'Recovery week long ride — shorter and easy')
+                    duration = (max(30, min(90, int(duration * 0.50)))
+                                if is_post_event_recovery
+                                else max(30, int(duration * 0.60)))
                     power = 0.58  # Easy effort for recovery week
                 else:
                     # Easy/Endurance/Shakeout — reduce duration
@@ -3926,7 +3977,7 @@ TIPS:
                 weeks_to_race = total_weeks - week_num + 1
                 rest_description = f"""REST DAY - {athlete_name}
 
-COUNTDOWN: {_race_countdown(weeks_to_race, race_name)}
+COUNTDOWN: {_week_event_context(week, weeks_to_race, race_name)}
 
 TODAY'S FOCUS:
 - Complete rest from cycling
@@ -4212,7 +4263,7 @@ GO GET IT, {athlete_name.upper()}!
                         # Inject personalized header into description
                         weeks_to_race = total_weeks - week_num + 1
                         personal_header = (f"{athlete_name} - Week {week_num}/{total_weeks} - "
-                                           f"{_race_countdown(weeks_to_race, race_name)}\n"
+                                           f"{_week_event_context(week, weeks_to_race, race_name)}\n"
                                            f"{_phase_header_line(phase, week)}")
 
                         # Add heat training reminder (weeks 4-8 before race).
@@ -4281,7 +4332,7 @@ GO GET IT, {athlete_name.upper()}!
             # Add personalized header to description
             weeks_to_race = total_weeks - week_num + 1
             personal_header = (f"{athlete_name} - Week {week_num}/{total_weeks} - "
-                               f"{_race_countdown(weeks_to_race, race_name)}\n"
+                               f"{_week_event_context(week, weeks_to_race, race_name)}\n"
                                f"{_phase_header_line(phase, week)}")
 
             # Add heat training reminder (weeks 4-8 before race); never on tests.
@@ -4428,7 +4479,7 @@ GO GET IT, {athlete_name.upper()}!
                     _rec.pop(_stale_key, None)
 
     # Generate strength workouts - respect athlete availability
-    strength_sessions = profile.get('strength', {}).get('sessions_per_week', 2) if profile else 2
+    strength_sessions = _requested_strength_sessions
     strength_enabled = config.get('workouts.strength.enabled', True)
 
     if strength_sessions > 0 and strength_enabled:
