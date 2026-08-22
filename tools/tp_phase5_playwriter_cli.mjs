@@ -104,7 +104,9 @@ try {
     { encoding: 'utf8', mode: 0o600, flag: 'wx' },
   );
   chmodSync(invocationPath, 0o600);
-  const result = spawnSync(executable, ['-s', session, '-f', invocationPath], {
+  const result = spawnSync(executable, [
+    '-s', session, '--timeout', String(14 * 60 * 1000), '-f', invocationPath,
+  ], {
     stdio: 'ignore', timeout: 15 * 60 * 1000,
   });
   if (result.error) throw result.error;

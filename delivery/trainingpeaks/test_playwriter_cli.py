@@ -33,8 +33,9 @@ if args == ['--version']:
 elif args == ['session', 'list']:
     print('ID  BROWSER  PROFILE          EXT')
     print('4   Chrome   coach@example.com install:Chrome:fixture123')
-elif len(args) == 4 and args[:3] == ['-s', '4', '-f']:
-    source = Path(args[3]).read_text(encoding='utf-8')
+elif (len(args) == 6 and args[:2] == ['-s', '4']
+      and args[2:4] == ['--timeout', '840000'] and args[4] == '-f'):
+    source = Path(args[5]).read_text(encoding='utf-8')
     if ('state.tpPhase5PayloadPath=' in source
             or 'state.tpPhase5PayloadSource=' not in source
             or 'state.tpPhase5PayloadSha256=' not in source):
@@ -87,7 +88,7 @@ def test_playwriter_adapter_uses_one_atomic_profile_bound_invocation(tmp_path):
     commands = [json.loads(line) for line in log.read_text().splitlines()]
     assert commands[:2] == [["--version"], ["session", "list"]]
     assert len(commands) == 3
-    assert commands[2][:3] == ["-s", "4", "-f"]
+    assert commands[2][:5] == ["-s", "4", "--timeout", "840000", "-f"]
     assert all("-e" not in command for command in commands)
     assert receipt.is_file()
     assert not list(tmp_path.glob(".tp-phase5-invocation-*.js"))
