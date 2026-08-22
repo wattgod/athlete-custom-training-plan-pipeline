@@ -150,7 +150,7 @@
     const athlete = encodeURIComponent(String(REQUEST.tp_athlete_id));
     if (operation.kind === 'workout_upsert') {
       return rows(await api(
-        `/fitness/v6/athletes/${athlete}/workouts/${day}/${day}`,
+        `/fitness/v7/athletes/${athlete}/workouts/${day}/${day}`,
       ), 'workout');
     }
     if (operation.kind === 'calendar_note_upsert') {
@@ -170,6 +170,15 @@
     .replace(new RegExp(`\\n?\\n?${marker(operation).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), '')
     .replace(/\s+$/u, '');
 
+  function workoutStructure(value) {
+    if (typeof value !== 'string') return value ?? null;
+    try {
+      return JSON.parse(value);
+    } catch {
+      throw new Error('WORKOUT_STRUCTURE_SHAPE');
+    }
+  }
+
   function normalized(row, operation) {
     if (operation.kind === 'workout_upsert') {
       const hours = Number(row.totalTimePlanned ?? 0);
@@ -180,7 +189,7 @@
         tp_workout_type: row.workoutTypeValueId ?? null,
         total_seconds: Math.round(hours * 3600),
         tss_planned: row.tssPlanned ?? null,
-        structure: row.structure ?? null,
+        structure: workoutStructure(row.structure),
       };
     }
     return {
@@ -194,6 +203,7 @@
     if (operation.kind === 'workout_upsert') {
       const durationHours = Number(payload.total_seconds || 0) / 3600;
       const tss = payload.tss_planned;
+      const isPowerStructure = payload.structure?.primaryIntensityMetric === 'percentOfFtp';
       const computedIf = durationHours > 0 && Number.isFinite(Number(tss))
         ? Math.sqrt(Number(tss) / (durationHours * 100)) : null;
       return {
@@ -206,7 +216,7 @@
         totalTimePlanned: durationHours,
         tssPlanned: tss,
         structure: payload.structure,
-        ...(payload.structure && computedIf !== null ? { ifPlanned: computedIf } : {}),
+        ...(isPowerStructure && computedIf !== null ? { ifPlanned: computedIf } : {}),
       };
     }
     return {
@@ -227,6 +237,25 @@
 
   function itemPath(operation, id) {
     return `${collectionPath(operation)}/${encodeURIComponent(String(id))}`;
+  }
+
+  function wireBody(operation, body, create = false) {
+    if (operation.kind !== 'workout_upsert') return body;
+    const structure = workoutStructure(body.structure);
+    return {
+      ...body,
+      ...(create ? { workoutId: 0 } : {}),
+      structure: structure?.structure?.length ? JSON.stringify(structure) : null,
+    };
+  }
+
+  async function fullCurrent(operation, id, fallback) {
+    if (operation.kind !== 'workout_upsert') return fallback;
+    const value = await api(itemPath(operation, id));
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('WORKOUT_READ_SHAPE');
+    }
+    return value;
   }
 
   function priorReceipt(operation) {
@@ -275,7 +304,7 @@
       let ambiguous = false;
       try {
         await mutate('POST', collectionPath(operation),
-          projectedBody(operation.payload, operation), false);
+          wireBody(operation, projectedBody(operation.payload, operation), true), false);
       } catch (error) {
         ambiguous = error?.name === 'AbortError' || error instanceof TypeError;
         if (!ambiguous) throw error;
@@ -318,8 +347,9 @@
       throw new Error('READBACK_DIGEST_MISMATCH');
     }
     if (!REQUEST.dry_run) {
+      const full = await fullCurrent(operation, targetId, current);
       await mutate('PUT', itemPath(operation, targetId),
-        projectedBody(operation.payload, operation, current));
+        wireBody(operation, projectedBody(operation.payload, operation, full)));
     }
     const row = REQUEST.dry_run ? current : await exactRow(operation, targetId);
     const digest = REQUEST.dry_run
@@ -392,8 +422,9 @@
       }
       if (currentDigest !== prior?.observed_digest) throw new Error('ROLLBACK_CONFLICT');
       if (!REQUEST.dry_run) {
+        const full = await fullCurrent(operation, id, current);
         await mutate('PUT', itemPath(operation, id),
-          projectedBody(payload, operation, current));
+          wireBody(operation, projectedBody(payload, operation, full)));
       }
       const row = REQUEST.dry_run ? current : await exactRow(operation, id);
       const digest = REQUEST.dry_run ? await sha256(payload)
@@ -414,7 +445,7 @@
       }
       if (!row && !REQUEST.dry_run) {
         await mutate('POST', collectionPath(operation),
-          projectedBody(payload, operation), false);
+          wireBody(operation, projectedBody(payload, operation), true), false);
         row = await exactRow(operation);
       }
       if (!row && !REQUEST.dry_run) throw new Error('ROLLBACK_RECREATE_MISSING');

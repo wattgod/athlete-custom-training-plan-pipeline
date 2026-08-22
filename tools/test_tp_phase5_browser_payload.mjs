@@ -24,18 +24,31 @@ function marker(logicalId) {
   return `[GG:${logicalId}]`;
 }
 
-const rpeStructure = {
-  primaryIntensityMetric: 'rpe',
-  primaryLengthMetric: 'duration',
-  structure: [{ type: 'step', length: { value: 600, unit: 'second' },
-    targets: [{ minValue: 2, maxValue: 3 }] }],
-};
-const hrStructure = {
-  primaryIntensityMetric: 'percentOfThresholdHr',
-  primaryLengthMetric: 'duration',
-  structure: [{ type: 'step', length: { value: 900, unit: 'second' },
-    targets: [{ minValue: 70, maxValue: 80 }] }],
-};
+function singleStepStructure(metric, seconds, low, high) {
+  return {
+    primaryIntensityMetric: metric,
+    primaryLengthMetric: 'duration',
+    primaryIntensityTargetOrRange: 'range',
+    importedFromZwo: false,
+    polyline: [],
+    structure: [{
+      type: 'step',
+      length: { value: 1, unit: 'repetition' },
+      steps: [{
+        name: 'Steady State',
+        length: { value: seconds, unit: 'second' },
+        targets: [{ minValue: low, maxValue: high }],
+        intensityClass: 'active',
+        openDuration: false,
+      }],
+      begin: 0,
+      end: seconds,
+    }],
+  };
+}
+
+const rpeStructure = singleStepStructure('rpe', 600, 2, 3);
+const hrStructure = singleStepStructure('percentOfThresholdHr', 900, 70, 80);
 
 function workoutPayload(date, title, description, structure, seconds = 1800, tss = 20) {
   return {
@@ -55,6 +68,8 @@ function remoteWorkout(id, logicalId, payload) {
     totalTimePlanned: payload.total_seconds / 3600,
     tssPlanned: payload.tss_planned,
     structure: payload.structure,
+    ifPlanned: null,
+    serverOwned: 'preserve-me',
   };
 }
 
@@ -143,9 +158,20 @@ async function runPayload(browserRequest, initialRows, {
   globalThis.fetch = async (url, options = {}) => {
     const method = options.method || 'GET';
     const pathname = new URL(url).pathname;
-    calls.push({ method, pathname });
+    const requestBody = options.body === undefined ? undefined : JSON.parse(options.body);
+    calls.push({ method, pathname, body: requestBody });
     const parts = pathname.split('/').filter(Boolean);
     if (method === 'GET') {
+      const itemMatch = pathname.match(
+        /^\/fitness\/v6\/athletes\/1522591\/workouts\/([^/]+)$/,
+      );
+      if (itemMatch) {
+        const id = decodeURIComponent(itemMatch[1]);
+        const row = workouts.find(candidate => String(candidate.workoutId) === id);
+        return row ? jsonResponse(row) : jsonResponse({ error: 'not found' }, 404);
+      }
+      assert.match(pathname,
+        /^\/fitness\/v7\/athletes\/1522591\/workouts\/\d{4}-\d{2}-\d{2}\/\d{4}-\d{2}-\d{2}$/);
       const start = parts.at(-2);
       const end = parts.at(-1);
       return jsonResponse(workouts.filter(row => {
@@ -154,8 +180,15 @@ async function runPayload(browserRequest, initialRows, {
       }));
     }
     if (method === 'POST') {
-      const body = JSON.parse(options.body);
-      const row = { ...body, workoutId: `created-${createdId++}` };
+      assert.equal(pathname, '/fitness/v6/athletes/1522591/workouts');
+      assert.equal(requestBody.workoutId, 0);
+      assert.equal(typeof requestBody.structure, 'string');
+      const row = {
+        ...requestBody,
+        workoutId: `created-${createdId++}`,
+        structure: JSON.parse(requestBody.structure),
+        serverOwned: 'preserve-me',
+      };
       workouts.push(row);
       if (ambiguousCreate) throw new TypeError('simulated connection loss after commit');
       return jsonResponse(row, 201);
@@ -164,7 +197,16 @@ async function runPayload(browserRequest, initialRows, {
     const index = workouts.findIndex(row => String(row.workoutId) === id);
     if (method === 'PUT') {
       assert.notEqual(index, -1);
-      workouts[index] = { ...JSON.parse(options.body), workoutId: id };
+      assert.equal(calls.some(call => (
+        call.method === 'GET' && call.pathname === pathname
+      )), true);
+      assert.equal(requestBody.serverOwned, 'preserve-me');
+      assert.equal(typeof requestBody.structure, 'string');
+      workouts[index] = {
+        ...requestBody,
+        workoutId: id,
+        structure: JSON.parse(requestBody.structure),
+      };
       return jsonResponse(workouts[index]);
     }
     if (method === 'DELETE') {
@@ -209,7 +251,21 @@ assert.equal(applied.workouts.find(row => row.workoutId === 'protected-1').title
 assert.equal(applied.workouts.some(row => row.workoutId === 'delete-1'), false);
 assert.equal(applied.workouts.find(row => row.workoutId === 'update-1')
   .structure.primaryIntensityMetric, 'percentOfThresholdHr');
+assert.equal(applied.workouts.find(row => row.workoutId === 'update-1').ifPlanned, null);
+assert.equal(applied.workouts.find(row => row.workoutId === 'update-1').serverOwned,
+  'preserve-me');
 assert.equal(applied.calls.filter(call => call.method === 'POST').length, 1);
+assert.equal(applied.calls.filter(call => (
+  call.method === 'GET' && call.pathname === '/fitness/v6/athletes/1522591/workouts/update-1'
+)).length, 1);
+assert.equal(applied.calls.filter(call => (
+  call.method === 'GET' && call.pathname.includes('/workouts/2026-')
+)).every(call => call.pathname.startsWith('/fitness/v7/')), true);
+const createCall = applied.calls.find(call => call.method === 'POST');
+assert.equal(createCall.body.workoutId, 0);
+assert.equal(typeof createCall.body.structure, 'string');
+assert.deepEqual(JSON.parse(createCall.body.structure), rpeStructure);
+assert.equal('ifPlanned' in createCall.body, false);
 
 const resumedApply = await runPayload(request(), applied.workouts);
 assert.equal(resumedApply.receipt.failure, null);

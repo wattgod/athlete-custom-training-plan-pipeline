@@ -14,7 +14,7 @@ await (async () => {
   const receiptGlobal = '__GG_TP_PHASE5_RECEIPT__';
   const stateKeys = [
     'tpPhase5RequestPath', 'tpPhase5ReceiptPath', 'tpPhase5PayloadSource',
-    'tpPhase5PayloadSha256', 'page',
+    'tpPhase5PayloadSha256',
   ];
 
   try {
