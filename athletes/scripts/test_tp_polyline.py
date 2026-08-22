@@ -52,6 +52,44 @@ def test_peak_normalizes_to_one():
     assert max(ys) == 1.0, "peak step must normalise to y=1.0"
 
 
+def test_integral_points_are_json_integers_without_changing_fractional_points():
+    structure = [{
+        "length": {"value": 1, "unit": "repetition"},
+        "steps": [
+            {
+                "length": {"value": 1, "unit": "second"},
+                "targets": [{"minValue": 50}],
+            },
+            {
+                "length": {"value": 2, "unit": "second"},
+                "targets": [{"minValue": 100}],
+            },
+        ],
+    }]
+
+    polyline = compute_polyline(structure)
+
+    assert polyline == [
+        [0, 0], [0, 0.5], [0.333, 0.5],
+        [0.333, 1], [1, 1], [1, 0],
+    ]
+    assert all(
+        type(value) is int
+        for point in polyline
+        for value in point
+        if value in (0, 1)
+    )
+    assert all(
+        type(value) is float
+        for point in polyline
+        for value in point
+        if value not in (0, 1)
+    )
+    encoded = json.dumps(polyline, separators=(",", ":"))
+    assert "0.0" not in encoded
+    assert "1.0" not in encoded
+
+
 def test_x_values_are_clamped_and_monotonic_for_rounding_heavy_structure():
     structure = _GOLDEN["inputs"]["vo2_intervals_unrolled"]
     xs = [point[0] for point in compute_polyline(structure)]
