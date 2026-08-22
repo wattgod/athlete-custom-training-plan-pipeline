@@ -58,9 +58,25 @@ await (async () => {
         || normalizedHash(bound) !== normalizedHash(new URL(targetUrl))) {
       throw new Error('Playwriter page binding changed before evaluation');
     }
+    const stableAssetUrl = await page.evaluate(() => performance
+      .getEntriesByType('resource')
+      .map(entry => String(entry.name || ''))
+      .find(name => {
+        try {
+          const candidate = new URL(name);
+          return candidate.origin === 'https://app.trainingpeaks.com'
+            && /\.js$/u.test(candidate.pathname);
+        } catch (_error) {
+          return false;
+        }
+      }) || null);
+    if (!stableAssetUrl) {
+      throw new Error('stable same-origin TrainingPeaks asset is unavailable');
+    }
     executionPage = await context.newPage();
-    const executionUrl = `https://app.trainingpeaks.com/favicon.ico${new URL(targetUrl).hash}`;
-    await executionPage.goto(executionUrl, { waitUntil: 'load', timeout: 30000 });
+    const executionUrl = new URL(stableAssetUrl);
+    executionUrl.hash = new URL(targetUrl).hash;
+    await executionPage.goto(executionUrl.href, { waitUntil: 'load', timeout: 30000 });
     const executionBound = new URL(executionPage.url());
     if (executionBound.origin !== 'https://app.trainingpeaks.com'
         || normalizedHash(executionBound) !== normalizedHash(new URL(targetUrl))) {
