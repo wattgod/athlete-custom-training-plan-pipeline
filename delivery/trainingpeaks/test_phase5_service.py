@@ -369,6 +369,24 @@ def test_controlled_rollback_compensates_created_resource_and_clears_pending(tmp
         operator_authorized=True)
 
     def rollback_executor(context):
+        assert context.prior_receipts == [
+            {
+                "op_id": contract["operations"][0]["op_id"],
+                "logical_id": contract["operations"][0]["logical_id"],
+                "kind": "workout_upsert", "disposition": "keep",
+                "status": "kept", "remote_id": "existing-1",
+                "observed_digest": contract["operations"][0]["expected_digest"],
+                "reconciled_after_error": False,
+            },
+            {
+                "op_id": contract["operations"][1]["op_id"],
+                "logical_id": contract["operations"][1]["logical_id"],
+                "kind": "workout_upsert", "disposition": "create",
+                "status": "landed", "remote_id": "created-1",
+                "observed_digest": contract["operations"][1]["expected_digest"],
+                "reconciled_after_error": False,
+            },
+        ]
         create = context.contract["operations"][1]
         context.persist_intent(create)
         context.record_receipt(

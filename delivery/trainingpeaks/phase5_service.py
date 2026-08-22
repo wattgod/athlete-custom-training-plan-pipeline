@@ -275,6 +275,13 @@ class MutationExecutionContext:
 
     @property
     def prior_receipts(self) -> list[dict[str, Any]]:
+        if self.grant.claims.get("action") == "rollback":
+            from fulfillment_state import load
+
+            state = load(self.state_path)
+            self.service._assert_state_matches_grant(state, self.grant.claims)
+            attempt = state.get("application_attempt") or {}
+            return copy.deepcopy(attempt.get("landed") or [])
         record = self.service._read_record(self.record_path)
         return copy.deepcopy(record.get("receipts") or [])
 
