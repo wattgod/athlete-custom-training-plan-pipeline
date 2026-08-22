@@ -189,6 +189,31 @@ def _operation(contract, disposition):
     )
 
 
+def _workout_update(state, *, date="2026-08-30"):
+    order_id = state["order_id"]
+    revision = state["generation_revision"]
+    prior = {
+        "date": date, "title": "Fixture prior", "description": "Before",
+        "tp_workout_type": 1, "total_seconds": 2700, "tss_planned": 35,
+        "structure": None,
+    }
+    payload = {
+        "date": date, "title": "Fixture update", "description": "After",
+        "tp_workout_type": 1, "total_seconds": 3300, "tss_planned": 45,
+        "structure": None,
+    }
+    logical_id = f"{order_id}:workout_upsert:{date}#1"
+    return {
+        "op_id": f"{logical_id}@r{revision}", "logical_id": logical_id,
+        "kind": "workout_upsert", "disposition": "update",
+        "payload": payload, "expected_digest": _digest(payload),
+        "prior_payload": prior, "before_image": None,
+        "remote_marker": logical_id,
+        "predecessor": {"op_id": "prior-update-op", "remote_id": "updated-1"},
+        "rollback": {"strategy": "restore_prior_payload"},
+    }
+
+
 def test_exchange_and_execute_reach_applied_only_after_exact_receipts(tmp_path):
     state_path, state = _approved_state(tmp_path)
     contract = _contract(state)
@@ -233,10 +258,11 @@ def test_missing_or_mismatched_readback_leaves_order_applying(tmp_path):
         _capability(service, state, contract), contract, state_path, now=NOW)
 
     def incomplete(context):
-        operation = _operation(context.contract, "keep")
+        operation = context.contract["operations"][0]
+        context.persist_intent(operation)
         context.record_receipt(
-            operation, status="kept", remote_id="existing-1",
-            observed_digest=operation["expected_digest"])
+            operation, status="absent", remote_id="deleted-1",
+            observed_digest=None)
         return {"readback_verified": True}
 
     with pytest.raises(Phase5ReadbackMismatch, match="receipt count"):
@@ -382,10 +408,11 @@ def test_cancellation_revokes_epoch_and_marks_partial_writes_for_compensation(tm
         _capability(service, state, contract), contract, state_path, now=NOW)
 
     def interrupted(context):
-        keep, operation = context.contract["operations"][:2]
+        deleted, operation = context.contract["operations"][:2]
+        context.persist_intent(deleted)
         context.record_receipt(
-            keep, status="kept", remote_id="existing-1",
-            observed_digest=keep["expected_digest"])
+            deleted, status="absent", remote_id="deleted-1",
+            observed_digest=None)
         context.persist_intent(operation)
         context.record_receipt(
             operation, status="landed", remote_id="created-1",
@@ -447,10 +474,11 @@ def test_interrupted_partial_execution_resumes_without_losing_receipts(tmp_path)
         _capability(service, state, contract), contract, state_path, now=NOW)
 
     def first_attempt(context):
-        operation = _operation(context.contract, "keep")
+        operation = context.contract["operations"][0]
+        context.persist_intent(operation)
         context.record_receipt(
-            operation, status="kept", remote_id="existing-1",
-            observed_digest=operation["expected_digest"])
+            operation, status="absent", remote_id="deleted-1",
+            observed_digest=None)
         raise Phase5Interrupted("fixture process stop")
 
     with pytest.raises(Phase5Interrupted):
@@ -465,7 +493,7 @@ def test_interrupted_partial_execution_resumes_without_losing_receipts(tmp_path)
     receipt = service.execute(grant, contract, state_path, resumed, now=NOW + 2)
     assert receipt["status"] == "applied"
     assert [item["op_id"] for item in observed_prior] == [
-        _operation(contract, "keep")["op_id"]]
+        contract["operations"][0]["op_id"]]
 
 
 def test_capability_replay_is_refused_and_original_grant_remains_valid(tmp_path):
@@ -498,13 +526,13 @@ def test_controlled_rollback_compensates_created_resource_and_clears_pending(tmp
 
     def apply_executor(context):
         create, keep = context.contract["operations"]
-        context.record_receipt(
-            keep, status="kept", remote_id="existing-1",
-            observed_digest=keep["expected_digest"])
         context.persist_intent(create)
         context.record_receipt(
             create, status="landed", remote_id="created-1",
             observed_digest=create["expected_digest"])
+        context.record_receipt(
+            keep, status="kept", remote_id="existing-1",
+            observed_digest=keep["expected_digest"])
         return {"readback_verified": True}
 
     service.execute(apply_grant, contract, state_path, apply_executor, now=NOW + 1)
@@ -520,14 +548,6 @@ def test_controlled_rollback_compensates_created_resource_and_clears_pending(tmp
 
     def rollback_executor(context):
         assert context.prior_receipts == [
-            {
-                "op_id": contract["operations"][1]["op_id"],
-                "logical_id": contract["operations"][1]["logical_id"],
-                "kind": "workout_upsert", "disposition": "keep",
-                "status": "kept", "remote_id": "existing-1",
-                "observed_digest": contract["operations"][1]["expected_digest"],
-                "reconciled_after_error": False,
-            },
             {
                 "op_id": contract["operations"][0]["op_id"],
                 "logical_id": contract["operations"][0]["logical_id"],
@@ -587,44 +607,29 @@ def test_partial_apply_freezes_landed_only_targets_and_rollback_resumes_in_rever
 ):
     state_path, state = _approved_state(tmp_path)
     contract = _contract(state)
-    create = {
-        **contract["operations"][1],
-        "rollback": {"strategy": "delete_by_remote_id"},
-    }
-    update = {
-        "op_id": f"{state['order_id']}:workout_upsert:update@r1",
-        "logical_id": f"{state['order_id']}:workout_upsert:update",
-        "kind": "workout_upsert", "disposition": "update",
-        "expected_digest": "3" * 64,
-        "prior_payload": {"date": "2026-10-06", "title": "prior"},
-        "rollback": {"strategy": "restore_prior_payload"},
-    }
-    never_landed_delete = {
-        **contract["operations"][2],
-        "prior_payload": {"date": "2026-10-07", "title": "prior"},
-        "rollback": {"strategy": "recreate_from_prior_payload"},
-    }
-    contract["operations"] = [contract["operations"][0], create, update,
-                              never_landed_delete]
+    legacy_delete, create, keep = contract["operations"]
+    update = _workout_update(state)
+    # Normative order is dated update/delete first, then dated create/keep.
+    contract["operations"] = [update, legacy_delete, create, keep]
     service = _service(tmp_path)
     apply_grant = service.exchange(
         _capability(service, state, contract), contract, state_path, now=NOW)
 
     def partial_apply(context):
-        keep = context.contract["operations"][0]
-        context.record_receipt(
-            keep, status="kept", remote_id="protected-1",
-            observed_digest=keep["expected_digest"])
-        context.persist_intent(create)
-        context.record_receipt(
-            create, status="landed", remote_id="created-1",
-            observed_digest=create["expected_digest"])
         context.persist_intent(update)
         context.record_receipt(
             update, status="landed", remote_id="updated-1",
             observed_digest=update["expected_digest"])
+        context.persist_intent(legacy_delete)
+        context.record_receipt(
+            legacy_delete, status="absent", remote_id="deleted-note-1",
+            observed_digest=None)
+        context.persist_intent(create)
+        context.record_receipt(
+            create, status="landed", remote_id="created-1",
+            observed_digest=create["expected_digest"])
         context.record_failure(
-            op_id=never_landed_delete["op_id"], code="HTTP_ERROR",
+            op_id=keep["op_id"], code="HTTP_ERROR",
             at="2026-08-22T01:02:03Z", receipt_digest="f" * 64)
         raise Phase5Interrupted("strict partial receipt")
 
@@ -636,7 +641,7 @@ def test_partial_apply_freezes_landed_only_targets_and_rollback_resumes_in_rever
         operation["op_id"] for operation in contract["operations"][:3]
     ]
     assert applying["application_attempt"]["failure"] == {
-        "op_id": never_landed_delete["op_id"], "code": "HTTP_ERROR",
+        "op_id": keep["op_id"], "code": "HTTP_ERROR",
         "at": "2026-08-22T01:02:03Z", "receipt_digest": "f" * 64,
     }
 
@@ -645,24 +650,24 @@ def test_partial_apply_freezes_landed_only_targets_and_rollback_resumes_in_rever
     assert cancelled["compensation_pending"] is True
     assert [item["op_id"] for item in
             cancelled["application_attempt"]["compensation_targets"]] == [
-        create["op_id"], update["op_id"]]
+        update["op_id"], legacy_delete["op_id"], create["op_id"]]
 
     rollback_grant = service.exchange(
         _capability(
             service, state, contract, action="rollback",
             jti="phase5-rollback-resume-jti", iat=NOW + 1, exp=NOW + 120),
-        contract, state_path, now=NOW + 2, operator_authorized=True)
+        contract, state_path, now=NOW + 2)
 
     def rollback_crash(context):
         assert [item["op_id"] for item in context.prior_receipts] == [
-            create["op_id"], update["op_id"]]
+            update["op_id"], legacy_delete["op_id"], create["op_id"]]
         assert context.rollback_receipts == []
-        context.persist_intent(update)
+        context.persist_intent(create)
         context.record_receipt(
-            update, status="restored", remote_id="updated-1",
-            observed_digest=_digest(update["prior_payload"]))
+            create, status="absent", remote_id="created-1",
+            observed_digest=None)
         context.record_failure(
-            op_id=create["op_id"], code="HTTP_ERROR",
+            op_id=legacy_delete["op_id"], code="HTTP_ERROR",
             at="2026-08-22T01:03:03Z", receipt_digest="e" * 64)
         raise Phase5Interrupted("rollback process death")
 
@@ -673,22 +678,27 @@ def test_partial_apply_freezes_landed_only_targets_and_rollback_resumes_in_rever
     assert partial["compensation_pending"] is True
     assert [item["op_id"] for item in
             partial["application_attempt"]["compensation_receipts"]] == [
-        update["op_id"]]
+        create["op_id"]]
 
     def rollback_resume(context):
         assert [item["op_id"] for item in context.rollback_receipts] == [
-            update["op_id"]]
-        context.persist_intent(create)
+            create["op_id"]]
+        context.persist_intent(legacy_delete)
         context.record_receipt(
-            create, status="absent", remote_id="created-1",
-            observed_digest=None, reconciled_after_error=True)
+            legacy_delete, status="restored", remote_id="recreated-note-9",
+            observed_digest=_digest(legacy_delete["prior_payload"]),
+            reconciled_after_error=True)
+        context.persist_intent(update)
+        context.record_receipt(
+            update, status="restored", remote_id="updated-1",
+            observed_digest=_digest(update["prior_payload"]))
         return {"rollback_verified": True}
 
     receipt = service.execute(
         rollback_grant, contract, state_path, rollback_resume, now=NOW + 4)
     assert receipt["status"] == "rolled_back"
     assert [item["op_id"] for item in receipt["receipts"]] == [
-        update["op_id"], create["op_id"]]
+        create["op_id"], legacy_delete["op_id"], update["op_id"]]
     final = load(state_path)
     assert final["compensation_pending"] is False
     assert final["status"] == "CANCELLED"
@@ -715,10 +725,11 @@ def test_state_first_receipt_checkpoint_recovers_when_record_write_dies(
     monkeypatch.setattr(service, "_write_json", fail_once)
 
     def first(context):
-        keep = context.contract["operations"][0]
+        deleted = context.contract["operations"][0]
+        context.persist_intent(deleted)
         context.record_receipt(
-            keep, status="kept", remote_id="existing-1",
-            observed_digest=keep["expected_digest"])
+            deleted, status="absent", remote_id="deleted-1",
+            observed_digest=None)
         raise AssertionError("checkpoint crash should interrupt before this line")
 
     with pytest.raises(OSError, match="simulated process death"):
@@ -747,43 +758,27 @@ def test_rollback_crash_retry_is_safe_at_every_prefix_boundary(
 ):
     state_path, state = _approved_state(tmp_path)
     contract = _contract(state)
-    keep = {**contract["operations"][0], "rollback": {"strategy": "none"}}
-    create = {
-        **contract["operations"][1],
-        "rollback": {"strategy": "delete_by_remote_id"},
-    }
-    update = {
-        "op_id": f"{state['order_id']}:workout_upsert:update@r1",
-        "logical_id": f"{state['order_id']}:workout_upsert:update",
-        "kind": "workout_upsert", "disposition": "update",
-        "expected_digest": "3" * 64,
-        "prior_payload": {"date": "2026-10-06", "title": "prior"},
-        "rollback": {"strategy": "restore_prior_payload"},
-    }
-    delete = {
-        **contract["operations"][2],
-        "prior_payload": {"date": "2026-10-07", "title": "prior"},
-        "rollback": {"strategy": "recreate_from_prior_payload"},
-    }
-    contract["operations"] = [keep, create, update, delete]
+    delete, create, keep = contract["operations"]
+    update = _workout_update(state)
+    contract["operations"] = [update, delete, create, keep]
     service = _service(tmp_path)
     apply_grant = service.exchange(
         _capability(service, state, contract), contract, state_path, now=NOW)
 
     def apply_all(context):
-        context.record_receipt(
-            keep, status="kept", remote_id="protected-1",
-            observed_digest=keep["expected_digest"])
         for operation, status, remote_id in [
-            (create, "landed", "created-1"),
             (update, "landed", "updated-1"),
-            (delete, "absent", "deleted-1"),
+            (delete, "absent", "deleted-note-1"),
+            (create, "landed", "created-1"),
         ]:
             context.persist_intent(operation)
             context.record_receipt(
                 operation, status=status, remote_id=remote_id,
                 observed_digest=(operation["expected_digest"]
                                  if status == "landed" else None))
+        context.record_receipt(
+            keep, status="kept", remote_id="protected-1",
+            observed_digest=keep["expected_digest"])
         return {"readback_verified": True}
 
     service.execute(apply_grant, contract, state_path, apply_all, now=NOW + 1)
@@ -794,8 +789,8 @@ def test_rollback_crash_retry_is_safe_at_every_prefix_boundary(
             service, state, contract, action="rollback",
             jti=f"phase5-rollback-boundary-{crash_after}",
             iat=NOW + 1, exp=NOW + 120),
-        contract, state_path, now=NOW + 2, operator_authorized=True)
-    expected = [delete, update, create]
+        contract, state_path, now=NOW + 2)
+    expected = [create, delete, update]
 
     def compensate(operation, context):
         context.persist_intent(operation)

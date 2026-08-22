@@ -18,8 +18,10 @@ import hashlib
 import json
 import os
 import re
+import stat
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -130,12 +132,16 @@ class PlaywrightTransportConfig:
     staging_root: Path
     browser_payload_path: Path
     timeout_seconds: int = 15 * 60
+    stale_after_seconds: int = 24 * 60 * 60
+    max_stale_attempts: int = 256
 
     @classmethod
     def create(
         cls, runner_argv: Sequence[str], staging_root: Path | str,
         browser_payload_path: Path | str,
         *, timeout_seconds: int = 15 * 60,
+        stale_after_seconds: int = 24 * 60 * 60,
+        max_stale_attempts: int = 256,
     ) -> "PlaywrightTransportConfig":
         argv = tuple(str(item) for item in runner_argv)
         if not argv or any(not item.strip() for item in argv):
@@ -146,7 +152,16 @@ class PlaywrightTransportConfig:
         payload = Path(browser_payload_path).resolve()
         if Path(browser_payload_path).is_symlink() or not payload.is_file():
             raise ValueError("Playwright browser payload is unavailable")
-        return cls(argv, Path(staging_root).resolve(), payload, timeout)
+        stale_after = int(stale_after_seconds)
+        max_stale = int(max_stale_attempts)
+        if stale_after < 60 or stale_after > 7 * 24 * 60 * 60:
+            raise ValueError("Playwright staging expiry is outside policy")
+        if max_stale < 1 or max_stale > 4096:
+            raise ValueError("Playwright staging sweep bound is outside policy")
+        staging = Path(staging_root)
+        if staging.is_symlink():
+            raise ValueError("Playwright staging root is unsafe")
+        return cls(argv, staging.resolve(), payload, timeout, stale_after, max_stale)
 
 
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
@@ -161,6 +176,117 @@ class PlaywrightTransport:
     ):
         self.config = config
         self._process_runner = process_runner
+        self._prepare_staging_root()
+
+    @staticmethod
+    def _inside_git_worktree(path: Path) -> bool:
+        return any((ancestor / ".git").exists() for ancestor in (path, *path.parents))
+
+    @staticmethod
+    def _purge_private_file(path: Path) -> None:
+        """Remove staged athlete data, truncating before a failed retry."""
+        if not path.exists() and not path.is_symlink():
+            return
+        if path.is_symlink():
+            try:
+                path.unlink()
+                return
+            except OSError as exc:
+                raise PlaywrightTransportError(
+                    "Playwright staging cleanup failed") from exc
+        try:
+            path.unlink()
+            return
+        except OSError:
+            pass
+        try:
+            flags = os.O_WRONLY | os.O_TRUNC
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            fd = os.open(path, flags)
+            try:
+                os.fchmod(fd, 0o600)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            path.unlink()
+        except OSError as exc:
+            raise PlaywrightTransportError(
+                "Playwright staging cleanup failed") from exc
+
+    def _prepare_staging_root(self) -> None:
+        root = self.config.staging_root
+        if self._inside_git_worktree(root):
+            raise ValueError("Playwright staging root cannot be inside a Git worktree")
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        root_stat = root.lstat()
+        if (root.is_symlink() or not stat.S_ISDIR(root_stat.st_mode)
+                or root.resolve() != root
+                or root_stat.st_uid != os.geteuid()
+                or stat.S_IMODE(root_stat.st_mode) & 0o077):
+            raise ValueError("Playwright staging root is not private and owner-bound")
+        self._sweep_stale_attempts(now=time.time())
+
+    def _sweep_stale_attempts(self, *, now: float) -> int:
+        """Bounded startup scavenger for abandoned, known-shape attempts."""
+        root = self.config.staging_root
+        swept = 0
+        for order_dir in sorted(root.iterdir(), key=lambda item: item.name):
+            if swept >= self.config.max_stale_attempts:
+                break
+            if (order_dir.is_symlink() or not order_dir.is_dir()
+                    or not _SAFE_FILE_ID.fullmatch(order_dir.name)):
+                continue
+            for attempt_dir in sorted(order_dir.iterdir(), key=lambda item: item.name):
+                if swept >= self.config.max_stale_attempts:
+                    break
+                if (attempt_dir.is_symlink() or not attempt_dir.is_dir()
+                        or not _SAFE_FILE_ID.fullmatch(attempt_dir.name)):
+                    continue
+                children = list(attempt_dir.iterdir())
+                latest_mtime = max(
+                    [attempt_dir.stat().st_mtime]
+                    + [child.lstat().st_mtime for child in children])
+                if now - latest_mtime < self.config.stale_after_seconds:
+                    continue
+                known = all(
+                    child.name in {"request.json", "receipt.json"}
+                    or (child.name.startswith(".request.json.")
+                        and child.name.endswith(".tmp"))
+                    or (child.name.startswith(".receipt.json.")
+                        and child.name.endswith(".tmp"))
+                    for child in children
+                )
+                if not known:
+                    continue
+                for child in children:
+                    self._purge_private_file(child)
+                try:
+                    attempt_dir.rmdir()
+                except OSError as exc:
+                    raise PlaywrightTransportError(
+                        "Playwright stale staging cleanup failed") from exc
+                swept += 1
+            try:
+                order_dir.rmdir()
+            except OSError:
+                pass
+        return swept
+
+    def _cleanup_attempt(self, attempt_dir: Path, paths: Sequence[Path]) -> None:
+        for path in paths:
+            self._purge_private_file(path)
+        try:
+            attempt_dir.rmdir()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            raise PlaywrightTransportError(
+                "Playwright staging cleanup failed") from exc
+        try:
+            attempt_dir.parent.rmdir()
+        except OSError:
+            pass
 
     @staticmethod
     def _write_private_json(path: Path, value: Mapping[str, Any]) -> None:
@@ -191,8 +317,10 @@ class PlaywrightTransport:
         if not _SAFE_FILE_ID.fullmatch(order_id) or not _SAFE_FILE_ID.fullmatch(attempt_id):
             raise Phase5AuthorizationError("unsafe Playwright staging identity")
         root = self.config.staging_root
-        root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        if root.is_symlink() or root.resolve() != root:
+        root_stat = root.lstat()
+        if (root.is_symlink() or root.resolve() != root
+                or root_stat.st_uid != os.geteuid()
+                or stat.S_IMODE(root_stat.st_mode) & 0o077):
             raise Phase5AuthorizationError("unsafe Playwright staging root")
         # The capability JTI is the canonical attempt identity. A resumed
         # exchange receives a new grant/fence but must still ingest a receipt
@@ -444,14 +572,4 @@ class PlaywrightTransport:
             # Raw payloads remain only in the authoritative sealed artifacts;
             # browser staging is ephemeral. The Phase 5 record retains the
             # redacted operation receipt and remote identities.
-            for path in (receipt_path, request_path):
-                try:
-                    if path.exists() and not path.is_symlink():
-                        path.unlink()
-                except OSError:
-                    pass
-            try:
-                attempt_dir.rmdir()
-                attempt_dir.parent.rmdir()
-            except OSError:
-                pass
+            self._cleanup_attempt(attempt_dir, (receipt_path, request_path))

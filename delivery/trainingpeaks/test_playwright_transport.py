@@ -1,8 +1,10 @@
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -386,6 +388,71 @@ def test_crash_written_receipt_is_ingested_before_any_runner_retry(tmp_path):
     assert calls == []
     assert [item["status"] for item in context.receipts] == ["kept", "landed"]
     assert not attempt_dir.exists()
+
+
+def test_staging_root_inside_git_worktree_is_refused(tmp_path):
+    project = tmp_path / "project"
+    (project / ".git").mkdir(parents=True)
+    config = PlaywrightTransportConfig.create(
+        ["reviewed-playwright-runner"], project / "private-staging", PAYLOAD_PATH)
+    with pytest.raises(ValueError, match="Git worktree"):
+        PlaywrightTransport(config)
+
+
+def test_startup_scavenger_removes_only_stale_known_attempts(tmp_path):
+    root = tmp_path / "private-staging"
+    config = PlaywrightTransportConfig.create(
+        ["reviewed-playwright-runner"], root, PAYLOAD_PATH,
+        stale_after_seconds=60)
+    PlaywrightTransport(config)
+    attempt = root / "order_fixture" / "attempt_fixture"
+    attempt.mkdir(parents=True, mode=0o700)
+    request = attempt / "request.json"
+    receipt = attempt / "receipt.json"
+    request.write_text("private athlete plan", encoding="utf-8")
+    receipt.write_text("private remote ids", encoding="utf-8")
+    request.chmod(0o600)
+    receipt.chmod(0o600)
+    old = time.time() - 120
+    for path in (request, receipt, attempt):
+        os.utime(path, (old, old))
+
+    PlaywrightTransport(config)
+
+    assert not attempt.exists()
+    assert not (root / "order_fixture").exists()
+
+
+def test_cleanup_failure_truncates_sensitive_request_and_fails_redacted(
+    tmp_path, monkeypatch,
+):
+    context = _Context(_contract())
+
+    def runner(argv, **_kwargs):
+        request_path = Path(argv[argv.index("--request") + 1])
+        receipt_path = Path(argv[argv.index("--receipt") + 1])
+        request = json.loads(request_path.read_text())
+        receipt_path.write_text(json.dumps(_valid_receipt(request)))
+        return subprocess.CompletedProcess(argv, 0)
+
+    config = PlaywrightTransportConfig.create(
+        ["reviewed-playwright-runner"], tmp_path / "staging", PAYLOAD_PATH)
+    original_unlink = Path.unlink
+
+    def refuse_request_unlink(path, *args, **kwargs):
+        if path.name == "request.json":
+            raise OSError("simulated unlink failure with private details")
+        return original_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refuse_request_unlink)
+    with pytest.raises(PlaywrightTransportError) as error:
+        PlaywrightTransport(config, process_runner=runner)(context)
+
+    assert str(error.value) == "Playwright staging cleanup failed"
+    request_paths = list((tmp_path / "staging").rglob("request.json"))
+    assert len(request_paths) == 1
+    assert request_paths[0].read_bytes() == b""
+    assert "private details" not in str(error.value)
 
 
 def test_rollback_request_contains_only_pending_landed_targets_in_reverse_order(
