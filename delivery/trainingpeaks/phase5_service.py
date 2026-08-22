@@ -25,8 +25,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from athletes.scripts.apply_contract import ApplyContractError, validate_contract
 from delivery.trainingpeaks.worker_service import (
     CapabilityCodec,
+    MUTATION_OPERATION_BY_ACTION,
     MUTATION_CAPABILITY_TYPE,
     VerifiedCapability,
     WorkerAuthorizationError,
@@ -34,8 +36,8 @@ from delivery.trainingpeaks.worker_service import (
 )
 
 
-EXECUTION_GRANT_TYPE = "trainingpeaks_execution_grant/v1"
-EXECUTION_RECORD_TYPE = "trainingpeaks_mutation_execution/v1"
+EXECUTION_GRANT_TYPE = "trainingpeaks_execution_grant/v2"
+EXECUTION_RECORD_TYPE = "trainingpeaks_mutation_execution/v2"
 EXECUTION_RECEIPT_TYPE = "trainingpeaks_apply_receipt/v1"
 MAX_GRANT_TTL_SECONDS = 5 * 60
 _HEX_64 = re.compile(r"[0-9a-f]{64}\Z")
@@ -155,14 +157,15 @@ class ExecutionGrantCodec:
         required = {
             "grant_type", "order_id", "tp_athlete_id", "generation_revision",
             "model_seal", "action", "audience", "capability_jti",
-            "request_digest", "execution_epoch", "fencing_token", "iat",
-            "exp", "grant_id",
+            "authorization_id", "actor", "scope", "approval_digest",
+            "release_manifest_digest", "request_digest", "execution_epoch",
+            "fencing_token", "iat", "exp", "grant_id",
         }
         if set(claims) != required or claims.get("grant_type") != EXECUTION_GRANT_TYPE:
             raise Phase5AuthorizationError("execution grant shape is invalid")
         for field in (
             "order_id", "tp_athlete_id", "action", "audience",
-            "capability_jti", "grant_id",
+            "capability_jti", "authorization_id", "actor", "scope", "grant_id",
         ):
             if not isinstance(claims.get(field), str) or not claims[field].strip():
                 raise Phase5AuthorizationError(f"execution grant {field} is invalid")
@@ -170,7 +173,10 @@ class ExecutionGrantCodec:
             raise Phase5AuthorizationError("execution grant audience mismatch")
         if claims["action"] not in {"apply", "verify", "rollback"}:
             raise Phase5AuthorizationError("execution grant action is invalid")
-        for field in ("model_seal", "request_digest"):
+        for field in (
+            "model_seal", "approval_digest", "release_manifest_digest",
+            "request_digest",
+        ):
             if not isinstance(claims.get(field), str) or not _HEX_64.fullmatch(claims[field]):
                 raise Phase5AuthorizationError(f"execution grant {field} is invalid")
         for field in (
@@ -231,32 +237,32 @@ def _validate_contract_binding(
     if capability.capability_type != MUTATION_CAPABILITY_TYPE:
         raise Phase5AuthorizationError("a mutation capability is required")
     claims = capability.claims
-    required = {
-        "contract_version", "order_id", "tp_athlete_id",
-        "generation_revision", "model_seal", "operations",
-    }
-    if not required <= set(contract):
-        raise Phase5AuthorizationError("apply contract is missing binding fields")
-    if contract.get("contract_version") != "apply_contract/v1":
-        raise Phase5AuthorizationError("apply contract version is unsupported")
+    try:
+        validate_contract(copy.deepcopy(dict(contract)))
+    except (ApplyContractError, TypeError, ValueError) as exc:
+        raise Phase5AuthorizationError(
+            "apply contract failed canonical schema or semantic validation"
+        ) from exc
+    if not contract.get("operations"):
+        raise Phase5AuthorizationError("apply contract operations are required")
     for field in ("order_id", "tp_athlete_id", "generation_revision", "model_seal"):
         if contract.get(field) != claims.get(field):
             raise Phase5AuthorizationError(f"apply contract {field} mismatch")
-    operations = contract.get("operations")
-    if not isinstance(operations, list) or not operations:
-        raise Phase5AuthorizationError("apply contract operations are required")
-    op_ids: set[str] = set()
-    for operation in operations:
-        if not isinstance(operation, dict):
-            raise Phase5AuthorizationError("apply operation is malformed")
-        op_id = str(operation.get("op_id") or "")
-        disposition = operation.get("disposition")
-        if not op_id or op_id in op_ids or disposition not in {
-            "keep", "create", "update", "delete",
-        }:
-            raise Phase5AuthorizationError("apply operation identity is invalid")
-        op_ids.add(op_id)
-    return _digest(contract)
+    contract_digest = _digest(contract)
+    if claims.get("contract_digest") != contract_digest:
+        raise Phase5AuthorizationError("apply contract digest mismatch")
+    return contract_digest
+
+
+def _validate_state_authorization_binding(
+    state: Mapping[str, Any], claims: Mapping[str, Any],
+) -> None:
+    """Bind the signed action decision to the exact current approval/release."""
+    if _digest(state.get("approval")) != claims.get("approval_digest"):
+        raise Phase5AuthorizationError("authorization approval snapshot is stale")
+    release_digest = state.get("release_manifest_digest")
+    if release_digest != claims.get("release_manifest_digest"):
+        raise Phase5AuthorizationError("authorization release manifest is stale")
 
 
 class MutationExecutionContext:
@@ -390,7 +396,7 @@ class Phase5MutationService:
 
     def exchange(
         self, capability_token: str, contract: Mapping[str, Any], state_path: Path | str,
-        *, now: int, operator_authorized: bool = False,
+        *, now: int,
     ) -> str:
         """Exchange a sealed capability for one short-lived fenced grant."""
         try:
@@ -399,6 +405,7 @@ class Phase5MutationService:
             raise Phase5AuthorizationError(str(exc)) from exc
         request_digest = _validate_contract_binding(contract, capability)
         claims = capability.claims
+        action = MUTATION_OPERATION_BY_ACTION[claims["action"]]
         if not self.live_writes_enabled:
             if self.canary_policy is None:
                 raise Phase5AuthorizationError(
@@ -419,7 +426,7 @@ class Phase5MutationService:
                 if state.get("delivery_platform") != "trainingpeaks":
                     raise Phase5AuthorizationError("delivery platform is not TrainingPeaks")
                 rollback_compensation = bool(
-                    claims["action"] == "rollback"
+                    action == "rollback"
                     and state.get("status") == "CANCELLED"
                     and state.get("compensation_pending")
                     and (state.get("approval") or {}).get("model_seal")
@@ -429,11 +436,19 @@ class Phase5MutationService:
                 )
                 if not approval_matches_release(state) and not rollback_compensation:
                     raise Phase5AuthorizationError("approval is not bound to the current seal")
+                _validate_state_authorization_binding(state, claims)
+                if any(
+                    item.get("event") == "TP_MUTATION_GRANT_ISSUED"
+                    and item.get("authorization_id") == claims["authorization_id"]
+                    for item in state.get("history") or []
+                    if isinstance(item, dict)
+                ):
+                    raise Phase5AuthorizationError(
+                        "mutation authorization was already exchanged")
                 attempt = state.get("application_attempt")
                 allowed, reason = mutation_exchange_predicate(
                     capability, state, attempt=attempt,
                     request_digest=request_digest,
-                    operator_authorized=operator_authorized,
                 )
                 if not allowed:
                     raise Phase5AuthorizationError(reason)
@@ -443,14 +458,16 @@ class Phase5MutationService:
                     if (existing.get("request_digest") != request_digest
                             or existing.get("claims_digest") != _digest(claims)):
                         raise Phase5AuthorizationError("mutation jti replay differs")
+                    raise Phase5AuthorizationError(
+                        "mutation authorization was already exchanged")
                 fence = int(state.get("execution_fence") or 0) + 1
                 epoch = int(state.get("execution_epoch") or 0)
-                if claims["action"] == "apply":
+                if action == "apply":
                     state["status"] = APPLYING
                 state["execution_fence"] = fence
                 state["application_attempt"] = {
                     "jti": claims["jti"],
-                    "action": claims["action"],
+                    "action": action,
                     "request_digest": request_digest,
                     "status": "accepted",
                     "execution_epoch": epoch,
@@ -465,8 +482,10 @@ class Phase5MutationService:
                     "receipt_ref": str(record_path),
                 }
                 _history(
-                    state, "TP_MUTATION_GRANT_ISSUED", action=claims["action"],
+                    state, "TP_MUTATION_GRANT_ISSUED", action=action,
                     capability_jti=claims["jti"], request_digest=request_digest,
+                    authorization_id=claims["authorization_id"],
+                    actor=claims["actor"],
                     execution_epoch=epoch, fencing_token=fence, reason=reason,
                 )
                 _atomic_write(locked_path, state)
@@ -474,7 +493,11 @@ class Phase5MutationService:
             record = existing or {
                 "record_type": EXECUTION_RECORD_TYPE,
                 "status": "accepted", "order_id": claims["order_id"],
-                "capability_jti": claims["jti"], "action": claims["action"],
+                "capability_jti": claims["jti"], "action": action,
+                "authorization_id": claims["authorization_id"],
+                "actor": claims["actor"], "scope": claims["scope"],
+                "approval_digest": claims["approval_digest"],
+                "release_manifest_digest": claims["release_manifest_digest"],
                 "request_digest": request_digest, "claims_digest": _digest(claims),
                 "execution_epoch": epoch, "fencing_token": fence,
                 "intents": [], "receipts": [], "result": None,
@@ -488,9 +511,13 @@ class Phase5MutationService:
             "order_id": claims["order_id"],
             "tp_athlete_id": claims["tp_athlete_id"],
             "generation_revision": claims["generation_revision"],
-            "model_seal": claims["model_seal"], "action": claims["action"],
+            "model_seal": claims["model_seal"], "action": action,
             "audience": self.grant_codec.audience,
             "capability_jti": claims["jti"], "request_digest": request_digest,
+            "authorization_id": claims["authorization_id"],
+            "actor": claims["actor"], "scope": claims["scope"],
+            "approval_digest": claims["approval_digest"],
+            "release_manifest_digest": claims["release_manifest_digest"],
             "execution_epoch": epoch, "fencing_token": fence,
             "iat": int(now), "exp": int(now) + MAX_GRANT_TTL_SECONDS,
             "grant_id": uuid.uuid4().hex,

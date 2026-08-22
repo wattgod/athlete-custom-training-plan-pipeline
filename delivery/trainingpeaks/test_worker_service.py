@@ -51,12 +51,18 @@ def _probe_claims(action="probe", **overrides):
     return claims
 
 
-def _mutation_claims(action="apply", **overrides):
+def _mutation_claims(action="trainingpeaks.apply", **overrides):
     claims = {
         "order_id": "order_phase4_worker",
         "tp_athlete_id": "fixture-athlete-m",
         "generation_revision": 4,
         "model_seal": "a" * 64,
+        "contract_digest": "b" * 64,
+        "approval_digest": "c" * 64,
+        "release_manifest_digest": "d" * 64,
+        "authorization_id": "authorization-phase5-0001",
+        "actor": "coach:fixture",
+        "scope": "trainingpeaks:athlete-calendar",
         "action": action,
         "audience": AUDIENCE,
         "iat": NOW - 1,
@@ -284,6 +290,24 @@ def test_capability_edge_shapes_fail_closed(claims, message):
         _codec().verify(token, now=NOW)
 
 
+@pytest.mark.parametrize(
+    "overrides, message",
+    [
+        ({"action": "apply"}, "action"),
+        ({"contract_digest": "short"}, "contract_digest"),
+        ({"approval_digest": "short"}, "approval_digest"),
+        ({"release_manifest_digest": "short"}, "release_manifest_digest"),
+        ({"authorization_id": "short"}, "authorization_id"),
+        ({"actor": "coach@example.invalid"}, "actor"),
+        ({"scope": "trainingpeaks:anything"}, "scope"),
+    ],
+)
+def test_mutation_authorization_claims_are_closed_and_typed(overrides, message):
+    token = _codec().issue(_mutation_claims(**overrides), kid="phase4-k1")
+    with pytest.raises(WorkerAuthorizationError, match=message):
+        _codec().verify(token, now=NOW)
+
+
 def test_malformed_header_and_wrong_expected_action_fail_closed():
     token = _codec().issue(_probe_claims(), kid="phase4-k1")
     _header, payload, signature = token.split(".")
@@ -317,38 +341,44 @@ def test_mutation_capability_type_and_action_specific_predicates_are_offline_onl
         "platform_identity": {"tp_athlete_id": "fixture-athlete-m"},
         "cancel_requested": False,
     }
-    assert mutation_exchange_predicate(verified, state) == (True, "apply-initial")
+    assert mutation_exchange_predicate(
+        verified, state, request_digest="b" * 64,
+    ) == (True, "apply-initial")
     assert mutation_exchange_predicate(
         verified, {**state, "status": "APPLYING"},
         attempt={
-            "jti": verified.claims["jti"], "request_digest": "request-digest",
+            "jti": verified.claims["jti"], "request_digest": "b" * 64,
             "status": "running",
-        }, request_digest="request-digest",
+        }, request_digest="b" * 64,
     ) == (True, "apply-resume")
     assert mutation_exchange_predicate(
         verified, {**state, "status": "APPLYING"},
         attempt={
             "jti": verified.claims["jti"], "request_digest": "different",
             "status": "running",
-        }, request_digest="request-digest",
+        }, request_digest="b" * 64,
     )[0] is False
 
     verify_cap = codec.verify(
-        codec.issue(_mutation_claims(action="verify", jti="verify-jti-00000000000001"),
+        codec.issue(_mutation_claims(
+            action="trainingpeaks.verify", jti="verify-jti-00000000000001"),
                     kid="phase4-k1"), now=NOW)
-    assert mutation_exchange_predicate(verify_cap, {**state, "status": "APPLIED"}) == (
+    assert mutation_exchange_predicate(
+        verify_cap, {**state, "status": "APPLIED"}, request_digest="b" * 64,
+    ) == (
         True, "verify")
     rollback_cap = codec.verify(
-        codec.issue(_mutation_claims(action="rollback", jti="rollback-jti-0000000001"),
+        codec.issue(_mutation_claims(
+            action="trainingpeaks.rollback", jti="rollback-jti-0000000001"),
                     kid="phase4-k1"), now=NOW)
     assert mutation_exchange_predicate(
         rollback_cap, {**state, "status": "CANCELLED", "compensation_pending": True},
-        operator_authorized=True,
+        request_digest="b" * 64,
     ) == (True, "rollback")
     assert mutation_exchange_predicate(
         rollback_cap, {**state, "status": "APPLIED"},
-        operator_authorized=False,
-    )[0] is False
+        request_digest="b" * 64,
+    ) == (True, "rollback")
 
 
 def test_probe_tokens_can_never_validate_as_mutations():

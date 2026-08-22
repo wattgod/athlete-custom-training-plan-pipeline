@@ -75,7 +75,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--capability-file", type=Path, required=True)
     parser.add_argument("--record-root", type=Path, required=True)
     parser.add_argument("--staging-root", type=Path, required=True)
-    parser.add_argument("--operator-authorized", action="store_true")
     return parser
 
 
@@ -107,8 +106,7 @@ def main(argv: list[str] | None = None) -> int:
             [node, str(runner)], args.staging_root, payload))
         now = int(time.time())
         grant = service.exchange(
-            capability_token, contract, args.state, now=now,
-            operator_authorized=args.operator_authorized)
+            capability_token, contract, args.state, now=now)
         receipt = service.execute(
             grant, contract, args.state, transport, now=now + 1)
         print(json.dumps({

@@ -5,15 +5,17 @@ Status: **implemented behind a release gate; production capability remains disab
 The Phase 5 kernel lives in
 `delivery/trainingpeaks/phase5_service.py`. It adds:
 
-- exact order, athlete, revision, model-seal, action, and contract binding;
+- exact order, athlete, revision, model-seal, action, canonical contract digest,
+  approval-snapshot digest, and release-manifest binding;
 - signed capabilities exchanged for short-lived signed execution grants;
 - athlete-scoped leases, monotonically increasing fencing tokens, and
   cancellation epochs;
 - durable accepted/running/succeeded/failed attempt records;
 - durable mutation intents before transport writes;
 - landed remote IDs and contract-wide readback receipts;
-- restart/replay behavior for the same request and fencing of older workers;
-- cancellation quiescence and operator-authorized compensation rollback;
+- execution replay for an already-issued grant, one-time action-authorization
+  exchange, and fencing of older workers;
+- cancellation quiescence and separately signed, typed compensation rollback;
 - `APPROVED -> APPLYING -> APPLIED` only after exact complete readback; and
 - a credential-free, zero-write browser-transport dry-run projection.
 
@@ -43,8 +45,34 @@ mutation count. This lane is not the public plugin capability flag.
 
 Focused evidence is in
 `delivery/trainingpeaks/test_phase5_service.py`. It covers exact binding,
-expiry, cancellation, partial execution resume, replay, stale fencing,
-readback mismatch, mandatory pre-mutation intents, privacy, and rollback.
+canonical `apply_contract/v1` schema validation at exchange, every operation
+substitution class, stale approvals, expiry, cancellation, partial execution
+resume, authorization replay, readback mismatch, mandatory pre-mutation
+intents, privacy, and signed rollback.
+
+## Action authorization contract
+
+Mutation capabilities are closed-shape, HMAC-signed action authorizations.
+They carry the canonical contract digest, exact current approval digest,
+release-manifest digest, opaque authorization ID, opaque actor reference,
+`trainingpeaks:athlete-calendar` scope, `iat`/`exp`, and a one-time exchange
+JTI. Actions are namespaced and single-purpose:
+`trainingpeaks.apply`, `trainingpeaks.verify`, or
+`trainingpeaks.rollback`. Raw credentials never belong in claims or durable
+mutation records.
+
+Exchange re-runs the generated `apply_contract/v1` JSON Schema and semantic
+validator before taking the `APPROVED -> APPLYING` transition, then compares
+the canonical bytes to the signed digest. Any operation substitution,
+reordering, addition, deletion, payload/before-image/rollback change, approval
+drift, release drift, action mismatch, or authorization replay fails closed.
+The resulting execution grant retains only the bounded authorization
+references needed by the worker.
+
+Rollback has no Boolean command-line bypass. A rollback call uses a fresh,
+short-lived `trainingpeaks.rollback` authorization with its own authorization
+ID and JTI, bound to the same exact contract, approval, release, actor, and
+scope.
 
 ## Gates that still block production enablement
 

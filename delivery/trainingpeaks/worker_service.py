@@ -26,16 +26,27 @@ from typing import Any, Mapping, Protocol
 
 
 PROBE_ACTIONS = {"probe", "inspect"}
-MUTATION_ACTIONS = {"apply", "verify", "rollback"}
+MUTATION_ACTIONS = {
+    "trainingpeaks.apply",
+    "trainingpeaks.verify",
+    "trainingpeaks.rollback",
+}
+MUTATION_OPERATION_BY_ACTION = {
+    "trainingpeaks.apply": "apply",
+    "trainingpeaks.verify": "verify",
+    "trainingpeaks.rollback": "rollback",
+}
 ALL_ACTIONS = PROBE_ACTIONS | MUTATION_ACTIONS
 SUBJECT_LOCATORS = {"email", "tp_athlete_id", "candidate_list_ref"}
 PROBE_CAPABILITY_TYPE = "trainingpeaks_probe_capability/v1"
-MUTATION_CAPABILITY_TYPE = "trainingpeaks_mutation_capability/v1"
+MUTATION_CAPABILITY_TYPE = "trainingpeaks_mutation_capability/v2"
 INSPECTION_EVIDENCE_TYPE = "trainingpeaks_inspection_evidence/v1"
 PROBE_EXECUTION_RECORD_TYPE = "trainingpeaks_probe_execution/v3"
 TOKEN_ALGORITHM = "HS256"
 MAX_CAPABILITY_TTL_SECONDS = 15 * 60
 JTI_PATTERN = re.compile(r"[A-Za-z0-9_-]{16,128}\Z")
+ACTOR_REFERENCE_PATTERN = re.compile(r"[A-Za-z0-9:_./-]{3,160}\Z")
+MUTATION_SCOPE = "trainingpeaks:athlete-calendar"
 SERVER_PROBE_AUDIENCE = "gg-trainingpeaks-worker"
 SERVER_PROBE_KID = "phase4-fixture"
 
@@ -169,7 +180,9 @@ def _validate_probe_claims(claims: Mapping[str, Any]) -> None:
 def _validate_mutation_claims(claims: Mapping[str, Any]) -> None:
     expected = {
         "order_id", "tp_athlete_id", "generation_revision", "model_seal",
-        "action", "audience", "iat", "exp", "jti",
+        "contract_digest", "approval_digest", "release_manifest_digest",
+        "authorization_id", "actor", "scope", "action", "audience",
+        "iat", "exp", "jti",
     }
     if set(claims) != expected:
         raise WorkerAuthorizationError("mutation capability shape is invalid")
@@ -179,6 +192,19 @@ def _validate_mutation_claims(claims: Mapping[str, Any]) -> None:
     model_seal = _require_string(claims, "model_seal")
     if not re.fullmatch(r"[0-9a-f]{64}", model_seal):
         raise WorkerAuthorizationError("mutation model_seal is invalid")
+    for field in (
+        "contract_digest", "approval_digest", "release_manifest_digest",
+    ):
+        if not re.fullmatch(r"[0-9a-f]{64}", _require_string(claims, field)):
+            raise WorkerAuthorizationError(f"mutation {field} is invalid")
+    authorization_id = _require_string(claims, "authorization_id")
+    if not JTI_PATTERN.fullmatch(authorization_id):
+        raise WorkerAuthorizationError("mutation authorization_id is invalid")
+    actor = _require_string(claims, "actor")
+    if not ACTOR_REFERENCE_PATTERN.fullmatch(actor):
+        raise WorkerAuthorizationError("mutation actor is invalid")
+    if _require_string(claims, "scope") != MUTATION_SCOPE:
+        raise WorkerAuthorizationError("mutation scope is invalid")
     revision = claims.get("generation_revision")
     if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
         raise WorkerAuthorizationError("mutation generation_revision is invalid")
@@ -257,7 +283,6 @@ class CapabilityCodec:
 def mutation_exchange_predicate(
     capability: VerifiedCapability, authoritative_state: Mapping[str, Any],
     *, attempt: Mapping[str, Any] | None = None, request_digest: str = "",
-    operator_authorized: bool = False,
 ) -> tuple[bool, str]:
     """Pure Phase 5 predicate table; it never issues an execution grant."""
     if capability.capability_type != MUTATION_CAPABILITY_TYPE:
@@ -272,7 +297,10 @@ def mutation_exchange_predicate(
     identity = authoritative_state.get("platform_identity") or {}
     if identity.get("tp_athlete_id") != claims["tp_athlete_id"]:
         return False, "platform identity mismatch"
-    action, status = claims["action"], authoritative_state.get("status")
+    if request_digest != claims["contract_digest"]:
+        return False, "apply contract digest mismatch"
+    action = MUTATION_OPERATION_BY_ACTION.get(claims["action"])
+    status = authoritative_state.get("status")
     if authoritative_state.get("cancel_requested") and action != "rollback":
         return False, "cancellation requested"
     if action == "apply":
@@ -293,8 +321,7 @@ def mutation_exchange_predicate(
             status in {"APPLYING", "APPLIED"}
             or (status == "CANCELLED" and authoritative_state.get("compensation_pending"))
         )
-        allowed = pending and operator_authorized
-        return allowed, "rollback" if allowed else "rollback requires eligible status and operator action"
+        return pending, "rollback" if pending else "rollback status is ineligible"
     return False, "unknown mutation action"
 
 

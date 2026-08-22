@@ -1,3 +1,5 @@
+import copy
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -29,6 +31,7 @@ from fulfillment_state import (
     transition,
     write_generation,
 )
+from tools.tp_phase5_execute import build_parser
 
 
 NOW = 1_800_000_000
@@ -37,6 +40,14 @@ CAPABILITY_KEYS = {"cap-k1": "phase5-capability-signing-secret-0001"}
 GRANT_KEYS = {"grant-k1": "phase5-execution-grant-secret-00001"}
 TP_ID = "fixture-phase5-athlete"
 ORDER_ID = "order_phase5_fixture"
+
+
+def _digest(value):
+    encoded = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _approved_state(tmp_path, *, order_id=ORDER_ID):
@@ -72,6 +83,15 @@ def _approved_state(tmp_path, *, order_id=ORDER_ID):
 
 def _contract(state):
     order_id = state["order_id"]
+    revision = state["generation_revision"]
+    prior_note = {
+        "date": "2026-08-31", "title": "Legacy note", "body": "Protected prior note",
+    }
+    create_workout = {
+        "date": "2026-09-01", "title": "Fixture create",
+        "description": "Fixture only", "tp_workout_type": 1,
+        "total_seconds": 3600, "tss_planned": 50, "structure": None,
+    }
     return {
         "contract_version": "apply_contract/v1",
         "order_id": state["order_id"],
@@ -80,24 +100,37 @@ def _contract(state):
         "model_seal": state["model_seal"],
         "operations": [
             {
-                "op_id": f"{order_id}:workout_upsert:keep@r1",
-                "logical_id": f"{order_id}:workout_upsert:keep",
-                "kind": "workout_upsert", "disposition": "keep",
-                "expected_digest": "1" * 64,
-            },
-            {
-                "op_id": f"{order_id}:workout_upsert:create@r1",
-                "logical_id": f"{order_id}:workout_upsert:create",
-                "kind": "workout_upsert", "disposition": "create",
-                "expected_digest": "2" * 64,
-            },
-            {
-                "op_id": f"{order_id}:calendar_note_upsert:delete@r1",
-                "logical_id": f"{order_id}:calendar_note_upsert:delete",
+                "op_id": f"{order_id}:calendar_note_upsert:legacy-note@r{revision}",
+                "logical_id": f"{order_id}:calendar_note_upsert:legacy-note",
                 "kind": "calendar_note_upsert", "disposition": "delete",
-                "expected_digest": None,
+                "payload": None, "expected_digest": None,
+                "prior_payload": prior_note, "before_image": None,
+                "remote_marker": f"{order_id}:calendar_note_upsert:legacy-note",
+                "predecessor": {"op_id": "prior-note-op", "remote_id": "note-1"},
+                "rollback": {"strategy": "recreate_from_prior_payload"},
+            },
+            {
+                "op_id": f"{order_id}:workout_upsert:2026-09-01#1@r{revision}",
+                "logical_id": f"{order_id}:workout_upsert:2026-09-01#1",
+                "kind": "workout_upsert", "disposition": "create",
+                "payload": create_workout, "expected_digest": _digest(create_workout),
+                "prior_payload": None, "before_image": None,
+                "remote_marker": f"{order_id}:workout_upsert:2026-09-01#1",
+                "predecessor": None,
+                "rollback": {"strategy": "delete_by_remote_id"},
+            },
+            {
+                "op_id": f"{order_id}:workout_upsert:2026-09-02#1@r{revision}",
+                "logical_id": f"{order_id}:workout_upsert:2026-09-02#1",
+                "kind": "workout_upsert", "disposition": "keep",
+                "payload": None, "expected_digest": "1" * 64,
+                "prior_payload": None, "before_image": None,
+                "remote_marker": f"{order_id}:workout_upsert:2026-09-02#1",
+                "predecessor": {"op_id": "prior-workout-op", "remote_id": "workout-1"},
+                "rollback": {"strategy": "none"},
             },
         ],
+        "compat": {"min_reader": "apply_contract/v1"},
     }
 
 
@@ -110,10 +143,19 @@ def _service(tmp_path):
 
 
 def _capability(service, state, contract, **overrides):
+    action = overrides.pop("action", "trainingpeaks.apply")
+    if action in {"apply", "verify", "rollback"}:
+        action = f"trainingpeaks.{action}"
     claims = {
         "order_id": state["order_id"], "tp_athlete_id": TP_ID,
         "generation_revision": state["generation_revision"],
-        "model_seal": state["model_seal"], "action": "apply",
+        "model_seal": state["model_seal"],
+        "contract_digest": _digest(contract),
+        "approval_digest": _digest(state["approval"]),
+        "release_manifest_digest": state["release_manifest_digest"],
+        "authorization_id": f"phase5-authorization-{action.rsplit('.', 1)[-1]}-000001",
+        "actor": "coach:fixture", "scope": "trainingpeaks:athlete-calendar",
+        "action": action,
         "audience": AUDIENCE, "iat": NOW - 1, "exp": NOW + 120,
         "jti": "phase5-mutation-jti-000001",
     }
@@ -138,6 +180,13 @@ def _successful_executor(context):
                 operation, status="landed", remote_id="created-1",
                 observed_digest=operation["expected_digest"])
     return {"readback_verified": True}
+
+
+def _operation(contract, disposition):
+    return next(
+        item for item in contract["operations"]
+        if item["disposition"] == disposition
+    )
 
 
 def test_exchange_and_execute_reach_applied_only_after_exact_receipts(tmp_path):
@@ -184,7 +233,7 @@ def test_missing_or_mismatched_readback_leaves_order_applying(tmp_path):
         _capability(service, state, contract), contract, state_path, now=NOW)
 
     def incomplete(context):
-        operation = context.contract["operations"][0]
+        operation = _operation(context.contract, "keep")
         context.record_receipt(
             operation, status="kept", remote_id="existing-1",
             observed_digest=operation["expected_digest"])
@@ -225,6 +274,104 @@ def test_contract_identity_drift_is_refused_before_applying(tmp_path):
         service.exchange(
             _capability(service, state, contract), drifted, state_path, now=NOW)
     assert load(state_path)["status"] == APPROVED
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "single_field", "reorder", "add", "delete", "payload",
+        "prior_payload", "before_image", "rollback_strategy",
+    ],
+)
+def test_signed_authorization_refuses_any_contract_substitution_before_applying(
+    tmp_path, mutation,
+):
+    state_path, state = _approved_state(tmp_path)
+    contract = _contract(state)
+    service = _service(tmp_path)
+    capability = _capability(service, state, contract)
+    substituted = copy.deepcopy(contract)
+
+    if mutation == "single_field":
+        _operation(substituted, "keep")["expected_digest"] = "a" * 64
+    elif mutation == "reorder":
+        substituted["operations"].reverse()
+    elif mutation == "add":
+        added = copy.deepcopy(_operation(substituted, "keep"))
+        added["logical_id"] = added["logical_id"].replace("2026-09-02", "2026-09-03")
+        added["op_id"] = added["op_id"].replace("2026-09-02", "2026-09-03")
+        added["remote_marker"] = added["logical_id"]
+        substituted["operations"].append(added)
+    elif mutation == "delete":
+        substituted["operations"].pop()
+    elif mutation == "payload":
+        operation = _operation(substituted, "create")
+        operation["payload"]["title"] = "Substituted workout"
+        operation["expected_digest"] = _digest(operation["payload"])
+    elif mutation == "prior_payload":
+        _operation(substituted, "delete")["prior_payload"]["body"] = "Substituted"
+    elif mutation == "before_image":
+        _operation(substituted, "create")["before_image"] = {"changed": True}
+    elif mutation == "rollback_strategy":
+        _operation(substituted, "create")["rollback"]["strategy"] = "none"
+
+    with pytest.raises(Phase5AuthorizationError):
+        service.exchange(capability, substituted, state_path, now=NOW)
+    assert load(state_path)["status"] == APPROVED
+    assert load(state_path)["application_attempt"] is None
+
+
+def test_authorization_action_and_approval_snapshot_are_exact(tmp_path):
+    state_path, state = _approved_state(tmp_path)
+    contract = _contract(state)
+    service = _service(tmp_path)
+
+    verify_only = _capability(
+        service, state, contract, action="verify",
+        jti="phase5-verify-action-000001",
+    )
+    with pytest.raises(Phase5AuthorizationError, match="verify status"):
+        service.exchange(verify_only, contract, state_path, now=NOW)
+
+    stale_approval = _capability(
+        service, state, contract, approval_digest="f" * 64,
+        jti="phase5-stale-approval-00001",
+    )
+    with pytest.raises(Phase5AuthorizationError, match="approval snapshot is stale"):
+        service.exchange(stale_approval, contract, state_path, now=NOW)
+
+    stale_release = _capability(
+        service, state, contract, release_manifest_digest="e" * 64,
+        jti="phase5-stale-release-000001",
+    )
+    with pytest.raises(Phase5AuthorizationError, match="release manifest is stale"):
+        service.exchange(stale_release, contract, state_path, now=NOW)
+    assert load(state_path)["status"] == APPROVED
+
+
+def test_execution_grant_retains_redacted_authorization_bindings(tmp_path):
+    state_path, state = _approved_state(tmp_path)
+    contract = _contract(state)
+    service = _service(tmp_path)
+    grant = service.exchange(
+        _capability(service, state, contract), contract, state_path, now=NOW)
+    claims = service.grant_codec.verify(grant, now=NOW).claims
+    assert claims["request_digest"] == _digest(contract)
+    assert claims["approval_digest"] == _digest(state["approval"])
+    assert claims["release_manifest_digest"] == state["release_manifest_digest"]
+    assert claims["authorization_id"] == "phase5-authorization-apply-000001"
+    assert claims["actor"] == "coach:fixture"
+    assert claims["scope"] == "trainingpeaks:athlete-calendar"
+
+
+def test_canonical_entrypoint_has_no_boolean_rollback_authorization():
+    argv = [
+        "--contract", "contract.json", "--state", "state.json",
+        "--capability-file", "capability.txt", "--record-root", "records",
+        "--staging-root", "staging", "--operator-authorized",
+    ]
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(argv)
 
 
 def test_cancellation_revokes_epoch_and_marks_partial_writes_for_compensation(tmp_path):
@@ -297,7 +444,7 @@ def test_interrupted_partial_execution_resumes_without_losing_receipts(tmp_path)
         _capability(service, state, contract), contract, state_path, now=NOW)
 
     def first_attempt(context):
-        operation = context.contract["operations"][0]
+        operation = _operation(context.contract, "keep")
         context.record_receipt(
             operation, status="kept", remote_id="existing-1",
             observed_digest=operation["expected_digest"])
@@ -315,21 +462,23 @@ def test_interrupted_partial_execution_resumes_without_losing_receipts(tmp_path)
     receipt = service.execute(grant, contract, state_path, resumed, now=NOW + 2)
     assert receipt["status"] == "applied"
     assert [item["op_id"] for item in observed_prior] == [
-        contract["operations"][0]["op_id"]]
+        _operation(contract, "keep")["op_id"]]
 
 
-def test_new_fence_invalidates_older_grant_for_same_resumable_attempt(tmp_path):
+def test_capability_replay_is_refused_and_original_grant_remains_valid(tmp_path):
     state_path, state = _approved_state(tmp_path)
     contract = _contract(state)
     service = _service(tmp_path)
     capability = _capability(service, state, contract)
     first_grant = service.exchange(capability, contract, state_path, now=NOW)
-    second_grant = service.exchange(capability, contract, state_path, now=NOW + 1)
-    with pytest.raises(Phase5AuthorizationError, match="stale or fenced"):
-        service.execute(
-            first_grant, contract, state_path, _successful_executor, now=NOW + 2)
+    replay = _capability(
+        service, state, contract, jti="phase5-mutation-jti-replay02",
+        iat=NOW, exp=NOW + 120,
+    )
+    with pytest.raises(Phase5AuthorizationError, match="already exchanged"):
+        service.exchange(replay, contract, state_path, now=NOW + 1)
     receipt = service.execute(
-        second_grant, contract, state_path, _successful_executor, now=NOW + 2)
+        first_grant, contract, state_path, _successful_executor, now=NOW + 2)
     assert receipt["status"] == "applied"
 
 
@@ -337,16 +486,15 @@ def test_controlled_rollback_compensates_created_resource_and_clears_pending(tmp
     state_path, state = _approved_state(tmp_path)
     contract = _contract(state)
     contract["operations"] = [
-        {**contract["operations"][0], "rollback": {"strategy": "none"}},
-        {**contract["operations"][1],
-         "rollback": {"strategy": "delete_by_remote_id"}},
+        _operation(contract, "create"),
+        _operation(contract, "keep"),
     ]
     service = _service(tmp_path)
     apply_grant = service.exchange(
         _capability(service, state, contract), contract, state_path, now=NOW)
 
     def apply_executor(context):
-        keep, create = context.contract["operations"]
+        create, keep = context.contract["operations"]
         context.record_receipt(
             keep, status="kept", remote_id="existing-1",
             observed_digest=keep["expected_digest"])
@@ -365,29 +513,28 @@ def test_controlled_rollback_compensates_created_resource_and_clears_pending(tmp
         service, state, contract, action="rollback",
         jti="phase5-rollback-jti-000001", iat=NOW + 1, exp=NOW + 120)
     rollback_grant = service.exchange(
-        rollback_capability, contract, state_path, now=NOW + 2,
-        operator_authorized=True)
+        rollback_capability, contract, state_path, now=NOW + 2)
 
     def rollback_executor(context):
         assert context.prior_receipts == [
             {
-                "op_id": contract["operations"][0]["op_id"],
-                "logical_id": contract["operations"][0]["logical_id"],
-                "kind": "workout_upsert", "disposition": "keep",
-                "status": "kept", "remote_id": "existing-1",
-                "observed_digest": contract["operations"][0]["expected_digest"],
-                "reconciled_after_error": False,
-            },
-            {
                 "op_id": contract["operations"][1]["op_id"],
                 "logical_id": contract["operations"][1]["logical_id"],
-                "kind": "workout_upsert", "disposition": "create",
-                "status": "landed", "remote_id": "created-1",
+                "kind": "workout_upsert", "disposition": "keep",
+                "status": "kept", "remote_id": "existing-1",
                 "observed_digest": contract["operations"][1]["expected_digest"],
                 "reconciled_after_error": False,
             },
+            {
+                "op_id": contract["operations"][0]["op_id"],
+                "logical_id": contract["operations"][0]["logical_id"],
+                "kind": "workout_upsert", "disposition": "create",
+                "status": "landed", "remote_id": "created-1",
+                "observed_digest": contract["operations"][0]["expected_digest"],
+                "reconciled_after_error": False,
+            },
         ]
-        create = context.contract["operations"][1]
+        create = context.contract["operations"][0]
         context.persist_intent(create)
         context.record_receipt(
             create, status="absent", remote_id="created-1",
