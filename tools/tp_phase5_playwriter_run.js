@@ -16,6 +16,7 @@ await (async () => {
     'tpPhase5RequestPath', 'tpPhase5ReceiptPath', 'tpPhase5PayloadSource',
     'tpPhase5PayloadSha256',
   ];
+  let executionPage = null;
 
   try {
     const requestPath = path.resolve(String(state.tpPhase5RequestPath || ''));
@@ -57,7 +58,15 @@ await (async () => {
         || normalizedHash(bound) !== normalizedHash(new URL(targetUrl))) {
       throw new Error('Playwriter page binding changed before evaluation');
     }
-    const receipt = await page.evaluate(
+    executionPage = await context.newPage();
+    const executionUrl = `https://app.trainingpeaks.com/favicon.ico${new URL(targetUrl).hash}`;
+    await executionPage.goto(executionUrl, { waitUntil: 'load', timeout: 30000 });
+    const executionBound = new URL(executionPage.url());
+    if (executionBound.origin !== 'https://app.trainingpeaks.com'
+        || normalizedHash(executionBound) !== normalizedHash(new URL(targetUrl))) {
+      throw new Error('isolated Playwriter page is not bound to the exact athlete');
+    }
+    const receipt = await executionPage.evaluate(
       async ({ sourceText, args, globalName }) => {
         delete window[globalName];
         window.__TP_SCRIPT_ARGS__ = args;
@@ -96,12 +105,17 @@ await (async () => {
     }
   } finally {
     try {
-      await page.evaluate(globalName => {
+      await executionPage?.evaluate(globalName => {
         delete window.__TP_SCRIPT_ARGS__;
         delete window[globalName];
       }, receiptGlobal);
     } catch (_error) {
       // The page may have closed. Persistent session state is still cleared.
+    }
+    try {
+      await executionPage?.close();
+    } catch (_error) {
+      // The isolated execution page may already have closed.
     }
     for (const key of stateKeys) delete state[key];
   }
