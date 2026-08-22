@@ -659,6 +659,38 @@ def test_block_notes_avoid_banned_hydration_doctrine_language():
     assert not any(phrase in notes.lower() for phrase in banned)
 
 
+def test_every_weekly_briefing_tells_the_story_and_offers_bounded_choice():
+    briefings = [note for note in _notes(_plan())
+                 if note["type"] == "weekly_briefing"]
+    assert briefings
+    for briefing in briefings:
+        body = briefing["body"]
+        assert "THE INTENT THIS WEEK" in body
+        assert "YOUR CALL" in body
+        assert "Do not" in body or "do not" in body
+
+
+def test_recovery_choice_defaults_to_rest_and_never_prescribes_makeup_work():
+    plan = _plan()
+    plan["weeks"][1]["week_type"] = "recovery"
+    recovery = next(
+        note for note in _notes(plan)
+        if note["type"] == "weekly_briefing" and note["title"].startswith("WEEK 2")
+    )
+    assert "Full rest is the default" in recovery["body"]
+    assert "RPE 1-2" in recovery["body"]
+    assert "Do not make up missed work" in recovery["body"]
+    assert "pain, illness, or worsening symptoms means stop and message me" in recovery["body"]
+
+
+def test_weekly_intent_is_decisive_not_a_defensive_why_section():
+    body = " ".join(note["body"] for note in _notes(_plan())
+                    if note["type"] == "weekly_briefing")
+    assert "THE INTENT THIS WEEK" in body
+    assert "WHY THIS WEEK" not in body
+    assert "because" not in body.lower()
+
+
 def test_anaerobic_after_test_note_never_gives_ftp_math():
     plan = _plan()
     session = plan["weeks"][0]["sessions"][1]

@@ -830,6 +830,51 @@ _SHORT_WEEK_COPY = {
 }
 
 
+def _week_story(plan_ir: Any, week: Any, declared_type: str, week_type: str) -> str:
+    """State the week's intent with authority and no defensive justification."""
+    weeks = list(_iter_weeks(plan_ir))
+    index = next((i for i, item in enumerate(weeks) if item is week), None)
+    previous_type = _week_type(weeks[index - 1]) if index not in (None, 0) else None
+    next_type = _week_type(weeks[index + 1]) if index is not None and index + 1 < len(weeks) else None
+    effective = declared_type or week_type
+
+    if effective == "race":
+        return "Execution week. Keep the legs awake. Remove fatigue. Arrive wanting to race."
+    if effective == "taper":
+        return "The work is banked. Remove fatigue. Keep the legs sharp."
+    if effective == "recovery":
+        return "Absorb the block. Let the volume drop. Finish fresh and ready to work again."
+    if previous_type == "recovery":
+        return "The reset is complete. Turn the fresh legs into controlled work."
+    if next_type == "recovery":
+        return "Last push before recovery. Make the key work count. Leave the rest alone."
+    if effective in {"load", "uber_load"}:
+        return "Add one controlled layer. Protect the key work. More is not the assignment."
+    return "Hold the thread of the block. Do the work. Keep enough restraint to absorb it."
+
+
+def _athlete_choice_copy(declared_type: str, week_type: str) -> str:
+    """Offer useful autonomy while preserving load, sequence, and safety."""
+    effective = declared_type or week_type
+    if effective == "recovery":
+        return (
+            "Full rest is the default. If you feel normal and want to move, choose either the written easy spin "
+            "or 20-40 minutes of easy walking or spinning at RPE 1-2. Choose rest when fatigue is building; "
+            "pain, illness, or worsening symptoms means stop and message me. Do not make up missed work."
+        )
+    if effective in {"taper", "race"}:
+        return (
+            "Openers can be indoors or outside on calm, familiar roads. Keep the written duration and efforts; "
+            "choose the option that makes the session controlled. Bad conditions or extra surging means go "
+            "indoors or cut it short. Do not add fitness work or stack anything you missed."
+        )
+    return (
+        "For endurance riding, indoors or outside is your call. Keep the written duration range and RPE ceiling; "
+        "choose terrain that lets you ride steadily. If the route or weather turns it into repeated surges, "
+        "move indoors or shorten it. Keep the key sessions in sequence and do not stack missed work."
+    )
+
+
 def _weekly_briefing(plan_ir: Any, candidate: Dict[str, Any], fueling: Any,
                      seen_types: set | None = None) -> tuple[str, str]:
     week = candidate["week"]
@@ -903,6 +948,12 @@ def _weekly_briefing(plan_ir: Any, candidate: Dict[str, Any], fueling: Any,
         article = "a " if len(extra_off_days) == 1 else ""
         append += (f"\n\nThis week adds {article}" + " and ".join(extra_off_days) +
                   f" {noun} — that's deliberate.")
+    append += (
+        "\n\nTHE INTENT THIS WEEK\n"
+        + _week_story(plan_ir, week, declared_type, week_type)
+        + "\n\nYOUR CALL\n"
+        + _athlete_choice_copy(declared_type, week_type)
+    )
     return f"WEEK {week_number} — {label}", descriptor.strip() + append
 
 
