@@ -45,15 +45,16 @@ await (async () => {
     const targetUrl = `https://app.trainingpeaks.com/#calendar/athletes/${encodeURIComponent(
       String(request.tp_athlete_id),
     )}`;
+    const normalizedHash = candidate => candidate.hash.replace(/^#\/?/, '#');
     const current = new URL(page.url());
     if (current.origin !== 'https://app.trainingpeaks.com'
-        || current.hash !== new URL(targetUrl).hash) {
+        || normalizedHash(current) !== normalizedHash(new URL(targetUrl))) {
       throw new Error('Playwriter page is not prebound to the exact athlete');
     }
 
     const bound = new URL(page.url());
     if (bound.origin !== 'https://app.trainingpeaks.com'
-        || bound.hash !== new URL(targetUrl).hash) {
+        || normalizedHash(bound) !== normalizedHash(new URL(targetUrl))) {
       throw new Error('Playwriter page binding changed before evaluation');
     }
     const receipt = await page.evaluate(
