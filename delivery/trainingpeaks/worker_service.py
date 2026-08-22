@@ -273,7 +273,7 @@ def mutation_exchange_predicate(
     if identity.get("tp_athlete_id") != claims["tp_athlete_id"]:
         return False, "platform identity mismatch"
     action, status = claims["action"], authoritative_state.get("status")
-    if authoritative_state.get("cancel_requested"):
+    if authoritative_state.get("cancel_requested") and action != "rollback":
         return False, "cancellation requested"
     if action == "apply":
         if status == "APPROVED":

@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,11 +30,14 @@ APPLIED_ATTESTED = "APPLIED_ATTESTED"
 CONFIRMED = "CONFIRMED"
 CANCELLED = "CANCELLED"
 VALID_STATUSES = {
-    GENERATED, BLOCKED_REVIEW, APPROVED, APPLIED, CONFIRMED, CANCELLED,
+    GENERATED, BLOCKED_REVIEW, APPROVED, APPLYING, APPLIED,
+    APPLIED_ATTESTED, CONFIRMED, CANCELLED,
 }
 DELIVERY_PLATFORMS = {"trainingpeaks", "endure", "manual"}
 PHASE1_APPLIED_PLATFORMS = {"trainingpeaks", "manual"}
-RELEASE_STATUSES = {APPROVED, APPLIED, CONFIRMED}
+RELEASE_STATUSES = {
+    APPROVED, APPLYING, APPLIED, APPLIED_ATTESTED, CONFIRMED,
+}
 TRANSITIONAL_SEAL_VERSION = "transitional_artifact_bytes/v1"
 CANONICAL_SEAL_VERSION = "canonical_model_apply_contract/v1"
 REVIEW_CATALOG_VERSION = "review_catalog/v1"
@@ -479,6 +483,71 @@ def _approval_snapshot_is_complete(state: Dict[str, Any]) -> bool:
     return True
 
 
+def _validate_phase5_state(state: Dict[str, Any]) -> None:
+    """Validate optional Phase 5 execution fields on every schema-v2 load."""
+    state.setdefault("application_attempt", None)
+    state.setdefault("execution_epoch", 0)
+    state.setdefault("execution_fence", 0)
+    state.setdefault("cancel_requested", False)
+    state.setdefault("compensation_pending", False)
+    state.setdefault("cancellation", None)
+    for field in ("execution_epoch", "execution_fence"):
+        value = state[field]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise FulfillmentStateError(f"{field} must be a nonnegative integer")
+    for field in ("cancel_requested", "compensation_pending"):
+        if not isinstance(state[field], bool):
+            raise FulfillmentStateError(f"{field} must be boolean")
+
+    attempt = state["application_attempt"]
+    if attempt is not None:
+        required = {
+            "jti", "action", "request_digest", "status", "execution_epoch",
+            "fencing_token", "lease", "landed", "intents", "receipt_ref",
+        }
+        if not isinstance(attempt, dict) or set(attempt) != required:
+            raise FulfillmentStateError("application_attempt shape is invalid")
+        if (not str(attempt["jti"]).strip()
+                or attempt["action"] not in {"apply", "verify", "rollback"}
+                or not re.fullmatch(r"[0-9a-f]{64}", str(attempt["request_digest"]))
+                or attempt["status"] not in {
+                    "accepted", "running", "succeeded", "failed",
+                }):
+            raise FulfillmentStateError("application_attempt authority is invalid")
+        for field in ("execution_epoch", "fencing_token"):
+            value = attempt[field]
+            if (isinstance(value, bool) or not isinstance(value, int)
+                    or value < (1 if field == "fencing_token" else 0)):
+                raise FulfillmentStateError("application_attempt epoch/fence is invalid")
+        lease = attempt["lease"]
+        if (not isinstance(lease, dict)
+                or set(lease) != {"athlete_key_digest", "expires_at"}
+                or not re.fullmatch(
+                    r"[0-9a-f]{64}", str(lease.get("athlete_key_digest") or ""))
+                or not str(lease.get("expires_at") or "").strip()):
+            raise FulfillmentStateError("application_attempt lease is invalid")
+        if (not isinstance(attempt["landed"], list)
+                or not isinstance(attempt["intents"], list)
+                or not str(attempt["receipt_ref"]).strip()):
+            raise FulfillmentStateError("application_attempt journal is invalid")
+    if state.get("status") == APPLYING and attempt is None:
+        raise FulfillmentStateError("APPLYING requires an application_attempt")
+
+    cancellation = state["cancellation"]
+    if state["cancel_requested"]:
+        if (not isinstance(cancellation, dict)
+                or not str(cancellation.get("requested_by") or "").strip()
+                or not str(cancellation.get("at") or "").strip()
+                or not isinstance(cancellation.get("worker_stop_acknowledged"), bool)):
+            raise FulfillmentStateError("cancel_requested requires cancellation evidence")
+    elif cancellation is not None and not isinstance(cancellation, dict):
+        raise FulfillmentStateError("cancellation must be an object or null")
+    if state["compensation_pending"]:
+        if state.get("status") != CANCELLED or not attempt or not attempt["landed"]:
+            raise FulfillmentStateError(
+                "compensation_pending requires cancelled landed operations")
+
+
 def _validate_state(state: Any) -> Dict[str, Any]:
     if not isinstance(state, dict):
         raise FulfillmentStateError("fulfillment state must be an object")
@@ -537,6 +606,7 @@ def _validate_state(state: Any) -> Dict[str, Any]:
     if "release_manifest" not in state or "model_seal" not in state:
         raise FulfillmentStateError("fulfillment state missing release seal fields")
     state.setdefault("release_artifact_count", None)
+    _validate_phase5_state(state)
     # D2 remains an optional extension for all pre-Phase-4 schema-v2 files.
     # Importing lazily avoids making the state foundation depend on Flask.
     from d2_identity import validate_d2_state
@@ -709,6 +779,12 @@ def write_generation(
             "approval": None,
             "waiver": None,
             "application": None,
+            "application_attempt": None,
+            "execution_epoch": 0,
+            "execution_fence": 0,
+            "cancel_requested": False,
+            "compensation_pending": False,
+            "cancellation": None,
             "confirmation": None,
             "superseded_approvals": copy.deepcopy(
                 previous.get("superseded_approvals", []) if previous else []
