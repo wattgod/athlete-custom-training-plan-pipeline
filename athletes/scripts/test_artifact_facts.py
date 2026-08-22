@@ -59,9 +59,11 @@ def test_fuel_tag_gates_on_duration_and_routes_ftp_to_quality():
     assert _get_fuel_tag_for_type("Endurance", fueling, duration_min=60) == ""
     # ...but a genuinely long one still does.
     assert long_ride in _get_fuel_tag_for_type("Endurance", fueling, duration_min=180)
-    # FTP tests fuel as quality, never as a long ride.
+    # FTP tests are quality, but the under-90-minute policy deliberately uses
+    # a light arrival/bottle cue instead of prescribing the hourly ladder.
     ftp_tag = _get_fuel_tag_for_type("FTP_Test", fueling, duration_min=60)
-    assert quality in ftp_tag and long_ride not in ftp_tag
+    assert "Under 90 minutes" in ftp_tag
+    assert quality not in ftp_tag and long_ride not in ftp_tag
     guide = _build_nutrition_section(fueling, {})
     assert f">{prescription['race_target_g_per_hour']}g/hr<" in guide
     assert f">{prescription['total_g']}g<" in guide

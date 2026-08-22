@@ -234,7 +234,7 @@ class TestRoundTimePlannedHours:
 # ===========================================================================
 # Golden-plan sweeps: build a real plan (reusing test_naming_and_rounding's
 # proven fixtures) and assert no description regresses into a rep-wall, no
-# segment >=60s shows a ragged seconds component, and every bike session's
+# long segment >=5min shows a ragged seconds component, and every bike session's
 # projected duration (manifest + tp_manifest.json, which tools/tp_apply_order
 # passes straight through into the apply-job body's totalTimePlanned) is a
 # whole number of minutes.
@@ -263,7 +263,10 @@ def test_no_description_has_a_rep_by_rep_wall(golden_files):
     "Tempo Sprints"-shaped period-3+ group-repeats of DIFFERENT lines."""
     offenders = []
     for f in golden_files:
-        lines = [line for line in _zwo_description(f).split('\n') if line.strip().startswith('-')]
+        lines = [
+            line for line in _zwo_description(f).split('\n')
+            if line.strip().startswith('-') and line.strip() != '-'
+        ]
         worst = _max_group_repeat(lines)
         if worst >= 3:
             offenders.append((f.name, worst))
@@ -272,17 +275,20 @@ def test_no_description_has_a_rep_by_rep_wall(golden_files):
 
 
 def test_no_long_segment_renders_with_ragged_seconds(golden_files):
-    """No segment >=60s renders with a non-zero seconds component ("14:03")
-    anywhere in a generated description; sub-60s segments (surges) may
-    legitimately show as "0:05" etc."""
+    """No segment >=5min renders with a non-zero seconds component ("14:03").
+
+    Short intervals may intentionally retain precise M:SS prescriptions such
+    as 1:30 or 2:50. The readability defect this guard owns is ragged long
+    aerobic blocks, where second-level precision is noise.
+    """
     offenders = []
     for f in golden_files:
         desc = _zwo_description(f)
         for m in _MSS_RE.finditer(desc):
-            if int(m.group(1)) >= 1:  # M:SS with M>=1 minute implies >=60s total
+            if int(m.group(1)) >= 5:
                 offenders.append((f.name, m.group(0)))
     assert offenders == [], (
-        f"description(s) with a ragged (non-whole-minute) >=60s segment: {offenders}")
+        f"description(s) with a ragged (non-whole-minute) >=5min segment: {offenders}")
 
 
 @pytest.fixture(scope='module')

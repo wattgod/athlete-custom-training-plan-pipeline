@@ -114,7 +114,8 @@ def test_athlete_m_phase3_golden(monkeypatch, tmp_path):
     )
     assert any(
         "vo2" in session["title"].lower()
-        and date.fromisoformat(session["date"]).weekday() == 6
+        and date.fromisoformat(session["date"]).strftime("%A").lower()
+        in set(intake["interval_days"])
         for _, session in sessions
     )
     assert [i["id"] for i in issues] == [i["id"] for i in expected["blockers"]]
