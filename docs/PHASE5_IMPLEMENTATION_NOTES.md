@@ -71,13 +71,21 @@ configuration. Never put these values in an order or command output:
   `GG_WORKER_CAPABILITY_KID`;
 - `GG_TP_EXECUTION_GRANT_SECRET` and optional
   `GG_TP_EXECUTION_GRANT_KID`;
-- `GG_TP_PLAYWRITER_SESSION` for the reviewed logged-in browser session;
+- `GG_TP_PLAYWRITER_BIN`, an absolute reviewed Playwriter executable;
+- `GG_TP_PLAYWRITER_BIN_SHA256` and `GG_TP_PLAYWRITER_VERSION`, binding its
+  exact bytes and release;
+- `GG_TP_PLAYWRITER_SESSION`, `GG_TP_PLAYWRITER_PROFILE`, and
+  `GG_TP_PLAYWRITER_BROWSER_KEY`, binding the reviewed logged-in browser
+  session, Chrome profile, and extension connection;
 - either `GG_TP_LIVE_WRITES_ENABLED=1`, or the exact-target canary variables
   described above.
 
 The short-lived capability is supplied by a mode-`0600` file. The runner
 never accepts a browser executable, session, profile, or command from the
-contract.
+contract. It validates the configured runtime before every action, executes a
+single private runner file instead of handing paths across persistent session
+state, requires the exact HTTPS TrainingPeaks origin, and clears browser/session
+globals before returning.
 
 The retired `tools/tp_apply_driver.js`, the Phase 4 mutation refusal, and the
 plugin compatibility flags must remain unchanged until those gates pass.

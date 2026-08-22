@@ -129,7 +129,10 @@ async function runPayload(browserRequest, initialRows, { ambiguousCreate = false
   const calls = [];
   let createdId = 1;
   globalThis.window = globalThis;
-  globalThis.location = { hash: '#calendar/athletes/1522591' };
+  globalThis.location = {
+    origin: 'https://app.trainingpeaks.com',
+    hash: '#calendar/athletes/1522591',
+  };
   globalThis.__TP_SCRIPT_ARGS__ = { request: browserRequest, script_sha256: scriptSha };
   delete globalThis.__GG_TP_PHASE5_RECEIPT__;
   globalThis.fetch = async (url, options = {}) => {

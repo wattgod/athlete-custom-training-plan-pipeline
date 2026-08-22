@@ -57,6 +57,9 @@
         || !Array.isArray(REQUEST.prior_receipts)) {
       throw new Error('REQUEST_ACTION');
     }
+    if (location.origin !== 'https://app.trainingpeaks.com') {
+      throw new Error('ORIGIN_BINDING');
+    }
     if (String(REQUEST.tp_athlete_id) !== String(
       location.hash.match(/\/athletes\/(\d+)/)?.[1] || '',
     )) {
