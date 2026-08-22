@@ -27,6 +27,7 @@ from typing import Any, Callable, Mapping, Sequence
 from delivery.trainingpeaks.phase5_service import (
     MutationExecutionContext,
     Phase5AuthorizationError,
+    Phase5Interrupted,
     Phase5ReadbackMismatch,
 )
 
@@ -39,6 +40,32 @@ _SAFE_FILE_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 
 class PlaywrightTransportError(RuntimeError):
     """The configured browser runner failed without proving remote state."""
+
+
+class PlaywrightPartialExecution(Phase5Interrupted):
+    """A strict success prefix and bounded failure were durably checkpointed."""
+
+
+_ALLOWED_FAILURE_CODES = frozenset({
+    "AMBIGUOUS_POST", "ATHLETE_BINDING", "CALENDAR_NOTE_READ_SHAPE",
+    "CREATE_NOT_FOUND", "DELETE_READBACK_PRESENT", "MULTIPLE_REMOTE_MATCHES",
+    "NON_JSON_RESPONSE", "OPERATION_DATE_MISSING", "OPERATION_IDENTITY",
+    "PREDECESSOR_REMOTE_ID_MISSING", "PROTECTED_ITEM_DRIFT",
+    "PROTECTED_ITEM_MISSING", "READBACK_DIGEST_MISMATCH", "REQUEST_ACTION",
+    "REQUEST_DIGEST", "REQUEST_SHAPE", "ROLLBACK_BEFORE_IMAGE_MISSING",
+    "ROLLBACK_CONFLICT", "ROLLBACK_MARKER_MISMATCH", "ROLLBACK_RECREATE_MISSING",
+    "ROLLBACK_REMOTE_ID_MISSING", "ROLLBACK_STRATEGY_UNSUPPORTED",
+    "ROLLBACK_TARGET_MISSING", "UNSUPPORTED_KIND", "UPDATE_TARGET_MISSING",
+    "VERIFY_DELETE_PRESENT", "VERIFY_DIGEST_MISMATCH", "VERIFY_TARGET_MISSING",
+    "WORKOUT_READ_SHAPE",
+})
+
+
+def _bounded_failure_code(value: Any) -> str:
+    code = str(value or "").strip().upper()
+    if re.fullmatch(r"HTTP_[0-9]{3}", code):
+        return "HTTP_ERROR"
+    return code if code in _ALLOWED_FAILURE_CODES else "REMOTE_OPERATION_FAILED"
 
 
 def _canonical_json(value: Any) -> bytes:
@@ -56,6 +83,7 @@ def compile_playwright_request(
     contract: Mapping[str, Any], *, action: str, dry_run: bool,
     script_sha256: str,
     prior_receipts: Sequence[Mapping[str, Any]] = (),
+    selected_operations: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Compile a credential-free, exact-contract browser request."""
     if action not in {"apply", "verify", "rollback"}:
@@ -73,6 +101,12 @@ def compile_playwright_request(
         raise Phase5AuthorizationError("Playwright request operations are required")
     if not _HEX_64.fullmatch(str(script_sha256 or "")):
         raise Phase5AuthorizationError("Playwright browser payload digest is invalid")
+    selected = list(operations if selected_operations is None else selected_operations)
+    operation_by_id = {item.get("op_id"): item for item in operations}
+    if (not selected or len({item.get("op_id") for item in selected}) != len(selected)
+            or any(operation_by_id.get(item.get("op_id")) != item for item in selected)):
+        raise Phase5AuthorizationError(
+            "Playwright selected operations are not contract-exact")
     return {
         "request_type": REQUEST_TYPE,
         "contract_digest": _digest(contract),
@@ -83,7 +117,7 @@ def compile_playwright_request(
         "generation_revision": int(contract["generation_revision"]),
         "model_seal": str(contract["model_seal"]),
         "script_sha256": str(script_sha256),
-        "operations": copy.deepcopy(operations),
+        "operations": copy.deepcopy(selected),
         "prior_receipts": copy.deepcopy(list(prior_receipts)),
     }
 
@@ -153,17 +187,22 @@ class PlaywrightTransport:
     def _stage_paths(self, context: MutationExecutionContext) -> tuple[Path, Path, Path]:
         claims = context.grant.claims
         order_id = str(claims.get("order_id") or "")
-        grant_id = str(claims.get("grant_id") or "")
-        if not _SAFE_FILE_ID.fullmatch(order_id) or not _SAFE_FILE_ID.fullmatch(grant_id):
+        attempt_id = str(claims.get("capability_jti") or "")
+        if not _SAFE_FILE_ID.fullmatch(order_id) or not _SAFE_FILE_ID.fullmatch(attempt_id):
             raise Phase5AuthorizationError("unsafe Playwright staging identity")
         root = self.config.staging_root
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
         if root.is_symlink() or root.resolve() != root:
             raise Phase5AuthorizationError("unsafe Playwright staging root")
-        attempt_dir = root / order_id / grant_id
-        attempt_dir.mkdir(parents=True, exist_ok=False, mode=0o700)
+        # The capability JTI is the canonical attempt identity. A resumed
+        # exchange receives a new grant/fence but must still ingest a receipt
+        # written just before the prior worker process died.
+        attempt_dir = root / order_id / attempt_id
+        attempt_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         if attempt_dir.is_symlink() or attempt_dir.resolve().parent.parent != root:
             raise Phase5AuthorizationError("unsafe Playwright staging directory")
+        if attempt_dir.stat().st_mode & 0o077:
+            raise Phase5AuthorizationError("Playwright staging directory is not private")
         return attempt_dir, attempt_dir / "request.json", attempt_dir / "receipt.json"
 
     @staticmethod
@@ -188,7 +227,7 @@ class PlaywrightTransport:
     @staticmethod
     def _validate_receipt(
         receipt: Mapping[str, Any], request: Mapping[str, Any],
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
         expected_keys = {
             "receipt_type", "contract_digest", "action", "dry_run",
             "tp_athlete_id", "script_sha256", "started_at", "finished_at",
@@ -202,8 +241,6 @@ class PlaywrightTransport:
                     f"Playwright receipt {field} binding mismatch")
         if receipt.get("dry_run") is not False:
             raise PlaywrightTransportError("live execution requires a non-dry-run receipt")
-        if receipt.get("failure") is not None:
-            raise PlaywrightTransportError("Playwright receipt reports a failed operation")
         if not _HEX_64.fullmatch(str(receipt.get("script_sha256") or "")):
             raise PlaywrightTransportError("Playwright receipt script digest is invalid")
         if receipt.get("script_sha256") != request.get("script_sha256"):
@@ -212,33 +249,52 @@ class PlaywrightTransport:
                    for field in ("started_at", "finished_at")):
             raise PlaywrightTransportError("Playwright receipt timestamps are invalid")
         action = str(request["action"])
-        if action == "rollback":
-            if receipt.get("rollback_verified") is not True:
-                raise Phase5ReadbackMismatch("Playwright rollback readback is incomplete")
-        elif receipt.get("readback_verified") is not True:
-            raise Phase5ReadbackMismatch("Playwright provider readback is incomplete")
-
         operations = receipt.get("operations")
         if not isinstance(operations, list):
             raise PlaywrightTransportError("Playwright receipt operations are invalid")
-        expected_operations = [
-            operation for operation in request["operations"]
-            if not (action == "rollback" and operation["disposition"] == "keep")
-        ]
-        expected_by_id = {item["op_id"]: item for item in expected_operations}
-        actual_by_id = {
-            item.get("op_id"): item for item in operations if isinstance(item, dict)
-        }
-        if (len(actual_by_id) != len(operations)
-                or set(actual_by_id) != set(expected_by_id)):
-            raise Phase5ReadbackMismatch(
-                "Playwright receipt operation set does not match the contract")
+        expected_operations = list(request["operations"])
+        failure = receipt.get("failure")
+        if failure is None:
+            if len(operations) != len(expected_operations):
+                raise Phase5ReadbackMismatch(
+                    "Playwright receipt operation set does not match the contract")
+            if action == "rollback":
+                if (receipt.get("rollback_verified") is not True
+                        or receipt.get("readback_verified") is not False):
+                    raise Phase5ReadbackMismatch(
+                        "Playwright rollback readback is incomplete")
+            elif (receipt.get("readback_verified") is not True
+                  or receipt.get("rollback_verified") is not False):
+                raise Phase5ReadbackMismatch(
+                    "Playwright provider readback is incomplete")
+        else:
+            if (not isinstance(failure, dict)
+                    or set(failure) != {"op_id", "code"}
+                    or len(operations) >= len(expected_operations)
+                    or receipt.get("readback_verified") is not False
+                    or receipt.get("rollback_verified") is not False):
+                raise PlaywrightTransportError("Playwright failure receipt is invalid")
+            next_operation = expected_operations[len(operations)]
+            if failure.get("op_id") != next_operation.get("op_id"):
+                raise Phase5ReadbackMismatch(
+                    "Playwright failure is not the next contract operation")
+            failure = {
+                "op_id": str(failure["op_id"]),
+                "code": _bounded_failure_code(failure.get("code")),
+            }
         strict_keys = {
             "op_id", "status", "remote_id", "observed_digest",
             "reconciled_after_error",
         }
-        for op_id, operation in expected_by_id.items():
-            row = actual_by_id[op_id]
+        validated_rows = []
+        prior_by_id = {
+            item.get("op_id"): item for item in request.get("prior_receipts") or []
+        }
+        for index, row in enumerate(operations):
+            operation = expected_operations[index]
+            if not isinstance(row, dict) or row.get("op_id") != operation.get("op_id"):
+                raise Phase5ReadbackMismatch(
+                    "Playwright receipt is not an ordered contract prefix")
             if set(row) != strict_keys or not isinstance(
                     row.get("reconciled_after_error"), bool):
                 raise PlaywrightTransportError(
@@ -247,19 +303,27 @@ class PlaywrightTransport:
             if action == "rollback":
                 strategy = (operation.get("rollback") or {}).get("strategy")
                 if strategy == "delete_by_remote_id":
-                    if row.get("status") != "absent" or row.get("observed_digest") is not None:
+                    if (row.get("status") != "absent"
+                            or row.get("remote_id") != (
+                                prior_by_id.get(operation["op_id"]) or {}).get("remote_id")
+                            or row.get("observed_digest") is not None):
                         raise Phase5ReadbackMismatch(
                             "Playwright rollback delete remains ambiguous")
-                elif strategy in {
-                    "restore_prior_payload", "recreate_from_prior_payload",
-                    "restore_before_image",
-                }:
+                elif strategy in {"restore_prior_payload", "restore_before_image"}:
+                    prior = operation.get("prior_payload") or operation.get("before_image")
+                    if (row.get("status") != "restored"
+                            or row.get("remote_id") != (
+                                prior_by_id.get(operation["op_id"]) or {}).get("remote_id")
+                            or row.get("observed_digest") != _digest(prior)):
+                        raise Phase5ReadbackMismatch(
+                            "Playwright rollback restore mismatches the before-image")
+                elif strategy == "recreate_from_prior_payload":
                     prior = operation.get("prior_payload") or operation.get("before_image")
                     if (row.get("status") != "restored"
                             or not str(row.get("remote_id") or "").strip()
                             or row.get("observed_digest") != _digest(prior)):
                         raise Phase5ReadbackMismatch(
-                            "Playwright rollback restore mismatches the before-image")
+                            "Playwright rollback recreate mismatches the before-image")
                 else:
                     raise Phase5ReadbackMismatch(
                         "Playwright rollback strategy is not verifiable")
@@ -279,8 +343,8 @@ class PlaywrightTransport:
                         or row.get("observed_digest") != operation.get("expected_digest")):
                     raise Phase5ReadbackMismatch(
                         "Playwright write readback mismatches the contract")
-        return [copy.deepcopy(actual_by_id[item["op_id"]])
-                for item in expected_operations]
+            validated_rows.append(copy.deepcopy(row))
+        return validated_rows, copy.deepcopy(failure)
 
     def __call__(self, context: MutationExecutionContext) -> dict[str, Any]:
         action = str(context.grant.claims["action"])
@@ -290,44 +354,73 @@ class PlaywrightTransport:
         except OSError as exc:
             raise PlaywrightTransportError(
                 "Playwright browser payload is unavailable") from exc
+        prior_receipts = context.prior_receipts
+        selected_operations = list(context.contract["operations"])
+        if action == "rollback":
+            target_by_id = {item["op_id"]: item for item in prior_receipts}
+            expected_ids = list(reversed(list(target_by_id)))
+            completed = context.rollback_receipts
+            completed_ids = [item.get("op_id") for item in completed]
+            if completed_ids != expected_ids[:len(completed_ids)]:
+                raise Phase5AuthorizationError(
+                    "durable rollback prefix is not ordered")
+            pending_ids = expected_ids[len(completed_ids):]
+            if not pending_ids:
+                return {"rollback_verified": True}
+            operation_by_id = {
+                operation["op_id"]: operation
+                for operation in context.contract["operations"]
+            }
+            if any(op_id not in operation_by_id for op_id in pending_ids):
+                raise Phase5AuthorizationError(
+                    "compensation target is not present in the contract")
+            selected_operations = [operation_by_id[op_id] for op_id in pending_ids]
+            prior_receipts = [target_by_id[op_id] for op_id in pending_ids]
         request = compile_playwright_request(
             context.contract, action=action, dry_run=False,
-            script_sha256=script_sha256,
-            prior_receipts=context.prior_receipts)
+            script_sha256=script_sha256, prior_receipts=prior_receipts,
+            selected_operations=selected_operations)
         if request["contract_digest"] != context.grant.claims["request_digest"]:
             raise Phase5AuthorizationError(
                 "Playwright request digest does not match the execution grant")
 
         # Persist the entire intent set before starting the external process.
         # A runner crash can therefore never leave an unjournaled mutation.
-        for operation in context.contract["operations"]:
+        for operation in selected_operations:
             if action != "verify" and operation["disposition"] != "keep":
                 context.persist_intent(operation)
 
         attempt_dir, request_path, receipt_path = self._stage_paths(context)
         try:
-            self._write_private_json(request_path, request)
-            argv = (*self.config.runner_argv,
-                    "--request", str(request_path),
-                    "--receipt", str(receipt_path))
-            try:
-                completed = self._process_runner(
-                    argv, check=False, cwd=str(attempt_dir),
-                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL, text=True,
-                    timeout=self.config.timeout_seconds,
-                )
-            except subprocess.TimeoutExpired as exc:
-                raise PlaywrightTransportError(
-                    "Playwright runner timed out; reconcile before retry") from exc
-            except OSError as exc:
-                raise PlaywrightTransportError(
-                    "Playwright runner could not start") from exc
-            if completed.returncode != 0:
-                raise PlaywrightTransportError(
-                    f"Playwright runner failed with exit code {completed.returncode}")
+            completed = None
+            if receipt_path.exists():
+                staged_request = json.loads(request_path.read_text(encoding="utf-8"))
+                if staged_request != request:
+                    raise Phase5AuthorizationError(
+                        "crash-recovery staging does not match the exact request")
+            else:
+                self._write_private_json(request_path, request)
+                argv = (*self.config.runner_argv,
+                        "--request", str(request_path),
+                        "--receipt", str(receipt_path))
+                try:
+                    completed = self._process_runner(
+                        argv, check=False, cwd=str(attempt_dir),
+                        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL, text=True,
+                        timeout=self.config.timeout_seconds,
+                    )
+                except subprocess.TimeoutExpired as exc:
+                    raise PlaywrightTransportError(
+                        "Playwright runner timed out; reconcile before retry") from exc
+                except OSError as exc:
+                    raise PlaywrightTransportError(
+                        "Playwright runner could not start") from exc
+                if completed.returncode != 0 and not receipt_path.exists():
+                    raise PlaywrightTransportError(
+                        f"Playwright runner failed with exit code {completed.returncode}")
             receipt = self._load_receipt(receipt_path)
-            rows = self._validate_receipt(receipt, request)
+            rows, failure = self._validate_receipt(receipt, request)
             operations_by_id = {
                 operation["op_id"]: operation
                 for operation in context.contract["operations"]
@@ -339,6 +432,12 @@ class PlaywrightTransport:
                     observed_digest=row["observed_digest"],
                     reconciled_after_error=row["reconciled_after_error"],
                 )
+            if failure is not None:
+                context.record_failure(
+                    op_id=failure["op_id"], code=failure["code"],
+                    at=str(receipt["finished_at"]), receipt_digest=_digest(receipt))
+                raise PlaywrightPartialExecution(
+                    "Playwright execution stopped after a durable receipt prefix")
             return ({"rollback_verified": True} if action == "rollback"
                     else {"readback_verified": True})
         finally:

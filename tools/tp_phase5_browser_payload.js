@@ -69,6 +69,14 @@
     if (ids.some(id => !id) || new Set(ids).size !== ids.length) {
       throw new Error('OPERATION_IDENTITY');
     }
+    if (REQUEST.action === 'rollback') {
+      const targetIds = REQUEST.prior_receipts.map(row => row?.op_id);
+      if (ids.some((id, index) => id !== targetIds[index])
+          || targetIds.length !== ids.length
+          || REQUEST.operations.some(operation => operation.disposition === 'keep')) {
+        throw new Error('OPERATION_IDENTITY');
+      }
+    }
   }
 
   async function api(path, opts = {}, expectJson = true) {
@@ -297,7 +305,18 @@
         reconciled_after_error: false };
     }
     if (!current) throw new Error('UPDATE_TARGET_MISSING');
-    await observed(operation, current, operation.prior_payload);
+    const currentDigest = await sha256(normalized(current, operation));
+    if (currentDigest === operation.expected_digest) {
+      if (!String(current.description || '').includes(marker(operation))) {
+        throw new Error('READBACK_DIGEST_MISMATCH');
+      }
+      return { op_id: operation.op_id, status: 'landed',
+        remote_id: String(targetId), observed_digest: currentDigest,
+        reconciled_after_error: true };
+    }
+    if (currentDigest !== await sha256(operation.prior_payload)) {
+      throw new Error('READBACK_DIGEST_MISMATCH');
+    }
     if (!REQUEST.dry_run) {
       await mutate('PUT', itemPath(operation, targetId),
         projectedBody(operation.payload, operation, current));
@@ -340,7 +359,14 @@
       const id = prior?.remote_id;
       if (!id) throw new Error('ROLLBACK_REMOTE_ID_MISSING');
       const current = await exactRow(operation, id);
-      if (current && !REQUEST.dry_run) await mutate('DELETE', itemPath(operation, id));
+      if (!current) return { op_id: operation.op_id, status: 'absent',
+        remote_id: String(id), observed_digest: null, reconciled_after_error: true };
+      if (!String(current.description || '').includes(marker(operation))) {
+        throw new Error('ROLLBACK_MARKER_MISMATCH');
+      }
+      const currentDigest = await sha256(normalized(current, operation));
+      if (currentDigest !== prior.observed_digest) throw new Error('ROLLBACK_CONFLICT');
+      if (!REQUEST.dry_run) await mutate('DELETE', itemPath(operation, id));
       if (!REQUEST.dry_run && await exactRow(operation, id)) {
         throw new Error('ROLLBACK_DELETE_PRESENT');
       }
@@ -355,6 +381,16 @@
       if (!id) throw new Error('ROLLBACK_REMOTE_ID_MISSING');
       const current = await exactRow(operation, id);
       if (!current) throw new Error('ROLLBACK_TARGET_MISSING');
+      const currentDigest = await sha256(normalized(current, operation));
+      const priorDigest = await sha256(payload);
+      if (currentDigest === priorDigest) {
+        return { op_id: operation.op_id, status: 'restored', remote_id: String(id),
+          observed_digest: priorDigest, reconciled_after_error: true };
+      }
+      if (!String(current.description || '').includes(marker(operation))) {
+        throw new Error('ROLLBACK_MARKER_MISMATCH');
+      }
+      if (currentDigest !== prior?.observed_digest) throw new Error('ROLLBACK_CONFLICT');
       if (!REQUEST.dry_run) {
         await mutate('PUT', itemPath(operation, id),
           projectedBody(payload, operation, current));
@@ -368,6 +404,14 @@
     }
     if (strategy === 'recreate_from_prior_payload') {
       let row = await exactRow(operation);
+      const priorDigest = await sha256(payload);
+      if (row) {
+        const currentDigest = await sha256(normalized(row, operation));
+        if (currentDigest !== priorDigest) throw new Error('ROLLBACK_CONFLICT');
+        return { op_id: operation.op_id, status: 'restored',
+          remote_id: remoteId(row, operation.kind), observed_digest: priorDigest,
+          reconciled_after_error: true };
+      }
       if (!row && !REQUEST.dry_run) {
         await mutate('POST', collectionPath(operation),
           projectedBody(payload, operation), false);
@@ -398,9 +442,7 @@
 
   try {
     assertRequest();
-    const selected = REQUEST.action === 'rollback'
-      ? REQUEST.operations.filter(operation => operation.disposition !== 'keep')
-      : REQUEST.operations;
+    const selected = REQUEST.operations;
     for (const operation of selected) {
       try {
         const row = REQUEST.action === 'rollback'

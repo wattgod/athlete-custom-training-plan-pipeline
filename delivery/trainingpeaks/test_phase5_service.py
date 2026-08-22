@@ -382,7 +382,10 @@ def test_cancellation_revokes_epoch_and_marks_partial_writes_for_compensation(tm
         _capability(service, state, contract), contract, state_path, now=NOW)
 
     def interrupted(context):
-        operation = context.contract["operations"][1]
+        keep, operation = context.contract["operations"][:2]
+        context.record_receipt(
+            keep, status="kept", remote_id="existing-1",
+            observed_digest=keep["expected_digest"])
         context.persist_intent(operation)
         context.record_receipt(
             operation, status="landed", remote_id="created-1",
@@ -577,3 +580,260 @@ def test_canary_lane_allows_only_exact_target_bounded_contract(tmp_path):
     service.canary_policy = other_policy
     with pytest.raises(Phase5AuthorizationError, match="not allowlisted"):
         service.exchange(capability, contract, state_path, now=NOW + 1)
+
+
+def test_partial_apply_freezes_landed_only_targets_and_rollback_resumes_in_reverse(
+    tmp_path,
+):
+    state_path, state = _approved_state(tmp_path)
+    contract = _contract(state)
+    create = {
+        **contract["operations"][1],
+        "rollback": {"strategy": "delete_by_remote_id"},
+    }
+    update = {
+        "op_id": f"{state['order_id']}:workout_upsert:update@r1",
+        "logical_id": f"{state['order_id']}:workout_upsert:update",
+        "kind": "workout_upsert", "disposition": "update",
+        "expected_digest": "3" * 64,
+        "prior_payload": {"date": "2026-10-06", "title": "prior"},
+        "rollback": {"strategy": "restore_prior_payload"},
+    }
+    never_landed_delete = {
+        **contract["operations"][2],
+        "prior_payload": {"date": "2026-10-07", "title": "prior"},
+        "rollback": {"strategy": "recreate_from_prior_payload"},
+    }
+    contract["operations"] = [contract["operations"][0], create, update,
+                              never_landed_delete]
+    service = _service(tmp_path)
+    apply_grant = service.exchange(
+        _capability(service, state, contract), contract, state_path, now=NOW)
+
+    def partial_apply(context):
+        keep = context.contract["operations"][0]
+        context.record_receipt(
+            keep, status="kept", remote_id="protected-1",
+            observed_digest=keep["expected_digest"])
+        context.persist_intent(create)
+        context.record_receipt(
+            create, status="landed", remote_id="created-1",
+            observed_digest=create["expected_digest"])
+        context.persist_intent(update)
+        context.record_receipt(
+            update, status="landed", remote_id="updated-1",
+            observed_digest=update["expected_digest"])
+        context.record_failure(
+            op_id=never_landed_delete["op_id"], code="HTTP_ERROR",
+            at="2026-08-22T01:02:03Z", receipt_digest="f" * 64)
+        raise Phase5Interrupted("strict partial receipt")
+
+    with pytest.raises(Phase5Interrupted):
+        service.execute(apply_grant, contract, state_path, partial_apply, now=NOW + 1)
+    applying = load(state_path)
+    assert applying["status"] == APPLYING
+    assert [item["op_id"] for item in applying["application_attempt"]["landed"]] == [
+        operation["op_id"] for operation in contract["operations"][:3]
+    ]
+    assert applying["application_attempt"]["failure"] == {
+        "op_id": never_landed_delete["op_id"], "code": "HTTP_ERROR",
+        "at": "2026-08-22T01:02:03Z", "receipt_digest": "f" * 64,
+    }
+
+    cancelled = request_application_cancellation(
+        state_path, actor="fixture-coach", reason="compensate partial apply")
+    assert cancelled["compensation_pending"] is True
+    assert [item["op_id"] for item in
+            cancelled["application_attempt"]["compensation_targets"]] == [
+        create["op_id"], update["op_id"]]
+
+    rollback_grant = service.exchange(
+        _capability(
+            service, state, contract, action="rollback",
+            jti="phase5-rollback-resume-jti", iat=NOW + 1, exp=NOW + 120),
+        contract, state_path, now=NOW + 2, operator_authorized=True)
+
+    def rollback_crash(context):
+        assert [item["op_id"] for item in context.prior_receipts] == [
+            create["op_id"], update["op_id"]]
+        assert context.rollback_receipts == []
+        context.persist_intent(update)
+        context.record_receipt(
+            update, status="restored", remote_id="updated-1",
+            observed_digest=_digest(update["prior_payload"]))
+        context.record_failure(
+            op_id=create["op_id"], code="HTTP_ERROR",
+            at="2026-08-22T01:03:03Z", receipt_digest="e" * 64)
+        raise Phase5Interrupted("rollback process death")
+
+    with pytest.raises(Phase5Interrupted):
+        service.execute(
+            rollback_grant, contract, state_path, rollback_crash, now=NOW + 3)
+    partial = load(state_path)
+    assert partial["compensation_pending"] is True
+    assert [item["op_id"] for item in
+            partial["application_attempt"]["compensation_receipts"]] == [
+        update["op_id"]]
+
+    def rollback_resume(context):
+        assert [item["op_id"] for item in context.rollback_receipts] == [
+            update["op_id"]]
+        context.persist_intent(create)
+        context.record_receipt(
+            create, status="absent", remote_id="created-1",
+            observed_digest=None, reconciled_after_error=True)
+        return {"rollback_verified": True}
+
+    receipt = service.execute(
+        rollback_grant, contract, state_path, rollback_resume, now=NOW + 4)
+    assert receipt["status"] == "rolled_back"
+    assert [item["op_id"] for item in receipt["receipts"]] == [
+        update["op_id"], create["op_id"]]
+    final = load(state_path)
+    assert final["compensation_pending"] is False
+    assert final["status"] == "CANCELLED"
+
+
+def test_state_first_receipt_checkpoint_recovers_when_record_write_dies(
+    tmp_path, monkeypatch,
+):
+    state_path, state = _approved_state(tmp_path)
+    contract = _contract(state)
+    service = _service(tmp_path)
+    grant = service.exchange(
+        _capability(service, state, contract), contract, state_path, now=NOW)
+    original_write = service._write_json
+    injected = {"done": False}
+
+    def fail_once(path, value):
+        if (not injected["done"] and value.get("record_type")
+                and value.get("receipts")):
+            injected["done"] = True
+            raise OSError("simulated process death between state and record")
+        return original_write(path, value)
+
+    monkeypatch.setattr(service, "_write_json", fail_once)
+
+    def first(context):
+        keep = context.contract["operations"][0]
+        context.record_receipt(
+            keep, status="kept", remote_id="existing-1",
+            observed_digest=keep["expected_digest"])
+        raise AssertionError("checkpoint crash should interrupt before this line")
+
+    with pytest.raises(OSError, match="simulated process death"):
+        service.execute(grant, contract, state_path, first, now=NOW + 1)
+    checkpointed = load(state_path)
+    assert checkpointed["status"] == APPLYING
+    assert [item["op_id"] for item in
+            checkpointed["application_attempt"]["landed"]] == [
+        contract["operations"][0]["op_id"]]
+
+    observed = []
+
+    def resume(context):
+        observed.extend(context.prior_receipts)
+        return _successful_executor(context)
+
+    receipt = service.execute(grant, contract, state_path, resume, now=NOW + 2)
+    assert receipt["status"] == "applied"
+    assert [item["op_id"] for item in observed] == [
+        contract["operations"][0]["op_id"]]
+
+
+@pytest.mark.parametrize("crash_after", [0, 1, 2, 3])
+def test_rollback_crash_retry_is_safe_at_every_prefix_boundary(
+    tmp_path, crash_after,
+):
+    state_path, state = _approved_state(tmp_path)
+    contract = _contract(state)
+    keep = {**contract["operations"][0], "rollback": {"strategy": "none"}}
+    create = {
+        **contract["operations"][1],
+        "rollback": {"strategy": "delete_by_remote_id"},
+    }
+    update = {
+        "op_id": f"{state['order_id']}:workout_upsert:update@r1",
+        "logical_id": f"{state['order_id']}:workout_upsert:update",
+        "kind": "workout_upsert", "disposition": "update",
+        "expected_digest": "3" * 64,
+        "prior_payload": {"date": "2026-10-06", "title": "prior"},
+        "rollback": {"strategy": "restore_prior_payload"},
+    }
+    delete = {
+        **contract["operations"][2],
+        "prior_payload": {"date": "2026-10-07", "title": "prior"},
+        "rollback": {"strategy": "recreate_from_prior_payload"},
+    }
+    contract["operations"] = [keep, create, update, delete]
+    service = _service(tmp_path)
+    apply_grant = service.exchange(
+        _capability(service, state, contract), contract, state_path, now=NOW)
+
+    def apply_all(context):
+        context.record_receipt(
+            keep, status="kept", remote_id="protected-1",
+            observed_digest=keep["expected_digest"])
+        for operation, status, remote_id in [
+            (create, "landed", "created-1"),
+            (update, "landed", "updated-1"),
+            (delete, "absent", "deleted-1"),
+        ]:
+            context.persist_intent(operation)
+            context.record_receipt(
+                operation, status=status, remote_id=remote_id,
+                observed_digest=(operation["expected_digest"]
+                                 if status == "landed" else None))
+        return {"readback_verified": True}
+
+    service.execute(apply_grant, contract, state_path, apply_all, now=NOW + 1)
+    request_application_cancellation(
+        state_path, actor="fixture-coach", reason="rollback boundary test")
+    rollback_grant = service.exchange(
+        _capability(
+            service, state, contract, action="rollback",
+            jti=f"phase5-rollback-boundary-{crash_after}",
+            iat=NOW + 1, exp=NOW + 120),
+        contract, state_path, now=NOW + 2, operator_authorized=True)
+    expected = [delete, update, create]
+
+    def compensate(operation, context):
+        context.persist_intent(operation)
+        if operation is delete:
+            context.record_receipt(
+                operation, status="restored", remote_id="recreated-9",
+                observed_digest=_digest(delete["prior_payload"]))
+        elif operation is update:
+            context.record_receipt(
+                operation, status="restored", remote_id="updated-1",
+                observed_digest=_digest(update["prior_payload"]))
+        else:
+            context.record_receipt(
+                operation, status="absent", remote_id="created-1",
+                observed_digest=None, reconciled_after_error=True)
+
+    def crash(context):
+        for operation in expected[:crash_after]:
+            compensate(operation, context)
+        raise Phase5Interrupted("rollback boundary crash")
+
+    with pytest.raises(Phase5Interrupted):
+        service.execute(rollback_grant, contract, state_path, crash, now=NOW + 3)
+    partial = load(state_path)
+    assert partial["compensation_pending"] is True
+    assert [item["op_id"] for item in
+            partial["application_attempt"]["compensation_receipts"]] == [
+        item["op_id"] for item in expected[:crash_after]]
+
+    def resume(context):
+        assert [item["op_id"] for item in context.rollback_receipts] == [
+            item["op_id"] for item in expected[:crash_after]]
+        for operation in expected[crash_after:]:
+            compensate(operation, context)
+        return {"rollback_verified": True}
+
+    receipt = service.execute(
+        rollback_grant, contract, state_path, resume, now=NOW + 4)
+    assert [item["op_id"] for item in receipt["receipts"]] == [
+        item["op_id"] for item in expected]
+    assert load(state_path)["compensation_pending"] is False

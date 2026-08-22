@@ -60,6 +60,35 @@ class Phase5Interrupted(Phase5Error):
     """Execution stopped in a resumable state after durable checkpointing."""
 
 
+def _replace_or_append_prefix(
+    rows: list[dict[str, Any]], row: Mapping[str, Any], expected_ids: list[str],
+) -> list[dict[str, Any]]:
+    """Idempotently checkpoint one row without ever accepting a gap/reorder."""
+    op_id = str(row.get("op_id") or "")
+    existing_ids = [str(item.get("op_id") or "") for item in rows]
+    if op_id in existing_ids:
+        index = existing_ids.index(op_id)
+        if index >= len(expected_ids) or expected_ids[index] != op_id:
+            raise Phase5AuthorizationError("mutation checkpoint order is invalid")
+        updated = copy.deepcopy(rows)
+        updated[index] = copy.deepcopy(dict(row))
+        return updated
+    if len(rows) >= len(expected_ids) or expected_ids[len(rows)] != op_id:
+        raise Phase5AuthorizationError("mutation checkpoint is not the next operation")
+    return copy.deepcopy(rows) + [copy.deepcopy(dict(row))]
+
+
+def _proven_compensation_targets(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return only apply receipts that prove a mutating operation landed."""
+    return [
+        copy.deepcopy(item) for item in rows
+        if ((item.get("disposition") in {"create", "update"}
+             and item.get("status") == "landed")
+            or (item.get("disposition") == "delete"
+                and item.get("status") == "absent"))
+    ]
+
+
 @dataclass(frozen=True)
 class CanaryPolicy:
     """Server-owned, exact-target lane used before global writes are enabled."""
@@ -281,15 +310,25 @@ class MutationExecutionContext:
 
     @property
     def prior_receipts(self) -> list[dict[str, Any]]:
-        if self.grant.claims.get("action") == "rollback":
-            from fulfillment_state import load
+        from fulfillment_state import load
 
-            state = load(self.state_path)
-            self.service._assert_state_matches_grant(state, self.grant.claims)
-            attempt = state.get("application_attempt") or {}
-            return copy.deepcopy(attempt.get("landed") or [])
-        record = self.service._read_record(self.record_path)
-        return copy.deepcopy(record.get("receipts") or [])
+        state = load(self.state_path)
+        self.service._assert_state_matches_grant(state, self.grant.claims)
+        attempt = state.get("application_attempt") or {}
+        key = ("compensation_targets"
+               if self.grant.claims.get("action") == "rollback" else "landed")
+        return copy.deepcopy(attempt.get(key) or [])
+
+    @property
+    def rollback_receipts(self) -> list[dict[str, Any]]:
+        if self.grant.claims.get("action") != "rollback":
+            return []
+        from fulfillment_state import load
+
+        state = load(self.state_path)
+        self.service._assert_state_matches_grant(state, self.grant.claims)
+        attempt = state.get("application_attempt") or {}
+        return copy.deepcopy(attempt.get("compensation_receipts") or [])
 
     def persist_intent(self, operation: Mapping[str, Any]) -> None:
         """Persist the exact intent before a remote mutation is attempted."""
@@ -317,6 +356,48 @@ class MutationExecutionContext:
         )
         if authoritative is None or dict(operation) != authoritative:
             raise Phase5AuthorizationError("mutation receipt is not contract-exact")
+        action = self.grant.claims.get("action")
+        remote = str(remote_id or "").strip()
+        if action == "rollback":
+            target = next(
+                (item for item in self.prior_receipts if item.get("op_id") == op_id),
+                None,
+            )
+            strategy = (authoritative.get("rollback") or {}).get("strategy")
+            if target is None:
+                raise Phase5AuthorizationError(
+                    "rollback receipt is not a frozen compensation target")
+            if strategy == "delete_by_remote_id":
+                valid = (status == "absent" and remote
+                         and remote == str(target.get("remote_id") or "")
+                         and observed_digest is None)
+            elif strategy in {"restore_prior_payload", "restore_before_image"}:
+                prior = authoritative.get("prior_payload") or authoritative.get("before_image")
+                valid = (status == "restored" and remote
+                         and remote == str(target.get("remote_id") or "")
+                         and observed_digest == _digest(prior))
+            elif strategy == "recreate_from_prior_payload":
+                prior = authoritative.get("prior_payload") or authoritative.get("before_image")
+                valid = (status == "restored" and remote
+                         and observed_digest == _digest(prior))
+            else:
+                valid = False
+            if not valid:
+                raise Phase5ReadbackMismatch(
+                    "rollback receipt does not match its frozen target")
+        else:
+            disposition = authoritative.get("disposition")
+            if disposition == "keep":
+                valid = (status == "kept" and remote
+                         and observed_digest == authoritative.get("expected_digest"))
+            elif disposition == "delete":
+                valid = status == "absent" and remote and observed_digest is None
+            else:
+                valid = (status == "landed" and remote
+                         and observed_digest == authoritative.get("expected_digest"))
+            if not valid:
+                raise Phase5ReadbackMismatch(
+                    "apply receipt does not exactly match the contract operation")
         receipt = {
             "op_id": op_id,
             "logical_id": authoritative.get("logical_id"),
@@ -328,6 +409,17 @@ class MutationExecutionContext:
             "reconciled_after_error": bool(reconciled_after_error),
         }
         self.service._checkpoint(self, "receipt", receipt=receipt)
+
+    def record_failure(
+        self, *, op_id: str | None, code: str, at: str, receipt_digest: str,
+    ) -> None:
+        """Persist bounded failure evidence without retaining provider output."""
+        failure = {
+            "op_id": (str(op_id) if op_id is not None else None),
+            "code": str(code), "at": str(at),
+            "receipt_digest": str(receipt_digest),
+        }
+        self.service._checkpoint(self, "failure", failure=failure)
 
 
 class Phase5MutationService:
@@ -462,6 +554,19 @@ class Phase5MutationService:
                         "mutation authorization was already exchanged")
                 fence = int(state.get("execution_fence") or 0) + 1
                 epoch = int(state.get("execution_epoch") or 0)
+                prior_landed = copy.deepcopy((attempt or {}).get("landed") or [])
+                compensation_targets = copy.deepcopy(
+                    (attempt or {}).get("compensation_targets") or [])
+                if action == "rollback":
+                    derived_targets = _proven_compensation_targets(prior_landed)
+                    if compensation_targets and compensation_targets != derived_targets:
+                        raise Phase5AuthorizationError(
+                            "frozen compensation target set differs from landed work")
+                    compensation_targets = compensation_targets or derived_targets
+                    if not compensation_targets:
+                        raise Phase5AuthorizationError(
+                            "rollback has no durably landed compensation target")
+                    state["compensation_pending"] = True
                 if action == "apply":
                     state["status"] = APPLYING
                 state["execution_fence"] = fence
@@ -477,8 +582,12 @@ class Phase5MutationService:
                             claims["tp_athlete_id"].encode("utf-8")).hexdigest(),
                         "expires_at": _timestamp(int(now) + MAX_GRANT_TTL_SECONDS),
                     },
-                    "landed": copy.deepcopy((attempt or {}).get("landed") or []),
+                    "landed": prior_landed,
                     "intents": copy.deepcopy((attempt or {}).get("intents") or []),
+                    "failure": copy.deepcopy((attempt or {}).get("failure")),
+                    "compensation_targets": compensation_targets,
+                    "compensation_receipts": copy.deepcopy(
+                        (attempt or {}).get("compensation_receipts") or []),
                     "receipt_ref": str(record_path),
                 }
                 _history(
@@ -500,8 +609,9 @@ class Phase5MutationService:
                 "release_manifest_digest": claims["release_manifest_digest"],
                 "request_digest": request_digest, "claims_digest": _digest(claims),
                 "execution_epoch": epoch, "fencing_token": fence,
-                "intents": [], "receipts": [], "result": None,
+                "intents": [], "receipts": [], "failure": None, "result": None,
             }
+            record.setdefault("failure", None)
             record.update({"status": "accepted", "execution_epoch": epoch,
                            "fencing_token": fence})
             self._write_json(record_path, record)
@@ -559,7 +669,8 @@ class Phase5MutationService:
             context.grant.claims["order_id"], context.grant.claims["capability_jti"])
         from fulfillment_state import _atomic_write, _history, locked_state
 
-        def write_record() -> None:
+        def write_record(*, authoritative_receipts: list[dict[str, Any]] | None = None,
+                         failure: Mapping[str, Any] | None = None) -> None:
             with open(record_lock, "a+", encoding="utf-8") as lock:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
                 record = self._read_record(record_path)
@@ -586,10 +697,13 @@ class Phase5MutationService:
                             and receipt["op_id"] not in intent_ids):
                         raise Phase5AuthorizationError(
                             "mutation receipt has no durable pre-mutation intent")
-                    record["receipts"] = [
-                        item for item in record["receipts"]
-                        if item.get("op_id") != receipt["op_id"]
-                    ] + [receipt]
+                    if authoritative_receipts is None:
+                        raise Phase5Error("authoritative receipt journal is unavailable")
+                    record["receipts"] = copy.deepcopy(authoritative_receipts)
+                elif event == "failure":
+                    if failure is None:
+                        raise Phase5Error("authoritative failure checkpoint is unavailable")
+                    record["failure"] = copy.deepcopy(dict(failure))
                 else:
                     raise Phase5Error("unknown mutation checkpoint event")
                 record["status"] = "running"
@@ -600,6 +714,8 @@ class Phase5MutationService:
         # always sees compensation work even if the receipt-file write crashes.
         if event == "intent":
             write_record()
+        authoritative_receipts: list[dict[str, Any]] | None = None
+        authoritative_failure: dict[str, Any] | None = None
         with locked_state(context.state_path) as (state_path, state):
             if state is None:
                 raise Phase5AuthorizationError("authoritative state disappeared")
@@ -611,18 +727,56 @@ class Phase5MutationService:
                     attempt.setdefault("intents", []).append({
                         "op_id": op_id, "status": "persisted-before-mutation"})
             else:
-                receipt = value["receipt"]
-                attempt["landed"] = [
-                    item for item in attempt.get("landed", [])
-                    if item.get("op_id") != receipt["op_id"]
-                ] + [copy.deepcopy(receipt)]
+                if event == "receipt":
+                    receipt = value["receipt"]
+                    if (receipt.get("disposition") != "keep"
+                            and receipt.get("op_id") not in {
+                                item.get("op_id") for item in attempt.get("intents", [])
+                            }):
+                        raise Phase5AuthorizationError(
+                            "mutation receipt has no durable pre-mutation intent")
+                    if context.grant.claims.get("action") == "rollback":
+                        target_ids = [
+                            item["op_id"]
+                            for item in reversed(attempt.get("compensation_targets") or [])
+                        ]
+                        key = "compensation_receipts"
+                    else:
+                        target_ids = [item["op_id"] for item in context.contract["operations"]]
+                        key = "landed"
+                    attempt[key] = _replace_or_append_prefix(
+                        attempt.get(key) or [], receipt, target_ids)
+                    authoritative_receipts = copy.deepcopy(attempt[key])
+                elif event == "failure":
+                    failure = value["failure"]
+                    if (failure.get("op_id") is not None
+                            and failure.get("op_id") not in {
+                                item["op_id"] for item in context.contract["operations"]
+                            }):
+                        raise Phase5AuthorizationError(
+                            "failure checkpoint operation is not contract-bound")
+                    if (not re.fullmatch(r"[A-Z0-9_]{1,80}", failure.get("code") or "")
+                            or not str(failure.get("at") or "").strip()
+                            or not _HEX_64.fullmatch(
+                                str(failure.get("receipt_digest") or ""))):
+                        raise Phase5AuthorizationError(
+                            "failure checkpoint metadata is invalid")
+                    attempt["failure"] = copy.deepcopy(failure)
+                    authoritative_failure = copy.deepcopy(failure)
+                else:
+                    raise Phase5Error("unknown mutation checkpoint event")
             attempt["status"] = "running"
             state["application_attempt"] = attempt
+            checkpoint_value = (
+                value.get("operation") or value.get("receipt") or value.get("failure")
+            )
             _history(state, "TP_MUTATION_CHECKPOINT", checkpoint=event,
-                     op_id=(value.get("operation") or value.get("receipt"))["op_id"])
+                     op_id=checkpoint_value.get("op_id"))
             _atomic_write(state_path, state)
         if event == "receipt":
-            write_record()
+            write_record(authoritative_receipts=authoritative_receipts)
+        elif event == "failure":
+            write_record(failure=authoritative_failure)
 
     @staticmethod
     def _verify_receipts(contract: Mapping[str, Any], receipts: list[dict[str, Any]]) -> None:
@@ -648,29 +802,42 @@ class Phase5MutationService:
 
     @staticmethod
     def _verify_rollback_receipts(
-        contract: Mapping[str, Any], receipts: list[dict[str, Any]],
+        contract: Mapping[str, Any], targets: list[dict[str, Any]],
+        receipts: list[dict[str, Any]],
     ) -> None:
-        mutating = [
-            operation for operation in contract["operations"]
-            if operation["disposition"] != "keep"
-        ]
-        by_id = {item.get("op_id"): item for item in receipts if isinstance(item, dict)}
-        if set(by_id) != {item["op_id"] for item in mutating}:
+        operation_by_id = {item["op_id"]: item for item in contract["operations"]}
+        target_ids = [item.get("op_id") for item in targets]
+        if (not target_ids or len(set(target_ids)) != len(target_ids)
+                or any(op_id not in operation_by_id for op_id in target_ids)):
+            raise Phase5ReadbackMismatch("frozen compensation targets are invalid")
+        expected_ids = list(reversed(target_ids))
+        if [item.get("op_id") for item in receipts] != expected_ids:
             raise Phase5ReadbackMismatch("rollback receipt set is incomplete")
-        for operation in mutating:
-            receipt = by_id[operation["op_id"]]
+        by_id = {item["op_id"]: item for item in receipts}
+        for op_id in expected_ids:
+            operation = operation_by_id[op_id]
+            receipt = by_id[op_id]
             strategy = (operation.get("rollback") or {}).get("strategy")
             if strategy == "delete_by_remote_id":
-                if receipt.get("status") != "absent":
+                if (receipt.get("status") != "absent"
+                        or receipt.get("remote_id") != targets[target_ids.index(op_id)].get(
+                            "remote_id")):
                     raise Phase5ReadbackMismatch("created resource was not removed")
             elif strategy in {
-                "restore_prior_payload", "recreate_from_prior_payload",
-                "restore_before_image",
+                "restore_prior_payload", "restore_before_image",
             }:
                 prior = operation.get("prior_payload") or operation.get("before_image")
                 if (receipt.get("status") != "restored"
+                        or receipt.get("remote_id") != targets[target_ids.index(op_id)].get(
+                            "remote_id")
                         or receipt.get("observed_digest") != _digest(prior)):
                     raise Phase5ReadbackMismatch("prior resource was not restored exactly")
+            elif strategy == "recreate_from_prior_payload":
+                prior = operation.get("prior_payload") or operation.get("before_image")
+                if (receipt.get("status") != "restored"
+                        or not str(receipt.get("remote_id") or "").strip()
+                        or receipt.get("observed_digest") != _digest(prior)):
+                    raise Phase5ReadbackMismatch("prior resource was not recreated exactly")
             else:
                 raise Phase5ReadbackMismatch(
                     "operation has no automatically verifiable rollback strategy")
@@ -703,15 +870,17 @@ class Phase5MutationService:
             try:
                 result = dict(executor(context))
                 self._guard_state(context)
-                record = self._read_record(record_path)
+                state = self._guard_state(context)
+                attempt = state.get("application_attempt") or {}
                 if claims["action"] == "rollback":
                     self._verify_rollback_receipts(
-                        contract, record.get("receipts") or [])
+                        contract, attempt.get("compensation_targets") or [],
+                        attempt.get("compensation_receipts") or [])
                     if result.get("rollback_verified") is not True:
                         raise Phase5ReadbackMismatch(
                             "executor did not attest exact rollback readback")
                 else:
-                    self._verify_receipts(contract, record.get("receipts") or [])
+                    self._verify_receipts(contract, attempt.get("landed") or [])
                     if result.get("readback_verified") is not True:
                         raise Phase5ReadbackMismatch("executor did not attest exact readback")
             except Phase5Interrupted:
@@ -734,7 +903,11 @@ class Phase5MutationService:
                 if state is None:
                     raise Phase5AuthorizationError("authoritative state disappeared")
                 self._assert_state_matches_grant(state, claims)
-                receipts = copy.deepcopy(self._read_record(record_path)["receipts"])
+                attempt = state.get("application_attempt") or {}
+                receipts = copy.deepcopy(
+                    attempt.get("compensation_receipts") or []
+                    if claims["action"] == "rollback"
+                    else attempt.get("landed") or [])
                 if claims["action"] == "rollback":
                     state["status"] = (
                         CANCELLED if state.get("cancel_requested") else APPROVED)
@@ -815,10 +988,18 @@ def request_application_cancellation(
             raise Phase5AuthorizationError("authoritative state is unavailable")
         attempt = state.get("application_attempt") or {}
         landed = attempt.get("landed") or []
+        targets = _proven_compensation_targets(landed)
+        frozen = attempt.get("compensation_targets") or []
+        if frozen and frozen != targets:
+            raise Phase5AuthorizationError(
+                "frozen compensation target set differs from landed work")
+        attempt["compensation_targets"] = copy.deepcopy(frozen or targets)
+        attempt.setdefault("compensation_receipts", [])
+        state["application_attempt"] = attempt
         state["cancel_requested"] = True
         state["execution_epoch"] = int(state.get("execution_epoch") or 0) + 1
         state["status"] = CANCELLED
-        state["compensation_pending"] = bool(landed)
+        state["compensation_pending"] = bool(targets)
         state["cancellation"] = {
             "requested_by": str(actor).strip(), "at": _timestamp(
                 int(datetime.now(timezone.utc).timestamp())),
@@ -827,7 +1008,7 @@ def request_application_cancellation(
             "worker_stop_basis": None,
         }
         _history(state, "TP_APPLICATION_CANCEL_REQUESTED",
-                 compensation_pending=bool(landed))
+                 compensation_pending=bool(targets))
         _atomic_write(locked_path, state)
         return copy.deepcopy(state)
 

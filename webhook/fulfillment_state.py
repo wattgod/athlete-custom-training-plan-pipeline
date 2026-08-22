@@ -501,9 +501,16 @@ def _validate_phase5_state(state: Dict[str, Any]) -> None:
 
     attempt = state["application_attempt"]
     if attempt is not None:
+        # Phase 5 recovery journals were added compatibly: older durable states
+        # gain empty fields on read and are rewritten on their next transition.
+        if isinstance(attempt, dict):
+            attempt.setdefault("failure", None)
+            attempt.setdefault("compensation_targets", [])
+            attempt.setdefault("compensation_receipts", [])
         required = {
             "jti", "action", "request_digest", "status", "execution_epoch",
-            "fencing_token", "lease", "landed", "intents", "receipt_ref",
+            "fencing_token", "lease", "landed", "intents", "failure",
+            "compensation_targets", "compensation_receipts", "receipt_ref",
         }
         if not isinstance(attempt, dict) or set(attempt) != required:
             raise FulfillmentStateError("application_attempt shape is invalid")
@@ -528,8 +535,20 @@ def _validate_phase5_state(state: Dict[str, Any]) -> None:
             raise FulfillmentStateError("application_attempt lease is invalid")
         if (not isinstance(attempt["landed"], list)
                 or not isinstance(attempt["intents"], list)
+                or not isinstance(attempt["compensation_targets"], list)
+                or not isinstance(attempt["compensation_receipts"], list)
                 or not str(attempt["receipt_ref"]).strip()):
             raise FulfillmentStateError("application_attempt journal is invalid")
+        failure = attempt["failure"]
+        if failure is not None and (
+            not isinstance(failure, dict)
+            or set(failure) != {"op_id", "code", "at", "receipt_digest"}
+            or (failure["op_id"] is not None and not str(failure["op_id"]).strip())
+            or not re.fullmatch(r"[A-Z0-9_]{1,80}", str(failure["code"]))
+            or not str(failure["at"]).strip()
+            or not re.fullmatch(r"[0-9a-f]{64}", str(failure["receipt_digest"]))
+        ):
+            raise FulfillmentStateError("application_attempt failure checkpoint is invalid")
     if state.get("status") == APPLYING and attempt is None:
         raise FulfillmentStateError("APPLYING requires an application_attempt")
 
@@ -543,9 +562,10 @@ def _validate_phase5_state(state: Dict[str, Any]) -> None:
     elif cancellation is not None and not isinstance(cancellation, dict):
         raise FulfillmentStateError("cancellation must be an object or null")
     if state["compensation_pending"]:
-        if state.get("status") != CANCELLED or not attempt or not attempt["landed"]:
+        if (state.get("status") not in {APPLYING, APPLIED, CANCELLED}
+                or not attempt or not attempt["compensation_targets"]):
             raise FulfillmentStateError(
-                "compensation_pending requires cancelled landed operations")
+                "compensation_pending requires frozen landed operations")
 
 
 def _validate_state(state: Any) -> Dict[str, Any]:

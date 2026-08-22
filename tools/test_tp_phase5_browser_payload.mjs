@@ -109,12 +109,15 @@ const operations = [
 ];
 
 function request(action = 'apply', priorReceipts = []) {
+  const selectedOperations = action === 'rollback'
+    ? priorReceipts.map(row => operations.find(operation => operation.op_id === row.op_id))
+    : operations;
   return {
     request_type: 'trainingpeaks_playwright_request/v1',
     contract_digest: 'a'.repeat(64), action, dry_run: false,
     order_id: order, tp_athlete_id: '1522591', generation_revision: 1,
     model_seal: 'b'.repeat(64), script_sha256: scriptSha,
-    operations, prior_receipts: priorReceipts,
+    operations: selectedOperations, prior_receipts: priorReceipts,
   };
 }
 
@@ -124,10 +127,12 @@ function jsonResponse(value, status = 200) {
   });
 }
 
-async function runPayload(browserRequest, initialRows, { ambiguousCreate = false } = {}) {
+async function runPayload(browserRequest, initialRows, {
+  ambiguousCreate = false, nextCreatedId = 1,
+} = {}) {
   const workouts = initialRows.map(row => structuredClone(row));
   const calls = [];
-  let createdId = 1;
+  let createdId = nextCreatedId;
   globalThis.window = globalThis;
   globalThis.location = {
     origin: 'https://app.trainingpeaks.com',
@@ -206,13 +211,20 @@ assert.equal(applied.workouts.find(row => row.workoutId === 'update-1')
   .structure.primaryIntensityMetric, 'percentOfThresholdHr');
 assert.equal(applied.calls.filter(call => call.method === 'POST').length, 1);
 
-const priorReceipts = applied.receipt.operations;
+const resumedApply = await runPayload(request(), applied.workouts);
+assert.equal(resumedApply.receipt.failure, null);
+assert.equal(resumedApply.receipt.readback_verified, true);
+assert.equal(resumedApply.calls.some(call => call.method !== 'GET'), false);
+
+const priorReceipts = applied.receipt.operations.filter(row => (
+  operations.find(operation => operation.op_id === row.op_id)?.disposition !== 'keep'
+)).reverse();
 const rolledBack = await runPayload(
-  request('rollback', priorReceipts), applied.workouts);
+  request('rollback', priorReceipts), applied.workouts, { nextCreatedId: 100 });
 assert.equal(rolledBack.receipt.failure, null);
 assert.equal(rolledBack.receipt.rollback_verified, true);
 assert.deepEqual(rolledBack.receipt.operations.map(row => row.status), [
-  'absent', 'restored', 'restored',
+  'restored', 'restored', 'absent',
 ]);
 assert.equal(rolledBack.workouts.some(row => (
   String(row.description).includes(marker(createLogical))
@@ -224,5 +236,29 @@ assert.equal(rolledBack.workouts.some(row => (
 )), true);
 assert.equal(rolledBack.workouts.find(row => row.workoutId === 'protected-1').title,
   protectedPayload.title);
+assert.equal(rolledBack.receipt.operations[0].remote_id, 'created-100');
+
+const rollbackRetry = await runPayload(
+  request('rollback', priorReceipts), rolledBack.workouts, { nextCreatedId: 200 });
+assert.equal(rollbackRetry.receipt.failure, null);
+assert.equal(rollbackRetry.receipt.rollback_verified, true);
+assert.equal(rollbackRetry.calls.some(call => call.method !== 'GET'), false);
+assert.equal(rollbackRetry.receipt.operations[0].remote_id, 'created-100');
+
+const editedAfterApply = applied.workouts.map(row => (
+  row.workoutId === applied.receipt.operations[1].remote_id
+    ? { ...row, description: `${row.description}\nAthlete edit after apply` }
+    : row
+));
+const createTarget = [applied.receipt.operations[1]];
+const conflict = await runPayload(
+  request('rollback', createTarget), editedAfterApply);
+assert.equal(conflict.receipt.rollback_verified, false);
+assert.equal(conflict.receipt.operations.length, 0);
+assert.equal(conflict.receipt.failure.code, 'ROLLBACK_CONFLICT');
+assert.equal(conflict.calls.some(call => call.method === 'DELETE'), false);
+assert.equal(conflict.workouts.some(row => (
+  String(row.description).includes('Athlete edit after apply')
+)), true);
 
 console.log('tp_phase5_browser_payload: ok');
