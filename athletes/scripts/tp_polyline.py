@@ -15,10 +15,18 @@ Keep the two copies identical. Each repo's golden-fixture test
 (test_tp_polyline.py, tp_polyline_golden.json) pins the exact output, so a
 copy that drifts fails its own suite.
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 
-def compute_polyline(structure: List[Dict[str, Any]]) -> List[List[float]]:
+JsonNumber = Union[int, float]
+
+
+def _json_stable_number(value: float) -> JsonNumber:
+    """Use JSON integers for integral coordinates across Python and JS."""
+    return int(value) if value.is_integer() else value
+
+
+def compute_polyline(structure: List[Dict[str, Any]]) -> List[List[JsonNumber]]:
     """Compute the TP calendar-tile power-profile polyline from a `structure`
     array (the same list that goes in body["structure"]["structure"]).
 
@@ -51,7 +59,7 @@ def compute_polyline(structure: List[Dict[str, Any]]) -> List[List[float]]:
 
     total = sum(durations)
     peak = max(intensities + [1])
-    polyline: List[List[float]] = [[0, 0]]
+    polyline: List[List[JsonNumber]] = [[0, 0]]
     if total > 0:
         cum = 0.0
         emitted_x = 0.0
@@ -60,8 +68,14 @@ def compute_polyline(structure: List[Dict[str, Any]]) -> List[List[float]]:
             t_begin = max(emitted_x, min(1.0, round(cum, 3)))
             cum += dur / total
             t_end = max(t_begin, min(1.0, round(cum, 3)))
-            polyline.append([t_begin, y])
-            polyline.append([t_end, y])
+            polyline.append([
+                _json_stable_number(t_begin),
+                _json_stable_number(y),
+            ])
+            polyline.append([
+                _json_stable_number(t_end),
+                _json_stable_number(y),
+            ])
             emitted_x = t_end
     polyline.append([1, 0])
     return polyline
