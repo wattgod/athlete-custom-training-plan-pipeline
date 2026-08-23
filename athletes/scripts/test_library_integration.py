@@ -284,6 +284,145 @@ class TestResolveLibrarySelections:
 
 
 # =============================================================================
+# R19 load-week rebalance: resolution's +15% duration-fit window can push a
+# builder-clamped load week over the R19 hours ceiling (every 9h daily-drill
+# order since the C4 waves: W7 601-759min > 594min max, an extra CRITICAL
+# blocker on every generation). The rebalance sheds via re-selection, then
+# hard-trims to the synthetic path when no shorter item qualifies.
+# =============================================================================
+
+def _overflow_bb_plan():
+    """One 'load' week that resolution will inflate past a 9h R19 max (594min)."""
+    return {
+        'weeks': [
+            {
+                'plan_week': 7, 'week_num': 3, 'block_number': 3, 'phase': 'base',
+                'week_type': 'load',
+                'days': [
+                    {'day': 'Tue', 'name': 'VO2max 40/20', 'role': 'intensity',
+                     'level': 3, 'duration': 60, 'tss': 80},
+                    {'day': 'Sat', 'name': 'Endurance', 'role': 'long_ride',
+                     'level': 3, 'duration': 240, 'tss': 160},
+                    {'day': 'Sun', 'name': 'Endurance', 'role': 'filler',
+                     'level': 2, 'duration': 120, 'tss': 80},
+                ],
+            },
+        ],
+    }
+
+
+def _overflow_select(initial_by_day, rebalance_resolution):
+    """Fake selector: initial pass keyed by slot day; rebalance re-selects
+    (series_key None) get ``rebalance_resolution`` (which may be None)."""
+    def _select(slot, series_state=None, index=None, used_items=None, lint_exclusions=None):
+        if slot.get('series_key') is None:
+            return dict(rebalance_resolution) if rebalance_resolution else None
+        res = initial_by_day.get(slot['day'])
+        return dict(res) if res else None
+    return _select
+
+
+class TestRebalanceLoadWeeks:
+    INITIAL = {
+        'Tue': _fake_resolution(item_id=990001, duration_min=60, tss=80),
+        'Sat': _fake_resolution(item_id=990002, duration_min=480, tss=300),
+        'Sun': _fake_resolution(item_id=990003, duration_min=130, tss=85),
+    }  # resolved total 670 vs 594 max -> overflow 76 on the Sat long ride
+
+    def test_reselect_brings_week_under_r19_max(self, monkeypatch):
+        shorter = _fake_resolution(item_id=990010, duration_min=400, tss=250)
+        monkeypatch.setattr(library_selector, 'select',
+                            _overflow_select(self.INITIAL, shorter))
+        plan = _overflow_bb_plan()
+
+        fallbacks = resolve_library_selections(
+            plan, day_caps={}, athlete_seed='t', index={}, target_hours=9)
+
+        week = plan['weeks'][0]
+        assert week['total_duration'] <= 594
+        sat = next(d for d in week['days'] if d['day'] == 'Sat')
+        assert sat['duration'] == 400
+        assert sat['library_resolution']['item_id'] == 990010
+        assert not [fb for fb in fallbacks if fb.get('reason') == 'r19_overflow_trim']
+
+    def test_hard_trim_when_no_shorter_item(self, monkeypatch):
+        monkeypatch.setattr(library_selector, 'select',
+                            _overflow_select(self.INITIAL, None))
+        plan = _overflow_bb_plan()
+
+        fallbacks = resolve_library_selections(
+            plan, day_caps={}, athlete_seed='t', index={}, target_hours=9)
+
+        week = plan['weeks'][0]
+        assert week['total_duration'] <= 594
+        sat = next(d for d in week['days'] if d['day'] == 'Sat')
+        assert sat['duration'] == 480 - 76  # exact residual budget
+        assert 'library_resolution' not in sat  # back on the synthetic path
+        trims = [fb for fb in fallbacks if fb.get('reason') == 'r19_overflow_trim']
+        assert [(fb['plan_week'], fb['day']) for fb in trims] == [(7, 'Sat')]
+
+    def test_long_ride_never_shed_below_r06_floor(self, monkeypatch):
+        """Fixing R19 must not break R06: the long ride sheds only down to
+        its plausibility floor (90min at >=7h); a week whose sheddable days
+        are all at floor is left over-budget for coach review."""
+        initial = {
+            'Tue': _fake_resolution(item_id=990001, duration_min=264, tss=200),
+            'Sat': _fake_resolution(item_id=990002, duration_min=108, tss=90),
+        }
+        monkeypatch.setattr(library_selector, 'select',
+                            _overflow_select(initial, None))
+        plan = _overflow_bb_plan()
+        plan['weeks'][0]['days'] = [
+            {'day': 'Tue', 'name': 'VO2max 40/20', 'role': 'intensity',
+             'level': 3, 'duration': 60, 'tss': 80},
+            {'day': 'Sat', 'name': 'Endurance', 'role': 'long_ride',
+             'level': 3, 'duration': 108, 'tss': 90},
+            {'day': 'Sun', 'name': 'FTP Test', 'role': 'intensity',
+             'level': 1, 'duration': 120, 'tss': 100},
+        ]
+
+        resolve_library_selections(
+            plan, day_caps={}, athlete_seed='t', index={}, target_hours=7)
+
+        week = plan['weeks'][0]
+        sat = next(d for d in week['days'] if d['day'] == 'Sat')
+        # overflow 30 vs Sat capacity 18: shed stops AT the 90min floor,
+        # intensity days are never resized, and the residual stays flagged.
+        assert sat['duration'] == 90
+        assert week['total_duration'] == 264 + 90 + 120
+
+    def test_no_target_hours_skips_rebalance(self, monkeypatch):
+        monkeypatch.setattr(library_selector, 'select',
+                            _overflow_select(self.INITIAL, None))
+        plan = _overflow_bb_plan()
+
+        resolve_library_selections(plan, day_caps={}, athlete_seed='t', index={})
+
+        assert plan['weeks'][0]['total_duration'] == 670  # untouched
+
+    def test_recovery_and_race_weeks_exempt(self, monkeypatch):
+        monkeypatch.setattr(library_selector, 'select',
+                            _overflow_select(self.INITIAL, None))
+        plan = _overflow_bb_plan()
+        plan['weeks'][0]['week_type'] = 'recovery'
+        race_week = _overflow_bb_plan()['weeks'][0]
+        race_week['plan_week'] = 20
+        race_week['week_type'] = 'race'
+        race_week['days'].append({'day': 'Fri', 'name': 'Race Day', 'role': 'race',
+                                  'level': 1, 'duration': 180, 'tss': 190})
+        plan['weeks'].append(race_week)
+
+        fallbacks = resolve_library_selections(
+            plan, day_caps={}, athlete_seed='t', index={}, target_hours=9)
+
+        assert not [fb for fb in fallbacks if fb.get('reason') == 'r19_overflow_trim']
+        # both weeks keep their resolved (over-max) totals: R19 exempts them
+        assert plan['weeks'][0]['total_duration'] == 670
+        sat = next(d for d in plan['weeks'][1]['days'] if d['day'] == 'Sat')
+        assert sat['duration'] == 480
+
+
+# =============================================================================
 # R1 (SPEC_LIBRARY_SELECTION.md regrade): authored tss/if_planned survive
 # to the placed card. The internal ZWO's normalized-power recompute
 # (min-only sprint targets flattened to Power blocks) massively inflates
