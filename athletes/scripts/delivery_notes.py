@@ -1197,20 +1197,32 @@ def render_coached_weekly_notes(plan_ir: dict) -> List[Dict[str, str]]:
             a_name = str(
                 _get(a_event, "name") or _get(snapshot, "name") or "the A race"
             )
-            b_name = str(_get(b_event, "name") or "the B event")
+            b_name = str(_get(b_event, "name") or "")
             a_date = _as_date(_get(a_event, "date") or _get(snapshot, "date"))
             b_date = _as_date(_get(b_event, "date"))
             a_day = a_date.strftime("%A") if a_date else "the A race"
-            b_day = b_date.strftime("%A") if b_date else "the B event"
+            b_day = b_date.strftime("%A") if b_date else ""
             off_text = ", ".join(off_days) or "The written rest days"
-            direction = (
-                f"Race week: {off_text} off, legs awake midweek, openers "
-                f"before {a_name}. {b_name} is optional; {a_day} gets first "
-                "claim on your legs."
-            )
+            if b_event:
+                direction = (
+                    f"Race week: {off_text} off, legs awake midweek, openers "
+                    f"before {a_name}. {b_name} is optional; {a_day} gets first "
+                    "claim on your legs."
+                )
+                fuel_subject = "both events"
+                choice_event = (
+                    f"{b_day} requires normal legs; otherwise skip it. "
+                )
+            else:
+                direction = (
+                    f"Race week: {off_text} off, legs awake midweek, openers "
+                    f"before {a_name}. {a_day} is the assignment."
+                )
+                fuel_subject = "the race"
+                choice_event = ""
             fuel = (
-                f" Fuel both events with familiar products at {fuel_range[0]}-"
-                f"{fuel_range[-1]} g/hr."
+                f" Fuel {fuel_subject} with familiar products at "
+                f"{fuel_range[0]}-{fuel_range[-1]} g/hr."
                 if len(fuel_range) >= 2 else ""
             )
             order = (
@@ -1219,7 +1231,7 @@ def render_coached_weekly_notes(plan_ir: dict) -> List[Dict[str, str]]:
             )
             choice = (
                 "Ride inside or out—whichever keeps the written RPE smooth. "
-                f"{b_day} requires normal legs; otherwise skip it. Pain, "
+                f"{choice_event}Pain, "
                 "illness, or changed function: stop and tell me."
             )
             label = "Race Week"

@@ -101,6 +101,21 @@ def test_absent_devices_produce_no_profile_device_token(minimal_valid_parsed):
     assert profile['cycling_equipment']['hr_monitor'] is False
 
 
+def test_additional_notes_preserve_calendar_intent_and_referenced_dates(
+    minimal_valid_parsed,
+):
+    parsed = copy.deepcopy(minimal_valid_parsed)
+    parsed['additional']['notes'] = (
+        'Preserve all live calendar items, race cards, event cards, and notes '
+        'from 2026-08-31 through 2026-09-26.'
+    )
+    profile = build_profile(parsed)
+    assert profile['calendar_protection'] == {
+        'requested': True,
+        'referenced_dates': ['2026-08-31', '2026-09-26'],
+    }
+
+
 def test_strength_questionnaire_labels_map_to_profile_strength_block():
     """Production questionnaire labels must not silently default strength away."""
     parsed = parse_intake_markdown("""# Athlete Intake: Strength Alias

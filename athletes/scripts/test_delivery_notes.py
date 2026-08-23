@@ -74,6 +74,20 @@ def test_coached_weekly_notes_are_direct_clean_and_bounded():
     assert len(race["body"].split()) <= 110
 
 
+def test_single_event_race_week_never_invents_b_event_or_fuel_both_copy():
+    plan = _plan(weeks=2, metric="rpe", later_event=False)
+    plan["fueling"] = {"race_range_g_per_hour": [60, 70]}
+    plan["events"] = [{
+        "name": "Vancouver Gran Fondo", "priority": "A", "date": "2026-08-22",
+    }]
+    race = render_coached_weekly_notes(plan)[-1]
+    assert "B event" not in race["body"]
+    assert "both events" not in race["body"]
+    assert "Fuel the race" in race["body"]
+    assert "Vancouver Gran Fondo" in race["body"]
+    assert len(race["body"].split()) <= 110
+
+
 def test_full_guillermo_render_has_complete_inventory_and_safe_copy():
     notes = _notes(_plan())
     types = [note["type"] for note in notes]

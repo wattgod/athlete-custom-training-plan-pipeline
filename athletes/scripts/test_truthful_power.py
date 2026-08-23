@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import plan_ir
 from canonical_training_model import (CanonicalModelError, MODEL_VERSION,
                                       build_canonical_model,
+                                      metric_neutral_description,
                                       project_guide_html,
                                       publish_zwo_projection,
                                       validate_canonical_model)
@@ -38,6 +39,20 @@ PRESCRIPTION = {
                "weight_kg": 70, "intensity_descriptor": "finish"},
     "policy_version": "fixture",
 }
+
+
+def test_rpe_description_removes_all_percent_based_power_prose():
+    control = {"control_metric": "rpe"}
+    source = (
+        "Build 50%->79% FTP, then hold 79%-85% FTP. "
+        "Finish 4x1 minute @116-124%. "
+        "Average effort x 0.95 = training anchor."
+    )
+    projected = metric_neutral_description(source, control)
+    assert "%" not in projected
+    assert "FTP" not in projected
+    assert "0.95" not in projected
+    assert "Record the completed field-test effort for review." in projected
 
 
 def _write_fixture(tmp_path, case):

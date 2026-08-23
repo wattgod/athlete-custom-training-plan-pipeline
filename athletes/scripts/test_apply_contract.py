@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from apply_contract import (ApplyContractError, OperationProvenance,
+                            MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS,
                             assert_checked_schema_current,
                             bind_operation_provenance, build_contract,
                             canonical_json, compute_model_seal, digest_payload,
@@ -51,7 +52,8 @@ def _contract(tmp_path, **kwargs):
     return build_contract(
         _ir(), order_id="cs_phase3", tp_athlete_id="fake-42",
         generation_revision=kwargs.pop("generation_revision", 1),
-        canonical_model={"model_version": "canonical_training_model/v1"},
+        canonical_model=kwargs.pop("canonical_model", {
+            "model_version": "canonical_training_model/v1"}),
         review_items=[{"item_id": "FACT", "value": 1}],
         guide_sources={"profile.yaml": "abc"}, athlete_dir=tmp_path, **kwargs)
 
@@ -184,6 +186,78 @@ def test_protected_provider_resource_is_preserved_as_keep(tmp_path):
     assert operation["predecessor"] == {
         "op_id": "external-provider-99", "remote_id": "99",
     }
+
+
+def test_calendar_protection_intent_cannot_emit_all_create_contract(tmp_path):
+    model = {
+        "model_version": "canonical_training_model/v1",
+        "calendar_protection": {
+            "requested": True, "referenced_dates": ["2026-08-14"],
+        },
+    }
+    with pytest.raises(ApplyContractError, match="current inventory and explicit keep"):
+        _contract(tmp_path, canonical_model=model)
+
+
+def test_calendar_protection_requires_a_keep_for_each_referenced_date(tmp_path):
+    logical_id = "cs_phase3:calendar_note_upsert:protected-2026-08-14-99"
+    payload = {"date": "2026-08-14", "title": "Athlete note", "body": "Keep me."}
+    inventory = {logical_id: {
+        "kind": "calendar_note_upsert", "remote_id": "99",
+        "desired_digest": digest_payload(payload),
+        "payload_snapshot_ref": "protected-note",
+        "last_op_id": "external-provider-99",
+    }}
+    model = {
+        "model_version": "canonical_training_model/v1",
+        "calendar_protection": {
+            "requested": True, "referenced_dates": ["2026-08-14"],
+        },
+    }
+    contract = _contract(
+        tmp_path, canonical_model=model,
+        protected_resources={logical_id: {
+            "kind": "calendar_note_upsert", "payload": payload,
+        }},
+        effective_remote_inventory=inventory,
+    )
+    assert any(op["disposition"] == "keep" for op in contract["operations"])
+
+
+def test_structured_description_is_concise_clean_and_keeps_execution_structure(tmp_path):
+    ir = _ir()
+    session = ir["weeks"][0]["sessions"][0]
+    structure = copy.deepcopy(session["structure"])
+    session["description"] = "\n".join([
+        "Michael Beal - Week 1/4 - 4 weeks to Race",
+        "Phase: BUILD",
+        "[FUEL: 60 g/hr with familiar products.]",
+        "WARM-UP:", "Ride easy for 10 minutes, then build smoothly.",
+        "MAIN SET:", "Complete 4 x 5 minutes at RPE 8 with 3 minutes easy.",
+        "COOL-DOWN:", "Ride easy for 10 minutes.",
+        "PURPOSE:", "Defensive explanation. " * 200,
+        "GO GET IT, MICHAEL!",
+        "PRESCRIPTION:", "RPE 8. Hold the effort, then recover fully.",
+    ])
+    (tmp_path / "guide.html").write_text("guide")
+    contract = build_contract(
+        ir, order_id="cs_phase3", tp_athlete_id="fake-42",
+        generation_revision=1,
+        canonical_model={"model_version": "canonical_training_model/v1"},
+        review_items=[], guide_sources={}, athlete_dir=tmp_path,
+    )
+    workout = next(op for op in contract["operations"]
+                   if op["kind"] == "workout_upsert")
+    description = workout["payload"]["description"]
+    assert len(description) <= MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS
+    assert not any(token in description for token in (
+        "Michael Beal - Week", "Phase:", "[FUEL:", "PURPOSE:",
+        "Defensive explanation", "GO GET IT",
+    ))
+    assert all(token in description for token in (
+        "FUEL:", "WARM-UP:", "MAIN SET:", "COOL-DOWN:", "PRESCRIPTION:",
+    ))
+    assert workout["payload"]["structure"] == structure
 
 
 def test_three_identities_are_stable_and_revision_scoped(tmp_path):

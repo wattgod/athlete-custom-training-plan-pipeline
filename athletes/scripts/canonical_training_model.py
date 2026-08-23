@@ -207,7 +207,18 @@ def _metric_field_test_title(control: Dict[str, Any]) -> str:
 
 
 _WATT_FIGURE = re.compile(r"\b\d+(?:\.\d+)?\s*(?:w|watts?)\b", re.I)
-_FTP_TARGET = re.compile(r"\b\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*%\s*FTP\b", re.I)
+_FTP_TARGET = re.compile(
+    r"\b\d+(?:\.\d+)?\s*%(?:\s*(?:[-–]|->|→)\s*"
+    r"\d+(?:\.\d+)?\s*%)?\s*FTP\b|"
+    r"\b\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*%\s*FTP\b",
+    re.I,
+)
+_PERCENT_TARGET = re.compile(
+    r"@?\s*\b\d+(?:\.\d+)?\s*%(?:\s*(?:[-–]|->|→)\s*"
+    r"\d+(?:\.\d+)?\s*%)?|"
+    r"@?\s*\b\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)\s*%",
+    re.I,
+)
 
 
 def metric_neutral_text(value: Any, control: Dict[str, Any]) -> str:
@@ -221,6 +232,33 @@ def metric_neutral_text(value: Any, control: Dict[str, Any]) -> str:
     text = re.sub(r"\bwatts?\b", "output", text, flags=re.I)
     text = re.sub(r"\bpower\b", "effort", text, flags=re.I)
     text = re.sub(r"\bZWO files?\b", "structured workouts", text, flags=re.I)
+    return text
+
+
+def metric_neutral_description(value: Any, control: Dict[str, Any]) -> str:
+    """Remove power-only prose from a non-power workout description.
+
+    Descriptions are execution copy, not a compatibility dump. A relative
+    percentage without an athlete power anchor is no more useful than watts,
+    even when the executable structure has already been converted to RPE/HR.
+    """
+    text = metric_neutral_text(value, control)
+    if control["control_metric"] == "power":
+        return text
+    text = _PERCENT_TARGET.sub("the written effort", text)
+    text = re.sub(
+        r"the (?:written|prescribed) effort\s*(?:[-–]|->|→)\s*"
+        r"the (?:written|prescribed) effort",
+        "the written effort range",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(
+        r"\bAverage effort\s*[×x]\s*0\.95\s*=\s*training anchor\.?",
+        "Record the completed field-test effort for review.",
+        text,
+        flags=re.I,
+    )
     return text
 
 
@@ -511,7 +549,8 @@ def build_canonical_model(
             title = (field_test_title if is_field_test and
                      control["control_metric"] != "power" else
                      metric_neutral_text(raw_session.title, control))
-            description = metric_neutral_text(raw_session.description, control)
+            description = metric_neutral_description(
+                raw_session.description, control)
             if is_field_test and control["control_metric"] != "power":
                 description = (description.rstrip() + "\n\nRE-ANCHOR: Complete this Week 1 field test, "
                                "record the measured result, and update future targets.").strip()
@@ -578,6 +617,7 @@ def build_canonical_model(
         "attachments": reflected.attachments,
         "entitlements": reflected.entitlements,
         "fueling": reflected.fueling.to_dict() if reflected.fueling else None,
+        "calendar_protection": dict(profile.get("calendar_protection") or {}),
         "derived_values": validate_registry([
             derived_entry(
                 id="CANONICAL_CONTROL", field="athlete.control_metric",
@@ -625,6 +665,13 @@ def validate_canonical_model(model: Dict[str, Any]) -> None:
         raise CanonicalModelError("invalid power basis")
     if athlete.get("power_basis") == "none" and athlete.get("ftp_watts") is not None:
         raise CanonicalModelError("null-power model carries an FTP value")
+    protection = model.get("calendar_protection") or {}
+    if not isinstance(protection, dict):
+        raise CanonicalModelError("calendar protection intent must be an object")
+    if protection and not isinstance(protection.get("requested"), bool):
+        raise CanonicalModelError("calendar protection requested must be boolean")
+    if protection and not isinstance(protection.get("referenced_dates", []), list):
+        raise CanonicalModelError("calendar protection referenced_dates must be an array")
     for session in model.get("sessions") or []:
         for segment in session.get("segments") or []:
             target = segment.get("target") or {}

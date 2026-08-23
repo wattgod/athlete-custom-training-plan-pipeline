@@ -62,6 +62,60 @@ class ApplyContractError(ValueError):
     """The offline contract is incomplete, ambiguous, or schema-invalid."""
 
 
+MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS = 1400
+_VISIBLE_INTERNAL_TAG = re.compile(
+    r"\[[A-Z][A-Z0-9 _-]{0,40}:\s*[^\]]*\]", re.IGNORECASE)
+_FUEL_TAG = re.compile(
+    r"^\[(FUEL|LONG-RIDE FUEL|RACE FUEL):\s*([^\]]+)\]\s*$",
+    re.IGNORECASE,
+)
+_ATHLETE_WEEK_BOILERPLATE = re.compile(
+    r"^.+?\s+-\s+Week\s+\d+/\d+\s+-\s+\d+\s+weeks?\s+to\s+.+$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_PHASE_BOILERPLATE = re.compile(
+    r"^Phase:\s*.+$", re.IGNORECASE | re.MULTILINE)
+_DROP_DESCRIPTION_SECTION = re.compile(
+    r"(?ms)^\s*(?:PURPOSE|DIMENSIONS):\s*.*?(?=^\s*[A-Z][A-Z -]{2,}:\s*|\Z)"
+)
+
+
+def _visible_workout_description(value: Any, *, structured: bool) -> str:
+    """Project concise athlete copy while leaving executable structure alone."""
+    text = str(value or "").replace("\r\n", "\n")
+    lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        fuel = _FUEL_TAG.fullmatch(line)
+        if fuel:
+            lines.extend(["FUEL:", fuel.group(2).strip()])
+            continue
+        if _ATHLETE_WEEK_BOILERPLATE.fullmatch(line):
+            continue
+        if _PHASE_BOILERPLATE.fullmatch(line):
+            continue
+        if re.fullmatch(r"GO GET IT(?:,\s*[^!]+)?!", line, re.IGNORECASE):
+            continue
+        if re.match(r"^Level\s+\d+:\s*", line, re.IGNORECASE):
+            continue
+        lines.append(raw.strip())
+    text = "\n".join(lines)
+    if structured:
+        text = _DROP_DESCRIPTION_SECTION.sub("", text)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if structured and len(text) > MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS:
+        prescription = re.search(r"(?ms)^PRESCRIPTION:\s*.*\Z", text)
+        tail = prescription.group(0).strip() if prescription else ""
+        if len(tail) > MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS:
+            tail = tail[:MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS].rstrip()
+        budget = MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS - len(tail) - 2
+        head = text[:max(0, budget)].rsplit("\n\n", 1)[0].rstrip()
+        text = (head + ("\n\n" + tail if tail else "")).strip()
+    if _VISIBLE_INTERNAL_TAG.search(text):
+        raise ApplyContractError("athlete-facing workout description contains internal tag")
+    return text
+
+
 def canonical_json(value: Any) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
@@ -288,6 +342,20 @@ def _validate_workout_payload(
                if allow_legacy else SUPPORTED_TP_WORKOUT_TYPES)
     if type_id not in allowed:
         raise ApplyContractError(f"{context} has unsupported tp_workout_type")
+    if not allow_legacy:
+        description = str(payload.get("description") or "")
+        if _VISIBLE_INTERNAL_TAG.search(description):
+            raise ApplyContractError(
+                f"{context} athlete-facing description contains internal tag")
+        if structure is not None:
+            if len(description) > MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS:
+                raise ApplyContractError(
+                    f"{context} athlete-facing description exceeds max length")
+            if (_ATHLETE_WEEK_BOILERPLATE.search(description)
+                    or _PHASE_BOILERPLATE.search(description)
+                    or re.search(r"(?m)^\s*PURPOSE:\s*$", description)):
+                raise ApplyContractError(
+                    f"{context} athlete-facing description contains boilerplate")
     if type_id == 100:
         if (not isinstance(seconds, int) or isinstance(seconds, bool)
                 or seconds < 0):
@@ -334,7 +402,9 @@ def _desired_resources(
             desired[logical_id] = {"kind": "workout_upsert", "logical_key": key,
                 "date": session.get("date"), "payload": {
                     "date": session.get("date"), "title": str(session.get("title") or "Untitled session"),
-                    "description": session.get("description"),
+                    "description": _visible_workout_description(
+                        session.get("description"),
+                        structured=session.get("structure") is not None),
                     "tp_workout_type": session.get("workout_type_value_id"),
                     # Day-off cards must never carry residual duration/TSS
                     # from a rest ZWO (a 1-minute 1-TSS Day Off shipped on a
@@ -841,6 +911,21 @@ def build_contract(
         current_revision=revision, order_id=str(order_id),
         tp_athlete_id=str(tp_athlete_id))
     inspection = dict(inspection or {})
+    protection = canonical_model.get("calendar_protection") or {}
+    if protection.get("requested"):
+        if effective_remote_inventory is None or not protected_resources:
+            raise ApplyContractError(
+                "calendar protection requires current inventory and explicit keep resources")
+        protected_dates = {
+            str((resource.get("payload") or {}).get("date") or "")
+            for resource in protected_resources.values()
+        }
+        missing_dates = sorted(
+            set(protection.get("referenced_dates") or []) - protected_dates)
+        if missing_dates:
+            raise ApplyContractError(
+                "calendar protection lacks explicit keep resources for: "
+                + ", ".join(missing_dates))
     desired = _desired_resources(
         ir, str(order_id), Path(athlete_dir) if athlete_dir else None,
         singleton_desires or {},
@@ -854,6 +939,10 @@ def build_contract(
         for logical_id in sorted(set(desired) | set(inventory))
     ]
     operations.sort(key=_sort_key)
+    if protection.get("requested") and not any(
+            operation.get("disposition") == "keep" for operation in operations):
+        raise ApplyContractError(
+            "calendar protection requires at least one explicit keep operation")
     seal = compute_model_seal(canonical_model, review_items, guide_sources, operations)
     contract = {"contract_version": CONTRACT_VERSION, "order_id": str(order_id),
                 "tp_athlete_id": str(tp_athlete_id),

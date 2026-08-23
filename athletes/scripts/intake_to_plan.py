@@ -41,7 +41,7 @@ import subprocess
 import uuid
 from pathlib import Path
 from datetime import datetime, date
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 # Ensure scripts dir is on path
 SCRIPTS_DIR = Path(__file__).parent.resolve()
@@ -585,6 +585,27 @@ def _programmed_midweek_cap(
         raise IntakeValidationError(
             'Programmed midweek max minutes must be between 1 and 480')
     return value
+
+
+_CALENDAR_PROTECTION_RE = re.compile(
+    r"\b(?:preserve|protect|keep|do\s+not\s+(?:delete|move|change))\b"
+    r"[^.\n]{0,100}\b(?:calendar|race\s+card|event\s+card|note|live\s+item)",
+    re.IGNORECASE,
+)
+
+
+def _calendar_protection_intent(
+    schedule: Mapping[str, Any], additional: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Carry an explicit preservation directive to the sealed contract gate."""
+    structured = str(schedule.get('protected_calendar_items') or '').strip()
+    notes = ' '.join(str(additional.get(key) or '') for key in ('notes', 'other'))
+    source = ' '.join(value for value in (structured, notes) if value).strip()
+    requested = bool(structured or _CALENDAR_PROTECTION_RE.search(notes))
+    return {
+        'requested': requested,
+        'referenced_dates': sorted(set(re.findall(r'\b\d{4}-\d{2}-\d{2}\b', source))),
+    }
 
 
 def parse_years(val: str) -> int:
@@ -1683,6 +1704,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'off_days': off_days,
         },
         'recurring_sessions': recurring_sessions,
+        'calendar_protection': _calendar_protection_intent(schedule, additional),
         'availability_review_issues': (
             contradiction_issues(
                 recurring_sessions, schedule.get('notes', '') or additional.get('notes', ''))
