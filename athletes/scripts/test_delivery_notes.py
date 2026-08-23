@@ -65,9 +65,9 @@ def test_coached_weekly_notes_are_direct_clean_and_bounded():
     assert len(notes) == 2
     race = notes[-1]
     assert race["title"] == "Week 2: Race Week"
-    assert "openers before Vancouver Gran Fondo" in race["body"]
+    assert "Openers before Vancouver Gran Fondo" in race["body"]
     assert "60-70 g/hr" in race["body"]
-    assert "inside or out" in race["body"]
+    assert "Inside or out" in race["body"]
     assert "[GG:" not in race["body"]
     assert "THE INTENT" not in race["body"]
     assert "YOUR CALL" not in race["body"]

@@ -1207,14 +1207,14 @@ def render_coached_weekly_notes(plan_ir: dict) -> List[Dict[str, str]]:
                 mandatory_b = bool(_get(b_event, "mandatory"))
                 if mandatory_b:
                     direction = (
-                        f"Race week: {off_text} off, legs awake midweek, "
-                        f"openers before {a_name}. {b_name} is mandatory; "
+                        f"Race week. {off_text} off. Openers before {a_name}. "
+                        f"{b_name} is mandatory; "
                         f"{a_day} decides the mode."
                     )
                 else:
                     direction = (
-                        f"Race week: {off_text} off, legs awake midweek, "
-                        f"openers before {a_name}. {b_name} is optional; "
+                        f"Race week. {off_text} off. Openers before {a_name}. "
+                        f"{b_name} is optional; "
                         f"{a_day} gets first claim on your legs."
                     )
                 event_fuel = f"{a_name} and {b_name}"
@@ -1226,8 +1226,8 @@ def render_coached_weekly_notes(plan_ir: dict) -> List[Dict[str, str]]:
                 )
             else:
                 direction = (
-                    f"Race week: {off_text} off, legs awake midweek, openers "
-                    f"before {a_name}. {a_day} is the assignment."
+                    f"Race week. {off_text} off. Openers before {a_name}. "
+                    f"{a_day} is the assignment."
                 )
                 event_fuel = a_name
                 choice_tail = ""
@@ -1237,11 +1237,11 @@ def render_coached_weekly_notes(plan_ir: dict) -> List[Dict[str, str]]:
                 if len(fuel_range) >= 2 else ""
             )
             order = (
-                "No bonus miles or make-up work. Keep the openers controlled. "
-                "Race week is a poor time for improv." + fuel
+                "No bonus miles or make-up work. Keep the openers controlled."
+                + fuel + " Improv can wait."
             )
             choice = (
-                "Ride inside or out—whichever keeps the written RPE smooth. "
+                "Inside or out—keep the written RPE smooth. "
                 f"{choice_tail} Pain, "
                 "illness, or changed function: stop and tell me."
             )
@@ -1298,13 +1298,11 @@ def render_coached_weekly_notes(plan_ir: dict) -> List[Dict[str, str]]:
             if names:
                 direction += f" The key work is {names}."
             order = (
-                "Key sessions stay in order. Easy days stay easy. Do not stack "
-                "or make up missed work."
+                "Keep the order. Easy means easy. Missed work stays missed."
             )
             choice = (
-                "Endurance rides can be inside or out. Keep the written time "
-                "and RPE. If the route creates repeated surges, change the "
-                "route or cut it short."
+                "Endurance can be inside or out. Hold the written time and "
+                "RPE. If the route will not cooperate, change it or cut it."
             )
             label = str(
                 _get(week, "phase") or "Training"
