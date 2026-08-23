@@ -3097,16 +3097,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 workout_type = 'Pre_Plan_Rest'
                 duration = 0
                 power = 0
-                description = f"""PRE-PLAN WEEK: Rest Day
-{athlete_name} - {days_to_plan_start} days until plan starts
-
-PURPOSE:
-Your scheduled day off. Nothing today.
-
-TODAY:
-- OFF the bike
-- Light stretching or a walk if you feel like it
-- Sleep and eat normally"""
+                from rest_day_cards import pre_plan_body
+                description = pre_plan_body(days_to_plan_start)
             elif day_abbrev == 'Sat':
                 # Longer endurance ride
                 workout_type = 'Pre_Plan_Endurance'
@@ -3143,26 +3135,8 @@ Almost there, {athlete_name}!"""
                 workout_type = 'Pre_Plan_Rest'
                 duration = 0
                 power = 0
-                description = f"""PRE-PLAN WEEK: Rest Day
-{athlete_name} - Plan starts tomorrow!
-
-PURPOSE:
-Complete rest before your {total_weeks}-week journey begins.
-
-TODAY:
-- OFF the bike
-- Light stretching or yoga if desired
-- Focus on sleep, hydration, nutrition
-
-PREP FOR TOMORROW:
-- Charge devices (bike computer, HRM, etc.)
-- Check bike mechanicals
-- Review your training zones
-
-{total_weeks} weeks to {race_name}.
-Trust the process. One workout at a time.
-
-Let's go, {athlete_name}! See you tomorrow."""
+                from rest_day_cards import pre_plan_body
+                description = pre_plan_body(1)
 
             elif day_abbrev == 'Thu':
                 # Mobility/strength prep
@@ -4017,26 +3991,10 @@ TIPS:
             # overlay below must replace the rest template (C2 exemption).
             if (workout_type == 'Rest' or duration == 0) and not is_race_day:
                 weeks_to_race = total_weeks - week_num + 1
-                rest_description = f"""REST DAY - {athlete_name}
-
-COUNTDOWN: {_week_event_context(week, weeks_to_race, race_name)}
-
-TODAY'S FOCUS:
-- Complete rest from cycling
-- Active recovery allowed: walking, light stretching, yoga
-- Prioritize sleep (7-9 hours)
-
-RECOVERY CHECKLIST:
-- Hydration: 2-3L water minimum
-- Nutrition: Quality protein with each meal
-- Mobility: 10-15 min light stretching if desired
-- Mental: Visualize your race success
-
-PHASE: {phase.upper()}
-Week {week_num} of {total_weeks}
-
-Remember: Adaptation happens during rest, not during training.
-Trust the process, {athlete_name}."""
+                from rest_day_cards import rest_day_card
+                rest_description = rest_day_card(
+                    None, week={'week': week_num, 'phase': phase},
+                    athlete_seed=athlete_name, ordinal=week_num)["body"]
 
                 rest_blocks = '    <SteadyState Duration="60" Power="0.30"/>\n'
                 rest_content = ZWO_TEMPLATE.format(

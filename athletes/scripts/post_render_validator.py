@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import yaml
 
 from delivery_notes import render_coached_weekly_notes
+from voice_lint import lint_notes, lint_rest_cards
 
 INPUT_VERSION = "post_render/transitional-planir-tp-manifest/v1"
 COUNTED_RACE_WEEK_KINDS = {"bike", "race"}
@@ -649,6 +650,20 @@ def _day_cap_findings(
     )]
 
 
+def _voice_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Athlete-facing copy contract (athletes/config/voice_rules.yaml):
+    no blank Day Off cards, no banned phrases/patterns, word caps, and no
+    sentence repeated across the plan's weekly notes."""
+    findings: List[str] = []
+    findings.extend(lint_notes(render_coached_weekly_notes(plan_ir)))
+    findings.extend(lint_rest_cards(session for _, session in _sessions(plan_ir)))
+    return [
+        _issue("VOICE_CONTRACT", finding,
+               basis="athletes/config/voice_rules.yaml applied to rendered notes and Day Off cards")
+        for finding in findings
+    ]
+
+
 def validate_transitional_input(
     document: Dict[str, Any],
 ) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
@@ -755,6 +770,7 @@ def validate_transitional_input(
     issues.extend(_field_test_suppression_findings(plan_ir, profile))
     issues.extend(_unresolved_pain_load_findings(plan_ir, profile))
     issues.extend(_athlete_visible_copy_findings(plan_ir))
+    issues.extend(_voice_findings(plan_ir))
     schedule_issues, schedule_confirmations = _schedule_findings(plan_ir, profile)
     issues.extend(schedule_issues)
     confirmations.extend(schedule_confirmations)

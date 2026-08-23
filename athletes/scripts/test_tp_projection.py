@@ -391,7 +391,9 @@ def test_w00_sessions_matched_by_primary_calendar_path(w00_projection_plan):
 
 def test_rest_days_are_day_off_type_7(structure_plan):
     _, _, manifest, _ = structure_plan
-    rest_sessions = [s for s in manifest['sessions'] if s['title'] == 'Rest Day' or s['display_name'] == 'Rest Day']
+    # Rest titles vary by context since Aug 2026 (Rest Day / Day Off — Race
+    # Prep / Pre-Plan Rest ...); type 'rest' is the stable identity.
+    rest_sessions = [s for s in manifest['sessions'] if s.get('type') == 'rest' or s['tp_kind'] == 'day_off']
     assert rest_sessions, "no rest-day sessions found -- test setup lost coverage"
     for s in rest_sessions:
         assert s['tp_kind'] == 'day_off'

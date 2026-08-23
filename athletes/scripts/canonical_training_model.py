@@ -382,6 +382,10 @@ def _compile_authored_weeks(
     ftp = _num((profile.get("fitness_markers") or {}).get("ftp_watts"))
     remaining = set(documents)
     weeks: List[SimpleNamespace] = []
+    race_date = ((profile.get("target_race") or {}).get("date")
+                 or plan_dates.get("race_date"))
+    athlete_id = profile.get("athlete_id") or profile.get("id")
+    rest_ordinal = 0
     for index, week_data in enumerate(plan_dates.get("weeks") or [], 1):
         sessions = []
         for day in week_data.get("days") or []:
@@ -395,7 +399,10 @@ def _compile_authored_weeks(
                         stem, documents[stem], date=day.get("date"),
                         is_race_day=is_race, manifest=manifest, ftp=ftp))
             else:
-                sessions.append(plan_ir_module._rest_session(day.get("date")))
+                sessions.append(plan_ir_module._rest_session(
+                    day.get("date"), week=week_data, race_date=race_date,
+                    athlete_seed=athlete_id, ordinal=rest_ordinal))
+                rest_ordinal += 1
         for raw in profile.get("recurring_sessions") or []:
             if not raw.get("locked"):
                 continue

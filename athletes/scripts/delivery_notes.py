@@ -1150,6 +1150,17 @@ def render_notes(plan_ir: dict, fueling: dict, brand_cfg: dict, guide_url: str |
 
 
 def render_coached_weekly_notes(plan_ir: dict) -> List[Dict[str, str]]:
+    """One Monday note per coached calendar week, as a story in the coach's
+    voice (story_notes.render_story_notes). The template-paragraph renderer
+    below is kept as ``_render_template_weekly_notes`` for comparison only;
+    it is no longer on any delivery path (Matti, Aug 23 2026: "a training
+    plan is a story").
+    """
+    from story_notes import render_story_notes
+    return render_story_notes(plan_ir)
+
+
+def _render_template_weekly_notes(plan_ir: dict) -> List[Dict[str, str]]:
     """Render one compact directive note per coached calendar week.
 
     Marketplace-plan education and mental-skills notes do not belong on a

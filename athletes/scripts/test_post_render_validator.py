@@ -18,6 +18,8 @@ def _session(day, title, kind='bike', session_type='workout', hours=1.0):
         'tp_kind': kind, 'type': session_type,
         'duration_s': int(hours * 3600), 'total_time_planned': hours,
         'structure': None,
+        # A Day Off card is never blank (voice contract); fixtures carry a body.
+        'description': 'Off the bike, not off the plan.' if kind == 'day_off' else None,
     }
 
 

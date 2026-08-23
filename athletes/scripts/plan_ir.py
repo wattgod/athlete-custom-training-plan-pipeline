@@ -650,10 +650,17 @@ def _session_from_zwo(zwo_path: Path, date: Optional[str], is_race_day: bool, ft
     )
 
 
-def _rest_session(date: Optional[str]) -> Session:
+def _rest_session(date: Optional[str], *, week: Optional[Dict[str, Any]] = None,
+                  race_date: Any = None, athlete_seed: Any = None,
+                  ordinal: int = 0) -> Session:
+    """A Day Off card is never blank (Matti, Aug 23 2026): it schedules the
+    active-recovery work -- mobility, a walk, sleep -- via rest_day_cards."""
+    from rest_day_cards import rest_day_card
+    card = rest_day_card(date, week=week, race_date=race_date,
+                         athlete_seed=athlete_seed, ordinal=ordinal)
     return Session(
         date=date,
-        title="Rest Day",
+        title=card["title"],
         sport="cycling",
         type="rest",
         origin="rest",
@@ -663,7 +670,8 @@ def _rest_session(date: Optional[str]) -> Session:
         workout_type_value_id=TP_WORKOUT_TYPE_VALUE_ID["day_off"],
         tss_planned=0.0,
         total_time_planned=0.0,
-        display_name="Rest Day",
+        description=card["body"],
+        display_name=card["title"],
     )
 
 
