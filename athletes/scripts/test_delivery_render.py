@@ -81,6 +81,14 @@ def test_athlete_visible_description_caps_copy_and_keeps_prescription():
     assert rendered.endswith("PRESCRIPTION: RPE 6.")
 
 
+def test_athlete_visible_description_caps_slash_separated_words_by_policy_count():
+    rendered = sanitize_athlete_description(
+        "MAIN SET:\n" + ("Ride " * 178) + "30/30."
+    )
+    policy_words = re.findall(r"\b\w+[\w'-]*\b", rendered)
+    assert len(policy_words) <= 180
+
+
 def _bike(date, minutes, *, title="Tempo", segments=None, structure=None,
           week_type="build", simulation=False, dress=False):
     return Week(number=1, week_type=week_type, sessions=[Session(

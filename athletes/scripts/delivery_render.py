@@ -105,20 +105,28 @@ _DROP_ATHLETE_SECTIONS = {
 }
 _ALL_CAPS_CHEER = re.compile(r"^[A-Z][A-Z\s,!.'’\-]{5,}!+$")
 _ATHLETE_COPY_MAX_WORDS = 180
+_ATHLETE_WORD = re.compile(r"\b\w+[\w'-]*\b")
+
+
+def _take_athlete_words(value: str, limit: int) -> str:
+    matches = list(_ATHLETE_WORD.finditer(value))
+    if len(matches) <= limit:
+        return value.strip()
+    return value[:matches[limit - 1].end()].strip()
 
 
 def _truncate_athlete_copy(value: str) -> str:
-    words = value.split()
+    words = _ATHLETE_WORD.findall(value)
     if len(words) <= _ATHLETE_COPY_MAX_WORDS:
         return value
     match = re.search(r"(?ms)^PRESCRIPTION:\s*.*\Z", value)
     tail = match.group(0).strip() if match else ""
-    tail_words = tail.split()
+    tail_words = _ATHLETE_WORD.findall(tail)
     if len(tail_words) >= _ATHLETE_COPY_MAX_WORDS:
-        return " ".join(tail_words[:_ATHLETE_COPY_MAX_WORDS])
+        return _take_athlete_words(tail, _ATHLETE_COPY_MAX_WORDS)
     budget = _ATHLETE_COPY_MAX_WORDS - len(tail_words)
     head_source = value[:match.start()].strip() if match else value
-    head = " ".join(head_source.split()[:budget]).strip()
+    head = _take_athlete_words(head_source, budget)
     return (head + ("\n\n" + tail if tail else "")).strip()
 
 
