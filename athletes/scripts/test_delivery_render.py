@@ -15,11 +15,52 @@ from delivery_render import (
     render_hydration_block,
     render_if_planned,
     render_title,
+    sanitize_athlete_description,
+    sanitize_athlete_title,
 )
 from plan_ir import PlanIR, RaceSnapshot, Segment, Session, Week
 
 
 BRAND = load_brand("gravelgod")
+
+
+def test_athlete_visible_title_removes_internal_retention_token():
+    assert sanitize_athlete_title(
+        "Bike - Tempo + Starts [retained 14357240]"
+    ) == "Bike - Tempo + Starts"
+
+
+def test_athlete_visible_description_keeps_execution_and_fuel_not_compiler_copy():
+    raw = """[FUEL: Bring familiar carbs.]
+
+Kendall - Week 1/2 - 2 weeks to Salida 76
+Phase: TAPER
+
+WARM-UP:
+-10min easy
+
+MAIN SET:
+-3x5min RPE 6
+
+PURPOSE:
+This essay explains the generator's reasoning.
+
+EXECUTION:
+Smooth pressure. Stop if pain changes function.
+
+DIMENSIONS:
+zones Z2-Z3
+
+GO GET IT, KENDALL!"""
+    rendered = sanitize_athlete_description(raw)
+    assert "FUEL:\nBring familiar carbs." in rendered
+    assert "WARM-UP:" in rendered and "MAIN SET:" in rendered
+    assert "EXECUTION:" in rendered and "Stop if pain" in rendered
+    assert "Kendall - Week" not in rendered
+    assert "Phase:" not in rendered
+    assert "PURPOSE:" not in rendered and "generator's reasoning" not in rendered
+    assert "DIMENSIONS:" not in rendered
+    assert "GO GET IT" not in rendered
 
 
 def _bike(date, minutes, *, title="Tempo", segments=None, structure=None,

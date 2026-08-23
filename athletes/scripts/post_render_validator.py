@@ -16,6 +16,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
+from delivery_notes import render_coached_weekly_notes
+
 INPUT_VERSION = "post_render/transitional-planir-tp-manifest/v1"
 COUNTED_RACE_WEEK_KINDS = {"bike", "race"}
 FIELD_TEST_PATTERNS = {
@@ -36,6 +38,14 @@ TP_SESSION_FIELDS = (
     "series_total", "order_on_day", "strength_template", "archetype_id",
     "race",
 )
+ATHLETE_DESCRIPTION_MAX_WORDS = 180
+_RETAINED_TOKEN = re.compile(r"\[\s*retained\b[^\]]*\]", re.I)
+_PERSONAL_WEEK_HEADER = re.compile(
+    r"^\s*.+?\s+-\s+Week\s+\d+\s*/\s*\d+\s+-\s+.+$", re.I | re.M)
+_PHASE_OR_PURPOSE = re.compile(r"^\s*(?:PHASE|PURPOSE)\s*:", re.I | re.M)
+_ALL_CAPS_CHEER = re.compile(r"^[A-Z][A-Z\s,!.'’\-]{5,}!+$", re.M)
+_RPE_TOKEN = re.compile(r"\bRPE\s*:?\s*(\d{1,2})(?:\s*[-–]\s*(\d{1,2}))?", re.I)
+_CLEARED_INJURY_STATES = {"cleared", "resolved", "recovered", "closed"}
 
 
 class PostRenderValidationError(ValueError):
@@ -120,6 +130,156 @@ def _sessions(plan_ir: Dict[str, Any]) -> Iterable[Tuple[int, Dict[str, Any]]]:
         number = int(week.get("number", 0))
         for session in week.get("sessions") or []:
             yield number, session
+
+
+def _structure_max_target(session: Dict[str, Any]) -> float | None:
+    values = []
+    for block in (session.get("structure") or {}).get("structure") or []:
+        for step in block.get("steps") or []:
+            for target in step.get("targets") or []:
+                for field in ("minValue", "maxValue"):
+                    try:
+                        values.append(float(target[field]))
+                    except (KeyError, TypeError, ValueError):
+                        pass
+    return max(values) if values else None
+
+
+def _description_max_rpe(description: Any) -> int | None:
+    values = []
+    for match in _RPE_TOKEN.finditer(str(description or "")):
+        values.append(int(match.group(1)))
+        if match.group(2):
+            values.append(int(match.group(2)))
+    return max(values) if values else None
+
+
+def _rpe_semantic_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
+    mismatches = []
+    for _, session in _sessions(plan_ir):
+        structure = session.get("structure") or {}
+        if str(structure.get("primaryIntensityMetric") or "").lower() != "rpe":
+            continue
+        described = _description_max_rpe(session.get("description"))
+        structured = _structure_max_target(session)
+        if described is None or structured is None or described == structured:
+            continue
+        mismatches.append({
+            "date": session.get("date"), "title": session.get("title"),
+            "description_max_rpe": described,
+            "structure_max_rpe": structured,
+        })
+    if not mismatches:
+        return []
+    return [_issue(
+        "RPE_DESCRIPTION_STRUCTURE_MISMATCH",
+        "Athlete-facing RPE text disagrees with executable workout structure.",
+        review_value={"sessions": mismatches},
+        basis="athlete-visible RPE statements compared with TP RPE targets",
+    )]
+
+
+def _unresolved_pain_evidence(profile: Dict[str, Any]) -> List[str]:
+    evidence = []
+    for injury in (profile.get("injury_history") or {}).get("current_injuries") or []:
+        if isinstance(injury, dict):
+            status = str(injury.get("status") or "").strip().lower()
+            if status in _CLEARED_INJURY_STATES:
+                continue
+            text = " ".join(str(injury.get(field) or "") for field in (
+                "area", "description", "notes", "status"))
+        else:
+            text = str(injury or "")
+        if text.strip():
+            evidence.append(text.strip())
+    for field, value in (profile.get("movement_limitations") or {}).items():
+        if str(value or "").strip().lower() == "painful":
+            evidence.append(f"movement limitation {field}=painful")
+    bike_fit = profile.get("bike_fit") or {}
+    if bike_fit.get("pain") is True:
+        evidence.append(str(bike_fit.get("pain_description") or "bike pain"))
+    return evidence
+
+
+def _unresolved_pain_load_findings(
+    plan_ir: Dict[str, Any], profile: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    evidence = _unresolved_pain_evidence(profile)
+    if not evidence:
+        return []
+    unsafe = []
+    for _, session in _sessions(plan_ir):
+        title = str(session.get("title") or session.get("display_name") or "")
+        structure = session.get("structure") or {}
+        metric = str(structure.get("primaryIntensityMetric") or "").lower()
+        maximum = _structure_max_target(session)
+        is_test = _field_test_metric(session) is not None
+        is_max = (
+            (metric == "rpe" and maximum is not None and maximum >= 9)
+            or (metric in {"percentofftp", "power", "power_pct_ftp"}
+                and maximum is not None and maximum >= 105)
+            or bool(re.search(r"\b(?:all[- ]?out|maximal|maximum effort)\b", title, re.I))
+        )
+        if is_test or is_max:
+            unsafe.append({
+                "date": session.get("date"), "title": title,
+                "field_test": is_test, "structure_metric": metric or None,
+                "structure_max": maximum,
+            })
+    if not unsafe:
+        return []
+    return [_issue(
+        "UNRESOLVED_PAIN_MAX_PRESCRIPTION",
+        "Unresolved pain/clearance context blocks field-test or maximal prescriptions.",
+        review_value={"health_evidence": evidence, "blocked_sessions": unsafe},
+        basis="current injury/pain restrictions compared with proposed test and maximal load",
+    )]
+
+
+def _athlete_visible_copy_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
+    violations = []
+    has_b_event = any(
+        str(event.get("priority") or "").upper() == "B"
+        for event in plan_ir.get("events") or [] if isinstance(event, dict))
+    for _, session in _sessions(plan_ir):
+        title = str(session.get("title") or "")
+        description = str(session.get("description") or "")
+        reasons = []
+        if _RETAINED_TOKEN.search(title) or _RETAINED_TOKEN.search(description):
+            reasons.append("internal retained token")
+        if _PERSONAL_WEEK_HEADER.search(description):
+            reasons.append("personal/week header")
+        if _PHASE_OR_PURPOSE.search(description):
+            reasons.append("phase or purpose essay header")
+        if _ALL_CAPS_CHEER.search(description):
+            reasons.append("all-caps cheerleading")
+        word_count = len(re.findall(r"\b\w+[\w'-]*\b", description))
+        if word_count > ATHLETE_DESCRIPTION_MAX_WORDS:
+            reasons.append(f"description exceeds {ATHLETE_DESCRIPTION_MAX_WORDS} words")
+        if not has_b_event and re.search(r"\bB event\b|\bfuel both events\b", description, re.I):
+            reasons.append("invented B event")
+        if reasons:
+            violations.append({
+                "date": session.get("date"), "title": title,
+                "word_count": word_count, "reasons": reasons,
+            })
+    if not has_b_event:
+        for note in render_coached_weekly_notes(plan_ir):
+            body = str(note.get("body") or "")
+            if re.search(r"\bB event\b|\bfuel both events\b", body, re.I):
+                violations.append({
+                    "date": note.get("date"), "title": note.get("title"),
+                    "word_count": len(body.split()),
+                    "reasons": ["invented B event in weekly note"],
+                })
+    if not violations:
+        return []
+    return [_issue(
+        "ATHLETE_VISIBLE_COPY_POLICY",
+        "Athlete-visible titles or descriptions contain internal, invented, or overlong copy.",
+        review_value={"violations": violations},
+        basis="athlete-visible delivery copy policy",
+    )]
 
 
 def _validate_manifest_projection(
@@ -567,6 +727,9 @@ def validate_transitional_input(
         ))
 
     profile = context.get("profile") or {}
+    issues.extend(_rpe_semantic_findings(plan_ir))
+    issues.extend(_unresolved_pain_load_findings(plan_ir, profile))
+    issues.extend(_athlete_visible_copy_findings(plan_ir))
     schedule_issues, schedule_confirmations = _schedule_findings(plan_ir, profile)
     issues.extend(schedule_issues)
     confirmations.extend(schedule_confirmations)

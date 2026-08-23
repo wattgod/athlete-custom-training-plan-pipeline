@@ -308,3 +308,102 @@ def test_openers_with_hot_structure_are_not_intensity():
         entry for c in confirmations if c['id'] == 'SCHEDULE_MISMATCH_CONFIRM'
         for entry in c['review_value']['generated_mismatches']]
     assert not any('tuesday' in entry for entry in entries)
+
+
+def _rpe_structure(maximum):
+    return {
+        'primaryIntensityMetric': 'rpe',
+        'structure': [{
+            'steps': [{
+                'targets': [{'minValue': maximum, 'maxValue': maximum}],
+            }],
+        }],
+    }
+
+
+def test_rpe_description_structure_mismatch_blocks_review():
+    document = _document()
+    session = _session('2026-08-11', 'RPE Field Test')
+    session['description'] = '20-minute field test at RPE 9/10.'
+    session['structure'] = _rpe_structure(8)
+    document['plan_ir']['weeks'][1]['sessions'].append(session)
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(
+        issue for issue in issues
+        if issue['id'] == 'RPE_DESCRIPTION_STRUCTURE_MISMATCH')
+    mismatch = item['review_value']['sessions'][0]
+    assert mismatch['description_max_rpe'] == 9
+    assert mismatch['structure_max_rpe'] == 8
+
+
+def test_matching_rpe_description_and_structure_are_accepted():
+    document = _document()
+    session = _session('2026-08-11', 'Hard Intervals')
+    session['description'] = 'MAIN SET:\n-7x1min at RPE 9-10.'
+    session['structure'] = _rpe_structure(10)
+    document['plan_ir']['weeks'][1]['sessions'].append(session)
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    assert 'RPE_DESCRIPTION_STRUCTURE_MISMATCH' not in {
+        issue['id'] for issue in issues}
+
+
+def test_unresolved_pain_blocks_field_tests_and_max_rpe_prescriptions():
+    document = _document()
+    document['context']['profile']['injury_history'] = {
+        'current_injuries': [{
+            'area': 'back', 'description': 'Recent back pain', 'status': 'active',
+        }],
+    }
+    max_session = _session('2026-08-11', 'Standing Starts')
+    max_session['description'] = 'MAIN SET:\n-5 starts at RPE 10.'
+    max_session['structure'] = _rpe_structure(10)
+    document['plan_ir']['weeks'][1]['sessions'].append(max_session)
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(
+        issue for issue in issues
+        if issue['id'] == 'UNRESOLVED_PAIN_MAX_PRESCRIPTION')
+    titles = {session['title'] for session in item['review_value']['blocked_sessions']}
+    assert {'HR Field Test', 'Standing Starts'} <= titles
+
+
+def test_resolved_injury_does_not_block_max_prescription():
+    document = _document()
+    document['context']['profile']['injury_history'] = {
+        'current_injuries': [{
+            'description': 'Prior back pain', 'status': 'cleared',
+        }],
+    }
+    issues, _ = validate_transitional_input(document)
+    assert 'UNRESOLVED_PAIN_MAX_PRESCRIPTION' not in {
+        issue['id'] for issue in issues}
+
+
+def test_athlete_visible_copy_policy_rejects_leaks_and_generated_essays():
+    document = _document()
+    session = document['plan_ir']['weeks'][1]['sessions'][1]
+    session['title'] = 'Tempo [retained 14357240]'
+    session['display_name'] = session['title']
+    session['description'] = (
+        'Athlete - Week 1/2 - 2 weeks to Race\nPhase: BUILD\n\n'
+        'PURPOSE:\nAn internal explanation.\n\nGO GET IT, ATHLETE!')
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(
+        issue for issue in issues if issue['id'] == 'ATHLETE_VISIBLE_COPY_POLICY')
+    reasons = item['review_value']['violations'][0]['reasons']
+    assert 'internal retained token' in reasons
+    assert 'personal/week header' in reasons
+    assert 'phase or purpose essay header' in reasons
+    assert 'all-caps cheerleading' in reasons
+
+
+def test_a_only_weekly_note_copy_policy_does_not_invent_b_event():
+    document = _document()
+    document['plan_ir']['events'] = [{
+        'name': 'Three Course Race', 'priority': 'A', 'date': '2026-09-19',
+    }]
+    issues, _ = validate_transitional_input(document)
+    assert 'ATHLETE_VISIBLE_COPY_POLICY' not in {issue['id'] for issue in issues}

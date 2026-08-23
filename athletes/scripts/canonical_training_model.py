@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from derived_registry import entry as derived_entry, validate_registry
+from delivery_render import sanitize_athlete_description, sanitize_athlete_title
 from tp_polyline import compute_polyline
 
 
@@ -546,14 +547,16 @@ def build_canonical_model(
             raw = raw_session.__dict__.copy()
             raw_segments = [segment.__dict__.copy() for segment in raw_session.segments]
             is_field_test = raw_session.type == "ftp_test" or "field test" in raw_session.title.lower()
-            title = (field_test_title if is_field_test and
-                     control["control_metric"] != "power" else
-                     metric_neutral_text(raw_session.title, control))
+            title = sanitize_athlete_title(
+                field_test_title if is_field_test and
+                control["control_metric"] != "power" else
+                metric_neutral_text(raw_session.title, control))
             description = metric_neutral_description(
                 raw_session.description, control)
             if is_field_test and control["control_metric"] != "power":
                 description = (description.rstrip() + "\n\nRE-ANCHOR: Complete this Week 1 field test, "
                                "record the measured result, and update future targets.").strip()
+            description = sanitize_athlete_description(description)
             segments = [_canonical_segment(segment, control) for segment in raw_segments]
             summaries = [target_summary(segment["target"]) for segment in segments]
             sessions.append({
@@ -673,6 +676,13 @@ def validate_canonical_model(model: Dict[str, Any]) -> None:
     if protection and not isinstance(protection.get("referenced_dates", []), list):
         raise CanonicalModelError("calendar protection referenced_dates must be an array")
     for session in model.get("sessions") or []:
+        title = str(session.get("title") or "")
+        if title and sanitize_athlete_title(title) != title:
+            raise CanonicalModelError("athlete-visible title contains an internal token")
+        description = str(session.get("description") or "")
+        if description and sanitize_athlete_description(description) != description:
+            raise CanonicalModelError(
+                "athlete-visible description contains compiler-only copy")
         for segment in session.get("segments") or []:
             target = segment.get("target") or {}
             if target.get("type") not in TARGET_TYPES:

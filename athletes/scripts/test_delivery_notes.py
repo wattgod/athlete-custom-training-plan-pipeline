@@ -83,9 +83,19 @@ def test_single_event_race_week_never_invents_b_event_or_fuel_both_copy():
     race = render_coached_weekly_notes(plan)[-1]
     assert "B event" not in race["body"]
     assert "both events" not in race["body"]
-    assert "Fuel the race" in race["body"]
+    assert "Fuel Vancouver Gran Fondo" in race["body"]
     assert "Vancouver Gran Fondo" in race["body"]
     assert len(race["body"].split()) <= 110
+def test_nameless_b_event_is_not_rendered_as_an_invented_placeholder():
+    plan = _plan(weeks=2, metric="rpe", later_event=False)
+    plan["fueling"] = {"race_range_g_per_hour": [60, 70]}
+    plan["events"] = [
+        {"name": "Salida 76", "priority": "A", "date": "2026-08-22"},
+        {"priority": "B", "date": "2026-08-23"},
+    ]
+    body = render_coached_weekly_notes(plan)[-1]["body"]
+    assert "B event" not in body
+    assert "both events" not in body
 
 
 def test_full_guillermo_render_has_complete_inventory_and_safe_copy():

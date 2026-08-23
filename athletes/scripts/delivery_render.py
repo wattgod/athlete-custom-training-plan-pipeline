@@ -94,6 +94,59 @@ def _clean_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").replace("_", " ")).strip(" -–—")
 
 
+_INTERNAL_RETAINED_TOKEN = re.compile(r"\s*\[\s*retained\b[^\]]*\]", re.I)
+_PERSONAL_WEEK_HEADER = re.compile(
+    r"^\s*.+?\s+-\s+Week\s+\d+\s*/\s*\d+\s+-\s+.+$", re.I)
+_PHASE_HEADER = re.compile(r"^\s*Phase\s*:", re.I)
+_SECTION_HEADING = re.compile(r"^\s*([A-Z][A-Z0-9 -]{2,})\s*:\s*(.*)$")
+_DROP_ATHLETE_SECTIONS = {
+    "PURPOSE", "DIMENSIONS", "TARGET METRICS", "PRE-RACE CHECKLIST",
+    "RACE MORNING", "RACE-DAY CEILING",
+}
+_ALL_CAPS_CHEER = re.compile(r"^[A-Z][A-Z\s,!.'’\-]{5,}!+$")
+
+
+def sanitize_athlete_title(value: Any) -> str:
+    """Remove compiler-only annotations from an athlete-visible title."""
+    text = _INTERNAL_RETAINED_TOKEN.sub("", str(value or ""))
+    return re.sub(r"\s+", " ", text).strip(" -–—") or "Workout"
+
+
+def sanitize_athlete_description(value: Any) -> str:
+    """Keep the executable brief; remove compiler narrative and leaked IDs.
+
+    Workout structure remains authoritative. Athlete copy retains warm-up,
+    main set, cooldown, execution, RPE, fueling, hydration, and re-anchor
+    instructions, while generated biography/phase headers, essays, checklist
+    bulk, and cheerleading stay out of the calendar card.
+    """
+    text = _INTERNAL_RETAINED_TOKEN.sub("", str(value or ""))
+    text = re.sub(
+        r"^\s*\[FUEL:\s*(.*?)\]\s*$", r"FUEL:\n\1", text,
+        flags=re.I | re.M,
+    )
+    lines: List[str] = []
+    dropping = False
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        if _PERSONAL_WEEK_HEADER.match(line) or _PHASE_HEADER.match(line):
+            continue
+        heading = _SECTION_HEADING.match(line)
+        if heading:
+            dropping = heading.group(1).strip().upper() in _DROP_ATHLETE_SECTIONS
+            if dropping:
+                continue
+        elif dropping:
+            continue
+        if _ALL_CAPS_CHEER.fullmatch(line.strip()):
+            continue
+        lines.append(line)
+    result = "\n".join(lines)
+    result = re.sub(r"[ \t]+\n", "\n", result)
+    result = re.sub(r"\n{3,}", "\n\n", result)
+    return result.strip()
+
+
 def _format_percent(value: Any) -> Optional[str]:
     number = _number(value)
     if number is None:
@@ -477,7 +530,8 @@ def render_session_name(session: Any, defining_set: Optional[str] = None) -> str
         defining_set = _defining_set_from_structure(session)
         if defining_set is None:
             defining_set = _defining_set_from_description(_get(session, "description"))
-    name = _clean_text(_get(session, "display_name") or _get(session, "title"))
+    name = sanitize_athlete_title(
+        _get(session, "display_name") or _get(session, "title"))
     name = re.sub(r"\s*[-–—]?\s*(?:level|l)\s*\d+(?:\s*/\s*\d+)?\s*$", "", name, flags=re.I)
     if _get(session, "library_item_id"):
         # The authored RPE token (see _authored_rpe_token) is re-appended
