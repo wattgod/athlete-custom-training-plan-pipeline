@@ -50,6 +50,26 @@ def _digest(value):
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _bike_structure(seconds):
+    return {
+        "primaryIntensityMetric": "rpe",
+        "primaryIntensityTargetOrRange": "range",
+        "primaryLengthMetric": "duration",
+        "structure": [{
+            "type": "step",
+            "begin": 0,
+            "end": seconds,
+            "length": {"unit": "repetition", "value": 1},
+            "steps": [{
+                "intensityClass": "active",
+                "name": "Steady State",
+                "length": {"unit": "second", "value": seconds},
+                "targets": [{"minValue": 4, "maxValue": 4}],
+            }],
+        }],
+    }
+
+
 def _approved_state(tmp_path, *, order_id=ORDER_ID):
     state_path = tmp_path / "fulfillment_status.json"
     state = write_generation(
@@ -89,8 +109,9 @@ def _contract(state):
     }
     create_workout = {
         "date": "2026-09-01", "title": "Fixture create",
-        "description": "Fixture only", "tp_workout_type": 1,
-        "total_seconds": 3600, "tss_planned": 50, "structure": None,
+        "description": "Fixture only", "tp_workout_type": 2,
+        "total_seconds": 3600, "tss_planned": 50,
+        "structure": _bike_structure(3600),
     }
     return {
         "contract_version": "apply_contract/v1",
@@ -194,13 +215,13 @@ def _workout_update(state, *, date="2026-08-30"):
     revision = state["generation_revision"]
     prior = {
         "date": date, "title": "Fixture prior", "description": "Before",
-        "tp_workout_type": 1, "total_seconds": 2700, "tss_planned": 35,
+        "tp_workout_type": 100, "total_seconds": 2700, "tss_planned": 35,
         "structure": None,
     }
     payload = {
         "date": date, "title": "Fixture update", "description": "After",
-        "tp_workout_type": 1, "total_seconds": 3300, "tss_planned": 45,
-        "structure": None,
+        "tp_workout_type": 2, "total_seconds": 3300, "tss_planned": 45,
+        "structure": _bike_structure(3300),
     }
     logical_id = f"{order_id}:workout_upsert:{date}#1"
     return {
