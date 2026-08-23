@@ -170,10 +170,20 @@ def build_adoption(
             )
             is_protected = logical_id is None
             if logical_id is None:
-                logical_id = (
-                    f"{order_id}:{kind}:protected-"
-                    f"{payload.get('date')}-{remote_id}"
-                )
+                # Protected (unmarked) provider rows. The logical-key grammar
+                # in apply_contract.validate_contract differs by kind: a
+                # workout key must be "YYYY-MM-DD#<n>", so the numeric remote
+                # id is the sequence (the Aug 23 2026 publisher did the same);
+                # notes keep the "protected-<date>-<id>" slug.
+                if kind == "workout_upsert":
+                    sequence = (remote_id if remote_id.isdigit()
+                                else str(int(digest_payload({"id": remote_id})[:12], 16)))
+                    logical_id = f"{order_id}:{kind}:{payload.get('date')}#{sequence}"
+                else:
+                    logical_id = (
+                        f"{order_id}:{kind}:protected-"
+                        f"{payload.get('date')}-{remote_id}"
+                    )
             else:
                 owned_counts[kind] += 1
             if logical_id in effective_inventory:
