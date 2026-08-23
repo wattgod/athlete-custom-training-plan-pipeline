@@ -1351,7 +1351,8 @@ def _recompute_library_week_totals(week: dict) -> None:
 def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None,
                                athlete_seed=None,
                                excluded_calendar_slots: Optional[set] = None,
-                               index=None) -> list:
+                               index=None,
+                               target_hours: Optional[float] = None) -> list:
     """C4/D1/D2: resolve in-scope block-builder days to curated TP library
     items via ``library_selector.select``.
 
@@ -1374,7 +1375,12 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     from a pool this call touched because it carries a curation-consistency
     lint flag (description contradicts its own duration or title RPE) --
     each tagged ``reason: "lint_excluded"`` so the coach can tell the two
-    apart in the same reported list / library_fallbacks.json.
+    apart in the same reported list / library_fallbacks.json, PLUS one
+    record per day the R19 rebalance had to hard-trim back to the synthetic
+    path (``reason: "r19_overflow_trim"``).
+
+    ``target_hours`` (the athlete's weekly cycling hours) arms the R19
+    load-week rebalance; ``None`` (unit tests, realism sweeps) skips it.
     """
     import library_selector
     from tp_library_snapshot import load_index
@@ -1448,6 +1454,13 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
         if touched:
             _recompute_library_week_totals(bw)
 
+    # R19 rebalance runs BEFORE the recovery one: shedding load-week volume
+    # changes the preceding-load averages the recovery band is fit against.
+    fallbacks.extend(_rebalance_load_weeks_post_resolution(
+        bb_plan, target_hours=target_hours, day_caps=day_caps,
+        athlete_seed=athlete_seed, series_state=series_state,
+        used_items=used_items, index=idx, lint_exclusions=lint_exclusions))
+
     _rebalance_recovery_weeks_post_resolution(
         bb_plan, day_caps=day_caps, athlete_seed=athlete_seed,
         series_state=series_state, used_items=used_items, index=idx,
@@ -1459,6 +1472,112 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     fallbacks.extend(sorted(lint_exclusions.values(), key=lambda rec: rec['item_id']))
 
     return fallbacks
+
+
+def _rebalance_load_weeks_post_resolution(bb_plan, *, target_hours, day_caps,
+                                          athlete_seed, series_state,
+                                          used_items, index,
+                                          lint_exclusions=None) -> list:
+    """Keep non-recovery weeks under R19's hours ceiling AFTER resolution.
+
+    The builder clamps every week to its hours budget, but resolution then
+    swaps in authored item durations (the duration-fit window allows +15%
+    per slot), so a load week built right up against the ceiling drifts
+    over it -- every 9h daily-drill order since the C4 waves landed shipped
+    a W7 at 601-759min against a 594min R19 max, an extra CRITICAL blocker
+    on every generation. Shed from the biggest easy resolved day via the
+    same selector machinery; when no shorter item qualifies, fall back to
+    the builder's own trim (the day returns to the synthetic path at the
+    exact residual budget, recorded as an ``r19_overflow_trim`` fallback).
+    """
+    if not target_hours or target_hours <= 0:
+        return []
+    import library_selector
+    from block_compliance import _week_has_race_day
+    # Mirrors r19_hours_fit exactly: <6h athletes get the 15% window.
+    tolerance = 0.15 if target_hours < 6 else 0.10
+    max_min = target_hours * (1 + tolerance) * 60
+    # Mirrors r06_long_ride_present: shedding must never leave the long ride
+    # under its plausibility floor (fixing R19 by breaking R06 is no fix —
+    # the first cut of this rebalance re-selected a masters long ride down
+    # to 80min and traded one CRITICAL for another).
+    long_ride_floor = 60 if target_hours < 7 else 90
+    records = []
+
+    def _day_floor(day):
+        return long_ride_floor if day.get('role') == 'long_ride' else 1
+
+    def _shed_candidates(bw):
+        cands = [d for d in bw.get('days', [])
+                 if d.get('library_resolution')
+                 and d.get('role') in ('filler', 'long_ride')
+                 and d.get('duration', 0) - _day_floor(d) > 0
+                 and not (d.get('post_sim_recovery') or d.get('pre_sim_recovery'))
+                 and not d.get('act_simulation')]
+        cands.sort(key=lambda d: d.get('duration', 0), reverse=True)
+        return cands
+
+    def _hard_trim(bw, day, shed_min):
+        # The builder's own trim, back on the synthetic path so the rendered
+        # structure matches the shortened duration instead of lying about a
+        # curated item's authored length.
+        old_duration = day['duration']
+        day['duration'] = max(1, int(old_duration - shed_min))
+        day['tss'] = round(day.get('tss', 0) * day['duration'] / old_duration)
+        del day['library_resolution']
+        records.append({
+            'plan_week': bw.get('plan_week'),
+            'day': day.get('day'),
+            'canonical_name': day.get('name'),
+            'role': day.get('role'),
+            'phase': bw.get('phase'),
+            'reason': 'r19_overflow_trim',
+        })
+
+    for bw in bb_plan.get('weeks', []):
+        if bw.get('week_type') == 'recovery' or _week_has_race_day(bw):
+            continue
+        for attempt in range(4):
+            _recompute_library_week_totals(bw)
+            overflow = bw.get('total_duration', 0) - max_min
+            if overflow <= 0:
+                break
+            cands = _shed_candidates(bw)
+            if not cands:
+                break
+            day = cands[0]
+            old = day['library_resolution']
+            floor = _day_floor(day)
+            budget = max(floor, int(day['duration'] - overflow))
+            replacement = None
+            if attempt < 3 and budget >= 30:
+                slot = {
+                    'canonical_name': day.get('name'), 'level': day.get('level') or 1,
+                    'budget_min': budget,
+                    'day_cap_min': (day_caps or {}).get(day.get('day')),
+                    'role': day.get('role'), 'phase': bw.get('phase'),
+                    'series_key': None, 'week_in_block': bw.get('week_num', 1),
+                    'athlete_seed': athlete_seed, 'race_demands': False,
+                    'week_type': bw.get('week_type'),
+                    'plan_week': bw.get('plan_week'), 'day': day.get('day'),
+                }
+                replacement = library_selector.select(
+                    slot, series_state=series_state, index=index,
+                    used_items=used_items, lint_exclusions=lint_exclusions)
+            if (replacement is not None
+                    and replacement['item_id'] != old['item_id']
+                    and floor <= replacement['duration_min'] < day['duration']):
+                day['duration'] = replacement['duration_min']
+                day['tss'] = replacement['tss']
+                day['library_resolution'] = replacement
+                continue
+            # Selector can't shed enough (or the attempt budget is spent):
+            # trim toward the exact fit, never past the day's floor. A week
+            # whose sheddable days are all at floor is left for coach review
+            # (candidates empty out and the loop exits above).
+            _hard_trim(bw, day, min(overflow, day['duration'] - floor))
+        _recompute_library_week_totals(bw)
+    return records
 
 
 def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed,
@@ -1933,6 +2052,9 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 day_caps=_bb_day_caps,
                 athlete_seed=athlete_dir.name,
                 excluded_calendar_slots=_library_excluded_slots,
+                # R19 rebalance target — the same hours the compliance gate
+                # below validates against.
+                target_hours=cycling_hours_target,
             ))
             # NOTE: `athlete_dir` here is the caller's parameter -- in the
             # production authoring flow that's a SHORT-LIVED temp directory
