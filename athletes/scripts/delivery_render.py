@@ -122,8 +122,8 @@ def sanitize_athlete_description(value: Any) -> str:
     """
     text = _INTERNAL_RETAINED_TOKEN.sub("", str(value or ""))
     text = re.sub(
-        r"^\s*\[FUEL:\s*(.*?)\]\s*$", r"FUEL:\n\1", text,
-        flags=re.I | re.M,
+        r"^\s*\[(?:FUEL|LONG-RIDE FUEL|RACE FUEL):\s*(.*?)\]\s*$",
+        r"FUEL:\n\1", text, flags=re.I | re.M,
     )
     lines: List[str] = []
     dropping = False

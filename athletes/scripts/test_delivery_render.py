@@ -63,6 +63,15 @@ GO GET IT, KENDALL!"""
     assert "GO GET IT" not in rendered
 
 
+def test_athlete_visible_description_normalizes_all_fuel_tags():
+    for label in ("FUEL", "LONG-RIDE FUEL", "RACE FUEL"):
+        rendered = sanitize_athlete_description(
+            f"[{label}: Use the familiar bottle.]\n\nMAIN SET:\n-Ride."
+        )
+        assert rendered.startswith("FUEL:\nUse the familiar bottle.")
+        assert "[" not in rendered
+
+
 def _bike(date, minutes, *, title="Tempo", segments=None, structure=None,
           week_type="build", simulation=False, dress=False):
     return Week(number=1, week_type=week_type, sessions=[Session(

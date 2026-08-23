@@ -55,6 +55,16 @@ def test_rpe_description_removes_all_percent_based_power_prose():
     assert "Record the completed field-test effort for review." in projected
 
 
+def test_rpe_b_race_copy_replaces_percent_of_a_race_without_garble():
+    projected = metric_neutral_description(
+        "- Target effort: 90-95% of A-race effort", {"control_metric": "rpe"}
+    )
+    assert projected == (
+        "- Target effort: hard and controlled. Saturday gets first claim."
+    )
+    assert "%" not in projected
+
+
 def _write_fixture(tmp_path, case):
     athletes = tmp_path / "athletes"
     root = athletes / case["id"]

@@ -246,6 +246,13 @@ def metric_neutral_description(value: Any, control: Dict[str, Any]) -> str:
     text = metric_neutral_text(value, control)
     if control["control_metric"] == "power":
         return text
+    text = re.sub(
+        r"(?im)^\s*-?\s*Target effort:\s*\d+(?:\.\d+)?"
+        r"(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*%\s+of\s+"
+        r"A-race effort\s*$",
+        "- Target effort: hard and controlled. Saturday gets first claim.",
+        text,
+    )
     text = _PERCENT_TARGET.sub("the written effort", text)
     text = re.sub(
         r"the (?:written|prescribed) effort\s*(?:[-–]|->|→)\s*"
