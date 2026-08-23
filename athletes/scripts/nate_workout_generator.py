@@ -84,6 +84,7 @@ if str(_archetypes_dir) not in sys.path:
     sys.path.insert(0, str(_archetypes_dir))
 
 # Import constants (renamed to avoid conflict with local constants.py)
+from tp_cadence import CADENCE_MAX_RPM, CADENCE_MIN_RPM
 from nate_constants import (
     PowerZones,
     Durations,
@@ -1218,31 +1219,52 @@ def parse_cadence_range(prescription: str) -> Optional[Tuple[int, int]]:
 
     Returns:
         Tuple of (low, high) cadence in RPM, or None if not parseable
+
+    Only numbers that can be a cadence count: an explicit rpm-suffixed
+    figure, or a bare figure/range inside the plausible 30-200 rpm band.
+    Zone tokens ("Z2"), interval shorthand ("30/30s") and similar digits
+    are NOT cadence -- before Aug 2026 this parser read "Z2 self-selected"
+    as 2 rpm and shipped CadenceLow="-3" CadenceHigh="7" into athlete
+    ZWOs (VO2 Bookend, Buffer Workout, Blended 30/30 + SFR, Anaerobic Test).
+    "self-selected" / "natural" / "rider's choice" always mean no target.
     """
     if not prescription:
         return None
 
     import re
-    # Handle range like "90-95rpm"
-    range_match = re.search(r'(\d+)-(\d+)', prescription)
-    if range_match:
-        low, high = int(range_match.group(1)), int(range_match.group(2))
-        return (low, high)
-
-    # Handle single value like "90rpm" - create ±5 range
-    single_match = re.search(r'(\d+)', prescription)
-    if single_match:
-        val = int(single_match.group(1))
-        return (val - 5, val + 5)
-
-    # Handle descriptive terms
     prescription_lower = prescription.lower()
+    if ('self-selected' in prescription_lower or 'self selected' in prescription_lower
+            or 'natural' in prescription_lower or 'rider' in prescription_lower):
+        return None  # Let rider choose -- even if other digits appear in the text
+
+    def plausible(low: int, high: int) -> bool:
+        return CADENCE_MIN_RPM <= low <= CADENCE_MAX_RPM and CADENCE_MIN_RPM <= high <= CADENCE_MAX_RPM
+
+    # Explicit range: "90-95rpm", "90–95 rpm", "90-95"
+    for match in re.finditer(r'(\d{2,3})\s*[-\u2013]\s*(\d{2,3})\s*(rpm)?', prescription_lower):
+        low, high = int(match.group(1)), int(match.group(2))
+        if plausible(low, high):
+            return (min(low, high), max(low, high))
+
+    # Explicit single value with an rpm suffix: "90rpm", "100+ rpm"
+    match = re.search(r'(\d{2,3})\s*\+?\s*rpm', prescription_lower)
+    if match:
+        val = int(match.group(1))
+        if plausible(val, val):
+            return (val - 5, val + 5)
+
+    # Descriptive terms
     if 'high' in prescription_lower:
         return (Cadence.HIGH - 5, Cadence.HIGH + 5)
     elif 'low' in prescription_lower:
         return (Cadence.LOW - 5, Cadence.LOW + 5)
-    elif 'self' in prescription_lower or 'natural' in prescription_lower:
-        return None  # Let rider choose
+
+    # Bare plausible number with no rpm suffix (legacy prescriptions like "90")
+    match = re.fullmatch(r'\s*(\d{2,3})\s*', prescription_lower)
+    if match:
+        val = int(match.group(1))
+        if plausible(val, val):
+            return (val - 5, val + 5)
 
     return None
 

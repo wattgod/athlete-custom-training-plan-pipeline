@@ -21,6 +21,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from derived_registry import entry as derived_entry, validate_registry
 from delivery_render import sanitize_athlete_description, sanitize_athlete_title
 from tp_polyline import compute_polyline
+from tp_cadence import CadenceError, REST, WORK, with_cadence
 
 
 MODEL_VERSION = "canonical_training_model/v1"
@@ -920,17 +921,32 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
     cursor = 0
 
     def append(name: str, seconds: int, target: Dict[str, Any], intensity: str,
-               key: str = "value", all_out: bool = False) -> None:
+               key: str = "value", all_out: bool = False,
+               cadence_attributes: Optional[Dict[str, Any]] = None,
+               cadence_phase: str = WORK) -> None:
         nonlocal cursor
+        targets = _step_target(
+            target, key, all_out=all_out,
+            control_metric=control.get("control_metric"))
+        # Cadence (Aug 2026 power/cadence correction): TP carries cadence as
+        # a second `targets` element with unit roundOrStridePerMinute. The
+        # canonical segment keeps the authored ZWO cadence attributes in its
+        # round-trip envelope (`zwo.extra_attributes`); before this, the
+        # projector never read them, so every cadence prescription reached
+        # TP as prose only. Emitted for every control metric -- the cadence
+        # target is independent of whether intensity is %FTP, %HR or RPE.
+        try:
+            targets = with_cadence(targets, cadence_attributes, cadence_phase)
+        except CadenceError as exc:
+            raise CanonicalModelError(
+                f"session {session.get('title')!r} step {name!r}: {exc}") from exc
         block = {
             "type": "step",
             "length": {"value": 1, "unit": "repetition"},
             "steps": [{
                 "name": name,
                 "length": {"value": int(seconds), "unit": "second"},
-                "targets": _step_target(
-                    target, key, all_out=all_out,
-                    control_metric=control.get("control_metric")),
+                "targets": targets,
                 "intensityClass": intensity,
                 # TP's builder expects the full imported-step shape; steps
                 # without notes rendered fine on cards but not in detail.
@@ -944,10 +960,13 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
 
     for segment in session.get("segments") or []:
         target = segment["target"]
+        cadence_attributes = (segment.get("zwo") or {}).get("extra_attributes") or {}
         if segment.get("kind") == "intervals":
             for _ in range(int(segment.get("repeat") or 1)):
-                append("Work", int(segment.get("on_seconds") or 0), target, "active", "on")
-                append("Recovery", int(segment.get("off_seconds") or 0), target, "rest", "off")
+                append("Work", int(segment.get("on_seconds") or 0), target, "active", "on",
+                       cadence_attributes=cadence_attributes, cadence_phase=WORK)
+                append("Recovery", int(segment.get("off_seconds") or 0), target, "rest", "off",
+                       cadence_attributes=cadence_attributes, cadence_phase=REST)
         else:
             intensity = "warmUp" if segment.get("kind") == "warmup" else (
                 "coolDown" if segment.get("kind") == "cooldown" else "active")
@@ -957,7 +976,8 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
                          for f in ("name", "description")),
                 re.I))
             append(segment.get("name") or "Step", int(segment.get("seconds") or 0),
-                   target, intensity, all_out=all_out)
+                   target, intensity, all_out=all_out,
+                   cadence_attributes=cadence_attributes, cadence_phase=WORK)
     if not steps:
         return None
     # FIX 10 (Aug 17 2026 adversarial grade): this function only ever

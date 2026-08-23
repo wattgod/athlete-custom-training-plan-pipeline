@@ -1552,7 +1552,8 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
             _recompute_library_week_totals(bw)
 
 
-def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, derived: dict, profile: dict = None, fueling: dict = None) -> list:
+def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, derived: dict, profile: dict = None, fueling: dict = None,
+                       athlete_seed: str = None) -> list:
     """
     Generate ZWO workout files based on plan_dates, methodology, and athlete schedule preferences.
 
@@ -1946,10 +1947,20 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 if (d.get('is_race_day') or d.get('is_b_race_day')
                     or d.get('is_b_race_opener') or d.get('is_b_race_easy'))
             }
+            # The library rotation seed must be the STABLE athlete identity.
+            # Under A1.1 metric authoring `athlete_dir` is a short-lived
+            # tempdir (".metric-authoring-<random>"), so seeding on its name
+            # made the same intake draw different library items on every
+            # build (found Aug 23 2026: R06 passed or failed depending on
+            # the run). Explicit seed first, then the profile's athlete_id,
+            # then the directory name for legacy callers.
+            _seed = (athlete_seed
+                     or (profile or {}).get('athlete_id')
+                     or athlete_dir.name)
             _library_fallbacks.extend(resolve_library_selections(
                 _bb_plan,
                 day_caps=_bb_day_caps,
-                athlete_seed=athlete_dir.name,
+                athlete_seed=_seed,
                 excluded_calendar_slots=_library_excluded_slots,
             ))
             # NOTE: `athlete_dir` here is the caller's parameter -- in the
@@ -4855,7 +4866,8 @@ def generate_athlete_package(athlete_id: str) -> dict:
         step(3, "Authoring canonical workout sessions...")
         _authored_dir = Path(_authoring_root)
         _private_files = generate_zwo_files(
-            _authored_dir, plan_dates, methodology, derived, profile, fueling)
+            _authored_dir, plan_dates, methodology, derived, profile, fueling,
+            athlete_seed=athlete_id)
         _pre_plan_week = getattr(generate_zwo_files, 'last_pre_plan_week', None)
         if (_pre_plan_week and not any(
                 w.get('week') == 0 for w in _canonical_dates.get('weeks', []))):

@@ -31,10 +31,23 @@ def test_mutated_zwo_interval_duration_is_named_blocking_failure(tmp_path):
     assert any(issue['id'].startswith('PACKAGE_ZWO_') and 'segments' in issue['message'] for issue in issues)
 
 
-def test_mutated_ftp_week_label_is_named_blocking_failure(tmp_path):
+def test_ftp_test_in_wrong_week_is_named_blocking_failure(tmp_path):
+    """The FTP test's ZWO stem must carry the PlanIR week (W08_...)."""
     zwo = _package(tmp_path)
-    zwo.write_text(zwo.read_text().replace('Week 8', 'Week 1'))
+    wrong = zwo.with_name('W01_Tue_FTP_Test.zwo')
+    zwo.rename(wrong)
+    ir = json.loads((tmp_path / 'plan_ir.json').read_text())
+    ir['weeks'][0]['sessions'][0]['source_file'] = wrong.name
+    (tmp_path / 'plan_ir.json').write_text(json.dumps(ir))
     assert any('plan_week' in issue['message'] for issue in validate_plan_package(tmp_path))
+
+
+def test_stripped_week_header_in_description_is_not_a_failure(tmp_path):
+    """Athlete-visible copy drops the 'Week N' header on purpose; the check
+    must not read the prose (it blocked every power-controlled package)."""
+    zwo = _package(tmp_path)
+    zwo.write_text(zwo.read_text().replace('Week 8 FTP test', 'FUEL:\nArrive fueled.'))
+    assert not any('plan_week' in issue['message'] for issue in validate_plan_package(tmp_path))
 
 
 def test_mutated_guide_fuel_and_elevation_are_named_blocking_failures(tmp_path):

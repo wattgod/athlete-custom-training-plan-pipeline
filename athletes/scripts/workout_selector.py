@@ -153,9 +153,15 @@ def _combine_weights(
         return category_weights
     if category_weights is None:
         return dict(methodology_weights)
+    # sorted(): set iteration order of str keys varies per Python process
+    # (hash randomisation), which changed dict insertion order here and,
+    # through downstream first-max tie-breaks, produced a DIFFERENT plan for
+    # the same intake on every run (found Aug 23 2026: the same Cheese Head
+    # intake drew Billat 30/30 on one build and Rønnestad 30-15 on the next,
+    # and only one of them satisfied R06).
     return {
         cat: category_weights.get(cat, 0.0) * methodology_weights.get(cat, 1.0)
-        for cat in set(category_weights) | set(methodology_weights)
+        for cat in sorted(set(category_weights) | set(methodology_weights))
     }
 
 

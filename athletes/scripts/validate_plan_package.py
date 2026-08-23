@@ -138,8 +138,15 @@ def validate_plan_package(athlete_dir: Path | str) -> List[Dict[str, Any]]:
     for week in ir.get('weeks', []):
         for session in week.get('sessions', []):
             if session.get('type') == 'ftp_test' and session.get('source_file'):
-                description = parse_zwo_structure(athlete_dir / 'workouts' / session['source_file']).get('description', '')
-                if f"Week {week['number']}" not in description:
-                    issues.append(_issue('zwo', f"{session['source_file']}.plan_week", f"Week {week['number']}", description[:160]))
+                # The FTP test must sit in the week PlanIR says it does. The
+                # authored ZWO stem carries the week ("W01_Mon_..."); the
+                # description no longer does -- athlete-visible copy has the
+                # "Week N" header stripped on purpose (delivery_render
+                # _PERSONAL_WEEK_HEADER), so checking the prose here made
+                # every power-controlled package fail a CRITICAL blocker.
+                expected_stem = f"W{int(week['number']):02d}_"
+                stem = str(session['source_file'])
+                if not stem.startswith(expected_stem):
+                    issues.append(_issue('zwo', f"{session['source_file']}.plan_week", expected_stem, stem[:160]))
 
     return issues

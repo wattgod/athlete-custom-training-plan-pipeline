@@ -379,10 +379,28 @@ def _is_internal_only(item: Mapping[str, Any]) -> bool:
 # disabled).
 # ---------------------------------------------------------------------------
 
+# A >=5-minute block written as M:SS with a non-zero seconds part ("8:08 @
+# 57-67% FTP") is a written-from-structure description that was never
+# rounded -- noise to the athlete (test_workout_output_quality owns the same
+# rule for generated copy). 23 curated items carry one (Aug 2026); they are
+# excluded here, loudly, until the library copy is fixed. Short intervals
+# (<5 min) may legitimately read 1:30 / 2:50.
+_RAGGED_LONG_BLOCK = re.compile(r"\b(\d{1,2}):([0-5]\d)\b")
+
+
+def _has_ragged_long_block(description: Any) -> bool:
+    for minutes, seconds in _RAGGED_LONG_BLOCK.findall(str(description or "")):
+        if int(minutes) >= 5 and seconds != "00":
+            return True
+    return False
+
+
 def _lint_flags(item: Mapping[str, Any]) -> list[str]:
     flags = []
     if item.get("lint_duration_claim"):
         flags.append("lint_duration_claim")
+    if _has_ragged_long_block(item.get("description")):
+        flags.append("lint_ragged_duration_text")
     if item.get("lint_rpe_conflict"):
         flags.append("lint_rpe_conflict")
     if item.get("lint_manual_review"):
