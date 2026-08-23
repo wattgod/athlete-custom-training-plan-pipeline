@@ -127,6 +127,65 @@ def test_day_off_payload_must_be_internally_consistent(tmp_path):
         validate_contract(contract)
 
 
+def test_trainingpeaks_contract_contains_only_transport_supported_kinds(tmp_path):
+    contract = _contract(tmp_path, delivery_platform="trainingpeaks")
+    assert {op["kind"] for op in contract["operations"]} == {
+        "workout_upsert", "calendar_note_upsert",
+    }
+
+
+def test_correction_update_accepts_legacy_other_only_as_prior_payload(tmp_path):
+    legacy = {
+        "date": "2026-08-14", "title": "Legacy prose workout",
+        "description": "Old representation.", "tp_workout_type": 100,
+        "total_seconds": 3600, "tss_planned": None, "structure": None,
+    }
+    logical_id = "cs_phase3:workout_upsert:2026-08-14#1"
+    inventory = {logical_id: {
+        "kind": "workout_upsert", "remote_id": "3914",
+        "desired_digest": digest_payload(legacy),
+        "payload_snapshot_ref": "legacy-workout",
+        "last_op_id": logical_id + "@r1",
+    }}
+    contract = _contract(
+        tmp_path, generation_revision=2,
+        delivery_platform="trainingpeaks",
+        effective_remote_inventory=inventory,
+        payload_snapshot_reader=lambda ref: legacy,
+    )
+    operation = next(op for op in contract["operations"]
+                     if op["logical_id"] == logical_id)
+    assert operation["disposition"] == "update"
+    assert operation["payload"]["tp_workout_type"] == 2
+    assert operation["prior_payload"]["tp_workout_type"] == 100
+    assert validate_contract(contract) is contract
+
+
+def test_protected_provider_resource_is_preserved_as_keep(tmp_path):
+    logical_id = "cs_phase3:calendar_note_upsert:protected-2026-08-14-99"
+    payload = {"date": "2026-08-14", "title": "Athlete note", "body": "Keep me."}
+    inventory = {logical_id: {
+        "kind": "calendar_note_upsert", "remote_id": "99",
+        "desired_digest": digest_payload(payload),
+        "payload_snapshot_ref": "protected-note",
+        "last_op_id": "external-provider-99",
+    }}
+    contract = _contract(
+        tmp_path, generation_revision=2,
+        delivery_platform="trainingpeaks",
+        protected_resources={logical_id: {
+            "kind": "calendar_note_upsert", "payload": payload,
+        }},
+        effective_remote_inventory=inventory,
+    )
+    operation = next(op for op in contract["operations"]
+                     if op["logical_id"] == logical_id)
+    assert operation["disposition"] == "keep"
+    assert operation["predecessor"] == {
+        "op_id": "external-provider-99", "remote_id": "99",
+    }
+
+
 def test_three_identities_are_stable_and_revision_scoped(tmp_path):
     first = _contract(tmp_path, generation_revision=1)
     second = _contract(tmp_path, generation_revision=2)

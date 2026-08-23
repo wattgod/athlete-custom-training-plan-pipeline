@@ -1131,8 +1131,8 @@
                       2,
                       7,
                       9
-                    ]
-                    ,"type": "integer"
+                    ],
+                    "type": "integer"
                   },
                   "tss_planned": {
                     "type": [
@@ -1246,8 +1246,8 @@
                       2,
                       7,
                       9
-                    ]
-                    ,"type": "integer"
+                    ],
+                    "type": "integer"
                   },
                   "tss_planned": {
                     "type": [
@@ -1302,9 +1302,10 @@
                     "enum": [
                       2,
                       7,
-                      9
-                    ]
-                    ,"type": "integer"
+                      9,
+                      100
+                    ],
+                    "type": "integer"
                   },
                   "tss_planned": {
                     "type": [
@@ -1480,9 +1481,10 @@
                     "enum": [
                       2,
                       7,
-                      9
-                    ]
-                    ,"type": "integer"
+                      9,
+                      100
+                    ],
+                    "type": "integer"
                   },
                   "tss_planned": {
                     "type": [

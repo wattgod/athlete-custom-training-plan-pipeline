@@ -4180,6 +4180,7 @@ def main():
                 athlete_dir=athlete_dir,
                 singleton_desires=singleton_desires,
                 inspection=d2_inspection,
+                delivery_platform=state.get('delivery_platform'),
             )
             emit_contract(athlete_dir / 'apply_contract.json', contract)
             print(f"  {GREEN}Generated{RESET} apply_contract.json "

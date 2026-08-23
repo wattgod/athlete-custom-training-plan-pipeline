@@ -36,6 +36,7 @@ INVENTORY_FIELDS = {
     "remote_id", "desired_digest", "payload_snapshot_ref", "kind", "last_op_id",
 }
 SUPPORTED_TP_WORKOUT_TYPES = frozenset({2, 7, 9})
+LEGACY_PRIOR_TP_WORKOUT_TYPES = frozenset({2, 7, 9, 100})
 SnapshotReader = Callable[[str], Mapping[str, Any]]
 
 
@@ -150,6 +151,20 @@ PAYLOAD_SCHEMAS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+# Desired payloads stay strict. A correction revision may still need an exact
+# before-image for a malformed legacy object so it can update it by remote ID
+# and restore that image if the controlled attempt rolls back.
+PRIOR_PAYLOAD_SCHEMAS = dict(PAYLOAD_SCHEMAS)
+PRIOR_PAYLOAD_SCHEMAS["workout_upsert"] = {
+    **PAYLOAD_SCHEMAS["workout_upsert"],
+    "properties": {
+        **PAYLOAD_SCHEMAS["workout_upsert"]["properties"],
+        "tp_workout_type": {
+            "type": "integer", "enum": sorted(LEGACY_PRIOR_TP_WORKOUT_TYPES),
+        },
+    },
+}
+
 
 def _operation_branch(kind: str, disposition: str) -> Dict[str, Any]:
     dated = kind in DATED_KINDS
@@ -189,7 +204,8 @@ def _operation_branch(kind: str, disposition: str) -> Dict[str, Any]:
             "payload": PAYLOAD_SCHEMAS[kind] if payload_required else {"type": "null"},
             "expected_digest": ({"type": "string", "pattern": "^[0-9a-f]{64}$"}
                                 if digest_required else {"type": "null"}),
-            "prior_payload": PAYLOAD_SCHEMAS[kind] if prior_required else {"type": "null"},
+            "prior_payload": (PRIOR_PAYLOAD_SCHEMAS[kind]
+                              if prior_required else {"type": "null"}),
             "before_image": ({"type": "object"} if before_required else {"type": "null"}),
             "remote_marker": marker_schema, "predecessor": predecessor_schema,
             "rollback": {"type": "object", "additionalProperties": False,
@@ -260,14 +276,24 @@ def _schema_validate(contract: Dict[str, Any]) -> None:
         raise ApplyContractError(f"schema validation failed at {location}: {error.message}")
 
 
-def _validate_workout_payload(payload: Mapping[str, Any], context: str) -> None:
+def _validate_workout_payload(
+    payload: Mapping[str, Any], context: str, *, allow_legacy: bool = False,
+) -> None:
     """Reject payloads that are schema-shaped but not publishable workouts."""
     type_id = payload.get("tp_workout_type")
     seconds = payload.get("total_seconds")
     tss = payload.get("tss_planned")
     structure = payload.get("structure")
-    if type_id not in SUPPORTED_TP_WORKOUT_TYPES:
+    allowed = (LEGACY_PRIOR_TP_WORKOUT_TYPES
+               if allow_legacy else SUPPORTED_TP_WORKOUT_TYPES)
+    if type_id not in allowed:
         raise ApplyContractError(f"{context} has unsupported tp_workout_type")
+    if type_id == 100:
+        if (not isinstance(seconds, int) or isinstance(seconds, bool)
+                or seconds < 0):
+            raise ApplyContractError(
+                f"{context} legacy workout has invalid duration")
+        return
     if type_id == 7:
         if seconds != 0 or tss is not None or structure is not None:
             raise ApplyContractError(f"{context} day-off payload is inconsistent")
@@ -292,6 +318,8 @@ def _logical_id(order_id: str, kind: str, logical_key: str) -> str:
 def _desired_resources(
     ir: Dict[str, Any], order_id: str, athlete_dir: Optional[Path],
     singleton_desires: Mapping[str, Dict[str, Any]],
+    *, delivery_platform: Optional[str] = None,
+    protected_resources: Optional[Mapping[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     desired: Dict[str, Dict[str, Any]] = {}
     per_date: Dict[str, int] = defaultdict(int)
@@ -334,7 +362,28 @@ def _desired_resources(
             },
         }
 
-    for index, note in enumerate(ir.get("notes") or [], 1):
+    for logical_id, raw in (protected_resources or {}).items():
+        resource = dict(raw)
+        kind = str(resource.get("kind") or "")
+        if kind not in {"workout_upsert", "calendar_note_upsert"}:
+            raise ApplyContractError("protected resource has unsupported kind")
+        prefix = f"{order_id}:{kind}:"
+        if not str(logical_id).startswith(prefix):
+            raise ApplyContractError("protected resource identity mismatch")
+        if logical_id in desired:
+            raise ApplyContractError("protected resource collides with plan output")
+        logical_key = str(logical_id)[len(prefix):]
+        desired[str(logical_id)] = {
+            "kind": kind,
+            "logical_key": logical_key,
+            "date": (resource.get("payload") or {}).get("date"),
+            "payload": dict(resource.get("payload") or {}),
+        }
+
+    trainingpeaks_only = str(delivery_platform or "").lower() == "trainingpeaks"
+
+    for index, note in ([] if trainingpeaks_only else
+                        enumerate(ir.get("notes") or [], 1)):
         if note.get("kind") not in {"mental_training", "mental_task"}:
             continue
         date = note.get("date")
@@ -345,8 +394,9 @@ def _desired_resources(
                 "title": str(note.get("title") or slug.replace("_", " ").title()),
                 "body": str(note.get("body") or note.get("text") or "")}}
 
-    attachments = list(ir.get("attachments") or [])
-    if not attachments:
+    attachments = ([] if trainingpeaks_only else
+                   list(ir.get("attachments") or []))
+    if not attachments and not trainingpeaks_only:
         guide_name = ("training_guide.pdf" if athlete_dir and
                       (athlete_dir / "training_guide.pdf").is_file()
                       else "training_guide.html")
@@ -373,8 +423,9 @@ def _desired_resources(
             "date": None, "payload": {"parent_logical_id": parent_logical_id, "filename": filename,
                 "sha256": hashlib.sha256(file_bytes).hexdigest(), "bytes_ref": raw_path}}
 
-    entitlements = list(ir.get("entitlements") or [])
-    if not entitlements:
+    entitlements = ([] if trainingpeaks_only else
+                    list(ir.get("entitlements") or []))
+    if not entitlements and not trainingpeaks_only:
         race = ir.get("race_snapshot") or {}
         entitlements = [{"product_id": str(race.get("name") or "course") + ":" + str(race.get("date") or "undated")}]
     for entitlement in entitlements:
@@ -554,7 +605,8 @@ def _read_prior_payload(
         payload = dict(snapshot_reader(str(ref)))
     except Exception as exc:
         raise ApplyContractError("could not resolve immutable payload snapshot") from exc
-    errors = list(Draft202012Validator(PAYLOAD_SCHEMAS[kind]).iter_errors(payload))
+    errors = list(Draft202012Validator(
+        PRIOR_PAYLOAD_SCHEMAS[kind]).iter_errors(payload))
     if errors:
         raise ApplyContractError("payload snapshot does not match its canonical kind schema")
     if digest_payload(payload) != record["desired_digest"]:
@@ -719,7 +771,8 @@ def validate_contract(
                 workout_payload = op.get(payload_name)
                 if workout_payload is not None:
                     _validate_workout_payload(
-                        workout_payload, f"{op['op_id']} {payload_name}")
+                        workout_payload, f"{op['op_id']} {payload_name}",
+                        allow_legacy=payload_name == "prior_payload")
         if op["payload"] is not None and op["expected_digest"] != digest_payload(op["payload"]):
             raise ApplyContractError("expected_digest does not match payload")
         if inventory_supplied:
@@ -779,6 +832,8 @@ def build_contract(
     singleton_desires: Optional[Mapping[str, Dict[str, Any]]] = None,
     payload_snapshot_reader: Optional[SnapshotReader] = None,
     last_operation_reader: Optional[OperationReader] = None,
+    delivery_platform: Optional[str] = None,
+    protected_resources: Optional[Mapping[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     revision = int(generation_revision)
     inventory = _validate_inventory(
@@ -789,6 +844,8 @@ def build_contract(
     desired = _desired_resources(
         ir, str(order_id), Path(athlete_dir) if athlete_dir else None,
         singleton_desires or {},
+        delivery_platform=delivery_platform,
+        protected_resources=protected_resources,
     )
     operations = [
         _operation(str(order_id), revision, logical_id,
