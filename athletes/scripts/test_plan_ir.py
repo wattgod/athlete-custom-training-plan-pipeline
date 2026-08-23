@@ -1,6 +1,7 @@
 """PlanIR v0 aggregation tests."""
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -43,6 +44,39 @@ def test_targetless_block_does_not_inherit_phantom_fueling_race():
     assert snapshot.date is None
     assert snapshot.distance_miles is None
     assert snapshot.goal is None
+
+
+def test_canonical_rpe_prescription_is_included_inside_athlete_copy_cap(
+    tmp_path, monkeypatch,
+):
+    import canonical_training_model
+
+    monkeypatch.setattr(
+        canonical_training_model, "project_tp_structure", lambda raw, control: None,
+    )
+    ir = plan_ir._plan_ir_from_canonical(
+        "fixture-athlete",
+        tmp_path,
+        {
+            "athlete": {"control_metric": "rpe", "control_basis": "rpe"},
+            "sessions": [{
+                "week": 1,
+                "date": "2026-09-01",
+                "title": "Race Simulation",
+                "sport": "cycling",
+                "session_type": "workout",
+                "origin": "prescribed",
+                "description": "Ride " * 178,
+                "target_summary": "RPE 4; RPE 6; RPE 10; RPE 2",
+            }],
+        },
+        {"name": "Fixture Athlete"},
+        {},
+        {"weeks": [{"week": 1, "week_type": "load"}]},
+    )
+    description = ir.weeks[0].sessions[0].description
+    assert len(re.findall(r"\b\w+[\w'-]*\b", description)) <= 180
+    assert description.endswith("PRESCRIPTION: RPE 4; RPE 6; RPE 10; RPE 2")
 
 
 def _write_zwo(path: Path, name: str, blocks: str) -> None:

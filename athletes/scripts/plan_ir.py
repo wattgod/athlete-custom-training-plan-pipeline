@@ -759,6 +759,7 @@ def _plan_ir_from_canonical(
 ) -> PlanIR:
     """Build PlanIR strictly as a canonical-model projection."""
     from canonical_training_model import project_tp_structure
+    from delivery_render import sanitize_athlete_description
 
     athlete = _athlete_from_profile(athlete_id, profile)
     control = model.get("athlete") or {}
@@ -804,6 +805,7 @@ def _plan_ir_from_canonical(
         if control.get("control_metric") == "rpe" and raw.get("target_summary"):
             description = ((description or "").rstrip()
                            + f"\n\nPRESCRIPTION: {raw['target_summary']}").strip()
+        description = sanitize_athlete_description(description)
         week.sessions.append(Session(
             date=raw.get("date"), title=str(raw.get("title") or "Untitled session"),
             sport=str(raw.get("sport") or "cycling"),
