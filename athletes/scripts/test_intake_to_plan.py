@@ -116,6 +116,23 @@ def test_additional_notes_preserve_calendar_intent_and_referenced_dates(
     }
 
 
+def test_event_card_protection_uses_race_dates_not_unrelated_note_dates(
+    minimal_valid_parsed,
+):
+    parsed = copy.deepcopy(minimal_valid_parsed)
+    parsed['goals']['races'] = (
+        'A Race (2026-09-12, priority A)\nB Race (2026-09-13, priority B)'
+    )
+    parsed['additional']['notes'] = (
+        'Friday 2026-09-11 may contain openers. Preserve both event cards.'
+    )
+    profile = build_profile(parsed)
+    assert profile['calendar_protection'] == {
+        'requested': True,
+        'referenced_dates': ['2026-09-12', '2026-09-13'],
+    }
+
+
 def test_strength_questionnaire_labels_map_to_profile_strength_block():
     """Production questionnaire labels must not silently default strength away."""
     parsed = parse_intake_markdown("""# Athlete Intake: Strength Alias

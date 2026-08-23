@@ -596,15 +596,27 @@ _CALENDAR_PROTECTION_RE = re.compile(
 
 def _calendar_protection_intent(
     schedule: Mapping[str, Any], additional: Mapping[str, Any],
+    goals: Mapping[str, Any],
 ) -> Dict[str, Any]:
     """Carry an explicit preservation directive to the sealed contract gate."""
     structured = str(schedule.get('protected_calendar_items') or '').strip()
     notes = ' '.join(str(additional.get(key) or '') for key in ('notes', 'other'))
-    source = ' '.join(value for value in (structured, notes) if value).strip()
-    requested = bool(structured or _CALENDAR_PROTECTION_RE.search(notes))
+    protection_sentences = [
+        sentence.strip()
+        for sentence in re.split(r'(?<=[.!?])\s+|\n+', notes)
+        if _CALENDAR_PROTECTION_RE.search(sentence)
+    ]
+    requested = bool(structured or protection_sentences)
+    date_sources = [structured, *protection_sentences]
+    if any(re.search(r'\b(?:race|event)\s+cards?\b', sentence, re.I)
+           for sentence in protection_sentences):
+        date_sources.append(str(goals.get('races') or ''))
     return {
         'requested': requested,
-        'referenced_dates': sorted(set(re.findall(r'\b\d{4}-\d{2}-\d{2}\b', source))),
+        'referenced_dates': sorted(set(re.findall(
+            r'\b\d{4}-\d{2}-\d{2}\b',
+            ' '.join(value for value in date_sources if value),
+        ))),
     }
 
 
@@ -1704,7 +1716,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'off_days': off_days,
         },
         'recurring_sessions': recurring_sessions,
-        'calendar_protection': _calendar_protection_intent(schedule, additional),
+        'calendar_protection': _calendar_protection_intent(
+            schedule, additional, goals),
         'availability_review_issues': (
             contradiction_issues(
                 recurring_sessions, schedule.get('notes', '') or additional.get('notes', ''))
