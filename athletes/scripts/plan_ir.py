@@ -154,6 +154,7 @@ class PlanIR:
     brand: Optional[str] = None
     training_age_class: Optional[str] = None
     events: List[Dict[str, Any]] = field(default_factory=list)
+    coached_block: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a JSON-ready representation of this versioned IR."""
@@ -194,6 +195,7 @@ class PlanIR:
             brand=data.get("brand"),
             training_age_class=data.get("training_age_class"),
             events=list(data.get("events", [])),
+            coached_block=dict(data.get("coached_block") or {}),
         )
 
 
@@ -849,6 +851,7 @@ def _plan_ir_from_canonical(
         brand=_brand_from_profile(profile),
         training_age_class=training_age_class(profile),
         events=_event_ledger(profile),
+        coached_block=dict(model.get("coached_block") or profile.get("coached_block") or {}),
     )
     _annotate_delivery_context(plan_ir.weeks)
     return plan_ir
@@ -905,6 +908,7 @@ def build_plan_ir(
             brand=_brand_from_profile(profile),
             training_age_class=training_age_class(profile),
             events=_event_ledger(profile),
+            coached_block=dict(profile.get("coached_block") or {}),
         )
         _annotate_delivery_context(plan_ir.weeks)
     output_path = athlete_dir / "plan_ir.json"

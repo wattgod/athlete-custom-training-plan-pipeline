@@ -1290,6 +1290,11 @@ def render_coached_weekly_notes(plan_ir: dict) -> List[Dict[str, str]]:
             direction = _week_story(
                 plan_ir, week, week_type, _week_type(week)
             )
+            focus = str(
+                _get(_get(plan_ir, "coached_block") or {}, "focus") or ""
+            ).strip().rstrip(".")
+            if focus:
+                direction += f" This block: {focus}."
             if names:
                 direction += f" The key work is {names}."
             order = (

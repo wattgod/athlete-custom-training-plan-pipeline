@@ -108,6 +108,8 @@ def validate_profile(profile: dict) -> ValidationResult:
         block = profile.get('coached_block') or {}
         if block.get('phase') not in {'base', 'build', 'peak', 'maintenance'}:
             result.add_error("Targetless coached block has invalid phase")
+        if not str(block.get('focus') or '').strip():
+            result.add_error("Targetless coached block requires a focus")
         week_types = block.get('week_types') or []
         try:
             weeks = int(fulfillment.get('weeks_purchased') or 0)

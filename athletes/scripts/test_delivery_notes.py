@@ -74,6 +74,16 @@ def test_coached_weekly_notes_are_direct_clean_and_bounded():
     assert len(race["body"].split()) <= 110
 
 
+def test_coached_weekly_notes_name_the_block_focus_without_an_essay():
+    plan = _plan(weeks=2, metric="rpe", later_event=False)
+    plan["coached_block"] = {
+        "focus": "cyclocross starts, repeatability, and handling",
+    }
+    body = render_coached_weekly_notes(plan)[0]["body"]
+    assert "This block: cyclocross starts, repeatability, and handling." in body
+    assert len(body.split()) <= 90
+
+
 def test_mandatory_b_event_makes_a_race_decide_the_mode():
     plan = _plan(weeks=2, metric="rpe", later_event=False)
     plan["fueling"] = {"race_range_g_per_hour": [60, 70]}

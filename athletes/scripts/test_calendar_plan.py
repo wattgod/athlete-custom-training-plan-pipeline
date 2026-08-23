@@ -29,7 +29,17 @@ from workout_selector import (
     _select_taper_week,
     _load_selection_config,
     get_workout_duration,
+    coached_focus_category_weights,
 )
+
+
+def test_coached_focus_bias_is_specific_and_pool_safe():
+    weights = coached_focus_category_weights(
+        'cyclocross starts, repeatability, and handling')
+    assert weights['Sprint_Neuromuscular'] == 100
+    assert weights['Gravel_Specific'] == 95
+    assert weights['Cadence_Work'] == 100
+    assert coached_focus_category_weights('') is None
 
 
 def _jesse_descriptors():

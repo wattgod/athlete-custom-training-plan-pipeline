@@ -1713,6 +1713,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         from block_chain import build_plan_from_calendar, derive_week_descriptors
         from plan_ir import training_age_class
         from workout_mapper import render_workout as _bb_render
+        from workout_selector import coached_focus_category_weights
 
         _bb_archetype = determine_archetype(cycling_hours_target)
         _bb_discipline = derive_discipline(profile or {})
@@ -1784,6 +1785,9 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             discipline=_bb_discipline,
             day_caps=_bb_day_caps or None,
             methodology=methodology_id,
+            category_weights=coached_focus_category_weights(
+                ((profile or {}).get('coached_block') or {}).get('focus')
+            ),
             fixed_minutes=_fixed_minutes if '_fixed_minutes' in locals() else 0,
             event_format=_bb_event_format,
             training_age=_bb_training_age,

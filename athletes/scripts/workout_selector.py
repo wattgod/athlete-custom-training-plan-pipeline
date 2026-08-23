@@ -67,6 +67,44 @@ _SCORER_CATEGORY_BY_NAME = {
 }
 
 
+_COACHED_FOCUS_KEYWORDS = {
+    'durability': {'Durability': 100, 'HVLI_Extended': 90, 'Endurance': 80},
+    'aerobic': {'Endurance': 100, 'Durability': 90, 'HVLI_Extended': 80},
+    'threshold': {'TT_Threshold': 100, 'G_Spot': 90, 'Tempo': 80},
+    'tempo': {'Tempo': 100, 'G_Spot': 90, 'TT_Threshold': 80},
+    'vo2': {'VO2max': 100, 'Blended': 80},
+    'repeatability': {'VO2max': 100, 'Gravel_Specific': 95, 'Race_Simulation': 85},
+    'one-minute': {'VO2max': 100, 'Sprint_Neuromuscular': 95, 'Gravel_Specific': 90},
+    'sprint': {'Sprint_Neuromuscular': 100, 'Gravel_Specific': 90, 'VO2max': 80},
+    'start': {'Sprint_Neuromuscular': 100, 'Gravel_Specific': 95, 'Race_Simulation': 85},
+    'cyclocross': {'Sprint_Neuromuscular': 100, 'Gravel_Specific': 95, 'Race_Simulation': 90},
+    'technical': {'Cadence_Work': 100, 'Mixed_Climbing': 90, 'Gravel_Specific': 85},
+    'handling': {'Cadence_Work': 100, 'Gravel_Specific': 90, 'Race_Simulation': 80},
+    'skill': {'Cadence_Work': 100, 'Gravel_Specific': 90, 'Mixed_Climbing': 80},
+    'climb': {'Mixed_Climbing': 100, 'SFR_Muscle_Force': 90, 'Durability': 80},
+    'torque': {'SFR_Muscle_Force': 100, 'Mixed_Climbing': 90},
+    'force': {'SFR_Muscle_Force': 100, 'Mixed_Climbing': 90},
+    'race': {'Race_Simulation': 100, 'Durability': 90, 'Blended': 80},
+}
+
+
+def coached_focus_category_weights(focus: Optional[str]) -> Optional[Dict[str, float]]:
+    """Translate a coach-authored block focus into deterministic selector bias.
+
+    The focus can only reorder workouts already allowed by the phase,
+    discipline, methodology, and safety gates. It cannot widen a workout pool.
+    """
+    text = str(focus or '').lower().replace('_', ' ')
+    if not text.strip():
+        return None
+    weights: Dict[str, float] = {}
+    for token, categories in _COACHED_FOCUS_KEYWORDS.items():
+        if token in text:
+            for category, weight in categories.items():
+                weights[category] = max(weights.get(category, 0), weight)
+    return weights or None
+
+
 def _demand_category(name: str) -> Optional[str]:
     """race_category_scorer category for a library workout name (None if
     unmapped — unmapped names score 0 under any demand vector)."""

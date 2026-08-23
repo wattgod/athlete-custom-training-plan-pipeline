@@ -228,6 +228,8 @@ def validate_parsed_intake(parsed: Dict[str, Any]) -> None:
                 "Block Week Types may only contain load or recovery: "
                 + ', '.join(invalid_types)
             )
+        if not str(block.get('focus') or '').strip():
+            errors.append("A targetless coached block requires Block Focus.")
 
     if errors:
         raise IntakeValidationError(
@@ -1971,6 +1973,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         profile['coached_block'] = {
             'phase': str(block.get('phase') or '').strip().lower(),
             'week_types': _coached_block_week_types(block.get('week_types')),
+            'focus': re.sub(r'\s+', ' ', str(block.get('focus') or '')).strip(),
         }
 
     # Resolve the candidate BEFORE applying brand authority. A single-brand

@@ -85,6 +85,7 @@ TARGETLESS_BLOCK_INTAKE = """# Athlete Intake: Block Rider
 ## Block
 - Phase: build
 - Week Types: recovery, load, load
+- Focus: aerobic durability and controlled high-end work
 """
 
 
@@ -97,6 +98,7 @@ def test_targetless_coached_block_is_valid_canonical_intake():
     assert profile['coached_block'] == {
         'phase': 'build',
         'week_types': ['recovery', 'load', 'load'],
+        'focus': 'aerobic durability and controlled high-end work',
     }
 
 

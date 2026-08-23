@@ -129,6 +129,8 @@ def validate_profile(profile: Dict) -> Tuple[bool, List[str], List[str]]:
             errors.append("Targetless coached-block dates must match purchased weeks")
         if block.get("phase") not in {"base", "build", "peak", "maintenance"}:
             errors.append("Invalid targetless coached-block phase")
+        if not str(block.get("focus") or "").strip():
+            errors.append("Targetless coached block requires a focus")
         week_types = block.get("week_types") or []
         if len(week_types) != weeks or any(
                 value not in {"load", "recovery"} for value in week_types):

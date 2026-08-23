@@ -643,6 +643,7 @@ def build_canonical_model(
             **control,
         },
         "race_snapshot": reflected.race_snapshot.__dict__,
+        "coached_block": dict(profile.get("coached_block") or {}),
         "sessions": sessions,
         "notes": reflected.notes,
         "attachments": reflected.attachments,
