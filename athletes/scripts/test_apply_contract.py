@@ -199,7 +199,9 @@ def test_calendar_protection_intent_cannot_emit_all_create_contract(tmp_path):
         _contract(tmp_path, canonical_model=model)
 
 
-def test_calendar_protection_requires_a_keep_for_each_referenced_date(tmp_path):
+def test_calendar_protection_keeps_supported_resources_without_deleting_external_events(
+    tmp_path,
+):
     logical_id = "cs_phase3:calendar_note_upsert:protected-2026-08-14-99"
     payload = {"date": "2026-08-14", "title": "Athlete note", "body": "Keep me."}
     inventory = {logical_id: {
@@ -211,7 +213,8 @@ def test_calendar_protection_requires_a_keep_for_each_referenced_date(tmp_path):
     model = {
         "model_version": "canonical_training_model/v1",
         "calendar_protection": {
-            "requested": True, "referenced_dates": ["2026-08-14"],
+            "requested": True,
+            "referenced_dates": ["2026-08-14", "2026-08-15"],
         },
     }
     contract = _contract(
@@ -222,6 +225,7 @@ def test_calendar_protection_requires_a_keep_for_each_referenced_date(tmp_path):
         effective_remote_inventory=inventory,
     )
     assert any(op["disposition"] == "keep" for op in contract["operations"])
+    assert not any(op["disposition"] == "delete" for op in contract["operations"])
 
 
 def test_structured_description_is_concise_clean_and_keeps_execution_structure(tmp_path):

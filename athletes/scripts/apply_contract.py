@@ -916,16 +916,6 @@ def build_contract(
         if effective_remote_inventory is None or not protected_resources:
             raise ApplyContractError(
                 "calendar protection requires current inventory and explicit keep resources")
-        protected_dates = {
-            str((resource.get("payload") or {}).get("date") or "")
-            for resource in protected_resources.values()
-        }
-        missing_dates = sorted(
-            set(protection.get("referenced_dates") or []) - protected_dates)
-        if missing_dates:
-            raise ApplyContractError(
-                "calendar protection lacks explicit keep resources for: "
-                + ", ".join(missing_dates))
     desired = _desired_resources(
         ir, str(order_id), Path(athlete_dir) if athlete_dir else None,
         singleton_desires or {},
@@ -943,6 +933,10 @@ def build_contract(
             operation.get("disposition") == "keep" for operation in operations):
         raise ApplyContractError(
             "calendar protection requires at least one explicit keep operation")
+    if protection.get("requested") and any(
+            operation.get("disposition") == "delete" for operation in operations):
+        raise ApplyContractError(
+            "calendar protection forbids delete operations")
     seal = compute_model_seal(canonical_model, review_items, guide_sources, operations)
     contract = {"contract_version": CONTRACT_VERSION, "order_id": str(order_id),
                 "tp_athlete_id": str(tp_athlete_id),
