@@ -401,10 +401,13 @@ def derive_all(profile: Dict) -> Dict:
             }, sensitivity="personal", at=derived_at, revision=revision),
         derived_entry(
             id="CLASSIFICATION_PLAN_WEEKS", field="plan_weeks", value_class="inferred",
-            basis="calendar distance from plan start to target race",
+            basis=("calendar distance from plan start to target race"
+                   if (profile.get("target_race") or {}).get("date")
+                   else "exact targetless coached-block fulfillment window"),
             inputs={
                 "race_date": (profile.get("target_race") or {}).get("date"),
                 "preferred_start": (profile.get("plan_start") or {}).get("preferred_start"),
+                "coached_block": profile.get("coached_block") or None,
             }, sensitivity="personal", at=derived_at, revision=revision),
         derived_entry(
             id="CLASSIFICATION_STARTING_PHASE", field="starting_phase", value_class="inferred",

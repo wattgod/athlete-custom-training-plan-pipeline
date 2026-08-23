@@ -114,7 +114,20 @@ def test_phase3_contract_has_fake_server_effect_parity_with_legacy_manifest(tmp_
         'weeks': [{'number': 1, 'sessions': [{
             'date': '2026-08-14', 'title': 'Field Session', 'description': 'HR target',
             'workout_type_value_id': 2, 'duration_s': 3600, 'tss_planned': 50,
-            'structure': {'primaryIntensityMetric': 'percentOfThresholdHr', 'structure': []},
+                'structure': {
+                    'primaryIntensityMetric': 'percentOfThresholdHr',
+                    'primaryIntensityTargetOrRange': 'range',
+                    'primaryLengthMetric': 'duration',
+                    'structure': [{
+                        'type': 'step',
+                        'length': {'value': 1, 'unit': 'repetition'},
+                        'steps': [{
+                            'name': 'Steady State', 'intensityClass': 'active',
+                            'length': {'value': 3600, 'unit': 'second'},
+                            'targets': [{'minValue': 75, 'maxValue': 80}],
+                        }],
+                    }],
+                },
             'type': 'workout', 'sport': 'cycling', 'segments': [],
         }]}],
         'notes': [{'kind': 'mental_task', 'id': 'focus', 'date': '2026-08-14',

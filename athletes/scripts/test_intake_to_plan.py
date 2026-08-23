@@ -63,6 +63,51 @@ from constants import (
 NICHOLAS_INTAKE_PATH = Path("/tmp/nicholas-intake.md")
 
 
+TARGETLESS_BLOCK_INTAKE = """# Athlete Intake: Block Rider
+
+## Basic Info
+- Email: rider@example.com
+- Age: 38
+- Weight: 75 kg
+
+## Goals
+- Primary Goal: general_fitness
+
+## Schedule
+- Weekly Hours Available: 8
+
+## Fulfillment
+- Effective Date: 2026-08-24
+- Planning Horizon End: 2026-09-13
+- Weeks Purchased: 3
+- Publication Horizon Weeks: 3
+
+## Block
+- Phase: build
+- Week Types: recovery, load, load
+"""
+
+
+def test_targetless_coached_block_is_valid_canonical_intake():
+    parsed = parse_intake_markdown(TARGETLESS_BLOCK_INTAKE)
+    validate_parsed_intake(parsed)
+    profile = build_profile(parsed)
+    assert profile['primary_goal'] == 'general_fitness'
+    assert profile['target_race'] == {}
+    assert profile['coached_block'] == {
+        'phase': 'build',
+        'week_types': ['recovery', 'load', 'load'],
+    }
+
+
+def test_targetless_coached_block_rejects_missing_pattern():
+    parsed = parse_intake_markdown(
+        TARGETLESS_BLOCK_INTAKE.replace(
+            '- Week Types: recovery, load, load', '- Week Types:'))
+    with pytest.raises(IntakeValidationError, match='exactly one type per week'):
+        validate_parsed_intake(parsed)
+
+
 def test_device_parser_preserves_multiword_tokens_and_canonicalizes():
     assert parse_device_list('power meter, hr strap') == [
         'power_meter', 'hr_strap']

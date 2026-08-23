@@ -3036,6 +3036,12 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         w00_week_entry is None when no pre-plan days are generated.
         """
 
+        # An exact targetless coached block owns only its sealed Monday–Sunday
+        # window. Adding W00 would silently broaden the authorized calendar.
+        if (profile.get('coached_block')
+                and not (profile.get('target_race') or {}).get('date')):
+            return [], None
+
         plan_start_str = plan_dates.get('plan_start', '')
         if not plan_start_str:
             return [], None

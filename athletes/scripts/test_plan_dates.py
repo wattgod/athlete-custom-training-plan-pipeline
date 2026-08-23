@@ -13,9 +13,10 @@ Run with: python3 test_plan_dates.py
 import sys
 from datetime import datetime, timedelta
 import pytest
-from calculate_plan_dates import (PlanDateValidationError, calculate_plan_dates,
+from calculate_plan_dates import (PlanDateValidationError, calculate_block_dates,
+                                  calculate_plan_dates,
                                   post_event_recovery_weeks_for_horizon,
-                                  validate_plan_dates)
+                                  validate_block_dates, validate_plan_dates)
 
 
 def _next_sunday(weeks_out: int = 45) -> datetime:
@@ -426,3 +427,35 @@ def test_post_event_recovery_rejects_later_b_event(monkeypatch):
             '2026-09-12', 3, preferred_start='2026-09-07',
             b_events=[{'name': 'Later event', 'date': '2026-09-19'}],
             post_event_recovery_weeks=1)
+
+
+def test_targetless_coached_block_has_no_fake_race_artifacts():
+    result = calculate_block_dates(
+        '2026-08-24', 3, 'build', ['recovery', 'load', 'load'],
+        generation_revision=4, derived_at='2026-08-22T20:00:00Z')
+    assert result['plan_start'] == '2026-08-24'
+    assert result['plan_end'] == '2026-09-13'
+    assert result['race_date'] is None
+    assert result['race_weekday'] is None
+    assert result['race_week_monday'] is None
+    assert [week['week_type'] for week in result['weeks']] == [
+        'recovery', 'load', 'load']
+    assert [week['is_recovery_week'] for week in result['weeks']] == [
+        True, False, False]
+    assert not any(week['is_race_week'] for week in result['weeks'])
+    assert not any(day['is_race_day']
+                   for week in result['weeks'] for day in week['days'])
+    assert validate_block_dates(
+        result, '2026-08-24', '2026-09-13') == []
+
+
+@pytest.mark.parametrize('start,weeks,phase,types,error', [
+    ('2026-08-25', 3, 'build', ['load'] * 3, 'Monday'),
+    ('2026-08-24', 5, 'build', ['load'] * 5, '2–4'),
+    ('2026-08-24', 3, 'race', ['load'] * 3, 'phase'),
+    ('2026-08-24', 3, 'build', ['load', 'race', 'load'], 'load or recovery'),
+])
+def test_targetless_coached_block_rejects_ambiguous_shape(
+        start, weeks, phase, types, error):
+    with pytest.raises(ValueError, match=error):
+        calculate_block_dates(start, weeks, phase, types)

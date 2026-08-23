@@ -26,6 +26,25 @@ PRESCRIPTION = {
 }
 
 
+def test_targetless_block_does_not_inherit_phantom_fueling_race():
+    snapshot = plan_ir._race_from_artifacts(
+        {
+            'primary_goal': 'general_fitness',
+            'target_race': {},
+            'coached_block': {
+                'phase': 'build',
+                'week_types': ['recovery', 'load', 'load'],
+            },
+        },
+        {'race': {'distance_miles': 100, 'goal_type': 'finish'}},
+        {'race_date': None},
+    )
+    assert snapshot.name is None
+    assert snapshot.date is None
+    assert snapshot.distance_miles is None
+    assert snapshot.goal is None
+
+
 def _write_zwo(path: Path, name: str, blocks: str) -> None:
     path.write_text(
         "<?xml version='1.0' encoding='UTF-8'?>\n"

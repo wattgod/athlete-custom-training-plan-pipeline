@@ -321,14 +321,16 @@ def _validate_manifest_projection(
     )
     athlete_name = str((plan_ir.get("athlete") or {}).get("name") or "Athlete")
     race_snapshot = plan_ir.get("race_snapshot") or {}
-    race_name = str(race_snapshot.get("name") or "Race")
+    has_race = bool(race_snapshot.get("name") or race_snapshot.get("date"))
+    race_name = str(
+        race_snapshot.get("name") or ("Race" if has_race else "Coached Block"))
     expected_top_level = {
         "plan_title": f"{athlete_name} · {race_name} · {plan_weeks}wk [CUSTOM]",
         "athlete": athlete_name,
         "race": {
             "name": race_snapshot.get("name"),
             "date": race_snapshot.get("date"),
-            "priority": "A",
+            "priority": "A" if has_race else None,
         },
     }
     for field, expected_value in expected_top_level.items():
@@ -676,11 +678,11 @@ def validate_transitional_input(
         if race_date and _session_date(session) == race_date
         and (session.get("tp_kind") == "race" or session.get("type") == "race")
     ]
-    if not race_entries:
+    if race_date and not race_entries:
         issues.append(_issue(
             "NO_RACE_DAY_WORKOUT", "Race date has no race-day entry.",
             review_value={"race_date": race_date_raw, "race_day_entries": 0}))
-    else:
+    elif race_entries:
         race_week = race_entries[0][0]
         counted = sum(
             1 for week, session in sessions

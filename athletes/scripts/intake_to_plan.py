@@ -141,6 +141,19 @@ WEEKLY_HOURS_MAX: int = 40
 # Weight unit detection threshold -- values below this are too light for any unit
 WEIGHT_TOO_LIGHT: float = 40.0
 
+COACHED_BLOCK_PHASES = {'base', 'build', 'peak', 'maintenance'}
+COACHED_BLOCK_WEEK_TYPES = {'load', 'recovery'}
+
+
+def _coached_block_week_types(value: Any) -> List[str]:
+    """Normalize the explicit week pattern for a targetless coached block."""
+    if isinstance(value, list):
+        raw = value
+    else:
+        raw = re.split(r'[,\n]+', str(value or ''))
+    return [str(item).strip().lower().replace(' ', '_')
+            for item in raw if str(item).strip()]
+
 
 def validate_parsed_intake(parsed: Dict[str, Any]) -> None:
     """
@@ -154,24 +167,67 @@ def validate_parsed_intake(parsed: Dict[str, Any]) -> None:
     """
     errors: List[str] = []
 
-    # The ONLY hard requirement is a race to train for — that's the one thing
-    # we genuinely cannot build a plan without. Everything else (age, sex,
-    # weight, FTP, weekly hours, the whole basic_info/current_fitness/schedule
-    # sections) is OPTIONAL: build_profile fills missing values with sane,
-    # flagged assumptions and week-1 testing dials them in. Requiring more than
-    # this just turns recoverable gaps into refunded orders.
+    # A specific-race plan needs a race. A general goal may instead be an exact,
+    # short coached block. Keeping that distinction here prevents operators from
+    # inventing a fake race merely to enter the canonical renderer.
     goals_data = parsed.get('goals', {})
     race_list = []
     if isinstance(goals_data, dict):
         races_val = goals_data.get('races', '')
         if isinstance(races_val, str) and races_val.strip():
             race_list = [r.strip() for r in races_val.split('\n') if r.strip()]
-    if not race_list:
+    primary_goal = str(goals_data.get('primary_goal') or 'specific_race').strip()
+    primary_goal = primary_goal.lower().replace(' ', '_')
+    if primary_goal == 'specific_race' and not race_list:
         errors.append(
-            "At least one race must be listed in Goals — it's the one field we "
-            "can't build a plan without. (Everything else is optional and "
-            "estimated.)"
+            "At least one race must be listed in Goals for a specific-race plan."
         )
+    elif not race_list:
+        fulfillment = parsed.get('fulfillment', {})
+        block = parsed.get('block', {})
+        effective_date = str(fulfillment.get('effective_date') or '').strip()
+        horizon_end = str(fulfillment.get('planning_horizon_end') or '').strip()
+        raw_weeks = (fulfillment.get('weeks_purchased')
+                     or fulfillment.get('publication_horizon_weeks'))
+        try:
+            plan_weeks = int(raw_weeks)
+        except (TypeError, ValueError):
+            plan_weeks = 0
+        if not effective_date or not horizon_end:
+            errors.append(
+                "A targetless coached block requires Fulfillment Effective Date "
+                "and Planning Horizon End."
+            )
+        else:
+            try:
+                start = datetime.strptime(effective_date, '%Y-%m-%d').date()
+                end = datetime.strptime(horizon_end, '%Y-%m-%d').date()
+                if start.weekday() != 0:
+                    errors.append("Coached-block Effective Date must be a Monday.")
+                if end.weekday() != 6:
+                    errors.append("Coached-block Planning Horizon End must be a Sunday.")
+                if plan_weeks and (end - start).days != plan_weeks * 7 - 1:
+                    errors.append(
+                        "Coached-block dates must span exactly the purchased weeks."
+                    )
+            except ValueError:
+                errors.append("Coached-block dates must use YYYY-MM-DD format.")
+        if not 2 <= plan_weeks <= 4:
+            errors.append("A targetless coached block must contain 2–4 weeks.")
+        phase = str(block.get('phase') or '').strip().lower()
+        if phase not in COACHED_BLOCK_PHASES:
+            errors.append(
+                "Block Phase must be one of: base, build, peak, maintenance."
+            )
+        week_types = _coached_block_week_types(block.get('week_types'))
+        if len(week_types) != plan_weeks:
+            errors.append("Block Week Types must list exactly one type per week.")
+        invalid_types = sorted(set(week_types) - COACHED_BLOCK_WEEK_TYPES)
+        if invalid_types:
+            errors.append(
+                "Block Week Types may only contain load or recovery: "
+                + ', '.join(invalid_types)
+            )
 
     if errors:
         raise IntakeValidationError(
@@ -968,6 +1024,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     nutrition_intake = parsed.get('nutrition', {})
     testing = parsed.get('testing', {})
     fulfillment = parsed.get('fulfillment', {})
+    block = parsed.get('block', {})
     try:
         generation_revision = int(fulfillment.get('generation_revision') or 1)
     except (TypeError, ValueError):
@@ -1909,6 +1966,12 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'notes': plan_notes,
         },
     }
+    if (not target_race_info
+            and primary_goal.replace(' ', '_') != 'specific_race'):
+        profile['coached_block'] = {
+            'phase': str(block.get('phase') or '').strip().lower(),
+            'week_types': _coached_block_week_types(block.get('week_types')),
+        }
 
     # Resolve the candidate BEFORE applying brand authority. A single-brand
     # Roadie order always ships road, but a conflicting gravel/ambiguous race is

@@ -447,6 +447,11 @@ def target_summary(target: Dict[str, Any]) -> str:
         on, off = target.get("on"), target.get("off")
         if kind in {"power_pct_ftp", "pct_lthr", "pct_hrmax"}:
             return f"{round(float(on) * 100)} / {round(float(off) * 100)} {label}"
+        # "RPE 6 / 10" reads as six-out-of-ten, not two executable
+        # interval targets. Name both targets so athlete copy and structure are
+        # unambiguous and the readback validator can compare them exactly.
+        if kind == "rpe":
+            return f"RPE {on}; RPE {off}"
         return f"{label} {on} / {off}"
     low, high, value = target.get("low"), target.get("high"), target.get("value")
     if kind in {"power_pct_ftp", "pct_lthr", "pct_hrmax"}:

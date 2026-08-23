@@ -89,13 +89,35 @@ def validate_profile(profile: dict) -> ValidationResult:
     """Validate profile.yaml structure and values."""
     result = ValidationResult(is_valid=True)
 
+    targetless = (
+        profile.get('primary_goal') != 'specific_race'
+        and not (profile.get('target_race') or {}).get('date')
+    )
+    required_fields = (['name', 'athlete_id'] if targetless
+                       else REQUIRED_PROFILE_FIELDS)
     # Check required fields
-    for field_path in REQUIRED_PROFILE_FIELDS:
+    for field_path in required_fields:
         value, exists = get_nested(profile, field_path)
         if not exists:
             result.add_error(f"Missing required field: {field_path}")
         elif value is None or (isinstance(value, str) and not value.strip()):
             result.add_error(f"Required field is empty: {field_path}")
+
+    if targetless:
+        fulfillment = profile.get('fulfillment') or {}
+        block = profile.get('coached_block') or {}
+        if block.get('phase') not in {'base', 'build', 'peak', 'maintenance'}:
+            result.add_error("Targetless coached block has invalid phase")
+        week_types = block.get('week_types') or []
+        try:
+            weeks = int(fulfillment.get('weeks_purchased') or 0)
+        except (TypeError, ValueError):
+            weeks = 0
+        if not 2 <= weeks <= 4:
+            result.add_error("Targetless coached block must contain 2–4 weeks")
+        if len(week_types) != weeks or any(
+                item not in {'load', 'recovery'} for item in week_types):
+            result.add_error("Targetless coached block has invalid week pattern")
 
     # Validate athlete_id format
     athlete_id = profile.get('athlete_id', '')
@@ -185,7 +207,8 @@ def validate_derived(derived: dict, profile: dict) -> ValidationResult:
     return result
 
 
-def validate_plan_dates(plan_dates: dict, derived: dict) -> ValidationResult:
+def validate_plan_dates(plan_dates: dict, derived: dict,
+                        profile: dict = None) -> ValidationResult:
     """Validate plan_dates.yaml structure."""
     result = ValidationResult(is_valid=True)
 
@@ -215,11 +238,24 @@ def validate_plan_dates(plan_dates: dict, derived: dict) -> ValidationResult:
         elif not week.get('days'):
             result.add_error(f"Week {week_num} has empty 'days' array")
 
-    # Check last week is race week
-    if weeks:
+    targetless = bool(profile) and (
+        profile.get('primary_goal') != 'specific_race'
+        and not (profile.get('target_race') or {}).get('date')
+    )
+    # A race plan ends in race week. A targetless coached block must contain
+    # no race semantics at all.
+    if weeks and not targetless:
         last_week = weeks[-1]
         if not last_week.get('is_race_week'):
             result.add_warning("Final week not marked as race week")
+    elif targetless:
+        if plan_dates.get('race_date') or plan_dates.get('race_week_monday'):
+            result.add_error("Targetless coached block contains a race anchor")
+        if any(week.get('is_race_week') for week in weeks):
+            result.add_error("Targetless coached block contains a race week")
+        if any(day.get('is_race_day')
+               for week in weeks for day in week.get('days', [])):
+            result.add_error("Targetless coached block contains a race day")
 
     return result
 
@@ -288,7 +324,7 @@ def validate_athlete_data(athlete_dir: Path) -> ValidationResult:
     # Validate each file
     result.merge(validate_profile(profile))
     result.merge(validate_derived(derived, profile))
-    result.merge(validate_plan_dates(plan_dates, derived))
+    result.merge(validate_plan_dates(plan_dates, derived, profile))
     result.merge(validate_methodology(methodology))
     result.merge(validate_fueling(fueling, profile))
 

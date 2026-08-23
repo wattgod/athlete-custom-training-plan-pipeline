@@ -189,6 +189,155 @@ def validate_plan_dates(plan_dates: dict, race_date_str: str) -> list:
     return errors
 
 
+def validate_block_dates(plan_dates: dict, expected_start: str = None,
+                         expected_end: str = None) -> list:
+    """Validate an exact targetless coached-block calendar."""
+    errors = []
+    weeks = plan_dates.get('weeks', [])
+    plan_weeks = plan_dates.get('plan_weeks')
+    if plan_dates.get('race_date') or plan_dates.get('race_week_monday'):
+        errors.append("CRITICAL: Targetless block must not contain a race anchor")
+    if any(week.get('is_race_week') for week in weeks):
+        errors.append("CRITICAL: Targetless block must not contain a race week")
+    if any(day.get('is_race_day') for week in weeks for day in week.get('days', [])):
+        errors.append("CRITICAL: Targetless block must not contain a race day")
+    if len(weeks) != plan_weeks:
+        errors.append(
+            f"CRITICAL: plan_weeks ({plan_weeks}) doesn't match weeks list length ({len(weeks)})")
+    if weeks and plan_dates.get('plan_start') != weeks[0].get('monday'):
+        errors.append("CRITICAL: Plan start must match first week Monday")
+    if weeks and plan_dates.get('plan_end') != weeks[-1].get('sunday'):
+        errors.append("CRITICAL: Plan end must match final week Sunday")
+    if expected_start and plan_dates.get('plan_start') != expected_start:
+        errors.append("CRITICAL: Plan start differs from sealed effective date")
+    if expected_end and plan_dates.get('plan_end') != expected_end:
+        errors.append("CRITICAL: Plan end differs from sealed planning horizon")
+    for index, week in enumerate(weeks):
+        if week.get('week') != index + 1:
+            errors.append(
+                f"CRITICAL: Week number mismatch at index {index}: "
+                f"expected {index + 1}, got {week.get('week')}")
+        if week.get('phase') not in {'base', 'build', 'peak', 'maintenance'}:
+            errors.append(
+                f"CRITICAL: Invalid coached-block phase {week.get('phase')!r}")
+        if index:
+            previous = datetime.strptime(weeks[index - 1]['sunday'], '%Y-%m-%d')
+            current = datetime.strptime(week['monday'], '%Y-%m-%d')
+            if (current - previous).days != 1:
+                errors.append(f"CRITICAL: Gap between week {index} and week {index + 1}")
+    return errors
+
+
+def calculate_block_dates(start_date_str: str, plan_weeks: int,
+                          phase: str, week_types: list,
+                          generation_revision: int = 1,
+                          derived_at: str = None) -> dict:
+    """Build an exact 2–4 week calendar without inventing a target event."""
+    if not 2 <= plan_weeks <= 4:
+        raise ValueError("Targetless coached blocks must contain 2–4 weeks")
+    phase = str(phase or '').strip().lower()
+    if phase not in {'base', 'build', 'peak', 'maintenance'}:
+        raise ValueError("Invalid coached-block phase")
+    normalized_types = [str(value).strip().lower() for value in (week_types or [])]
+    if len(normalized_types) != plan_weeks:
+        raise ValueError("Coached block requires one week type per week")
+    if any(value not in {'load', 'recovery'} for value in normalized_types):
+        raise ValueError("Coached block week types must be load or recovery")
+
+    start = datetime.strptime(start_date_str, '%Y-%m-%d')
+    if start.weekday() != 0:
+        raise ValueError("Coached-block start date must be a Monday")
+    month_abbrev = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    weeks = []
+    for week_num, week_type in enumerate(normalized_types, start=1):
+        monday = start + timedelta(weeks=week_num - 1)
+        sunday = monday + timedelta(days=6)
+        days = []
+        for day_offset in range(7):
+            day_date = monday + timedelta(days=day_offset)
+            day_abbrev = DAY_ORDER[day_offset]
+            month = month_abbrev[day_date.month - 1]
+            days.append({
+                'day': day_abbrev,
+                'date': day_date.strftime('%Y-%m-%d'),
+                'date_short': f"{month}{day_date.day}",
+                'workout_prefix': (
+                    f"W{week_num:02d}_{day_abbrev}_{month}{day_date.day}"),
+                'is_race_day': False,
+            })
+        weeks.append({
+            'week': week_num,
+            'monday': monday.strftime('%Y-%m-%d'),
+            'monday_short': f"{month_abbrev[monday.month - 1]}{monday.day}",
+            'sunday': sunday.strftime('%Y-%m-%d'),
+            'sunday_short': f"{month_abbrev[sunday.month - 1]}{sunday.day}",
+            'phase': phase,
+            'week_type': week_type,
+            'is_race_week': False,
+            'is_recovery_week': week_type == 'recovery',
+            'days': days,
+        })
+
+    plan_end = weeks[-1]['sunday']
+    result = {
+        'race_date': None,
+        'race_weekday': None,
+        'plan_weeks': plan_weeks,
+        'plan_start': start_date_str,
+        'plan_start_short': f"{month_abbrev[start.month - 1]}{start.day}",
+        'plan_end': plan_end,
+        'week1_monday': start_date_str,
+        'race_week_monday': None,
+        'weeks': weeks,
+        'workout_naming_convention': 'W{week:02d}_{day}_{month}{day}_{name}.zwo',
+        'workout_example': (
+            f"W01_Mon_{month_abbrev[start.month - 1]}{start.day}_Endurance.zwo"),
+        'day_abbreviations': DAY_FULL_TO_ABBREV,
+        'month_abbreviations': {i + 1: value for i, value in enumerate(month_abbrev)},
+    }
+    registry_at = str(
+        derived_at or generation_now().isoformat().replace('+00:00', 'Z'))
+    common_inputs = {
+        'effective_date': start_date_str,
+        'plan_weeks': plan_weeks,
+        'phase': phase,
+        'week_types': normalized_types,
+    }
+
+    def record(identifier, field, basis, inputs=None, sensitivity='personal'):
+        return derived_entry(
+            id=identifier, field=field, value_class='inferred', basis=basis,
+            inputs=common_inputs if inputs is None else inputs,
+            sensitivity=sensitivity, at=registry_at,
+            revision=generation_revision)
+
+    records = [
+        record('CALENDAR_RACE_DATE', 'race_date', 'no race anchor for targetless coached block'),
+        record('CALENDAR_RACE_WEEKDAY', 'race_weekday', 'no race weekday for targetless coached block'),
+        record('CALENDAR_PLAN_WEEKS', 'plan_weeks', 'exact purchased coached-block length'),
+        record('CALENDAR_PLAN_START', 'plan_start', 'sealed fulfillment effective date'),
+        record('CALENDAR_PLAN_START_SHORT', 'plan_start_short', 'display projection of plan start'),
+        record('CALENDAR_PLAN_END', 'plan_end', 'Sunday ending the exact coached-block window'),
+        record('CALENDAR_WEEK1_MONDAY', 'week1_monday', 'canonical first-week boundary'),
+        record('CALENDAR_RACE_WEEK_MONDAY', 'race_week_monday', 'no race week for targetless coached block'),
+        record('CALENDAR_WEEKS', 'weeks', 'explicit phase and load/recovery week pattern'),
+        record('CALENDAR_NAMING', 'workout_naming_convention',
+               'stable calendar-derived workout naming contract', sensitivity='internal'),
+        record('CALENDAR_EXAMPLE', 'workout_example',
+               'display example projected from Week 1 Monday', sensitivity='internal'),
+        record('CALENDAR_DAY_ABBREVIATIONS', 'day_abbreviations',
+               'canonical weekday abbreviation table', {'source': 'constants.DAY_FULL_TO_ABBREV'},
+               'internal'),
+        record('CALENDAR_MONTH_ABBREVIATIONS', 'month_abbreviations',
+               'canonical month abbreviation table', {'source': 'calendar month table'},
+               'internal'),
+    ]
+    result['_derived'] = assert_registry_covers(
+        result, records, artifact='calendar', revision=generation_revision)
+    return result
+
+
 def parse_meso_pattern(pattern: str) -> tuple:
     """Parse meso pattern string like '3:1' into (load_weeks, recovery_weeks)."""
     try:
@@ -599,6 +748,41 @@ def run_sanity_checks(plan_dates: dict, race_date_str: str, athlete_id: str) -> 
     return all_passed
 
 
+def run_block_sanity_checks(plan_dates: dict, athlete_id: str,
+                            expected_start: str = None,
+                            expected_end: str = None) -> bool:
+    """Print the equivalent publication checks for a targetless block."""
+    print("\n🔍 SANITY CHECKS:")
+    print("-" * 40)
+    errors = validate_block_dates(plan_dates, expected_start, expected_end)
+    checks = [
+        ("Plan type", "targetless coached block", True),
+        ("Plan weeks", plan_dates.get('plan_weeks'),
+         2 <= int(plan_dates.get('plan_weeks') or 0) <= 4),
+        ("Plan start", plan_dates.get('plan_start'), not expected_start
+         or plan_dates.get('plan_start') == expected_start),
+        ("Plan end", plan_dates.get('plan_end'), not expected_end
+         or plan_dates.get('plan_end') == expected_end),
+        ("Race artifacts", "none", not plan_dates.get('race_date')),
+    ]
+    all_passed = True
+    for name, value, passed in checks:
+        print(f"  {'✓' if passed else '✗'} {name}: {value}")
+        all_passed = all_passed and passed
+    if errors:
+        print("\n⚠️  VALIDATION ISSUES:")
+        for error in errors:
+            print(f"  ✗ {error}")
+            if error.startswith('CRITICAL'):
+                all_passed = False
+    print("\n" + "-" * 40)
+    if all_passed:
+        print("✅ ALL SANITY CHECKS PASSED")
+    else:
+        print("❌ SANITY CHECKS FAILED - DO NOT USE THIS PLAN")
+    return all_passed
+
+
 def main():
     """CLI entry point."""
     import argparse
@@ -627,10 +811,14 @@ def main():
     with open(profile_path, 'r') as f:
         profile = yaml.safe_load(f)
 
-    # Get race date
+    # A specific-race plan uses the established backwards calendar. General
+    # coached blocks use an exact sealed window and never fabricate an event.
     race_date = profile.get('target_race', {}).get('date')
-    if not race_date:
-        print("ERROR: No target race date in profile")
+    fulfillment = profile.get('fulfillment') or {}
+    coached_block = profile.get('coached_block') or {}
+    targetless = not race_date
+    if targetless and not coached_block:
+        print("ERROR: No target race or coached-block definition in profile")
         sys.exit(1)
 
     # Validate-only mode
@@ -643,7 +831,11 @@ def main():
         with open(plan_dates_path, 'r') as f:
             plan_dates = yaml.safe_load(f)
 
-        passed = run_sanity_checks(plan_dates, race_date, args.athlete_id)
+        passed = (run_block_sanity_checks(
+            plan_dates, args.athlete_id,
+            fulfillment.get('effective_date'),
+            fulfillment.get('planning_horizon_end')) if targetless
+                  else run_sanity_checks(plan_dates, race_date, args.athlete_id))
         sys.exit(0 if passed else 1)
 
     # Get preferred start
@@ -676,22 +868,35 @@ def main():
     travel_dates = profile.get('travel_dates', [])
 
     # Calculate dates with constraints (including recovery week marking)
-    fulfillment = profile.get('fulfillment') or {}
     generation_revision = int(fulfillment.get('generation_revision') or 1)
     derived_at = str(fulfillment.get('generation_at') or '') or None
-    post_event_recovery_weeks = post_event_recovery_weeks_for_horizon(
-        race_date, fulfillment.get('planning_horizon_end'))
-    plan_dates = calculate_plan_dates(
-        race_date, plan_weeks, preferred_start, heavy_training_end, b_events,
-        meso_pattern, travel_dates, generation_revision, derived_at,
-        post_event_recovery_weeks=post_event_recovery_weeks)
+    if targetless:
+        plan_dates = calculate_block_dates(
+            str(fulfillment.get('effective_date') or preferred_start),
+            plan_weeks, coached_block.get('phase'),
+            coached_block.get('week_types'), generation_revision, derived_at)
+        expected_end = str(fulfillment.get('planning_horizon_end') or '')
+        if expected_end and plan_dates['plan_end'] != expected_end:
+            print("ERROR: Coached-block result does not match planning horizon")
+            sys.exit(1)
+    else:
+        post_event_recovery_weeks = post_event_recovery_weeks_for_horizon(
+            race_date, fulfillment.get('planning_horizon_end'))
+        plan_dates = calculate_plan_dates(
+            race_date, plan_weeks, preferred_start, heavy_training_end, b_events,
+            meso_pattern, travel_dates, generation_revision, derived_at,
+            post_event_recovery_weeks=post_event_recovery_weeks)
 
     # Print summary
     print("=" * 60)
     print(f"Plan Calendar: {args.athlete_id}")
     print("=" * 60)
-    print(f"\nRace: {profile.get('target_race', {}).get('name', 'Unknown')}")
-    print(f"Race Date: {plan_dates['race_date']} ({plan_dates['race_weekday']})")
+    if targetless:
+        print(f"\nBlock: {coached_block.get('phase', '').title()}")
+        print(f"Week Types: {', '.join(coached_block.get('week_types') or [])}")
+    else:
+        print(f"\nRace: {profile.get('target_race', {}).get('name', 'Unknown')}")
+        print(f"Race Date: {plan_dates['race_date']} ({plan_dates['race_weekday']})")
     print(f"Plan Duration: {plan_dates['plan_weeks']} weeks")
     print(f"Plan Start: {plan_dates['plan_start']} (Week 1 Monday)")
     print(f"Plan End: {plan_dates['plan_end']} (Planning Horizon Sunday)")
@@ -699,10 +904,14 @@ def main():
     print(f"\nWorkout Naming: {plan_dates['workout_naming_convention']}")
     print(f"Example: {plan_dates['workout_example']}")
 
-    print(f"\n{format_week_calendar(plan_dates['weeks'], plan_dates['race_date'])}")
+    print(f"\n{format_week_calendar(plan_dates['weeks'], plan_dates.get('race_date') or '')}")
 
     # Run sanity checks
-    passed = run_sanity_checks(plan_dates, race_date, args.athlete_id)
+    passed = (run_block_sanity_checks(
+        plan_dates, args.athlete_id,
+        fulfillment.get('effective_date'), fulfillment.get('planning_horizon_end'))
+              if targetless else run_sanity_checks(
+                  plan_dates, race_date, args.athlete_id))
 
     if not passed:
         print("\n⛔ NOT SAVING - Fix errors first")
@@ -731,6 +940,7 @@ def main():
             'race_date': race_date,
             'preferred_start': preferred_start,
             'calendar_plan_weeks': plan_dates['plan_weeks'],
+            'coached_block': coached_block or None,
         }
         for identifier, field, basis in (
             ('CLASSIFICATION_PLAN_WEEKS', 'plan_weeks',
@@ -738,7 +948,8 @@ def main():
             ('CLASSIFICATION_PLAN_START', 'plan_start', 'final calendar start boundary'),
             ('CLASSIFICATION_PLAN_END', 'plan_end', 'final calendar end boundary'),
             ('CLASSIFICATION_RACE_WEEKDAY', 'race_weekday',
-             'weekday derived from the target race date'),
+             ('weekday derived from the target race date' if race_date
+              else 'no race weekday for targetless coached block')),
         ):
             records.append(derived_entry(
                 id=identifier, field=field, value_class='inferred', basis=basis,

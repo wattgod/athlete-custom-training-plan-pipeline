@@ -82,6 +82,27 @@ def test_valid_fixture_discriminates_generation_from_order_date():
     assert [item['id'] for item in confirmations] == ['SCHEDULE_MISMATCH_CONFIRM']
 
 
+def test_targetless_coached_block_needs_no_fake_race_day():
+    document = _document()
+    sessions = [
+        _session('2026-08-24', 'Rest Day', 'day_off', 'rest', 0),
+        _session('2026-08-25', 'Endurance'),
+    ]
+    document['plan_ir']['race_snapshot'] = {
+        'name': None, 'date': None, 'distance_miles': None}
+    document['plan_ir']['weeks'] = [{
+        'number': 1, 'phase': 'build', 'sessions': sessions}]
+    document['tp_manifest'].update({
+        'plan_title': 'Athlete M · Coached Block · 1wk [CUSTOM]',
+        'race': {'name': None, 'date': None, 'priority': None},
+        'expected': {
+            'bike': 1, 'strength': 0, 'day_off': 1, 'race': 0, 'total': 2},
+        'sessions': copy.deepcopy(sessions),
+    })
+    issues, _ = validate_transitional_input(document)
+    assert 'NO_RACE_DAY_WORKOUT' not in {item['id'] for item in issues}
+
+
 def test_seven_synthesized_rest_days_plus_race_is_thin():
     document = _document()
     rest = [_session(f'2026-09-{12 + index:02d}', 'Rest Day', 'day_off', 'rest', 0)

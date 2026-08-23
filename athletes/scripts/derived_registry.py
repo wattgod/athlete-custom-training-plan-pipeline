@@ -65,6 +65,7 @@ _PROFILE_RAW_ROOTS = (
 )
 
 _PROFILE_SHAPE = {key: RAW for key in _PROFILE_RAW_ROOTS} | {
+    "coached_block": _optional(RAW),
     "health_factors": {
         "age": DERIVED,
         "sleep_quality": RAW,
@@ -225,6 +226,7 @@ _CALENDAR_WEEK = {
     "sunday": DERIVED, "sunday_short": DERIVED, "phase": DERIVED,
     "is_race_week": DERIVED, "days": _list(_CALENDAR_DAY),
     "is_recovery_week": DERIVED,
+    "week_type": _optional(DERIVED),
     "is_post_event_recovery": _optional(DERIVED),
     "b_race": _optional({"name": DERIVED, "date": DERIVED, "phase": DERIVED}),
 }

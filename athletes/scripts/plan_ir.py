@@ -263,6 +263,11 @@ def _athlete_from_profile(athlete_id: str, profile: Dict[str, Any]) -> Athlete:
 
 def _race_from_artifacts(profile: Dict[str, Any], fueling: Dict[str, Any], plan_dates: Dict[str, Any]) -> RaceSnapshot:
     target = profile.get("target_race", {}) or {}
+    if (profile.get("coached_block") and not target.get("date")
+            and not plan_dates.get("race_date")):
+        # Fueling retains generic training guidance for a coached block, but it
+        # is not an event fact and must never backfill a phantom race snapshot.
+        return RaceSnapshot()
     fueling_race = fueling.get("race", {}) or {}
     race = profile.get("race", {}) or {}
     event_year = _first(target, "event_year") or _first(race, "event_year")
@@ -970,7 +975,9 @@ def project_tp_manifest(plan_ir: PlanIR) -> Dict[str, Any]:
 
     plan_weeks = max((w.number for w in plan_ir.weeks if w.number and w.number > 0), default=0)
     athlete_name = plan_ir.athlete.name or "Athlete"
-    race_name = plan_ir.race_snapshot.name or "Race"
+    has_race = bool(plan_ir.race_snapshot.name or plan_ir.race_snapshot.date)
+    race_name = (plan_ir.race_snapshot.name
+                 or ("Race" if has_race else "Coached Block"))
     return {
         "version": _TP_MANIFEST_VERSION,
         "plan_title": f"{athlete_name} · {race_name} · {plan_weeks}wk [CUSTOM]",
@@ -978,7 +985,7 @@ def project_tp_manifest(plan_ir: PlanIR) -> Dict[str, Any]:
         "race": {
             "name": plan_ir.race_snapshot.name,
             "date": plan_ir.race_snapshot.date,
-            "priority": "A",
+            "priority": "A" if has_race else None,
         },
         "control": {
             "metric": plan_ir.athlete.key_markers.get("control_metric"),

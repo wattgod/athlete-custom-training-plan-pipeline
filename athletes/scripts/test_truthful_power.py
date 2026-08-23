@@ -17,7 +17,7 @@ from canonical_training_model import (CanonicalModelError, MODEL_VERSION,
                                       build_canonical_model,
                                       metric_neutral_description,
                                       project_guide_html,
-                                      publish_zwo_projection,
+                                      publish_zwo_projection, target_summary,
                                       validate_canonical_model)
 from apply_contract import build_contract
 from generate_plan_preview import build_preview_data
@@ -39,6 +39,11 @@ PRESCRIPTION = {
                "weight_kg": 70, "intensity_descriptor": "finish"},
     "policy_version": "fixture",
 }
+
+
+def test_rpe_interval_summary_names_both_targets_without_ratio_ambiguity():
+    assert target_summary({'type': 'rpe', 'on': 6, 'off': 10}) == (
+        'RPE 6; RPE 10')
 
 
 def test_rpe_description_removes_all_percent_based_power_prose():
