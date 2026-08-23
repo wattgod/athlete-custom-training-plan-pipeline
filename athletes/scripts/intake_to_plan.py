@@ -1143,8 +1143,9 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'distance_miles': parsed['distance_miles'],
             'goal': goal_type if is_target else 'compete',
             'priority': priority,
-            'mandatory': parsed['mandatory'],
         }
+        if parsed['mandatory']:
+            event['mandatory'] = True
 
         if matched:
             race_id, info = matched

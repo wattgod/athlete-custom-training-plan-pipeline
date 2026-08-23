@@ -348,12 +348,14 @@ def _event_ledger(profile: Dict[str, Any]) -> List[Dict[str, Any]]:
         for event in profile.get(key) or []:
             if not isinstance(event, dict):
                 continue
-            events.append({
+            projected = {
                 "name": event.get("name"),
                 "date": event.get("date"),
                 "priority": event.get("priority") or priority,
-                "mandatory": bool(event.get("mandatory")),
-            })
+            }
+            if event.get("mandatory") is True:
+                projected["mandatory"] = True
+            events.append(projected)
     return events
 
 
