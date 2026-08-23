@@ -104,6 +104,22 @@ _DROP_ATHLETE_SECTIONS = {
     "RACE MORNING", "RACE-DAY CEILING",
 }
 _ALL_CAPS_CHEER = re.compile(r"^[A-Z][A-Z\s,!.'’\-]{5,}!+$")
+_ATHLETE_COPY_MAX_WORDS = 180
+
+
+def _truncate_athlete_copy(value: str) -> str:
+    words = value.split()
+    if len(words) <= _ATHLETE_COPY_MAX_WORDS:
+        return value
+    match = re.search(r"(?ms)^PRESCRIPTION:\s*.*\Z", value)
+    tail = match.group(0).strip() if match else ""
+    tail_words = tail.split()
+    if len(tail_words) >= _ATHLETE_COPY_MAX_WORDS:
+        return " ".join(tail_words[:_ATHLETE_COPY_MAX_WORDS])
+    budget = _ATHLETE_COPY_MAX_WORDS - len(tail_words)
+    head_source = value[:match.start()].strip() if match else value
+    head = " ".join(head_source.split()[:budget]).strip()
+    return (head + ("\n\n" + tail if tail else "")).strip()
 
 
 def sanitize_athlete_title(value: Any) -> str:
@@ -144,7 +160,7 @@ def sanitize_athlete_description(value: Any) -> str:
     result = "\n".join(lines)
     result = re.sub(r"[ \t]+\n", "\n", result)
     result = re.sub(r"\n{3,}", "\n\n", result)
-    return result.strip()
+    return _truncate_athlete_copy(result.strip())
 
 
 def _format_percent(value: Any) -> Optional[str]:

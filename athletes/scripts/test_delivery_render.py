@@ -72,6 +72,15 @@ def test_athlete_visible_description_normalizes_all_fuel_tags():
         assert "[" not in rendered
 
 
+def test_athlete_visible_description_caps_copy_and_keeps_prescription():
+    rendered = sanitize_athlete_description(
+        "MAIN SET:\n" + ("Ride smoothly. " * 220)
+        + "\n\nPRESCRIPTION: RPE 6."
+    )
+    assert len(rendered.split()) <= 180
+    assert rendered.endswith("PRESCRIPTION: RPE 6.")
+
+
 def _bike(date, minutes, *, title="Tempo", segments=None, structure=None,
           week_type="build", simulation=False, dress=False):
     return Week(number=1, week_type=week_type, sessions=[Session(
