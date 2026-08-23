@@ -447,3 +447,14 @@ def test_a_only_weekly_note_copy_policy_does_not_invent_b_event():
     }]
     issues, _ = validate_transitional_input(document)
     assert 'ATHLETE_VISIBLE_COPY_POLICY' not in {issue['id'] for issue in issues}
+
+
+def test_cadence_target_is_not_read_as_intensity():
+    """An RPE 6 step with a 95 rpm cadence target is RPE 6, not RPE 95
+    (sol review Aug 23 2026: the two-target form created a false
+    RPE_DESCRIPTION_STRUCTURE_MISMATCH blocker)."""
+    from post_render_validator import _structure_max_target
+    session = {"structure": {"primaryIntensityMetric": "rpe", "structure": [{"steps": [{
+        "targets": [{"minValue": 6, "maxValue": 6},
+                    {"minValue": 95, "unit": "roundOrStridePerMinute"}]}]}]}}
+    assert _structure_max_target(session) == 6

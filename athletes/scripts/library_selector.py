@@ -399,14 +399,24 @@ def _lint_flags(item: Mapping[str, Any]) -> list[str]:
     flags = []
     if item.get("lint_duration_claim"):
         flags.append("lint_duration_claim")
-    if _has_ragged_long_block(item.get("description")):
-        flags.append("lint_ragged_duration_text")
+    # lint_ragged_duration_text is ADVISORY (see advisory_flags): the 23 items
+    # it matches carry real authored durations ("6:30", "8:08"), and pulling
+    # them from the pools changed plans (sol review, Aug 23 2026). It is
+    # reported for curation, never excluded.
     if item.get("lint_rpe_conflict"):
         flags.append("lint_rpe_conflict")
     if item.get("lint_manual_review"):
         flags.append("lint_manual_review")
     if item.get("lint_bookend_intensity"):
         flags.append("lint_bookend_intensity")
+    return flags
+
+
+def advisory_flags(item: Mapping[str, Any]) -> list[str]:
+    """Curation hints that do NOT affect selection."""
+    flags = []
+    if _has_ragged_long_block(item.get("description")):
+        flags.append("lint_ragged_duration_text")
     return flags
 
 
@@ -628,6 +638,7 @@ def _to_resolution(item: Mapping[str, Any]) -> dict[str, Any]:
         "structure": item["structure"],
         "description": item["description"],
         "dimension_score": item["dimension_score"],
+        "advisory_flags": advisory_flags(item),
         # The coach's own authored RPE call from the canonical item name
         # ("... - RPE3-4"); carried through to the placed card title so the
         # renderer never overrides it with structure-derived guessing.

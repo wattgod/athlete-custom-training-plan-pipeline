@@ -134,10 +134,16 @@ def _sessions(plan_ir: Dict[str, Any]) -> Iterable[Tuple[int, Dict[str, Any]]]:
 
 
 def _structure_max_target(session: Dict[str, Any]) -> float | None:
+    """Maximum PRIMARY-metric target (RPE / %FTP / %HR). Targets carrying a
+    `unit` (cadence: roundOrStridePerMinute) are a second axis and must never
+    be read as intensity -- an RPE 6 step with a 95 rpm cadence target is not
+    RPE 95 (sol review, Aug 23 2026)."""
     values = []
     for block in (session.get("structure") or {}).get("structure") or []:
         for step in block.get("steps") or []:
             for target in step.get("targets") or []:
+                if not isinstance(target, dict) or target.get("unit"):
+                    continue
                 for field in ("minValue", "maxValue"):
                     try:
                         values.append(float(target[field]))

@@ -64,3 +64,23 @@ def test_every_archetype_prescription_is_plausible_or_none():
         if parsed and not all(CADENCE_MIN_RPM <= v <= CADENCE_MAX_RPM for v in parsed):
             bad.append((path, text, parsed))
     assert not bad, bad
+
+
+def test_explicit_rpm_survives_a_self_selected_clause():
+    # sol review Aug 23 2026: the blanket early return lost the work range
+    assert parse_cadence_range("Efforts: 95-110rpm, Recovery: self-selected") == (95, 110)
+    assert parse_cadence_range("80-90rpm, natural on the recoveries") == (80, 90)
+
+
+def test_self_selected_never_falls_through_to_a_name_default():
+    from nate_workout_generator import extract_cadence_range_from_archetype
+    arch = {"name": "VO2max Something"}
+    assert extract_cadence_range_from_archetype(arch, {"cadence_prescription": "Self-selected for max power"}) is None
+    assert extract_cadence_range_from_archetype(arch, {}) == (90, 100), "name default still applies when nothing is said"
+
+
+def test_intervals_without_prescription_carry_no_cadence_attribute():
+    from nate_workout_generator import generate_intervals_block
+    block = generate_intervals_block(4, 60, 1.2, 60)
+    assert "Cadence" not in block
+    assert 'CadenceLow="100" CadenceHigh="110"' in generate_intervals_block(4, 60, 1.2, 60, cadence_range=(100, 110))

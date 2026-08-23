@@ -27,9 +27,10 @@ def test_resolution_never_seeds_on_directory_name_alone():
     assert "athlete_seed=_seed" in src
 
 
-def test_ragged_long_block_descriptions_are_lint_excluded():
+def test_ragged_long_block_descriptions_are_advisory_not_excluded():
     import library_selector as L
     assert L._has_ragged_long_block("MAIN SET:\n• 7x (8:08 @57%-67% FTP → 30s @140% FTP)")
     assert not L._has_ragged_long_block("• 4x (1:30 @120% FTP → 2:50 easy)")
     assert not L._has_ragged_long_block("• 2x (20:00 @88% FTP)")
-    assert "lint_ragged_duration_text" in L._lint_flags({"description": "• 8:08 @60% FTP"})
+    assert "lint_ragged_duration_text" in L.advisory_flags({"description": "• 8:08 @60% FTP"})
+    assert "lint_ragged_duration_text" not in L._lint_flags({"description": "• 8:08 @60% FTP"})

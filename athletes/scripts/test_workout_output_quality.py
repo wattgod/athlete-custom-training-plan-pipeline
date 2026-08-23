@@ -243,6 +243,18 @@ class TestRoundTimePlannedHours:
 _MSS_RE = re.compile(r'(\d+):(\d{2})')
 
 
+def _is_library_resolved(path):
+    """True when the ZWO was placed from a curated TP library item (the
+    naming manifest carries library_item_id): its description is verbatim
+    coach copy, outside the generated-copy rules this module owns."""
+    import json
+    manifest = path.parent / "naming_manifest.json"
+    if not manifest.exists():
+        return False
+    entry = json.loads(manifest.read_text()).get(path.stem) or {}
+    return bool(entry.get("library_item_id"))
+
+
 def _zwo_description(path):
     m = re.search(r'<description>(.*?)</description>', path.read_text(), re.S)
     return m.group(1) if m else path.read_text()
@@ -283,6 +295,8 @@ def test_no_long_segment_renders_with_ragged_seconds(golden_files):
     """
     offenders = []
     for f in golden_files:
+        if _is_library_resolved(f):
+            continue  # verbatim curated copy; library_selector.advisory_flags reports it for curation
         desc = _zwo_description(f)
         for m in _MSS_RE.finditer(desc):
             if int(m.group(1)) >= 5:

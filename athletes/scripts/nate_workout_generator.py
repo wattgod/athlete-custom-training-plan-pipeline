@@ -1210,6 +1210,13 @@ def parse_cadence_prescription(prescription: str) -> Optional[int]:
     return None
 
 
+def is_self_selected_cadence(prescription: Optional[str]) -> bool:
+    """True when the coach explicitly left cadence to the rider."""
+    text = (prescription or "").lower()
+    return ('self-selected' in text or 'self selected' in text
+            or 'natural' in text or 'rider' in text)
+
+
 def parse_cadence_range(prescription: str) -> Optional[Tuple[int, int]]:
     """
     Parse a cadence prescription string into a range (low, high).
@@ -1233,9 +1240,6 @@ def parse_cadence_range(prescription: str) -> Optional[Tuple[int, int]]:
 
     import re
     prescription_lower = prescription.lower()
-    if ('self-selected' in prescription_lower or 'self selected' in prescription_lower
-            or 'natural' in prescription_lower or 'rider' in prescription_lower):
-        return None  # Let rider choose -- even if other digits appear in the text
 
     def plausible(low: int, high: int) -> bool:
         return CADENCE_MIN_RPM <= low <= CADENCE_MAX_RPM and CADENCE_MIN_RPM <= high <= CADENCE_MAX_RPM
@@ -1252,6 +1256,13 @@ def parse_cadence_range(prescription: str) -> Optional[Tuple[int, int]]:
         val = int(match.group(1))
         if plausible(val, val):
             return (val - 5, val + 5)
+
+    # An explicitly unconstrained prescription ("self-selected", "natural",
+    # "rider's choice") with no explicit rpm figure above means NO target.
+    # Checked AFTER explicit figures so "Efforts: 95-110rpm, Recovery:
+    # self-selected" keeps its work range (sol review, Aug 23 2026).
+    if is_self_selected_cadence(prescription):
+        return None
 
     # Descriptive terms
     if 'high' in prescription_lower:
@@ -1314,7 +1325,7 @@ def generate_intervals_block(
     on_power: float,
     off_duration: int,
     off_power: float = ZWODefaults.RECOVERY_POWER,
-    cadence: int = Cadence.STANDARD,
+    cadence: Optional[int] = None,
     cadence_range: Optional[Tuple[int, int]] = None,
     include_text: bool = False  # TP doesn't support textevent
 ) -> str:
@@ -1338,11 +1349,14 @@ def generate_intervals_block(
     Returns:
         XML intervals block with optional text events
     """
-    # Prefer cadence_range over single cadence
+    # Prefer cadence_range over single cadence; NO prescription -> no attribute
+    # (a literal default of 90 rpm used to be stamped on every interval set).
     if cadence_range:
         cadence_attr = f'CadenceLow="{cadence_range[0]}" CadenceHigh="{cadence_range[1]}"'
-    else:
+    elif cadence:
         cadence_attr = f'Cadence="{cadence}"'
+    else:
+        cadence_attr = ''
 
     block = (
         f'    <IntervalsT Repeat="{repeats}" '
@@ -1539,12 +1553,16 @@ def extract_cadence_range_from_archetype(
         parsed = parse_cadence_range(level_data["cadence_prescription"])
         if parsed:
             return parsed
+        if is_self_selected_cadence(level_data["cadence_prescription"]):
+            return None  # explicit rider's choice: never substitute a name default
 
     # Check archetype-level prescription
     if "cadence_prescription" in archetype:
         parsed = parse_cadence_range(archetype["cadence_prescription"])
         if parsed:
             return parsed
+        if is_self_selected_cadence(archetype["cadence_prescription"]):
+            return None
 
     # Default ranges based on workout type
     archetype_name = archetype.get("name", "").lower()
