@@ -674,6 +674,7 @@ class TestParseRaceLine:
             'date': '2026-11-14',
             'distance_miles': 100,
             'priority': 'A',
+            'mandatory': False,
         }
 
     def test_priority_c(self):
@@ -687,7 +688,14 @@ class TestParseRaceLine:
             'date': '',
             'distance_miles': 0,
             'priority': None,
+            'mandatory': False,
         }
+
+    def test_explicit_mandatory_event(self):
+        result = parse_race_line(
+            'Whistler MTB (2026-09-13, priority B, mandatory)')
+        assert result['priority'] == 'B'
+        assert result['mandatory'] is True
 
     def test_partial_meta_no_priority(self):
         result = parse_race_line('Steamboat 100 (2026-08-15, 100)')

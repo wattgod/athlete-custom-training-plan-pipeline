@@ -352,6 +352,7 @@ def _event_ledger(profile: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "name": event.get("name"),
                 "date": event.get("date"),
                 "priority": event.get("priority") or priority,
+                "mandatory": bool(event.get("mandatory")),
             })
     return events
 

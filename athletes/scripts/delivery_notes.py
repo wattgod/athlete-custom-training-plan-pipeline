@@ -1204,13 +1204,24 @@ def render_coached_weekly_notes(plan_ir: dict) -> List[Dict[str, str]]:
             if b_event and b_name:
                 b_date = _as_date(_get(b_event, "date"))
                 b_day = b_date.strftime("%A") if b_date else b_name
-                direction = (
-                    f"Race week: {off_text} off, legs awake midweek, openers "
-                    f"before {a_name}. {b_name} is optional; {a_day} gets first "
-                    "claim on your legs."
-                )
+                mandatory_b = bool(_get(b_event, "mandatory"))
+                if mandatory_b:
+                    direction = (
+                        f"Race week: {off_text} off, legs awake midweek, "
+                        f"openers before {a_name}. {b_name} is mandatory; "
+                        f"{a_day} decides the mode."
+                    )
+                else:
+                    direction = (
+                        f"Race week: {off_text} off, legs awake midweek, "
+                        f"openers before {a_name}. {b_name} is optional; "
+                        f"{a_day} gets first claim on your legs."
+                    )
                 event_fuel = f"{a_name} and {b_name}"
                 choice_tail = (
+                    f" {b_day}: normal legs, race it; heavy legs, completion "
+                    "mode."
+                    if mandatory_b else
                     f" {b_day} requires normal legs; otherwise skip it."
                 )
             else:

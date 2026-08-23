@@ -869,12 +869,13 @@ def parse_race_line(line: str) -> Dict[str, Any]:
     Expected shape: ``Name (YYYY-MM-DD, miles, priority X)`` — each field in
     the parens is optional, athletes may omit any combination.
 
-    Returns: ``{'name': str, 'date': str, 'distance_miles': int, 'priority': str|None}``.
+    Returns the parsed event facts, including an explicit ``mandatory`` flag.
     Priority is uppercased ('A'|'B'|'C'|'D') when present, else None.
     """
     raw = line.strip()
     if not raw:
-        return {'name': '', 'date': '', 'distance_miles': 0, 'priority': None}
+        return {'name': '', 'date': '', 'distance_miles': 0,
+                'priority': None, 'mandatory': False}
 
     # Pull metadata out of the trailing parenthesis (if present)
     meta = ''
@@ -911,6 +912,7 @@ def parse_race_line(line: str) -> Dict[str, Any]:
         'date': date,
         'distance_miles': distance,
         'priority': priority,
+        'mandatory': bool(re.search(r'\bmandatory\b', meta, re.I)),
     }
 
 
@@ -1141,6 +1143,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'distance_miles': parsed['distance_miles'],
             'goal': goal_type if is_target else 'compete',
             'priority': priority,
+            'mandatory': parsed['mandatory'],
         }
 
         if matched:

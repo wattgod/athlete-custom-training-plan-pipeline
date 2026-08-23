@@ -74,6 +74,21 @@ def test_coached_weekly_notes_are_direct_clean_and_bounded():
     assert len(race["body"].split()) <= 110
 
 
+def test_mandatory_b_event_makes_a_race_decide_the_mode():
+    plan = _plan(weeks=2, metric="rpe", later_event=False)
+    plan["fueling"] = {"race_range_g_per_hour": [60, 70]}
+    plan["events"] = [
+        {"name": "Vancouver Gran Fondo", "priority": "A",
+         "date": "2026-08-22"},
+        {"name": "Whistler MTB", "priority": "B", "mandatory": True,
+         "date": "2026-08-23"},
+    ]
+    body = render_coached_weekly_notes(plan)[-1]["body"]
+    assert "Whistler MTB is mandatory; Saturday decides the mode." in body
+    assert "Sunday: normal legs, race it; heavy legs, completion mode." in body
+    assert "optional" not in body
+
+
 def test_single_event_race_week_never_invents_b_event_or_fuel_both_copy():
     plan = _plan(weeks=2, metric="rpe", later_event=False)
     plan["fueling"] = {"race_range_g_per_hour": [60, 70]}
