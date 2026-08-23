@@ -349,6 +349,23 @@ def test_matching_rpe_description_and_structure_are_accepted():
         issue['id'] for issue in issues}
 
 
+def test_explicit_no_test_directive_blocks_any_rendered_field_test():
+    document = _document()
+    document['context']['profile'].setdefault('fitness_markers', {})[
+        'field_testing_allowed'] = False
+    session = _session('2026-08-11', 'RPE Field Test')
+    session['description'] = '20-minute field test at RPE 9.'
+    session['structure'] = _rpe_structure(9)
+    document['plan_ir']['weeks'][1]['sessions'].append(session)
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(
+        issue for issue in issues
+        if issue['id'] == 'FIELD_TEST_SUPPRESSION_BREACH')
+    assert {'date': '2026-08-11', 'title': 'RPE Field Test'} in (
+        item['review_value']['sessions'])
+
+
 def test_unresolved_pain_blocks_field_tests_and_max_rpe_prescriptions():
     document = _document()
     document['context']['profile']['injury_history'] = {

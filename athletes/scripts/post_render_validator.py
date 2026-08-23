@@ -179,6 +179,28 @@ def _rpe_semantic_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
     )]
 
 
+def _field_test_suppression_findings(
+    plan_ir: Dict[str, Any], profile: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    allowed = (profile.get("fitness_markers") or {}).get(
+        "field_testing_allowed", True)
+    if allowed is not False:
+        return []
+    tests = [
+        {"date": session.get("date"), "title": session.get("title")}
+        for _, session in _sessions(plan_ir)
+        if _field_test_metric(session) is not None
+    ]
+    if not tests:
+        return []
+    return [_issue(
+        "FIELD_TEST_SUPPRESSION_BREACH",
+        "The plan contains a field test despite the explicit no-test directive.",
+        review_value={"sessions": tests},
+        basis="canonical field-testing control compared with rendered PlanIR",
+    )]
+
+
 def _unresolved_pain_evidence(profile: Dict[str, Any]) -> List[str]:
     evidence = []
     for injury in (profile.get("injury_history") or {}).get("current_injuries") or []:
@@ -728,6 +750,7 @@ def validate_transitional_input(
 
     profile = context.get("profile") or {}
     issues.extend(_rpe_semantic_findings(plan_ir))
+    issues.extend(_field_test_suppression_findings(plan_ir, profile))
     issues.extend(_unresolved_pain_load_findings(plan_ir, profile))
     issues.extend(_athlete_visible_copy_findings(plan_ir))
     schedule_issues, schedule_confirmations = _schedule_findings(plan_ir, profile)

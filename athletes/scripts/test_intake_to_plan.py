@@ -101,6 +101,22 @@ def test_absent_devices_produce_no_profile_device_token(minimal_valid_parsed):
     assert profile['cycling_equipment']['hr_monitor'] is False
 
 
+def test_explicit_no_field_tests_is_canonical_profile_control(
+    minimal_valid_parsed,
+):
+    parsed = copy.deepcopy(minimal_valid_parsed)
+    parsed['testing'] = {'include_field_tests': 'no'}
+    profile = build_profile(parsed)
+    markers = profile['fitness_markers']
+    assert markers['field_testing_allowed'] is False
+    assert markers['reanchor'] == {
+        'required': False,
+        'week': None,
+        'test': None,
+        'action': 'No field test scheduled; preserve the current training anchor.',
+    }
+
+
 def test_additional_notes_preserve_calendar_intent_and_referenced_dates(
     minimal_valid_parsed,
 ):

@@ -91,6 +91,7 @@ _PROFILE_SHAPE = {key: RAW for key in _PROFILE_RAW_ROOTS} | {
         "control_metric": DERIVED,
         "control_basis": DERIVED,
         "requested_metric": RAW,
+        "field_testing_allowed": RAW,
         "reanchor": RAW,
     },
     "discipline": DERIVED,

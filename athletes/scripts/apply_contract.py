@@ -62,7 +62,7 @@ class ApplyContractError(ValueError):
     """The offline contract is incomplete, ambiguous, or schema-invalid."""
 
 
-MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS = 1400
+MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS = 360
 _VISIBLE_INTERNAL_TAG = re.compile(
     r"\[[A-Z][A-Z0-9 _-]{0,40}:\s*[^\]]*\]", re.IGNORECASE)
 _FUEL_TAG = re.compile(
@@ -78,6 +78,84 @@ _PHASE_BOILERPLATE = re.compile(
 _DROP_DESCRIPTION_SECTION = re.compile(
     r"(?ms)^\s*(?:PURPOSE|DIMENSIONS):\s*.*?(?=^\s*[A-Z][A-Z -]{2,}:\s*|\Z)"
 )
+_DESCRIPTION_SECTION = re.compile(
+    r"^\s*[•*-]?\s*(?P<label>FUEL|FUELING PLAN|NUTRITION|HYDRATION|"
+    r"EXECUTION|HOW TO RIDE IT|AUDIBLE|POSITION|CADENCE):\s*"
+    r"(?P<body>.*?)(?=^\s*[•*-]?\s*[A-Z][A-Z /-]{2,}:\s*|\Z)",
+    re.MULTILINE | re.DOTALL | re.IGNORECASE,
+)
+
+
+def _clean_description_detail(value: str) -> str:
+    value = re.split(r"\n\s*\n", value, maxsplit=1)[0]
+    lines = []
+    for raw in value.splitlines():
+        line = re.sub(r"^\s*[•*-]\s*", "", raw).strip()
+        if not line:
+            continue
+        line = re.sub(
+            r"\bPractice this prescription\.?", "", line,
+            flags=re.IGNORECASE,
+        ).strip()
+        if line:
+            lines.append(line)
+    return " ".join(lines)
+
+
+def _concise_structured_description(text: str) -> str:
+    # Some legacy generators flattened headings into one long line. Restore
+    # section boundaries before selecting only details that are not already in
+    # TrainingPeaks' executable step graph.
+    text = re.sub(
+        r"\s+(?=(?:WARM-UP|MAIN SET|COOL-DOWN|EXECUTION|HOW TO RIDE IT|"
+        r"FUEL|NUTRITION|HYDRATION|AUDIBLE|POSITION|CADENCE|PRESCRIPTION):)",
+        "\n", text, flags=re.IGNORECASE,
+    )
+    details = []
+    seen_labels = set()
+    for match in _DESCRIPTION_SECTION.finditer(text):
+        label = match.group("label").upper()
+        if label == "FUELING PLAN":
+            label = "FUEL"
+        if label in seen_labels:
+            continue
+        value = _clean_description_detail(match.group("body"))
+        if not value or (label == "AUDIBLE" and len(value) < 12):
+            continue
+        seen_labels.add(label)
+        display_label = "How to ride it" if label == "HOW TO RIDE IT" else label.title()
+        details.append(f"{display_label}: {value}")
+    if details:
+        return "\n".join(details)
+    if (len(text.strip()) <= MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS
+            and not re.search(
+                r"(?im)^\s*(?:WARM-UP|MAIN SET|COOL-DOWN|PRESCRIPTION):",
+                text,
+            )):
+        return text.strip()
+    return "Follow the structure. Hold the written effort. No bonus rounds."
+
+
+def _concise_race_description(text: str) -> str:
+    carbs = re.search(r"Carbs/hour:\s*(\d+)\s*g", text, re.IGNORECASE)
+    start = re.search(r"Start fueling at\s*([^,\n]+)", text, re.IGNORECASE)
+    first = re.search(r"First third:.*?\(RPE\s*([\d-]+)\)", text, re.IGNORECASE)
+    middle = re.search(r"Middle third:.*?RPE\s*([\d-]+)", text, re.IGNORECASE)
+    lines = []
+    if first:
+        lines.append(f"Start controlled at RPE {first.group(1)}.")
+    if middle:
+        lines.append(f"Settle at RPE {middle.group(1)}.")
+    if carbs:
+        fuel = f"Fuel {carbs.group(1)} g/hr"
+        if start:
+            fuel += f" from {start.group(1).strip()}"
+        lines.append(fuel + ".")
+    lines.extend([
+        "Climb at an effort you can repeat all day.",
+        "Smooth beats fast. Heroics remain optional and generally unhelpful.",
+    ])
+    return " ".join(lines)
 
 
 def _visible_workout_description(value: Any, *, structured: bool) -> str:
@@ -102,15 +180,18 @@ def _visible_workout_description(value: Any, *, structured: bool) -> str:
     text = "\n".join(lines)
     if structured:
         text = _DROP_DESCRIPTION_SECTION.sub("", text)
+        text = _concise_structured_description(text)
+    elif re.search(r"(?im)^\s*RACE DAY:", text):
+        text = _concise_race_description(text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    if structured and len(text) > MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS:
-        prescription = re.search(r"(?ms)^PRESCRIPTION:\s*.*\Z", text)
-        tail = prescription.group(0).strip() if prescription else ""
-        if len(tail) > MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS:
-            tail = tail[:MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS].rstrip()
-        budget = MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS - len(tail) - 2
-        head = text[:max(0, budget)].rsplit("\n\n", 1)[0].rstrip()
-        text = (head + ("\n\n" + tail if tail else "")).strip()
+    if len(text) > MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS:
+        clipped = text[:MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS + 1]
+        boundary = max(clipped.rfind(". "), clipped.rfind("\n"))
+        if boundary >= MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS // 2:
+            clipped = clipped[:boundary + 1]
+        else:
+            clipped = clipped[:MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS].rstrip()
+        text = clipped.strip()
     if _VISIBLE_INTERNAL_TAG.search(text):
         raise ApplyContractError("athlete-facing workout description contains internal tag")
     return text
@@ -913,9 +994,26 @@ def build_contract(
     inspection = dict(inspection or {})
     protection = canonical_model.get("calendar_protection") or {}
     if protection.get("requested"):
-        if effective_remote_inventory is None or not protected_resources:
+        evidence = protection.get("inventory_evidence") or {}
+        surfaces = evidence.get("read_surfaces") or []
+        counts = evidence.get("counts") or {}
+        if (effective_remote_inventory is None or protected_resources is None
+                or evidence.get("contract_version")
+                != "trainingpeaks_calendar_inventory_evidence/v1"
+                or evidence.get("complete") is not True
+                or not re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(evidence.get("provider_inventory_sha256") or ""))
+                or set(surfaces) != {"workouts", "notes", "events"}
+                or not all(
+                    isinstance(counts.get(name), int)
+                    and not isinstance(counts.get(name), bool)
+                    and counts.get(name) >= 0
+                    for name in surfaces)
+                or counts.get("workouts", 0) + counts.get("notes", 0)
+                != len(effective_remote_inventory)):
             raise ApplyContractError(
-                "calendar protection requires current inventory and explicit keep resources")
+                "calendar protection requires complete current inventory evidence")
     desired = _desired_resources(
         ir, str(order_id), Path(athlete_dir) if athlete_dir else None,
         singleton_desires or {},
@@ -929,8 +1027,9 @@ def build_contract(
         for logical_id in sorted(set(desired) | set(inventory))
     ]
     operations.sort(key=_sort_key)
-    if protection.get("requested") and not any(
-            operation.get("disposition") == "keep" for operation in operations):
+    if (protection.get("requested") and protected_resources
+            and not any(operation.get("disposition") == "keep"
+                        for operation in operations)):
         raise ApplyContractError(
             "calendar protection requires at least one explicit keep operation")
     if protection.get("requested") and any(

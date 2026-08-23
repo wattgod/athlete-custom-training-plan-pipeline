@@ -966,6 +966,7 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     mental = parsed.get('mental_game', {})
     additional = parsed.get('additional', {})
     nutrition_intake = parsed.get('nutrition', {})
+    testing = parsed.get('testing', {})
     fulfillment = parsed.get('fulfillment', {})
     try:
         generation_revision = int(fulfillment.get('generation_revision') or 1)
@@ -1067,6 +1068,13 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         control_basis = 'ftp'
     else:
         control_basis = 'rpe'
+    field_testing_raw = str(
+        testing.get('include_field_tests', testing.get('field_testing', 'yes'))
+        or 'yes'
+    ).strip().lower()
+    field_testing_allowed = field_testing_raw not in {
+        'no', 'none', 'false', 'off', 'disabled', 'do not include',
+    }
     sleep_hours = parse_hours(recovery.get('typical_sleep', ''))
     sleep_quality = recovery.get('sleep_quality', 'good').lower()
     recovery_speed = recovery.get('recovery_speed', 'normal').lower()
@@ -1689,15 +1697,23 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'control_metric': training_metric,
             'control_basis': control_basis,
             'requested_metric': requested_metric,
+            # Explicit coach/athlete control. A measured anchor does not imply
+            # permission to schedule a test or change TrainingPeaks zones.
+            'field_testing_allowed': field_testing_allowed,
             'reanchor': {
-                'required': power_basis == 'none' or control_basis == 'rpe_pending_lthr',
-                'week': 1,
-                'test': (
+                'required': field_testing_allowed and (
+                    power_basis == 'none' or control_basis == 'rpe_pending_lthr'),
+                'week': 1 if field_testing_allowed else None,
+                'test': ((
                     'lthr_field_test' if control_basis in {'lthr', 'rpe_pending_lthr'}
                     else 'hrmax_field_test' if control_basis == 'hrmax'
                     else 'rpe_field_test' if training_metric == 'rpe'
-                    else 'ftp_field_test'),
-                'action': 'Update the measured anchor after the Week 1 field test.',
+                    else 'ftp_field_test') if field_testing_allowed else None),
+                'action': (
+                    'Update the measured anchor after the Week 1 field test.'
+                    if field_testing_allowed else
+                    'No field test scheduled; preserve the current training anchor.'
+                ),
             },
         },
         'recent_training': {

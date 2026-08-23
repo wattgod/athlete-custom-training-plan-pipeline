@@ -195,7 +195,7 @@ def test_calendar_protection_intent_cannot_emit_all_create_contract(tmp_path):
             "requested": True, "referenced_dates": ["2026-08-14"],
         },
     }
-    with pytest.raises(ApplyContractError, match="current inventory and explicit keep"):
+    with pytest.raises(ApplyContractError, match="complete current inventory evidence"):
         _contract(tmp_path, canonical_model=model)
 
 
@@ -215,6 +215,13 @@ def test_calendar_protection_keeps_supported_resources_without_deleting_external
         "calendar_protection": {
             "requested": True,
             "referenced_dates": ["2026-08-14", "2026-08-15"],
+            "inventory_evidence": {
+                "contract_version": "trainingpeaks_calendar_inventory_evidence/v1",
+                "provider_inventory_sha256": "e" * 64,
+                "complete": True,
+                "read_surfaces": ["workouts", "notes", "events"],
+                "counts": {"workouts": 0, "notes": 1, "events": 1},
+            },
         },
     }
     contract = _contract(
@@ -226,6 +233,31 @@ def test_calendar_protection_keeps_supported_resources_without_deleting_external
     )
     assert any(op["disposition"] == "keep" for op in contract["operations"])
     assert not any(op["disposition"] == "delete" for op in contract["operations"])
+
+
+def test_calendar_protection_with_complete_empty_inventory_needs_no_fake_keep(
+    tmp_path,
+):
+    model = {
+        "model_version": "canonical_training_model/v1",
+        "calendar_protection": {
+            "requested": True,
+            "referenced_dates": [],
+            "inventory_evidence": {
+                "contract_version": "trainingpeaks_calendar_inventory_evidence/v1",
+                "provider_inventory_sha256": "f" * 64,
+                "complete": True,
+                "read_surfaces": ["events", "notes", "workouts"],
+                "counts": {"workouts": 0, "notes": 0, "events": 0},
+            },
+        },
+    }
+    contract = _contract(
+        tmp_path, canonical_model=model,
+        effective_remote_inventory={}, protected_resources={},
+    )
+    assert contract["operations"]
+    assert {op["disposition"] for op in contract["operations"]} == {"create"}
 
 
 def test_structured_description_is_concise_clean_and_keeps_execution_structure(tmp_path):
@@ -258,10 +290,38 @@ def test_structured_description_is_concise_clean_and_keeps_execution_structure(t
         "Michael Beal - Week", "Phase:", "[FUEL:", "PURPOSE:",
         "Defensive explanation", "GO GET IT",
     ))
-    assert all(token in description for token in (
-        "FUEL:", "WARM-UP:", "MAIN SET:", "COOL-DOWN:", "PRESCRIPTION:",
-    ))
+    assert description == "Fuel: 60 g/hr with familiar products."
     assert workout["payload"]["structure"] == structure
+
+
+def test_unstructured_race_description_is_terse_and_actionable(tmp_path):
+    ir = _ir()
+    session = ir["weeks"][0]["sessions"][0]
+    session["structure"] = None
+    session["description"] = """RACE DAY: The Long One
+FUELING PLAN:
+- Carbs/hour: 66g
+- Start fueling at 20 min, every 20-30 min thereafter
+PACING STRATEGY:
+- First third: deliberately conservative (RPE 4-5).
+- Middle third: settle into sustainable RPE 5-6.
+HYDRATION:
+- A very long paragraph that is not athlete-facing copy.
+"""
+    (tmp_path / "guide.html").write_text("guide")
+    contract = build_contract(
+        ir, order_id="cs_phase3", tp_athlete_id="fake-42",
+        generation_revision=1,
+        canonical_model={"model_version": "canonical_training_model/v1"},
+        review_items=[], guide_sources={}, athlete_dir=tmp_path,
+    )
+    workout = next(op for op in contract["operations"]
+                   if op["kind"] == "workout_upsert")
+    description = workout["payload"]["description"]
+    assert len(description) <= MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS
+    assert "Fuel 66 g/hr from 20 min." in description
+    assert "Start controlled at RPE 4-5." in description
+    assert "Heroics remain optional" in description
 
 
 def test_three_identities_are_stable_and_revision_scoped(tmp_path):

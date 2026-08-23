@@ -2802,7 +2802,11 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     #   - Never schedule on B-race weeks, taper, or race weeks
     #   - Fallback: try adjacent weeks if preferred week is unavailable
     # ---------------------------------------------------------------
-    ftp_test_target_weeks = [1]  # Always test Week 1
+    field_testing_allowed = (
+        (profile.get('fitness_markers') or {}).get(
+            'field_testing_allowed', True) is not False
+    )
+    ftp_test_target_weeks = [1] if field_testing_allowed else []
 
     # Coach ruling (Aug 2026, "why are there 2 FTP tests two weeks apart?"):
     # an 8-week plan's mid-plan retest was landing Week 3 -- two weeks after
@@ -3472,6 +3476,18 @@ TIPS:
                 # C4/D3: the resolution pass (before the compliance gate,
                 # above) stashed a curated TP library item on this day.
                 _library_resolution = bb_day.get('library_resolution')
+
+                # An explicit no-test directive is canonical prescription
+                # data, not a presentation preference. Replace any block-
+                # builder assessment slot and disable the legacy overlay.
+                if (not field_testing_allowed
+                        and bb_name in {'FTP Test', 'Anaerobic Test'}):
+                    bb_day = dict(bb_day)
+                    bb_name = 'Endurance'
+                    bb_day['name'] = bb_name
+                    bb_day['role'] = 'filler'
+                    bb_level = 1
+                    _library_resolution = None
 
                 # A post-event recovery week is not a normal mid-plan
                 # deload. Remove activation sessions and any curated item

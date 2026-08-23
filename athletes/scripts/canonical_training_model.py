@@ -565,6 +565,22 @@ def build_canonical_model(
                                "record the measured result, and update future targets.").strip()
             description = sanitize_athlete_description(description)
             segments = [_canonical_segment(segment, control) for segment in raw_segments]
+            if is_field_test and control["control_metric"] == "rpe":
+                # The 20-minute assessment is authored as an FTP-neutral 1.00
+                # legacy target. Normal RPE conversion maps 1.00 to RPE 8,
+                # while the athlete-facing protocol correctly calls for RPE
+                # 9. Bind the executable target to the field-test semantics.
+                candidates = [
+                    segment for segment in segments
+                    if segment.get("kind") == "steady_state"
+                    and int(segment.get("seconds") or 0) >= 1200
+                    and (segment.get("target") or {}).get("type") == "rpe"
+                ]
+                if candidates:
+                    target = candidates[-1]["target"]
+                    target.pop("low", None)
+                    target.pop("high", None)
+                    target["value"] = 9
             summaries = [target_summary(segment["target"]) for segment in segments]
             sessions.append({
                 "week": week.number,
