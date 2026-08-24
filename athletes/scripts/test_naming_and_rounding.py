@@ -211,7 +211,9 @@ def _build_w00_plan(tmp_path):
     race_date = (today + datetime.timedelta(days=40)).isoformat()
     plan_dates = cpd.calculate_plan_dates(race_date, plan_weeks=10)
     days_out = (datetime.date.fromisoformat(plan_dates['plan_start']) - today).days
-    assert 1 <= days_out <= 7, (
+    # days_out=0 is legitimate when the suite runs ON a Monday --
+    # clamp-to-next-Monday resolves to today (found by the E2E, 2026-08-24).
+    assert 0 <= days_out <= 7, (
         "test setup drifted -- plan_start no longer lands in the W00 window "
         f"(days_out={days_out}); adjust the race_date/plan_weeks offsets above"
     )
