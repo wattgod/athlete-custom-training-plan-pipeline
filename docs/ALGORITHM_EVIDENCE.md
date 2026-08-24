@@ -125,7 +125,11 @@ because it formalizes what openers already do. (R57, R58)
 ≥6 h/wk; below ~90 cumulative hard minutes VO2max gains are "small and
 inconsistent". Day cap is maturity-conditional: novices 2, mature (≥1–2 yr)
 3, VO2-focused blocks 2–2.5 (defined as ≤5 hard days per rolling 2-week
-window). Floor and cap enforce together. **Precedence:** AE-2.1 applies only
+window). Floor and cap enforce together. **Phase scoping (sol programming
+review 2026-08-24):** the 90-120 hard-minute floor applies to LOAD/BUILD
+weeks only — recovery, taper, and race weeks are governed by their own
+rules (AE-1.12 caps make the floor impossible there by design; testing
+weeks count test efforts toward the floor). **Precedence:** AE-2.1 applies only
 after an athlete passes AE-1.10's intensity-graduation gate — true novices
 inside the onboarding state machine are exempt from the hard-minutes floor.
 **Migration:** active registry rule R05 currently permits novices 1–3
