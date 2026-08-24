@@ -144,8 +144,10 @@ def lint_workout(w: Mapping[str, Any], race: date | None) -> list[dict]:
         if tss and tss / hours > ENDURANCE_TSS_PER_HR:
             add("WARN", "AE-2.8", f"endurance {tss / hours:.1f} TSS/hr exceeds {ENDURANCE_TSS_PER_HR:.0f}")
 
-    # F1 — session floor (AE-2.7)
-    if hours and hours * 3600 < SESSION_FLOOR_SECONDS and not floor_exempt:
+    # F1 — session floor (AE-2.7). Strength (TP type 9) is exempt pending the
+    # open AE-8.4 ruling; non-bike types are out of this floor's scope.
+    if (hours and hours * 3600 < SESSION_FLOOR_SECONDS and not floor_exempt
+            and type_id in BIKE_TYPE_IDS):
         add("WARN", "AE-2.7", f"{hours * 60:.0f} min session under the 45-min floor (no exemption matched)")
 
     # T1 — taper/race-week hard caps (AE-1.12), needs --race-date

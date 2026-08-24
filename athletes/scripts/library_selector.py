@@ -365,10 +365,21 @@ def _max_power_target_pct(structure: Any) -> float:
 # never ship on a customer calendar.
 _INTERNAL_ONLY_NAMES = {"the happy ending"}
 
+# AE-3.11 / AE-6.3 (ratified 2026-08-23): purged concepts may never ship from
+# the TP-curated path either. The native-archetype purge (RETIRED_ARCHETYPES
+# in archetype_registry) does not reach curated selection — Steve Wagner's
+# 2026-08-24 draft received FatMax items 14356013/11/12 and Structured
+# Fartlek 14356007 through this exact gap. Name-substring match mirrors the
+# retire rows in docs/evidence/2026-08-24-tp-curated-change-list.md; the
+# items stay archived in the coach's TP library until retired at the source.
+_PURGED_CONCEPT_NAMES = ("fatmax", "fat max", "fartlek", "fasted")
+
 
 def _is_internal_only(item: Mapping[str, Any]) -> bool:
     name = (item.get("name_base") or item.get("name_raw") or "").lower()
-    return any(blocked in name for blocked in _INTERNAL_ONLY_NAMES)
+    if any(blocked in name for blocked in _INTERNAL_ONLY_NAMES):
+        return True
+    return any(purged in name for purged in _PURGED_CONCEPT_NAMES)
 
 
 # ---------------------------------------------------------------------------

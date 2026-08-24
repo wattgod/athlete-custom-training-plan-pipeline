@@ -138,3 +138,10 @@ def test_cadence_critical_needs_programmed_target():
              "structure": _structure([_step(600, 60, 70, cadence=100)])}
     assert ("WARN", "AE-3.7") in _rules(lint_workout(naked, None))
     assert not any(f["rule"] == "AE-3.7" for f in lint_workout(wired, None))
+
+
+def test_strength_sessions_exempt_from_bike_floor():
+    # AE-2.7 floor is bike-scoped; TP type 9 = strength (open AE-8.4 ruling).
+    w = {"title": "Foundation Strength A", "workoutTypeValueId": 9,
+         "workoutDay": "2026-09-01", "totalTimePlanned": 0.5}
+    assert not any(f["rule"] == "AE-2.7" for f in lint_workout(w, None))

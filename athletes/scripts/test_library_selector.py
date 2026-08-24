@@ -1101,3 +1101,15 @@ def test_base_long_rides_reject_threshold_sessions():
     assert not _passes_role_ceiling(night, base_long)
     assert _passes_role_ceiling(surges, base_long)   # short surges OK in base
     assert _passes_role_ceiling(night, build_long)   # build durability untouched
+
+
+def test_purged_concepts_never_selectable_from_curated_library():
+    """AE-3.11/AE-6.3: FatMax/fartlek/fasted items are excluded at the
+    qualifying pool — the gap that shipped items 14356013/14356007 into the
+    2026-08-24 Steve Wagner draft."""
+    from library_selector import _is_internal_only
+    for name in ("FatMax Development - 3 - 100min", "Structured Fartlek - 2",
+                 "Z2 Fasted Spin", "Fat Max Builder"):
+        assert _is_internal_only({"name_base": name}), name
+    for name in ("G-Spot Progressive - 3", "Endurance - Kredit Kort"):
+        assert not _is_internal_only({"name_base": name}), name
