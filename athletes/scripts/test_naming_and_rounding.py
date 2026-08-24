@@ -199,21 +199,19 @@ def _build_full_plan(tmp_path):
 
 
 def _build_w00_plan(tmp_path):
-    """Real (unfrozen) calendar with plan_start forced 1-7 days out so the
-    W00 pre-plan-week branch fires. W00's days_until_start check uses a
-    *local* `datetime.now()` import inside generate_pre_plan_week, not the
-    frozen calculate_plan_dates clock, so it is intentionally left
-    unfrozen (documented host-local behavior) and computed relative to the
-    real wall clock at test-run time: pick a race far enough out that the
-    naive week-1-Monday computation lands in the past, which forces
-    calculate_plan_dates's clamp-to-next-Monday, always 1-7 days out."""
-    today = datetime.datetime.now().date()
+    """Frozen-clock calendar with plan_start 1-7 days out so the W00
+    pre-plan-week branch fires. Both calculate_plan_dates and
+    generate_pre_plan_week respect GG_FIXED_NOW, so freezing the env var to
+    a fixed TUESDAY keeps the W00 window non-empty on every wall-clock date
+    (on real Mondays the clamp-to-next-Monday resolves to today, days_out=0,
+    and W00 correctly emits zero files -- found by the E2E, 2026-08-24)."""
+    import os
+    os.environ['GG_FIXED_NOW'] = '2026-08-18'  # a Tuesday; popped after generation
+    today = datetime.date(2026, 8, 18)
     race_date = (today + datetime.timedelta(days=40)).isoformat()
     plan_dates = cpd.calculate_plan_dates(race_date, plan_weeks=10)
     days_out = (datetime.date.fromisoformat(plan_dates['plan_start']) - today).days
-    # days_out=0 is legitimate when the suite runs ON a Monday --
-    # clamp-to-next-Monday resolves to today (found by the E2E, 2026-08-24).
-    assert 0 <= days_out <= 7, (
+    assert 1 <= days_out <= 7, (
         "test setup drifted -- plan_start no longer lands in the W00 window "
         f"(days_out={days_out}); adjust the race_date/plan_weeks offsets above"
     )
@@ -225,7 +223,10 @@ def _build_w00_plan(tmp_path):
 
     athlete_dir = tmp_path / 'w00-athlete'
     (athlete_dir / 'workouts').mkdir(parents=True)
-    files = generate_zwo_files(athlete_dir, plan_dates, methodology, derived, profile)
+    try:
+        files = generate_zwo_files(athlete_dir, plan_dates, methodology, derived, profile)
+    finally:
+        os.environ.pop('GG_FIXED_NOW', None)
     w00_files = [f for f in files if f.name.startswith('W00_')]
     assert w00_files, "test setup did not trigger the W00 pre-plan branch"
 
@@ -474,3 +475,67 @@ def test_progressive_interval_fallback_name_has_no_date():
 def _zwo_name_from_string(zwo_xml):
     m = re.search(r'<name>(.*?)</name>', zwo_xml)
     return m.group(1) if m else ''
+
+
+# ===========================================================================
+# (f) R19 date-alignment regression: post-build overlays must not defeat
+# the weekly-hour trim.
+# ===========================================================================
+
+def test_r19_hours_gate_survives_post_build_overlays_on_frozen_date_alignment(tmp_path, monkeypatch):
+    """protect_post_simulation_recovery (block_chain.py) restores a full
+    easy-ride day after a race-simulation/dress-rehearsal session -- even
+    onto a day the build-time trim had already converted to Rest Day to
+    hold the week under the athlete's hour budget. Without a re-trim pass
+    after that overlay (and the C4 library-selection pass, which can swap a
+    build-time placeholder for a differently-sized curated item), a real
+    plan shipped flagged: 'W3: 421min > 396min max' from the compliance
+    gate instead of the trim silently absorbing the overflow. Frozen to the
+    exact date alignment that reproduced the defect (2026-08-24 plan_start,
+    a Monday that clamps to itself; race 40 days out clamps requested
+    plan_weeks 10 down to 6) so this runs every day, not only on a Monday."""
+    import block_compliance
+
+    class _FrozenDatetime(datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 8, 24)  # Monday
+
+    mp = pytest.MonkeyPatch()
+    mp.setattr(cpd, 'datetime', _FrozenDatetime)
+    try:
+        plan_dates = cpd.calculate_plan_dates('2026-10-03', plan_weeks=10)
+    finally:
+        mp.undo()
+
+    captured = []
+    _orig_validate = block_compliance.validate_plan
+
+    def _capture_validate(plan, *a, **kw):
+        result = _orig_validate(plan, *a, **kw)
+        captured.append(result)
+        return result
+    monkeypatch.setattr(block_compliance, 'validate_plan', _capture_validate)
+
+    # Same seed as _build_w00_plan's athlete_id: library selection is seeded
+    # off it (resolve_library_selections), and this is the exact identity
+    # that reproduced the defect.
+    profile = _base_profile('ws-a-w00-sample', 'R19 Frozen Monday Race', '2026-10-03')
+    derived = {'plan_weeks': plan_dates.get('plan_weeks', 6), 'ability_level': 'Intermediate'}
+    methodology = {'methodology_id': 'polarized_80_20',
+                    'configuration': {'intensity_distribution': {'z2': 0.80, 'z4': 0.15, 'z5': 0.05}}}
+
+    athlete_dir = tmp_path / 'r19-frozen-athlete'
+    (athlete_dir / 'workouts').mkdir(parents=True)
+    files = generate_zwo_files(athlete_dir, plan_dates, methodology, derived, profile)
+    assert files, "generate_zwo_files produced no workouts"
+
+    assert captured, "compliance gate was never invoked -- test setup did not exercise validate_plan"
+    result = captured[-1]
+    r19 = result['rules']['R19']
+    assert r19['passed'], f"R19 regressed on the frozen date alignment: {r19['message']}"
+    assert result['critical_pass'], (
+        "compliance gate flagged on the frozen date alignment: "
+        + '; '.join(f"{rid}: {r['message']}"
+                    for rid, r in result['rules'].items() if not r['passed'])
+    )

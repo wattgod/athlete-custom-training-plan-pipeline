@@ -90,13 +90,16 @@ def _build_w00_projection_plan(tmp_path, monkeypatch):
     """Real (unfrozen) calendar with plan_start forced 1-7 days out, exactly
     like test_naming_and_rounding._build_w00_plan, but also merges the
     captured W00 week entry into plan_dates and runs PlanIR/tp_manifest."""
-    today = datetime.datetime.now().date()
+    # Frozen clock: GG_FIXED_NOW (respected by calculate_plan_dates AND
+    # generate_pre_plan_week) pinned to a Tuesday so the W00 window is
+    # non-empty on every wall-clock date (real Mondays clamp to days_out=0
+    # and W00 correctly emits zero files -- found by the E2E, 2026-08-24).
+    monkeypatch.setenv('GG_FIXED_NOW', '2026-08-18')
+    today = datetime.datetime(2026, 8, 18).date()
     race_date = (today + datetime.timedelta(days=40)).isoformat()
     plan_dates = cpd.calculate_plan_dates(race_date, plan_weeks=10)
     days_out = (datetime.date.fromisoformat(plan_dates['plan_start']) - today).days
-    # days_out=0 is legitimate when the suite runs ON a Monday --
-    # clamp-to-next-Monday resolves to today (found by the E2E, 2026-08-24).
-    assert 0 <= days_out <= 7, (
+    assert 1 <= days_out <= 7, (
         "test setup drifted -- plan_start no longer lands in the W00 window "
         f"(days_out={days_out}); adjust the race_date/plan_weeks offsets above"
     )

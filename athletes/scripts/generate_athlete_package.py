@@ -1903,7 +1903,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         # sharpener on the athlete's stated interval day (Thu for the
         # Sunday-long/Tue-off profile) rather than simply dropping it.
         from block_chain import (protect_post_simulation_recovery,
-                                 pre_simulation_strength_block_days)
+                                 pre_simulation_strength_block_days,
+                                 retrim_plan_to_budget)
         _interval_abbrevs = [DAY_FULL_TO_ABBREV.get(str(day).lower(), str(day))
                              for day in ((profile or {}).get('availability_roles') or {}).get(
                                  'interval_days', [])]
@@ -1980,6 +1981,16 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                     json.dumps(_library_fallbacks, indent=2) + '\n')
             except OSError:
                 pass
+
+        # R19 re-trim: protect_post_simulation_recovery (above) and the C4
+        # library-selection pass (above) can each reintroduce minutes onto a
+        # day the build-time trim already converted to Rest Day to make the
+        # week fit -- e.g. a post-simulation recovery ride restored on a day
+        # that was Rest Day specifically to hold the week under budget. Must
+        # run AFTER every post-build overlay and BEFORE _bb_lookup below
+        # shallow-copies each day dict, so the compliance gate and the
+        # rendered ZWOs see the same, budget-fitted minutes.
+        retrim_plan_to_budget(_bb_plan, cycling_hours_target, day_caps=_bb_day_caps or None)
 
         # Build lookup: (plan_week, day_abbrev) → block plan day data.
         # week_in_block rides along for series numbering in workout titles
