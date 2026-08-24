@@ -545,6 +545,18 @@ prior message, it says so in the coach's voice ("Yes, again. People forget
 the basics — fueling most of all.") rather than pretending novelty.
 Humor allowed; the wink, not the bit.
 
+**AE-8.4c — legacy fake-structured strength is purged.** The "- ref -"
+strength items whose "structure" is a bike-power steady-state graph
+(GG | Strength 14356612/14/18/20 and any sibling) never ship anywhere —
+stripped from live plans, blocklisted from selection and payload builds.
+Only rx StructuredStrength (AE-8.4b) or honest text cards are acceptable.
+
+**AE-9.1c — notes are a thread, not islands.** Every note renders aware of
+what preceded it: callbacks to earlier promises ("last week I said the legs
+would feel heavy — this is the week they come back"), no contradictions
+with prior notes, repeats owned per AE-9.1b. The notes of a plan read as
+one coach talking across weeks, not a pool of isolated cards.
+
 **AE-3.13b — instructions state the DO.** Copy tells the athlete what TO
 do, plainly ("Arrive fueled: normal meal ~2h out. One bottle, 40-50g
 carbs."). Never structure a line around what today is NOT ("...is not the
