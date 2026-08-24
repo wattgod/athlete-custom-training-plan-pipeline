@@ -367,14 +367,15 @@ def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min
     # on the long rides.
     if tier in ('race_sim', 'quality') and duration_min is not None and duration_min < 90:
         # Plain FUEL label: no race-rate target applies under 90 minutes,
-        # so the RACE FUEL prefix would over-promise. AE-3.13 (2026-08-24 TP
-        # review): "The ladder lives on the long rides" read as an orphaned
-        # phrase on a short-workout card with no gut-training-ladder context
-        # anywhere nearby -- the parenthetical below makes the reference
-        # self-contained without a second FUEL banner.
-        return ("FUEL: Under 90 minutes — arrive fueled and bring one "
-                "bottle with carbs (your carb-rate practice ladder — "
-                "progressed on the long rides — is not the job today).")
+        # so the RACE FUEL prefix would over-promise, and the phase-ceiling
+        # gut-training progression is scoped to the long rides this session
+        # isn't one of -- so this stays a fixed, DO-framed instruction
+        # rather than a computed per-phase number (matches the flat
+        # "40-50g CHO/hr" used elsewhere for deliberately-lower, non-
+        # progression-tied fueling). AE-3.13b (2026-08-24 TP review,
+        # addendum): tell the athlete what to do, never structure the line
+        # around what today is NOT.
+        return "FUEL: Normal meal ~2h before. One bottle, 40-50g carbs. Done."
     if tier == 'race_sim':
         return render_workout_fueling(prescription, 'race_sim', phase_ceiling)
     if tier == 'quality':

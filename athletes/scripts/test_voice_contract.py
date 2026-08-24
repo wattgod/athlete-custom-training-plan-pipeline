@@ -81,6 +81,44 @@ def test_story_notes_are_deterministic():
     assert render_story_notes(_plan()) == render_story_notes(_plan())
 
 
+def _plan_no_setup():
+    """A recovery-then-load transition with NO earlier midweek 'legs heavy'
+    note anywhere in the plan -- the AE-9.1c callback must not fire without
+    its own setup."""
+    from datetime import date, timedelta
+    start = date(2026, 8, 24)
+    out = {"athlete": {"id": "t2"}, "race_snapshot": {"name": "Big Sugar Gravel", "date": "2026-12-01"}, "weeks": []}
+    for w, phase, wt in [(1, "base", "recovery"), (2, "build", "load")]:
+        d0 = start + timedelta(days=7 * (w - 1))
+        sessions = [
+            {"date": d0.isoformat(), "title": "Endurance Ride", "tp_kind": "bike", "archetype_id": "Endurance", "duration_s": 3600},
+            {"date": (d0 + timedelta(days=6)).isoformat(), "title": "Z2 + Sprints", "tp_kind": "bike", "archetype_id": "Endurance", "duration_s": 9000},
+        ]
+        out["weeks"].append({"number": w, "phase": phase, "week_type": wt, "sessions": sessions})
+    return out
+
+
+def test_story_notes_thread_legs_heavy_callback():
+    """AE-9.1c: a genuine callback -- the fresh-legs-after-recovery line
+    references an earlier midweek 'legs heavy' note -- appears in a
+    multi-week plan, fires exactly once, and only after its setup note."""
+    notes = render_story_notes(_plan())
+    setup_idx = next(i for i, n in enumerate(notes) if "Legs heavy today is the load landing" in n["body"])
+    payoffs = [i for i, n in enumerate(notes)
+               if "from a few weeks back are exactly why this feels good now" in n["body"]]
+    assert len(payoffs) == 1, "the callback should own its moment once, not repeat"
+    assert payoffs[0] > setup_idx, "callback must never fire before its setup"
+
+
+def test_story_notes_callback_never_fires_without_its_setup():
+    """No earlier 'legs heavy' note exists in this plan -- the recovery-return
+    position line must fall back to the plain variant, never the callback."""
+    notes = render_story_notes(_plan_no_setup())
+    week2 = next(n for n in notes if n["title"].startswith("Week 2"))
+    assert "fresh legs" in week2["body"]
+    assert "from a few weeks back" not in week2["body"]
+
+
 def test_lint_catches_template_and_slop():
     bad = [{"date": "2026-08-24", "title": "Week 1", "body": "Add one controlled layer. Protect the key work. More is not the assignment."},
            {"date": "2026-08-31", "title": "Week 2", "body": "## Focus\nLet's dive in and unlock your potential!!"}]

@@ -28,7 +28,7 @@ STANDARD = [
     ),
     (
         "Rest Day",
-        "This week's work gets absorbed today, not on the bike.\n\n"
+        "Off the bike. This week's work gets absorbed today, not added to.\n\n"
         "Foam roll quads and glutes, eight to ten minutes. One long walk. "
         "Eat like you trained; a rest day is not a diet day.\n\n"
         "If you feel great and want to ride, that is the point. Don't.",

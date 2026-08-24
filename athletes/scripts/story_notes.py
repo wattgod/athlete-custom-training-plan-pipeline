@@ -43,7 +43,7 @@ _FAMILY_RULES: List[Tuple[re.Pattern, str, List[str]]] = [
         "{name} {day} tells me how much snap you have above threshold. It will hurt for three minutes; that is the whole test.",
     ]),
     (re.compile(r"openers|tune-up|tune up", re.I), "openers", [
-        "{name} {day} is not training. Short, sharp, and done before you feel like you have started. The point is to wake the legs, not test them.",
+        "{name} {day}: short, sharp, and done before you feel like you have started. The point is to wake the legs, not test them.",
         "{name} {day}: a handful of efforts to remind the body what fast feels like. Finish wanting more.",
     ]),
     (re.compile(r"30[-/ ]?15|30[-/ ]?30|40[-/ ]?20|billat|r[oø]nnestad|vo2", re.I), "vo2", [
@@ -152,6 +152,14 @@ _MIDWEEK_LONG_RIDE_FUEL: List[str] = [
     "Lay out the long ride's food tonight so tomorrow morning is not a scramble.",
     "Set a fuel timer for the long ride. Do not rely on feeling hungry to remind you.",
     "The long ride rewards the rider who eats early. Start the first bar before you think you need it.",
+    # AE-9.1b (2026-08-24 TP review, addendum): a repeated theme owns the
+    # repeat in the coach's voice instead of pretending novelty. These sit
+    # AFTER the first-instance variants above so they only fire once the
+    # athlete has actually seen the earlier ones -- the self-reference has
+    # to be true, not just funny.
+    "This fuel note again. Eat early on the long ride; you've heard it before because it keeps not sticking.",
+    "Same reminder, new week: bottles and food sorted before you roll out. Some lessons need saying more than once.",
+    "Fuel the long ride early -- yes, still. If it were sinking in on the first pass, this note would stop showing up.",
 ]
 
 _MIDWEEK_WEEKDAY_PREFERENCE = (3, 2, 1, 4)  # Thursday, Wednesday, Tuesday, Friday
@@ -248,7 +256,12 @@ _PHASE_LINES: Dict[str, List[str]] = {
 def _position_line(number: int, total: int, phase: str, week_type: str,
                    prev_type: Optional[str], next_type: Optional[str],
                    race_name: str, weeks_to_race: Optional[int],
-                   phase_use: int = 0) -> str:
+                   phase_use: int = 0, legs_heavy_callback: bool = False) -> str:
+    """``legs_heavy_callback`` is AE-9.1c: true only when an earlier week's
+    ``_MIDWEEK_LOAD_FEEL`` note already told this athlete their legs would
+    feel heavy, and this is the first fresh-legs-after-recovery week since --
+    the payoff has to follow its own setup or it is not a callback, it is a
+    non sequitur."""
     phase = (phase or "").replace("_", " ")
     if number == 0 or phase == "pre plan":
         return f"Week 0. The plan starts Monday. Arrive rested: sleep, normal riding if you have it, nothing heroic."
@@ -261,6 +274,9 @@ def _position_line(number: int, total: int, phase: str, week_type: str,
     if week_type == "recovery":
         return f"Week {number} of {total}. Recovery week, and I mean it: the last block gets absorbed now, not later."
     if prev_type == "recovery":
+        if legs_heavy_callback:
+            return (f"Week {number} of {total}. Back into {phase} with fresh legs — the heavy ones "
+                     "from a few weeks back are exactly why this feels good now.")
         return f"Week {number} of {total}. Back into {phase} with fresh legs. I want controlled work out of them, not a hero week."
     if next_type == "recovery":
         return f"Week {number} of {total}. Last load week of this block. I want the key sessions done properly; a reset follows."
@@ -347,6 +363,14 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
     midweek_fuel_use = 0
     notes: List[Dict[str, str]] = []
 
+    # AE-9.1c (2026-08-24 TP review, addendum): notes are a thread, not
+    # islands -- rendered in chronological order (the loop below), each one
+    # aware of what an earlier note already told this athlete. `thread`
+    # accumulates promises/themes as they are actually emitted; a callback
+    # can only read a key here after the note that set it has already been
+    # appended to `notes`, so a payoff can never precede its setup.
+    thread: Dict[str, Any] = {"legs_heavy_setup_week": None, "legs_heavy_payoff_used": False}
+
     for idx, week in enumerate(weeks):
         sessions = list(_get(week, "sessions") or [])
         dated = [s for s in sessions if _as_date(_get(s, "date"))]
@@ -373,9 +397,17 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
             continue
 
         plain = week_type in {"load", "uber_load"} and prev_type != "recovery" and next_type != "recovery"
+        legs_heavy_callback = bool(
+            prev_type == "recovery"
+            and thread["legs_heavy_setup_week"] is not None
+            and not thread["legs_heavy_payoff_used"]
+        )
         lines: List[str] = [_position_line(number, total, phase, week_type, prev_type, next_type,
                                            race_name, weeks_to_race,
-                                           phase_use=phase_use.get(phase, 0) if plain else 0)]
+                                           phase_use=phase_use.get(phase, 0) if plain else 0,
+                                           legs_heavy_callback=legs_heavy_callback)]
+        if legs_heavy_callback:
+            thread["legs_heavy_payoff_used"] = True
         if plain:
             phase_use[phase] = phase_use.get(phase, 0) + 1
         focus = str(_get(_get(plan_ir, "coached_block") or {}, "focus") or "").strip().rstrip(".")
@@ -444,6 +476,8 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
                 })
                 midweek_feel_use += 1
                 used_dates.add(feel_date.isoformat())
+                if thread["legs_heavy_setup_week"] is None:
+                    thread["legs_heavy_setup_week"] = number
         if (week_type not in {"pre_plan", "testing"}
                 and midweek_fuel_use < len(_MIDWEEK_LONG_RIDE_FUEL)):
             long_ride = _midweek_long_ride(dated)

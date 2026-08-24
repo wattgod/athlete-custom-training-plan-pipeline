@@ -62,7 +62,7 @@ def test_fuel_tag_gates_on_duration_and_routes_ftp_to_quality():
     # FTP tests are quality, but the under-90-minute policy deliberately uses
     # a light arrival/bottle cue instead of prescribing the hourly ladder.
     ftp_tag = _get_fuel_tag_for_type("FTP_Test", fueling, duration_min=60)
-    assert "Under 90 minutes" in ftp_tag
+    assert "FUEL" in ftp_tag
     assert quality not in ftp_tag and long_ride not in ftp_tag
     guide = _build_nutrition_section(fueling, {})
     assert f">{prescription['race_target_g_per_hour']}g/hr<" in guide

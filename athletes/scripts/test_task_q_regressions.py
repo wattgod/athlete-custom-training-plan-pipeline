@@ -60,9 +60,10 @@ class TestFuelTagRoutingGaps:
         tag = _get_fuel_tag_for_type(name, _fueling(), duration)
         # Superseded policy (v13 regrade): short quality sessions still carry
         # a tag (R08), but a SOFT one — the rigid ladder target contradicted
-        # the ladder's own under-90-minute scope.
+        # the ladder's own under-90-minute scope. AE-3.13b (2026-08-24 TP
+        # review, addendum): the soft tag states the DO, no negation framing.
         assert 'FUEL' in tag
-        assert 'Under 90 minutes' in tag
+        assert 'Normal meal' in tag
         assert 'Target' not in tag
 
     def test_rest_day_and_true_recovery_stay_untagged(self):
