@@ -411,6 +411,33 @@ def test_michael_race_plus_exact_post_event_recovery_horizon(monkeypatch):
                 if error.startswith('CRITICAL')]
 
 
+def test_b_race_easy_day_reserved_in_base_phase(monkeypatch):
+    """AE-1.9 (sol programming review 2026-08-24, blocker 3): the -2 easy
+    day reservation used to be scoped to build/peak only, so a base-phase
+    testing week's fixed FTP-test/Anaerobic-test weekday slot could land
+    on a B-race's -2 day with nothing stopping it. Real case: Steve
+    Wagner's plan put the Anaerobic Test on Sep 3, two days before the
+    Sep 5 Dirt Diggler B-race, in a base-phase week."""
+    monkeypatch.setenv('GG_FIXED_NOW', '2026-08-22T21:40:00Z')
+    result = calculate_plan_dates(
+        '2026-10-11', 6, preferred_start='2026-08-31',
+        b_events=[{'name': 'Dirt Diggler', 'date': '2026-09-05'},
+                  {'name': "Fool's Gold", 'date': '2026-09-12'}])
+    week1, week2 = result['weeks'][0], result['weeks'][1]
+    assert week1['phase'] == week2['phase'] == 'base'
+
+    def _flags(week, date_str):
+        day = next(d for d in week['days'] if d['date'] == date_str)
+        return {'easy': day.get('is_b_race_easy', False),
+                'opener': day.get('is_b_race_opener', False),
+                'race': day.get('is_b_race_day', False)}
+
+    assert _flags(week1, '2026-09-03') == {'easy': True, 'opener': False, 'race': False}
+    assert _flags(week1, '2026-09-04') == {'easy': False, 'opener': True, 'race': False}
+    assert _flags(week1, '2026-09-05') == {'easy': False, 'opener': False, 'race': True}
+    assert _flags(week2, '2026-09-10') == {'easy': True, 'opener': False, 'race': False}
+
+
 def test_default_plan_horizon_remains_race_week_only(monkeypatch):
     monkeypatch.setenv('GG_FIXED_NOW', '2026-08-22T21:40:00Z')
     result = calculate_plan_dates(

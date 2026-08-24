@@ -594,10 +594,18 @@ def calculate_plan_dates(race_date_str: str, plan_weeks: int = 12,
                         if day_dt == b_date - timedelta(days=1):
                             day_data['is_b_race_opener'] = True
 
-                        # For build/peak phases, mark 2 days before as easy
-                        if week_data['phase'] in ('build', 'peak'):
-                            if day_dt == b_date - timedelta(days=2):
-                                day_data['is_b_race_easy'] = True
+                        # Mark 2 days before as easy (AE-1.9: the -2 easy
+                        # reservation is not phase-scoped -- sol programming
+                        # review 2026-08-24, blocker 3 found it silently
+                        # skipped for base-phase testing weeks, exactly
+                        # where a fixed FTP-test/Anaerobic-test weekday slot
+                        # is most likely to collide with a B-race's -2 day.
+                        # Recovery/taper/race weeks carry their own
+                        # zero-intensity / hard-content-cap rules already,
+                        # so this flag is a no-op there rather than a
+                        # conflicting second constraint.
+                        if day_dt == b_date - timedelta(days=2):
+                            day_data['is_b_race_easy'] = True
 
                     break  # Found the week, move to next B-event
 

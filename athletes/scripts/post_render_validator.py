@@ -538,6 +538,112 @@ def _endurance_tss_rate_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, str]
     return findings
 
 
+_HARD_FTP_THRESHOLD = 92.0
+_HARD_MINUTES_FLOOR = 90.0
+# week_type values (plan_ir week dict, project_tp_structure) NOT covered by
+# AE-2.1's floor -- recovery/taper carry their own zero/capped-intensity
+# rules and AE-1.12's taper hard-content cap (<=15 min/session) makes the
+# 90-minute weekly floor structurally impossible there; race week is its
+# own thing entirely.
+_HARD_MINUTES_EXEMPT_WEEK_TYPES = {"recovery", "taper", "race"}
+
+
+def _step_seconds(step: Dict[str, Any]) -> int:
+    try:
+        return int((step.get("length") or {}).get("value") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _step_hard_seconds(step: Dict[str, Any], *, is_test: bool) -> int:
+    """Seconds of this step that count toward AE-2.1's >=92% FTP hard-minutes
+    floor. A field-test session's own open/FreeRide test effort (structured
+    honestly as a zero-target step per AE-8.4d, since its whole point is
+    that no numeric target can be trusted) still counts as hard time --
+    AE-2.1: "testing weeks count test efforts toward the floor". Only the
+    field test's genuinely easy between-rep recovery blocks (a real,
+    non-zero, sub-92% target) are excluded."""
+    intensity_class = str(step.get("intensityClass") or "")
+    if intensity_class in ("warmUp", "coolDown", "rest"):
+        return 0
+    seconds = _step_seconds(step)
+    if not seconds:
+        return 0
+    values = []
+    for target in step.get("targets") or []:
+        if not isinstance(target, dict) or target.get("unit"):
+            continue
+        for field in ("minValue", "maxValue"):
+            try:
+                values.append(float(target[field]))
+            except (KeyError, TypeError, ValueError):
+                pass
+    maximum = max(values) if values else None
+    minimum = min(values) if values else None
+    if maximum is not None and maximum >= _HARD_FTP_THRESHOLD:
+        return seconds
+    if is_test and minimum == 0 and (maximum is None or maximum == 0):
+        return seconds
+    return 0
+
+
+def _session_hard_seconds(session: Dict[str, Any]) -> int:
+    is_test = _field_test_metric(session) is not None
+    total = 0
+    for block in (session.get("structure") or {}).get("structure") or []:
+        for step in block.get("steps") or []:
+            total += _step_hard_seconds(step, is_test=is_test)
+    return total
+
+
+def _hard_minutes_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """AE-2.1 (phase-scoped, sol programming review 2026-08-24): a LOAD week
+    needs >=90 structured hard minutes (>=92% FTP, test efforts counted per
+    the ratified scoping addendum); recovery/taper/race weeks are governed
+    by their own rules and exempt. WARNING severity: the plan still ships,
+    but a real offender (W3's 26.7 hard minutes in the sol review, the
+    plan's only true build/load week) surfaces for coach review instead of
+    shipping silently."""
+    totals: Dict[int, float] = {}
+    for week_num, session in _sessions(plan_ir):
+        if session.get("tp_kind") != "bike":
+            continue
+        totals[week_num] = totals.get(week_num, 0.0) + _session_hard_seconds(session) / 60.0
+
+    findings = []
+    for week in plan_ir.get("weeks") or []:
+        week_num = int(week.get("number", 0))
+        week_type = str(week.get("week_type") or "")
+        # "pre_plan" (W00) is the pre-order waiting-period bridge week, not
+        # a structured training week -- AE-2.1 governs weeks the athlete is
+        # actually training a periodized plan, not the lead-in.
+        if str(week.get("phase") or "") == "pre_plan":
+            continue
+        if week_type in _HARD_MINUTES_EXEMPT_WEEK_TYPES or week_type != "load":
+            continue
+        minutes = totals.get(week_num, 0.0)
+        if minutes >= _HARD_MINUTES_FLOOR:
+            continue
+        findings.append(_issue(
+            # validate_transitional_input's final dedup keys issues by "id"
+            # ({item["id"]: item for item in issues}) -- a bare
+            # "HARD_MINUTES_BELOW_FLOOR" id collapses every offending week
+            # down to just the last one processed. Real case: Steve Wagner's
+            # W1 (38.5 min), W2 (27.0 min), and W3 (24.0 min) all fail the
+            # floor; without a per-week id only W3 would ever reach the
+            # coach. Suffixed per-instance ids already have precedent in
+            # this codebase (apply_contract.py's PACKAGE_ZWO_<file>_MAIN_SET).
+            f"HARD_MINUTES_BELOW_FLOOR_W{week_num:02d}",
+            f"Week {week_num}: {minutes:.1f} structured hard minutes "
+            f"(>= {_HARD_FTP_THRESHOLD:.0f}% FTP, test efforts counted) is "
+            f"under the AE-2.1 {_HARD_MINUTES_FLOOR:.0f}-minute load-week floor.",
+            review_value={"week": week_num, "hard_minutes": round(minutes, 1),
+                          "floor": _HARD_MINUTES_FLOOR},
+            severity="WARNING",
+        ))
+    return findings
+
+
 def _schedule_findings(
     plan_ir: Dict[str, Any], profile: Dict[str, Any]
 ) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
@@ -875,6 +981,7 @@ def validate_transitional_input(
     confirmations.extend(_day_cap_findings(plan_ir, profile))
     issues.extend(_short_quality_findings(plan_ir, profile))
     issues.extend(_endurance_tss_rate_findings(plan_ir))
+    issues.extend(_hard_minutes_findings(plan_ir))
 
     fueling = context.get("fueling") or {}
     labels = [

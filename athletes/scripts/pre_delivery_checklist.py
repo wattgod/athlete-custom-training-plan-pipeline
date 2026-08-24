@@ -42,6 +42,20 @@ def race_match_lines(profile: dict) -> list:
         lines.append(f"       (date: {race.get('date') or 'NOT PROVIDED'}, "
                      f"distance: {race.get('distance_miles') or 'NOT PROVIDED'} mi, "
                      f"discipline: {race.get('generic_discipline', 'unknown')}).")
+        # sol programming review 2026-08-24, major 10: race-day duration for
+        # an unmatched race is a flat-terrain estimate (no real course to
+        # model), not the goal-type/elevation speed table used for matched
+        # races -- the coach needs to know that before trusting the fueling
+        # totals or the race-card pacing.
+        distance_miles = race.get('distance_miles')
+        if distance_miles:
+            from known_races import UNMATCHED_RACE_MPH, estimate_unmatched_race_duration_hours
+            lines.append(
+                f"       Duration modeled from {distance_miles}mi @ "
+                f"~{UNMATCHED_RACE_MPH:.0f}mph = "
+                f"{estimate_unmatched_race_duration_hours(distance_miles):.1f}h "
+                "(flat-terrain estimate, not the actual course) — confirm "
+                "against the real course profile before delivery.")
         near = rm.get('near_misses') or []
         if near:
             lines.append("       Closest database candidates:")

@@ -122,6 +122,42 @@ def test_strength_relocates_off_the_day_before_a_dress_rehearsal():
     assert relocated[0] in ('Mon', 'Tue', 'Wed', 'Thu')
 
 
+def test_strength_avoids_vo2_intensity_day_when_an_easy_day_is_available():
+    """AE-8.4 (sol programming review 2026-08-24, major 9): the default
+    coach-preferred strength pair (Tue/Thu) collides directly with the
+    default intensity_1/intensity_2 slot days, stacking strength onto VO2
+    days. avoid_days must sink an eligible-but-intensity day behind every
+    non-intensity candidate."""
+    def is_available(day):
+        return day in ('Tue', 'Wed', 'Thu', 'Fri')
+
+    placed = place_strength_days(is_available, 1, avoid_days={'Tue', 'Thu'})
+    assert placed == ['Wed']
+
+
+def test_strength_falls_back_to_an_avoided_day_to_keep_weekly_frequency():
+    """avoid_days is a soft preference, never a hard block -- if nothing
+    else can satisfy the requested session count, the avoided (intensity)
+    day is still used rather than silently dropping the session."""
+    def is_available(day):
+        return day in ('Tue', 'Thu')
+
+    placed = place_strength_days(is_available, 2, avoid_days={'Tue', 'Thu'})
+    assert sorted(placed) == ['Thu', 'Tue']
+
+
+def test_strength_never_lands_on_a_hard_blocked_test_day_even_without_avoid():
+    """Test days (FTP Test / Anaerobic Test) are a hard block, not a soft
+    avoid -- unlike VO2/intensity days, there is no frequency-preserving
+    fallback onto them (AE-8.4's morning-primer exception does not apply
+    to test days)."""
+    def is_available(day):
+        return day in ('Tue', 'Thu')
+
+    placed = place_strength_days(is_available, 2, blocked_days={'Tue', 'Thu'})
+    assert placed == []
+
+
 def test_strength_drops_for_the_week_when_no_relocation_slot_fits():
     """Relocation is preferred, but when the pre-sim day is the only
     available day, the session must drop for that week rather than

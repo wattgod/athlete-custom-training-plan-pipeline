@@ -2540,6 +2540,15 @@ def generate_coaching_brief(
                f"(athlete-provided / extracted from name)\n")
         md += ("> - Elevation: none assumed (no fabricated course data in "
                "the athlete guide)\n")
+        _distance_val = target.get('distance_miles')
+        if _distance_val:
+            from known_races import UNMATCHED_RACE_MPH, estimate_unmatched_race_duration_hours
+            md += (
+                f"> - Duration modeled from {_distance_val}mi @ "
+                f"~{UNMATCHED_RACE_MPH:.0f}mph = "
+                f"{estimate_unmatched_race_duration_hours(_distance_val):.1f}h "
+                "(flat-terrain estimate, not the actual course — sol "
+                "programming review 2026-08-24, major 10)\n")
         md += (f"> - Demand assumptions: neutral {_gdisc} demands for the "
                f"given distance ({_gd})\n>\n")
         _near = _rm.get('near_misses') or []

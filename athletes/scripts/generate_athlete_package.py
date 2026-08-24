@@ -858,7 +858,7 @@ WORKOUT_DESCRIPTIONS = {
         # renderer changes must never make prose disagree with the assessment.
         'structure': '{duration} min FTP test protocol; see the emitted warm-up, main set, and cool-down below.',
         'purpose': 'Establish your training zones. The 20-minute effort sets everything.',
-        'execution': 'Start controlled, settle in, suffer through the middle, finish strong. Average power × 0.95 = FTP.',
+        'execution': 'Best sustainable effort -- start ~5% below what you believe and lift. Start controlled, settle in, suffer through the middle, finish strong.',
         'rpe': 'RPE 9/10 for the 20-minute test (very hard, barely sustainable)',
     },
     'Long_Ride': {
@@ -1011,19 +1011,29 @@ def strength_sessions_for_week(requested_sessions: int, phase: str,
 
 
 def place_strength_days(is_available, requested_sessions: int,
-                        blocked_days=None, strength_only_abbrevs=None) -> list:
+                        blocked_days=None, strength_only_abbrevs=None,
+                        avoid_days=None) -> list:
     """Place the requested sessions without using off/long/blocked days.
 
     ``select_strength_days`` supplies the coach-preferred pair. If an FTP
     test blocks one of those days, continue through other eligible days
     instead of silently dropping the athlete's requested session.
+
+    ``avoid_days`` (AE-8.4) are eligible but de-prioritized -- VO2max/other
+    intensity days the coach-preferred pair can collide with by default.
+    They sink behind every non-avoid candidate and are used only if nothing
+    else satisfies the requested weekly frequency, so a session is never
+    silently dropped just to dodge one.
     """
     blocked = set(blocked_days or [])
+    avoid = set(avoid_days or []) - blocked
     preferred = select_strength_days(is_available, strength_only_abbrevs)
     candidates = preferred + [
         day for day in DAY_ORDER if day not in preferred and is_available(day)
     ]
     eligible = [day for day in candidates if day not in blocked]
+    eligible = ([day for day in eligible if day not in avoid]
+                + [day for day in eligible if day in avoid])
     # Preserve the established recovery spacing: first try to leave one full
     # day between sessions, only relaxing if the athlete's availability makes
     # that impossible.
@@ -2575,9 +2585,19 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             blocks.append(f'    <IntervalsT Repeat="4" OnDuration="30" OnPower="1.20" OffDuration="60" OffPower="0.50"/>')
 
         elif workout_type == 'FTP_Test':
-            # "The Assessment - Functional Threshold" (1:00:00, 68 TSS, IF 0.82)
+            # "The Assessment - Functional Threshold" (1:00:00)
             # Based on Gravel God standard FTP test protocol
-            # Structure: 10m progressive warmup, 5m @ 6/10, 5m easy, 5m blowout, 5m easy, 20m ALL OUT, 10m cooldown = 60m
+            # Structure: 10m progressive warmup, 5m @ 6/10, 5m easy, 5m blowout, 5m easy, 20m best sustainable effort, 10m cooldown = 60m
+            # sol programming review 2026-08-24, blocker 1: the 20-minute
+            # step used to lock a numeric target at exactly 100% of the
+            # CURRENT (possibly stale/inflated) FTP, with "average power x
+            # 0.95 = FTP" in the description -- circular: perfect execution
+            # at the current FTP returns 95% of it back. The main effort is
+            # now an open/free step (AE-8.4d: honest text guidance, never a
+            # target locked to the number it's supposed to measure); the
+            # warm-up/blowout/recovery steps stay structured since those
+            # %FTP targets are genuinely honest reference points, not a
+            # self-referencing anchor.
             # CRITICAL: No nested textevent in SteadyState - breaks TrainingPeaks import
             blocks = []  # Reset blocks, we handle warmup/cooldown ourselves
             # 10m progressive warmup (45% -> 70%)
@@ -2590,8 +2610,18 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             blocks.append('    <SteadyState Duration="300" Power="1.05"/>')
             # 5m easy recovery (50%)
             blocks.append('    <SteadyState Duration="300" Power="0.50"/>')
-            # 20m ALL OUT - FTP test @ 100% FTP (athlete should go max sustainable)
-            blocks.append('    <SteadyState Duration="1200" Power="1.00"/>')
+            # 20m best sustainable effort -- open step, no locked target
+            # (AE-5.3 pacing). "all-out" in the label is load-bearing: it is
+            # what canonical_training_model.project_tp_structure's all_out
+            # regex (r"all[- ]?out|max(?:imal)? effort") matches to give this
+            # step a visible 120-170% display band instead of a flat-zero
+            # gap (AE-8.4d) -- "maximal sustainable effort" alone does not
+            # match that pattern.
+            blocks.append(
+                '    <FreeRide Duration="1200" FlatRoad="1">\n'
+                '      <textevent timeoffset="0" message="20min all-out — best sustainable effort"/>\n'
+                '    </FreeRide>'
+            )
             # 10m cooldown
             blocks.append('    <Cooldown Duration="600" PowerLow="0.55" PowerHigh="0.40"/>')
             return '\n'.join(blocks) + '\n'
@@ -2982,6 +3012,52 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
          if _bb_lookup.get((1, _d), {}).get('name') == 'FTP Test'),
         None)
     _ftp_slot_day = _bb_ftp_day or (_ftp_candidates_precomputed[0] if _ftp_candidates_precomputed else None)
+
+    # ---------------------------------------------------------------------
+    # B-RACE -1/-2 DISPLACEMENT (AE-1.9; sol programming review 2026-08-24,
+    # blocker 3): the block-builder's testing-week and per-load-week
+    # intensity slots are fixed weekdays (Tue/Thu) with no visibility into
+    # a given week's B-race date -- real cases put the Anaerobic Test on
+    # race_day-2 and a 31.5min-hard Accumulation on another race_day-2.
+    # calculate_plan_dates already reserves race_day-1
+    # (is_b_race_opener)/race_day-2 (is_b_race_easy) for every phase; the
+    # LEGACY PATH below force-converts whatever lands there to
+    # Openers/Easy regardless of what the block builder chose. Without this
+    # pass that conversion would silently DROP the test/intensity session
+    # for the week. Swap it wholesale (existing test-displacement
+    # precedent: get_ftp_day_candidates picks an earlier eligible day
+    # rather than losing the session) with the earliest eligible
+    # non-reserved filler day earlier in the same week, so the assessment
+    # still happens -- just earlier. FTP Test is excluded: it already has
+    # its own dedicated candidate system above (_ftp_slot_day).
+    # ---------------------------------------------------------------------
+    for _week_info in weeks:
+        _week_num = _week_info['week']
+        _week_days_order = [_d['day'] for _d in _week_info.get('days', [])]
+        _reserved_days = {
+            _d['day'] for _d in _week_info.get('days', [])
+            if _d.get('is_b_race_opener') or _d.get('is_b_race_easy')
+        }
+        for _reserved_day in _reserved_days:
+            _bb_day = _bb_lookup.get((_week_num, _reserved_day))
+            if not _bb_day or _bb_day.get('name') == 'FTP Test':
+                continue
+            _needs_displacement = (
+                _bb_day.get('name') == 'Anaerobic Test'
+                or _bb_day.get('role') == 'intensity')
+            if not _needs_displacement:
+                continue
+            _reserved_idx = _week_days_order.index(_reserved_day)
+            _swap_target = next(
+                (_earlier_day for _earlier_day in _week_days_order[:_reserved_idx]
+                 if _earlier_day not in _reserved_days
+                 and (_bb_lookup.get((_week_num, _earlier_day)) or {}).get('role') == 'filler'),
+                None)
+            if _swap_target:
+                (_bb_lookup[(_week_num, _reserved_day)],
+                 _bb_lookup[(_week_num, _swap_target)]) = (
+                    _bb_lookup[(_week_num, _swap_target)],
+                    _bb_lookup[(_week_num, _reserved_day)])
 
     # Total weeks per phase (used for long ride progression)
     phase_total_weeks = dict(phase_counters)  # snapshot after counting all weeks
@@ -4165,6 +4241,19 @@ TIPS:
                 race_duration_min = round_duration_to_10(int(round(duration_hours * 60)))
                 estimated_tss = race_day_tss_from_emitted_minutes(race_duration_min)
 
+                # sol programming review 2026-08-24, major 10: an UNMATCHED
+                # race has no course data behind its duration -- the number
+                # above is now derived (calculate_fueling.py) from the
+                # flat-terrain unmatched-race estimator rather than a
+                # course-aware speed table. The disclosure that this is a
+                # modeled estimate belongs to the COACH, not the athlete
+                # (race_match_lines in pre_delivery_checklist.py and the
+                # UNMATCHED RACE block in coaching_brief.md) -- CLAUDE.md's
+                # race-matching contract is explicit that an unmatched race
+                # is "loud to the coach, invisible to the athlete", and
+                # "confirm course" reads as an instruction to the coach, not
+                # something an athlete can act on from their race-day card.
+
                 # Build race day plan description
                 race_description = f"""RACE DAY: {race_name}
 Date: {day_info['date']}
@@ -4574,6 +4663,30 @@ GO GET IT, {athlete_name.upper()}!
         # _compute_hard_bike_dates.
         _hard_bike_dates = _compute_hard_bike_dates(_tp_manifest_records)
 
+        # AE-8.4 (sol programming review 2026-08-24, major 9): strength must
+        # never land on a test day (FTP Test / Anaerobic Test) -- the
+        # ftp_test_days block above only ever blocked the FTP day, so the
+        # testing week's Anaerobic Test day (and every VO2max/intensity day
+        # in later load weeks) was still open to strength, and the default
+        # coach-preferred strength pair (Tue/Thu) collides directly with the
+        # default intensity_1/intensity_2 slot days. Test days are a hard
+        # block (never); other intensity/VO2 days are a soft avoid (used
+        # only if nothing else satisfies the requested weekly frequency --
+        # AE-8.4's morning-primer exception does not apply to test days, so
+        # those never get a fallback exception here).
+        _test_day_abbrevs_by_week: dict = {}
+        _intensity_avoid_day_abbrevs_by_week: dict = {}
+        for (_bb_week, _bb_day_abbrev), _bb_day in _bb_lookup.items():
+            _bb_day_name = _bb_day.get('name') or ''
+            if _bb_day_name in ('FTP Test', 'Anaerobic Test'):
+                _test_day_abbrevs_by_week.setdefault(_bb_week, set()).add(_bb_day_abbrev)
+            elif _bb_day.get('role') == 'intensity':
+                _intensity_avoid_day_abbrevs_by_week.setdefault(
+                    _bb_week, set()).add(_bb_day_abbrev)
+        import sys as _dbgsys
+        print('DEBUG avoid week3:', _intensity_avoid_day_abbrevs_by_week.get(3), file=_dbgsys.stderr)
+        print('DEBUG bb_lookup week3:', {k: v.get('role') for k, v in _bb_lookup.items() if k[0] == 3}, file=_dbgsys.stderr)
+
         # PASS 1 (placement only, no content): FIX 2 -- the exercise family
         # (A vs B) must key off the SAME phase-wide ordinal the delivered
         # title uses (see _strength_ab_ordinals), and that ordinal is only
@@ -4611,8 +4724,12 @@ GO GET IT, {athlete_name.upper()}!
                               # selection relocate it earlier in the week, or
                               # drop it for the week if nothing else fits.
                               | {day for candidate_week, day in _pre_sim_strength_block_days
-                                 if candidate_week == week_num}),
+                                 if candidate_week == week_num}
+                              # AE-8.4: FTP Test / Anaerobic Test days are a
+                              # hard block, same as the FTP day above.
+                              | _test_day_abbrevs_by_week.get(week_num, set())),
                 strength_only_abbrevs=strength_only_abbrevs,
+                avoid_days=_intensity_avoid_day_abbrevs_by_week.get(week_num, set()),
             )
 
             for strength_day in strength_days:

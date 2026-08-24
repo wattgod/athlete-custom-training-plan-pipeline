@@ -458,3 +458,126 @@ def test_cadence_target_is_not_read_as_intensity():
         "targets": [{"minValue": 6, "maxValue": 6},
                     {"minValue": 95, "unit": "roundOrStridePerMinute"}]}]}]}}
     assert _structure_max_target(session) == 6
+
+
+def _step(seconds, min_pct=None, max_pct=None, intensity_class='active'):
+    if max_pct is not None:
+        targets = [{'minValue': min_pct, 'maxValue': max_pct}]
+    elif min_pct is not None:
+        targets = [{'minValue': min_pct}]
+    else:
+        targets = []
+    return {'length': {'value': seconds, 'unit': 'second'},
+            'targets': targets, 'intensityClass': intensity_class}
+
+
+def _bike_session(day, title, steps, session_type='workout'):
+    session = _session(day, title, session_type=session_type)
+    session['structure'] = {'structure': [{'steps': [step]} for step in steps]}
+    return session
+
+
+def test_hard_minutes_below_floor_warns_on_a_load_week():
+    """AE-2.1 (sol programming review 2026-08-24, blocker 4): a load week
+    delivering under 90 structured minutes at >=92% FTP surfaces a
+    WARNING (real case: W3's 26.7 hard minutes, the pilot plan's only
+    true build/load week)."""
+    document = _document()
+    document['plan_ir']['weeks'][1]['week_type'] = 'load'
+    document['plan_ir']['weeks'][1]['sessions'] = [
+        _bike_session('2026-08-11', 'Threshold Intervals', [
+            _step(1800, 95, 100),  # 30 min hard
+            _step(3600, 60, 65),  # 60 min easy -- not hard
+        ]),
+    ]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(issue for issue in issues
+                if issue['id'].startswith('HARD_MINUTES_BELOW_FLOOR')
+                and issue['review_value']['week'] == 1)
+    assert item['id'] == 'HARD_MINUTES_BELOW_FLOOR_W01'
+    assert item['severity'] == 'WARNING'
+    assert item['review_value']['hard_minutes'] == 30.0
+
+
+def test_hard_minutes_at_or_above_floor_does_not_warn():
+    document = _document()
+    document['plan_ir']['weeks'][1]['week_type'] = 'load'
+    document['plan_ir']['weeks'][1]['sessions'] = [
+        _bike_session('2026-08-11', 'Threshold Intervals', [
+            _step(5700, 95, 100),  # 95 min hard
+        ]),
+    ]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    assert not [issue for issue in issues
+                if issue['id'].startswith('HARD_MINUTES_BELOW_FLOOR')
+                and issue['review_value']['week'] == 1]
+
+
+def test_hard_minutes_counts_an_open_field_test_effort():
+    """A field-test session's open/FreeRide main effort (AE-8.4d: honest
+    zero-target structure, never a fake numeric anchor) still counts
+    toward the floor -- AE-2.1: 'testing weeks count test efforts toward
+    the floor'. Between-rep recovery at a real sub-92% target does not."""
+    document = _document()
+    document['plan_ir']['weeks'][1]['week_type'] = 'load'
+    document['plan_ir']['weeks'][1]['sessions'] = [
+        _bike_session('2026-08-11', 'FTP Test', [
+            _step(600, 45, 70, intensity_class='warmUp'),  # warmup: excluded
+            _step(1200, 0, 0),  # open 20min test effort: counted (1200s)
+            _step(300, 50, 50),  # easy recovery: excluded
+        ]),
+    ]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(issue for issue in issues
+                if issue['id'].startswith('HARD_MINUTES_BELOW_FLOOR')
+                and issue['review_value']['week'] == 1)
+    assert item['review_value']['hard_minutes'] == 20.0
+
+
+def test_hard_minutes_floor_exempt_for_recovery_taper_race_and_pre_plan():
+    """Every week in the base fixture has zero structured hard minutes
+    (sessions carry no structure) -- without the exemption every week_type
+    would warn. recovery/taper/race are exempt by week_type; a load-typed
+    'pre_plan' (W00) bridge week is exempt by phase (it is not a
+    structured training week at all)."""
+    document = _document()
+    document['plan_ir']['weeks'][0]['phase'] = 'pre_plan'
+    document['plan_ir']['weeks'][0]['week_type'] = 'load'
+    document['plan_ir']['weeks'][1]['week_type'] = 'recovery'
+    document['plan_ir']['weeks'].append({
+        'number': 5, 'phase': 'taper', 'week_type': 'taper', 'sessions': []})
+    issues, _ = validate_transitional_input(document)
+    assert not any(issue['id'].startswith('HARD_MINUTES_BELOW_FLOOR') for issue in issues)
+
+
+def test_hard_minutes_below_floor_reports_every_offending_week_distinctly():
+    """validate_transitional_input's final step dedupes issues by a plain
+    "id" key ({item["id"]: item for item in issues}) -- a bare
+    "HARD_MINUTES_BELOW_FLOOR" id would silently collapse every offending
+    week down to just the last one processed. Real case: Steve Wagner's
+    W1 (38.5 min), W2 (27.0 min), and W3 (24.0 min) all failed the floor;
+    a shared id would have reported only W3 to the coach. Each week's
+    finding must survive as its own distinct, per-week id."""
+    document = _document()
+    document['plan_ir']['weeks'][1]['week_type'] = 'load'
+    document['plan_ir']['weeks'][1]['sessions'] = [
+        _bike_session('2026-08-11', 'Threshold Intervals', [
+            _step(1800, 95, 100),  # 30 min hard
+        ]),
+    ]
+    document['plan_ir']['weeks'].append({
+        'number': 2, 'phase': 'base', 'week_type': 'load', 'sessions': [
+            _bike_session('2026-08-18', 'Threshold Intervals', [
+                _step(600, 95, 100),  # 10 min hard
+            ]),
+        ]})
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    matches = {issue['id']: issue for issue in issues
+               if issue['id'].startswith('HARD_MINUTES_BELOW_FLOOR')}
+    assert set(matches) == {'HARD_MINUTES_BELOW_FLOOR_W01', 'HARD_MINUTES_BELOW_FLOOR_W02'}
+    assert matches['HARD_MINUTES_BELOW_FLOOR_W01']['review_value']['hard_minutes'] == 30.0
+    assert matches['HARD_MINUTES_BELOW_FLOOR_W02']['review_value']['hard_minutes'] == 10.0

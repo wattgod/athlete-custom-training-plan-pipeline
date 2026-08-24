@@ -25,6 +25,7 @@ SCRIPTS_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPTS_DIR))
 from zwo_parser import parse_zwo
 from brand_config import workout_author
+from known_races import UNMATCHED_RACE_MPH
 
 
 # ===========================================================================
@@ -521,8 +522,11 @@ def _run_verification_checks(
     target_race = profile.get('target_race', {})
     race_distance_mi = target_race.get('distance_miles', 0) or 0
     if race_distance_mi >= 50 and weeks_data:
-        # Estimate race duration: 200-mile gravel ~14-18h, use 15 mph avg for gravel
-        estimated_race_hrs = race_distance_mi / 15.0
+        # Estimate race duration: 200-mile gravel ~14-18h, use 15 mph avg for
+        # gravel. Same constant as known_races.estimate_unmatched_race_duration_hours
+        # -- single source (CLAUDE.md: a fact in more than one artifact has
+        # exactly one source).
+        estimated_race_hrs = race_distance_mi / UNMATCHED_RACE_MPH
         estimated_race_min = estimated_race_hrs * 60
         # Find the longest *training* ride across the plan. Race-day FreeRide
         # entries are intentionally long and must not certify their own

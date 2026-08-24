@@ -592,18 +592,26 @@ def build_canonical_model(
             description = append_heat_protocol_explainer_if_missing(description, title)
             segments = [_canonical_segment(segment, control) for segment in raw_segments]
             if is_field_test and control["control_metric"] == "rpe":
-                # The 20-minute assessment is authored as an FTP-neutral 1.00
-                # legacy target. Normal RPE conversion maps 1.00 to RPE 8,
-                # while the athlete-facing protocol correctly calls for RPE
-                # 9. Bind the executable target to the field-test semantics.
+                # The 20-minute assessment used to be authored as an
+                # FTP-neutral 1.00 legacy target (normal RPE conversion maps
+                # 1.00 to RPE 8), while the athlete-facing protocol correctly
+                # calls for RPE 9. sol programming review 2026-08-24 blocker
+                # 1 removed that locked target -- the main effort is now an
+                # open free_ride step (never a numeric %FTP anchored to the
+                # value it's supposed to measure) -- so _segment_target
+                # returns {"type": "free"} for it regardless of control
+                # metric. An RPE-controlled athlete has no power meter and
+                # cannot execute an untargeted "free" step; bind it to the
+                # same RPE-9 field-test semantics the old steady_state
+                # branch carried.
                 candidates = [
                     segment for segment in segments
-                    if segment.get("kind") == "steady_state"
+                    if segment.get("kind") in ("steady_state", "free_ride")
                     and int(segment.get("seconds") or 0) >= 1200
-                    and (segment.get("target") or {}).get("type") == "rpe"
                 ]
                 if candidates:
                     target = candidates[-1]["target"]
+                    target["type"] = "rpe"
                     target.pop("low", None)
                     target.pop("high", None)
                     target["value"] = 9

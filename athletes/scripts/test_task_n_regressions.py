@@ -18,12 +18,17 @@ from workout_templates import scale_zwo_to_target_duration
 
 
 def test_ftp_protocol_description_uses_the_emitted_warmup_and_cooldown():
+    # sol programming review 2026-08-24, blocker 1: the 20-minute main
+    # effort is now an open FreeRide step, never a target locked to 100%
+    # of the FTP it's supposed to measure (the old
+    # <SteadyState Duration="1200" Power="1.00"/> was circular -- perfect
+    # execution just returned 95% of the input back).
     blocks = '''<Warmup Duration="600" PowerLow="0.45" PowerHigh="0.70"/>
 <SteadyState Duration="300" Power="0.80"/>
 <SteadyState Duration="300" Power="0.50"/>
 <SteadyState Duration="300" Power="1.05"/>
 <SteadyState Duration="300" Power="0.50"/>
-<SteadyState Duration="1200" Power="1.00"/>
+<FreeRide Duration="1200" FlatRoad="1"><textevent timeoffset="0" message="20min maximal sustainable effort"/></FreeRide>
 <Cooldown Duration="600" PowerLow="0.55" PowerHigh="0.40"/>'''
     description = _format_block_derived_description('FTP_Test', blocks)
 
@@ -31,7 +36,11 @@ def test_ftp_protocol_description_uses_the_emitted_warmup_and_cooldown():
     assert '-10min easy spin Z1-Z2' in description
     assert '15 min warmup' not in description
     assert '15 min cooldown' not in description
-    assert '20min @ 100% FTP' in description
+    assert '20min all-out (no target — empty the tank) (RPE 10)' in description
+    # No numeric target locked to 100% of the current FTP -- the defect
+    # this test guards against.
+    assert '20min @ 100% FTP' not in description
+    assert '0.95' not in description
 
 
 def test_recovery_openers_description_is_only_the_final_emitted_sequence():

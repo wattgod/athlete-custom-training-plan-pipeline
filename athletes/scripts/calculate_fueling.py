@@ -472,8 +472,17 @@ def generate_fueling_context(
                           or rd.get("race_metadata", {}).get("elevation_feet", 0)
                           or 0)
 
-    # Calculate duration (discipline-aware — road is much faster than gravel)
-    duration_hours = estimate_race_duration(distance_miles, goal_type, elevation_feet, discipline)
+    # Calculate duration (discipline-aware — road is much faster than gravel).
+    # An UNMATCHED race (sol programming review 2026-08-24, major 10) has no
+    # real course/terrain data to model the goal-type speed table against —
+    # use the flat-terrain unmatched-race estimator instead, so the race
+    # card and fueling totals aren't anchored to a course-aware estimate for
+    # a course we don't actually know.
+    if target_race.get('generic_profile'):
+        from known_races import estimate_unmatched_race_duration_hours
+        duration_hours = estimate_unmatched_race_duration_hours(distance_miles)
+    else:
+        duration_hours = estimate_race_duration(distance_miles, goal_type, elevation_feet, discipline)
 
     # Calculate calories
     calorie_data = calculate_race_calories(
