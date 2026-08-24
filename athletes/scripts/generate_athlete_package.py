@@ -367,9 +367,14 @@ def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min
     # on the long rides.
     if tier in ('race_sim', 'quality') and duration_min is not None and duration_min < 90:
         # Plain FUEL label: no race-rate target applies under 90 minutes,
-        # so the RACE FUEL prefix would over-promise.
+        # so the RACE FUEL prefix would over-promise. AE-3.13 (2026-08-24 TP
+        # review): "The ladder lives on the long rides" read as an orphaned
+        # phrase on a short-workout card with no gut-training-ladder context
+        # anywhere nearby -- the parenthetical below makes the reference
+        # self-contained without a second FUEL banner.
         return ("FUEL: Under 90 minutes — arrive fueled and bring one "
-                "bottle with carbs. The ladder lives on the long rides.")
+                "bottle with carbs (your carb-rate practice ladder — "
+                "progressed on the long rides — is not the job today).")
     if tier == 'race_sim':
         return render_workout_fueling(prescription, 'race_sim', phase_ceiling)
     if tier == 'quality':
@@ -1363,7 +1368,7 @@ def _recompute_library_week_totals(week: dict) -> None:
 def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None,
                                athlete_seed=None,
                                excluded_calendar_slots: Optional[set] = None,
-                               index=None) -> list:
+                               index=None, discipline: Optional[str] = None) -> list:
     """C4/D1/D2: resolve in-scope block-builder days to curated TP library
     items via ``library_selector.select``.
 
@@ -1376,6 +1381,11 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     dict threaded across the whole plan, keyed identically to the
     canonical series bookkeeping (block_number, day, canonical name).
     Variety (R3) is tracked via a used_items dict threaded the same way.
+
+    ``discipline`` (AE-3.15) is threaded onto every slot so
+    ``library_selector`` can scope TT-bike-position items (e.g. "TT Base")
+    out of the pool for a non-TT discipline -- the "TT Base" leak onto a
+    gravel athlete's calendar, coach TP-review of plan 672143, 2026-08-24.
 
     Raises whatever ``library_selector``/``tp_library_snapshot`` raise --
     callers must not swallow exceptions here (Jesse Couch rule: the
@@ -1438,6 +1448,9 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
                 # single canonical type "Stars In Your Eyes"; its base
                 # routing (anaerobic_capacity) is unaffected.
                 'race_demands': False,
+                # AE-3.15: discipline scoping (see resolve_library_selections
+                # docstring). No slot requests TT-bike position work today.
+                'discipline': discipline,
             }
             resolution = library_selector.select(
                 slot, series_state=series_state, index=idx, used_items=used_items,
@@ -1463,7 +1476,7 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     _rebalance_recovery_weeks_post_resolution(
         bb_plan, day_caps=day_caps, athlete_seed=athlete_seed,
         series_state=series_state, used_items=used_items, index=idx,
-        lint_exclusions=lint_exclusions)
+        lint_exclusions=lint_exclusions, discipline=discipline)
 
     # T27: fold the loud, deduplicated lint-exclusion report into the same
     # list D9's fallback reporting already writes to library_fallbacks.json
@@ -1475,7 +1488,7 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
 
 def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed,
                                               series_state, used_items, index,
-                                              lint_exclusions=None):
+                                              lint_exclusions=None, discipline=None):
     """Keep recovery weeks inside R03's band AFTER resolution moves TSS.
 
     The build-time recovery fill works with yaml numbers; resolution then
@@ -1538,6 +1551,7 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
                 'athlete_seed': athlete_seed, 'race_demands': False,
                 'week_type': 'recovery',
                 'plan_week': bw.get('plan_week'), 'day': day.get('day'),
+                'discipline': discipline,
             }
             replacement = library_selector.select(
                 slot, series_state=series_state, index=index,
@@ -1963,6 +1977,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 day_caps=_bb_day_caps,
                 athlete_seed=_seed,
                 excluded_calendar_slots=_library_excluded_slots,
+                discipline=_bb_discipline,
             ))
             # NOTE: `athlete_dir` here is the caller's parameter -- in the
             # production authoring flow that's a SHORT-LIVED temp directory

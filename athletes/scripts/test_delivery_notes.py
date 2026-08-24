@@ -62,6 +62,10 @@ def test_coached_weekly_notes_are_direct_clean_and_bounded():
         {"name": "Whistler MTB", "priority": "B", "date": "2026-08-23"},
     ]
     notes = render_coached_weekly_notes(plan)
+    # AE-9.1 (2026-08-24 TP review): week 1's own FTP Test session makes it
+    # a "testing" week (story_notes overrides week_type for number==1 +
+    # is_field_test), which is excluded from both mid-week note gates; week
+    # 2 is race week -- Monday note only either way. No mid-week additions.
     assert len(notes) == 2
     race = notes[-1]
     assert race["title"] == "Week 2: Race Week"

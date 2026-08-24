@@ -835,6 +835,140 @@ def test_internal_only_names_never_ship():
     assert not _is_internal_only({"name_base": "This is Uncomfortable"})
 
 
+def test_tt_base_scoped_out_of_gravel_discipline():
+    # AE-3.15 (coach TP-review, plan 672143, 2026-08-24): "TT Base" reached
+    # a gravel athlete's calendar -- TT-bike-position items must never
+    # route to a non-TT discipline unless the slot explicitly asks for
+    # position work.
+    from library_selector import _is_off_discipline
+    tt_base = {"name_base": "TT Base"}
+    tt_bike_tag = {"name_raw": "Specialty - General + HC (TT bike) - ref - 60min - RPE3-4"}
+    assert _is_off_discipline(tt_base, "gravel")
+    assert _is_off_discipline(tt_base, None)
+    assert _is_off_discipline(tt_bike_tag, "gravel")
+    # Explicit position-work request (slot-level escape hatch) always wins.
+    assert not _is_off_discipline(tt_base, "gravel", wants_position_work=True)
+    # A TT-native discipline is never scoped out of its own content.
+    assert not _is_off_discipline(tt_base, "road_tt")
+
+
+def test_tt_pace_interval_names_are_not_position_work():
+    # The library also carries a "TT Sim / TT Yeeet / TT Send" family that
+    # borrows "TT" as a pacing-style nickname for generic threshold work --
+    # that is legitimate content for any discipline and must NOT be scoped
+    # out (only genuine TT-bike-position items are).
+    from library_selector import _is_off_discipline
+    for name in ("Threshold - TT Sim - ref - 90min - RPE8-9",
+                 "Threshold - TT Yeeet - 1 - 90min - RPE7-8",
+                 "Threshold - TT Send - 2 - 120min - RPE6-7",
+                 "Threshold - Gila Stage 1 TT Prep - 1 - 97min - RPE8-9",
+                 "15/4 TT Efforts (Gila)"):
+        assert not _is_off_discipline({"name_raw": name}, "gravel"), name
+
+
+def test_qualifying_pool_excludes_tt_position_items_for_gravel_slot():
+    from library_selector import _qualifying_pool
+    items = [
+        {"library_key": "endurance_z2_short", "duration_min": 65,
+         "name_base": "TT Base", "name_raw": "Endurance - TT Base - - 1 - 65min - RPE3-4"},
+        {"library_key": "endurance_z2_short", "duration_min": 65,
+         "name_base": "Endurance", "name_raw": "Endurance - Z2 Short - ref - 65min - RPE3"},
+    ]
+    slot = {"canonical_name": "Endurance", "role": "filler", "week_type": "load",
+            "discipline": "gravel"}
+    pool = _qualifying_pool(items, ["endurance_z2_short"], 65, None, slot=slot)
+    assert [item["name_base"] for item in pool] == ["Endurance"]
+    # No discipline filter applied when the slot omits discipline entirely
+    # AND declares it wants position work (escape hatch).
+    slot_tt = {"canonical_name": "Endurance", "role": "filler", "week_type": "load",
+               "wants_position_work": True}
+    pool_tt = _qualifying_pool(items, ["endurance_z2_short"], 65, None, slot=slot_tt)
+    assert len(pool_tt) == 2
+
+
+
+def test_ae_3_14_flags_back_to_back_tempo_blocks_with_no_recovery():
+    # AE-3.14 (coach TP-review, plan 672143, 2026-08-24): reproduces the
+    # real "Mixtape Feat Tempo" shape -- 60min Z2, then three 12min + one
+    # 6min blocks @80% FTP with NOTHING between them (four separate
+    # top-level blocks, zero recovery valleys) -- 42min of continuous
+    # >=76% work, well over the 20min threshold.
+    from library_selector import _has_ae_3_14_violation, advisory_flags
+    mixtape = {
+        "primaryIntensityMetric": "percentOfFtp",
+        "structure": [
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 3600}, "targets": [{"minValue": 65}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 720}, "targets": [{"minValue": 80}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 720}, "targets": [{"minValue": 80}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 720}, "targets": [{"minValue": 80}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 360}, "targets": [{"minValue": 80}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 300}, "targets": [{"minValue": 50, "maxValue": 65}]}]},
+        ],
+    }
+    assert _has_ae_3_14_violation(mixtape)
+    assert "advisory_ae_3_14_unbroken_hard_block" in advisory_flags({"structure": mixtape})
+
+
+def test_ae_3_14_recovery_valley_between_blocks_clears_the_flag():
+    # Same total hard volume, but with a 4min sub-70% valley inserted
+    # between each block -- exactly the AE-3.14 fix -- clears the flag.
+    from library_selector import _has_ae_3_14_violation
+    fixed = {
+        "primaryIntensityMetric": "percentOfFtp",
+        "structure": [
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 720}, "targets": [{"minValue": 80}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 240}, "targets": [{"minValue": 55}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 720}, "targets": [{"minValue": 80}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 240}, "targets": [{"minValue": 55}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 720}, "targets": [{"minValue": 80}]}]},
+        ],
+    }
+    assert not _has_ae_3_14_violation(fixed)
+
+
+def test_ae_3_14_ignores_rpe_metric_structures():
+    # No %FTP number exists to test on an RPE-metric structure -- must
+    # never misread a raw RPE integer as if it were a %FTP percentage here.
+    from library_selector import _has_ae_3_14_violation
+    rpe_structure = {
+        "primaryIntensityMetric": "rpe",
+        "structure": [
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 1800}, "targets": [{"minValue": 8}]}]},
+        ],
+    }
+    assert not _has_ae_3_14_violation(rpe_structure)
+
+
+def test_ae_3_14_is_advisory_never_a_pool_exclusion():
+    # 356/1459 real selectable items (~24%) trip this threshold -- almost
+    # entirely legitimate sustained race-sim/durability/threshold content.
+    # It must stay WARN-only: qualifying_pool never drops an item for it.
+    from library_selector import _qualifying_pool
+    mixtape_shape = {
+        "primaryIntensityMetric": "percentOfFtp",
+        "structure": [
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 1800}, "targets": [{"minValue": 80}]}]},
+        ],
+    }
+    items = [{"library_key": "endurance_with_work", "duration_min": 60,
+              "name_base": "Mixtape Feat Tempo", "structure": mixtape_shape}]
+    pool = _qualifying_pool(items, ["endurance_with_work"], 60, None,
+                            slot={"canonical_name": "Endurance with Surges", "role": "filler"})
+    assert len(pool) == 1
+
 
 def test_recovery_week_long_ride_never_draws_durability_pools():
     from library_selector import resolve_library_keys

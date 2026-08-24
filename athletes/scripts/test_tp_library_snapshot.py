@@ -717,3 +717,36 @@ def test_v25_graded_curated_defects_are_manually_flagged():
     assert by_id[14356246].get("lint_manual_review")
     assert by_id[14356254].get("lint_manual_review")
     assert not by_id[14355846].get("lint_manual_review")
+
+
+def test_power_test_items_flagged_for_mistagged_rpe_metric():
+    """Aug 24 2026 sweep for the RPE-relabel DEFECT family (AE 9c):
+    14416937/14416939 ('Power Test (12min)'/'(3min)') carry
+    primaryIntensityMetric=='percentOfFtp' at the top level while every
+    leaf target is unmistakably 1-10 RPE -- 14416937's '12 min ALL OUT'
+    main effort is {minValue:9, maxValue:10}, i.e. the item behind the
+    cited E2E finding '12min ALL OUT rendered Power=0.10'."""
+    index = load_index(DEFAULT_INDEX_PATH)
+    by_id = {item["item_id"]: item for item in index["items"]}
+    assert by_id[14416937].get("lint_manual_review")
+    assert by_id[14416939].get("lint_manual_review")
+    structure = by_id[14416937]["structure"]
+    assert structure.get("primaryIntensityMetric") == "percentOfFtp"
+    main_effort = next(
+        leaf for block in structure["structure"] for leaf in block.get("steps", [])
+        if leaf.get("name") == "Steady State" and (leaf.get("length") or {}).get("value") == 720)
+    target = next(t for t in main_effort["targets"] if t.get("unit") != "roundOrStridePerMinute")
+    assert target == {"minValue": 9, "maxValue": 10}
+
+
+def test_mixtape_feat_tempo_flagged_for_ae_3_14_recovery_violation():
+    """Coach TP-review of plan 672143 (2026-08-24, AE-3.14): Mixtape Feat
+    Tempo (14355941) is authored as 3x12min+1x6min @80% FTP run back-to-back
+    -- zero sub-70% recovery between blocks, no dimension work -- confirmed
+    at the TP source, not an emission bug. Flagged for a source fix; see
+    docs/evidence/2026-08-24-tp-curated-change-list.md."""
+    index = load_index(DEFAULT_INDEX_PATH)
+    by_id = {item["item_id"]: item for item in index["items"]}
+    assert by_id[14355941].get("lint_manual_review")
+    flagged_ids = {item["item_id"] for item in lint_flagged_items(index)}
+    assert 14355941 in flagged_ids

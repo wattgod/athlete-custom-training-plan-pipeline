@@ -16,7 +16,9 @@ def test_final_xml_description_round_trips_same_interval_structure():
     xml = """<?xml version='1.0' encoding='UTF-8'?><workout_file><name>x</name>
     <description>MAIN SET:\n-old</description><workout><IntervalsT Repeat="4" OnDuration="60" OnPower="1.2" OffDuration="60" OffPower="0.5" /></workout></workout_file>"""
     rewritten = rewrite_zwo_description(xml)
-    assert '4x1min @ 120% FTP, 1min recovery @ 50% FTP' in rewritten
+    # AE-3.12 (2026-08-24 TP review): every %FTP step target carries its
+    # RPE decode annotation -- 120% FTP is Z5+/RPE8-9, 50% FTP is Z1/RPE3.
+    assert '4x1min @ 120% FTP (Z5+, RPE 8-9), 1min recovery @ 50% FTP (Z1, RPE 3)' in rewritten
     assert 'Repeat="4"' in rewritten and 'OnDuration="60"' in rewritten
 
 

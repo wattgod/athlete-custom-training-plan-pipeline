@@ -261,3 +261,22 @@ Proposed-action totals: 15 retire,
 | 14356012 | Endurance - FatMax Development - 2 - 120min - RPE2-3 | 120min | 0.60 | IF 0.60 < .60 floor; name carries a retired archetype (FatMax/Fartlek) | retire |
 | 14356013 | Endurance - FatMax Development - 1 - 100min - RPE2-3 | 100min | 0.60 | IF 0.60 < .60 floor; name carries a retired archetype (FatMax/Fartlek) | retire |
 
+## (d) AE-3.14 — embedded tempo/SST recovery + dimension violations
+
+**Added:** 2026-08-24, coach TP-review of plan 672143. Confirmed against
+the item's own authored `structure` in the index (not an emission bug) --
+excludes items already covered by (a)/(b)/(c) above unless the AE-3.14
+violation is a distinct, additional finding.
+
+| item_id | name | violation | specific fix | proposed action |
+|---|---|---|---|---|
+| 14355941 | Endurance - Mixtape Feat Tempo - 1 - 107min - RPE7-8 | Authored structure: 60min Z2 warm-up, then 720s+720s+720s+360s (=2,520s / 42min) all @80% FTP run BACK-TO-BACK with zero sub-70% recovery between blocks, then a 300s cooldown -- no cadence/position/pace-change dimension work anywhere in the main set. Same defect the coach named "the Mixtape defect" in AE-3.14. | Insert a 3-4min recovery valley (targets in the 50-60% FTP band, matching the item's own cooldown target) between each of the 4 tempo blocks (after the two 12min blocks and after the third 12min block, before the 6min block) -- 3 valleys total. Add a dimension line to at least one block (e.g. cadence 90-100rpm call on the first 12min block, standing/seated call on another) so the set is not four identical flat blocks. Update the description's MAIN SET prose to match (drop "back-to-back per structure"). | fix-at-TP-source |
+
+This item is flagged in `tp_library_snapshot._MANUAL_REVIEW` (excluded from
+selection today) pending the source fix; see
+`test_mixtape_feat_tempo_flagged_for_ae_3_14_recovery_violation` in
+`athletes/scripts/test_tp_library_snapshot.py`. A general SELECTION-time
+guard for this defect class (AE-3.14: >20min continuous >=76% FTP work with
+no sub-70% recovery inside) also runs in `library_selector.py` (WARN-level
+advisory, not a hard exclusion) -- see `_ae_3_14_advisory` and the sweep
+count reported in the executor report for this wave.

@@ -19,7 +19,9 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from derived_registry import entry as derived_entry, validate_registry
-from delivery_render import sanitize_athlete_description, sanitize_athlete_title
+from delivery_render import (append_heat_protocol_explainer_if_missing,
+                             append_rpe_guide_if_missing, sanitize_athlete_description,
+                             sanitize_athlete_title)
 from tp_polyline import compute_polyline
 from tp_cadence import CadenceError, REST, WORK, with_cadence
 
@@ -545,7 +547,8 @@ def build_canonical_model(
                      if prescription_data else None),
             weeks=plan_ir_module._build_weeks(
                 source_dir, plan_dates_data, athlete,
-                profile.get("recurring_sessions", []) or []),
+                profile.get("recurring_sessions", []) or [],
+                race_date=target.get("date")),
             notes=[{"kind": "mental_training", "id": key, "text": str(value)}
                    for key, value in mental.items()
                    if value not in (None, "", "none", "no")],
@@ -577,6 +580,16 @@ def build_canonical_model(
                 description = (description.rstrip() + "\n\nRE-ANCHOR: Complete this Week 1 field test, "
                                "record the measured result, and update future targets.").strip()
             description = sanitize_athlete_description(description)
+            # AE-3.12 (2026-08-24 TP review): a library-verbatim description
+            # is never rewritten, but one that carries no RPE mention at all
+            # gets a trailing decode line -- built from raw_segments (still
+            # the ZWO-shaped on_power/off_power/power_target fields, before
+            # _canonical_segment folds them into the control-neutral target).
+            description = append_rpe_guide_if_missing(
+                description, library_item_id=getattr(raw_session, "library_item_id", None),
+                segments=raw_segments)
+            # AE-3.13: named-protocol self-containment (Heat Acclimation).
+            description = append_heat_protocol_explainer_if_missing(description, title)
             segments = [_canonical_segment(segment, control) for segment in raw_segments]
             if is_field_test and control["control_metric"] == "rpe":
                 # The 20-minute assessment is authored as an FTP-neutral 1.00

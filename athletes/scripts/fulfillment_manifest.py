@@ -45,6 +45,10 @@ def build_manifest_from_plan_ir(ir: Dict[str, Any], athlete_dir: Path | str) -> 
                 'segments': session.get('segments', []), 'source_file': session.get('source_file'),
                 # Complete remote field set used by the legacy/D0 parity gate.
                 'description': session.get('description'),
+                # AE-9.2 (2026-08-24 TP review): TP's preActivityComments
+                # field -- populated for key sessions only (see
+                # pre_activity_comments.py / plan_ir._annotate_delivery_context).
+                'pre_activity_comment': session.get('pre_activity_comment'),
                 'tp_workout_type': session.get('workout_type_value_id'),
                 'total_seconds': int(session.get('duration_s', 0) or 0),
                 'tss_planned': session.get('tss_planned'),

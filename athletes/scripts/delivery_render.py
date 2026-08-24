@@ -36,6 +36,121 @@ RPE_BANDS = (
     ("fallback", "RPE6-7"),
 )
 
+# AE-3.12 (2026-08-24 TP review, plan 672143): every step line in an emitted
+# DESCRIPTION carries its RPE next to the %FTP target ("3x12min @80% FTP
+# (Z3, RPE 6-7)") -- structured workouts stay built as %FTP, this is a
+# decode annotation only. Same numeric edges as _rpe's dominant-percent
+# thresholds below (105 / 88), extended with the has_structured_work
+# fallback's 76% edge so every %FTP value in [0, inf) gets a band -- this
+# is the single canon both the session-level title RPE (_rpe, below) and
+# the per-step description RPE (workout_spec._line_for_segment) read from.
+_STEP_RPE_BANDS = (
+    (105, (8, 9)),
+    (88, (6, 7)),
+    (76, (5, 6)),
+    (0, (3, 3)),
+)
+
+
+def zone_for_percent(pct: float) -> str:
+    """%FTP -> training zone label, matching generate_plan_preview._if_to_zone's
+    boundaries (Z1<55% / Z2<75% / Z3<87% / Z4<95% / Z5<106% / Z5+)."""
+    if pct < 55:
+        return "Z1"
+    if pct < 75:
+        return "Z2"
+    if pct < 87:
+        return "Z3"
+    if pct < 95:
+        return "Z4"
+    if pct < 106:
+        return "Z5"
+    return "Z5+"
+
+
+def rpe_for_percent(pct: float) -> str:
+    """%FTP -> RPE decode label ('RPE 6-7' or 'RPE 3'), per _STEP_RPE_BANDS."""
+    for floor, (lo, hi) in _STEP_RPE_BANDS:
+        if pct >= floor:
+            return f"RPE {lo}" if lo == hi else f"RPE {lo}-{hi}"
+    return "RPE 3"
+
+
+def zone_rpe_annotation(pct: float) -> str:
+    """'(Z3, RPE 6-7)' decode annotation for a single %FTP step target."""
+    return f"({zone_for_percent(pct)}, {rpe_for_percent(pct)})"
+
+
+_RPE_MENTION_RE = re.compile(r"\bRPE\b", re.I)
+
+
+def rpe_guide_line(session: Any) -> Optional[str]:
+    """AE-3.12 library-verbatim carve-out (2026-08-24 TP review): a curated
+    description is never rewritten, but when it carries no RPE mention of
+    its own, one summary line decodes every distinct %FTP target the
+    session's own structure actually carries. Returns None when the
+    session has no %FTP structure to decode (RPE-controlled or unstructured
+    sessions)."""
+    blocks = _work_blocks_from_segments(session) or _work_blocks_from_structure(session)
+    percents: List[float] = []
+    seen = set()
+    for _, _, percent in blocks:
+        value = _number(str(percent or "").rstrip("%"))
+        if value is None or value in seen:
+            continue
+        seen.add(value)
+        percents.append(value)
+    if not percents:
+        return None
+    parts = [f"{round(pct)}% FTP -> {rpe_for_percent(pct)}"
+             for pct in sorted(percents, reverse=True)]
+    return "RPE guide: " + "; ".join(parts)
+
+
+_HEAT_PROTOCOL_RE = re.compile(r"\bheat\s+acclimation\b", re.I)
+_HEAT_PROTOCOL_EXPLAINED_RE = re.compile(
+    r"\b(?:reduce[sd]?\s+cool|extra\s+layer|overdress|stop\s+if|stop[- ]sweat)\b", re.I)
+
+
+def append_heat_protocol_explainer_if_missing(description: str, title: Any) -> str:
+    """AE-3.13 (2026-08-24 TP review): a Heat Acclimation Protocol session
+    must describe the protocol inline -- dose, reduced cooling/extra
+    layers, hydration emphasis, stop conditions -- not just a warm-Z2
+    zone/RPE target with no context for why it's structured that way. A
+    curated description that already explains the mechanism (any of those
+    cues present) is left untouched; one that doesn't gets a trailing
+    self-contained block rather than a rewrite of the authored text.
+    """
+    haystack = f"{title or ''} {description or ''}"
+    if not _HEAT_PROTOCOL_RE.search(haystack):
+        return description
+    if _HEAT_PROTOCOL_EXPLAINED_RE.search(description or ""):
+        return description
+    explainer = (
+        "HEAT PROTOCOL: ~60min at the prescribed easy zone with reduced "
+        "cooling — skip the fan, add a layer, or ride the hottest part of "
+        "the day. Hydrate aggressively before and during; sip past thirst. "
+        "Stop if dizzy, nauseous, or confused — cool down and end the "
+        "session rather than push through."
+    )
+    return (description or "").rstrip() + "\n\n" + explainer
+
+
+def append_rpe_guide_if_missing(description: str, *, library_item_id: Any, segments: Any) -> str:
+    """Append the RPE guide line to a library-verbatim description that
+    carries no RPE mention of its own -- never touches already-authored
+    text (rx-invisibility / verbatim rules bar rewriting curated copy). A
+    no-op when the session isn't library-resolved or has no %FTP structure.
+    """
+    if not library_item_id:
+        return description
+    if _RPE_MENTION_RE.search(description or ""):
+        return description
+    guide = rpe_guide_line({"segments": segments})
+    if not guide:
+        return description
+    return (description or "").rstrip() + "\n\n" + guide
+
 
 def load_brand(brand_key: str) -> Dict[str, Any]:
     """Load one configured brand, failing closed for missing or unknown keys."""

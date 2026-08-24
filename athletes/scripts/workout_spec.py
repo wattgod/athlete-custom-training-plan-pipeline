@@ -10,6 +10,8 @@ import xml.etree.ElementTree as ET
 from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from delivery_render import zone_rpe_annotation
+
 
 def normalize_zwo_blocks(blocks: str) -> List[Dict[str, Any]]:
     root = ET.fromstring(f'<workout>{blocks}</workout>')
@@ -47,19 +49,30 @@ def _mins(seconds: int) -> str:
 
 def _line_for_segment(segment: Dict[str, Any]) -> Optional[str]:
     """Render a single executable segment as training-work prose (no bullet
-    prefix). Returns ``None`` for anything render_main_set doesn't cover."""
+    prefix). Returns ``None`` for anything render_main_set doesn't cover.
+
+    AE-3.12 (2026-08-24 TP review): every %FTP target carries its RPE decode
+    right beside it ("80% FTP (Z3, RPE 6-7)") -- best practice for executing
+    a session that is built as %FTP but felt as effort. zone_rpe_annotation
+    is the shared canon (delivery_render.py) also used for session-level
+    title RPE, so a step's decode never disagrees with the card's own RPE.
+    """
     kind = segment['kind']
     if kind == 'intervals':
-        return (f"{segment['repeat']}x{_mins(segment['on_seconds'])} @ {round(segment['on_power'] * 100)}% FTP, "
-                f"{_mins(segment['off_seconds'])} recovery @ {round(segment['off_power'] * 100)}% FTP")
+        on_pct = round(segment['on_power'] * 100)
+        off_pct = round(segment['off_power'] * 100)
+        return (f"{segment['repeat']}x{_mins(segment['on_seconds'])} @ {on_pct}% FTP {zone_rpe_annotation(on_pct)}, "
+                f"{_mins(segment['off_seconds'])} recovery @ {off_pct}% FTP {zone_rpe_annotation(off_pct)}")
     if kind == 'steady':
-        return f"{_mins(segment['seconds'])} @ {round(segment['power'] * 100)}% FTP"
+        pct = round(segment['power'] * 100)
+        return f"{_mins(segment['seconds'])} @ {pct}% FTP {zone_rpe_annotation(pct)}"
     if kind == 'free_ride':
         # Target-free blocks in emitted workouts are max-effort test segments
         # (sprints, capacity efforts). "Free ride" reads as no-effort-required
         # and risks the athlete soft-pedaling exactly where the test needs
-        # everything; say what the block is for.
-        return f"{_mins(segment['seconds'])} all-out (no target — empty the tank)"
+        # everything; say what the block is for. No %FTP target exists to
+        # decode, but the effort is unambiguously maximal -- RPE 10.
+        return f"{_mins(segment['seconds'])} all-out (no target — empty the tank) (RPE 10)"
     return None
 
 

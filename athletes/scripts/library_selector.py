@@ -4,7 +4,11 @@
 Queries the C1 normalized index (``tp_library_snapshot.load_index``) to
 resolve a canonical block-builder slot -- {canonical_name, level, budget_min,
 day_cap_min, role, phase, series_key, week_in_block, athlete_seed,
-race_demands} -- to a curated TrainingPeaks library item.
+race_demands, discipline, wants_position_work} -- to a curated
+TrainingPeaks library item. ``discipline``/``wants_position_work`` gate
+AE-3.15 discipline scoping (see ``_is_off_discipline``); both are optional
+-- an unset/non-TT ``discipline`` scopes OUT TT-bike-position items by
+default (the safe direction), unless ``wants_position_work`` is set.
 
 This module does NOT call C2 (``tp_structure_to_zwo``); that converter is
 internal-only (D4) and consumed downstream by C4 integration, not by the
@@ -289,6 +293,9 @@ def _qualifying_pool(
     pool = _record_lint_exclusions(pool, excluded_ids, lint_exclusions, slot)
     if slot is not None:
         pool = [item for item in pool if not _is_internal_only(item) and _passes_role_ceiling(item, slot)]
+        pool = [item for item in pool if not _is_off_discipline(
+            item, slot.get("discipline"),
+            wants_position_work=bool(slot.get("wants_position_work")))]
     return pool
 
 
@@ -383,6 +390,41 @@ def _is_internal_only(item: Mapping[str, Any]) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# AE-3.15 (ratified 2026-08-24, coach TP-review of plan 672143): discipline
+# scoping. Curated "TT Base" (a TT-bike-position endurance family) reached a
+# gravel athlete's calendar. TT-bike-position items never route to a
+# non-road-TT discipline unless the slot explicitly requests position work
+# (no canonical slot does today, so the flag defaults off).
+#
+# Scoped to the actual defect -- TT-BIKE-POSITION work -- not every item
+# that borrows "TT" as a pacing-style nickname. The library also carries a
+# large "TT Sim / TT Yeeet / TT Send / Gila ... TT Prep" family of generic
+# threshold/interval sessions styled after time-trial pacing discipline;
+# those are legitimate training content for any discipline and are NOT
+# excluded here (flagged for coach review in the rollout report instead of
+# silently stripped from the gravel pool).
+# ---------------------------------------------------------------------------
+_TT_POSITION_RE = re.compile(r"\bTT\s*Base\b|\(TT\s*bike\)|\btime[- ]trial\b", re.I)
+
+# Disciplines that legitimately want TT-bike-position work by default.
+_TT_POSITION_DISCIPLINES = {"road_tt", "triathlon", "tt"}
+
+
+def _is_off_discipline(item: Mapping[str, Any], discipline: Optional[str],
+                        *, wants_position_work: bool = False) -> bool:
+    """True when ``item`` is TT-bike-position work that doesn't belong on
+    this athlete's discipline (AE-3.15). ``wants_position_work`` is the
+    slot-level escape hatch -- a slot that explicitly asks for TT position
+    work is never scoped out, regardless of discipline."""
+    if wants_position_work:
+        return False
+    if (discipline or "").lower() in _TT_POSITION_DISCIPLINES:
+        return False
+    name = item.get("name_base") or item.get("name_raw") or ""
+    return bool(_TT_POSITION_RE.search(name))
+
+
+# ---------------------------------------------------------------------------
 # T27: curation-consistency lint exclusion.
 #
 # Items are placed byte-verbatim (D3) -- a curated item whose own
@@ -431,6 +473,8 @@ def advisory_flags(item: Mapping[str, Any]) -> list[str]:
     flags = []
     if _has_ragged_long_block(item.get("description")):
         flags.append("lint_ragged_duration_text")
+    if _has_ae_3_14_violation(item.get("structure")):
+        flags.append("advisory_ae_3_14_unbroken_hard_block")
     return flags
 
 
@@ -555,6 +599,66 @@ def _max_hard_rep_seconds(structure: Any) -> float:
             if pct >= _HARD_WORK_PCT_FLOOR:
                 longest = max(longest, float((sub.get("length") or {}).get("value") or 0))
     return longest
+
+
+# ---------------------------------------------------------------------------
+# AE-3.14 (ratified 2026-08-24, coach TP-review of plan 672143): embedded
+# tempo/SST blocks need recovery valleys and dimension work between them --
+# never one continuous blob bolted together ("the Mixtape defect": curated
+# "Mixtape Feat Tempo" is 3x12min+1x6min @80% FTP run back-to-back with
+# zero sub-70% recovery between blocks; see docs/evidence/
+# 2026-08-24-tp-curated-change-list.md (d)).
+#
+# WARN-only, never a hard pool exclusion: a real sweep of the 1459
+# selectable items (2026-08-24) found 356 (~24%) contain >20min of
+# continuous >=76% FTP work with no sub-70% valley inside -- almost
+# entirely the race_sim / durability_long_sims / threshold_sustained
+# families, whose whole PURPOSE is sustained race-pace or threshold power
+# for 20+ minutes. A hard exclusion at this threshold would gut those
+# libraries wholesale; that is not the Mixtape defect (a short interval
+# SET stitched together inside an endurance ride with no valleys), it is
+# how sustained-power training is supposed to look. Reported via
+# advisory_flags for coach review, never filtered from selection.
+# ---------------------------------------------------------------------------
+_AE_3_14_HARD_PCT = 76.0
+_AE_3_14_RECOVERY_PCT = 70.0
+_AE_3_14_CONTINUOUS_SECONDS = 20 * 60  # 20 minutes
+
+
+def _has_ae_3_14_violation(structure: Any) -> bool:
+    """True when ``structure`` carries >20min of continuous >=76% FTP work
+    with zero sub-70% recovery inside anywhere along the walk. Unrolls
+    repeats and walks ACROSS top-level block boundaries -- the Mixtape
+    defect is four separate top-level blocks with nothing between them, so
+    a per-block-only check would miss it. A leaf strictly between 70% and
+    76% is connective (neither hard nor a real recovery valley): it does
+    not extend the hard-seconds run, but does not reset it either. Scoped
+    to percentOfFtp-metric structures -- an RPE-metric structure has no
+    %FTP number to test here (see tp_structure_to_zwo's RPE decode table,
+    AE 9c DEFECT FIX, for that family instead)."""
+    if not isinstance(structure, Mapping):
+        return False
+    if str(structure.get("primaryIntensityMetric")
+           or "percentOfFtp").lower() == "rpe":
+        return False
+    run_seconds = 0.0
+    for step in structure.get("structure") or []:
+        reps = int((step.get("length") or {}).get("value") or 1)
+        leaves = step.get("steps") or []
+        for _ in range(max(reps, 1)):
+            for sub in leaves:
+                target = next((t for t in sub.get("targets") or []
+                               if t.get("unit") != "roundOrStridePerMinute"), None)
+                pct = float((target.get("maxValue") or target.get("minValue") or 0)
+                            if target else 0)
+                seconds = float((sub.get("length") or {}).get("value") or 0)
+                if pct >= _AE_3_14_HARD_PCT:
+                    run_seconds += seconds
+                    if run_seconds > _AE_3_14_CONTINUOUS_SECONDS:
+                        return True
+                elif pct < _AE_3_14_RECOVERY_PCT:
+                    run_seconds = 0.0
+    return False
 
 
 def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bool:

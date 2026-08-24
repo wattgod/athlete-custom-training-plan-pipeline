@@ -159,11 +159,12 @@ class TestRenderMainSetCollapse:
         blocks = ('<IntervalsT Repeat="5" OnDuration="180" OnPower="1.15" '
                   'OffDuration="120" OffPower="0.55" />')
         rendered = render_main_set(normalize_zwo_blocks(blocks))
-        assert rendered == '- 5x3min @ 115% FTP, 2min recovery @ 55% FTP'
+        # AE-3.12 (2026-08-24 TP review): RPE decode next to every %FTP target.
+        assert rendered == '- 5x3min @ 115% FTP (Z5+, RPE 8-9), 2min recovery @ 55% FTP (Z2, RPE 3)'
 
     def test_single_non_repeated_segment_renders_unchanged(self):
         segments = [{'kind': 'steady', 'seconds': 1800, 'power': 0.65}]
-        assert render_main_set(segments) == '- 30min @ 65% FTP'
+        assert render_main_set(segments) == '- 30min @ 65% FTP (Z2, RPE 3)'
 
     def test_real_endurance_with_surges_archetype_collapses(self):
         """End-to-end through the real archetype + generation path (not a
@@ -188,9 +189,11 @@ class TestRenderMainSetCollapse:
             segments.append({'kind': 'steady', 'seconds': 50, 'power': 0.50})
         rendered = render_main_set(segments)
         lines = rendered.strip().split('\n')
-        assert lines[0] == '- 10min @ 70% FTP', f"lead-in should stay its own bullet, got: {lines}"
+        # AE-3.12 (2026-08-24 TP review): RPE decode next to every %FTP target.
+        assert lines[0] == '- 10min @ 70% FTP (Z2, RPE 3)', f"lead-in should stay its own bullet, got: {lines}"
         assert len(lines) == 2, f"period-3 group should collapse to 1 line after the lead-in, got: {lines}"
-        assert lines[1] == '- 5 x (2min @ 85% FTP + 0:10 @ 200% FTP + 0:50 @ 50% FTP)'
+        assert lines[1] == ('- 5 x (2min @ 85% FTP (Z3, RPE 5-6) + 0:10 @ 200% FTP (Z5+, RPE 8-9) '
+                            '+ 0:50 @ 50% FTP (Z1, RPE 3))')
 
     def test_real_tempo_sprints_archetype_collapses_both_repeat_groups(self):
         """End-to-end through the real 'Tempo Sprints' archetype (the exact
@@ -342,3 +345,28 @@ def test_manifest_total_time_planned_is_whole_minutes(full_plan_manifest):
     assert offenders == [], (
         f"bike session(s) with a non-whole-minute totalTimePlanned "
         f"(stem, hours, reconstructed_sec): {offenders}")
+
+
+def test_alactic_opener_alternative_dose_is_proposed_not_wired_in():
+    """DEFECT 4 (coach TP-review, plan 672143, 2026-08-24): the proposed
+    3x15-20s @130-150% alactic dose renders correctly (so the coach can
+    trust the numbers) but is not referenced by the live 'Pre-Race
+    Openers' Level 1 archetype -- the shipped render is unchanged."""
+    from new_archetypes import ENDURANCE_NEW
+    from nate_workout_generator import alactic_opener_alternative_dose_proposal
+
+    proposal = alactic_opener_alternative_dose_proposal()
+    assert proposal['efforts'] == (3, 18)
+    assert proposal['effort_power'] == 1.40
+
+    archetype = {'name': 'Pre-Race Openers', 'levels': {'1': proposal}}
+    blocks = generate_blocks_from_archetype(archetype, 1)
+    assert blocks.count('Power="1.40"') == 3
+    assert 'Power="0.65"' in blocks  # unchanged warmup envelope
+
+    # Not wired in: the live archetype table's Level 1 still ships the
+    # coach's original 2x30s @110% dose.
+    live_level_1 = next(a for a in ENDURANCE_NEW
+                        if a['name'] == 'Pre-Race Openers')['levels']['1']
+    assert live_level_1['efforts'] == (2, 30)
+    assert live_level_1['effort_power'] == 1.10

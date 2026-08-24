@@ -20,7 +20,11 @@ def test_heather_like_manifest_is_platform_independent(tmp_path):
     (tmp_path / 'plan_ir.json').write_text(json.dumps(ir))
     manifest = build_fulfillment_manifest(tmp_path)
     assert len(manifest['workouts']) == 2
-    assert len(manifest['native_notes']) == 1
+    # AE-9.1 (2026-08-24 TP review): week 2 has no phase/week_type, which
+    # story_notes defaults to "load" -- and its only non-Monday session
+    # (Jan 16, Friday) earns the mid-week "feel" note alongside the Jan 12
+    # Monday note.
+    assert len(manifest['native_notes']) == 2
     assert manifest['native_notes'][0]['logical_key'] == 'weekly-briefing-2026-01-12'
     assert 'Week 2 ·' not in manifest['native_notes'][0]['text']
     assert manifest['workouts'][0]['workout_type'] == 8

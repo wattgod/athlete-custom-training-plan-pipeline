@@ -58,7 +58,12 @@ def test_blank_rest_day_is_a_critical_finding():
 
 def test_story_notes_have_beats_and_pass_lint():
     notes = render_story_notes(_plan())
-    assert len(notes) == 8
+    # AE-9.1 (2026-08-24 TP review): 8 Monday notes, plus a mid-week "feel"
+    # note on the 4 load weeks (2, 3, 5, 6 -- Wednesday, the fixture's only
+    # Thu/Wed/Tue/Fri session) and a pre-long-ride fuel note on every
+    # non-testing, non-race week that carries a >=90min bike session
+    # (2-7, all of them via the fixture's Sunday "Z2 + Sprints" ride) = 18.
+    assert len(notes) == 18
     assert notes[0]["title"].startswith("Week 1") and "Testing" in notes[0]["title"]
     assert "FTP Test Monday" in notes[0]["body"]
     assert "Openers before Big Sugar Gravel" in notes[-1]["body"]

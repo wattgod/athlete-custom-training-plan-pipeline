@@ -813,6 +813,27 @@ _MANUAL_REVIEW: dict[int, str] = {
     # Aug 17 2026 adversarial grade (Sonja v25):
     14356246: "Base - + Heat Training: desc says '~150min' on a 180min item (under the 20% lint threshold), promises warm-up/cool-down absent from the single-block structure; title says Heat Training but desc carries no heat instructions",
     14356254: "Better Late Than Cadence: missing primaryIntensityTargetOrRange; min-only targets with no ceilings on the 90min block and the 10x60s reps",
+    # Aug 24 2026 coach TP-review, plan 672143 (AE-3.14, docs/ALGORITHM_
+    # EVIDENCE.md 9c): Mixtape Feat Tempo -- 3x12min + 1x6min @80% FTP run
+    # back-to-back with ZERO sub-70% recovery between blocks (2,520s / 42min
+    # continuous) and no dimension (cadence/position/pace-change) work.
+    # Confirmed authored that way at source, not an emission bug. Fix
+    # tracked in docs/evidence/2026-08-24-tp-curated-change-list.md.
+    14355941: "Mixtape Feat Tempo: 3x12min+1x6min @80% FTP back-to-back with no recovery valleys between tempo blocks and no dimension work (AE-3.14)",
+    # Aug 24 2026, found sweeping the index for the RPE-relabel DEFECT
+    # family (AE 9c). Unlike 14356256 (Muscle Recruitment Progressions),
+    # these two carry primaryIntensityMetric=="percentOfFtp" at the TOP
+    # LEVEL -- the metric tag itself is wrong at the TP source, not just
+    # missing -- but every leaf target is unmistakably 1-10 RPE (desc:
+    # "Warm up ... RPE 3-5", "10min high cadence RPE 5-7", "5 min RPE 1-3
+    # recovery"; structure leaf for the main effort carries {"minValue": 9,
+    # "maxValue": 10}). This IS the item behind the cited E2E finding
+    # ("12min ALL OUT rendered Power=0.10" -- 10/100 = 0.10). Excluded until
+    # the coach retags the structure's primaryIntensityMetric at the TP
+    # source; tp_structure_to_zwo's RPE decode table cannot help here
+    # because the structure claims to already be %FTP.
+    14416937: "Power Test (12min): structure metric tagged percentOfFtp but every leaf target is 1-10 RPE (desc says RPE throughout, '12 min ALL OUT' main effort carries {min:9,max:10}) -- the 12min-ALL-OUT-at-Power=0.10 E2E finding",
+    14416939: "Power Test (3min): same metric-tag defect as 14416937 (sibling item, '3 min ALL OUT' main effort)",
 }
 
 

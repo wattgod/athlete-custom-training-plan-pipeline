@@ -125,6 +125,54 @@ _ASIDES: List[str] = [
     "The fitness is in the weeks you don't notice.",
 ]
 
+# AE-9.1 (2026-08-24 TP review): the Monday note is the floor, not the
+# ceiling -- 1-2 short mid-week notes per week, speaking to how the athlete
+# is likely feeling at that point in the block. Unlike _NOTICE (which wraps
+# via modulo), these SKIP once the pool is exhausted rather than repeat --
+# same choice _FAMILY_RULES makes ("the athlete knows this family by now;
+# say nothing new") -- so voice_lint's cross-week sentence-dupe check can
+# never fail here regardless of plan length.
+_MIDWEEK_LOAD_FEEL: List[str] = [
+    "Legs heavy today is the load landing, not a warning sign.",
+    "If today feels flat, that is the last two hard days still in your legs. Normal.",
+    "A dead-legs day mid-week is the training working, not the training gone wrong.",
+    "Slower than usual today is expected here. The adaptation happens on the rest day, not this one.",
+    "A grey day mid-week is the block doing its job. Ride it, do not chase it.",
+    "If the legs are asking questions today, that is the load talking. Answer with pace, not power.",
+    "Nothing wrong with a sluggish Thursday in a week like this. Show up, keep it honest, move on.",
+    "A heavy Wednesday in a week like this one is the bill for Monday and Tuesday, not a setback.",
+]
+
+_MIDWEEK_LONG_RIDE_FUEL: List[str] = [
+    "Fuel the long ride from hour zero, not when you get hungry.",
+    "Bottles mixed and food counted before you roll out for the long one.",
+    "Start eating on the long ride before you want to. By the time you are hungry, you are behind.",
+    "The long ride's fuel plan starts at the door, not at mile twenty.",
+    "Pre-load fluids the night before the long ride; do not try to catch up on the bike.",
+    "Lay out the long ride's food tonight so tomorrow morning is not a scramble.",
+    "Set a fuel timer for the long ride. Do not rely on feeling hungry to remind you.",
+    "The long ride rewards the rider who eats early. Start the first bar before you think you need it.",
+]
+
+_MIDWEEK_WEEKDAY_PREFERENCE = (3, 2, 1, 4)  # Thursday, Wednesday, Tuesday, Friday
+
+
+def _midweek_feel_date(dated: List[Any]) -> Optional[date]:
+    """The load week's own Thu/Wed/Tue/Fri, in that order of preference --
+    whichever weekday the plan actually scheduled a session on this week."""
+    by_weekday = {_as_date(_get(s, "date")).weekday(): _as_date(_get(s, "date")) for s in dated}
+    for weekday in _MIDWEEK_WEEKDAY_PREFERENCE:
+        if weekday in by_weekday:
+            return by_weekday[weekday]
+    return None
+
+
+def _midweek_long_ride(dated: List[Any]) -> Optional[Any]:
+    """This week's genuine long ride (bike, >=90min), or None."""
+    bikes = [s for s in dated if str(_get(s, "tp_kind") or "") == "bike"
+             and int(_get(s, "duration_s") or 0) >= 5400]
+    return max(bikes, key=lambda s: int(_get(s, "duration_s") or 0)) if bikes else None
+
 _WEEKDAY = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
@@ -295,6 +343,8 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
     aside_cursor = 0
     focus_said = False
     phase_use: Dict[str, int] = {}
+    midweek_feel_use = 0
+    midweek_fuel_use = 0
     notes: List[Dict[str, str]] = []
 
     for idx, week in enumerate(weeks):
@@ -376,4 +426,35 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
             "title": f"Week {number}: {label}",
             "body": body,
         })
+
+        # AE-9.1 (2026-08-24 TP review): the Monday note is the floor, not
+        # the ceiling. 1-2 short mid-week notes, gated so they only fire
+        # where they're actually true for this week -- never landing on a
+        # date another note already claims (fulfillment_manifest keys a
+        # native note by date; two notes on one date would collide).
+        used_dates = {start.isoformat()}
+        if (week_type in {"load", "uber_load"}
+                and midweek_feel_use < len(_MIDWEEK_LOAD_FEEL)):
+            feel_date = _midweek_feel_date(dated)
+            if feel_date and feel_date.isoformat() not in used_dates:
+                notes.append({
+                    "date": feel_date.isoformat(),
+                    "title": f"Week {number}: Midweek",
+                    "body": _MIDWEEK_LOAD_FEEL[midweek_feel_use],
+                })
+                midweek_feel_use += 1
+                used_dates.add(feel_date.isoformat())
+        if (week_type not in {"pre_plan", "testing"}
+                and midweek_fuel_use < len(_MIDWEEK_LONG_RIDE_FUEL)):
+            long_ride = _midweek_long_ride(dated)
+            if long_ride:
+                fuel_date = _as_date(_get(long_ride, "date")) - timedelta(days=1)
+                if fuel_date and fuel_date.isoformat() not in used_dates:
+                    notes.append({
+                        "date": fuel_date.isoformat(),
+                        "title": f"Week {number}: Fuel The Long Ride",
+                        "body": _MIDWEEK_LONG_RIDE_FUEL[midweek_fuel_use],
+                    })
+                    midweek_fuel_use += 1
+                    used_dates.add(fuel_date.isoformat())
     return notes
