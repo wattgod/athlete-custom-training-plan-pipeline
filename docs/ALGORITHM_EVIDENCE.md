@@ -530,6 +530,27 @@ the E2E "12min ALL OUT at Power=0.10" finding. RPE-metric curated
 structures must either convert honestly (RPE→%FTP mapping) or ship as
 unstructured with the authored description; never metric-relabel.
 
+### 9c addendum — round 2 rulings (Matti, 2026-08-24 PM)
+
+**AE-8.4b clarified — structured strength means rx StructuredStrength.**
+The v2 rx items in TP folder 3770562 (24 items, Gym/Basics tiers; commits
+f9679561/9d4a5b7d in gravel-god-training-plans; builder:
+tools/build_goal_strength_rx.py + tp_goal_strength_rx_driver.js) are the
+ONLY acceptable structured strength. The legacy "- ref -" items with
+bike-power steady-state graphs are NOT structured strength and must not
+ship.
+
+**AE-9.1b — repeats own themselves.** When a note or reminder repeats a
+prior message, it says so in the coach's voice ("Yes, again. People forget
+the basics — fueling most of all.") rather than pretending novelty.
+Humor allowed; the wink, not the bit.
+
+**AE-3.13b — instructions state the DO.** Copy tells the athlete what TO
+do, plainly ("Arrive fueled: normal meal ~2h out. One bottle, 40-50g
+carbs."). Never structure a line around what today is NOT ("...is not the
+job today" class = worse than useless). Applies to fueling lines first,
+then all execution copy.
+
 ## 9b. Hook → module map
 
 The section-heading hook names are conceptual; the concrete modules (all
