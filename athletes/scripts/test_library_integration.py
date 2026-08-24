@@ -639,6 +639,46 @@ class TestRenderBranch:
             'expected the long_ride slot(s) to be recorded as fallbacks'
 
 
+class TestFilenameContentReconciliation:
+    """Regression for the real steve-wagner/e2e-testbot defect: the emitted
+    ZWO filename stem is predicted by resolve_display_name BEFORE a curated
+    library selection is known, from the slot's canonical name/predicted
+    archetype. Left unreconciled, a file named
+    "..._Endurance__Terrain_Focus.zwo" carried <name>Heat Acclimation
+    Protocol</name> inside -- the filename described the slot's PREDICTED
+    content, the <name> tag (and the actual rendered structure) described
+    what was ACTUALLY selected. The <name> tag was always correct (it reads
+    the post-override display_name); the filename was the only thing that
+    drifted -- this asserts the filename now matches too."""
+
+    def test_filename_stem_describes_curated_content_for_every_resolved_session(self, tmp_path):
+        athlete_dir, files = _build_small_plan(
+            tmp_path, 'render-filename-fix',
+            force_select=_force_select_intensity_and_filler_only,
+        )
+        curated = [f for f in files if 'CURATED DESCRIPTION' in _zwo_description(f)]
+        assert curated, 'no ZWO carried the curated description -- resolution branch not exercised'
+
+        for f in curated:
+            name = _zwo_name(f).split(' (')[0]  # strip any "(n of N)" series suffix
+            assert name == 'Curated Test Interval', name
+            # Same sanitization generate_athlete_package.py applies when it
+            # builds the filename from a display name: strip anything but
+            # [A-Za-z0-9 _-], then turn spaces into underscores.
+            expected_fragment = re.sub(r'[^A-Za-z0-9 _-]', '', name).replace(' ', '_')
+            assert expected_fragment in f.stem, (
+                f"{f.name} does not describe its own content -- <name> reads "
+                f"{name!r} but the filename never mentions {expected_fragment!r} "
+                "(display_name was reconciled to the curated item, but "
+                "_filename_name was not)"
+            )
+            # And the stale slot-predicted name must NOT be the only thing
+            # the filename says -- guards against a fix that reconciles
+            # <name> but still leaves the OLD predicted archetype name as
+            # the filename's sole content word.
+            assert 'Curated' in f.stem and 'Test' in f.stem and 'Interval' in f.stem, f.name
+
+
 # =============================================================================
 # Kill switch (D10)
 # =============================================================================

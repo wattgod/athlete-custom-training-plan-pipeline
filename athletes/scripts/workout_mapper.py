@@ -350,6 +350,38 @@ def _resolve_for_discipline(name: str, discipline: str) -> Optional[Tuple[str, i
     return resolve_workout(name)
 
 
+def _violates_taper_race_hard_work_ceiling(zwo_content: str) -> bool:
+    """AE-1.12 (docs/ALGORITHM_EVIDENCE.md): a taper/race-week session may
+    carry no single >=92%-FTP rep longer than 120s, and no more than 900s
+    total >=92% work.
+
+    library_selector._passes_role_ceiling enforces this for curated TP
+    library selections by walking the item's JSON structure schema.
+    Native archetype selection (select_archetype_for_workout, reached via
+    generate_nate_zwo below) had no equivalent -- a taper/race slot that
+    fell through to a generic archetype pick (rather than one of the
+    dedicated renderers above -- Stars In Your Eyes/Openers/Taper Burst
+    Endurance/Endurance, all hand-calibrated to this same rule and not
+    re-checked here) could ship uncapped build-phase intensity into race
+    week. This mirrors the identical AE-1.12 numbers against the rendered
+    ZWO's unrolled power_samples (IntervalsT repeats expanded by
+    zwo_parser, so a Repeat="N" block counts its true total, not one rep)
+    instead of TP's structure schema -- the native-render equivalent.
+    """
+    from library_selector import (
+        _HARD_WORK_PCT_FLOOR, _TAPER_HARD_WORK_SECONDS, _TAPER_MAX_HARD_REP_SECONDS,
+    )
+    from zwo_parser import parse_zwo_structure_text
+    parsed = parse_zwo_structure_text(zwo_content)
+    hard_total = 0.0
+    hard_max = 0.0
+    for duration, power in parsed['power_samples']:
+        if power * 100 >= _HARD_WORK_PCT_FLOOR:
+            hard_total += duration
+            hard_max = max(hard_max, duration)
+    return hard_max > _TAPER_MAX_HARD_REP_SECONDS or hard_total > _TAPER_HARD_WORK_SECONDS
+
+
 def render_workout(
     name: str,
     level: int = 3,
@@ -362,6 +394,7 @@ def render_workout(
     training_age: Optional[str] = None,
     endurance_variant: Optional[int] = None,
     phase: Optional[str] = None,
+    week_type: Optional[str] = None,
 ) -> Optional[str]:
     """Render a block-builder workout name to ZWO XML.
 
@@ -375,6 +408,14 @@ def render_workout(
         display_name: Optional clean, coach-facing name for the ZWO <name>
             element (no filename/date prefix). Takes priority over
             workout_name for <name> when both are given.
+        week_type: Optional calendar week type ('taper'/'race'/...). When the
+            slot is taper- or race-gated, a generic archetype selection
+            (select_archetype_for_workout via generate_nate_zwo) that would
+            ship AE-1.12-violating hard work is refused -- see
+            _violates_taper_race_hard_work_ceiling. The dedicated renderers
+            above (Stars In Your Eyes/Openers/Taper Burst Endurance/
+            Endurance) are hand-calibrated to the same rule already and are
+            not re-checked.
 
     Returns:
         ZWO XML string, or None if the workout can't be rendered.
@@ -382,6 +423,8 @@ def render_workout(
     mapping = _resolve_for_discipline(name, discipline)
     if mapping is None:
         return None
+
+    from library_selector import _TAPER_GATED_WEEK_TYPES
 
     if name == 'Stars In Your Eyes':
         return _render_race_week_sharpener(
@@ -430,6 +473,8 @@ def render_workout(
         display_name=display_name,
         training_age=training_age,
     )
+    if zwo and week_type in _TAPER_GATED_WEEK_TYPES and _violates_taper_race_hard_work_ceiling(zwo):
+        zwo = None
     if zwo:
         return _pad_vo2_to_library_duration(name, level, zwo)
 
@@ -449,6 +494,9 @@ def render_workout(
             display_name=display_name,
             training_age=training_age,
         )
+        if (fallback and week_type in _TAPER_GATED_WEEK_TYPES
+                and _violates_taper_race_hard_work_ceiling(fallback)):
+            fallback = None
         return _pad_vo2_to_library_duration(name, level, fallback) if fallback else fallback
     return None
 

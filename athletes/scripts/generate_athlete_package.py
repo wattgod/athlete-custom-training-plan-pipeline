@@ -3642,11 +3642,7 @@ TIPS:
                     # resolved archetype title for library-selected days --
                     # ZWO <name>, _record_tp_session's display_name, and the
                     # series-suffix patch's base_name all read
-                    # `display_name` from here on. _filename_name/_series_id
-                    # above are computed from the canonical flow and are
-                    # UNCHANGED -- filename shape and series-suffix
-                    # bookkeeping never depend on which renderer produced
-                    # the file.
+                    # `display_name` from here on.
                     #
                     # D6: an act-simulation day carrying a library_resolution
                     # (curated race-sim series match) is exempt -- its title
@@ -3656,12 +3652,39 @@ TIPS:
                     # curated item's name was already folded into the
                     # description's first line when the resolution was
                     # attached.
+                    #
+                    # Bug fix (title/content reconciliation): _filename_name
+                    # above was predicted from resolve_display_name's guess
+                    # at the archetype/variation the Nate generator would
+                    # pick -- BEFORE this curated library item is known to
+                    # replace that content. Left unreconciled, the emitted
+                    # filename described the slot's predicted archetype
+                    # while the ZWO <name> (below) described the ACTUAL
+                    # library item, e.g. a file literally named
+                    # "..._Endurance__Terrain_Focus.zwo" whose <name> read
+                    # "Heat Acclimation Protocol" -- a real defect, not a
+                    # cosmetic one: the coach browses files by filename
+                    # before ever opening them. The filename must describe
+                    # the content actually emitted, so re-derive it from the
+                    # library item's name, preserving any trailing series
+                    # ordinal (" N") _filename_name already carried -- the
+                    # date-based workout_prefix is plan_ir.py's only match
+                    # key (stem.startswith(workout_prefix)), so changing
+                    # this suffix is safe.
+                    _pre_library_display_name = display_name
                     display_name = _library_display_name(_library_resolution)
+                    if display_name != _pre_library_display_name:
+                        if _filename_name.startswith(_pre_library_display_name):
+                            _ordinal_suffix = _filename_name[len(_pre_library_display_name):]
+                        else:
+                            _ordinal_suffix = ''
+                        _filename_name = f"{display_name}{_ordinal_suffix}"
 
                 # Render ZWO through block-builder workout mapper. The
                 # filename is derived from _filename_name (bug-compatible
-                # bare-ordinal shape) so filenames never change; the ZWO
-                # <name> element gets the clean display_name instead.
+                # bare-ordinal shape, reconciled above when a library
+                # selection replaced the content) so filenames never change
+                # shape; the ZWO <name> element gets the clean display_name.
                 _safe = re.sub(r'[^A-Za-z0-9 _-]', '', _filename_name)
                 workout_name = f"{workout_prefix}_{_safe.replace(' ', '_')}"
 
@@ -3735,6 +3758,7 @@ TIPS:
                         endurance_variant=(_e_variant if bb_name == 'Endurance'
                                            and bb_role == 'filler' else None),
                         phase=phase,
+                        week_type=week.get('week_type'),
                     )
                     # The ride beside a long simulation is a recovery spin
                     # with a job, not generic base building — say so, or
