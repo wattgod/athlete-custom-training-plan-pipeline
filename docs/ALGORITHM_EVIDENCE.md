@@ -171,12 +171,19 @@ own at the floor, with "add Z2 / extend the warm-up if you have more time"
 in the description (Workout Standards v1.0). (F7, J4; R17/R37 operate at
 the interval layer beneath this)
 
-**AE-2.8 — Endurance load-rate cap (ruling Q6).** [ratified] Endurance-
-classified sessions ≤50 TSS/hr, enforced as a COMPUTED gate (planned TSS ÷
-planned hours), not an authoring convention. Known offenders to fix:
-`endurance_surges` L6 (58.5) and `tempo_3x15` (52.5–56). Pairs with the
-ratified endurance IF band .60–.70 scaled down with duration (AE-5.6).
-(R83, C1 finding; Workout Standards v1.0)
+**AE-2.8 — Endurance load-rate cap + exact band numbers (ruling Q6 +
+ratified Q·B interview numbers).** [ratified] Endurance-classified sessions
+≤50 TSS/hr, enforced as a COMPUTED gate (planned TSS ÷ planned hours), not
+an authoring convention. The precise duration-scaled endurance IF bands
+(ratified in the Workout Standards interview, "Yes to all three"): **≤2 h
+.60–.70 · 2–4 h .58–.68 · 4 h+ .58–.65.** The single-constant .60–.70 in
+generator code is the ≤2 h anchor; duration scaling is a validator-level
+check by planned duration (implementation belongs to workstream 2).
+Selection-layer ceilings, also ratified: endurance filler IF ceiling **.72**
+(was .78); BASE-phase long-ride IF ceiling **.68** (was .76 — build/peak
+long rides stay unceilinged, hard durability long rides are the house
+signature). Known offenders to fix: `endurance_surges` L6 (58.5) and
+`tempo_3x15` (52.5–56). (R83, C1 finding; Workout Standards v1.0 Q·B)
 
 **AE-2.6 — Base keeps a pulse.** [H] One maintenance-intensity hard day per
 8–14 workouts even in early base; ≥1 long near-LT1 ride/week in early base.

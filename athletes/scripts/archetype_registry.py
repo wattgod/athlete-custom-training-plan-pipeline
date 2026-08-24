@@ -62,6 +62,41 @@ ALL_ARCHETYPES = NEW_ARCHETYPES
 # Expected counts — tests use these as guards
 EXPECTED_TOTAL = 101  # 100 catalogued + Stars In Your Eyes race-week sharpener
 EXPECTED_CATEGORIES = 24  # 22 original + Kitchen_Sink + SFR_Series
+
+# =============================================================================
+# RETIRED ARCHETYPES — tombstone registry (AE-3.11, AE-6.3, Workout
+# Standards v1.0 purge list, ratified 2026-08-23)
+# =============================================================================
+# These archetypes are ARCHIVED, not deleted: their data stays in
+# new_archetypes.py / advanced_archetypes.py so existing regression tests
+# that use them as fixed-shape ZWO-rendering fixtures (e.g.
+# test_v29_design_fixes.py, test_steady_workout_invariants.py) keep working
+# against get_archetype()/ALL_ARCHETYPES, which are intentionally NOT
+# filtered here.
+#
+# Enforcement lives at the SELECTION gateway instead:
+# nate_workout_generator.get_archetype_by_category_and_index() and
+# get_all_archetypes_for_category() consult this set and skip any retired
+# name, so nothing in it can be chosen for a new plan or emitted to ZWO.
+#
+#   - 'FatMax Development'        AE-3.11: name purged (fasted protocol,
+#                                  requires a metabolic cart); the Z2/LT1
+#                                  fat-oxidation MECHANISM it stood for is
+#                                  retained as the .60-.70 endurance-band
+#                                  rationale, not the archetype itself.
+#   - 'FatMax VLamax Suppression' AE-3.11 + AE-6.3: same FatMax name purge,
+#                                  plus an explicit fasted/low-glycogen
+#                                  timing_prescription (AE-6.3: fasted
+#                                  riding is all-or-nothing or it stays
+#                                  purged; this was neither).
+#   - 'Structured Fartlek'        Workout Standards v1.0: a "structured
+#                                  fartlek" is a contradiction in terms —
+#                                  fartleks are unstructured by definition.
+RETIRED_ARCHETYPES = frozenset({
+    'FatMax Development',
+    'FatMax VLamax Suppression',
+    'Structured Fartlek',
+})
 EXPECTED_VARIATIONS = EXPECTED_TOTAL * 6  # 600
 
 

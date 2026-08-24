@@ -24,9 +24,13 @@ class PowerZones:
     RECOVERY_HIGH: Final[float] = 0.55
 
     # Endurance / Zone 2
-    ENDURANCE_LOW: Final[float] = 0.56
+    # AE-2.8 / AE-5.6 (ratified 2026-08-23): endurance band tightened from
+    # .56-.75 to .60-.70 -- "ride the bottom-middle of the zone, not the
+    # ceiling" (AE-3.11 mechanism rationale) and pairs with the ≤50 TSS/hr
+    # computed gate (AE-2.8).
+    ENDURANCE_LOW: Final[float] = 0.60
     ENDURANCE_MID: Final[float] = 0.65
-    ENDURANCE_HIGH: Final[float] = 0.75
+    ENDURANCE_HIGH: Final[float] = 0.70
 
     # Tempo / Zone 3
     TEMPO_LOW: Final[float] = 0.76

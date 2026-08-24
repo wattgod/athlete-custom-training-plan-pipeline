@@ -513,6 +513,11 @@ RACE_SIM_ADVANCED = [
         }
     },
     {
+        # RETIRED (Workout Standards v1.0, cited in archetype_registry.
+        # RETIRED_ARCHETYPES): "structured fartlek" is a contradiction —
+        # fartlek is unstructured by definition. Archived here (data kept
+        # for regression fixtures) but filtered out of selection/emission
+        # by nate_workout_generator.get_archetype_by_category_and_index().
         'name': 'Structured Fartlek',
         'levels': {
             '1': {
@@ -1019,6 +1024,8 @@ GRAVEL_ADVANCED = [
 
 INSCYD_ADVANCED = [
     {
+        # RETIRED (AE-3.11 name purge + AE-6.3 fasted-riding purge — see
+        # archetype_registry.RETIRED_ARCHETYPES). Archived, not selectable.
         'name': 'FatMax VLamax Suppression',
         'levels': {
             '1': {

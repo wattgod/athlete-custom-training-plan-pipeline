@@ -165,6 +165,13 @@ def set_log_level(level: int) -> None:
 
 from new_archetypes import NEW_ARCHETYPES
 
+# AE-3.11 / AE-6.3: retired archetypes (FatMax family, Structured Fartlek)
+# stay in NEW_ARCHETYPES as archived data (regression fixtures still read
+# them via archetype_registry.get_archetype()) but must never be SELECTED
+# or EMITTED again — enforced at get_archetype_by_category_and_index() /
+# get_all_archetypes_for_category() below.
+from archetype_registry import RETIRED_ARCHETYPES
+
 # =============================================================================
 # ZWO TEMPLATE
 # =============================================================================
@@ -373,7 +380,9 @@ TRAINING_METHODOLOGIES = {
         "description": "Sculpt VO2max/VLamax profile to match event demands. High specificity.",
         "philosophy": "Shifts in VO2max and/or reduction in VLamax to 'fit' event",
         "primary_workouts": ["VO2max_Targeted", "VLamax_Reduction"],
-        "secondary_workouts": ["Endurance", "FatMax"],
+        # AE-3.11: "FatMax" name purged (docs-only field, never consumed as
+        # a selection key -- the INSCYD category itself still selects fine).
+        "secondary_workouts": ["Endurance"],
         "avoid": [],
         "weekly_quality_sessions": 2,
         "allows_durability": True,
@@ -529,11 +538,17 @@ PROGRESSION_STYLES = {
 # =============================================================================
 
 def get_archetype_by_category_and_index(category: str, index: int = 0) -> Optional[Dict]:
-    """Get a specific archetype from a category by index (wraps via modulo)."""
+    """Get a specific archetype from a category by index (wraps via modulo).
+
+    AE-3.11/AE-6.3: retired archetypes (RETIRED_ARCHETYPES) are filtered out
+    here so they can never be selected for a new plan, even though their
+    data remains archived in NEW_ARCHETYPES.
+    """
     if category not in NEW_ARCHETYPES:
         return None
 
-    archetypes = NEW_ARCHETYPES[category]
+    archetypes = [a for a in NEW_ARCHETYPES[category]
+                  if a['name'] not in RETIRED_ARCHETYPES]
     if not archetypes:
         return None
 
@@ -544,8 +559,13 @@ def get_archetype_by_category_and_index(category: str, index: int = 0) -> Option
 
 
 def get_all_archetypes_for_category(category: str) -> List[Dict]:
-    """Get all archetypes for a category."""
-    return NEW_ARCHETYPES.get(category, [])
+    """Get all SELECTABLE archetypes for a category.
+
+    AE-3.11/AE-6.3: excludes RETIRED_ARCHETYPES — see
+    get_archetype_by_category_and_index() above.
+    """
+    return [a for a in NEW_ARCHETYPES.get(category, [])
+            if a['name'] not in RETIRED_ARCHETYPES]
 
 
 def select_archetype_for_workout(
@@ -3666,7 +3686,10 @@ def generate_weekly_workout_schedule(
             {"day": "Wed", "type": "endurance", "name": "Easy Endurance"},
             {"day": "Thu", "type": "vo2max", "name": "VO2max Development"},
             {"day": "Fri", "type": "endurance", "name": "Easy Endurance"},
-            {"day": "Sat", "type": "inscyd", "name": "FatMax Session"},
+            # AE-3.11: label purged (FatMax Development is retired); the
+            # "inscyd" type still resolves to the INSCYD category's
+            # remaining selectable archetypes.
+            {"day": "Sat", "type": "inscyd", "name": "INSCYD Session"},
             {"day": "Sun", "type": "endurance", "name": "Long Endurance"}
         ],
         "GOAT": [

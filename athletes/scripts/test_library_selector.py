@@ -1090,7 +1090,9 @@ def test_base_long_rides_reject_threshold_sessions():
         {"length": {"value": 6}, "steps": [
             {"name": "On", "length": {"value": 480}, "targets": [{"minValue": 98}]},
             {"name": "Off", "length": {"value": 180}, "targets": [{"minValue": 50}]}]}]}}
-    surges = {"if_planned": 0.75, "structure": {"structure": [
+    # ratified Q-B (2026-08-23): base long-ride IF ceiling is .68 — a surge
+    # ride qualifies for a BASE long slot only at an endurance overall IF.
+    surges = {"if_planned": 0.66, "structure": {"structure": [
         {"length": {"value": 8}, "steps": [
             {"name": "On", "length": {"value": 20}, "targets": [{"minValue": 150}]},
             {"name": "Off", "length": {"value": 880}, "targets": [{"minValue": 65}]}]}]}}

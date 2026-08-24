@@ -97,11 +97,12 @@ def _issue(
     rule_id: str, message: str, *, review_value: Any = None,
     basis: str = "post-render PlanIR and TP manifest validation",
     display_unit: str | None = None,
+    severity: str = "CRITICAL",
 ) -> Dict[str, Any]:
     item = {
         "id": rule_id,
         "source": "post_render",
-        "severity": "CRITICAL",
+        "severity": severity,
         "message": message,
         "review_value": message if review_value is None else review_value,
         "basis": basis,
@@ -425,6 +426,8 @@ try:
 except ImportError:  # degrade to the regex + structure fallback below
     _CANONICAL_INTENSITY = None
 OPENERS_TITLE = re.compile(r"\bopeners?\b", re.I)
+# AE-2.7: recovery-ride exemption for the session-floor check below.
+RECOVERY_TITLE = re.compile(r"\brecovery\b", re.I)
 
 
 def _is_intensity(session: Dict[str, Any]) -> bool:
@@ -466,6 +469,73 @@ def _is_long_ride(session: Dict[str, Any]) -> bool:
     seconds = int(session.get("duration_s") or 0)
     hours = float(session.get("total_time_planned") or 0)
     return bool(LONG_RIDE_TITLE.search(title) or seconds >= 3 * 3600 or hours >= 3)
+
+
+def _is_endurance(session: Dict[str, Any]) -> bool:
+    """AE-2.8: the "endurance-classified" bucket the ≤50 TSS/hr gate below
+    applies to -- everything NOT intensity, NOT a long ride (build/peak
+    durability long rides are the house signature and stay unceilinged per
+    their own rule, matching library_selector._BASE_LONG_RIDE_IF_CEILING),
+    NOT a field test, and NOT an opener."""
+    if session.get("tp_kind") != "bike":
+        return False
+    if _field_test_metric(session) or _is_intensity(session) or _is_long_ride(session):
+        return False
+    title = str(session.get("title") or session.get("display_name") or "")
+    if OPENERS_TITLE.search(title):
+        return False
+    return True
+
+
+_ENDURANCE_TSS_PER_HOUR_CEILING = 50.0
+
+
+def _endurance_tss_rate_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, str]]:
+    """AE-2.8 (ratified 2026-08-23, Q6): endurance-classified sessions must
+    compute to <=50 TSS/hr (planned TSS / planned hours) -- a COMPUTED gate,
+    not an authoring convention. WARNING severity: the plan still ships,
+    but a real offender (e.g. Endurance Surges L6, Tempo 3x15, named in
+    AE-2.8) surfaces for coach review instead of shipping silently."""
+    findings: List[Dict[str, str]] = []
+    for _, session in _sessions(plan_ir):
+        if not _is_endurance(session):
+            continue
+        tss = session.get("tss_planned")
+        if tss is None:
+            tss = session.get("tss")
+        try:
+            tss = float(tss)
+        except (TypeError, ValueError):
+            continue
+        hours = session.get("total_time_planned")
+        try:
+            hours = float(hours)
+        except (TypeError, ValueError):
+            hours = 0.0
+        if hours <= 0:
+            seconds = int(session.get("duration_s") or 0)
+            hours = seconds / 3600.0
+        if hours <= 0 or tss <= 0:
+            continue
+        rate = tss / hours
+        if rate <= _ENDURANCE_TSS_PER_HOUR_CEILING:
+            continue
+        title = str(session.get("title") or session.get("display_name") or "")
+        session_day = _session_date(session)
+        findings.append(_issue(
+            "ENDURANCE_TSS_RATE_HIGH",
+            f"{session_day.isoformat() if session_day else session.get('date')}: "
+            f"'{title}' computes to {rate:.1f} TSS/hr, over the AE-2.8 "
+            f"{_ENDURANCE_TSS_PER_HOUR_CEILING:.0f} TSS/hr endurance ceiling "
+            f"({tss:.1f} TSS / {hours:.2f} h).",
+            review_value={
+                "title": title, "tss_planned": tss, "hours": hours,
+                "tss_per_hour": round(rate, 1),
+                "ceiling": _ENDURANCE_TSS_PER_HOUR_CEILING,
+            },
+            severity="WARNING",
+        ))
+    return findings
 
 
 def _schedule_findings(
@@ -528,7 +598,8 @@ def _schedule_findings(
 def _short_quality_findings(
     plan_ir: Dict[str, Any], profile: Dict[str, Any]
 ) -> List[Dict[str, str]]:
-    """Flag hard sessions far shorter than the day allows.
+    """Flag hard sessions far shorter than the day allows, plus (AE-2.7) any
+    non-exempt session under the ratified 45-minute floor.
 
     Coach ruling (Aug 2026): a 30-minute VO2 session is only right when the
     day is genuinely constrained — the average working athlete has 45-90
@@ -536,49 +607,70 @@ def _short_quality_findings(
     intense ride under 45 minutes on a day with >=60 minutes available is a
     generator under-fill, not a plan. Openers/tune-up priming sessions are
     deliberately short and exempt.
+
+    AE-2.7 (ratified 2026-08-23, Q5): the 45-min floor applies to every
+    NON-recovery, non-opener session, not only hard ones — extends the
+    check above with a WARNING-severity finding (SHORT_SESSION_BELOW_FLOOR)
+    rather than reusing the CRITICAL SHORT_QUALITY_SESSION id, so a plan
+    that trips both checks doesn't lose one finding to the id-dedup in
+    validate_transitional_input. Exemptions: recovery rides, openers,
+    pre-plan (W00) cards, rest-day cards (tp_kind == 'day_off', already
+    outside the tp_kind in (None, 'bike') filter below), and strength
+    (tp_kind == 'strength', same filter -- the strength session floor is an
+    OPEN ruling per ALGORITHM_EVIDENCE.md AE-8.4/round-2 queue, not yet
+    ratified, so strength is exempted here rather than gated).
     """
     preferred_days = profile.get("preferred_days") or {}
     findings: List[Dict[str, str]] = []
-    for _, session in _sessions(plan_ir):
+    for week_number, session in _sessions(plan_ir):
         if session.get("tp_kind") not in (None, "bike"):
             continue
         title = str(session.get("title") or session.get("display_name") or "")
-        if any(token in title.lower() for token in ("opener", "tune-up", "tune up")):
-            continue
+        title_lower = title.lower()
+        is_opener = any(
+            token in title_lower for token in ("opener", "tune-up", "tune up"))
         seconds = int(session.get("duration_s") or 0)
-        if not seconds or seconds >= 45 * 60:
-            continue
-        hard = False
-        for segment in session.get("segments") or []:
-            for key in ("on_power", "work_percent_ftp", "power_target"):
-                try:
-                    value = float(segment.get(key) or 0)
-                except (TypeError, ValueError):
-                    continue
-                if value <= 2:
-                    value *= 100
-                if value >= 105:
-                    hard = True
-        if not hard:
-            continue
+
         session_day = _session_date(session)
-        if not session_day:
-            continue
-        weekday = session_day.strftime("%A").lower()
-        cap = (preferred_days.get(weekday) or {}).get("max_duration_min")
+        weekday = session_day.strftime("%A").lower() if session_day else None
+        cap = (preferred_days.get(weekday) or {}).get("max_duration_min") if weekday else None
         try:
             cap = float(cap)
         except (TypeError, ValueError):
             cap = None
-        if cap is not None and cap < 60:
-            continue  # genuinely constrained day — a short session is right
-        findings.append(_issue(
-            "SHORT_QUALITY_SESSION",
-            f"{session_day.isoformat()}: '{title}' is {seconds // 60} minutes of "
-            f"hard work on a day with "
-            f"{'no stated cap' if cap is None else f'{cap:.0f} minutes available'} — "
-            "weekday quality should land 45-90 minutes unless the day is constrained.",
-        ))
+        day_has_60min = cap is None or cap >= 60
+
+        if not is_opener and seconds and seconds < 45 * 60:
+            hard = False
+            for segment in session.get("segments") or []:
+                for key in ("on_power", "work_percent_ftp", "power_target"):
+                    try:
+                        value = float(segment.get(key) or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    if value <= 2:
+                        value *= 100
+                    if value >= 105:
+                        hard = True
+            if hard and session_day and day_has_60min:
+                findings.append(_issue(
+                    "SHORT_QUALITY_SESSION",
+                    f"{session_day.isoformat()}: '{title}' is {seconds // 60} minutes of "
+                    f"hard work on a day with "
+                    f"{'no stated cap' if cap is None else f'{cap:.0f} minutes available'} — "
+                    "weekday quality should land 45-90 minutes unless the day is constrained.",
+                ))
+            elif (not hard and session_day and day_has_60min
+                    and week_number != 0  # pre-plan (W00) cards exempt
+                    and not RECOVERY_TITLE.search(title)):
+                findings.append(_issue(
+                    "SHORT_SESSION_BELOW_FLOOR",
+                    f"{session_day.isoformat()}: '{title}' is {seconds // 60} minutes, "
+                    f"under the ratified 45-minute floor, on a day with "
+                    f"{'no stated cap' if cap is None else f'{cap:.0f} minutes available'} "
+                    "(AE-2.7).",
+                    severity="WARNING",
+                ))
     return findings
 
 
@@ -782,6 +874,7 @@ def validate_transitional_input(
     confirmations.extend(schedule_confirmations)
     confirmations.extend(_day_cap_findings(plan_ir, profile))
     issues.extend(_short_quality_findings(plan_ir, profile))
+    issues.extend(_endurance_tss_rate_findings(plan_ir))
 
     fueling = context.get("fueling") or {}
     labels = [

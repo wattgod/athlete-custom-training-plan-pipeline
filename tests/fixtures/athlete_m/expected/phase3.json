@@ -3,7 +3,8 @@
   "blockers": [
     {"id": "COURSE_UNRESOLVED", "waivable": false},
     {"id": "RACE_STALE", "waivable": true},
-    {"id": "SESSION_PREDATES_GENERATION", "waivable": true}
+    {"id": "SESSION_PREDATES_GENERATION", "waivable": true},
+    {"id": "SHORT_SESSION_BELOW_FLOOR", "waivable": true}
   ],
   "required_confirmations": ["POWER_BASIS_NONE_CONFIRM", "SCHEDULE_MISMATCH_CONFIRM", "WEEKS_CALENDAR_SHORT"],
   "absent_blockers": [

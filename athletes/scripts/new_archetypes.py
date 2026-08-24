@@ -3170,6 +3170,12 @@ RECOVERY_NEW = [
 
 INSCYD_NEW = [
     {
+        # AE-6.3: the fasted-morning timing_prescription/fueling text below
+        # (present through all 6 levels) has been de-fasted -- "that moment
+        # is over"; fasted riding is retired unless run as the documented
+        # all-or-nothing 8-10 week protocol, which this archetype is not.
+        # The VLamax-depletion mechanism (long Z2 + strategic sprints) is
+        # unaffected and stays selectable.
         'name': 'VLamax Reduction',
         'levels': {
             '1': {
@@ -3178,8 +3184,8 @@ INSCYD_NEW = [
                 'cadence_prescription': '80-90rpm base, 110+ rpm sprints',
                 'cadence': 85,
                 'position_prescription': 'Comfortable, sprints in drops',
-                'timing_prescription': 'Fasted morning for maximum effect',
-                'fueling': 'Fasted or minimal - this is the point',
+                'timing_prescription': 'Morning, normal pre-ride fueling',
+                'fueling': 'Light - keep the sprints the depletion driver, not the fast',
                 'inscyd': True,
                 'vlamax_reduction': True,
                 'duration': 5400,
@@ -3193,8 +3199,8 @@ INSCYD_NEW = [
                 'cadence_prescription': '80-90rpm, high cadence sprints',
                 'cadence': 85,
                 'position_prescription': 'Endurance position',
-                'timing_prescription': 'Fasted or low-carb',
-                'fueling': 'Minimal - water and electrolytes',
+                'timing_prescription': 'Morning, light pre-ride meal',
+                'fueling': 'Light - water and electrolytes',
                 'inscyd': True,
                 'vlamax_reduction': True,
                 'duration': 7200,
@@ -3208,8 +3214,8 @@ INSCYD_NEW = [
                 'cadence_prescription': '80-90rpm',
                 'cadence': 85,
                 'position_prescription': 'Sustainable',
-                'timing_prescription': 'Fasted',
-                'fueling': 'Minimal',
+                'timing_prescription': 'Normal fueling',
+                'fueling': 'Light',
                 'inscyd': True,
                 'vlamax_reduction': True,
                 'duration': 9000,
@@ -3223,8 +3229,8 @@ INSCYD_NEW = [
                 'cadence_prescription': '80-90rpm',
                 'cadence': 85,
                 'position_prescription': 'Comfortable',
-                'timing_prescription': 'Fasted, morning',
-                'fueling': 'Water only',
+                'timing_prescription': 'Morning, normal fueling',
+                'fueling': 'Light',
                 'inscyd': True,
                 'vlamax_reduction': True,
                 'duration': 10800,
@@ -3238,8 +3244,8 @@ INSCYD_NEW = [
                 'cadence_prescription': '80-90rpm',
                 'cadence': 85,
                 'position_prescription': 'Endurance',
-                'timing_prescription': 'Fasted',
-                'fueling': 'Minimal',
+                'timing_prescription': 'Normal fueling',
+                'fueling': 'Light',
                 'inscyd': True,
                 'vlamax_reduction': True,
                 'duration': 12600,
@@ -3253,8 +3259,8 @@ INSCYD_NEW = [
                 'cadence_prescription': '80-90rpm',
                 'cadence': 85,
                 'position_prescription': 'Sustainable',
-                'timing_prescription': 'Fasted, dedicated day',
-                'fueling': 'Minimal',
+                'timing_prescription': 'Morning, normal fueling, dedicated day',
+                'fueling': 'Light',
                 'inscyd': True,
                 'vlamax_reduction': True,
                 'duration': 14400,
@@ -3265,6 +3271,11 @@ INSCYD_NEW = [
         }
     },
     {
+        # RETIRED (AE-3.11: FatMax name purged, requires a metabolic cart,
+        # outdated; AE-6.3: fasted-riding protocol purged). Mechanism
+        # retained elsewhere as the .60-.70 endurance-band rationale. See
+        # archetype_registry.RETIRED_ARCHETYPES -- archived for regression
+        # fixtures (test_v29_design_fixes.py), not selectable/emittable.
         'name': 'FatMax Development',
         'levels': {
             '1': {

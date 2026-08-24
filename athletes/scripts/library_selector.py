@@ -302,7 +302,10 @@ def _qualifying_pool(
 # signature, per SPEC_LIBRARY_SELECTION.md T21).
 # ---------------------------------------------------------------------------
 
-_FILLER_IF_CEILING = 0.78
+# AE-2.8 (ratified 2026-08-23): endurance IF band tightened to .60-.70 --
+# the old .78 filler ceiling admitted items above the band's own top edge
+# onto easy days. Load-week and recovery-week filler ceilings now match.
+_FILLER_IF_CEILING = 0.72  # ratified Q-B: .78 -> .72
 _FILLER_IF_CEILING_RECOVERY = 0.70
 _FILLER_POWER_CEILING_PCT = 115.0
 _FILLER_POWER_CEILING_PCT_RECOVERY = 110.0
@@ -505,7 +508,7 @@ _TAPER_GATED_WEEK_TYPES = ("taper", "race")
 # base long ride the day after the FTP test. Base long_ride slots cap
 # authored IF and sustained hard reps; short surges (Endurance with
 # Surges class) still pass.
-_BASE_LONG_RIDE_IF_CEILING = 0.76
+_BASE_LONG_RIDE_IF_CEILING = 0.68  # ratified Q-B: .76 -> .68
 _BASE_LONG_RIDE_MAX_HARD_REP_SECONDS = 120
 
 
