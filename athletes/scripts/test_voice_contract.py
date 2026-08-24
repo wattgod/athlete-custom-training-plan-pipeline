@@ -4,11 +4,16 @@ import json
 import re
 import sys
 from collections import Counter
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import rest_day_cards as R
-from story_notes import render_story_notes, _word_count
+from story_notes import (
+    COMMENT_PROTOCOL_BODY, COMMENT_PROTOCOL_TITLE,
+    SELF_REVIEW_BODY, SELF_REVIEW_TITLE,
+    render_story_notes, _word_count,
+)
 from voice_lint import lint_notes, lint_rest_cards, load_rules
 
 RULES = load_rules()
@@ -63,22 +68,118 @@ def test_story_notes_have_beats_and_pass_lint():
     # Thu/Wed/Tue/Fri session) and a pre-long-ride fuel note on every
     # non-testing, non-race week that carries a >=90min bike session
     # (2-7, all of them via the fixture's Sunday "Z2 + Sprints" ride) = 18.
-    assert len(notes) == 18
-    assert notes[0]["title"].startswith("Week 1") and "Testing" in notes[0]["title"]
-    assert "FTP Test Monday" in notes[0]["body"]
-    assert "Openers before Big Sugar Gravel" in notes[-1]["body"]
-    assert all(_word_count(n["body"]) <= RULES["limits"]["weekly_note_max_words"] for n in notes)
+    # AE-9.3/AE-9.4 (round-2 addendum) add 9 more: one Day-1 comment-protocol
+    # note for the plan, and one Sunday self-review note per week (all 8 --
+    # none of this fixture's weeks is pre-plan).
+    assert len(notes) == 27
+    week1 = next(n for n in notes if n["title"].startswith("Week 1") and "Testing" in n["title"])
+    assert "FTP Test Monday" in week1["body"]
+    week8_race = next(n for n in notes if n["title"] == "Week 8: Race Week")
+    assert "Openers before Big Sugar Gravel" in week8_race["body"]
+    assert notes[0]["title"] == COMMENT_PROTOCOL_TITLE
+    assert notes[-1]["title"] == SELF_REVIEW_TITLE
+    assert sum(1 for n in notes if n["title"] == SELF_REVIEW_TITLE) == 8
+    assert sum(1 for n in notes if n["title"] == COMMENT_PROTOCOL_TITLE) == 1
+    # The fixed-form templates are exempt from the weekly word cap (same
+    # allowlist as voice_lint.lint_notes) -- they are a mandated verbatim
+    # protocol, not freely-authored coach prose bound by the "no essay" cap.
+    freely_authored_notes = [n for n in notes
+                             if n["title"] not in (SELF_REVIEW_TITLE, COMMENT_PROTOCOL_TITLE)]
+    assert all(_word_count(n["body"]) <= RULES["limits"]["weekly_note_max_words"]
+               for n in freely_authored_notes)
     assert lint_notes(notes, rules=RULES) == []
 
 
 def test_story_notes_never_repeat_a_sentence_across_weeks():
     notes = render_story_notes(_plan())
-    sentences = Counter(s.strip() for n in notes for s in re.split(r"(?<=[.!?])\s+", n["body"]) if len(s.split()) >= 6)
+    # AE-9.3/AE-9.4 (round-2 addendum): the two fixed-form templates are
+    # deliberately verbatim every time they fire -- voice_lint.py's
+    # fixed-template allowlist exempts them from this check by the same
+    # exact-title match used here.
+    freely_authored = [n for n in notes
+                       if n["title"] not in (SELF_REVIEW_TITLE, COMMENT_PROTOCOL_TITLE)]
+    sentences = Counter(s.strip() for n in freely_authored
+                        for s in re.split(r"(?<=[.!?])\s+", n["body"]) if len(s.split()) >= 6)
     assert not [s for s, c in sentences.items() if c > 1]
 
 
 def test_story_notes_are_deterministic():
     assert render_story_notes(_plan()) == render_story_notes(_plan())
+
+
+def test_self_review_note_is_verbatim_and_lands_on_every_weeks_sunday():
+    """AE-9.3: every trained week (all 8 of this fixture's -- none is
+    pre-plan) gets a fixed-title, verbatim self-review note on its Sunday,
+    including the race week's post-race Sunday debrief."""
+    notes = render_story_notes(_plan())
+    reviews = sorted((n for n in notes if n["title"] == SELF_REVIEW_TITLE),
+                      key=lambda n: n["date"])
+    assert len(reviews) == 8
+    for review in reviews:
+        assert review["body"] == SELF_REVIEW_BODY
+        assert date.fromisoformat(review["date"]).weekday() == 6  # Sunday
+    # Week 8 (race) still lands on its own Sunday -- the post-race debrief.
+    assert reviews[-1]["date"] == "2026-10-18"
+
+
+def test_self_review_note_lands_on_final_day_when_plan_ends_mid_week():
+    """AE-9.3: when a week's last dated session falls before Sunday (the
+    plan ends mid-week), the self-review lands on that actual final day
+    rather than an invented Sunday past the plan's end."""
+    plan = {
+        "athlete": {"id": "midweek"},
+        "race_snapshot": {"name": "Short Fuse Gravel", "date": "2026-09-05"},
+        "weeks": [{
+            "number": 1, "phase": "race", "week_type": "race",
+            "sessions": [
+                {"date": "2026-08-31", "title": "Openers", "tp_kind": "bike", "duration_s": 1800},
+                {"date": "2026-09-01", "title": "Rest Day", "tp_kind": "day_off"},
+                {"date": "2026-09-05", "title": "Race Day", "tp_kind": "race", "duration_s": 14400},
+            ],
+        }],
+    }
+    notes = render_story_notes(plan)
+    reviews = [n for n in notes if n["title"] == SELF_REVIEW_TITLE]
+    assert len(reviews) == 1
+    assert reviews[0]["date"] == "2026-09-05"  # the plan's actual final day
+    assert reviews[0]["body"] == SELF_REVIEW_BODY
+
+
+def test_self_review_note_skips_the_pre_plan_week():
+    """AE-9.3 is a review of the week just trained; week 0 (pre-plan,
+    nothing trained yet) gets no self-review."""
+    start = date(2026, 8, 17)
+    plan = {
+        "athlete": {"id": "preplan"},
+        "race_snapshot": {"name": "Late Season Gravel", "date": "2026-09-14"},
+        "weeks": [
+            {"number": 0, "phase": "pre_plan", "sessions": [
+                {"date": (start + timedelta(days=d)).isoformat(),
+                 "title": "Easy Spin", "tp_kind": "bike", "duration_s": 1800}
+                for d in range(7)
+            ]},
+            {"number": 1, "phase": "base", "week_type": "load", "sessions": [
+                {"date": (start + timedelta(days=7 + d)).isoformat(),
+                 "title": "Endurance Ride", "tp_kind": "bike",
+                 "archetype_id": "Endurance", "duration_s": 5400}
+                for d in range(7)
+            ]},
+        ],
+    }
+    notes = render_story_notes(plan)
+    reviews = [n for n in notes if n["title"] == SELF_REVIEW_TITLE]
+    assert len(reviews) == 1
+    assert reviews[0]["date"] == (start + timedelta(days=13)).isoformat()  # week 1's Sunday
+
+
+def test_comment_protocol_note_is_verbatim_and_on_plan_day_one():
+    """AE-9.4: exactly one comment-protocol note per plan, verbatim, dated
+    to the plan's earliest calendar day."""
+    notes = render_story_notes(_plan())
+    protocols = [n for n in notes if n["title"] == COMMENT_PROTOCOL_TITLE]
+    assert len(protocols) == 1
+    assert protocols[0]["date"] == "2026-08-24"  # the plan's Day 1
+    assert protocols[0]["body"] == COMMENT_PROTOCOL_BODY
 
 
 def _plan_no_setup():

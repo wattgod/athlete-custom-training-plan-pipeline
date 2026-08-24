@@ -937,6 +937,9 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
     """Project canonical bike segments into a TP-native structured workout."""
     if session.get("tp_kind") != "bike":
         return None
+    all_segments = session.get("segments") or []
+    all_free_ride = bool(all_segments) and all(
+        str(segment.get("kind")) == "free_ride" for segment in all_segments)
     steps: List[Dict[str, Any]] = []
     cursor = 0
 
@@ -1000,6 +1003,27 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
                    cadence_attributes=cadence_attributes, cadence_phase=WORK)
     if not steps:
         return None
+    if all_free_ride:
+        # AE-8.4d (2026-08-24 TP review, addendum): a session whose entire
+        # executable content is FreeRide/zero-power (leg-speed conversions
+        # from the RPE fix -- tp_structure_to_zwo.py's no-power-signal path
+        # -- and race-day cards) ships as a text card, never a zero-power
+        # step graph. ``_step_target``'s "free" branch returns the flat
+        # ``{"minValue": 0}`` (no maxValue) precisely when there is no
+        # honest content to chart -- neither an RPE fact nor an all-out
+        # display band -- which is the exact shape that shipped on "Muscle
+        # Recruitment Progressions - Trainer" and both B-Race Day cards. An
+        # all-out free_ride test (RPE 10/10, or the 120-170% display band)
+        # carries a real target and stays structured; only the genuinely
+        # empty zero-power case is suppressed. A session mixing free_ride
+        # with real segments keeps its structure regardless -- only an
+        # all-free_ride session is a candidate for text-card suppression.
+        def _is_zero_power(leaf: Dict[str, Any]) -> bool:
+            primary = (leaf.get("targets") or [{}])[0]
+            return primary.get("minValue") == 0 and "maxValue" not in primary
+
+        if all(_is_zero_power(block["steps"][0]) for block in steps):
+            return None
     # FIX 10 (Aug 17 2026 adversarial grade): this function only ever
     # projects COMPOSED sessions (Act sims, midweek sims, other
     # synthesized cards) -- curated library items are placed byte-verbatim

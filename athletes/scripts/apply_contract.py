@@ -498,9 +498,21 @@ def _desired_resources(
                                   else session.get("structure")),
                 }}
 
+    # AE-9.3/AE-9.4 (2026-08-24 TP review, round-2 addendum): mirror the
+    # workout loop's per_date collision handling above -- the fixed
+    # self-review and comment-protocol notes are deliberately dated onto a
+    # date another note already claims (self-review shares a short week's
+    # last day with its own midweek note; the Day-1 protocol note always
+    # shares its date with that week's Monday note). Without a sequence
+    # number, same-date notes would collide on `note_id` and silently
+    # overwrite each other in `desired` -- exactly the collision
+    # fulfillment_manifest.py's matching fix guards against.
+    note_per_date: Dict[str, int] = defaultdict(int)
     for note in render_coached_weekly_notes(ir):
         date = str(note["date"])
-        note_key = f"weekly-briefing-{date}"
+        note_per_date[date] += 1
+        sequence = note_per_date[date]
+        note_key = f"weekly-briefing-{date}" if sequence == 1 else f"weekly-briefing-{date}-{sequence}"
         note_id = _logical_id(order_id, "calendar_note_upsert", note_key)
         desired[note_id] = {
             "kind": "calendar_note_upsert",

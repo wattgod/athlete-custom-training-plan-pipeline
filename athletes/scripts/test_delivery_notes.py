@@ -53,6 +53,15 @@ def _by_type(notes):
     return {note["type"]: note for note in notes}
 
 
+def _by_title_prefix(notes, prefix):
+    """AE-9.3/AE-9.4 (round-2 addendum) put a fixed-title self-review note on
+    every week's Sunday and a fixed-title comment-protocol note on Day 1, so
+    the first/last item in ``render_coached_weekly_notes`` is no longer
+    reliably the weekly/race note under test -- callers that want one
+    specific week's note look it up by its title prefix instead."""
+    return next(note for note in notes if note["title"].startswith(prefix))
+
+
 def test_coached_weekly_notes_are_direct_clean_and_bounded():
     plan = _plan(weeks=2, metric="rpe", later_event=False)
     plan["athlete"]["name"] = "Michael Beal"
@@ -66,9 +75,10 @@ def test_coached_weekly_notes_are_direct_clean_and_bounded():
     # a "testing" week (story_notes overrides week_type for number==1 +
     # is_field_test), which is excluded from both mid-week note gates; week
     # 2 is race week -- Monday note only either way. No mid-week additions.
-    assert len(notes) == 2
-    race = notes[-1]
-    assert race["title"] == "Week 2: Race Week"
+    # AE-9.3/AE-9.4 (round-2 addendum) add 3 more: the Day-1 comment-protocol
+    # note and a Sunday self-review note for each of the 2 weeks.
+    assert len(notes) == 5
+    race = _by_title_prefix(notes, "Week 2: Race Week")
     assert "Openers before Vancouver Gran Fondo" in race["body"]
     assert "60-70 g/hr" in race["body"]
     assert "Inside or out" in race["body"]
@@ -83,7 +93,7 @@ def test_coached_weekly_notes_name_the_block_focus_without_an_essay():
     plan["coached_block"] = {
         "focus": "cyclocross starts, repeatability, and handling",
     }
-    body = render_coached_weekly_notes(plan)[0]["body"]
+    body = _by_title_prefix(render_coached_weekly_notes(plan), "Week 1:")["body"]
     assert "This block: cyclocross starts, repeatability, and handling." in body
     assert len(body.split()) <= 90
 
@@ -97,7 +107,7 @@ def test_mandatory_b_event_makes_a_race_decide_the_mode():
         {"name": "Whistler MTB", "priority": "B", "mandatory": True,
          "date": "2026-08-23"},
     ]
-    body = render_coached_weekly_notes(plan)[-1]["body"]
+    body = _by_title_prefix(render_coached_weekly_notes(plan), "Week 2: Race Week")["body"]
     assert "Whistler MTB is mandatory; Saturday decides the mode." in body
     assert "Sunday: normal legs, race it; heavy legs, completion mode." in body
     assert "optional" not in body
@@ -109,7 +119,7 @@ def test_single_event_race_week_never_invents_b_event_or_fuel_both_copy():
     plan["events"] = [{
         "name": "Vancouver Gran Fondo", "priority": "A", "date": "2026-08-22",
     }]
-    race = render_coached_weekly_notes(plan)[-1]
+    race = _by_title_prefix(render_coached_weekly_notes(plan), "Week 2: Race Week")
     assert "B event" not in race["body"]
     assert "both events" not in race["body"]
     assert "Fuel Vancouver Gran Fondo" in race["body"]

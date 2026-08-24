@@ -125,6 +125,40 @@ _ASIDES: List[str] = [
     "The fitness is in the weeks you don't notice.",
 ]
 
+# AE-9.3 / AE-9.4 (2026-08-24 TP review, round-2 addendum): two fixed-form
+# coach templates, verbatim per the ruling -- never rotated, reworded, or
+# word-trimmed like the notes above. voice_lint.py's fixed-template
+# allowlist (keyed on these exact titles) exempts them from the cross-week
+# sentence-dupe check and the weekly word cap for the same reason: they are
+# not freely-authored coach prose, they are a fixed protocol.
+SELF_REVIEW_TITLE = "Week Self Review - 3 Qs"
+SELF_REVIEW_BODY = (
+    "Tell me:\n"
+    "1. What went well and why?\n"
+    "2. What went badly and why?\n"
+    "3. ONE thing you can DO next week that's:\n"
+    " a) In your control\n"
+    " b) Not too big of a lift\n"
+    " c) Impactful\n\n"
+    "Please complete this at the end of every week and put your answers in "
+    "the comments on this note. It will greatly improve you as an athlete "
+    "and help me coach you better."
+)
+
+COMMENT_PROTOCOL_TITLE = "How To Comment On Workouts"
+COMMENT_PROTOCOL_BODY = (
+    "As a reminder, do your workout comments going forward like this:\n\n"
+    "1. Workout Readiness - (e.g. 6/10; couldn't fall asleep bc of stress)\n"
+    "2. Workout Execution - (e.g. 5/10; skipped last set after going too "
+    "hard in the first set)\n"
+    "3. Nutrition - (e.g. 5/10; didn't eat during my hard 2 hour interval "
+    "ride, but did eat before and after)\n"
+    "4. Misc - (e.g. lower back acting up again)\n\n"
+    "1-3: Rate out of 10 (10 is the best); add details if possible; e.g., "
+    "\"I ate two 50g carbohydrate bars\" or \"Felt sluggish to start\" etc.\n"
+    "Misc: Have at it, or don't."
+)
+
 # AE-9.1 (2026-08-24 TP review): the Monday note is the floor, not the
 # ceiling -- 1-2 short mid-week notes per week, speaking to how the athlete
 # is likely feeling at that point in the block. Unlike _NOTICE (which wraps
@@ -340,6 +374,22 @@ def _word_count(text: str) -> int:
     return len(re.findall(r"\S+", text))
 
 
+def _self_review_note(dated: List[Any]) -> Dict[str, str]:
+    """AE-9.3: every week's Sunday -- or the week's final day, when the plan
+    ends mid-week -- carries the fixed self-review template. A week's dated
+    sessions never run past its own Sunday, so the week's own last dated day
+    already IS "Sunday, or the final day if the plan ends mid-week": a full
+    week's last session lands on Sunday, a partial closing week's last
+    session lands wherever the plan actually stops (post-race Sunday
+    included, when the race week runs the full Mon-Sun span)."""
+    review_date = max(_as_date(_get(s, "date")) for s in dated)
+    return {
+        "date": review_date.isoformat(),
+        "title": SELF_REVIEW_TITLE,
+        "body": SELF_REVIEW_BODY,
+    }
+
+
 def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, str]]:
     """One Monday note per plan week. Deterministic for a given PlanIR."""
     weeks = [w for w in (_get(plan_ir, "weeks") or []) if _get(w, "sessions")]
@@ -362,6 +412,25 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
     midweek_feel_use = 0
     midweek_fuel_use = 0
     notes: List[Dict[str, str]] = []
+
+    # AE-9.4 (2026-08-24 TP review, addendum): Day 1 of the plan -- the
+    # earliest dated session across every week, pre-plan included when one
+    # exists -- carries the comment-protocol note. One per plan. This date
+    # is always shared with that week's own Monday note (Day 1 IS a Monday);
+    # fulfillment_manifest.py's per-date collision handling (mirroring the
+    # per-date handling it already does for workouts) is what lets both
+    # coexist on the calendar rather than one silently clobbering the other.
+    plan_first_date = min(
+        (_as_date(_get(s, "date")) for w in weeks for s in (_get(w, "sessions") or [])
+         if _as_date(_get(s, "date"))),
+        default=None,
+    )
+    if plan_first_date:
+        notes.append({
+            "date": plan_first_date.isoformat(),
+            "title": COMMENT_PROTOCOL_TITLE,
+            "body": COMMENT_PROTOCOL_BODY,
+        })
 
     # AE-9.1c (2026-08-24 TP review, addendum): notes are a thread, not
     # islands -- rendered in chronological order (the loop below), each one
@@ -394,6 +463,7 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
         if week_type == "race":
             body = "\n\n".join(_race_week_lines(plan_ir, week, sessions))
             notes.append({"date": start.isoformat(), "title": f"Week {number}: Race Week", "body": body})
+            notes.append(_self_review_note(dated))
             continue
 
         plain = week_type in {"load", "uber_load"} and prev_type != "recovery" and next_type != "recovery"
@@ -491,4 +561,9 @@ def render_story_notes(plan_ir: Any, *, max_words: int = 100) -> List[Dict[str, 
                     })
                     midweek_fuel_use += 1
                     used_dates.add(fuel_date.isoformat())
+
+        # AE-9.3: every trained week gets a Sunday self-review; week 0
+        # (pre-plan, nothing trained yet) does not.
+        if week_type != "pre_plan":
+            notes.append(_self_review_note(dated))
     return notes

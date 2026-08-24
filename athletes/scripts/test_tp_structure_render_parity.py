@@ -129,3 +129,62 @@ def test_rpe_all_out_free_ride_gets_honest_max_effort_target():
     ]), RPE_CONTROL)
     target = s["structure"][0]["steps"][0]["targets"][0]
     assert target == {"minValue": 10, "maxValue": 10}
+
+
+# AE-8.4d (2026-08-24 TP review, addendum): a session whose ZWO is entirely
+# FreeRide/zero-power (leg-speed conversions, race days) must project
+# structure=None, never a zero-power step graph. The two fixtures below
+# reproduce the live shipped defect's real shapes.
+
+def test_muscle_recruitment_progressions_fixture_ships_as_text_card():
+    # "Muscle Recruitment Progressions - Trainer": a long warm-up followed
+    # by ~30 short leg-speed free_ride steps -- the RPE fix's honest
+    # unstructured shape for a no-power/leg-speed-only prescription, never
+    # marked all-out. Live defect: every step charted at 0% FTP.
+    segments = [
+        {"kind": "free_ride", "seconds": 600, "name": "Warm Up",
+         "target": {"type": "free"}},
+    ]
+    segments += [
+        {"kind": "free_ride", "seconds": 60,
+         "name": "Recruitment set (leg speed focus, no power)",
+         "target": {"type": "free"}}
+        for _ in range(28)
+    ]
+    segments.append({"kind": "free_ride", "seconds": 600, "name": "Cool Down",
+                     "target": {"type": "free"}})
+    s = project_tp_structure(_session(segments), CONTROL)
+    assert s is None
+
+
+def test_b_race_day_fixture_ships_as_text_card():
+    # "B-Race Day - <name>": the whole ride is one FreeRide block, never
+    # marked all-out. Live defect: a single flat 0% FTP step graph.
+    s = project_tp_structure(_session([
+        {"kind": "free_ride", "seconds": 10800, "name": "B-Race Day",
+         "target": {"type": "free"}},
+    ]), CONTROL)
+    assert s is None
+
+
+def test_all_free_ride_session_with_an_all_out_effort_stays_structured():
+    # An all-out free_ride carries a real, honest display band -- it is not
+    # the "nothing to chart" case AE-8.4d targets, even when it is the
+    # session's only segment.
+    s = project_tp_structure(_session([
+        {"kind": "free_ride", "seconds": 180, "name": "3min all-out test",
+         "target": {"type": "free"}},
+    ]), CONTROL)
+    assert s is not None
+    assert s["structure"][0]["steps"][0]["targets"][0] == {"minValue": 120, "maxValue": 170}
+
+
+def test_mixed_free_ride_and_real_segments_stays_structured():
+    # A session mixing free_ride with real prescribed segments keeps its
+    # structure -- only an ENTIRELY free_ride session is a text card.
+    s = project_tp_structure(_session([
+        {"kind": "steady_state", "seconds": 1740,
+         "target": {"type": "power_pct_ftp", "value": 0.55}},
+        {"kind": "free_ride", "seconds": 180, "target": {"type": "free"}},
+    ]), CONTROL)
+    assert s is not None

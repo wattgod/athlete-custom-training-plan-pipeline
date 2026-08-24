@@ -19,6 +19,19 @@ import yaml
 _RULES_PATH = Path(__file__).resolve().parent.parent / "config" / "voice_rules.yaml"
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
 
+# AE-9.3 / AE-9.4 (2026-08-24 TP review, round-2 addendum): fixed-form coach
+# templates -- story_notes.SELF_REVIEW_TITLE / COMMENT_PROTOCOL_TITLE --
+# ship verbatim by ratification, never rotated/reworded/truncated. They are
+# exempt from the word cap and the cross-week sentence-dupe check below
+# (both are heuristics for freely-authored coach prose; a mandated verbatim
+# template is neither variable content nor an unintentional repeat). This
+# is a narrow allowlist keyed on the exact fixed-template titles -- it does
+# NOT weaken either rule for any other note.
+_FIXED_TEMPLATE_TITLES = {
+    "Week Self Review - 3 Qs",
+    "How To Comment On Workouts",
+}
+
 
 def load_rules(path: Path = _RULES_PATH) -> Dict[str, Any]:
     with path.open(encoding="utf-8") as handle:
@@ -62,9 +75,12 @@ def lint_notes(notes: Iterable[Dict[str, Any]], *, rules: Dict[str, Any] | None 
         if not body.strip():
             findings.append(f"{where}: empty body")
             continue
-        if _words(body) > cap:
+        is_fixed_template = str(note.get("title") or "") in _FIXED_TEMPLATE_TITLES
+        if not is_fixed_template and _words(body) > cap:
             findings.append(f"{where}: {_words(body)} words exceeds cap {cap}")
         findings.extend(check_copy(body, rules=rules, where=where))
+        if is_fixed_template:
+            continue
         for sentence in _sentences(body):
             sentences[sentence] += 1
     for sentence, count in sentences.items():

@@ -56,12 +56,23 @@ def build_manifest_from_plan_ir(ir: Dict[str, Any], athlete_dir: Path | str) -> 
             }
             workouts.append(item)
 
+    # AE-9.3/AE-9.4 (2026-08-24 TP review, round-2 addendum): the fixed
+    # self-review and comment-protocol notes are dated deliberately onto a
+    # date another note already claims (the self-review lands on a week's
+    # own Sunday, which can coincide with a midweek note's date on a short
+    # week; the Day-1 protocol note always shares its date with that week's
+    # Monday note). Sequence-number the key only when a date is genuinely
+    # shared, so the single-note-per-date case keeps its original id shape.
+    per_note_date: Dict[str, int] = {}
     for note in render_coached_weekly_notes(ir):
         note_date = str(note['date'])
+        per_note_date[note_date] = per_note_date.get(note_date, 0) + 1
+        sequence = per_note_date[note_date]
+        suffix = '' if sequence == 1 else f":{sequence}"
         notes.append({
-            'external_id': f"note:{ir['athlete']['id']}:weekly:{note_date}",
+            'external_id': f"note:{ir['athlete']['id']}:weekly:{note_date}{suffix}",
             'date': note_date,
-            'logical_key': f"weekly-briefing-{note_date}",
+            'logical_key': f"weekly-briefing-{note_date}{suffix.replace(':', '-')}",
             'title': note['title'],
             'text': note['body'],
         })
