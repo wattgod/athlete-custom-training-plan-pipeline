@@ -557,6 +557,23 @@ would feel heavy — this is the week they come back"), no contradictions
 with prior notes, repeats owned per AE-9.1b. The notes of a plan read as
 one coach talking across weeks, not a pool of isolated cards.
 
+**AE-9.3 — weekly self-review note (verbatim template).** Every week ends
+(Sunday) with the coach's "Week Self Review - 3 Qs" note, verbatim: "Tell
+me: 1. What went well and why? 2. What went badly and why? 3. ONE thing
+you can DO next week that's: a) In your control b) Not too big of a lift
+c) Impactful" + the complete-in-comments instruction. Fixed form — never
+rotated or reworded. Post-race Sunday included (race debrief).
+
+**AE-9.4 — workout-comment protocol note (verbatim template).** Day 1 of
+every plan carries "How To Comment On Workouts": Readiness / Execution /
+Nutrition rated /10 with detail, Misc free-form — the coach's verbatim
+template. Fixed form.
+
+**AE-8.4d — zero-power structures never ship.** A session whose ZWO is
+all-FreeRide (leg-speed conversions, race days) projects NO TP structure
+(structure: null, text card) — never a zero-power graph. The flat-zero
+"structure" on Muscle Recruitment/B-race cards was this defect.
+
 **AE-3.13b — instructions state the DO.** Copy tells the athlete what TO
 do, plainly ("Arrive fueled: normal meal ~2h out. One bottle, 40-50g
 carbs."). Never structure a line around what today is NOT ("...is not the
