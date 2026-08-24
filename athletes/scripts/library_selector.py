@@ -483,8 +483,21 @@ _HARD_WORK_SECONDS_FILLER = 360
 # >=92% rep longer than _TAPER_MAX_HARD_REP_SECONDS, and total >=92% work
 # within _TAPER_HARD_WORK_SECONDS (generous enough for a full 30/30 VO2
 # sharpener set, far under a threshold block session).
+#
+# The race week itself (week_type == "race", the week containing race day --
+# see block_builder._build_race_week / block_chain.py) is a DISTINCT enum
+# value from "taper" and was never covered by this ceiling. Two curated
+# "Stars in Your Eyes" anaerobic_capacity items ("Stars in your eyes -
+# 20/30/40", "Stars in Your Eyes - 2") carry an unlabeled 180s @ 85-95% FTP
+# rep and a 180s @ 101-107% FTP rep respectively -- both single reps over
+# _TAPER_MAX_HARD_REP_SECONDS. The race-week sharpener slot routes to this
+# exact pool (ROUTING_TABLE["Stars In Your Eyes"]) with role="intensity",
+# so neither the taper ceiling nor the filler/recovery ceiling below ever
+# applied to it. Race week is at least as taper-sensitive as taper week --
+# it is closer to the start line -- so it gets the identical ceiling.
 _TAPER_MAX_HARD_REP_SECONDS = 120
 _TAPER_HARD_WORK_SECONDS = 900
+_TAPER_GATED_WEEK_TYPES = ("taper", "race")
 # Base-phase long rides are aerobic: hard durability long rides are the
 # house signature for BUILD/PEAK only. Without a base ceiling, a curated
 # night-threshold session filed in an endurance library ("Dark is the
@@ -538,7 +551,7 @@ def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bo
             return False
         if _max_hard_rep_seconds(item.get("structure")) > _BASE_LONG_RIDE_MAX_HARD_REP_SECONDS:
             return False
-    if slot.get("week_type") == "taper":
+    if slot.get("week_type") in _TAPER_GATED_WEEK_TYPES:
         structure = item.get("structure")
         if _max_hard_rep_seconds(structure) > _TAPER_MAX_HARD_REP_SECONDS:
             return False

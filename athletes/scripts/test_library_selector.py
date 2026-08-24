@@ -991,6 +991,71 @@ def test_taper_slots_reject_sustained_threshold_regardless_of_role():
     assert _passes_role_ceiling(threshold_item, load_slot)   # load weeks unaffected
 
 
+def test_race_week_slots_reject_sustained_hard_reps_same_as_taper():
+    """Aug 14 audit defect (pre-standards, two real athlete TP calendars):
+    the race-week sharpener slot ("Stars In Your Eyes", 4 days before race)
+    carries week_type="race", NOT "taper" -- block_builder._build_race_week
+    and block_chain.py both tag the week containing race day as its own
+    enum value, distinct from "taper" (the week before it). The taper
+    ceiling in _passes_role_ceiling only checked week_type == "taper", so a
+    race-week slot got NO hard-rep ceiling at all.
+
+    Structure below is trimmed from the real curated anaerobic_capacity
+    item "Stars in your eyes - 20/30/40" (item_id 14355544, TP library
+    dump): an unlabeled active-class leaf holds 85-95% FTP for 180
+    seconds -- a single >=92% rep 60s over _TAPER_MAX_HARD_REP_SECONDS,
+    exactly matching the audited calendar ("warm-up ramp step holding
+    85-95% FTP for 180s" placed 4 days before the race)."""
+    from library_selector import _passes_role_ceiling
+
+    stars_in_your_eyes_excerpt = {
+        "if_planned": 0.7609,
+        "structure": {"structure": [
+            {"length": {"value": 1}, "steps": [
+                {"name": "Warm up", "length": {"value": 600},
+                 "intensityClass": "warmUp", "targets": [{"minValue": 60, "maxValue": 70}]},
+            ]},
+            {"length": {"value": 1}, "steps": [
+                {"name": "", "length": {"value": 180},
+                 "intensityClass": "active", "targets": [{"minValue": 75, "maxValue": 85}]},
+            ]},
+            {"length": {"value": 1}, "steps": [
+                {"name": "", "length": {"value": 180},
+                 "intensityClass": "active", "targets": [{"minValue": 85, "maxValue": 95}]},
+            ]},
+        ]},
+    }
+    race_sharpener_slot = {"role": "intensity", "week_type": "race"}
+    taper_slot = {"role": "intensity", "week_type": "taper"}
+    load_slot = {"role": "intensity", "week_type": "load"}
+    assert not _passes_role_ceiling(stars_in_your_eyes_excerpt, race_sharpener_slot)
+    assert not _passes_role_ceiling(stars_in_your_eyes_excerpt, taper_slot)
+    assert _passes_role_ceiling(stars_in_your_eyes_excerpt, load_slot)  # load weeks unaffected
+
+
+def test_openers_never_reaches_the_tp_library_in_a_race_week():
+    """Companion Aug 14 audit defect: 'Openers v1.1' (item_id 14357012, the
+    testing_openers pool) placed the day before the race with a 'Threshold'
+    leaf at 95% FTP for 300s -- a single >=92% rep 180s over the taper
+    ceiling. Unlike "Stars In Your Eyes", the canonical type "Openers" is
+    SYNTHETIC_ONLY (never routed to any TP library pool -- see
+    resolve_library_keys and the SYNTHETIC_ONLY guard in select()/refit()),
+    so this pool is structurally unreachable via the current selector
+    regardless of week_type. This test locks that invariant in: if a
+    future routing-table change ever pointed "Openers" at a real pool, it
+    would need the same week_type in _TAPER_GATED_WEEK_TYPES protection
+    "Stars In Your Eyes" now has."""
+    assert resolve_library_keys(
+        {"canonical_name": "Openers", "week_type": "race", "role": "intensity"}
+    ) == ()
+    race_week_openers_slot = {
+        "canonical_name": "Openers", "level": 2, "budget_min": 47,
+        "day_cap_min": None, "role": "intensity", "phase": "race",
+        "week_type": "race",
+    }
+    assert select(race_week_openers_slot) is None
+
+
 def test_family_coherence_outranks_level_banding():
     """Live v26 defect completion: the build-week slot's level-1 band
     contained ONLY the family's softest variant (.694) while base had
