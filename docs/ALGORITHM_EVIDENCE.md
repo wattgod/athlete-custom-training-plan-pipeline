@@ -478,6 +478,58 @@ specificity" for gravel) is overridden per AE-1.7 — race-sim + pace-change/
 dimension work + hard carb practice is the house specificity method, on a
 pyramidal base.
 
+## 9c. TP-review round 1 — coach rulings (Matti, 2026-08-24, plan 672143 review)
+
+Ratified live during the first Dynamic-Plan review. These are RULES, not
+suggestions:
+
+**AE-3.12 — RPE decode annotation.** Structured workouts are BUILT as %FTP
+(never RPE), but every step listed in the DESCRIPTION carries its RPE next
+to the zone target ("3x12min @80% FTP (Z3, RPE 6-7)") — best practice for
+decoding execution. Applies to every emitted description.
+
+**AE-3.13 — Named protocols are explained.** Any workout invoking a named
+protocol (Heat Acclimation, gut-training ladder, 360 Testing) either
+describes the protocol inline or links the athlete-facing explanation.
+Orphaned methodology phrases (e.g. "The ladder lives on the long rides"
+appearing without its gut-training-ladder context) are defects — fueling
+copy must be self-contained per workout.
+
+**AE-3.14 — Embedded tempo/SST blocks get recovery + dimensions.** Tempo
+embedded in endurance rides is blocks WITH recovery between and with
+pace-change/position/cadence dimension work — never one continuous blob
+bolted to the end (the Mixtape defect). Continuous designs need an explicit
+documented rationale.
+
+**AE-3.15 — Discipline scoping.** TT-bike-position items (e.g. "TT Base")
+never route to gravel athletes unless the coach explicitly intends
+position work — selection filters by discipline tag.
+
+**AE-6.5b/rest-days — variety is enforced everywhere.** Rest-day card
+rotation (already ratified) applies to EVERY delivery surface including
+plan containers; identical copy across rest days in one plan = defect.
+
+**AE-9.1 — Notes density: a plan is a guided story.** Weekly Monday notes
+are the floor, not the ceiling: short mid-week notes that speak to how the
+athlete is likely feeling at that point in the block (2-3 per week max,
+some one-liners). Voice rules apply.
+
+**AE-9.2 — Pre-activity comments / bounded pivots.** Key workouts carry
+TP pre-activity comments (or notes) giving the athlete bounded autonomy to
+pivot without sabotaging the pattern — the AE-3.8 phase-gated discretion
+rules and the AE-8.5 downgrade ladder rendered athlete-facing.
+
+**AE-8.4b — Strength ships structured.** Strength sessions are built as
+structured strength (the V2 recipe in TP 3770562 / strength-program
+overhaul), never text-only cards.
+
+**DEFECT (not a ruling): RPE-value structure corruption.** A curated
+RPE-authored item ("Muscle Recruitment Progressions - Trainer") emitted
+its RPE values (1-4) as %FTP targets — 1-4% FTP garbage. Same family as
+the E2E "12min ALL OUT at Power=0.10" finding. RPE-metric curated
+structures must either convert honestly (RPE→%FTP mapping) or ship as
+unstructured with the authored description; never metric-relabel.
+
 ## 9b. Hook → module map
 
 The section-heading hook names are conceptual; the concrete modules (all
