@@ -72,6 +72,11 @@ from email_templates import (TP_INVITE_LINK as CONSULT_TP_INVITE_LINK,
 import endure_delivery
 from preview_contract import PreviewContractError
 from preview_service import PreviewProviderUnavailable, build_public_preview
+from training_plan_addons import (
+    AddonSelectionError,
+    resolve_plan_addons,
+    stripe_line_items_for_addons,
+)
 
 # The shared registry lives under athletes/config because that directory is
 # copied into the Railway image. Import its loader from the adjacent scripts
@@ -4234,11 +4239,19 @@ def create_checkout():
                      "generation (consulting only)"
         }), 400
 
+    try:
+        addon_selection = resolve_plan_addons(data.get('plan_addons'), brand)
+        addon_line_items = stripe_line_items_for_addons(
+            addon_selection['optional'])
+    except AddonSelectionError as exc:
+        return jsonify({'error': str(exc)}), 400
+
     # Generate intake ID and store questionnaire data
     intake_id = str(uuid.uuid4())
     data['computed_price_cents'] = pricing['price_cents']
     data['computed_weeks'] = pricing['weeks']
     data['brand'] = brand
+    data['plan_addons'] = addon_selection['all']
     store_intake(intake_id, data)
 
     # Look up pre-built price ID, capping at 17 for 17+ weeks
@@ -4258,6 +4271,7 @@ def create_checkout():
             },
             'quantity': 1,
         }]
+        line_items.extend(addon_line_items)
 
         expires_at = int((datetime.now() + timedelta(minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
 
@@ -4275,6 +4289,7 @@ def create_checkout():
                 'weeks': str(pricing['weeks']),
                 'price_cents': str(pricing['price_cents']),
                 'brand': brand,
+                'plan_addons': ','.join(addon_selection['all']),
             },
             success_url=f"{brand_cfg['site']}/training-plans/success/?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{brand_cfg['site']}{brand_cfg['questionnaire_path']}",
