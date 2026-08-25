@@ -11,7 +11,7 @@ before large or ambiguous work.
 
 **Commercial-grade automated training plan generator. Current as of April 2, 2026.**
 
-**ALGORITHM RULES ARE RATIFIED AND CITED — READ `docs/ALGORITHM_EVIDENCE.md`
+**THE ENGINE IS NAMED MOTOREN (Norwegian: "the engine") — its rules are RATIFIED AND CITED. READ `docs/ALGORITHM_EVIDENCE.md`
 before changing plan structure, workout selection, progression, testing,
 fueling, or compliance logic.** Every rule carries a rule ID (AE-x.y), an
 evidence tier, and citations into `docs/evidence/`. Contradictions get

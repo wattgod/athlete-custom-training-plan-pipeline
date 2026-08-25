@@ -1,4 +1,9 @@
-# Training Algorithm Evidence — Ratified Rules
+# Motoren — Training Algorithm Evidence (Ratified Rules)
+
+**Motoren** (Norwegian: "the engine") is the canonical plan- and
+workout-generation engine — this pipeline's generator, gates, and delivery
+machinery as one named system. When any doc, skill, or agent says Motoren,
+it means the engine governed by this file.
 
 **Status: RATIFIED by Matti Rowe 2026-08-23** (ruling record in §9).
 Adversarially reviewed by GPT-5.6-sol 2026-08-23 (15 findings — 5 blockers,
