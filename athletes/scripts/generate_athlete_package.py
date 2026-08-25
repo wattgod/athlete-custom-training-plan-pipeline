@@ -1082,11 +1082,17 @@ def strength_equipment_tier(profile: dict) -> str:
 # own SYNTHETIC_ONLY set -- excluding them here keeps those non-candidates
 # out of the D9 fallback report, which should only name genuine misses).
 _LIBRARY_OUT_OF_SCOPE_NAMES = frozenset({
-    'FTP Test', 'Anaerobic Test', 'Openers', 'Rest Day', 'OFF',
+    'Openers', 'Rest Day', 'OFF',
     'RACE_DAY', 'Act Race Simulation',
     # 'Race Simulation' (the MIDWEEK mini-sim) is in scope as of Aug 17 —
     # it routes to the curated race_sim library; the long Act sims are
     # excluded via the act_simulation flag, not by name.
+    # 'FTP Test'/'Anaerobic Test' are in scope as of Aug 24 — coach ruling:
+    # the two curated assessment items (library_selector.PINNED_TEST_ITEM_IDS)
+    # are placed byte-verbatim on these slots; resolve_library_selections
+    # resolves them like any other in-scope intensity day, and the
+    # block-builder render path (below) is what actually places them for the
+    # canonical Week 1 testing slot -- see _defer_to_legacy.
 })
 
 # R4 fix wave (SPEC_LIBRARY_SELECTION.md regrade): the original C4 judgment
@@ -1144,6 +1150,34 @@ def _library_selection_in_scope(bd: dict) -> bool:
         if any(bd.get(flag) for flag in _LIBRARY_SYNTHETIC_PINNED_DAY_FLAGS):
             return False
     return True
+
+
+def _pinned_test_slot(canonical_name: str, week_num: int, day_abbrev: str, phase,
+                      week: dict, athlete_seed, discipline) -> dict:
+    """Slot dict for a live PINNED_TEST_ITEM_IDS lookup at ZWO-render time
+    (see generate_zwo_files' `_bb_ftp_slot_pinned` check and its
+    `_library_resolution` self-heal). Shaped like resolve_library_selections'
+    own slot dict (not just {'canonical_name': ...}) so a caller that
+    monkeypatches library_selector.select with a function assuming a full
+    slot (e.g. reading slot['role']) still works -- library_selector.select
+    itself only reads canonical_name for a pinned name, but this keeps the
+    contract realistic for every caller."""
+    return {
+        'canonical_name': canonical_name,
+        'level': 1,
+        'budget_min': 0,
+        'day_cap_min': None,
+        'role': 'intensity',
+        'phase': phase,
+        'week_type': week.get('week_type'),
+        'series_key': None,
+        'week_in_block': week.get('week_num', 1),
+        'plan_week': week_num,
+        'day': day_abbrev,
+        'athlete_seed': athlete_seed,
+        'race_demands': False,
+        'discipline': discipline,
+    }
 
 
 # R6 fix wave (SPEC_LIBRARY_SELECTION.md regrade): name_base FRAGMENTS
@@ -3042,22 +3076,112 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             _bb_day = _bb_lookup.get((_week_num, _reserved_day))
             if not _bb_day or _bb_day.get('name') == 'FTP Test':
                 continue
+            _is_anaerobic_test = _bb_day.get('name') == 'Anaerobic Test'
             _needs_displacement = (
-                _bb_day.get('name') == 'Anaerobic Test'
+                _is_anaerobic_test
                 or _bb_day.get('role') == 'intensity')
             if not _needs_displacement:
                 continue
             _reserved_idx = _week_days_order.index(_reserved_day)
+
+            # Ratified testing-week order rule (commit 6d3eda1 FIX3
+            # heritage, block_builder.py's testing-week template): the
+            # Anaerobic Test must land >= 2 days after the FTP Test --
+            # coordinator finding 2026-08-24 (steve-wagner regen): the
+            # generic swap below (any earlier non-reserved filler day) has
+            # no notion of this and once landed the anaerobic test 1 day
+            # after FTP. Only Anaerobic Test carries this extra constraint;
+            # general (non-test) intensity-day displacement is unaffected.
+            _min_gap_idx = None
+            if _is_anaerobic_test and _ftp_slot_day in _week_days_order:
+                _min_gap_idx = _week_days_order.index(_ftp_slot_day) + 2
+
             _swap_target = next(
                 (_earlier_day for _earlier_day in _week_days_order[:_reserved_idx]
                  if _earlier_day not in _reserved_days
-                 and (_bb_lookup.get((_week_num, _earlier_day)) or {}).get('role') == 'filler'),
+                 and (_bb_lookup.get((_week_num, _earlier_day)) or {}).get('role') == 'filler'
+                 and (_min_gap_idx is None
+                      or _week_days_order.index(_earlier_day) >= _min_gap_idx)),
                 None)
             if _swap_target:
                 (_bb_lookup[(_week_num, _reserved_day)],
                  _bb_lookup[(_week_num, _swap_target)]) = (
                     _bb_lookup[(_week_num, _swap_target)],
                     _bb_lookup[(_week_num, _reserved_day)])
+                continue
+
+            if not _is_anaerobic_test:
+                continue
+
+            # No in-week day satisfies BOTH "non-reserved filler" and the
+            # >=2-day gap (coordinator ruling 2026-08-24): move the test to
+            # next week's earliest legal day instead of violating the gap.
+            # "Legal" means not reserved by THAT week's own B-race -1/-2,
+            # and specifically the week's own intensity slot (the existing
+            # one-intensity-displacement precedent -- see
+            # block_chain.protect_post_simulation_recovery's "displaced"
+            # carry-over) rather than a filler day: absorbing into an
+            # already-hard day keeps the week's total hard-day count
+            # unchanged, where adding it to a filler day would push the
+            # week over its intensity cap. The VO2/quality session that
+            # slot held yields to the test -- tests outrank variety
+            # intensity in a testing block.
+            _next_week_info = next(
+                (_w for _w in weeks if _w['week'] == _week_num + 1), None)
+            _placed_next_week = False
+            if _next_week_info:
+                _next_days_order = [_d['day'] for _d in _next_week_info.get('days', [])]
+                _next_reserved = {
+                    _d['day'] for _d in _next_week_info.get('days', [])
+                    if _d.get('is_b_race_opener') or _d.get('is_b_race_easy')
+                }
+                _next_target = next(
+                    (_d for _d in _next_days_order
+                     if _d not in _next_reserved
+                     and (_bb_lookup.get((_week_num + 1, _d)) or {}).get('role') == 'intensity'),
+                    None)
+                if _next_target:
+                    # _week_in_block/_block_number are week2's own context
+                    # (series numbering, variation offsets) -- keep them,
+                    # not week1's, even though every other field (name,
+                    # role, level, duration, tss) comes from the displaced
+                    # Anaerobic Test.
+                    _next_original = _bb_lookup.get((_week_num + 1, _next_target)) or {}
+                    _bb_lookup[(_week_num + 1, _next_target)] = {
+                        **_bb_day,
+                        'day': _next_target,
+                        '_week_in_block': _next_original.get('_week_in_block', 1),
+                        '_block_number': _next_original.get('_block_number', 1),
+                    }
+                    # The vacated reserved day: swapping in the earlier
+                    # filler content isn't available here (that's exactly
+                    # what was ruled out above), so leave plain easy
+                    # content -- the LEGACY PATH's B-race -1/-2 overlay
+                    # force-converts this day to Openers/Easy regardless
+                    # (is_b_race_opener/is_b_race_easy unconditionally defer
+                    # to legacy), so this is never actually rendered from;
+                    # it only needs to read cleanly for the strength-
+                    # placement blocked-day scan above, which keys off
+                    # `name`/`role`.
+                    _bb_lookup[(_week_num, _reserved_day)] = {
+                        **_bb_day, 'name': 'Endurance', 'role': 'filler', 'level': 1,
+                    }
+                    _placed_next_week = True
+            if not _placed_next_week:
+                # Next week has no legal slot either -- fall back to the
+                # gap-violating in-week swap (pre-fix behavior) so the
+                # assessment still happens rather than being silently
+                # dropped (AE-1.9's whole rationale for this pass).
+                _fallback_target = next(
+                    (_earlier_day for _earlier_day in _week_days_order[:_reserved_idx]
+                     if _earlier_day not in _reserved_days
+                     and (_bb_lookup.get((_week_num, _earlier_day)) or {}).get('role') == 'filler'),
+                    None)
+                if _fallback_target:
+                    (_bb_lookup[(_week_num, _reserved_day)],
+                     _bb_lookup[(_week_num, _fallback_target)]) = (
+                        _bb_lookup[(_week_num, _fallback_target)],
+                        _bb_lookup[(_week_num, _reserved_day)])
 
     # Total weeks per phase (used for long ride progression)
     phase_total_weeks = dict(phase_counters)  # snapshot after counting all weeks
@@ -3550,7 +3674,42 @@ TIPS:
             # handling: A-race day plans, B-race openers/easy mini-taper, and
             # FTP test injection. Without this gate the block path would render
             # a normal workout and skip those overlays entirely.
+            #
+            # EXCEPTION (Aug 24 coach ruling): the canonical Week 1 testing
+            # slot is exempted from the FTP-test defer when the block
+            # builder's own 'FTP Test' placement there already resolved to
+            # the pinned curated item (library_selector.PINNED_TEST_ITEM_IDS
+            # via resolve_library_selections, above) -- the block-builder
+            # path renders that byte-verbatim (see `if _library_resolution`
+            # below) instead of the legacy synthetic FTP_Test block. Mid/
+            # late-plan retests have no block-builder 'FTP Test' placement
+            # (only the Week 1 testing week does), so this never fires for
+            # them -- they keep deferring to legacy exactly as before. And
+            # when the pinned item is absent from the index, `_bb_ftp_slot_pinned`
+            # is falsy and Week 1 defers to legacy too (the synthetic
+            # fallback the coach ruling asked for).
+            #
+            # This checks PINNED_TEST_ITEM_IDS availability live (via
+            # library_selector.select, cheap -- the index is process-cached)
+            # rather than trusting `library_resolution` already stashed on
+            # the day: resolve_library_selections's pass runs BEFORE the
+            # B-RACE -1/-2 DISPLACEMENT swap (above) and excludes reserved
+            # B-race days from scope, so a Week 1 whose testing-week slot
+            # lands on (or gets swapped onto) a day that pass never
+            # resolved would otherwise wrongly defer to the synthetic
+            # fallback even though the pinned item exists. See the matching
+            # self-heal on `_library_resolution` below.
             # ---------------------------------------------------------------
+            _bb_ftp_slot_pinned = bool(
+                _library_selection_enabled
+                and day_abbrev == _ftp_slot_day
+                and (_bb_lookup.get((week_num, day_abbrev)) or {}).get('name') == 'FTP Test'
+            )
+            if _bb_ftp_slot_pinned:
+                import library_selector as _ls_ftp_check
+                _bb_ftp_slot_pinned = _ls_ftp_check.select(_pinned_test_slot(
+                    'FTP Test', week_num, day_abbrev, phase, week, athlete_seed,
+                    _bb_discipline)) is not None
             _defer_to_legacy = (
                 is_race_day
                 or is_b_race_opener
@@ -3560,6 +3719,7 @@ TIPS:
                     and week_num not in ftp_tests_added
                     and not week.get('is_recovery_week', False)
                     and day_abbrev == _ftp_slot_day
+                    and not _bb_ftp_slot_pinned
                 )
             )
             if _use_block_builder and not _defer_to_legacy:
@@ -3574,6 +3734,25 @@ TIPS:
                 # C4/D3: the resolution pass (before the compliance gate,
                 # above) stashed a curated TP library item on this day.
                 _library_resolution = bb_day.get('library_resolution')
+
+                # Self-heal (coach ruling 2026-08-24): a pinned test slot
+                # can reach this point with no library_resolution attached
+                # even though the pinned item exists -- resolve_library_
+                # selections excludes reserved B-race days from scope, and
+                # the B-RACE -1/-2 DISPLACEMENT swap (above, runs AFTER that
+                # pass) can move 'Anaerobic Test' from its original
+                # (excluded) reserved day onto a day that pass never had a
+                # chance to resolve. PINNED_TEST_ITEM_IDS resolution doesn't
+                # depend on this day's budget/day_cap (see
+                # library_selector._select_pinned_test), so it's always
+                # safe to resolve fresh here regardless of which day the
+                # slot ended up on.
+                if (_library_selection_enabled and _library_resolution is None
+                        and bb_name in ('FTP Test', 'Anaerobic Test')):
+                    import library_selector as _ls_self_heal
+                    _library_resolution = _ls_self_heal.select(_pinned_test_slot(
+                        bb_name, week_num, day_abbrev, phase, week, athlete_seed,
+                        _bb_discipline))
 
                 # An explicit no-test directive is canonical prescription
                 # data, not a presentation preference. Replace any block-
@@ -3620,6 +3799,12 @@ TIPS:
                     # protected VO2 anchor instead of a second assessment.
                     bb_name = 'VO2max'
                     bb_level = 1
+                    # A resolved pinned assessment item (the curated
+                    # Anaerobic Test) is no longer the right content once
+                    # this slot became VO2max training -- discard it so the
+                    # `if _library_resolution` render branch below doesn't
+                    # ship the test's structure under a VO2max title.
+                    _library_resolution = None
 
                 # The legacy assessment overlay is the sole owner of the
                 # canonical Week 1 field test.  A testing-week calendar may
@@ -3643,6 +3828,11 @@ TIPS:
                         bb_name = 'Endurance'
                         bb_day['role'] = 'filler'
                     bb_level = 1
+                    # This is the stale duplicate slot, not the canonical
+                    # pinned-item day (_bb_ftp_slot_pinned) -- a resolved
+                    # pinned FTP Test item here would ship the assessment's
+                    # structure under the VO2max/Endurance title above.
+                    _library_resolution = None
 
                 # Track variation for endurance variety.
                 # INTENSITY days: variation is keyed to the BLOCK so a series
@@ -3716,11 +3906,24 @@ TIPS:
                         variation_offset=var_offset, discipline=_bb_discipline,
                         endurance_variant=_e_variant)
                     _filename_name = display_name
-                elif not _act_simulation and bb_name not in ('Endurance', 'Rest Day'):
+                elif (not _act_simulation
+                      and bb_name not in ('Endurance', 'Rest Day', 'FTP Test', 'Anaerobic Test')):
                     # Filler-pool rotations are real mapped archetypes too.
                     # Resolve the visible title from the same renderer choice
                     # so a Terrain/6-second-burst card never ships labelled
                     # as a generic Endurance Blocks card.
+                    #
+                    # FTP Test/Anaerobic Test are excluded (coach ruling
+                    # 2026-08-24, same as line ~3721's intensity-role
+                    # exclusion): before Aug 24 these two never reached this
+                    # branch at all (the legacy defer-to-legacy overlay owned
+                    # every FTP Test day) -- now that the canonical Week 1
+                    # slot can render through this block-builder path (see
+                    # _bb_ftp_slot_pinned), resolve_display_name's generic
+                    # archetype-personality naming (built for pool-rotated
+                    # fillers/openers, not a pinned assessment) must not
+                    # retitle it -- e.g. "20min FTP Test" from the Nate
+                    # 'testing' mapping's duration-in-title convention.
                     from workout_mapper import resolve_display_name
                     display_name = resolve_display_name(
                         bb_name, methodology=nate_methodology,
@@ -3728,7 +3931,7 @@ TIPS:
                         days_to_race=_days_until_race(race_date, day_info.get('date')))
                     _filename_name = display_name
 
-                if _library_resolution and not _act_simulation:
+                if _library_resolution and not _act_simulation and bb_name not in ('FTP Test', 'Anaerobic Test'):
                     # D3/R6: curated name_base (composed into a readable
                     # title -- see _library_display_name) replaces the
                     # resolved archetype title for library-selected days --
@@ -3744,6 +3947,20 @@ TIPS:
                     # curated item's name was already folded into the
                     # description's first line when the resolution was
                     # attached.
+                    #
+                    # FTP Test/Anaerobic Test are exempt too (coach ruling
+                    # 2026-08-24): unlike a pool-rotated slot, these are
+                    # PINNED -- library_selector.PINNED_TEST_ITEM_IDS always
+                    # resolves the same single item, so there is no
+                    # predicted-vs-actual-archetype mismatch for the title
+                    # to reconcile. Keeping "FTP Test"/"Anaerobic Test" as
+                    # the plan's own display/filename preserves the
+                    # pervasive downstream convention (manifest filename_stem
+                    # scanned by day-before/retest-spacing tests and coach
+                    # tooling) instead of retitling to the item's raw TP
+                    # name ("The Assessment - ..."); the card's DESCRIPTION
+                    # still ships the curated item's own authored text
+                    # verbatim, so nothing about the content is dishonest.
                     #
                     # Bug fix (title/content reconciliation): _filename_name
                     # above was predicted from resolve_display_name's guess
@@ -3789,7 +4006,10 @@ TIPS:
                     # (carried on the manifest record below) directly from
                     # the TP library index (C1), not from this ZWO.
                     from tp_structure_to_zwo import convert_structure, render_full_zwo
-                    _converted = convert_structure(_library_resolution['structure'])
+                    _converted = convert_structure(
+                        _library_resolution['structure'],
+                        item_id=_library_resolution.get('item_id'),
+                        name_base=_library_resolution.get('name_base'))
                     zwo_content = render_full_zwo(
                         _converted['blocks_xml'],
                         author=_workout_author,
@@ -3920,6 +4140,17 @@ TIPS:
                     filepath = zwo_dir / f"{workout_name}.zwo"
                     _emit_authored_document(filepath, zwo_content)
                     generated_files.append(filepath)
+                    if _bb_ftp_slot_pinned and bb_name == 'FTP Test':
+                        # This block-builder placement replaces the legacy
+                        # FTP_Test injection for this slot (see
+                        # _defer_to_legacy above) -- keep the legacy
+                        # bookkeeping it would otherwise have written so
+                        # downstream duplicate-slot displacement and the
+                        # FTP-TEST DAY-BEFORE ENFORCEMENT post-pass still see
+                        # this test as placed/dated.
+                        ftp_tests_added.add(week_num)
+                        if day_info.get('date'):
+                            _ftp_test_dates.add(str(day_info['date']))
                     if _series_id is not None:
                         _series_records.append({
                             'filepath': filepath,
@@ -4683,9 +4914,52 @@ GO GET IT, {athlete_name.upper()}!
             elif _bb_day.get('role') == 'intensity':
                 _intensity_avoid_day_abbrevs_by_week.setdefault(
                     _bb_week, set()).add(_bb_day_abbrev)
-        import sys as _dbgsys
-        print('DEBUG avoid week3:', _intensity_avoid_day_abbrevs_by_week.get(3), file=_dbgsys.stderr)
-        print('DEBUG bb_lookup week3:', {k: v.get('role') for k, v in _bb_lookup.items() if k[0] == 3}, file=_dbgsys.stderr)
+
+        # Coordinator finding 2026-08-24 (steve-wagner regen): a full loaded
+        # strength session landed on race-1 (Openers day) and race-2 (Easy
+        # day) -- the B-race -1/-2 reservation (is_b_race_opener/
+        # is_b_race_easy, calculate_plan_dates.py) protects the BIKE content
+        # on those days but strength placement never consulted it. Race-1
+        # is openers only; race-2 is easy, at most mobility-class -- neither
+        # gets a real lifting session. Hard-blocked here (same mechanism as
+        # the FTP-test-day/pre-sim blocks above), which lets
+        # place_strength_days' own candidate search relocate the session to
+        # another eligible day that week, or drop it if none fits (an
+        # A-race/race-phase week already requests zero strength sessions --
+        # strength_sessions_for_week -- so this never has to compete with an
+        # A-race's own race-1/-2 taper days).
+        _b_race_reserved_day_abbrevs_by_week: dict = {}
+        for _brw in weeks:
+            for _brd in _brw.get('days', []):
+                if _brd.get('is_b_race_opener') or _brd.get('is_b_race_easy'):
+                    _b_race_reserved_day_abbrevs_by_week.setdefault(
+                        _brw['week'], set()).add(_brd['day'])
+
+        # The day immediately AFTER a race (B-race or A-race) is poor
+        # adjacency for a loaded lift too -- soft-blocked (not a ratified
+        # hard rule like race-1/-2 above) so place_strength_days prefers any
+        # other eligible day that week; if none exists the session is
+        # dropped for the week rather than landing the morning after a race.
+        _day_by_date: dict = {}
+        for _adw in weeks:
+            for _add in _adw.get('days', []):
+                if _add.get('date'):
+                    _day_by_date[_add['date']] = (_adw['week'], _add['day'])
+        _post_race_day_abbrevs_by_week: dict = {}
+        for _prw in weeks:
+            for _prd in _prw.get('days', []):
+                if not (_prd.get('is_b_race_day') or _prd.get('is_race_day')):
+                    continue
+                if not _prd.get('date'):
+                    continue
+                try:
+                    _race_dt = datetime.strptime(_prd['date'], '%Y-%m-%d')
+                except (TypeError, ValueError):
+                    continue
+                _after_key = _day_by_date.get((_race_dt + timedelta(days=1)).strftime('%Y-%m-%d'))
+                if _after_key:
+                    _post_race_day_abbrevs_by_week.setdefault(
+                        _after_key[0], set()).add(_after_key[1])
 
         # PASS 1 (placement only, no content): FIX 2 -- the exercise family
         # (A vs B) must key off the SAME phase-wide ordinal the delivered
@@ -4727,7 +5001,13 @@ GO GET IT, {athlete_name.upper()}!
                                  if candidate_week == week_num}
                               # AE-8.4: FTP Test / Anaerobic Test days are a
                               # hard block, same as the FTP day above.
-                              | _test_day_abbrevs_by_week.get(week_num, set())),
+                              | _test_day_abbrevs_by_week.get(week_num, set())
+                              # Race-1/-2 reservation: no loaded strength on
+                              # the opener or easy day before a B-race.
+                              | _b_race_reserved_day_abbrevs_by_week.get(week_num, set())
+                              # Poor adjacency: no loaded strength the day
+                              # immediately after a race (B-race or A-race).
+                              | _post_race_day_abbrevs_by_week.get(week_num, set())),
                 strength_only_abbrevs=strength_only_abbrevs,
                 avoid_days=_intensity_avoid_day_abbrevs_by_week.get(week_num, set()),
             )

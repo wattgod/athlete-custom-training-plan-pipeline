@@ -118,7 +118,12 @@ ROUTING_TABLE: dict[str, tuple[str, ...]] = _base_routing_table()
 SYNTHETIC_ONLY: frozenset[str] = frozenset(
     {
         # D5 explicit (midweek sims route to race_sim as of Aug 17;
-        # Act long sims are excluded upstream via the act_simulation flag)
+        # Act long sims are excluded upstream via the act_simulation flag).
+        # "FTP Test"/"Anaerobic Test" are listed here too -- PINNED_TEST_ITEM_IDS
+        # below is checked FIRST in select()/refit() and short-circuits this
+        # set for those two names whenever the pinned item is present in the
+        # index; this membership is what select()/refit() fall back to when
+        # PINNED_TEST_ITEM_IDS' lookup misses (item absent from the index).
         "FTP Test",
         "Anaerobic Test",
         "Openers",
@@ -134,6 +139,21 @@ SYNTHETIC_ONLY: frozenset[str] = frozenset(
         "Blended Endurance, Threshold, and Sprints",
     }
 )
+
+# Coach ruling 2026-08-24: "Use the assessment in my workout library for the
+# FTP test." The two curated assessment items are PINNED, not pool-rotated
+# (tests are not variety) -- select()/refit() resolve these canonical types
+# directly to these item ids, bypassing ROUTING_TABLE/the qualifying-pool
+# machinery entirely. Falls back to the synthetic render (via SYNTHETIC_ONLY,
+# above) only when the pinned id is absent from the index.
+PINNED_TEST_ITEM_IDS: dict[str, int] = {
+    # "Specialty - The Assessment - Functional Threshold - ref - 60min"
+    # (library_key testing_openers, RPE-metric -- effort-guided by design).
+    "FTP Test": 14356974,
+    # "The Assessment - Anaerobic - ref - 62min" (library_key
+    # testing_openers, RPE-metric).
+    "Anaerobic Test": 14356988,
+}
 
 # Durability long-ride alternatives (T21): build/peak long-ride slots on an
 # Endurance-family canonical type also draw these two libraries.
@@ -916,6 +936,29 @@ def _record_used_item(
             used_items.setdefault(_HEAT_WEEKS_KEY, set()).add(plan_week)
 
 
+def _select_pinned_test(
+    canonical_name: str,
+    index: Mapping[str, Any],
+    used_items: Optional[dict[Any, dict[str, Any]]] = None,
+    slot: Optional[Mapping[str, Any]] = None,
+) -> Optional[dict[str, Any]]:
+    """PINNED_TEST_ITEM_IDS resolution: no pool, no level band, no rotation.
+
+    Direct item-id lookup against the index -- returns the pinned item's
+    resolution verbatim, or None (the D9 loud-fallback contract) when the
+    item id isn't present in the index, which is what lets the caller's
+    SYNTHETIC_ONLY branch/legacy renderer stand in as the fallback.
+    """
+    item = _find_item(index, PINNED_TEST_ITEM_IDS[canonical_name])
+    if item is None:
+        return None
+    if used_items is not None:
+        _record_used_item(
+            used_items, item["item_id"], (slot or {}).get("plan_week"),
+            is_heat=_is_heat_tagged(item), week_type=(slot or {}).get("week_type"))
+    return _to_resolution(item)
+
+
 def select(
     slot: Mapping[str, Any],
     series_state: Optional[dict[str, Any]] = None,
@@ -947,6 +990,8 @@ def select(
     excluded_ids = _lint_excluded_ids(index)
 
     canonical_name = slot["canonical_name"]
+    if canonical_name in PINNED_TEST_ITEM_IDS:
+        return _select_pinned_test(canonical_name, index, used_items, slot)
     if canonical_name in SYNTHETIC_ONLY:
         return None
 
@@ -1146,6 +1191,12 @@ def refit(
     excluded_ids = _lint_excluded_ids(index)
 
     canonical_name = slot["canonical_name"]
+    if canonical_name in PINNED_TEST_ITEM_IDS:
+        # Pinned assessments are not trimmed -- the coach's authored protocol
+        # is a fixed-duration test, not a budget-fit target. select() already
+        # placed it (or fell back to the synthetic render); refit() leaves it
+        # alone either way.
+        return None
     if canonical_name in SYNTHETIC_ONLY:
         return None
 

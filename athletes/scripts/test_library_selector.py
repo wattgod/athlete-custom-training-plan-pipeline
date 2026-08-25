@@ -1247,3 +1247,106 @@ def test_purged_concepts_never_selectable_from_curated_library():
         assert _is_internal_only({"name_base": name}), name
     for name in ("G-Spot Progressive - 3", "Endurance - Kredit Kort"):
         assert not _is_internal_only({"name_base": name}), name
+
+
+# ---------------------------------------------------------------------------
+# Pinned test-item routing (coach ruling 2026-08-24): FTP Test/Anaerobic
+# Test route directly to library_selector.PINNED_TEST_ITEM_IDS, bypassing
+# ROUTING_TABLE/the qualifying-pool machinery entirely -- pinned, not
+# pool-rotated. Falls back to the SYNTHETIC_ONLY None (-> synthetic render)
+# only when the pinned id is absent from the index.
+# ---------------------------------------------------------------------------
+
+class TestPinnedTestItemRouting:
+    def test_ftp_test_canonical_name_is_pinned(self):
+        assert ls.PINNED_TEST_ITEM_IDS["FTP Test"] == 14356974
+
+    def test_anaerobic_test_canonical_name_is_pinned(self):
+        assert ls.PINNED_TEST_ITEM_IDS["Anaerobic Test"] == 14356988
+
+    def test_pinned_test_types_are_also_in_synthetic_only(self):
+        # SYNTHETIC_ONLY is the fallback path when the pinned id is absent
+        # from the index -- select()/refit() must still recognize these
+        # names so a rebuilt-without-the-item index degrades cleanly to the
+        # synthetic renderer instead of raising KeyError.
+        assert set(ls.PINNED_TEST_ITEM_IDS) <= SYNTHETIC_ONLY
+
+    def test_select_ftp_test_resolves_the_pinned_item_verbatim(self):
+        pinned = make_item(
+            14356974, library_key="testing_openers",
+            name_base="The Assessment - Functional Threshold",
+            duration_min=60, tss=71.3, if_planned=0.8441,
+            description="12m progressive warmup...",
+        )
+        # An unrelated pool item under the same library_key must never be
+        # chosen instead -- pinned means no rotation, no rank, no pool.
+        decoy = make_item(99999, library_key="testing_openers", name_base="Decoy",
+                          duration_min=60, tss=50, if_planned=0.5)
+        index = make_index([pinned, decoy])
+        slot = base_slot(canonical_name="FTP Test", level=1, budget_min=999999, day_cap_min=1)
+        resolution = select(slot, index=index)
+        assert resolution is not None
+        assert resolution["item_id"] == 14356974
+        assert resolution["duration_min"] == 60
+
+    def test_select_anaerobic_test_resolves_the_pinned_item_verbatim(self):
+        pinned = make_item(
+            14356988, library_key="testing_openers",
+            name_base="The Assessment - Anaerobic",
+            duration_min=62, tss=59.2, if_planned=0.7561,
+        )
+        index = make_index([pinned])
+        slot = base_slot(canonical_name="Anaerobic Test", level=1)
+        resolution = select(slot, index=index)
+        assert resolution is not None
+        assert resolution["item_id"] == 14356988
+
+    def test_select_ftp_test_falls_back_to_none_when_item_absent(self):
+        # No item 14356974 in this index -- select() must return None (the
+        # D9 loud-fallback contract), which is what lets the caller's
+        # synthetic FTP_Test renderer stand in, never raise/KeyError.
+        index = make_index([make_item(1, library_key="testing_openers")])
+        slot = base_slot(canonical_name="FTP Test", level=1)
+        assert select(slot, index=index) is None
+
+    def test_select_anaerobic_test_falls_back_to_none_when_item_absent(self):
+        index = make_index([])
+        slot = base_slot(canonical_name="Anaerobic Test", level=1)
+        assert select(slot, index=index) is None
+
+    def test_pinned_selection_ignores_budget_and_day_cap(self):
+        """Pinned, not pool-rotated: a budget/day_cap window that would
+        normally exclude a 60min item from the qualifying pool must not
+        block the pinned FTP Test lookup -- the day was already sized for
+        the test upstream (get_ftp_day_candidates)."""
+        pinned = make_item(14356974, library_key="testing_openers", duration_min=60)
+        index = make_index([pinned])
+        slot = base_slot(canonical_name="FTP Test", level=1, budget_min=5, day_cap_min=5)
+        resolution = select(slot, index=index)
+        assert resolution is not None
+        assert resolution["item_id"] == 14356974
+
+    def test_pinned_selection_records_used_items(self):
+        pinned = make_item(14356974, library_key="testing_openers")
+        index = make_index([pinned])
+        used_items: dict = {}
+        slot = base_slot(canonical_name="FTP Test", level=1, plan_week=1)
+        select(slot, index=index, used_items=used_items)
+        assert used_items[14356974]["count"] == 1
+
+    def test_refit_never_trims_a_pinned_test(self):
+        pinned = make_item(14356974, library_key="testing_openers", duration_min=60)
+        index = make_index([pinned])
+        slot = base_slot(canonical_name="FTP Test", level=1, budget_min=30)
+        assert refit(slot, index=index) is None
+
+    def test_real_index_resolves_both_pinned_assessment_items(self):
+        """Realism check against the actual built index (not a synthetic
+        one) -- both pinned ids must be present and selectable."""
+        index = load_index()
+        for canonical_name, item_id in ls.PINNED_TEST_ITEM_IDS.items():
+            slot = base_slot(canonical_name=canonical_name, level=1)
+            resolution = select(slot, index=index)
+            assert resolution is not None, f"{canonical_name} pinned item {item_id} not resolvable"
+            assert resolution["item_id"] == item_id
+            assert resolution["library_key"] == "testing_openers"

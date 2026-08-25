@@ -46,6 +46,14 @@ BANNED_NAME_RE = re.compile(r"fatmax|fat\s*max|fartlek|fasted", re.I)
 ENDURANCE_NAME_RE = re.compile(r"endurance|(?<!an)aerobic|\bz2\b|zone\s*2|base\s+miles", re.I)
 VO2_NAME_RE = re.compile(r"vo2|30/30|30-30|40/20|ronnestad|billat|hard\s*start", re.I)
 CADENCE_CRITICAL_RE = re.compile(r"torque|sfr|cadence|spin[- ]?up|high[- ]?rpm|low[- ]?rpm", re.I)
+# Coach ruling 2026-08-24 (AE assessment RPE exemption): assessments are
+# legitimately RPE-structured -- authored ground truth, a test guided by RPE
+# is the correct open-effort form. Self-contained duplicate of
+# tp_structure_to_zwo.is_assessment_item's name convention (this file takes
+# no pipeline imports by design) plus the house field-test naming ("FTP
+# Test"/"Anaerobic Test"/"Field Test") -- test-titled sessions generally are
+# exempt from the S1 percentOfFtp check below, not just the two pinned items.
+TEST_TITLE_RE = re.compile(r"\bthe assessment\b|\b(?:anaerobic|ftp|field)\b.*\btest\b", re.I)
 FLOOR_EXEMPT_RE = re.compile(
     r"recovery|opener|tune[- ]?up|rest\s*day|day\s*off|easy\s*spin|pre[- ]?ride"
     r"|strength|mobility|pre[- ]?plan|activation", re.I)
@@ -132,9 +140,13 @@ def lint_workout(w: Mapping[str, Any], race: date | None) -> list[dict]:
     is_endurance = bool(ENDURANCE_NAME_RE.search(title))
     floor_exempt = bool(FLOOR_EXEMPT_RE.search(title))
 
-    # S1 — %FTP structuring for bike workouts (ratified standard #8)
+    # S1 — %FTP structuring for bike workouts (ratified standard #8).
+    # Test-titled sessions (assessments) are exempt (see TEST_TITLE_RE
+    # above) -- an RPE-structured field test is the authored, correct form,
+    # not a metric violation.
     metric = (structure or {}).get("primaryIntensityMetric") or ""
-    if structure and type_id in BIKE_TYPE_IDS and metric and metric != "percentOfFtp":
+    if (structure and type_id in BIKE_TYPE_IDS and metric and metric != "percentOfFtp"
+            and not TEST_TITLE_RE.search(title)):
         add("FAIL", "WS-structure", f"bike structure metric is {metric}, not percentOfFtp")
 
     # E1/E2 — endurance band + load rate (AE-2.8 + ratified IF band)

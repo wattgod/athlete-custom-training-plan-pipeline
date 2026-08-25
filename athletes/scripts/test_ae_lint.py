@@ -145,3 +145,29 @@ def test_strength_sessions_exempt_from_bike_floor():
     w = {"title": "Foundation Strength A", "workoutTypeValueId": 9,
          "workoutDay": "2026-09-01", "totalTimePlanned": 0.5}
     assert not any(f["rule"] == "AE-2.7" for f in lint_workout(w, None))
+
+
+def test_test_titled_sessions_exempt_from_ws_structure():
+    # Coach ruling 2026-08-24: assessments are legitimately RPE-structured
+    # (authored ground truth) -- an RPE-metric bike structure titled as a
+    # test/assessment must not FAIL the %FTP-structuring check the way a
+    # genuinely mistagged endurance ride does (test_maxhr_bike_structure_
+    # fails above).
+    ftp_test = {"title": "FTP Test", "workoutTypeValueId": 2,
+                "workoutDay": "2026-08-21", "totalTimePlanned": 1.0,
+                "structure": _structure([_step(1200, 8, 10)], metric="rpe")}
+    anaerobic_test = {"title": "Anaerobic Test", "workoutTypeValueId": 2,
+                       "workoutDay": "2026-08-21", "totalTimePlanned": 1.0,
+                       "structure": _structure([_step(60, 9, 10)], metric="rpe")}
+    the_assessment = {"title": "Specialty - The Assessment - Functional Threshold",
+                       "workoutTypeValueId": 2, "workoutDay": "2026-08-21",
+                       "totalTimePlanned": 1.0,
+                       "structure": _structure([_step(1200, 8, 10)], metric="rpe")}
+    for w in (ftp_test, anaerobic_test, the_assessment):
+        assert not any(f["rule"] == "WS-structure" for f in lint_workout(w, None)), w["title"]
+    # A non-test RPE-metric bike structure is still caught -- the exemption
+    # is title-scoped, not a blanket RPE carve-out.
+    not_a_test = {"title": "Endurance - RPE ride", "workoutTypeValueId": 2,
+                  "workoutDay": "2026-08-21", "totalTimePlanned": 1.0,
+                  "structure": _structure([_step(3600, 5, 6)], metric="rpe")}
+    assert ("FAIL", "WS-structure") in _rules(lint_workout(not_a_test, None))

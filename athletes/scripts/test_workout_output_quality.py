@@ -347,26 +347,35 @@ def test_manifest_total_time_planned_is_whole_minutes(full_plan_manifest):
         f"(stem, hours, reconstructed_sec): {offenders}")
 
 
-def test_alactic_opener_alternative_dose_is_proposed_not_wired_in():
-    """DEFECT 4 (coach TP-review, plan 672143, 2026-08-24): the proposed
-    3x15-20s @130-150% alactic dose renders correctly (so the coach can
-    trust the numbers) but is not referenced by the live 'Pre-Race
-    Openers' Level 1 archetype -- the shipped render is unchanged."""
+def test_alactic_opener_alternative_dose_is_wired_in():
+    """DEFECT 4 (coach TP-review, plan 672143, 2026-08-24): coach decision
+    Aug 24 2026 -- the ALT, mid alactic dose (3x18s @140% FTP, 150s
+    recovery, ~22 TSS) from alactic_opener_alternative_dose_proposal now IS
+    the live 'Pre-Race Openers' Level 1 archetype (new_archetypes.py),
+    replacing the original 2x30sec @110% FTP dose."""
     from new_archetypes import ENDURANCE_NEW
     from nate_workout_generator import alactic_opener_alternative_dose_proposal
 
     proposal = alactic_opener_alternative_dose_proposal()
     assert proposal['efforts'] == (3, 18)
     assert proposal['effort_power'] == 1.40
+    assert proposal['effort_recovery'] == 150
 
-    archetype = {'name': 'Pre-Race Openers', 'levels': {'1': proposal}}
-    blocks = generate_blocks_from_archetype(archetype, 1)
+    blocks = generate_blocks_from_archetype(
+        {'name': 'Pre-Race Openers', 'levels': {'1': proposal}}, 1)
     assert blocks.count('Power="1.40"') == 3
     assert 'Power="0.65"' in blocks  # unchanged warmup envelope
 
-    # Not wired in: the live archetype table's Level 1 still ships the
-    # coach's original 2x30s @110% dose.
+    # Wired in: the live archetype table's Level 1 now matches the
+    # proposal function's dose exactly (same source of truth, two copies).
     live_level_1 = next(a for a in ENDURANCE_NEW
                         if a['name'] == 'Pre-Race Openers')['levels']['1']
-    assert live_level_1['efforts'] == (2, 30)
-    assert live_level_1['effort_power'] == 1.10
+    assert live_level_1['efforts'] == (3, 18)
+    assert live_level_1['effort_power'] == 1.40
+    assert live_level_1['effort_recovery'] == 150
+    assert live_level_1['warmup_duration'] == proposal['warmup_duration']
+    assert live_level_1['cooldown_duration'] == proposal['cooldown_duration']
+
+    live_blocks = generate_blocks_from_archetype(
+        {'name': 'Pre-Race Openers', 'levels': {'1': live_level_1}}, 1)
+    assert live_blocks.count('Power="1.40"') == 3

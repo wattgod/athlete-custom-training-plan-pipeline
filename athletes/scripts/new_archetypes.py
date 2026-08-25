@@ -1338,20 +1338,29 @@ ENDURANCE_NEW = [
     {
         'name': 'Pre-Race Openers',
         'levels': {
+            # Coach decision, Aug 24 2026 (DEFECT 4, coach TP-review, plan
+            # 672143): the alt-mid alactic dose from
+            # nate_workout_generator.alactic_opener_alternative_dose_proposal
+            # -- 3x18sec @140% FTP with 150s recovery, ~22 TSS -- replaces
+            # the original 2x30sec @110% FTP dose (sub-VO2max/anaerobic-
+            # capacity range, not truly alactic; 2 reps thin for "legs
+            # remembering speed"). See that function's docstring for the
+            # full TSS comparison across dose options.
             '1': {
-                'structure': '20min Z1-Z2 easy, 2x30sec @ 110% FTP with 2min easy, 5min Z1 cooldown',
-                'execution': 'Short openers - a couple of brief efforts to wake up the legs without creating fatigue',
-                'cadence_prescription': '90-100rpm on efforts',
-                'cadence': 95,
+                'structure': '20min Z1-Z2 easy, 3x18sec @ 140% FTP with 2.5min full recovery, 5min Z1 cooldown',
+                'execution': ('Short alactic openers -- three brief near-max efforts '
+                              'to wake up neuromuscular firing without creating fatigue'),
+                'cadence_prescription': '95-105rpm on efforts',
+                'cadence': 100,
                 'position_prescription': 'Seated, relaxed',
                 'timing_prescription': 'Day before race or event',
                 'fueling': 'Normal hydration only',
                 'openers': True,
                 'warmup_duration': 1200,
                 'warmup_power': 0.65,
-                'efforts': (2, 30),
-                'effort_power': 1.10,
-                'effort_recovery': 120,
+                'efforts': (3, 18),
+                'effort_power': 1.40,
+                'effort_recovery': 150,
                 'cooldown_duration': 300
             },
             '2': {

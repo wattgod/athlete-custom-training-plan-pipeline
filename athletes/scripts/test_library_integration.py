@@ -96,7 +96,12 @@ def _synthetic_bb_plan():
                      'level': 1, 'duration': 0, 'tss': 0},
                     {'day': 'Sat', 'name': 'Endurance', 'role': 'long_ride',
                      'level': 3, 'duration': 180, 'tss': 120},
-                    {'day': 'Sun', 'name': 'FTP Test', 'role': 'intensity',
+                    # Openers: still a genuinely out-of-scope intensity-role
+                    # canonical type (D5/SYNTHETIC_PINNED) -- unlike FTP Test/
+                    # Anaerobic Test, which came IN scope Aug 24 2026 (coach
+                    # ruling: pinned assessment items, see
+                    # library_selector.PINNED_TEST_ITEM_IDS).
+                    {'day': 'Sun', 'name': 'Openers', 'role': 'intensity',
                      'level': 1, 'duration': 60, 'tss': 70},
                 ],
             },
@@ -153,9 +158,17 @@ class TestScopePredicate:
         assert not _library_selection_in_scope(
             {'role': 'filler', 'name': 'Endurance', 'pre_sim_recovery': True})
 
-    def test_ftp_test_out_of_scope(self):
-        assert not _library_selection_in_scope(
+    def test_ftp_test_in_scope(self):
+        # Coach ruling 2026-08-24: FTP Test/Anaerobic Test came IN scope so
+        # resolve_library_selections can attach the pinned curated
+        # assessment item (library_selector.PINNED_TEST_ITEM_IDS) via the
+        # same D1/D2/D3 mechanics as any other intensity-role slot.
+        assert _library_selection_in_scope(
             {'role': 'intensity', 'name': 'FTP Test'})
+
+    def test_anaerobic_test_in_scope(self):
+        assert _library_selection_in_scope(
+            {'role': 'intensity', 'name': 'Anaerobic Test'})
 
     def test_openers_out_of_scope(self):
         assert not _library_selection_in_scope(
@@ -202,11 +215,11 @@ class TestResolveLibrarySelections:
         resolve_library_selections(plan, day_caps={}, athlete_seed='t', index={})
 
         rest = plan['weeks'][0]['days'][1]
-        ftp = plan['weeks'][0]['days'][3]
+        opener = plan['weeks'][0]['days'][3]
         assert 'library_resolution' not in rest
         assert rest['duration'] == 0 and rest['tss'] == 0
-        assert 'library_resolution' not in ftp
-        assert ftp['duration'] == 60 and ftp['tss'] == 70
+        assert 'library_resolution' not in opener
+        assert opener['duration'] == 60 and opener['tss'] == 70
 
     def test_week_totals_recomputed_to_sum_of_days(self, monkeypatch):
         resolution = _fake_resolution(duration_min=20, tss=45)
@@ -221,7 +234,8 @@ class TestResolveLibrarySelections:
         assert week['total_tss'] == sum(d.get('tss', 0) for d in days)
         # Tue (resolved to 20/45) + Wed (0/0) + Sat (unresolved -> select
         # returns the fixed resolution for every in-scope call in this
-        # test, so Sat resolves too) + Sun (out of scope, untouched 60/70)
+        # test, so Sat resolves too) + Sun/Openers (out of scope, untouched
+        # 60/70)
         assert week['total_duration'] == 20 + 0 + 20 + 60
         assert week['total_tss'] == 45 + 0 + 45 + 70
 
@@ -616,7 +630,14 @@ class TestRenderBranch:
             assert 'Phase:' in desc
             assert 'Week 1/4' in desc or re.search(r'Week \d/4', desc)
             # D3: curated name_base is the display name (bare or with a
-            # "(n of N)" series suffix patched on afterward).
+            # "(n of N)" series suffix patched on afterward) -- EXCEPT the
+            # pinned FTP Test/Anaerobic Test slot (coach ruling 2026-08-24):
+            # that title stays "FTP Test"/"Anaerobic Test" even though the
+            # description/structure underneath is the curated (here, faked)
+            # item -- see generate_athlete_package.py's bb_name exclusion
+            # next to _library_display_name.
+            if name in ('FTP Test', 'Anaerobic Test'):
+                continue
             assert re.match(r'^Curated Test Interval( \(\d+ of \d+\))?$', name), name
 
     def test_unresolved_in_scope_day_renders_synthetic_as_before(self, tmp_path):
@@ -661,6 +682,15 @@ class TestFilenameContentReconciliation:
 
         for f in curated:
             name = _zwo_name(f).split(' (')[0]  # strip any "(n of N)" series suffix
+            # The pinned FTP Test/Anaerobic Test slot (coach ruling
+            # 2026-08-24) is exempt from the "filename == curated item name"
+            # reconciliation -- its title deliberately stays "FTP Test"/
+            # "Anaerobic Test" (see TestRenderBranch above). It still must
+            # describe its OWN (unchanged) content honestly.
+            if name in ('FTP Test', 'Anaerobic Test'):
+                expected_fragment = name.replace(' ', '_')
+                assert expected_fragment in f.stem, f.name
+                continue
             assert name == 'Curated Test Interval', name
             # Same sanitization generate_athlete_package.py applies when it
             # builds the filename from a display name: strip anything but

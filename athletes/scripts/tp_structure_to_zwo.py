@@ -91,6 +91,38 @@ _RPE_TO_PCT_FTP: Dict[int, Tuple[float, float]] = {
 # power number ("no power just leg speed focus", "leg speed" drills).
 _NO_POWER_SIGNAL_RE = re.compile(r"\bleg[- ]?speed\b|\bno power\b", re.I)
 
+# Coach ruling 2026-08-24 (AE assessment RPE exemption): assessments are
+# legitimately RPE-structured -- authored ground truth, a test guided by RPE
+# is the correct open-effort form. The two curated assessment items
+# (library_selector.PINNED_TEST_ITEM_IDS -- "Specialty - The Assessment -
+# Functional Threshold - ref - 60min" and "The Assessment - Anaerobic - ref -
+# 62min") must NEVER have their RPE targets decoded through
+# _RPE_TO_PCT_FTP; they ship with the authored RPE structure intact, i.e.
+# fully unstructured (FreeRide, no fabricated Power=) exactly like the
+# existing no-power/leg-speed exemption above -- same rationale, same
+# mechanism. Matched by item id (pinned) OR by the parsed name_base's "The
+# Assessment" convention (tp_library_snapshot.parse_item_name strips the
+# leading "Specialty" category word, so name_base for both items literally
+# starts "The Assessment ..."), so any future item authored the same way is
+# covered without a code change.
+ASSESSMENT_ITEM_IDS: frozenset[int] = frozenset({14356974, 14356988})
+_ASSESSMENT_NAME_RE = re.compile(r"\bthe assessment\b", re.I)
+
+
+def is_assessment_item(item_id: Any = None, name_base: Optional[str] = None) -> bool:
+    """True when a curated item is an authored assessment/test -- see
+    ASSESSMENT_ITEM_IDS/_ASSESSMENT_NAME_RE above. Used by ``_build`` to
+    force the RPE-decode-free FreeRide path, and by ``ae_lint``/
+    ``post_render_validator`` to exempt test-titled sessions from the
+    percentOfFtp structure check."""
+    if item_id is not None:
+        try:
+            if int(item_id) in ASSESSMENT_ITEM_IDS:
+                return True
+        except (TypeError, ValueError):
+            pass
+    return bool(name_base) and bool(_ASSESSMENT_NAME_RE.search(name_base))
+
 
 # =============================================================================
 # Structure walking helpers
@@ -325,13 +357,21 @@ def _map_single_leaf(leaf: Dict[str, Any], *, rpe: bool = False,
     return xml, {'power_pct': power * 100}, 0, None
 
 
-def _build(structure: Any) -> Tuple[List[str], List[Optional[Dict[str, float]]], int, List[str]]:
+def _build(
+    structure: Any, *, item_id: Any = None, name_base: Optional[str] = None,
+) -> Tuple[List[str], List[Optional[Dict[str, float]]], int, List[str]]:
     """Walk every top-level block and return (xml_parts, expected_checks, dropped_cadence, notes).
 
     ``xml_parts`` and ``expected_checks`` are parallel lists: xml_parts[i] is
     the ZWO element text, expected_checks[i] is either None (no power check,
     e.g. FreeRide) or a dict of expected %FTP values used by
     ``verify_round_trip``.
+
+    ``item_id``/``name_base`` (optional) identify the curated item being
+    converted -- passed through to ``is_assessment_item`` so the two
+    authored assessment items force the unstructured path unconditionally
+    (see ASSESSMENT_ITEM_IDS above), not just when a leaf's own text
+    happens to carry the no-power/leg-speed signal.
     """
     xml_parts: List[str] = []
     expected: List[Optional[Dict[str, float]]] = []
@@ -341,10 +381,18 @@ def _build(structure: Any) -> Tuple[List[str], List[Optional[Dict[str, float]]],
     # DEFECT FIX (see _RPE_TO_PCT_FTP above): metric-aware conversion.
     # ``rpe`` routes targets through the decode table instead of raw /100.
     # ``force_free_ride`` -- an RPE item carrying any no-power/leg-speed
-    # leaf ships the WHOLE item unstructured (option (b) of the ruling).
+    # leaf, OR an authored assessment/test item (AE assessment RPE
+    # exemption above), ships the WHOLE item unstructured (option (b) of
+    # the ruling).
     rpe = _structure_metric(structure) == 'rpe'
-    force_free_ride = rpe and _structure_has_no_power_signal(structure)
-    if force_free_ride:
+    no_power_signal = rpe and _structure_has_no_power_signal(structure)
+    is_assessment = rpe and is_assessment_item(item_id, name_base)
+    force_free_ride = no_power_signal or is_assessment
+    if is_assessment:
+        notes.append(
+            "RPE-metric assessment item ships unstructured: authored test "
+            "protocol guided by RPE -- never decode RPE targets to %FTP")
+    elif force_free_ride:
         notes.append(
             "RPE-metric item ships unstructured: a leaf's own name/notes "
             "says no-power/leg-speed-only -- never fabricate %FTP")
@@ -414,7 +462,9 @@ def _source_total_seconds(structure: Any) -> int:
 # Public API
 # =============================================================================
 
-def convert_structure(structure: Any) -> Dict[str, Any]:
+def convert_structure(
+    structure: Any, *, item_id: Any = None, name_base: Optional[str] = None,
+) -> Dict[str, Any]:
     """Convert a TP structure dict/list into ZWO ``<workout>`` inner blocks.
 
     Returns {'blocks_xml': str, 'dropped_cadence': int, 'notes': list[str]}.
@@ -422,8 +472,13 @@ def convert_structure(structure: Any) -> Dict[str, Any]:
     surrounding ``<workout>`` tags) -- feed it through
     ``workout_spec.normalize_zwo_blocks`` or wrap it with
     ``render_full_zwo`` for a complete file.
+
+    ``item_id``/``name_base`` (optional): identify the curated item so the
+    two authored assessment items (ASSESSMENT_ITEM_IDS) force the
+    unstructured RPE-exempt path -- see ``_build``.
     """
-    xml_parts, _expected, dropped_cadence, notes = _build(structure)
+    xml_parts, _expected, dropped_cadence, notes = _build(
+        structure, item_id=item_id, name_base=name_base)
     return {
         'blocks_xml': ''.join(xml_parts),
         'dropped_cadence': dropped_cadence,

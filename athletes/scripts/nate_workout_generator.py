@@ -1752,42 +1752,48 @@ def _snap_long_segment_seconds(seconds) -> int:
 
 # =============================================================================
 # DEFECT 4 (coach TP-review, plan 672143, 2026-08-24) -- Tune-Up/openers
-# alactic dose, PROPOSED not IMPOSED. Neither this function nor its output
-# is called anywhere; the OPENERS branch of generate_blocks_from_archetype
-# below still renders ENDURANCE_NEW's 'Pre-Race Openers' Level 1 dict
-# (new_archetypes.py) exactly as authored. This exists only so the coach
-# can compare the two doses and, if they pick the alternative, swap Level
-# 1's numbers to match.
+# alactic dose.
 #
-# Coach's objection to the CURRENT dose (2x30sec @110% FTP, 120sec partial
+# DECISION (Aug 24 2026): coach chose ALT, mid (3x18s@140%, 150s recovery,
+# ~22 TSS) -- ENDURANCE_NEW's 'Pre-Race Openers' Level '1' dict
+# (new_archetypes.py) now carries this dose (replacing the original
+# 2x30sec @110% FTP), so the OPENERS branch of generate_blocks_from_archetype
+# below renders it as any other live archetype level. This function is kept
+# so the exact numbers stay documented/independently testable (and so a
+# future re-litigation of the dose has the full comparison below); it is
+# not itself called by generate_blocks_from_archetype or any render path --
+# new_archetypes.py's Level 1 dict is the one live copy of these numbers.
+#
+# Coach's objection to the ORIGINAL dose (2x30sec @110% FTP, 120sec partial
 # recovery between): 110% FTP sits in the sub-VO2max/anaerobic-capacity
 # range, not truly alactic (the alactic system is near-max effort in <15s
 # bursts, not a sustained 30s @110% FTP number), and 2 reps is thin for
 # "legs remembering speed."
 #
-# ALTERNATIVE DOSE: 3x15-20sec @130-150% FTP with 2-3min recovery between
-# reps -- same warmup (1200s @0.65)/cooldown (300s @0.50) envelope, same
-# low-fatigue intent (openers are a rehearsal, not a training stimulus).
-# NOTE: the OPENERS branch below renders every inter-effort recovery block
-# at the fixed ZWODefaults.RECOVERY_POWER (0.55 IF), not a level-configurable
-# value -- `effort_recovery` only controls duration. The TSS math below uses
-# that real 0.55, not an idealized lower "full recovery" number.
+# ALTERNATIVE DOSE CONSIDERED: 3x15-20sec @130-150% FTP with 2-3min
+# recovery between reps -- same warmup (1200s @0.65)/cooldown (300s @0.50)
+# envelope, same low-fatigue intent (openers are a rehearsal, not a
+# training stimulus). NOTE: the OPENERS branch below renders every
+# inter-effort recovery block at the fixed ZWODefaults.RECOVERY_POWER (0.55
+# IF), not a level-configurable value -- `effort_recovery` only controls
+# duration. The TSS math below uses that real 0.55, not an idealized lower
+# "full recovery" number.
 #
 # TSS impact (TSS_segment = duration_hr * IF^2 * 100; warmup+cooldown are
 # unchanged at 14.08 + 2.08 = 16.2 TSS for both options):
-#   CURRENT   (2x30s@110%, 120s@0.55 between):        ~19.2 TSS, 28.0min
+#   ORIGINAL  (2x30s@110%, 120s@0.55 between):        ~19.2 TSS, 28.0min
 #   ALT, low  (3x15s@130%, 120s@0.55 between):         ~20.3 TSS, 29.75min
-#   ALT, mid  (3x18s@140%, 150s@0.55 between):          ~21.6 TSS, 30.9min
+#   ALT, mid  (3x18s@140%, 150s@0.55 between):          ~21.6 TSS, 30.9min  <- SHIPPED
 #   ALT, high (3x20s@150%, 180s@0.55 between):         ~22.9 TSS, 32.0min
-# Every alternative bound lands within ~1-4 TSS and ~2-4min of the current
-# dose -- a genuinely low-fatigue swap either way. The coach decides;
-# nothing here changes the shipped render.
+# Every alternative bound lands within ~1-4 TSS and ~2-4min of the original
+# dose -- a genuinely low-fatigue swap either way.
 def alactic_opener_alternative_dose_proposal() -> Dict:
-    """Return a Level-1-shaped level_data dict for the proposed alternative
-    dose (3x18sec @140% FTP -- midpoint of 130-150% -- 150sec recovery --
-    midpoint of 2-3min). Swap this in for ENDURANCE_NEW's 'Pre-Race
-    Openers' Level '1' entry (new_archetypes.py) to enable it. Not
-    referenced by generate_blocks_from_archetype or any render path."""
+    """Return a Level-1-shaped level_data dict for the shipped alactic dose
+    (3x18sec @140% FTP -- midpoint of 130-150% -- 150sec recovery --
+    midpoint of 2-3min). Matches ENDURANCE_NEW's 'Pre-Race Openers' Level
+    '1' entry (new_archetypes.py) -- see DECISION above. Not itself
+    referenced by generate_blocks_from_archetype or any render path; kept
+    as the documented/tested source of these numbers."""
     return {
         'structure': '20min Z1-Z2 easy, 3x18sec @ 140% FTP with 2.5min full recovery, 5min Z1 cooldown',
         'execution': ('Short alactic openers -- three brief near-max efforts '
