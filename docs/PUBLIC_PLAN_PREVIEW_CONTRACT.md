@@ -1,8 +1,7 @@
 # Public training-plan preview contract
 
-Status: additive boundary on `codex/public-plan-preview-20260825`, forked from
-the active Claude-polished branch at `e785ccb`. The browser integration remains
-gated until the active branch's canonical engine interface is final.
+Status: wired boundary on `codex/public-plan-preview-20260825`, rebased onto
+Motoren's finalized canonical interface at `e231103`.
 
 ## Boundary
 
@@ -74,13 +73,24 @@ days, experience, or race change.
 their contract tests. Production may override it with
 `COACHING_VOICE_VERSION`, provided the value is a safe version token.
 
-## Final-interface gate
+## Motoren provider
 
-The remaining engine-side adapter must consume the finalized canonical model
-or PlanIR projection produced by the active Claude branch. It must not rebuild
-structures from names, copy the frozen Endure `/engine/block` output, or
-derive a second race-demand model. Until that interface lands, contract tests
-use a production-shaped canonical fixture and no endpoint is exposed.
+`webhook/engine_preview_provider.py` lazily calls
+`athletes/scripts/motoren_preview.py::generate_preview_source`. It also uses
+Motoren's `engine_version()` and `voice_version()` callables for the public
+envelope and cache key. Motoren runs the real block-builder, Nate renderer,
+canonical TrainingPeaks projection, fueling policy, and voice pipeline in
+memory; the adapter never rebuilds structures from names or calls the frozen
+Endure `/engine/block` endpoint.
+
+The endpoint remains independently kill-switched with
+`PUBLIC_PLAN_PREVIEW_ENABLED`, so preview import/generation failures cannot
+prevent the paid-order service from booting or fulfilling orders.
+
+Motoren currently has native cycling disciplines only. Requests from
+`xc_ski_labs` fail closed at the provider boundary rather than silently
+returning the engine's gravel fallback as ski training. XC Ski exposure stays
+off until a canonical ski provider passes this same contract and quality gate.
 
 ## Endpoint requirements before exposure
 

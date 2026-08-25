@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -77,6 +78,15 @@ _VOICE_RULES_PATH = _REPO_ROOT / "athletes" / "config" / "voice_rules.yaml"
 
 
 def _git_short_sha() -> str:
+    # Railway's production image intentionally has no .git directory. Its
+    # deployment metadata is the authoritative revision in that environment.
+    configured = (
+        os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+        or os.environ.get("GIT_SHA")
+        or ""
+    ).strip().lower()
+    if re.fullmatch(r"[0-9a-f]{7,40}", configured):
+        return configured[:7]
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],

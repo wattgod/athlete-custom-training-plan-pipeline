@@ -10,6 +10,7 @@ import pytest
 from motoren_preview import (
     ENGINE_VERSION,
     MotorenPreviewError,
+    _git_short_sha,
     engine_version,
     generate_preview_source,
     voice_version,
@@ -78,6 +79,13 @@ def _active_sessions(source):
 
 
 class TestDeterminism:
+    def test_engine_version_uses_railway_revision_without_git(self, monkeypatch):
+        monkeypatch.setenv(
+            "RAILWAY_GIT_COMMIT_SHA",
+            "abcdef1234567890abcdef1234567890abcdef12",
+        )
+        assert _git_short_sha() == "abcdef1"
+
     def test_two_calls_are_byte_identical(self):
         request = _normalized(_request())
         first = generate_preview_source(request)

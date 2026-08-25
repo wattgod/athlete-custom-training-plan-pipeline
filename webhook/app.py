@@ -70,7 +70,7 @@ from email_templates import (TP_INVITE_LINK as CONSULT_TP_INVITE_LINK,
                              CONSULT_ADDON_OFFER_SUBJECT, CONSULT_ADDON_OFFER_TEMPLATE)
 
 import endure_delivery
-from preview_contract import PreviewContractError, resolve_voice_version
+from preview_contract import PreviewContractError
 from preview_service import PreviewProviderUnavailable, build_public_preview
 
 # The shared registry lives under athletes/config because that directory is
@@ -278,8 +278,7 @@ CRON_SECRET = os.environ.get('CRON_SECRET', '')
 # gunicorn kills the worker.
 PIPELINE_TIMEOUT = int(os.environ.get('PIPELINE_TIMEOUT', '480'))
 
-# Public simulator remains explicitly gated until engine_preview_provider is
-# wired to the active Claude branch's finalized canonical interface.
+# Public simulator is independently kill-switched from paid fulfillment.
 PUBLIC_PLAN_PREVIEW_ENABLED = (
     os.environ.get('PUBLIC_PLAN_PREVIEW_ENABLED', '').lower() == 'true')
 PUBLIC_PLAN_PREVIEW_MAX_BYTES = 16 * 1024
@@ -6785,13 +6784,16 @@ def training_plan_preview():
                         'message': 'Request body must be JSON.'}), 400
 
     try:
-        from engine_adapter import ENGINE_VERSION
-        from engine_preview_provider import generate_preview_source
+        from engine_preview_provider import (
+            engine_version as preview_engine_version,
+            generate_preview_source,
+            voice_version as preview_voice_version,
+        )
         result, cache_hit = build_public_preview(
             payload,
             provider=generate_preview_source,
-            engine_version=ENGINE_VERSION,
-            voice_version=resolve_voice_version(),
+            engine_version=preview_engine_version(),
+            voice_version=preview_voice_version(),
         )
     except PreviewContractError as exc:
         return jsonify({'error': 'invalid_request', 'message': str(exc)}), 400
