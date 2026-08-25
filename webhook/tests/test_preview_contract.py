@@ -42,6 +42,7 @@ def source_week():
     days[1]["sessions"] = [{
         "kind": "bike",
         "title": "3 x 12 min Flint Hills over-unders",
+        "purpose": "Build the repeatable torque and pace control the Flint Hills demand late in the race.",
         "duration_minutes": 75,
         "tss": 82,
         "intensity_label": "Threshold",
@@ -54,8 +55,10 @@ def source_week():
             "polyline": [[0, 0], [0.1, 0.55], [0.4, 0.95], [0.7, 0.88], [1, 0]],
             "steps": [
                 {"type": "warmup", "length_seconds": 900,
+                 "label": "Progressive gravel warm-up",
                  "intensity_target_min": 0.5, "intensity_target_max": 0.7},
                 {"type": "interval", "length_seconds": 720,
+                 "label": "Flint Hills over-under",
                  "intensity_target_min": 0.88, "intensity_target_max": 0.98,
                  "cadence_rpm": 88},
             ],
@@ -63,22 +66,53 @@ def source_week():
         "library_item_id": "must-never-escape",
         "source_file": "/private/workouts/foo.zwo",
     }]
+    days[3]["sessions"] = [{
+        "kind": "strength",
+        "title": "Gravel durability — hinge, split stance, trunk",
+        "purpose": "Keep force production and posture intact when washboard and climbing fatigue start stacking up.",
+        "duration_minutes": 45,
+        "tss": 38,
+        "intensity_label": "Strength",
+        "fuel_tag": "moderate",
+        "fueling_guidance": "Arrive normally fed; take 25–30 g protein with carbohydrate after the session.",
+        "coach_note": "Leave two clean reps in reserve. The goal is durable force, not soreness.",
+        "strength": {
+            "focus": "Posterior chain, unilateral force, and anti-rotation",
+            "exercises": [
+                {"name": "Trap-bar deadlift", "sets": 4, "reps": "5", "rest_seconds": 150, "cue": "Push the floor away; stop before position changes."},
+                {"name": "Rear-foot elevated split squat", "sets": 3, "reps": "6/side", "rest_seconds": 90, "cue": "Own the bottom and drive through the whole foot."},
+                {"name": "Single-leg calf raise", "sets": 3, "reps": "10/side", "rest_seconds": 60, "cue": "Pause at full height; lower under control."},
+                {"name": "Half-kneeling Pallof press", "sets": 3, "reps": "8/side", "rest_seconds": 45, "cue": "Ribs down; do not let the cable rotate you."},
+            ],
+        },
+    }]
     days[5]["sessions"] = [{
         "kind": "bike",
         "title": "Long ride — late-race pressure",
+        "purpose": "Turn race fueling and steady gravel power into something you can still execute after three hours.",
         "duration_minutes": 240,
         "tss": 210,
         "intensity_label": "Endurance",
         "fuel_tag": "practice",
         "fueling_guidance": "Practice 80–90 g carbohydrate per hour.",
         "coach_note": "Keep the first three hours boring. Finish on race posture.",
+        "structure": {
+            "primary_length_metric": "duration",
+            "primary_intensity_metric": "percentOfFtp",
+            "polyline": [[0, 0.55], [0.72, 0.65], [0.85, 0.8], [0.95, 0.88], [1, 0.5]],
+            "steps": [
+                {"type": "endurance", "label": "Steady gravel endurance", "length_seconds": 10800, "intensity_target_min": 0.58, "intensity_target_max": 0.72},
+                {"type": "tempo", "label": "Late-race pressure", "length_seconds": 2700, "intensity_target_min": 0.78, "intensity_target_max": 0.88},
+                {"type": "cooldown", "label": "Easy spin home", "length_seconds": 900, "intensity_target_min": 0.45, "intensity_target_max": 0.58},
+            ],
+        },
     }]
     return {
         "week": {
             "phase": "build",
             "type": "load",
-            "target_minutes": 480,
-            "target_tss": 420,
+            "target_minutes": 360,
+            "target_tss": 330,
             "coach_note": "The long ride is the anchor. Tuesday teaches you to change pace without wasting matches.",
             "weekly_self_review": "What moved forward? What felt stuck? What needs changing next week?",
             "comment_protocol": "After each key workout, tell me the result, how the legs felt, and anything that changed the session.",
@@ -135,6 +169,40 @@ def test_internal_tokens_in_visible_copy_fail_closed():
         project_response(
             request_payload(), source, engine_version="e785ccb",
             voice_version="github-voice-test123")
+
+
+@pytest.mark.parametrize("mutation,match", [
+    (lambda source: source["week"]["days"][3].update(sessions=[]),
+     "complete strength session"),
+    (lambda source: source["week"]["days"][5]["sessions"][0].update(
+        purpose=""), "purpose is required"),
+    (lambda source: source["week"]["days"][5]["sessions"][0].pop(
+        "structure"), "structured steps and a polyline"),
+    (lambda source: source["week"]["days"][5]["sessions"][0].update(
+        title="3 x 12 min Flint Hills over-unders"),
+     "titles must be distinct"),
+])
+def test_thin_or_generic_preview_weeks_fail_closed(mutation, match):
+    source = source_week()
+    mutation(source)
+    with pytest.raises(PreviewContractError, match=match):
+        project_response(
+            request_payload(), source, engine_version="e785ccb",
+            voice_version="github-voice-test123")
+
+
+def test_strength_and_workout_purpose_are_public_first_class_fields():
+    response = project_response(
+        request_payload(), source_week(), engine_version="e785ccb",
+        voice_version="github-voice-test123")
+    tuesday = response["week"]["days"][1]["sessions"][0]
+    thursday = response["week"]["days"][3]["sessions"][0]
+    assert "Flint Hills" in tuesday["purpose"]
+    assert tuesday["structure"]["steps"][0]["label"] == (
+        "Progressive gravel warm-up")
+    assert thursday["kind"] == "strength"
+    assert len(thursday["strength"]["exercises"]) == 4
+    assert thursday["strength"]["exercises"][0]["sets"] == 4
 
 
 def test_voice_version_tracks_checked_in_contract_sources():

@@ -207,6 +207,10 @@ def _step(step: Mapping[str, Any], field: str) -> Dict[str, Any]:
     kind = _text(step.get("type"), f"{field}.type", maximum=30)
     seconds = _integer(step.get("length_seconds"), f"{field}.length_seconds", 1, 86400)
     result: Dict[str, Any] = {"type": kind, "length_seconds": seconds}
+    label = step.get("label")
+    if label is not None:
+        result["label"] = _text(
+            label, f"{field}.label", maximum=80, required=False)
     for key in ("intensity_target_min", "intensity_target_max"):
         value = step.get(key)
         if value is not None:
@@ -219,6 +223,23 @@ def _step(step: Mapping[str, Any], field: str) -> Dict[str, Any]:
     return result
 
 
+def _strength_exercise(exercise: Mapping[str, Any], field: str) -> Dict[str, Any]:
+    if not isinstance(exercise, Mapping):
+        raise PreviewContractError(f"{field} must be an object")
+    result: Dict[str, Any] = {
+        "name": _text(exercise.get("name"), f"{field}.name", maximum=80),
+        "sets": _integer(exercise.get("sets"), f"{field}.sets", 1, 12),
+        "reps": _text(exercise.get("reps"), f"{field}.reps", maximum=24),
+        "cue": _text(
+            exercise.get("cue"), f"{field}.cue", maximum=180),
+    }
+    rest_seconds = exercise.get("rest_seconds")
+    if rest_seconds is not None:
+        result["rest_seconds"] = _integer(
+            rest_seconds, f"{field}.rest_seconds", 0, 600)
+    return result
+
+
 def _session(session: Mapping[str, Any], field: str) -> Dict[str, Any]:
     if not isinstance(session, Mapping):
         raise PreviewContractError(f"{field} must be an object")
@@ -228,6 +249,9 @@ def _session(session: Mapping[str, Any], field: str) -> Dict[str, Any]:
     result: Dict[str, Any] = {
         "kind": kind,
         "title": _text(session.get("title"), f"{field}.title", maximum=120),
+        "purpose": _text(
+            session.get("purpose", ""), f"{field}.purpose", maximum=260,
+            required=kind not in {"rest", "note"}),
         "duration_minutes": _integer(
             session.get("duration_minutes", 0), f"{field}.duration_minutes", 0, 1440),
         "tss": _integer(session.get("tss", 0), f"{field}.tss", 0, 1000),
@@ -240,7 +264,7 @@ def _session(session: Mapping[str, Any], field: str) -> Dict[str, Any]:
             maximum=240, required=False),
         "coach_note": _text(
             session.get("coach_note", ""), f"{field}.coach_note",
-            maximum=420, required=False),
+            maximum=420, required=kind not in {"rest", "note"}),
     }
     if result["fuel_tag"] not in FUEL_TAGS:
         raise PreviewContractError(f"{field}.fuel_tag is not supported")
@@ -268,7 +292,90 @@ def _session(session: Mapping[str, Any], field: str) -> Dict[str, Any]:
                 for index, item in enumerate(raw_steps)
             ],
         }
+    strength = session.get("strength")
+    if kind == "strength":
+        if not isinstance(strength, Mapping):
+            raise PreviewContractError(f"{field}.strength must be an object")
+        raw_exercises = strength.get("exercises")
+        if (not isinstance(raw_exercises, Sequence)
+                or isinstance(raw_exercises, (str, bytes))):
+            raise PreviewContractError(
+                f"{field}.strength.exercises must be an array")
+        if not 3 <= len(raw_exercises) <= 12:
+            raise PreviewContractError(
+                f"{field}.strength.exercises must contain 3–12 exercises")
+        result["strength"] = {
+            "focus": _text(
+                strength.get("focus"), f"{field}.strength.focus", maximum=120),
+            "exercises": [
+                _strength_exercise(
+                    item, f"{field}.strength.exercises[{index}]")
+                for index, item in enumerate(raw_exercises)
+            ],
+        }
+    elif strength is not None:
+        raise PreviewContractError(
+            f"{field}.strength is only valid for strength sessions")
     return result
+
+
+def _validate_preview_quality(
+        request_data: Mapping[str, Any], week: Mapping[str, Any],
+        days: Sequence[Mapping[str, Any]]) -> None:
+    """Reject thin marketplace teasers before they reach a consumer site."""
+    active = []
+    discipline_sessions = []
+    used_days = set()
+    preferred_days = set(request_data["rider"]["preferred_days"])
+    for day in days:
+        for session in day["sessions"]:
+            if session["kind"] in {"rest", "note"}:
+                continue
+            active.append(session)
+            used_days.add(day["day"])
+            if session["kind"] in {"bike", "ski", "race"}:
+                discipline_sessions.append(session)
+
+    strength_sessions = [
+        session for session in active if session["kind"] == "strength"]
+    if not strength_sessions:
+        raise PreviewContractError(
+            "preview week must contain a complete strength session")
+    if len(active) < 3:
+        raise PreviewContractError(
+            "preview week must contain at least three active sessions")
+    if len(discipline_sessions) < 2:
+        raise PreviewContractError(
+            "preview week must contain at least two discipline sessions")
+    if not used_days.issubset(preferred_days):
+        raise PreviewContractError(
+            "preview sessions must stay on the rider's preferred days")
+    if len(used_days) < min(3, len(preferred_days)):
+        raise PreviewContractError(
+            "preview week must use at least three preferred days")
+
+    titles = [session["title"].casefold() for session in active]
+    if len(titles) != len(set(titles)):
+        raise PreviewContractError("preview workout titles must be distinct")
+    for session in discipline_sessions:
+        structure = session.get("structure")
+        if not structure or not structure["steps"] or not structure["polyline"]:
+            raise PreviewContractError(
+                "each discipline workout needs structured steps and a polyline")
+        if not session["fueling_guidance"]:
+            raise PreviewContractError(
+                "each discipline workout needs fueling guidance")
+
+    total_minutes = sum(session["duration_minutes"] for session in active)
+    target_minutes = _integer(
+        week.get("target_minutes"), "source.week.target_minutes", 0, 10800)
+    if abs(total_minutes - target_minutes) > 15:
+        raise PreviewContractError(
+            "preview target minutes must match its scheduled sessions")
+    available_minutes = request_data["rider"]["hours_per_week"] * 60
+    if not int(available_minutes * 0.6) <= target_minutes <= available_minutes + 15:
+        raise PreviewContractError(
+            "preview duration must credibly use the rider's available hours")
 
 
 def project_response(
@@ -314,6 +421,8 @@ def project_response(
             ],
         })
 
+    _validate_preview_quality(request_data, week, days)
+
     response = {
         "schema_version": RESPONSE_SCHEMA_VERSION,
         "engine_version": _version(engine_version, "engine_version"),
@@ -347,4 +456,3 @@ def project_response(
     if _INTERNAL_TEXT_RE.search(wire):
         raise PreviewContractError("public response contains an internal token")
     return response
-

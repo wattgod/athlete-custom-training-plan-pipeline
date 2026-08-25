@@ -29,12 +29,52 @@ def _request(hours=8):
 def _source(hours=8):
     days = [{"day": day, "sessions": []} for day in
             ("mon", "tue", "wed", "thu", "fri", "sat", "sun")]
+    days[1]["sessions"] = [{
+        "kind": "bike", "title": "Dolomites climbing torque",
+        "purpose": "Build controlled climbing force for the race's repeated steep passes.",
+        "duration_minutes": 90, "tss": 92,
+        "intensity_label": "Sweet spot", "fuel_tag": "high",
+        "fueling_guidance": "Start fed and take 30–45 g carbohydrate during the ride.",
+        "coach_note": "Hold the first climb back; make the final repeat your cleanest.",
+        "structure": {
+            "primary_length_metric": "duration",
+            "primary_intensity_metric": "percentOfFtp",
+            "polyline": [[0, .5], [.2, .7], [.35, .9], [.55, .6], [.75, .9], [1, .5]],
+            "steps": [
+                {"type": "warmup", "label": "Progressive warm-up", "length_seconds": 1200, "intensity_target_min": .5, "intensity_target_max": .7},
+                {"type": "interval", "label": "Climbing torque", "length_seconds": 900, "intensity_target_min": .86, "intensity_target_max": .94, "cadence_rpm": 70},
+            ],
+        },
+    }]
+    days[3]["sessions"] = [{
+        "kind": "strength", "title": "Climbing strength — hinge and split stance",
+        "purpose": "Build unilateral force and trunk control for long seated climbs.",
+        "duration_minutes": 45, "tss": 35,
+        "intensity_label": "Strength", "fuel_tag": "moderate",
+        "fueling_guidance": "Eat normally before; pair protein and carbohydrate afterward.",
+        "coach_note": "Move crisply and leave two reps in reserve.",
+        "strength": {"focus": "Posterior chain and unilateral force", "exercises": [
+            {"name": "Trap-bar deadlift", "sets": 4, "reps": "5", "rest_seconds": 150, "cue": "Push the floor away."},
+            {"name": "Split squat", "sets": 3, "reps": "6/side", "rest_seconds": 90, "cue": "Keep the whole foot loaded."},
+            {"name": "Calf raise", "sets": 3, "reps": "10/side", "rest_seconds": 60, "cue": "Pause at the top."},
+        ]},
+    }]
     days[5]["sessions"] = [{
         "kind": "bike", "title": f"{hours}h climbing-week long ride",
-        "duration_minutes": hours * 30, "tss": hours * 20,
+        "purpose": "Practice steady pass-to-pass pacing and fueling under accumulating fatigue.",
+        "duration_minutes": hours * 60 - 135, "tss": hours * 20,
         "intensity_label": "Endurance", "fuel_tag": "practice",
         "fueling_guidance": "Practice the race fueling target.",
         "coach_note": "Keep the opening climbs controlled.",
+        "structure": {
+            "primary_length_metric": "duration",
+            "primary_intensity_metric": "percentOfFtp",
+            "polyline": [[0, .55], [.35, .7], [.5, .82], [.7, .64], [.9, .86], [1, .5]],
+            "steps": [
+                {"type": "endurance", "label": "Pass-to-pass endurance", "length_seconds": max(60, (hours * 60 - 150) * 60), "intensity_target_min": .58, "intensity_target_max": .74},
+                {"type": "tempo", "label": "Final climb pressure", "length_seconds": 900, "intensity_target_min": .78, "intensity_target_max": .88},
+            ],
+        },
     }]
     return {"week": {
         "phase": "build", "type": "load", "target_minutes": hours * 60,

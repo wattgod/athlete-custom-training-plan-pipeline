@@ -48,9 +48,27 @@ The response includes:
 - normalized race and rider inputs;
 - one complete seven-day week with target time/TSS;
 - multiple sessions per day when applicable;
-- title, duration, TSS, intensity, fuel tag, fueling guidance, and coach note;
+- distinct title, explicit purpose, duration, TSS, intensity, fuel tag, fueling
+  guidance, and coach note;
 - sanitized TrainingPeaks structure steps and normalized tile polyline;
+- a complete strength block with focus, exercises, sets, reps, rest, and cues;
 - the week-level coach note, weekly self-review, and workout-comment protocol.
+
+## Consumer preview quality gate
+
+The endpoint fails closed on a technically valid but unconvincing week. A
+consumer preview must schedule work only on selected days, credibly use the
+rider's available time, contain at least two race-discipline workouts and one
+complete strength workout, and give every discipline workout structured steps,
+a visible polyline, fueling guidance, purpose, and a coach note. Workout titles
+must be distinct. This makes the preview a representative TrainingPeaks build
+week rather than a sparse calendar-shaped teaser.
+
+The marketing renderer presents the entire week at once, using TrainingPeaks'
+marketplace sample-week conventions (day strip, sport/type, duration,
+structured-workout profile, and expandable details) as a baseline. It adds a
+first-class strength presentation and recomputes the full week when hours,
+days, experience, or race change.
 
 `voice_version` defaults to a digest of the checked-in voice renderers and
 their contract tests. Production may override it with
