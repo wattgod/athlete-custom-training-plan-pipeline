@@ -70,6 +70,8 @@ from email_templates import (TP_INVITE_LINK as CONSULT_TP_INVITE_LINK,
                              CONSULT_ADDON_OFFER_SUBJECT, CONSULT_ADDON_OFFER_TEMPLATE)
 
 import endure_delivery
+from preview_contract import PreviewContractError, resolve_voice_version
+from preview_service import PreviewProviderUnavailable, build_public_preview
 
 # The shared registry lives under athletes/config because that directory is
 # copied into the Railway image. Import its loader from the adjacent scripts
@@ -275,6 +277,12 @@ CRON_SECRET = os.environ.get('CRON_SECRET', '')
 # so the timeout path can still send the FAILED notification email before
 # gunicorn kills the worker.
 PIPELINE_TIMEOUT = int(os.environ.get('PIPELINE_TIMEOUT', '480'))
+
+# Public simulator remains explicitly gated until engine_preview_provider is
+# wired to the active Claude branch's finalized canonical interface.
+PUBLIC_PLAN_PREVIEW_ENABLED = (
+    os.environ.get('PUBLIC_PLAN_PREVIEW_ENABLED', '').lower() == 'true')
+PUBLIC_PLAN_PREVIEW_MAX_BYTES = 16 * 1024
 
 
 def _pipeline_error_excerpt(result: dict, limit: int = 500) -> str:
@@ -6754,6 +6762,55 @@ def cron_state_audit():
 # =============================================================================
 # ENGINE — deterministic block generation for Endure Labs (Convergence Phase 1)
 # =============================================================================
+
+@app.route('/api/training-plan-preview', methods=['POST', 'OPTIONS'])
+@limiter.limit("20/minute")
+def training_plan_preview():
+    """Public, sanitized TrainingPeaks-calendar preview for the three sites."""
+    if request.method == 'OPTIONS':
+        return '', 204
+    if not PUBLIC_PLAN_PREVIEW_ENABLED:
+        return jsonify({
+            'error': 'preview_unavailable',
+            'message': 'The live plan preview is being updated.',
+        }), 503
+    if (request.content_length is not None
+            and request.content_length > PUBLIC_PLAN_PREVIEW_MAX_BYTES):
+        return jsonify({'error': 'invalid_request',
+                        'message': 'Request body is too large.'}), 413
+
+    payload = request.get_json(silent=True)
+    if payload is None:
+        return jsonify({'error': 'invalid_request',
+                        'message': 'Request body must be JSON.'}), 400
+
+    try:
+        from engine_adapter import ENGINE_VERSION
+        from engine_preview_provider import generate_preview_source
+        result, cache_hit = build_public_preview(
+            payload,
+            provider=generate_preview_source,
+            engine_version=ENGINE_VERSION,
+            voice_version=resolve_voice_version(),
+        )
+    except PreviewContractError as exc:
+        return jsonify({'error': 'invalid_request', 'message': str(exc)}), 400
+    except PreviewProviderUnavailable:
+        logger.warning('Public plan preview provider is unavailable')
+        return jsonify({
+            'error': 'preview_unavailable',
+            'message': 'The live plan preview is being updated.',
+        }), 503
+    except Exception:
+        logger.exception('Public plan preview generation failed')
+        return jsonify({'error': 'preview_failed',
+                        'message': 'Preview generation failed.'}), 500
+
+    response = jsonify(result)
+    response.headers['Cache-Control'] = 'public, max-age=300, s-maxage=900'
+    response.headers['X-Preview-Cache'] = 'HIT' if cache_hit else 'MISS'
+    response.headers['Vary'] = 'Origin'
+    return response
 
 @app.route('/engine/block', methods=['POST'])
 @limiter.limit("60/minute")
