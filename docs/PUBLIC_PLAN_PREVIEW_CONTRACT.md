@@ -14,6 +14,29 @@ The server maps the finalized canonical engine result into
 allowlist-only: unknown source fields are discarded. Common internal tokens in
 athlete-visible text fail closed.
 
+### Full-plan simulator (v2)
+
+`training-plan-preview-request/v2` preserves v1 and adds the inputs required
+for a truthful interactive delivery preview: plan length, race date and
+expected duration, goal type, control method and applicable tested markers,
+strength equipment, and optional per-preferred-day minute caps.
+An optional `sample_week_number` asks Motoren to include that exact calendar
+week, allowing every full-plan volume bar to be inspected without shipping
+all workout copy in one response.
+
+The response is `training-plan-preview/v2`. `planned_volume` contains every
+week in the generated plan. `sample_weeks` contains two to four complete,
+dated TrainingPeaks-style calendar samples and `plan.sample_week_numbers`
+links them to the full curve. For every sample, phase, week type, dates,
+minutes, and TSS must equal its corresponding `planned_volume` entry exactly.
+The race week and its emitted race duration/TSS are mandatory.
+
+The v2 projection also consumes private provenance assertions. Bike, ski, and
+strength sessions must have passed the real coach-library rendering path;
+race sessions must be engine overlays and cannot contain synthetic power
+structure. Those assertions are not exposed publicly. Any mismatch fails the
+whole response closed—partial and fallback plans are never public output.
+
 ## Request
 
 ```json

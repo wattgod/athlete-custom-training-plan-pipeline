@@ -37,6 +37,27 @@ def _request():
     }
 
 
+def _request_v2(brand="gravel_god", discipline="gravel"):
+    request = _request()
+    request.update({
+        "schema_version": "training-plan-preview-request/v2",
+        "brand": brand,
+        "plan_weeks": 21,
+    })
+    request["race"].update({
+        "discipline": discipline,
+        "date": "2027-06-05",
+        "expected_duration_hours": 12,
+    })
+    request["rider"].update({
+        "goal_type": "compete",
+        "control_method": "power",
+        "ftp_watts": 250,
+        "strength_equipment": "full-gym",
+    })
+    return request
+
+
 def test_real_motoren_provider_passes_public_projection_end_to_end():
     response, cache_hit = build_public_preview(
         _request(), provider=generate_preview_source,
@@ -62,6 +83,25 @@ def test_real_motoren_provider_passes_public_projection_end_to_end():
 def test_motoren_versions_are_public_contract_tokens():
     assert re.fullmatch(r"motoren/[A-Za-z0-9._+:-]+", engine_version())
     assert re.fullmatch(r"voice/[A-Za-z0-9._+:-]+", voice_version())
+
+
+@pytest.mark.parametrize("brand,discipline", [
+    ("gravel_god", "gravel"),
+    ("roadie_labs", "road"),
+])
+def test_v2_motoren_plan_passes_projection_end_to_end(brand, discipline):
+    response, cache_hit = build_public_preview(
+        _request_v2(brand, discipline), provider=generate_preview_source,
+        engine_version=engine_version(), voice_version=voice_version(),
+        cache=PreviewCache(),
+    )
+    assert not cache_hit
+    assert response["schema_version"] == "training-plan-preview/v2"
+    assert len(response["planned_volume"]) == 21
+    for sample in response["sample_weeks"]:
+        volume = response["planned_volume"][sample["week_number"] - 1]
+        assert sample["target_minutes"] == volume["target_minutes"]
+        assert sample["target_tss"] == volume["target_tss"]
 
 
 def test_motoren_failure_maps_to_generic_provider_unavailable():

@@ -8,7 +8,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from preview_contract import (
     REQUEST_SCHEMA_VERSION,
+    REQUEST_SCHEMA_VERSION_V2,
     RESPONSE_SCHEMA_VERSION,
+    RESPONSE_SCHEMA_VERSION_V2,
     PreviewContractError,
     normalize_request,
     project_response,
@@ -34,6 +36,32 @@ def request_payload():
             "experience_level": "intermediate",
         },
     }
+
+
+def request_payload_v2():
+    payload = request_payload()
+    payload.update({
+        "schema_version": REQUEST_SCHEMA_VERSION_V2,
+        "plan_weeks": 21,
+    })
+    payload["race"].update({
+        "date": "2027-06-05",
+        "expected_duration_hours": 12,
+    })
+    payload["rider"].update({
+        "goal_type": "compete",
+        "control_method": "power",
+        "ftp_watts": 250,
+        "strength_equipment": "full-gym",
+        "day_caps_minutes": {"tue": 75, "thu": 90, "sat": 300},
+    })
+    return payload
+
+
+def source_plan_v2():
+    sys.path.insert(0, str(Path(__file__).parents[2] / "athletes" / "scripts"))
+    from motoren_preview import generate_preview_source
+    return generate_preview_source(normalize_request(request_payload_v2()))
 
 
 def source_week():
@@ -209,3 +237,91 @@ def test_voice_version_tracks_checked_in_contract_sources():
     value = resolve_voice_version()
     assert value.startswith("github-voice-")
     assert len(value) == len("github-voice-") + 12
+
+
+def test_v2_request_normalizes_personalization_and_caps():
+    normalized = normalize_request(request_payload_v2())
+    assert normalized["schema_version"] == REQUEST_SCHEMA_VERSION_V2
+    assert normalized["race"]["date"] == "2027-06-05"
+    assert normalized["rider"]["control_method"] == "power"
+    assert normalized["rider"]["day_caps_minutes"] == {
+        "tue": 75, "thu": 90, "sat": 300}
+
+
+@pytest.mark.parametrize("mutation,match", [
+    (lambda payload: payload["race"].update(date="next summer"), "ISO date"),
+    (lambda payload: payload["rider"].update(control_method="pace"), "not supported"),
+    (lambda payload: payload["rider"].pop("ftp_watts"), "must be a number"),
+    (lambda payload: payload["rider"].update(day_caps_minutes={"mon": 60}), "preferred days"),
+])
+def test_bad_v2_personalization_fails_closed(mutation, match):
+    payload = request_payload_v2()
+    mutation(payload)
+    with pytest.raises(PreviewContractError, match=match):
+        normalize_request(payload)
+
+
+def test_v2_projects_one_linked_plan_for_calendar_and_volume():
+    source = source_plan_v2()
+    response = project_response(
+        request_payload_v2(), source, engine_version="motoren/test",
+        voice_version="voice/test")
+    assert response["schema_version"] == RESPONSE_SCHEMA_VERSION_V2
+    assert len(response["planned_volume"]) == 21
+    assert response["plan"]["sample_week_numbers"] == [
+        week["week_number"] for week in response["sample_weeks"]]
+    volume = {week["week_number"]: week for week in response["planned_volume"]}
+    for sample in response["sample_weeks"]:
+        summary = volume[sample["week_number"]]
+        assert sample["phase"] == summary["phase"]
+        assert sample["type"] == summary["type"]
+        assert sample["target_minutes"] == summary["target_minutes"]
+        assert sample["target_tss"] == summary["target_tss"]
+        assert sample["start_date"] == sample["days"][0]["date"]
+        assert sample["end_date"] == sample["days"][-1]["date"]
+    assert "_library_backed" not in repr(response)
+    assert "_engine_overlay" not in repr(response)
+
+
+def test_v2_requested_volume_bar_returns_that_exact_calendar_week():
+    payload = request_payload_v2()
+    payload["sample_week_number"] = 9
+    normalized = normalize_request(payload)
+    sys.path.insert(0, str(Path(__file__).parents[2] / "athletes" / "scripts"))
+    from motoren_preview import generate_preview_source
+    response = project_response(
+        payload, generate_preview_source(normalized),
+        engine_version="motoren/test", voice_version="voice/test")
+    sample = next(week for week in response["sample_weeks"] if week["week_number"] == 9)
+    volume = response["planned_volume"][8]
+    assert sample["target_minutes"] == volume["target_minutes"]
+    assert sample["target_tss"] == volume["target_tss"]
+    assert sample["start_date"] == volume["start_date"]
+
+
+def test_v2_race_load_is_real_and_included_in_volume_curve():
+    response = project_response(
+        request_payload_v2(), source_plan_v2(), engine_version="motoren/test",
+        voice_version="voice/test")
+    race_week = next(week for week in response["sample_weeks"] if week["type"] == "race")
+    race_session = next(
+        session for day in race_week["days"] for session in day["sessions"]
+        if session["kind"] == "race")
+    assert race_session["duration_minutes"] == 720
+    assert race_session["tss"] > 0
+    assert "structure" not in race_session
+    summary = response["planned_volume"][race_week["week_number"] - 1]
+    assert summary["target_minutes"] >= race_session["duration_minutes"]
+    assert summary["target_tss"] >= race_session["tss"]
+
+
+def test_v2_rejects_unproven_workout_provenance():
+    source = source_plan_v2()
+    session = next(
+        session for week in source["sample_weeks"] for day in week["days"]
+        for session in day["sessions"] if session["kind"] == "bike")
+    session.pop("_library_backed")
+    with pytest.raises(PreviewContractError, match="coach workout library"):
+        project_response(
+            request_payload_v2(), source, engine_version="motoren/test",
+            voice_version="voice/test")
