@@ -9,6 +9,7 @@ import pytest
 
 from delivery_render import (
     build_fuel_ladder,
+    collapse_internal_spaces,
     decorate_day_off,
     load_brand,
     render_fuel_block,
@@ -61,6 +62,27 @@ GO GET IT, KENDALL!"""
     assert "PURPOSE:" not in rendered and "generator's reasoning" not in rendered
     assert "DIMENSIONS:" not in rendered
     assert "GO GET IT" not in rendered
+
+
+def test_athlete_visible_description_collapses_internal_double_spaces_not_at_line_start():
+    # Real production case (2026-08-25, sonja-publish FTP Assessment): a
+    # library-authored double space ("5 minutes.  Note here") landed one
+    # byte short of its sealed contract digest and the read barrier
+    # correctly refused. TP's athlete-calendar API collapses internal
+    # multi-space runs on write; the compiler must match at generation
+    # time, everywhere a description is finalized -- not just at
+    # publish-time. Leading indentation on a new line must survive.
+    rendered = sanitize_athlete_description(
+        "Assessment:\n  Complete 5 minutes.  Note here for context."
+    )
+    assert "5 minutes.  Note here" not in rendered
+    assert "5 minutes. Note here" in rendered
+    assert rendered.startswith("Assessment:\n  Complete")
+
+
+def test_collapse_internal_spaces_preserves_line_start_indentation():
+    assert collapse_internal_spaces("  indented\nnot at start:  two  spaces") == \
+        "  indented\nnot at start: two spaces"
 
 
 def test_athlete_visible_description_normalizes_all_fuel_tags():

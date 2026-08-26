@@ -188,3 +188,17 @@ def test_mixed_free_ride_and_real_segments_stays_structured():
         {"kind": "free_ride", "seconds": 180, "target": {"type": "free"}},
     ]), CONTROL)
     assert s is not None
+
+
+def test_zero_power_first_step_with_all_out_later_stays_structured():
+    # AE-8.4d hardening (2026-08-26 sol review): suppression must require
+    # EVERY leaf step to be zero-power, not just each block's first step.
+    # A zero-power free-ride warm-up followed by an all-out effort carries
+    # honest content and must keep its structure.
+    s = project_tp_structure(_session([
+        {"kind": "free_ride", "seconds": 600, "name": "Warm Up",
+         "target": {"type": "free"}},
+        {"kind": "free_ride", "seconds": 180, "name": "3min all-out test",
+         "target": {"type": "free"}},
+    ]), CONTROL)
+    assert s is not None
