@@ -1748,6 +1748,21 @@ class TestCoachingIntakeHandoff:
         assert 'configured-not-returned' not in receipt_text
         assert 'sk_configured' not in receipt_text
 
+    def test_stripe_list_normalizer_prefers_sdk_data_attribute(self):
+        import app as app_module
+
+        class StripeSdkListShape:
+            data = [{'id': 'provider-object'}]
+
+            @staticmethod
+            def get(_key, _default=None):
+                return []
+
+        assert app_module._stripe_list_items(StripeSdkListShape()) == [
+            {'id': 'provider-object'}]
+        assert app_module._stripe_list_items(
+            {'data': [{'id': 'dict-object'}]}) == [{'id': 'dict-object'}]
+
     @staticmethod
     def _paid_case(case_id):
         return {

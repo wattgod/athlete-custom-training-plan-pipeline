@@ -9097,6 +9097,22 @@ def cron_coaching_onboarding_reminders():
     })
 
 
+def _stripe_list_items(result) -> list:
+    """Normalize Stripe SDK ListObject and dict-shaped test responses.
+
+    Stripe's ListObject exposes provider results on ``.data`` while also
+    implementing a mapping-like ``get`` that is not reliable across SDK
+    generations. Prefer the documented attribute and keep dict compatibility
+    for tests and older adapters.
+    """
+    data = getattr(result, 'data', None)
+    if data is not None:
+        return list(data)
+    if isinstance(result, dict):
+        return list(result.get('data') or [])
+    return []
+
+
 def _coaching_canary_result() -> tuple[dict, int]:
     """Run read-only provider/config checks plus a disposable volume probe."""
     checked_at = datetime.now(timezone.utc).isoformat()
@@ -9182,8 +9198,7 @@ def _coaching_canary_result() -> tuple[dict, int]:
 
     try:
         endpoints_obj = stripe.WebhookEndpoint.list(limit=100)
-        endpoints = (endpoints_obj.get('data', [])
-                     if hasattr(endpoints_obj, 'get') else [])
+        endpoints = _stripe_list_items(endpoints_obj)
         required = {
             'checkout.session.completed', 'checkout.session.expired',
             'invoice.paid', 'invoice.payment_failed',
@@ -9208,8 +9223,7 @@ def _coaching_canary_result() -> tuple[dict, int]:
 
     try:
         configs_obj = stripe.billing_portal.Configuration.list(limit=100)
-        configs = (configs_obj.get('data', [])
-                   if hasattr(configs_obj, 'get') else [])
+        configs = _stripe_list_items(configs_obj)
         portal_ok = False
         for config in configs:
             data = (config._to_dict_recursive()
