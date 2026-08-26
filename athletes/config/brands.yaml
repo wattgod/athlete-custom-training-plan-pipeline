@@ -15,6 +15,47 @@ brands:
     questionnaire_path: /training-plans/questionnaire/
     consulting_path: /consulting/
     consulting_success_path: /consulting/confirmed/
+    coaching:
+      enabled: true
+      path: /coaching/
+      apply_path: /coaching/apply/
+      success_path: /coaching/welcome/
+      trainingpeaks_attach_url: https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU
+      trainingpeaks_premium_included: true
+      billing_period_days: 28
+      setup_fee_cents: 9900
+      setup_fee_waiver_mode: case_by_case_private
+      tiers:
+        min:
+          label: Min
+          price_cents: 19900
+          services:
+            - Weekly training review
+            - Workout-file analysis
+            - Quarterly coaching calls
+            - Structured workouts
+            - Race nutrition plan
+            - Custom training guide
+        mid:
+          label: Mid
+          price_cents: 29900
+          services:
+            - Everything in Min
+            - Detailed power and heart-rate analysis
+            - Coaching call every four weeks
+            - Weekly plan adjustments
+            - Direct-message access
+            - Blindspot detection
+        max:
+          label: Max
+          price_cents: 120000
+          services:
+            - Everything in Mid
+            - Daily workout-file review
+            - On-demand coaching calls
+            - Race-week strategy
+            - Multi-race season planning
+            - Priority response
     subject_prefix: "[GG]"
     workout_author: Gravel God Training
     system_name: Gravel God Training System
@@ -58,6 +99,47 @@ brands:
     # disabled for Roadie until the pages ship (CONSULT-ENGINE slice C5).
     consulting_path: /consulting/
     consulting_success_path: /consulting/confirmed/
+    coaching:
+      enabled: true
+      path: /coaching/
+      apply_path: /coaching/apply/
+      success_path: /coaching/welcome/
+      trainingpeaks_attach_url: https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU
+      trainingpeaks_premium_included: true
+      billing_period_days: 28
+      setup_fee_cents: 9900
+      setup_fee_waiver_mode: case_by_case_private
+      tiers:
+        min:
+          label: Min
+          price_cents: 19900
+          services:
+            - Weekly training review
+            - Workout-file analysis
+            - Quarterly coaching calls
+            - Structured workouts
+            - Race nutrition plan
+            - Custom training guide
+        mid:
+          label: Mid
+          price_cents: 29900
+          services:
+            - Everything in Min
+            - Detailed power and heart-rate analysis
+            - Coaching call every four weeks
+            - Weekly plan adjustments
+            - Direct-message access
+            - Blindspot detection
+        max:
+          label: Max
+          price_cents: 120000
+          services:
+            - Everything in Mid
+            - Daily workout-file review
+            - On-demand coaching calls
+            - Race-week strategy
+            - Multi-race season planning
+            - Priority response
     subject_prefix: "[RL]"
     workout_author: Roadie Labs Training
     system_name: Roadie Labs Training System
@@ -94,21 +176,57 @@ brands:
     coaching_name: XC Ski Labs
     coaching_email: gravelgodcoaching@gmail.com
     site: https://xcskilabs.com
-    # No plan questionnaire exists for this brand yet — training-plan
-    # generation is not supported (see consulting_only below). Key kept for
-    # loader/schema parity with the other brands; unused while
-    # consulting_only is set.
     questionnaire_path: /questionnaire/
     consulting_path: /consulting/
     consulting_success_path: /consulting/confirmed/
+    coaching:
+      enabled: true
+      path: /coaching/
+      apply_path: /coaching/apply/
+      success_path: /coaching/welcome/
+      trainingpeaks_attach_url: https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU
+      trainingpeaks_premium_included: true
+      billing_period_days: 28
+      setup_fee_cents: 9900
+      setup_fee_waiver_mode: case_by_case_private
+      tiers:
+        min:
+          label: Min
+          price_cents: 19900
+          services:
+            - Weekly training review
+            - Workout-file analysis
+            - Quarterly coaching calls
+            - Structured workouts
+            - Race nutrition plan
+            - Custom training guide
+        mid:
+          label: Mid
+          price_cents: 29900
+          services:
+            - Everything in Min
+            - Detailed power and heart-rate analysis
+            - Coaching call every four weeks
+            - Weekly plan adjustments
+            - Direct-message access
+            - Blindspot detection
+        max:
+          label: Max
+          price_cents: 120000
+          services:
+            - Everything in Mid
+            - Daily workout-file review
+            - On-demand coaching calls
+            - Race-week strategy
+            - Multi-race season planning
+            - Priority response
     subject_prefix: "[XC]"
     workout_author: XC Ski Labs Training
     system_name: XC Ski Labs Training System
-    # Sells the $150 consult (+ $100 plan add-on) through the shared GG
-    # Stripe account / Railway webhook, but does NOT support training-plan
-    # generation — /api/create-checkout and the training-plan webhook both
-    # refuse (400) for this brand instead of building a plan.
-    consulting_only: true
+    # Coaching and consulting use the shared Endurance Labs commercial rails.
+    # Automated XC-ski custom-plan generation remains separately gated until
+    # the ski workout/zone adaptation passes its release criteria.
+    training_plan_generation_enabled: false
     guide:
       logo: XC SKI LABS
       tagline: Custom training plans for cross-country ski racing

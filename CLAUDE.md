@@ -68,6 +68,8 @@ railway.json       <- Railway deploy config (root, NOT webhook/)
 - `STRIPE_WEBHOOK_SECRET` -- Stripe webhook endpoint signing secret
 - `FLASK_ENV=production` -- Set in Dockerfile, enables production guards
 - `CRON_SECRET` -- Secret for `/api/cron/followup-emails` endpoint
+- `COACHING_INTAKE_SECRET` -- Shared only with the Cloudflare coaching-intake
+  Worker; authenticates brand form submissions to `/api/coaching-intakes`
 - Optional: `NOTIFICATION_EMAIL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` -- for email notifications + follow-up sequence
 - Optional (Endure delivery, Phase 4b — feature entirely OFF when unset):
   - `ENDURE_DELIVERY_URL` -- Endure base URL; pipeline POSTs `{url}/api/delivery/purchased-plan`. Unsetting this is the kill switch (silent revert to TP-only).
@@ -80,7 +82,7 @@ railway.json       <- Railway deploy config (root, NOT webhook/)
 - **Training plans**: 14 pre-built prices ($60-$249, keyed by weeks 4-17+)
 - **Coaching**: 3 subscription prices (min=$199/4wk, mid=$299/4wk, max=$1,200/4wk)
 - **Coaching setup fee**: $99 one-time, added as second line item to all coaching checkouts
-- **Setup fee waiver**: Coupon "Waive Setup Fee" + promo code `NOSETUP` ($99 off, applies to setup fee product only)
+- **Setup fee waiver**: private, coach-approved case flag applies the fixed-$99 coupon automatically; no public promotion code
 - **Consulting**: 1 per-hour price ($150/hr, quantity=hours)
 - **Price IDs**: Hardcoded in `app.py` lines 73-108, created by `scripts/create_stripe_products.py`
 - **Webhook endpoint**: `we_1T2gDcLoaHDbEqSqb5sp6Tfj`. NOTE (Jul 2026): it was subscribed to `checkout.session.completed` ONLY for its entire life — the expired-event subscription this doc claimed was never real, so zero recovery emails ever sent. `checkout.session.expired` added Jul 2 2026 via API; verify with `stripe webhook_endpoints` if recovery emails go quiet again
@@ -151,7 +153,7 @@ The script in `gravel-race-automation` documents the Stripe product structure. R
 ```bash
 python3 -m pytest webhook/tests/test_webhook.py -v
 ```
-114 tests: health, validation, WooCommerce, Stripe, coaching checkout (setup fee on ALL tiers + promo codes + success URL), consulting checkout, coaching webhook, consulting webhook, intake storage, price computation, Python/JS parity, past date rejection, email masking, PII compliance, notification, idempotency timing, checkout recovery, follow-up emails, rate limiting, customer creation, coaching enhancements, log order schema, expired checkout idempotency.
+Tests cover health, validation, WooCommerce, Stripe, coaching checkout (setup fee on all tiers + private waiver + success URL), consulting checkout, coaching webhook, consulting webhook, intake storage, guardian gating, price computation, email masking, PII compliance, notifications, idempotency, checkout recovery, follow-up emails, rate limiting, customer creation, and onboarding materials.
 
 ## Quality Gate Tests (prevent regressions)
 - `TestSetupFeeAllTiers` — setup fee on every tier, correct price ID
