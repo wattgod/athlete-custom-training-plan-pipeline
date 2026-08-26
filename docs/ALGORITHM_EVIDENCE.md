@@ -123,6 +123,24 @@ session). In peak/race weeks manage ATL as the active lever; CTL is a
 lagging result. Weakest evidence tier in this doc (anecdote), adopted
 because it formalizes what openers already do. (R57, R58)
 
+**AE-1.13 — Season close-out and the off-season break (Matti ruling,
+2026-08-26).** [A→ratified] The season ends with a deliberate unplug: **two
+weeks off (sometimes one) in late October to early November** for most
+athletes. Coaching rule for the run-in: an athlete with **no event on the
+calendar between now and that break should be pushed to find at least one
+event to do before unplugging** — the season should close on a start line,
+not a fade. Practical consequences: (a) fall plans for event-less athletes
+lead with the "pick an event" conversation, not more training blocks;
+(b) plan runways built in Aug–Oct should land their last hard emphasis on
+a real event and then hand off to the break, never trail off into
+open-ended load; (c) the break itself is programmed (dated, named, framed
+as part of the plan), not left as silence. Source: Matti's words
+2026-08-26 — "we're getting towards the end of the season, which most
+athletes generally take in Late October to Early November for two weeks
+(but sometimes only 1); if they don't have any events from now until
+then, it's worth pushing them to find at least 1 event to do before
+unplugging a bit."
+
 ## 2. Intensity budget & distribution (`block_compliance`)
 
 **AE-2.1 — Hard-minutes floor + hard-days cap (ruling Q2).** [Matti-authored]
