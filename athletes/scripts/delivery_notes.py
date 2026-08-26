@@ -18,15 +18,26 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import yaml
 
-from delivery_render import (
-    _dominant_work_percent,
-    build_fuel_ladder,
-    has_structured_work,
-    load_brand,
-    render_card_name,
-    render_hydration_block,
-    render_session_name,
-)
+if __package__:
+    from .delivery_render import (
+        _dominant_work_percent,
+        build_fuel_ladder,
+        has_structured_work,
+        load_brand,
+        render_card_name,
+        render_hydration_block,
+        render_session_name,
+    )
+else:  # Direct script execution keeps athletes/scripts on sys.path.
+    from delivery_render import (
+        _dominant_work_percent,
+        build_fuel_ladder,
+        has_structured_work,
+        load_brand,
+        render_card_name,
+        render_hydration_block,
+        render_session_name,
+    )
 
 
 _BLOCK_NOTES_PATH = Path(__file__).resolve().parent.parent / "config" / "block_notes.yaml"
