@@ -70,6 +70,13 @@ from email_templates import (TP_INVITE_LINK as CONSULT_TP_INVITE_LINK,
                              CONSULT_ADDON_OFFER_SUBJECT, CONSULT_ADDON_OFFER_TEMPLATE)
 
 import endure_delivery
+from preview_contract import PreviewContractError
+from preview_service import PreviewProviderUnavailable, build_public_preview
+from training_plan_addons import (
+    AddonSelectionError,
+    resolve_plan_addons,
+    stripe_line_items_for_addons,
+)
 
 # The shared registry lives under athletes/config because that directory is
 # copied into the Railway image. Import its loader from the adjacent scripts
@@ -275,6 +282,11 @@ CRON_SECRET = os.environ.get('CRON_SECRET', '')
 # so the timeout path can still send the FAILED notification email before
 # gunicorn kills the worker.
 PIPELINE_TIMEOUT = int(os.environ.get('PIPELINE_TIMEOUT', '480'))
+
+# Public simulator is independently kill-switched from paid fulfillment.
+PUBLIC_PLAN_PREVIEW_ENABLED = (
+    os.environ.get('PUBLIC_PLAN_PREVIEW_ENABLED', '').lower() == 'true')
+PUBLIC_PLAN_PREVIEW_MAX_BYTES = 16 * 1024
 
 
 def _pipeline_error_excerpt(result: dict, limit: int = 500) -> str:
@@ -4227,11 +4239,19 @@ def create_checkout():
                      "generation (consulting only)"
         }), 400
 
+    try:
+        addon_selection = resolve_plan_addons(data.get('plan_addons'), brand)
+        addon_line_items = stripe_line_items_for_addons(
+            addon_selection['optional'])
+    except AddonSelectionError as exc:
+        return jsonify({'error': str(exc)}), 400
+
     # Generate intake ID and store questionnaire data
     intake_id = str(uuid.uuid4())
     data['computed_price_cents'] = pricing['price_cents']
     data['computed_weeks'] = pricing['weeks']
     data['brand'] = brand
+    data['plan_addons'] = addon_selection['all']
     store_intake(intake_id, data)
 
     # Look up pre-built price ID, capping at 17 for 17+ weeks
@@ -4251,6 +4271,7 @@ def create_checkout():
             },
             'quantity': 1,
         }]
+        line_items.extend(addon_line_items)
 
         expires_at = int((datetime.now() + timedelta(minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
 
@@ -4268,6 +4289,7 @@ def create_checkout():
                 'weeks': str(pricing['weeks']),
                 'price_cents': str(pricing['price_cents']),
                 'brand': brand,
+                'plan_addons': ','.join(addon_selection['all']),
             },
             success_url=f"{brand_cfg['site']}/training-plans/success/?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{brand_cfg['site']}{brand_cfg['questionnaire_path']}",
@@ -6754,6 +6776,58 @@ def cron_state_audit():
 # =============================================================================
 # ENGINE — deterministic block generation for Endure Labs (Convergence Phase 1)
 # =============================================================================
+
+@app.route('/api/training-plan-preview', methods=['POST', 'OPTIONS'])
+@limiter.limit("20/minute")
+def training_plan_preview():
+    """Public, sanitized TrainingPeaks-calendar preview for the three sites."""
+    if request.method == 'OPTIONS':
+        return '', 204
+    if not PUBLIC_PLAN_PREVIEW_ENABLED:
+        return jsonify({
+            'error': 'preview_unavailable',
+            'message': 'The live plan preview is being updated.',
+        }), 503
+    if (request.content_length is not None
+            and request.content_length > PUBLIC_PLAN_PREVIEW_MAX_BYTES):
+        return jsonify({'error': 'invalid_request',
+                        'message': 'Request body is too large.'}), 413
+
+    payload = request.get_json(silent=True)
+    if payload is None:
+        return jsonify({'error': 'invalid_request',
+                        'message': 'Request body must be JSON.'}), 400
+
+    try:
+        from engine_preview_provider import (
+            engine_version as preview_engine_version,
+            generate_preview_source,
+            voice_version as preview_voice_version,
+        )
+        result, cache_hit = build_public_preview(
+            payload,
+            provider=generate_preview_source,
+            engine_version=preview_engine_version(),
+            voice_version=preview_voice_version(),
+        )
+    except PreviewContractError as exc:
+        return jsonify({'error': 'invalid_request', 'message': str(exc)}), 400
+    except PreviewProviderUnavailable:
+        logger.warning('Public plan preview provider is unavailable')
+        return jsonify({
+            'error': 'preview_unavailable',
+            'message': 'The live plan preview is being updated.',
+        }), 503
+    except Exception:
+        logger.exception('Public plan preview generation failed')
+        return jsonify({'error': 'preview_failed',
+                        'message': 'Preview generation failed.'}), 500
+
+    response = jsonify(result)
+    response.headers['Cache-Control'] = 'public, max-age=300, s-maxage=900'
+    response.headers['X-Preview-Cache'] = 'HIT' if cache_hit else 'MISS'
+    response.headers['Vary'] = 'Origin'
+    return response
 
 @app.route('/engine/block', methods=['POST'])
 @limiter.limit("60/minute")
