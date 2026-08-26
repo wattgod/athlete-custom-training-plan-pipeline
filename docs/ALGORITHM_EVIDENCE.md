@@ -536,6 +536,15 @@ position work — selection filters by discipline tag.
 rotation (already ratified) applies to EVERY delivery surface including
 plan containers; identical copy across rest days in one plan = defect.
 
+**AE-6.5c — No blank days (Matti ruling, 2026-08-26).** Every calendar day
+inside a delivered plan's window carries a card: training days their
+session(s), rest days a Day Off card (workoutTypeValueId 7) with rotated
+copy per AE-6.5b. A day with nothing on it reads as an unfinished plan,
+not as rest. Applies to plan containers and athlete calendars alike.
+Source: coach review of the Jesse Couch draft — "you're violating the no
+blank days rule." (Predates this doc as house practice — Jesse's own
+pre-rebuild calendar carried Day Off cards throughout.)
+
 **AE-9.1 — Notes density: a plan is a guided story.** Weekly Monday notes
 are the floor, not the ceiling: short mid-week notes that speak to how the
 athlete is likely feeling at that point in the block (2-3 per week max,
