@@ -425,6 +425,7 @@ def _is_internal_only(item: Mapping[str, Any]) -> bool:
 # silently stripped from the gravel pool).
 # ---------------------------------------------------------------------------
 _TT_POSITION_RE = re.compile(r"\bTT\s*Base\b|\(TT\s*bike\)|\btime[- ]trial\b", re.I)
+_GRAVEL_COPY_RE = re.compile(r"\bgravel\b", re.I)
 
 # Disciplines that legitimately want TT-bike-position work by default.
 _TT_POSITION_DISCIPLINES = {"road_tt", "triathlon", "tt"}
@@ -432,16 +433,27 @@ _TT_POSITION_DISCIPLINES = {"road_tt", "triathlon", "tt"}
 
 def _is_off_discipline(item: Mapping[str, Any], discipline: Optional[str],
                         *, wants_position_work: bool = False) -> bool:
-    """True when ``item`` is TT-bike-position work that doesn't belong on
-    this athlete's discipline (AE-3.15). ``wants_position_work`` is the
-    slot-level escape hatch -- a slot that explicitly asks for TT position
-    work is never scoped out, regardless of discipline."""
+    """True when ``item`` carries discipline-specific work or copy that
+    doesn't belong on this athlete's discipline (AE-3.15).
+
+    Road and road-TT plans must not ship an otherwise-valid library item
+    whose athlete-facing title or description is explicitly gravel-specific.
+    We exclude the item instead of rewriting the coach-authored library copy.
+    ``wants_position_work`` remains the escape hatch for TT position work;
+    it does not make gravel-specific copy appropriate for a road plan.
+    """
+    normalized_discipline = (discipline or "").lower()
+    athlete_copy = " ".join(
+        str(item.get(field) or "")
+        for field in ("name_base", "name_raw", "description")
+    )
+    if normalized_discipline in {"road", "road_tt"} and _GRAVEL_COPY_RE.search(athlete_copy):
+        return True
     if wants_position_work:
         return False
-    if (discipline or "").lower() in _TT_POSITION_DISCIPLINES:
+    if normalized_discipline in _TT_POSITION_DISCIPLINES:
         return False
-    name = item.get("name_base") or item.get("name_raw") or ""
-    return bool(_TT_POSITION_RE.search(name))
+    return bool(_TT_POSITION_RE.search(athlete_copy))
 
 
 # ---------------------------------------------------------------------------
@@ -1075,11 +1087,11 @@ def _select_series_continuation(
         # the "next rung regardless" fallback below.
         candidates = [entry for entry in candidates if entry["item_id"] not in excluded_ids]
         # Prefer the next rung that's still duration-qualified for this
-        # slot; if none qualify, fall back to the next rung regardless
-        # (the family ladder itself is the strongest series-coherence
-        # signal -- D8 -- so honor it even if duration drifted slightly).
+        # slot. With no stated day cap, family coherence may tolerate a
+        # small duration drift. A real athlete cap is hard, however: never
+        # advance to an out-of-pool rung just to preserve the series.
         in_pool = [entry for entry in candidates if entry["item_id"] in qualifying_ids]
-        next_entry = (in_pool or candidates)
+        next_entry = (in_pool or candidates) if slot.get("day_cap_min") is None else in_pool
         if next_entry:
             chosen_id = next_entry[0]["item_id"]
             chosen_item = _find_item(index, chosen_id)
@@ -1111,11 +1123,15 @@ def _select_singleton_continuation(
 
     if not higher:
         # No strictly-higher-IF candidate within the duration-qualified
-        # pool for this slot -- try the same library ignoring duration fit
-        # (series coherence over strict duration precision) before giving up.
+        # pool for this slot. A stated day cap is hard: falling outside the
+        # pool would violate athlete availability, so fail closed. Without a
+        # cap, try the same library ignoring duration fit (series coherence
+        # over strict duration precision) before giving up.
         # R2: still honors the role/week-type ceiling -- duration drift is
         # an acceptable coherence trade, a recovery-week sprint item is not.
         # T27: never continue onto a lint-excluded item either.
+        if slot.get("day_cap_min") is not None:
+            return None
         all_in_library = [
             item for item in index["items"]
             if item["library_key"] == library_key and item["item_id"] not in excluded_ids

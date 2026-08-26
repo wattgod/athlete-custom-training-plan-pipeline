@@ -289,6 +289,23 @@ class TestSeries:
         assert [r1["item_id"], r2["item_id"], r3["item_id"]] == [10, 11, 12]
         assert r1["if_planned"] < r2["if_planned"] < r3["if_planned"]
 
+    def test_family_ladder_never_breaks_a_stated_day_cap(self):
+        items = [
+            make_item(10, library_key="torque_sfr", name_base="Big Gear Ladder",
+                      explicit_level=1, duration_min=50, if_planned=0.7),
+            make_item(11, library_key="torque_sfr", name_base="Big Gear Ladder",
+                      explicit_level=2, duration_min=90, if_planned=0.75),
+        ]
+        index = make_index(items)
+        series_state = {}
+        first_slot = base_slot(canonical_name="SFR", series_key="capped-series",
+                               budget_min=50, day_cap_min=60, level=1)
+        assert select(first_slot, series_state=series_state, index=index)["item_id"] == 10
+
+        # The next rung is coherent but exceeds the real 60-minute cap. A
+        # loud fallback is safer than silently emitting the 90-minute card.
+        assert select(first_slot, series_state=series_state, index=index) is None
+
     def test_singleton_family_progresses_same_library_nearest_higher_if(self):
         items = [
             make_item(20, library_key="tempo", name_base="Alpha", duration_min=50, if_planned=0.70),
@@ -850,6 +867,26 @@ def test_tt_base_scoped_out_of_gravel_discipline():
     assert not _is_off_discipline(tt_base, "gravel", wants_position_work=True)
     # A TT-native discipline is never scoped out of its own content.
     assert not _is_off_discipline(tt_base, "road_tt")
+
+
+def test_gravel_specific_library_copy_is_scoped_out_of_road_disciplines():
+    # A real endurance item in the coach library includes event-specific
+    # "Classic Gravel 100" execution copy. Keep the authored text intact and
+    # choose a different real item for road plans instead of sanitizing it.
+    from library_selector import _is_off_discipline
+    gravel_item = {
+        "name_base": "Endurance Z2",
+        "name_raw": "Endurance - Z2 - 70min - RPE3-4",
+        "description": "Week 1/10 — 10 weeks to Classic Gravel 100.",
+    }
+    generic_item = {
+        "name_base": "Endurance Z2",
+        "description": "Comfortable aerobic endurance with steady pressure.",
+    }
+    assert _is_off_discipline(gravel_item, "road")
+    assert _is_off_discipline(gravel_item, "road_tt")
+    assert not _is_off_discipline(gravel_item, "gravel")
+    assert not _is_off_discipline(generic_item, "road")
 
 
 def test_tt_pace_interval_names_are_not_position_work():

@@ -207,6 +207,13 @@ def protect_post_simulation_recovery(
         protected.add((next_week.get('plan_week'), next_day.get('day')))
         next_day['post_sim_recovery'] = True
 
+        # A stated off day is already the strongest possible recovery day.
+        # Do not turn it into an Endurance prescription merely because it
+        # follows a simulation; that silently violates the athlete's weekly
+        # availability and R20. It still remains protected from strength.
+        if next_day.get('role') == 'off':
+            continue
+
         displaced = dict(next_day) if next_day.get('role') == 'intensity' else None
         next_day.update(name='Endurance', level=1,
                         duration=get_workout_duration('Endurance', 1),
