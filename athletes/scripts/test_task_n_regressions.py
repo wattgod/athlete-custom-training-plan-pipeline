@@ -18,12 +18,17 @@ from workout_templates import scale_zwo_to_target_duration
 
 
 def test_ftp_protocol_description_uses_the_emitted_warmup_and_cooldown():
+    # sol programming review 2026-08-24, blocker 1: the 20-minute main
+    # effort is now an open FreeRide step, never a target locked to 100%
+    # of the FTP it's supposed to measure (the old
+    # <SteadyState Duration="1200" Power="1.00"/> was circular -- perfect
+    # execution just returned 95% of the input back).
     blocks = '''<Warmup Duration="600" PowerLow="0.45" PowerHigh="0.70"/>
 <SteadyState Duration="300" Power="0.80"/>
 <SteadyState Duration="300" Power="0.50"/>
 <SteadyState Duration="300" Power="1.05"/>
 <SteadyState Duration="300" Power="0.50"/>
-<SteadyState Duration="1200" Power="1.00"/>
+<FreeRide Duration="1200" FlatRoad="1"><textevent timeoffset="0" message="20min maximal sustainable effort"/></FreeRide>
 <Cooldown Duration="600" PowerLow="0.55" PowerHigh="0.40"/>'''
     description = _format_block_derived_description('FTP_Test', blocks)
 
@@ -31,7 +36,11 @@ def test_ftp_protocol_description_uses_the_emitted_warmup_and_cooldown():
     assert '-10min easy spin Z1-Z2' in description
     assert '15 min warmup' not in description
     assert '15 min cooldown' not in description
-    assert '20min @ 100% FTP' in description
+    assert '20min all-out (no target — empty the tank) (RPE 10)' in description
+    # No numeric target locked to 100% of the current FTP -- the defect
+    # this test guards against.
+    assert '20min @ 100% FTP' not in description
+    assert '0.95' not in description
 
 
 def test_recovery_openers_description_is_only_the_final_emitted_sequence():
@@ -42,7 +51,18 @@ def test_recovery_openers_description_is_only_the_final_emitted_sequence():
     description = root.findtext('description') or ''
     duration = sum(int(node.get('Duration', 0)) for node in root.find('workout'))
 
-    assert duration == 35 * 60
+    # Coach decision Aug 24 2026 (Tune-Up dose): 'Pre-Race Openers' Level 1
+    # now carries 3x18s efforts (54s total), not the old 2x30s (60s total,
+    # a whole minute). scale_zwo_to_target_duration's snap_to=60 rounds the
+    # grown main block to the nearest minute -- with the old dose that
+    # landed on an exact 60s-multiple by coincidence (unscaled total 1680s,
+    # +420s diff = an exact 1620s/27min block); with the new dose the same
+    # arithmetic (unscaled total 1854s, +246s diff -> 1446s) snaps DOWN to
+    # 1440s, 6s short of the 2100s target. 6s out of 2100 (0.3%) is not a
+    # real duration defect -- tolerate it rather than require exact
+    # equality that's arithmetically unreachable for a 54s (non-minute)
+    # effort total.
+    assert abs(duration - 35 * 60) <= 6
     assert 'WARM-UP:' not in description
     assert 'COOL-DOWN:' not in description
     assert '20min warmup' not in description.lower()

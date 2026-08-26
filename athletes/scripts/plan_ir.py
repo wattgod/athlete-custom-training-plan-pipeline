@@ -125,6 +125,11 @@ class Session:
     # (e.g. "3-4"); the delivery renderer must prefer it over any
     # structure-derived RPE guess.
     library_rpe_text: Optional[str] = None
+    # AE-9.2 (2026-08-24 TP review): TP's preActivityComments field -- a
+    # short bounded-pivot note for key sessions, rendered by
+    # pre_activity_comments.py and populated by _annotate_delivery_context.
+    # None for non-key sessions (rest days, strength, easy rides).
+    pre_activity_comment: Optional[str] = None
 
 
 @dataclass
@@ -154,6 +159,7 @@ class PlanIR:
     brand: Optional[str] = None
     training_age_class: Optional[str] = None
     events: List[Dict[str, Any]] = field(default_factory=list)
+    coached_block: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a JSON-ready representation of this versioned IR."""
@@ -194,6 +200,7 @@ class PlanIR:
             brand=data.get("brand"),
             training_age_class=data.get("training_age_class"),
             events=list(data.get("events", [])),
+            coached_block=dict(data.get("coached_block") or {}),
         )
 
 
@@ -263,6 +270,11 @@ def _athlete_from_profile(athlete_id: str, profile: Dict[str, Any]) -> Athlete:
 
 def _race_from_artifacts(profile: Dict[str, Any], fueling: Dict[str, Any], plan_dates: Dict[str, Any]) -> RaceSnapshot:
     target = profile.get("target_race", {}) or {}
+    if (profile.get("coached_block") and not target.get("date")
+            and not plan_dates.get("race_date")):
+        # Fueling retains generic training guidance for a coached block, but it
+        # is not an event fact and must never backfill a phantom race snapshot.
+        return RaceSnapshot()
     fueling_race = fueling.get("race", {}) or {}
     race = profile.get("race", {}) or {}
     event_year = _first(target, "event_year") or _first(race, "event_year")
@@ -348,11 +360,14 @@ def _event_ledger(profile: Dict[str, Any]) -> List[Dict[str, Any]]:
         for event in profile.get(key) or []:
             if not isinstance(event, dict):
                 continue
-            events.append({
+            projected = {
                 "name": event.get("name"),
                 "date": event.get("date"),
                 "priority": event.get("priority") or priority,
-            })
+            }
+            if event.get("mandatory") is True:
+                projected["mandatory"] = True
+            events.append(projected)
     return events
 
 
@@ -384,12 +399,16 @@ def _is_simulation(session: Session, week_type: Optional[str]) -> bool:
 
 def _annotate_delivery_context(weeks: List[Week]) -> None:
     """Populate session-only delivery facts once calendar weeks are assembled."""
+    from pre_activity_comments import pre_activity_comment
     for week in weeks:
         for session in week.sessions:
             session.level = _level_from_description(session.description)
             session.is_simulation = _is_simulation(session, week.week_type)
             session.is_field_test = session.type == "ftp_test" or any(
                 pattern.search(session.title) for pattern in _FIELD_TEST_PATTERNS)
+            # AE-9.2: pre_activity_comment depends on is_simulation/
+            # is_field_test, computed just above -- keep this call last.
+            session.pre_activity_comment = pre_activity_comment(session, phase=week.phase)
 
     first_taper_or_race = next(
         (index for index, week in enumerate(weeks)
@@ -640,10 +659,17 @@ def _session_from_zwo(zwo_path: Path, date: Optional[str], is_race_day: bool, ft
     )
 
 
-def _rest_session(date: Optional[str]) -> Session:
+def _rest_session(date: Optional[str], *, week: Optional[Dict[str, Any]] = None,
+                  race_date: Any = None, athlete_seed: Any = None,
+                  ordinal: int = 0) -> Session:
+    """A Day Off card is never blank (Matti, Aug 23 2026): it schedules the
+    active-recovery work -- mobility, a walk, sleep -- via rest_day_cards."""
+    from rest_day_cards import rest_day_card
+    card = rest_day_card(date, week=week, race_date=race_date,
+                         athlete_seed=athlete_seed, ordinal=ordinal)
     return Session(
         date=date,
-        title="Rest Day",
+        title=card["title"],
         sport="cycling",
         type="rest",
         origin="rest",
@@ -653,7 +679,8 @@ def _rest_session(date: Optional[str]) -> Session:
         workout_type_value_id=TP_WORKOUT_TYPE_VALUE_ID["day_off"],
         tss_planned=0.0,
         total_time_planned=0.0,
-        display_name="Rest Day",
+        description=card["body"],
+        display_name=card["title"],
     )
 
 
@@ -667,6 +694,8 @@ def _build_weeks(
     plan_dates: Dict[str, Any],
     athlete: Athlete,
     recurring_sessions: List[Dict[str, Any]] | None = None,
+    *,
+    race_date: Any = None,
 ) -> List[Week]:
     zwo_paths = sorted((athlete_dir / "workouts").glob("*.zwo")) if (athlete_dir / "workouts").exists() else []
     if not zwo_paths:
@@ -676,6 +705,16 @@ def _build_weeks(
     remaining = set(zwo_paths)
     weeks: List[Week] = []
     week_types = _week_type_lookup(plan_dates)
+    # AE-6.5b/rest-days (2026-08-24 TP review): rest_day_cards.py rotates
+    # variants by (athlete_seed, ordinal) so no two consecutive Day Off cards
+    # repeat -- but only when a real athlete_seed and a running ordinal are
+    # threaded through. race_date falls back to plan_dates.yaml's own
+    # race_date when the caller does not resolve one from profile.yaml
+    # (mirrors canonical_training_model._compile_authored_weeks, the other
+    # caller of rest_day_card, which is already correct).
+    race_date = race_date or plan_dates.get("race_date")
+    athlete_seed = athlete.id
+    rest_ordinal = 0
     for week_data in plan_dates.get("weeks", []):
         week_number = int(week_data.get("week", len(weeks) + 1))
         week = Week(
@@ -694,7 +733,10 @@ def _build_weeks(
             else:
                 # Calendar days without a rendered ZWO are real rest days in the
                 # v0 reflection, rather than omitted holes in the plan calendar.
-                week.sessions.append(_rest_session(day.get("date")))
+                week.sessions.append(_rest_session(
+                    day.get("date"), week=week_data, race_date=race_date,
+                    athlete_seed=athlete_seed, ordinal=rest_ordinal))
+                rest_ordinal += 1
         # G4: repeat immutable athlete sessions on their calendar day.  They
         # are not generated ZWOs, but they are canonical plan load and must
         # survive into every platform-neutral serializer.
@@ -749,6 +791,8 @@ def _plan_ir_from_canonical(
 ) -> PlanIR:
     """Build PlanIR strictly as a canonical-model projection."""
     from canonical_training_model import project_tp_structure
+    from delivery_render import (append_heat_protocol_explainer_if_missing,
+                                 append_rpe_guide_if_missing, sanitize_athlete_description)
 
     athlete = _athlete_from_profile(athlete_id, profile)
     control = model.get("athlete") or {}
@@ -794,6 +838,14 @@ def _plan_ir_from_canonical(
         if control.get("control_metric") == "rpe" and raw.get("target_summary"):
             description = ((description or "").rstrip()
                            + f"\n\nPRESCRIPTION: {raw['target_summary']}").strip()
+        description = sanitize_athlete_description(description)
+        # AE-3.12 (2026-08-24 TP review): library-verbatim descriptions are
+        # never rewritten, but one with no RPE mention of its own gets a
+        # trailing decode line built from this session's own %FTP segments.
+        description = append_rpe_guide_if_missing(
+            description, library_item_id=raw.get("library_item_id"), segments=segments)
+        # AE-3.13: named-protocol self-containment (Heat Acclimation).
+        description = append_heat_protocol_explainer_if_missing(description, raw.get("title"))
         week.sessions.append(Session(
             date=raw.get("date"), title=str(raw.get("title") or "Untitled session"),
             sport=str(raw.get("sport") or "cycling"),
@@ -841,6 +893,7 @@ def _plan_ir_from_canonical(
         brand=_brand_from_profile(profile),
         training_age_class=training_age_class(profile),
         events=_event_ledger(profile),
+        coached_block=dict(model.get("coached_block") or profile.get("coached_block") or {}),
     )
     _annotate_delivery_context(plan_ir.weeks)
     return plan_ir
@@ -888,7 +941,8 @@ def build_plan_ir(
             race_snapshot=_race_from_artifacts(profile, fueling_data, plan_dates),
             fueling=fueling,
             weeks=_build_weeks(athlete_dir, plan_dates, athlete,
-                               profile.get('recurring_sessions', []) or []),
+                               profile.get('recurring_sessions', []) or [],
+                               race_date=target.get('date')),
             notes=mental_tasks,
             entitlements=[{'kind': 'course', 'race': target.get('name'),
                            'race_date': target.get('date'), 'race_id': target.get('race_id')}],
@@ -897,6 +951,7 @@ def build_plan_ir(
             brand=_brand_from_profile(profile),
             training_age_class=training_age_class(profile),
             events=_event_ledger(profile),
+            coached_block=dict(profile.get("coached_block") or {}),
         )
         _annotate_delivery_context(plan_ir.weeks)
     output_path = athlete_dir / "plan_ir.json"
@@ -963,11 +1018,14 @@ def project_tp_manifest(plan_ir: PlanIR) -> Dict[str, Any]:
                 "target_summary": session.target_summary,
                 "library_item_id": session.library_item_id,
                 "library_rpe_text": session.library_rpe_text,
+                "pre_activity_comment": session.pre_activity_comment,
             })
 
     plan_weeks = max((w.number for w in plan_ir.weeks if w.number and w.number > 0), default=0)
     athlete_name = plan_ir.athlete.name or "Athlete"
-    race_name = plan_ir.race_snapshot.name or "Race"
+    has_race = bool(plan_ir.race_snapshot.name or plan_ir.race_snapshot.date)
+    race_name = (plan_ir.race_snapshot.name
+                 or ("Race" if has_race else "Coached Block"))
     return {
         "version": _TP_MANIFEST_VERSION,
         "plan_title": f"{athlete_name} · {race_name} · {plan_weeks}wk [CUSTOM]",
@@ -975,7 +1033,7 @@ def project_tp_manifest(plan_ir: PlanIR) -> Dict[str, Any]:
         "race": {
             "name": plan_ir.race_snapshot.name,
             "date": plan_ir.race_snapshot.date,
-            "priority": "A",
+            "priority": "A" if has_race else None,
         },
         "control": {
             "metric": plan_ir.athlete.key_markers.get("control_metric"),

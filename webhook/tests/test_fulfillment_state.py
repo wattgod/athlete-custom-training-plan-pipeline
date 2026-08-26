@@ -516,18 +516,31 @@ def test_download_handle_is_the_verified_descriptor_not_a_reopen(tmp_path):
         handle.close()
 
 
-def test_schema_accepts_cancelled_but_rejects_unimplemented_apply_statuses(tmp_path):
+def test_schema_accepts_only_journaled_phase5_transitional_statuses(tmp_path):
     path = tmp_path / 'status.json'
     write_generation(path, 'athlete-m', order_id='cs_future_status')
     raw = json.loads(path.read_text())
     raw['status'] = CANCELLED
     path.write_text(json.dumps(raw))
     assert load(path)['status'] == CANCELLED
-    for status in ('APPLYING', 'APPLIED_ATTESTED'):
-        raw['status'] = status
-        path.write_text(json.dumps(raw))
-        with pytest.raises(FulfillmentStateError, match='malformed'):
-            load(path)
+    raw['status'] = 'APPLYING'
+    path.write_text(json.dumps(raw))
+    with pytest.raises(FulfillmentStateError, match='malformed'):
+        load(path)
+    raw['application_attempt'] = {
+        'jti': 'phase5-fixture-jti', 'action': 'apply',
+        'request_digest': 'a' * 64, 'status': 'running',
+        'execution_epoch': 0, 'fencing_token': 1,
+        'lease': {'athlete_key_digest': 'b' * 64,
+                  'expires_at': '2026-08-22T01:00:00Z'},
+        'landed': [], 'intents': [], 'receipt_ref': '/fixture/receipt.json',
+    }
+    raw['execution_fence'] = 1
+    path.write_text(json.dumps(raw))
+    assert load(path)['status'] == 'APPLYING'
+    raw['status'] = 'APPLIED_ATTESTED'
+    path.write_text(json.dumps(raw))
+    assert load(path)['status'] == 'APPLIED_ATTESTED'
 
 
 def test_preapply_cancellation_is_durable_and_audit_ready(tmp_path):

@@ -289,6 +289,23 @@ class TestSeries:
         assert [r1["item_id"], r2["item_id"], r3["item_id"]] == [10, 11, 12]
         assert r1["if_planned"] < r2["if_planned"] < r3["if_planned"]
 
+    def test_family_ladder_never_breaks_a_stated_day_cap(self):
+        items = [
+            make_item(10, library_key="torque_sfr", name_base="Big Gear Ladder",
+                      explicit_level=1, duration_min=50, if_planned=0.7),
+            make_item(11, library_key="torque_sfr", name_base="Big Gear Ladder",
+                      explicit_level=2, duration_min=90, if_planned=0.75),
+        ]
+        index = make_index(items)
+        series_state = {}
+        first_slot = base_slot(canonical_name="SFR", series_key="capped-series",
+                               budget_min=50, day_cap_min=60, level=1)
+        assert select(first_slot, series_state=series_state, index=index)["item_id"] == 10
+
+        # The next rung is coherent but exceeds the real 60-minute cap. A
+        # loud fallback is safer than silently emitting the 90-minute card.
+        assert select(first_slot, series_state=series_state, index=index) is None
+
     def test_singleton_family_progresses_same_library_nearest_higher_if(self):
         items = [
             make_item(20, library_key="tempo", name_base="Alpha", duration_min=50, if_planned=0.70),
@@ -835,6 +852,160 @@ def test_internal_only_names_never_ship():
     assert not _is_internal_only({"name_base": "This is Uncomfortable"})
 
 
+def test_tt_base_scoped_out_of_gravel_discipline():
+    # AE-3.15 (coach TP-review, plan 672143, 2026-08-24): "TT Base" reached
+    # a gravel athlete's calendar -- TT-bike-position items must never
+    # route to a non-TT discipline unless the slot explicitly asks for
+    # position work.
+    from library_selector import _is_off_discipline
+    tt_base = {"name_base": "TT Base"}
+    tt_bike_tag = {"name_raw": "Specialty - General + HC (TT bike) - ref - 60min - RPE3-4"}
+    assert _is_off_discipline(tt_base, "gravel")
+    assert _is_off_discipline(tt_base, None)
+    assert _is_off_discipline(tt_bike_tag, "gravel")
+    # Explicit position-work request (slot-level escape hatch) always wins.
+    assert not _is_off_discipline(tt_base, "gravel", wants_position_work=True)
+    # A TT-native discipline is never scoped out of its own content.
+    assert not _is_off_discipline(tt_base, "road_tt")
+
+
+def test_gravel_specific_library_copy_is_scoped_out_of_road_disciplines():
+    # A real endurance item in the coach library includes event-specific
+    # "Classic Gravel 100" execution copy. Keep the authored text intact and
+    # choose a different real item for road plans instead of sanitizing it.
+    from library_selector import _is_off_discipline
+    gravel_item = {
+        "name_base": "Endurance Z2",
+        "name_raw": "Endurance - Z2 - 70min - RPE3-4",
+        "description": "Week 1/10 — 10 weeks to Classic Gravel 100.",
+    }
+    generic_item = {
+        "name_base": "Endurance Z2",
+        "description": "Comfortable aerobic endurance with steady pressure.",
+    }
+    assert _is_off_discipline(gravel_item, "road")
+    assert _is_off_discipline(gravel_item, "road_tt")
+    assert not _is_off_discipline(gravel_item, "gravel")
+    assert not _is_off_discipline(generic_item, "road")
+
+
+def test_tt_pace_interval_names_are_not_position_work():
+    # The library also carries a "TT Sim / TT Yeeet / TT Send" family that
+    # borrows "TT" as a pacing-style nickname for generic threshold work --
+    # that is legitimate content for any discipline and must NOT be scoped
+    # out (only genuine TT-bike-position items are).
+    from library_selector import _is_off_discipline
+    for name in ("Threshold - TT Sim - ref - 90min - RPE8-9",
+                 "Threshold - TT Yeeet - 1 - 90min - RPE7-8",
+                 "Threshold - TT Send - 2 - 120min - RPE6-7",
+                 "Threshold - Gila Stage 1 TT Prep - 1 - 97min - RPE8-9",
+                 "15/4 TT Efforts (Gila)"):
+        assert not _is_off_discipline({"name_raw": name}, "gravel"), name
+
+
+def test_qualifying_pool_excludes_tt_position_items_for_gravel_slot():
+    from library_selector import _qualifying_pool
+    items = [
+        {"library_key": "endurance_z2_short", "duration_min": 65,
+         "name_base": "TT Base", "name_raw": "Endurance - TT Base - - 1 - 65min - RPE3-4"},
+        {"library_key": "endurance_z2_short", "duration_min": 65,
+         "name_base": "Endurance", "name_raw": "Endurance - Z2 Short - ref - 65min - RPE3"},
+    ]
+    slot = {"canonical_name": "Endurance", "role": "filler", "week_type": "load",
+            "discipline": "gravel"}
+    pool = _qualifying_pool(items, ["endurance_z2_short"], 65, None, slot=slot)
+    assert [item["name_base"] for item in pool] == ["Endurance"]
+    # No discipline filter applied when the slot omits discipline entirely
+    # AND declares it wants position work (escape hatch).
+    slot_tt = {"canonical_name": "Endurance", "role": "filler", "week_type": "load",
+               "wants_position_work": True}
+    pool_tt = _qualifying_pool(items, ["endurance_z2_short"], 65, None, slot=slot_tt)
+    assert len(pool_tt) == 2
+
+
+
+def test_ae_3_14_flags_back_to_back_tempo_blocks_with_no_recovery():
+    # AE-3.14 (coach TP-review, plan 672143, 2026-08-24): reproduces the
+    # real "Mixtape Feat Tempo" shape -- 60min Z2, then three 12min + one
+    # 6min blocks @80% FTP with NOTHING between them (four separate
+    # top-level blocks, zero recovery valleys) -- 42min of continuous
+    # >=76% work, well over the 20min threshold.
+    from library_selector import _has_ae_3_14_violation, advisory_flags
+    mixtape = {
+        "primaryIntensityMetric": "percentOfFtp",
+        "structure": [
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 3600}, "targets": [{"minValue": 65}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 720}, "targets": [{"minValue": 80}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 720}, "targets": [{"minValue": 80}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 720}, "targets": [{"minValue": 80}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 360}, "targets": [{"minValue": 80}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 300}, "targets": [{"minValue": 50, "maxValue": 65}]}]},
+        ],
+    }
+    assert _has_ae_3_14_violation(mixtape)
+    assert "advisory_ae_3_14_unbroken_hard_block" in advisory_flags({"structure": mixtape})
+
+
+def test_ae_3_14_recovery_valley_between_blocks_clears_the_flag():
+    # Same total hard volume, but with a 4min sub-70% valley inserted
+    # between each block -- exactly the AE-3.14 fix -- clears the flag.
+    from library_selector import _has_ae_3_14_violation
+    fixed = {
+        "primaryIntensityMetric": "percentOfFtp",
+        "structure": [
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 720}, "targets": [{"minValue": 80}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 240}, "targets": [{"minValue": 55}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 720}, "targets": [{"minValue": 80}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 240}, "targets": [{"minValue": 55}]}]},
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 720}, "targets": [{"minValue": 80}]}]},
+        ],
+    }
+    assert not _has_ae_3_14_violation(fixed)
+
+
+def test_ae_3_14_ignores_rpe_metric_structures():
+    # No %FTP number exists to test on an RPE-metric structure -- must
+    # never misread a raw RPE integer as if it were a %FTP percentage here.
+    from library_selector import _has_ae_3_14_violation
+    rpe_structure = {
+        "primaryIntensityMetric": "rpe",
+        "structure": [
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 1800}, "targets": [{"minValue": 8}]}]},
+        ],
+    }
+    assert not _has_ae_3_14_violation(rpe_structure)
+
+
+def test_ae_3_14_is_advisory_never_a_pool_exclusion():
+    # 356/1459 real selectable items (~24%) trip this threshold -- almost
+    # entirely legitimate sustained race-sim/durability/threshold content.
+    # It must stay WARN-only: qualifying_pool never drops an item for it.
+    from library_selector import _qualifying_pool
+    mixtape_shape = {
+        "primaryIntensityMetric": "percentOfFtp",
+        "structure": [
+            {"length": {"value": 1}, "steps": [
+                {"length": {"value": 1800}, "targets": [{"minValue": 80}]}]},
+        ],
+    }
+    items = [{"library_key": "endurance_with_work", "duration_min": 60,
+              "name_base": "Mixtape Feat Tempo", "structure": mixtape_shape}]
+    pool = _qualifying_pool(items, ["endurance_with_work"], 60, None,
+                            slot={"canonical_name": "Endurance with Surges", "role": "filler"})
+    assert len(pool) == 1
+
 
 def test_recovery_week_long_ride_never_draws_durability_pools():
     from library_selector import resolve_library_keys
@@ -991,6 +1162,71 @@ def test_taper_slots_reject_sustained_threshold_regardless_of_role():
     assert _passes_role_ceiling(threshold_item, load_slot)   # load weeks unaffected
 
 
+def test_race_week_slots_reject_sustained_hard_reps_same_as_taper():
+    """Aug 14 audit defect (pre-standards, two real athlete TP calendars):
+    the race-week sharpener slot ("Stars In Your Eyes", 4 days before race)
+    carries week_type="race", NOT "taper" -- block_builder._build_race_week
+    and block_chain.py both tag the week containing race day as its own
+    enum value, distinct from "taper" (the week before it). The taper
+    ceiling in _passes_role_ceiling only checked week_type == "taper", so a
+    race-week slot got NO hard-rep ceiling at all.
+
+    Structure below is trimmed from the real curated anaerobic_capacity
+    item "Stars in your eyes - 20/30/40" (item_id 14355544, TP library
+    dump): an unlabeled active-class leaf holds 85-95% FTP for 180
+    seconds -- a single >=92% rep 60s over _TAPER_MAX_HARD_REP_SECONDS,
+    exactly matching the audited calendar ("warm-up ramp step holding
+    85-95% FTP for 180s" placed 4 days before the race)."""
+    from library_selector import _passes_role_ceiling
+
+    stars_in_your_eyes_excerpt = {
+        "if_planned": 0.7609,
+        "structure": {"structure": [
+            {"length": {"value": 1}, "steps": [
+                {"name": "Warm up", "length": {"value": 600},
+                 "intensityClass": "warmUp", "targets": [{"minValue": 60, "maxValue": 70}]},
+            ]},
+            {"length": {"value": 1}, "steps": [
+                {"name": "", "length": {"value": 180},
+                 "intensityClass": "active", "targets": [{"minValue": 75, "maxValue": 85}]},
+            ]},
+            {"length": {"value": 1}, "steps": [
+                {"name": "", "length": {"value": 180},
+                 "intensityClass": "active", "targets": [{"minValue": 85, "maxValue": 95}]},
+            ]},
+        ]},
+    }
+    race_sharpener_slot = {"role": "intensity", "week_type": "race"}
+    taper_slot = {"role": "intensity", "week_type": "taper"}
+    load_slot = {"role": "intensity", "week_type": "load"}
+    assert not _passes_role_ceiling(stars_in_your_eyes_excerpt, race_sharpener_slot)
+    assert not _passes_role_ceiling(stars_in_your_eyes_excerpt, taper_slot)
+    assert _passes_role_ceiling(stars_in_your_eyes_excerpt, load_slot)  # load weeks unaffected
+
+
+def test_openers_never_reaches_the_tp_library_in_a_race_week():
+    """Companion Aug 14 audit defect: 'Openers v1.1' (item_id 14357012, the
+    testing_openers pool) placed the day before the race with a 'Threshold'
+    leaf at 95% FTP for 300s -- a single >=92% rep 180s over the taper
+    ceiling. Unlike "Stars In Your Eyes", the canonical type "Openers" is
+    SYNTHETIC_ONLY (never routed to any TP library pool -- see
+    resolve_library_keys and the SYNTHETIC_ONLY guard in select()/refit()),
+    so this pool is structurally unreachable via the current selector
+    regardless of week_type. This test locks that invariant in: if a
+    future routing-table change ever pointed "Openers" at a real pool, it
+    would need the same week_type in _TAPER_GATED_WEEK_TYPES protection
+    "Stars In Your Eyes" now has."""
+    assert resolve_library_keys(
+        {"canonical_name": "Openers", "week_type": "race", "role": "intensity"}
+    ) == ()
+    race_week_openers_slot = {
+        "canonical_name": "Openers", "level": 2, "budget_min": 47,
+        "day_cap_min": None, "role": "intensity", "phase": "race",
+        "week_type": "race",
+    }
+    assert select(race_week_openers_slot) is None
+
+
 def test_family_coherence_outranks_level_banding():
     """Live v26 defect completion: the build-week slot's level-1 band
     contained ONLY the family's softest variant (.694) while base had
@@ -1025,7 +1261,9 @@ def test_base_long_rides_reject_threshold_sessions():
         {"length": {"value": 6}, "steps": [
             {"name": "On", "length": {"value": 480}, "targets": [{"minValue": 98}]},
             {"name": "Off", "length": {"value": 180}, "targets": [{"minValue": 50}]}]}]}}
-    surges = {"if_planned": 0.75, "structure": {"structure": [
+    # ratified Q-B (2026-08-23): base long-ride IF ceiling is .68 — a surge
+    # ride qualifies for a BASE long slot only at an endurance overall IF.
+    surges = {"if_planned": 0.66, "structure": {"structure": [
         {"length": {"value": 8}, "steps": [
             {"name": "On", "length": {"value": 20}, "targets": [{"minValue": 150}]},
             {"name": "Off", "length": {"value": 880}, "targets": [{"minValue": 65}]}]}]}}
@@ -1034,3 +1272,118 @@ def test_base_long_rides_reject_threshold_sessions():
     assert not _passes_role_ceiling(night, base_long)
     assert _passes_role_ceiling(surges, base_long)   # short surges OK in base
     assert _passes_role_ceiling(night, build_long)   # build durability untouched
+
+
+def test_purged_concepts_never_selectable_from_curated_library():
+    """AE-3.11/AE-6.3: FatMax/fartlek/fasted items are excluded at the
+    qualifying pool — the gap that shipped items 14356013/14356007 into the
+    2026-08-24 Steve Wagner draft."""
+    from library_selector import _is_internal_only
+    for name in ("FatMax Development - 3 - 100min", "Structured Fartlek - 2",
+                 "Z2 Fasted Spin", "Fat Max Builder"):
+        assert _is_internal_only({"name_base": name}), name
+    for name in ("G-Spot Progressive - 3", "Endurance - Kredit Kort"):
+        assert not _is_internal_only({"name_base": name}), name
+
+
+# ---------------------------------------------------------------------------
+# Pinned test-item routing (coach ruling 2026-08-24): FTP Test/Anaerobic
+# Test route directly to library_selector.PINNED_TEST_ITEM_IDS, bypassing
+# ROUTING_TABLE/the qualifying-pool machinery entirely -- pinned, not
+# pool-rotated. Falls back to the SYNTHETIC_ONLY None (-> synthetic render)
+# only when the pinned id is absent from the index.
+# ---------------------------------------------------------------------------
+
+class TestPinnedTestItemRouting:
+    def test_ftp_test_canonical_name_is_pinned(self):
+        assert ls.PINNED_TEST_ITEM_IDS["FTP Test"] == 14356974
+
+    def test_anaerobic_test_canonical_name_is_pinned(self):
+        assert ls.PINNED_TEST_ITEM_IDS["Anaerobic Test"] == 14356988
+
+    def test_pinned_test_types_are_also_in_synthetic_only(self):
+        # SYNTHETIC_ONLY is the fallback path when the pinned id is absent
+        # from the index -- select()/refit() must still recognize these
+        # names so a rebuilt-without-the-item index degrades cleanly to the
+        # synthetic renderer instead of raising KeyError.
+        assert set(ls.PINNED_TEST_ITEM_IDS) <= SYNTHETIC_ONLY
+
+    def test_select_ftp_test_resolves_the_pinned_item_verbatim(self):
+        pinned = make_item(
+            14356974, library_key="testing_openers",
+            name_base="The Assessment - Functional Threshold",
+            duration_min=60, tss=71.3, if_planned=0.8441,
+            description="12m progressive warmup...",
+        )
+        # An unrelated pool item under the same library_key must never be
+        # chosen instead -- pinned means no rotation, no rank, no pool.
+        decoy = make_item(99999, library_key="testing_openers", name_base="Decoy",
+                          duration_min=60, tss=50, if_planned=0.5)
+        index = make_index([pinned, decoy])
+        slot = base_slot(canonical_name="FTP Test", level=1, budget_min=999999, day_cap_min=1)
+        resolution = select(slot, index=index)
+        assert resolution is not None
+        assert resolution["item_id"] == 14356974
+        assert resolution["duration_min"] == 60
+
+    def test_select_anaerobic_test_resolves_the_pinned_item_verbatim(self):
+        pinned = make_item(
+            14356988, library_key="testing_openers",
+            name_base="The Assessment - Anaerobic",
+            duration_min=62, tss=59.2, if_planned=0.7561,
+        )
+        index = make_index([pinned])
+        slot = base_slot(canonical_name="Anaerobic Test", level=1)
+        resolution = select(slot, index=index)
+        assert resolution is not None
+        assert resolution["item_id"] == 14356988
+
+    def test_select_ftp_test_falls_back_to_none_when_item_absent(self):
+        # No item 14356974 in this index -- select() must return None (the
+        # D9 loud-fallback contract), which is what lets the caller's
+        # synthetic FTP_Test renderer stand in, never raise/KeyError.
+        index = make_index([make_item(1, library_key="testing_openers")])
+        slot = base_slot(canonical_name="FTP Test", level=1)
+        assert select(slot, index=index) is None
+
+    def test_select_anaerobic_test_falls_back_to_none_when_item_absent(self):
+        index = make_index([])
+        slot = base_slot(canonical_name="Anaerobic Test", level=1)
+        assert select(slot, index=index) is None
+
+    def test_pinned_selection_ignores_budget_and_day_cap(self):
+        """Pinned, not pool-rotated: a budget/day_cap window that would
+        normally exclude a 60min item from the qualifying pool must not
+        block the pinned FTP Test lookup -- the day was already sized for
+        the test upstream (get_ftp_day_candidates)."""
+        pinned = make_item(14356974, library_key="testing_openers", duration_min=60)
+        index = make_index([pinned])
+        slot = base_slot(canonical_name="FTP Test", level=1, budget_min=5, day_cap_min=5)
+        resolution = select(slot, index=index)
+        assert resolution is not None
+        assert resolution["item_id"] == 14356974
+
+    def test_pinned_selection_records_used_items(self):
+        pinned = make_item(14356974, library_key="testing_openers")
+        index = make_index([pinned])
+        used_items: dict = {}
+        slot = base_slot(canonical_name="FTP Test", level=1, plan_week=1)
+        select(slot, index=index, used_items=used_items)
+        assert used_items[14356974]["count"] == 1
+
+    def test_refit_never_trims_a_pinned_test(self):
+        pinned = make_item(14356974, library_key="testing_openers", duration_min=60)
+        index = make_index([pinned])
+        slot = base_slot(canonical_name="FTP Test", level=1, budget_min=30)
+        assert refit(slot, index=index) is None
+
+    def test_real_index_resolves_both_pinned_assessment_items(self):
+        """Realism check against the actual built index (not a synthetic
+        one) -- both pinned ids must be present and selectable."""
+        index = load_index()
+        for canonical_name, item_id in ls.PINNED_TEST_ITEM_IDS.items():
+            slot = base_slot(canonical_name=canonical_name, level=1)
+            resolution = select(slot, index=index)
+            assert resolution is not None, f"{canonical_name} pinned item {item_id} not resolvable"
+            assert resolution["item_id"] == item_id
+            assert resolution["library_key"] == "testing_openers"

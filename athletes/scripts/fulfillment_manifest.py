@@ -10,6 +10,8 @@ import hashlib
 from pathlib import Path
 from typing import Any, Dict
 
+from delivery_notes import render_coached_weekly_notes
+
 
 MANIFEST_VERSION = 1
 SPORT_TYPES = {'cycling': 1, 'road': 1, 'gravel': 1, 'mtb': 8, 'mountain_bike': 8}
@@ -43,18 +45,37 @@ def build_manifest_from_plan_ir(ir: Dict[str, Any], athlete_dir: Path | str) -> 
                 'segments': session.get('segments', []), 'source_file': session.get('source_file'),
                 # Complete remote field set used by the legacy/D0 parity gate.
                 'description': session.get('description'),
+                # AE-9.2 (2026-08-24 TP review): TP's preActivityComments
+                # field -- populated for key sessions only (see
+                # pre_activity_comments.py / plan_ir._annotate_delivery_context).
+                'pre_activity_comment': session.get('pre_activity_comment'),
                 'tp_workout_type': session.get('workout_type_value_id'),
                 'total_seconds': int(session.get('duration_s', 0) or 0),
                 'tss_planned': session.get('tss_planned'),
                 'structure': session.get('structure'),
             }
             workouts.append(item)
-            notes.append({
-                'external_id': f"note:{external_id}", 'date': item['date'],
-                'logical_key': f"session-{date_key}-{per_date[date_key]}",
-                'title': item['title'],
-                'text': f"Week {item['plan_week']} · {item['title']} · {item['session_type']}",
-            })
+
+    # AE-9.3/AE-9.4 (2026-08-24 TP review, round-2 addendum): the fixed
+    # self-review and comment-protocol notes are dated deliberately onto a
+    # date another note already claims (the self-review lands on a week's
+    # own Sunday, which can coincide with a midweek note's date on a short
+    # week; the Day-1 protocol note always shares its date with that week's
+    # Monday note). Sequence-number the key only when a date is genuinely
+    # shared, so the single-note-per-date case keeps its original id shape.
+    per_note_date: Dict[str, int] = {}
+    for note in render_coached_weekly_notes(ir):
+        note_date = str(note['date'])
+        per_note_date[note_date] = per_note_date.get(note_date, 0) + 1
+        sequence = per_note_date[note_date]
+        suffix = '' if sequence == 1 else f":{sequence}"
+        notes.append({
+            'external_id': f"note:{ir['athlete']['id']}:weekly:{note_date}{suffix}",
+            'date': note_date,
+            'logical_key': f"weekly-briefing-{note_date}{suffix.replace(':', '-')}",
+            'title': note['title'],
+            'text': note['body'],
+        })
 
     attachments = [dict(attachment) for attachment in (ir.get('attachments') or [])]
     if not any(a.get('kind') == 'guide' for a in attachments):

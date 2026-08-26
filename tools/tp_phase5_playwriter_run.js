@@ -1,0 +1,138 @@
+/**
+ * Execute one Phase 5 browser request through an existing Playwriter session.
+ *
+ * The atomic private invocation file supplies the three path values below.
+ * This runner clears every browser and session global before returning.
+ */
+
+await (async () => {
+  'use strict';
+
+  const crypto = require('node:crypto');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const receiptGlobal = '__GG_TP_PHASE5_RECEIPT__';
+  const stateKeys = [
+    'tpPhase5RequestPath', 'tpPhase5ReceiptPath', 'tpPhase5PayloadSource',
+    'tpPhase5PayloadSha256',
+  ];
+  let executionPage = null;
+
+  try {
+    const requestPath = path.resolve(String(state.tpPhase5RequestPath || ''));
+    const receiptPath = path.resolve(String(state.tpPhase5ReceiptPath || ''));
+    const source = String(state.tpPhase5PayloadSource || '');
+    const configuredPayloadSha256 = String(state.tpPhase5PayloadSha256 || '');
+    if (!requestPath || !receiptPath || !source
+        || !/^[0-9a-f]{64}$/.test(configuredPayloadSha256)) {
+      throw new Error('Phase 5 request, receipt, and payload binding are required');
+    }
+    if (!fs.existsSync(requestPath)) {
+      throw new Error('Phase 5 request is missing');
+    }
+    if (fs.existsSync(receiptPath)) {
+      throw new Error('refusing to overwrite an existing Phase 5 receipt');
+    }
+
+    const request = JSON.parse(fs.readFileSync(requestPath, 'utf8'));
+    const scriptSha256 = crypto.createHash('sha256').update(source).digest('hex');
+    if (scriptSha256 !== configuredPayloadSha256) {
+      throw new Error('Phase 5 browser payload binding changed');
+    }
+    if (request.request_type !== 'trainingpeaks_playwright_request/v1') {
+      throw new Error('unsupported Phase 5 Playwright request');
+    }
+
+    const targetUrl = `https://app.trainingpeaks.com/#calendar/athletes/${encodeURIComponent(
+      String(request.tp_athlete_id),
+    )}`;
+    const normalizedHash = candidate => candidate.hash.replace(/^#\/?/, '#');
+    const current = new URL(page.url());
+    if (current.origin !== 'https://app.trainingpeaks.com'
+        || normalizedHash(current) !== normalizedHash(new URL(targetUrl))) {
+      throw new Error('Playwriter page is not prebound to the exact athlete');
+    }
+
+    const bound = new URL(page.url());
+    if (bound.origin !== 'https://app.trainingpeaks.com'
+        || normalizedHash(bound) !== normalizedHash(new URL(targetUrl))) {
+      throw new Error('Playwriter page binding changed before evaluation');
+    }
+    const stableAssetUrl = await page.evaluate(() => performance
+      .getEntriesByType('resource')
+      .map(entry => String(entry.name || ''))
+      .find(name => {
+        try {
+          const candidate = new URL(name);
+          return candidate.origin === 'https://app.trainingpeaks.com'
+            && /\.js$/u.test(candidate.pathname);
+        } catch (_error) {
+          return false;
+        }
+      }) || null);
+    if (!stableAssetUrl) {
+      throw new Error('stable same-origin TrainingPeaks asset is unavailable');
+    }
+    executionPage = await context.newPage();
+    const executionUrl = new URL(stableAssetUrl);
+    executionUrl.hash = new URL(targetUrl).hash;
+    await executionPage.goto(executionUrl.href, { waitUntil: 'load', timeout: 30000 });
+    const executionBound = new URL(executionPage.url());
+    if (executionBound.origin !== 'https://app.trainingpeaks.com'
+        || normalizedHash(executionBound) !== normalizedHash(new URL(targetUrl))) {
+      throw new Error('isolated Playwriter page is not bound to the exact athlete');
+    }
+    const receipt = await executionPage.evaluate(
+      async ({ sourceText, args, globalName }) => {
+        delete window[globalName];
+        window.__TP_SCRIPT_ARGS__ = args;
+        try {
+          const execution = (0, eval)(sourceText);
+          if (execution && typeof execution.then === 'function') await execution;
+          const deadline = Date.now() + 15 * 60 * 1000;
+          while (!window[globalName]?.finished_at && Date.now() < deadline) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          return window[globalName] || null;
+        } finally {
+          delete window.__TP_SCRIPT_ARGS__;
+          delete window[globalName];
+        }
+      },
+      {
+        sourceText: source,
+        args: { request, script_sha256: scriptSha256 },
+        globalName: receiptGlobal,
+      },
+    );
+    if (!receipt || !receipt.finished_at) {
+      throw new Error('Phase 5 browser payload produced no finished receipt');
+    }
+
+    fs.mkdirSync(path.dirname(receiptPath), { recursive: true, mode: 0o700 });
+    const temporary = `${receiptPath}.tmp-${Date.now()}-${process.pid}`;
+    try {
+      fs.writeFileSync(temporary, `${JSON.stringify(receipt)}\n`, {
+        encoding: 'utf8', mode: 0o600, flag: 'wx',
+      });
+      fs.renameSync(temporary, receiptPath);
+    } finally {
+      if (fs.existsSync(temporary)) fs.rmSync(temporary, { force: true });
+    }
+  } finally {
+    try {
+      await executionPage?.evaluate(globalName => {
+        delete window.__TP_SCRIPT_ARGS__;
+        delete window[globalName];
+      }, receiptGlobal);
+    } catch (_error) {
+      // The page may have closed. Persistent session state is still cleared.
+    }
+    try {
+      await executionPage?.close();
+    } catch (_error) {
+      // The isolated execution page may already have closed.
+    }
+    for (const key of stateKeys) delete state[key];
+  }
+})();

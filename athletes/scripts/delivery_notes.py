@@ -18,15 +18,26 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import yaml
 
-from delivery_render import (
-    _dominant_work_percent,
-    build_fuel_ladder,
-    has_structured_work,
-    load_brand,
-    render_card_name,
-    render_hydration_block,
-    render_session_name,
-)
+if __package__:
+    from .delivery_render import (
+        _dominant_work_percent,
+        build_fuel_ladder,
+        has_structured_work,
+        load_brand,
+        render_card_name,
+        render_hydration_block,
+        render_session_name,
+    )
+else:  # Direct script execution keeps athletes/scripts on sys.path.
+    from delivery_render import (
+        _dominant_work_percent,
+        build_fuel_ladder,
+        has_structured_work,
+        load_brand,
+        render_card_name,
+        render_hydration_block,
+        render_session_name,
+    )
 
 
 _BLOCK_NOTES_PATH = Path(__file__).resolve().parent.parent / "config" / "block_notes.yaml"
@@ -830,6 +841,51 @@ _SHORT_WEEK_COPY = {
 }
 
 
+def _week_story(plan_ir: Any, week: Any, declared_type: str, week_type: str) -> str:
+    """State the week's intent with authority and no defensive justification."""
+    weeks = list(_iter_weeks(plan_ir))
+    index = next((i for i, item in enumerate(weeks) if item is week), None)
+    previous_type = _week_type(weeks[index - 1]) if index not in (None, 0) else None
+    next_type = _week_type(weeks[index + 1]) if index is not None and index + 1 < len(weeks) else None
+    effective = declared_type or week_type
+
+    if effective == "race":
+        return "Execution week. Keep the legs awake. Remove fatigue. Arrive wanting to race."
+    if effective == "taper":
+        return "The work is banked. Remove fatigue. Keep the legs sharp."
+    if effective == "recovery":
+        return "Absorb the block. Let the volume drop. Finish fresh and ready to work again."
+    if previous_type == "recovery":
+        return "The reset is complete. Turn the fresh legs into controlled work."
+    if next_type == "recovery":
+        return "Last push before recovery. Make the key work count. Leave the rest alone."
+    if effective in {"load", "uber_load"}:
+        return "Add one controlled layer. Protect the key work. More is not the assignment."
+    return "Hold the thread of the block. Do the work. Keep enough restraint to absorb it."
+
+
+def _athlete_choice_copy(declared_type: str, week_type: str) -> str:
+    """Offer useful autonomy while preserving load, sequence, and safety."""
+    effective = declared_type or week_type
+    if effective == "recovery":
+        return (
+            "Full rest is the default. If you feel normal and want to move, choose either the written easy spin "
+            "or 20-40 minutes of easy walking or spinning at RPE 1-2. Choose rest when fatigue is building; "
+            "pain, illness, or worsening symptoms means stop and message me. Do not make up missed work."
+        )
+    if effective in {"taper", "race"}:
+        return (
+            "Openers can be indoors or outside on calm, familiar roads. Keep the written duration and efforts; "
+            "choose the option that makes the session controlled. Bad conditions or extra surging means go "
+            "indoors or cut it short. Do not add fitness work or stack anything you missed."
+        )
+    return (
+        "For endurance riding, indoors or outside is your call. Keep the written duration range and RPE ceiling; "
+        "choose terrain that lets you ride steadily. If the route or weather turns it into repeated surges, "
+        "move indoors or shorten it. Keep the key sessions in sequence and do not stack missed work."
+    )
+
+
 def _weekly_briefing(plan_ir: Any, candidate: Dict[str, Any], fueling: Any,
                      seen_types: set | None = None) -> tuple[str, str]:
     week = candidate["week"]
@@ -903,6 +959,12 @@ def _weekly_briefing(plan_ir: Any, candidate: Dict[str, Any], fueling: Any,
         article = "a " if len(extra_off_days) == 1 else ""
         append += (f"\n\nThis week adds {article}" + " and ".join(extra_off_days) +
                   f" {noun} — that's deliberate.")
+    append += (
+        "\n\nTHE INTENT THIS WEEK\n"
+        + _week_story(plan_ir, week, declared_type, week_type)
+        + "\n\nYOUR CALL\n"
+        + _athlete_choice_copy(declared_type, week_type)
+    )
     return f"WEEK {week_number} — {label}", descriptor.strip() + append
 
 
@@ -1095,4 +1157,186 @@ def render_notes(plan_ir: dict, fueling: dict, brand_cfg: dict, guide_url: str |
             plan_ir, fueling, brand, guide_url, candidate,
             seen_week_types=seen_week_types)
         notes.append({"date": _date_text(candidate["date"]), "type": candidate["type"], "title": title, "body": body})
+    return notes
+
+
+def render_coached_weekly_notes(plan_ir: dict) -> List[Dict[str, str]]:
+    """One Monday note per coached calendar week, as a story in the coach's
+    voice (story_notes.render_story_notes). The template-paragraph renderer
+    below is kept as ``_render_template_weekly_notes`` for comparison only;
+    it is no longer on any delivery path (Matti, Aug 23 2026: "a training
+    plan is a story").
+    """
+    from story_notes import render_story_notes
+    return render_story_notes(plan_ir)
+
+
+def _render_template_weekly_notes(plan_ir: dict) -> List[Dict[str, str]]:
+    """Render one compact directive note per coached calendar week.
+
+    Marketplace-plan education and mental-skills notes do not belong on a
+    coached calendar by default. These notes carry the weekly arc, the
+    assignment, and bounded athlete choices. Fulfillment identifiers never
+    enter athlete-facing copy.
+    """
+    fueling = _get(plan_ir, "fueling") or {}
+    fuel_range = _get(fueling, "race_range_g_per_hour") or []
+    events = list(_get(plan_ir, "events") or [])
+    notes: List[Dict[str, str]] = []
+
+    for week in _iter_weeks(plan_ir):
+        sessions = list(_get(week, "sessions") or [])
+        start = _week_start(week)
+        if not start:
+            continue
+        week_type = str(
+            _get(week, "week_type") or _get(week, "phase") or ""
+        ).lower()
+        by_day = {
+            (_session_date(session).strftime("%A")
+             if _session_date(session) else "Undated"): session
+            for session in sessions
+        }
+        off_days = [
+            day for day, session in by_day.items()
+            if _kind(session) == "day_off"
+        ]
+        bikes = [
+            session for session in sessions
+            if _kind(session) in {"bike", "race"}
+        ]
+
+        if week_type == "race":
+            a_event = next((
+                event for event in events
+                if str(_get(event, "priority") or "").upper() == "A"
+            ), {})
+            b_event = next((
+                event for event in events
+                if str(_get(event, "priority") or "").upper() == "B"
+            ), {})
+            snapshot = _get(plan_ir, "race_snapshot") or {}
+            a_name = str(
+                _get(a_event, "name") or _get(snapshot, "name") or "the A race"
+            )
+            a_date = _as_date(_get(a_event, "date") or _get(snapshot, "date"))
+            a_day = a_date.strftime("%A") if a_date else "the A race"
+            off_text = ", ".join(off_days) or "The written rest days"
+            b_name = str(_get(b_event, "name") or "").strip()
+            if b_event and b_name:
+                b_date = _as_date(_get(b_event, "date"))
+                b_day = b_date.strftime("%A") if b_date else b_name
+                mandatory_b = bool(_get(b_event, "mandatory"))
+                if mandatory_b:
+                    direction = (
+                        f"Race week. {off_text} off. Openers before {a_name}. "
+                        f"{b_name} is mandatory; "
+                        f"{a_day} decides the mode."
+                    )
+                else:
+                    direction = (
+                        f"Race week. {off_text} off. Openers before {a_name}. "
+                        f"{b_name} is optional; "
+                        f"{a_day} gets first claim on your legs."
+                    )
+                event_fuel = f"{a_name} and {b_name}"
+                choice_tail = (
+                    f" {b_day}: normal legs, race it; heavy legs, completion "
+                    "mode."
+                    if mandatory_b else
+                    f" {b_day} requires normal legs; otherwise skip it."
+                )
+            else:
+                direction = (
+                    f"Race week. {off_text} off. Openers before {a_name}. "
+                    f"{a_day} is the assignment."
+                )
+                event_fuel = a_name
+                choice_tail = ""
+            fuel = (
+                f" Fuel {event_fuel} with familiar products at "
+                f"{fuel_range[0]}-{fuel_range[-1]} g/hr."
+                if len(fuel_range) >= 2 else ""
+            )
+            order = (
+                "No bonus miles or make-up work. Keep the openers controlled."
+                + fuel + " Improv can wait."
+            )
+            choice = (
+                "Inside or out—keep the written RPE smooth. "
+                f"{choice_tail} Pain, "
+                "illness, or changed function: stop and tell me."
+            )
+            choice = re.sub(r"\s+", " ", choice).strip()
+            label = "Race Week"
+        elif week_type == "recovery":
+            focused = next((
+                session for session in bikes
+                if "cadence" in str(_get(session, "title") or "").lower()
+            ), None)
+            focus_copy = (
+                f"{_session_date(focused).strftime('%A')} keeps a little "
+                "cadence in the legs. "
+                if focused and _session_date(focused) else ""
+            )
+            off_text = ", ".join(off_days) or "The written rest days"
+            event_dates = [
+                _as_date(_get(event, "date")) for event in events
+                if _as_date(_get(event, "date"))
+            ]
+            follows_event = any(
+                timedelta(days=0) < start - event_date <= timedelta(days=3)
+                for event_date in event_dates
+            )
+            direction = (
+                ("Race weekend is done. " if follows_event else "Reset week. ")
+                + f"{off_text} off. "
+                + focus_copy
+                + "Everything else is easy. Heroics can wait."
+            )
+            order = (
+                "No intervals, extra volume, or make-up work. "
+                f"The longest ride is {max((_duration_minutes(session) for session in bikes), default=0)} minutes max."
+            )
+            choice = (
+                "Good legs: ride the plan. Heavy legs: cut an easy ride to "
+                "30-45 minutes or rest. Pain, illness, or changed function: "
+                "stop and tell me."
+            )
+            label = "Recovery"
+        else:
+            key = _quality_sessions(week)
+            names = ", ".join(
+                _briefing_session_title(session) for session in key
+            )
+            direction = _week_story(
+                plan_ir, week, week_type, _week_type(week)
+            )
+            focus = str(
+                _get(_get(plan_ir, "coached_block") or {}, "focus") or ""
+            ).strip().rstrip(".")
+            if focus:
+                direction += f" This block: {focus}."
+            if names:
+                direction += f" The key work is {names}."
+            order = (
+                "Keep the order. Easy means easy. Missed work stays missed."
+            )
+            choice = (
+                "Endurance can be inside or out. Hold the written time and "
+                "RPE. If the route will not cooperate, change it or cut it."
+            )
+            label = str(
+                _get(week, "phase") or "Training"
+            ).replace("_", " ").title()
+
+        body = "\n\n".join(
+            part.strip() for part in (direction, order, choice) if part.strip()
+        )
+        notes.append({
+            "date": _date_text(start),
+            "type": "weekly_briefing",
+            "title": f"Week {_get(week, 'number', '')}: {label}",
+            "body": body,
+        })
     return notes

@@ -334,6 +334,12 @@ class WorkoutLibrary:
                 'exercises': list(program['sessions'][(session_num - 1) % 2]),
             }
 
+        # A recovery week is a deload in every equipment tier. The legacy
+        # home-basic rotation used the raw week number here, which could land
+        # on jump squats and single-leg hops immediately after an event.
+        if is_recovery_week:
+            return cls.STRENGTH_WORKOUTS[4]
+
         # Rotate through workouts, alternating A/B pattern
         if session_num == 1:
             # First session: Foundation A, Power, Cycling-Specific (cycle)

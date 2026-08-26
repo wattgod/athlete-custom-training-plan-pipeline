@@ -3,8 +3,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from calculate_fueling import generate_fueling_context
+from calculate_fueling import estimate_race_duration, generate_fueling_context
 from fueling_policy import build_fueling_prescription, tolerated_intake_from_profile
+from known_races import UNMATCHED_RACE_MPH, estimate_unmatched_race_duration_hours
 
 
 def _profile(weight, ftp, goal="podium"):
@@ -101,6 +102,18 @@ def test_low_tolerance_never_produces_target_outside_range():
     assert low <= prescription["race_target_g_per_hour"] <= high
 
 
+def test_coach_locked_race_fueling_range_is_canonical():
+    profile = _profile(80, 230, "finish")
+    profile["nutrition"] = {
+        "training_fuel": "65 g/h",
+        "race_fueling_range_g_per_hour": [60, 70],
+    }
+    prescription = generate_fueling_context(profile)["prescription"]
+    assert prescription["race_target_g_per_hour"] == 65
+    assert prescription["race_range_g_per_hour"] == [60, 70]
+    assert prescription["inputs"]["prescribed_range_g_per_hour"] == [60, 70]
+
+
 def test_missing_tolerance_caps_large_untrained_athlete():
     prescription = build_fueling_prescription(
         duration_hours=4, weight_kg=100, ftp_watts=600, goal_type="podium",
@@ -126,3 +139,44 @@ def test_duration_guard_scales_carbs_down_for_ultra_events():
     assert any("scales DOWN" in a for a in ultra.assumptions)
     # target stays inside its range after the cap
     assert ultra.race_range_g_per_hour[0] <= ultra.race_target_g_per_hour <= ultra.race_range_g_per_hour[1]
+
+
+def test_unmatched_race_duration_uses_flat_terrain_estimate_not_goal_speed_table():
+    """sol programming review 2026-08-24, major 10: an UNMATCHED race (no
+    course-database match) has no verified terrain to trust the
+    discipline+goal speed table against -- it modeled Steve Wagner's real
+    71mi unmatched gravel event at 5.92h ('6.0 hours' on the race card)
+    against the intake's own ~4.7-5h expectation. generate_fueling_context
+    must use the flat 15mph unmatched estimator for a generic_profile race,
+    not estimate_race_duration's gravel/finish=12mph table."""
+    profile = {
+        "fitness_markers": {"weight_kg": 80, "ftp_watts": 261, "sex": "male"},
+        "target_race": {"distance_miles": 71, "goal_type": "finish",
+                        "elevation_ft": 0, "generic_profile": True},
+    }
+    fueling = generate_fueling_context(profile)
+    expected = estimate_unmatched_race_duration_hours(71)
+    assert fueling["race"]["duration_hours"] == expected
+    assert 4.5 <= fueling["race"]["duration_hours"] <= 5.0
+    # Confirms this genuinely differs from (is not accidentally equal to)
+    # the discipline/goal-type table it replaces for unmatched races.
+    assert fueling["race"]["duration_hours"] != estimate_race_duration(
+        71, "finish", 0, "gravel")
+
+
+def test_matched_race_duration_still_uses_discipline_goal_speed_table():
+    """A matched (real course-database) race keeps the richer
+    discipline+goal+elevation model -- only UNMATCHED races fall back to
+    the flat estimator."""
+    profile = {
+        "fitness_markers": {"weight_kg": 80, "ftp_watts": 261, "sex": "male"},
+        "target_race": {"distance_miles": 71, "goal_type": "finish",
+                        "elevation_ft": 0, "race_id": "some_known_race"},
+    }
+    fueling = generate_fueling_context(profile)
+    assert fueling["race"]["duration_hours"] == estimate_race_duration(
+        71, "finish", 0, "gravel")
+
+
+def test_unmatched_race_duration_estimator_matches_the_race_card_mph_constant():
+    assert estimate_unmatched_race_duration_hours(71) == 71 / UNMATCHED_RACE_MPH

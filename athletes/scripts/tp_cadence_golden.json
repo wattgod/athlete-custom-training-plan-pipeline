@@ -1,0 +1,36 @@
+{
+  "_note": "Shared golden vectors for tp_cadence.cadence_target. Byte-identical copy in gravel-god-training-plans/tools/. Readback-derived forms: range from library item 14356264 (RLP Rising Cadence 15); single from pipeline item 14412885 (W01_Fri_Jul31_Cadence_Work).",
+  "cases": [
+    {"name": "range_low_high", "attributes": {"CadenceLow": "75", "CadenceHigh": "90"}, "phase": "work",
+     "expected": {"minValue": 75, "maxValue": 90, "unit": "roundOrStridePerMinute"}},
+    {"name": "range_reversed_is_sorted", "attributes": {"CadenceLow": "100", "CadenceHigh": "90"}, "phase": "work",
+     "expected": {"minValue": 90, "maxValue": 100, "unit": "roundOrStridePerMinute"}},
+    {"name": "range_equal_collapses_to_single", "attributes": {"CadenceLow": "85", "CadenceHigh": "85"}, "phase": "work",
+     "expected": {"minValue": 85, "unit": "roundOrStridePerMinute"}},
+    {"name": "single_cadence", "attributes": {"Cadence": "110"}, "phase": "work",
+     "expected": {"minValue": 110, "unit": "roundOrStridePerMinute"}},
+    {"name": "single_cadence_float_rounds", "attributes": {"Cadence": "92.6"}, "phase": "work",
+     "expected": {"minValue": 93, "unit": "roundOrStridePerMinute"}},
+    {"name": "only_high_present", "attributes": {"CadenceHigh": "100"}, "phase": "work",
+     "expected": {"minValue": 100, "unit": "roundOrStridePerMinute"}},
+    {"name": "only_low_present", "attributes": {"CadenceLow": "60"}, "phase": "work",
+     "expected": {"minValue": 60, "unit": "roundOrStridePerMinute"}},
+    {"name": "single_wins_over_partial_range", "attributes": {"Cadence": "95", "CadenceHigh": "100"}, "phase": "work",
+     "expected": {"minValue": 95, "unit": "roundOrStridePerMinute"}},
+    {"name": "no_cadence", "attributes": {"Duration": "300", "Power": "0.84"}, "phase": "work",
+     "expected": null},
+    {"name": "empty_string_is_absent", "attributes": {"Cadence": ""}, "phase": "work",
+     "expected": null},
+    {"name": "rest_reads_resting_only", "attributes": {"Cadence": "110", "CadenceResting": "85"}, "phase": "rest",
+     "expected": {"minValue": 85, "unit": "roundOrStridePerMinute"}},
+    {"name": "rest_without_resting_is_none", "attributes": {"Cadence": "110"}, "phase": "rest",
+     "expected": null},
+    {"name": "work_ignores_resting", "attributes": {"CadenceResting": "85"}, "phase": "work",
+     "expected": null}
+  ],
+  "errors": [
+    {"name": "below_floor", "attributes": {"Cadence": "20"}, "phase": "work"},
+    {"name": "above_ceiling", "attributes": {"CadenceHigh": "250", "CadenceLow": "90"}, "phase": "work"},
+    {"name": "non_numeric", "attributes": {"Cadence": "fast"}, "phase": "work"}
+  ]
+}

@@ -813,6 +813,20 @@ _MANUAL_REVIEW: dict[int, str] = {
     # Aug 17 2026 adversarial grade (Sonja v25):
     14356246: "Base - + Heat Training: desc says '~150min' on a 180min item (under the 20% lint threshold), promises warm-up/cool-down absent from the single-block structure; title says Heat Training but desc carries no heat instructions",
     14356254: "Better Late Than Cadence: missing primaryIntensityTargetOrRange; min-only targets with no ceilings on the 90min block and the 10x60s reps",
+    # 14355941 (Mixtape Feat Tempo), 14416937/14416939 (Power Test 12min/
+    # 3min) -- REMOVED Aug 24 2026 (updated_library_items.json index
+    # refresh). Coach fixed all three at the TP source:
+    #   - 14355941: 3 recovery valleys (240s, 55-60% FTP) inserted between
+    #     the tempo blocks + a DIMENSION cadence-alternation line added to
+    #     the description -- now passes the AE-3.14 continuous-hard-work
+    #     guard (longest run is 720s/12min < the 20min threshold).
+    #   - 14416937/14416939: structure.primaryIntensityMetric retagged
+    #     percentOfFtp -> rpe at the source, closing the metric-tag defect
+    #     (AE 9c) -- their RPE targets now decode honestly through
+    #     tp_structure_to_zwo's _RPE_TO_PCT_FTP table like any other
+    #     RPE-metric item (neither matches the assessment allowlist --
+    #     tp_structure_to_zwo.ASSESSMENT_ITEM_IDS/is_assessment_item -- so
+    #     they convert rather than ship unstructured).
 }
 
 

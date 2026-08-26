@@ -18,6 +18,8 @@ def _session(day, title, kind='bike', session_type='workout', hours=1.0):
         'tp_kind': kind, 'type': session_type,
         'duration_s': int(hours * 3600), 'total_time_planned': hours,
         'structure': None,
+        # A Day Off card is never blank (voice contract); fixtures carry a body.
+        'description': 'Off the bike, not off the plan.' if kind == 'day_off' else None,
     }
 
 
@@ -80,6 +82,27 @@ def test_valid_fixture_discriminates_generation_from_order_date():
     issues, confirmations = validate_transitional_input(_document())
     assert [item['id'] for item in issues] == ['SESSION_PREDATES_GENERATION']
     assert [item['id'] for item in confirmations] == ['SCHEDULE_MISMATCH_CONFIRM']
+
+
+def test_targetless_coached_block_needs_no_fake_race_day():
+    document = _document()
+    sessions = [
+        _session('2026-08-24', 'Rest Day', 'day_off', 'rest', 0),
+        _session('2026-08-25', 'Endurance'),
+    ]
+    document['plan_ir']['race_snapshot'] = {
+        'name': None, 'date': None, 'distance_miles': None}
+    document['plan_ir']['weeks'] = [{
+        'number': 1, 'phase': 'build', 'sessions': sessions}]
+    document['tp_manifest'].update({
+        'plan_title': 'Athlete M · Coached Block · 1wk [CUSTOM]',
+        'race': {'name': None, 'date': None, 'priority': None},
+        'expected': {
+            'bike': 1, 'strength': 0, 'day_off': 1, 'race': 0, 'total': 2},
+        'sessions': copy.deepcopy(sessions),
+    })
+    issues, _ = validate_transitional_input(document)
+    assert 'NO_RACE_DAY_WORKOUT' not in {item['id'] for item in issues}
 
 
 def test_seven_synthesized_rest_days_plus_race_is_thin():
@@ -281,8 +304,8 @@ def test_unavailable_day_not_covered_by_off_role_is_disclosed():
 
 
 def test_structureless_canonical_intensity_is_disclosed_for_rpe_athletes():
-    # RPE-controlled sessions carry structure=None (project_tp_structure) and
-    # 'Cadence Work' matches no title regex — canonical identity must catch it.
+    # Canonical intensity identity remains authoritative even when an older
+    # transitional document lacks the now-required RPE structure.
     document = _document()
     document['plan_ir']['weeks'][1]['sessions'].append(
         _session('2026-08-11', 'Cadence Work'))
@@ -308,3 +331,253 @@ def test_openers_with_hot_structure_are_not_intensity():
         entry for c in confirmations if c['id'] == 'SCHEDULE_MISMATCH_CONFIRM'
         for entry in c['review_value']['generated_mismatches']]
     assert not any('tuesday' in entry for entry in entries)
+
+
+def _rpe_structure(maximum):
+    return {
+        'primaryIntensityMetric': 'rpe',
+        'structure': [{
+            'steps': [{
+                'targets': [{'minValue': maximum, 'maxValue': maximum}],
+            }],
+        }],
+    }
+
+
+def test_rpe_description_structure_mismatch_blocks_review():
+    document = _document()
+    session = _session('2026-08-11', 'RPE Field Test')
+    session['description'] = '20-minute field test at RPE 9/10.'
+    session['structure'] = _rpe_structure(8)
+    document['plan_ir']['weeks'][1]['sessions'].append(session)
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(
+        issue for issue in issues
+        if issue['id'] == 'RPE_DESCRIPTION_STRUCTURE_MISMATCH')
+    mismatch = item['review_value']['sessions'][0]
+    assert mismatch['description_max_rpe'] == 9
+    assert mismatch['structure_max_rpe'] == 8
+
+
+def test_matching_rpe_description_and_structure_are_accepted():
+    document = _document()
+    session = _session('2026-08-11', 'Hard Intervals')
+    session['description'] = 'MAIN SET:\n-7x1min at RPE 9-10.'
+    session['structure'] = _rpe_structure(10)
+    document['plan_ir']['weeks'][1]['sessions'].append(session)
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    assert 'RPE_DESCRIPTION_STRUCTURE_MISMATCH' not in {
+        issue['id'] for issue in issues}
+
+
+def test_explicit_no_test_directive_blocks_any_rendered_field_test():
+    document = _document()
+    document['context']['profile'].setdefault('fitness_markers', {})[
+        'field_testing_allowed'] = False
+    session = _session('2026-08-11', 'RPE Field Test')
+    session['description'] = '20-minute field test at RPE 9.'
+    session['structure'] = _rpe_structure(9)
+    document['plan_ir']['weeks'][1]['sessions'].append(session)
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(
+        issue for issue in issues
+        if issue['id'] == 'FIELD_TEST_SUPPRESSION_BREACH')
+    assert {'date': '2026-08-11', 'title': 'RPE Field Test'} in (
+        item['review_value']['sessions'])
+
+
+def test_unresolved_pain_blocks_field_tests_and_max_rpe_prescriptions():
+    document = _document()
+    document['context']['profile']['injury_history'] = {
+        'current_injuries': [{
+            'area': 'back', 'description': 'Recent back pain', 'status': 'active',
+        }],
+    }
+    max_session = _session('2026-08-11', 'Standing Starts')
+    max_session['description'] = 'MAIN SET:\n-5 starts at RPE 10.'
+    max_session['structure'] = _rpe_structure(10)
+    document['plan_ir']['weeks'][1]['sessions'].append(max_session)
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(
+        issue for issue in issues
+        if issue['id'] == 'UNRESOLVED_PAIN_MAX_PRESCRIPTION')
+    titles = {session['title'] for session in item['review_value']['blocked_sessions']}
+    assert {'HR Field Test', 'Standing Starts'} <= titles
+
+
+def test_resolved_injury_does_not_block_max_prescription():
+    document = _document()
+    document['context']['profile']['injury_history'] = {
+        'current_injuries': [{
+            'description': 'Prior back pain', 'status': 'cleared',
+        }],
+    }
+    issues, _ = validate_transitional_input(document)
+    assert 'UNRESOLVED_PAIN_MAX_PRESCRIPTION' not in {
+        issue['id'] for issue in issues}
+
+
+def test_athlete_visible_copy_policy_rejects_leaks_and_generated_essays():
+    document = _document()
+    session = document['plan_ir']['weeks'][1]['sessions'][1]
+    session['title'] = 'Tempo [retained 14357240]'
+    session['display_name'] = session['title']
+    session['description'] = (
+        'Athlete - Week 1/2 - 2 weeks to Race\nPhase: BUILD\n\n'
+        'PURPOSE:\nAn internal explanation.\n\nGO GET IT, ATHLETE!')
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(
+        issue for issue in issues if issue['id'] == 'ATHLETE_VISIBLE_COPY_POLICY')
+    reasons = item['review_value']['violations'][0]['reasons']
+    assert 'internal retained token' in reasons
+    assert 'personal/week header' in reasons
+    assert 'phase or purpose essay header' in reasons
+    assert 'all-caps cheerleading' in reasons
+
+
+def test_a_only_weekly_note_copy_policy_does_not_invent_b_event():
+    document = _document()
+    document['plan_ir']['events'] = [{
+        'name': 'Three Course Race', 'priority': 'A', 'date': '2026-09-19',
+    }]
+    issues, _ = validate_transitional_input(document)
+    assert 'ATHLETE_VISIBLE_COPY_POLICY' not in {issue['id'] for issue in issues}
+
+
+def test_cadence_target_is_not_read_as_intensity():
+    """An RPE 6 step with a 95 rpm cadence target is RPE 6, not RPE 95
+    (sol review Aug 23 2026: the two-target form created a false
+    RPE_DESCRIPTION_STRUCTURE_MISMATCH blocker)."""
+    from post_render_validator import _structure_max_target
+    session = {"structure": {"primaryIntensityMetric": "rpe", "structure": [{"steps": [{
+        "targets": [{"minValue": 6, "maxValue": 6},
+                    {"minValue": 95, "unit": "roundOrStridePerMinute"}]}]}]}}
+    assert _structure_max_target(session) == 6
+
+
+def _step(seconds, min_pct=None, max_pct=None, intensity_class='active'):
+    if max_pct is not None:
+        targets = [{'minValue': min_pct, 'maxValue': max_pct}]
+    elif min_pct is not None:
+        targets = [{'minValue': min_pct}]
+    else:
+        targets = []
+    return {'length': {'value': seconds, 'unit': 'second'},
+            'targets': targets, 'intensityClass': intensity_class}
+
+
+def _bike_session(day, title, steps, session_type='workout'):
+    session = _session(day, title, session_type=session_type)
+    session['structure'] = {'structure': [{'steps': [step]} for step in steps]}
+    return session
+
+
+def test_hard_minutes_below_floor_warns_on_a_load_week():
+    """AE-2.1 (sol programming review 2026-08-24, blocker 4): a load week
+    delivering under 90 structured minutes at >=92% FTP surfaces a
+    WARNING (real case: W3's 26.7 hard minutes, the pilot plan's only
+    true build/load week)."""
+    document = _document()
+    document['plan_ir']['weeks'][1]['week_type'] = 'load'
+    document['plan_ir']['weeks'][1]['sessions'] = [
+        _bike_session('2026-08-11', 'Threshold Intervals', [
+            _step(1800, 95, 100),  # 30 min hard
+            _step(3600, 60, 65),  # 60 min easy -- not hard
+        ]),
+    ]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(issue for issue in issues
+                if issue['id'].startswith('HARD_MINUTES_BELOW_FLOOR')
+                and issue['review_value']['week'] == 1)
+    assert item['id'] == 'HARD_MINUTES_BELOW_FLOOR_W01'
+    assert item['severity'] == 'WARNING'
+    assert item['review_value']['hard_minutes'] == 30.0
+
+
+def test_hard_minutes_at_or_above_floor_does_not_warn():
+    document = _document()
+    document['plan_ir']['weeks'][1]['week_type'] = 'load'
+    document['plan_ir']['weeks'][1]['sessions'] = [
+        _bike_session('2026-08-11', 'Threshold Intervals', [
+            _step(5700, 95, 100),  # 95 min hard
+        ]),
+    ]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    assert not [issue for issue in issues
+                if issue['id'].startswith('HARD_MINUTES_BELOW_FLOOR')
+                and issue['review_value']['week'] == 1]
+
+
+def test_hard_minutes_counts_an_open_field_test_effort():
+    """A field-test session's open/FreeRide main effort (AE-8.4d: honest
+    zero-target structure, never a fake numeric anchor) still counts
+    toward the floor -- AE-2.1: 'testing weeks count test efforts toward
+    the floor'. Between-rep recovery at a real sub-92% target does not."""
+    document = _document()
+    document['plan_ir']['weeks'][1]['week_type'] = 'load'
+    document['plan_ir']['weeks'][1]['sessions'] = [
+        _bike_session('2026-08-11', 'FTP Test', [
+            _step(600, 45, 70, intensity_class='warmUp'),  # warmup: excluded
+            _step(1200, 0, 0),  # open 20min test effort: counted (1200s)
+            _step(300, 50, 50),  # easy recovery: excluded
+        ]),
+    ]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(issue for issue in issues
+                if issue['id'].startswith('HARD_MINUTES_BELOW_FLOOR')
+                and issue['review_value']['week'] == 1)
+    assert item['review_value']['hard_minutes'] == 20.0
+
+
+def test_hard_minutes_floor_exempt_for_recovery_taper_race_and_pre_plan():
+    """Every week in the base fixture has zero structured hard minutes
+    (sessions carry no structure) -- without the exemption every week_type
+    would warn. recovery/taper/race are exempt by week_type; a load-typed
+    'pre_plan' (W00) bridge week is exempt by phase (it is not a
+    structured training week at all)."""
+    document = _document()
+    document['plan_ir']['weeks'][0]['phase'] = 'pre_plan'
+    document['plan_ir']['weeks'][0]['week_type'] = 'load'
+    document['plan_ir']['weeks'][1]['week_type'] = 'recovery'
+    document['plan_ir']['weeks'].append({
+        'number': 5, 'phase': 'taper', 'week_type': 'taper', 'sessions': []})
+    issues, _ = validate_transitional_input(document)
+    assert not any(issue['id'].startswith('HARD_MINUTES_BELOW_FLOOR') for issue in issues)
+
+
+def test_hard_minutes_below_floor_reports_every_offending_week_distinctly():
+    """validate_transitional_input's final step dedupes issues by a plain
+    "id" key ({item["id"]: item for item in issues}) -- a bare
+    "HARD_MINUTES_BELOW_FLOOR" id would silently collapse every offending
+    week down to just the last one processed. Real case: Steve Wagner's
+    W1 (38.5 min), W2 (27.0 min), and W3 (24.0 min) all failed the floor;
+    a shared id would have reported only W3 to the coach. Each week's
+    finding must survive as its own distinct, per-week id."""
+    document = _document()
+    document['plan_ir']['weeks'][1]['week_type'] = 'load'
+    document['plan_ir']['weeks'][1]['sessions'] = [
+        _bike_session('2026-08-11', 'Threshold Intervals', [
+            _step(1800, 95, 100),  # 30 min hard
+        ]),
+    ]
+    document['plan_ir']['weeks'].append({
+        'number': 2, 'phase': 'base', 'week_type': 'load', 'sessions': [
+            _bike_session('2026-08-18', 'Threshold Intervals', [
+                _step(600, 95, 100),  # 10 min hard
+            ]),
+        ]})
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    matches = {issue['id']: issue for issue in issues
+               if issue['id'].startswith('HARD_MINUTES_BELOW_FLOOR')}
+    assert set(matches) == {'HARD_MINUTES_BELOW_FLOOR_W01', 'HARD_MINUTES_BELOW_FLOOR_W02'}
+    assert matches['HARD_MINUTES_BELOW_FLOOR_W01']['review_value']['hard_minutes'] == 30.0
+    assert matches['HARD_MINUTES_BELOW_FLOOR_W02']['review_value']['hard_minutes'] == 10.0

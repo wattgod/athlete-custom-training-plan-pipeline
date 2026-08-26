@@ -19,6 +19,11 @@ import re
 
 from jsonschema import Draft202012Validator
 
+if __package__:
+    from .delivery_notes import render_coached_weekly_notes
+else:  # Direct script execution keeps athletes/scripts on sys.path.
+    from delivery_notes import render_coached_weekly_notes
+
 
 CONTRACT_VERSION = "apply_contract/v1"
 DATED_KINDS = {
@@ -33,6 +38,8 @@ DISPOSITIONS = {"create", "update", "keep", "delete"}
 INVENTORY_FIELDS = {
     "remote_id", "desired_digest", "payload_snapshot_ref", "kind", "last_op_id",
 }
+SUPPORTED_TP_WORKOUT_TYPES = frozenset({2, 7, 9})
+LEGACY_PRIOR_TP_WORKOUT_TYPES = frozenset({2, 7, 9, 100})
 SnapshotReader = Callable[[str], Mapping[str, Any]]
 
 
@@ -56,6 +63,141 @@ OperationReader = Callable[[str], OperationProvenance]
 
 class ApplyContractError(ValueError):
     """The offline contract is incomplete, ambiguous, or schema-invalid."""
+
+
+MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS = 360
+_VISIBLE_INTERNAL_TAG = re.compile(
+    r"\[[A-Z][A-Z0-9 _-]{0,40}:\s*[^\]]*\]", re.IGNORECASE)
+_FUEL_TAG = re.compile(
+    r"^\[(FUEL|LONG-RIDE FUEL|RACE FUEL):\s*([^\]]+)\]\s*$",
+    re.IGNORECASE,
+)
+_ATHLETE_WEEK_BOILERPLATE = re.compile(
+    r"^.+?\s+-\s+Week\s+\d+/\d+\s+-\s+\d+\s+weeks?\s+to\s+.+$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_PHASE_BOILERPLATE = re.compile(
+    r"^Phase:\s*.+$", re.IGNORECASE | re.MULTILINE)
+_DROP_DESCRIPTION_SECTION = re.compile(
+    r"(?ms)^\s*(?:PURPOSE|DIMENSIONS):\s*.*?(?=^\s*[A-Z][A-Z -]{2,}:\s*|\Z)"
+)
+_DESCRIPTION_SECTION = re.compile(
+    r"^\s*[•*-]?\s*(?P<label>FUEL|FUELING PLAN|NUTRITION|HYDRATION|"
+    r"EXECUTION|HOW TO RIDE IT|AUDIBLE|POSITION|CADENCE):\s*"
+    r"(?P<body>.*?)(?=^\s*[•*-]?\s*[A-Z][A-Z /-]{2,}:\s*|\Z)",
+    re.MULTILINE | re.DOTALL | re.IGNORECASE,
+)
+
+
+def _clean_description_detail(value: str) -> str:
+    value = re.split(r"\n\s*\n", value, maxsplit=1)[0]
+    lines = []
+    for raw in value.splitlines():
+        line = re.sub(r"^\s*[•*-]\s*", "", raw).strip()
+        if not line:
+            continue
+        line = re.sub(
+            r"\bPractice this prescription\.?", "", line,
+            flags=re.IGNORECASE,
+        ).strip()
+        if line:
+            lines.append(line)
+    return " ".join(lines)
+
+
+def _concise_structured_description(text: str) -> str:
+    # Some legacy generators flattened headings into one long line. Restore
+    # section boundaries before selecting only details that are not already in
+    # TrainingPeaks' executable step graph.
+    text = re.sub(
+        r"\s+(?=(?:WARM-UP|MAIN SET|COOL-DOWN|EXECUTION|HOW TO RIDE IT|"
+        r"FUEL|NUTRITION|HYDRATION|AUDIBLE|POSITION|CADENCE|PRESCRIPTION):)",
+        "\n", text, flags=re.IGNORECASE,
+    )
+    details = []
+    seen_labels = set()
+    for match in _DESCRIPTION_SECTION.finditer(text):
+        label = match.group("label").upper()
+        if label == "FUELING PLAN":
+            label = "FUEL"
+        if label in seen_labels:
+            continue
+        value = _clean_description_detail(match.group("body"))
+        if not value or (label == "AUDIBLE" and len(value) < 12):
+            continue
+        seen_labels.add(label)
+        display_label = "How to ride it" if label == "HOW TO RIDE IT" else label.title()
+        details.append(f"{display_label}: {value}")
+    if details:
+        return "\n".join(details)
+    if (len(text.strip()) <= MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS
+            and not re.search(
+                r"(?im)^\s*(?:WARM-UP|MAIN SET|COOL-DOWN|PRESCRIPTION):",
+                text,
+            )):
+        return text.strip()
+    return "Follow the structure. Hold the written effort. No bonus rounds."
+
+
+def _concise_race_description(text: str) -> str:
+    carbs = re.search(r"Carbs/hour:\s*(\d+)\s*g", text, re.IGNORECASE)
+    start = re.search(r"Start fueling at\s*([^,\n]+)", text, re.IGNORECASE)
+    first = re.search(r"First third:.*?\(RPE\s*([\d-]+)\)", text, re.IGNORECASE)
+    middle = re.search(r"Middle third:.*?RPE\s*([\d-]+)", text, re.IGNORECASE)
+    lines = []
+    if first:
+        lines.append(f"Start controlled at RPE {first.group(1)}.")
+    if middle:
+        lines.append(f"Settle at RPE {middle.group(1)}.")
+    if carbs:
+        fuel = f"Fuel {carbs.group(1)} g/hr"
+        if start:
+            fuel += f" from {start.group(1).strip()}"
+        lines.append(fuel + ".")
+    lines.extend([
+        "Climb at an effort you can repeat all day.",
+        "Smooth beats fast. Heroics remain optional and generally unhelpful.",
+    ])
+    return " ".join(lines)
+
+
+def _visible_workout_description(value: Any, *, structured: bool) -> str:
+    """Project concise athlete copy while leaving executable structure alone."""
+    text = str(value or "").replace("\r\n", "\n")
+    lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        fuel = _FUEL_TAG.fullmatch(line)
+        if fuel:
+            lines.extend(["FUEL:", fuel.group(2).strip()])
+            continue
+        if _ATHLETE_WEEK_BOILERPLATE.fullmatch(line):
+            continue
+        if _PHASE_BOILERPLATE.fullmatch(line):
+            continue
+        if re.fullmatch(r"GO GET IT(?:,\s*[^!]+)?!", line, re.IGNORECASE):
+            continue
+        if re.match(r"^Level\s+\d+:\s*", line, re.IGNORECASE):
+            continue
+        lines.append(raw.strip())
+    text = "\n".join(lines)
+    if structured:
+        text = _DROP_DESCRIPTION_SECTION.sub("", text)
+        text = _concise_structured_description(text)
+    elif re.search(r"(?im)^\s*RACE DAY:", text):
+        text = _concise_race_description(text)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if len(text) > MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS:
+        clipped = text[:MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS + 1]
+        boundary = max(clipped.rfind(". "), clipped.rfind("\n"))
+        if boundary >= MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS // 2:
+            clipped = clipped[:boundary + 1]
+        else:
+            clipped = clipped[:MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS].rstrip()
+        text = clipped.strip()
+    if _VISIBLE_INTERNAL_TAG.search(text):
+        raise ApplyContractError("athlete-facing workout description contains internal tag")
+    return text
 
 
 def canonical_json(value: Any) -> bytes:
@@ -102,7 +244,8 @@ PAYLOAD_SCHEMAS: Dict[str, Dict[str, Any]] = {
         "properties": {
             "date": {"type": ["string", "null"]}, "title": {"type": "string"},
             "description": {"type": ["string", "null"]},
-            "tp_workout_type": {"type": ["integer", "null"]},
+            "tp_workout_type": {"type": "integer",
+                                "enum": sorted(SUPPORTED_TP_WORKOUT_TYPES)},
             "total_seconds": {"type": "integer", "minimum": 0},
             "tss_planned": {"type": ["number", "null"]},
             "structure": {"type": ["object", "null"]},
@@ -146,6 +289,20 @@ PAYLOAD_SCHEMAS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+# Desired payloads stay strict. A correction revision may still need an exact
+# before-image for a malformed legacy object so it can update it by remote ID
+# and restore that image if the controlled attempt rolls back.
+PRIOR_PAYLOAD_SCHEMAS = dict(PAYLOAD_SCHEMAS)
+PRIOR_PAYLOAD_SCHEMAS["workout_upsert"] = {
+    **PAYLOAD_SCHEMAS["workout_upsert"],
+    "properties": {
+        **PAYLOAD_SCHEMAS["workout_upsert"]["properties"],
+        "tp_workout_type": {
+            "type": "integer", "enum": sorted(LEGACY_PRIOR_TP_WORKOUT_TYPES),
+        },
+    },
+}
+
 
 def _operation_branch(kind: str, disposition: str) -> Dict[str, Any]:
     dated = kind in DATED_KINDS
@@ -185,7 +342,8 @@ def _operation_branch(kind: str, disposition: str) -> Dict[str, Any]:
             "payload": PAYLOAD_SCHEMAS[kind] if payload_required else {"type": "null"},
             "expected_digest": ({"type": "string", "pattern": "^[0-9a-f]{64}$"}
                                 if digest_required else {"type": "null"}),
-            "prior_payload": PAYLOAD_SCHEMAS[kind] if prior_required else {"type": "null"},
+            "prior_payload": (PRIOR_PAYLOAD_SCHEMAS[kind]
+                              if prior_required else {"type": "null"}),
             "before_image": ({"type": "object"} if before_required else {"type": "null"}),
             "remote_marker": marker_schema, "predecessor": predecessor_schema,
             "rollback": {"type": "object", "additionalProperties": False,
@@ -256,6 +414,55 @@ def _schema_validate(contract: Dict[str, Any]) -> None:
         raise ApplyContractError(f"schema validation failed at {location}: {error.message}")
 
 
+def _validate_workout_payload(
+    payload: Mapping[str, Any], context: str, *, allow_legacy: bool = False,
+) -> None:
+    """Reject payloads that are schema-shaped but not publishable workouts."""
+    type_id = payload.get("tp_workout_type")
+    seconds = payload.get("total_seconds")
+    tss = payload.get("tss_planned")
+    structure = payload.get("structure")
+    allowed = (LEGACY_PRIOR_TP_WORKOUT_TYPES
+               if allow_legacy else SUPPORTED_TP_WORKOUT_TYPES)
+    if type_id not in allowed:
+        raise ApplyContractError(f"{context} has unsupported tp_workout_type")
+    if not allow_legacy:
+        description = str(payload.get("description") or "")
+        if _VISIBLE_INTERNAL_TAG.search(description):
+            raise ApplyContractError(
+                f"{context} athlete-facing description contains internal tag")
+        if structure is not None:
+            if len(description) > MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS:
+                raise ApplyContractError(
+                    f"{context} athlete-facing description exceeds max length")
+            if (_ATHLETE_WEEK_BOILERPLATE.search(description)
+                    or _PHASE_BOILERPLATE.search(description)
+                    or re.search(r"(?m)^\s*PURPOSE:\s*$", description)):
+                raise ApplyContractError(
+                    f"{context} athlete-facing description contains boilerplate")
+    if type_id == 100:
+        if (not isinstance(seconds, int) or isinstance(seconds, bool)
+                or seconds < 0):
+            raise ApplyContractError(
+                f"{context} legacy workout has invalid duration")
+        return
+    if type_id == 7:
+        if seconds != 0 or tss is not None or structure is not None:
+            raise ApplyContractError(f"{context} day-off payload is inconsistent")
+        return
+    if not isinstance(seconds, int) or isinstance(seconds, bool) or seconds <= 0:
+        raise ApplyContractError(
+            f"{context} substantive workout requires positive duration")
+    if type_id == 2 and structure is None and tss is None:
+        raise ApplyContractError(
+            f"{context} bike/race workout lacks both structure and planned TSS")
+    if structure is not None:
+        blocks = structure.get("structure")
+        if not isinstance(blocks, list) or not blocks:
+            raise ApplyContractError(
+                f"{context} workout structure must contain blocks")
+
+
 def _logical_id(order_id: str, kind: str, logical_key: str) -> str:
     return f"{order_id}:{kind}:{logical_key}"
 
@@ -263,6 +470,8 @@ def _logical_id(order_id: str, kind: str, logical_key: str) -> str:
 def _desired_resources(
     ir: Dict[str, Any], order_id: str, athlete_dir: Optional[Path],
     singleton_desires: Mapping[str, Dict[str, Any]],
+    *, delivery_platform: Optional[str] = None,
+    protected_resources: Optional[Mapping[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     desired: Dict[str, Dict[str, Any]] = {}
     per_date: Dict[str, int] = defaultdict(int)
@@ -277,7 +486,9 @@ def _desired_resources(
             desired[logical_id] = {"kind": "workout_upsert", "logical_key": key,
                 "date": session.get("date"), "payload": {
                     "date": session.get("date"), "title": str(session.get("title") or "Untitled session"),
-                    "description": session.get("description"),
+                    "description": _visible_workout_description(
+                        session.get("description"),
+                        structured=session.get("structure") is not None),
                     "tp_workout_type": session.get("workout_type_value_id"),
                     # Day-off cards must never carry residual duration/TSS
                     # from a rest ZWO (a 1-minute 1-TSS Day Off shipped on a
@@ -289,14 +500,56 @@ def _desired_resources(
                     "structure": (None if str(session.get("tp_kind") or "") == "day_off"
                                   else session.get("structure")),
                 }}
-            note_key = f"session-{date}-{per_date[date]}"
-            note_id = _logical_id(order_id, "calendar_note_upsert", note_key)
-            desired[note_id] = {"kind": "calendar_note_upsert", "logical_key": note_key,
-                "date": session.get("date"), "payload": {"date": session.get("date"),
-                    "title": str(session.get("title") or "Untitled session"),
-                    "body": f"Week {week.get('number')} · {session.get('title') or 'Untitled session'} · {session.get('type') or 'workout'}"}}
 
-    for index, note in enumerate(ir.get("notes") or [], 1):
+    # AE-9.3/AE-9.4 (2026-08-24 TP review, round-2 addendum): mirror the
+    # workout loop's per_date collision handling above -- the fixed
+    # self-review and comment-protocol notes are deliberately dated onto a
+    # date another note already claims (self-review shares a short week's
+    # last day with its own midweek note; the Day-1 protocol note always
+    # shares its date with that week's Monday note). Without a sequence
+    # number, same-date notes would collide on `note_id` and silently
+    # overwrite each other in `desired` -- exactly the collision
+    # fulfillment_manifest.py's matching fix guards against.
+    note_per_date: Dict[str, int] = defaultdict(int)
+    for note in render_coached_weekly_notes(ir):
+        date = str(note["date"])
+        note_per_date[date] += 1
+        sequence = note_per_date[date]
+        note_key = f"weekly-briefing-{date}" if sequence == 1 else f"weekly-briefing-{date}-{sequence}"
+        note_id = _logical_id(order_id, "calendar_note_upsert", note_key)
+        desired[note_id] = {
+            "kind": "calendar_note_upsert",
+            "logical_key": note_key,
+            "date": date,
+            "payload": {
+                "date": date,
+                "title": str(note["title"]),
+                "body": str(note["body"]),
+            },
+        }
+
+    for logical_id, raw in (protected_resources or {}).items():
+        resource = dict(raw)
+        kind = str(resource.get("kind") or "")
+        if kind not in {"workout_upsert", "calendar_note_upsert"}:
+            raise ApplyContractError("protected resource has unsupported kind")
+        prefix = f"{order_id}:{kind}:"
+        if not str(logical_id).startswith(prefix):
+            raise ApplyContractError("protected resource identity mismatch")
+        if logical_id in desired:
+            raise ApplyContractError("protected resource collides with plan output")
+        logical_key = str(logical_id)[len(prefix):]
+        desired[str(logical_id)] = {
+            "kind": kind,
+            "logical_key": logical_key,
+            "date": (resource.get("payload") or {}).get("date"),
+            "payload": dict(resource.get("payload") or {}),
+        }
+
+    trainingpeaks_only = str(delivery_platform or "").lower() == "trainingpeaks"
+
+    for index, note in ([] if trainingpeaks_only else
+                        enumerate(ir.get("notes") or [], 1)):
         if note.get("kind") not in {"mental_training", "mental_task"}:
             continue
         date = note.get("date")
@@ -307,8 +560,9 @@ def _desired_resources(
                 "title": str(note.get("title") or slug.replace("_", " ").title()),
                 "body": str(note.get("body") or note.get("text") or "")}}
 
-    attachments = list(ir.get("attachments") or [])
-    if not attachments:
+    attachments = ([] if trainingpeaks_only else
+                   list(ir.get("attachments") or []))
+    if not attachments and not trainingpeaks_only:
         guide_name = ("training_guide.pdf" if athlete_dir and
                       (athlete_dir / "training_guide.pdf").is_file()
                       else "training_guide.html")
@@ -335,8 +589,9 @@ def _desired_resources(
             "date": None, "payload": {"parent_logical_id": parent_logical_id, "filename": filename,
                 "sha256": hashlib.sha256(file_bytes).hexdigest(), "bytes_ref": raw_path}}
 
-    entitlements = list(ir.get("entitlements") or [])
-    if not entitlements:
+    entitlements = ([] if trainingpeaks_only else
+                    list(ir.get("entitlements") or []))
+    if not entitlements and not trainingpeaks_only:
         race = ir.get("race_snapshot") or {}
         entitlements = [{"product_id": str(race.get("name") or "course") + ":" + str(race.get("date") or "undated")}]
     for entitlement in entitlements:
@@ -516,7 +771,8 @@ def _read_prior_payload(
         payload = dict(snapshot_reader(str(ref)))
     except Exception as exc:
         raise ApplyContractError("could not resolve immutable payload snapshot") from exc
-    errors = list(Draft202012Validator(PAYLOAD_SCHEMAS[kind]).iter_errors(payload))
+    errors = list(Draft202012Validator(
+        PRIOR_PAYLOAD_SCHEMAS[kind]).iter_errors(payload))
     if errors:
         raise ApplyContractError("payload snapshot does not match its canonical kind schema")
     if digest_payload(payload) != record["desired_digest"]:
@@ -676,6 +932,13 @@ def validate_contract(
             raise ApplyContractError("op_id does not bind logical_id and revision")
         if op["remote_marker"] is not None and op["logical_id"] not in op["remote_marker"]:
             raise ApplyContractError("remote marker does not embed logical_id")
+        if op["kind"] == "workout_upsert":
+            for payload_name in ("payload", "prior_payload"):
+                workout_payload = op.get(payload_name)
+                if workout_payload is not None:
+                    _validate_workout_payload(
+                        workout_payload, f"{op['op_id']} {payload_name}",
+                        allow_legacy=payload_name == "prior_payload")
         if op["payload"] is not None and op["expected_digest"] != digest_payload(op["payload"]):
             raise ApplyContractError("expected_digest does not match payload")
         if inventory_supplied:
@@ -735,6 +998,8 @@ def build_contract(
     singleton_desires: Optional[Mapping[str, Dict[str, Any]]] = None,
     payload_snapshot_reader: Optional[SnapshotReader] = None,
     last_operation_reader: Optional[OperationReader] = None,
+    delivery_platform: Optional[str] = None,
+    protected_resources: Optional[Mapping[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     revision = int(generation_revision)
     inventory = _validate_inventory(
@@ -742,9 +1007,33 @@ def build_contract(
         current_revision=revision, order_id=str(order_id),
         tp_athlete_id=str(tp_athlete_id))
     inspection = dict(inspection or {})
+    protection = canonical_model.get("calendar_protection") or {}
+    if protection.get("requested"):
+        evidence = protection.get("inventory_evidence") or {}
+        surfaces = evidence.get("read_surfaces") or []
+        counts = evidence.get("counts") or {}
+        if (effective_remote_inventory is None or protected_resources is None
+                or evidence.get("contract_version")
+                != "trainingpeaks_calendar_inventory_evidence/v1"
+                or evidence.get("complete") is not True
+                or not re.fullmatch(
+                    r"[0-9a-f]{64}",
+                    str(evidence.get("provider_inventory_sha256") or ""))
+                or set(surfaces) != {"workouts", "notes", "events"}
+                or not all(
+                    isinstance(counts.get(name), int)
+                    and not isinstance(counts.get(name), bool)
+                    and counts.get(name) >= 0
+                    for name in surfaces)
+                or counts.get("workouts", 0) + counts.get("notes", 0)
+                != len(effective_remote_inventory)):
+            raise ApplyContractError(
+                "calendar protection requires complete current inventory evidence")
     desired = _desired_resources(
         ir, str(order_id), Path(athlete_dir) if athlete_dir else None,
         singleton_desires or {},
+        delivery_platform=delivery_platform,
+        protected_resources=protected_resources,
     )
     operations = [
         _operation(str(order_id), revision, logical_id,
@@ -753,6 +1042,15 @@ def build_contract(
         for logical_id in sorted(set(desired) | set(inventory))
     ]
     operations.sort(key=_sort_key)
+    if (protection.get("requested") and protected_resources
+            and not any(operation.get("disposition") == "keep"
+                        for operation in operations)):
+        raise ApplyContractError(
+            "calendar protection requires at least one explicit keep operation")
+    if protection.get("requested") and any(
+            operation.get("disposition") == "delete" for operation in operations):
+        raise ApplyContractError(
+            "calendar protection forbids delete operations")
     seal = compute_model_seal(canonical_model, review_items, guide_sources, operations)
     contract = {"contract_version": CONTRACT_VERSION, "order_id": str(order_id),
                 "tp_athlete_id": str(tp_athlete_id),

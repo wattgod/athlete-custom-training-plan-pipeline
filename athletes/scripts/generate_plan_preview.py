@@ -25,6 +25,7 @@ SCRIPTS_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPTS_DIR))
 from zwo_parser import parse_zwo
 from brand_config import workout_author
+from known_races import UNMATCHED_RACE_MPH
 
 
 # ===========================================================================
@@ -343,7 +344,9 @@ def _run_verification_checks(
     meth_config = methodology.get('configuration', {})
     intensity_dist = meth_config.get('intensity_distribution', {})
     target_z1z2 = intensity_dist.get('z1_z2', 0)
-    if target_z1z2 and weeks_data:
+    load_phases_present = any(
+        w['phase'].startswith(('base', 'build', 'peak')) for w in weeks_data)
+    if target_z1z2 and weeks_data and load_phases_present:
         # Count duration-weighted SESSION intensity, not workout count or
         # literal segment zones. Methodology targets describe the plan's
         # hard/easy session emphasis ("hard days"), and were calibrated
@@ -385,6 +388,12 @@ def _run_verification_checks(
             'detail': (f"Target: {target_pct:.0f}% easy | Actual: {easy_pct:.0f}% easy session time "
                        f"({easy_min:.0f}/{total_min:.0f} min) | Delta: {diff:.0f}% | "
                        f"Thresholds: PASS <10%, WARN 10-15%, FAIL >15%"),
+        })
+    elif target_z1z2 and weeks_data:
+        checks.append({
+            'name': 'Zone Distribution',
+            'status': 'PASS',
+            'detail': 'Not applicable to a race/recovery-only revision horizon',
         })
 
     # 5. Phase progression
@@ -476,10 +485,16 @@ def _run_verification_checks(
             wo = d.get('workout')
             if wo and 'FTP_Test' in wo.get('_stem', wo.get('name', '')):
                 ftp_tests.append(f"W{w['week']:02d} {d['day']}")
+    ftp_not_required = (
+        len(weeks_data) < 8
+        and all(w['phase'] in ('taper', 'race', 'recovery') for w in weeks_data)
+    )
     checks.append({
         'name': 'FTP Tests',
-        'status': 'PASS' if ftp_tests else 'WARN',
-        'detail': f"Tests: {', '.join(ftp_tests)}" if ftp_tests else "No FTP tests found",
+        'status': 'PASS' if ftp_tests or ftp_not_required else 'WARN',
+        'detail': (f"Tests: {', '.join(ftp_tests)}" if ftp_tests else
+                   "Not required in this short race/recovery revision"
+                   if ftp_not_required else "No FTP tests found"),
     })
 
     # 10. FTP Test Frequency — plans 8+ weeks should have at least 2 tests
@@ -507,8 +522,11 @@ def _run_verification_checks(
     target_race = profile.get('target_race', {})
     race_distance_mi = target_race.get('distance_miles', 0) or 0
     if race_distance_mi >= 50 and weeks_data:
-        # Estimate race duration: 200-mile gravel ~14-18h, use 15 mph avg for gravel
-        estimated_race_hrs = race_distance_mi / 15.0
+        # Estimate race duration: 200-mile gravel ~14-18h, use 15 mph avg for
+        # gravel. Same constant as known_races.estimate_unmatched_race_duration_hours
+        # -- single source (CLAUDE.md: a fact in more than one artifact has
+        # exactly one source).
+        estimated_race_hrs = race_distance_mi / UNMATCHED_RACE_MPH
         estimated_race_min = estimated_race_hrs * 60
         # Find the longest *training* ride across the plan. Race-day FreeRide
         # entries are intentionally long and must not certify their own

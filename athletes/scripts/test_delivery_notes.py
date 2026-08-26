@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from delivery_notes import render_notes, _week_sequence, _quality_sessions
+from delivery_notes import (
+    render_coached_weekly_notes,
+    render_notes,
+    _week_sequence,
+    _quality_sessions,
+)
 from delivery_render import load_brand, render_title
 
 
@@ -46,6 +51,90 @@ def _notes(plan, brand="gravelgod"):
 
 def _by_type(notes):
     return {note["type"]: note for note in notes}
+
+
+def _by_title_prefix(notes, prefix):
+    """AE-9.3/AE-9.4 (round-2 addendum) put a fixed-title self-review note on
+    every week's Sunday and a fixed-title comment-protocol note on Day 1, so
+    the first/last item in ``render_coached_weekly_notes`` is no longer
+    reliably the weekly/race note under test -- callers that want one
+    specific week's note look it up by its title prefix instead."""
+    return next(note for note in notes if note["title"].startswith(prefix))
+
+
+def test_coached_weekly_notes_are_direct_clean_and_bounded():
+    plan = _plan(weeks=2, metric="rpe", later_event=False)
+    plan["athlete"]["name"] = "Michael Beal"
+    plan["fueling"] = {"race_range_g_per_hour": [60, 70]}
+    plan["events"] = [
+        {"name": "Vancouver Gran Fondo", "priority": "A", "date": "2026-08-22"},
+        {"name": "Whistler MTB", "priority": "B", "date": "2026-08-23"},
+    ]
+    notes = render_coached_weekly_notes(plan)
+    # AE-9.1 (2026-08-24 TP review): week 1's own FTP Test session makes it
+    # a "testing" week (story_notes overrides week_type for number==1 +
+    # is_field_test), which is excluded from both mid-week note gates; week
+    # 2 is race week -- Monday note only either way. No mid-week additions.
+    # AE-9.3/AE-9.4 (round-2 addendum) add 3 more: the Day-1 comment-protocol
+    # note and a Sunday self-review note for each of the 2 weeks.
+    assert len(notes) == 5
+    race = _by_title_prefix(notes, "Week 2: Race Week")
+    assert "Openers before Vancouver Gran Fondo" in race["body"]
+    assert "60-70 g/hr" in race["body"]
+    assert "Inside or out" in race["body"]
+    assert "[GG:" not in race["body"]
+    assert "THE INTENT" not in race["body"]
+    assert "YOUR CALL" not in race["body"]
+    assert len(race["body"].split()) <= 110
+
+
+def test_coached_weekly_notes_name_the_block_focus_without_an_essay():
+    plan = _plan(weeks=2, metric="rpe", later_event=False)
+    plan["coached_block"] = {
+        "focus": "cyclocross starts, repeatability, and handling",
+    }
+    body = _by_title_prefix(render_coached_weekly_notes(plan), "Week 1:")["body"]
+    assert "This block: cyclocross starts, repeatability, and handling." in body
+    assert len(body.split()) <= 90
+
+
+def test_mandatory_b_event_makes_a_race_decide_the_mode():
+    plan = _plan(weeks=2, metric="rpe", later_event=False)
+    plan["fueling"] = {"race_range_g_per_hour": [60, 70]}
+    plan["events"] = [
+        {"name": "Vancouver Gran Fondo", "priority": "A",
+         "date": "2026-08-22"},
+        {"name": "Whistler MTB", "priority": "B", "mandatory": True,
+         "date": "2026-08-23"},
+    ]
+    body = _by_title_prefix(render_coached_weekly_notes(plan), "Week 2: Race Week")["body"]
+    assert "Whistler MTB is mandatory; Saturday decides the mode." in body
+    assert "Sunday: normal legs, race it; heavy legs, completion mode." in body
+    assert "optional" not in body
+
+
+def test_single_event_race_week_never_invents_b_event_or_fuel_both_copy():
+    plan = _plan(weeks=2, metric="rpe", later_event=False)
+    plan["fueling"] = {"race_range_g_per_hour": [60, 70]}
+    plan["events"] = [{
+        "name": "Vancouver Gran Fondo", "priority": "A", "date": "2026-08-22",
+    }]
+    race = _by_title_prefix(render_coached_weekly_notes(plan), "Week 2: Race Week")
+    assert "B event" not in race["body"]
+    assert "both events" not in race["body"]
+    assert "Fuel Vancouver Gran Fondo" in race["body"]
+    assert "Vancouver Gran Fondo" in race["body"]
+    assert len(race["body"].split()) <= 110
+def test_nameless_b_event_is_not_rendered_as_an_invented_placeholder():
+    plan = _plan(weeks=2, metric="rpe", later_event=False)
+    plan["fueling"] = {"race_range_g_per_hour": [60, 70]}
+    plan["events"] = [
+        {"name": "Salida 76", "priority": "A", "date": "2026-08-22"},
+        {"priority": "B", "date": "2026-08-23"},
+    ]
+    body = render_coached_weekly_notes(plan)[-1]["body"]
+    assert "B event" not in body
+    assert "both events" not in body
 
 
 def test_full_guillermo_render_has_complete_inventory_and_safe_copy():
@@ -657,6 +746,38 @@ def test_block_notes_avoid_banned_hydration_doctrine_language():
     notes = (Path(__file__).resolve().parent.parent / "config" / "block_notes.yaml").read_text()
     banned = ("clear urine", "don't wait until thirsty", "hydrate aggressively")
     assert not any(phrase in notes.lower() for phrase in banned)
+
+
+def test_every_weekly_briefing_tells_the_story_and_offers_bounded_choice():
+    briefings = [note for note in _notes(_plan())
+                 if note["type"] == "weekly_briefing"]
+    assert briefings
+    for briefing in briefings:
+        body = briefing["body"]
+        assert "THE INTENT THIS WEEK" in body
+        assert "YOUR CALL" in body
+        assert "Do not" in body or "do not" in body
+
+
+def test_recovery_choice_defaults_to_rest_and_never_prescribes_makeup_work():
+    plan = _plan()
+    plan["weeks"][1]["week_type"] = "recovery"
+    recovery = next(
+        note for note in _notes(plan)
+        if note["type"] == "weekly_briefing" and note["title"].startswith("WEEK 2")
+    )
+    assert "Full rest is the default" in recovery["body"]
+    assert "RPE 1-2" in recovery["body"]
+    assert "Do not make up missed work" in recovery["body"]
+    assert "pain, illness, or worsening symptoms means stop and message me" in recovery["body"]
+
+
+def test_weekly_intent_is_decisive_not_a_defensive_why_section():
+    body = " ".join(note["body"] for note in _notes(_plan())
+                    if note["type"] == "weekly_briefing")
+    assert "THE INTENT THIS WEEK" in body
+    assert "WHY THIS WEEK" not in body
+    assert "because" not in body.lower()
 
 
 def test_anaerobic_after_test_note_never_gives_ftp_math():

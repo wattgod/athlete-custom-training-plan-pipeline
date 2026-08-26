@@ -84,6 +84,7 @@ if str(_archetypes_dir) not in sys.path:
     sys.path.insert(0, str(_archetypes_dir))
 
 # Import constants (renamed to avoid conflict with local constants.py)
+from tp_cadence import CADENCE_MAX_RPM, CADENCE_MIN_RPM
 from nate_constants import (
     PowerZones,
     Durations,
@@ -163,6 +164,13 @@ def set_log_level(level: int) -> None:
 # =============================================================================
 
 from new_archetypes import NEW_ARCHETYPES
+
+# AE-3.11 / AE-6.3: retired archetypes (FatMax family, Structured Fartlek)
+# stay in NEW_ARCHETYPES as archived data (regression fixtures still read
+# them via archetype_registry.get_archetype()) but must never be SELECTED
+# or EMITTED again — enforced at get_archetype_by_category_and_index() /
+# get_all_archetypes_for_category() below.
+from archetype_registry import RETIRED_ARCHETYPES
 
 # =============================================================================
 # ZWO TEMPLATE
@@ -372,7 +380,9 @@ TRAINING_METHODOLOGIES = {
         "description": "Sculpt VO2max/VLamax profile to match event demands. High specificity.",
         "philosophy": "Shifts in VO2max and/or reduction in VLamax to 'fit' event",
         "primary_workouts": ["VO2max_Targeted", "VLamax_Reduction"],
-        "secondary_workouts": ["Endurance", "FatMax"],
+        # AE-3.11: "FatMax" name purged (docs-only field, never consumed as
+        # a selection key -- the INSCYD category itself still selects fine).
+        "secondary_workouts": ["Endurance"],
         "avoid": [],
         "weekly_quality_sessions": 2,
         "allows_durability": True,
@@ -528,11 +538,17 @@ PROGRESSION_STYLES = {
 # =============================================================================
 
 def get_archetype_by_category_and_index(category: str, index: int = 0) -> Optional[Dict]:
-    """Get a specific archetype from a category by index (wraps via modulo)."""
+    """Get a specific archetype from a category by index (wraps via modulo).
+
+    AE-3.11/AE-6.3: retired archetypes (RETIRED_ARCHETYPES) are filtered out
+    here so they can never be selected for a new plan, even though their
+    data remains archived in NEW_ARCHETYPES.
+    """
     if category not in NEW_ARCHETYPES:
         return None
 
-    archetypes = NEW_ARCHETYPES[category]
+    archetypes = [a for a in NEW_ARCHETYPES[category]
+                  if a['name'] not in RETIRED_ARCHETYPES]
     if not archetypes:
         return None
 
@@ -543,8 +559,13 @@ def get_archetype_by_category_and_index(category: str, index: int = 0) -> Option
 
 
 def get_all_archetypes_for_category(category: str) -> List[Dict]:
-    """Get all archetypes for a category."""
-    return NEW_ARCHETYPES.get(category, [])
+    """Get all SELECTABLE archetypes for a category.
+
+    AE-3.11/AE-6.3: excludes RETIRED_ARCHETYPES — see
+    get_archetype_by_category_and_index() above.
+    """
+    return [a for a in NEW_ARCHETYPES.get(category, [])
+            if a['name'] not in RETIRED_ARCHETYPES]
 
 
 def select_archetype_for_workout(
@@ -1209,6 +1230,13 @@ def parse_cadence_prescription(prescription: str) -> Optional[int]:
     return None
 
 
+def is_self_selected_cadence(prescription: Optional[str]) -> bool:
+    """True when the coach explicitly left cadence to the rider."""
+    text = (prescription or "").lower()
+    return ('self-selected' in text or 'self selected' in text
+            or 'natural' in text or 'rider' in text)
+
+
 def parse_cadence_range(prescription: str) -> Optional[Tuple[int, int]]:
     """
     Parse a cadence prescription string into a range (low, high).
@@ -1218,31 +1246,56 @@ def parse_cadence_range(prescription: str) -> Optional[Tuple[int, int]]:
 
     Returns:
         Tuple of (low, high) cadence in RPM, or None if not parseable
+
+    Only numbers that can be a cadence count: an explicit rpm-suffixed
+    figure, or a bare figure/range inside the plausible 30-200 rpm band.
+    Zone tokens ("Z2"), interval shorthand ("30/30s") and similar digits
+    are NOT cadence -- before Aug 2026 this parser read "Z2 self-selected"
+    as 2 rpm and shipped CadenceLow="-3" CadenceHigh="7" into athlete
+    ZWOs (VO2 Bookend, Buffer Workout, Blended 30/30 + SFR, Anaerobic Test).
+    "self-selected" / "natural" / "rider's choice" always mean no target.
     """
     if not prescription:
         return None
 
     import re
-    # Handle range like "90-95rpm"
-    range_match = re.search(r'(\d+)-(\d+)', prescription)
-    if range_match:
-        low, high = int(range_match.group(1)), int(range_match.group(2))
-        return (low, high)
-
-    # Handle single value like "90rpm" - create ±5 range
-    single_match = re.search(r'(\d+)', prescription)
-    if single_match:
-        val = int(single_match.group(1))
-        return (val - 5, val + 5)
-
-    # Handle descriptive terms
     prescription_lower = prescription.lower()
+
+    def plausible(low: int, high: int) -> bool:
+        return CADENCE_MIN_RPM <= low <= CADENCE_MAX_RPM and CADENCE_MIN_RPM <= high <= CADENCE_MAX_RPM
+
+    # Explicit range: "90-95rpm", "90–95 rpm", "90-95"
+    for match in re.finditer(r'(\d{2,3})\s*[-\u2013]\s*(\d{2,3})\s*(rpm)?', prescription_lower):
+        low, high = int(match.group(1)), int(match.group(2))
+        if plausible(low, high):
+            return (min(low, high), max(low, high))
+
+    # Explicit single value with an rpm suffix: "90rpm", "100+ rpm"
+    match = re.search(r'(\d{2,3})\s*\+?\s*rpm', prescription_lower)
+    if match:
+        val = int(match.group(1))
+        if plausible(val, val):
+            return (val - 5, val + 5)
+
+    # An explicitly unconstrained prescription ("self-selected", "natural",
+    # "rider's choice") with no explicit rpm figure above means NO target.
+    # Checked AFTER explicit figures so "Efforts: 95-110rpm, Recovery:
+    # self-selected" keeps its work range (sol review, Aug 23 2026).
+    if is_self_selected_cadence(prescription):
+        return None
+
+    # Descriptive terms
     if 'high' in prescription_lower:
         return (Cadence.HIGH - 5, Cadence.HIGH + 5)
     elif 'low' in prescription_lower:
         return (Cadence.LOW - 5, Cadence.LOW + 5)
-    elif 'self' in prescription_lower or 'natural' in prescription_lower:
-        return None  # Let rider choose
+
+    # Bare plausible number with no rpm suffix (legacy prescriptions like "90")
+    match = re.fullmatch(r'\s*(\d{2,3})\s*', prescription_lower)
+    if match:
+        val = int(match.group(1))
+        if plausible(val, val):
+            return (val - 5, val + 5)
 
     return None
 
@@ -1292,7 +1345,7 @@ def generate_intervals_block(
     on_power: float,
     off_duration: int,
     off_power: float = ZWODefaults.RECOVERY_POWER,
-    cadence: int = Cadence.STANDARD,
+    cadence: Optional[int] = None,
     cadence_range: Optional[Tuple[int, int]] = None,
     include_text: bool = False  # TP doesn't support textevent
 ) -> str:
@@ -1316,11 +1369,14 @@ def generate_intervals_block(
     Returns:
         XML intervals block with optional text events
     """
-    # Prefer cadence_range over single cadence
+    # Prefer cadence_range over single cadence; NO prescription -> no attribute
+    # (a literal default of 90 rpm used to be stamped on every interval set).
     if cadence_range:
         cadence_attr = f'CadenceLow="{cadence_range[0]}" CadenceHigh="{cadence_range[1]}"'
-    else:
+    elif cadence:
         cadence_attr = f'Cadence="{cadence}"'
+    else:
+        cadence_attr = ''
 
     block = (
         f'    <IntervalsT Repeat="{repeats}" '
@@ -1517,12 +1573,16 @@ def extract_cadence_range_from_archetype(
         parsed = parse_cadence_range(level_data["cadence_prescription"])
         if parsed:
             return parsed
+        if is_self_selected_cadence(level_data["cadence_prescription"]):
+            return None  # explicit rider's choice: never substitute a name default
 
     # Check archetype-level prescription
     if "cadence_prescription" in archetype:
         parsed = parse_cadence_range(archetype["cadence_prescription"])
         if parsed:
             return parsed
+        if is_self_selected_cadence(archetype["cadence_prescription"]):
+            return None
 
     # Default ranges based on workout type
     archetype_name = archetype.get("name", "").lower()
@@ -1688,6 +1748,69 @@ def _snap_long_segment_seconds(seconds) -> int:
     if seconds >= 60:
         return max(60, int(round(seconds / 60)) * 60)
     return seconds
+
+
+# =============================================================================
+# DEFECT 4 (coach TP-review, plan 672143, 2026-08-24) -- Tune-Up/openers
+# alactic dose.
+#
+# DECISION (Aug 24 2026): coach chose ALT, mid (3x18s@140%, 150s recovery,
+# ~22 TSS) -- ENDURANCE_NEW's 'Pre-Race Openers' Level '1' dict
+# (new_archetypes.py) now carries this dose (replacing the original
+# 2x30sec @110% FTP), so the OPENERS branch of generate_blocks_from_archetype
+# below renders it as any other live archetype level. This function is kept
+# so the exact numbers stay documented/independently testable (and so a
+# future re-litigation of the dose has the full comparison below); it is
+# not itself called by generate_blocks_from_archetype or any render path --
+# new_archetypes.py's Level 1 dict is the one live copy of these numbers.
+#
+# Coach's objection to the ORIGINAL dose (2x30sec @110% FTP, 120sec partial
+# recovery between): 110% FTP sits in the sub-VO2max/anaerobic-capacity
+# range, not truly alactic (the alactic system is near-max effort in <15s
+# bursts, not a sustained 30s @110% FTP number), and 2 reps is thin for
+# "legs remembering speed."
+#
+# ALTERNATIVE DOSE CONSIDERED: 3x15-20sec @130-150% FTP with 2-3min
+# recovery between reps -- same warmup (1200s @0.65)/cooldown (300s @0.50)
+# envelope, same low-fatigue intent (openers are a rehearsal, not a
+# training stimulus). NOTE: the OPENERS branch below renders every
+# inter-effort recovery block at the fixed ZWODefaults.RECOVERY_POWER (0.55
+# IF), not a level-configurable value -- `effort_recovery` only controls
+# duration. The TSS math below uses that real 0.55, not an idealized lower
+# "full recovery" number.
+#
+# TSS impact (TSS_segment = duration_hr * IF^2 * 100; warmup+cooldown are
+# unchanged at 14.08 + 2.08 = 16.2 TSS for both options):
+#   ORIGINAL  (2x30s@110%, 120s@0.55 between):        ~19.2 TSS, 28.0min
+#   ALT, low  (3x15s@130%, 120s@0.55 between):         ~20.3 TSS, 29.75min
+#   ALT, mid  (3x18s@140%, 150s@0.55 between):          ~21.6 TSS, 30.9min  <- SHIPPED
+#   ALT, high (3x20s@150%, 180s@0.55 between):         ~22.9 TSS, 32.0min
+# Every alternative bound lands within ~1-4 TSS and ~2-4min of the original
+# dose -- a genuinely low-fatigue swap either way.
+def alactic_opener_alternative_dose_proposal() -> Dict:
+    """Return a Level-1-shaped level_data dict for the shipped alactic dose
+    (3x18sec @140% FTP -- midpoint of 130-150% -- 150sec recovery --
+    midpoint of 2-3min). Matches ENDURANCE_NEW's 'Pre-Race Openers' Level
+    '1' entry (new_archetypes.py) -- see DECISION above. Not itself
+    referenced by generate_blocks_from_archetype or any render path; kept
+    as the documented/tested source of these numbers."""
+    return {
+        'structure': '20min Z1-Z2 easy, 3x18sec @ 140% FTP with 2.5min full recovery, 5min Z1 cooldown',
+        'execution': ('Short alactic openers -- three brief near-max efforts '
+                      'to wake up neuromuscular firing without creating fatigue'),
+        'cadence_prescription': '95-105rpm on efforts',
+        'cadence': 100,
+        'position_prescription': 'Seated, relaxed',
+        'timing_prescription': 'Day before race or event',
+        'fueling': 'Normal hydration only',
+        'openers': True,
+        'warmup_duration': 1200,
+        'warmup_power': 0.65,
+        'efforts': (3, 18),
+        'effort_power': 1.40,
+        'effort_recovery': 150,
+        'cooldown_duration': 300,
+    }
 
 
 def generate_blocks_from_archetype(archetype: Dict, level: int,
@@ -3626,7 +3749,10 @@ def generate_weekly_workout_schedule(
             {"day": "Wed", "type": "endurance", "name": "Easy Endurance"},
             {"day": "Thu", "type": "vo2max", "name": "VO2max Development"},
             {"day": "Fri", "type": "endurance", "name": "Easy Endurance"},
-            {"day": "Sat", "type": "inscyd", "name": "FatMax Session"},
+            # AE-3.11: label purged (FatMax Development is retired); the
+            # "inscyd" type still resolves to the INSCYD category's
+            # remaining selectable archetypes.
+            {"day": "Sat", "type": "inscyd", "name": "INSCYD Session"},
             {"day": "Sun", "type": "endurance", "name": "Long Endurance"}
         ],
         "GOAT": [

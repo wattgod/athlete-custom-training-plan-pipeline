@@ -543,6 +543,33 @@ def generic_race_demands(distance_miles: float = 0,
     }
 
 
+UNMATCHED_RACE_MPH = 15.0
+
+
+def estimate_unmatched_race_duration_hours(distance_miles: float) -> float:
+    """Race-day duration for an UNMATCHED race (sol programming review
+    2026-08-24, major 10).
+
+    An unmatched race has no course/terrain data to model pace from, so it
+    uses a single flat-terrain average speed rather than
+    calculate_fueling.estimate_race_duration's goal-type/discipline/
+    elevation speed table (which assumes real course context a generic
+    profile does not have). This is the single source for the value: the
+    race-day card, the fueling totals (calculate_fueling.py), and the
+    plan-preview sanity check (generate_plan_preview.py) all call this
+    function rather than each hardcoding their own mph constant -- two
+    independently hardcoded estimates (12mph goal-type table vs 15mph flat)
+    is exactly the ~6.0h-vs-~4.7h disagreement sol's review found.
+    """
+    try:
+        distance_miles = float(distance_miles)
+    except (TypeError, ValueError):
+        distance_miles = 0.0
+    if distance_miles <= 0:
+        distance_miles = 62.0  # median gravel/road event -- sane fallback
+    return distance_miles / UNMATCHED_RACE_MPH
+
+
 def build_generic_race_profile(name: str, date: str = '',
                                distance_miles: float = 0,
                                discipline: Optional[str] = None,

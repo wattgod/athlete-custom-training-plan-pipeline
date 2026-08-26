@@ -93,7 +93,9 @@ def tolerated_intake_from_profile(profile: Dict[str, Any]) -> Optional[float]:
 def build_fueling_prescription(*, duration_hours: float, weight_kg: float,
                                ftp_watts: Optional[float], goal_type: str,
                                gut_phase: str = "build", tolerated_g_per_hour: Optional[float] = None,
-                               sex: Optional[str] = None) -> FuelingPrescription:
+                               sex: Optional[str] = None,
+                               prescribed_range_g_per_hour: Optional[List[int]] = None,
+                               ) -> FuelingPrescription:
     """Make one race prescription from truthful available anchors.
 
     Sex is intentionally not a carbohydrate-rate multiplier. It only adds an
@@ -181,6 +183,17 @@ def build_fueling_prescription(*, duration_hours: float, weight_kg: float,
 
     target_i = int(round(target))
     race_range = [max(20, target_i - 7), min(90, target_i + 7)]
+    if prescribed_range_g_per_hour is not None:
+        if (not isinstance(prescribed_range_g_per_hour, list)
+                or len(prescribed_range_g_per_hour) != 2):
+            raise ValueError("prescribed fueling range must contain [low, high]")
+        low, high = (int(prescribed_range_g_per_hour[0]),
+                     int(prescribed_range_g_per_hour[1]))
+        if not 15 <= low <= high <= 150:
+            raise ValueError("prescribed fueling range is outside 15-150 g/h")
+        race_range = [low, high]
+        target_i = round((low + high) / 2)
+        assumptions.append("Coach-locked race fueling range applied.")
     race_range[0] = min(race_range[0], target_i)
     race_range[1] = max(race_range[1], target_i)
     # Training tiers are projections of this prescription, not separate policy.
@@ -196,7 +209,9 @@ def build_fueling_prescription(*, duration_hours: float, weight_kg: float,
         total_g=round(target_i * duration_hours), training_tiers=tiers,
         hydration=hydration, assumptions=assumptions,
         inputs={**inputs, "gut_training_phase": gut_phase,
-                "tolerated_g_per_hour": tolerated},
+                "tolerated_g_per_hour": tolerated,
+                **({"prescribed_range_g_per_hour": prescribed_range_g_per_hour}
+                   if prescribed_range_g_per_hour is not None else {})},
     )
 
 

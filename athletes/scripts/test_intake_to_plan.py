@@ -63,6 +63,53 @@ from constants import (
 NICHOLAS_INTAKE_PATH = Path("/tmp/nicholas-intake.md")
 
 
+TARGETLESS_BLOCK_INTAKE = """# Athlete Intake: Block Rider
+
+## Basic Info
+- Email: rider@example.com
+- Age: 38
+- Weight: 75 kg
+
+## Goals
+- Primary Goal: general_fitness
+
+## Schedule
+- Weekly Hours Available: 8
+
+## Fulfillment
+- Effective Date: 2026-08-24
+- Planning Horizon End: 2026-09-13
+- Weeks Purchased: 3
+- Publication Horizon Weeks: 3
+
+## Block
+- Phase: build
+- Week Types: recovery, load, load
+- Focus: aerobic durability and controlled high-end work
+"""
+
+
+def test_targetless_coached_block_is_valid_canonical_intake():
+    parsed = parse_intake_markdown(TARGETLESS_BLOCK_INTAKE)
+    validate_parsed_intake(parsed)
+    profile = build_profile(parsed)
+    assert profile['primary_goal'] == 'general_fitness'
+    assert profile['target_race'] == {}
+    assert profile['coached_block'] == {
+        'phase': 'build',
+        'week_types': ['recovery', 'load', 'load'],
+        'focus': 'aerobic durability and controlled high-end work',
+    }
+
+
+def test_targetless_coached_block_rejects_missing_pattern():
+    parsed = parse_intake_markdown(
+        TARGETLESS_BLOCK_INTAKE.replace(
+            '- Week Types: recovery, load, load', '- Week Types:'))
+    with pytest.raises(IntakeValidationError, match='exactly one type per week'):
+        validate_parsed_intake(parsed)
+
+
 def test_device_parser_preserves_multiword_tokens_and_canonicalizes():
     assert parse_device_list('power meter, hr strap') == [
         'power_meter', 'hr_strap']
@@ -99,6 +146,54 @@ def test_absent_devices_produce_no_profile_device_token(minimal_valid_parsed):
     assert profile['devices']['devices'] == []
     assert profile['cycling_equipment']['power_meter_bike'] is False
     assert profile['cycling_equipment']['hr_monitor'] is False
+
+
+def test_explicit_no_field_tests_is_canonical_profile_control(
+    minimal_valid_parsed,
+):
+    parsed = copy.deepcopy(minimal_valid_parsed)
+    parsed['testing'] = {'include_field_tests': 'no'}
+    profile = build_profile(parsed)
+    markers = profile['fitness_markers']
+    assert markers['field_testing_allowed'] is False
+    assert markers['reanchor'] == {
+        'required': False,
+        'week': None,
+        'test': None,
+        'action': 'No field test scheduled; preserve the current training anchor.',
+    }
+
+
+def test_additional_notes_preserve_calendar_intent_and_referenced_dates(
+    minimal_valid_parsed,
+):
+    parsed = copy.deepcopy(minimal_valid_parsed)
+    parsed['additional']['notes'] = (
+        'Preserve all live calendar items, race cards, event cards, and notes '
+        'from 2026-08-31 through 2026-09-26.'
+    )
+    profile = build_profile(parsed)
+    assert profile['calendar_protection'] == {
+        'requested': True,
+        'referenced_dates': ['2026-08-31', '2026-09-26'],
+    }
+
+
+def test_event_card_protection_uses_race_dates_not_unrelated_note_dates(
+    minimal_valid_parsed,
+):
+    parsed = copy.deepcopy(minimal_valid_parsed)
+    parsed['goals']['races'] = (
+        'A Race (2026-09-12, priority A)\nB Race (2026-09-13, priority B)'
+    )
+    parsed['additional']['notes'] = (
+        'Friday 2026-09-11 may contain openers. Preserve both event cards.'
+    )
+    profile = build_profile(parsed)
+    assert profile['calendar_protection'] == {
+        'requested': True,
+        'referenced_dates': ['2026-09-12', '2026-09-13'],
+    }
 
 
 def test_strength_questionnaire_labels_map_to_profile_strength_block():
@@ -642,6 +737,7 @@ class TestParseRaceLine:
             'date': '2026-11-14',
             'distance_miles': 100,
             'priority': 'A',
+            'mandatory': False,
         }
 
     def test_priority_c(self):
@@ -655,7 +751,14 @@ class TestParseRaceLine:
             'date': '',
             'distance_miles': 0,
             'priority': None,
+            'mandatory': False,
         }
+
+    def test_explicit_mandatory_event(self):
+        result = parse_race_line(
+            'Whistler MTB (2026-09-13, priority B, mandatory)')
+        assert result['priority'] == 'B'
+        assert result['mandatory'] is True
 
     def test_partial_meta_no_priority(self):
         result = parse_race_line('Steamboat 100 (2026-08-15, 100)')
@@ -991,6 +1094,74 @@ class TestBlankFtpIsNotRequired:
         assert fm.get('power_basis') == 'none'
         assert fm.get('control_metric') in {'hr', 'rpe'}
         itp.validate_profile_sanity(prof)
+
+
+def test_programmed_midweek_ceiling_caps_interval_and_regular_weekdays():
+    import intake_to_plan as itp
+    parsed = itp.parse_intake_markdown("""## Basic Info
+- Name: Weekday Cap
+- Email: cap@example.com
+- Age: 36
+- Weight: 80 kg
+
+## Goals
+- Primary Goal: general_fitness
+
+## Schedule
+- Weekly Hours Available: 8-11
+- Long Ride Days: Saturday, Sunday
+- Interval Days: Tuesday, Thursday
+- Off Days: Monday
+- Programmed Midweek Max Minutes: 45
+""")
+    profile = itp.build_profile(parsed)
+    days = profile['preferred_days']
+    assert days['monday']['max_duration_min'] == 0
+    for day in ('tuesday', 'wednesday', 'thursday', 'friday'):
+        assert days[day]['max_duration_min'] == 45
+    assert days['saturday']['max_duration_min'] == 600
+    assert days['sunday']['max_duration_min'] == 600
+
+
+def test_michael_exact_notes_only_midweek_ceiling_is_promoted():
+    import intake_to_plan as itp
+    parsed = itp.parse_intake_markdown("""# Athlete Intake: Michael Beal
+## Basic Info
+- Email: wmbeal@outlook.com
+- Age: 36
+- Weight: 80 kg
+## Goals
+- Primary Goal: general_fitness
+## Schedule
+- Weekly Hours Available: 8-11
+- Long Ride Days: Saturday, Sunday
+- Interval Days: Tuesday, Thursday
+- Off Days: Monday
+## Additional
+- Notes: Programmed midweek sessions must not exceed 45 minutes. Friday openers are allowed.
+""")
+    days = itp.build_profile(parsed)['preferred_days']
+    assert [days[day]['max_duration_min'] for day in (
+        'tuesday', 'wednesday', 'thursday', 'friday')] == [45, 45, 45, 45]
+
+
+def test_conflicting_structured_and_notes_midweek_caps_fail_closed():
+    import intake_to_plan as itp
+    parsed = itp.parse_intake_markdown("""# Athlete Intake: Conflict Cap
+## Basic Info
+- Email: cap@example.com
+- Age: 36
+- Weight: 80 kg
+## Goals
+- Primary Goal: general_fitness
+## Schedule
+- Weekly Hours Available: 8
+- Programmed Midweek Max Minutes: 45
+## Additional
+- Notes: Midweek max 60 minutes.
+""")
+    with pytest.raises(itp.IntakeValidationError, match="Conflicting midweek"):
+        itp.build_profile(parsed)
 
 
 class TestBuildProfileTypes:

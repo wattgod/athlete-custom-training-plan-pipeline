@@ -41,7 +41,7 @@ import subprocess
 import uuid
 from pathlib import Path
 from datetime import datetime, date
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 # Ensure scripts dir is on path
 SCRIPTS_DIR = Path(__file__).parent.resolve()
@@ -141,6 +141,19 @@ WEEKLY_HOURS_MAX: int = 40
 # Weight unit detection threshold -- values below this are too light for any unit
 WEIGHT_TOO_LIGHT: float = 40.0
 
+COACHED_BLOCK_PHASES = {'base', 'build', 'peak', 'maintenance'}
+COACHED_BLOCK_WEEK_TYPES = {'load', 'recovery'}
+
+
+def _coached_block_week_types(value: Any) -> List[str]:
+    """Normalize the explicit week pattern for a targetless coached block."""
+    if isinstance(value, list):
+        raw = value
+    else:
+        raw = re.split(r'[,\n]+', str(value or ''))
+    return [str(item).strip().lower().replace(' ', '_')
+            for item in raw if str(item).strip()]
+
 
 def validate_parsed_intake(parsed: Dict[str, Any]) -> None:
     """
@@ -154,24 +167,69 @@ def validate_parsed_intake(parsed: Dict[str, Any]) -> None:
     """
     errors: List[str] = []
 
-    # The ONLY hard requirement is a race to train for — that's the one thing
-    # we genuinely cannot build a plan without. Everything else (age, sex,
-    # weight, FTP, weekly hours, the whole basic_info/current_fitness/schedule
-    # sections) is OPTIONAL: build_profile fills missing values with sane,
-    # flagged assumptions and week-1 testing dials them in. Requiring more than
-    # this just turns recoverable gaps into refunded orders.
+    # A specific-race plan needs a race. A general goal may instead be an exact,
+    # short coached block. Keeping that distinction here prevents operators from
+    # inventing a fake race merely to enter the canonical renderer.
     goals_data = parsed.get('goals', {})
     race_list = []
     if isinstance(goals_data, dict):
         races_val = goals_data.get('races', '')
         if isinstance(races_val, str) and races_val.strip():
             race_list = [r.strip() for r in races_val.split('\n') if r.strip()]
-    if not race_list:
+    primary_goal = str(goals_data.get('primary_goal') or 'specific_race').strip()
+    primary_goal = primary_goal.lower().replace(' ', '_')
+    if primary_goal == 'specific_race' and not race_list:
         errors.append(
-            "At least one race must be listed in Goals — it's the one field we "
-            "can't build a plan without. (Everything else is optional and "
-            "estimated.)"
+            "At least one race must be listed in Goals for a specific-race plan."
         )
+    elif not race_list:
+        fulfillment = parsed.get('fulfillment', {})
+        block = parsed.get('block', {})
+        effective_date = str(fulfillment.get('effective_date') or '').strip()
+        horizon_end = str(fulfillment.get('planning_horizon_end') or '').strip()
+        raw_weeks = (fulfillment.get('weeks_purchased')
+                     or fulfillment.get('publication_horizon_weeks'))
+        try:
+            plan_weeks = int(raw_weeks)
+        except (TypeError, ValueError):
+            plan_weeks = 0
+        if not effective_date or not horizon_end:
+            errors.append(
+                "A targetless coached block requires Fulfillment Effective Date "
+                "and Planning Horizon End."
+            )
+        else:
+            try:
+                start = datetime.strptime(effective_date, '%Y-%m-%d').date()
+                end = datetime.strptime(horizon_end, '%Y-%m-%d').date()
+                if start.weekday() != 0:
+                    errors.append("Coached-block Effective Date must be a Monday.")
+                if end.weekday() != 6:
+                    errors.append("Coached-block Planning Horizon End must be a Sunday.")
+                if plan_weeks and (end - start).days != plan_weeks * 7 - 1:
+                    errors.append(
+                        "Coached-block dates must span exactly the purchased weeks."
+                    )
+            except ValueError:
+                errors.append("Coached-block dates must use YYYY-MM-DD format.")
+        if not 2 <= plan_weeks <= 4:
+            errors.append("A targetless coached block must contain 2–4 weeks.")
+        phase = str(block.get('phase') or '').strip().lower()
+        if phase not in COACHED_BLOCK_PHASES:
+            errors.append(
+                "Block Phase must be one of: base, build, peak, maintenance."
+            )
+        week_types = _coached_block_week_types(block.get('week_types'))
+        if len(week_types) != plan_weeks:
+            errors.append("Block Week Types must list exactly one type per week.")
+        invalid_types = sorted(set(week_types) - COACHED_BLOCK_WEEK_TYPES)
+        if invalid_types:
+            errors.append(
+                "Block Week Types may only contain load or recovery: "
+                + ', '.join(invalid_types)
+            )
+        if not str(block.get('focus') or '').strip():
+            errors.append("A targetless coached block requires Block Focus.")
 
     if errors:
         raise IntakeValidationError(
@@ -549,6 +607,77 @@ def parse_range(val: str) -> Tuple[Optional[int], Optional[int]]:
     return None, None
 
 
+_MIDWEEK_CAP_NOTE_RE = re.compile(
+    r"\b(?:programmed\s+)?midweek(?:\s+sessions?)?\s+"
+    r"(?:must\s+not\s+exceed|max(?:imum)?(?:\s+of)?|capped?\s+at)\s*"
+    r"(\d{1,3})\s*(?:min|minutes?)\b",
+    re.IGNORECASE,
+)
+
+
+def _programmed_midweek_cap(
+    schedule: Mapping[str, Any], additional: Mapping[str, Any],
+) -> Optional[int]:
+    """Resolve one explicit weekday ceiling without interpreting broad prose."""
+    structured = (schedule.get('programmed_midweek_max_minutes')
+                  or schedule.get('midweek_max_minutes'))
+    structured_value = None
+    if structured not in (None, ''):
+        match = re.fullmatch(r'\s*(\d{1,3})\s*(?:min|minutes?)?\s*', str(structured), re.I)
+        if not match:
+            raise IntakeValidationError(
+                'Programmed midweek max minutes must be an explicit integer')
+        structured_value = int(match.group(1))
+
+    note_text = ' '.join(
+        str(additional.get(key) or '') for key in ('notes', 'other'))
+    note_values = {int(value) for value in _MIDWEEK_CAP_NOTE_RE.findall(note_text)}
+    if len(note_values) > 1:
+        raise IntakeValidationError('Conflicting midweek duration caps require coach review')
+    note_value = next(iter(note_values), None)
+    if (structured_value is not None and note_value is not None
+            and structured_value != note_value):
+        raise IntakeValidationError('Conflicting midweek duration caps require coach review')
+    value = structured_value if structured_value is not None else note_value
+    if value is not None and not 1 <= value <= 480:
+        raise IntakeValidationError(
+            'Programmed midweek max minutes must be between 1 and 480')
+    return value
+
+
+_CALENDAR_PROTECTION_RE = re.compile(
+    r"\b(?:preserve|protect|keep|do\s+not\s+(?:delete|move|change))\b"
+    r"[^.\n]{0,100}\b(?:calendar|race\s+card|event\s+card|note|live\s+item)",
+    re.IGNORECASE,
+)
+
+
+def _calendar_protection_intent(
+    schedule: Mapping[str, Any], additional: Mapping[str, Any],
+    goals: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Carry an explicit preservation directive to the sealed contract gate."""
+    structured = str(schedule.get('protected_calendar_items') or '').strip()
+    notes = ' '.join(str(additional.get(key) or '') for key in ('notes', 'other'))
+    protection_sentences = [
+        sentence.strip()
+        for sentence in re.split(r'(?<=[.!?])\s+|\n+', notes)
+        if _CALENDAR_PROTECTION_RE.search(sentence)
+    ]
+    requested = bool(structured or protection_sentences)
+    date_sources = [structured, *protection_sentences]
+    if any(re.search(r'\b(?:race|event)\s+cards?\b', sentence, re.I)
+           for sentence in protection_sentences):
+        date_sources.append(str(goals.get('races') or ''))
+    return {
+        'requested': requested,
+        'referenced_dates': sorted(set(re.findall(
+            r'\b\d{4}-\d{2}-\d{2}\b',
+            ' '.join(value for value in date_sources if value),
+        ))),
+    }
+
+
 def parse_years(val: str) -> int:
     """Parse years field to integer: '10+' -> 10, '4+' -> 4, '3' -> 3."""
     m = re.search(r'(\d+)', str(val))
@@ -798,12 +927,13 @@ def parse_race_line(line: str) -> Dict[str, Any]:
     Expected shape: ``Name (YYYY-MM-DD, miles, priority X)`` — each field in
     the parens is optional, athletes may omit any combination.
 
-    Returns: ``{'name': str, 'date': str, 'distance_miles': int, 'priority': str|None}``.
+    Returns the parsed event facts, including an explicit ``mandatory`` flag.
     Priority is uppercased ('A'|'B'|'C'|'D') when present, else None.
     """
     raw = line.strip()
     if not raw:
-        return {'name': '', 'date': '', 'distance_miles': 0, 'priority': None}
+        return {'name': '', 'date': '', 'distance_miles': 0,
+                'priority': None, 'mandatory': False}
 
     # Pull metadata out of the trailing parenthesis (if present)
     meta = ''
@@ -840,6 +970,7 @@ def parse_race_line(line: str) -> Dict[str, Any]:
         'date': date,
         'distance_miles': distance,
         'priority': priority,
+        'mandatory': bool(re.search(r'\bmandatory\b', meta, re.I)),
     }
 
 
@@ -893,7 +1024,9 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     mental = parsed.get('mental_game', {})
     additional = parsed.get('additional', {})
     nutrition_intake = parsed.get('nutrition', {})
+    testing = parsed.get('testing', {})
     fulfillment = parsed.get('fulfillment', {})
+    block = parsed.get('block', {})
     try:
         generation_revision = int(fulfillment.get('generation_revision') or 1)
     except (TypeError, ValueError):
@@ -994,6 +1127,13 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         control_basis = 'ftp'
     else:
         control_basis = 'rpe'
+    field_testing_raw = str(
+        testing.get('include_field_tests', testing.get('field_testing', 'yes'))
+        or 'yes'
+    ).strip().lower()
+    field_testing_allowed = field_testing_raw not in {
+        'no', 'none', 'false', 'off', 'disabled', 'do not include',
+    }
     sleep_hours = parse_hours(recovery.get('typical_sleep', ''))
     sleep_quality = recovery.get('sleep_quality', 'good').lower()
     recovery_speed = recovery.get('recovery_speed', 'normal').lower()
@@ -1071,6 +1211,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'goal': goal_type if is_target else 'compete',
             'priority': priority,
         }
+        if parsed['mandatory']:
+            event['mandatory'] = True
 
         if matched:
             race_id, info = matched
@@ -1198,6 +1340,9 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                     # — disclosed to the coach, never shown to the athlete.
                     'generic_demands': generic['demands'],
                     'race_match': match_meta,
+                    'coach_verified': str(
+                        goals.get('race_verification') or '').strip().lower()
+                        in {'coach_confirmed', 'coach-confirmed', 'confirmed'},
                 }
 
         if priority == 'A':
@@ -1292,6 +1437,21 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'max_duration_min': 600,
             'is_key_day_ok': True,
         }
+
+    # A single coach/athlete-supplied weekday ceiling is authoritative for
+    # every programmed Monday-Friday session. It is deliberately separate
+    # from weekly volume: athletes may self-select extra riding without the
+    # plan quietly turning that autonomy into prescribed duration.
+    midweek_cap = _programmed_midweek_cap(schedule, additional)
+    if midweek_cap is not None:
+        for day in DAY_ORDER_FULL[:5]:
+            day_info = preferred_days[day]
+            if day_info.get('availability') == 'unavailable':
+                continue
+            day_info['max_duration_min'] = min(
+                int(day_info.get('max_duration_min') or midweek_cap),
+                midweek_cap,
+            )
 
     # -- Volume capacity check --
     # Warn if cycling_hours_target exceeds what the schedule can support
@@ -1538,6 +1698,10 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'weeks_purchased': _safe_int(fulfillment.get('weeks_purchased', '')),
             'athlete_timezone': fulfillment.get('athlete_timezone', ''),
             'generation_revision': generation_revision,
+            'effective_date': fulfillment.get('effective_date', ''),
+            'planning_horizon_end': fulfillment.get('planning_horizon_end', ''),
+            'publication_horizon_weeks': _safe_int(
+                fulfillment.get('publication_horizon_weeks', '')),
         },
         'sex': sex,
         'height_cm': height_cm,
@@ -1592,15 +1756,23 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'control_metric': training_metric,
             'control_basis': control_basis,
             'requested_metric': requested_metric,
+            # Explicit coach/athlete control. A measured anchor does not imply
+            # permission to schedule a test or change TrainingPeaks zones.
+            'field_testing_allowed': field_testing_allowed,
             'reanchor': {
-                'required': power_basis == 'none' or control_basis == 'rpe_pending_lthr',
-                'week': 1,
-                'test': (
+                'required': field_testing_allowed and (
+                    power_basis == 'none' or control_basis == 'rpe_pending_lthr'),
+                'week': 1 if field_testing_allowed else None,
+                'test': ((
                     'lthr_field_test' if control_basis in {'lthr', 'rpe_pending_lthr'}
                     else 'hrmax_field_test' if control_basis == 'hrmax'
                     else 'rpe_field_test' if training_metric == 'rpe'
-                    else 'ftp_field_test'),
-                'action': 'Update the measured anchor after the Week 1 field test.',
+                    else 'ftp_field_test') if field_testing_allowed else None),
+                'action': (
+                    'Update the measured anchor after the Week 1 field test.'
+                    if field_testing_allowed else
+                    'No field test scheduled; preserve the current training anchor.'
+                ),
             },
         },
         'recent_training': {
@@ -1623,6 +1795,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'off_days': off_days,
         },
         'recurring_sessions': recurring_sessions,
+        'calendar_protection': _calendar_protection_intent(
+            schedule, additional, goals),
         'availability_review_issues': (
             contradiction_issues(
                 recurring_sessions, schedule.get('notes', '') or additional.get('notes', ''))
@@ -1639,6 +1813,8 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'seasonal_changes': '',
             'preferred_off_days': off_days,
             'preferred_long_day': preferred_long_day,
+            'strength_only_days': parse_day_list(
+                schedule.get('strength_only_days', '')),
         },
         'cycling_equipment': {
             'smart_trainer': smart_trainer,
@@ -1702,6 +1878,14 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'training_fuel': nutrition_intake.get('training_fuel',
                 nutrition_intake.get('current_carbs_g_per_hour',
                 additional.get('training_fuel', ''))),
+            'race_fueling_range_g_per_hour': (
+                [int(value) for value in re.search(
+                    r'(\d{1,3})\s*[-–]\s*(\d{1,3})',
+                    str(nutrition_intake.get('race_fueling_range') or '')
+                ).groups()]
+                if re.search(r'(\d{1,3})\s*[-–]\s*(\d{1,3})',
+                             str(nutrition_intake.get('race_fueling_range') or ''))
+                else None),
             'post_workout': '',
             'notes': '',
         },
@@ -1779,11 +1963,18 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
             'best_time_to_reach': '',
         },
         'plan_start': {
-            'preferred_start': plan_start_str,
+            'preferred_start': fulfillment.get('effective_date') or plan_start_str,
             'current_commitments': '',
             'notes': plan_notes,
         },
     }
+    if (not target_race_info
+            and primary_goal.replace(' ', '_') != 'specific_race'):
+        profile['coached_block'] = {
+            'phase': str(block.get('phase') or '').strip().lower(),
+            'week_types': _coached_block_week_types(block.get('week_types')),
+            'focus': re.sub(r'\s+', ' ', str(block.get('focus') or '')).strip(),
+        }
 
     # Resolve the candidate BEFORE applying brand authority. A single-brand
     # Roadie order always ships road, but a conflicting gravel/ambiguous race is
@@ -2349,6 +2540,15 @@ def generate_coaching_brief(
                f"(athlete-provided / extracted from name)\n")
         md += ("> - Elevation: none assumed (no fabricated course data in "
                "the athlete guide)\n")
+        _distance_val = target.get('distance_miles')
+        if _distance_val:
+            from known_races import UNMATCHED_RACE_MPH, estimate_unmatched_race_duration_hours
+            md += (
+                f"> - Duration modeled from {_distance_val}mi @ "
+                f"~{UNMATCHED_RACE_MPH:.0f}mph = "
+                f"{estimate_unmatched_race_duration_hours(_distance_val):.1f}h "
+                "(flat-terrain estimate, not the actual course — sol "
+                "programming review 2026-08-24, major 10)\n")
         md += (f"> - Demand assumptions: neutral {_gdisc} demands for the "
                f"given distance ({_gd})\n>\n")
         _near = _rm.get('near_misses') or []
@@ -3401,7 +3601,8 @@ def assemble_intake_review_items(
     blockers: List[Dict] = []
     target_race = profile.get('target_race') or {}
     target_match = target_race.get('race_match') or {}
-    if target_match.get('method') == 'none':
+    if (target_match.get('method') == 'none'
+            and not target_race.get('coach_verified')):
         blockers.append({
             'id': 'RACE_UNMATCHED', 'source': 'intake_to_plan',
             'severity': 'CRITICAL',
@@ -4109,6 +4310,7 @@ def main():
                 athlete_dir=athlete_dir,
                 singleton_desires=singleton_desires,
                 inspection=d2_inspection,
+                delivery_platform=state.get('delivery_platform'),
             )
             emit_contract(athlete_dir / 'apply_contract.json', contract)
             print(f"  {GREEN}Generated{RESET} apply_contract.json "

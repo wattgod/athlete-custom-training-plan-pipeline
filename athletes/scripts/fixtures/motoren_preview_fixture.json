@@ -1,0 +1,969 @@
+{
+  "week": {
+    "coach_note": "Week 6 of 6. Build. The intensity is specific now and the long rides have a purpose I have chosen. This is where the race gets made.\n\nVO2 Bookend Tuesday. The short recoveries are the trick: you never fully recover, so the oxygen system stays pinned without the legs blowing up.\n\nWatch the easy days. If they creep up in pace, the hard days will start falling short.",
+    "comment_protocol": "As a reminder, do your workout comments going forward like this:\n\n1. Workout Readiness - (e.g. 6/10; couldn't fall asleep bc of stress)\n2. Workout Execution - (e.g. 5/10; skipped last set after going too hard in the first set)\n3. Nutrition - (e.g. 5/10; didn't eat during my hard 2 hour interval ride, but did eat before and after)\n4. Misc - (e.g. lower back acting up again)\n\n1-3: Rate out of 10 (10 is the best); add details if possible; e.g., \"I ate two 50g carbohydrate bars\" or \"Felt sluggish to start\" etc.\nMisc: Have at it, or don't.",
+    "days": [
+      {
+        "day": "mon",
+        "sessions": []
+      },
+      {
+        "day": "tue",
+        "sessions": [
+          {
+            "coach_note": "VO2 Bookend Tuesday. The short recoveries are the trick: you never fully recover, so the oxygen system stays pinned without the legs blowing up.",
+            "duration_minutes": 87,
+            "fuel_tag": "moderate",
+            "fueling_guidance": "FUEL: Normal meal ~2h before. One bottle, 40-50g carbs. Done.",
+            "intensity_label": "VO2max",
+            "kind": "bike",
+            "purpose": "Maximum aerobic power. Raising your ceiling so everything below feels easier. Dialed in for Unbound Gravel 200.",
+            "structure": {
+              "polyline": [
+                [
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.636
+                ],
+                [
+                  0.116,
+                  0.636
+                ],
+                [
+                  0.116,
+                  1.0
+                ],
+                [
+                  0.147,
+                  1.0
+                ],
+                [
+                  0.147,
+                  0.5
+                ],
+                [
+                  0.171,
+                  0.5
+                ],
+                [
+                  0.171,
+                  0.5
+                ],
+                [
+                  0.209,
+                  0.5
+                ],
+                [
+                  0.209,
+                  0.636
+                ],
+                [
+                  0.829,
+                  0.636
+                ],
+                [
+                  0.829,
+                  0.5
+                ],
+                [
+                  0.868,
+                  0.5
+                ],
+                [
+                  0.868,
+                  1.0
+                ],
+                [
+                  0.899,
+                  1.0
+                ],
+                [
+                  0.899,
+                  0.5
+                ],
+                [
+                  0.922,
+                  0.5
+                ],
+                [
+                  0.922,
+                  0.455
+                ],
+                [
+                  1.0,
+                  0.455
+                ],
+                [
+                  1.0,
+                  0.0
+                ]
+              ],
+              "primary_intensity_metric": "percentOfFtp",
+              "primary_length_metric": "duration",
+              "steps": [
+                {
+                  "intensity_target_max": 0.7,
+                  "intensity_target_min": 0.5,
+                  "label": "Warmup",
+                  "length_seconds": 900,
+                  "type": "warmup"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.1,
+                  "label": "Work",
+                  "length_seconds": 240,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.55,
+                  "label": "Recovery",
+                  "length_seconds": 180,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 0.55,
+                  "label": "Steady State",
+                  "length_seconds": 300,
+                  "type": "interval"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 0.7,
+                  "label": "Steady State",
+                  "length_seconds": 4800,
+                  "type": "interval"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 0.55,
+                  "label": "Steady State",
+                  "length_seconds": 300,
+                  "type": "interval"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.1,
+                  "label": "Work",
+                  "length_seconds": 240,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.55,
+                  "label": "Recovery",
+                  "length_seconds": 180,
+                  "type": "recovery"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Cooldown",
+                  "length_seconds": 600,
+                  "type": "cooldown"
+                }
+              ]
+            },
+            "title": "VO2 Bookend",
+            "tss": 78
+          }
+        ]
+      },
+      {
+        "day": "wed",
+        "sessions": []
+      },
+      {
+        "day": "thu",
+        "sessions": [
+          {
+            "coach_note": "Blended VO2max and G Spot Thursday. The short recoveries are the trick: you never fully recover, so the oxygen system stays pinned without the legs blowing up.",
+            "duration_minutes": 85,
+            "fuel_tag": "moderate",
+            "fueling_guidance": "FUEL: Normal meal ~2h before. One bottle, 40-50g carbs. Done.",
+            "intensity_label": "VO2max",
+            "kind": "bike",
+            "purpose": "Maximum aerobic power. Raising your ceiling so everything below feels easier. Dialed in for Unbound Gravel 200.",
+            "structure": {
+              "polyline": [
+                [
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.56
+                ],
+                [
+                  0.176,
+                  0.56
+                ],
+                [
+                  0.176,
+                  0.68
+                ],
+                [
+                  0.235,
+                  0.68
+                ],
+                [
+                  0.235,
+                  1.0
+                ],
+                [
+                  0.241,
+                  1.0
+                ],
+                [
+                  0.241,
+                  0.4
+                ],
+                [
+                  0.247,
+                  0.4
+                ],
+                [
+                  0.247,
+                  1.0
+                ],
+                [
+                  0.253,
+                  1.0
+                ],
+                [
+                  0.253,
+                  0.4
+                ],
+                [
+                  0.259,
+                  0.4
+                ],
+                [
+                  0.259,
+                  1.0
+                ],
+                [
+                  0.265,
+                  1.0
+                ],
+                [
+                  0.265,
+                  0.4
+                ],
+                [
+                  0.271,
+                  0.4
+                ],
+                [
+                  0.271,
+                  1.0
+                ],
+                [
+                  0.276,
+                  1.0
+                ],
+                [
+                  0.276,
+                  0.4
+                ],
+                [
+                  0.282,
+                  0.4
+                ],
+                [
+                  0.282,
+                  1.0
+                ],
+                [
+                  0.288,
+                  1.0
+                ],
+                [
+                  0.288,
+                  0.4
+                ],
+                [
+                  0.294,
+                  0.4
+                ],
+                [
+                  0.294,
+                  0.72
+                ],
+                [
+                  0.412,
+                  0.72
+                ],
+                [
+                  0.412,
+                  0.44
+                ],
+                [
+                  0.471,
+                  0.44
+                ],
+                [
+                  0.471,
+                  1.0
+                ],
+                [
+                  0.476,
+                  1.0
+                ],
+                [
+                  0.476,
+                  0.4
+                ],
+                [
+                  0.482,
+                  0.4
+                ],
+                [
+                  0.482,
+                  1.0
+                ],
+                [
+                  0.488,
+                  1.0
+                ],
+                [
+                  0.488,
+                  0.4
+                ],
+                [
+                  0.494,
+                  0.4
+                ],
+                [
+                  0.494,
+                  1.0
+                ],
+                [
+                  0.5,
+                  1.0
+                ],
+                [
+                  0.5,
+                  0.4
+                ],
+                [
+                  0.506,
+                  0.4
+                ],
+                [
+                  0.506,
+                  1.0
+                ],
+                [
+                  0.512,
+                  1.0
+                ],
+                [
+                  0.512,
+                  0.4
+                ],
+                [
+                  0.518,
+                  0.4
+                ],
+                [
+                  0.518,
+                  1.0
+                ],
+                [
+                  0.524,
+                  1.0
+                ],
+                [
+                  0.524,
+                  0.4
+                ],
+                [
+                  0.529,
+                  0.4
+                ],
+                [
+                  0.529,
+                  0.72
+                ],
+                [
+                  0.647,
+                  0.72
+                ],
+                [
+                  0.647,
+                  0.44
+                ],
+                [
+                  0.706,
+                  0.44
+                ],
+                [
+                  0.706,
+                  1.0
+                ],
+                [
+                  0.712,
+                  1.0
+                ],
+                [
+                  0.712,
+                  0.4
+                ],
+                [
+                  0.718,
+                  0.4
+                ],
+                [
+                  0.718,
+                  1.0
+                ],
+                [
+                  0.724,
+                  1.0
+                ],
+                [
+                  0.724,
+                  0.4
+                ],
+                [
+                  0.729,
+                  0.4
+                ],
+                [
+                  0.729,
+                  1.0
+                ],
+                [
+                  0.735,
+                  1.0
+                ],
+                [
+                  0.735,
+                  0.4
+                ],
+                [
+                  0.741,
+                  0.4
+                ],
+                [
+                  0.741,
+                  1.0
+                ],
+                [
+                  0.747,
+                  1.0
+                ],
+                [
+                  0.747,
+                  0.4
+                ],
+                [
+                  0.753,
+                  0.4
+                ],
+                [
+                  0.753,
+                  1.0
+                ],
+                [
+                  0.759,
+                  1.0
+                ],
+                [
+                  0.759,
+                  0.4
+                ],
+                [
+                  0.765,
+                  0.4
+                ],
+                [
+                  0.765,
+                  0.72
+                ],
+                [
+                  0.882,
+                  0.72
+                ],
+                [
+                  0.882,
+                  0.4
+                ],
+                [
+                  1.0,
+                  0.4
+                ],
+                [
+                  1.0,
+                  0.0
+                ]
+              ],
+              "primary_intensity_metric": "percentOfFtp",
+              "primary_length_metric": "duration",
+              "steps": [
+                {
+                  "intensity_target_max": 0.7,
+                  "intensity_target_min": 0.5,
+                  "label": "Warmup",
+                  "length_seconds": 900,
+                  "type": "warmup"
+                },
+                {
+                  "cadence_rpm": 100,
+                  "intensity_target_min": 0.85,
+                  "label": "Steady State",
+                  "length_seconds": 300,
+                  "type": "interval"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 0.9,
+                  "label": "Steady State",
+                  "length_seconds": 600,
+                  "type": "interval"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 0.55,
+                  "label": "Steady State",
+                  "length_seconds": 300,
+                  "type": "interval"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 0.9,
+                  "label": "Steady State",
+                  "length_seconds": 600,
+                  "type": "interval"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 0.55,
+                  "label": "Steady State",
+                  "length_seconds": 300,
+                  "type": "interval"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 1.25,
+                  "label": "Work",
+                  "length_seconds": 30,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Recovery",
+                  "length_seconds": 30,
+                  "type": "recovery"
+                },
+                {
+                  "cadence_rpm": 95,
+                  "intensity_target_min": 0.9,
+                  "label": "Steady State",
+                  "length_seconds": 600,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.5,
+                  "label": "Cooldown",
+                  "length_seconds": 600,
+                  "type": "cooldown"
+                }
+              ]
+            },
+            "title": "Blended VO2max and G Spot",
+            "tss": 97
+          }
+        ]
+      },
+      {
+        "day": "fri",
+        "sessions": []
+      },
+      {
+        "day": "sat",
+        "sessions": [
+          {
+            "coach_note": "Endurance Saturday is the long one. Boring on purpose. Fuel from the first twenty minutes, not when you get hungry.",
+            "duration_minutes": 160,
+            "fuel_tag": "practice",
+            "fueling_guidance": "LONG-RIDE FUEL: Target 55g carbs/hr. Practice this prescription.",
+            "intensity_label": "Endurance",
+            "kind": "bike",
+            "purpose": "Building aerobic endurance and time in saddle. Race-specific duration work. Dialed in for Unbound Gravel 200.",
+            "structure": {
+              "polyline": [
+                [
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.929
+                ],
+                [
+                  0.062,
+                  0.929
+                ],
+                [
+                  0.062,
+                  1.0
+                ],
+                [
+                  0.938,
+                  1.0
+                ],
+                [
+                  0.938,
+                  0.643
+                ],
+                [
+                  1.0,
+                  0.643
+                ],
+                [
+                  1.0,
+                  0.0
+                ]
+              ],
+              "primary_intensity_metric": "percentOfFtp",
+              "primary_length_metric": "duration",
+              "steps": [
+                {
+                  "intensity_target_max": 0.65,
+                  "intensity_target_min": 0.5,
+                  "label": "Warmup",
+                  "length_seconds": 600,
+                  "type": "warmup"
+                },
+                {
+                  "intensity_target_min": 0.7,
+                  "label": "Steady State",
+                  "length_seconds": 8400,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.45,
+                  "label": "Cooldown",
+                  "length_seconds": 600,
+                  "type": "cooldown"
+                }
+              ]
+            },
+            "title": "Endurance",
+            "tss": 128
+          }
+        ]
+      },
+      {
+        "day": "sun",
+        "sessions": [
+          {
+            "coach_note": "Endurance \u2014 Sunday Sunday is the long one. Boring on purpose. Fuel from the first twenty minutes, not when you get hungry.",
+            "duration_minutes": 70,
+            "fuel_tag": "none",
+            "fueling_guidance": "Water and normal fueling; no in-ride carbohydrate target needed.",
+            "intensity_label": "Endurance",
+            "kind": "bike",
+            "purpose": "Aerobic base building. This is where 80% of your training volume lives. Dialed in for Unbound Gravel 200.",
+            "structure": {
+              "polyline": [
+                [
+                  0.0,
+                  0.0
+                ],
+                [
+                  0.0,
+                  0.956
+                ],
+                [
+                  0.143,
+                  0.956
+                ],
+                [
+                  0.143,
+                  1.0
+                ],
+                [
+                  0.857,
+                  1.0
+                ],
+                [
+                  0.857,
+                  0.662
+                ],
+                [
+                  1.0,
+                  0.662
+                ],
+                [
+                  1.0,
+                  0.0
+                ]
+              ],
+              "primary_intensity_metric": "percentOfFtp",
+              "primary_length_metric": "duration",
+              "steps": [
+                {
+                  "intensity_target_max": 0.65,
+                  "intensity_target_min": 0.5,
+                  "label": "Warmup",
+                  "length_seconds": 600,
+                  "type": "warmup"
+                },
+                {
+                  "intensity_target_min": 0.68,
+                  "label": "Steady State",
+                  "length_seconds": 3000,
+                  "type": "interval"
+                },
+                {
+                  "intensity_target_min": 0.45,
+                  "label": "Cooldown",
+                  "length_seconds": 600,
+                  "type": "cooldown"
+                }
+              ]
+            },
+            "title": "Endurance \u2014 Sunday",
+            "tss": 55
+          },
+          {
+            "coach_note": "Max Strength A on Sunday: build force with controlled, non-grinding compound lifts. Leave reps in reserve -- this supports Unbound Gravel 200, it does not compete with it.",
+            "duration_minutes": 45,
+            "fuel_tag": "moderate",
+            "fueling_guidance": "Eat normally beforehand; pair protein with carbohydrate within the hour after.",
+            "intensity_label": "Strength",
+            "kind": "strength",
+            "purpose": "Build force with controlled, non-grinding compound lifts. Keeps force production intact for Unbound Gravel 200.",
+            "strength": {
+              "exercises": [
+                {
+                  "cue": "RPE7 \u2014 leave 2 reps in reserve",
+                  "name": "Back Squat",
+                  "reps": "6",
+                  "rest_seconds": 150,
+                  "sets": 4
+                },
+                {
+                  "cue": "RPE7 \u2014 leave 2 reps in reserve",
+                  "name": "Romanian Deadlift",
+                  "reps": "8",
+                  "rest_seconds": 120,
+                  "sets": 3
+                },
+                {
+                  "cue": "RPE7 \u2014 leave 2 reps in reserve",
+                  "name": "Barbell Hip Thrust",
+                  "reps": "8",
+                  "rest_seconds": 90,
+                  "sets": 3
+                },
+                {
+                  "cue": "moderate effort \u2014 leave 2 reps in reserve",
+                  "name": "Pallof Press",
+                  "reps": "10 each",
+                  "rest_seconds": 60,
+                  "sets": 3
+                }
+              ],
+              "focus": "Build force with controlled, non-grinding compound lifts"
+            },
+            "title": "Max Strength A",
+            "tss": 31
+          }
+        ]
+      }
+    ],
+    "phase": "build",
+    "target_minutes": 447,
+    "target_tss": 389,
+    "type": "load",
+    "weekly_self_review": "Tell me:\n1. What went well and why?\n2. What went badly and why?\n3. ONE thing you can DO next week that's:\n a) In your control\n b) Not too big of a lift\n c) Impactful\n\nPlease complete this at the end of every week and put your answers in the comments on this note. It will greatly improve you as an athlete and help me coach you better."
+  }
+}

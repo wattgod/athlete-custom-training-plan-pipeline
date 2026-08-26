@@ -19,7 +19,11 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from derived_registry import entry as derived_entry, validate_registry
+from delivery_render import (append_heat_protocol_explainer_if_missing,
+                             append_rpe_guide_if_missing, sanitize_athlete_description,
+                             sanitize_athlete_title)
 from tp_polyline import compute_polyline
+from tp_cadence import CadenceError, REST, WORK, with_cadence
 
 
 MODEL_VERSION = "canonical_training_model/v1"
@@ -207,7 +211,18 @@ def _metric_field_test_title(control: Dict[str, Any]) -> str:
 
 
 _WATT_FIGURE = re.compile(r"\b\d+(?:\.\d+)?\s*(?:w|watts?)\b", re.I)
-_FTP_TARGET = re.compile(r"\b\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*%\s*FTP\b", re.I)
+_FTP_TARGET = re.compile(
+    r"\b\d+(?:\.\d+)?\s*%(?:\s*(?:[-–]|->|→)\s*"
+    r"\d+(?:\.\d+)?\s*%)?\s*FTP\b|"
+    r"\b\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*%\s*FTP\b",
+    re.I,
+)
+_PERCENT_TARGET = re.compile(
+    r"@?\s*\b\d+(?:\.\d+)?\s*%(?:\s*(?:[-–]|->|→)\s*"
+    r"\d+(?:\.\d+)?\s*%)?|"
+    r"@?\s*\b\d+(?:\.\d+)?(?:\s*[-–]\s*\d+(?:\.\d+)?)\s*%",
+    re.I,
+)
 
 
 def metric_neutral_text(value: Any, control: Dict[str, Any]) -> str:
@@ -221,6 +236,40 @@ def metric_neutral_text(value: Any, control: Dict[str, Any]) -> str:
     text = re.sub(r"\bwatts?\b", "output", text, flags=re.I)
     text = re.sub(r"\bpower\b", "effort", text, flags=re.I)
     text = re.sub(r"\bZWO files?\b", "structured workouts", text, flags=re.I)
+    return text
+
+
+def metric_neutral_description(value: Any, control: Dict[str, Any]) -> str:
+    """Remove power-only prose from a non-power workout description.
+
+    Descriptions are execution copy, not a compatibility dump. A relative
+    percentage without an athlete power anchor is no more useful than watts,
+    even when the executable structure has already been converted to RPE/HR.
+    """
+    text = metric_neutral_text(value, control)
+    if control["control_metric"] == "power":
+        return text
+    text = re.sub(
+        r"(?im)^\s*-?\s*Target effort:\s*\d+(?:\.\d+)?"
+        r"(?:\s*[-–]\s*\d+(?:\.\d+)?)?\s*%\s+of\s+"
+        r"A-race effort\s*$",
+        "- Target effort: hard and controlled. Saturday gets first claim.",
+        text,
+    )
+    text = _PERCENT_TARGET.sub("the written effort", text)
+    text = re.sub(
+        r"the (?:written|prescribed) effort\s*(?:[-–]|->|→)\s*"
+        r"the (?:written|prescribed) effort",
+        "the written effort range",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(
+        r"\bAverage effort\s*[×x]\s*0\.95\s*=\s*training anchor\.?",
+        "Record the completed field-test effort for review.",
+        text,
+        flags=re.I,
+    )
     return text
 
 
@@ -335,6 +384,10 @@ def _compile_authored_weeks(
     ftp = _num((profile.get("fitness_markers") or {}).get("ftp_watts"))
     remaining = set(documents)
     weeks: List[SimpleNamespace] = []
+    race_date = ((profile.get("target_race") or {}).get("date")
+                 or plan_dates.get("race_date"))
+    athlete_id = profile.get("athlete_id") or profile.get("id")
+    rest_ordinal = 0
     for index, week_data in enumerate(plan_dates.get("weeks") or [], 1):
         sessions = []
         for day in week_data.get("days") or []:
@@ -348,7 +401,10 @@ def _compile_authored_weeks(
                         stem, documents[stem], date=day.get("date"),
                         is_race_day=is_race, manifest=manifest, ftp=ftp))
             else:
-                sessions.append(plan_ir_module._rest_session(day.get("date")))
+                sessions.append(plan_ir_module._rest_session(
+                    day.get("date"), week=week_data, race_date=race_date,
+                    athlete_seed=athlete_id, ordinal=rest_ordinal))
+                rest_ordinal += 1
         for raw in profile.get("recurring_sessions") or []:
             if not raw.get("locked"):
                 continue
@@ -401,6 +457,11 @@ def target_summary(target: Dict[str, Any]) -> str:
         on, off = target.get("on"), target.get("off")
         if kind in {"power_pct_ftp", "pct_lthr", "pct_hrmax"}:
             return f"{round(float(on) * 100)} / {round(float(off) * 100)} {label}"
+        # "RPE 6 / 10" reads as six-out-of-ten, not two executable
+        # interval targets. Name both targets so athlete copy and structure are
+        # unambiguous and the readback validator can compare them exactly.
+        if kind == "rpe":
+            return f"RPE {on}; RPE {off}"
         return f"{label} {on} / {off}"
     low, high, value = target.get("low"), target.get("high"), target.get("value")
     if kind in {"power_pct_ftp", "pct_lthr", "pct_hrmax"}:
@@ -486,7 +547,8 @@ def build_canonical_model(
                      if prescription_data else None),
             weeks=plan_ir_module._build_weeks(
                 source_dir, plan_dates_data, athlete,
-                profile.get("recurring_sessions", []) or []),
+                profile.get("recurring_sessions", []) or [],
+                race_date=target.get("date")),
             notes=[{"kind": "mental_training", "id": key, "text": str(value)}
                    for key, value in mental.items()
                    if value not in (None, "", "none", "no")],
@@ -508,14 +570,51 @@ def build_canonical_model(
             raw = raw_session.__dict__.copy()
             raw_segments = [segment.__dict__.copy() for segment in raw_session.segments]
             is_field_test = raw_session.type == "ftp_test" or "field test" in raw_session.title.lower()
-            title = (field_test_title if is_field_test and
-                     control["control_metric"] != "power" else
-                     metric_neutral_text(raw_session.title, control))
-            description = metric_neutral_text(raw_session.description, control)
+            title = sanitize_athlete_title(
+                field_test_title if is_field_test and
+                control["control_metric"] != "power" else
+                metric_neutral_text(raw_session.title, control))
+            description = metric_neutral_description(
+                raw_session.description, control)
             if is_field_test and control["control_metric"] != "power":
                 description = (description.rstrip() + "\n\nRE-ANCHOR: Complete this Week 1 field test, "
                                "record the measured result, and update future targets.").strip()
+            description = sanitize_athlete_description(description)
+            # AE-3.12 (2026-08-24 TP review): a library-verbatim description
+            # is never rewritten, but one that carries no RPE mention at all
+            # gets a trailing decode line -- built from raw_segments (still
+            # the ZWO-shaped on_power/off_power/power_target fields, before
+            # _canonical_segment folds them into the control-neutral target).
+            description = append_rpe_guide_if_missing(
+                description, library_item_id=getattr(raw_session, "library_item_id", None),
+                segments=raw_segments)
+            # AE-3.13: named-protocol self-containment (Heat Acclimation).
+            description = append_heat_protocol_explainer_if_missing(description, title)
             segments = [_canonical_segment(segment, control) for segment in raw_segments]
+            if is_field_test and control["control_metric"] == "rpe":
+                # The 20-minute assessment used to be authored as an
+                # FTP-neutral 1.00 legacy target (normal RPE conversion maps
+                # 1.00 to RPE 8), while the athlete-facing protocol correctly
+                # calls for RPE 9. sol programming review 2026-08-24 blocker
+                # 1 removed that locked target -- the main effort is now an
+                # open free_ride step (never a numeric %FTP anchored to the
+                # value it's supposed to measure) -- so _segment_target
+                # returns {"type": "free"} for it regardless of control
+                # metric. An RPE-controlled athlete has no power meter and
+                # cannot execute an untargeted "free" step; bind it to the
+                # same RPE-9 field-test semantics the old steady_state
+                # branch carried.
+                candidates = [
+                    segment for segment in segments
+                    if segment.get("kind") in ("steady_state", "free_ride")
+                    and int(segment.get("seconds") or 0) >= 1200
+                ]
+                if candidates:
+                    target = candidates[-1]["target"]
+                    target["type"] = "rpe"
+                    target.pop("low", None)
+                    target.pop("high", None)
+                    target["value"] = 9
             summaries = [target_summary(segment["target"]) for segment in segments]
             sessions.append({
                 "week": week.number,
@@ -573,11 +672,13 @@ def build_canonical_model(
             **control,
         },
         "race_snapshot": reflected.race_snapshot.__dict__,
+        "coached_block": dict(profile.get("coached_block") or {}),
         "sessions": sessions,
         "notes": reflected.notes,
         "attachments": reflected.attachments,
         "entitlements": reflected.entitlements,
         "fueling": reflected.fueling.to_dict() if reflected.fueling else None,
+        "calendar_protection": dict(profile.get("calendar_protection") or {}),
         "derived_values": validate_registry([
             derived_entry(
                 id="CANONICAL_CONTROL", field="athlete.control_metric",
@@ -625,7 +726,21 @@ def validate_canonical_model(model: Dict[str, Any]) -> None:
         raise CanonicalModelError("invalid power basis")
     if athlete.get("power_basis") == "none" and athlete.get("ftp_watts") is not None:
         raise CanonicalModelError("null-power model carries an FTP value")
+    protection = model.get("calendar_protection") or {}
+    if not isinstance(protection, dict):
+        raise CanonicalModelError("calendar protection intent must be an object")
+    if protection and not isinstance(protection.get("requested"), bool):
+        raise CanonicalModelError("calendar protection requested must be boolean")
+    if protection and not isinstance(protection.get("referenced_dates", []), list):
+        raise CanonicalModelError("calendar protection referenced_dates must be an array")
     for session in model.get("sessions") or []:
+        title = str(session.get("title") or "")
+        if title and sanitize_athlete_title(title) != title:
+            raise CanonicalModelError("athlete-visible title contains an internal token")
+        description = str(session.get("description") or "")
+        if description and sanitize_athlete_description(description) != description:
+            raise CanonicalModelError(
+                "athlete-visible description contains compiler-only copy")
         for segment in session.get("segments") or []:
             target = segment.get("target") or {}
             if target.get("type") not in TARGET_TYPES:
@@ -784,9 +899,27 @@ def load_canonical_model(path: Path | str) -> Dict[str, Any]:
 
 
 def _step_target(target: Dict[str, Any], key: str = "value",
-                 all_out: bool = False) -> List[Dict[str, int]]:
+                 all_out: bool = False,
+                 control_metric: Optional[str] = None) -> List[Dict[str, int]]:
     kind = target.get("type")
+    if kind == "rpe":
+        if key in {"on", "off"}:
+            value = target.get(key)
+            return [{"minValue": int(round(float(value))),
+                     "maxValue": int(round(float(value)))}]
+        low, high, value = target.get("low"), target.get("high"), target.get("value")
+        if low is not None and high is not None:
+            minimum, maximum = sorted((int(round(float(low))), int(round(float(high)))))
+        else:
+            chosen = value if value is not None else high if high is not None else low
+            minimum = maximum = int(round(float(chosen)))
+        minimum = max(0, min(10, minimum))
+        maximum = max(minimum, min(10, maximum))
+        return [{"minValue": minimum, "maxValue": maximum}]
     if kind == "free":
+        if control_metric == "rpe":
+            return ([{"minValue": 10, "maxValue": 10}] if all_out else
+                    [{"minValue": 1, "maxValue": 10}])
         # A target-less step is invisible: TP accepts the POST but the
         # calendar mini-chart draws a GAP, the polyline omits the step, and
         # the workout-detail builder can refuse the whole structure (found
@@ -799,10 +932,8 @@ def _step_target(target: Dict[str, Any], key: str = "value",
         return [{"minValue": 0}]
     if key in {"on", "off"}:
         value = target.get(key)
-        return [{"minValue": int(round(float(value) * 100))}] if kind != "rpe" else []
+        return [{"minValue": int(round(float(value) * 100))}]
     low, high, value = target.get("low"), target.get("high"), target.get("value")
-    if kind == "rpe":
-        return []
     if low is not None and high is not None and float(high) > float(low):
         return [{"minValue": int(round(float(low) * 100)),
                  "maxValue": int(round(float(high) * 100))}]
@@ -811,22 +942,42 @@ def _step_target(target: Dict[str, Any], key: str = "value",
 
 
 def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Project TP-native structure; RPE remains explicit in description."""
-    if session.get("tp_kind") != "bike" or control.get("control_metric") == "rpe":
+    """Project canonical bike segments into a TP-native structured workout."""
+    if session.get("tp_kind") != "bike":
         return None
+    all_segments = session.get("segments") or []
+    all_free_ride = bool(all_segments) and all(
+        str(segment.get("kind")) == "free_ride" for segment in all_segments)
     steps: List[Dict[str, Any]] = []
     cursor = 0
 
     def append(name: str, seconds: int, target: Dict[str, Any], intensity: str,
-               key: str = "value", all_out: bool = False) -> None:
+               key: str = "value", all_out: bool = False,
+               cadence_attributes: Optional[Dict[str, Any]] = None,
+               cadence_phase: str = WORK) -> None:
         nonlocal cursor
+        targets = _step_target(
+            target, key, all_out=all_out,
+            control_metric=control.get("control_metric"))
+        # Cadence (Aug 2026 power/cadence correction): TP carries cadence as
+        # a second `targets` element with unit roundOrStridePerMinute. The
+        # canonical segment keeps the authored ZWO cadence attributes in its
+        # round-trip envelope (`zwo.extra_attributes`); before this, the
+        # projector never read them, so every cadence prescription reached
+        # TP as prose only. Emitted for every control metric -- the cadence
+        # target is independent of whether intensity is %FTP, %HR or RPE.
+        try:
+            targets = with_cadence(targets, cadence_attributes, cadence_phase)
+        except CadenceError as exc:
+            raise CanonicalModelError(
+                f"session {session.get('title')!r} step {name!r}: {exc}") from exc
         block = {
             "type": "step",
             "length": {"value": 1, "unit": "repetition"},
             "steps": [{
                 "name": name,
                 "length": {"value": int(seconds), "unit": "second"},
-                "targets": _step_target(target, key, all_out=all_out),
+                "targets": targets,
                 "intensityClass": intensity,
                 # TP's builder expects the full imported-step shape; steps
                 # without notes rendered fine on cards but not in detail.
@@ -840,10 +991,13 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
 
     for segment in session.get("segments") or []:
         target = segment["target"]
+        cadence_attributes = (segment.get("zwo") or {}).get("extra_attributes") or {}
         if segment.get("kind") == "intervals":
             for _ in range(int(segment.get("repeat") or 1)):
-                append("Work", int(segment.get("on_seconds") or 0), target, "active", "on")
-                append("Recovery", int(segment.get("off_seconds") or 0), target, "rest", "off")
+                append("Work", int(segment.get("on_seconds") or 0), target, "active", "on",
+                       cadence_attributes=cadence_attributes, cadence_phase=WORK)
+                append("Recovery", int(segment.get("off_seconds") or 0), target, "rest", "off",
+                       cadence_attributes=cadence_attributes, cadence_phase=REST)
         else:
             intensity = "warmUp" if segment.get("kind") == "warmup" else (
                 "coolDown" if segment.get("kind") == "cooldown" else "active")
@@ -853,9 +1007,31 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
                          for f in ("name", "description")),
                 re.I))
             append(segment.get("name") or "Step", int(segment.get("seconds") or 0),
-                   target, intensity, all_out=all_out)
+                   target, intensity, all_out=all_out,
+                   cadence_attributes=cadence_attributes, cadence_phase=WORK)
     if not steps:
         return None
+    if all_free_ride:
+        # AE-8.4d (2026-08-24 TP review, addendum): a session whose entire
+        # executable content is FreeRide/zero-power (leg-speed conversions
+        # from the RPE fix -- tp_structure_to_zwo.py's no-power-signal path
+        # -- and race-day cards) ships as a text card, never a zero-power
+        # step graph. ``_step_target``'s "free" branch returns the flat
+        # ``{"minValue": 0}`` (no maxValue) precisely when there is no
+        # honest content to chart -- neither an RPE fact nor an all-out
+        # display band -- which is the exact shape that shipped on "Muscle
+        # Recruitment Progressions - Trainer" and both B-Race Day cards. An
+        # all-out free_ride test (RPE 10/10, or the 120-170% display band)
+        # carries a real target and stays structured; only the genuinely
+        # empty zero-power case is suppressed. A session mixing free_ride
+        # with real segments keeps its structure regardless -- only an
+        # all-free_ride session is a candidate for text-card suppression.
+        def _is_zero_power(leaf: Dict[str, Any]) -> bool:
+            primary = (leaf.get("targets") or [{}])[0]
+            return primary.get("minValue") == 0 and "maxValue" not in primary
+
+        if all(_is_zero_power(block["steps"][0]) for block in steps):
+            return None
     # FIX 10 (Aug 17 2026 adversarial grade): this function only ever
     # projects COMPOSED sessions (Act sims, midweek sims, other
     # synthesized cards) -- curated library items are placed byte-verbatim
@@ -888,7 +1064,8 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
     metric = {
         "power": "percentOfFtp",
         "hr:lthr": "percentOfThresholdHr",
-        "hr:hrmax": "percentOfMaxHr",
+            "hr:hrmax": "percentOfMaxHr",
+            "rpe:rpe": "rpe",
     }.get(f"{control.get('control_metric')}:{control.get('control_basis')}")
     if control.get("control_metric") == "power":
         metric = "percentOfFtp"
@@ -898,7 +1075,7 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
         "structure": steps,
         "primaryLengthMetric": "duration",
         "primaryIntensityMetric": metric,
-        "primaryIntensityTargetOrRange": "target",
+        "primaryIntensityTargetOrRange": "range" if metric == "rpe" else "target",
         "polyline": compute_polyline(steps),
         "importedFromZwo": True,
     }

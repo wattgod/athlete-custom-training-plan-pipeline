@@ -19,7 +19,7 @@ Source: block-builder SKILL.md, adapted for continuous plan generation
 
 from typing import Dict, List, Any, Optional
 from archetype import determine_phase
-from block_builder import build_block, build_calendar_week
+from block_builder import build_block, build_calendar_week, trim_week_to_budget
 from series_tracker import SeriesTracker
 
 # plan_dates phase → block-builder phase
@@ -123,6 +123,51 @@ def _raise_recovery_tss_floor(
         _sync_week_totals(week)
 
 
+def retrim_plan_to_budget(
+    plan: Dict[str, Any], hours_per_week: float,
+    day_caps: Optional[Dict[str, int]] = None,
+) -> None:
+    """Re-apply the shrink-only weekly-hour trim across every week of an
+    already-built plan.
+
+    build_plan_from_calendar()'s per-week trim (inside build_calendar_week)
+    guarantees each week fits its budget at build time, but several
+    post-build overlays run afterward and can reintroduce minutes without
+    re-checking the budget: protect_post_simulation_recovery restores a
+    full easy-ride day after a race simulation (even onto a day the
+    original trim had converted to Rest Day to make the week fit),
+    materialize_fixed_sessions adds recurring external load, and library
+    selection can swap a placeholder for a curated item with a different
+    duration. Call this AFTER all such overlays and BEFORE the compliance
+    gate / any day-dict shallow-copy (e.g. generate_athlete_package's
+    ``_bb_lookup``) so R19 always sees, and delivery always renders, a plan
+    the trim has actually enforced.
+    """
+    weeks = plan.get('weeks', [])
+    for week in weeks:
+        trim_week_to_budget(week.get('days', []), week.get('week_type'), hours_per_week)
+        _sync_week_totals(week)
+
+    # A recovery week's TSS is tuned in build_plan_from_calendar against the
+    # preceding load weeks' average TSS *at build time* (before any of the
+    # overlays above ran). Trimming a load week here can lower that average
+    # out from under an already-tuned recovery week, drifting its ratio
+    # outside the R03 50-65% house band even though the recovery week
+    # itself never changed. Re-tune against the now-final load average,
+    # mirroring the same lookback build_plan_from_calendar uses.
+    for index, week in enumerate(weeks):
+        if week.get('week_type') != 'recovery':
+            continue
+        previous_loads = []
+        for previous in reversed(weeks[:index]):
+            if previous.get('week_type') != 'load':
+                break
+            previous_loads.append(previous.get('total_tss', 0))
+        if previous_loads:
+            _raise_recovery_tss_floor(
+                week, sum(previous_loads) / len(previous_loads), day_caps)
+
+
 def protect_post_simulation_recovery(
     plan: Dict[str, Any], preferred_interval_days: Optional[List[str]] = None,
 ) -> set[tuple[int, str]]:
@@ -161,6 +206,13 @@ def protect_post_simulation_recovery(
         next_week, next_day = flattened[index + 1]
         protected.add((next_week.get('plan_week'), next_day.get('day')))
         next_day['post_sim_recovery'] = True
+
+        # A stated off day is already the strongest possible recovery day.
+        # Do not turn it into an Endurance prescription merely because it
+        # follows a simulation; that silently violates the athlete's weekly
+        # availability and R20. It still remains protected from strength.
+        if next_day.get('role') == 'off':
+            continue
 
         displaced = dict(next_day) if next_day.get('role') == 'intensity' else None
         next_day.update(name='Endurance', level=1,

@@ -36,6 +36,121 @@ RPE_BANDS = (
     ("fallback", "RPE6-7"),
 )
 
+# AE-3.12 (2026-08-24 TP review, plan 672143): every step line in an emitted
+# DESCRIPTION carries its RPE next to the %FTP target ("3x12min @80% FTP
+# (Z3, RPE 6-7)") -- structured workouts stay built as %FTP, this is a
+# decode annotation only. Same numeric edges as _rpe's dominant-percent
+# thresholds below (105 / 88), extended with the has_structured_work
+# fallback's 76% edge so every %FTP value in [0, inf) gets a band -- this
+# is the single canon both the session-level title RPE (_rpe, below) and
+# the per-step description RPE (workout_spec._line_for_segment) read from.
+_STEP_RPE_BANDS = (
+    (105, (8, 9)),
+    (88, (6, 7)),
+    (76, (5, 6)),
+    (0, (3, 3)),
+)
+
+
+def zone_for_percent(pct: float) -> str:
+    """%FTP -> training zone label, matching generate_plan_preview._if_to_zone's
+    boundaries (Z1<55% / Z2<75% / Z3<87% / Z4<95% / Z5<106% / Z5+)."""
+    if pct < 55:
+        return "Z1"
+    if pct < 75:
+        return "Z2"
+    if pct < 87:
+        return "Z3"
+    if pct < 95:
+        return "Z4"
+    if pct < 106:
+        return "Z5"
+    return "Z5+"
+
+
+def rpe_for_percent(pct: float) -> str:
+    """%FTP -> RPE decode label ('RPE 6-7' or 'RPE 3'), per _STEP_RPE_BANDS."""
+    for floor, (lo, hi) in _STEP_RPE_BANDS:
+        if pct >= floor:
+            return f"RPE {lo}" if lo == hi else f"RPE {lo}-{hi}"
+    return "RPE 3"
+
+
+def zone_rpe_annotation(pct: float) -> str:
+    """'(Z3, RPE 6-7)' decode annotation for a single %FTP step target."""
+    return f"({zone_for_percent(pct)}, {rpe_for_percent(pct)})"
+
+
+_RPE_MENTION_RE = re.compile(r"\bRPE\b", re.I)
+
+
+def rpe_guide_line(session: Any) -> Optional[str]:
+    """AE-3.12 library-verbatim carve-out (2026-08-24 TP review): a curated
+    description is never rewritten, but when it carries no RPE mention of
+    its own, one summary line decodes every distinct %FTP target the
+    session's own structure actually carries. Returns None when the
+    session has no %FTP structure to decode (RPE-controlled or unstructured
+    sessions)."""
+    blocks = _work_blocks_from_segments(session) or _work_blocks_from_structure(session)
+    percents: List[float] = []
+    seen = set()
+    for _, _, percent in blocks:
+        value = _number(str(percent or "").rstrip("%"))
+        if value is None or value in seen:
+            continue
+        seen.add(value)
+        percents.append(value)
+    if not percents:
+        return None
+    parts = [f"{round(pct)}% FTP -> {rpe_for_percent(pct)}"
+             for pct in sorted(percents, reverse=True)]
+    return "RPE guide: " + "; ".join(parts)
+
+
+_HEAT_PROTOCOL_RE = re.compile(r"\bheat\s+acclimation\b", re.I)
+_HEAT_PROTOCOL_EXPLAINED_RE = re.compile(
+    r"\b(?:reduce[sd]?\s+cool|extra\s+layer|overdress|stop\s+if|stop[- ]sweat)\b", re.I)
+
+
+def append_heat_protocol_explainer_if_missing(description: str, title: Any) -> str:
+    """AE-3.13 (2026-08-24 TP review): a Heat Acclimation Protocol session
+    must describe the protocol inline -- dose, reduced cooling/extra
+    layers, hydration emphasis, stop conditions -- not just a warm-Z2
+    zone/RPE target with no context for why it's structured that way. A
+    curated description that already explains the mechanism (any of those
+    cues present) is left untouched; one that doesn't gets a trailing
+    self-contained block rather than a rewrite of the authored text.
+    """
+    haystack = f"{title or ''} {description or ''}"
+    if not _HEAT_PROTOCOL_RE.search(haystack):
+        return description
+    if _HEAT_PROTOCOL_EXPLAINED_RE.search(description or ""):
+        return description
+    explainer = (
+        "HEAT PROTOCOL: ~60min at the prescribed easy zone with reduced "
+        "cooling — skip the fan, add a layer, or ride the hottest part of "
+        "the day. Hydrate aggressively before and during; sip past thirst. "
+        "Stop if dizzy, nauseous, or confused — cool down and end the "
+        "session rather than push through."
+    )
+    return (description or "").rstrip() + "\n\n" + explainer
+
+
+def append_rpe_guide_if_missing(description: str, *, library_item_id: Any, segments: Any) -> str:
+    """Append the RPE guide line to a library-verbatim description that
+    carries no RPE mention of its own -- never touches already-authored
+    text (rx-invisibility / verbatim rules bar rewriting curated copy). A
+    no-op when the session isn't library-resolved or has no %FTP structure.
+    """
+    if not library_item_id:
+        return description
+    if _RPE_MENTION_RE.search(description or ""):
+        return description
+    guide = rpe_guide_line({"segments": segments})
+    if not guide:
+        return description
+    return (description or "").rstrip() + "\n\n" + guide
+
 
 def load_brand(brand_key: str) -> Dict[str, Any]:
     """Load one configured brand, failing closed for missing or unknown keys."""
@@ -92,6 +207,83 @@ def _number(value: Any) -> Optional[float]:
 
 def _clean_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").replace("_", " ")).strip(" -–—")
+
+
+_INTERNAL_RETAINED_TOKEN = re.compile(r"\s*\[\s*retained\b[^\]]*\]", re.I)
+_PERSONAL_WEEK_HEADER = re.compile(
+    r"^\s*.+?\s+-\s+Week\s+\d+\s*/\s*\d+\s+-\s+.+$", re.I)
+_PHASE_HEADER = re.compile(r"^\s*Phase\s*:", re.I)
+_SECTION_HEADING = re.compile(r"^\s*([A-Z][A-Z0-9 -]{2,})\s*:\s*(.*)$")
+_DROP_ATHLETE_SECTIONS = {
+    "PURPOSE", "DIMENSIONS", "TARGET METRICS", "PRE-RACE CHECKLIST",
+    "RACE MORNING", "RACE-DAY CEILING",
+}
+_ALL_CAPS_CHEER = re.compile(r"^[A-Z][A-Z\s,!.'’\-]{5,}!+$")
+_ATHLETE_COPY_MAX_WORDS = 180
+_ATHLETE_WORD = re.compile(r"\b\w+[\w'-]*\b")
+
+
+def _take_athlete_words(value: str, limit: int) -> str:
+    matches = list(_ATHLETE_WORD.finditer(value))
+    if len(matches) <= limit:
+        return value.strip()
+    return value[:matches[limit - 1].end()].strip()
+
+
+def _truncate_athlete_copy(value: str) -> str:
+    words = _ATHLETE_WORD.findall(value)
+    if len(words) <= _ATHLETE_COPY_MAX_WORDS:
+        return value
+    match = re.search(r"(?ms)^PRESCRIPTION:\s*.*\Z", value)
+    tail = match.group(0).strip() if match else ""
+    tail_words = _ATHLETE_WORD.findall(tail)
+    if len(tail_words) >= _ATHLETE_COPY_MAX_WORDS:
+        return _take_athlete_words(tail, _ATHLETE_COPY_MAX_WORDS)
+    budget = _ATHLETE_COPY_MAX_WORDS - len(tail_words)
+    head_source = value[:match.start()].strip() if match else value
+    head = _take_athlete_words(head_source, budget)
+    return (head + ("\n\n" + tail if tail else "")).strip()
+
+
+def sanitize_athlete_title(value: Any) -> str:
+    """Remove compiler-only annotations from an athlete-visible title."""
+    text = _INTERNAL_RETAINED_TOKEN.sub("", str(value or ""))
+    return re.sub(r"\s+", " ", text).strip(" -–—") or "Workout"
+
+
+def sanitize_athlete_description(value: Any) -> str:
+    """Keep the executable brief; remove compiler narrative and leaked IDs.
+
+    Workout structure remains authoritative. Athlete copy retains warm-up,
+    main set, cooldown, execution, RPE, fueling, hydration, and re-anchor
+    instructions, while generated biography/phase headers, essays, checklist
+    bulk, and cheerleading stay out of the calendar card.
+    """
+    text = _INTERNAL_RETAINED_TOKEN.sub("", str(value or ""))
+    text = re.sub(
+        r"^\s*\[(?:FUEL|LONG-RIDE FUEL|RACE FUEL):\s*(.*?)\]\s*$",
+        r"FUEL:\n\1", text, flags=re.I | re.M,
+    )
+    lines: List[str] = []
+    dropping = False
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        if _PERSONAL_WEEK_HEADER.match(line) or _PHASE_HEADER.match(line):
+            continue
+        heading = _SECTION_HEADING.match(line)
+        if heading:
+            dropping = heading.group(1).strip().upper() in _DROP_ATHLETE_SECTIONS
+            if dropping:
+                continue
+        elif dropping:
+            continue
+        if _ALL_CAPS_CHEER.fullmatch(line.strip()):
+            continue
+        lines.append(line)
+    result = "\n".join(lines)
+    result = re.sub(r"[ \t]+\n", "\n", result)
+    result = re.sub(r"\n{3,}", "\n\n", result)
+    return _truncate_athlete_copy(result.strip())
 
 
 def _format_percent(value: Any) -> Optional[str]:
@@ -477,7 +669,8 @@ def render_session_name(session: Any, defining_set: Optional[str] = None) -> str
         defining_set = _defining_set_from_structure(session)
         if defining_set is None:
             defining_set = _defining_set_from_description(_get(session, "description"))
-    name = _clean_text(_get(session, "display_name") or _get(session, "title"))
+    name = sanitize_athlete_title(
+        _get(session, "display_name") or _get(session, "title"))
     name = re.sub(r"\s*[-–—]?\s*(?:level|l)\s*\d+(?:\s*/\s*\d+)?\s*$", "", name, flags=re.I)
     if _get(session, "library_item_id"):
         # The authored RPE token (see _authored_rpe_token) is re-appended

@@ -159,11 +159,12 @@ class TestRenderMainSetCollapse:
         blocks = ('<IntervalsT Repeat="5" OnDuration="180" OnPower="1.15" '
                   'OffDuration="120" OffPower="0.55" />')
         rendered = render_main_set(normalize_zwo_blocks(blocks))
-        assert rendered == '- 5x3min @ 115% FTP, 2min recovery @ 55% FTP'
+        # AE-3.12 (2026-08-24 TP review): RPE decode next to every %FTP target.
+        assert rendered == '- 5x3min @ 115% FTP (Z5+, RPE 8-9), 2min recovery @ 55% FTP (Z2, RPE 3)'
 
     def test_single_non_repeated_segment_renders_unchanged(self):
         segments = [{'kind': 'steady', 'seconds': 1800, 'power': 0.65}]
-        assert render_main_set(segments) == '- 30min @ 65% FTP'
+        assert render_main_set(segments) == '- 30min @ 65% FTP (Z2, RPE 3)'
 
     def test_real_endurance_with_surges_archetype_collapses(self):
         """End-to-end through the real archetype + generation path (not a
@@ -188,9 +189,11 @@ class TestRenderMainSetCollapse:
             segments.append({'kind': 'steady', 'seconds': 50, 'power': 0.50})
         rendered = render_main_set(segments)
         lines = rendered.strip().split('\n')
-        assert lines[0] == '- 10min @ 70% FTP', f"lead-in should stay its own bullet, got: {lines}"
+        # AE-3.12 (2026-08-24 TP review): RPE decode next to every %FTP target.
+        assert lines[0] == '- 10min @ 70% FTP (Z2, RPE 3)', f"lead-in should stay its own bullet, got: {lines}"
         assert len(lines) == 2, f"period-3 group should collapse to 1 line after the lead-in, got: {lines}"
-        assert lines[1] == '- 5 x (2min @ 85% FTP + 0:10 @ 200% FTP + 0:50 @ 50% FTP)'
+        assert lines[1] == ('- 5 x (2min @ 85% FTP (Z3, RPE 5-6) + 0:10 @ 200% FTP (Z5+, RPE 8-9) '
+                            '+ 0:50 @ 50% FTP (Z1, RPE 3))')
 
     def test_real_tempo_sprints_archetype_collapses_both_repeat_groups(self):
         """End-to-end through the real 'Tempo Sprints' archetype (the exact
@@ -234,13 +237,25 @@ class TestRoundTimePlannedHours:
 # ===========================================================================
 # Golden-plan sweeps: build a real plan (reusing test_naming_and_rounding's
 # proven fixtures) and assert no description regresses into a rep-wall, no
-# segment >=60s shows a ragged seconds component, and every bike session's
+# long segment >=5min shows a ragged seconds component, and every bike session's
 # projected duration (manifest + tp_manifest.json, which tools/tp_apply_order
 # passes straight through into the apply-job body's totalTimePlanned) is a
 # whole number of minutes.
 # ===========================================================================
 
 _MSS_RE = re.compile(r'(\d+):(\d{2})')
+
+
+def _is_library_resolved(path):
+    """True when the ZWO was placed from a curated TP library item (the
+    naming manifest carries library_item_id): its description is verbatim
+    coach copy, outside the generated-copy rules this module owns."""
+    import json
+    manifest = path.parent / "naming_manifest.json"
+    if not manifest.exists():
+        return False
+    entry = json.loads(manifest.read_text()).get(path.stem) or {}
+    return bool(entry.get("library_item_id"))
 
 
 def _zwo_description(path):
@@ -263,7 +278,10 @@ def test_no_description_has_a_rep_by_rep_wall(golden_files):
     "Tempo Sprints"-shaped period-3+ group-repeats of DIFFERENT lines."""
     offenders = []
     for f in golden_files:
-        lines = [line for line in _zwo_description(f).split('\n') if line.strip().startswith('-')]
+        lines = [
+            line for line in _zwo_description(f).split('\n')
+            if line.strip().startswith('-') and line.strip() != '-'
+        ]
         worst = _max_group_repeat(lines)
         if worst >= 3:
             offenders.append((f.name, worst))
@@ -272,17 +290,22 @@ def test_no_description_has_a_rep_by_rep_wall(golden_files):
 
 
 def test_no_long_segment_renders_with_ragged_seconds(golden_files):
-    """No segment >=60s renders with a non-zero seconds component ("14:03")
-    anywhere in a generated description; sub-60s segments (surges) may
-    legitimately show as "0:05" etc."""
+    """No segment >=5min renders with a non-zero seconds component ("14:03").
+
+    Short intervals may intentionally retain precise M:SS prescriptions such
+    as 1:30 or 2:50. The readability defect this guard owns is ragged long
+    aerobic blocks, where second-level precision is noise.
+    """
     offenders = []
     for f in golden_files:
+        if _is_library_resolved(f):
+            continue  # verbatim curated copy; library_selector.advisory_flags reports it for curation
         desc = _zwo_description(f)
         for m in _MSS_RE.finditer(desc):
-            if int(m.group(1)) >= 1:  # M:SS with M>=1 minute implies >=60s total
+            if int(m.group(1)) >= 5:
                 offenders.append((f.name, m.group(0)))
     assert offenders == [], (
-        f"description(s) with a ragged (non-whole-minute) >=60s segment: {offenders}")
+        f"description(s) with a ragged (non-whole-minute) >=5min segment: {offenders}")
 
 
 @pytest.fixture(scope='module')
@@ -322,3 +345,37 @@ def test_manifest_total_time_planned_is_whole_minutes(full_plan_manifest):
     assert offenders == [], (
         f"bike session(s) with a non-whole-minute totalTimePlanned "
         f"(stem, hours, reconstructed_sec): {offenders}")
+
+
+def test_alactic_opener_alternative_dose_is_wired_in():
+    """DEFECT 4 (coach TP-review, plan 672143, 2026-08-24): coach decision
+    Aug 24 2026 -- the ALT, mid alactic dose (3x18s @140% FTP, 150s
+    recovery, ~22 TSS) from alactic_opener_alternative_dose_proposal now IS
+    the live 'Pre-Race Openers' Level 1 archetype (new_archetypes.py),
+    replacing the original 2x30sec @110% FTP dose."""
+    from new_archetypes import ENDURANCE_NEW
+    from nate_workout_generator import alactic_opener_alternative_dose_proposal
+
+    proposal = alactic_opener_alternative_dose_proposal()
+    assert proposal['efforts'] == (3, 18)
+    assert proposal['effort_power'] == 1.40
+    assert proposal['effort_recovery'] == 150
+
+    blocks = generate_blocks_from_archetype(
+        {'name': 'Pre-Race Openers', 'levels': {'1': proposal}}, 1)
+    assert blocks.count('Power="1.40"') == 3
+    assert 'Power="0.65"' in blocks  # unchanged warmup envelope
+
+    # Wired in: the live archetype table's Level 1 now matches the
+    # proposal function's dose exactly (same source of truth, two copies).
+    live_level_1 = next(a for a in ENDURANCE_NEW
+                        if a['name'] == 'Pre-Race Openers')['levels']['1']
+    assert live_level_1['efforts'] == (3, 18)
+    assert live_level_1['effort_power'] == 1.40
+    assert live_level_1['effort_recovery'] == 150
+    assert live_level_1['warmup_duration'] == proposal['warmup_duration']
+    assert live_level_1['cooldown_duration'] == proposal['cooldown_duration']
+
+    live_blocks = generate_blocks_from_archetype(
+        {'name': 'Pre-Race Openers', 'levels': {'1': live_level_1}}, 1)
+    assert live_blocks.count('Power="1.40"') == 3

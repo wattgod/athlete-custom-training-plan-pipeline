@@ -52,6 +52,7 @@ athletes/worker-replay/
 reports/canary/
 reports/audits/
 reports/daily-drill/
+athletes/steve-wagner/
 
 # Private coaching records and signed e-sign artifacts live on the persistent
 # runtime volume, never in source control.

@@ -112,6 +112,20 @@ after_nurture), with:
   calendar content.
 - Unmet template preconditions degrade by rule (omit-with-record), never by
   emitting half-filled copy.
+- **The note series is a block narrative, not a stack of reminders**:
+  weekly briefings state the current intent, what the athlete is building,
+  what to notice, and the handoff to the next phase or checkpoint. Athlete-
+  facing copy directs; it does not defend or justify the prescription. Copy
+  uses the registered brand plus an approved coach-voice
+  source; absent a source, the renderer uses plain copy and records a voice-
+  review item rather than inventing personal texture.
+- **Autonomy is bounded**: a note may offer equivalent routes such as
+  indoor/outdoor, safe terrain, duration within an approved range, or full
+  rest/easy spin. Each menu preserves the training purpose, metric ceiling,
+  load envelope, key-session order, and recovery. It states how to choose,
+  when to stop or ask the coach, and what may not be stacked or made up.
+  Health clearance, zones, event priority, and major load changes are never
+  delegated.
 
 ### 4.3 Ladder algorithm (T7)
 

@@ -16,6 +16,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
+from delivery_notes import render_coached_weekly_notes
+from voice_lint import lint_notes, lint_rest_cards
+
 INPUT_VERSION = "post_render/transitional-planir-tp-manifest/v1"
 COUNTED_RACE_WEEK_KINDS = {"bike", "race"}
 FIELD_TEST_PATTERNS = {
@@ -36,6 +39,14 @@ TP_SESSION_FIELDS = (
     "series_total", "order_on_day", "strength_template", "archetype_id",
     "race",
 )
+ATHLETE_DESCRIPTION_MAX_WORDS = 180
+_RETAINED_TOKEN = re.compile(r"\[\s*retained\b[^\]]*\]", re.I)
+_PERSONAL_WEEK_HEADER = re.compile(
+    r"^\s*.+?\s+-\s+Week\s+\d+\s*/\s*\d+\s+-\s+.+$", re.I | re.M)
+_PHASE_OR_PURPOSE = re.compile(r"^\s*(?:PHASE|PURPOSE)\s*:", re.I | re.M)
+_ALL_CAPS_CHEER = re.compile(r"^[A-Z][A-Z\s,!.'’\-]{5,}!+$", re.M)
+_RPE_TOKEN = re.compile(r"\bRPE\s*:?\s*(\d{1,2})(?:\s*[-–]\s*(\d{1,2}))?", re.I)
+_CLEARED_INJURY_STATES = {"cleared", "resolved", "recovered", "closed"}
 
 
 class PostRenderValidationError(ValueError):
@@ -86,11 +97,12 @@ def _issue(
     rule_id: str, message: str, *, review_value: Any = None,
     basis: str = "post-render PlanIR and TP manifest validation",
     display_unit: str | None = None,
+    severity: str = "CRITICAL",
 ) -> Dict[str, Any]:
     item = {
         "id": rule_id,
         "source": "post_render",
-        "severity": "CRITICAL",
+        "severity": severity,
         "message": message,
         "review_value": message if review_value is None else review_value,
         "basis": basis,
@@ -122,6 +134,184 @@ def _sessions(plan_ir: Dict[str, Any]) -> Iterable[Tuple[int, Dict[str, Any]]]:
             yield number, session
 
 
+def _structure_max_target(session: Dict[str, Any]) -> float | None:
+    """Maximum PRIMARY-metric target (RPE / %FTP / %HR). Targets carrying a
+    `unit` (cadence: roundOrStridePerMinute) are a second axis and must never
+    be read as intensity -- an RPE 6 step with a 95 rpm cadence target is not
+    RPE 95 (sol review, Aug 23 2026)."""
+    values = []
+    for block in (session.get("structure") or {}).get("structure") or []:
+        for step in block.get("steps") or []:
+            for target in step.get("targets") or []:
+                if not isinstance(target, dict) or target.get("unit"):
+                    continue
+                for field in ("minValue", "maxValue"):
+                    try:
+                        values.append(float(target[field]))
+                    except (KeyError, TypeError, ValueError):
+                        pass
+    return max(values) if values else None
+
+
+def _description_max_rpe(description: Any) -> int | None:
+    values = []
+    for match in _RPE_TOKEN.finditer(str(description or "")):
+        values.append(int(match.group(1)))
+        if match.group(2):
+            values.append(int(match.group(2)))
+    return max(values) if values else None
+
+
+def _rpe_semantic_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
+    mismatches = []
+    for _, session in _sessions(plan_ir):
+        structure = session.get("structure") or {}
+        if str(structure.get("primaryIntensityMetric") or "").lower() != "rpe":
+            continue
+        described = _description_max_rpe(session.get("description"))
+        structured = _structure_max_target(session)
+        if described is None or structured is None or described == structured:
+            continue
+        mismatches.append({
+            "date": session.get("date"), "title": session.get("title"),
+            "description_max_rpe": described,
+            "structure_max_rpe": structured,
+        })
+    if not mismatches:
+        return []
+    return [_issue(
+        "RPE_DESCRIPTION_STRUCTURE_MISMATCH",
+        "Athlete-facing RPE text disagrees with executable workout structure.",
+        review_value={"sessions": mismatches},
+        basis="athlete-visible RPE statements compared with TP RPE targets",
+    )]
+
+
+def _field_test_suppression_findings(
+    plan_ir: Dict[str, Any], profile: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    allowed = (profile.get("fitness_markers") or {}).get(
+        "field_testing_allowed", True)
+    if allowed is not False:
+        return []
+    tests = [
+        {"date": session.get("date"), "title": session.get("title")}
+        for _, session in _sessions(plan_ir)
+        if _field_test_metric(session) is not None
+    ]
+    if not tests:
+        return []
+    return [_issue(
+        "FIELD_TEST_SUPPRESSION_BREACH",
+        "The plan contains a field test despite the explicit no-test directive.",
+        review_value={"sessions": tests},
+        basis="canonical field-testing control compared with rendered PlanIR",
+    )]
+
+
+def _unresolved_pain_evidence(profile: Dict[str, Any]) -> List[str]:
+    evidence = []
+    for injury in (profile.get("injury_history") or {}).get("current_injuries") or []:
+        if isinstance(injury, dict):
+            status = str(injury.get("status") or "").strip().lower()
+            if status in _CLEARED_INJURY_STATES:
+                continue
+            text = " ".join(str(injury.get(field) or "") for field in (
+                "area", "description", "notes", "status"))
+        else:
+            text = str(injury or "")
+        if text.strip():
+            evidence.append(text.strip())
+    for field, value in (profile.get("movement_limitations") or {}).items():
+        if str(value or "").strip().lower() == "painful":
+            evidence.append(f"movement limitation {field}=painful")
+    bike_fit = profile.get("bike_fit") or {}
+    if bike_fit.get("pain") is True:
+        evidence.append(str(bike_fit.get("pain_description") or "bike pain"))
+    return evidence
+
+
+def _unresolved_pain_load_findings(
+    plan_ir: Dict[str, Any], profile: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    evidence = _unresolved_pain_evidence(profile)
+    if not evidence:
+        return []
+    unsafe = []
+    for _, session in _sessions(plan_ir):
+        title = str(session.get("title") or session.get("display_name") or "")
+        structure = session.get("structure") or {}
+        metric = str(structure.get("primaryIntensityMetric") or "").lower()
+        maximum = _structure_max_target(session)
+        is_test = _field_test_metric(session) is not None
+        is_max = (
+            (metric == "rpe" and maximum is not None and maximum >= 9)
+            or (metric in {"percentofftp", "power", "power_pct_ftp"}
+                and maximum is not None and maximum >= 105)
+            or bool(re.search(r"\b(?:all[- ]?out|maximal|maximum effort)\b", title, re.I))
+        )
+        if is_test or is_max:
+            unsafe.append({
+                "date": session.get("date"), "title": title,
+                "field_test": is_test, "structure_metric": metric or None,
+                "structure_max": maximum,
+            })
+    if not unsafe:
+        return []
+    return [_issue(
+        "UNRESOLVED_PAIN_MAX_PRESCRIPTION",
+        "Unresolved pain/clearance context blocks field-test or maximal prescriptions.",
+        review_value={"health_evidence": evidence, "blocked_sessions": unsafe},
+        basis="current injury/pain restrictions compared with proposed test and maximal load",
+    )]
+
+
+def _athlete_visible_copy_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
+    violations = []
+    has_b_event = any(
+        str(event.get("priority") or "").upper() == "B"
+        for event in plan_ir.get("events") or [] if isinstance(event, dict))
+    for _, session in _sessions(plan_ir):
+        title = str(session.get("title") or "")
+        description = str(session.get("description") or "")
+        reasons = []
+        if _RETAINED_TOKEN.search(title) or _RETAINED_TOKEN.search(description):
+            reasons.append("internal retained token")
+        if _PERSONAL_WEEK_HEADER.search(description):
+            reasons.append("personal/week header")
+        if _PHASE_OR_PURPOSE.search(description):
+            reasons.append("phase or purpose essay header")
+        if _ALL_CAPS_CHEER.search(description):
+            reasons.append("all-caps cheerleading")
+        word_count = len(re.findall(r"\b\w+[\w'-]*\b", description))
+        if word_count > ATHLETE_DESCRIPTION_MAX_WORDS:
+            reasons.append(f"description exceeds {ATHLETE_DESCRIPTION_MAX_WORDS} words")
+        if not has_b_event and re.search(r"\bB event\b|\bfuel both events\b", description, re.I):
+            reasons.append("invented B event")
+        if reasons:
+            violations.append({
+                "date": session.get("date"), "title": title,
+                "word_count": word_count, "reasons": reasons,
+            })
+    if not has_b_event:
+        for note in render_coached_weekly_notes(plan_ir):
+            body = str(note.get("body") or "")
+            if re.search(r"\bB event\b|\bfuel both events\b", body, re.I):
+                violations.append({
+                    "date": note.get("date"), "title": note.get("title"),
+                    "word_count": len(body.split()),
+                    "reasons": ["invented B event in weekly note"],
+                })
+    if not violations:
+        return []
+    return [_issue(
+        "ATHLETE_VISIBLE_COPY_POLICY",
+        "Athlete-visible titles or descriptions contain internal, invented, or overlong copy.",
+        review_value={"violations": violations},
+        basis="athlete-visible delivery copy policy",
+    )]
+
+
 def _validate_manifest_projection(
     plan_ir: Dict[str, Any], manifest: Dict[str, Any],
 ) -> None:
@@ -139,14 +329,16 @@ def _validate_manifest_projection(
     )
     athlete_name = str((plan_ir.get("athlete") or {}).get("name") or "Athlete")
     race_snapshot = plan_ir.get("race_snapshot") or {}
-    race_name = str(race_snapshot.get("name") or "Race")
+    has_race = bool(race_snapshot.get("name") or race_snapshot.get("date"))
+    race_name = str(
+        race_snapshot.get("name") or ("Race" if has_race else "Coached Block"))
     expected_top_level = {
         "plan_title": f"{athlete_name} · {race_name} · {plan_weeks}wk [CUSTOM]",
         "athlete": athlete_name,
         "race": {
             "name": race_snapshot.get("name"),
             "date": race_snapshot.get("date"),
-            "priority": "A",
+            "priority": "A" if has_race else None,
         },
     }
     for field, expected_value in expected_top_level.items():
@@ -234,6 +426,8 @@ try:
 except ImportError:  # degrade to the regex + structure fallback below
     _CANONICAL_INTENSITY = None
 OPENERS_TITLE = re.compile(r"\bopeners?\b", re.I)
+# AE-2.7: recovery-ride exemption for the session-floor check below.
+RECOVERY_TITLE = re.compile(r"\brecovery\b", re.I)
 
 
 def _is_intensity(session: Dict[str, Any]) -> bool:
@@ -275,6 +469,179 @@ def _is_long_ride(session: Dict[str, Any]) -> bool:
     seconds = int(session.get("duration_s") or 0)
     hours = float(session.get("total_time_planned") or 0)
     return bool(LONG_RIDE_TITLE.search(title) or seconds >= 3 * 3600 or hours >= 3)
+
+
+def _is_endurance(session: Dict[str, Any]) -> bool:
+    """AE-2.8: the "endurance-classified" bucket the ≤50 TSS/hr gate below
+    applies to -- everything NOT intensity, NOT a long ride (build/peak
+    durability long rides are the house signature and stay unceilinged per
+    their own rule, matching library_selector._BASE_LONG_RIDE_IF_CEILING),
+    NOT a field test, and NOT an opener."""
+    if session.get("tp_kind") != "bike":
+        return False
+    if _field_test_metric(session) or _is_intensity(session) or _is_long_ride(session):
+        return False
+    title = str(session.get("title") or session.get("display_name") or "")
+    if OPENERS_TITLE.search(title):
+        return False
+    return True
+
+
+_ENDURANCE_TSS_PER_HOUR_CEILING = 50.0
+
+
+def _endurance_tss_rate_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, str]]:
+    """AE-2.8 (ratified 2026-08-23, Q6): endurance-classified sessions must
+    compute to <=50 TSS/hr (planned TSS / planned hours) -- a COMPUTED gate,
+    not an authoring convention. WARNING severity: the plan still ships,
+    but a real offender (e.g. Endurance Surges L6, Tempo 3x15, named in
+    AE-2.8) surfaces for coach review instead of shipping silently."""
+    findings: List[Dict[str, str]] = []
+    for _, session in _sessions(plan_ir):
+        if not _is_endurance(session):
+            continue
+        tss = session.get("tss_planned")
+        if tss is None:
+            tss = session.get("tss")
+        try:
+            tss = float(tss)
+        except (TypeError, ValueError):
+            continue
+        hours = session.get("total_time_planned")
+        try:
+            hours = float(hours)
+        except (TypeError, ValueError):
+            hours = 0.0
+        if hours <= 0:
+            seconds = int(session.get("duration_s") or 0)
+            hours = seconds / 3600.0
+        if hours <= 0 or tss <= 0:
+            continue
+        rate = tss / hours
+        if rate <= _ENDURANCE_TSS_PER_HOUR_CEILING:
+            continue
+        title = str(session.get("title") or session.get("display_name") or "")
+        session_day = _session_date(session)
+        findings.append(_issue(
+            "ENDURANCE_TSS_RATE_HIGH",
+            f"{session_day.isoformat() if session_day else session.get('date')}: "
+            f"'{title}' computes to {rate:.1f} TSS/hr, over the AE-2.8 "
+            f"{_ENDURANCE_TSS_PER_HOUR_CEILING:.0f} TSS/hr endurance ceiling "
+            f"({tss:.1f} TSS / {hours:.2f} h).",
+            review_value={
+                "title": title, "tss_planned": tss, "hours": hours,
+                "tss_per_hour": round(rate, 1),
+                "ceiling": _ENDURANCE_TSS_PER_HOUR_CEILING,
+            },
+            severity="WARNING",
+        ))
+    return findings
+
+
+_HARD_FTP_THRESHOLD = 92.0
+_HARD_MINUTES_FLOOR = 90.0
+# week_type values (plan_ir week dict, project_tp_structure) NOT covered by
+# AE-2.1's floor -- recovery/taper carry their own zero/capped-intensity
+# rules and AE-1.12's taper hard-content cap (<=15 min/session) makes the
+# 90-minute weekly floor structurally impossible there; race week is its
+# own thing entirely.
+_HARD_MINUTES_EXEMPT_WEEK_TYPES = {"recovery", "taper", "race"}
+
+
+def _step_seconds(step: Dict[str, Any]) -> int:
+    try:
+        return int((step.get("length") or {}).get("value") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _step_hard_seconds(step: Dict[str, Any], *, is_test: bool) -> int:
+    """Seconds of this step that count toward AE-2.1's >=92% FTP hard-minutes
+    floor. A field-test session's own open/FreeRide test effort (structured
+    honestly as a zero-target step per AE-8.4d, since its whole point is
+    that no numeric target can be trusted) still counts as hard time --
+    AE-2.1: "testing weeks count test efforts toward the floor". Only the
+    field test's genuinely easy between-rep recovery blocks (a real,
+    non-zero, sub-92% target) are excluded."""
+    intensity_class = str(step.get("intensityClass") or "")
+    if intensity_class in ("warmUp", "coolDown", "rest"):
+        return 0
+    seconds = _step_seconds(step)
+    if not seconds:
+        return 0
+    values = []
+    for target in step.get("targets") or []:
+        if not isinstance(target, dict) or target.get("unit"):
+            continue
+        for field in ("minValue", "maxValue"):
+            try:
+                values.append(float(target[field]))
+            except (KeyError, TypeError, ValueError):
+                pass
+    maximum = max(values) if values else None
+    minimum = min(values) if values else None
+    if maximum is not None and maximum >= _HARD_FTP_THRESHOLD:
+        return seconds
+    if is_test and minimum == 0 and (maximum is None or maximum == 0):
+        return seconds
+    return 0
+
+
+def _session_hard_seconds(session: Dict[str, Any]) -> int:
+    is_test = _field_test_metric(session) is not None
+    total = 0
+    for block in (session.get("structure") or {}).get("structure") or []:
+        for step in block.get("steps") or []:
+            total += _step_hard_seconds(step, is_test=is_test)
+    return total
+
+
+def _hard_minutes_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """AE-2.1 (phase-scoped, sol programming review 2026-08-24): a LOAD week
+    needs >=90 structured hard minutes (>=92% FTP, test efforts counted per
+    the ratified scoping addendum); recovery/taper/race weeks are governed
+    by their own rules and exempt. WARNING severity: the plan still ships,
+    but a real offender (W3's 26.7 hard minutes in the sol review, the
+    plan's only true build/load week) surfaces for coach review instead of
+    shipping silently."""
+    totals: Dict[int, float] = {}
+    for week_num, session in _sessions(plan_ir):
+        if session.get("tp_kind") != "bike":
+            continue
+        totals[week_num] = totals.get(week_num, 0.0) + _session_hard_seconds(session) / 60.0
+
+    findings = []
+    for week in plan_ir.get("weeks") or []:
+        week_num = int(week.get("number", 0))
+        week_type = str(week.get("week_type") or "")
+        # "pre_plan" (W00) is the pre-order waiting-period bridge week, not
+        # a structured training week -- AE-2.1 governs weeks the athlete is
+        # actually training a periodized plan, not the lead-in.
+        if str(week.get("phase") or "") == "pre_plan":
+            continue
+        if week_type in _HARD_MINUTES_EXEMPT_WEEK_TYPES or week_type != "load":
+            continue
+        minutes = totals.get(week_num, 0.0)
+        if minutes >= _HARD_MINUTES_FLOOR:
+            continue
+        findings.append(_issue(
+            # validate_transitional_input's final dedup keys issues by "id"
+            # ({item["id"]: item for item in issues}) -- a bare
+            # "HARD_MINUTES_BELOW_FLOOR" id collapses every offending week
+            # down to just the last one processed. Real case: Steve Wagner's
+            # W1 (38.5 min), W2 (27.0 min), and W3 (24.0 min) all fail the
+            # floor; without a per-week id only W3 would ever reach the
+            # coach. Suffixed per-instance ids already have precedent in
+            # this codebase (apply_contract.py's PACKAGE_ZWO_<file>_MAIN_SET).
+            f"HARD_MINUTES_BELOW_FLOOR_W{week_num:02d}",
+            f"Week {week_num}: {minutes:.1f} structured hard minutes "
+            f"(>= {_HARD_FTP_THRESHOLD:.0f}% FTP, test efforts counted) is "
+            f"under the AE-2.1 {_HARD_MINUTES_FLOOR:.0f}-minute load-week floor.",
+            review_value={"week": week_num, "hard_minutes": round(minutes, 1),
+                          "floor": _HARD_MINUTES_FLOOR},
+            severity="WARNING",
+        ))
+    return findings
 
 
 def _schedule_findings(
@@ -337,7 +704,8 @@ def _schedule_findings(
 def _short_quality_findings(
     plan_ir: Dict[str, Any], profile: Dict[str, Any]
 ) -> List[Dict[str, str]]:
-    """Flag hard sessions far shorter than the day allows.
+    """Flag hard sessions far shorter than the day allows, plus (AE-2.7) any
+    non-exempt session under the ratified 45-minute floor.
 
     Coach ruling (Aug 2026): a 30-minute VO2 session is only right when the
     day is genuinely constrained — the average working athlete has 45-90
@@ -345,49 +713,70 @@ def _short_quality_findings(
     intense ride under 45 minutes on a day with >=60 minutes available is a
     generator under-fill, not a plan. Openers/tune-up priming sessions are
     deliberately short and exempt.
+
+    AE-2.7 (ratified 2026-08-23, Q5): the 45-min floor applies to every
+    NON-recovery, non-opener session, not only hard ones — extends the
+    check above with a WARNING-severity finding (SHORT_SESSION_BELOW_FLOOR)
+    rather than reusing the CRITICAL SHORT_QUALITY_SESSION id, so a plan
+    that trips both checks doesn't lose one finding to the id-dedup in
+    validate_transitional_input. Exemptions: recovery rides, openers,
+    pre-plan (W00) cards, rest-day cards (tp_kind == 'day_off', already
+    outside the tp_kind in (None, 'bike') filter below), and strength
+    (tp_kind == 'strength', same filter -- the strength session floor is an
+    OPEN ruling per ALGORITHM_EVIDENCE.md AE-8.4/round-2 queue, not yet
+    ratified, so strength is exempted here rather than gated).
     """
     preferred_days = profile.get("preferred_days") or {}
     findings: List[Dict[str, str]] = []
-    for _, session in _sessions(plan_ir):
+    for week_number, session in _sessions(plan_ir):
         if session.get("tp_kind") not in (None, "bike"):
             continue
         title = str(session.get("title") or session.get("display_name") or "")
-        if any(token in title.lower() for token in ("opener", "tune-up", "tune up")):
-            continue
+        title_lower = title.lower()
+        is_opener = any(
+            token in title_lower for token in ("opener", "tune-up", "tune up"))
         seconds = int(session.get("duration_s") or 0)
-        if not seconds or seconds >= 45 * 60:
-            continue
-        hard = False
-        for segment in session.get("segments") or []:
-            for key in ("on_power", "work_percent_ftp", "power_target"):
-                try:
-                    value = float(segment.get(key) or 0)
-                except (TypeError, ValueError):
-                    continue
-                if value <= 2:
-                    value *= 100
-                if value >= 105:
-                    hard = True
-        if not hard:
-            continue
+
         session_day = _session_date(session)
-        if not session_day:
-            continue
-        weekday = session_day.strftime("%A").lower()
-        cap = (preferred_days.get(weekday) or {}).get("max_duration_min")
+        weekday = session_day.strftime("%A").lower() if session_day else None
+        cap = (preferred_days.get(weekday) or {}).get("max_duration_min") if weekday else None
         try:
             cap = float(cap)
         except (TypeError, ValueError):
             cap = None
-        if cap is not None and cap < 60:
-            continue  # genuinely constrained day — a short session is right
-        findings.append(_issue(
-            "SHORT_QUALITY_SESSION",
-            f"{session_day.isoformat()}: '{title}' is {seconds // 60} minutes of "
-            f"hard work on a day with "
-            f"{'no stated cap' if cap is None else f'{cap:.0f} minutes available'} — "
-            "weekday quality should land 45-90 minutes unless the day is constrained.",
-        ))
+        day_has_60min = cap is None or cap >= 60
+
+        if not is_opener and seconds and seconds < 45 * 60:
+            hard = False
+            for segment in session.get("segments") or []:
+                for key in ("on_power", "work_percent_ftp", "power_target"):
+                    try:
+                        value = float(segment.get(key) or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    if value <= 2:
+                        value *= 100
+                    if value >= 105:
+                        hard = True
+            if hard and session_day and day_has_60min:
+                findings.append(_issue(
+                    "SHORT_QUALITY_SESSION",
+                    f"{session_day.isoformat()}: '{title}' is {seconds // 60} minutes of "
+                    f"hard work on a day with "
+                    f"{'no stated cap' if cap is None else f'{cap:.0f} minutes available'} — "
+                    "weekday quality should land 45-90 minutes unless the day is constrained.",
+                ))
+            elif (not hard and session_day and day_has_60min
+                    and week_number != 0  # pre-plan (W00) cards exempt
+                    and not RECOVERY_TITLE.search(title)):
+                findings.append(_issue(
+                    "SHORT_SESSION_BELOW_FLOOR",
+                    f"{session_day.isoformat()}: '{title}' is {seconds // 60} minutes, "
+                    f"under the ratified 45-minute floor, on a day with "
+                    f"{'no stated cap' if cap is None else f'{cap:.0f} minutes available'} "
+                    "(AE-2.7).",
+                    severity="WARNING",
+                ))
     return findings
 
 
@@ -465,6 +854,20 @@ def _day_cap_findings(
     )]
 
 
+def _voice_findings(plan_ir: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Athlete-facing copy contract (athletes/config/voice_rules.yaml):
+    no blank Day Off cards, no banned phrases/patterns, word caps, and no
+    sentence repeated across the plan's weekly notes."""
+    findings: List[str] = []
+    findings.extend(lint_notes(render_coached_weekly_notes(plan_ir)))
+    findings.extend(lint_rest_cards(session for _, session in _sessions(plan_ir)))
+    return [
+        _issue("VOICE_CONTRACT", finding,
+               basis="athletes/config/voice_rules.yaml applied to rendered notes and Day Off cards")
+        for finding in findings
+    ]
+
+
 def validate_transitional_input(
     document: Dict[str, Any],
 ) -> Tuple[List[Dict[str, str]], List[Dict[str, str]]]:
@@ -494,11 +897,11 @@ def validate_transitional_input(
         if race_date and _session_date(session) == race_date
         and (session.get("tp_kind") == "race" or session.get("type") == "race")
     ]
-    if not race_entries:
+    if race_date and not race_entries:
         issues.append(_issue(
             "NO_RACE_DAY_WORKOUT", "Race date has no race-day entry.",
             review_value={"race_date": race_date_raw, "race_day_entries": 0}))
-    else:
+    elif race_entries:
         race_week = race_entries[0][0]
         counted = sum(
             1 for week, session in sessions
@@ -567,11 +970,18 @@ def validate_transitional_input(
         ))
 
     profile = context.get("profile") or {}
+    issues.extend(_rpe_semantic_findings(plan_ir))
+    issues.extend(_field_test_suppression_findings(plan_ir, profile))
+    issues.extend(_unresolved_pain_load_findings(plan_ir, profile))
+    issues.extend(_athlete_visible_copy_findings(plan_ir))
+    issues.extend(_voice_findings(plan_ir))
     schedule_issues, schedule_confirmations = _schedule_findings(plan_ir, profile)
     issues.extend(schedule_issues)
     confirmations.extend(schedule_confirmations)
     confirmations.extend(_day_cap_findings(plan_ir, profile))
     issues.extend(_short_quality_findings(plan_ir, profile))
+    issues.extend(_endurance_tss_rate_findings(plan_ir))
+    issues.extend(_hard_minutes_findings(plan_ir))
 
     fueling = context.get("fueling") or {}
     labels = [

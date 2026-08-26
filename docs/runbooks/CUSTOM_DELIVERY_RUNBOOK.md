@@ -31,6 +31,14 @@ hand-build.** Dump it first:
    briefings, AFTER TODAY'S TEST, FUELLING ladder, ALTITUDE/heat when the
    race qualifies, GRAVEL GRIT 1–4, CHECK-IN, REHEARSAL DEBRIEF, RACE WEEK,
    AFTER with the what's-next nurture close.
+   Every weekly briefing also carries the block's narrative thread (the
+   intent now, the direction, what it builds, what comes next) and a bounded
+   `YOUR CALL` section. Athlete copy states the assignment; it never defends
+   or justifies the prescription. Choices state the training purpose,
+   ceiling, decision rule, and
+   stop/escalation condition made explicit. Choice never transfers health,
+   zone, event-priority, major-load, key-session-order, or make-up-work
+   decisions to the athlete.
 5. **Fuel ladder, not a flat rate**: rungs on the dated long rides climbing
    to race rate; final pre-taper sim at race rate; "where a workout quotes a
    different number, the ladder wins."
@@ -50,6 +58,12 @@ hand-build.** Dump it first:
     must not be a Level-1 dose (check every quality session's level).
 12. **Guide hosted**: `docs/guides/{athlete-id}/` on main → Pages at
     intake.gravelgodcoaching.com; noindex; PDF link after the h1.
+13. **Voice is sourced, not cosplayed**: use the current house-standard
+   notes and approved coach examples for composed authority, short
+   declarative sentences, clear intent, controlled emotion, and no hedging.
+   Athlete-specific details must be current and sourced. If the source is
+   missing, use plain copy and flag voice review instead of inventing a
+   personal anecdote or importing another athlete's story.
 
 ## Verify like you mean it
 

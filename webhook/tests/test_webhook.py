@@ -745,6 +745,89 @@ class TestCreateCheckout:
             assert call_kwargs['metadata']['tier'] == 'custom'
             assert call_kwargs['metadata']['product_type'] == 'training_plan'
 
+    def test_gravel_checkout_records_gravel_grit_without_charging_extra(
+            self, client, temp_athletes_dir):
+        """Gravel Grit is an included entitlement, never an extra line item."""
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_gravel_grit'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={
+                    'name': 'Gravel Rider',
+                    'email': 'gravel@example.com',
+                    'races': [{
+                        'name': 'Unbound 200',
+                        'date': self._future_date(),
+                        'priority': 'A',
+                    }],
+                },
+                headers={'Origin': 'https://gravelgodcycling.com'},
+                environ_base={'REMOTE_ADDR': '198.51.100.21'},
+            )
+
+            assert response.status_code == 200
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert len(call_kwargs['line_items']) == 1
+            assert call_kwargs['metadata']['plan_addons'] == 'gravel_grit'
+            stored = __import__('app').load_intake(
+                response.get_json()['intake_id'])
+            assert stored['plan_addons'] == ['gravel_grit']
+
+    def test_road_checkout_has_no_gravel_grit_entitlement(
+            self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_road_addons'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={
+                    'name': 'Road Rider',
+                    'email': 'road@example.com',
+                    'races': [{
+                        'name': 'Mallorca 312',
+                        'date': self._future_date(),
+                        'priority': 'A',
+                    }],
+                },
+                headers={'Origin': 'https://roadielabs.com'},
+                environ_base={'REMOTE_ADDR': '198.51.100.22'},
+            )
+
+            assert response.status_code == 200
+            call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+            assert call_kwargs['metadata']['brand'] == 'roadielabs'
+            assert call_kwargs['metadata']['plan_addons'] == ''
+
+    def test_checkout_rejects_unknown_addon_before_calling_stripe(
+            self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe:
+            response = client.post(
+                '/api/create-checkout',
+                json={
+                    'name': 'Test Rider',
+                    'email': 'rider@example.com',
+                    'races': [{
+                        'name': 'Unbound 200',
+                        'date': self._future_date(),
+                        'priority': 'A',
+                    }],
+                    'plan_addons': ['invented_client_price'],
+                },
+                headers={'Origin': 'https://gravelgodcycling.com'},
+                environ_base={'REMOTE_ADDR': '198.51.100.23'},
+            )
+
+            assert response.status_code == 400
+            assert 'unknown plan add-on' in response.get_json()['error']
+            mock_stripe.checkout.Session.create.assert_not_called()
+
     def test_checkout_price_capped_at_249(self, client, temp_athletes_dir):
         """Price is capped at $249 for very long plans."""
         with patch('app.stripe') as mock_stripe:
@@ -4126,6 +4209,15 @@ class TestTravelDatesPassthrough:
         md = _questionnaire_to_markdown(
             {'powerOrHr': 'hr'}, name='T', email='t@e.com')
         assert 'Training Metric: hr' in md
+
+    def test_markdown_preserves_programmed_midweek_ceiling_and_notes_role(self):
+        from app import _questionnaire_to_markdown
+        md = _questionnaire_to_markdown({
+            'programmed_midweek_max_minutes': 45,
+            'notes': 'Programmed midweek sessions must not exceed 45 minutes.',
+        }, name='Michael Beal', email='wmbeal@outlook.com')
+        assert 'Programmed Midweek Max Minutes: 45' in md
+        assert '- Notes: Programmed midweek sessions must not exceed 45 minutes.' in md
 
 
 class TestIntelStatsWindow:

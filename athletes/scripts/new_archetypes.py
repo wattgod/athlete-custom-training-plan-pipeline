@@ -1338,20 +1338,29 @@ ENDURANCE_NEW = [
     {
         'name': 'Pre-Race Openers',
         'levels': {
+            # Coach decision, Aug 24 2026 (DEFECT 4, coach TP-review, plan
+            # 672143): the alt-mid alactic dose from
+            # nate_workout_generator.alactic_opener_alternative_dose_proposal
+            # -- 3x18sec @140% FTP with 150s recovery, ~22 TSS -- replaces
+            # the original 2x30sec @110% FTP dose (sub-VO2max/anaerobic-
+            # capacity range, not truly alactic; 2 reps thin for "legs
+            # remembering speed"). See that function's docstring for the
+            # full TSS comparison across dose options.
             '1': {
-                'structure': '20min Z1-Z2 easy, 2x30sec @ 110% FTP with 2min easy, 5min Z1 cooldown',
-                'execution': 'Short openers - a couple of brief efforts to wake up the legs without creating fatigue',
-                'cadence_prescription': '90-100rpm on efforts',
-                'cadence': 95,
+                'structure': '20min Z1-Z2 easy, 3x18sec @ 140% FTP with 2.5min full recovery, 5min Z1 cooldown',
+                'execution': ('Short alactic openers -- three brief near-max efforts '
+                              'to wake up neuromuscular firing without creating fatigue'),
+                'cadence_prescription': '95-105rpm on efforts',
+                'cadence': 100,
                 'position_prescription': 'Seated, relaxed',
                 'timing_prescription': 'Day before race or event',
                 'fueling': 'Normal hydration only',
                 'openers': True,
                 'warmup_duration': 1200,
                 'warmup_power': 0.65,
-                'efforts': (2, 30),
-                'effort_power': 1.10,
-                'effort_recovery': 120,
+                'efforts': (3, 18),
+                'effort_power': 1.40,
+                'effort_recovery': 150,
                 'cooldown_duration': 300
             },
             '2': {
@@ -3170,6 +3179,12 @@ RECOVERY_NEW = [
 
 INSCYD_NEW = [
     {
+        # AE-6.3: the fasted-morning timing_prescription/fueling text below
+        # (present through all 6 levels) has been de-fasted -- "that moment
+        # is over"; fasted riding is retired unless run as the documented
+        # all-or-nothing 8-10 week protocol, which this archetype is not.
+        # The VLamax-depletion mechanism (long Z2 + strategic sprints) is
+        # unaffected and stays selectable.
         'name': 'VLamax Reduction',
         'levels': {
             '1': {
@@ -3178,8 +3193,8 @@ INSCYD_NEW = [
                 'cadence_prescription': '80-90rpm base, 110+ rpm sprints',
                 'cadence': 85,
                 'position_prescription': 'Comfortable, sprints in drops',
-                'timing_prescription': 'Fasted morning for maximum effect',
-                'fueling': 'Fasted or minimal - this is the point',
+                'timing_prescription': 'Morning, normal pre-ride fueling',
+                'fueling': 'Light - keep the sprints the depletion driver, not the fast',
                 'inscyd': True,
                 'vlamax_reduction': True,
                 'duration': 5400,
@@ -3193,8 +3208,8 @@ INSCYD_NEW = [
                 'cadence_prescription': '80-90rpm, high cadence sprints',
                 'cadence': 85,
                 'position_prescription': 'Endurance position',
-                'timing_prescription': 'Fasted or low-carb',
-                'fueling': 'Minimal - water and electrolytes',
+                'timing_prescription': 'Morning, light pre-ride meal',
+                'fueling': 'Light - water and electrolytes',
                 'inscyd': True,
                 'vlamax_reduction': True,
                 'duration': 7200,
@@ -3208,8 +3223,8 @@ INSCYD_NEW = [
                 'cadence_prescription': '80-90rpm',
                 'cadence': 85,
                 'position_prescription': 'Sustainable',
-                'timing_prescription': 'Fasted',
-                'fueling': 'Minimal',
+                'timing_prescription': 'Normal fueling',
+                'fueling': 'Light',
                 'inscyd': True,
                 'vlamax_reduction': True,
                 'duration': 9000,
@@ -3223,8 +3238,8 @@ INSCYD_NEW = [
                 'cadence_prescription': '80-90rpm',
                 'cadence': 85,
                 'position_prescription': 'Comfortable',
-                'timing_prescription': 'Fasted, morning',
-                'fueling': 'Water only',
+                'timing_prescription': 'Morning, normal fueling',
+                'fueling': 'Light',
                 'inscyd': True,
                 'vlamax_reduction': True,
                 'duration': 10800,
@@ -3238,8 +3253,8 @@ INSCYD_NEW = [
                 'cadence_prescription': '80-90rpm',
                 'cadence': 85,
                 'position_prescription': 'Endurance',
-                'timing_prescription': 'Fasted',
-                'fueling': 'Minimal',
+                'timing_prescription': 'Normal fueling',
+                'fueling': 'Light',
                 'inscyd': True,
                 'vlamax_reduction': True,
                 'duration': 12600,
@@ -3253,8 +3268,8 @@ INSCYD_NEW = [
                 'cadence_prescription': '80-90rpm',
                 'cadence': 85,
                 'position_prescription': 'Sustainable',
-                'timing_prescription': 'Fasted, dedicated day',
-                'fueling': 'Minimal',
+                'timing_prescription': 'Morning, normal fueling, dedicated day',
+                'fueling': 'Light',
                 'inscyd': True,
                 'vlamax_reduction': True,
                 'duration': 14400,
@@ -3265,6 +3280,11 @@ INSCYD_NEW = [
         }
     },
     {
+        # RETIRED (AE-3.11: FatMax name purged, requires a metabolic cart,
+        # outdated; AE-6.3: fasted-riding protocol purged). Mechanism
+        # retained elsewhere as the .60-.70 endurance-band rationale. See
+        # archetype_registry.RETIRED_ARCHETYPES -- archived for regression
+        # fixtures (test_v29_design_fixes.py), not selectable/emittable.
         'name': 'FatMax Development',
         'levels': {
             '1': {

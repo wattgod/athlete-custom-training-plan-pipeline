@@ -15,8 +15,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 import plan_ir
 from canonical_training_model import (CanonicalModelError, MODEL_VERSION,
                                       build_canonical_model,
+                                      metric_neutral_description,
                                       project_guide_html,
-                                      publish_zwo_projection,
+                                      publish_zwo_projection, target_summary,
                                       validate_canonical_model)
 from apply_contract import build_contract
 from generate_plan_preview import build_preview_data
@@ -38,6 +39,35 @@ PRESCRIPTION = {
                "weight_kg": 70, "intensity_descriptor": "finish"},
     "policy_version": "fixture",
 }
+
+
+def test_rpe_interval_summary_names_both_targets_without_ratio_ambiguity():
+    assert target_summary({'type': 'rpe', 'on': 6, 'off': 10}) == (
+        'RPE 6; RPE 10')
+
+
+def test_rpe_description_removes_all_percent_based_power_prose():
+    control = {"control_metric": "rpe"}
+    source = (
+        "Build 50%->79% FTP, then hold 79%-85% FTP. "
+        "Finish 4x1 minute @116-124%. "
+        "Average effort x 0.95 = training anchor."
+    )
+    projected = metric_neutral_description(source, control)
+    assert "%" not in projected
+    assert "FTP" not in projected
+    assert "0.95" not in projected
+    assert "Record the completed field-test effort for review." in projected
+
+
+def test_rpe_b_race_copy_replaces_percent_of_a_race_without_garble():
+    projected = metric_neutral_description(
+        "- Target effort: 90-95% of A-race effort", {"control_metric": "rpe"}
+    )
+    assert projected == (
+        "- Target effort: hard and controlled. Saturday gets first claim."
+    )
+    assert "%" not in projected
 
 
 def _write_fixture(tmp_path, case):

@@ -1,0 +1,75 @@
+# AUTHORITY: ~/plugins/endure-coaching-ops/skills/coaching-reviews/references/
+#   voice-and-rapport.md (+ weekly-review-and-comments.md). This file is the
+#   machine-checkable subset used by voice_lint; when the guide changes, this
+#   file follows it, never the other way round.
+#
+# Athlete-facing voice rules — the contract every generated card and note is
+# validated against (post_render_validator._voice_findings), and the file the
+# judge/improvement loop appends to when a plan's copy reads wrong.
+#
+# Register: PRODUCT SURFACE (Matti, Jul 2026): "straddling the line between
+# professional and subtly conveying my brand voice. Not trying too hard, not
+# sterile." Personality leaks through professionalism — the wink, not the bit.
+# Hot-take and reflective registers never appear on a calendar.
+version: 1
+
+limits:
+  weekly_note_max_words: 100        # judgment, not recap; the old "no essay" test caps the first note at 90
+  rest_card_max_words: 80
+  max_identical_sentences_across_weeks: 1   # a sentence may appear in ONE week's note only
+
+# Phrases that mark copy as generic or machine-made. Case-insensitive substring.
+banned_phrases:
+  - "unlock your potential"
+  - "utilize"
+  - "leverage"
+  - "optimize"
+  - "journey"
+  - "in the world of"
+  - "it could be argued"
+  - "some might say"
+  - "let's dive"
+  - "dive into"
+  - "crush it"
+  - "crushing it"
+  - "level up"
+  - "game changer"
+  - "elevate your"
+  - "supercharge"
+  - "embrace the"
+  - "trust the process"
+  - "you've got this"
+  - "you got this"
+  - "stay consistent"
+  - "consistency is key"
+  - "remember,"
+  - "it's important to"
+  - "make sure to"
+  - "don't forget to"
+  - "as always"
+  - "happy training"
+  - "more is not the assignment"   # the Aug 2026 template line, retired
+
+# Structural markers that read as framework/AI, not a coach talking.
+banned_patterns:
+  - '^\s*#+\s'                # markdown headings
+  - '^\s*[-*]\s+\*\*'         # bold-bullet listicles
+  - '\*\*[^*]+\*\*'           # any bold
+  - '^(WEEK|THIS WEEK|FOCUS|GOAL|MINDSET)\s*:'   # framework headings in caps
+  - '!{2,}'                   # multiple exclamation marks
+  - '(?i)\bI am excited\b'
+  - '(?i)\bwe are excited\b'
+
+# What a weekly note must do (checked structurally, not by wording).
+weekly_note_beats:
+  - position        # where we are in the plan: "Week 3 of 8", phase, what this week is FOR
+  - key_sessions    # the key sessions by name, each with one reason it exists
+  - notice          # one thing to notice / one rule for the week
+# A dry aside is optional; never around health or safety.
+
+# Exemplars of the register (for humans and the judge; not templates).
+exemplars:
+  - "Rønnestad 30-15 Tuesday. The 15 seconds off are the trick: you never fully recover, so the oxygen system stays pinned without the legs blowing up."
+  - "Sunday is the long one. Boring on purpose. Fuel from the first twenty minutes, not when you get hungry."
+  - "Rest day. Off the bike, not off the plan."
+  - "If you feel great on the recovery day and want to ride — that is the point. Don't."

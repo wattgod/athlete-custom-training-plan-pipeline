@@ -28,6 +28,11 @@ weeks:
     date_short: Aug7
     workout_prefix: W00_Fri_Aug7
     is_race_day: false
+  - day: Sat
+    date: '2026-08-08'
+    date_short: Aug8
+    workout_prefix: W00_Sat_Aug8
+    is_race_day: false
   - day: Sun
     date: '2026-08-09'
     date_short: Aug9

@@ -324,6 +324,102 @@ def _fit_workout_to_cap(workout: Dict[str, Any], cap: int) -> Dict[str, Any]:
     return workout
 
 
+def trim_week_to_budget(days: List[Dict[str, Any]], week_type: str, hours_per_week: float) -> Optional[float]:
+    """Shrink-only pass: trim ``days`` in place until total duration fits
+    the athlete's weekly-hour budget for this week type.
+
+    Converts fillers to Rest Day first (starting from the end of the
+    week), then down-levels the longest intensity/long-ride workout a
+    level at a time, then shaves any remainder off the single longest
+    remaining session. Never grows a week — callers that also need
+    growth (e.g. the grow-to-floor pass in ``_build_week``) do that
+    separately and re-call this afterward to correct any overage growth
+    reintroduces.
+
+    Budget math must match block_compliance.r19_hours_fit exactly (same
+    tolerance breakpoints) so a plan that passes this trim also passes
+    the R19 compliance gate.
+
+    Idempotent and safe to call again on a week that was mutated *after*
+    an earlier trim pass (e.g. a post-build overlay like
+    ``protect_post_simulation_recovery`` reintroducing minutes) — this is
+    the only way such overlays stay inside the athlete's stated hours.
+
+    Returns the computed max_minutes budget, or None for week types with
+    no budget (mutates nothing in that case).
+    """
+    if week_type in ('load', 'testing'):
+        tolerance = 1.15 if hours_per_week < 6 else 1.10
+        max_minutes = hours_per_week * 60 * tolerance
+    elif week_type == 'recovery':
+        # Preserve enough low-intensity volume to meet the 50-65% recovery
+        # TSS floor against the preceding load block.  The old 0.55 cap,
+        # combined with Rest-Day pseudo-TSS, emitted closer to 40%.
+        max_minutes = hours_per_week * 60 * 0.80
+    elif week_type == 'taper':
+        max_minutes = hours_per_week * 60 * 0.70
+    elif week_type == 'race':
+        max_minutes = hours_per_week * 60 * 0.60
+    else:
+        max_minutes = None
+
+    if max_minutes is None:
+        return None
+
+    total_duration = sum(d.get('duration', 0) for d in days)
+    if total_duration > max_minutes:
+        for i in range(len(days) - 1, -1, -1):
+            if total_duration <= max_minutes:
+                break
+            if days[i]['role'] == 'filler' and days[i]['name'] != 'Rest Day':
+                removed_dur = days[i]['duration']
+                days[i] = {
+                    'day': days[i]['day'], 'name': 'Rest Day', 'level': 1,
+                    'tss': 0, 'duration': 0, 'role': 'filler',
+                }
+                total_duration -= removed_dur
+
+        # Fillers exhausted but still over budget (time-crunched athletes in
+        # high-level blocks): step the longest intensity/long-ride workout
+        # down a level at a time until the week fits or everything is at L1.
+        total_duration = sum(d.get('duration', 0) for d in days)
+        while total_duration > max_minutes:
+            candidates = [d for d in days
+                          if d.get('role') in ('intensity', 'long_ride')
+                          and d.get('level', 1) > 1]
+            if not candidates:
+                break
+            longest = max(candidates, key=lambda d: d.get('duration', 0))
+            new_level = longest['level'] - 1
+            new_dur = get_workout_duration(longest['name'], new_level)
+            new_tss = get_workout_tss(longest['name'], new_level)
+            if new_dur <= 0:
+                # Library gap — treat as unloweable, stop trying this one
+                longest['level'] = 1
+                continue
+            total_duration -= (longest['duration'] - new_dur)
+            longest['level'] = new_level
+            longest['duration'] = new_dur
+            longest['tss'] = new_tss
+
+        # A library can leave a small remainder after every eligible session
+        # is at L1 (for example, 397 min against a 396-min budget).  The
+        # emitted renderer already supports duration scaling, so trim the
+        # longest remaining ride rather than shipping an over-budget week.
+        total_duration = sum(d.get('duration', 0) for d in days)
+        if total_duration > max_minutes:
+            candidates = [d for d in days if d.get('duration', 0) > 0
+                          and d.get('name') != 'Rest Day']
+            if candidates:
+                longest = max(candidates, key=lambda d: d['duration'])
+                old_duration = longest['duration']
+                new_duration = max(1, old_duration - (total_duration - max_minutes))
+                longest['duration'] = new_duration
+                longest['tss'] = round(longest['tss'] * new_duration / old_duration)
+
+    return max_minutes
+
+
 def _build_week(
     week_num: int,
     week_type: str,
@@ -508,80 +604,11 @@ def _build_week(
         })
 
     # Post-assignment budget trim: convert filler days to rest (starting
-    # from the end) until within budget.
-    # - Load weeks: hours x 1.10 (1.15 for very low-hour athletes)
-    # - Recovery weeks: hours x 0.62 — a recovery week must actually unload.
-    #   The fixed recovery template (~5h) was 80%+ of a low-hour athlete's
-    #   load volume, defeating the purpose.
-    if week_type in ('load', 'testing'):
-        tolerance = 1.15 if hours_per_week < 6 else 1.10
-        max_minutes = hours_per_week * 60 * tolerance
-    elif week_type == 'recovery':
-        # Preserve enough low-intensity volume to meet the 50-65% recovery
-        # TSS floor against the preceding load block.  The old 0.55 cap,
-        # combined with Rest-Day pseudo-TSS, emitted closer to 40%.
-        max_minutes = hours_per_week * 60 * 0.80
-    elif week_type == 'taper':
-        max_minutes = hours_per_week * 60 * 0.70
-    elif week_type == 'race':
-        max_minutes = hours_per_week * 60 * 0.60
-    else:
-        max_minutes = None
-
-    if max_minutes is not None:
-        total_duration = sum(d.get('duration', 0) for d in days)
-        if total_duration > max_minutes:
-            for i in range(len(days) - 1, -1, -1):
-                if total_duration <= max_minutes:
-                    break
-                if days[i]['role'] == 'filler' and days[i]['name'] != 'Rest Day':
-                    removed_dur = days[i]['duration']
-                    removed_tss = days[i]['tss']
-                    days[i] = {
-                        'day': days[i]['day'], 'name': 'Rest Day', 'level': 1,
-                        'tss': 0, 'duration': 0, 'role': 'filler',
-                    }
-                    total_duration -= removed_dur
-                    total_tss -= removed_tss
-
-        # Fillers exhausted but still over budget (time-crunched athletes in
-        # high-level blocks): step the longest intensity/long-ride workout
-        # down a level at a time until the week fits or everything is at L1.
-        total_duration = sum(d.get('duration', 0) for d in days)
-        while total_duration > max_minutes:
-            candidates = [d for d in days
-                          if d.get('role') in ('intensity', 'long_ride')
-                          and d.get('level', 1) > 1]
-            if not candidates:
-                break
-            longest = max(candidates, key=lambda d: d.get('duration', 0))
-            new_level = longest['level'] - 1
-            new_dur = get_workout_duration(longest['name'], new_level)
-            new_tss = get_workout_tss(longest['name'], new_level)
-            if new_dur <= 0:
-                # Library gap — treat as unloweable, stop trying this one
-                longest['level'] = 1
-                continue
-            total_duration -= (longest['duration'] - new_dur)
-            total_tss -= (longest['tss'] - new_tss)
-            longest['level'] = new_level
-            longest['duration'] = new_dur
-            longest['tss'] = new_tss
-
-        # A library can leave a small remainder after every eligible session
-        # is at L1 (for example, 397 min against a 396-min budget).  The
-        # emitted renderer already supports duration scaling, so trim the
-        # longest remaining ride rather than shipping an over-budget week.
-        total_duration = sum(d.get('duration', 0) for d in days)
-        if total_duration > max_minutes:
-            candidates = [d for d in days if d.get('duration', 0) > 0
-                          and d.get('name') != 'Rest Day']
-            if candidates:
-                longest = max(candidates, key=lambda d: d['duration'])
-                old_duration = longest['duration']
-                new_duration = max(1, old_duration - (total_duration - max_minutes))
-                longest['duration'] = new_duration
-                longest['tss'] = round(longest['tss'] * new_duration / old_duration)
+    # from the end) until within budget, then down-level, then shave any
+    # remainder. See trim_week_to_budget for the per-week-type budget math
+    # (load = hours x 1.10/1.15, recovery x 0.80, taper x 0.70, race x 0.60).
+    max_minutes = trim_week_to_budget(days, week_type, hours_per_week)
+    total_tss = sum(d.get('tss', 0) for d in days)
 
     # Grow-to-floor: the trim above only shrinks. Without growth, LOAD
     # weeks for high-volume athletes filled at ~50% of stated hours (a

@@ -98,6 +98,43 @@ def validate_profile(profile: Dict) -> Tuple[bool, List[str], List[str]]:
                     errors.append(f"Invalid date format: {target_race['date']} (expected YYYY-MM-DD)")
             if not target_race.get("goal_type") in ["finish", "compete", "podium"]:
                 errors.append("Invalid target_race.goal_type")
+    elif not (profile.get("target_race") or {}).get("date"):
+        fulfillment = profile.get("fulfillment") or {}
+        block = profile.get("coached_block") or {}
+        effective_date = fulfillment.get("effective_date")
+        horizon_end = fulfillment.get("planning_horizon_end")
+        weeks = fulfillment.get("weeks_purchased")
+        try:
+            weeks = int(weeks)
+        except (TypeError, ValueError):
+            weeks = 0
+        start_date = None
+        end_date = None
+        if not effective_date or not validate_date(str(effective_date)):
+            errors.append("Targetless coached block requires a valid effective_date")
+        else:
+            start_date = datetime.strptime(str(effective_date), "%Y-%m-%d")
+            if start_date.weekday() != 0:
+                errors.append("Targetless coached-block effective_date must be Monday")
+        if not horizon_end or not validate_date(str(horizon_end)):
+            errors.append("Targetless coached block requires a valid planning_horizon_end")
+        else:
+            end_date = datetime.strptime(str(horizon_end), "%Y-%m-%d")
+            if end_date.weekday() != 6:
+                errors.append("Targetless coached-block planning_horizon_end must be Sunday")
+        if not 2 <= weeks <= 4:
+            errors.append("Targetless coached block must contain 2–4 purchased weeks")
+        elif (start_date and end_date
+              and (end_date - start_date).days != weeks * 7 - 1):
+            errors.append("Targetless coached-block dates must match purchased weeks")
+        if block.get("phase") not in {"base", "build", "peak", "maintenance"}:
+            errors.append("Invalid targetless coached-block phase")
+        if not str(block.get("focus") or "").strip():
+            errors.append("Targetless coached block requires a focus")
+        week_types = block.get("week_types") or []
+        if len(week_types) != weeks or any(
+                value not in {"load", "recovery"} for value in week_types):
+            errors.append("Invalid targetless coached-block week_types")
     
     # Section 2: Current State
     training_history = profile.get("training_history", {})

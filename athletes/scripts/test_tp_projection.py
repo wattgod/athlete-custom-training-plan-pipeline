@@ -90,7 +90,12 @@ def _build_w00_projection_plan(tmp_path, monkeypatch):
     """Real (unfrozen) calendar with plan_start forced 1-7 days out, exactly
     like test_naming_and_rounding._build_w00_plan, but also merges the
     captured W00 week entry into plan_dates and runs PlanIR/tp_manifest."""
-    today = datetime.datetime.now().date()
+    # Frozen clock: GG_FIXED_NOW (respected by calculate_plan_dates AND
+    # generate_pre_plan_week) pinned to a Tuesday so the W00 window is
+    # non-empty on every wall-clock date (real Mondays clamp to days_out=0
+    # and W00 correctly emits zero files -- found by the E2E, 2026-08-24).
+    monkeypatch.setenv('GG_FIXED_NOW', '2026-08-18')
+    today = datetime.datetime(2026, 8, 18).date()
     race_date = (today + datetime.timedelta(days=40)).isoformat()
     plan_dates = cpd.calculate_plan_dates(race_date, plan_weeks=10)
     days_out = (datetime.date.fromisoformat(plan_dates['plan_start']) - today).days
@@ -391,7 +396,9 @@ def test_w00_sessions_matched_by_primary_calendar_path(w00_projection_plan):
 
 def test_rest_days_are_day_off_type_7(structure_plan):
     _, _, manifest, _ = structure_plan
-    rest_sessions = [s for s in manifest['sessions'] if s['title'] == 'Rest Day' or s['display_name'] == 'Rest Day']
+    # Rest titles vary by context since Aug 2026 (Rest Day / Day Off — Race
+    # Prep / Pre-Plan Rest ...); type 'rest' is the stable identity.
+    rest_sessions = [s for s in manifest['sessions'] if s.get('type') == 'rest' or s['tp_kind'] == 'day_off']
     assert rest_sessions, "no rest-day sessions found -- test setup lost coverage"
     for s in rest_sessions:
         assert s['tp_kind'] == 'day_off'

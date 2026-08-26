@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from apply_contract import (ApplyContractError, OperationProvenance,
+                            MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS,
                             assert_checked_schema_current,
                             bind_operation_provenance, build_contract,
                             canonical_json, compute_model_seal, digest_payload,
@@ -51,7 +52,8 @@ def _contract(tmp_path, **kwargs):
     return build_contract(
         _ir(), order_id="cs_phase3", tp_athlete_id="fake-42",
         generation_revision=kwargs.pop("generation_revision", 1),
-        canonical_model={"model_version": "canonical_training_model/v1"},
+        canonical_model=kwargs.pop("canonical_model", {
+            "model_version": "canonical_training_model/v1"}),
         review_items=[{"item_id": "FACT", "value": 1}],
         guide_sources={"profile.yaml": "abc"}, athlete_dir=tmp_path, **kwargs)
 
@@ -90,6 +92,236 @@ def test_checked_schema_is_generated_definition_and_every_emission_validates(tmp
     broken["operations"][0]["rollback"]["strategy"] = "none"
     with pytest.raises(ApplyContractError, match="schema validation"):
         validate_contract(broken)
+
+
+@pytest.mark.parametrize("type_id", [None, 100])
+def test_workout_type_must_be_supported_and_never_other(tmp_path, type_id):
+    contract = _contract(tmp_path)
+    operation = next(op for op in contract["operations"]
+                     if op["kind"] == "workout_upsert")
+    operation["payload"]["tp_workout_type"] = type_id
+    operation["expected_digest"] = digest_payload(operation["payload"])
+    with pytest.raises(ApplyContractError, match="schema validation"):
+        validate_contract(contract)
+
+
+def test_substantive_bike_requires_structure_or_planned_tss(tmp_path):
+    contract = _contract(tmp_path)
+    operation = next(op for op in contract["operations"]
+                     if op["kind"] == "workout_upsert")
+    operation["payload"]["structure"] = None
+    operation["payload"]["tss_planned"] = None
+    operation["expected_digest"] = digest_payload(operation["payload"])
+    with pytest.raises(ApplyContractError, match="lacks both structure and planned TSS"):
+        validate_contract(contract)
+
+
+def test_day_off_payload_must_be_internally_consistent(tmp_path):
+    contract = _contract(tmp_path)
+    operation = next(op for op in contract["operations"]
+                     if op["kind"] == "workout_upsert")
+    operation["payload"].update({
+        "tp_workout_type": 7, "total_seconds": 60,
+        "tss_planned": None, "structure": None,
+    })
+    operation["expected_digest"] = digest_payload(operation["payload"])
+    with pytest.raises(ApplyContractError, match="day-off payload is inconsistent"):
+        validate_contract(contract)
+
+
+def test_trainingpeaks_contract_contains_only_transport_supported_kinds(tmp_path):
+    contract = _contract(tmp_path, delivery_platform="trainingpeaks")
+    assert {op["kind"] for op in contract["operations"]} == {
+        "workout_upsert", "calendar_note_upsert",
+    }
+
+
+def test_correction_update_accepts_legacy_other_only_as_prior_payload(tmp_path):
+    legacy = {
+        "date": "2026-08-14", "title": "Legacy prose workout",
+        "description": "Old representation.", "tp_workout_type": 100,
+        "total_seconds": 3600, "tss_planned": None, "structure": None,
+    }
+    logical_id = "cs_phase3:workout_upsert:2026-08-14#1"
+    inventory = {logical_id: {
+        "kind": "workout_upsert", "remote_id": "3914",
+        "desired_digest": digest_payload(legacy),
+        "payload_snapshot_ref": "legacy-workout",
+        "last_op_id": logical_id + "@r1",
+    }}
+    contract = _contract(
+        tmp_path, generation_revision=2,
+        delivery_platform="trainingpeaks",
+        effective_remote_inventory=inventory,
+        payload_snapshot_reader=lambda ref: legacy,
+    )
+    operation = next(op for op in contract["operations"]
+                     if op["logical_id"] == logical_id)
+    assert operation["disposition"] == "update"
+    assert operation["payload"]["tp_workout_type"] == 2
+    assert operation["prior_payload"]["tp_workout_type"] == 100
+    assert validate_contract(contract) is contract
+
+
+def test_protected_provider_resource_is_preserved_as_keep(tmp_path):
+    logical_id = "cs_phase3:calendar_note_upsert:protected-2026-08-14-99"
+    payload = {"date": "2026-08-14", "title": "Athlete note", "body": "Keep me."}
+    inventory = {logical_id: {
+        "kind": "calendar_note_upsert", "remote_id": "99",
+        "desired_digest": digest_payload(payload),
+        "payload_snapshot_ref": "protected-note",
+        "last_op_id": "external-provider-99",
+    }}
+    contract = _contract(
+        tmp_path, generation_revision=2,
+        delivery_platform="trainingpeaks",
+        protected_resources={logical_id: {
+            "kind": "calendar_note_upsert", "payload": payload,
+        }},
+        effective_remote_inventory=inventory,
+    )
+    operation = next(op for op in contract["operations"]
+                     if op["logical_id"] == logical_id)
+    assert operation["disposition"] == "keep"
+    assert operation["predecessor"] == {
+        "op_id": "external-provider-99", "remote_id": "99",
+    }
+
+
+def test_calendar_protection_intent_cannot_emit_all_create_contract(tmp_path):
+    model = {
+        "model_version": "canonical_training_model/v1",
+        "calendar_protection": {
+            "requested": True, "referenced_dates": ["2026-08-14"],
+        },
+    }
+    with pytest.raises(ApplyContractError, match="complete current inventory evidence"):
+        _contract(tmp_path, canonical_model=model)
+
+
+def test_calendar_protection_keeps_supported_resources_without_deleting_external_events(
+    tmp_path,
+):
+    logical_id = "cs_phase3:calendar_note_upsert:protected-2026-08-14-99"
+    payload = {"date": "2026-08-14", "title": "Athlete note", "body": "Keep me."}
+    inventory = {logical_id: {
+        "kind": "calendar_note_upsert", "remote_id": "99",
+        "desired_digest": digest_payload(payload),
+        "payload_snapshot_ref": "protected-note",
+        "last_op_id": "external-provider-99",
+    }}
+    model = {
+        "model_version": "canonical_training_model/v1",
+        "calendar_protection": {
+            "requested": True,
+            "referenced_dates": ["2026-08-14", "2026-08-15"],
+            "inventory_evidence": {
+                "contract_version": "trainingpeaks_calendar_inventory_evidence/v1",
+                "provider_inventory_sha256": "e" * 64,
+                "complete": True,
+                "read_surfaces": ["workouts", "notes", "events"],
+                "counts": {"workouts": 0, "notes": 1, "events": 1},
+            },
+        },
+    }
+    contract = _contract(
+        tmp_path, canonical_model=model,
+        protected_resources={logical_id: {
+            "kind": "calendar_note_upsert", "payload": payload,
+        }},
+        effective_remote_inventory=inventory,
+    )
+    assert any(op["disposition"] == "keep" for op in contract["operations"])
+    assert not any(op["disposition"] == "delete" for op in contract["operations"])
+
+
+def test_calendar_protection_with_complete_empty_inventory_needs_no_fake_keep(
+    tmp_path,
+):
+    model = {
+        "model_version": "canonical_training_model/v1",
+        "calendar_protection": {
+            "requested": True,
+            "referenced_dates": [],
+            "inventory_evidence": {
+                "contract_version": "trainingpeaks_calendar_inventory_evidence/v1",
+                "provider_inventory_sha256": "f" * 64,
+                "complete": True,
+                "read_surfaces": ["events", "notes", "workouts"],
+                "counts": {"workouts": 0, "notes": 0, "events": 0},
+            },
+        },
+    }
+    contract = _contract(
+        tmp_path, canonical_model=model,
+        effective_remote_inventory={}, protected_resources={},
+    )
+    assert contract["operations"]
+    assert {op["disposition"] for op in contract["operations"]} == {"create"}
+
+
+def test_structured_description_is_concise_clean_and_keeps_execution_structure(tmp_path):
+    ir = _ir()
+    session = ir["weeks"][0]["sessions"][0]
+    structure = copy.deepcopy(session["structure"])
+    session["description"] = "\n".join([
+        "Michael Beal - Week 1/4 - 4 weeks to Race",
+        "Phase: BUILD",
+        "[FUEL: 60 g/hr with familiar products.]",
+        "WARM-UP:", "Ride easy for 10 minutes, then build smoothly.",
+        "MAIN SET:", "Complete 4 x 5 minutes at RPE 8 with 3 minutes easy.",
+        "COOL-DOWN:", "Ride easy for 10 minutes.",
+        "PURPOSE:", "Defensive explanation. " * 200,
+        "GO GET IT, MICHAEL!",
+        "PRESCRIPTION:", "RPE 8. Hold the effort, then recover fully.",
+    ])
+    (tmp_path / "guide.html").write_text("guide")
+    contract = build_contract(
+        ir, order_id="cs_phase3", tp_athlete_id="fake-42",
+        generation_revision=1,
+        canonical_model={"model_version": "canonical_training_model/v1"},
+        review_items=[], guide_sources={}, athlete_dir=tmp_path,
+    )
+    workout = next(op for op in contract["operations"]
+                   if op["kind"] == "workout_upsert")
+    description = workout["payload"]["description"]
+    assert len(description) <= MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS
+    assert not any(token in description for token in (
+        "Michael Beal - Week", "Phase:", "[FUEL:", "PURPOSE:",
+        "Defensive explanation", "GO GET IT",
+    ))
+    assert description == "Fuel: 60 g/hr with familiar products."
+    assert workout["payload"]["structure"] == structure
+
+
+def test_unstructured_race_description_is_terse_and_actionable(tmp_path):
+    ir = _ir()
+    session = ir["weeks"][0]["sessions"][0]
+    session["structure"] = None
+    session["description"] = """RACE DAY: The Long One
+FUELING PLAN:
+- Carbs/hour: 66g
+- Start fueling at 20 min, every 20-30 min thereafter
+PACING STRATEGY:
+- First third: deliberately conservative (RPE 4-5).
+- Middle third: settle into sustainable RPE 5-6.
+HYDRATION:
+- A very long paragraph that is not athlete-facing copy.
+"""
+    (tmp_path / "guide.html").write_text("guide")
+    contract = build_contract(
+        ir, order_id="cs_phase3", tp_athlete_id="fake-42",
+        generation_revision=1,
+        canonical_model={"model_version": "canonical_training_model/v1"},
+        review_items=[], guide_sources={}, athlete_dir=tmp_path,
+    )
+    workout = next(op for op in contract["operations"]
+                   if op["kind"] == "workout_upsert")
+    description = workout["payload"]["description"]
+    assert len(description) <= MAX_VISIBLE_WORKOUT_DESCRIPTION_CHARS
+    assert "Fuel 66 g/hr from 20 min." in description
+    assert "Start controlled at RPE 4-5." in description
+    assert "Heroics remain optional" in description
 
 
 def test_three_identities_are_stable_and_revision_scoped(tmp_path):

@@ -4,7 +4,11 @@
 Queries the C1 normalized index (``tp_library_snapshot.load_index``) to
 resolve a canonical block-builder slot -- {canonical_name, level, budget_min,
 day_cap_min, role, phase, series_key, week_in_block, athlete_seed,
-race_demands} -- to a curated TrainingPeaks library item.
+race_demands, discipline, wants_position_work} -- to a curated
+TrainingPeaks library item. ``discipline``/``wants_position_work`` gate
+AE-3.15 discipline scoping (see ``_is_off_discipline``); both are optional
+-- an unset/non-TT ``discipline`` scopes OUT TT-bike-position items by
+default (the safe direction), unless ``wants_position_work`` is set.
 
 This module does NOT call C2 (``tp_structure_to_zwo``); that converter is
 internal-only (D4) and consumed downstream by C4 integration, not by the
@@ -114,7 +118,12 @@ ROUTING_TABLE: dict[str, tuple[str, ...]] = _base_routing_table()
 SYNTHETIC_ONLY: frozenset[str] = frozenset(
     {
         # D5 explicit (midweek sims route to race_sim as of Aug 17;
-        # Act long sims are excluded upstream via the act_simulation flag)
+        # Act long sims are excluded upstream via the act_simulation flag).
+        # "FTP Test"/"Anaerobic Test" are listed here too -- PINNED_TEST_ITEM_IDS
+        # below is checked FIRST in select()/refit() and short-circuits this
+        # set for those two names whenever the pinned item is present in the
+        # index; this membership is what select()/refit() fall back to when
+        # PINNED_TEST_ITEM_IDS' lookup misses (item absent from the index).
         "FTP Test",
         "Anaerobic Test",
         "Openers",
@@ -130,6 +139,21 @@ SYNTHETIC_ONLY: frozenset[str] = frozenset(
         "Blended Endurance, Threshold, and Sprints",
     }
 )
+
+# Coach ruling 2026-08-24: "Use the assessment in my workout library for the
+# FTP test." The two curated assessment items are PINNED, not pool-rotated
+# (tests are not variety) -- select()/refit() resolve these canonical types
+# directly to these item ids, bypassing ROUTING_TABLE/the qualifying-pool
+# machinery entirely. Falls back to the synthetic render (via SYNTHETIC_ONLY,
+# above) only when the pinned id is absent from the index.
+PINNED_TEST_ITEM_IDS: dict[str, int] = {
+    # "Specialty - The Assessment - Functional Threshold - ref - 60min"
+    # (library_key testing_openers, RPE-metric -- effort-guided by design).
+    "FTP Test": 14356974,
+    # "The Assessment - Anaerobic - ref - 62min" (library_key
+    # testing_openers, RPE-metric).
+    "Anaerobic Test": 14356988,
+}
 
 # Durability long-ride alternatives (T21): build/peak long-ride slots on an
 # Endurance-family canonical type also draw these two libraries.
@@ -289,6 +313,9 @@ def _qualifying_pool(
     pool = _record_lint_exclusions(pool, excluded_ids, lint_exclusions, slot)
     if slot is not None:
         pool = [item for item in pool if not _is_internal_only(item) and _passes_role_ceiling(item, slot)]
+        pool = [item for item in pool if not _is_off_discipline(
+            item, slot.get("discipline"),
+            wants_position_work=bool(slot.get("wants_position_work")))]
     return pool
 
 
@@ -302,7 +329,10 @@ def _qualifying_pool(
 # signature, per SPEC_LIBRARY_SELECTION.md T21).
 # ---------------------------------------------------------------------------
 
-_FILLER_IF_CEILING = 0.78
+# AE-2.8 (ratified 2026-08-23): endurance IF band tightened to .60-.70 --
+# the old .78 filler ceiling admitted items above the band's own top edge
+# onto easy days. Load-week and recovery-week filler ceilings now match.
+_FILLER_IF_CEILING = 0.72  # ratified Q-B: .78 -> .72
 _FILLER_IF_CEILING_RECOVERY = 0.70
 _FILLER_POWER_CEILING_PCT = 115.0
 _FILLER_POWER_CEILING_PCT_RECOVERY = 110.0
@@ -362,10 +392,68 @@ def _max_power_target_pct(structure: Any) -> float:
 # never ship on a customer calendar.
 _INTERNAL_ONLY_NAMES = {"the happy ending"}
 
+# AE-3.11 / AE-6.3 (ratified 2026-08-23): purged concepts may never ship from
+# the TP-curated path either. The native-archetype purge (RETIRED_ARCHETYPES
+# in archetype_registry) does not reach curated selection — Steve Wagner's
+# 2026-08-24 draft received FatMax items 14356013/11/12 and Structured
+# Fartlek 14356007 through this exact gap. Name-substring match mirrors the
+# retire rows in docs/evidence/2026-08-24-tp-curated-change-list.md; the
+# items stay archived in the coach's TP library until retired at the source.
+_PURGED_CONCEPT_NAMES = ("fatmax", "fat max", "fartlek", "fasted")
+
 
 def _is_internal_only(item: Mapping[str, Any]) -> bool:
     name = (item.get("name_base") or item.get("name_raw") or "").lower()
-    return any(blocked in name for blocked in _INTERNAL_ONLY_NAMES)
+    if any(blocked in name for blocked in _INTERNAL_ONLY_NAMES):
+        return True
+    return any(purged in name for purged in _PURGED_CONCEPT_NAMES)
+
+
+# ---------------------------------------------------------------------------
+# AE-3.15 (ratified 2026-08-24, coach TP-review of plan 672143): discipline
+# scoping. Curated "TT Base" (a TT-bike-position endurance family) reached a
+# gravel athlete's calendar. TT-bike-position items never route to a
+# non-road-TT discipline unless the slot explicitly requests position work
+# (no canonical slot does today, so the flag defaults off).
+#
+# Scoped to the actual defect -- TT-BIKE-POSITION work -- not every item
+# that borrows "TT" as a pacing-style nickname. The library also carries a
+# large "TT Sim / TT Yeeet / TT Send / Gila ... TT Prep" family of generic
+# threshold/interval sessions styled after time-trial pacing discipline;
+# those are legitimate training content for any discipline and are NOT
+# excluded here (flagged for coach review in the rollout report instead of
+# silently stripped from the gravel pool).
+# ---------------------------------------------------------------------------
+_TT_POSITION_RE = re.compile(r"\bTT\s*Base\b|\(TT\s*bike\)|\btime[- ]trial\b", re.I)
+_GRAVEL_COPY_RE = re.compile(r"\bgravel\b", re.I)
+
+# Disciplines that legitimately want TT-bike-position work by default.
+_TT_POSITION_DISCIPLINES = {"road_tt", "triathlon", "tt"}
+
+
+def _is_off_discipline(item: Mapping[str, Any], discipline: Optional[str],
+                        *, wants_position_work: bool = False) -> bool:
+    """True when ``item`` carries discipline-specific work or copy that
+    doesn't belong on this athlete's discipline (AE-3.15).
+
+    Road and road-TT plans must not ship an otherwise-valid library item
+    whose athlete-facing title or description is explicitly gravel-specific.
+    We exclude the item instead of rewriting the coach-authored library copy.
+    ``wants_position_work`` remains the escape hatch for TT position work;
+    it does not make gravel-specific copy appropriate for a road plan.
+    """
+    normalized_discipline = (discipline or "").lower()
+    athlete_copy = " ".join(
+        str(item.get(field) or "")
+        for field in ("name_base", "name_raw", "description")
+    )
+    if normalized_discipline in {"road", "road_tt"} and _GRAVEL_COPY_RE.search(athlete_copy):
+        return True
+    if wants_position_work:
+        return False
+    if normalized_discipline in _TT_POSITION_DISCIPLINES:
+        return False
+    return bool(_TT_POSITION_RE.search(athlete_copy))
 
 
 # ---------------------------------------------------------------------------
@@ -379,16 +467,46 @@ def _is_internal_only(item: Mapping[str, Any]) -> bool:
 # disabled).
 # ---------------------------------------------------------------------------
 
+# A >=5-minute block written as M:SS with a non-zero seconds part ("8:08 @
+# 57-67% FTP") is a written-from-structure description that was never
+# rounded -- noise to the athlete (test_workout_output_quality owns the same
+# rule for generated copy). 23 curated items carry one (Aug 2026); they are
+# excluded here, loudly, until the library copy is fixed. Short intervals
+# (<5 min) may legitimately read 1:30 / 2:50.
+_RAGGED_LONG_BLOCK = re.compile(r"\b(\d{1,2}):([0-5]\d)\b")
+
+
+def _has_ragged_long_block(description: Any) -> bool:
+    for minutes, seconds in _RAGGED_LONG_BLOCK.findall(str(description or "")):
+        if int(minutes) >= 5 and seconds != "00":
+            return True
+    return False
+
+
 def _lint_flags(item: Mapping[str, Any]) -> list[str]:
     flags = []
     if item.get("lint_duration_claim"):
         flags.append("lint_duration_claim")
+    # lint_ragged_duration_text is ADVISORY (see advisory_flags): the 23 items
+    # it matches carry real authored durations ("6:30", "8:08"), and pulling
+    # them from the pools changed plans (sol review, Aug 23 2026). It is
+    # reported for curation, never excluded.
     if item.get("lint_rpe_conflict"):
         flags.append("lint_rpe_conflict")
     if item.get("lint_manual_review"):
         flags.append("lint_manual_review")
     if item.get("lint_bookend_intensity"):
         flags.append("lint_bookend_intensity")
+    return flags
+
+
+def advisory_flags(item: Mapping[str, Any]) -> list[str]:
+    """Curation hints that do NOT affect selection."""
+    flags = []
+    if _has_ragged_long_block(item.get("description")):
+        flags.append("lint_ragged_duration_text")
+    if _has_ae_3_14_violation(item.get("structure")):
+        flags.append("advisory_ae_3_14_unbroken_hard_block")
     return flags
 
 
@@ -455,8 +573,21 @@ _HARD_WORK_SECONDS_FILLER = 360
 # >=92% rep longer than _TAPER_MAX_HARD_REP_SECONDS, and total >=92% work
 # within _TAPER_HARD_WORK_SECONDS (generous enough for a full 30/30 VO2
 # sharpener set, far under a threshold block session).
+#
+# The race week itself (week_type == "race", the week containing race day --
+# see block_builder._build_race_week / block_chain.py) is a DISTINCT enum
+# value from "taper" and was never covered by this ceiling. Two curated
+# "Stars in Your Eyes" anaerobic_capacity items ("Stars in your eyes -
+# 20/30/40", "Stars in Your Eyes - 2") carry an unlabeled 180s @ 85-95% FTP
+# rep and a 180s @ 101-107% FTP rep respectively -- both single reps over
+# _TAPER_MAX_HARD_REP_SECONDS. The race-week sharpener slot routes to this
+# exact pool (ROUTING_TABLE["Stars In Your Eyes"]) with role="intensity",
+# so neither the taper ceiling nor the filler/recovery ceiling below ever
+# applied to it. Race week is at least as taper-sensitive as taper week --
+# it is closer to the start line -- so it gets the identical ceiling.
 _TAPER_MAX_HARD_REP_SECONDS = 120
 _TAPER_HARD_WORK_SECONDS = 900
+_TAPER_GATED_WEEK_TYPES = ("taper", "race")
 # Base-phase long rides are aerobic: hard durability long rides are the
 # house signature for BUILD/PEAK only. Without a base ceiling, a curated
 # night-threshold session filed in an endurance library ("Dark is the
@@ -464,7 +595,7 @@ _TAPER_HARD_WORK_SECONDS = 900
 # base long ride the day after the FTP test. Base long_ride slots cap
 # authored IF and sustained hard reps; short surges (Endurance with
 # Surges class) still pass.
-_BASE_LONG_RIDE_IF_CEILING = 0.76
+_BASE_LONG_RIDE_IF_CEILING = 0.68  # ratified Q-B: .76 -> .68
 _BASE_LONG_RIDE_MAX_HARD_REP_SECONDS = 120
 
 
@@ -502,6 +633,66 @@ def _max_hard_rep_seconds(structure: Any) -> float:
     return longest
 
 
+# ---------------------------------------------------------------------------
+# AE-3.14 (ratified 2026-08-24, coach TP-review of plan 672143): embedded
+# tempo/SST blocks need recovery valleys and dimension work between them --
+# never one continuous blob bolted together ("the Mixtape defect": curated
+# "Mixtape Feat Tempo" is 3x12min+1x6min @80% FTP run back-to-back with
+# zero sub-70% recovery between blocks; see docs/evidence/
+# 2026-08-24-tp-curated-change-list.md (d)).
+#
+# WARN-only, never a hard pool exclusion: a real sweep of the 1459
+# selectable items (2026-08-24) found 356 (~24%) contain >20min of
+# continuous >=76% FTP work with no sub-70% valley inside -- almost
+# entirely the race_sim / durability_long_sims / threshold_sustained
+# families, whose whole PURPOSE is sustained race-pace or threshold power
+# for 20+ minutes. A hard exclusion at this threshold would gut those
+# libraries wholesale; that is not the Mixtape defect (a short interval
+# SET stitched together inside an endurance ride with no valleys), it is
+# how sustained-power training is supposed to look. Reported via
+# advisory_flags for coach review, never filtered from selection.
+# ---------------------------------------------------------------------------
+_AE_3_14_HARD_PCT = 76.0
+_AE_3_14_RECOVERY_PCT = 70.0
+_AE_3_14_CONTINUOUS_SECONDS = 20 * 60  # 20 minutes
+
+
+def _has_ae_3_14_violation(structure: Any) -> bool:
+    """True when ``structure`` carries >20min of continuous >=76% FTP work
+    with zero sub-70% recovery inside anywhere along the walk. Unrolls
+    repeats and walks ACROSS top-level block boundaries -- the Mixtape
+    defect is four separate top-level blocks with nothing between them, so
+    a per-block-only check would miss it. A leaf strictly between 70% and
+    76% is connective (neither hard nor a real recovery valley): it does
+    not extend the hard-seconds run, but does not reset it either. Scoped
+    to percentOfFtp-metric structures -- an RPE-metric structure has no
+    %FTP number to test here (see tp_structure_to_zwo's RPE decode table,
+    AE 9c DEFECT FIX, for that family instead)."""
+    if not isinstance(structure, Mapping):
+        return False
+    if str(structure.get("primaryIntensityMetric")
+           or "percentOfFtp").lower() == "rpe":
+        return False
+    run_seconds = 0.0
+    for step in structure.get("structure") or []:
+        reps = int((step.get("length") or {}).get("value") or 1)
+        leaves = step.get("steps") or []
+        for _ in range(max(reps, 1)):
+            for sub in leaves:
+                target = next((t for t in sub.get("targets") or []
+                               if t.get("unit") != "roundOrStridePerMinute"), None)
+                pct = float((target.get("maxValue") or target.get("minValue") or 0)
+                            if target else 0)
+                seconds = float((sub.get("length") or {}).get("value") or 0)
+                if pct >= _AE_3_14_HARD_PCT:
+                    run_seconds += seconds
+                    if run_seconds > _AE_3_14_CONTINUOUS_SECONDS:
+                        return True
+                elif pct < _AE_3_14_RECOVERY_PCT:
+                    run_seconds = 0.0
+    return False
+
+
 def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bool:
     if (str(slot.get("phase") or "").lower() == "base"
             and _is_long_ride_role(slot.get("role"))):
@@ -510,7 +701,7 @@ def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bo
             return False
         if _max_hard_rep_seconds(item.get("structure")) > _BASE_LONG_RIDE_MAX_HARD_REP_SECONDS:
             return False
-    if slot.get("week_type") == "taper":
+    if slot.get("week_type") in _TAPER_GATED_WEEK_TYPES:
         structure = item.get("structure")
         if _max_hard_rep_seconds(structure) > _TAPER_MAX_HARD_REP_SECONDS:
             return False
@@ -610,6 +801,7 @@ def _to_resolution(item: Mapping[str, Any]) -> dict[str, Any]:
         "structure": item["structure"],
         "description": item["description"],
         "dimension_score": item["dimension_score"],
+        "advisory_flags": advisory_flags(item),
         # The coach's own authored RPE call from the canonical item name
         # ("... - RPE3-4"); carried through to the placed card title so the
         # renderer never overrides it with structure-derived guessing.
@@ -756,6 +948,29 @@ def _record_used_item(
             used_items.setdefault(_HEAT_WEEKS_KEY, set()).add(plan_week)
 
 
+def _select_pinned_test(
+    canonical_name: str,
+    index: Mapping[str, Any],
+    used_items: Optional[dict[Any, dict[str, Any]]] = None,
+    slot: Optional[Mapping[str, Any]] = None,
+) -> Optional[dict[str, Any]]:
+    """PINNED_TEST_ITEM_IDS resolution: no pool, no level band, no rotation.
+
+    Direct item-id lookup against the index -- returns the pinned item's
+    resolution verbatim, or None (the D9 loud-fallback contract) when the
+    item id isn't present in the index, which is what lets the caller's
+    SYNTHETIC_ONLY branch/legacy renderer stand in as the fallback.
+    """
+    item = _find_item(index, PINNED_TEST_ITEM_IDS[canonical_name])
+    if item is None:
+        return None
+    if used_items is not None:
+        _record_used_item(
+            used_items, item["item_id"], (slot or {}).get("plan_week"),
+            is_heat=_is_heat_tagged(item), week_type=(slot or {}).get("week_type"))
+    return _to_resolution(item)
+
+
 def select(
     slot: Mapping[str, Any],
     series_state: Optional[dict[str, Any]] = None,
@@ -787,6 +1002,8 @@ def select(
     excluded_ids = _lint_excluded_ids(index)
 
     canonical_name = slot["canonical_name"]
+    if canonical_name in PINNED_TEST_ITEM_IDS:
+        return _select_pinned_test(canonical_name, index, used_items, slot)
     if canonical_name in SYNTHETIC_ONLY:
         return None
 
@@ -870,11 +1087,11 @@ def _select_series_continuation(
         # the "next rung regardless" fallback below.
         candidates = [entry for entry in candidates if entry["item_id"] not in excluded_ids]
         # Prefer the next rung that's still duration-qualified for this
-        # slot; if none qualify, fall back to the next rung regardless
-        # (the family ladder itself is the strongest series-coherence
-        # signal -- D8 -- so honor it even if duration drifted slightly).
+        # slot. With no stated day cap, family coherence may tolerate a
+        # small duration drift. A real athlete cap is hard, however: never
+        # advance to an out-of-pool rung just to preserve the series.
         in_pool = [entry for entry in candidates if entry["item_id"] in qualifying_ids]
-        next_entry = (in_pool or candidates)
+        next_entry = (in_pool or candidates) if slot.get("day_cap_min") is None else in_pool
         if next_entry:
             chosen_id = next_entry[0]["item_id"]
             chosen_item = _find_item(index, chosen_id)
@@ -906,11 +1123,15 @@ def _select_singleton_continuation(
 
     if not higher:
         # No strictly-higher-IF candidate within the duration-qualified
-        # pool for this slot -- try the same library ignoring duration fit
-        # (series coherence over strict duration precision) before giving up.
+        # pool for this slot. A stated day cap is hard: falling outside the
+        # pool would violate athlete availability, so fail closed. Without a
+        # cap, try the same library ignoring duration fit (series coherence
+        # over strict duration precision) before giving up.
         # R2: still honors the role/week-type ceiling -- duration drift is
         # an acceptable coherence trade, a recovery-week sprint item is not.
         # T27: never continue onto a lint-excluded item either.
+        if slot.get("day_cap_min") is not None:
+            return None
         all_in_library = [
             item for item in index["items"]
             if item["library_key"] == library_key and item["item_id"] not in excluded_ids
@@ -986,6 +1207,12 @@ def refit(
     excluded_ids = _lint_excluded_ids(index)
 
     canonical_name = slot["canonical_name"]
+    if canonical_name in PINNED_TEST_ITEM_IDS:
+        # Pinned assessments are not trimmed -- the coach's authored protocol
+        # is a fixed-duration test, not a budget-fit target. select() already
+        # placed it (or fell back to the synthetic render); refit() leaves it
+        # alone either way.
+        return None
     if canonical_name in SYNTHETIC_ONLY:
         return None
 

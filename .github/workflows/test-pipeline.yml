@@ -50,6 +50,11 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Install Chromium (PDF engine — must match production)
         run: |
           sudo apt-get update
@@ -87,6 +92,20 @@ jobs:
             tools/test_daily_order_drill.py \
             webhook/tests/test_state_audit_endpoint.py \
             scripts/test_check_fixture_freshness.py -q
+
+      - name: Run focused Phase 5 publisher tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python -m pytest \
+            delivery/trainingpeaks/test_phase5_service.py \
+            delivery/trainingpeaks/test_playwright_transport.py \
+            delivery/trainingpeaks/test_playwriter_cli.py \
+            delivery/trainingpeaks/test_worker_service.py \
+            webhook/tests/test_fulfillment_state.py -q
+
+      - name: Run Phase 5 browser payload harness
+        run: node tools/test_tp_phase5_browser_payload.mjs
 
       - name: Run ORDER ACCEPTANCE (real pipeline end-to-end + PDF)
         working-directory: athletes/scripts

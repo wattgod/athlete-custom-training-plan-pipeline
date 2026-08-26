@@ -23,7 +23,7 @@
     "metric": "rpe",
     "basis": "rpe",
     "target_type": "rpe",
-    "tp_target_type": null,
+    "tp_target_type": "rpe",
     "field_test": "RPE Field Test"
   }
 ]

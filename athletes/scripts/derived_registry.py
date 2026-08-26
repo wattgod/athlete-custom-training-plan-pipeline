@@ -54,7 +54,8 @@ _PROFILE_RAW_ROOTS = (
     "a_events", "b_events", "c_events", "secondary_races", "racing",
     "training_history", "recent_training", "weekly_availability",
     "preferred_days", "availability_roles", "recurring_sessions",
-    "availability_review_issues", "travel_dates", "schedule_constraints",
+    "availability_review_issues", "calendar_protection", "travel_dates",
+    "schedule_constraints",
     "cycling_equipment", "strength_equipment", "training_environment",
     "injury_history", "movement_limitations", "strength", "devices",
     "work", "life_balance", "nutrition", "bike", "social", "coaching",
@@ -64,6 +65,7 @@ _PROFILE_RAW_ROOTS = (
 )
 
 _PROFILE_SHAPE = {key: RAW for key in _PROFILE_RAW_ROOTS} | {
+    "coached_block": _optional(RAW),
     "health_factors": {
         "age": DERIVED,
         "sleep_quality": RAW,
@@ -90,6 +92,7 @@ _PROFILE_SHAPE = {key: RAW for key in _PROFILE_RAW_ROOTS} | {
         "control_metric": DERIVED,
         "control_basis": DERIVED,
         "requested_metric": RAW,
+        "field_testing_allowed": RAW,
         "reanchor": RAW,
     },
     "discipline": DERIVED,
@@ -166,6 +169,7 @@ _FUELING_SHAPE = {
             "absolute_work_watts": _optional(DERIVED),
             "intensity_descriptor": _optional(DERIVED),
             "deferred_to_field_test": _optional(DERIVED),
+            "prescribed_range_g_per_hour": _optional(_list(DERIVED)),
         },
         "policy_version": DERIVED,
     },
@@ -222,6 +226,8 @@ _CALENDAR_WEEK = {
     "sunday": DERIVED, "sunday_short": DERIVED, "phase": DERIVED,
     "is_race_week": DERIVED, "days": _list(_CALENDAR_DAY),
     "is_recovery_week": DERIVED,
+    "week_type": _optional(DERIVED),
+    "is_post_event_recovery": _optional(DERIVED),
     "b_race": _optional({"name": DERIVED, "date": DERIVED, "phase": DERIVED}),
 }
 

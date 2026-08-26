@@ -32,6 +32,10 @@ def _wrap(blocks):
     return {'structure': blocks}
 
 
+def _wrap_rpe(blocks):
+    return {'structure': blocks, 'primaryIntensityMetric': 'rpe'}
+
+
 # =============================================================================
 # Unit fixtures -- one per mapping case
 # =============================================================================
@@ -272,6 +276,151 @@ def test_non_ftp_labeled_target_renders_free_ride_not_garbage_power():
     assert any('non-%FTP' in note for note in result['notes'])
     ok, detail = verify_round_trip(structure)
     assert ok, detail
+
+
+def test_rpe_metric_target_decodes_through_table_not_divided_by_100():
+    # DEFECT FIX (coach TP-review, plan 672143, 2026-08-24; AE 9c): a
+    # top-level primaryIntensityMetric=="rpe" structure must decode its 1-10
+    # RPE points through the coach's table -- never divide by 100 (that
+    # shipped "Muscle Recruitment Progressions - Trainer" as 1-4% FTP).
+    structure = _wrap_rpe([
+        {'type': 'step', 'length': {'value': 1, 'unit': 'repetition'}, 'steps': [
+            {'name': 'Low Z3', 'length': {'value': 600, 'unit': 'second'},
+             'targets': [{'minValue': 5}], 'intensityClass': 'active'},
+        ]},
+    ])
+    result = convert_structure(structure)
+    # RPE5 -> 60-70% FTP bucket, midpoint 65% -> Power 0.65.  NOT 0.05.
+    assert result['blocks_xml'].strip() == '<SteadyState Duration="600" Power="0.65"/>'
+    ok, detail = verify_round_trip(structure)
+    assert ok, detail
+
+
+def test_rpe_metric_warmup_ramp_decodes_through_table():
+    structure = _wrap_rpe([
+        {'type': 'step', 'length': {'value': 1, 'unit': 'repetition'}, 'steps': [
+            {'name': 'Warm Up', 'length': {'value': 600, 'unit': 'second'},
+             'targets': [{'minValue': 1, 'maxValue': 2}], 'intensityClass': 'warmUp'},
+        ]},
+    ])
+    result = convert_structure(structure)
+    # RPE1 low (40%) -> RPE2 high (60%). NOT PowerLow=0.01/PowerHigh=0.02.
+    assert 'PowerLow="0.40" PowerHigh="0.60"' in result['blocks_xml']
+    ok, detail = verify_round_trip(structure)
+    assert ok, detail
+
+
+def test_rpe_metric_no_power_leg_speed_leaf_ships_whole_item_unstructured():
+    # DEFECT FIX: the real "Muscle Recruitment Progressions - Trainer" shape
+    # -- one leaf explicitly says "no power just leg speed focus". Per the
+    # ruling, that leaf's presence means the WHOLE item ships unstructured
+    # (FreeRide), even the otherwise-decodable RPE5 leaves.
+    structure = _wrap_rpe([
+        {'type': 'step', 'length': {'value': 1, 'unit': 'repetition'}, 'steps': [
+            {'name': 'Warm Up', 'length': {'value': 600, 'unit': 'second'},
+             'targets': [{'minValue': 1, 'maxValue': 2}], 'intensityClass': 'warmUp'},
+        ]},
+        {'type': 'step', 'length': {'value': 1, 'unit': 'repetition'}, 'steps': [
+            {'name': 'Low Z3 60-70rpm', 'length': {'value': 60, 'unit': 'second'},
+             'targets': [{'minValue': 5}], 'intensityClass': 'active'},
+        ]},
+        {'type': 'repetition', 'length': {'value': 6, 'unit': 'repetition'}, 'steps': [
+            {'name': 'Leg speed', 'length': {'value': 30, 'unit': 'second'},
+             'targets': [{'minValue': 3}], 'intensityClass': 'active',
+             'notes': 'no power just leg speed focus'},
+            {'name': 'Recovery', 'length': {'value': 60, 'unit': 'second'},
+             'targets': [{'minValue': 1, 'maxValue': 2}], 'intensityClass': 'rest'},
+        ]},
+    ])
+    result = convert_structure(structure)
+    xml = result['blocks_xml']
+    assert 'Power=' not in xml
+    assert 'PowerLow=' not in xml
+    assert xml.count('<FreeRide') == 1 + 1 + 6 * 2  # warmup, Z3 leaf, 6x(work+rest)
+    assert any('ships unstructured' in note for note in result['notes'])
+    ok, detail = verify_round_trip(structure)
+    assert ok, detail
+
+
+# =============================================================================
+# Assessment RPE exemption (coach ruling 2026-08-24): the two pinned
+# assessment items -- library_selector.PINNED_TEST_ITEM_IDS -- ship RPE
+# structure intact (fully unstructured, FreeRide, never decoded through
+# _RPE_TO_PCT_FTP). Matched by item id OR the "The Assessment" name_base
+# convention (tp_structure_to_zwo.is_assessment_item).
+# =============================================================================
+
+def test_is_assessment_item_matches_pinned_ids():
+    from tp_structure_to_zwo import ASSESSMENT_ITEM_IDS, is_assessment_item
+    assert ASSESSMENT_ITEM_IDS == frozenset({14356974, 14356988})
+    assert is_assessment_item(item_id=14356974)
+    assert is_assessment_item(item_id=14356988)
+    assert not is_assessment_item(item_id=14416937)  # Power Test -- not pinned
+
+
+def test_is_assessment_item_matches_the_assessment_name_convention():
+    from tp_structure_to_zwo import is_assessment_item
+    assert is_assessment_item(name_base="The Assessment - Functional Threshold")
+    assert is_assessment_item(name_base="The Assessment - Anaerobic")
+    assert is_assessment_item(item_id=999999, name_base="The Assessment - Whatever")
+    assert not is_assessment_item(name_base="Power Test (12min)")
+    assert not is_assessment_item()
+
+
+def test_assessment_item_id_forces_unstructured_even_without_no_power_signal():
+    # This structure has no leaf-level "no power/leg speed" signal at all --
+    # every leaf carries a clean, decodable RPE target -- but the item_id
+    # match alone must still force the whole item unstructured.
+    structure = _wrap_rpe([
+        {'type': 'step', 'length': {'value': 1, 'unit': 'repetition'}, 'steps': [
+            {'name': 'Warm up', 'length': {'value': 600, 'unit': 'second'},
+             'targets': [{'minValue': 3, 'maxValue': 5}], 'intensityClass': 'warmUp'},
+        ]},
+        {'type': 'step', 'length': {'value': 1, 'unit': 'repetition'}, 'steps': [
+            {'name': 'Active', 'length': {'value': 1200, 'unit': 'second'},
+             'targets': [{'minValue': 8}], 'intensityClass': 'active'},
+        ]},
+    ])
+    result = convert_structure(structure, item_id=14356974,
+                               name_base="The Assessment - Functional Threshold")
+    xml = result['blocks_xml']
+    assert 'Power=' not in xml
+    assert 'PowerLow=' not in xml
+    assert xml.count('<FreeRide') == 2
+    assert any('assessment' in note.lower() for note in result['notes'])
+    ok, detail = verify_round_trip(structure)
+    # verify_round_trip doesn't know about item_id/name_base (it calls
+    # _build(structure) with no identity) -- this only proves the
+    # UNIDENTIFIED conversion of this same structure round-trips; the
+    # identified (item_id-forced) conversion is checked above via blocks_xml.
+    assert ok, detail
+
+
+def test_assessment_name_base_forces_unstructured_without_pinned_id():
+    # No item_id passed at all -- only the "The Assessment" name_base
+    # convention triggers the exemption (covers a future item authored the
+    # same way, not just the two pinned ids).
+    structure = _wrap_rpe([
+        {'type': 'step', 'length': {'value': 1, 'unit': 'repetition'}, 'steps': [
+            {'name': 'Active', 'length': {'value': 300, 'unit': 'second'},
+             'targets': [{'minValue': 6}], 'intensityClass': 'active'},
+        ]},
+    ])
+    result = convert_structure(structure, name_base="The Assessment - Anaerobic")
+    assert result['blocks_xml'].strip() == '<FreeRide Duration="300"/>'
+
+
+def test_non_assessment_rpe_item_still_decodes_normally():
+    # An ordinary RPE-metric item (not an assessment) is unaffected -- same
+    # decode-through-the-table behavior as before this change.
+    structure = _wrap_rpe([
+        {'type': 'step', 'length': {'value': 1, 'unit': 'repetition'}, 'steps': [
+            {'name': 'Low Z3', 'length': {'value': 600, 'unit': 'second'},
+             'targets': [{'minValue': 5}], 'intensityClass': 'active'},
+        ]},
+    ])
+    result = convert_structure(structure, item_id=14416937, name_base="Power Test (12min)")
+    assert result['blocks_xml'].strip() == '<SteadyState Duration="600" Power="0.65"/>'
 
 
 def test_render_full_zwo_wraps_blocks_with_author_name_description():

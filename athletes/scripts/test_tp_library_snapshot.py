@@ -318,7 +318,11 @@ def test_exclusion_counts_against_real_dump():
     total_raw = sum(len(library.get("items", [])) for library in raw.values())
     assert total_raw == 1631
 
-    assert exclusions["non_bike"]["count"] == 38
+    # 39, not 38, as of the Aug 24 2026 updated_library_items.json index
+    # refresh: item 4250978 ("Cyclocross Run Workout") was retagged
+    # workoutTypeId 2 (bike) -> 3 (run) at the TP source, correcting a
+    # misfiled run item that had been leaking into the bike-selectable pool.
+    assert exclusions["non_bike"]["count"] == 39
     # Spec's own rationale cites ~130; the real dump (verified 2026-08-17)
     # actually excludes 134 structureless bike items. Asserting the real
     # count here rather than the spec's approximation, so a future dump
@@ -326,8 +330,8 @@ def test_exclusion_counts_against_real_dump():
     assert exclusions["structureless_bike"]["count"] == 134
     assert exclusions["extra"]["count"] == 0
 
-    assert len(items) == total_raw - 38 - 134
-    assert len(items) == 1459
+    assert len(items) == total_raw - 39 - 134
+    assert len(items) == 1458
 
 
 @requires_real_dump
@@ -717,3 +721,92 @@ def test_v25_graded_curated_defects_are_manually_flagged():
     assert by_id[14356246].get("lint_manual_review")
     assert by_id[14356254].get("lint_manual_review")
     assert not by_id[14355846].get("lint_manual_review")
+
+
+def test_power_test_items_retagged_rpe_at_source_lift_the_manual_review():
+    """Aug 24 2026 updated_library_items.json index refresh: 14416937/
+    14416939 ('Power Test (12min)'/'(3min)') had structure.
+    primaryIntensityMetric=='percentOfFtp' at the top level while every
+    leaf target was unmistakably 1-10 RPE (the item behind the cited E2E
+    finding '12min ALL OUT rendered Power=0.10'). The coach retagged the
+    metric to 'rpe' at the TP source -- the metric-tag defect is fixed, so
+    the _MANUAL_REVIEW entry is REMOVED (was the AE 9c mistagged-RPE
+    family; see test_power_test_items_flagged_for_mistagged_rpe_metric,
+    now obsolete)."""
+    index = load_index(DEFAULT_INDEX_PATH)
+    by_id = {item["item_id"]: item for item in index["items"]}
+    assert not by_id[14416937].get("lint_manual_review")
+    assert not by_id[14416939].get("lint_manual_review")
+    structure = by_id[14416937]["structure"]
+    assert structure.get("primaryIntensityMetric") == "rpe"
+    main_effort = next(
+        leaf for block in structure["structure"] for leaf in block.get("steps", [])
+        if leaf.get("name") == "Steady State" and (leaf.get("length") or {}).get("value") == 720)
+    target = next(t for t in main_effort["targets"] if t.get("unit") != "roundOrStridePerMinute")
+    assert target == {"minValue": 9, "maxValue": 10}
+
+
+def test_mixtape_feat_tempo_passes_ae_3_14_after_source_fix():
+    """Coach TP-review of plan 672143 (2026-08-24, AE-3.14): Mixtape Feat
+    Tempo (14355941) was authored as 3x12min+1x6min @80% FTP run
+    back-to-back -- zero sub-70% recovery between blocks, no dimension
+    work. Aug 24 2026 updated_library_items.json index refresh: the coach
+    inserted 3 recovery valleys (240s @55-60% FTP) between the tempo
+    blocks and added a DIMENSION cadence-alternation line to the
+    description -- the item now passes the AE-3.14 guard, so the
+    _MANUAL_REVIEW entry is REMOVED."""
+    index = load_index(DEFAULT_INDEX_PATH)
+    by_id = {item["item_id"]: item for item in index["items"]}
+    item = by_id[14355941]
+    assert not item.get("lint_manual_review")
+    flagged_ids = {i["item_id"] for i in lint_flagged_items(index)}
+    assert 14355941 not in flagged_ids
+
+    from library_selector import _has_ae_3_14_violation
+    assert not _has_ae_3_14_violation(item["structure"])
+
+    structure = item["structure"]["structure"]
+    recovery_leaves = [
+        leaf for block in structure for leaf in block.get("steps", [])
+        if leaf.get("intensityClass") == "rest"
+    ]
+    assert len(recovery_leaves) == 3
+    for leaf in recovery_leaves:
+        target = leaf["targets"][0]
+        assert target.get("maxValue", target.get("minValue")) < 70
+
+
+def test_mixtape_feat_tempo_is_selectable_from_the_real_index():
+    """Post-refresh selection test: the Mixtape item now resolves through
+    library_selector.select() like any other curated endurance_with_work
+    item -- no longer excluded by a lint_manual_review flag."""
+    import library_selector
+    index = load_index(DEFAULT_INDEX_PATH)
+    slot = {
+        "canonical_name": "Endurance with Surges",
+        "level": 1,
+        "budget_min": 107,
+        "day_cap_min": None,
+        "role": "filler",
+        "phase": "build",
+        "week_type": "load",
+        "series_key": None,
+        "week_in_block": 1,
+        "plan_week": 1,
+        "day": "Wed",
+        "athlete_seed": "mixtape-post-refresh-test",
+        "race_demands": False,
+        "discipline": "gravel",
+    }
+    resolution = library_selector.select(slot, index=index)
+    assert resolution is not None
+    # Not asserting this exact slot draws 14355941 (pool rotation is
+    # seed-dependent) -- assert instead that the item is a live member of
+    # its qualifying pool and is never excluded by the lint machinery.
+    excluded_ids = library_selector._lint_excluded_ids(index)
+    assert 14355941 not in excluded_ids
+    pool_ids = {
+        item["item_id"] for item in index["items"]
+        if item["library_key"] == "endurance_with_work"
+    }
+    assert 14355941 in pool_ids

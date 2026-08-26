@@ -22,9 +22,14 @@ from datetime import datetime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-# Add script path for local imports
+# Add the scripts, webhook, and repository roots for local imports. Existing
+# applied TrainingPeaks states activate D2 validation, whose modules import the
+# top-level ``delivery`` package. Fresh generation did not exercise that path,
+# so omitting the repository root made replacement revisions fail closed.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).parent))
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'webhook'))
+sys.path.insert(0, str(REPO_ROOT / 'webhook'))
+sys.path.insert(0, str(REPO_ROOT))
 
 from fulfillment_state import write_generation
 from workout_spec import (normalize_zwo_blocks, render_main_set,
@@ -121,6 +126,13 @@ def _race_countdown(weeks_to_race: int, race_name: str) -> str:
     """Render a grammatical, reusable countdown from the calendar value."""
     unit = 'week' if weeks_to_race == 1 else 'weeks'
     return f"{weeks_to_race} {unit} to {race_name}"
+
+
+def _week_event_context(week: dict, weeks_to_race: int, race_name: str) -> str:
+    """Use post-event language after the target rather than a false countdown."""
+    if week.get('is_post_event_recovery'):
+        return f"Post-event recovery after {race_name}"
+    return _race_countdown(weeks_to_race, race_name)
 
 
 def _phase_header_line(phase: str, week: dict) -> str:
@@ -295,6 +307,7 @@ _QUALITY_FUEL_KEYWORDS = [
     'blood pistons', 'cadence work', 'tempo', 'stomps', 'microbursts', 'buffer',
     'ftp', 'thirty-fifteens', 'thirty fifteens', 'ronnestad', 'stars in your eyes',
     'openers', 'tune-up', 'g-spot', 'g spot', 'sweet spot', 'vo2 bookend',
+    'np/if target',
 ]
 # Names that never carry a fuel tag -- true rest/off/easy-spin days. 'openers'
 # used to live here (blanket-excluding Pre-Race Openers too); it now lives in
@@ -355,9 +368,15 @@ def _get_fuel_tag_for_type(workout_type: str, fueling: dict = None, duration_min
     # on the long rides.
     if tier in ('race_sim', 'quality') and duration_min is not None and duration_min < 90:
         # Plain FUEL label: no race-rate target applies under 90 minutes,
-        # so the RACE FUEL prefix would over-promise.
-        return ("FUEL: Under 90 minutes — arrive fueled and bring one "
-                "bottle with carbs. The ladder lives on the long rides.")
+        # so the RACE FUEL prefix would over-promise, and the phase-ceiling
+        # gut-training progression is scoped to the long rides this session
+        # isn't one of -- so this stays a fixed, DO-framed instruction
+        # rather than a computed per-phase number (matches the flat
+        # "40-50g CHO/hr" used elsewhere for deliberately-lower, non-
+        # progression-tied fueling). AE-3.13b (2026-08-24 TP review,
+        # addendum): tell the athlete what to do, never structure the line
+        # around what today is NOT.
+        return "FUEL: Normal meal ~2h before. One bottle, 40-50g carbs. Done."
     if tier == 'race_sim':
         return render_workout_fueling(prescription, 'race_sim', phase_ceiling)
     if tier == 'quality':
@@ -840,7 +859,7 @@ WORKOUT_DESCRIPTIONS = {
         # renderer changes must never make prose disagree with the assessment.
         'structure': '{duration} min FTP test protocol; see the emitted warm-up, main set, and cool-down below.',
         'purpose': 'Establish your training zones. The 20-minute effort sets everything.',
-        'execution': 'Start controlled, settle in, suffer through the middle, finish strong. Average power × 0.95 = FTP.',
+        'execution': 'Best sustainable effort -- start ~5% below what you believe and lift. Start controlled, settle in, suffer through the middle, finish strong.',
         'rpe': 'RPE 9/10 for the 20-minute test (very hard, barely sustainable)',
     },
     'Long_Ride': {
@@ -993,19 +1012,29 @@ def strength_sessions_for_week(requested_sessions: int, phase: str,
 
 
 def place_strength_days(is_available, requested_sessions: int,
-                        blocked_days=None, strength_only_abbrevs=None) -> list:
+                        blocked_days=None, strength_only_abbrevs=None,
+                        avoid_days=None) -> list:
     """Place the requested sessions without using off/long/blocked days.
 
     ``select_strength_days`` supplies the coach-preferred pair. If an FTP
     test blocks one of those days, continue through other eligible days
     instead of silently dropping the athlete's requested session.
+
+    ``avoid_days`` (AE-8.4) are eligible but de-prioritized -- VO2max/other
+    intensity days the coach-preferred pair can collide with by default.
+    They sink behind every non-avoid candidate and are used only if nothing
+    else satisfies the requested weekly frequency, so a session is never
+    silently dropped just to dodge one.
     """
     blocked = set(blocked_days or [])
+    avoid = set(avoid_days or []) - blocked
     preferred = select_strength_days(is_available, strength_only_abbrevs)
     candidates = preferred + [
         day for day in DAY_ORDER if day not in preferred and is_available(day)
     ]
     eligible = [day for day in candidates if day not in blocked]
+    eligible = ([day for day in eligible if day not in avoid]
+                + [day for day in eligible if day in avoid])
     # Preserve the established recovery spacing: first try to leave one full
     # day between sessions, only relaxing if the athlete's availability makes
     # that impossible.
@@ -1054,11 +1083,17 @@ def strength_equipment_tier(profile: dict) -> str:
 # own SYNTHETIC_ONLY set -- excluding them here keeps those non-candidates
 # out of the D9 fallback report, which should only name genuine misses).
 _LIBRARY_OUT_OF_SCOPE_NAMES = frozenset({
-    'FTP Test', 'Anaerobic Test', 'Openers', 'Rest Day', 'OFF',
+    'Openers', 'Rest Day', 'OFF',
     'RACE_DAY', 'Act Race Simulation',
     # 'Race Simulation' (the MIDWEEK mini-sim) is in scope as of Aug 17 —
     # it routes to the curated race_sim library; the long Act sims are
     # excluded via the act_simulation flag, not by name.
+    # 'FTP Test'/'Anaerobic Test' are in scope as of Aug 24 — coach ruling:
+    # the two curated assessment items (library_selector.PINNED_TEST_ITEM_IDS)
+    # are placed byte-verbatim on these slots; resolve_library_selections
+    # resolves them like any other in-scope intensity day, and the
+    # block-builder render path (below) is what actually places them for the
+    # canonical Week 1 testing slot -- see _defer_to_legacy.
 })
 
 # R4 fix wave (SPEC_LIBRARY_SELECTION.md regrade): the original C4 judgment
@@ -1116,6 +1151,34 @@ def _library_selection_in_scope(bd: dict) -> bool:
         if any(bd.get(flag) for flag in _LIBRARY_SYNTHETIC_PINNED_DAY_FLAGS):
             return False
     return True
+
+
+def _pinned_test_slot(canonical_name: str, week_num: int, day_abbrev: str, phase,
+                      week: dict, athlete_seed, discipline) -> dict:
+    """Slot dict for a live PINNED_TEST_ITEM_IDS lookup at ZWO-render time
+    (see generate_zwo_files' `_bb_ftp_slot_pinned` check and its
+    `_library_resolution` self-heal). Shaped like resolve_library_selections'
+    own slot dict (not just {'canonical_name': ...}) so a caller that
+    monkeypatches library_selector.select with a function assuming a full
+    slot (e.g. reading slot['role']) still works -- library_selector.select
+    itself only reads canonical_name for a pinned name, but this keeps the
+    contract realistic for every caller."""
+    return {
+        'canonical_name': canonical_name,
+        'level': 1,
+        'budget_min': 0,
+        'day_cap_min': None,
+        'role': 'intensity',
+        'phase': phase,
+        'week_type': week.get('week_type'),
+        'series_key': None,
+        'week_in_block': week.get('week_num', 1),
+        'plan_week': week_num,
+        'day': day_abbrev,
+        'athlete_seed': athlete_seed,
+        'race_demands': False,
+        'discipline': discipline,
+    }
 
 
 # R6 fix wave (SPEC_LIBRARY_SELECTION.md regrade): name_base FRAGMENTS
@@ -1351,7 +1414,7 @@ def _recompute_library_week_totals(week: dict) -> None:
 def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None,
                                athlete_seed=None,
                                excluded_calendar_slots: Optional[set] = None,
-                               index=None) -> list:
+                               index=None, discipline: Optional[str] = None) -> list:
     """C4/D1/D2: resolve in-scope block-builder days to curated TP library
     items via ``library_selector.select``.
 
@@ -1364,6 +1427,11 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     dict threaded across the whole plan, keyed identically to the
     canonical series bookkeeping (block_number, day, canonical name).
     Variety (R3) is tracked via a used_items dict threaded the same way.
+
+    ``discipline`` (AE-3.15) is threaded onto every slot so
+    ``library_selector`` can scope TT-bike-position items (e.g. "TT Base")
+    out of the pool for a non-TT discipline -- the "TT Base" leak onto a
+    gravel athlete's calendar, coach TP-review of plan 672143, 2026-08-24.
 
     Raises whatever ``library_selector``/``tp_library_snapshot`` raise --
     callers must not swallow exceptions here (Jesse Couch rule: the
@@ -1426,6 +1494,9 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
                 # single canonical type "Stars In Your Eyes"; its base
                 # routing (anaerobic_capacity) is unaffected.
                 'race_demands': False,
+                # AE-3.15: discipline scoping (see resolve_library_selections
+                # docstring). No slot requests TT-bike position work today.
+                'discipline': discipline,
             }
             resolution = library_selector.select(
                 slot, series_state=series_state, index=idx, used_items=used_items,
@@ -1451,7 +1522,7 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
     _rebalance_recovery_weeks_post_resolution(
         bb_plan, day_caps=day_caps, athlete_seed=athlete_seed,
         series_state=series_state, used_items=used_items, index=idx,
-        lint_exclusions=lint_exclusions)
+        lint_exclusions=lint_exclusions, discipline=discipline)
 
     # T27: fold the loud, deduplicated lint-exclusion report into the same
     # list D9's fallback reporting already writes to library_fallbacks.json
@@ -1463,7 +1534,7 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
 
 def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed,
                                               series_state, used_items, index,
-                                              lint_exclusions=None):
+                                              lint_exclusions=None, discipline=None):
     """Keep recovery weeks inside R03's band AFTER resolution moves TSS.
 
     The build-time recovery fill works with yaml numbers; resolution then
@@ -1526,6 +1597,7 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
                 'athlete_seed': athlete_seed, 'race_demands': False,
                 'week_type': 'recovery',
                 'plan_week': bw.get('plan_week'), 'day': day.get('day'),
+                'discipline': discipline,
             }
             replacement = library_selector.select(
                 slot, series_state=series_state, index=index,
@@ -1540,7 +1612,8 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
             _recompute_library_week_totals(bw)
 
 
-def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, derived: dict, profile: dict = None, fueling: dict = None) -> list:
+def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, derived: dict, profile: dict = None, fueling: dict = None,
+                       athlete_seed: str = None) -> list:
     """
     Generate ZWO workout files based on plan_dates, methodology, and athlete schedule preferences.
 
@@ -1617,6 +1690,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
     # Use centralized day mappings from constants.py
     strength_only_abbrevs = [DAY_FULL_TO_ABBREV.get(d.lower(), d) for d in strength_only_days]
+    _requested_strength_sessions = int(
+        (profile.get('strength', {}) or {}).get('sessions_per_week', 2) or 0)
     long_day_abbrev = DAY_FULL_TO_ABBREV.get(preferred_long_day.lower(), 'Sat')
     declared_long_days = {
         DAY_FULL_TO_ABBREV.get(str(day).lower(), str(day))
@@ -1699,6 +1774,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         from block_chain import build_plan_from_calendar, derive_week_descriptors
         from plan_ir import training_age_class
         from workout_mapper import render_workout as _bb_render
+        from workout_selector import coached_focus_category_weights
 
         _bb_archetype = determine_archetype(cycling_hours_target)
         _bb_discipline = derive_discipline(profile or {})
@@ -1770,6 +1846,9 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             discipline=_bb_discipline,
             day_caps=_bb_day_caps or None,
             methodology=methodology_id,
+            category_weights=coached_focus_category_weights(
+                ((profile or {}).get('coached_block') or {}).get('focus')
+            ),
             fixed_minutes=_fixed_minutes if '_fixed_minutes' in locals() else 0,
             event_format=_bb_event_format,
             training_age=_bb_training_age,
@@ -1884,7 +1963,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         # sharpener on the athlete's stated interval day (Thu for the
         # Sunday-long/Tue-off profile) rather than simply dropping it.
         from block_chain import (protect_post_simulation_recovery,
-                                 pre_simulation_strength_block_days)
+                                 pre_simulation_strength_block_days,
+                                 retrim_plan_to_budget)
         _interval_abbrevs = [DAY_FULL_TO_ABBREV.get(str(day).lower(), str(day))
                              for day in ((profile or {}).get('availability_roles') or {}).get(
                                  'interval_days', [])]
@@ -1928,11 +2008,22 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 if (d.get('is_race_day') or d.get('is_b_race_day')
                     or d.get('is_b_race_opener') or d.get('is_b_race_easy'))
             }
+            # The library rotation seed must be the STABLE athlete identity.
+            # Under A1.1 metric authoring `athlete_dir` is a short-lived
+            # tempdir (".metric-authoring-<random>"), so seeding on its name
+            # made the same intake draw different library items on every
+            # build (found Aug 23 2026: R06 passed or failed depending on
+            # the run). Explicit seed first, then the profile's athlete_id,
+            # then the directory name for legacy callers.
+            _seed = (athlete_seed
+                     or (profile or {}).get('athlete_id')
+                     or athlete_dir.name)
             _library_fallbacks.extend(resolve_library_selections(
                 _bb_plan,
                 day_caps=_bb_day_caps,
-                athlete_seed=athlete_dir.name,
+                athlete_seed=_seed,
                 excluded_calendar_slots=_library_excluded_slots,
+                discipline=_bb_discipline,
             ))
             # NOTE: `athlete_dir` here is the caller's parameter -- in the
             # production authoring flow that's a SHORT-LIVED temp directory
@@ -1951,6 +2042,16 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                     json.dumps(_library_fallbacks, indent=2) + '\n')
             except OSError:
                 pass
+
+        # R19 re-trim: protect_post_simulation_recovery (above) and the C4
+        # library-selection pass (above) can each reintroduce minutes onto a
+        # day the build-time trim already converted to Rest Day to make the
+        # week fit -- e.g. a post-simulation recovery ride restored on a day
+        # that was Rest Day specifically to hold the week under budget. Must
+        # run AFTER every post-build overlay and BEFORE _bb_lookup below
+        # shallow-copies each day dict, so the compliance gate and the
+        # rendered ZWOs see the same, budget-fitted minutes.
+        retrim_plan_to_budget(_bb_plan, cycling_hours_target, day_caps=_bb_day_caps or None)
 
         # Build lookup: (plan_week, day_abbrev) → block plan day data.
         # week_in_block rides along for series numbering in workout titles
@@ -2519,9 +2620,19 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             blocks.append(f'    <IntervalsT Repeat="4" OnDuration="30" OnPower="1.20" OffDuration="60" OffPower="0.50"/>')
 
         elif workout_type == 'FTP_Test':
-            # "The Assessment - Functional Threshold" (1:00:00, 68 TSS, IF 0.82)
+            # "The Assessment - Functional Threshold" (1:00:00)
             # Based on Gravel God standard FTP test protocol
-            # Structure: 10m progressive warmup, 5m @ 6/10, 5m easy, 5m blowout, 5m easy, 20m ALL OUT, 10m cooldown = 60m
+            # Structure: 10m progressive warmup, 5m @ 6/10, 5m easy, 5m blowout, 5m easy, 20m best sustainable effort, 10m cooldown = 60m
+            # sol programming review 2026-08-24, blocker 1: the 20-minute
+            # step used to lock a numeric target at exactly 100% of the
+            # CURRENT (possibly stale/inflated) FTP, with "average power x
+            # 0.95 = FTP" in the description -- circular: perfect execution
+            # at the current FTP returns 95% of it back. The main effort is
+            # now an open/free step (AE-8.4d: honest text guidance, never a
+            # target locked to the number it's supposed to measure); the
+            # warm-up/blowout/recovery steps stay structured since those
+            # %FTP targets are genuinely honest reference points, not a
+            # self-referencing anchor.
             # CRITICAL: No nested textevent in SteadyState - breaks TrainingPeaks import
             blocks = []  # Reset blocks, we handle warmup/cooldown ourselves
             # 10m progressive warmup (45% -> 70%)
@@ -2534,8 +2645,18 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             blocks.append('    <SteadyState Duration="300" Power="1.05"/>')
             # 5m easy recovery (50%)
             blocks.append('    <SteadyState Duration="300" Power="0.50"/>')
-            # 20m ALL OUT - FTP test @ 100% FTP (athlete should go max sustainable)
-            blocks.append('    <SteadyState Duration="1200" Power="1.00"/>')
+            # 20m best sustainable effort -- open step, no locked target
+            # (AE-5.3 pacing). "all-out" in the label is load-bearing: it is
+            # what canonical_training_model.project_tp_structure's all_out
+            # regex (r"all[- ]?out|max(?:imal)? effort") matches to give this
+            # step a visible 120-170% display band instead of a flat-zero
+            # gap (AE-8.4d) -- "maximal sustainable effort" alone does not
+            # match that pattern.
+            blocks.append(
+                '    <FreeRide Duration="1200" FlatRoad="1">\n'
+                '      <textevent timeoffset="0" message="20min all-out — best sustainable effort"/>\n'
+                '    </FreeRide>'
+            )
             # 10m cooldown
             blocks.append('    <Cooldown Duration="600" PowerLow="0.55" PowerHigh="0.40"/>')
             return '\n'.join(blocks) + '\n'
@@ -2788,7 +2909,11 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     #   - Never schedule on B-race weeks, taper, or race weeks
     #   - Fallback: try adjacent weeks if preferred week is unavailable
     # ---------------------------------------------------------------
-    ftp_test_target_weeks = [1]  # Always test Week 1
+    field_testing_allowed = (
+        (profile.get('fitness_markers') or {}).get(
+            'field_testing_allowed', True) is not False
+    )
+    ftp_test_target_weeks = [1] if field_testing_allowed else []
 
     # Coach ruling (Aug 2026, "why are there 2 FTP tests two weeks apart?"):
     # an 8-week plan's mid-plan retest was landing Week 3 -- two weeks after
@@ -2923,6 +3048,142 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         None)
     _ftp_slot_day = _bb_ftp_day or (_ftp_candidates_precomputed[0] if _ftp_candidates_precomputed else None)
 
+    # ---------------------------------------------------------------------
+    # B-RACE -1/-2 DISPLACEMENT (AE-1.9; sol programming review 2026-08-24,
+    # blocker 3): the block-builder's testing-week and per-load-week
+    # intensity slots are fixed weekdays (Tue/Thu) with no visibility into
+    # a given week's B-race date -- real cases put the Anaerobic Test on
+    # race_day-2 and a 31.5min-hard Accumulation on another race_day-2.
+    # calculate_plan_dates already reserves race_day-1
+    # (is_b_race_opener)/race_day-2 (is_b_race_easy) for every phase; the
+    # LEGACY PATH below force-converts whatever lands there to
+    # Openers/Easy regardless of what the block builder chose. Without this
+    # pass that conversion would silently DROP the test/intensity session
+    # for the week. Swap it wholesale (existing test-displacement
+    # precedent: get_ftp_day_candidates picks an earlier eligible day
+    # rather than losing the session) with the earliest eligible
+    # non-reserved filler day earlier in the same week, so the assessment
+    # still happens -- just earlier. FTP Test is excluded: it already has
+    # its own dedicated candidate system above (_ftp_slot_day).
+    # ---------------------------------------------------------------------
+    for _week_info in weeks:
+        _week_num = _week_info['week']
+        _week_days_order = [_d['day'] for _d in _week_info.get('days', [])]
+        _reserved_days = {
+            _d['day'] for _d in _week_info.get('days', [])
+            if _d.get('is_b_race_opener') or _d.get('is_b_race_easy')
+        }
+        for _reserved_day in _reserved_days:
+            _bb_day = _bb_lookup.get((_week_num, _reserved_day))
+            if not _bb_day or _bb_day.get('name') == 'FTP Test':
+                continue
+            _is_anaerobic_test = _bb_day.get('name') == 'Anaerobic Test'
+            _needs_displacement = (
+                _is_anaerobic_test
+                or _bb_day.get('role') == 'intensity')
+            if not _needs_displacement:
+                continue
+            _reserved_idx = _week_days_order.index(_reserved_day)
+
+            # Ratified testing-week order rule (commit 6d3eda1 FIX3
+            # heritage, block_builder.py's testing-week template): the
+            # Anaerobic Test must land >= 2 days after the FTP Test --
+            # coordinator finding 2026-08-24 (steve-wagner regen): the
+            # generic swap below (any earlier non-reserved filler day) has
+            # no notion of this and once landed the anaerobic test 1 day
+            # after FTP. Only Anaerobic Test carries this extra constraint;
+            # general (non-test) intensity-day displacement is unaffected.
+            _min_gap_idx = None
+            if _is_anaerobic_test and _ftp_slot_day in _week_days_order:
+                _min_gap_idx = _week_days_order.index(_ftp_slot_day) + 2
+
+            _swap_target = next(
+                (_earlier_day for _earlier_day in _week_days_order[:_reserved_idx]
+                 if _earlier_day not in _reserved_days
+                 and (_bb_lookup.get((_week_num, _earlier_day)) or {}).get('role') == 'filler'
+                 and (_min_gap_idx is None
+                      or _week_days_order.index(_earlier_day) >= _min_gap_idx)),
+                None)
+            if _swap_target:
+                (_bb_lookup[(_week_num, _reserved_day)],
+                 _bb_lookup[(_week_num, _swap_target)]) = (
+                    _bb_lookup[(_week_num, _swap_target)],
+                    _bb_lookup[(_week_num, _reserved_day)])
+                continue
+
+            if not _is_anaerobic_test:
+                continue
+
+            # No in-week day satisfies BOTH "non-reserved filler" and the
+            # >=2-day gap (coordinator ruling 2026-08-24): move the test to
+            # next week's earliest legal day instead of violating the gap.
+            # "Legal" means not reserved by THAT week's own B-race -1/-2,
+            # and specifically the week's own intensity slot (the existing
+            # one-intensity-displacement precedent -- see
+            # block_chain.protect_post_simulation_recovery's "displaced"
+            # carry-over) rather than a filler day: absorbing into an
+            # already-hard day keeps the week's total hard-day count
+            # unchanged, where adding it to a filler day would push the
+            # week over its intensity cap. The VO2/quality session that
+            # slot held yields to the test -- tests outrank variety
+            # intensity in a testing block.
+            _next_week_info = next(
+                (_w for _w in weeks if _w['week'] == _week_num + 1), None)
+            _placed_next_week = False
+            if _next_week_info:
+                _next_days_order = [_d['day'] for _d in _next_week_info.get('days', [])]
+                _next_reserved = {
+                    _d['day'] for _d in _next_week_info.get('days', [])
+                    if _d.get('is_b_race_opener') or _d.get('is_b_race_easy')
+                }
+                _next_target = next(
+                    (_d for _d in _next_days_order
+                     if _d not in _next_reserved
+                     and (_bb_lookup.get((_week_num + 1, _d)) or {}).get('role') == 'intensity'),
+                    None)
+                if _next_target:
+                    # _week_in_block/_block_number are week2's own context
+                    # (series numbering, variation offsets) -- keep them,
+                    # not week1's, even though every other field (name,
+                    # role, level, duration, tss) comes from the displaced
+                    # Anaerobic Test.
+                    _next_original = _bb_lookup.get((_week_num + 1, _next_target)) or {}
+                    _bb_lookup[(_week_num + 1, _next_target)] = {
+                        **_bb_day,
+                        'day': _next_target,
+                        '_week_in_block': _next_original.get('_week_in_block', 1),
+                        '_block_number': _next_original.get('_block_number', 1),
+                    }
+                    # The vacated reserved day: swapping in the earlier
+                    # filler content isn't available here (that's exactly
+                    # what was ruled out above), so leave plain easy
+                    # content -- the LEGACY PATH's B-race -1/-2 overlay
+                    # force-converts this day to Openers/Easy regardless
+                    # (is_b_race_opener/is_b_race_easy unconditionally defer
+                    # to legacy), so this is never actually rendered from;
+                    # it only needs to read cleanly for the strength-
+                    # placement blocked-day scan above, which keys off
+                    # `name`/`role`.
+                    _bb_lookup[(_week_num, _reserved_day)] = {
+                        **_bb_day, 'name': 'Endurance', 'role': 'filler', 'level': 1,
+                    }
+                    _placed_next_week = True
+            if not _placed_next_week:
+                # Next week has no legal slot either -- fall back to the
+                # gap-violating in-week swap (pre-fix behavior) so the
+                # assessment still happens rather than being silently
+                # dropped (AE-1.9's whole rationale for this pass).
+                _fallback_target = next(
+                    (_earlier_day for _earlier_day in _week_days_order[:_reserved_idx]
+                     if _earlier_day not in _reserved_days
+                     and (_bb_lookup.get((_week_num, _earlier_day)) or {}).get('role') == 'filler'),
+                    None)
+                if _fallback_target:
+                    (_bb_lookup[(_week_num, _reserved_day)],
+                     _bb_lookup[(_week_num, _fallback_target)]) = (
+                        _bb_lookup[(_week_num, _fallback_target)],
+                        _bb_lookup[(_week_num, _reserved_day)])
+
     # Total weeks per phase (used for long ride progression)
     phase_total_weeks = dict(phase_counters)  # snapshot after counting all weeks
 
@@ -3018,6 +3279,12 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         w00_week_entry is None when no pre-plan days are generated.
         """
 
+        # An exact targetless coached block owns only its sealed Monday–Sunday
+        # window. Adding W00 would silently broaden the authorized calendar.
+        if (profile.get('coached_block')
+                and not (profile.get('target_race') or {}).get('date')):
+            return [], None
+
         plan_start_str = plan_dates.get('plan_start', '')
         if not plan_start_str:
             return [], None
@@ -3058,16 +3325,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
                 workout_type = 'Pre_Plan_Rest'
                 duration = 0
                 power = 0
-                description = f"""PRE-PLAN WEEK: Rest Day
-{athlete_name} - {days_to_plan_start} days until plan starts
-
-PURPOSE:
-Your scheduled day off. Nothing today.
-
-TODAY:
-- OFF the bike
-- Light stretching or a walk if you feel like it
-- Sleep and eat normally"""
+                from rest_day_cards import pre_plan_body
+                description = pre_plan_body(days_to_plan_start)
             elif day_abbrev == 'Sat':
                 # Longer endurance ride
                 workout_type = 'Pre_Plan_Endurance'
@@ -3104,26 +3363,8 @@ Almost there, {athlete_name}!"""
                 workout_type = 'Pre_Plan_Rest'
                 duration = 0
                 power = 0
-                description = f"""PRE-PLAN WEEK: Rest Day
-{athlete_name} - Plan starts tomorrow!
-
-PURPOSE:
-Complete rest before your {total_weeks}-week journey begins.
-
-TODAY:
-- OFF the bike
-- Light stretching or yoga if desired
-- Focus on sleep, hydration, nutrition
-
-PREP FOR TOMORROW:
-- Charge devices (bike computer, HRM, etc.)
-- Check bike mechanicals
-- Review your training zones
-
-{total_weeks} weeks to {race_name}.
-Trust the process. One workout at a time.
-
-Let's go, {athlete_name}! See you tomorrow."""
+                from rest_day_cards import pre_plan_body
+                description = pre_plan_body(1)
 
             elif day_abbrev == 'Thu':
                 # Mobility/strength prep
@@ -3303,6 +3544,13 @@ Stay loose, {athlete_name}!"""
             day_abbrev = day_info['day']
             date_short = day_info['date_short']
             workout_prefix = day_info['workout_prefix']
+            if (day_abbrev in strength_only_abbrevs
+                    and strength_sessions_for_week(
+                        _requested_strength_sessions, phase,
+                        week.get('is_recovery_week', False)) > 0):
+                # A coach-designated strength-only day owns the daily budget.
+                # The strength pass below emits the sole calendar session.
+                continue
             is_race_day = day_info.get('is_race_day', False)
             is_b_race_day = day_info.get('is_b_race_day', False)
             is_b_race_opener = day_info.get('is_b_race_opener', False)
@@ -3427,7 +3675,42 @@ TIPS:
             # handling: A-race day plans, B-race openers/easy mini-taper, and
             # FTP test injection. Without this gate the block path would render
             # a normal workout and skip those overlays entirely.
+            #
+            # EXCEPTION (Aug 24 coach ruling): the canonical Week 1 testing
+            # slot is exempted from the FTP-test defer when the block
+            # builder's own 'FTP Test' placement there already resolved to
+            # the pinned curated item (library_selector.PINNED_TEST_ITEM_IDS
+            # via resolve_library_selections, above) -- the block-builder
+            # path renders that byte-verbatim (see `if _library_resolution`
+            # below) instead of the legacy synthetic FTP_Test block. Mid/
+            # late-plan retests have no block-builder 'FTP Test' placement
+            # (only the Week 1 testing week does), so this never fires for
+            # them -- they keep deferring to legacy exactly as before. And
+            # when the pinned item is absent from the index, `_bb_ftp_slot_pinned`
+            # is falsy and Week 1 defers to legacy too (the synthetic
+            # fallback the coach ruling asked for).
+            #
+            # This checks PINNED_TEST_ITEM_IDS availability live (via
+            # library_selector.select, cheap -- the index is process-cached)
+            # rather than trusting `library_resolution` already stashed on
+            # the day: resolve_library_selections's pass runs BEFORE the
+            # B-RACE -1/-2 DISPLACEMENT swap (above) and excludes reserved
+            # B-race days from scope, so a Week 1 whose testing-week slot
+            # lands on (or gets swapped onto) a day that pass never
+            # resolved would otherwise wrongly defer to the synthetic
+            # fallback even though the pinned item exists. See the matching
+            # self-heal on `_library_resolution` below.
             # ---------------------------------------------------------------
+            _bb_ftp_slot_pinned = bool(
+                _library_selection_enabled
+                and day_abbrev == _ftp_slot_day
+                and (_bb_lookup.get((week_num, day_abbrev)) or {}).get('name') == 'FTP Test'
+            )
+            if _bb_ftp_slot_pinned:
+                import library_selector as _ls_ftp_check
+                _bb_ftp_slot_pinned = _ls_ftp_check.select(_pinned_test_slot(
+                    'FTP Test', week_num, day_abbrev, phase, week, athlete_seed,
+                    _bb_discipline)) is not None
             _defer_to_legacy = (
                 is_race_day
                 or is_b_race_opener
@@ -3437,6 +3720,7 @@ TIPS:
                     and week_num not in ftp_tests_added
                     and not week.get('is_recovery_week', False)
                     and day_abbrev == _ftp_slot_day
+                    and not _bb_ftp_slot_pinned
                 )
             )
             if _use_block_builder and not _defer_to_legacy:
@@ -3452,6 +3736,61 @@ TIPS:
                 # above) stashed a curated TP library item on this day.
                 _library_resolution = bb_day.get('library_resolution')
 
+                # Self-heal (coach ruling 2026-08-24): a pinned test slot
+                # can reach this point with no library_resolution attached
+                # even though the pinned item exists -- resolve_library_
+                # selections excludes reserved B-race days from scope, and
+                # the B-RACE -1/-2 DISPLACEMENT swap (above, runs AFTER that
+                # pass) can move 'Anaerobic Test' from its original
+                # (excluded) reserved day onto a day that pass never had a
+                # chance to resolve. PINNED_TEST_ITEM_IDS resolution doesn't
+                # depend on this day's budget/day_cap (see
+                # library_selector._select_pinned_test), so it's always
+                # safe to resolve fresh here regardless of which day the
+                # slot ended up on.
+                if (_library_selection_enabled and _library_resolution is None
+                        and bb_name in ('FTP Test', 'Anaerobic Test')):
+                    import library_selector as _ls_self_heal
+                    _library_resolution = _ls_self_heal.select(_pinned_test_slot(
+                        bb_name, week_num, day_abbrev, phase, week, athlete_seed,
+                        _bb_discipline))
+
+                # An explicit no-test directive is canonical prescription
+                # data, not a presentation preference. Replace any block-
+                # builder assessment slot and disable the legacy overlay.
+                if (not field_testing_allowed
+                        and bb_name in {'FTP Test', 'Anaerobic Test'}):
+                    bb_day = dict(bb_day)
+                    bb_name = 'Endurance'
+                    bb_day['name'] = bb_name
+                    bb_day['role'] = 'filler'
+                    bb_level = 1
+                    _library_resolution = None
+
+                # A post-event recovery week is not a normal mid-plan
+                # deload. Remove activation sessions and any curated item
+                # with hard work or surges, then cap the easy duration. This
+                # prevents openers, burst-focus endurance, and overlong rides
+                # from appearing after the target-event weekend.
+                if week.get('is_post_event_recovery', False):
+                    bb_day = dict(bb_day)
+                    recovery_cap = (
+                        90 if day_abbrev in declared_long_days else 45
+                    )
+                    if (bb_name != 'Endurance'
+                            or (_library_resolution and (
+                                _resolution_is_hard(_library_resolution)
+                                or _library_resolution_has_surge_work(
+                                    _library_resolution)))
+                            or (_library_resolution
+                                and bb_duration > recovery_cap)):
+                        bb_name = 'Endurance'
+                        bb_level = 1
+                        _library_resolution = None
+                    bb_day['name'] = bb_name
+                    bb_day['role'] = 'filler'
+                    bb_duration = min(bb_duration, recovery_cap)
+
                 if (bb_name == 'Anaerobic Test'
                         and week_num in ftp_test_target_weeks
                         and (profile.get('fitness_markers') or {}).get(
@@ -3461,6 +3800,12 @@ TIPS:
                     # protected VO2 anchor instead of a second assessment.
                     bb_name = 'VO2max'
                     bb_level = 1
+                    # A resolved pinned assessment item (the curated
+                    # Anaerobic Test) is no longer the right content once
+                    # this slot became VO2max training -- discard it so the
+                    # `if _library_resolution` render branch below doesn't
+                    # ship the test's structure under a VO2max title.
+                    _library_resolution = None
 
                 # The legacy assessment overlay is the sole owner of the
                 # canonical Week 1 field test.  A testing-week calendar may
@@ -3484,6 +3829,11 @@ TIPS:
                         bb_name = 'Endurance'
                         bb_day['role'] = 'filler'
                     bb_level = 1
+                    # This is the stale duplicate slot, not the canonical
+                    # pinned-item day (_bb_ftp_slot_pinned) -- a resolved
+                    # pinned FTP Test item here would ship the assessment's
+                    # structure under the VO2max/Endurance title above.
+                    _library_resolution = None
 
                 # Track variation for endurance variety.
                 # INTENSITY days: variation is keyed to the BLOCK so a series
@@ -3546,7 +3896,7 @@ TIPS:
                     # drill-bearing variants (cadence, spin-up, bursts) so
                     # the week keeps dimension without metabolic strain
                     # (coach ruling, Aug 2026).
-                    if _sim_recovery:
+                    if _sim_recovery or week.get('is_post_event_recovery', False):
                         _e_variant = None
                     elif week.get('is_recovery_week', False):
                         _e_variant = (1, 5, 4)[var_offset % 3]
@@ -3557,11 +3907,24 @@ TIPS:
                         variation_offset=var_offset, discipline=_bb_discipline,
                         endurance_variant=_e_variant)
                     _filename_name = display_name
-                elif not _act_simulation and bb_name not in ('Endurance', 'Rest Day'):
+                elif (not _act_simulation
+                      and bb_name not in ('Endurance', 'Rest Day', 'FTP Test', 'Anaerobic Test')):
                     # Filler-pool rotations are real mapped archetypes too.
                     # Resolve the visible title from the same renderer choice
                     # so a Terrain/6-second-burst card never ships labelled
                     # as a generic Endurance Blocks card.
+                    #
+                    # FTP Test/Anaerobic Test are excluded (coach ruling
+                    # 2026-08-24, same as line ~3721's intensity-role
+                    # exclusion): before Aug 24 these two never reached this
+                    # branch at all (the legacy defer-to-legacy overlay owned
+                    # every FTP Test day) -- now that the canonical Week 1
+                    # slot can render through this block-builder path (see
+                    # _bb_ftp_slot_pinned), resolve_display_name's generic
+                    # archetype-personality naming (built for pool-rotated
+                    # fillers/openers, not a pinned assessment) must not
+                    # retitle it -- e.g. "20min FTP Test" from the Nate
+                    # 'testing' mapping's duration-in-title convention.
                     from workout_mapper import resolve_display_name
                     display_name = resolve_display_name(
                         bb_name, methodology=nate_methodology,
@@ -3569,17 +3932,13 @@ TIPS:
                         days_to_race=_days_until_race(race_date, day_info.get('date')))
                     _filename_name = display_name
 
-                if _library_resolution and not _act_simulation:
+                if _library_resolution and not _act_simulation and bb_name not in ('FTP Test', 'Anaerobic Test'):
                     # D3/R6: curated name_base (composed into a readable
                     # title -- see _library_display_name) replaces the
                     # resolved archetype title for library-selected days --
                     # ZWO <name>, _record_tp_session's display_name, and the
                     # series-suffix patch's base_name all read
-                    # `display_name` from here on. _filename_name/_series_id
-                    # above are computed from the canonical flow and are
-                    # UNCHANGED -- filename shape and series-suffix
-                    # bookkeeping never depend on which renderer produced
-                    # the file.
+                    # `display_name` from here on.
                     #
                     # D6: an act-simulation day carrying a library_resolution
                     # (curated race-sim series match) is exempt -- its title
@@ -3589,12 +3948,53 @@ TIPS:
                     # curated item's name was already folded into the
                     # description's first line when the resolution was
                     # attached.
+                    #
+                    # FTP Test/Anaerobic Test are exempt too (coach ruling
+                    # 2026-08-24): unlike a pool-rotated slot, these are
+                    # PINNED -- library_selector.PINNED_TEST_ITEM_IDS always
+                    # resolves the same single item, so there is no
+                    # predicted-vs-actual-archetype mismatch for the title
+                    # to reconcile. Keeping "FTP Test"/"Anaerobic Test" as
+                    # the plan's own display/filename preserves the
+                    # pervasive downstream convention (manifest filename_stem
+                    # scanned by day-before/retest-spacing tests and coach
+                    # tooling) instead of retitling to the item's raw TP
+                    # name ("The Assessment - ..."); the card's DESCRIPTION
+                    # still ships the curated item's own authored text
+                    # verbatim, so nothing about the content is dishonest.
+                    #
+                    # Bug fix (title/content reconciliation): _filename_name
+                    # above was predicted from resolve_display_name's guess
+                    # at the archetype/variation the Nate generator would
+                    # pick -- BEFORE this curated library item is known to
+                    # replace that content. Left unreconciled, the emitted
+                    # filename described the slot's predicted archetype
+                    # while the ZWO <name> (below) described the ACTUAL
+                    # library item, e.g. a file literally named
+                    # "..._Endurance__Terrain_Focus.zwo" whose <name> read
+                    # "Heat Acclimation Protocol" -- a real defect, not a
+                    # cosmetic one: the coach browses files by filename
+                    # before ever opening them. The filename must describe
+                    # the content actually emitted, so re-derive it from the
+                    # library item's name, preserving any trailing series
+                    # ordinal (" N") _filename_name already carried -- the
+                    # date-based workout_prefix is plan_ir.py's only match
+                    # key (stem.startswith(workout_prefix)), so changing
+                    # this suffix is safe.
+                    _pre_library_display_name = display_name
                     display_name = _library_display_name(_library_resolution)
+                    if display_name != _pre_library_display_name:
+                        if _filename_name.startswith(_pre_library_display_name):
+                            _ordinal_suffix = _filename_name[len(_pre_library_display_name):]
+                        else:
+                            _ordinal_suffix = ''
+                        _filename_name = f"{display_name}{_ordinal_suffix}"
 
                 # Render ZWO through block-builder workout mapper. The
                 # filename is derived from _filename_name (bug-compatible
-                # bare-ordinal shape) so filenames never change; the ZWO
-                # <name> element gets the clean display_name instead.
+                # bare-ordinal shape, reconciled above when a library
+                # selection replaced the content) so filenames never change
+                # shape; the ZWO <name> element gets the clean display_name.
                 _safe = re.sub(r'[^A-Za-z0-9 _-]', '', _filename_name)
                 workout_name = f"{workout_prefix}_{_safe.replace(' ', '_')}"
 
@@ -3607,7 +4007,10 @@ TIPS:
                     # (carried on the manifest record below) directly from
                     # the TP library index (C1), not from this ZWO.
                     from tp_structure_to_zwo import convert_structure, render_full_zwo
-                    _converted = convert_structure(_library_resolution['structure'])
+                    _converted = convert_structure(
+                        _library_resolution['structure'],
+                        item_id=_library_resolution.get('item_id'),
+                        name_base=_library_resolution.get('name_base'))
                     zwo_content = render_full_zwo(
                         _converted['blocks_xml'],
                         author=_workout_author,
@@ -3668,6 +4071,7 @@ TIPS:
                         endurance_variant=(_e_variant if bb_name == 'Endurance'
                                            and bb_role == 'filler' else None),
                         phase=phase,
+                        week_type=week.get('week_type'),
                     )
                     # The ride beside a long simulation is a recovery spin
                     # with a job, not generic base building — say so, or
@@ -3714,7 +4118,7 @@ TIPS:
                     weeks_to_race = total_weeks - week_num + 1
                     personal_header = (
                         f"{athlete_name} - Week {week_num}/{total_weeks} - "
-                        f"{_race_countdown(weeks_to_race, race_name)}\n"
+                        f"{_week_event_context(week, weeks_to_race, race_name)}\n"
                         f"{_phase_header_line(phase, week)}"
                     )
                     fuel_tag = _get_fuel_tag_for_type(bb_name, fueling, bb_duration, week_num)
@@ -3737,6 +4141,17 @@ TIPS:
                     filepath = zwo_dir / f"{workout_name}.zwo"
                     _emit_authored_document(filepath, zwo_content)
                     generated_files.append(filepath)
+                    if _bb_ftp_slot_pinned and bb_name == 'FTP Test':
+                        # This block-builder placement replaces the legacy
+                        # FTP_Test injection for this slot (see
+                        # _defer_to_legacy above) -- keep the legacy
+                        # bookkeeping it would otherwise have written so
+                        # downstream duplicate-slot displacement and the
+                        # FTP-TEST DAY-BEFORE ENFORCEMENT post-pass still see
+                        # this test as placed/dated.
+                        ftp_tests_added.add(week_num)
+                        if day_info.get('date'):
+                            _ftp_test_dates.add(str(day_info['date']))
                     if _series_id is not None:
                         _series_records.append({
                             'filepath': filepath,
@@ -3841,12 +4256,19 @@ TIPS:
             # Recovery weeks have zero intensity above Z2 except Openers.
             # -----------------------------------------------------------
             is_recovery = week.get('is_recovery_week', False)
+            is_post_event_recovery = week.get('is_post_event_recovery', False)
             if is_recovery and workout_type not in ('Rest', 'Strength'):
                 vol_factor = sum(RECOVERY_WEEK_VOLUME_FACTOR) / 2  # midpoint ~0.575
 
                 if workout_type in INTENSITY_WORKOUT_TYPES or workout_type == 'FTP_Test':
-                    # First intensity slot → Openers; rest → Endurance
-                    if not week.get('_recovery_opener_added', False):
+                    # Post-event recovery contains no activation work. Normal
+                    # mid-plan recovery may keep one opener session.
+                    if is_post_event_recovery:
+                        workout_type = 'Endurance'
+                        description = 'Post-event recovery — easy spin only'
+                        duration = max(20, min(45, int(duration * vol_factor)))
+                        power = 0.58
+                    elif not week.get('_recovery_opener_added', False):
                         workout_type = 'Openers'
                         description = f'Recovery week openers — keep the legs sharp'
                         duration = min(duration, 35) if duration > 0 else 30
@@ -3858,8 +4280,12 @@ TIPS:
                         duration = max(20, int(duration * vol_factor))
                         power = 0.60
                 elif workout_type == 'Long_Ride':
-                    description = f'Recovery week long ride — shorter and easy'
-                    duration = max(30, int(duration * 0.60))
+                    description = ('Post-event recovery — easy endurance ceiling'
+                                   if is_post_event_recovery
+                                   else 'Recovery week long ride — shorter and easy')
+                    duration = (max(30, min(90, int(duration * 0.50)))
+                                if is_post_event_recovery
+                                else max(30, int(duration * 0.60)))
                     power = 0.58  # Easy effort for recovery week
                 else:
                     # Easy/Endurance/Shakeout — reduce duration
@@ -3924,26 +4350,10 @@ TIPS:
             # overlay below must replace the rest template (C2 exemption).
             if (workout_type == 'Rest' or duration == 0) and not is_race_day:
                 weeks_to_race = total_weeks - week_num + 1
-                rest_description = f"""REST DAY - {athlete_name}
-
-COUNTDOWN: {_race_countdown(weeks_to_race, race_name)}
-
-TODAY'S FOCUS:
-- Complete rest from cycling
-- Active recovery allowed: walking, light stretching, yoga
-- Prioritize sleep (7-9 hours)
-
-RECOVERY CHECKLIST:
-- Hydration: 2-3L water minimum
-- Nutrition: Quality protein with each meal
-- Mobility: 10-15 min light stretching if desired
-- Mental: Visualize your race success
-
-PHASE: {phase.upper()}
-Week {week_num} of {total_weeks}
-
-Remember: Adaptation happens during rest, not during training.
-Trust the process, {athlete_name}."""
+                from rest_day_cards import rest_day_card
+                rest_description = rest_day_card(
+                    None, week={'week': week_num, 'phase': phase},
+                    athlete_seed=athlete_name, ordinal=week_num)["body"]
 
                 rest_blocks = '    <SteadyState Duration="60" Power="0.30"/>\n'
                 rest_content = ZWO_TEMPLATE.format(
@@ -4062,6 +4472,19 @@ Trust the process, {athlete_name}."""
                 # customer-visible figures cannot drift by a rounding point.
                 race_duration_min = round_duration_to_10(int(round(duration_hours * 60)))
                 estimated_tss = race_day_tss_from_emitted_minutes(race_duration_min)
+
+                # sol programming review 2026-08-24, major 10: an UNMATCHED
+                # race has no course data behind its duration -- the number
+                # above is now derived (calculate_fueling.py) from the
+                # flat-terrain unmatched-race estimator rather than a
+                # course-aware speed table. The disclosure that this is a
+                # modeled estimate belongs to the COACH, not the athlete
+                # (race_match_lines in pre_delivery_checklist.py and the
+                # UNMATCHED RACE block in coaching_brief.md) -- CLAUDE.md's
+                # race-matching contract is explicit that an unmatched race
+                # is "loud to the coach, invisible to the athlete", and
+                # "confirm course" reads as an instruction to the coach, not
+                # something an athlete can act on from their race-day card.
 
                 # Build race day plan description
                 race_description = f"""RACE DAY: {race_name}
@@ -4212,7 +4635,7 @@ GO GET IT, {athlete_name.upper()}!
                         # Inject personalized header into description
                         weeks_to_race = total_weeks - week_num + 1
                         personal_header = (f"{athlete_name} - Week {week_num}/{total_weeks} - "
-                                           f"{_race_countdown(weeks_to_race, race_name)}\n"
+                                           f"{_week_event_context(week, weeks_to_race, race_name)}\n"
                                            f"{_phase_header_line(phase, week)}")
 
                         # Add heat training reminder (weeks 4-8 before race).
@@ -4281,7 +4704,7 @@ GO GET IT, {athlete_name.upper()}!
             # Add personalized header to description
             weeks_to_race = total_weeks - week_num + 1
             personal_header = (f"{athlete_name} - Week {week_num}/{total_weeks} - "
-                               f"{_race_countdown(weeks_to_race, race_name)}\n"
+                               f"{_week_event_context(week, weeks_to_race, race_name)}\n"
                                f"{_phase_header_line(phase, week)}")
 
             # Add heat training reminder (weeks 4-8 before race); never on tests.
@@ -4428,7 +4851,7 @@ GO GET IT, {athlete_name.upper()}!
                     _rec.pop(_stale_key, None)
 
     # Generate strength workouts - respect athlete availability
-    strength_sessions = profile.get('strength', {}).get('sessions_per_week', 2) if profile else 2
+    strength_sessions = _requested_strength_sessions
     strength_enabled = config.get('workouts.strength.enabled', True)
 
     if strength_sessions > 0 and strength_enabled:
@@ -4472,6 +4895,73 @@ GO GET IT, {athlete_name.upper()}!
         # _compute_hard_bike_dates.
         _hard_bike_dates = _compute_hard_bike_dates(_tp_manifest_records)
 
+        # AE-8.4 (sol programming review 2026-08-24, major 9): strength must
+        # never land on a test day (FTP Test / Anaerobic Test) -- the
+        # ftp_test_days block above only ever blocked the FTP day, so the
+        # testing week's Anaerobic Test day (and every VO2max/intensity day
+        # in later load weeks) was still open to strength, and the default
+        # coach-preferred strength pair (Tue/Thu) collides directly with the
+        # default intensity_1/intensity_2 slot days. Test days are a hard
+        # block (never); other intensity/VO2 days are a soft avoid (used
+        # only if nothing else satisfies the requested weekly frequency --
+        # AE-8.4's morning-primer exception does not apply to test days, so
+        # those never get a fallback exception here).
+        _test_day_abbrevs_by_week: dict = {}
+        _intensity_avoid_day_abbrevs_by_week: dict = {}
+        for (_bb_week, _bb_day_abbrev), _bb_day in _bb_lookup.items():
+            _bb_day_name = _bb_day.get('name') or ''
+            if _bb_day_name in ('FTP Test', 'Anaerobic Test'):
+                _test_day_abbrevs_by_week.setdefault(_bb_week, set()).add(_bb_day_abbrev)
+            elif _bb_day.get('role') == 'intensity':
+                _intensity_avoid_day_abbrevs_by_week.setdefault(
+                    _bb_week, set()).add(_bb_day_abbrev)
+
+        # Coordinator finding 2026-08-24 (steve-wagner regen): a full loaded
+        # strength session landed on race-1 (Openers day) and race-2 (Easy
+        # day) -- the B-race -1/-2 reservation (is_b_race_opener/
+        # is_b_race_easy, calculate_plan_dates.py) protects the BIKE content
+        # on those days but strength placement never consulted it. Race-1
+        # is openers only; race-2 is easy, at most mobility-class -- neither
+        # gets a real lifting session. Hard-blocked here (same mechanism as
+        # the FTP-test-day/pre-sim blocks above), which lets
+        # place_strength_days' own candidate search relocate the session to
+        # another eligible day that week, or drop it if none fits (an
+        # A-race/race-phase week already requests zero strength sessions --
+        # strength_sessions_for_week -- so this never has to compete with an
+        # A-race's own race-1/-2 taper days).
+        _b_race_reserved_day_abbrevs_by_week: dict = {}
+        for _brw in weeks:
+            for _brd in _brw.get('days', []):
+                if _brd.get('is_b_race_opener') or _brd.get('is_b_race_easy'):
+                    _b_race_reserved_day_abbrevs_by_week.setdefault(
+                        _brw['week'], set()).add(_brd['day'])
+
+        # The day immediately AFTER a race (B-race or A-race) is poor
+        # adjacency for a loaded lift too -- soft-blocked (not a ratified
+        # hard rule like race-1/-2 above) so place_strength_days prefers any
+        # other eligible day that week; if none exists the session is
+        # dropped for the week rather than landing the morning after a race.
+        _day_by_date: dict = {}
+        for _adw in weeks:
+            for _add in _adw.get('days', []):
+                if _add.get('date'):
+                    _day_by_date[_add['date']] = (_adw['week'], _add['day'])
+        _post_race_day_abbrevs_by_week: dict = {}
+        for _prw in weeks:
+            for _prd in _prw.get('days', []):
+                if not (_prd.get('is_b_race_day') or _prd.get('is_race_day')):
+                    continue
+                if not _prd.get('date'):
+                    continue
+                try:
+                    _race_dt = datetime.strptime(_prd['date'], '%Y-%m-%d')
+                except (TypeError, ValueError):
+                    continue
+                _after_key = _day_by_date.get((_race_dt + timedelta(days=1)).strftime('%Y-%m-%d'))
+                if _after_key:
+                    _post_race_day_abbrevs_by_week.setdefault(
+                        _after_key[0], set()).add(_after_key[1])
+
         # PASS 1 (placement only, no content): FIX 2 -- the exercise family
         # (A vs B) must key off the SAME phase-wide ordinal the delivered
         # title uses (see _strength_ab_ordinals), and that ordinal is only
@@ -4509,8 +4999,18 @@ GO GET IT, {athlete_name.upper()}!
                               # selection relocate it earlier in the week, or
                               # drop it for the week if nothing else fits.
                               | {day for candidate_week, day in _pre_sim_strength_block_days
-                                 if candidate_week == week_num}),
+                                 if candidate_week == week_num}
+                              # AE-8.4: FTP Test / Anaerobic Test days are a
+                              # hard block, same as the FTP day above.
+                              | _test_day_abbrevs_by_week.get(week_num, set())
+                              # Race-1/-2 reservation: no loaded strength on
+                              # the opener or easy day before a B-race.
+                              | _b_race_reserved_day_abbrevs_by_week.get(week_num, set())
+                              # Poor adjacency: no loaded strength the day
+                              # immediately after a race (B-race or A-race).
+                              | _post_race_day_abbrevs_by_week.get(week_num, set())),
                 strength_only_abbrevs=strength_only_abbrevs,
+                avoid_days=_intensity_avoid_day_abbrevs_by_week.get(week_num, set()),
             )
 
             for strength_day in strength_days:
@@ -4773,7 +5273,8 @@ def generate_athlete_package(athlete_id: str) -> dict:
         step(3, "Authoring canonical workout sessions...")
         _authored_dir = Path(_authoring_root)
         _private_files = generate_zwo_files(
-            _authored_dir, plan_dates, methodology, derived, profile, fueling)
+            _authored_dir, plan_dates, methodology, derived, profile, fueling,
+            athlete_seed=athlete_id)
         _pre_plan_week = getattr(generate_zwo_files, 'last_pre_plan_week', None)
         if (_pre_plan_week and not any(
                 w.get('week') == 0 for w in _canonical_dates.get('weeks', []))):

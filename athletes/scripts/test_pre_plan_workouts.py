@@ -185,7 +185,9 @@ def _build_w00_fixture(tmp_path, today):
         cpd.datetime = orig_datetime
 
     days_out = (datetime.strptime(plan_dates['plan_start'], '%Y-%m-%d') - today).days
-    assert 1 <= days_out <= 7, (
+    # days_out=0 is legitimate when the suite runs ON a Monday --
+    # clamp-to-next-Monday resolves to today (found by the E2E, 2026-08-24).
+    assert 0 <= days_out <= 7, (
         f"fixture setup did not land plan_start in the W00 window (days_out={days_out})"
     )
 

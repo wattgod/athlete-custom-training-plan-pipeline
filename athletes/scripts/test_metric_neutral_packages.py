@@ -129,6 +129,18 @@ def test_nonpower_paid_order_every_artifact_is_metric_neutral(
     ]
     assert [session["title"] for session in week_one_tests] == [field_test]
     assert "RE-ANCHOR" in week_one_tests[0]["description"]
+    if case_id == "rpe":
+        rpe_values = [
+            value
+            for segment in week_one_tests[0]["segments"]
+            for value in (
+                (segment.get("target") or {}).get("value"),
+                (segment.get("target") or {}).get("low"),
+                (segment.get("target") or {}).get("high"),
+            )
+            if value is not None
+        ]
+        assert max(rpe_values) == 9
     assert canonical["athlete"]["control_basis"] == basis
     assert canonical["athlete"]["reanchor"] == {
         "required": True, "week": 1, "test": reanchor_test,
