@@ -14,6 +14,7 @@ import re
 import json
 import copy
 import contextlib
+import functools
 import hmac
 import fcntl
 import hashlib
@@ -70,6 +71,7 @@ from email_templates import (TP_INVITE_LINK as CONSULT_TP_INVITE_LINK,
                              CONSULT_ADDON_OFFER_SUBJECT, CONSULT_ADDON_OFFER_TEMPLATE)
 
 import endure_delivery
+from signwell_client import SignWellClient, SignWellError, verify_event_hash
 
 # The shared registry lives under athletes/config because that directory is
 # copied into the Railway image. Import its loader from the adjacent scripts
@@ -189,6 +191,15 @@ def _brand_from_origin(origin: str) -> str:
 def _brand_config(brand: str) -> dict:
     return BRANDS.get(normalize_brand(brand), BRANDS[DEFAULT_BRAND])
 
+
+def _coaching_config(brand: str) -> dict:
+    """Return the brand-scoped coaching contract, failing closed by default."""
+    return _brand_config(brand).get('coaching') or {'enabled': False, 'tiers': {}}
+
+
+def _coaching_tier_config(brand: str, tier: str) -> dict:
+    return (_coaching_config(brand).get('tiers') or {}).get(tier) or {}
+
 # Email notifications for new orders
 NOTIFICATION_EMAIL = os.environ.get('NOTIFICATION_EMAIL', '')
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
@@ -241,6 +252,21 @@ COACHING_PRICE_IDS = {
 # One-time $99 setup fee added to all coaching checkouts
 COACHING_SETUP_FEE_PRICE_ID = 'price_1T2yzQLoaHDbEqSqXKe6gNuF'  # $99 one-time (live)
 COACHING_SETUP_FEE_CENTS = 9900
+# Private, case-specific waiver. This coupon is applied by the backend only;
+# athletes are never shown a public promotion code or a promotion-code field.
+COACHING_SETUP_FEE_WAIVER_COUPON_ID = os.environ.get(
+    'COACHING_SETUP_FEE_WAIVER_COUPON_ID', 'coaching_setup_waiver_99_v1')
+COACHING_BOOKING_URL = os.environ.get('COACHING_BOOKING_URL', '')
+COACHING_ESIGN_PROVIDER = os.environ.get(
+    'COACHING_ESIGN_PROVIDER', 'signwell').strip().lower()
+SIGNWELL_API_KEY = os.environ.get('SIGNWELL_API_KEY', '')
+SIGNWELL_WEBHOOK_ID = os.environ.get('SIGNWELL_WEBHOOK_ID', '')
+SIGNWELL_LIVE_SEND_ENABLED = (
+    os.environ.get('SIGNWELL_LIVE_SEND_ENABLED', '').lower() == 'true')
+SIGNWELL_TEST_MODE = (
+    os.environ.get('SIGNWELL_TEST_MODE', 'true').lower() == 'true')
+SIGNWELL_REMINDERS_ENABLED = (
+    os.environ.get('SIGNWELL_REMINDERS_ENABLED', '').lower() == 'true')
 
 CONSULTING_PRICE_ID = 'price_1T2ekVLoaHDbEqSq0GGfoBEX'  # $150/hr, quantity=hours
 CONSULTING_PRICE_CENTS = 15000  # $150/hr — used to seed the consult record when
@@ -270,6 +296,12 @@ CHECKOUT_EXPIRY_MINUTES = 60
 
 # Cron endpoint secret (prevents unauthorized triggers)
 CRON_SECRET = os.environ.get('CRON_SECRET', '')
+COACHING_INTAKE_SECRET = os.environ.get('COACHING_INTAKE_SECRET', '')
+# Legacy direct-to-Stripe coaching endpoint. The controlled intake pipeline is
+# the production path; explicit opt-in exists only for a deliberate rollback.
+COACHING_DIRECT_CHECKOUT_ENABLED = (
+    os.environ.get('COACHING_DIRECT_CHECKOUT_ENABLED', '').lower() == 'true'
+)
 
 # Pipeline timeout. Must stay BELOW gunicorn's --timeout (600 in Dockerfile)
 # so the timeout path can still send the FAILED notification email before
@@ -760,19 +792,23 @@ def _build_coaching_email(details: dict) -> tuple:
     tier = details.get('tier', 'unknown')
     subscription_id = details.get('subscription_id', '')
     order_id = details.get('order_id', '')
+    brand = normalize_brand(details.get('brand'))
+    brand_cfg = _brand_config(brand)
+    subject_prefix = brand_cfg.get('subject_prefix', '[GG]')
+    tier_label = _coaching_tier_config(brand, tier).get('label', tier.title())
 
-    subject = f"[GG] New coaching: {name} — {tier} tier"
+    subject = f"{subject_prefix} New coaching: {name} — {tier_label}"
     html = f"""
 <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
   <div style="background: #59473c; color: white; padding: 16px 24px; border-radius: 4px 4px 0 0;">
     <h2 style="margin: 0; font-size: 18px;">New coaching: {name}</h2>
-    <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">{tier} tier &middot; Order {order_id}</p>
+    <p style="margin: 4px 0 0; opacity: 0.9; font-size: 14px;">{tier_label} coaching &middot; Order {order_id}</p>
   </div>
   <div style="background: #f9f9f7; padding: 24px; border: 1px solid #e0e0e0; border-top: none;">
     <table style="font-size: 14px; border-collapse: collapse; width: 100%;">
       <tr><td style="padding: 4px 12px 4px 0; color: #888;">Name</td><td><strong>{name}</strong></td></tr>
       <tr><td style="padding: 4px 12px 4px 0; color: #888;">Email</td><td><a href="mailto:{email}">{email}</a></td></tr>
-      <tr><td style="padding: 4px 12px 4px 0; color: #888;">Tier</td><td>{tier}</td></tr>
+      <tr><td style="padding: 4px 12px 4px 0; color: #888;">Tier</td><td>{tier_label}</td></tr>
       <tr><td style="padding: 4px 12px 4px 0; color: #888;">Subscription</td><td><code>{subscription_id}</code></td></tr>
     </table>
     <h3 style="margin: 20px 0 12px; font-size: 15px; color: #59473c;">Next steps</h3>
@@ -783,7 +819,7 @@ def _build_coaching_email(details: dict) -> tuple:
     </ol>
   </div>
 </div>"""
-    text = f"New coaching: {name} ({email}), {tier} tier, subscription {subscription_id}, order {order_id}"
+    text = f"New coaching: {name} ({email}), {tier_label}, subscription {subscription_id}, order {order_id}"
     return subject, text, html
 
 
@@ -992,6 +1028,108 @@ Questions? Reply to this email.
         logger.info(f"Payment confirmation sent to {_mask_email(customer_email)}")
     else:
         logger.error(f"Failed to send payment confirmation to {_mask_email(customer_email)}")
+
+
+def _send_coaching_payment_confirmation(customer_email: str, customer_name: str,
+                                        tier: str, brand: str = DEFAULT_BRAND) -> bool:
+    """Confirm an active coaching subscription and give one conditional TP step.
+
+    The coaching tier stays Min/Mid/Max. "Premium" is reserved for the
+    TrainingPeaks account benefit so the two products cannot be confused.
+    """
+    if not customer_email:
+        logger.warning("Cannot send coaching confirmation — customer email missing")
+        return False
+
+    brand_cfg = _brand_config(brand)
+    coaching_cfg = _coaching_config(brand)
+    tier_cfg = _coaching_tier_config(brand, tier)
+    tier_label = tier_cfg.get('label', tier.title())
+    first_name = customer_name.split()[0] if customer_name else 'there'
+    attach_url = coaching_cfg.get('trainingpeaks_attach_url', '')
+    premium_included = bool(coaching_cfg.get('trainingpeaks_premium_included'))
+    signature = brand_cfg.get('email', {})
+    signature_name = signature.get('signature_name', 'Matti')
+    signature_org = signature.get('signature_organization', brand_cfg['name'])
+    signature_site = signature.get(
+        'signature_site', brand_cfg['site'].replace('https://', ''))
+
+    premium_line = (
+        "TrainingPeaks Premium is included with your coaching. "
+        "You do not need to purchase it separately.\n\n"
+        if premium_included else ''
+    )
+    attach_line = (
+        "If your TrainingPeaks account is not already connected to my coaching "
+        f"account, connect it here:\n{attach_url}\n\n"
+        "If it is already connected, skip that step.\n\n"
+        if attach_url else ''
+    )
+    booking_line = (
+        f"Book your kickoff call:\n{COACHING_BOOKING_URL}\n\n"
+        if COACHING_BOOKING_URL.startswith('https://') else '')
+    subject = f'Payment confirmed — {tier_label} coaching'
+    body = (
+        f"Hey {first_name},\n\n"
+        f"Your {tier_label} coaching subscription is active.\n\n"
+        + premium_line
+        + attach_line
+        + booking_line
+        + "I’ll review your intake and training history, then follow up with "
+          "the first concrete steps.\n\n"
+        + "Questions before then? Reply here.\n\n"
+        + f"— {signature_name}\n{signature_org}\n{signature_site}"
+    )
+    ok = _send_email(customer_email, subject, body,
+                     reply_to=NOTIFICATION_EMAIL or None, brand=brand)
+    if not ok:
+        logger.critical(
+            f"COACHING CONFIRMATION FAILED: brand={brand}, tier={tier}, "
+            f"email={_mask_email(customer_email)}")
+    return ok
+
+
+def _send_coaching_onboarding_handoff(case: dict, checkout_url: str) -> bool:
+    """Send the approved athlete one compact platform + payment handoff."""
+    brand = normalize_brand(case.get('brand'))
+    brand_cfg = _brand_config(brand)
+    coaching_cfg = _coaching_config(brand)
+    tier = case.get('tier', '')
+    tier_label = _coaching_tier_config(brand, tier).get('label', tier.title())
+    name = case.get('athlete', {}).get('name', '')
+    email = case.get('athlete', {}).get('email', '')
+    first_name = name.split()[0] if name else 'there'
+    attach_url = coaching_cfg.get('trainingpeaks_attach_url', '')
+    setup_fee_waived = (
+        _coaching_gate_status(case, 'setup_fee_waiver') == 'approved')
+    fee_line = (
+        "I waived the $99 setup fee for this case; checkout already reflects "
+        "that waiver.\n\n"
+        if setup_fee_waived else
+        "Checkout includes the one-time $99 setup fee for intake analysis and "
+        "your first plan build.\n\n"
+    )
+    signature = brand_cfg.get('email', {})
+
+    subject = f'Next steps — {tier_label} coaching'
+    body = (
+        f"Hey {first_name},\n\n"
+        "I’ve reviewed your intake. Here are the two onboarding steps.\n\n"
+        "1. TrainingPeaks\n"
+        "If your account is not already connected to my coaching account, "
+        f"connect it here:\n{attach_url}\n"
+        "If it is already connected, skip this step. TrainingPeaks Premium "
+        "is included with coaching; do not purchase it separately.\n\n"
+        f"2. Start {tier_label} coaching\n{checkout_url}\n"
+        + fee_line
+        + "Once checkout is complete, I’ll review your training history and "
+        "follow up with the first concrete steps.\n\n"
+        f"— {signature.get('signature_name', 'Matti')}\n"
+        f"{signature.get('signature_organization', brand_cfg['name'])}\n"
+        f"{signature.get('signature_site', brand_cfg['site'].replace('https://', ''))}"
+    )
+    return _send_email(email, subject, body,
+                       reply_to=NOTIFICATION_EMAIL or None, brand=brand)
 
 
 def _build_plan_notification_details(order_data: dict, result: dict,
@@ -1299,6 +1437,828 @@ def load_intake(intake_id: str) -> dict:
     except (json.JSONDecodeError, IOError) as e:
         logger.error(f"Error loading intake {intake_id}: {e}")
         return {}
+
+
+def _coaching_intake_path(case_id: str) -> Path:
+    """Resolve one durable coaching case without allowing path traversal."""
+    uuid.UUID(case_id)
+    root = Path(DATA_DIR) / 'coaching_intakes'
+    root.mkdir(parents=True, exist_ok=True)
+    return root / f'{case_id}.json'
+
+
+@contextlib.contextmanager
+def _coaching_operation_lock(name: str):
+    """Serialize a case/provider mutation across threads and worker processes."""
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', str(name or '')):
+        raise ValueError('invalid coaching operation lock name')
+    root = Path(DATA_DIR) / '.locks'
+    root.mkdir(parents=True, exist_ok=True)
+    fd = os.open(root / f'{name}.lock', os.O_CREAT | os.O_RDWR, 0o600)
+    with os.fdopen(fd, 'a+') as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def _serialized_coaching_case(operation: str):
+    def decorate(view):
+        @functools.wraps(view)
+        def wrapped(case_id, *args, **kwargs):
+            with _coaching_operation_lock(f'{operation}-{case_id}'):
+                return view(case_id, *args, **kwargs)
+        return wrapped
+    return decorate
+
+
+def _serialized_coaching_provider(operation: str):
+    def decorate(view):
+        @functools.wraps(view)
+        def wrapped(*args, **kwargs):
+            with _coaching_operation_lock(operation):
+                return view(*args, **kwargs)
+        return wrapped
+    return decorate
+
+
+def _read_coaching_intake(case_id: str) -> dict:
+    try:
+        path = _coaching_intake_path(case_id)
+        return json.loads(path.read_text()) if path.exists() else {}
+    except (ValueError, OSError, json.JSONDecodeError):
+        return {}
+
+
+def _iter_coaching_intakes():
+    """Yield valid durable coaching cases, skipping corrupt/non-case files."""
+    root = Path(DATA_DIR) / 'coaching_intakes'
+    if not root.exists():
+        return
+    for path in sorted(root.glob('*.json')):
+        try:
+            case = json.loads(path.read_text())
+        except (OSError, ValueError, TypeError):
+            logger.warning(f'Could not read coaching case {path.name}')
+            continue
+        if (isinstance(case, dict) and
+                case.get('schema') == 'coaching_onboarding_case/v1' and
+                case.get('case_id')):
+            yield case
+
+
+def _stripe_object_id(value) -> str:
+    """Normalize expandable Stripe IDs without trusting object reprs."""
+    if isinstance(value, dict):
+        return str(value.get('id') or '')
+    return str(value or '')
+
+
+def _stripe_invoice_subscription_id(invoice: dict) -> str:
+    """Support both legacy and current Stripe invoice subscription shapes."""
+    direct = _stripe_object_id(invoice.get('subscription'))
+    if direct:
+        return direct
+    parent = invoice.get('parent') or {}
+    details = parent.get('subscription_details') or {}
+    return _stripe_object_id(details.get('subscription'))
+
+
+def _find_coaching_case_for_billing(*, case_id: str = '',
+                                    subscription_id: str = '',
+                                    customer_id: str = '') -> dict:
+    """Resolve a billing event to exactly one case using provider identifiers."""
+    if case_id:
+        candidate = _read_coaching_intake(case_id)
+        if candidate:
+            billing = candidate.get('billing') or {}
+            receipt = (candidate.get('receipts') or {}).get('stripe_payment') or {}
+            known_subscription = str(
+                billing.get('subscription_id') or receipt.get('subscription_id') or '')
+            known_customer = str(
+                billing.get('customer_id') or receipt.get('customer_id') or '')
+            if ((not subscription_id or not known_subscription or
+                 hmac.compare_digest(subscription_id, known_subscription)) and
+                    (not customer_id or not known_customer or
+                     hmac.compare_digest(customer_id, known_customer))):
+                return candidate
+
+    matches = []
+    for candidate in _iter_coaching_intakes() or ():
+        billing = candidate.get('billing') or {}
+        receipt = (candidate.get('receipts') or {}).get('stripe_payment') or {}
+        known_subscription = str(
+            billing.get('subscription_id') or receipt.get('subscription_id') or '')
+        known_customer = str(
+            billing.get('customer_id') or receipt.get('customer_id') or '')
+        if subscription_id and known_subscription == subscription_id:
+            matches.append(candidate)
+        elif customer_id and known_customer == customer_id:
+            matches.append(candidate)
+    return matches[0] if len(matches) == 1 else {}
+
+
+def _write_coaching_intake(case: dict, *, create_only: bool = False) -> bool:
+    """Persist one case atomically; return False for a duplicate create."""
+    path = _coaching_intake_path(case['case_id'])
+    payload = (json.dumps(case, indent=2, sort_keys=True) + '\n').encode()
+    if create_only:
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            return False
+        with os.fdopen(fd, 'wb') as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        return True
+
+    tmp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
+    with open(tmp, 'wb') as handle:
+        os.chmod(tmp, 0o600)
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp, path)
+    return True
+
+
+_COACHING_EVENT_DETAIL_KEYS = {
+    'from_state', 'to_state', 'gate', 'status', 'email_sent',
+    'recovered_from', 'recovery_disposition',
+}
+
+
+def _record_coaching_event(case: dict, event_name: str, source_id: str,
+                           *, details: dict | None = None,
+                           occurred_at: str | None = None) -> bool:
+    """Append one privacy-minimized, idempotent lifecycle event to a case.
+
+    The case file remains the durable source of truth. Analytics projections
+    never copy athlete name, email, questionnaire answers, URLs, or free text.
+    """
+    event_name = str(event_name or '').strip().lower()
+    source_id = str(source_id or '').strip()
+    if not re.fullmatch(r'[a-z0-9_]{3,80}', event_name) or not source_id:
+        raise ValueError('A canonical event_name and source_id are required')
+    event_id = hashlib.sha256(
+        f"{case.get('case_id', '')}\0{event_name}\0{source_id}".encode('utf-8')
+    ).hexdigest()[:24]
+    events = case.setdefault('analytics_events', [])
+    if any(item.get('event_id') == event_id for item in events):
+        return False
+    safe_details = {}
+    for key, value in (details or {}).items():
+        if key not in _COACHING_EVENT_DETAIL_KEYS:
+            continue
+        if value is None or isinstance(value, (str, int, float, bool)):
+            safe_details[key] = value
+    events.append({
+        'schema': 'coaching_funnel_event/v1',
+        'event_id': event_id,
+        'event_name': event_name,
+        'occurred_at': occurred_at or datetime.now(timezone.utc).isoformat(),
+        'source_ref_sha256': hashlib.sha256(
+            source_id.encode('utf-8')).hexdigest()[:24],
+        'brand': normalize_brand(case.get('brand')),
+        'tier': str(case.get('tier') or ''),
+        'details': safe_details,
+    })
+    return True
+
+
+_COACHING_INTAKE_REQUIRED = {
+    'age': 'age',
+    'sex': 'sex',
+    'weight': 'weight',
+    'height_ft': 'height (feet)',
+    'height_in': 'height (inches)',
+    'primary_goal': 'primary goal',
+    'years_cycling': 'years cycling',
+    'longest_ride': 'longest recent ride',
+    'rhr_baseline': 'resting heart rate baseline',
+    'sleep_hours_baseline': 'typical sleep',
+    'sleep_quality': 'sleep quality',
+    'recovery_speed': 'recovery speed',
+    'training_platform': 'training platform',
+    'trainer_access': 'indoor trainer access',
+    'hours_per_week': 'weekly training hours',
+    'long_ride_days': 'long-ride day availability',
+    'interval_days': 'interval day availability',
+    'life_stress': 'life stress',
+    'strength_current': 'current strength training',
+    'checkin_frequency': 'check-in frequency',
+    'feedback_detail': 'feedback detail',
+    'autonomy': 'autonomy preference',
+    'missed_workout_response': 'missed-workout response',
+}
+
+_COACHING_INTAKE_REQUIRED_XC = {
+    'age': 'age',
+    'sex': 'sex',
+    'weight': 'weight',
+    'height': 'height',
+    'primary_goal': 'primary goal',
+    'years_skiing': 'years skiing',
+    'discipline_pref': 'classic/skate preference',
+    'racing_experience': 'ski-racing experience',
+    'weekly_hours': 'current weekly training hours',
+    'max_hours': 'maximum weekly training hours',
+    'preferred_days': 'preferred training days',
+    'feedback_freq': 'feedback frequency',
+}
+
+_COACHING_INTAKE_FOLLOWUP = {
+    'date_of_birth': 'date of birth (age becomes stale and birthday reminders need a date)',
+    'home_timezone': 'home timezone',
+    'home_location': 'home location',
+    'desired_start_date': 'desired coaching start date',
+    'preferred_contact_channel': 'preferred contact channel',
+    'trainingpeaks_connection_status': 'TrainingPeaks coach-connection status',
+}
+
+_COACHING_INTAKE_NOT_ASKED = {
+    'health_clearance_status': 'health-clearance status when applicable',
+    'coaching_agreement_status': 'coaching agreement receipt',
+    'data_consent_status': 'data-use consent receipt',
+}
+
+
+def _coaching_age(questionnaire: dict) -> int | None:
+    """Return the submitted whole-number age without treating it as verified."""
+    try:
+        age = int(str((questionnaire or {}).get('age', '')).strip())
+    except (TypeError, ValueError):
+        return None
+    return age if 0 < age < 130 else None
+
+
+def _coaching_is_minor(case_or_questionnaire: dict) -> bool:
+    questionnaire = case_or_questionnaire.get(
+        'questionnaire', case_or_questionnaire)
+    age = _coaching_age(questionnaire)
+    return age is not None and age < 18
+
+
+def _coaching_intake_audit(questionnaire: dict, brand: str = DEFAULT_BRAND) -> dict:
+    """Separate incomplete, unasked, and self-reported facts for coach review."""
+    questionnaire = questionnaire if isinstance(questionnaire, dict) else {}
+    required = (_COACHING_INTAKE_REQUIRED_XC
+                if normalize_brand(brand) == 'xcskilabs'
+                else _COACHING_INTAKE_REQUIRED)
+
+    def _blank(value) -> bool:
+        if value is None:
+            return True
+        if isinstance(value, str):
+            return not value.strip()
+        if isinstance(value, (list, tuple, dict)):
+            return not value
+        return False
+
+    missing_required = [
+        label for field, label in required.items()
+        if _blank(questionnaire.get(field))
+    ]
+    age = _coaching_age(questionnaire)
+    if age is not None and age < 13:
+        missing_required.append(
+            'athlete must be at least 13 for this intake path')
+    if age is not None and age < 18:
+        for field, label in (
+            ('guardian_name', 'parent/guardian full name'),
+            ('guardian_email', 'parent/guardian email'),
+            ('guardian_relationship', 'parent/guardian relationship'),
+        ):
+            if _blank(questionnaire.get(field)):
+                missing_required.append(label)
+    if questionnaire.get('primary_goal') == 'specific_race':
+        goal_fields = (
+            (('target_race', 'target race'),
+             ('goal_details', 'definition of race success'))
+            if normalize_brand(brand) == 'xcskilabs'
+            else (('race_list', 'target race list'),
+                  ('success_definition', 'definition of race success'))
+        )
+        for field, label in goal_fields:
+            if _blank(questionnaire.get(field)):
+                missing_required.append(label)
+
+    missing_followup = [
+        label for field, label in _COACHING_INTAKE_FOLLOWUP.items()
+        if _blank(questionnaire.get(field))
+    ]
+
+    unasked = [
+        label for field, label in _COACHING_INTAKE_NOT_ASKED.items()
+        if _blank(questionnaire.get(field))
+    ]
+    if age is not None and age < 18:
+        unasked.append('parent/guardian consent receipt')
+    unasked.append('coach decision on any private setup-fee waiver')
+    health_disclosure_present = any(
+        not _blank(questionnaire.get(field))
+        for field in ('injuries', 'past_injuries', 'medical_conditions', 'medications')
+    )
+    unverified = [
+        'identity and age',
+        'training history and current workload',
+        'FTP, heart-rate, HRV, sleep, and recovery baselines',
+        'availability and life constraints',
+        'target events and outcome goals',
+        'TrainingPeaks coach connection',
+        'TrainingPeaks Premium activation',
+        'Stripe payment and any case-specific setup-fee waiver',
+    ]
+
+    return {
+        'schema': 'coaching_intake_audit/v1',
+        # Compatibility alias: historically `missing` meant required intake data.
+        'missing': missing_required,
+        'missing_required': missing_required,
+        'missing_followup': missing_followup,
+        'unasked': unasked,
+        'unverified': unverified,
+        'gates': {
+            'intake_completeness': (
+                'blocked' if missing_required else
+                ('needs_follow_up' if missing_followup else 'ready_for_fit_review')
+            ),
+            'fit_review': 'pending_coach_review',
+            'health_clearance': (
+                'review_disclosure' if health_disclosure_present else 'not_collected'),
+            'coaching_agreement': 'not_collected',
+            'data_consent': 'not_collected',
+            'guardian_consent': (
+                'not_collected' if age is not None and age < 18
+                else 'not_applicable'),
+            'payment': 'not_started',
+            'trainingpeaks_connection': 'unverified',
+            'trainingpeaks_premium': 'unverified',
+            'plan_release': 'blocked',
+        },
+    }
+
+
+_COACHING_VERIFICATION_RULES = {
+    'identity': {'verified'},
+    'health_clearance': {'cleared', 'not_required'},
+    'coaching_agreement': {'signed'},
+    'data_consent': {'signed'},
+    'guardian_consent': {'signed'},
+    'setup_fee_waiver': {'approved'},
+    'trainingpeaks_connection': {'verified'},
+    'trainingpeaks_premium': {'active'},
+    'athlete_context': {'sealed'},
+    'plan_draft': {'ready'},
+    'coach_plan_approval': {'approved'},
+    'onboarding_ramp': {'complete'},
+}
+
+_COACHING_PAYMENT_PREREQUISITES = (
+    ('coach_fit', 'approved', 'coach fit approval'),
+    ('identity', 'verified', 'identity verification'),
+    ('health_clearance', ('cleared', 'not_required'), 'health-clearance disposition'),
+    ('coaching_agreement', 'signed', 'signed coaching agreement receipt'),
+    ('data_consent', 'signed', 'signed data-use consent receipt'),
+)
+
+_COACHING_RELEASE_PREREQUISITES = _COACHING_PAYMENT_PREREQUISITES + (
+    ('payment', 'confirmed', 'Stripe payment confirmation'),
+    ('trainingpeaks_connection', 'verified', 'TrainingPeaks coach connection'),
+    ('trainingpeaks_premium', 'active', 'TrainingPeaks Premium activation'),
+    ('athlete_context', 'sealed', 'sealed athlete context'),
+    ('plan_draft', 'ready', 'plan draft'),
+    ('coach_plan_approval', 'approved', 'coach plan approval'),
+    ('onboarding_materials', 'ready', 'athlete onboarding materials'),
+)
+
+
+def _coaching_gate_status(case: dict, gate: str) -> str:
+    if gate == 'payment':
+        if not case.get('receipts', {}).get('stripe_payment'):
+            return 'pending'
+        standing = str((case.get('billing') or {}).get('standing') or 'healthy')
+        if standing in ('healthy', 'trialing', 'canceling_at_period_end'):
+            return 'confirmed'
+        return standing
+    if gate == 'guardian_consent' and not _coaching_is_minor(case):
+        return 'not_applicable'
+    if gate == 'onboarding_materials':
+        return ('ready' if case.get('onboarding_materials', {}).get('delivered_at')
+                else 'pending')
+    return str(case.get('verifications', {}).get(gate, {}).get('status') or 'pending')
+
+
+def _coaching_payment_prerequisites(case: dict) -> tuple:
+    prerequisites = _COACHING_PAYMENT_PREREQUISITES
+    if _coaching_is_minor(case):
+        prerequisites += ((
+            'guardian_consent', 'signed',
+            'signed parent/guardian consent receipt'),)
+    return prerequisites
+
+
+def _coaching_release_prerequisites(case: dict) -> tuple:
+    prerequisites = _COACHING_RELEASE_PREREQUISITES
+    if _coaching_is_minor(case):
+        prerequisites += ((
+            'guardian_consent', 'signed',
+            'signed parent/guardian consent receipt'),)
+    return prerequisites
+
+
+def _coaching_blockers(case: dict, prerequisites: tuple) -> list[str]:
+    blockers = []
+    for gate, expected, label in prerequisites:
+        actual = _coaching_gate_status(case, gate)
+        accepted = expected if isinstance(expected, tuple) else (expected,)
+        if actual not in accepted:
+            blockers.append(label)
+    return blockers
+
+
+def _coaching_case_readiness(case: dict) -> dict:
+    """Derive the next action from evidence; never trust a mutable state alone."""
+    payment_blockers = _coaching_blockers(
+        case, _coaching_payment_prerequisites(case))
+    release_blockers = _coaching_blockers(
+        case, _coaching_release_prerequisites(case))
+    statuses = {
+        gate: _coaching_gate_status(case, gate)
+        for gate in ('coach_fit', 'identity', 'health_clearance',
+                     'coaching_agreement', 'data_consent', 'guardian_consent',
+                     'setup_fee_waiver', 'payment',
+                     'trainingpeaks_connection', 'trainingpeaks_premium',
+                     'athlete_context', 'plan_draft', 'coach_plan_approval',
+                     'onboarding_materials', 'onboarding_ramp')
+    }
+
+    if statuses['coach_fit'] != 'approved':
+        state, next_action = 'FIT_REVIEW', 'Coach reviews fit and scope'
+    elif statuses['identity'] != 'verified':
+        state, next_action = 'IDENTITY_REVIEW', 'Verify athlete identity'
+    elif statuses['health_clearance'] not in ('cleared', 'not_required'):
+        state, next_action = 'HEALTH_REVIEW', 'Record health-clearance disposition'
+    elif (_coaching_is_minor(case) and
+          statuses['guardian_consent'] != 'signed'):
+        state, next_action = (
+            'GUARDIAN_CONSENT_PENDING',
+            'Collect signed parent/guardian consent')
+    elif statuses['coaching_agreement'] != 'signed' or statuses['data_consent'] != 'signed':
+        state, next_action = 'TERMS_PENDING', 'Collect signed agreement and data consent'
+    elif statuses['payment'] in ('past_due', 'action_required', 'unpaid', 'incomplete'):
+        state, next_action = (
+            'BILLING_ACTION_REQUIRED',
+            'Resolve the Stripe billing issue before releasing more service')
+    elif statuses['payment'] in ('ended', 'canceled', 'paused'):
+        state, next_action = (
+            'SUBSCRIPTION_ENDED',
+            'Confirm the end of service or a new approved subscription')
+    elif statuses['payment'] != 'confirmed':
+        if case.get('checkout', {}).get('url'):
+            state, next_action = 'PAYMENT_PENDING', 'Await Stripe webhook confirmation'
+        else:
+            state, next_action = 'PAYMENT_READY', 'Create approved payment handoff'
+    elif (statuses['trainingpeaks_connection'] != 'verified' or
+          statuses['trainingpeaks_premium'] != 'active'):
+        state, next_action = 'PLATFORM_SETUP', 'Verify TrainingPeaks connection and Premium'
+    elif statuses['athlete_context'] != 'sealed':
+        state, next_action = 'CONTEXT_SEAL', 'Seal athlete_context/v1'
+    elif statuses['plan_draft'] != 'ready':
+        state, next_action = 'PLAN_DRAFT', 'Prepare initial plan proposal'
+    elif statuses['coach_plan_approval'] != 'approved':
+        state, next_action = 'PLAN_APPROVAL', 'Coach reviews and approves the plan'
+    elif statuses['onboarding_materials'] != 'ready':
+        state, next_action = (
+            'ONBOARDING_MATERIALS', 'Generate athlete onboarding materials')
+    elif statuses['onboarding_ramp'] != 'complete':
+        state, next_action = 'ONBOARDING_RAMP', 'Complete first-30-day ramp'
+    else:
+        state, next_action = 'ACTIVE', 'Continue active coaching lifecycle'
+
+    return {
+        'schema': 'coaching_onboarding_readiness/v1',
+        'state': state,
+        'next_action': next_action,
+        'gate_statuses': statuses,
+        'payment_allowed': not payment_blockers,
+        'payment_blockers': payment_blockers,
+        'plan_release_allowed': not release_blockers,
+        'plan_release_blockers': release_blockers,
+    }
+
+
+def _coaching_esign_readiness(case: dict) -> dict:
+    """Describe the configured SignWell/legal boundary without issuing it."""
+    minor = _coaching_is_minor(case)
+    required = {
+        'COACHING_ESIGN_PROVIDER': os.environ.get(
+            'COACHING_ESIGN_PROVIDER', COACHING_ESIGN_PROVIDER),
+        'COACHING_LEGAL_APPROVAL_RECEIPT': os.environ.get(
+            'COACHING_LEGAL_APPROVAL_RECEIPT', ''),
+        'COACHING_AGREEMENT_TEMPLATE_ID': os.environ.get(
+            'COACHING_AGREEMENT_TEMPLATE_ID', ''),
+        'COACHING_AGREEMENT_TEMPLATE_VERSION': os.environ.get(
+            'COACHING_AGREEMENT_TEMPLATE_VERSION', ''),
+        'COACHING_DATA_CONSENT_TEMPLATE_ID': os.environ.get(
+            'COACHING_DATA_CONSENT_TEMPLATE_ID', ''),
+        'COACHING_DATA_CONSENT_TEMPLATE_VERSION': os.environ.get(
+            'COACHING_DATA_CONSENT_TEMPLATE_VERSION', ''),
+    }
+    if minor:
+        required.update({
+            'COACHING_GUARDIAN_CONSENT_TEMPLATE_ID': os.environ.get(
+                'COACHING_GUARDIAN_CONSENT_TEMPLATE_ID', ''),
+            'COACHING_GUARDIAN_CONSENT_TEMPLATE_VERSION': os.environ.get(
+                'COACHING_GUARDIAN_CONSENT_TEMPLATE_VERSION', ''),
+        })
+    provider = str(required.get('COACHING_ESIGN_PROVIDER') or '').strip().lower()
+    if provider == 'signwell':
+        required.update({
+            'SIGNWELL_API_KEY': os.environ.get(
+                'SIGNWELL_API_KEY', SIGNWELL_API_KEY),
+            'SIGNWELL_WEBHOOK_ID': os.environ.get(
+                'SIGNWELL_WEBHOOK_ID', SIGNWELL_WEBHOOK_ID),
+        })
+    missing = sorted(key for key, value in required.items() if not str(value).strip())
+    adapter_enabled = provider in {'signwell', 'manual_receipt'}
+    blockers = list(missing)
+    if provider and not adapter_enabled:
+        blockers.append(f'provider_adapter_not_implemented:{provider}')
+    if provider == 'signwell':
+        template_keys = [
+            key for key in required
+            if key.endswith('_TEMPLATE_ID') and required.get(key)
+        ]
+        for key in template_keys:
+            try:
+                uuid.UUID(str(required[key]))
+            except (ValueError, TypeError, AttributeError):
+                blockers.append(f'invalid_signwell_template_id:{key}')
+    if provider == 'signwell' and IS_PRODUCTION:
+        if not SIGNWELL_LIVE_SEND_ENABLED:
+            blockers.append('SIGNWELL_LIVE_SEND_ENABLED')
+        if SIGNWELL_TEST_MODE:
+            blockers.append('SIGNWELL_TEST_MODE_must_be_false_in_production')
+    return {
+        'schema': 'coaching_esign_readiness/v1',
+        'status': 'ready' if not blockers and adapter_enabled else 'blocked',
+        'provider': provider or 'disabled',
+        'minor_packet_required': minor,
+        'missing_configuration': missing,
+        'blockers': blockers,
+        'manual_receipt_route': f"/api/coaching-intakes/{case.get('case_id')}/verify",
+        'test_mode': SIGNWELL_TEST_MODE if provider == 'signwell' else None,
+        'automatic_reminders': (
+            SIGNWELL_REMINDERS_ENABLED if provider == 'signwell' else False),
+        'issuance_side_effects': (
+            'sends_provider_signature_request_when_operator_posts'
+            if provider == 'signwell' else 'none'),
+    }
+
+
+def _signwell_template_contract(case: dict) -> list[dict]:
+    templates = [
+        {
+            'gate': 'coaching_agreement',
+            'template_id': os.environ.get('COACHING_AGREEMENT_TEMPLATE_ID', ''),
+            'document_version': os.environ.get(
+                'COACHING_AGREEMENT_TEMPLATE_VERSION', ''),
+        },
+        {
+            'gate': 'data_consent',
+            'template_id': os.environ.get('COACHING_DATA_CONSENT_TEMPLATE_ID', ''),
+            'document_version': os.environ.get(
+                'COACHING_DATA_CONSENT_TEMPLATE_VERSION', ''),
+        },
+    ]
+    if _coaching_is_minor(case):
+        templates.append({
+            'gate': 'guardian_consent',
+            'template_id': os.environ.get(
+                'COACHING_GUARDIAN_CONSENT_TEMPLATE_ID', ''),
+            'document_version': os.environ.get(
+                'COACHING_GUARDIAN_CONSENT_TEMPLATE_VERSION', ''),
+        })
+    return templates
+
+
+def _signwell_expected_recipients(case: dict) -> list[dict]:
+    athlete = case.get('athlete') or {}
+    recipient_auth = {
+        'enabled': True,
+        'methods': ['email'],
+        'expire_after_access': True,
+    }
+    recipients = []
+    if _coaching_is_minor(case):
+        guardian = case.get('guardian') or {}
+        recipients.append({
+            'id': 'guardian',
+            'placeholder_name': os.environ.get(
+                'SIGNWELL_GUARDIAN_PLACEHOLDER', 'Guardian'),
+            'name': str(guardian.get('name') or ''),
+            'email': str(guardian.get('email') or '').lower(),
+            'delivery_method': 'email',
+            'passcode_delivery': dict(recipient_auth),
+        })
+    recipients.append({
+        'id': 'athlete',
+        'placeholder_name': os.environ.get(
+            'SIGNWELL_ATHLETE_PLACEHOLDER', 'Athlete'),
+        'name': str(athlete.get('name') or ''),
+        'email': str(athlete.get('email') or '').lower(),
+        'delivery_method': 'email',
+        'passcode_delivery': dict(recipient_auth),
+    })
+    return recipients
+
+
+def _build_signwell_packet_request(case: dict) -> dict:
+    templates = _signwell_template_contract(case)
+    template_ids = list(dict.fromkeys(
+        item['template_id'] for item in templates if item['template_id']))
+    brand_cfg = _brand_config(case.get('brand'))
+    payload = {
+        'test_mode': SIGNWELL_TEST_MODE,
+        'template_ids': template_ids,
+        'name': f"{brand_cfg['name']} coaching onboarding {case['case_id'][:8]}",
+        'recipients': _signwell_expected_recipients(case),
+        'draft': False,
+        'expires_in': 30,
+        'reminders': SIGNWELL_REMINDERS_ENABLED,
+        'apply_signing_order': _coaching_is_minor(case),
+        'embedded_signing': False,
+        'allow_decline': True,
+        'allow_reassign': False,
+        'custom_requester_name': brand_cfg['name'],
+        'metadata': {
+            'case_id': case['case_id'],
+            'brand': normalize_brand(case.get('brand')),
+            'tier': str(case.get('tier') or ''),
+            'legal_approval_receipt': os.environ.get(
+                'COACHING_LEGAL_APPROVAL_RECEIPT', ''),
+            'template_versions': '|'.join(
+                f"{item['gate']}:{item['document_version']}"
+                for item in templates),
+        },
+    }
+    requester_email = str(os.environ.get('SIGNWELL_REQUESTER_EMAIL') or '').strip()
+    if requester_email and '@' in requester_email:
+        payload['custom_requester_email'] = requester_email
+    return payload
+
+
+def _find_coaching_case_for_signwell(document_id: str,
+                                     case_id: str = '') -> dict:
+    if case_id:
+        candidate = _read_coaching_intake(case_id)
+        if (candidate and
+                str((candidate.get('esign_packet') or {}).get('document_id') or '') ==
+                document_id):
+            return candidate
+    matches = [
+        case for case in (_iter_coaching_intakes() or ())
+        if str((case.get('esign_packet') or {}).get('document_id') or '') ==
+        document_id
+    ]
+    return matches[0] if len(matches) == 1 else {}
+
+
+def _store_signwell_completed_pdf(case_id: str, document_id: str,
+                                  content: bytes) -> tuple[str, str]:
+    uuid.UUID(case_id)
+    uuid.UUID(document_id)
+    root = Path(DATA_DIR) / 'coaching_esign' / case_id
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f'{document_id}.pdf'
+    digest = hashlib.sha256(content).hexdigest()
+    if path.exists():
+        existing = path.read_bytes()
+        if hashlib.sha256(existing).hexdigest() != digest:
+            raise SignWellError('Stored SignWell PDF hash mismatch')
+    else:
+        tmp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
+        with open(tmp, 'wb') as handle:
+            os.chmod(tmp, 0o600)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    return str(path.relative_to(Path(DATA_DIR))), digest
+
+
+def _validate_signwell_readback(case: dict, document: dict,
+                                document_id: str) -> None:
+    if str(document.get('id') or '') != document_id:
+        raise SignWellError('SignWell document identity mismatch')
+    if str(document.get('status') or '').lower() != 'completed':
+        raise SignWellError('SignWell document is not completed')
+    metadata = document.get('metadata') or {}
+    if str(metadata.get('case_id') or '') != case.get('case_id'):
+        raise SignWellError('SignWell case metadata mismatch')
+    expected_templates = {
+        item['template_id'] for item in _signwell_template_contract(case)
+        if item['template_id']
+    }
+    actual_template_values = document.get('template_ids') or []
+    if not actual_template_values and document.get('template_id'):
+        actual_template_values = [document['template_id']]
+    actual_templates = set(actual_template_values)
+    if expected_templates != actual_templates:
+        raise SignWellError('SignWell template-version binding mismatch')
+    expected_emails = {
+        item['email'] for item in _signwell_expected_recipients(case)
+    }
+    recipients = document.get('recipients') or []
+    actual_emails = {
+        str(item.get('email') or '').lower() for item in recipients
+    }
+    if expected_emails != actual_emails:
+        raise SignWellError('SignWell signer identity mismatch')
+    if any(str(item.get('status') or '').lower() not in ('completed', 'signed')
+           for item in recipients):
+        raise SignWellError('Not every SignWell signer is complete')
+
+
+def _record_signwell_completion(case: dict, document: dict,
+                                document_id: str, relative_path: str,
+                                pdf_sha256: str, completed_at: str) -> None:
+    packet = case.setdefault('esign_packet', {})
+    packet.update({
+        'status': 'completed',
+        'completed_at': completed_at,
+        'signed_document_path': relative_path,
+        'signed_document_sha256': pdf_sha256,
+        'audit_page_included': True,
+    })
+    recipient_by_email = {
+        str(item.get('email') or '').lower(): item
+        for item in (document.get('recipients') or [])
+    }
+    athlete = case.get('athlete') or {}
+    guardian = case.get('guardian') or {}
+    for template in _signwell_template_contract(case):
+        gate = template['gate']
+        signer = guardian if gate == 'guardian_consent' else athlete
+        signer_email = str(signer.get('email') or '').lower()
+        provider_signer = recipient_by_email.get(signer_email) or {}
+        receipt = {
+            'status': 'signed',
+            'verified_at': completed_at,
+            'actor': 'signwell_webhook',
+            'source_id': document_id,
+            'provider': 'signwell',
+            'document_version': template['document_version'],
+            'template_id': template['template_id'],
+            'receipt_id': f'signwell:{document_id}:{gate}',
+            'signer_name': str(signer.get('name') or ''),
+            'signer_email': signer_email,
+            'signer_role': (
+                str(guardian.get('relationship') or 'legal_guardian')
+                if gate == 'guardian_consent' else 'athlete'),
+            'provider_signer_id': str(provider_signer.get('id') or ''),
+            'signed_document_path': relative_path,
+            'signed_document_sha256': pdf_sha256,
+            'audit_page_included': True,
+            'legal_approval_receipt': os.environ.get(
+                'COACHING_LEGAL_APPROVAL_RECEIPT', ''),
+        }
+        case.setdefault('verifications', {})[gate] = receipt
+        case.setdefault('verification_history', []).append({
+            'gate': gate, **receipt,
+        })
+
+
+def _refresh_coaching_case(case: dict, *, actor: str, reason: str,
+                           source_id: str) -> dict:
+    readiness = _coaching_case_readiness(case)
+    old_state = case.get('state')
+    new_state = readiness['state']
+    case['readiness'] = readiness
+    case['state'] = new_state
+    if old_state != new_state:
+        transition_at = datetime.now(timezone.utc).isoformat()
+        case.setdefault('transitions', []).append({
+            'from_state': old_state,
+            'to_state': new_state,
+            'actor': actor,
+            'timestamp': transition_at,
+            'reason': reason,
+            'source_id': source_id,
+        })
+        _record_coaching_event(
+            case, 'coaching_state_changed',
+            f'{source_id}:{old_state or "none"}:{new_state}',
+            details={'from_state': old_state, 'to_state': new_state},
+            occurred_at=transition_at)
+        if new_state == 'ACTIVE':
+            _record_coaching_event(
+                case, 'coaching_active', source_id,
+                occurred_at=transition_at)
+    return readiness
 
 
 def cleanup_stale_intakes():
@@ -4217,10 +5177,10 @@ def create_checkout():
     brand = _brand_from_origin(request.headers.get('Origin', ''))
     brand_cfg = _brand_config(brand)
 
-    if brand_cfg.get('consulting_only'):
+    if not brand_cfg.get('training_plan_generation_enabled', True):
         return jsonify({
             'error': f"{brand_cfg.get('name', brand)} does not support training-plan "
-                     "generation (consulting only)"
+                     "generation yet"
         }), 400
 
     # Generate intake ID and store questionnaire data
@@ -4300,20 +5260,906 @@ def create_checkout():
         return jsonify({'error': 'Internal server error'}), 500
 
 
+def _verify_coaching_checkout_contract(
+        brand: str, tier: str, setup_fee_waived: bool = False) -> tuple[bool, str]:
+    """Read back live Stripe terms before exposing an approved checkout."""
+    coaching_cfg = _coaching_config(brand)
+    tier_cfg = _coaching_tier_config(brand, tier)
+    try:
+        recurring = stripe.Price.retrieve(COACHING_PRICE_IDS[tier])._to_dict_recursive()
+        setup = stripe.Price.retrieve(
+            COACHING_SETUP_FEE_PRICE_ID)._to_dict_recursive()
+        coupon = (
+            stripe.Coupon.retrieve(
+                COACHING_SETUP_FEE_WAIVER_COUPON_ID)._to_dict_recursive()
+            if setup_fee_waived else None)
+    except (KeyError, AttributeError, stripe.error.StripeError) as exc:
+        return False, f'provider readback failed: {type(exc).__name__}'
+
+    recurring_terms = recurring.get('recurring') or {}
+    expected_cadence = int(coaching_cfg.get('billing_period_days', 0))
+    checks = {
+        'tier price is active': recurring.get('active') is True,
+        'tier amount matches registry': recurring.get('unit_amount') == tier_cfg.get('price_cents'),
+        'tier currency is USD': recurring.get('currency') == 'usd',
+        'tier cadence is four weeks': (
+            expected_cadence == 28 and recurring_terms.get('interval') == 'week' and
+            recurring_terms.get('interval_count') == 4),
+        'setup price is active': setup.get('active') is True,
+        'setup fee amount matches registry': (
+            setup.get('unit_amount') == coaching_cfg.get('setup_fee_cents')),
+        'setup fee is one-time USD': (
+            setup.get('type') == 'one_time' and setup.get('currency') == 'usd'),
+        'waiver coupon is fixed $99 once': (not setup_fee_waived or (
+            coupon.get('valid') is True and
+            coupon.get('amount_off') == coaching_cfg.get('setup_fee_cents') and
+            coupon.get('currency') == 'usd' and
+            coupon.get('duration') == 'once' and
+            coupon.get('percent_off') is None)),
+    }
+    failed = [label for label, passed in checks.items() if not passed]
+    return (not failed, '; '.join(failed))
+
+
+def _create_coaching_checkout_session(name: str, email: str, tier: str,
+                                      brand: str, intake_id: str = '',
+                                      setup_fee_waived: bool = False):
+    """Create the Stripe object after the caller has authorized the handoff."""
+    brand_cfg = _brand_config(brand)
+    coaching_cfg = _coaching_config(brand)
+    price_id = COACHING_PRICE_IDS[tier]
+    expires_at = int((datetime.now() + timedelta(
+        minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
+
+    line_items = [{'price': price_id, 'quantity': 1}]
+    if COACHING_SETUP_FEE_PRICE_ID:
+        line_items.append({'price': COACHING_SETUP_FEE_PRICE_ID, 'quantity': 1})
+
+    metadata = {
+        'product_type': 'coaching',
+        'tier': tier,
+        'athlete_name': name,
+        'brand': brand,
+        'setup_fee_waived': str(bool(setup_fee_waived)).lower(),
+    }
+    if intake_id:
+        metadata['intake_id'] = intake_id
+
+    subscription_metadata = {
+        'tier': tier,
+        'athlete_name': name,
+        'brand': brand,
+    }
+    if intake_id:
+        subscription_metadata['intake_id'] = intake_id
+
+    session_kwargs = dict(
+        line_items=line_items,
+        mode='subscription',
+        customer_email=email,
+        phone_number_collection={'enabled': True},
+        metadata=metadata,
+        subscription_data={'metadata': subscription_metadata},
+        success_url=(f"{brand_cfg['site']}{coaching_cfg['success_path']}"
+                     '?session_id={CHECKOUT_SESSION_ID}'),
+        cancel_url=f"{brand_cfg['site']}{coaching_cfg['path']}",
+        expires_at=expires_at,
+        after_expiration={'recovery': {'enabled': True}},
+        consent_collection={'promotions': 'auto'},
+    )
+    if setup_fee_waived:
+        session_kwargs['discounts'] = [{
+            'coupon': COACHING_SETUP_FEE_WAIVER_COUPON_ID,
+        }]
+    if ENABLE_AUTOMATIC_TAX:
+        session_kwargs['automatic_tax'] = {'enabled': True}
+    return stripe.checkout.Session.create(**session_kwargs)
+
+
+@app.route('/api/coaching-intakes', methods=['POST', 'OPTIONS'])
+@limiter.limit("20/minute")
+def receive_coaching_intake():
+    """Receive one brand-scoped application from the trusted edge worker."""
+    if request.method == 'OPTIONS':
+        return '', 204
+    if not COACHING_INTAKE_SECRET:
+        return jsonify({'error': 'Coaching intake is not configured'}), 503
+    supplied = request.headers.get('X-Coaching-Intake-Secret', '')
+    if not supplied or not hmac.compare_digest(supplied, COACHING_INTAKE_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json(silent=True) or {}
+    case_id = str(data.get('submission_id') or '').strip()
+    try:
+        uuid.UUID(case_id)
+    except (ValueError, AttributeError):
+        return jsonify({'error': 'Valid submission_id is required'}), 400
+
+    raw_brand = str(data.get('brand') or '').strip().lower()
+    if raw_brand not in BRANDS:
+        return jsonify({'error': 'Unknown brand'}), 400
+    coaching_cfg = _coaching_config(raw_brand)
+    if not coaching_cfg.get('enabled'):
+        return jsonify({'error': 'Coaching is not available for this brand'}), 400
+
+    tier = str(data.get('tier') or '').strip().lower()
+    if not _coaching_tier_config(raw_brand, tier):
+        return jsonify({'error': 'Valid coaching tier is required'}), 400
+    name = str(data.get('name') or '').strip()
+    email = str(data.get('email') or '').strip().lower()
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    if not email or '@' not in email or '.' not in email:
+        return jsonify({'error': 'Valid email is required'}), 400
+
+    questionnaire = data.get('questionnaire') or {}
+    if not isinstance(questionnaire, dict):
+        return jsonify({'error': 'Questionnaire must be an object'}), 400
+    if len(json.dumps(questionnaire)) > 200_000:
+        return jsonify({'error': 'Questionnaire is too large'}), 413
+    age = _coaching_age(questionnaire)
+    if age is not None and age < 13:
+        return jsonify({
+            'error': 'This intake currently supports athletes age 13 and older'
+        }), 400
+    if age is not None and age < 18:
+        guardian_email = str(questionnaire.get('guardian_email') or '').strip().lower()
+        guardian_relationship = str(
+            questionnaire.get('guardian_relationship') or '').strip()
+        if (not guardian_email or '@' not in guardian_email or
+                '.' not in guardian_email):
+            return jsonify({'error': 'Valid parent/guardian email is required'}), 400
+        if guardian_relationship not in ('parent', 'legal_guardian'):
+            return jsonify({
+                'error': 'Parent/guardian relationship must be parent or legal_guardian'
+            }), 400
+
+    now = datetime.now(timezone.utc).isoformat()
+    case = {
+        'schema': 'coaching_onboarding_case/v1',
+        'case_id': case_id,
+        'athlete_key': (
+            'email_sha256:' + hashlib.sha256(email.encode('utf-8')).hexdigest()
+        ),
+        'brand': raw_brand,
+        'tier': tier,
+        'state': 'FIT_REVIEW',
+        'athlete': {
+            'name': name,
+            'email': email,
+            'is_minor': bool(age is not None and age < 18),
+        },
+        'source': {
+            'type': 'coaching_intake_form',
+            'submission_id': case_id,
+            'submitted_at': now,
+        },
+        'questionnaire': questionnaire,
+        'intake_audit': _coaching_intake_audit(questionnaire, raw_brand),
+        'transitions': [{
+            'from_state': None,
+            'to_state': 'FIT_REVIEW',
+            'actor': 'athlete',
+            'timestamp': now,
+            'reason': 'Coaching intake submitted',
+            'source_id': case_id,
+        }],
+        'receipts': {},
+        'verifications': {},
+    }
+    _record_coaching_event(
+        case, 'coaching_intake_submitted', case_id, occurred_at=now)
+    if age is not None and age < 18:
+        case['guardian'] = {
+            'name': str(questionnaire.get('guardian_name') or '').strip(),
+            'email': str(questionnaire.get('guardian_email') or '').strip().lower(),
+            'relationship': str(
+                questionnaire.get('guardian_relationship') or '').strip(),
+        }
+    case['readiness'] = _coaching_case_readiness(case)
+    if not _write_coaching_intake(case, create_only=True):
+        existing = _read_coaching_intake(case_id)
+        return jsonify({
+            'success': True,
+            'duplicate': True,
+            'case_id': case_id,
+            'state': existing.get('state', 'FIT_REVIEW'),
+        })
+
+    brand_cfg = _brand_config(raw_brand)
+    tier_label = _coaching_tier_config(raw_brand, tier).get('label', tier.title())
+    first_name = name.split()[0] if name else 'there'
+    receipt_subject = f'Coaching intake received — {brand_cfg["name"]}'
+    receipt_body = (
+        f"Hey {first_name},\n\n"
+        "I have your coaching intake. I’ll review it and usually reply within "
+        "two business days with the next steps or any questions I need "
+        "answered.\n\n"
+        "You do not need to submit the form again.\n\n"
+        f"— {brand_cfg['email'].get('signature_name', 'Matti')}\n"
+        f"{brand_cfg['email'].get('signature_organization', brand_cfg['name'])}\n"
+        f"{brand_cfg['email'].get('signature_site', brand_cfg['site'].replace('https://', ''))}"
+    )
+    receipt_sent = _send_email(
+        email, receipt_subject, receipt_body,
+        reply_to=NOTIFICATION_EMAIL or None, brand=raw_brand)
+    case['receipts']['athlete_intake_email'] = {
+        'sent': receipt_sent,
+        'attempted_at': datetime.now(timezone.utc).isoformat(),
+    }
+
+    approve_url = (
+        'https://athlete-custom-training-plan-pipeline-production.up.railway.app'
+        f'/api/coaching-intakes/{case_id}/approve')
+    review_url = (
+        'https://athlete-custom-training-plan-pipeline-production.up.railway.app'
+        f'/api/coaching-intakes/{case_id}')
+    audit = case['intake_audit']
+    follow_up = (
+        audit['missing_required'] + audit['missing_followup'] + audit['unasked']
+    )[:8]
+    follow_up_text = (
+        '\n'.join(f'- {item}' for item in follow_up)
+        if follow_up else '- None identified by the intake audit'
+    )
+    coach_subject = (
+        f"{brand_cfg.get('subject_prefix', '[GG]')} Coaching application: "
+        f"{name} — {tier_label}")
+    coach_body = (
+        f"Coaching application received\n\n"
+        f"Name: {name}\nEmail: {email}\nBrand: {raw_brand}\n"
+        f"Tier: {tier_label}\nCase: {case_id}\n\n"
+        f"Intake audit: {len(audit['missing_required'])} required missing, "
+        f"{len(audit['missing_followup'])} optional follow-ups, "
+        f"{len(audit['unasked'])} not yet asked, "
+        f"{len(audit['unverified'])} unverified groups.\n"
+        f"First follow-ups:\n{follow_up_text}\n\n"
+        "Review the questionnaire before approving fit. Fit approval does not "
+        "create a charge or treat the application as acceptance. Identity, "
+        "health disposition, agreement, and data-consent receipts must be "
+        "verified before the separate payment handoff.\n\n"
+        f"Review:\ncurl '{review_url}' -H 'X-Cron-Secret: $CRON_SECRET'\n\n"
+        "Approve:\n"
+        f"curl -X POST '{approve_url}' -H 'X-Cron-Secret: $CRON_SECRET'"
+    )
+    coach_sent = bool(NOTIFICATION_EMAIL) and _send_email(
+        NOTIFICATION_EMAIL, coach_subject, coach_body,
+        reply_to=email, brand=raw_brand)
+    case['receipts']['coach_notification'] = {
+        'sent': coach_sent,
+        'attempted_at': datetime.now(timezone.utc).isoformat(),
+    }
+    _write_coaching_intake(case)
+    if not coach_sent:
+        logger.critical(
+            f"COACHING INTAKE NEEDS REVIEW: case={case_id}, brand={raw_brand}, "
+            f"athlete={_mask_email(email)}")
+
+    return jsonify({
+        'success': True,
+        'case_id': case_id,
+        'state': 'FIT_REVIEW',
+        'receipt_sent': receipt_sent,
+    }), 201
+
+
+@app.route('/api/coaching-intakes/<case_id>', methods=['GET'])
+@limiter.limit("60/minute")
+def get_coaching_intake(case_id):
+    """Private operator read of one onboarding case and its questionnaire."""
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    case = _read_coaching_intake(case_id)
+    if not case:
+        return jsonify({'error': 'Coaching intake not found'}), 404
+    if 'intake_audit' not in case:
+        case['intake_audit'] = _coaching_intake_audit(
+            case.get('questionnaire', {}), case.get('brand', DEFAULT_BRAND))
+    case['readiness'] = _coaching_case_readiness(case)
+    case['esign_readiness'] = _coaching_esign_readiness(case)
+    return jsonify(case)
+
+
+@app.route('/api/coaching-intakes', methods=['GET'])
+@limiter.limit("30/minute")
+def list_coaching_intakes():
+    """Private operator queue; questionnaire contents stay in case detail."""
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    requested_state = str(request.args.get('state') or '').strip().upper()
+    requested_brand = str(request.args.get('brand') or '').strip().lower()
+    rows = []
+    for case in _iter_coaching_intakes() or ():
+        readiness = _coaching_case_readiness(case)
+        if requested_state and readiness['state'] != requested_state:
+            continue
+        if requested_brand and normalize_brand(case.get('brand')) != requested_brand:
+            continue
+        reminders = case.get('onboarding_reminders') or []
+        rows.append({
+            'case_id': case.get('case_id'),
+            'brand': normalize_brand(case.get('brand')),
+            'tier': case.get('tier'),
+            'athlete': {
+                'name': (case.get('athlete') or {}).get('name'),
+                'email': (case.get('athlete') or {}).get('email'),
+                'is_minor': bool((case.get('athlete') or {}).get('is_minor')),
+            },
+            'submitted_at': (case.get('source') or {}).get('submitted_at'),
+            'state': readiness['state'],
+            'next_action': readiness['next_action'],
+            'billing_standing': (case.get('billing') or {}).get('standing'),
+            'suggested_reminders': sum(
+                1 for item in reminders if item.get('status') == 'suggested'),
+        })
+    rows.sort(key=lambda item: str(item.get('submitted_at') or ''), reverse=True)
+    return jsonify({
+        'schema': 'coaching_operator_queue/v1',
+        'generated_at': datetime.now(timezone.utc).isoformat(),
+        'count': len(rows),
+        'cases': rows,
+    })
+
+
+@app.route('/api/coaching-intakes/<case_id>/esign-readiness', methods=['GET'])
+@limiter.limit("30/minute")
+def coaching_esign_readiness(case_id):
+    """Fail-closed status for legal templates and the chosen e-sign adapter."""
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    case = _read_coaching_intake(case_id)
+    if not case:
+        return jsonify({'error': 'Coaching intake not found'}), 404
+    readiness = _coaching_esign_readiness(case)
+    return jsonify(readiness), (200 if readiness['status'] == 'ready' else 409)
+
+
+@app.route('/api/coaching-intakes/<case_id>/esign-packet', methods=['POST'])
+@limiter.limit("10/minute")
+@_serialized_coaching_case('signwell-send')
+def create_coaching_esign_packet(case_id):
+    """Send one operator-approved, case-bound SignWell signature request."""
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    case = _read_coaching_intake(case_id)
+    if not case:
+        return jsonify({'error': 'Coaching intake not found'}), 404
+    readiness = _coaching_esign_readiness(case)
+    if readiness['provider'] != 'signwell' or readiness['status'] != 'ready':
+        return jsonify({
+            'error': 'SignWell packet issuance is not configured',
+            'esign_readiness': readiness,
+        }), 409
+    blockers = _coaching_blockers(case, (
+        ('coach_fit', 'approved', 'coach fit approval'),
+        ('identity', 'verified', 'identity verification'),
+        ('health_clearance', ('cleared', 'not_required'),
+         'health-clearance disposition'),
+    ))
+    if blockers:
+        return jsonify({
+            'error': 'SignWell packet is blocked by onboarding gates',
+            'blockers': blockers,
+        }), 409
+    existing = case.get('esign_packet') or {}
+    if existing.get('document_id'):
+        return jsonify({
+            'success': True,
+            'duplicate': True,
+            'case_id': case_id,
+            'document_id': existing['document_id'],
+            'status': existing.get('status'),
+            'test_mode': existing.get('test_mode'),
+        })
+
+    try:
+        document = SignWellClient(SIGNWELL_API_KEY).create_document_from_templates(
+            _build_signwell_packet_request(case))
+    except SignWellError as exc:
+        logger.error(f'SignWell packet creation failed for case {case_id}: {exc}')
+        return jsonify({'error': 'SignWell packet creation failed'}), 502
+    document_id = str(document.get('id') or '')
+    now = datetime.now(timezone.utc).isoformat()
+    case['esign_packet'] = {
+        'schema': 'coaching_esign_packet_receipt/v1',
+        'provider': 'signwell',
+        'document_id': document_id,
+        'status': str(document.get('status') or 'sent').lower(),
+        'requested_at': now,
+        'test_mode': bool(document.get('test_mode', SIGNWELL_TEST_MODE)),
+        'templates': _signwell_template_contract(case),
+        'recipient_roles': [
+            {
+                'id': item['id'],
+                'placeholder_name': item['placeholder_name'],
+                'email': item['email'],
+            }
+            for item in _signwell_expected_recipients(case)
+        ],
+        'allow_reassign': False,
+        'automatic_reminders': SIGNWELL_REMINDERS_ENABLED,
+        'processed_event_ids': [],
+    }
+    _record_coaching_event(
+        case, 'coaching_signwell_packet_sent', document_id,
+        details={'status': case['esign_packet']['status']}, occurred_at=now)
+    _write_coaching_intake(case)
+    return jsonify({
+        'success': True,
+        'duplicate': False,
+        'case_id': case_id,
+        'document_id': document_id,
+        'status': case['esign_packet']['status'],
+        'test_mode': case['esign_packet']['test_mode'],
+        'delivery': 'signwell_provider_email',
+        'automatic_reminders': SIGNWELL_REMINDERS_ENABLED,
+    }), 201
+
+
+@app.route('/api/coaching-intakes/<case_id>/billing-portal', methods=['POST'])
+@limiter.limit("10/minute")
+def create_coaching_billing_portal(case_id):
+    """Create a short-lived Stripe portal URL for an authenticated operator.
+
+    The endpoint never emails the link and never changes the subscription.
+    The caller must authenticate the athlete before handing the URL to them.
+    """
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    case = _read_coaching_intake(case_id)
+    if not case:
+        return jsonify({'error': 'Coaching intake not found'}), 404
+    billing = case.get('billing') or {}
+    receipt = (case.get('receipts') or {}).get('stripe_payment') or {}
+    customer_id = str(
+        billing.get('customer_id') or receipt.get('customer_id') or '')
+    subscription_id = str(
+        billing.get('subscription_id') or receipt.get('subscription_id') or '')
+    if not customer_id or not customer_id.startswith('cus_'):
+        return jsonify({
+            'error': 'A case-bound Stripe customer receipt is required'
+        }), 409
+    data = request.get_json(silent=True) or {}
+    mode = str(data.get('mode') or 'manage').strip().lower()
+    if mode not in {'manage', 'cancel'}:
+        return jsonify({'error': 'mode must be manage or cancel'}), 400
+    if mode == 'cancel' and not subscription_id.startswith('sub_'):
+        return jsonify({
+            'error': 'A case-bound Stripe subscription receipt is required'
+        }), 409
+    brand_cfg = _brand_config(case.get('brand'))
+    coaching_cfg = _coaching_config(case.get('brand'))
+    return_url = f"{brand_cfg['site']}{coaching_cfg.get('path', '/coaching/')}"
+    kwargs = {'customer': customer_id, 'return_url': return_url}
+    if mode == 'cancel':
+        kwargs['flow_data'] = {
+            'type': 'subscription_cancel',
+            'subscription_cancel': {'subscription': subscription_id},
+            'after_completion': {'type': 'redirect', 'redirect': {
+                'return_url': return_url,
+            }},
+        }
+    try:
+        portal = stripe.billing_portal.Session.create(**kwargs)
+    except (AttributeError, stripe.error.StripeError) as exc:
+        logger.error(
+            f'Could not create coaching billing portal for {case_id}: {exc}')
+        return jsonify({'error': 'Billing portal is not available'}), 503
+    portal_id = str(getattr(portal, 'id', '') or '')
+    portal_url = str(getattr(portal, 'url', '') or '')
+    if not portal_url.startswith('https://billing.stripe.com/'):
+        logger.critical(f'Unexpected Stripe portal URL for case {case_id}')
+        return jsonify({'error': 'Billing portal provider response was invalid'}), 502
+    now = datetime.now(timezone.utc).isoformat()
+    case.setdefault('billing_portal_receipts', []).append({
+        'portal_session_id': portal_id,
+        'mode': mode,
+        'created_at': now,
+        'actor': 'coach',
+    })
+    _record_coaching_event(
+        case, 'coaching_billing_portal_created', portal_id or str(uuid.uuid4()),
+        details={'status': mode}, occurred_at=now)
+    _write_coaching_intake(case)
+    return jsonify({
+        'success': True,
+        'case_id': case_id,
+        'mode': mode,
+        'portal_url': portal_url,
+        'expires': 'short_lived_provider_session',
+        'delivery': 'operator_must_authenticate_athlete_before_handoff',
+    })
+
+
+@app.route('/api/coaching-intakes/<case_id>/approve', methods=['POST'])
+@limiter.limit("20/minute")
+def approve_coaching_intake(case_id):
+    """Record coach fit approval without creating payment or accepting terms."""
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    case = _read_coaching_intake(case_id)
+    if not case:
+        return jsonify({'error': 'Coaching intake not found'}), 404
+    existing = case.setdefault('verifications', {}).get('coach_fit', {})
+    duplicate = existing.get('status') == 'approved'
+    if not duplicate:
+        now = datetime.now(timezone.utc).isoformat()
+        case['verifications']['coach_fit'] = {
+            'status': 'approved',
+            'verified_at': now,
+            'actor': 'coach',
+            'source_id': case_id,
+        }
+        _record_coaching_event(
+            case, 'coaching_fit_approved', case_id, occurred_at=now)
+    readiness = _refresh_coaching_case(
+        case, actor='coach', reason='Coach approved athlete fit', source_id=case_id)
+    _write_coaching_intake(case)
+
+    return jsonify({
+        'success': True,
+        'case_id': case_id,
+        'state': case['state'],
+        'duplicate': duplicate,
+        'readiness': readiness,
+    })
+
+
+@app.route('/api/coaching-intakes/<case_id>/verify', methods=['POST'])
+@limiter.limit("60/minute")
+def verify_coaching_intake_gate(case_id):
+    """Attach an operator-authenticated evidence receipt to one onboarding gate."""
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    case = _read_coaching_intake(case_id)
+    if not case:
+        return jsonify({'error': 'Coaching intake not found'}), 404
+    data = request.get_json(silent=True) or {}
+    gate = str(data.get('gate') or '').strip()
+    status = str(data.get('status') or '').strip()
+    source_id = str(data.get('source_id') or '').strip()
+    if gate not in _COACHING_VERIFICATION_RULES:
+        return jsonify({'error': 'Unknown verification gate'}), 400
+    if status not in _COACHING_VERIFICATION_RULES[gate]:
+        allowed = sorted(_COACHING_VERIFICATION_RULES[gate])
+        return jsonify({'error': f'Invalid status for {gate}', 'allowed': allowed}), 400
+    if not source_id:
+        return jsonify({'error': 'source_id is required for an evidence receipt'}), 400
+
+    document_version = str(data.get('document_version') or '').strip()
+    receipt_id = str(data.get('receipt_id') or '').strip()
+    note = str(data.get('note') or '').strip()
+    if gate in ('coaching_agreement', 'data_consent', 'guardian_consent'):
+        if not document_version or not receipt_id:
+            return jsonify({
+                'error': f'{gate} requires document_version and receipt_id'
+            }), 400
+    signer_name = str(data.get('signer_name') or '').strip()
+    signer_email = str(data.get('signer_email') or '').strip().lower()
+    signer_role = str(data.get('signer_role') or '').strip().lower()
+    athlete_id = str(data.get('athlete_id') or '').strip()
+    if gate == 'guardian_consent':
+        if not _coaching_is_minor(case):
+            return jsonify({
+                'error': 'guardian_consent is only valid for a minor athlete'
+            }), 400
+        guardian = case.get('guardian', {})
+        if (not signer_name or not signer_email or
+                signer_role not in ('parent', 'legal_guardian')):
+            return jsonify({
+                'error': ('guardian_consent requires signer_name, signer_email, '
+                          'and signer_role parent or legal_guardian')
+            }), 400
+        if signer_email != guardian.get('email'):
+            return jsonify({
+                'error': 'guardian signer email does not match the intake'
+            }), 400
+    if gate == 'setup_fee_waiver' and not note:
+        return jsonify({
+            'error': 'setup_fee_waiver requires a case-specific note'
+        }), 400
+    if gate == 'health_clearance' and status == 'not_required' and not note:
+        return jsonify({
+            'error': 'health_clearance not_required requires a policy note'
+        }), 400
+    if gate == 'health_clearance' and status == 'cleared' and not receipt_id:
+        return jsonify({
+            'error': 'health_clearance cleared requires a clinician receipt_id'
+        }), 400
+
+    existing = case.setdefault('verifications', {}).get(gate, {})
+    duplicate = (
+        existing.get('status') == status and
+        existing.get('source_id') == source_id and
+        existing.get('document_version', '') == document_version and
+        existing.get('receipt_id', '') == receipt_id and
+        existing.get('signer_email', '') == signer_email
+    )
+    if not duplicate:
+        receipt = {
+            'status': status,
+            'verified_at': datetime.now(timezone.utc).isoformat(),
+            'actor': 'coach',
+            'source_id': source_id,
+        }
+        if document_version:
+            receipt['document_version'] = document_version
+        if receipt_id:
+            receipt['receipt_id'] = receipt_id
+        if note:
+            receipt['note'] = note
+        if signer_name:
+            receipt['signer_name'] = signer_name
+        if signer_email:
+            receipt['signer_email'] = signer_email
+        if signer_role:
+            receipt['signer_role'] = signer_role
+        if gate == 'athlete_context' and athlete_id:
+            if sanitize_athlete_id(athlete_id) != athlete_id:
+                return jsonify({'error': 'athlete_id must be a canonical slug'}), 400
+            receipt['athlete_id'] = athlete_id
+        case['verifications'][gate] = receipt
+        case.setdefault('verification_history', []).append({
+            'gate': gate,
+            **receipt,
+        })
+        gate_event = {
+            'coaching_agreement': 'coaching_agreement_signed',
+            'data_consent': 'coaching_data_consent_signed',
+            'guardian_consent': 'coaching_guardian_consent_signed',
+            'trainingpeaks_connection': 'coaching_trainingpeaks_connected',
+            'trainingpeaks_premium': 'coaching_trainingpeaks_premium_active',
+            'athlete_context': 'coaching_context_sealed',
+            'coach_plan_approval': 'coaching_plan_approved',
+            'onboarding_ramp': 'coaching_onboarding_ramp_complete',
+        }.get(gate, 'coaching_gate_verified')
+        _record_coaching_event(
+            case, gate_event, source_id,
+            details={'gate': gate, 'status': status},
+            occurred_at=receipt['verified_at'])
+
+    readiness = _refresh_coaching_case(
+        case, actor='coach', reason=f'Verified onboarding gate: {gate}',
+        source_id=source_id)
+    _write_coaching_intake(case)
+    return jsonify({
+        'success': True,
+        'case_id': case_id,
+        'gate': gate,
+        'status': status,
+        'duplicate': duplicate,
+        'state': case['state'],
+        'readiness': readiness,
+    })
+
+
+@app.route('/api/coaching-intakes/<case_id>/onboarding-materials', methods=['POST'])
+@limiter.limit("20/minute")
+def create_coaching_onboarding_materials(case_id):
+    """Generate the welcome guide from a sealed, paid onboarding case."""
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    if not COACHING_BOOKING_URL.startswith('https://'):
+        return jsonify({
+            'error': 'COACHING_BOOKING_URL is not configured with a verified HTTPS URL'
+        }), 503
+
+    case = _read_coaching_intake(case_id)
+    if not case:
+        return jsonify({'error': 'Coaching intake not found'}), 404
+    context_receipt = case.get('verifications', {}).get('athlete_context', {})
+    athlete_id = str(context_receipt.get('athlete_id') or '').strip()
+    if context_receipt.get('status') != 'sealed' or not athlete_id:
+        return jsonify({
+            'error': 'A sealed athlete context with canonical athlete_id is required'
+        }), 409
+
+    try:
+        from coaching_onboarding_materials import (
+            generate_from_case, render_onboarding_email)
+        context_path, welcome_path = generate_from_case(
+            case, athlete_id, Path(ATHLETES_DIR), COACHING_BOOKING_URL)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 409
+
+    now = datetime.now(timezone.utc).isoformat()
+    context = yaml.safe_load(context_path.read_text(encoding='utf-8')) or {}
+    subject, body = render_onboarding_email(context)
+    existing_delivery = case.get('onboarding_materials', {})
+    athlete_sent = bool(existing_delivery.get('athlete_sent'))
+    guardian_sent = bool(existing_delivery.get('guardian_sent'))
+    if not athlete_sent:
+        athlete_sent = _send_email(
+            case.get('athlete', {}).get('email', ''), subject, body,
+            reply_to=NOTIFICATION_EMAIL or None, brand=case.get('brand'))
+    guardian_required = _coaching_is_minor(case)
+    if guardian_required and not guardian_sent:
+        guardian_sent = _send_email(
+            case.get('guardian', {}).get('email', ''), subject, body,
+            reply_to=NOTIFICATION_EMAIL or None, brand=case.get('brand'))
+    delivery_complete = athlete_sent and (guardian_sent or not guardian_required)
+    case['onboarding_materials'] = {
+        'schema': 'coaching_onboarding_materials/v1',
+        'generated_at': now,
+        'athlete_id': athlete_id,
+        'context_filename': context_path.name,
+        'welcome_filename': welcome_path.name,
+        'athlete_sent': athlete_sent,
+        'guardian_required': guardian_required,
+        'guardian_sent': guardian_sent if guardian_required else None,
+    }
+    if delivery_complete:
+        case['onboarding_materials']['delivered_at'] = now
+        _record_coaching_event(
+            case, 'coaching_onboarding_delivered', case_id,
+            occurred_at=now)
+    _refresh_coaching_case(
+        case, actor='system', reason='Athlete onboarding materials generated',
+        source_id=case_id)
+    _write_coaching_intake(case)
+    if not delivery_complete:
+        logger.critical(f"COACHING ONBOARDING DELIVERY FAILED: case={case_id}")
+        return jsonify({
+            'error': 'Onboarding materials were generated, but delivery failed',
+            'case_id': case_id,
+        }), 502
+    return jsonify({
+        'success': True,
+        'case_id': case_id,
+        'athlete_id': athlete_id,
+        'generated_at': now,
+        'delivered_at': now,
+        'artifacts': [context_path.name, welcome_path.name],
+    })
+
+
+@app.route('/api/coaching-intakes/<case_id>/payment-handoff', methods=['POST'])
+@limiter.limit("20/minute")
+def create_coaching_payment_handoff(case_id):
+    """Create checkout only after every pre-payment evidence gate passes."""
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    case = _read_coaching_intake(case_id)
+    if not case:
+        return jsonify({'error': 'Coaching intake not found'}), 404
+    readiness = _coaching_case_readiness(case)
+    if not readiness['payment_allowed']:
+        return jsonify({
+            'error': 'Payment handoff is blocked by unmet onboarding gates',
+            'case_id': case_id,
+            'blockers': readiness['payment_blockers'],
+            'readiness': readiness,
+        }), 409
+
+    setup_fee_waived = (
+        _coaching_gate_status(case, 'setup_fee_waiver') == 'approved')
+    contract_ok, contract_error = _verify_coaching_checkout_contract(
+        case['brand'], case['tier'], setup_fee_waived=setup_fee_waived)
+    if not contract_ok:
+        logger.critical(
+            f"COACHING PAYMENT CONTRACT BLOCKED: case={case_id}, "
+            f"reason={contract_error}")
+        return jsonify({
+            'error': 'Payment setup could not be verified; no checkout was created',
+            'case_id': case_id,
+        }), 503
+
+    checkout = case.get('checkout') or {}
+    if not checkout.get('url'):
+        brand = case['brand']
+        tier = case['tier']
+        athlete = case['athlete']
+        try:
+            session = _create_coaching_checkout_session(
+                athlete['name'], athlete['email'], tier, brand,
+                intake_id=case_id,
+                setup_fee_waived=setup_fee_waived)
+        except stripe.error.StripeError as exc:
+            logger.error(f"Stripe error creating coaching handoff {case_id}: {exc}")
+            return jsonify({'error': 'Payment service error. Please try again.'}), 502
+
+        now = datetime.now(timezone.utc).isoformat()
+        case['checkout'] = {
+            'session_id': session.id,
+            'url': session.url,
+            'created_at': now,
+            'handoff_sent': False,
+            'setup_fee_waived': (
+                _coaching_gate_status(case, 'setup_fee_waiver') == 'approved'),
+        }
+        _record_coaching_event(
+            case, 'coaching_checkout_created', session.id,
+            occurred_at=now)
+        _refresh_coaching_case(
+            case, actor='system', reason='Approved Stripe checkout created',
+            source_id=session.id)
+        _write_coaching_intake(case)
+
+    if not case['checkout'].get('handoff_sent'):
+        sent = _send_coaching_onboarding_handoff(case, case['checkout']['url'])
+        case['checkout']['handoff_sent'] = sent
+        case['checkout']['handoff_attempted_at'] = datetime.now(timezone.utc).isoformat()
+        if sent:
+            _record_coaching_event(
+                case, 'coaching_checkout_handoff_sent',
+                case['checkout']['session_id'], details={'email_sent': True},
+                occurred_at=case['checkout']['handoff_attempted_at'])
+        _write_coaching_intake(case)
+        if not sent:
+            logger.critical(f"COACHING HANDOFF FAILED: case={case_id}")
+            return jsonify({
+                'error': 'Checkout created, but onboarding email failed',
+                'case_id': case_id,
+                'state': 'PAYMENT_PENDING',
+            }), 502
+
+    return jsonify({
+        'success': True,
+        'case_id': case_id,
+        'state': case['state'],
+        'checkout_url': case['checkout']['url'],
+        'handoff_sent': True,
+    })
+
+
 @app.route('/api/create-coaching-checkout', methods=['POST', 'OPTIONS'])
 @limiter.limit("20/minute")
 def create_coaching_checkout():
     """Create a Stripe Checkout Session for coaching subscription.
 
-    Expects JSON: {email, name, tier: "min"|"mid"|"max"}
-    Returns: {checkout_url}
+    Expects JSON: {email, name, tier: "min"|"mid"|"max", intake_id?}
+    Brand is derived from the trusted request Origin. The response carries
+    the exact post-checkout onboarding contract needed by any brand frontend.
     """
     if request.method == 'OPTIONS':
         return '', 204
 
+    if not COACHING_DIRECT_CHECKOUT_ENABLED:
+        return jsonify({
+            'error': 'Direct coaching checkout is disabled; complete the coaching intake first'
+        }), 409
+
     data = request.get_json()
     if not data:
         return jsonify({'error': 'Invalid JSON'}), 400
+
+    brand = _brand_from_origin(request.headers.get('Origin', ''))
+    brand_cfg = _brand_config(brand)
+    coaching_cfg = _coaching_config(brand)
+    if not coaching_cfg.get('enabled'):
+        return jsonify({
+            'error': f"{brand_cfg.get('name', brand)} coaching is not available"
+        }), 400
 
     email = (data.get('email') or '').strip().lower()
     if not email or '@' not in email or '.' not in email:
@@ -4324,60 +6170,36 @@ def create_coaching_checkout():
         return jsonify({'error': 'Name is required'}), 400
 
     tier = (data.get('tier') or '').strip().lower()
-    if tier not in COACHING_PRICE_IDS:
+    tier_cfg = _coaching_tier_config(brand, tier)
+    if tier not in COACHING_PRICE_IDS or not tier_cfg:
         return jsonify({'error': f'Invalid tier: {tier}. Must be min, mid, or max'}), 400
 
-    price_id = COACHING_PRICE_IDS[tier]
+    intake_id = (data.get('intake_id') or '').strip()
+    if intake_id:
+        try:
+            uuid.UUID(intake_id)
+        except (ValueError, AttributeError):
+            return jsonify({'error': 'Invalid intake_id'}), 400
 
     try:
-        expires_at = int((datetime.now() + timedelta(minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
-
-        # Line items: recurring subscription + one-time $99 setup fee
-        line_items = [
-            {'price': price_id, 'quantity': 1},
-        ]
-        if COACHING_SETUP_FEE_PRICE_ID:
-            line_items.append({'price': COACHING_SETUP_FEE_PRICE_ID, 'quantity': 1})
-
-        session_kwargs = dict(
-            line_items=line_items,
-            mode='subscription',
-            customer_email=email,
-            allow_promotion_codes=True,
-            phone_number_collection={'enabled': True},
-            metadata={
-                'product_type': 'coaching',
-                'tier': tier,
-                'athlete_name': name,
-            },
-            subscription_data={
-                'metadata': {
-                    'tier': tier,
-                    'athlete_name': name,
-                },
-            },
-            success_url='https://gravelgodcycling.com/coaching/welcome/?session_id={CHECKOUT_SESSION_ID}',
-            cancel_url='https://gravelgodcycling.com/coaching/',
-            expires_at=expires_at,
-            after_expiration={
-                'recovery': {
-                    'enabled': True,
-                    'allow_promotion_codes': True,
-                }
-            },
-            consent_collection={
-                'promotions': 'auto',
-            },
-        )
-        if ENABLE_AUTOMATIC_TAX:
-            session_kwargs['automatic_tax'] = {'enabled': True}
-
-        checkout_session = stripe.checkout.Session.create(**session_kwargs)
+        checkout_session = _create_coaching_checkout_session(
+            name, email, tier, brand, intake_id=intake_id)
 
         logger.info(f"Created coaching checkout {checkout_session.id} "
-                     f"(tier={tier}, setup_fee=$99, {_mask_email(email)})")
+                     f"(brand={brand}, tier={tier}, setup_fee=$99, {_mask_email(email)})")
 
-        return jsonify({'checkout_url': checkout_session.url})
+        return jsonify({
+            'checkout_url': checkout_session.url,
+            'brand': brand,
+            'tier': tier,
+            'tier_label': tier_cfg.get('label', tier.title()),
+            'setup_fee_cents': coaching_cfg.get('setup_fee_cents', 0),
+            'setup_fee_waived': False,
+            'trainingpeaks': {
+                'attach_url': coaching_cfg.get('trainingpeaks_attach_url', ''),
+                'premium_included': bool(coaching_cfg.get('trainingpeaks_premium_included')),
+            },
+        })
 
     except stripe.error.StripeError as e:
         logger.error(f"Stripe error creating coaching checkout: {e}")
@@ -4633,10 +6455,142 @@ def woocommerce_webhook():
         return jsonify({'error': 'Internal server error'}), 500
 
 
+@app.route('/webhook/signwell', methods=['POST'])
+@limiter.limit("60/minute")
+@_serialized_coaching_provider('signwell-webhook')
+def signwell_webhook():
+    """Verify SignWell, read back the provider record, and seal signed terms."""
+    if not SIGNWELL_WEBHOOK_ID:
+        return jsonify({'error': 'SignWell webhook is not configured'}), 503
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({'error': 'Invalid JSON'}), 400
+    if not verify_event_hash(payload, SIGNWELL_WEBHOOK_ID):
+        logger.warning('Invalid SignWell event hash')
+        return jsonify({'error': 'Invalid SignWell event hash'}), 401
+
+    event = payload.get('event') or {}
+    event_type = str(event.get('type') or '')
+    document = ((payload.get('data') or {}).get('object') or {})
+    document_id = str(document.get('id') or '')
+    try:
+        uuid.UUID(document_id)
+    except (ValueError, TypeError, AttributeError):
+        return jsonify({'error': 'Invalid SignWell document ID'}), 400
+    metadata = document.get('metadata') or {}
+    case_id = str(metadata.get('case_id') or '')
+    case = _find_coaching_case_for_signwell(document_id, case_id)
+    if not case:
+        logger.info(f'Ignoring unbound SignWell event {event_type}')
+        return jsonify({'status': 'ignored', 'reason': 'No bound coaching case'})
+    packet = case.get('esign_packet') or {}
+    if str(packet.get('provider') or '') != 'signwell':
+        return jsonify({'error': 'Provider binding mismatch'}), 409
+
+    event_ref = hashlib.sha256(
+        f"{document_id}\0{event_type}\0{event.get('time')}\0{event.get('hash')}".encode()
+    ).hexdigest()[:32]
+    processed = packet.setdefault('processed_event_ids', [])
+    if event_ref in processed:
+        return jsonify({'status': 'duplicate', 'case_id': case['case_id']})
+    if packet.get('status') == 'completed' and event_type != 'document_completed':
+        processed.append(event_ref)
+        del processed[:-100]
+        _write_coaching_intake(case)
+        return jsonify({
+            'status': 'ignored', 'reason': 'Packet is already complete',
+            'case_id': case['case_id'],
+        })
+
+    now = datetime.now(timezone.utc).isoformat()
+    if event_type == 'document_completed':
+        try:
+            client = SignWellClient(SIGNWELL_API_KEY)
+            readback = client.get_document(document_id)
+            if bool(readback.get('test_mode')) != bool(packet.get('test_mode')):
+                raise SignWellError('SignWell test-mode binding mismatch')
+            _validate_signwell_readback(case, readback, document_id)
+            completed_pdf = client.get_completed_pdf(document_id)
+            relative_path, pdf_sha256 = _store_signwell_completed_pdf(
+                case['case_id'], document_id, completed_pdf)
+        except SignWellError as exc:
+            logger.error(
+                f'SignWell completion readback failed for {document_id}: {exc}')
+            return jsonify({'error': 'SignWell completion readback failed'}), 503
+
+        completed_at = str(readback.get('updated_at') or now)
+        if packet.get('test_mode'):
+            packet.update({
+                'status': 'test_completed',
+                'completed_at': completed_at,
+                'signed_document_path': relative_path,
+                'signed_document_sha256': pdf_sha256,
+                'audit_page_included': True,
+                'legal_effect': 'none_test_mode',
+            })
+            event_name = 'coaching_signwell_test_completed'
+        else:
+            _record_signwell_completion(
+                case, readback, document_id, relative_path,
+                pdf_sha256, completed_at)
+            event_name = 'coaching_signwell_packet_completed'
+        processed = packet.setdefault('processed_event_ids', [])
+        processed.append(event_ref)
+        del processed[:-100]
+        _record_coaching_event(
+            case, event_name, event_ref,
+            details={'status': packet.get('status')}, occurred_at=completed_at)
+        readiness = _refresh_coaching_case(
+            case, actor='signwell_webhook',
+            reason='SignWell packet completed with provider readback',
+            source_id=document_id)
+        _write_coaching_intake(case)
+        return jsonify({
+            'status': packet.get('status'),
+            'case_id': case['case_id'],
+            'case_state': readiness['state'],
+            'legal_effect': (
+                'none_test_mode' if packet.get('test_mode') else 'receipt_recorded'),
+        })
+
+    statuses = {
+        'document_created': 'created',
+        'document_sent': 'sent',
+        'document_viewed': 'viewed',
+        'document_in_progress': 'in_progress',
+        'document_signed': 'in_progress',
+        'document_declined': 'declined',
+        'document_expired': 'expired',
+        'document_canceled': 'canceled',
+        'document_bounced': 'delivery_failed',
+        'document_error': 'error',
+    }
+    if event_type not in statuses:
+        return jsonify({'status': 'ignored', 'reason': f'Event type: {event_type}'})
+    packet['status'] = statuses[event_type]
+    packet['last_event_at'] = now
+    packet['last_event_type'] = event_type
+    processed.append(event_ref)
+    del processed[:-100]
+    _record_coaching_event(
+        case, f'coaching_signwell_{statuses[event_type]}', event_ref,
+        details={'status': statuses[event_type]}, occurred_at=now)
+    _write_coaching_intake(case)
+    if statuses[event_type] in {
+            'declined', 'expired', 'canceled', 'delivery_failed', 'error'}:
+        logger.critical(
+            f"COACHING ESIGN NEEDS ATTENTION: case={case['case_id']}, "
+            f"status={statuses[event_type]}")
+    return jsonify({
+        'status': statuses[event_type],
+        'case_id': case['case_id'],
+    })
+
+
 @app.route('/webhook/stripe', methods=['POST'])
 @limiter.limit("60/minute")
 def stripe_webhook():
-    """Handle Stripe webhook events (completed + expired checkouts)."""
+    """Handle Stripe checkout and recurring-subscription lifecycle events."""
     signature = request.headers.get('Stripe-Signature', '')
 
     if not verify_stripe_signature(request.data, signature):
@@ -4652,6 +6606,12 @@ def stripe_webhook():
     # Route by event type
     if event_type == 'checkout.session.expired':
         return _handle_checkout_expired(data)
+    if event_type in {
+            'invoice.paid', 'invoice.payment_failed',
+            'invoice.payment_action_required',
+            'customer.subscription.updated', 'customer.subscription.deleted',
+            'customer.subscription.paused', 'customer.subscription.resumed'}:
+        return _handle_coaching_billing_lifecycle(data)
     elif event_type != 'checkout.session.completed':
         return jsonify({'status': 'ignored', 'reason': f'Event type: {event_type}'})
 
@@ -4688,6 +6648,157 @@ def stripe_webhook():
         return jsonify({'error': 'Internal server error'}), 500
 
 
+def _coaching_billing_event_identity(event: dict) -> tuple[str, str, str]:
+    """Return case, subscription, and customer IDs from a Stripe event."""
+    obj = ((event.get('data') or {}).get('object') or {})
+    event_type = str(event.get('type') or '')
+    if event_type.startswith('invoice.'):
+        subscription_id = _stripe_invoice_subscription_id(obj)
+        parent = obj.get('parent') or {}
+        metadata = (
+            obj.get('metadata') or
+            (parent.get('subscription_details') or {}).get('metadata') or {})
+    else:
+        subscription_id = _stripe_object_id(obj.get('id'))
+        metadata = obj.get('metadata') or {}
+    return (
+        str(metadata.get('intake_id') or ''),
+        subscription_id,
+        _stripe_object_id(obj.get('customer')),
+    )
+
+
+def _handle_coaching_billing_lifecycle(event: dict):
+    """Update one onboarding case from a verified recurring-billing event.
+
+    This never emails the athlete or changes a Stripe subscription. It keeps
+    plan-release truth aligned with Stripe and raises an operator alert when
+    billing needs attention.
+    """
+    event_type = str(event.get('type') or '')
+    obj = ((event.get('data') or {}).get('object') or {})
+    case_id, subscription_id, customer_id = _coaching_billing_event_identity(event)
+    case = _find_coaching_case_for_billing(
+        case_id=case_id, subscription_id=subscription_id,
+        customer_id=customer_id)
+    if not case:
+        logger.info(
+            f'Ignoring non-coaching or unbound billing event {event_type}')
+        return jsonify({
+            'status': 'ignored',
+            'reason': 'No uniquely bound coaching case',
+        })
+
+    event_id = str(event.get('id') or '').strip()
+    if not event_id:
+        event_id = hashlib.sha256(json.dumps(
+            event, sort_keys=True, separators=(',', ':')).encode()).hexdigest()[:32]
+    billing = case.setdefault('billing', {
+        'schema': 'coaching_subscription_billing/v1',
+    })
+    processed = billing.setdefault('processed_event_ids', [])
+    if event_id in processed:
+        return jsonify({'status': 'duplicate', 'case_id': case['case_id']})
+
+    try:
+        event_created = int(event.get('created') or 0)
+        last_event_created = int(billing.get('last_event_created') or 0)
+    except (TypeError, ValueError):
+        event_created = last_event_created = 0
+    if event_created and last_event_created and event_created < last_event_created:
+        processed.append(event_id)
+        del processed[:-100]
+        _write_coaching_intake(case)
+        return jsonify({
+            'status': 'ignored',
+            'reason': 'Stale out-of-order billing event',
+            'case_id': case['case_id'],
+        })
+
+    now = datetime.now(timezone.utc).isoformat()
+    if subscription_id:
+        billing['subscription_id'] = subscription_id
+    if customer_id:
+        billing['customer_id'] = customer_id
+    billing['last_event_type'] = event_type
+    billing['last_event_at'] = now
+    if event_created:
+        billing['last_event_created'] = event_created
+
+    if event_type == 'invoice.paid':
+        billing['standing'] = 'healthy'
+        billing['last_paid_at'] = now
+        billing['last_paid_invoice_id'] = _stripe_object_id(obj.get('id'))
+        event_name = 'coaching_renewal_paid'
+    elif event_type == 'invoice.payment_failed':
+        billing['standing'] = 'past_due'
+        billing['last_failed_at'] = now
+        billing['last_failed_invoice_id'] = _stripe_object_id(obj.get('id'))
+        event_name = 'coaching_payment_failed'
+    elif event_type == 'invoice.payment_action_required':
+        billing['standing'] = 'action_required'
+        billing['action_required_at'] = now
+        event_name = 'coaching_payment_action_required'
+    elif event_type == 'customer.subscription.deleted':
+        billing['provider_status'] = str(obj.get('status') or 'canceled')
+        billing['standing'] = 'ended'
+        billing['ended_at'] = now
+        event_name = 'coaching_subscription_ended'
+    elif event_type == 'customer.subscription.paused':
+        billing['provider_status'] = 'paused'
+        billing['standing'] = 'paused'
+        event_name = 'coaching_subscription_paused'
+    elif event_type == 'customer.subscription.resumed':
+        billing['provider_status'] = str(obj.get('status') or 'active')
+        billing['standing'] = 'healthy'
+        event_name = 'coaching_subscription_resumed'
+    else:
+        provider_status = str(obj.get('status') or '').lower()
+        cancel_at_period_end = bool(obj.get('cancel_at_period_end'))
+        standing_by_status = {
+            'active': 'canceling_at_period_end' if cancel_at_period_end else 'healthy',
+            'trialing': 'trialing',
+            'past_due': 'past_due',
+            'unpaid': 'unpaid',
+            'incomplete': 'incomplete',
+            'incomplete_expired': 'ended',
+            'paused': 'paused',
+            'canceled': 'ended',
+        }
+        billing['provider_status'] = provider_status or 'unknown'
+        billing['standing'] = standing_by_status.get(provider_status, 'action_required')
+        billing['cancel_at_period_end'] = cancel_at_period_end
+        if obj.get('current_period_end') is not None:
+            billing['current_period_end'] = obj.get('current_period_end')
+        event_name = (
+            'coaching_subscription_cancel_scheduled'
+            if cancel_at_period_end and provider_status in ('active', 'trialing')
+            else 'coaching_subscription_updated')
+
+    processed.append(event_id)
+    del processed[:-100]
+    _record_coaching_event(
+        case, event_name, event_id,
+        details={'status': billing.get('standing')}, occurred_at=now)
+    readiness = _refresh_coaching_case(
+        case, actor='stripe_webhook', reason=f'Stripe event: {event_type}',
+        source_id=event_id)
+    _write_coaching_intake(case)
+
+    if billing.get('standing') in {
+            'past_due', 'action_required', 'unpaid', 'incomplete',
+            'paused', 'ended'}:
+        logger.critical(
+            f"COACHING BILLING NEEDS ATTENTION: case={case['case_id']}, "
+            f"standing={billing.get('standing')}, event={event_type}")
+    return jsonify({
+        'status': 'updated',
+        'case_id': case['case_id'],
+        'billing_standing': billing.get('standing'),
+        'case_state': readiness['state'],
+    })
+
+
 def _handle_checkout_expired(data: dict):
     """Handle expired checkout session — send recovery email if customer opted in.
 
@@ -4711,6 +6822,33 @@ def _handle_checkout_expired(data: dict):
         product_type = metadata.get('product_type', 'training_plan')
         athlete_name = metadata.get('athlete_name', '')
         consent = session.get('consent', {})
+        intake_id = metadata.get('intake_id', '')
+        case = (_read_coaching_intake(intake_id)
+                if product_type == 'coaching' and intake_id else {})
+        now = datetime.now(timezone.utc).isoformat()
+        if case:
+            checkout = case.setdefault('checkout', {})
+            checkout['expired_at'] = now
+            checkout['recovery_disposition'] = 'evaluating'
+            _record_coaching_event(
+                case, 'coaching_checkout_expired', session_id,
+                occurred_at=now)
+
+            if case.get('receipts', {}).get('stripe_payment'):
+                checkout['recovery_disposition'] = 'payment_already_confirmed'
+                _write_coaching_intake(case)
+                return jsonify({
+                    'status': 'ignored', 'reason': 'Payment already confirmed'})
+            if case.get('state') != 'PAYMENT_PENDING':
+                checkout['recovery_disposition'] = 'case_not_payment_pending'
+                _write_coaching_intake(case)
+                return jsonify({
+                    'status': 'ignored', 'reason': 'Case is not payment pending'})
+            if checkout.get('recovery_sent_at'):
+                checkout['recovery_disposition'] = 'case_recovery_already_sent'
+                _write_coaching_intake(case)
+                return jsonify({
+                    'status': 'ignored', 'reason': 'Case recovery already sent'})
 
         # Health monitors create never-paid sessions that expire hourly —
         # without this guard, enabling checkout.session.expired turns them
@@ -4721,6 +6859,9 @@ def _handle_checkout_expired(data: dict):
         if email and any(email.lower().startswith(m) or m in email.lower()
                          for m in MONITOR_EMAILS):
             logger.info(f"Expired checkout {session_id} — monitor session, skipping recovery")
+            if case:
+                case['checkout']['recovery_disposition'] = 'monitor_session'
+                _write_coaching_intake(case)
             return jsonify({'status': 'ignored', 'reason': 'Monitor session'})
 
         # Stripe provides a recovery URL when after_expiration.recovery is enabled
@@ -4729,15 +6870,42 @@ def _handle_checkout_expired(data: dict):
 
         if not email or not recovery_url:
             logger.info(f"Expired checkout {session_id} — no email or recovery URL")
+            if case:
+                case['checkout']['recovery_disposition'] = 'no_recovery_url'
+                _write_coaching_intake(case)
             return jsonify({'status': 'ignored', 'reason': 'No recovery possible'})
 
         # Only send if customer opted in to promotional emails
         if consent.get('promotions') != 'opt_in':
             logger.info(f"Expired checkout — customer did not opt in ({_mask_email(email)})")
+            if case:
+                case['checkout']['recovery_disposition'] = 'no_promotional_consent'
+                _write_coaching_intake(case)
             return jsonify({'status': 'ignored', 'reason': 'No promotional consent'})
 
         # Build product-specific recovery email
-        _send_recovery_email(email, athlete_name, product_type, metadata, recovery_url)
+        recovery_sent = _send_recovery_email(
+            email, athlete_name, product_type, metadata, recovery_url)
+
+        if case:
+            case['checkout']['recovery_disposition'] = (
+                'sent' if recovery_sent else 'delivery_failed')
+            case['checkout']['recovery_attempted_at'] = now
+            if recovery_sent:
+                case['checkout']['recovery_sent_at'] = now
+                _record_coaching_event(
+                    case, 'coaching_checkout_recovery_sent', session_id,
+                    details={'email_sent': True}, occurred_at=now)
+            else:
+                _record_coaching_event(
+                    case, 'coaching_checkout_recovery_failed', session_id,
+                    details={'email_sent': False}, occurred_at=now)
+            _write_coaching_intake(case)
+
+        if not recovery_sent:
+            return jsonify({
+                'status': 'error',
+                'message': 'Recovery delivery failed; logged for manual review'})
 
         _log_product_event('cart_recovery', session_id,
                            email=email, original_product=product_type,
@@ -4755,7 +6923,7 @@ def _handle_checkout_expired(data: dict):
 
 
 def _send_recovery_email(email: str, name: str, product_type: str,
-                         metadata: dict, recovery_url: str):
+                         metadata: dict, recovery_url: str) -> bool:
     """Send a recovery email for an abandoned checkout."""
     first_name = name.split()[0] if name else 'there'
     brand = normalize_brand(metadata.get('brand'))
@@ -4781,17 +6949,17 @@ def _send_recovery_email(email: str, name: str, product_type: str,
         )
     elif product_type == 'coaching':
         tier = metadata.get('tier', '')
+        tier_label = _coaching_tier_config(brand, tier).get('label', tier.title())
         subject = "Your coaching spot is still available"
         body = (
             f"Hey {first_name},\n\n"
-            f"You were signing up for {tier}-tier coaching — "
+            f"You were signing up for {tier_label} coaching — "
             f"your spot is still open.\n\n"
             f"Pick up where you left off:\n"
             f"{recovery_url}\n\n"
-            f"Athletes who work with a coach see measurable gains within "
-            f"the first few weeks. Let's get started.\n\n"
-            f"— Matti, Gravel God Cycling\n"
-            f"gravelgodcycling.com"
+            f"If you have a question before completing checkout, reply here.\n\n"
+            f"— {signature_name}, {signature_org}\n"
+            f"{signature_site}"
         )
     else:  # consulting
         hours = metadata.get('hours', '1')
@@ -4808,7 +6976,9 @@ def _send_recovery_email(email: str, name: str, product_type: str,
 
     reply_to = NOTIFICATION_EMAIL or None
     if RESEND_API_KEY:
-        if not _send_email(email, subject, body, reply_to=reply_to, brand=brand):
+        sent = _send_email(
+            email, subject, body, reply_to=reply_to, brand=brand)
+        if not sent:
             logger.critical(
                 f"ABANDONED CART — email failed\n"
                 f"  Email: {_mask_email(email)}\n  Product: {product_type}\n"
@@ -4816,23 +6986,28 @@ def _send_recovery_email(email: str, name: str, product_type: str,
             )
         else:
             logger.info(f"Recovery email sent to {_mask_email(email)}")
+        return bool(sent)
     else:
         logger.critical(
             f"ABANDONED CART — Resend not configured, manual follow-up needed\n"
             f"  Email: {_mask_email(email)}\n  Name: {name}\n"
             f"  Product: {product_type}\n  Recovery URL: {recovery_url}"
         )
+        return False
 
 
 def _handle_training_plan_webhook(data: dict, order_id: str):
     """Handle training plan checkout completion — create profile + run pipeline."""
     _webhook_brand = normalize_brand(
         data.get('data', {}).get('object', {}).get('metadata', {}).get('brand', DEFAULT_BRAND))
-    if _brand_config(_webhook_brand).get('consulting_only'):
-        logger.error(f"Training plan webhook rejected: brand {_webhook_brand!r} is consulting_only")
+    if not _brand_config(_webhook_brand).get(
+            'training_plan_generation_enabled', True):
+        logger.error(
+            f"Training plan webhook rejected: brand {_webhook_brand!r} "
+            "has training-plan generation disabled")
         return jsonify({
             'error': f"{_brand_config(_webhook_brand).get('name', _webhook_brand)} does not "
-                     "support training-plan generation (consulting only)"
+                     "support training-plan generation yet"
         }), 400
 
     order_data = extract_stripe_data(data)
@@ -4902,27 +7077,101 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
 def _handle_coaching_webhook(session: dict, metadata: dict, order_id: str):
     """Handle coaching subscription checkout completion — log + notify."""
     tier = metadata.get('tier', 'unknown')
+    brand = normalize_brand(metadata.get('brand'))
     name = metadata.get('athlete_name', 'Unknown')
     email = session.get('customer_details', {}).get('email', '')
-    subscription_id = session.get('subscription', '')
+    subscription_id = _stripe_object_id(session.get('subscription'))
+    customer_id = _stripe_object_id(session.get('customer'))
+    intake_id = metadata.get('intake_id', '')
+    recovered_from = str(session.get('recovered_from') or '')
 
     logger.info(f"Coaching subscription started: {name} ({_mask_email(email)}), "
                 f"tier={tier}, subscription={subscription_id}")
 
+    if intake_id:
+        case = _read_coaching_intake(intake_id)
+        if not case:
+            logger.critical(
+                f"COACHING PAYMENT CASE MISSING: case={intake_id}, "
+                f"checkout={order_id}")
+            return jsonify({
+                'error': 'Coaching onboarding case was not found'
+            }), 409
+        if case.get('receipts', {}).get('stripe_payment'):
+            logger.warning(
+                f"Coaching case {intake_id} already has a payment receipt; "
+                f"ignoring additional checkout {order_id}")
+            mark_order_processed(order_id, sanitize_athlete_id(name))
+            return jsonify({
+                'status': 'duplicate_case_payment',
+                'message': 'Coaching payment already recorded for this case',
+            })
+        if case:
+            expected_session = str(case.get('checkout', {}).get('session_id') or '')
+            session_matches = (
+                order_id == expected_session or
+                (recovered_from and recovered_from == expected_session)
+            )
+            if not session_matches:
+                logger.critical(
+                    f"COACHING PAYMENT IDENTITY MISMATCH: case={intake_id}, "
+                    f"checkout={order_id}")
+                return jsonify({
+                    'error': 'Coaching checkout does not match the approved handoff'
+                }), 409
+            now = datetime.now(timezone.utc).isoformat()
+            case.setdefault('receipts', {})['stripe_payment'] = {
+                'checkout_session_id': order_id,
+                'subscription_id': subscription_id,
+                'customer_id': customer_id,
+                'confirmed_at': now,
+            }
+            billing = case.setdefault('billing', {
+                'schema': 'coaching_subscription_billing/v1',
+            })
+            billing.update({
+                'subscription_id': subscription_id,
+                'customer_id': customer_id,
+                'checkout_payment_status': str(
+                    session.get('payment_status') or 'paid'),
+            })
+            billing.setdefault('provider_status', 'active')
+            billing.setdefault('standing', 'healthy')
+            billing.setdefault('last_event_type', 'checkout.session.completed')
+            billing.setdefault('last_event_at', now)
+            billing.setdefault('processed_event_ids', [])
+            if recovered_from:
+                case['receipts']['stripe_payment']['recovered_from'] = recovered_from
+                case.setdefault('checkout', {})['recovered_session_id'] = order_id
+                _record_coaching_event(
+                    case, 'coaching_checkout_recovered', order_id,
+                    details={'recovered_from': recovered_from},
+                    occurred_at=now)
+            _record_coaching_event(
+                case, 'coaching_payment_confirmed', order_id,
+                occurred_at=now)
+            _refresh_coaching_case(
+                case, actor='stripe_webhook',
+                reason='Coaching subscription payment confirmed',
+                source_id=order_id)
+            _write_coaching_intake(case)
     mark_order_processed(order_id, sanitize_athlete_id(name))
     _send_ga4_purchase(order_id, session.get('amount_total'),
                        'coaching', f'Coaching ({tier})',
-                       brand=metadata.get('brand', DEFAULT_BRAND))
+                       brand=brand)
     _log_product_event('coaching', order_id,
                        tier=tier, name=name, email=email,
-                       subscription_id=subscription_id)
+                       subscription_id=subscription_id, brand=brand,
+                       intake_id=intake_id)
     _notify_new_order('coaching', {
         'name': name,
         'email': email,
         'tier': tier,
         'subscription_id': subscription_id,
         'order_id': order_id,
+        'brand': brand,
     })
+    _send_coaching_payment_confirmation(email, name, tier, brand=brand)
 
     return jsonify({
         'status': 'success',
@@ -6589,6 +8838,430 @@ def process_touchpoint_emails():
     return stats
 
 
+def _parse_utc(value: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return round(ordered[middle], 2)
+    return round((ordered[middle - 1] + ordered[middle]) / 2, 2)
+
+
+def _coaching_funnel_projection(case: dict) -> dict:
+    """Return analytics-only booleans/timings; never project athlete PII."""
+    events = case.get('analytics_events') or []
+    event_names = {event.get('event_name') for event in events}
+    verifications = case.get('verifications') or {}
+    checkout = case.get('checkout') or {}
+    payment = (case.get('receipts') or {}).get('stripe_payment') or {}
+    onboarding = case.get('onboarding_materials') or {}
+    billing = case.get('billing') or {}
+    submitted_at = _parse_utc((case.get('source') or {}).get('submitted_at'))
+    paid_at = _parse_utc(payment.get('confirmed_at'))
+    active_event = next(
+        (event for event in events
+         if event.get('event_name') == 'coaching_active'), None)
+    active_at = _parse_utc((active_event or {}).get('occurred_at'))
+
+    def verified(gate, status):
+        return (verifications.get(gate) or {}).get('status') == status
+
+    return {
+        'brand': normalize_brand(case.get('brand')),
+        'tier': str(case.get('tier') or 'unknown'),
+        'submitted_at': submitted_at,
+        'stages': {
+            'applications': True,
+            'fit_approved': verified('coach_fit', 'approved'),
+            'terms_signed': (
+                verified('coaching_agreement', 'signed') and
+                verified('data_consent', 'signed')),
+            'checkout_created': bool(checkout.get('session_id')),
+            'checkout_expired': (
+                bool(checkout.get('expired_at')) or
+                'coaching_checkout_expired' in event_names),
+            'recovery_sent': (
+                bool(checkout.get('recovery_sent_at')) or
+                'coaching_checkout_recovery_sent' in event_names),
+            'payment_confirmed': bool(payment),
+            'billing_healthy': (
+                bool(payment) and
+                str(billing.get('standing') or 'healthy') in
+                ('healthy', 'trialing', 'canceling_at_period_end')),
+            'billing_attention': str(billing.get('standing') or '') in (
+                'past_due', 'action_required', 'unpaid', 'incomplete', 'paused'),
+            'subscription_ended': str(billing.get('standing') or '') in (
+                'ended', 'canceled'),
+            'checkout_recovered': (
+                bool(payment.get('recovered_from')) or
+                'coaching_checkout_recovered' in event_names),
+            'trainingpeaks_connected': verified(
+                'trainingpeaks_connection', 'verified'),
+            'context_sealed': verified('athlete_context', 'sealed'),
+            'plan_approved': verified('coach_plan_approval', 'approved'),
+            'onboarding_delivered': bool(onboarding.get('delivered_at')),
+            'active': case.get('state') == 'ACTIVE',
+        },
+        'application_to_payment_hours': (
+            (paid_at - submitted_at).total_seconds() / 3600
+            if paid_at and submitted_at and paid_at >= submitted_at else None),
+        'application_to_active_hours': (
+            (active_at - submitted_at).total_seconds() / 3600
+            if active_at and submitted_at and active_at >= submitted_at else None),
+    }
+
+
+def _aggregate_coaching_funnel(projections: list[dict]) -> dict:
+    stage_names = (
+        'applications', 'fit_approved', 'terms_signed', 'checkout_created',
+        'checkout_expired', 'recovery_sent', 'payment_confirmed',
+        'billing_healthy', 'billing_attention', 'subscription_ended',
+        'checkout_recovered', 'trainingpeaks_connected', 'context_sealed',
+        'plan_approved', 'onboarding_delivered', 'active')
+    counts = {
+        stage: sum(1 for item in projections if item['stages'][stage])
+        for stage in stage_names
+    }
+    applications = counts['applications']
+    conversion = {
+        stage: round((counts[stage] / applications) * 100, 1)
+        if applications else 0.0
+        for stage in stage_names if stage != 'applications'
+    }
+    abandoned = sum(
+        1 for item in projections
+        if item['stages']['checkout_expired'] and
+        not item['stages']['payment_confirmed'])
+    return {
+        'stage_counts': counts,
+        'conversion_percent_from_application': conversion,
+        'abandoned_checkout_cases': abandoned,
+        'median_hours': {
+            'application_to_payment': _median([
+                item['application_to_payment_hours'] for item in projections
+                if item['application_to_payment_hours'] is not None]),
+            'application_to_active': _median([
+                item['application_to_active_hours'] for item in projections
+                if item['application_to_active_hours'] is not None]),
+        },
+    }
+
+
+_COACHING_ONBOARDING_REMINDER_MILESTONES = (
+    (0, 'welcome_setup_check',
+     'Confirm welcome delivery, TrainingPeaks connection, and kickoff booking'),
+    (2, 'early_friction_check',
+     'Review setup blockers, comments, schedule access, and unanswered questions'),
+    (7, 'first_week_review',
+     'Review the first week of execution and propose any onboarding adjustment'),
+    (14, 'adaptation_check',
+     'Review adherence, recovery, communication fit, and emerging constraints'),
+    (28, 'ramp_completion_review',
+     'Complete the first-30-day review before marking the ramp complete'),
+)
+
+
+def _suggest_coaching_onboarding_reminders(case: dict,
+                                           now: datetime | None = None) -> list[dict]:
+    """Create approval-only reminders; never send athlete communications."""
+    payment = (case.get('receipts') or {}).get('stripe_payment') or {}
+    onboarding = case.get('onboarding_materials') or {}
+    anchor = _parse_utc(
+        onboarding.get('delivered_at') or payment.get('confirmed_at'))
+    if not anchor:
+        return []
+    now = now or datetime.now(timezone.utc)
+    existing = {
+        str(item.get('milestone') or '')
+        for item in (case.get('onboarding_reminders') or [])
+    }
+    created = []
+    for day, milestone, action in _COACHING_ONBOARDING_REMINDER_MILESTONES:
+        due_at = anchor + timedelta(days=day)
+        if milestone in existing or due_at > now:
+            continue
+        reminder = {
+            'schema': 'coaching_onboarding_reminder/v1',
+            'reminder_id': hashlib.sha256(
+                f"{case.get('case_id')}\0{milestone}".encode()).hexdigest()[:24],
+            'milestone': milestone,
+            'day': day,
+            'due_at': due_at.isoformat(),
+            'suggested_at': now.isoformat(),
+            'status': 'suggested',
+            'action': action,
+            'channel': 'coach_review_queue',
+            'requires_coach_approval': True,
+            'automatic_send': False,
+        }
+        case.setdefault('onboarding_reminders', []).append(reminder)
+        _record_coaching_event(
+            case, 'coaching_reminder_suggested', reminder['reminder_id'],
+            details={'status': milestone}, occurred_at=now.isoformat())
+        created.append(reminder)
+    return created
+
+
+@app.route('/api/coaching-funnel-report', methods=['GET'])
+@limiter.limit("10/minute")
+def coaching_funnel_report():
+    """Private, aggregate onboarding funnel without names, emails, or case IDs."""
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    try:
+        days = int(request.args.get('days', '30'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'days must be an integer from 1 to 730'}), 400
+    if not 1 <= days <= 730:
+        return jsonify({'error': 'days must be an integer from 1 to 730'}), 400
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    root = Path(DATA_DIR) / 'coaching_intakes'
+    projections = []
+    if root.exists():
+        for path in root.glob('*.json'):
+            try:
+                case = json.loads(path.read_text())
+                projected = _coaching_funnel_projection(case)
+                if projected['submitted_at'] and projected['submitted_at'] >= cutoff:
+                    projections.append(projected)
+            except (OSError, ValueError, TypeError):
+                logger.warning(f'Could not project coaching funnel case {path.name}')
+
+    groups = {}
+    for item in projections:
+        key = f"{item['brand']}:{item['tier']}"
+        groups.setdefault(key, []).append(item)
+    return jsonify({
+        'schema': 'coaching_funnel_report/v1',
+        'generated_at': datetime.now(timezone.utc).isoformat(),
+        'window_days': days,
+        'all_brands': _aggregate_coaching_funnel(projections),
+        'by_brand_and_tier': {
+            key: _aggregate_coaching_funnel(items)
+            for key, items in sorted(groups.items())
+        },
+        'privacy': 'aggregate_only_no_athlete_pii_or_case_ids',
+    })
+
+
+@app.route('/api/cron/coaching-onboarding-reminders', methods=['POST'])
+@limiter.limit("5/minute")
+def cron_coaching_onboarding_reminders():
+    """Populate a deduplicated coach-review queue without sending anything."""
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    created = []
+    scanned = 0
+    for case in _iter_coaching_intakes() or ():
+        scanned += 1
+        suggestions = _suggest_coaching_onboarding_reminders(case)
+        if not suggestions:
+            continue
+        _write_coaching_intake(case)
+        created.extend({
+            'case_id': case.get('case_id'),
+            'milestone': item['milestone'],
+            'due_at': item['due_at'],
+        } for item in suggestions)
+    logger.info(json.dumps({
+        'message': 'coaching_onboarding_reminders',
+        'scanned': scanned,
+        'suggested': len(created),
+        'automatic_send': False,
+    }, sort_keys=True))
+    return jsonify({
+        'schema': 'coaching_onboarding_reminder_run/v1',
+        'status': 'ok',
+        'scanned': scanned,
+        'suggested': len(created),
+        'reminders': created,
+        'automatic_send': False,
+    })
+
+
+def _coaching_canary_result() -> tuple[dict, int]:
+    """Run read-only provider/config checks plus a disposable volume probe."""
+    checked_at = datetime.now(timezone.utc).isoformat()
+    checks = []
+
+    def add(name, passed, detail=''):
+        checks.append({
+            'name': name, 'passed': bool(passed),
+            'detail': str(detail)[:240],
+        })
+
+    add('coaching_intake_secret_configured', bool(COACHING_INTAKE_SECRET))
+    add('stripe_secret_configured', bool(STRIPE_SECRET_KEY))
+    add('stripe_webhook_secret_configured', bool(STRIPE_WEBHOOK_SECRET))
+    add('resend_delivery_configured', bool(RESEND_API_KEY and NOTIFICATION_EMAIL))
+    add('coaching_booking_url_verified_shape',
+        COACHING_BOOKING_URL.startswith('https://'))
+
+    synthetic_adult_case = {
+        'case_id': '00000000-0000-4000-8000-000000000000',
+        'athlete': {'is_minor': False},
+        'questionnaire': {'age': '40'},
+    }
+    esign_readiness = _coaching_esign_readiness(synthetic_adult_case)
+    add('signwell_esign_configuration',
+        esign_readiness.get('provider') == 'signwell' and
+        esign_readiness.get('status') == 'ready',
+        ', '.join(esign_readiness.get('blockers') or []))
+    if (esign_readiness.get('provider') == 'signwell' and
+            esign_readiness.get('status') == 'ready'):
+        try:
+            account = SignWellClient(SIGNWELL_API_KEY).get_account()
+            add('signwell_account_readback', isinstance(account, dict) and bool(account),
+                'authenticated readback succeeded' if account else 'empty account response')
+        except SignWellError as exc:
+            add('signwell_account_readback', False,
+                f'provider readback failed: {type(exc).__name__}')
+    else:
+        add('signwell_account_readback', False,
+            'not attempted while SignWell configuration is blocked')
+
+    for brand, cfg in sorted(BRANDS.items()):
+        coaching = cfg.get('coaching') or {}
+        tiers = coaching.get('tiers') or {}
+        add(f'{brand}_core_offer_registry',
+            coaching.get('enabled') is True and
+            set(tiers) == {'min', 'mid', 'max'} and
+            coaching.get('billing_period_days') == 28 and
+            coaching.get('setup_fee_waiver_mode') == 'case_by_case_private')
+        add(f'{brand}_server_analytics_configured', bool(
+            cfg.get('ga4_measurement_id') and cfg.get('ga4_mp_api_secret')))
+        for tier in ('min', 'mid', 'max'):
+            ok, reason = _verify_coaching_checkout_contract(brand, tier)
+            add(f'{brand}_{tier}_stripe_contract', ok, reason)
+        waiver_ok, waiver_reason = _verify_coaching_checkout_contract(
+            brand, 'mid', setup_fee_waived=True)
+        add(f'{brand}_private_setup_waiver_contract',
+            waiver_ok, waiver_reason)
+
+    try:
+        endpoints_obj = stripe.WebhookEndpoint.list(limit=100)
+        endpoints = (endpoints_obj.get('data', [])
+                     if hasattr(endpoints_obj, 'get') else [])
+        required = {
+            'checkout.session.completed', 'checkout.session.expired',
+            'invoice.paid', 'invoice.payment_failed',
+            'invoice.payment_action_required',
+            'customer.subscription.updated', 'customer.subscription.deleted',
+            'customer.subscription.paused', 'customer.subscription.resumed',
+        }
+        webhook_ok = False
+        for endpoint in endpoints:
+            data = (endpoint._to_dict_recursive()
+                    if hasattr(endpoint, '_to_dict_recursive') else dict(endpoint))
+            enabled = set(data.get('enabled_events') or [])
+            if (data.get('status') == 'enabled' and
+                    str(data.get('url') or '').rstrip('/').endswith('/webhook/stripe') and
+                    ('*' in enabled or required.issubset(enabled))):
+                webhook_ok = True
+                break
+        add('stripe_webhook_events_enabled', webhook_ok)
+    except (AttributeError, TypeError, stripe.error.StripeError) as exc:
+        add('stripe_webhook_events_enabled', False,
+            f'provider readback failed: {type(exc).__name__}')
+
+    try:
+        configs_obj = stripe.billing_portal.Configuration.list(limit=100)
+        configs = (configs_obj.get('data', [])
+                   if hasattr(configs_obj, 'get') else [])
+        portal_ok = False
+        for config in configs:
+            data = (config._to_dict_recursive()
+                    if hasattr(config, '_to_dict_recursive') else dict(config))
+            features = data.get('features') or {}
+            if (data.get('active') is True and
+                    (features.get('subscription_cancel') or {}).get('enabled') is True and
+                    (features.get('payment_method_update') or {}).get('enabled') is True):
+                portal_ok = True
+                break
+        add('stripe_customer_portal_configured', portal_ok)
+    except (AttributeError, TypeError, stripe.error.StripeError) as exc:
+        add('stripe_customer_portal_configured', False,
+            f'provider readback failed: {type(exc).__name__}')
+
+    receipt_root = Path(DATA_DIR) / '.canary' / 'coaching'
+    probe_path = receipt_root / f'.probe-{uuid.uuid4()}.json'
+    try:
+        receipt_root.mkdir(parents=True, exist_ok=True)
+        probe_payload = {'schema': 'coaching_volume_probe/v1', 'checked_at': checked_at}
+        probe_path.write_text(json.dumps(probe_payload))
+        add('persistent_volume_round_trip',
+            json.loads(probe_path.read_text()) == probe_payload)
+    except (OSError, ValueError) as exc:
+        add('persistent_volume_round_trip', False, type(exc).__name__)
+    finally:
+        try:
+            probe_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    passed = all(check['passed'] for check in checks)
+    result = {
+        'schema': 'coaching_onboarding_canary/v1',
+        'checked_at': checked_at,
+        'status': 'ok' if passed else 'failed',
+        'summary': {
+            'passed': sum(1 for check in checks if check['passed']),
+            'failed': sum(1 for check in checks if not check['passed']),
+        },
+        'checks': checks,
+        'side_effects': (
+            'no case, e-sign request, checkout, charge, email, or '
+            'TrainingPeaks write'),
+    }
+    try:
+        receipt_path = receipt_root / (
+            checked_at.replace(':', '').replace('+00:00', 'Z') + '.json')
+        receipt_path.write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
+    except OSError:
+        result['status'] = 'failed'
+        result['summary']['failed'] += 1
+        result['checks'].append({
+            'name': 'durable_canary_receipt', 'passed': False,
+            'detail': 'Could not persist the canary receipt',
+        })
+    return result, (200 if result['status'] == 'ok' else 503)
+
+
+@app.route('/api/coaching-canary', methods=['POST'])
+@limiter.limit("10/minute")
+def coaching_canary():
+    """Synthetic edge-to-backend canary authenticated by the intake Worker."""
+    supplied = request.headers.get('X-Coaching-Intake-Secret', '')
+    if not COACHING_INTAKE_SECRET:
+        return jsonify({'error': 'Coaching intake is not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, COACHING_INTAKE_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    result, status = _coaching_canary_result()
+    logger_method = logger.info if status == 200 else logger.error
+    logger_method(json.dumps({
+        'message': 'coaching_onboarding_canary',
+        'status': result['status'],
+        'summary': result['summary'],
+    }, sort_keys=True))
+    return jsonify(result), status
+
+
 @app.route('/api/intel-stats', methods=['GET'])
 @limiter.limit("10/minute")
 def intel_stats():
@@ -6677,12 +9350,21 @@ def intel_stats():
 
     orders.sort(key=lambda item: (item.get('timestamp') or '', item.get('id') or ''))
     recoveries.sort(key=lambda item: (item.get('timestamp') or '', item.get('id') or ''))
+    coaching_cutoff = datetime.now(timezone.utc) - _td(hours=hours)
+    coaching_projections = []
+    for case in _iter_coaching_intakes() or ():
+        projected = _coaching_funnel_projection(case)
+        if (projected.get('submitted_at') and
+                projected['submitted_at'] >= coaching_cutoff):
+            coaching_projections.append(projected)
     return jsonify({
         'window_hours': hours,
         'orders': orders,
         'failed_orders': [o for o in orders if o.get('success') is False],
         'recoveries': recoveries,
         'questionnaire_starts': q_starts,
+        'coaching_onboarding': _aggregate_coaching_funnel(
+            coaching_projections),
     })
 
 

@@ -4252,6 +4252,18 @@ def generate_training_guide(athlete_id: str, output_path=None, store_mode: bool 
         from canonical_training_model import project_guide_html
         html = project_guide_html(html, canonical_model)
 
+    # Coaching is an operational layer on the approved custom plan, not a
+    # second plan engine. A privacy-minimized, gated onboarding context may
+    # add one shared chapter without changing any training prescription.
+    onboarding_path = athlete_dir / 'coaching_onboarding.yaml'
+    if not store_mode and onboarding_path.is_file():
+        from coaching_onboarding_materials import inject_onboarding_section
+        with open(onboarding_path) as handle:
+            onboarding = yaml.safe_load(handle) or {}
+        if onboarding.get('schema') != 'coaching_onboarding_materials/v1':
+            raise ValueError('invalid coaching onboarding materials schema')
+        html = inject_onboarding_section(html, onboarding)
+
     output_path.write_text(html, encoding='utf-8')
     return output_path
 

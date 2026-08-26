@@ -47,6 +47,19 @@ jobs:
             exit 1
           fi
 
+      - name: "Populate coaching onboarding review queue"
+        run: |
+          RESPONSE=$(curl -sf -X POST \
+            "$API_BASE/api/cron/coaching-onboarding-reminders" \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}")
+          echo "$RESPONSE" | python3 -m json.tool
+          STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))")
+          AUTO_SEND=$(echo "$RESPONSE" | python3 -c "import sys,json; print(str(json.load(sys.stdin).get('automatic_send','')).lower())")
+          if [ "$STATUS" != "ok" ] || [ "$AUTO_SEND" != "false" ]; then
+            echo "::error::Coaching reminder queue failed closed"
+            exit 1
+          fi
+
       - name: "Summarize"
         if: success()
-        run: echo "Email cron fired — see response above for sent/skipped counts (followups + touchpoints)."
+        run: echo "Email cron fired and coaching approval-only reminders were queued."

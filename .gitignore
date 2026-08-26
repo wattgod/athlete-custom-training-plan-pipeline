@@ -52,3 +52,10 @@ athletes/worker-replay/
 reports/canary/
 reports/audits/
 reports/daily-drill/
+
+# Private coaching records and signed e-sign artifacts live on the persistent
+# runtime volume, never in source control.
+athletes/coaching_intakes/
+athletes/coaching_esign/
+athletes/.canary/coaching/
+athletes/.locks/

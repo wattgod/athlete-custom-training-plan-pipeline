@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import json
+import copy
 import hmac
 import hashlib
 import tempfile
@@ -64,6 +65,7 @@ def app(temp_athletes_dir, monkeypatch):
     monkeypatch.setattr(app_module, 'DATA_DIR', str(temp_athletes_dir))
     monkeypatch.setattr(app_module, 'DELIVERIES_DIR', str(temp_athletes_dir / 'deliveries'))
     monkeypatch.setattr(app_module, 'JOBS_DIR', str(temp_athletes_dir / 'jobs'))
+    monkeypatch.setattr(app_module, 'COACHING_DIRECT_CHECKOUT_ENABLED', True)
     flask_app = app_module.app
     flask_app.config['TESTING'] = True
     return flask_app
@@ -1073,6 +1075,16 @@ class TestTestEndpoint:
 class TestCoachingCheckout:
     """Tests for POST /api/create-coaching-checkout endpoint."""
 
+    def test_direct_checkout_fails_closed_by_default(self, client, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'COACHING_DIRECT_CHECKOUT_ENABLED', False)
+        response = client.post(
+            '/api/create-coaching-checkout',
+            json={'name': 'Test', 'email': 'test@test.com', 'tier': 'mid'},
+            content_type='application/json')
+        assert response.status_code == 409
+        assert 'intake' in response.get_json()['error'].lower()
+
     def test_coaching_checkout_rejects_missing_email(self, client):
         """Coaching checkout requires a valid email."""
         response = client.post(
@@ -1138,6 +1150,76 @@ class TestCoachingCheckout:
             assert call_kwargs['customer_email'] == 'coach@test.com'
             assert call_kwargs['metadata']['product_type'] == 'coaching'
             assert call_kwargs['metadata']['tier'] == 'mid'
+            assert call_kwargs['metadata']['brand'] == 'gravelgod'
+            assert call_kwargs['subscription_data']['metadata']['brand'] == 'gravelgod'
+            assert call_kwargs['success_url'] == (
+                'https://gravelgodcycling.com/coaching/welcome/'
+                '?session_id={CHECKOUT_SESSION_ID}')
+            assert call_kwargs['cancel_url'] == 'https://gravelgodcycling.com/coaching/'
+
+            assert data['tier'] == 'mid'
+            assert data['tier_label'] == 'Mid'
+            assert data['setup_fee_cents'] == 9900
+            assert data['setup_fee_waived'] is False
+            assert data['trainingpeaks']['premium_included'] is True
+            assert 'attachtocoach' in data['trainingpeaks']['attach_url']
+
+    def test_coaching_checkout_links_valid_intake(self, client, temp_athletes_dir):
+        """Checkout metadata preserves the intake lineage receipt."""
+        intake_id = 'ed4d7814-921f-4b21-9f73-52b6a47ba5cb'
+        with patch('app.stripe') as mock_stripe:
+            mock_stripe.checkout.Session.create.return_value = MagicMock(
+                id='cs_intake', url='https://checkout.stripe.com/intake')
+            response = client.post(
+                '/api/create-coaching-checkout',
+                json={'name': 'Intake Link', 'email': 'intake@test.com',
+                      'tier': 'mid', 'intake_id': intake_id},
+                content_type='application/json',
+                headers={'X-Forwarded-For': '198.51.100.31'})
+
+            assert response.status_code == 200
+            metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+            assert metadata['intake_id'] == intake_id
+
+    def test_coaching_checkout_rejects_invalid_intake_id(self, client):
+        response = client.post(
+            '/api/create-coaching-checkout',
+            json={'name': 'Bad Link', 'email': 'bad@test.com',
+                  'tier': 'mid', 'intake_id': '../../other-athlete'},
+            content_type='application/json',
+            headers={'X-Forwarded-For': '198.51.100.32'})
+        assert response.status_code == 400
+        assert response.get_json()['error'] == 'Invalid intake_id'
+
+    @pytest.mark.parametrize(('origin', 'brand', 'success_url'), [
+        ('https://roadielabs.com', 'roadielabs',
+         'https://roadielabs.com/coaching/welcome/'),
+        ('https://xcskilabs.com', 'xcskilabs',
+         'https://xcskilabs.com/coaching/welcome/'),
+    ])
+    def test_coaching_checkout_is_live_for_each_vertical(
+            self, client, origin, brand, success_url):
+        with patch('app.stripe') as mock_stripe:
+            mock_stripe.checkout.Session.create.return_value = MagicMock(
+                id=f'cs_{brand}', url=f'https://checkout.stripe.com/{brand}')
+            response = client.post(
+                '/api/create-coaching-checkout',
+                json={'name': 'Brand Athlete', 'email': 'brand@test.com',
+                      'tier': 'mid'},
+                content_type='application/json',
+                headers={'Origin': origin,
+                         'X-Forwarded-For': '198.51.100.33'})
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['brand'] == brand
+        assert data['tier_label'] == 'Mid'
+        assert data['setup_fee_cents'] == 9900
+        assert data['setup_fee_waived'] is False
+        assert data['trainingpeaks']['premium_included'] is True
+        call = mock_stripe.checkout.Session.create.call_args.kwargs
+        assert call['metadata']['brand'] == brand
+        assert call['success_url'].startswith(success_url)
 
     def test_coaching_checkout_includes_setup_fee(self, client, temp_athletes_dir):
         """Coaching checkout includes $99 setup fee as second line item."""
@@ -1164,8 +1246,8 @@ class TestCoachingCheckout:
             # Second item is the setup fee
             assert line_items[1]['quantity'] == 1
 
-    def test_coaching_checkout_allows_promo_codes(self, client, temp_athletes_dir):
-        """Coaching checkout enables promotion codes for setup fee waivers."""
+    def test_coaching_checkout_does_not_expose_promo_codes(self, client, temp_athletes_dir):
+        """Public checkout charges setup and never exposes a waiver field."""
         with patch('app.stripe') as mock_stripe:
             mock_session = MagicMock()
             mock_session.id = 'cs_test_coaching_promo'
@@ -1180,7 +1262,9 @@ class TestCoachingCheckout:
 
             assert response.status_code == 200
             call_kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
-            assert call_kwargs['allow_promotion_codes'] is True
+            assert 'allow_promotion_codes' not in call_kwargs
+            assert 'discounts' not in call_kwargs
+            assert call_kwargs['metadata']['setup_fee_waived'] == 'false'
 
     def test_coaching_checkout_all_tiers(self, client, temp_athletes_dir):
         """All three coaching tiers create valid sessions."""
@@ -1218,6 +1302,1006 @@ class TestCoachingCheckout:
                 content_type='application/json'
             )
             assert response.status_code == 502
+
+
+class TestCoachingConfirmation:
+    def test_mid_is_coaching_tier_and_premium_is_tp_benefit(self):
+        import app as app_module
+
+        with patch.object(app_module, '_send_email', return_value=True) as send:
+            ok = app_module._send_coaching_payment_confirmation(
+                'rider@test.com', 'Rider Test', 'mid', brand='gravelgod')
+
+        assert ok is True
+        subject = send.call_args.args[1]
+        body = send.call_args.args[2]
+        assert subject == 'Payment confirmed — Mid coaching'
+        assert 'Premium coaching' not in body
+        assert 'TrainingPeaks Premium is included' in body
+        assert 'If it is already connected, skip that step.' in body
+        assert 'attachtocoach' in body
+        assert send.call_args.kwargs['brand'] == 'gravelgod'
+
+    def test_coach_notification_uses_brand_prefix_and_tier_label(self):
+        from app import _build_coaching_email
+
+        subject, text, html = _build_coaching_email({
+            'name': 'Rider Test',
+            'email': 'rider@test.com',
+            'tier': 'mid',
+            'subscription_id': 'sub_123',
+            'order_id': 'cs_123',
+            'brand': 'gravelgod',
+        })
+        assert subject == '[GG] New coaching: Rider Test — Mid'
+        assert 'Mid coaching' in html
+        assert 'mid tier' not in text.lower()
+
+    def test_confirmation_includes_verified_private_booking_link(self, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(
+            app_module, 'COACHING_BOOKING_URL',
+            'https://calendar.example.com/matti/coaching')
+        with patch.object(app_module, '_send_email', return_value=True) as send:
+            app_module._send_coaching_payment_confirmation(
+                'rider@test.com', 'Rider Test', 'mid', brand='gravelgod')
+        body = send.call_args.args[2]
+        assert 'Book your kickoff call' in body
+        assert 'https://calendar.example.com/matti/coaching' in body
+
+
+class TestCoachingIntakeHandoff:
+    @staticmethod
+    def _payload(case_id='0d915c21-2ab0-46f2-a8b9-e81076c65713'):
+        return {
+            'submission_id': case_id,
+            'brand': 'gravelgod',
+            'tier': 'mid',
+            'name': 'Case Rider',
+            'email': 'case@test.com',
+            'questionnaire': {'primary_goal': 'specific_race', 'age': '52'},
+        }
+
+    def test_intake_creates_fit_review_case_and_receipts(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'COACHING_INTAKE_SECRET', 'edge-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+
+        with patch.object(app_module, '_send_email', return_value=True) as send:
+            response = client.post(
+                '/api/coaching-intakes', json=self._payload(),
+                headers={'X-Coaching-Intake-Secret': 'edge-secret',
+                         'X-Forwarded-For': '198.51.100.41'})
+
+        assert response.status_code == 201
+        assert response.get_json()['state'] == 'FIT_REVIEW'
+        case = app_module._read_coaching_intake(self._payload()['submission_id'])
+        assert case['schema'] == 'coaching_onboarding_case/v1'
+        assert case['tier'] == 'mid'
+        assert case['state'] == 'FIT_REVIEW'
+        assert case['intake_audit']['schema'] == 'coaching_intake_audit/v1'
+        assert 'target race list' in case['intake_audit']['missing']
+        assert 'home timezone' in case['intake_audit']['missing_followup']
+        assert 'home timezone' not in case['intake_audit']['unasked']
+        assert 'coaching agreement receipt' in case['intake_audit']['unasked']
+        assert 'TrainingPeaks coach connection' in case['intake_audit']['unverified']
+        assert case['intake_audit']['gates']['plan_release'] == 'blocked'
+        assert case['receipts']['athlete_intake_email']['sent'] is True
+        assert case['receipts']['coach_notification']['sent'] is True
+        assert [event['event_name'] for event in case['analytics_events']] == [
+            'coaching_intake_submitted']
+        assert send.call_count == 2
+
+    def test_intake_audit_separates_missing_unasked_and_unverified(self):
+        from app import _coaching_intake_audit, _COACHING_INTAKE_REQUIRED
+
+        questionnaire = {field: 'provided' for field in _COACHING_INTAKE_REQUIRED}
+        questionnaire.update({
+            'primary_goal': 'specific_race',
+            'race_list': 'Leadville Trail 100 MTB',
+            'success_definition': 'Finish strong',
+            'date_of_birth': '1974-01-01',
+            'home_timezone': 'America/Denver',
+            'home_location': 'Boulder, Colorado, USA',
+            'desired_start_date': '2026-09-01',
+            'preferred_contact_channel': 'trainingpeaks',
+            'trainingpeaks_connection_status': 'attached',
+            'injuries': 'Knee pain under evaluation',
+        })
+
+        audit = _coaching_intake_audit(questionnaire)
+
+        assert audit['missing'] == []
+        assert audit['missing_followup'] == []
+        assert 'date of birth (age becomes stale and birthday reminders need a date)' not in audit['unasked']
+        assert 'home timezone' not in audit['unasked']
+        assert audit['gates']['intake_completeness'] == 'ready_for_fit_review'
+        assert audit['gates']['health_clearance'] == 'review_disclosure'
+        assert audit['gates']['payment'] == 'not_started'
+
+    def test_xc_intake_audit_uses_ski_fields(self):
+        from app import _coaching_intake_audit, _COACHING_INTAKE_REQUIRED_XC
+
+        questionnaire = {
+            field: ['sat'] if field == 'preferred_days' else 'provided'
+            for field in _COACHING_INTAKE_REQUIRED_XC
+        }
+        questionnaire.update({
+            'primary_goal': 'specific_race',
+            'target_race': 'American Birkebeiner',
+            'goal_details': 'Finish strong',
+        })
+
+        audit = _coaching_intake_audit(questionnaire, 'xcskilabs')
+
+        assert audit['missing'] == []
+        assert 'years cycling' not in audit['missing']
+        assert audit['gates']['intake_completeness'] == 'needs_follow_up'
+        assert 'home timezone' in audit['missing_followup']
+
+    def test_minor_intake_requires_guardian_details_and_signed_receipt(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'COACHING_INTAKE_SECRET', 'edge-secret')
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        case_id = '71e25937-8cba-40f3-8d05-011ae6c5488d'
+        payload = self._payload(case_id)
+        payload['questionnaire'].update({
+            'age': '15',
+            'guardian_name': 'Parent Rider',
+            'guardian_email': 'parent@test.com',
+            'guardian_relationship': 'parent',
+        })
+        with patch.object(app_module, '_send_email', return_value=True):
+            created = client.post('/api/coaching-intakes', json=payload, headers={
+                'X-Coaching-Intake-Secret': 'edge-secret'})
+        assert created.status_code == 201
+        case = app_module._read_coaching_intake(case_id)
+        assert case['athlete']['is_minor'] is True
+        assert case['guardian']['email'] == 'parent@test.com'
+        assert 'parent/guardian full name' not in case['intake_audit']['missing']
+        assert 'signed parent/guardian consent receipt' in (
+            case['readiness']['payment_blockers'])
+
+        bad = client.post(
+            f'/api/coaching-intakes/{case_id}/verify',
+            json={'gate': 'guardian_consent', 'status': 'signed',
+                  'source_id': 'esign-guardian', 'receipt_id': 'esign-guardian',
+                  'document_version': 'counsel-approved-minor-v1',
+                  'signer_name': 'Parent Rider',
+                  'signer_email': 'wrong@test.com', 'signer_role': 'parent'},
+            headers={'X-Cron-Secret': 'coach-secret'})
+        assert bad.status_code == 400
+
+        good = client.post(
+            f'/api/coaching-intakes/{case_id}/verify',
+            json={'gate': 'guardian_consent', 'status': 'signed',
+                  'source_id': 'esign-guardian', 'receipt_id': 'esign-guardian',
+                  'document_version': 'counsel-approved-minor-v1',
+                  'signer_name': 'Parent Rider',
+                  'signer_email': 'parent@test.com', 'signer_role': 'parent'},
+            headers={'X-Cron-Secret': 'coach-secret'})
+        assert good.status_code == 200
+        assert good.get_json()['status'] == 'signed'
+
+    def test_under_13_is_rejected_by_this_intake_path(
+            self, client, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'COACHING_INTAKE_SECRET', 'edge-secret')
+        payload = self._payload('33b27efc-d701-4767-a831-8d22eaf723c2')
+        payload['questionnaire']['age'] = '12'
+        response = client.post('/api/coaching-intakes', json=payload, headers={
+            'X-Coaching-Intake-Secret': 'edge-secret'})
+        assert response.status_code == 400
+        assert 'age 13 and older' in response.get_json()['error']
+
+    def test_duplicate_submission_is_idempotent(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'COACHING_INTAKE_SECRET', 'edge-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        headers = {'X-Coaching-Intake-Secret': 'edge-secret',
+                   'X-Forwarded-For': '198.51.100.42'}
+
+        with patch.object(app_module, '_send_email', return_value=True) as send:
+            first = client.post('/api/coaching-intakes', json=self._payload(), headers=headers)
+            second = client.post('/api/coaching-intakes', json=self._payload(), headers=headers)
+
+        assert first.status_code == 201
+        assert second.status_code == 200
+        assert second.get_json()['duplicate'] is True
+        assert send.call_count == 2
+
+    @pytest.mark.parametrize(('brand', 'case_id'), [
+        ('roadielabs', '1589cebe-eb81-49d5-9f52-02596ce42d95'),
+        ('xcskilabs', 'e3996ac4-c7f1-43ef-a7b5-55d96d4ff4fb'),
+    ])
+    def test_shared_intake_accepts_each_coaching_brand(
+            self, client, temp_athletes_dir, monkeypatch, brand, case_id):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'COACHING_INTAKE_SECRET', 'edge-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        payload = self._payload(case_id)
+        payload['brand'] = brand
+
+        with patch.object(app_module, '_send_email', return_value=True):
+            response = client.post(
+                '/api/coaching-intakes', json=payload,
+                headers={'X-Coaching-Intake-Secret': 'edge-secret',
+                         'X-Forwarded-For': '198.51.100.48'})
+
+        assert response.status_code == 201
+        case = app_module._read_coaching_intake(case_id)
+        assert case['brand'] == brand
+        assert case['state'] == 'FIT_REVIEW'
+
+    def test_fit_approval_is_idempotent_and_does_not_create_checkout(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'COACHING_INTAKE_SECRET', 'edge-secret')
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        case_id = self._payload()['submission_id']
+
+        with patch.object(app_module, '_send_email', return_value=True), \
+             patch.object(app_module, 'stripe') as mock_stripe:
+            mock_stripe.checkout.Session.create.return_value = MagicMock(
+                id='cs_case', url='https://checkout.stripe.com/case')
+            client.post(
+                '/api/coaching-intakes', json=self._payload(),
+                headers={'X-Coaching-Intake-Secret': 'edge-secret',
+                         'X-Forwarded-For': '198.51.100.43'})
+
+            first = client.post(
+                f'/api/coaching-intakes/{case_id}/approve',
+                headers={'X-Cron-Secret': 'coach-secret',
+                         'X-Forwarded-For': '198.51.100.44'})
+            second = client.post(
+                f'/api/coaching-intakes/{case_id}/approve',
+                headers={'X-Cron-Secret': 'coach-secret',
+                         'X-Forwarded-For': '198.51.100.44'})
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.get_json()['state'] == 'IDENTITY_REVIEW'
+        assert second.get_json()['duplicate'] is True
+        assert mock_stripe.checkout.Session.create.call_count == 0
+        case = app_module._read_coaching_intake(case_id)
+        assert case['state'] == 'IDENTITY_REVIEW'
+        assert 'checkout' not in case
+        assert case['readiness']['payment_allowed'] is False
+
+    def test_payment_handoff_is_blocked_until_evidence_gates_pass(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'COACHING_INTAKE_SECRET', 'edge-secret')
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        case_id = self._payload()['submission_id']
+        with patch.object(app_module, '_send_email', return_value=True):
+            client.post(
+                '/api/coaching-intakes', json=self._payload(),
+                headers={'X-Coaching-Intake-Secret': 'edge-secret'})
+            client.post(
+                f'/api/coaching-intakes/{case_id}/approve',
+                headers={'X-Cron-Secret': 'coach-secret'})
+
+        response = client.post(
+            f'/api/coaching-intakes/{case_id}/payment-handoff',
+            headers={'X-Cron-Secret': 'coach-secret'})
+        assert response.status_code == 409
+        assert response.get_json()['blockers'] == [
+            'identity verification', 'health-clearance disposition',
+            'signed coaching agreement receipt',
+            'signed data-use consent receipt']
+
+    def test_verified_payment_handoff_creates_one_checkout_and_one_email(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'COACHING_INTAKE_SECRET', 'edge-secret')
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        monkeypatch.setattr(
+            app_module, '_verify_coaching_checkout_contract',
+            lambda brand, tier, setup_fee_waived=False: (True, ''))
+        case_id = self._payload()['submission_id']
+        headers = {'X-Cron-Secret': 'coach-secret'}
+        with patch.object(app_module, '_send_email', return_value=True):
+            client.post('/api/coaching-intakes', json=self._payload(), headers={
+                'X-Coaching-Intake-Secret': 'edge-secret'})
+            client.post(f'/api/coaching-intakes/{case_id}/approve', headers=headers)
+
+        receipts = [
+            {'gate': 'identity', 'status': 'verified', 'source_id': 'email-match-1'},
+            {'gate': 'health_clearance', 'status': 'not_required',
+             'source_id': 'coach-policy-1', 'note': 'No disclosure trigger under policy.'},
+            {'gate': 'coaching_agreement', 'status': 'signed',
+             'source_id': 'esign-1', 'receipt_id': 'esign-1',
+             'document_version': 'counsel-approved-v1'},
+            {'gate': 'data_consent', 'status': 'signed',
+             'source_id': 'esign-2', 'receipt_id': 'esign-2',
+             'document_version': 'counsel-approved-v1'},
+        ]
+        for receipt in receipts:
+            response = client.post(
+                f'/api/coaching-intakes/{case_id}/verify',
+                json=receipt, headers=headers)
+            assert response.status_code == 200
+
+        with patch.object(app_module, 'stripe') as mock_stripe, \
+             patch.object(app_module, '_send_coaching_onboarding_handoff',
+                          return_value=True) as handoff:
+            mock_stripe.checkout.Session.create.return_value = MagicMock(
+                id='cs_case', url='https://checkout.stripe.com/case')
+            first = client.post(
+                f'/api/coaching-intakes/{case_id}/payment-handoff', headers=headers)
+            second = client.post(
+                f'/api/coaching-intakes/{case_id}/payment-handoff', headers=headers)
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert mock_stripe.checkout.Session.create.call_count == 1
+        assert handoff.call_count == 1
+        case = app_module._read_coaching_intake(case_id)
+        assert case['state'] == 'PAYMENT_PENDING'
+        assert case['checkout']['session_id'] == 'cs_case'
+        assert case['checkout']['handoff_sent'] is True
+        assert 'coaching_checkout_created' in {
+            event['event_name'] for event in case['analytics_events']}
+        assert 'coaching_checkout_handoff_sent' in {
+            event['event_name'] for event in case['analytics_events']}
+        assert len(case['verification_history']) == 4
+
+    def test_funnel_report_is_aggregate_and_excludes_athlete_pii(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'COACHING_INTAKE_SECRET', 'edge-secret')
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        with patch.object(app_module, '_send_email', return_value=True):
+            client.post('/api/coaching-intakes', json=self._payload(), headers={
+                'X-Coaching-Intake-Secret': 'edge-secret'})
+
+        response = client.get('/api/coaching-funnel-report?days=30', headers={
+            'X-Cron-Secret': 'coach-secret'})
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        data = response.get_json()
+        assert data['all_brands']['stage_counts']['applications'] == 1
+        assert data['by_brand_and_tier'][
+            'gravelgod:mid']['stage_counts']['applications'] == 1
+        assert data['privacy'] == 'aggregate_only_no_athlete_pii_or_case_ids'
+        assert 'case@test.com' not in body
+        assert 'Case Rider' not in body
+        assert self._payload()['submission_id'] not in body
+
+    def test_coaching_canary_is_side_effect_free_and_persists_receipt(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        brands = copy.deepcopy(app_module.BRANDS)
+        for cfg in brands.values():
+            cfg['ga4_measurement_id'] = 'G-CANARY'
+            cfg['ga4_mp_api_secret'] = 'configured-not-returned'
+        monkeypatch.setattr(app_module, 'BRANDS', brands)
+        monkeypatch.setattr(app_module, 'COACHING_INTAKE_SECRET', 'edge-secret')
+        monkeypatch.setattr(app_module, 'STRIPE_SECRET_KEY', 'sk_configured')
+        monkeypatch.setattr(app_module, 'STRIPE_WEBHOOK_SECRET', 'whsec_configured')
+        monkeypatch.setattr(app_module, 'RESEND_API_KEY', 're_configured')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        monkeypatch.setattr(
+            app_module, 'COACHING_BOOKING_URL',
+            'https://calendar.example.com/coaching')
+        monkeypatch.setattr(
+            app_module, '_verify_coaching_checkout_contract',
+            lambda brand, tier, setup_fee_waived=False: (True, ''))
+        self._configure_signwell(monkeypatch, app_module, test_mode=True)
+
+        lifecycle_events = [
+            'checkout.session.completed', 'checkout.session.expired',
+            'invoice.paid', 'invoice.payment_failed',
+            'invoice.payment_action_required',
+            'customer.subscription.updated', 'customer.subscription.deleted',
+            'customer.subscription.paused', 'customer.subscription.resumed',
+        ]
+        with patch.object(app_module.stripe.WebhookEndpoint, 'list', return_value={
+            'data': [{
+                'status': 'enabled',
+                'url': 'https://pipeline.example/webhook/stripe',
+                'enabled_events': lifecycle_events,
+            }]
+        }), patch.object(
+            app_module.stripe.billing_portal.Configuration, 'list',
+            return_value={'data': [{
+                'active': True,
+                'features': {
+                    'subscription_cancel': {'enabled': True},
+                    'payment_method_update': {'enabled': True},
+                },
+            }]}
+        ), patch.object(
+            app_module.SignWellClient, 'get_account',
+            return_value={'id': 'synthetic-account'}
+        ):
+            response = client.post('/api/coaching-canary', headers={
+                'X-Coaching-Intake-Secret': 'edge-secret'})
+
+        assert response.status_code == 200
+        assert response.get_json()['status'] == 'ok'
+        assert response.get_json()['side_effects'].startswith('no case')
+        assert not (temp_athletes_dir / 'coaching_intakes').exists()
+        receipts = list((temp_athletes_dir / '.canary' / 'coaching').glob('*.json'))
+        assert len(receipts) == 1
+        receipt_text = receipts[0].read_text()
+        assert 'configured-not-returned' not in receipt_text
+        assert 'sk_configured' not in receipt_text
+
+    @staticmethod
+    def _paid_case(case_id):
+        return {
+            'schema': 'coaching_onboarding_case/v1',
+            'case_id': case_id,
+            'brand': 'gravelgod',
+            'tier': 'mid',
+            'state': 'PLATFORM_SETUP',
+            'athlete': {'name': 'Billing Rider', 'email': 'billing@test.com',
+                        'is_minor': False},
+            'source': {'submitted_at': datetime.now(timezone.utc).isoformat()},
+            'questionnaire': {'age': '40'},
+            'verifications': {
+                'coach_fit': {'status': 'approved'},
+                'identity': {'status': 'verified'},
+                'health_clearance': {'status': 'not_required'},
+                'coaching_agreement': {'status': 'signed'},
+                'data_consent': {'status': 'signed'},
+            },
+            'receipts': {'stripe_payment': {
+                'checkout_session_id': 'cs_paid',
+                'subscription_id': 'sub_case',
+                'customer_id': 'cus_case',
+                'confirmed_at': datetime.now(timezone.utc).isoformat(),
+            }},
+            'billing': {
+                'schema': 'coaching_subscription_billing/v1',
+                'subscription_id': 'sub_case',
+                'customer_id': 'cus_case',
+                'standing': 'healthy',
+                'processed_event_ids': [],
+            },
+            'analytics_events': [],
+        }
+
+    def test_recurring_billing_failure_blocks_and_paid_restores_case(
+            self, client, monkeypatch):
+        import app as app_module
+        case_id = '79bde7d0-94c1-452b-acbf-931fa2e75e12'
+        app_module._write_coaching_intake(self._paid_case(case_id))
+        failed = {
+            'id': 'evt_invoice_failed',
+            'type': 'invoice.payment_failed',
+            'data': {'object': {
+                'id': 'in_failed', 'subscription': 'sub_case',
+                'customer': 'cus_case',
+            }},
+        }
+        response = client.post('/webhook/stripe', json=failed)
+        assert response.status_code == 200
+        assert response.get_json()['billing_standing'] == 'past_due'
+        stored = app_module._read_coaching_intake(case_id)
+        assert stored['state'] == 'BILLING_ACTION_REQUIRED'
+        assert stored['readiness']['plan_release_allowed'] is False
+
+        duplicate = client.post('/webhook/stripe', json=failed)
+        assert duplicate.get_json()['status'] == 'duplicate'
+
+        paid = {
+            'id': 'evt_invoice_paid',
+            'type': 'invoice.paid',
+            'data': {'object': {
+                'id': 'in_paid', 'subscription': 'sub_case',
+                'customer': 'cus_case',
+            }},
+        }
+        restored = client.post('/webhook/stripe', json=paid)
+        assert restored.status_code == 200
+        assert restored.get_json()['billing_standing'] == 'healthy'
+        assert app_module._read_coaching_intake(case_id)['state'] == 'PLATFORM_SETUP'
+
+    def test_subscription_deleted_ends_case(self, client):
+        import app as app_module
+        case_id = '85ad0a8f-20c7-44f6-9875-2f2a7399c70c'
+        app_module._write_coaching_intake(self._paid_case(case_id))
+        event = {
+            'id': 'evt_subscription_deleted',
+            'created': 200,
+            'type': 'customer.subscription.deleted',
+            'data': {'object': {
+                'id': 'sub_case', 'customer': 'cus_case',
+                'status': 'canceled',
+                'metadata': {'intake_id': case_id},
+            }},
+        }
+        response = client.post('/webhook/stripe', json=event)
+        assert response.status_code == 200
+        stored = app_module._read_coaching_intake(case_id)
+        assert stored['billing']['standing'] == 'ended'
+        assert stored['state'] == 'SUBSCRIPTION_ENDED'
+
+        stale_paid = {
+            'id': 'evt_stale_paid',
+            'created': 100,
+            'type': 'invoice.paid',
+            'data': {'object': {
+                'id': 'in_stale', 'subscription': 'sub_case',
+                'customer': 'cus_case',
+            }},
+        }
+        ignored = client.post('/webhook/stripe', json=stale_paid)
+        assert ignored.get_json()['reason'] == 'Stale out-of-order billing event'
+        assert app_module._read_coaching_intake(case_id)['billing']['standing'] == 'ended'
+
+    def test_billing_portal_is_case_bound_and_not_emailed(
+            self, client, monkeypatch):
+        import app as app_module
+        case_id = '5e4db7f3-1df4-44bd-814e-eb880d39565e'
+        app_module._write_coaching_intake(self._paid_case(case_id))
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        portal = MagicMock(
+            id='bps_case', url='https://billing.stripe.com/p/session/case')
+        with patch.object(
+                app_module.stripe.billing_portal.Session, 'create',
+                return_value=portal) as create:
+            response = client.post(
+                f'/api/coaching-intakes/{case_id}/billing-portal',
+                json={'mode': 'cancel'},
+                headers={'X-Cron-Secret': 'coach-secret'})
+        assert response.status_code == 200
+        assert response.get_json()['delivery'].startswith('operator_must')
+        kwargs = create.call_args.kwargs
+        assert kwargs['customer'] == 'cus_case'
+        assert kwargs['flow_data']['subscription_cancel']['subscription'] == 'sub_case'
+        stored = app_module._read_coaching_intake(case_id)
+        assert stored['billing_portal_receipts'][0]['portal_session_id'] == 'bps_case'
+        assert 'portal_url' not in stored['billing_portal_receipts'][0]
+
+    def test_reminder_cron_suggests_without_sending(self, client, monkeypatch):
+        import app as app_module
+        case_id = '6cf571de-2e3a-4dc2-aa30-ec7a86ac0b2c'
+        case = self._paid_case(case_id)
+        case['receipts']['stripe_payment']['confirmed_at'] = (
+            datetime.now(timezone.utc) - timedelta(days=29)).isoformat()
+        app_module._write_coaching_intake(case)
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        with patch.object(app_module, '_send_email') as send:
+            first = client.post(
+                '/api/cron/coaching-onboarding-reminders',
+                headers={'X-Cron-Secret': 'coach-secret'})
+            second = client.post(
+                '/api/cron/coaching-onboarding-reminders',
+                headers={'X-Cron-Secret': 'coach-secret'})
+        assert first.status_code == 200
+        assert first.get_json()['suggested'] == 5
+        assert second.get_json()['suggested'] == 0
+        assert send.call_count == 0
+        reminders = app_module._read_coaching_intake(case_id)[
+            'onboarding_reminders']
+        assert {item['status'] for item in reminders} == {'suggested'}
+        assert all(item['automatic_send'] is False for item in reminders)
+
+    def test_esign_readiness_fails_closed_then_allows_manual_receipts(
+            self, client, monkeypatch):
+        import app as app_module
+        case_id = '46cbb155-2a9b-46c8-91e3-063b64e3ce6d'
+        app_module._write_coaching_intake(self._paid_case(case_id))
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        route = f'/api/coaching-intakes/{case_id}/esign-readiness'
+        blocked = client.get(route, headers={'X-Cron-Secret': 'coach-secret'})
+        assert blocked.status_code == 409
+        assert 'COACHING_LEGAL_APPROVAL_RECEIPT' in (
+            blocked.get_json()['missing_configuration'])
+
+        values = {
+            'COACHING_ESIGN_PROVIDER': 'manual_receipt',
+            'COACHING_LEGAL_APPROVAL_RECEIPT': 'counsel-approval-2026-01',
+            'COACHING_AGREEMENT_TEMPLATE_ID': 'agreement-template',
+            'COACHING_AGREEMENT_TEMPLATE_VERSION': 'v1',
+            'COACHING_DATA_CONSENT_TEMPLATE_ID': 'consent-template',
+            'COACHING_DATA_CONSENT_TEMPLATE_VERSION': 'v1',
+        }
+        for key, value in values.items():
+            monkeypatch.setenv(key, value)
+        ready = client.get(route, headers={'X-Cron-Secret': 'coach-secret'})
+        assert ready.status_code == 200
+        assert ready.get_json()['status'] == 'ready'
+
+    @staticmethod
+    def _configure_signwell(monkeypatch, app_module, *, test_mode=False):
+        values = {
+            'COACHING_ESIGN_PROVIDER': 'signwell',
+            'COACHING_LEGAL_APPROVAL_RECEIPT': 'synthetic-counsel-receipt-v1',
+            'COACHING_AGREEMENT_TEMPLATE_ID': (
+                '11111111-1111-4111-8111-111111111111'),
+            'COACHING_AGREEMENT_TEMPLATE_VERSION': 'synthetic-v1',
+            'COACHING_DATA_CONSENT_TEMPLATE_ID': (
+                '22222222-2222-4222-8222-222222222222'),
+            'COACHING_DATA_CONSENT_TEMPLATE_VERSION': 'synthetic-v1',
+        }
+        for key, value in values.items():
+            monkeypatch.setenv(key, value)
+        monkeypatch.setattr(app_module, 'COACHING_ESIGN_PROVIDER', 'signwell')
+        monkeypatch.setattr(app_module, 'SIGNWELL_API_KEY', 'synthetic-api-key')
+        monkeypatch.setattr(app_module, 'SIGNWELL_WEBHOOK_ID', 'synthetic-webhook-id')
+        monkeypatch.setattr(app_module, 'SIGNWELL_TEST_MODE', test_mode)
+        monkeypatch.setattr(app_module, 'SIGNWELL_REMINDERS_ENABLED', False)
+
+    @staticmethod
+    def _signwell_event(document_id, case_id, event_type='document_completed'):
+        event_time = 1787654321
+        digest = hmac.new(
+            b'synthetic-webhook-id',
+            f'{event_type}@{event_time}'.encode(), hashlib.sha256).hexdigest()
+        return {
+            'event': {
+                'type': event_type, 'time': event_time, 'hash': digest,
+            },
+            'data': {'object': {
+                'id': document_id,
+                'metadata': {'case_id': case_id},
+            }},
+        }
+
+    def test_signwell_packet_is_nonembedded_authenticated_and_idempotent(
+            self, client, monkeypatch):
+        import app as app_module
+        case_id = '51a1f8bc-4405-469f-9a14-f51a9be9a5b5'
+        case = self._paid_case(case_id)
+        case['verifications'].pop('coaching_agreement')
+        case['verifications'].pop('data_consent')
+        app_module._write_coaching_intake(case)
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        self._configure_signwell(monkeypatch, app_module)
+        document_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+        provider = MagicMock()
+        provider.create_document_from_templates.return_value = {
+            'id': document_id, 'status': 'sent', 'test_mode': False,
+        }
+        with patch.object(app_module, 'SignWellClient', return_value=provider):
+            first = client.post(
+                f'/api/coaching-intakes/{case_id}/esign-packet',
+                headers={'X-Cron-Secret': 'coach-secret'})
+            second = client.post(
+                f'/api/coaching-intakes/{case_id}/esign-packet',
+                headers={'X-Cron-Secret': 'coach-secret'})
+
+        assert first.status_code == 201
+        assert second.status_code == 200
+        assert second.get_json()['duplicate'] is True
+        assert provider.create_document_from_templates.call_count == 1
+        payload = provider.create_document_from_templates.call_args.args[0]
+        assert payload['embedded_signing'] is False
+        assert payload['allow_reassign'] is False
+        assert payload['reminders'] is False
+        assert payload['recipients'][0]['passcode_delivery'] == {
+            'enabled': True, 'methods': ['email'], 'expire_after_access': True,
+        }
+        assert payload['metadata']['case_id'] == case_id
+        assert 'questionnaire' not in payload['metadata']
+
+    def test_signwell_live_completion_requires_provider_readback_and_pdf(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        case_id = '0cd77449-bca7-440e-aaeb-a6d78124ebc3'
+        document_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+        case = self._paid_case(case_id)
+        case['verifications'].pop('coaching_agreement')
+        case['verifications'].pop('data_consent')
+        case['esign_packet'] = {
+            'provider': 'signwell', 'document_id': document_id,
+            'status': 'sent', 'test_mode': False, 'processed_event_ids': [],
+        }
+        app_module._write_coaching_intake(case)
+        self._configure_signwell(monkeypatch, app_module)
+        readback = {
+            'id': document_id, 'status': 'completed', 'test_mode': False,
+            'updated_at': '2026-08-25T12:00:00Z',
+            'metadata': {'case_id': case_id},
+            'template_ids': [
+                '11111111-1111-4111-8111-111111111111',
+                '22222222-2222-4222-8222-222222222222',
+            ],
+            'recipients': [{
+                'id': 'recipient-athlete', 'email': 'billing@test.com',
+                'status': 'completed',
+            }],
+        }
+        provider = MagicMock()
+        provider.get_document.return_value = readback
+        provider.get_completed_pdf.return_value = b'%PDF-1.7\nsynthetic signed packet'
+        payload = self._signwell_event(document_id, case_id)
+        with patch.object(app_module, 'SignWellClient', return_value=provider):
+            response = client.post('/webhook/signwell', json=payload)
+            duplicate = client.post('/webhook/signwell', json=payload)
+
+        assert response.status_code == 200
+        assert response.get_json()['legal_effect'] == 'receipt_recorded'
+        assert duplicate.get_json()['status'] == 'duplicate'
+        assert provider.get_document.call_count == 1
+        stored = app_module._read_coaching_intake(case_id)
+        assert stored['verifications']['coaching_agreement']['status'] == 'signed'
+        assert stored['verifications']['data_consent']['provider'] == 'signwell'
+        pdf_path = temp_athletes_dir / stored['esign_packet']['signed_document_path']
+        assert pdf_path.read_bytes().startswith(b'%PDF-')
+        assert pdf_path.stat().st_mode & 0o777 == 0o600
+        assert stored['esign_packet']['signed_document_sha256'] == hashlib.sha256(
+            pdf_path.read_bytes()).hexdigest()
+
+    def test_signwell_test_completion_has_no_legal_effect(
+            self, client, monkeypatch):
+        import app as app_module
+        case_id = '2f8a2809-dd57-416d-925b-c596448a9db7'
+        document_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+        case = self._paid_case(case_id)
+        case['verifications'].pop('coaching_agreement')
+        case['verifications'].pop('data_consent')
+        case['esign_packet'] = {
+            'provider': 'signwell', 'document_id': document_id,
+            'status': 'sent', 'test_mode': True, 'processed_event_ids': [],
+        }
+        app_module._write_coaching_intake(case)
+        self._configure_signwell(monkeypatch, app_module, test_mode=True)
+        provider = MagicMock()
+        provider.get_document.return_value = {
+            'id': document_id, 'status': 'completed', 'test_mode': True,
+            'metadata': {'case_id': case_id},
+            'template_ids': [
+                '11111111-1111-4111-8111-111111111111',
+                '22222222-2222-4222-8222-222222222222',
+            ],
+            'recipients': [{
+                'id': 'recipient-athlete', 'email': 'billing@test.com',
+                'status': 'completed',
+            }],
+        }
+        provider.get_completed_pdf.return_value = b'%PDF-1.7\ntest packet'
+        with patch.object(app_module, 'SignWellClient', return_value=provider):
+            response = client.post(
+                '/webhook/signwell',
+                json=self._signwell_event(document_id, case_id))
+
+        assert response.status_code == 200
+        assert response.get_json()['legal_effect'] == 'none_test_mode'
+        stored = app_module._read_coaching_intake(case_id)
+        assert stored['esign_packet']['status'] == 'test_completed'
+        assert 'coaching_agreement' not in stored['verifications']
+        assert 'data_consent' not in stored['verifications']
+
+    def test_signwell_webhook_rejects_bad_hash_and_readback_mismatch(
+            self, client, monkeypatch):
+        import app as app_module
+        case_id = '3d25171c-556e-4cbd-ae59-523ce26793c7'
+        document_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+        case = self._paid_case(case_id)
+        case['verifications'].pop('coaching_agreement')
+        case['verifications'].pop('data_consent')
+        case['esign_packet'] = {
+            'provider': 'signwell', 'document_id': document_id,
+            'status': 'sent', 'test_mode': False, 'processed_event_ids': [],
+        }
+        app_module._write_coaching_intake(case)
+        self._configure_signwell(monkeypatch, app_module)
+        payload = self._signwell_event(document_id, case_id)
+        payload['event']['hash'] = '0' * 64
+        assert client.post('/webhook/signwell', json=payload).status_code == 401
+
+        payload = self._signwell_event(document_id, case_id)
+        provider = MagicMock()
+        provider.get_document.return_value = {
+            'id': document_id, 'status': 'completed', 'test_mode': False,
+            'metadata': {'case_id': '00000000-0000-4000-8000-000000000000'},
+            'template_ids': [], 'recipients': [],
+        }
+        with patch.object(app_module, 'SignWellClient', return_value=provider):
+            mismatch = client.post('/webhook/signwell', json=payload)
+        assert mismatch.status_code == 503
+        stored = app_module._read_coaching_intake(case_id)
+        assert 'coaching_agreement' not in stored['verifications']
+        assert stored['esign_packet']['processed_event_ids'] == []
+
+    def test_recovered_coaching_checkout_is_bound_to_approved_session(
+            self, client, temp_athletes_dir):
+        import app as app_module
+        case_id = '2dd98ace-8682-4d8c-a5ff-e67e7b63a1ce'
+        app_module._write_coaching_intake({
+            'schema': 'coaching_onboarding_case/v1',
+            'case_id': case_id,
+            'brand': 'gravelgod',
+            'tier': 'mid',
+            'state': 'PAYMENT_PENDING',
+            'athlete': {'name': 'Recovered Rider', 'email': 'rider@test.com'},
+            'source': {'submitted_at': datetime.now(timezone.utc).isoformat()},
+            'questionnaire': {'age': '40'},
+            'verifications': {},
+            'receipts': {},
+            'checkout': {'session_id': 'cs_approved_original'},
+        })
+        event = {
+            'type': 'checkout.session.completed',
+            'data': {'object': {
+                'id': 'cs_recovered_payment',
+                'recovered_from': 'cs_approved_original',
+                'amount_total': 39800,
+                'subscription': 'sub_recovered',
+                'customer_details': {'email': 'rider@test.com'},
+                'metadata': {
+                    'product_type': 'coaching', 'tier': 'mid',
+                    'brand': 'gravelgod', 'athlete_name': 'Recovered Rider',
+                    'intake_id': case_id,
+                },
+            }}
+        }
+        with patch.object(app_module, '_send_ga4_purchase'), \
+             patch.object(app_module, '_log_product_event'), \
+             patch.object(app_module, '_notify_new_order'), \
+             patch.object(app_module, '_send_coaching_payment_confirmation'):
+            response = client.post('/webhook/stripe', json=event)
+
+        assert response.status_code == 200
+        stored = app_module._read_coaching_intake(case_id)
+        receipt = stored['receipts']['stripe_payment']
+        assert receipt['checkout_session_id'] == 'cs_recovered_payment'
+        assert receipt['recovered_from'] == 'cs_approved_original'
+        names = {item['event_name'] for item in stored['analytics_events']}
+        assert 'coaching_checkout_recovered' in names
+        assert 'coaching_payment_confirmed' in names
+
+    def test_live_checkout_contract_rejects_percent_off_waiver(self, monkeypatch):
+        import app as app_module
+
+        def stripe_object(data):
+            obj = MagicMock()
+            obj._to_dict_recursive.return_value = data
+            return obj
+
+        recurring = stripe_object({
+            'active': True, 'unit_amount': 29900, 'currency': 'usd',
+            'recurring': {'interval': 'week', 'interval_count': 4},
+        })
+        setup = stripe_object({
+            'active': True, 'unit_amount': 9900, 'currency': 'usd',
+            'type': 'one_time',
+        })
+        coupon = stripe_object({
+            'valid': True, 'amount_off': None, 'currency': None,
+            'duration': 'once', 'percent_off': 100.0,
+        })
+        with patch.object(app_module, 'stripe') as mock_stripe:
+            mock_stripe.Price.retrieve.side_effect = [recurring, setup]
+            mock_stripe.Coupon.retrieve.return_value = coupon
+            ok, reason = app_module._verify_coaching_checkout_contract(
+                'gravelgod', 'mid', setup_fee_waived=True)
+
+        assert ok is False
+        assert 'waiver coupon is fixed $99 once' in reason
+
+    def test_private_setup_fee_waiver_is_applied_automatically(self):
+        import app as app_module
+        with patch.object(app_module, 'stripe') as mock_stripe:
+            mock_stripe.checkout.Session.create.return_value = MagicMock(
+                id='cs_waived', url='https://checkout.stripe.com/waived')
+            app_module._create_coaching_checkout_session(
+                'Waived Rider', 'waived@test.com', 'mid', 'gravelgod',
+                intake_id='e287b97e-bdb5-4e67-b162-8025a80b6f1c',
+                setup_fee_waived=True)
+        kwargs = mock_stripe.checkout.Session.create.call_args.kwargs
+        assert kwargs['discounts'] == [{
+            'coupon': app_module.COACHING_SETUP_FEE_WAIVER_COUPON_ID}]
+        assert 'allow_promotion_codes' not in kwargs
+        assert kwargs['metadata']['setup_fee_waived'] == 'true'
+
+    def test_onboarding_materials_endpoint_generates_privacy_minimized_guide(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(
+            app_module, 'COACHING_BOOKING_URL',
+            'https://calendar.example.com/matti/coaching')
+        monkeypatch.setattr(app_module, '_send_email', lambda *args, **kwargs: True)
+        athlete_id = 'case-rider'
+        athlete_dir = temp_athletes_dir / athlete_id
+        athlete_dir.mkdir()
+        (athlete_dir / 'profile.yaml').write_text('name: Case Rider\n')
+        case_id = 'd540f0de-087d-435a-83a5-c15d237ab285'
+        case = {
+            'schema': 'coaching_onboarding_case/v1',
+            'case_id': case_id,
+            'brand': 'gravelgod',
+            'tier': 'mid',
+            'athlete': {'name': 'Case Rider', 'email': 'case@test.com',
+                        'is_minor': False},
+            'questionnaire': {
+                'preferred_contact_channel': 'TrainingPeaks',
+                'injuries': 'private and excluded',
+            },
+            'verifications': {
+                'coach_fit': {'status': 'approved'},
+                'identity': {'status': 'verified'},
+                'health_clearance': {'status': 'not_required'},
+                'coaching_agreement': {'status': 'signed'},
+                'data_consent': {'status': 'signed'},
+                'athlete_context': {'status': 'sealed',
+                                    'athlete_id': athlete_id},
+            },
+            'receipts': {'stripe_payment': {'checkout_session_id': 'cs_case'}},
+            'state': 'CONTEXT_SEAL',
+        }
+        app_module._write_coaching_intake(case)
+
+        response = client.post(
+            f'/api/coaching-intakes/{case_id}/onboarding-materials',
+            headers={'X-Cron-Secret': 'coach-secret'})
+        assert response.status_code == 200
+        assert response.get_json()['delivered_at']
+        assert response.get_json()['artifacts'] == [
+            'coaching_onboarding.yaml', 'coaching_welcome.html']
+        welcome = (athlete_dir / 'coaching_welcome.html').read_text()
+        assert 'How Coaching Works' in welcome
+        assert 'private and excluded' not in welcome
+        assert 'NOSETUP' not in welcome
+
+    def test_legal_verification_requires_versioned_receipt(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'COACHING_INTAKE_SECRET', 'edge-secret')
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        case_id = self._payload()['submission_id']
+        with patch.object(app_module, '_send_email', return_value=True):
+            client.post('/api/coaching-intakes', json=self._payload(), headers={
+                'X-Coaching-Intake-Secret': 'edge-secret'})
+
+        response = client.post(
+            f'/api/coaching-intakes/{case_id}/verify',
+            json={'gate': 'coaching_agreement', 'status': 'signed',
+                  'source_id': 'claim-without-receipt'},
+            headers={'X-Cron-Secret': 'coach-secret'})
+        assert response.status_code == 400
+        assert 'document_version and receipt_id' in response.get_json()['error']
+
+        health = client.post(
+            f'/api/coaching-intakes/{case_id}/verify',
+            json={'gate': 'health_clearance', 'status': 'cleared',
+                  'source_id': 'coach-review-without-clinician-receipt'},
+            headers={'X-Cron-Secret': 'coach-secret'})
+        assert health.status_code == 400
+        assert 'clinician receipt_id' in health.get_json()['error']
+
+    def test_intake_requires_trusted_worker(self, client, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'COACHING_INTAKE_SECRET', 'edge-secret')
+        response = client.post('/api/coaching-intakes', json=self._payload())
+        assert response.status_code == 401
+
+    def test_private_case_read_requires_operator_secret(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'COACHING_INTAKE_SECRET', 'edge-secret')
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        case_id = self._payload()['submission_id']
+        with patch.object(app_module, '_send_email', return_value=True):
+            client.post(
+                '/api/coaching-intakes', json=self._payload(),
+                headers={'X-Coaching-Intake-Secret': 'edge-secret',
+                         'X-Forwarded-For': '198.51.100.45'})
+
+        denied = client.get(f'/api/coaching-intakes/{case_id}')
+        allowed = client.get(
+            f'/api/coaching-intakes/{case_id}',
+            headers={'X-Cron-Secret': 'coach-secret'})
+        assert denied.status_code == 401
+        assert allowed.status_code == 200
+        assert allowed.get_json()['questionnaire']['age'] == '52'
 
 
 class TestConsultingCheckout:
@@ -1720,15 +2804,68 @@ class TestCheckoutRecovery:
             }
         }
 
-        response = client.post(
-            '/webhook/stripe',
-            json=expired_event,
-            content_type='application/json'
-        )
+        with patch('app.RESEND_API_KEY', 're_test'), \
+             patch('app._send_email', return_value=True):
+            response = client.post(
+                '/webhook/stripe',
+                json=expired_event,
+                content_type='application/json'
+            )
 
         assert response.status_code == 200
         data = response.get_json()
         assert data['status'] == 'recovery_sent'
+
+    def test_coaching_recovery_is_case_bound_and_only_sent_once(
+            self, client, temp_athletes_dir):
+        import app as app_module
+        case_id = 'f7bafdf0-e451-4db1-a678-280639e62685'
+        case = {
+            'schema': 'coaching_onboarding_case/v1',
+            'case_id': case_id,
+            'brand': 'gravelgod',
+            'tier': 'mid',
+            'state': 'PAYMENT_PENDING',
+            'athlete': {'name': 'Recovery Rider', 'email': 'recover@test.com'},
+            'source': {'submitted_at': datetime.now(timezone.utc).isoformat()},
+            'questionnaire': {'age': '40'},
+            'verifications': {},
+            'receipts': {},
+            'checkout': {'session_id': 'cs_case_expired'},
+        }
+        app_module._write_coaching_intake(case)
+        event = {
+            'type': 'checkout.session.expired',
+            'data': {'object': {
+                'id': 'cs_case_expired',
+                'customer_details': {'email': 'recover@test.com'},
+                'metadata': {
+                    'product_type': 'coaching', 'tier': 'mid',
+                    'brand': 'gravelgod', 'athlete_name': 'Recovery Rider',
+                    'intake_id': case_id,
+                },
+                'consent': {'promotions': 'opt_in'},
+                'after_expiration': {'recovery': {
+                    'url': 'https://checkout.stripe.com/recover/case'}},
+            }}
+        }
+
+        with patch('app.RESEND_API_KEY', 're_test'), \
+             patch('app._send_email', return_value=True) as send:
+            first = client.post('/webhook/stripe', json=event)
+            # Simulate a distinct Stripe retry/session expiry for the same case;
+            # the case-level guard still permits only one recovery email.
+            event['data']['object']['id'] = 'cs_case_expired_again'
+            second = client.post('/webhook/stripe', json=event)
+
+        assert first.get_json()['status'] == 'recovery_sent'
+        assert second.get_json()['reason'] == 'Case recovery already sent'
+        assert send.call_count == 1
+        stored = app_module._read_coaching_intake(case_id)
+        names = [item['event_name'] for item in stored['analytics_events']]
+        assert names.count('coaching_checkout_recovery_sent') == 1
+        assert stored['checkout']['recovery_disposition'] == (
+            'case_recovery_already_sent')
 
     def test_expired_checkout_skips_without_consent(self, client, temp_athletes_dir):
         """Expired checkout without consent does not send recovery."""
@@ -2159,13 +3296,15 @@ class TestExpiredCheckoutIdempotency:
             }
         }
 
-        r1 = client.post('/webhook/stripe', json=expired_event,
-                         content_type='application/json')
-        assert r1.status_code == 200
-        assert r1.get_json()['status'] == 'recovery_sent'
+        with patch('app.RESEND_API_KEY', 're_test'), \
+             patch('app._send_email', return_value=True):
+            r1 = client.post('/webhook/stripe', json=expired_event,
+                             content_type='application/json')
+            assert r1.status_code == 200
+            assert r1.get_json()['status'] == 'recovery_sent'
 
-        r2 = client.post('/webhook/stripe', json=expired_event,
-                         content_type='application/json')
+            r2 = client.post('/webhook/stripe', json=expired_event,
+                             content_type='application/json')
         assert r2.status_code == 200
         assert r2.get_json()['status'] == 'duplicate'
 
@@ -2646,7 +3785,15 @@ class TestMultiBrand:
         assert BRANDS['xcskilabs']['discipline'] == 'xc_ski'
         assert BRANDS['xcskilabs']['allowed_disciplines'] == ['xc_ski']
         assert BRANDS['xcskilabs']['subject_prefix'] == '[XC]'
-        assert BRANDS['xcskilabs']['consulting_only'] is True
+        assert BRANDS['xcskilabs']['training_plan_generation_enabled'] is False
+        for brand in ('gravelgod', 'roadielabs', 'xcskilabs'):
+            coaching = BRANDS[brand]['coaching']
+            assert coaching['enabled'] is True
+            assert set(coaching['tiers']) == {'min', 'mid', 'max'}
+            assert coaching['trainingpeaks_premium_included'] is True
+            assert coaching['billing_period_days'] == 28
+            assert coaching['setup_fee_waiver_mode'] == 'case_by_case_private'
+            assert coaching['setup_fee_cents'] == 9900
 
     def test_railway_image_copies_registry_parent_directory(self):
         dockerfile = (Path(__file__).parents[1] / 'Dockerfile').read_text()
@@ -2709,9 +3856,8 @@ class TestMultiBrand:
 
 
 class TestXcSkiLabsBrand:
-    """XC Ski Labs sells the $150 consult (+ $100 add-on) through the shared
-    GG Stripe account / Railway webhook, but does not support training-plan
-    generation (consulting_only: true in brands.yaml)."""
+    """XC coaching/consulting share the commercial rails while automated
+    ski-plan generation remains separately disabled."""
 
     def test_consulting_checkout_uses_xcskilabs_success_url_and_metadata(
             self, client, temp_athletes_dir):
@@ -2731,7 +3877,7 @@ class TestXcSkiLabsBrand:
         assert call_kwargs['cancel_url'] == 'https://xcskilabs.com/consulting/'
         assert call_kwargs['metadata']['brand'] == 'xcskilabs'
 
-    def test_training_plan_checkout_rejected_for_consulting_only_brand(
+    def test_training_plan_checkout_rejected_until_ski_engine_is_ready(
             self, client, tmp_path):
         future = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
         with patch('app.DATA_DIR', str(tmp_path)), \
@@ -2745,10 +3891,10 @@ class TestXcSkiLabsBrand:
 
         assert resp.status_code == 400
         data = resp.get_json()
-        assert 'consult' in data['error'].lower()
+        assert 'generation' in data['error'].lower()
         mock_create.assert_not_called()
 
-    def test_training_plan_webhook_rejected_for_consulting_only_brand(
+    def test_training_plan_webhook_rejected_until_ski_engine_is_ready(
             self, client, temp_athletes_dir):
         stripe_event = {
             'type': 'checkout.session.completed',
@@ -2767,7 +3913,7 @@ class TestXcSkiLabsBrand:
                            content_type='application/json')
         assert resp.status_code == 400
         data = resp.get_json()
-        assert 'consult' in data['error'].lower()
+        assert 'generation' in data['error'].lower()
 
     def test_consult_coach_notification_subject_prefix_xc(
             self, client, temp_athletes_dir):
