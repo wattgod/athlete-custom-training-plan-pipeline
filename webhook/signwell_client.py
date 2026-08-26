@@ -91,6 +91,16 @@ class SignWellClient:
             raise SignWellError("SignWell document readback identity mismatch")
         return data
 
+    def get_template(self, template_id: str) -> dict[str, Any]:
+        response = self._request("GET", f"/document_templates/{template_id}")
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise SignWellError("SignWell returned invalid template readback JSON") from exc
+        if str(data.get("id") or "") != template_id:
+            raise SignWellError("SignWell template readback identity mismatch")
+        return data
+
     def get_completed_pdf(self, document_id: str) -> bytes:
         response = self._request(
             "GET", f"/documents/{document_id}/completed_pdf",

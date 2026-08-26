@@ -64,6 +64,11 @@ def test_client_fails_closed_on_http_network_and_bad_document_identity():
         SignWellClient("api-key", session=session).get_document(
             "3f6d240b-7154-4eaa-98a8-93ee4a12c899")
 
+    response.json.return_value = {"id": "wrong"}
+    with pytest.raises(SignWellError, match="template readback identity mismatch"):
+        SignWellClient("api-key", session=session).get_template(
+            "7a194aa6-b535-4704-999e-767ce62ab9bf")
+
 
 def test_completed_pdf_requires_pdf_and_size_limit(monkeypatch):
     response = MagicMock(status_code=200)

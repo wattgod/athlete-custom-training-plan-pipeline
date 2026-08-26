@@ -261,6 +261,8 @@ COACHING_ESIGN_PROVIDER = os.environ.get(
     'COACHING_ESIGN_PROVIDER', 'signwell').strip().lower()
 SIGNWELL_API_KEY = os.environ.get('SIGNWELL_API_KEY', '')
 SIGNWELL_WEBHOOK_ID = os.environ.get('SIGNWELL_WEBHOOK_ID', '')
+SIGNWELL_SYNTHETIC_TEMPLATE_ID = os.environ.get(
+    'SIGNWELL_SYNTHETIC_TEMPLATE_ID', '')
 SIGNWELL_LIVE_SEND_ENABLED = (
     os.environ.get('SIGNWELL_LIVE_SEND_ENABLED', '').lower() == 'true')
 SIGNWELL_TEST_MODE = (
@@ -9123,18 +9125,42 @@ def _coaching_canary_result() -> tuple[dict, int]:
         esign_readiness.get('provider') == 'signwell' and
         esign_readiness.get('status') == 'ready',
         ', '.join(esign_readiness.get('blockers') or []))
-    if (esign_readiness.get('provider') == 'signwell' and
-            esign_readiness.get('status') == 'ready'):
+    if esign_readiness.get('provider') == 'signwell' and SIGNWELL_API_KEY:
         try:
-            account = SignWellClient(SIGNWELL_API_KEY).get_account()
+            signwell = SignWellClient(SIGNWELL_API_KEY)
+            account = signwell.get_account()
             add('signwell_account_readback', isinstance(account, dict) and bool(account),
                 'authenticated readback succeeded' if account else 'empty account response')
+            if SIGNWELL_SYNTHETIC_TEMPLATE_ID:
+                template = signwell.get_template(SIGNWELL_SYNTHETIC_TEMPLATE_ID)
+                field_types = {
+                    str(field.get('type') or '').lower()
+                    for group in (template.get('fields') or [])
+                    for field in group
+                    if isinstance(field, dict)
+                }
+                metadata = template.get('metadata') or {}
+                synthetic_ok = (
+                    'SYNTHETIC TEST ONLY' in str(template.get('name') or '') and
+                    str(metadata.get('legal_effect') or '') == 'none' and
+                    {'signature', 'date'}.issubset(field_types)
+                )
+                add('signwell_synthetic_template_readback', synthetic_ok,
+                    'identity, no-legal-effect metadata, and fields verified'
+                    if synthetic_ok else 'synthetic template contract mismatch')
+            else:
+                add('signwell_synthetic_template_readback', False,
+                    'SIGNWELL_SYNTHETIC_TEMPLATE_ID is not configured')
         except SignWellError as exc:
             add('signwell_account_readback', False,
                 f'provider readback failed: {type(exc).__name__}')
+            add('signwell_synthetic_template_readback', False,
+                f'provider readback failed: {type(exc).__name__}')
     else:
         add('signwell_account_readback', False,
-            'not attempted while SignWell configuration is blocked')
+            'not attempted because SignWell provider/API key is unavailable')
+        add('signwell_synthetic_template_readback', False,
+            'not attempted because SignWell provider/API key is unavailable')
 
     for brand, cfg in sorted(BRANDS.items()):
         coaching = cfg.get('coaching') or {}

@@ -1697,6 +1697,9 @@ class TestCoachingIntakeHandoff:
             app_module, '_verify_coaching_checkout_contract',
             lambda brand, tier, setup_fee_waived=False: (True, ''))
         self._configure_signwell(monkeypatch, app_module, test_mode=True)
+        monkeypatch.setattr(
+            app_module, 'SIGNWELL_SYNTHETIC_TEMPLATE_ID',
+            '33333333-3333-4333-8333-333333333333')
 
         lifecycle_events = [
             'checkout.session.completed', 'checkout.session.expired',
@@ -1723,6 +1726,14 @@ class TestCoachingIntakeHandoff:
         ), patch.object(
             app_module.SignWellClient, 'get_account',
             return_value={'id': 'synthetic-account'}
+        ), patch.object(
+            app_module.SignWellClient, 'get_template',
+            return_value={
+                'id': '33333333-3333-4333-8333-333333333333',
+                'name': 'SYNTHETIC TEST ONLY — NO LEGAL EFFECT',
+                'metadata': {'legal_effect': 'none'},
+                'fields': [[{'type': 'signature'}, {'type': 'date'}]],
+            }
         ):
             response = client.post('/api/coaching-canary', headers={
                 'X-Coaching-Intake-Secret': 'edge-secret'})
