@@ -213,14 +213,36 @@ Jointly with AE-1.16 this pins the compliant taper family: **7–10 d @
 target but blow the 10% cap (derived table PW-16, arithmetic-verified).
 Duration and load-retention are coupled, never independently chosen.
 
-**PROPOSED, NOT RATIFIED (synthesis 2026-08-26, awaiting Matti):**
-AE-1.19 TSB build rails ([−30,−10] productive, <−20 max 1-in-10 d);
-AE-1.20 ATL τ policy (default 7 d, categorical deviations 4–12 d only);
-AE-1.21 age-based recovery cycle (3 wk Over40 / 4 wk Under40, from the
-coach's ATP period lookup table — needs harmonizing with AE-1.5's age-50
-line); AE-1.22 B/C-race TSB [−10,0]; AE-1.23 multi-peak limits (≤3/season,
-≤13% cumulative CTL bleed). See docs/evidence/2026-08-26-pmc-planning-
-synthesis.md.
+**AE-1.19 — TSB build rails (RATIFIED Matti 2026-08-26).** [E] Productive
+load/build territory: TSB in **[−30, −10]**. Below −20 no more than 1 day
+in 10 (Friel's "danger" line at −30 respected as a hard floor); below −30
+is a defect outside deliberate crash blocks the coach names. The −10..+5
+grey zone is for recovery weeks and pre-taper, not for load weeks.
+
+**AE-1.20 — ATL time-constant policy (RATIFIED Matti 2026-08-26).** [E]
+Default τ_ATL = 7 days for everyone. Deviations only by CATEGORY (Coggan:
+4–5 d young/fast-recovering or sustained-power events; 10–12 d masters or
+anaerobic events), never per-athlete curve-fitting — the Couzens notebook
+demonstrated Banister fits go to parameter boundaries on sparse data.
+τ_CTL stays 42 (chart insensitive to it; Simmons).
+
+**AE-1.21 — Age-based recovery cycle (RATIFIED Matti 2026-08-26).** [E]
+From the coach's own ATP period lookup table: recovery-cycle length is
+**3 weeks (2 load + 1 recovery) at age ≥40, 4 weeks (3 load + 1 recovery)
+under 40**. Harmonization: this 40-year line governs CYCLE CADENCE;
+AE-1.5's age-50 line governs CTL-BAND adjustment — different axes, both
+stand. Refines AE-1.4's "2–4 weeks max before a rest week."
+
+**AE-1.22 — B/C-race TSB band (RATIFIED Matti 2026-08-26).** [A][H]
+B/C races are raced as training (AE-1.9): arrive at TSB **[−10, 0]** —
+the 2-day overlay freshens without a taper. Weakest evidence tier here;
+adopted because it formalizes existing practice.
+
+**AE-1.23 — Multi-peak season limits (RATIFIED Matti 2026-08-26).** [E]
+≤3 true peaks per season, meaningful spacing; cumulative CTL bleed across
+all peaks ≤13% (Friel's double-peak worked case); the ATP table's 32-week
+transition-context window bounds between-A-race re-periodization. Pairs
+with AE-1.13 (the season still ends on a start line + programmed break).
 
 ## 2. Intensity budget & distribution (`block_compliance`)
 
