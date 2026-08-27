@@ -448,7 +448,9 @@ class TestFullPlanPreviewV2:
                    for session in bike_sessions)
         athlete_copy = " ".join(
             str(session.get(field) or "")
-            for session in bike_sessions
+            for sample in source["sample_weeks"]
+            for day in sample["days"]
+            for session in day["sessions"]
             for field in ("purpose", "coach_note")
         ).lower()
         assert "gravel god" not in athlete_copy

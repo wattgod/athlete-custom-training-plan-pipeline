@@ -2879,6 +2879,10 @@ def get_execution_tips(
         return ("Hold every cadence target through the work block and recovery. Keep the hips "
                 "quiet and let power stay where it is prescribed.")
 
+    if re.search(r"\bsfr\b", archetype_name):
+        return ("Stay seated, keep the upper body quiet, and hold the prescribed low cadence. "
+                "Reduce power if the pedal stroke stops being smooth.")
+
     if "race simulation" in archetype_name:
         return ("Ride the opening tempo under control, settle at threshold, make the final lift "
                 "clean, then recover at the prescribed power.")
@@ -3385,6 +3389,7 @@ def get_category_purpose(archetype_name: str) -> str:
         "Mixed Climbing": "Climbing specificity. Alternate seated tempo with short standing lifts as the gradient changes.",
         "Microburst": "Surge repeatability. Keep the aerobic work moving while short bursts rehearse attacks and terrain changes.",
         "Cadence": "Cadence control. Hold the prescribed power while turnover changes, with smooth pressure through the full pedal stroke.",
+        "SFR": "Torque and position control. Hold the prescribed low cadence with stable hips and smooth pressure through the pedal stroke.",
         "Race Simulation": "Race rehearsal. Practice pacing and position changes across the effort shifts you will manage on race day.",
         "Blended": "Race-specific power changes. Move cleanly between the prescribed zones and let each recovery step come all the way down.",
         "Mixed Intervals": "Race-specific power changes. Move cleanly between the prescribed zones and let each recovery step come all the way down.",
