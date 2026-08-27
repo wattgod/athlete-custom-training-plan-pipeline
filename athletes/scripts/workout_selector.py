@@ -35,6 +35,27 @@ _DISCIPLINE_INTENSITY = {
     'Microbursts', 'Mixed Climbing', 'Mixed Climbing Variations', 'Stomps',
 }
 
+# Road-profile VO2 levels must stay inside AE-3.1's hard 5–18 minute
+# T@VO2max proxy bounds. These ranges describe the checked-in library's real
+# rendered structures; they do not create or rewrite a workout. The protected
+# anchor remains present, but a high training-age level cannot silently turn
+# one session into a >18-minute VO2 dose (and a level-1 microinterval session
+# cannot fall below the 5-minute floor).
+_ROAD_VO2_AE31_LEVEL_RANGE = {
+    'VO2max 30/30': (2, 6),
+    'VO2max 40/20': (2, 6),
+    'VO2max Extended': (1, 4),
+    'VO2max Steady Intervals': (1, 4),
+    'VO2 Bookend': (1, 3),
+}
+
+
+def _road_ae31_level(name: str, level: int) -> int:
+    bounds = _ROAD_VO2_AE31_LEVEL_RANGE.get(name)
+    if not bounds:
+        return level
+    return min(max(level, bounds[0]), bounds[1])
+
 # ---------------------------------------------------------------------------
 # Race-demand bias (Phase 2, /engine/block): bridge workout_library.yaml
 # categories to the archetype categories scored by race_category_scorer.py,
@@ -514,6 +535,11 @@ def select_workouts_for_week(
                     and w['name'] != 'Openers'):
                 w['name'] = format_secondary
                 break
+
+    if discipline == 'road':
+        for workout in workouts:
+            workout['level'] = _road_ae31_level(
+                workout['name'], workout['level'])
 
     # Long ride — level must fit within weekly hour budget
     long_slot = slots.get('long_ride', {})

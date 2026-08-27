@@ -13,6 +13,7 @@ import yaml
 
 
 _CONFIG = Path(__file__).parent.parent / "config" / "road_racing.yaml"
+ROAD_PROFILE_VERSION = "road/v1"
 
 
 @lru_cache(maxsize=1)

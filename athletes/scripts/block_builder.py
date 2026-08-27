@@ -15,6 +15,7 @@ from workout_selector import (
     get_workout_tss,
     get_workout_duration,
     estimate_week_tss,
+    _road_ae31_level,
 )
 from series_tracker import SeriesTracker
 
@@ -504,11 +505,18 @@ def _build_week(
             # Track series coherence
             slot = w.get('slot', f'intensity_{intensity_idx + 1}')
             tracked = series_tracker.assign(slot, w['name'], w['level'])
-            tss = get_workout_tss(tracked['name'], tracked['level'])
-            dur = get_workout_duration(tracked['name'], tracked['level'])
+            tracked_level = tracked['level']
+            if discipline == 'road':
+                # Series coherence can advance a family beyond the level the
+                # selector requested. Re-apply the AE-3.1 library bound at the
+                # final emitted assignment seam (AE-3.1).
+                tracked_level = _road_ae31_level(
+                    tracked['name'], tracked_level)
+            tss = get_workout_tss(tracked['name'], tracked_level)
+            dur = get_workout_duration(tracked['name'], tracked_level)
             workout = {
                 'name': tracked['name'],
-                'level': tracked['level'],
+                'level': tracked_level,
                 'tss': tss,
                 'duration': dur,
                 'role': 'intensity',
