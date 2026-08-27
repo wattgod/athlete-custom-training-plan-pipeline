@@ -9647,7 +9647,14 @@ def cron_stripe_reconciliation():
         start, end = parse_reconciliation_window(
             data.get('start_date'), data.get('end_date'))
         receipt = build_stripe_revenue_receipt(
-            stripe, start, end, record_key_secret=CRON_SECRET)
+            stripe, start, end, record_key_secret=CRON_SECRET,
+            offer_price_ids={
+                'training_plan': tuple(TRAINING_PLAN_PRICE_IDS.values()),
+                'coaching': (
+                    *COACHING_PRICE_IDS.values(), COACHING_SETUP_FEE_PRICE_ID),
+                'consulting': (CONSULTING_PRICE_ID,),
+                'consult_addon': (CONSULT_PLAN_ADDON_PRICE_ID,),
+            })
     except ProviderRevenueError as exc:
         return jsonify({'error': str(exc)}), 400
     except stripe.error.StripeError as exc:

@@ -9,12 +9,15 @@ GitHub or an operator laptop.
 
 - Authentication uses the existing `X-Cron-Secret` contract.
 - The requested inclusive UTC window is limited to 400 days.
-- Provider calls are limited to list/retrieve operations for Checkout Sessions,
-  invoices, charges, refunds, balance transactions, payouts, the account, and
-  current balance.
+- Provider calls are limited to list/retrieve operations for merchant products
+  and prices, Checkout Sessions, invoices, charges, refunds, balance
+  transactions, payouts, the account, and current balance.
 - Stripe IDs and customer IDs become deterministic HMAC-SHA256 record keys.
-- Names, emails, phones, addresses, descriptions, receipt URLs, payment methods,
-  and bank destinations are never projected.
+- Customer names, emails, phones, addresses, descriptions, receipt URLs,
+  payment methods, price nicknames, and bank destinations are never projected.
+  Merchant-authored product names are retained to classify historical revenue.
+- Known health-check/test checkout metadata becomes only a `synthetic` boolean;
+  the identifying test label itself is not projected.
 - The endpoint cannot create or change a checkout, charge, refund, customer,
   invoice, subscription, payout, or metadata record.
 

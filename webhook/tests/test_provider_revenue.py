@@ -60,6 +60,12 @@ def _provider():
         "id": "in_private", "created": 1777507201, "livemode": True,
         "customer": "cus_private", "currency": "usd", "status": "paid",
         "amount_due": 15000, "amount_paid": 15000, "amount_remaining": 0,
+        "lines": {"has_more": False, "data": [{
+            "id": "il_private", "price": "price_consulting",
+            "currency": "usd", "amount": 15000, "quantity": 1,
+            "description": "private@example.com must not escape",
+            "period": {"start": 1777507200, "end": 1777507200},
+        }]},
     }
     charge = {
         "id": "ch_private", "created": 1777507202, "livemode": True,
@@ -105,6 +111,16 @@ def _provider():
         "destination": "ba_private",
     }
     provider = SimpleNamespace(
+        Product=ListResource([{
+            "id": "prod_consulting", "created": 1777507100,
+            "name": "Gravel Race Consulting", "active": True,
+            "livemode": True,
+        }]),
+        Price=ListResource([{
+            "id": "price_consulting", "created": 1777507101,
+            "product": "prod_consulting", "currency": "usd",
+            "unit_amount": 15000, "active": True, "livemode": True,
+        }]),
         checkout=SimpleNamespace(Session=ListResource([session])),
         Invoice=ListResource([invoice]),
         Charge=ListResource([charge]),
@@ -149,6 +165,16 @@ def test_receipt_controls_and_privacy_projection():
     assert charge["offer_family"] == "consulting"
     assert charge["gross_less_refunds_cents"] == 14000
     assert charge["record_key"].startswith("srk_")
+    assert receipt["rows"]["invoices"][0]["line_items"] == [{
+        "price_record_key": receipt["rows"]["prices"][0]["record_key"],
+        "product_record_key": receipt["rows"]["products"][0]["record_key"],
+        "merchant_product_name": "Gravel Race Consulting",
+        "offer_family": "consulting", "currency": "usd",
+        "amount_cents": 15000, "quantity": 1,
+        "period_start_at": "2026-04-30T00:00:00+00:00",
+        "period_end_at": "2026-04-30T00:00:00+00:00",
+    }]
+    assert receipt["rows"]["checkout_sessions"][0]["synthetic"] is False
 
     encoded = json.dumps(receipt, sort_keys=True)
     for forbidden in (
@@ -156,6 +182,7 @@ def test_receipt_controls_and_privacy_projection():
         "cs_live_private", "pi_private", "cus_private", "ch_private",
         "re_private", "po_private", "acct_private", "ba_private",
         "secret-receipt",
+        "private@example.com must not escape",
     ):
         assert forbidden not in encoded
 
@@ -171,6 +198,26 @@ def test_pagination_advances_without_mutation_methods():
     assert calls[1]["starting_after"] == "txn_ref_private"
     assert not hasattr(provider.Charge, "create")
     assert not hasattr(provider.Refund, "create")
+
+
+def test_synthetic_monitor_is_classified_without_projecting_identity():
+    provider = _provider()
+    provider.checkout.Session.rows[0]["metadata"]["athlete_name"] = (
+        "Daily Health Check [TEST]")
+    receipt = build_stripe_revenue_receipt(
+        provider, date(2026, 4, 30), date(2026, 5, 1), SECRET)
+    session = receipt["rows"]["checkout_sessions"][0]
+    assert session["synthetic"] is True
+    assert "Daily Health Check" not in json.dumps(receipt)
+
+
+def test_server_price_registry_overrides_catalog_name_inference():
+    receipt = build_stripe_revenue_receipt(
+        _provider(), date(2026, 4, 30), date(2026, 5, 1), SECRET,
+        offer_price_ids={"consult_addon": ("price_consulting",)})
+    assert receipt["rows"]["prices"][0]["offer_family"] == "consult_addon"
+    assert receipt["rows"]["invoices"][0]["offer_family"] == "consult_addon"
+    assert receipt["rows"]["charges"][0]["offer_family"] == "consulting"
 
 
 @pytest.fixture
