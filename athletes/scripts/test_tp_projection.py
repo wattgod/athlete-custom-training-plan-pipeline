@@ -144,7 +144,9 @@ def monkeypatch_module():
 # Manifest schema: exists + validates (no new deps -- plain structural check)
 # ===========================================================================
 
-_REQUIRED_TOP_KEYS = {'version', 'plan_title', 'athlete', 'race', 'expected', 'sessions'}
+_REQUIRED_TOP_KEYS = {
+    'version', 'plan_title', 'athlete', 'race', 'expected', 'sessions', 'provenance',
+}
 _REQUIRED_EXPECTED_KEYS = {'bike', 'strength', 'day_off', 'race', 'total'}
 _VALID_TP_KINDS = {'bike', 'strength', 'race', 'day_off'}
 _VALID_WORKOUT_TYPE_IDS = {2, 7, 9}
@@ -157,6 +159,8 @@ def _validate_tp_manifest_schema(manifest):
     assert manifest['version'] == 1
     assert isinstance(manifest['plan_title'], str) and manifest['plan_title']
     assert '[CUSTOM]' in manifest['plan_title']
+    assert manifest['provenance']['engine_version'].startswith('motoren/')
+    assert manifest['provenance']['voice_version'].startswith('voice/')
 
     expected = manifest['expected']
     missing_expected = _REQUIRED_EXPECTED_KEYS - expected.keys()

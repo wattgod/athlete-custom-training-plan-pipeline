@@ -29,9 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
-import subprocess
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -65,6 +63,9 @@ from story_notes import (
     render_preview_strength_copy, render_preview_race_copy,
     SELF_REVIEW_BODY, COMMENT_PROTOCOL_BODY,
 )
+from motoren_versions import (
+    ENGINE_VERSION, VOICE_VERSION, _git_short_sha, engine_version, voice_version,
+)
 
 
 class MotorenPreviewError(Exception):
@@ -75,71 +76,6 @@ class MotorenPreviewError(Exception):
     names). The original exception is chained via ``from`` for local
     debugging; callers must not surface it to the browser.
     """
-
-
-# ---------------------------------------------------------------------------
-# Versioning
-# ---------------------------------------------------------------------------
-
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_VOICE_SOURCE_FILES = (
-    "athletes/config/voice_rules.yaml",
-    "athletes/scripts/story_notes.py",
-    "athletes/scripts/delivery_notes.py",
-    "athletes/scripts/apply_contract.py",
-    "athletes/scripts/voice_lint.py",
-)
-
-
-def _git_short_sha() -> str:
-    # Railway's production image intentionally has no .git directory. Its
-    # deployment metadata is the authoritative revision in that environment.
-    configured = (
-        os.environ.get("RAILWAY_GIT_COMMIT_SHA")
-        or os.environ.get("GIT_SHA")
-        or ""
-    ).strip().lower()
-    if re.fullmatch(r"[0-9a-f]{7,40}", configured):
-        return configured[:7]
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=str(_REPO_ROOT), capture_output=True, text=True,
-            check=True, timeout=10,
-        )
-        sha = result.stdout.strip()
-        if sha and re.fullmatch(r"[0-9a-f]{4,40}", sha):
-            return sha
-    except Exception:
-        pass
-    return "unknown"
-
-
-def _voice_digest() -> str:
-    digest = hashlib.sha256()
-    try:
-        for relative in _VOICE_SOURCE_FILES:
-            path = _REPO_ROOT / relative
-            digest.update(relative.encode("utf-8"))
-            digest.update(b"\0")
-            digest.update(path.read_bytes())
-            digest.update(b"\0")
-    except OSError:
-        return "unknown"
-    return digest.hexdigest()[:12]
-
-
-# Computed once, at import time, per spec.
-ENGINE_VERSION = f"motoren/{_git_short_sha()}+ae-2026-08-23"
-VOICE_VERSION = f"voice/{_voice_digest()}"
-
-
-def engine_version() -> str:
-    return ENGINE_VERSION
-
-
-def voice_version() -> str:
-    return VOICE_VERSION
 
 
 # ---------------------------------------------------------------------------
