@@ -870,43 +870,93 @@ def _build_consulting_email(details: dict) -> tuple:
     return subject, text, html
 
 
+_GA4_CLIENT_ID_RE = re.compile(r'^\d+\.\d+$')
+_GA4_SESSION_ID_RE = re.compile(r'^\d+$')
+
+
+def _validated_ga4_attribution(client_id=None, session_id=None) -> tuple:
+    """Return Stripe/GA-safe browser attribution identifiers or empty values."""
+    safe_client_id = str(client_id or '').strip()
+    safe_session_id = str(session_id or '').strip()
+    if not _GA4_CLIENT_ID_RE.fullmatch(safe_client_id):
+        safe_client_id = ''
+    if not _GA4_SESSION_ID_RE.fullmatch(safe_session_id):
+        safe_session_id = ''
+    return safe_client_id, safe_session_id
+
+
+def _payload_ga4_attribution(data: dict) -> tuple:
+    """Extract explicit consent plus valid GA browser identifiers.
+
+    ``unknown`` keeps older checkout clients backward-compatible during a
+    staggered deploy. Browser identifiers are accepted only with an explicit
+    ``granted`` signal.
+    """
+    raw_consent = str(data.pop('analytics_consent', '') or '').strip().lower()
+    consent = raw_consent if raw_consent in ('granted', 'denied') else 'unknown'
+    raw_client_id = data.pop('ga4_client_id', '')
+    raw_session_id = data.pop('ga4_session_id', '')
+    if consent != 'granted':
+        return '', '', consent
+    client_id, session_id = _validated_ga4_attribution(
+        raw_client_id, raw_session_id)
+    return client_id, session_id, consent
+
+
+def _apply_ga4_metadata(metadata: dict, client_id: str, session_id: str,
+                        analytics_consent: str) -> None:
+    """Attach the bounded attribution contract to Stripe metadata in place."""
+    metadata['analytics_consent'] = analytics_consent
+    if client_id:
+        metadata['ga4_client_id'] = client_id
+    if session_id:
+        metadata['ga4_session_id'] = session_id
+
+
 def _send_ga4_purchase(order_id: str, value_cents, product_type: str,
-                       item_name: str, brand: str = DEFAULT_BRAND):
+                       item_name: str, brand: str = DEFAULT_BRAND,
+                       client_id: str = '', session_id: str = '',
+                       analytics_consent: str = 'unknown'):
     """Record a purchase in GA4 via Measurement Protocol (server-side).
 
-    Fires for every real payment regardless of the buyer's cookie-consent
-    state — the client-side purchase event (success page) only records when
-    the visitor accepted the cookie banner (verified Jun 2026, invisible
-    even in Realtime otherwise). Shares transaction_id with the client-side
-    event so GA4 deduplicates the two. Routes to the brand's GA4 property.
-    Never raises — analytics must not affect order processing. No-op until
-    the brand's MP api_secret env var is set; skips test orders.
+    This is the sole purchase-event source.  When consented browser identifiers
+    were captured before Stripe redirect, the Measurement Protocol event is
+    joined to that acquisition session.  Otherwise it falls back to a
+    deterministic order-scoped client id.  Routes to the brand's GA4 property,
+    never raises, and skips test orders.
     """
     cfg = _brand_config(brand)
     if not cfg['ga4_mp_api_secret'] or not cfg['ga4_measurement_id']:
         return
-    if order_id.startswith('test_'):
+    if str(analytics_consent or '').strip().lower() == 'denied':
+        return
+    if order_id.startswith(('test_', 'cs_test_')):
         return
     try:
+        safe_client_id, safe_session_id = _validated_ga4_attribution(
+            client_id, session_id)
+        event_params = {
+            'transaction_id': order_id,
+            'currency': 'USD',
+            'value': round((value_cents or 0) / 100, 2),
+            'product_type': product_type,
+            'event_source': 'stripe_webhook',
+            'items': [{
+                'item_name': item_name,
+                'item_category': product_type,
+                'price': round((value_cents or 0) / 100, 2),
+                'quantity': 1,
+            }],
+        }
+        if safe_session_id:
+            event_params['session_id'] = int(safe_session_id)
+            event_params['engagement_time_msec'] = 1
         payload = {
-            # Synthetic client_id — server event with no browser context.
-            # Deterministic per order so Stripe retries map to one "user".
-            'client_id': f'srv.{order_id[-16:] or "order"}',
+            # Deterministic fallback keeps webhook retries on one GA identity.
+            'client_id': safe_client_id or f'srv.{order_id[-16:] or "order"}',
             'events': [{
                 'name': 'purchase',
-                'params': {
-                    'transaction_id': order_id,
-                    'currency': 'USD',
-                    'value': round((value_cents or 0) / 100, 2),
-                    'product_type': product_type,
-                    'event_source': 'stripe_webhook',
-                    'items': [{
-                        'item_name': item_name,
-                        'item_category': product_type,
-                        'price': round((value_cents or 0) / 100, 2),
-                        'quantity': 1,
-                    }],
-                },
+                'params': event_params,
             }],
         }
         resp = http_requests.post(
@@ -5167,6 +5217,16 @@ def create_checkout():
     if not data:
         return jsonify({'error': 'Invalid JSON'}), 400
 
+    # Only explicitly consented browser identifiers matching GA4's web formats
+    # may cross the trust boundary into intake storage and Stripe metadata.
+    ga4_client_id, ga4_session_id, analytics_consent = \
+        _payload_ga4_attribution(data)
+    data['analytics_consent'] = analytics_consent
+    if ga4_client_id:
+        data['ga4_client_id'] = ga4_client_id
+    if ga4_session_id:
+        data['ga4_session_id'] = ga4_session_id
+
     # Validate required fields
     email = (data.get('email') or '').strip().lower()
     if not email or '@' not in email or '.' not in email:
@@ -5243,22 +5303,29 @@ def create_checkout():
 
         expires_at = int((datetime.now() + timedelta(minutes=CHECKOUT_EXPIRY_MINUTES)).timestamp())
 
+        checkout_metadata = {
+            'intake_id': intake_id,
+            'product_type': 'training_plan',
+            'tier': 'custom',
+            'athlete_name': name,
+            'weeks': str(pricing['weeks']),
+            'price_cents': str(pricing['price_cents']),
+            'brand': brand,
+            'plan_addons': ','.join(addon_selection['all']),
+        }
+        if ga4_client_id:
+            checkout_metadata['ga4_client_id'] = ga4_client_id
+        if ga4_session_id:
+            checkout_metadata['ga4_session_id'] = ga4_session_id
+        checkout_metadata['analytics_consent'] = analytics_consent
+
         session_kwargs = dict(
             line_items=line_items,
             mode='payment',
             customer_email=email,
             customer_creation='always',
             client_reference_id=intake_id,
-            metadata={
-                'intake_id': intake_id,
-                'product_type': 'training_plan',
-                'tier': 'custom',
-                'athlete_name': name,
-                'weeks': str(pricing['weeks']),
-                'price_cents': str(pricing['price_cents']),
-                'brand': brand,
-                'plan_addons': ','.join(addon_selection['all']),
-            },
+            metadata=checkout_metadata,
             success_url=f"{brand_cfg['site']}/training-plans/success/?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{brand_cfg['site']}{brand_cfg['questionnaire_path']}",
             expires_at=expires_at,
@@ -5337,7 +5404,10 @@ def _verify_coaching_checkout_contract(
 
 def _create_coaching_checkout_session(name: str, email: str, tier: str,
                                       brand: str, intake_id: str = '',
-                                      setup_fee_waived: bool = False):
+                                      setup_fee_waived: bool = False,
+                                      ga4_client_id: str = '',
+                                      ga4_session_id: str = '',
+                                      analytics_consent: str = 'unknown'):
     """Create the Stripe object after the caller has authorized the handoff."""
     brand_cfg = _brand_config(brand)
     coaching_cfg = _coaching_config(brand)
@@ -5358,6 +5428,12 @@ def _create_coaching_checkout_session(name: str, email: str, tier: str,
     }
     if intake_id:
         metadata['intake_id'] = intake_id
+    safe_client_id, safe_session_id = _validated_ga4_attribution(
+        ga4_client_id, ga4_session_id)
+    if analytics_consent != 'granted':
+        safe_client_id, safe_session_id = '', ''
+    _apply_ga4_metadata(
+        metadata, safe_client_id, safe_session_id, analytics_consent)
 
     subscription_metadata = {
         'tier': tier,
@@ -5366,6 +5442,9 @@ def _create_coaching_checkout_session(name: str, email: str, tier: str,
     }
     if intake_id:
         subscription_metadata['intake_id'] = intake_id
+    _apply_ga4_metadata(
+        subscription_metadata, safe_client_id, safe_session_id,
+        analytics_consent)
 
     session_kwargs = dict(
         line_items=line_items,
@@ -5431,6 +5510,8 @@ def receive_coaching_intake():
         return jsonify({'error': 'Questionnaire must be an object'}), 400
     if len(json.dumps(questionnaire)) > 200_000:
         return jsonify({'error': 'Questionnaire is too large'}), 413
+    ga4_client_id, ga4_session_id, analytics_consent = \
+        _payload_ga4_attribution(data)
     age = _coaching_age(questionnaire)
     if age is not None and age < 13:
         return jsonify({
@@ -5467,6 +5548,7 @@ def receive_coaching_intake():
             'type': 'coaching_intake_form',
             'submission_id': case_id,
             'submitted_at': now,
+            'analytics_consent': analytics_consent,
         },
         'questionnaire': questionnaire,
         'intake_audit': _coaching_intake_audit(questionnaire, raw_brand),
@@ -5481,6 +5563,10 @@ def receive_coaching_intake():
         'receipts': {},
         'verifications': {},
     }
+    if ga4_client_id:
+        case['source']['ga4_client_id'] = ga4_client_id
+    if ga4_session_id:
+        case['source']['ga4_session_id'] = ga4_session_id
     _record_coaching_event(
         case, 'coaching_intake_submitted', case_id, occurred_at=now)
     if age is not None and age < 18:
@@ -6113,11 +6199,15 @@ def create_coaching_payment_handoff(case_id):
         brand = case['brand']
         tier = case['tier']
         athlete = case['athlete']
+        source = case.get('source') or {}
         try:
             session = _create_coaching_checkout_session(
                 athlete['name'], athlete['email'], tier, brand,
                 intake_id=case_id,
-                setup_fee_waived=setup_fee_waived)
+                setup_fee_waived=setup_fee_waived,
+                ga4_client_id=source.get('ga4_client_id', ''),
+                ga4_session_id=source.get('ga4_session_id', ''),
+                analytics_consent=source.get('analytics_consent', 'unknown'))
         except stripe.error.StripeError as exc:
             logger.error(f"Stripe error creating coaching handoff {case_id}: {exc}")
             return jsonify({'error': 'Payment service error. Please try again.'}), 502
@@ -6187,6 +6277,9 @@ def create_coaching_checkout():
     if not data:
         return jsonify({'error': 'Invalid JSON'}), 400
 
+    ga4_client_id, ga4_session_id, analytics_consent = \
+        _payload_ga4_attribution(data)
+
     brand = _brand_from_origin(request.headers.get('Origin', ''))
     brand_cfg = _brand_config(brand)
     coaching_cfg = _coaching_config(brand)
@@ -6217,7 +6310,9 @@ def create_coaching_checkout():
 
     try:
         checkout_session = _create_coaching_checkout_session(
-            name, email, tier, brand, intake_id=intake_id)
+            name, email, tier, brand, intake_id=intake_id,
+            ga4_client_id=ga4_client_id, ga4_session_id=ga4_session_id,
+            analytics_consent=analytics_consent)
 
         logger.info(f"Created coaching checkout {checkout_session.id} "
                      f"(brand={brand}, tier={tier}, setup_fee=$99, {_mask_email(email)})")
@@ -6262,6 +6357,9 @@ def create_consulting_checkout():
     if not data:
         return jsonify({'error': 'Invalid JSON'}), 400
 
+    ga4_client_id, ga4_session_id, analytics_consent = \
+        _payload_ga4_attribution(data)
+
     email = (data.get('email') or '').strip().lower()
     if not email or '@' not in email or '.' not in email:
         return jsonify({'error': 'Valid email is required'}), 400
@@ -6294,18 +6392,23 @@ def create_consulting_checkout():
         consulting_path = brand_cfg.get('consulting_path', '/consulting/')
         consulting_success_path = brand_cfg.get('consulting_success_path', '/consulting/confirmed/')
 
+        checkout_metadata = {
+            'product_type': 'consulting',
+            'athlete_name': name,
+            'hours': str(hours),
+            'plan_addon': '1' if plan_addon else '0',
+            'brand': brand,
+        }
+        _apply_ga4_metadata(
+            checkout_metadata, ga4_client_id, ga4_session_id,
+            analytics_consent)
+
         session_kwargs = dict(
             line_items=line_items,
             mode='payment',
             customer_email=email,
             customer_creation='always',
-            metadata={
-                'product_type': 'consulting',
-                'athlete_name': name,
-                'hours': str(hours),
-                'plan_addon': '1' if plan_addon else '0',
-                'brand': brand,
-            },
+            metadata=checkout_metadata,
             success_url=f"{brand_cfg['site']}{consulting_success_path}?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{brand_cfg['site']}{consulting_path}",
             expires_at=expires_at,
@@ -7067,11 +7170,16 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
     # Mark BEFORE pipeline — see WooCommerce handler comment for rationale
     mark_order_processed(order_data['order_id'], athlete_id)
 
-    # Record purchase in GA4 (server-side, consent-independent)
+    # Record purchase in GA4 server-side, honoring explicit analytics denial.
     session_obj = data.get('data', {}).get('object', {})
-    brand = session_obj.get('metadata', {}).get('brand', DEFAULT_BRAND)
+    session_metadata = session_obj.get('metadata', {})
+    brand = session_metadata.get('brand', DEFAULT_BRAND)
     _send_ga4_purchase(order_data['order_id'], session_obj.get('amount_total'),
-                       'training_plan', 'Custom Training Plan', brand=brand)
+                       'training_plan', 'Custom Training Plan', brand=brand,
+                       client_id=session_metadata.get('ga4_client_id', ''),
+                       session_id=session_metadata.get('ga4_session_id', ''),
+                       analytics_consent=session_metadata.get(
+                           'analytics_consent', 'unknown'))
 
     # Send instant payment confirmation to customer (before pipeline runs)
     customer_email = order_data['profile'].get('email', '')
@@ -7192,7 +7300,11 @@ def _handle_coaching_webhook(session: dict, metadata: dict, order_id: str):
     mark_order_processed(order_id, sanitize_athlete_id(name))
     _send_ga4_purchase(order_id, session.get('amount_total'),
                        'coaching', f'Coaching ({tier})',
-                       brand=brand)
+                       brand=brand,
+                       client_id=metadata.get('ga4_client_id', ''),
+                       session_id=metadata.get('ga4_session_id', ''),
+                       analytics_consent=metadata.get(
+                           'analytics_consent', 'unknown'))
     _log_product_event('coaching', order_id,
                        tier=tier, name=name, email=email,
                        subscription_id=subscription_id, brand=brand,
@@ -7407,7 +7519,11 @@ def _handle_consulting_webhook(session: dict, metadata: dict, order_id: str):
     # Best-effort telemetry — never critical for retry safety.
     try:
         _send_ga4_purchase(order_id, session.get('amount_total'),
-                           'consulting', 'Consulting Session', brand=brand)
+                           'consulting', 'Consulting Session', brand=brand,
+                           client_id=metadata.get('ga4_client_id', ''),
+                           session_id=metadata.get('ga4_session_id', ''),
+                           analytics_consent=metadata.get(
+                               'analytics_consent', 'unknown'))
     except Exception:
         logger.exception("GA4 purchase event failed for consulting")
     try:
