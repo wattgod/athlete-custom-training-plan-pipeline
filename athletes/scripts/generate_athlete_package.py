@@ -2067,6 +2067,18 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         # rendered ZWOs see the same, budget-fitted minutes.
         retrim_plan_to_budget(_bb_plan, cycling_hours_target, day_caps=_bb_day_caps or None)
 
+        # The final budget trim can shrink a resolved recovery item AFTER C4's
+        # first recovery-band repair. Re-run only that narrow repair against
+        # the same checked-in library so R03 sees the actual final calendar,
+        # not the pre-trim one. Recovery weeks are exempt from R19's load-week
+        # floor; day caps remain hard inside the selector.
+        if _library_selection_enabled:
+            from tp_library_snapshot import load_index as _load_tp_index
+            _rebalance_recovery_weeks_post_resolution(
+                _bb_plan, day_caps=_bb_day_caps or {}, athlete_seed=_seed,
+                series_state={}, used_items={}, index=_load_tp_index(),
+                lint_exclusions={}, discipline=_bb_discipline)
+
         # Build lookup: (plan_week, day_abbrev) → block plan day data.
         # week_in_block rides along for series numbering in workout titles
         # ("Thunder Quads 2" on the second load week of a block).
