@@ -1030,7 +1030,11 @@ def project_tp_structure(session: Dict[str, Any], control: Dict[str, Any]) -> Op
             primary = (leaf.get("targets") or [{}])[0]
             return primary.get("minValue") == 0 and "maxValue" not in primary
 
-        if all(_is_zero_power(block["steps"][0]) for block in steps):
+        if all(
+            _is_zero_power(leaf)
+            for block in steps
+            for leaf in block["steps"]
+        ):
             return None
     # FIX 10 (Aug 17 2026 adversarial grade): this function only ever
     # projects COMPOSED sessions (Act sims, midweek sims, other

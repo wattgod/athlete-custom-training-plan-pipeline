@@ -1775,6 +1775,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         from plan_ir import training_age_class
         from workout_mapper import render_workout as _bb_render
         from workout_selector import coached_focus_category_weights
+        from race_category_scorer import category_weights_for_profile
 
         _bb_archetype = determine_archetype(cycling_hours_target)
         _bb_discipline = derive_discipline(profile or {})
@@ -1834,6 +1835,21 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             _builder_hours = cycling_hours_target
 
         _bb_training_age = training_age_class(profile or {})
+        # road/v1 owns the first full-season demand-vector rollout. Keep the
+        # established gravel/MTB paid-plan path byte-stable until their own
+        # profile migrations can be reviewed and versioned independently.
+        if ((profile or {}).get('target_race') and _bb_discipline == 'road'):
+            (_bb_category_weights, _bb_race_demands,
+             _bb_demand_source) = category_weights_for_profile(profile or {})
+            (profile or {}).setdefault('target_race', {})[
+                'training_demands_applied'] = _bb_race_demands
+            (profile or {}).setdefault('target_race', {})[
+                'training_demands_applied_source'] = _bb_demand_source
+        elif not (profile or {}).get('target_race'):
+            _bb_category_weights = coached_focus_category_weights(
+                ((profile or {}).get('coached_block') or {}).get('focus'))
+        else:
+            _bb_category_weights = None
         _bb_plan = build_plan_from_calendar(
             week_descriptors=_bb_descriptors,
             archetype=_bb_archetype,
@@ -1846,9 +1862,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             discipline=_bb_discipline,
             day_caps=_bb_day_caps or None,
             methodology=methodology_id,
-            category_weights=coached_focus_category_weights(
-                ((profile or {}).get('coached_block') or {}).get('focus')
-            ),
+            category_weights=_bb_category_weights,
             fixed_minutes=_fixed_minutes if '_fixed_minutes' in locals() else 0,
             event_format=_bb_event_format,
             training_age=_bb_training_age,
@@ -2052,6 +2066,18 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         # shallow-copies each day dict, so the compliance gate and the
         # rendered ZWOs see the same, budget-fitted minutes.
         retrim_plan_to_budget(_bb_plan, cycling_hours_target, day_caps=_bb_day_caps or None)
+
+        # The final budget trim can shrink a resolved recovery item AFTER C4's
+        # first recovery-band repair. Re-run only that narrow repair against
+        # the same checked-in library so R03 sees the actual final calendar,
+        # not the pre-trim one. Recovery weeks are exempt from R19's load-week
+        # floor; day caps remain hard inside the selector.
+        if _library_selection_enabled:
+            from tp_library_snapshot import load_index as _load_tp_index
+            _rebalance_recovery_weeks_post_resolution(
+                _bb_plan, day_caps=_bb_day_caps or {}, athlete_seed=_seed,
+                series_state={}, used_items={}, index=_load_tp_index(),
+                lint_exclusions={}, discipline=_bb_discipline)
 
         # Build lookup: (plan_week, day_abbrev) → block plan day data.
         # week_in_block rides along for series numbering in workout titles

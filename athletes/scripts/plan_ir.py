@@ -20,6 +20,9 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from fueling_policy import FuelingPrescription, prescription_from_fueling
+from motoren_versions import engine_version, voice_version
+from archetype import derive_discipline
+from road_racing import ROAD_PROFILE_VERSION
 from zwo_parser import parse_zwo, parse_zwo_structure
 from tp_polyline import compute_polyline
 
@@ -160,6 +163,7 @@ class PlanIR:
     training_age_class: Optional[str] = None
     events: List[Dict[str, Any]] = field(default_factory=list)
     coached_block: Dict[str, Any] = field(default_factory=dict)
+    provenance: Dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Return a JSON-ready representation of this versioned IR."""
@@ -201,7 +205,19 @@ class PlanIR:
             training_age_class=data.get("training_age_class"),
             events=list(data.get("events", [])),
             coached_block=dict(data.get("coached_block") or {}),
+            provenance=dict(data.get("provenance") or {}),
         )
+
+
+def _motoren_provenance(profile: Dict[str, Any]) -> Dict[str, str]:
+    """Version stamps for a generated plan, including a discipline profile."""
+    provenance = {
+        "engine_version": engine_version(),
+        "voice_version": voice_version(),
+    }
+    if derive_discipline(profile) == "road":
+        provenance["profile_version"] = ROAD_PROFILE_VERSION
+    return provenance
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -894,6 +910,7 @@ def _plan_ir_from_canonical(
         training_age_class=training_age_class(profile),
         events=_event_ledger(profile),
         coached_block=dict(model.get("coached_block") or profile.get("coached_block") or {}),
+        provenance=_motoren_provenance(profile),
     )
     _annotate_delivery_context(plan_ir.weeks)
     return plan_ir
@@ -952,6 +969,7 @@ def build_plan_ir(
             training_age_class=training_age_class(profile),
             events=_event_ledger(profile),
             coached_block=dict(profile.get("coached_block") or {}),
+            provenance=_motoren_provenance(profile),
         )
         _annotate_delivery_context(plan_ir.weeks)
     output_path = athlete_dir / "plan_ir.json"
@@ -1028,6 +1046,7 @@ def project_tp_manifest(plan_ir: PlanIR) -> Dict[str, Any]:
                  or ("Race" if has_race else "Coached Block"))
     return {
         "version": _TP_MANIFEST_VERSION,
+        "provenance": dict(plan_ir.provenance),
         "plan_title": f"{athlete_name} · {race_name} · {plan_weeks}wk [CUSTOM]",
         "athlete": athlete_name,
         "race": {

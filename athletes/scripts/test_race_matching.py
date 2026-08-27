@@ -36,7 +36,8 @@ from known_races import (
     generic_race_demands,
     race_provenance_issue,
 )
-from intake_to_plan import build_profile, generate_coaching_brief
+from intake_to_plan import (IntakeValidationError, build_profile,
+                            generate_coaching_brief)
 from create_profile_from_form import resolve_race_id
 from pre_delivery_checklist import race_match_lines
 
@@ -267,6 +268,28 @@ class TestBuildProfileUnknownRace:
         demands = unknown_profile['target_race'].get('generic_demands')
         assert demands
         assert all(0 <= v <= 10 for v in demands.values())
+
+    def test_explicit_training_demands_override_generic_for_catalog_build(self):
+        import json
+        from race_category_scorer import DEMAND_DIMENSIONS
+
+        demands = {key: index + 1 for index, key in enumerate(DEMAND_DIMENSIONS)}
+        profile = build_profile(_make_parsed_with_race(
+            f'{UNKNOWN_RACE} (2026-09-12, 60, priority A)',
+            {'race_format': 'fondo', 'race_demands': json.dumps(demands)},
+        ))
+        target = profile['target_race']
+        assert target['event_format'] == 'fondo'
+        assert target['training_demands'] == demands
+        assert target['training_demands_source'] == 'explicit_intake'
+
+    def test_malformed_explicit_training_demands_fail_closed(self):
+        with pytest.raises(IntakeValidationError, match='Invalid Race Demands'):
+            build_profile(_make_parsed_with_race(
+                f'{UNKNOWN_RACE} (2026-09-12, 60, priority A)',
+                {'race_format': 'fondo',
+                 'race_demands': '{"durability": 10}'},
+            ))
 
     def test_discipline_derived_from_name(self, unknown_profile):
         # "Fondo" in the race name → road (derive_discipline keywords)

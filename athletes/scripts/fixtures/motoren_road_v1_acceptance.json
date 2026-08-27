@@ -5,27 +5,27 @@
   "formats": [
     {
       "event_format": "generic_road",
-      "secondary_signature": "Race Simulation"
+      "secondary_pool": ["Race Simulation", "Microbursts", "Threshold Accumulation"]
     },
     {
       "event_format": "criterium",
-      "secondary_signature": "Microbursts"
+      "secondary_pool": ["Microbursts", "Tempo with Sprints", "Race Simulation"]
     },
     {
       "event_format": "hill_climb",
-      "secondary_signature": "Mixed Climbing Variations"
+      "secondary_pool": ["Mixed Climbing Variations", "SFR", "Threshold Steady"]
     },
     {
       "event_format": "time_trial",
-      "secondary_signature": "Threshold Steady"
+      "secondary_pool": ["Threshold Steady", "Threshold Accumulation", "NP/IF Target"]
     },
     {
       "event_format": "stage_race",
-      "secondary_signature": "Blended Endurance, Threshold, and Sprints"
+      "secondary_pool": ["Blended Endurance, Threshold, and Sprints", "Race Simulation", "Threshold Accumulation"]
     },
     {
       "event_format": "fondo",
-      "secondary_signature": "Tempo with Accelerations"
+      "secondary_pool": ["Tempo with Accelerations", "Mixed Climbing Variations"]
     }
   ]
 }

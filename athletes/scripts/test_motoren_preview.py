@@ -398,12 +398,12 @@ class TestFullPlanPreviewV2:
         assert generate_preview_source(constrained) == second
 
     @pytest.mark.parametrize(
-        "event_format,expected_signature",
-        [(item["event_format"], item["secondary_signature"])
+        "event_format,secondary_pool",
+        [(item["event_format"], item["secondary_pool"])
          for item in _ROAD_ACCEPTANCE["formats"]],
     )
     def test_road_preview_uses_format_specific_library_workout(
-            self, event_format, expected_signature):
+            self, event_format, secondary_pool):
         request = _normalized_v2(_request_v2(
             brand="roadie_labs",
             sample_week_number=_ROAD_ACCEPTANCE["sample_week_number"],
@@ -440,7 +440,7 @@ class TestFullPlanPreviewV2:
             session for day in build_week["days"]
             for session in day["sessions"] if session["kind"] == "bike"
         ]
-        assert any(session["title"] == expected_signature
+        assert any(session["title"] in secondary_pool
                    for session in bike_sessions)
         assert any(session["intensity_label"] == "VO2max"
                    for session in bike_sessions)

@@ -251,6 +251,24 @@ def sanitize_athlete_title(value: Any) -> str:
     return re.sub(r"\s+", " ", text).strip(" -–—") or "Workout"
 
 
+# TP-stability normalization (2026-08-25): TrainingPeaks' athlete-calendar API
+# collapses runs of internal spaces in description text ("minutes.  Note" ->
+# "minutes. Note") on write. Discovered when a library-authored double space
+# (preserved verbatim by the compiler) landed one byte short of its sealed
+# contract digest and the read-barrier correctly refused. tools/publish_athlete.py
+# used to fix this at contract-seal time, after generation -- normalizing here,
+# where the description is finalized, makes every downstream consumer (TP
+# structure projection, tp_manifest.json, the publisher) TP-stable from the
+# start instead of relying on a publish-time patch. Only collapses runs NOT at
+# line start so intentional indentation survives.
+_INTERNAL_SPACE_RUN = re.compile(r"(?<=\S)  +(?=\S)")
+
+
+def collapse_internal_spaces(value: str) -> str:
+    """Collapse runs of 2+ internal spaces to one, preserving line-start indent."""
+    return _INTERNAL_SPACE_RUN.sub(" ", value)
+
+
 def sanitize_athlete_description(value: Any) -> str:
     """Keep the executable brief; remove compiler narrative and leaked IDs.
 
@@ -283,6 +301,7 @@ def sanitize_athlete_description(value: Any) -> str:
     result = "\n".join(lines)
     result = re.sub(r"[ \t]+\n", "\n", result)
     result = re.sub(r"\n{3,}", "\n\n", result)
+    result = collapse_internal_spaces(result)
     return _truncate_athlete_copy(result.strip())
 
 

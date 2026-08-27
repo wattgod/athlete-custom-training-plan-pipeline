@@ -103,6 +103,14 @@ this rule. Mid-season reset pattern available. (R49, R50, R59; H6) —
 annual-macro features beyond a single prep are PARKED for the coaching
 ladder (ruling Q11).
 
+**AE-1.9c — Recovery-week TSS denominator is demonstrated load, not planned
+load (sharpen of the ratified 50–65% recovery band).** [E] The ratified
+recovery-week TSS band (50–65% of load-week average) is measured against
+the athlete's trailing DEMONSTRATED load-week average — completed TSS —
+never the plan's own planned average. A plan anchored to a stale or
+under-dosed load number scores its recovery weeks "compliant" against the
+wrong denominator. (Matti + Jesse Couch email review, 2026-08-26)
+
 **AE-1.10 — Short-runway and novice branches.** [E][H] <12 h/wk: sweet-spot
 substitutes for LSD earlier; extra base period, never an extra build. Novice /
 returning (training age <1 yr): Seiler onboarding state machine — 6 weeks
@@ -122,6 +130,119 @@ excursion, not their average — and ≤15 min/900 s total ≥92% work per
 session). In peak/race weeks manage ATL as the active lever; CTL is a
 lagging result. Weakest evidence tier in this doc (anecdote), adopted
 because it formalizes what openers already do. (R57, R58)
+
+**AE-1.13 — Season close-out and the off-season break (Matti ruling,
+2026-08-26).** [A→ratified] The season ends with a deliberate unplug: **two
+weeks off (sometimes one) in late October to early November** for most
+athletes. Coaching rule for the run-in: an athlete with **no event on the
+calendar between now and that break should be pushed to find at least one
+event to do before unplugging** — the season should close on a start line,
+not a fade. Practical consequences: (a) fall plans for event-less athletes
+lead with the "pick an event" conversation, not more training blocks;
+(b) plan runways built in Aug–Oct should land their last hard emphasis on
+a real event and then hand off to the break, never trail off into
+open-ended load; (c) the break itself is programmed (dated, named, framed
+as part of the plan), not left as silence. Source: Matti's words
+2026-08-26 — "we're getting towards the end of the season, which most
+athletes generally take in Late October to Early November for two weeks
+(but sometimes only 1); if they don't have any events from now until
+then, it's worth pushing them to find at least 1 event to do before
+unplugging a bit."
+
+**AE-1.13b (amend AE-1.13) — The break is athlete-shaped.** [E] For
+daily-exercise-identity athletes, the AE-1.13 off-season break comes off
+STRUCTURE, not off MOVEMENT: no targets, no data, no compliance tracking —
+riding, lifting, and running stay blessed through the unplug window. This
+changes what "off" means for this athlete type, not when AE-1.13's break
+happens. (Matti + Jesse Couch email review, 2026-08-26)
+
+**AE-1.14 — CTL trajectory gate.** [M] Every plan build models the CTL
+path: standard 42-day time-constant iteration over planned TSS from the
+athlete's current CTL. Arriving at the A-race materially below current CTL
+(default threshold: >10% below) is a FAIL unless the plan declares
+detraining/off-season intent. Jesse's v1 modeled 72 → low-40s CTL at his
+A-race — the athlete computed it before the build did. (Matti + Jesse
+Couch email review, 2026-08-26)
+
+**AE-1.15 — Travel compromises nothing without evidence.** [E] A travel
+day reduces only the transit day(s) themselves. Reducing more requires the
+athlete's own history or stated claim that travel compromises them — ask,
+never assume. (Matti + Jesse Couch email review, 2026-08-26)
+
+**AE-1.16 — Race-day TSB band by event class (RATIFIED Matti 2026-08-26).**
+[E][H][M] A-race (gravel/road, ≥3 h): TSB at race day in **[+5, +25]**,
+target sub-band **[+15, +25]**. Stage-race day 1: TSB ≥ +10 preferred;
+within-block TSB unconstrained by design. CX/short-format (<1 h,
+high-anaerobic): wider ceiling (~+29 documented, Overton CX Nationals) —
+event-class exception, OPEN pending a CX-specific ruling. Consensus of six
+independent published sources (+5..+25, mode +15..+20; PW-8/9/10, synthesis
+2026-08-26). Matti's standing position — "you want a very, very positive
+TSB… WAY better to enter a little undertrained but fresh than a little
+fitter but buried" — now carries this number. The corpus's unratified
+TSB≈0 worked case (R58) is explicitly NOT adopted.
+
+**AE-1.17 — Taper prescription (RATIFIED Matti 2026-08-26).** [P][E][M]
+Duration **8–21 d** scaled to event length (~12 d short A-race → ~21 d
+ultra). Daily load **50–70%** of pre-taper average, exponential/progressive
+decay (beats linear/step). **Intensity and session frequency are HELD, not
+cut** (Bosquet 2007, Wang 2023, Mujika/Padilla). **Matti ruling, verbatim
+basis:** "I'm personally not against some intensity leading up to race
+week. I almost always have athletes do openers… ['Stars in your eyes']
+touches some zones. I'd prefer more of that for athletes than flat Z2
+workouts with no dimension work." Therefore: (a) **openers are DEFAULT**
+(the final-days +20–30% load bump, Thomas 2009 two-phase taper, is the
+literature's version of what openers already do) — opt-out, not opt-in;
+(b) race-week intensity arrives as TOUCHES — openers, short anaerobic
+bursts (reps ≤120 s, e.g. 20/30/40 s), race-pace touches, dimension work
+(cadence/position/terrain) — all legal under the AE-1.12 caps, which
+forbid long ≥92% BLOCKS (>120 s reps, >900 s total), not touches;
+(c) **flat-Z2-only taper endurance with no dimension work is a defect**
+(extends ruling Q7 into the taper). Entry-fatigue scaling: pre-taper
+overload (≥110–120% load) requires a longer/deeper taper — depth and
+duration are a function of fatigue at taper start, never a fixed lookup.
+NOTE: the coach's curated race-week library cards are believed cap-
+compliant by class (short-burst); a library audit against the ≥92%-block
+caps is QUEUED, archive-never-delete rules apply to any violators found.
+
+**AE-1.18 — CTL-retention gate (RATIFIED Matti 2026-08-26; joins AE-1.14).**
+[E][M] Two anchors, both checked, the tighter binds: (a) AE-1.14 unchanged
+— race-day CTL ≥ 90% of CTL at plan-build time; (b) race-day CTL ≥ 90% of
+CTL at TAPER START (peak CTL), i.e. taper-window CTL loss ≤ 10% (Friel).
+Jointly with AE-1.16 this pins the compliant taper family: **7–10 d @
+50–70% load, or 14 d @ 60–70%** — 14 d @ 50% and 21-d tapers hit the TSB
+target but blow the 10% cap (derived table PW-16, arithmetic-verified).
+Duration and load-retention are coupled, never independently chosen.
+
+**AE-1.19 — TSB build rails (RATIFIED Matti 2026-08-26).** [E] Productive
+load/build territory: TSB in **[−30, −10]**. Below −20 no more than 1 day
+in 10 (Friel's "danger" line at −30 respected as a hard floor); below −30
+is a defect outside deliberate crash blocks the coach names. The −10..+5
+grey zone is for recovery weeks and pre-taper, not for load weeks.
+
+**AE-1.20 — ATL time-constant policy (RATIFIED Matti 2026-08-26).** [E]
+Default τ_ATL = 7 days for everyone. Deviations only by CATEGORY (Coggan:
+4–5 d young/fast-recovering or sustained-power events; 10–12 d masters or
+anaerobic events), never per-athlete curve-fitting — the Couzens notebook
+demonstrated Banister fits go to parameter boundaries on sparse data.
+τ_CTL stays 42 (chart insensitive to it; Simmons).
+
+**AE-1.21 — Age-based recovery cycle (RATIFIED Matti 2026-08-26).** [E]
+From the coach's own ATP period lookup table: recovery-cycle length is
+**3 weeks (2 load + 1 recovery) at age ≥40, 4 weeks (3 load + 1 recovery)
+under 40**. Harmonization: this 40-year line governs CYCLE CADENCE;
+AE-1.5's age-50 line governs CTL-BAND adjustment — different axes, both
+stand. Refines AE-1.4's "2–4 weeks max before a rest week."
+
+**AE-1.22 — B/C-race TSB band (RATIFIED Matti 2026-08-26).** [A][H]
+B/C races are raced as training (AE-1.9): arrive at TSB **[−10, 0]** —
+the 2-day overlay freshens without a taper. Weakest evidence tier here;
+adopted because it formalizes existing practice.
+
+**AE-1.23 — Multi-peak season limits (RATIFIED Matti 2026-08-26).** [E]
+≤3 true peaks per season, meaningful spacing; cumulative CTL bleed across
+all peaks ≤13% (Friel's double-peak worked case); the ATP table's 32-week
+transition-context window bounds between-A-race re-periodization. Pairs
+with AE-1.13 (the season still ends on a start line + programmed break).
 
 ## 2. Intensity budget & distribution (`block_compliance`)
 
@@ -193,6 +314,22 @@ Selection-layer ceilings, also ratified: endurance filler IF ceiling **.72**
 long rides stay unceilinged, hard durability long rides are the house
 signature). Known offenders to fix: `endurance_surges` L6 (58.5) and
 `tempo_3x15` (52.5–56). (R83, C1 finding; Workout Standards v1.0 Q·B)
+
+**AE-2.8b (sharpen of AE-2.8) — Bottom-of-band endurance dosing is an
+exception state.** [E] Riding the bottom of the ratified endurance IF band
+is legal only when the workout description states what it recovers from;
+default endurance dosing sits in the meat of the band, top half for
+high-tolerance athletes. (Kendall v1 review, 2026-08-26)
+
+**AE-2.10 — Demonstrated dose beats archetype default.** [E] When an
+athlete's stated operating dose exists AND their completed training
+history corroborates it, load weeks anchor to the demonstrated dose
+(completed hours/TSS in load weeks), not hours-band defaults. Dosing below
+the demonstrated dose requires a stated reason in the plan. Overshoot of a
+stale plan is evidence of CAPACITY, not of a plan that needs shrinking —
+when actuals exceed planned because the anchor (FTP) was stale, re-anchor
+UP to actuals. (Matti + Jesse Couch email review, 2026-08-26 / Kendall v1
+review, 2026-08-26)
 
 **AE-2.6 — Base keeps a pulse.** [H] One maintenance-intensity hard day per
 8–14 workouts even in early base; ≥1 long near-LT1 ride/week in early base.
@@ -518,6 +655,15 @@ position work — selection filters by discipline tag.
 rotation (already ratified) applies to EVERY delivery surface including
 plan containers; identical copy across rest days in one plan = defect.
 
+**AE-6.5c — No blank days (Matti ruling, 2026-08-26).** Every calendar day
+inside a delivered plan's window carries a card: training days their
+session(s), rest days a Day Off card (workoutTypeValueId 7) with rotated
+copy per AE-6.5b. A day with nothing on it reads as an unfinished plan,
+not as rest. Applies to plan containers and athlete calendars alike.
+Source: coach review of the Jesse Couch draft — "you're violating the no
+blank days rule." (Predates this doc as house practice — Jesse's own
+pre-rebuild calendar carried Day Off cards throughout.)
+
 **AE-9.1 — Notes density: a plan is a guided story.** Weekly Monday notes
 are the floor, not the ceiling: short mid-week notes that speak to how the
 athlete is likely feeling at that point in the block (2-3 per week max,
@@ -588,6 +734,19 @@ do, plainly ("Arrive fueled: normal meal ~2h out. One bottle, 40-50g
 carbs."). Never structure a line around what today is NOT ("...is not the
 job today" class = worse than useless). Applies to fueling lines first,
 then all execution copy.
+
+### 9c addendum — round 3 rulings (Matti, 2026-08-26)
+
+**AE-9.10 — Terse register everywhere.** Plan writing, workout
+descriptions, calendar notes, weekly commands, and athlete emails lead with
+the instruction or fact: numbered lists over prose, real numbers over
+adjectives, one question max per note, no metaphors or theatrical framing,
+concessions compressed to one clause. AE-9.1's notes-density floor is
+unchanged — notes stay frequent, they just get SHORTER. Warmth comes from
+specificity and speed, not prose. Source: Matti's words verbatim,
+2026-08-26 — "I want all the plan writing, email, and notes to be more
+like that, less verbose, more to the point" — with the approved Jesse
+email (~160 words, numbered facts) standing as the reference exemplar.
 
 ## 9b. Hook → module map
 
