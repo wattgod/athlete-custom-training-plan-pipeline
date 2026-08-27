@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from tools import build_tp_plan_payload as btpp
+from tools.tp_polyline import polyline_from_structure
 
 PLAN_DAY_ONE = "2026-08-31"
 
@@ -246,6 +247,31 @@ class TestSuppressZeroPower:
         assert btpp.suppress_zero_power(block_with_ramp_then_work) == block_with_ramp_then_work
 
 
+class TestPolylineRecomputation:
+    def test_upstream_polyline_is_never_trusted(self):
+        # NONZERO_STRUCTURE's own polyline ([[0,0],[1,0]]) is a placeholder
+        # that does NOT match what its steps compute to -- the emitted entry
+        # must carry the recomputed value, not the upstream one.
+        assert NONZERO_STRUCTURE["polyline"] != polyline_from_structure(NONZERO_STRUCTURE)
+        entries, _ = btpp.build_plan_payload(golden_sessions(), PLAN_DAY_ONE)
+        z2 = next(e for e in entries if e["title"] == "Z2 Ride")
+        assert z2["structure"]["polyline"] == polyline_from_structure(NONZERO_STRUCTURE)
+        assert z2["structure"]["polyline"] != NONZERO_STRUCTURE["polyline"]
+
+    def test_null_structure_passes_through_without_polyline_key(self):
+        entries, _ = btpp.build_plan_payload(golden_sessions(), PLAN_DAY_ONE)
+        rest = next(e for e in entries if e["title"] == "Rest Day")
+        assert rest["structure"] is None
+
+    def test_ae84d_suppressed_structure_never_gets_a_polyline(self):
+        # A structure suppressed to None by AE-8.4d must stay None -- it
+        # must not come back with a computed polyline bolted on.
+        entries, _ = btpp.build_plan_payload(golden_sessions(), PLAN_DAY_ONE)
+        recruitment = next(
+            e for e in entries if e["title"] == "Muscle Recruitment Progressions - Trainer")
+        assert recruitment["structure"] is None
+
+
 class TestBuildPlanPayload:
     def test_w00_session_excluded(self):
         entries, excluded = btpp.build_plan_payload(golden_sessions(), PLAN_DAY_ONE)
@@ -255,6 +281,12 @@ class TestBuildPlanPayload:
     def test_entry_shape_matches_tp_container_contract(self):
         entries, _ = btpp.build_plan_payload(golden_sessions(), PLAN_DAY_ONE)
         z2 = next(e for e in entries if e["title"] == "Z2 Ride")
+        # NONZERO_STRUCTURE ships a placeholder polyline; the emitted entry
+        # must carry the recomputed one instead (see TestPolylineRecomputation).
+        expected_structure = {
+            **NONZERO_STRUCTURE,
+            "polyline": polyline_from_structure(NONZERO_STRUCTURE),
+        }
         assert z2 == {
             "title": "Z2 Ride",
             "workoutTypeValueId": 2,
@@ -262,7 +294,7 @@ class TestBuildPlanPayload:
             "description": "body",
             "totalTimePlanned": 1.5,
             "tssPlanned": 60.0,
-            "structure": NONZERO_STRUCTURE,
+            "structure": expected_structure,
         }
         # no comment on this session -> key must be absent, not null
         assert "coachComments" not in z2

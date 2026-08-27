@@ -15,10 +15,13 @@ package directory and writes, into ``--out-dir``:
                         coachComments?}
                        ``coachComments`` is present only when the session
                        carries a ``pre_activity_comment``. ``structure``
-                       comes verbatim from ``tp_manifest.json`` (the
-                       pipeline's own TP structure projection), with a
-                       defensive AE-8.4d zero-power re-check (see
-                       ``suppress_zero_power``).
+                       comes from ``tp_manifest.json`` (the pipeline's own
+                       TP structure projection), with a defensive AE-8.4d
+                       zero-power re-check (see ``suppress_zero_power``) and
+                       its ``polyline`` ALWAYS recomputed from the
+                       structure's own steps (see ``_apply_computed_polyline``
+                       / ``tools/tp_polyline.py``) -- the upstream-projected
+                       polyline is never trusted verbatim.
 
   notes_payload.json   ALL of ``fulfillment_manifest.json``'s
                         ``native_notes``, post-exclusion:
@@ -71,6 +74,7 @@ import yaml  # noqa: E402
 
 from ae_lint import lint_workout  # noqa: E402
 from story_notes import COMMENT_PROTOCOL_TITLE  # noqa: E402
+from tools.tp_polyline import polyline_from_structure  # noqa: E402
 
 
 class PlanPayloadError(ValueError):
@@ -174,6 +178,23 @@ def suppress_zero_power(structure: Mapping[str, Any] | None) -> Mapping[str, Any
     return structure
 
 
+def _apply_computed_polyline(
+    structure: Mapping[str, Any] | None,
+) -> Mapping[str, Any] | None:
+    """Never trust the upstream-projected ``polyline`` -- always recompute it
+    from the structure's own steps (tools/tp_polyline.py; see its module
+    docstring for the reverse-engineered TP calendar-tile semantics). A
+    "bar-style" chart that drops to y=0 at every step boundary is exactly
+    the defect this replacement exists to stop from shipping. A None/empty
+    structure (already suppressed by AE-8.4d, or absent) passes through
+    unchanged."""
+    if not structure:
+        return structure
+    structure = dict(structure)
+    structure["polyline"] = polyline_from_structure(structure)
+    return structure
+
+
 # ------------------------------------------------------------ plan payload
 
 def build_plan_payload(
@@ -213,7 +234,8 @@ def build_plan_payload(
             "description": session.get("description") or "",
             "totalTimePlanned": session.get("total_time_planned"),
             "tssPlanned": session.get("tss_planned"),
-            "structure": suppress_zero_power(session.get("structure")),
+            "structure": _apply_computed_polyline(
+                suppress_zero_power(session.get("structure"))),
         }
         comment = session.get("pre_activity_comment")
         if comment:
