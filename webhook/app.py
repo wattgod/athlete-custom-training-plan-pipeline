@@ -34,6 +34,11 @@ from datetime import datetime, timedelta, date, timezone
 from flask import Flask, request, jsonify, send_file, make_response, redirect
 from flask_limiter import Limiter
 import stripe
+from provider_revenue import (
+    ProviderRevenueError,
+    build_stripe_revenue_receipt,
+    parse_reconciliation_window,
+)
 import yaml
 
 from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
@@ -9624,6 +9629,44 @@ def cron_state_audit():
     except Exception:
         logger.exception('Fulfillment state audit execution failed')
         return jsonify({'error': 'Internal error'}), 500
+
+
+@app.route('/api/cron/stripe-reconciliation', methods=['POST'])
+@limiter.limit("2/minute")
+def cron_stripe_reconciliation():
+    """Return a PII-free, read-only Stripe revenue reconciliation receipt."""
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'JSON body is required'}), 400
+    try:
+        start, end = parse_reconciliation_window(
+            data.get('start_date'), data.get('end_date'))
+        receipt = build_stripe_revenue_receipt(
+            stripe, start, end, record_key_secret=CRON_SECRET)
+    except ProviderRevenueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except stripe.error.StripeError as exc:
+        logger.error(
+            'Stripe reconciliation provider read failed: %s',
+            type(exc).__name__)
+        return jsonify({'error': 'Payment provider read failed'}), 502
+    except Exception:
+        logger.exception('Stripe reconciliation execution failed')
+        return jsonify({'error': 'Internal error'}), 500
+    summary = receipt.get('controls', {})
+    logger.info(json.dumps({
+        'message': 'stripe_reconciliation_complete',
+        'period': receipt['period'],
+        'successful_charges': summary.get('successful_charges', {}),
+        'succeeded_refunds': summary.get('succeeded_refunds', {}),
+        'paid_payouts': summary.get('paid_payouts', {}),
+    }, sort_keys=True))
+    return jsonify(receipt)
 
 
 # =============================================================================

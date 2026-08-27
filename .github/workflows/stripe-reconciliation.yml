@@ -1,0 +1,78 @@
+name: "Stripe Revenue Reconciliation"
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Inclusive UTC start date (YYYY-MM-DD)"
+        required: true
+        default: "2025-08-27"
+      end_date:
+        description: "Inclusive UTC end date (YYYY-MM-DD)"
+        required: true
+        default: "2026-08-27"
+
+permissions:
+  contents: read
+
+env:
+  API_BASE: https://athlete-custom-training-plan-pipeline-production.up.railway.app
+  CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+jobs:
+  reconcile:
+    name: "Export sanitized provider ledger"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: "Fail fast if production auth is missing"
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET must match the Railway service"
+            exit 1
+          fi
+
+      - name: "Read live Stripe controls"
+        env:
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+        run: |
+          HTTP_STATUS=$(curl --silent --show-error \
+            --max-time 300 \
+            --output "${RUNNER_TEMP}/stripe-reconciliation.json" \
+            --write-out '%{http_code}' \
+            --request POST "$API_BASE/api/cron/stripe-reconciliation" \
+            --header "X-Cron-Secret: $CRON_SECRET" \
+            --header "Content-Type: application/json" \
+            --data "{\"start_date\":\"$START_DATE\",\"end_date\":\"$END_DATE\"}")
+          python3 -m json.tool "${RUNNER_TEMP}/stripe-reconciliation.json" >/dev/null
+          if [ "$HTTP_STATUS" != "200" ]; then
+            python3 - <<'PY'
+          import json, os, pathlib
+          path = pathlib.Path(os.environ["RUNNER_TEMP"]) / "stripe-reconciliation.json"
+          body = json.loads(path.read_text())
+          print({"error": body.get("error", "unknown")})
+          PY
+            echo "::error::Stripe reconciliation failed with HTTP $HTTP_STATUS"
+            exit 1
+          fi
+          python3 - <<'PY'
+          import json, os, pathlib
+          path = pathlib.Path(os.environ["RUNNER_TEMP"]) / "stripe-reconciliation.json"
+          body = json.loads(path.read_text())
+          print(json.dumps({
+              "schema": body["schema"],
+              "period": body["period"],
+              "controls": body["controls"],
+              "privacy": body["privacy"],
+              "side_effects": body["side_effects"],
+          }, indent=2, sort_keys=True))
+          PY
+
+      - name: "Upload reconciliation receipt"
+        uses: actions/upload-artifact@v4
+        with:
+          name: stripe-reconciliation-${{ github.run_id }}
+          path: ${{ runner.temp }}/stripe-reconciliation.json
+          if-no-files-found: error
+          retention-days: 30
