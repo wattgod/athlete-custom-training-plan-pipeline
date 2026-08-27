@@ -359,7 +359,7 @@ def select_workouts_for_week(
 
     # Taper week: openers + short rides only
     if week_type == 'taper':
-        return _select_taper_week(hours_per_week)
+        return _select_taper_week(hours_per_week, discipline=discipline)
 
     # Testing week: assessment battery instead of training intensity
     if week_type == 'testing':
@@ -676,7 +676,10 @@ def _select_recovery_week(config: dict, hours_per_week: float = 10) -> List[Dict
     ]
 
 
-def _select_taper_week(hours_per_week: float = 10) -> List[Dict[str, Any]]:
+def _select_taper_week(
+    hours_per_week: float = 10,
+    discipline: str = 'gravel',
+) -> List[Dict[str, Any]]:
     """Taper week: retain sharpness without recovery-week restrictions.
 
     Taper is intentionally distinct from recovery: Thirty-Fifteens and high
@@ -688,6 +691,23 @@ def _select_taper_week(hours_per_week: float = 10) -> List[Dict[str, Any]]:
     # Keep it long enough for the alactic seasoning but compact enough that
     # the two quality sessions and easy days still unload versus peak volume.
     long_level = 1 if hours_per_week < 9 else 2
+    if discipline == 'road':
+        # AE-1.17: the road profile's peak weeks carry three distinct hard
+        # touches (the two midweek quality days plus work inside the long
+        # ride). Preserve that frequency while unloading volume. Every name
+        # below routes to the checked-in TP coach library; the downstream
+        # taper ceiling still rejects any candidate with >900 seconds total
+        # or a >120-second rep at >=92% FTP (AE-1.12).
+        return [
+            {'slot': 'thirty_fifteens', 'name': 'Thirty-Fifteens', 'level': 4, 'role': 'intensity'},
+            {'slot': 'road_taper_sharpener', 'name': 'Stars In Your Eyes', 'level': 2,
+             'role': 'intensity'},
+            {'slot': 'long_ride', 'name': 'Endurance with Surges', 'level': long_level,
+             'role': 'long_ride'},
+            {'slot': 'filler', 'name': 'Endurance', 'level': 1, 'role': 'filler',
+             'pool': ['Endurance', 'Cadence Work', 'Endurance Blocks']},
+        ]
+
     return [
         {'slot': 'thirty_fifteens', 'name': 'Thirty-Fifteens', 'level': 4, 'role': 'intensity'},
         {'slot': 'cadence', 'name': 'Cadence Work', 'level': 1, 'role': 'intensity'},

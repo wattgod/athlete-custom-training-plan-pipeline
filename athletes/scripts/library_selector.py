@@ -588,6 +588,21 @@ _HARD_WORK_SECONDS_FILLER = 360
 _TAPER_MAX_HARD_REP_SECONDS = 120
 _TAPER_HARD_WORK_SECONDS = 900
 _TAPER_GATED_WEEK_TYPES = ("taper", "race")
+# AE-3.1 (ratified 2026-08-23): every selected Road v1 VO2 workout must carry
+# 5-18 minutes at the current >=106%-FTP proxy.  The block selector already
+# clamps synthetic Road v1 VO2 levels, but a curated TP item can replace that
+# synthetic structure downstream.  Gate the actual curated road structure
+# here; legacy gravel remains unchanged pending its own inventory/migration.
+_VO2_WORK_PCT_FLOOR = 106.0
+_VO2_WORK_SECONDS_MIN = 5 * 60
+_VO2_WORK_SECONDS_MAX = 18 * 60
+_VO2_CANONICAL_TYPES = frozenset({
+    "VO2max 30/30",
+    "VO2max 40/20",
+    "VO2max Extended",
+    "VO2max Steady Intervals",
+    "Thirty-Fifteens",
+})
 # Base-phase long rides are aerobic: hard durability long rides are the
 # house signature for BUILD/PEAK only. Without a base ceiling, a curated
 # night-threshold session filed in an endurance library ("Dark is the
@@ -616,6 +631,32 @@ def _hard_work_seconds(structure: Any) -> float:
     return total
 
 
+def _vo2_work_seconds(structure: Any) -> float:
+    """Return the AE-3.1 proxy dose (seconds at >=106% FTP).
+
+    TP structures may express intervals as a repetition block, so the count
+    is multiplied through exactly as the hard-work ceiling does.  Cadence
+    targets are ignored.  Curated VO2 items without an executable percent-FTP
+    structure therefore return zero and fail closed at selection time.
+    """
+    total = 0.0
+    if not isinstance(structure, Mapping):
+        return total
+    if str(structure.get("primaryIntensityMetric") or "percentOfFtp").lower() != "percentofftp":
+        return total
+    for step in structure.get("structure") or []:
+        reps = int((step.get("length") or {}).get("value") or 1)
+        for sub in step.get("steps") or []:
+            target = next((t for t in sub.get("targets") or []
+                           if t.get("unit") != "roundOrStridePerMinute"), None)
+            if not target:
+                continue
+            pct = float(target.get("maxValue") or target.get("minValue") or 0)
+            if pct >= _VO2_WORK_PCT_FLOOR:
+                total += max(reps, 1) * float((sub.get("length") or {}).get("value") or 0)
+    return total
+
+
 def _max_hard_rep_seconds(structure: Any) -> float:
     """Longest single >=92%-FTP rep anywhere in a TP structure (0.0 if none)."""
     longest = 0.0
@@ -631,6 +672,34 @@ def _max_hard_rep_seconds(structure: Any) -> float:
             if pct >= _HARD_WORK_PCT_FLOOR:
                 longest = max(longest, float((sub.get("length") or {}).get("value") or 0))
     return longest
+
+
+def _road_taper_intensity_subset(
+    pool: Sequence[Mapping[str, Any]], slot: Mapping[str, Any],
+) -> list[Mapping[str, Any]]:
+    """Prefer the highest-dose *eligible* library touches for Road v1 taper.
+
+    AE-1.17 retains weekly intensity while volume falls.  The general level
+    rotation can otherwise choose two very light items from a pool even after
+    AE-1.12 has correctly capped every candidate.  For road taper intensity
+    slots only, keep candidates within 90% of the eligible pool's largest
+    hard-work dose, then let the existing dimension rank and deterministic
+    rotation choose among them.  This never authors or modifies a workout;
+    it only selects an actual coach-library item that already passed the
+    120-second-rep and 900-second-session taper ceilings.
+    """
+    if not (str(slot.get("discipline") or "").lower() == "road"
+            and str(slot.get("week_type") or "").lower() == "taper"
+            and str(slot.get("role") or "").lower() == "intensity"):
+        return list(pool)
+    if not pool:
+        return []
+    doses = [_hard_work_seconds(item.get("structure")) for item in pool]
+    maximum = max(doses, default=0.0)
+    if maximum <= 0:
+        return list(pool)
+    floor = 0.90 * maximum
+    return [item for item, dose in zip(pool, doses) if dose >= floor]
 
 
 # ---------------------------------------------------------------------------
@@ -694,6 +763,15 @@ def _has_ae_3_14_violation(structure: Any) -> bool:
 
 
 def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bool:
+    # Road v1 is the first profile whose public contract promises that the
+    # protected VO2 anchor itself is AE-3.1-bounded. Keep this migration
+    # scoped to road until the legacy gravel catalog has its own inventory
+    # and coach-approved replacement wave.
+    if (str(slot.get("discipline") or "").lower() == "road"
+            and slot.get("canonical_name") in _VO2_CANONICAL_TYPES):
+        vo2_seconds = _vo2_work_seconds(item.get("structure"))
+        if not (_VO2_WORK_SECONDS_MIN <= vo2_seconds <= _VO2_WORK_SECONDS_MAX):
+            return False
     if (str(slot.get("phase") or "").lower() == "base"
             and _is_long_ride_role(slot.get("role"))):
         if_planned = item.get("if_planned")
@@ -1034,6 +1112,10 @@ def select(
         if not candidate_pool:
             return None
 
+    # AE-1.17's road-taper dose preference outranks ordinary level banding:
+    # taper already cuts session duration and AE-1.12 caps every candidate,
+    # while a low-IF percentile band can contain only the under-dosed items.
+    candidate_pool = _road_taper_intensity_subset(candidate_pool, slot)
     level = int(slot.get("level") or 1)
     leveled_pool = _apply_level(candidate_pool, level)
     if used_items is not None:

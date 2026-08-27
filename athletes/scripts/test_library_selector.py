@@ -1162,6 +1162,73 @@ def test_taper_slots_reject_sustained_threshold_regardless_of_role():
     assert _passes_role_ceiling(threshold_item, load_slot)   # load weeks unaffected
 
 
+def test_curated_vo2_items_must_pass_ae_3_1_proxy_dose():
+    """A canonical Road v1 VO2 clamp cannot protect the final plan if the
+    curated-library replacement itself carries >18 minutes at >=106% FTP.
+    Gate the selected TP structure, not just the synthetic workout level.
+    """
+    from library_selector import _passes_role_ceiling
+
+    def vo2_item(repetitions):
+        return make_item(
+            repetitions,
+            structure={
+                "primaryIntensityMetric": "percentOfFtp",
+                "structure": [{
+                    "type": "repetition",
+                    "length": {"value": repetitions, "unit": "repetition"},
+                    "steps": [{
+                        "length": {"value": 30, "unit": "second"},
+                        "targets": [{"minValue": 110}],
+                    }, {
+                        "length": {"value": 15, "unit": "second"},
+                        "targets": [{"minValue": 55}],
+                    }],
+                }],
+            },
+        )
+
+    slot = base_slot(
+        canonical_name="VO2max 40/20", week_type="load", discipline="road")
+    assert _passes_role_ceiling(vo2_item(20), slot)      # 10 minutes
+    assert not _passes_role_ceiling(vo2_item(43), slot)  # 21.5 minutes
+    assert not _passes_role_ceiling(vo2_item(8), slot)   # 4 minutes
+
+
+def test_vo2_selection_skips_an_overdosed_curated_item():
+    def structured_item(item_id, repetitions, dimension_score):
+        return make_item(
+            item_id,
+            library_key="vo2_classic",
+            duration_min=50,
+            dimension_score=dimension_score,
+            structure={
+                "primaryIntensityMetric": "percentOfFtp",
+                "structure": [{
+                    "type": "repetition",
+                    "length": {"value": repetitions, "unit": "repetition"},
+                    "steps": [{
+                        "length": {"value": 30, "unit": "second"},
+                        "targets": [{"minValue": 110}],
+                    }, {
+                        "length": {"value": 15, "unit": "second"},
+                        "targets": [{"minValue": 55}],
+                    }],
+                }],
+            },
+        )
+
+    overdosed = structured_item(1, 43, 10)
+    compliant = structured_item(2, 20, 1)
+    result = select(
+        base_slot(
+            canonical_name="VO2max 40/20", week_type="load", discipline="road"),
+        index=make_index([overdosed, compliant]),
+    )
+    assert result is not None
+    assert result["item_id"] == 2
+
+
 def test_race_week_slots_reject_sustained_hard_reps_same_as_taper():
     """Aug 14 audit defect (pre-standards, two real athlete TP calendars):
     the race-week sharpener slot ("Stars In Your Eyes", 4 days before race)
@@ -1272,6 +1339,24 @@ def test_base_long_rides_reject_threshold_sessions():
     assert not _passes_role_ceiling(night, base_long)
     assert _passes_role_ceiling(surges, base_long)   # short surges OK in base
     assert _passes_role_ceiling(night, build_long)   # build durability untouched
+
+
+def test_road_taper_intensity_prefers_top_eligible_library_dose():
+    """AE-1.17 selection stays inside real, already-gated library items."""
+    from library_selector import _road_taper_intensity_subset
+
+    def item(item_id, reps):
+        return {"item_id": item_id, "structure": {"structure": [{
+            "length": {"value": reps},
+            "steps": [{"length": {"value": 30},
+                       "targets": [{"minValue": 120}]}],
+        }]}}
+
+    pool = [item(1, 10), item(2, 20), item(3, 30)]  # 300, 600, 900 seconds
+    road_taper = {"discipline": "road", "week_type": "taper", "role": "intensity"}
+    assert [x["item_id"] for x in _road_taper_intensity_subset(pool, road_taper)] == [3]
+    assert _road_taper_intensity_subset(
+        pool, {**road_taper, "discipline": "gravel"}) == pool
 
 
 def test_purged_concepts_never_selectable_from_curated_library():

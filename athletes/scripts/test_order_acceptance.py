@@ -139,8 +139,8 @@ GOLDEN_ORDERS = [
             "hours_per_week": "9", "trainer_access": "smart trainer",
             "long_ride_days": ["Saturday"],
             "interval_days": ["Tuesday", "Thursday"], "off_days": ["Monday"],
-            "strength_current": "none", "strength_want": "no",
-            "strength_equipment": "minimal", "sleep_quality": "good",
+            "strength_current": "2x/week", "strength_want": "yes",
+            "strength_equipment": "full gym", "sleep_quality": "good",
             "stress_level": "moderate", "injuries": "None",
             "races": [{"name": _ROAD_FONDO["name"],
                        "date": _ROAD_FONDO["date"],
@@ -151,9 +151,10 @@ GOLDEN_ORDERS = [
         },
         "expect": {
             "ftp": "255", "race": _ROAD_FONDO["name"],
-            "race_date": _ROAD_FONDO["date"], "strength_equipment": None,
+            "race_date": _ROAD_FONDO["date"], "strength_equipment": "full gym",
             "target_hours": 9.0, "brand": "roadielabs", "discipline": "road",
             "event_format": "fondo", "road_category": "cat_5",
+            "min_strength_sessions": 4,
             "pdf_optional": True,
         },
     },
@@ -171,8 +172,8 @@ GOLDEN_ORDERS = [
             "hours_per_week": "8", "trainer_access": "smart trainer",
             "long_ride_days": ["Sunday"],
             "interval_days": ["Tuesday", "Thursday"], "off_days": ["Monday"],
-            "strength_current": "none", "strength_want": "no",
-            "strength_equipment": "minimal", "sleep_quality": "good",
+            "strength_current": "2x/week", "strength_want": "yes",
+            "strength_equipment": "full gym", "sleep_quality": "good",
             "stress_level": "moderate", "injuries": "None",
             "races": [{"name": _ROAD_HILL["name"], "date": _ROAD_HILL["date"],
                        "distance": f"{int(round(float(_ROAD_HILL['distance_mi'])))} miles",
@@ -182,9 +183,10 @@ GOLDEN_ORDERS = [
         },
         "expect": {
             "ftp": "270", "race": _ROAD_HILL["name"],
-            "race_date": _ROAD_HILL["date"], "strength_equipment": None,
+            "race_date": _ROAD_HILL["date"], "strength_equipment": "full gym",
             "target_hours": 8.0, "brand": "roadielabs", "discipline": "road",
             "event_format": "hill_climb", "road_category": "cat_4",
+            "min_strength_sessions": 4,
             "pdf_optional": True,
         },
     },
@@ -368,6 +370,28 @@ def test_guide_facts_match_profile(built_order):
         assert exp["strength_equipment"].lower() in text.lower(), (
             f"strength equipment '{exp['strength_equipment']}' not reflected "
             f"(guide may claim the wrong setup)")
+
+
+def test_promised_strength_is_in_the_deliverable_window(built_order):
+    minimum = built_order["order"]["expect"].get("min_strength_sessions")
+    if minimum is None:
+        pytest.skip("order does not require in-plan strength")
+    import json
+    manifest = json.loads(
+        (built_order["athlete_dir"] / "tp_manifest.json").read_text())
+    plan_day_one = yaml.safe_load(
+        (built_order["athlete_dir"] / "plan_dates.yaml").read_text()
+    )["week1_monday"]
+    strength = [
+        session for session in manifest["sessions"]
+        if (session.get("workout_type_value_id") == 9
+            or session.get("tp_kind") == "strength")
+        and session.get("date") >= plan_day_one
+    ]
+    assert len(strength) >= minimum, (
+        f"only {len(strength)} in-plan strength cards; promised at least {minimum}")
+    assert all(session.get("strength") or session.get("strength_template")
+               for session in strength), "strength card missing exercise structure"
 
 
 def test_removed_sections_stay_removed(built_order):
