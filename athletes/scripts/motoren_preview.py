@@ -61,7 +61,9 @@ from generate_athlete_package import classify_fuel_tier, _get_fuel_tag_for_type,
 from generate_athlete_package import race_day_tss_from_emitted_minutes
 from workout_library import WorkoutLibrary
 from story_notes import (
-    render_story_notes, _family, SELF_REVIEW_BODY, COMMENT_PROTOCOL_BODY,
+    render_story_notes, render_preview_workout_copy,
+    render_preview_strength_copy, render_preview_race_copy,
+    SELF_REVIEW_BODY, COMMENT_PROTOCOL_BODY,
 )
 
 
@@ -80,7 +82,13 @@ class MotorenPreviewError(Exception):
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_VOICE_RULES_PATH = _REPO_ROOT / "athletes" / "config" / "voice_rules.yaml"
+_VOICE_SOURCE_FILES = (
+    "athletes/config/voice_rules.yaml",
+    "athletes/scripts/story_notes.py",
+    "athletes/scripts/delivery_notes.py",
+    "athletes/scripts/apply_contract.py",
+    "athletes/scripts/voice_lint.py",
+)
 
 
 def _git_short_sha() -> str:
@@ -108,11 +116,17 @@ def _git_short_sha() -> str:
 
 
 def _voice_digest() -> str:
+    digest = hashlib.sha256()
     try:
-        data = _VOICE_RULES_PATH.read_bytes()
+        for relative in _VOICE_SOURCE_FILES:
+            path = _REPO_ROOT / relative
+            digest.update(relative.encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(path.read_bytes())
+            digest.update(b"\0")
     except OSError:
         return "unknown"
-    return hashlib.sha256(data).hexdigest()[:8]
+    return digest.hexdigest()[:12]
 
 
 # Computed once, at import time, per spec.
@@ -294,14 +308,6 @@ def _purpose_key(name: str) -> str:
     return "Endurance"
 
 
-def _purpose_text(name: str, role: str, race_name: str) -> str:
-    from generate_athlete_package import WORKOUT_DESCRIPTIONS
-    key = "Long_Ride" if role == "long_ride" and _purpose_key(name) == "Endurance" else _purpose_key(name)
-    template = WORKOUT_DESCRIPTIONS.get(key) or WORKOUT_DESCRIPTIONS["Endurance"]
-    text = f"{template['purpose']} Dialed in for {race_name}."
-    return text[:260]
-
-
 _INTENSITY_LABELS = {
     "FTP_Test": "FTP Test", "Openers": "Openers", "VO2max": "VO2max",
     "Threshold": "Threshold", "G_Spot": "Sweet Spot", "Over_Under": "Over-Under",
@@ -426,28 +432,29 @@ def _build_bike_session(
     if not fuel_text:
         fuel_text = "Water and normal fueling; no in-ride carbohydrate target needed."
 
-    family = _family({
+    session_voice_input = {
         "archetype_id": name, "title": title, "duration_s": duration_min * 60,
         "is_field_test": False, "is_simulation": False, "is_dress_rehearsal": False,
-    })
-    if family:
-        key, phrasings = family
-        coach_note = phrasings[0].format(
-            name=title, day=weekday.strftime("%A"), race=race_name)
-    else:
-        coach_note = f"{title} on {weekday.strftime('%A')}: this session builds toward {race_name}."
-    coach_note = coach_note[:420]
+    }
+    try:
+        copy = render_preview_workout_copy(
+            session_voice_input, description=str(parsed.get("description") or ""),
+            day=weekday.strftime("%A"), race_name=race_name,
+        )
+    except ValueError as exc:
+        raise MotorenPreviewError(
+            "engine workout copy failed the coaching voice contract") from exc
 
     return {
         "kind": "bike",
         "title": title[:120],
-        "purpose": _purpose_text(name, role, race_name),
+        "purpose": copy["purpose"],
         "duration_minutes": int(duration_min),
         "tss": int(round(tss)),
         "intensity_label": _intensity_label(name, role),
         "fuel_tag": fuel_tag,
         "fueling_guidance": fuel_text[:240],
-        "coach_note": coach_note,
+        "coach_note": copy["coach_note"],
         "structure": _sanitize_structure(tp_structure),
     }
 
@@ -493,23 +500,25 @@ def _build_strength_session(
     duration_min = int(program.get("duration_min") or 45)
     focus = str(program.get("focus") or "Cycling-specific strength")
 
-    coach_note = (
-        f"{title} on {weekday.strftime('%A')}: {focus.rstrip('.').lower()}. "
-        f"Leave reps in reserve -- this supports {race_name}, it does not compete with it."
-    )[:420]
+    try:
+        copy = render_preview_strength_copy(
+            title=title, focus=focus, day=weekday.strftime("%A"),
+            race_name=race_name,
+        )
+    except ValueError as exc:
+        raise MotorenPreviewError(
+            "engine strength copy failed the coaching voice contract") from exc
 
     return {
         "kind": "strength",
         "title": title[:120],
-        "purpose": f"{focus}. Keeps force production intact for {race_name}."[:260],
+        "purpose": copy["purpose"],
         "duration_minutes": duration_min,
         "tss": max(1, round(duration_min * 0.7)),
         "intensity_label": "Strength",
         "fuel_tag": "moderate",
-        "fueling_guidance": (
-            "Eat normally beforehand; pair protein with carbohydrate within the hour after."
-        ),
-        "coach_note": coach_note,
+        "fueling_guidance": copy["fueling_guidance"],
+        "coach_note": copy["coach_note"],
         "strength": {"focus": focus[:120], "exercises": exercises},
     }
 
@@ -845,22 +854,21 @@ def _build_race_session(
         if isinstance(race_target, (int, float))
         else "Begin in the first 20 minutes and execute the fueling plan rehearsed in training."
     )
+    try:
+        copy = render_preview_race_copy(race_name)
+    except ValueError as exc:
+        raise MotorenPreviewError(
+            "engine race copy failed the coaching voice contract") from exc
     return {
         "kind": "race",
         "title": f"Race Day — {race_name}"[:120],
-        "purpose": (
-            "Execute the pacing, fueling, equipment, and decision plan built "
-            f"for {race_name}."
-        )[:260],
+        "purpose": copy["purpose"],
         "duration_minutes": duration_minutes,
         "tss": race_day_tss_from_emitted_minutes(duration_minutes),
         "intensity_label": "Race",
         "fuel_tag": "high",
         "fueling_guidance": fueling[:240],
-        "coach_note": (
-            "First third patient. Middle third useful work only. Final third: "
-            "race what is left. Solve the next problem without borrowing from the finish."
-        ),
+        "coach_note": copy["coach_note"],
         # AE-8.4d: race-day FreeRide cards intentionally have no fake power graph.
         "structure": None,
         "_engine_overlay": True,

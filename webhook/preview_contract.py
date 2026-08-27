@@ -50,10 +50,11 @@ _INTERNAL_TEXT_RE = re.compile(
 )
 
 _VOICE_FILES = (
+    "athletes/config/voice_rules.yaml",
     "athletes/scripts/story_notes.py",
     "athletes/scripts/delivery_notes.py",
     "athletes/scripts/apply_contract.py",
-    "athletes/scripts/test_voice_contract.py",
+    "athletes/scripts/voice_lint.py",
 )
 
 

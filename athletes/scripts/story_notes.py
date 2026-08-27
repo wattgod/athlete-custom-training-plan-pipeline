@@ -159,6 +159,141 @@ COMMENT_PROTOCOL_BODY = (
     "Misc: Have at it, or don't."
 )
 
+
+# ---------------------------------------------------------------------------
+# Public-preview product copy
+# ---------------------------------------------------------------------------
+
+_DESCRIPTION_HEADING = re.compile(r"(?m)^([A-Z][A-Z -]+):\s*$")
+
+
+def _description_section(description: str, heading: str) -> str:
+    """Return one real section from an engine-rendered workout description.
+
+    Public previews must show the workout the athlete will actually receive,
+    not a second, hand-written approximation of it.  The Nate renderer owns
+    PURPOSE and EXECUTION; this helper only projects that checked-in copy into
+    the bounded public card contract.
+    """
+    text = str(description or "").replace("\r\n", "\n").strip()
+    wanted = str(heading or "").strip().upper()
+    matches = list(_DESCRIPTION_HEADING.finditer(text))
+    for index, match in enumerate(matches):
+        if match.group(1).strip().upper() != wanted:
+            continue
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        body = text[match.end():end].strip()
+        lines = [re.sub(r"^\s*[-*]\s*", "", line).strip()
+                 for line in body.splitlines()]
+        return " ".join(line for line in lines if line)
+    return ""
+
+
+def _bounded_product_copy(text: str, maximum: int) -> str:
+    """Normalize whitespace and avoid cutting a public card mid-sentence."""
+    normalized = " ".join(str(text or "").split()).strip()
+    if len(normalized) <= maximum:
+        return normalized
+    sentences = re.split(r"(?<=[.!?])\s+", normalized)
+    kept: List[str] = []
+    for sentence in sentences:
+        candidate = " ".join(kept + [sentence])
+        if len(candidate) > maximum:
+            break
+        kept.append(sentence)
+    if kept:
+        return " ".join(kept)
+    return normalized[:maximum].rstrip(" ,;:-")
+
+
+def _assert_product_voice(copy: Dict[str, str]) -> None:
+    """Apply the same Git-tracked voice contract used on TP calendar notes."""
+    # Local import avoids making voice_lint part of story-note module startup.
+    if __package__:
+        from .voice_lint import check_copy, load_rules
+    else:
+        from voice_lint import check_copy, load_rules
+
+    rules = load_rules()
+    findings: List[str] = []
+    for field, text in copy.items():
+        findings.extend(check_copy(text, rules=rules, where=f"preview {field}"))
+    if findings:
+        raise ValueError("preview copy failed the coaching voice contract: "
+                         + "; ".join(findings))
+
+
+def render_preview_workout_copy(
+    session: Any, *, description: str, day: str, race_name: str,
+) -> Dict[str, str]:
+    """Project real workout copy plus the canonical product-surface voice.
+
+    PURPOSE is copied from the exact engine-rendered workout.  The coach note
+    uses the same family lines as the delivered weekly story.  If a new
+    workout family has no authored line yet, its real EXECUTION section is
+    shown instead; we fail closed if neither source exists rather than invent
+    generic marketing copy.
+    """
+    purpose = _description_section(description, "PURPOSE")
+    if not purpose:
+        raise ValueError("engine-rendered workout has no PURPOSE section")
+
+    title = _clean_title(str(_get(session, "title") or "Workout"))
+    family = _family(session)
+    if family:
+        _, phrasings = family
+        coach_note = phrasings[0].format(
+            name=title, day=day, race=race_name)
+    else:
+        execution = _description_section(description, "EXECUTION")
+        if not execution:
+            raise ValueError(
+                "workout has neither a canonical family line nor EXECUTION copy")
+        coach_note = f"{title} {day}. {execution}"
+
+    result = {
+        "purpose": _bounded_product_copy(purpose, 260),
+        "coach_note": _bounded_product_copy(coach_note, 420),
+    }
+    _assert_product_voice(result)
+    return result
+
+
+def render_preview_strength_copy(
+    *, title: str, focus: str, day: str, race_name: str,
+) -> Dict[str, str]:
+    """Canonical product-surface framing for a library strength session."""
+    clean_focus = str(focus or "Cycling-specific strength").strip().rstrip(".")
+    result = {
+        "purpose": _bounded_product_copy(f"{clean_focus}.", 260),
+        "coach_note": _bounded_product_copy(
+            f"{title} {day}. I want two clean reps left in reserve. This supports "
+            f"the riding for {race_name}; if it starts competing with it, stop.",
+            420,
+        ),
+        "fueling_guidance": (
+            "Eat normally beforehand. Pair protein with carbohydrate within the hour after."
+        ),
+    }
+    _assert_product_voice(result)
+    return result
+
+
+def render_preview_race_copy(race_name: str) -> Dict[str, str]:
+    """Canonical race-card copy used by the public TrainingPeaks preview."""
+    result = {
+        "purpose": _bounded_product_copy(
+            f"Execute the pacing, fueling, equipment, and decision plan built for {race_name}.",
+            260,
+        ),
+        "coach_note": (
+            "First third patient. Middle third useful work only. Final third: "
+            "race what is left. Solve the next problem without borrowing from the finish."
+        ),
+    }
+    _assert_product_voice(result)
+    return result
+
 # AE-9.1 (2026-08-24 TP review): the Monday note is the floor, not the
 # ceiling -- 1-2 short mid-week notes per week, speaking to how the athlete
 # is likely feeling at that point in the block. Unlike _NOTICE (which wraps

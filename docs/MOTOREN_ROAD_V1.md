@@ -60,6 +60,15 @@ the same renderer and canonical TrainingPeaks projection as paid plans; no
 workout title, structure, purpose, or strength block may be invented by the
 site.
 
+The card's purpose is projected from the `PURPOSE` section of that exact
+engine-rendered workout description. Its coach note uses the checked-in
+product-surface voice in `story_notes.py`; a new workout family without an
+authored family line falls back only to the rendered workout's real
+`EXECUTION` section. If neither source exists, preview generation fails closed
+instead of emitting generic marketing filler. `voice_version` fingerprints
+the Git-tracked voice rules, renderers, apply contract, and voice lint, while
+`engine_version` fingerprints the workout-description source itself.
+
 ## Shared invariants
 
 - The race demand vector, not a single difficulty score, drives emphasis
