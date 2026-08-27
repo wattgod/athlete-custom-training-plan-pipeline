@@ -279,10 +279,19 @@ def lint_demonstrated_dose(workouts: list[dict],
     totals = _weekly_totals(workouts)
     if len(totals) < 2:
         return []
-    median = statistics.median(totals.values())
+    # Break/off weeks (near-zero planned TSS, AE-1.13) are excluded from the
+    # load/recovery classification pool -- zeros drag the median down and
+    # misclassify real recovery weeks as load weeks (live misfire: Kendall v2
+    # recovery week 348 TSS classified load because two 0-TSS break weeks
+    # halved the median). They are also exempt from the AE-1.9c WARN.
+    active = {wk: t for wk, t in totals.items()
+              if t >= 0.10 * max(totals.values())}
+    if len(active) < 2:
+        return []
+    median = statistics.median(active.values())
     findings: list[dict] = []
-    for wk in sorted(totals):
-        total = totals[wk]
+    for wk in sorted(active):
+        total = active[wk]
         if total >= median:
             if total < LOAD_WEEK_FAIL_FRACTION * demonstrated_load:
                 findings.append({"day": wk.isoformat(), "title": "(load week)",
