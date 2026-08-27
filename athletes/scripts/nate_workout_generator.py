@@ -2852,9 +2852,40 @@ def get_hydration_guidelines(archetype: Dict, level_data: Dict) -> str:
     return "500-750ml/hr. Adjust for heat and humidity."
 
 
-def get_execution_tips(archetype: Dict, level_data: Dict) -> str:
+def get_execution_tips(
+    archetype: Dict, level_data: Dict, *, display_name: Optional[str] = None,
+) -> str:
     """Get execution tips specific to workout type."""
-    archetype_name = archetype.get("name", "").lower()
+    archetype_name = " ".join(filter(None, [
+        str(display_name or ""), str(archetype.get("name", "")),
+    ])).lower()
+
+    # AE-3.7 / AE-3.13b: dimension-critical copy states the exact DO. These
+    # selectors used to fall through to "good form," which told the athlete
+    # nothing and made the public preview look invented.
+    if "np/if" in archetype_name:
+        return ("Ride the lower segments at endurance power and the higher segments at tempo. "
+                "Keep the position quiet and let normalized power build toward the target.")
+
+    if "mixed climbing" in archetype_name:
+        return ("Stay seated through the tempo portions, stand for the short lifts, then settle "
+                "back to the prescribed power immediately.")
+
+    if "microburst" in archetype_name:
+        return ("Keep the aerobic portions at the prescribed power, make every short burst hard "
+                "and clean, then settle immediately.")
+
+    if "cadence" in archetype_name:
+        return ("Hold every cadence target through the work block and recovery. Keep the hips "
+                "quiet and let power stay where it is prescribed.")
+
+    if "race simulation" in archetype_name:
+        return ("Ride the opening tempo under control, settle at threshold, make the final lift "
+                "clean, then recover at the prescribed power.")
+
+    if "mixed intervals" in archetype_name or "blended" in archetype_name:
+        return ("Follow every zone change as written and let the recovery steps come all the way "
+                "down. Make each transition clean before adding pressure.")
 
     if "vo2" in archetype_name:
         # Micro-intervals deliberately use short float recoveries; saying
@@ -3252,7 +3283,8 @@ def generate_description(
     archetype: Dict,
     level: int,
     methodology: str = "POLARIZED",
-    include_dimensions: bool = True
+    include_dimensions: bool = True,
+    display_name: Optional[str] = None,
 ) -> str:
     """Generate a workout description from an archetype."""
     level_data = get_level_data(archetype, level)
@@ -3314,12 +3346,17 @@ def generate_description(
 
     # PURPOSE
     lines.append("PURPOSE:")
-    lines.append(get_category_purpose(archetype["name"]))
+    # AE-3.13b: athlete copy names what this exact delivered workout DOES.
+    # The selector's display name can be more specific than the shared
+    # archetype underneath it (NP/IF Target uses terrain-simulation blocks),
+    # so it owns copy routing when present.
+    copy_name = display_name or archetype["name"]
+    lines.append(get_category_purpose(copy_name))
     lines.append("")
 
     # EXECUTION
     lines.append("EXECUTION:")
-    lines.append(f"-{get_execution_tips(archetype, level_data)}")
+    lines.append(f"-{get_execution_tips(archetype, level_data, display_name=display_name)}")
 
     # Testing protocols can carry the exact measurements a coach needs to
     # prescribe the next block.  Keep this data-owned so assessment content
@@ -3341,6 +3378,16 @@ def generate_description(
 def get_category_purpose(archetype_name: str) -> str:
     """Get the purpose description for a workout category."""
     purposes = {
+        # Public selector names whose shared archetype name is broader.
+        # AE-3.7 / AE-3.13b: state the trained dimension and the DO, never
+        # the old content-free "structured training" fallback.
+        "NP/IF": "Pacing control. Hold a deliberate normalized-power target while the terrain changes the instantaneous power.",
+        "Mixed Climbing": "Climbing specificity. Alternate seated tempo with short standing lifts as the gradient changes.",
+        "Microburst": "Surge repeatability. Keep the aerobic work moving while short bursts rehearse attacks and terrain changes.",
+        "Cadence": "Cadence control. Hold the prescribed power while turnover changes, with smooth pressure through the full pedal stroke.",
+        "Race Simulation": "Race rehearsal. Practice pacing and position changes across the effort shifts you will manage on race day.",
+        "Blended": "Race-specific power changes. Move cleanly between the prescribed zones and let each recovery step come all the way down.",
+        "Mixed Intervals": "Race-specific power changes. Move cleanly between the prescribed zones and let each recovery step come all the way down.",
         # VO2max workouts
         "VO2": "VO2max development. Maximum aerobic power—the engine that drives race-winning attacks.",
         "Norwegian": "VO2max development. Research-backed Seiler format for masters athletes.",
@@ -3500,7 +3547,12 @@ def generate_nate_workout(
     # Coaching context remains archetype-authored, while the MAIN SET is a
     # projection of the executable intervals that the XML will carry.
     description = replace_main_set(
-        generate_description(archetype, level, methodology),
+        generate_description(
+            archetype, level, methodology,
+            # workout_name is often a dated filename stem; only the clean
+            # display name may override archetype-owned copy routing.
+            display_name=display_name,
+        ),
         normalize_zwo_blocks(blocks),
     )
 

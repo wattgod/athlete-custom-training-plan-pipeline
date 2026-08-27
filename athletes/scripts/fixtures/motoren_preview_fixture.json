@@ -185,7 +185,7 @@
             "fueling_guidance": "FUEL: Normal meal ~2h before. One bottle, 40-50g carbs. Done.",
             "intensity_label": "VO2max",
             "kind": "bike",
-            "purpose": "VO2max development. Maximum aerobic power\u2014the engine that drives race-winning attacks.",
+            "purpose": "Race-specific power changes. Move cleanly between the prescribed zones and let each recovery step come all the way down.",
             "structure": {
               "polyline": [
                 [

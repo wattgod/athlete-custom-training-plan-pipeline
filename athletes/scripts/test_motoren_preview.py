@@ -301,6 +301,27 @@ class TestFixture:
 
 
 class TestFullPlanPreviewV2:
+    @pytest.mark.parametrize(
+        "brand,discipline", [("gravel_god", "gravel"), ("roadie_labs", "road")],
+    )
+    def test_all_sample_card_copy_avoids_generic_engine_fallbacks(
+            self, brand, discipline):
+        source = generate_preview_source(_normalized_v2(_request_v2(
+            brand=brand, race={"discipline": discipline})))
+        copy = " ".join(
+            str(session.get(field) or "")
+            for week in source["sample_weeks"]
+            for day in week["days"]
+            for session in day["sessions"]
+            for field in ("purpose", "coach_note")
+        ).lower()
+        for forbidden in (
+            "structured training", "progressive overload",
+            "focus on consistent effort", "dialed in for",
+            "this session builds toward",
+        ):
+            assert forbidden not in copy
+
     def test_one_source_drives_exact_sample_weeks_and_volume(self):
         source = generate_preview_source(_normalized_v2(_request_v2()))
         assert len(source["planned_volume"]) == 21
@@ -433,6 +454,9 @@ class TestFullPlanPreviewV2:
         assert "gravel god" not in athlete_copy
         assert "dialed in for" not in athlete_copy
         assert "this session builds toward" not in athlete_copy
+        assert "structured training" not in athlete_copy
+        assert "progressive overload" not in athlete_copy
+        assert "focus on consistent effort" not in athlete_copy
         for session in bike_sessions:
             if session["intensity_label"] != "VO2max":
                 continue
