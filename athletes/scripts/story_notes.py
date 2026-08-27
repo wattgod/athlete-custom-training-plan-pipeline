@@ -60,6 +60,17 @@ _FAMILY_RULES: List[Tuple[re.Pattern, str, List[str]]] = [
         "{name} {day}. Comfortably hard, nothing more. If you are grimacing, you are over it.",
         "{name} {day}: the middle gear of the plan. Not easy, not a test, done with something left.",
     ]),
+    (re.compile(r"climb", re.I), "climbing", [
+        "{name} {day}. Stay seated through the tempo, stand for the short lift, then settle immediately. I want the transition clean; that is the whole session.",
+        "{name} {day}. Hold the seated rhythm and make the standing lift deliberate. Back on the number as soon as you sit down.",
+    ]),
+    (re.compile(r"np/?if|normalized power", re.I), "pacing", [
+        "{name} {day}. Hold the prescribed power changes and keep the position quiet. I want the normalized-power target reached with every rise ridden at the prescribed number.",
+    ]),
+    (re.compile(r"mixed intervals|blended", re.I), "mixed", [
+        "{name} {day}. Follow the zone changes exactly and let the recovery steps come all the way down. I want every transition clean.",
+        "{name} {day}. Make the first change controlled and the last one just as clean. The recovery steps stay easy enough to work.",
+    ]),
     (re.compile(r"cadence|sfr|torque|stomp|big[- ]gear", re.I), "cadence", [
         "{name} {day}: power stays flat, the gear changes. Low rungs load the legs, high rungs teach them to spin. Watch the knees on the low stuff.",
         "{name} {day} is skill work, not fitness work. Smooth circles at every cadence; the rpm targets are in the workout.",
