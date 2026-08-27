@@ -38,6 +38,7 @@ from workout_templates import (
 from validate_workout_distribution import (
     ZONE_CLASSIFICATION,
     METHODOLOGY_TARGETS,
+    canonical_zone_counts,
     classify_workout,
 )
 from build_weekly_structure import build_weekly_structure
@@ -692,6 +693,32 @@ class TestZoneClassification:
             "Sweet_Spot should be in ZONE_CLASSIFICATION"
         assert ZONE_CLASSIFICATION['Sweet_Spot'] == 'z3', \
             f"Sweet_Spot should be classified as z3, got {ZONE_CLASSIFICATION['Sweet_Spot']}"
+
+    def test_current_library_titles_use_canonical_roles_not_filename_guessing(
+            self, tmp_path):
+        import json
+
+        model = {
+            'sessions': [
+                {'week': 2, 'tp_kind': 'bike', 'title': 'Helvete Bølger',
+                 'archetype_id': 'VO2max 30/30', 'role': 'intensity'},
+                {'week': 2, 'tp_kind': 'bike', 'title': 'Aerobic Base',
+                 'archetype_id': 'Endurance', 'role': 'filler'},
+                {'week': 2, 'tp_kind': 'bike', 'title': 'Tempo Press',
+                 'archetype_id': 'Tempo with Accelerations', 'role': 'intensity'},
+                {'week': 2, 'tp_kind': 'strength', 'title': 'Max Strength A',
+                 'archetype_id': None, 'role': None},
+                {'week': 4, 'tp_kind': 'bike', 'title': 'Recovery Spin',
+                 'archetype_id': 'Endurance', 'role': 'filler'},
+            ]}
+        (tmp_path / 'canonical_training_model.json').write_text(
+            json.dumps(model))
+        counts, excluded, unknown, recovery = canonical_zone_counts(
+            tmp_path, {4})
+        assert counts == {'z1_z2': 1, 'z3': 1, 'z4_z5': 1}
+        assert excluded == ['Max Strength A']
+        assert unknown == []
+        assert recovery == 1
 
 
 # ============================================================================

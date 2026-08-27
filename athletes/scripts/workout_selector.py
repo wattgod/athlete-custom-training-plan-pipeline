@@ -344,7 +344,9 @@ def select_workouts_for_week(
             legacy full-season path) → selection unchanged.
         event_format: Optional normalized road format. When supplied for a road
             plan, the secondary intensity and long-ride signatures come from
-            road_racing.yaml. The protected VO2 anchor is never replaced.
+            constrained coach-library pools in road_racing.yaml. Race demands
+            choose within those pools; the protected VO2 anchor is never
+            replaced.
 
     Returns:
         List of workout dicts: [{'slot': str, 'name': str, 'level': int, 'role': str}]
@@ -527,7 +529,15 @@ def select_workouts_for_week(
                                .get('format_workouts', {}).get(phase, {}))
         except (ImportError, KeyError, TypeError):
             format_workouts = {}
-    format_secondary = format_workouts.get('secondary')
+    format_secondary_options = list(
+        format_workouts.get('secondary_options') or
+        ([format_workouts['secondary']] if format_workouts.get('secondary') else []))
+    format_secondary_options = _filter_by_duration(
+        format_secondary_options, intensity_duration_cap, base_level)
+    format_secondary = (
+        _pick_option(format_secondary_options, block_number,
+                     category_weights, avoid_series)
+        if format_secondary_options else None)
     if format_secondary:
         for w in workouts:
             if (w['role'] == 'intensity'
@@ -553,8 +563,12 @@ def select_workouts_for_week(
                                  category_weights, avoid_series)
     # Format authority lands after the generic long-ride rotation, for the
     # same reason secondary intensity lands after methodology steering.
-    if long_name and format_workouts.get('long_ride'):
-        long_name = format_workouts['long_ride']
+    format_long_options = list(
+        format_workouts.get('long_ride_options') or
+        ([format_workouts['long_ride']] if format_workouts.get('long_ride') else []))
+    if long_name and format_long_options:
+        long_name = _pick_option(
+            format_long_options, block_number, category_weights, avoid_series)
     if long_name:
         long_level_range = _get_level_range(long_slot, archetype)
         long_level = min(max(level, long_level_range[0]), long_level_range[1])

@@ -4176,6 +4176,21 @@ class TestComputeTouchpoints:
 
 
 class TestTravelDatesPassthrough:
+    def test_markdown_preserves_complete_race_demand_vector(self):
+        import json
+        from app import _questionnaire_to_markdown
+
+        demands = {
+            'durability': 8, 'climbing': 10, 'vo2_power': 7,
+            'threshold': 8, 'technical': 2, 'heat_resilience': 4,
+            'altitude': 3, 'race_specificity': 9,
+        }
+        md = _questionnaire_to_markdown(
+            {'race_demands': demands}, name='T', email='t@e.com')
+        line = next(line for line in md.splitlines()
+                    if line.startswith('- Race Demands: '))
+        assert json.loads(line.split(': ', 1)[1]) == demands
+
     def test_markdown_includes_travel_dates(self):
         from app import _questionnaire_to_markdown
         md = _questionnaire_to_markdown(

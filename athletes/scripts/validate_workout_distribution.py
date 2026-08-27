@@ -13,6 +13,7 @@ Reason: Bug #16 - Plans were delivered with wrong zone ratios because distributi
 
 import os
 import sys
+import json
 import yaml
 from pathlib import Path
 from collections import defaultdict
@@ -89,6 +90,55 @@ def classify_workout(filename: str) -> str | None:
     return ZONE_CLASSIFICATION.get(workout_type, None)
 
 
+def canonical_zone_counts(athlete_dir: Path, recovery_weeks: set) -> tuple:
+    """Classify current-engine sessions from canonical truth.
+
+    The old filename parser remains as a compatibility fallback, but current
+    curated TrainingPeaks titles are intentionally varied and cannot be
+    treated as workout-type enums. ``canonical_training_model.json`` carries
+    the pre-library role/archetype identity for every emitted card, so it is
+    the authoritative input for this catastrophic-shape guard.
+    """
+    path = athlete_dir / 'canonical_training_model.json'
+    if not path.exists():
+        return None, [], [], 0
+    try:
+        sessions = (json.loads(path.read_text(encoding='utf-8'))
+                    .get('sessions', []))
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return None, [], [], 0
+
+    counts = defaultdict(int)
+    excluded = []
+    unknown = []
+    recovery_excluded = 0
+    for session in sessions:
+        week = int(session.get('week') or 0)
+        if week in recovery_weeks:
+            recovery_excluded += 1
+            continue
+        kind = str(session.get('tp_kind') or '')
+        title = str(session.get('title') or '')
+        archetype = str(session.get('archetype_id') or '')
+        role = str(session.get('role') or '')
+        if kind in {'strength', 'race', 'note'} or 'Test' in archetype:
+            excluded.append(title or archetype)
+            continue
+        if role in {'filler', 'long_ride', 'off'} or title in {
+                'Rest Day', 'Pre-Plan Easy', 'Pre-Plan Endurance',
+                'Pre-Plan Rest'}:
+            counts['z1_z2'] += 1
+        elif role == 'intensity':
+            if (archetype.startswith('Tempo') or archetype in {
+                    'G-Spot', 'SFR'}):
+                counts['z3'] += 1
+            else:
+                counts['z4_z5'] += 1
+        else:
+            unknown.append(title or archetype)
+    return counts, excluded, unknown, recovery_excluded
+
+
 def validate_distribution(athlete_id: str) -> tuple[bool, str]:
     """
     Validate workout distribution matches methodology target.
@@ -137,38 +187,36 @@ def validate_distribution(athlete_id: str) -> tuple[bool, str]:
             if week_data.get('is_recovery_week', False):
                 recovery_weeks.add(week_data['week'])
 
-    # Count workouts by zone (excluding recovery weeks)
-    zone_counts = defaultdict(int)
-    excluded_types = []
-    unknown_types = []
-    recovery_excluded_count = 0
-
-    for workout in workouts_dir.glob('*.zwo'):
-        stem = workout.stem
-        parts = stem.split('_')
-        workout_type = '_'.join(parts[3:]) if len(parts) >= 4 else stem
-
-        # Exclude recovery week workouts from distribution calc
-        if recovery_weeks and len(parts) >= 1:
-            try:
-                week_num = int(parts[0].replace('W', ''))
-                if week_num in recovery_weeks:
-                    recovery_excluded_count += 1
-                    continue
-            except (ValueError, IndexError):
-                pass
-
-        # Check if excluded (assessments, race days, strength)
-        is_excluded = any(workout_type.startswith(p) for p in EXCLUDED_PREFIXES)
-        if is_excluded:
-            excluded_types.append(workout_type)
-            continue
-
-        zone = ZONE_CLASSIFICATION.get(workout_type, None)
-        if zone:
-            zone_counts[zone] += 1
-        else:
-            unknown_types.append(workout_type)
+    # Count workouts by zone (excluding recovery weeks). Current packages use
+    # canonical roles; filename parsing is retained only for legacy packages.
+    (zone_counts, excluded_types, unknown_types,
+     recovery_excluded_count) = canonical_zone_counts(
+        athlete_dir, recovery_weeks)
+    if zone_counts is None:
+        zone_counts = defaultdict(int)
+        excluded_types = []
+        unknown_types = []
+        recovery_excluded_count = 0
+        for workout in workouts_dir.glob('*.zwo'):
+            stem = workout.stem
+            parts = stem.split('_')
+            workout_type = '_'.join(parts[3:]) if len(parts) >= 4 else stem
+            if recovery_weeks and len(parts) >= 1:
+                try:
+                    week_num = int(parts[0].replace('W', ''))
+                    if week_num in recovery_weeks:
+                        recovery_excluded_count += 1
+                        continue
+                except (ValueError, IndexError):
+                    pass
+            if any(workout_type.startswith(p) for p in EXCLUDED_PREFIXES):
+                excluded_types.append(workout_type)
+                continue
+            zone = ZONE_CLASSIFICATION.get(workout_type)
+            if zone:
+                zone_counts[zone] += 1
+            else:
+                unknown_types.append(workout_type)
 
     total = sum(zone_counts.values())
     if total == 0:

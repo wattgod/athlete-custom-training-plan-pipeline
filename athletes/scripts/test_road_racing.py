@@ -97,6 +97,41 @@ def test_each_format_changes_secondary_work_without_displacing_vo2():
         assert long_ride["name"] == expected_long
 
 
+def test_same_fondo_format_uses_demands_to_select_distinct_library_work():
+    from race_category_scorer import calculate_category_scores
+
+    alpine = calculate_category_scores({
+        "durability": 8, "climbing": 10, "vo2_power": 7, "threshold": 8,
+        "technical": 2, "heat_resilience": 4, "altitude": 3,
+        "race_specificity": 9,
+    })
+    distance = calculate_category_scores({
+        "durability": 10, "climbing": 5, "vo2_power": 4, "threshold": 6,
+        "technical": 2, "heat_resilience": 5, "altitude": 1,
+        "race_specificity": 9,
+    })
+    alpine_menu = select_workouts_for_week(
+        phase="build", archetype="specialist", week_type="load",
+        week_in_block=1, base_level=3, max_level=5, max_intensity=2,
+        hours_per_week=10, block_number=1, discipline="road",
+        methodology="polarized_80_20", event_format="fondo",
+        category_weights=alpine,
+    )
+    distance_menu = select_workouts_for_week(
+        phase="build", archetype="specialist", week_type="load",
+        week_in_block=1, base_level=3, max_level=5, max_intensity=2,
+        hours_per_week=10, block_number=1, discipline="road",
+        methodology="polarized_80_20", event_format="fondo",
+        category_weights=distance,
+    )
+    alpine_secondary = [item["name"] for item in alpine_menu
+                        if item["role"] == "intensity"][1]
+    distance_secondary = [item["name"] for item in distance_menu
+                          if item["role"] == "intensity"][1]
+    assert alpine_secondary == "Mixed Climbing Variations"
+    assert distance_secondary == "Tempo with Accelerations"
+
+
 def test_road_vo2_levels_stay_inside_ae_3_1_library_bounds():
     assert _road_ae31_level("VO2max 30/30", 1) == 2
     assert _road_ae31_level("VO2max 40/20", 1) == 2

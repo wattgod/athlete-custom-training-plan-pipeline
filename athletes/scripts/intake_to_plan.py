@@ -2033,6 +2033,19 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
         if resolution['needs_review']:
             target_race_info['event_format_needs_review'] = True
 
+    # Internal catalog builds and audited integrations may supply the complete
+    # 8-axis training-demand vector directly.  Keep it separate from road
+    # event_format: a mountainous fondo is still a fondo, not a hill climb.
+    explicit_demands = str(goals.get('race_demands') or '').strip()
+    if explicit_demands:
+        from race_category_scorer import normalize_demand_vector
+        try:
+            target_race_info['training_demands'] = normalize_demand_vector(
+                json.loads(explicit_demands))
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise IntakeValidationError(f'Invalid Race Demands: {exc}') from exc
+        target_race_info['training_demands_source'] = 'explicit_intake'
+
     derived_at = generation_now().isoformat().replace('+00:00', 'Z')
     derived_records = [
         derived_entry(

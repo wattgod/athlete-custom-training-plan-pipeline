@@ -92,6 +92,144 @@ DEMAND_DIMENSIONS = [
 ]
 
 
+def normalize_demand_vector(demands: dict, *, require_all: bool = True) -> dict:
+    """Validate and normalize the public 8-axis race-demand vector.
+
+    This is deliberately stricter than ``calculate_category_scores``.  The
+    scorer remains tolerant for historical callers, while paid-plan intake and
+    profile projection can fail closed instead of silently treating a typo or
+    missing dimension as zero demand.
+    """
+    if not isinstance(demands, dict):
+        raise ValueError("race demands must be an object")
+    unknown = sorted(set(demands) - set(DEMAND_DIMENSIONS))
+    if unknown:
+        raise ValueError(f"unknown race-demand dimensions: {', '.join(unknown)}")
+    missing = [key for key in DEMAND_DIMENSIONS if key not in demands]
+    if require_all and missing:
+        raise ValueError(f"missing race-demand dimensions: {', '.join(missing)}")
+
+    normalized = {}
+    for key in DEMAND_DIMENSIONS:
+        if key not in demands:
+            continue
+        value = demands[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"race demand {key!r} must be numeric")
+        value = float(value)
+        if not 0 <= value <= 10:
+            raise ValueError(f"race demand {key!r} must be between 0 and 10")
+        normalized[key] = int(value) if value.is_integer() else value
+    return normalized
+
+
+def derive_race_demands(distance_mi=None, elevation_ft=None,
+                        discipline: str = "") -> dict:
+    """Derive a conservative full vector from verified course facts.
+
+    Unknown facts stay neutral rather than being fabricated.  The same helper
+    serves short blocks and full-season generation so their demand weighting
+    cannot drift.
+    """
+    neutral = 5
+    demands = {
+        'vo2_power': neutral,
+        'heat_resilience': neutral,
+        'altitude': neutral,
+        'race_specificity': neutral,
+    }
+
+    try:
+        distance = float(distance_mi) if distance_mi is not None else None
+    except (TypeError, ValueError):
+        distance = None
+    if distance is not None and distance <= 0:
+        distance = None
+    try:
+        elevation = float(elevation_ft) if elevation_ft is not None else None
+    except (TypeError, ValueError):
+        elevation = None
+    if elevation is not None and elevation < 0:
+        elevation = None
+
+    if distance is None:
+        demands['durability'] = neutral
+    elif distance >= 200:
+        demands['durability'] = 10
+    elif distance >= 150:
+        demands['durability'] = 8
+    elif distance >= 100:
+        demands['durability'] = 6
+    elif distance >= 75:
+        demands['durability'] = 4
+    elif distance >= 50:
+        demands['durability'] = 2
+    else:
+        demands['durability'] = 1
+
+    if elevation is None:
+        demands['climbing'] = neutral
+    elif distance:
+        ratio = elevation / distance
+        if ratio >= 175:
+            demands['climbing'] = 9
+        elif ratio >= 125:
+            demands['climbing'] = 8
+        elif ratio >= 90:
+            demands['climbing'] = 6
+        elif ratio >= 60:
+            demands['climbing'] = 5
+        elif ratio >= 35:
+            demands['climbing'] = 3
+        else:
+            demands['climbing'] = 2
+    else:
+        demands['climbing'] = max(1, min(8, int(round(elevation / 2500))))
+
+    if distance is None:
+        demands['threshold'] = neutral
+    else:
+        if 75 <= distance <= 150:
+            threshold = 7
+        elif 50 <= distance < 75:
+            threshold = 5
+        elif distance > 150:
+            threshold = 4
+        else:
+            threshold = 3
+        if demands['climbing'] >= 6:
+            threshold += 1
+        demands['threshold'] = max(0, min(10, int(round(threshold))))
+
+    demands['technical'] = {
+        'mtb': 8, 'gravel': 5, 'road': 2,
+    }.get(str(discipline or '').strip().lower(), neutral)
+    return normalize_demand_vector(demands)
+
+
+def demand_vector_for_profile(profile: dict) -> tuple:
+    """Return ``(vector, source)`` for a paid-plan athlete profile."""
+    profile = profile or {}
+    target = profile.get('target_race', {}) or {}
+    if target.get('training_demands') is not None:
+        return normalize_demand_vector(target['training_demands']), 'explicit'
+    if target.get('generic_demands') is not None:
+        return normalize_demand_vector(target['generic_demands']), 'generic_profile'
+    return (
+        derive_race_demands(
+            target.get('distance_miles'), target.get('elevation_ft'),
+            profile.get('discipline') or target.get('discipline') or '',
+        ),
+        'verified_course_facts',
+    )
+
+
+def category_weights_for_profile(profile: dict) -> tuple:
+    """Return ``(category weights, demand vector, provenance source)``."""
+    demands, source = demand_vector_for_profile(profile)
+    return calculate_category_scores(demands), demands, source
+
+
 def calculate_category_scores(demands: dict) -> dict:
     """Score each archetype category for a race's demands.
 
