@@ -3,11 +3,15 @@
 Fixtures mirror the real defect classes found in the 2026-08-23 athlete audit:
 the Stars-In-Your-Eyes 180s hard leaf, the Openers-v1.1 300s threshold step,
 percentOfMaxHr endurance structures, bare Day Off cards, and cadence-critical
-sessions without a programmed cadence target.
+sessions without a programmed cadence target. The plan-level gates
+(AE-1.14, AE-2.10) mirror the two same-day 2026-08-26 build failures: Jesse
+Couch's v1 modeled 72 -> low-40s CTL by his A-race, and Kendall Aubertot's
+load weeks anchored to a stale plan number instead of her demonstrated dose.
 """
-from datetime import date
+import json
+from datetime import date, timedelta
 
-from ae_lint import lint_workout
+from ae_lint import lint_demonstrated_dose, lint_ctl_trajectory, lint_workout, main
 
 
 def _structure(steps, metric="percentOfFtp"):
@@ -171,3 +175,111 @@ def test_test_titled_sessions_exempt_from_ws_structure():
                   "workoutDay": "2026-08-21", "totalTimePlanned": 1.0,
                   "structure": _structure([_step(3600, 5, 6)], metric="rpe")}
     assert ("FAIL", "WS-structure") in _rules(lint_workout(not_a_test, None))
+
+
+# ---------------------------------------------------------- AE-1.14 CTL gate
+def _daily_workouts(start, num_days, tss_per_day):
+    """A workout on every day from `start` for `num_days` days, each
+    carrying `tss_per_day` planned TSS (constant, or a callable of the
+    zero-based day index)."""
+    out = []
+    for i in range(num_days):
+        d = start + timedelta(days=i)
+        tss = tss_per_day(i) if callable(tss_per_day) else tss_per_day
+        out.append({"title": "Endurance", "workoutTypeValueId": 2,
+                    "workoutDay": d.isoformat(), "totalTimePlanned": 1.0,
+                    "tssPlanned": tss})
+    return out
+
+
+def test_ctl_gate_catches_jesse_shaped_drop():
+    # Jesse's v1: modeled 72 -> low-40s at the A-race. Low, steady daily TSS
+    # (43/day, well under the 72 CTL floor) over ~13 weeks drops CTL sharply.
+    start = date(2026, 9, 1)
+    race = date(2026, 12, 1)
+    workouts = _daily_workouts(start, (race - start).days + 1, 43.0)
+    findings = lint_ctl_trajectory(workouts, race, current_ctl=72.0)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f["rule"] == "AE-1.14"
+    assert f["severity"] == "FAIL"
+    assert f["day"] == race.isoformat()
+
+
+def test_ctl_gate_passes_a_holding_payload():
+    # Daily TSS held at the athlete's current CTL is the equilibrium load --
+    # CTL doesn't move, so the gate must stay silent.
+    start = date(2026, 9, 1)
+    race = date(2026, 9, 21)
+    workouts = _daily_workouts(start, (race - start).days + 1, 60.0)
+    assert lint_ctl_trajectory(workouts, race, current_ctl=60.0) == []
+
+
+def test_ctl_gate_silent_without_current_ctl_or_race():
+    start = date(2026, 9, 1)
+    race = date(2026, 12, 1)
+    workouts = _daily_workouts(start, (race - start).days + 1, 20.0)
+    assert lint_ctl_trajectory(workouts, race, current_ctl=None) == []
+    assert lint_ctl_trajectory(workouts, None, current_ctl=72.0) == []
+
+
+# ------------------------------------------------------ AE-2.10 dose gate
+def _weekly_workouts(monday, weekly_tss):
+    """One workout per week, each week's total planned TSS lumped onto its
+    Monday -- the plan-level gate only cares about the weekly sum."""
+    out = []
+    for i, tss in enumerate(weekly_tss):
+        d = monday + timedelta(weeks=i)
+        out.append({"title": "Load Week" if tss >= 0 else "Recovery",
+                    "workoutTypeValueId": 2, "workoutDay": d.isoformat(),
+                    "totalTimePlanned": 1.0, "tssPlanned": tss})
+    return out
+
+
+def test_dose_gate_catches_kendall_shaped_underdose():
+    # Kendall's build anchored load weeks to a stale plan number instead of
+    # her demonstrated 800 TSS/week dose. Weeks: 650, 620 (load -- top
+    # half), 280, 260 (recovery -- bottom half). 620 < 0.8*800=640 fails;
+    # both recovery weeks < 0.5*800=400 warn (AE-1.9c).
+    monday = date(2026, 8, 3)
+    workouts = _weekly_workouts(monday, [650, 620, 280, 260])
+    findings = lint_demonstrated_dose(workouts, demonstrated_load=800.0)
+    rules = {(f["severity"], f["rule"]) for f in findings}
+    assert ("FAIL", "AE-2.10") in rules
+    assert ("WARN", "AE-1.9c") in rules
+    fail_msgs = [f["msg"] for f in findings if f["rule"] == "AE-2.10"]
+    assert any("620" in m for m in fail_msgs)
+
+
+def test_dose_gate_passes_a_correctly_dosed_plan():
+    # Load weeks at/above 80% of the 500 TSS/week demonstrated dose,
+    # recovery weeks at/above 50% -- nothing should fire.
+    monday = date(2026, 8, 3)
+    workouts = _weekly_workouts(monday, [520, 480, 300, 280])
+    assert lint_demonstrated_dose(workouts, demonstrated_load=500.0) == []
+
+
+def test_dose_gate_silent_without_demonstrated_load():
+    monday = date(2026, 8, 3)
+    workouts = _weekly_workouts(monday, [650, 620, 280, 260])
+    assert lint_demonstrated_dose(workouts, demonstrated_load=None) == []
+
+
+# ------------------------------------------- both plan-level gates via CLI
+def test_plan_gates_silent_in_cli_without_flags(tmp_path, capsys):
+    # Same under-dosed, CTL-collapsing payload as above -- without
+    # --current-ctl/--race-date or --demonstrated-load, neither AE-1.14 nor
+    # AE-2.10 may appear, and the exit code must not reflect them.
+    monday = date(2026, 8, 3)
+    workouts = _weekly_workouts(monday, [650, 620, 280, 260])
+    payload = {"workouts": workouts}
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps(payload))
+
+    exit_code = main(["--json", str(path)])
+    out = json.loads(capsys.readouterr().out)
+    rules = {f["rule"] for f in out["findings"]}
+    assert "AE-1.14" not in rules
+    assert "AE-2.10" not in rules
+    assert "AE-1.9c" not in rules
+    assert exit_code == 0

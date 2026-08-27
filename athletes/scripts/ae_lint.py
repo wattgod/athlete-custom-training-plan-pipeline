@@ -20,8 +20,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import statistics
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 
@@ -41,6 +42,10 @@ VO2_PCT = 106.0                                        # T@VO2max proxy (AE-3.1)
 VO2_FAIL_LO, VO2_WARN_LO = 5 * 60, 8 * 60              # AE-3.1 FAIL<5m WARN 5-8m
 VO2_PASS_HI, VO2_FAIL_HI = 14 * 60, 18 * 60            # AE-3.1 WARN 14-18m FAIL>18m
 CADENCE_UNIT = "roundorstrideperminute"                # AE-3.7 / tp-cadence-encoding
+CTL_TAU_DAYS = 42                                      # AE-1.14: standard CTL time constant
+CTL_FAIL_FRACTION = 0.90                               # AE-1.14: >10% below current CTL = FAIL
+LOAD_WEEK_FAIL_FRACTION = 0.80                         # AE-2.10: load week under 80% of demonstrated load = FAIL
+RECOVERY_WEEK_WARN_FRACTION = 0.50                     # AE-1.9c: recovery week under 50% of demonstrated load = WARN
 
 BANNED_NAME_RE = re.compile(r"fatmax|fat\s*max|fartlek|fasted", re.I)
 ENDURANCE_NAME_RE = re.compile(r"endurance|(?<!an)aerobic|\bz2\b|zone\s*2|base\s+miles", re.I)
@@ -190,6 +195,111 @@ def lint_workout(w: Mapping[str, Any], race: date | None) -> list[dict]:
     return findings
 
 
+# ---------------------------------------------------------------- plan-level gates
+def _workout_day(w: Mapping[str, Any]) -> date | None:
+    try:
+        return datetime.strptime((w.get("workoutDay") or "")[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _daily_tss(workouts: list[dict]) -> dict[date, float]:
+    daily: dict[date, float] = {}
+    for w in workouts:
+        d = _workout_day(w)
+        if d is None:
+            continue
+        daily[d] = daily.get(d, 0.0) + float(w.get("tssPlanned") or 0)
+    return daily
+
+
+def _week_start(d: date) -> date:
+    return d - timedelta(days=d.weekday())
+
+
+def _weekly_totals(workouts: list[dict]) -> dict[date, float]:
+    totals: dict[date, float] = {}
+    for w in workouts:
+        d = _workout_day(w)
+        if d is None:
+            continue
+        wk = _week_start(d)
+        totals[wk] = totals.get(wk, 0.0) + float(w.get("tssPlanned") or 0)
+    return totals
+
+
+def lint_ctl_trajectory(workouts: list[dict], race: date | None,
+                         current_ctl: float | None) -> list[dict]:
+    """AE-1.14 — CTL trajectory gate. Models the standard 42-day
+    time-constant CTL path (missing days = 0 TSS) from the plan's earliest
+    workout day through race day, starting from `current_ctl`. FAIL if the
+    modeled CTL at race day is more than CTL_FAIL_FRACTION below current
+    CTL; WARN if it's below current CTL at all. Silent (returns []) unless
+    both `race` and `current_ctl` are supplied."""
+    if race is None or current_ctl is None:
+        return []
+    daily = _daily_tss(workouts)
+    days = list(daily.keys())
+    if not days:
+        return []
+    start = min(min(days), race) - timedelta(days=1)
+    if race <= start:
+        return []
+    ctl = current_ctl
+    d = start
+    while d < race:
+        d += timedelta(days=1)
+        ctl += (daily.get(d, 0.0) - ctl) / CTL_TAU_DAYS
+
+    if ctl < current_ctl * CTL_FAIL_FRACTION:
+        severity = "FAIL"
+    elif ctl < current_ctl:
+        severity = "WARN"
+    else:
+        return []
+    drop_pct = (1 - ctl / current_ctl) * 100 if current_ctl else 0.0
+    return [{"day": race.isoformat(), "title": "(plan CTL trajectory)",
+             "severity": severity, "rule": "AE-1.14",
+             "msg": f"modeled CTL at race day {ctl:.1f}, down {drop_pct:.0f}% from "
+                    f"current CTL {current_ctl:.1f}"}]
+
+
+def lint_demonstrated_dose(workouts: list[dict],
+                            demonstrated_load: float | None) -> list[dict]:
+    """AE-2.10 (+ AE-1.9c sharpen) — demonstrated-dose gate. No explicit
+    phase tags exist in a TP payload, so weeks are classified by a simple
+    top-half/bottom-half split of the plan's own weekly planned-TSS
+    distribution: top half (>= median) stands in for intended load weeks,
+    bottom half for recovery weeks. Load weeks under LOAD_WEEK_FAIL_FRACTION
+    of the demonstrated weekly load FAIL; recovery weeks under
+    RECOVERY_WEEK_WARN_FRACTION WARN (AE-1.9c). Silent (returns []) unless
+    `demonstrated_load` is supplied or there are fewer than 2 weeks of data."""
+    if not demonstrated_load:
+        return []
+    totals = _weekly_totals(workouts)
+    if len(totals) < 2:
+        return []
+    median = statistics.median(totals.values())
+    findings: list[dict] = []
+    for wk in sorted(totals):
+        total = totals[wk]
+        if total >= median:
+            if total < LOAD_WEEK_FAIL_FRACTION * demonstrated_load:
+                findings.append({"day": wk.isoformat(), "title": "(load week)",
+                                 "severity": "FAIL", "rule": "AE-2.10",
+                                 "msg": f"{total:.0f} TSS under-dosed vs demonstrated "
+                                        f"load {demonstrated_load:.0f} "
+                                        f"(< {LOAD_WEEK_FAIL_FRACTION:.0%})"})
+        else:
+            if total < RECOVERY_WEEK_WARN_FRACTION * demonstrated_load:
+                findings.append({"day": wk.isoformat(), "title": "(recovery week)",
+                                 "severity": "WARN", "rule": "AE-1.9c",
+                                 "msg": f"{total:.0f} TSS under "
+                                        f"{RECOVERY_WEEK_WARN_FRACTION:.0%} of demonstrated "
+                                        f"load {demonstrated_load:.0f}"})
+    return findings
+
+
 # ---------------------------------------------------------------- io
 def _workouts(payload: Any) -> list[dict]:
     if isinstance(payload, list):
@@ -207,7 +317,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("files", nargs="+", type=Path)
     parser.add_argument("--ftp", type=float, default=None, help="reserved (structure targets are %%FTP already)")
-    parser.add_argument("--race-date", type=str, default=None, help="YYYY-MM-DD — enables AE-1.12 taper/race-week caps")
+    parser.add_argument("--race-date", type=str, default=None, help="YYYY-MM-DD — enables AE-1.12 taper/race-week caps + AE-1.14 CTL gate")
+    parser.add_argument("--current-ctl", type=float, default=None, help="athlete's current CTL — enables the AE-1.14 CTL trajectory gate (requires --race-date)")
+    parser.add_argument("--demonstrated-load", type=float, default=None, help="athlete's demonstrated weekly load-week TSS — enables the AE-2.10 dose gate")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args(argv)
 
@@ -220,6 +332,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     all_findings: list[dict] = []
+    all_workouts: list[dict] = []
     total_workouts = 0
     for path in args.files:
         try:
@@ -229,10 +342,21 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         workouts = _workouts(payload)
         total_workouts += len(workouts)
+        all_workouts.extend(workouts)
         for w in workouts:
             for finding in lint_workout(w, race):
                 finding["file"] = str(path)
                 all_findings.append(finding)
+
+    # Plan-level gates (span the whole payload, not a single workout) —
+    # both silent unless their inputs are supplied.
+    plan_file = str(args.files[0]) if len(args.files) == 1 else "(plan)"
+    for finding in lint_ctl_trajectory(all_workouts, race, args.current_ctl):
+        finding["file"] = plan_file
+        all_findings.append(finding)
+    for finding in lint_demonstrated_dose(all_workouts, args.demonstrated_load):
+        finding["file"] = plan_file
+        all_findings.append(finding)
 
     all_findings.sort(key=lambda f: (f["day"], f["severity"] != "FAIL"))
     fails = sum(1 for f in all_findings if f["severity"] == "FAIL")

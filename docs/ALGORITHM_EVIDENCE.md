@@ -103,6 +103,14 @@ this rule. Mid-season reset pattern available. (R49, R50, R59; H6) —
 annual-macro features beyond a single prep are PARKED for the coaching
 ladder (ruling Q11).
 
+**AE-1.9c — Recovery-week TSS denominator is demonstrated load, not planned
+load (sharpen of the ratified 50–65% recovery band).** [E] The ratified
+recovery-week TSS band (50–65% of load-week average) is measured against
+the athlete's trailing DEMONSTRATED load-week average — completed TSS —
+never the plan's own planned average. A plan anchored to a stale or
+under-dosed load number scores its recovery weeks "compliant" against the
+wrong denominator. (Matti + Jesse Couch email review, 2026-08-26)
+
 **AE-1.10 — Short-runway and novice branches.** [E][H] <12 h/wk: sweet-spot
 substitutes for LSD earlier; extra base period, never an extra build. Novice /
 returning (training age <1 yr): Seiler onboarding state machine — 6 weeks
@@ -140,6 +148,26 @@ athletes generally take in Late October to Early November for two weeks
 (but sometimes only 1); if they don't have any events from now until
 then, it's worth pushing them to find at least 1 event to do before
 unplugging a bit."
+
+**AE-1.13b (amend AE-1.13) — The break is athlete-shaped.** [E] For
+daily-exercise-identity athletes, the AE-1.13 off-season break comes off
+STRUCTURE, not off MOVEMENT: no targets, no data, no compliance tracking —
+riding, lifting, and running stay blessed through the unplug window. This
+changes what "off" means for this athlete type, not when AE-1.13's break
+happens. (Matti + Jesse Couch email review, 2026-08-26)
+
+**AE-1.14 — CTL trajectory gate.** [M] Every plan build models the CTL
+path: standard 42-day time-constant iteration over planned TSS from the
+athlete's current CTL. Arriving at the A-race materially below current CTL
+(default threshold: >10% below) is a FAIL unless the plan declares
+detraining/off-season intent. Jesse's v1 modeled 72 → low-40s CTL at his
+A-race — the athlete computed it before the build did. (Matti + Jesse
+Couch email review, 2026-08-26)
+
+**AE-1.15 — Travel compromises nothing without evidence.** [E] A travel
+day reduces only the transit day(s) themselves. Reducing more requires the
+athlete's own history or stated claim that travel compromises them — ask,
+never assume. (Matti + Jesse Couch email review, 2026-08-26)
 
 ## 2. Intensity budget & distribution (`block_compliance`)
 
@@ -211,6 +239,22 @@ Selection-layer ceilings, also ratified: endurance filler IF ceiling **.72**
 long rides stay unceilinged, hard durability long rides are the house
 signature). Known offenders to fix: `endurance_surges` L6 (58.5) and
 `tempo_3x15` (52.5–56). (R83, C1 finding; Workout Standards v1.0 Q·B)
+
+**AE-2.8b (sharpen of AE-2.8) — Bottom-of-band endurance dosing is an
+exception state.** [E] Riding the bottom of the ratified endurance IF band
+is legal only when the workout description states what it recovers from;
+default endurance dosing sits in the meat of the band, top half for
+high-tolerance athletes. (Kendall v1 review, 2026-08-26)
+
+**AE-2.10 — Demonstrated dose beats archetype default.** [E] When an
+athlete's stated operating dose exists AND their completed training
+history corroborates it, load weeks anchor to the demonstrated dose
+(completed hours/TSS in load weeks), not hours-band defaults. Dosing below
+the demonstrated dose requires a stated reason in the plan. Overshoot of a
+stale plan is evidence of CAPACITY, not of a plan that needs shrinking —
+when actuals exceed planned because the anchor (FTP) was stale, re-anchor
+UP to actuals. (Matti + Jesse Couch email review, 2026-08-26 / Kendall v1
+review, 2026-08-26)
 
 **AE-2.6 — Base keeps a pulse.** [H] One maintenance-intensity hard day per
 8–14 workouts even in early base; ≥1 long near-LT1 ride/week in early base.
@@ -615,6 +659,19 @@ do, plainly ("Arrive fueled: normal meal ~2h out. One bottle, 40-50g
 carbs."). Never structure a line around what today is NOT ("...is not the
 job today" class = worse than useless). Applies to fueling lines first,
 then all execution copy.
+
+### 9c addendum — round 3 rulings (Matti, 2026-08-26)
+
+**AE-9.10 — Terse register everywhere.** Plan writing, workout
+descriptions, calendar notes, weekly commands, and athlete emails lead with
+the instruction or fact: numbered lists over prose, real numbers over
+adjectives, one question max per note, no metaphors or theatrical framing,
+concessions compressed to one clause. AE-9.1's notes-density floor is
+unchanged — notes stay frequent, they just get SHORTER. Warmth comes from
+specificity and speed, not prose. Source: Matti's words verbatim,
+2026-08-26 — "I want all the plan writing, email, and notes to be more
+like that, less verbose, more to the point" — with the approved Jesse
+email (~160 words, numbered facts) standing as the reference exemplar.
 
 ## 9b. Hook → module map
 
