@@ -50,6 +50,9 @@ from block_builder import build_calendar_week, DAY_ORDER
 from block_chain import build_plan_from_calendar, derive_week_descriptors
 from calculate_plan_dates import calculate_plan_dates
 from race_category_scorer import calculate_category_scores
+from road_racing import (
+    ROAD_PROFILE_VERSION, normalize_event_format, resolve_event_format,
+)
 from workout_mapper import render_workout
 from zwo_parser import parse_zwo_structure_text
 from canonical_training_model import determine_control, _canonical_segment, project_tp_structure
@@ -194,6 +197,28 @@ def _resolve_discipline(request: Mapping[str, Any]) -> str:
         "target_race": {"name": request["race"]["name"]},
     }
     return derive_discipline(profile)
+
+
+def _resolve_road_event_format(
+    request: Mapping[str, Any], discipline: str,
+) -> Optional[str]:
+    """Resolve the canonical road profile without guessing across sports."""
+    race = request["race"]
+    explicit = race.get("event_format")
+    if discipline != "road":
+        if explicit is not None:
+            raise MotorenPreviewError(
+                "road event format cannot be applied to this discipline")
+        return None
+    if explicit is not None and normalize_event_format(explicit) is None:
+        raise MotorenPreviewError("road event format is not supported")
+    resolution = resolve_event_format({
+        "target_race": {
+            "name": race["name"],
+            **({"event_format": explicit} if explicit is not None else {}),
+        },
+    })
+    return str(resolution["event_format"])
 
 
 # ---------------------------------------------------------------------------
@@ -1057,6 +1082,9 @@ def _generate_preview_source_v2(request: Mapping[str, Any]) -> Dict[str, Any]:
     seed = _request_digest(request)
     athlete = _v2_athlete(request, seed)
     discipline = _resolve_discipline(request)
+    event_format = _resolve_road_event_format(request, discipline)
+    if event_format:
+        athlete["target_race"]["event_format"] = event_format
     training_age = get_training_age_constraints(
         athlete["training_history"]["years_structured"])
     max_level = training_age["max_level"]
@@ -1096,6 +1124,7 @@ def _generate_preview_source_v2(request: Mapping[str, Any]) -> Dict[str, Any]:
         methodology="polarized_80_20",
         category_weights=calculate_category_scores(dict(race["demands"])),
         training_age=training_age["label"],
+        event_format=event_format,
     )
     if len(plan["weeks"]) != len(plan_dates["weeks"]):
         raise MotorenPreviewError("engine plan calendar did not align")
@@ -1134,6 +1163,8 @@ def _generate_preview_source_v2(request: Mapping[str, Any]) -> Dict[str, Any]:
             "total_weeks": len(volume),
             "race_date": race["date"],
             "sample_week_numbers": sample_numbers,
+            **({"profile_version": ROAD_PROFILE_VERSION}
+               if event_format else {}),
         },
         "planned_volume": volume,
         "sample_weeks": sample_weeks,

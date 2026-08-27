@@ -35,6 +35,11 @@ FUEL_TAGS = {"high", "moderate", "practice", "none"}
 GOAL_TYPES = {"finish", "compete", "podium"}
 CONTROL_METHODS = {"power", "hr", "rpe"}
 STRENGTH_EQUIPMENT = {"none", "home-basic", "full-gym"}
+ROAD_EVENT_FORMATS = {
+    "generic_road", "criterium", "hill_climb", "time_trial",
+    "stage_race", "fondo",
+}
+ROAD_PROFILE_VERSION = "road/v1"
 
 _SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,95}$")
@@ -190,6 +195,17 @@ def _normalize_request_v2(payload: Mapping[str, Any]) -> Dict[str, Any]:
     expected_duration = _number(
         race.get("expected_duration_hours"),
         "race.expected_duration_hours", 1, 30)
+    raw_event_format = race.get("event_format")
+    event_format = None
+    if raw_event_format is not None:
+        if base["race"]["discipline"] != "road":
+            raise PreviewContractError(
+                "race.event_format is only valid for road previews")
+        event_format = _text(
+            raw_event_format, "race.event_format", maximum=40)
+        if event_format not in ROAD_EVENT_FORMATS:
+            raise PreviewContractError(
+                "race.event_format is not supported")
     plan_weeks = _integer(payload.get("plan_weeks"), "plan_weeks", 4, 26)
     sample_week_number = payload.get("sample_week_number")
     if sample_week_number is not None:
@@ -250,6 +266,7 @@ def _normalize_request_v2(payload: Mapping[str, Any]) -> Dict[str, Any]:
             **base["race"],
             "date": race_date,
             "expected_duration_hours": expected_duration,
+            **({"event_format": event_format} if event_format else {}),
         },
         "rider": {
             **base["rider"],
@@ -729,6 +746,14 @@ def _project_response_v2(
     race_date = _iso_date(raw_plan.get("race_date"), "source.plan.race_date")
     if race_date != request_data["race"]["date"]:
         raise PreviewContractError("source race date must match the request")
+    profile_version = None
+    if raw_plan.get("profile_version") is not None:
+        profile_version = _version(
+            raw_plan.get("profile_version"), "source.plan.profile_version")
+    if request_data["race"].get("event_format"):
+        if profile_version != ROAD_PROFILE_VERSION:
+            raise PreviewContractError(
+                "road preview source profile version is not supported")
     raw_sample_numbers = raw_plan.get("sample_week_numbers")
     if (not isinstance(raw_sample_numbers, Sequence)
             or isinstance(raw_sample_numbers, (str, bytes))):
@@ -823,6 +848,8 @@ def _project_response_v2(
             "total_weeks": total_weeks,
             "race_date": race_date,
             "sample_week_numbers": sample_numbers,
+            **({"profile_version": profile_version}
+               if profile_version else {}),
         },
         "planned_volume": volume,
         "sample_weeks": samples,

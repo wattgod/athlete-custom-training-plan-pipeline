@@ -1,0 +1,31 @@
+{
+  "profile_version": "road/v1",
+  "sample_week_number": 13,
+  "phase": "build",
+  "formats": [
+    {
+      "event_format": "generic_road",
+      "secondary_signature": "Race Simulation"
+    },
+    {
+      "event_format": "criterium",
+      "secondary_signature": "Microbursts"
+    },
+    {
+      "event_format": "hill_climb",
+      "secondary_signature": "Mixed Climbing Variations"
+    },
+    {
+      "event_format": "time_trial",
+      "secondary_signature": "Threshold Steady"
+    },
+    {
+      "event_format": "stage_race",
+      "secondary_signature": "Blended Endurance, Threshold, and Sprints"
+    },
+    {
+      "event_format": "fondo",
+      "secondary_signature": "Tempo with Accelerations"
+    }
+  ]
+}

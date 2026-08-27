@@ -248,6 +248,73 @@ def test_v2_request_normalizes_personalization_and_caps():
         "tue": 75, "thu": 90, "sat": 300}
 
 
+def test_v2_road_event_format_is_allowlisted_echoed_and_cache_significant():
+    payload = request_payload_v2()
+    payload["brand"] = "roadie_labs"
+    payload["race"].update({
+        "slug": "downtown-crit",
+        "name": "Downtown Criterium",
+        "discipline": "road",
+        "event_format": "criterium",
+    })
+    normalized = normalize_request(payload)
+    assert normalized["race"]["event_format"] == "criterium"
+    without_format = copy.deepcopy(payload)
+    without_format["race"].pop("event_format")
+    assert request_cache_key(payload) != request_cache_key(without_format)
+
+    sys.path.insert(
+        0, str(Path(__file__).parents[2] / "athletes" / "scripts"))
+    from motoren_preview import generate_preview_source
+    response = project_response(
+        payload, generate_preview_source(normalized),
+        engine_version="motoren/test", voice_version="voice/test")
+    assert response["race"]["event_format"] == "criterium"
+    assert response["plan"]["profile_version"] == "road/v1"
+
+
+@pytest.mark.parametrize("event_format", [
+    "generic_road", "criterium", "hill_climb", "time_trial",
+    "stage_race", "fondo",
+])
+def test_v2_accepts_every_canonical_road_event_format(event_format):
+    payload = request_payload_v2()
+    payload["brand"] = "roadie_labs"
+    payload["race"].update({
+        "discipline": "road", "event_format": event_format})
+    assert normalize_request(payload)["race"]["event_format"] == event_format
+
+
+def test_v2_road_event_format_rejects_invalid_and_non_road_values():
+    invalid = request_payload_v2()
+    invalid["race"].update({
+        "discipline": "road", "event_format": "cobble_classic"})
+    with pytest.raises(PreviewContractError, match="not supported"):
+        normalize_request(invalid)
+
+    non_road = request_payload_v2()
+    non_road["race"]["event_format"] = "criterium"
+    with pytest.raises(PreviewContractError, match="only valid for road"):
+        normalize_request(non_road)
+
+
+def test_v2_road_projection_rejects_missing_or_stale_profile_version():
+    payload = request_payload_v2()
+    payload["brand"] = "roadie_labs"
+    payload["race"].update({
+        "discipline": "road", "event_format": "fondo"})
+    source = source_plan_v2()
+    with pytest.raises(PreviewContractError, match="profile version"):
+        project_response(
+            payload, source, engine_version="motoren/test",
+            voice_version="voice/test")
+    source["plan"]["profile_version"] = "road/v0"
+    with pytest.raises(PreviewContractError, match="profile version"):
+        project_response(
+            payload, source, engine_version="motoren/test",
+            voice_version="voice/test")
+
+
 @pytest.mark.parametrize("mutation,match", [
     (lambda payload: payload["race"].update(date="next summer"), "ISO date"),
     (lambda payload: payload["rider"].update(control_method="pace"), "not supported"),

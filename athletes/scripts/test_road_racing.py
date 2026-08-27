@@ -6,6 +6,7 @@ from road_racing import (
 )
 from block_compliance import VO2MAX_TYPES
 from workout_selector import select_workouts_for_week
+from workout_selector import _road_ae31_level
 from workout_mapper import render_workout, resolve_display_name
 from intake_to_plan import build_profile, parse_intake_markdown
 from training_guide_builder import (
@@ -94,6 +95,15 @@ def test_each_format_changes_secondary_work_without_displacing_vo2():
             "fondo": "Endurance with Surges",
         }[event_format]
         assert long_ride["name"] == expected_long
+
+
+def test_road_vo2_levels_stay_inside_ae_3_1_library_bounds():
+    assert _road_ae31_level("VO2max 30/30", 1) == 2
+    assert _road_ae31_level("VO2max 40/20", 1) == 2
+    assert _road_ae31_level("VO2max Extended", 6) == 4
+    assert _road_ae31_level("VO2max Steady Intervals", 6) == 4
+    assert _road_ae31_level("VO2 Bookend", 6) == 3
+    assert _road_ae31_level("Threshold Steady", 6) == 6
 
 
 def test_legacy_selection_is_identical_when_format_unspecified():
