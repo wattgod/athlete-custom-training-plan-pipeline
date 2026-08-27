@@ -269,7 +269,14 @@ class TestVersions:
 
     def test_voice_version_shape(self):
         assert voice_version().startswith("voice/")
-        assert len(voice_version()) == len("voice/") + 8
+        assert len(voice_version()) == len("voice/") + 12
+
+    def test_provider_and_public_contract_fingerprint_same_git_voice(self):
+        sys.path.insert(0, str(Path(__file__).parents[2] / "webhook"))
+        from preview_contract import resolve_voice_version
+
+        assert voice_version() == resolve_voice_version().replace(
+            "github-voice-", "voice/", 1)
 
 
 class TestErrorHandling:
@@ -418,6 +425,14 @@ class TestFullPlanPreviewV2:
                    for session in bike_sessions)
         assert all(session["_library_backed"] is True
                    for session in bike_sessions)
+        athlete_copy = " ".join(
+            str(session.get(field) or "")
+            for session in bike_sessions
+            for field in ("purpose", "coach_note")
+        ).lower()
+        assert "gravel god" not in athlete_copy
+        assert "dialed in for" not in athlete_copy
+        assert "this session builds toward" not in athlete_copy
         for session in bike_sessions:
             if session["intensity_label"] != "VO2max":
                 continue

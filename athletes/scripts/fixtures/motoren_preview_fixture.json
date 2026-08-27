@@ -17,7 +17,7 @@
             "fueling_guidance": "FUEL: Normal meal ~2h before. One bottle, 40-50g carbs. Done.",
             "intensity_label": "VO2max",
             "kind": "bike",
-            "purpose": "Maximum aerobic power. Raising your ceiling so everything below feels easier. Dialed in for Unbound Gravel 200.",
+            "purpose": "VO2max development. Maximum aerobic power\u2014the engine that drives race-winning attacks.",
             "structure": {
               "polyline": [
                 [
@@ -185,7 +185,7 @@
             "fueling_guidance": "FUEL: Normal meal ~2h before. One bottle, 40-50g carbs. Done.",
             "intensity_label": "VO2max",
             "kind": "bike",
-            "purpose": "Maximum aerobic power. Raising your ceiling so everything below feels easier. Dialed in for Unbound Gravel 200.",
+            "purpose": "VO2max development. Maximum aerobic power\u2014the engine that drives race-winning attacks.",
             "structure": {
               "polyline": [
                 [
@@ -775,7 +775,7 @@
             "fueling_guidance": "LONG-RIDE FUEL: Target 55g carbs/hr. Practice this prescription.",
             "intensity_label": "Endurance",
             "kind": "bike",
-            "purpose": "Building aerobic endurance and time in saddle. Race-specific duration work. Dialed in for Unbound Gravel 200.",
+            "purpose": "Aerobic base building. Easy riding builds mitochondrial density and fat oxidation \u2014 the foundation everything else rests on. Level 4: Endurance. Refine the execution without adding strain.",
             "structure": {
               "polyline": [
                 [
@@ -850,7 +850,7 @@
             "fueling_guidance": "Water and normal fueling; no in-ride carbohydrate target needed.",
             "intensity_label": "Endurance",
             "kind": "bike",
-            "purpose": "Aerobic base building. This is where 80% of your training volume lives. Dialed in for Unbound Gravel 200.",
+            "purpose": "Aerobic base building. Easy riding builds mitochondrial density and fat oxidation \u2014 the foundation everything else rests on. Level 1: Endurance. Refine the execution without adding strain.",
             "structure": {
               "polyline": [
                 [
@@ -914,13 +914,13 @@
             "tss": 55
           },
           {
-            "coach_note": "Max Strength A on Sunday: build force with controlled, non-grinding compound lifts. Leave reps in reserve -- this supports Unbound Gravel 200, it does not compete with it.",
+            "coach_note": "Max Strength A Sunday. I want two clean reps left in reserve. This supports the riding for Unbound Gravel 200; if it starts competing with it, stop.",
             "duration_minutes": 45,
             "fuel_tag": "moderate",
-            "fueling_guidance": "Eat normally beforehand; pair protein with carbohydrate within the hour after.",
+            "fueling_guidance": "Eat normally beforehand. Pair protein with carbohydrate within the hour after.",
             "intensity_label": "Strength",
             "kind": "strength",
-            "purpose": "Build force with controlled, non-grinding compound lifts. Keeps force production intact for Unbound Gravel 200.",
+            "purpose": "Build force with controlled, non-grinding compound lifts.",
             "strength": {
               "exercises": [
                 {
