@@ -176,6 +176,28 @@ def test_plan_ir_json_round_trip(fixture_athlete):
     assert restored == original
 
 
+def test_road_plan_ir_stamps_motoren_voice_and_profile_versions(
+    fixture_athlete, monkeypatch,
+):
+    profile_path = fixture_athlete / "profile.yaml"
+    profile = yaml.safe_load(profile_path.read_text())
+    profile["discipline"] = "road"
+    profile["brand"] = "roadielabs"
+    profile_path.write_text(yaml.safe_dump(profile))
+    monkeypatch.setattr(plan_ir, "engine_version", lambda: "motoren/test123+ae-test")
+    monkeypatch.setattr(plan_ir, "voice_version", lambda: "voice/gitvoice1234")
+
+    generated = build_plan_ir("fixture-athlete")
+    manifest = plan_ir.project_tp_manifest(generated)
+
+    assert generated.provenance == {
+        "engine_version": "motoren/test123+ae-test",
+        "voice_version": "voice/gitvoice1234",
+        "profile_version": "road/v1",
+    }
+    assert manifest["provenance"] == generated.provenance
+
+
 def test_missing_optional_artifact_warns_and_returns_partial_object(fixture_athlete):
     (fixture_athlete / "weekly_structure.yaml").unlink()
     (fixture_athlete / "fueling.yaml").unlink()

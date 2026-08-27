@@ -28,6 +28,7 @@ Add a new golden order to GOLDEN_ORDERS to widen coverage; the contract
 runs against all of them automatically.
 """
 
+import json
 import os
 import re
 import subprocess
@@ -446,6 +447,10 @@ def test_roadie_package_is_brand_clean_and_semantically_valid(built_order):
     assert profile["discipline"] == "road"
     assert profile["event_format"] == exp["event_format"]
     assert profile["road_category"] == exp["road_category"]
+    manifest = json.loads((athlete_dir / "tp_manifest.json").read_text())
+    assert manifest["provenance"]["engine_version"].startswith("motoren/")
+    assert manifest["provenance"]["voice_version"].startswith("voice/")
+    assert manifest["provenance"]["profile_version"] == "road/v1"
 
     # Treat brand separation as a release-blocking invariant across both the
     # source athlete package and the exact staged customer package. Checking
