@@ -5139,6 +5139,15 @@ def questionnaire_started():
     if not email or '@' not in email:
         return '', 204
 
+    # Scheduled checkout probes must never enter the abandoned-questionnaire
+    # lifecycle. Otherwise the daily health workflow writes a synthetic lead
+    # and can notify the coach even though no customer started a form.
+    source = (data.get('source') or '').strip().lower()
+    monitor_prefixes = ('healthcheck@', 'checkout-monitor@', 'monitor@')
+    if source == 'health-check' and email.startswith(monitor_prefixes):
+        logger.info("Questionnaire health check ignored before persistence")
+        return jsonify({'status': 'ignored'}), 200
+
     # Store in monthly questionnaire-starts log (dedup by email within 24hrs)
     log_dir = Path(DATA_DIR) / '.logs'
     log_dir.mkdir(parents=True, exist_ok=True)

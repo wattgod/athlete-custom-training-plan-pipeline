@@ -3884,6 +3884,25 @@ class TestQuestionnaireStarted:
             assert 'coach@example.com' in args[0]
             assert 'Test Rider' in args[0][1]  # subject
 
+    def test_health_check_has_no_storage_or_email_side_effects(
+            self, client, temp_athletes_dir):
+        """Synthetic monitors stop before lead storage and notification."""
+        os.environ['DATA_DIR'] = str(temp_athletes_dir)
+        with patch('app.NOTIFICATION_EMAIL', 'coach@example.com'), \
+             patch('app.RESEND_API_KEY', 'test-key'), \
+             patch('app._send_email') as mock_send:
+            response = client.post('/api/questionnaire-started', json={
+                'name': 'Daily Health Check [TEST]',
+                'email': 'healthcheck@gravelgodcycling.com',
+                'sections_reached': 1,
+                'source': 'health-check',
+            })
+
+        assert response.status_code == 200
+        assert response.get_json()['status'] == 'ignored'
+        assert not (temp_athletes_dir / '.logs').exists()
+        mock_send.assert_not_called()
+
     def test_pii_not_logged(self, client, temp_athletes_dir):
         """Email address is masked in log output."""
         os.environ['DATA_DIR'] = str(temp_athletes_dir)
