@@ -19,7 +19,8 @@ PAGE_LIMIT = 100
 MAX_PAGES = 1000
 _ALLOWED_BRANDS = {"gravelgod", "roadielabs", "xcskilabs"}
 _ALLOWED_OFFERS = {
-    "training_plan", "coaching", "consulting", "consult_addon", "unknown",
+    "training_plan", "coaching", "consulting", "consult_addon", "membership",
+    "unknown",
 }
 
 
@@ -142,6 +143,63 @@ def _brand(metadata: Any) -> str:
     return _safe_dimension(data.get("brand"), _ALLOWED_BRANDS, "unknown")
 
 
+def _synthetic(metadata: Any) -> bool:
+    """Classify known monitor/test checkout metadata without projecting PII."""
+    data = _plain(metadata)
+    name = str(data.get("athlete_name") or "").strip().lower()
+    return any(marker in name for marker in (
+        "[test]", "daily health check", "synthetic", "monitor",
+    ))
+
+
+def _merchant_product_name(value: Any) -> str:
+    """Bound a merchant-authored catalog label; customer fields never enter here."""
+    candidate = " ".join(str(value or "").split())
+    return candidate[:160]
+
+
+def _catalog_offer(product_name: str) -> str:
+    normalized = product_name.lower()
+    if "consult" in normalized:
+        return "consulting"
+    if "coaching" in normalized:
+        return "coaching"
+    if "training plan" in normalized or "custom plan" in normalized:
+        return "training_plan"
+    if any(token in normalized for token in ("membership", "subscription", "supporter")):
+        return "membership"
+    return "unknown"
+
+
+def _price_product_id(price: Mapping[str, Any]) -> str:
+    return _object_id(price.get("product"))
+
+
+def _line_price_id(line: Mapping[str, Any]) -> str:
+    direct = _object_id(line.get("price"))
+    if direct:
+        return direct
+    pricing = _plain(line.get("pricing"))
+    details = _plain(pricing.get("price_details"))
+    return _object_id(details.get("price"))
+
+
+def _line_product_id(line: Mapping[str, Any], price: Mapping[str, Any]) -> str:
+    product_id = _price_product_id(price)
+    if product_id:
+        return product_id
+    pricing = _plain(line.get("pricing"))
+    details = _plain(pricing.get("price_details"))
+    return _object_id(details.get("product"))
+
+
+def _registered_offer(price_id: str, offer_price_ids: Mapping[str, set[str]]) -> str:
+    for offer, price_ids in offer_price_ids.items():
+        if price_id and price_id in price_ids:
+            return offer
+    return "unknown"
+
+
 def _invoice_subscription_id(invoice: Mapping[str, Any]) -> str:
     direct = _object_id(invoice.get("subscription"))
     if direct:
@@ -192,12 +250,64 @@ def _balance_snapshot(balance: Any) -> dict[str, dict[str, int]]:
 
 
 def build_stripe_revenue_receipt(
-        stripe_provider: Any, start: date, end: date, record_key_secret: str) -> dict:
+        stripe_provider: Any, start: date, end: date, record_key_secret: str,
+        offer_price_ids: Mapping[str, Iterable[str]] | None = None) -> dict:
     """Read the live provider ledger and return a PII-free reconciliation receipt."""
     if not record_key_secret:
         raise ProviderRevenueError("record key secret is required")
     start_ts, end_exclusive_ts = _unix_window(start, end)
     created = {"gte": start_ts, "lt": end_exclusive_ts}
+    registered_prices = {
+        str(offer): {str(item) for item in values if item}
+        for offer, values in (offer_price_ids or {}).items()
+    }
+
+    products = list(_iter_pages(stripe_provider.Product.list))
+    product_by_id = {
+        _object_id(product.get("id")): product
+        for product in products if _object_id(product.get("id"))
+    }
+    product_rows = []
+    for product_id, product in product_by_id.items():
+        product_name = _merchant_product_name(product.get("name"))
+        product_rows.append({
+            "record_key": _record_key(
+                record_key_secret, "product", product_id),
+            "created_at": _created_at(product.get("created")),
+            "name": product_name,
+            "offer_family": _catalog_offer(product_name),
+            "active": bool(product.get("active")),
+            "livemode": bool(product.get("livemode")),
+        })
+
+    prices = list(_iter_pages(stripe_provider.Price.list))
+    price_by_id = {
+        _object_id(price.get("id")): price
+        for price in prices if _object_id(price.get("id"))
+    }
+    price_rows = []
+    for price_id, price in price_by_id.items():
+        product_id = _price_product_id(price)
+        product_name = _merchant_product_name(
+            product_by_id.get(product_id, {}).get("name"))
+        recurring = _plain(price.get("recurring"))
+        registered = _registered_offer(price_id, registered_prices)
+        price_rows.append({
+            "record_key": _record_key(record_key_secret, "price", price_id),
+            "product_record_key": _record_key(
+                record_key_secret, "product", product_id),
+            "created_at": _created_at(price.get("created")),
+            "currency": _currency(price.get("currency")),
+            "unit_amount_cents": int(price.get("unit_amount") or 0),
+            "recurring_interval": str(recurring.get("interval") or "")[:16],
+            "recurring_interval_count": int(
+                recurring.get("interval_count") or 0),
+            "offer_family": (
+                registered if registered != "unknown"
+                else _catalog_offer(product_name)),
+            "active": bool(price.get("active")),
+            "livemode": bool(price.get("livemode")),
+        })
 
     sessions = list(_iter_pages(
         stripe_provider.checkout.Session.list, created=created))
@@ -227,6 +337,7 @@ def build_stripe_revenue_receipt(
             "mode": str(session.get("mode") or "unknown")[:32],
             "offer_family": _offer(metadata),
             "brand": _brand(metadata),
+            "synthetic": _synthetic(metadata),
             "livemode": bool(session.get("livemode")),
         }
         payment_intent_id = _object_id(session.get("payment_intent"))
@@ -244,6 +355,39 @@ def build_stripe_revenue_receipt(
         invoice_id = _object_id(invoice.get("id"))
         subscription_id = _invoice_subscription_id(invoice)
         session = session_by_subscription.get(subscription_id, {})
+        line_items = []
+        line_offers = set()
+        lines = _plain(invoice.get("lines"))
+        for line in lines.get("data") or []:
+            line_data = _plain(line)
+            price_id = _line_price_id(line_data)
+            price = price_by_id.get(price_id, {})
+            product_id = _line_product_id(line_data, price)
+            product_name = _merchant_product_name(
+                product_by_id.get(product_id, {}).get("name"))
+            registered = _registered_offer(price_id, registered_prices)
+            line_offer = (
+                registered if registered != "unknown"
+                else _catalog_offer(product_name))
+            line_offers.add(line_offer)
+            period = _plain(line_data.get("period"))
+            line_items.append({
+                "price_record_key": _record_key(
+                    record_key_secret, "price", price_id),
+                "product_record_key": _record_key(
+                    record_key_secret, "product", product_id),
+                "merchant_product_name": product_name,
+                "offer_family": line_offer,
+                "currency": _currency(line_data.get("currency")),
+                "amount_cents": int(line_data.get("amount") or 0),
+                "quantity": int(line_data.get("quantity") or 0),
+                "period_start_at": _created_at(period.get("start")),
+                "period_end_at": _created_at(period.get("end")),
+            })
+        attributed_offer = session.get("offer_family", "unknown")
+        non_unknown_offers = line_offers - {"unknown"}
+        if attributed_offer == "unknown" and len(non_unknown_offers) == 1:
+            attributed_offer = next(iter(non_unknown_offers))
         row = {
             "record_key": _record_key(record_key_secret, "invoice", invoice_id),
             "subscription_record_key": _record_key(
@@ -256,8 +400,10 @@ def build_stripe_revenue_receipt(
             "amount_due_cents": int(invoice.get("amount_due") or 0),
             "amount_paid_cents": int(invoice.get("amount_paid") or 0),
             "amount_remaining_cents": int(invoice.get("amount_remaining") or 0),
-            "offer_family": session.get("offer_family", "unknown"),
+            "offer_family": attributed_offer,
             "brand": session.get("brand", "unknown"),
+            "line_items": line_items,
+            "line_items_complete": not bool(lines.get("has_more")),
             "livemode": bool(invoice.get("livemode")),
         }
         invoice_by_id[invoice_id] = row
@@ -381,9 +527,11 @@ def build_stripe_revenue_receipt(
         "privacy": {
             "projection": "financial_and_offer_fields_only",
             "record_keys": "hmac_sha256_using_server_secret",
+            "included_merchant_fields": ["product_name"],
             "excluded": [
                 "provider_ids", "names", "emails", "phones", "addresses",
                 "payment_methods", "bank_destinations", "descriptions",
+                "price_nicknames",
             ],
         },
         "controls": {
@@ -395,6 +543,8 @@ def build_stripe_revenue_receipt(
             "current_balance": current_balance,
         },
         "rows": {
+            "products": product_rows,
+            "prices": price_rows,
             "checkout_sessions": session_rows,
             "invoices": invoice_rows,
             "charges": charge_rows,
@@ -406,6 +556,8 @@ def build_stripe_revenue_receipt(
             "Provider rows are selected by each object's created timestamp.",
             "Payout arrival dates can fall outside the selected creation window.",
             "Offer attribution is unknown when provider objects lack a checkout-session link.",
+            "Merchant-authored product names are included for offer reconciliation.",
+            "Invoice line_items_complete is false when Stripe truncates a line-item page.",
             "Current balance is an observation-time control, not a period flow.",
             "Bank-statement matching is outside this receipt.",
         ],
