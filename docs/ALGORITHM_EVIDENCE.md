@@ -169,6 +169,59 @@ day reduces only the transit day(s) themselves. Reducing more requires the
 athlete's own history or stated claim that travel compromises them — ask,
 never assume. (Matti + Jesse Couch email review, 2026-08-26)
 
+**AE-1.16 — Race-day TSB band by event class (RATIFIED Matti 2026-08-26).**
+[E][H][M] A-race (gravel/road, ≥3 h): TSB at race day in **[+5, +25]**,
+target sub-band **[+15, +25]**. Stage-race day 1: TSB ≥ +10 preferred;
+within-block TSB unconstrained by design. CX/short-format (<1 h,
+high-anaerobic): wider ceiling (~+29 documented, Overton CX Nationals) —
+event-class exception, OPEN pending a CX-specific ruling. Consensus of six
+independent published sources (+5..+25, mode +15..+20; PW-8/9/10, synthesis
+2026-08-26). Matti's standing position — "you want a very, very positive
+TSB… WAY better to enter a little undertrained but fresh than a little
+fitter but buried" — now carries this number. The corpus's unratified
+TSB≈0 worked case (R58) is explicitly NOT adopted.
+
+**AE-1.17 — Taper prescription (RATIFIED Matti 2026-08-26).** [P][E][M]
+Duration **8–21 d** scaled to event length (~12 d short A-race → ~21 d
+ultra). Daily load **50–70%** of pre-taper average, exponential/progressive
+decay (beats linear/step). **Intensity and session frequency are HELD, not
+cut** (Bosquet 2007, Wang 2023, Mujika/Padilla). **Matti ruling, verbatim
+basis:** "I'm personally not against some intensity leading up to race
+week. I almost always have athletes do openers… ['Stars in your eyes']
+touches some zones. I'd prefer more of that for athletes than flat Z2
+workouts with no dimension work." Therefore: (a) **openers are DEFAULT**
+(the final-days +20–30% load bump, Thomas 2009 two-phase taper, is the
+literature's version of what openers already do) — opt-out, not opt-in;
+(b) race-week intensity arrives as TOUCHES — openers, short anaerobic
+bursts (reps ≤120 s, e.g. 20/30/40 s), race-pace touches, dimension work
+(cadence/position/terrain) — all legal under the AE-1.12 caps, which
+forbid long ≥92% BLOCKS (>120 s reps, >900 s total), not touches;
+(c) **flat-Z2-only taper endurance with no dimension work is a defect**
+(extends ruling Q7 into the taper). Entry-fatigue scaling: pre-taper
+overload (≥110–120% load) requires a longer/deeper taper — depth and
+duration are a function of fatigue at taper start, never a fixed lookup.
+NOTE: the coach's curated race-week library cards are believed cap-
+compliant by class (short-burst); a library audit against the ≥92%-block
+caps is QUEUED, archive-never-delete rules apply to any violators found.
+
+**AE-1.18 — CTL-retention gate (RATIFIED Matti 2026-08-26; joins AE-1.14).**
+[E][M] Two anchors, both checked, the tighter binds: (a) AE-1.14 unchanged
+— race-day CTL ≥ 90% of CTL at plan-build time; (b) race-day CTL ≥ 90% of
+CTL at TAPER START (peak CTL), i.e. taper-window CTL loss ≤ 10% (Friel).
+Jointly with AE-1.16 this pins the compliant taper family: **7–10 d @
+50–70% load, or 14 d @ 60–70%** — 14 d @ 50% and 21-d tapers hit the TSB
+target but blow the 10% cap (derived table PW-16, arithmetic-verified).
+Duration and load-retention are coupled, never independently chosen.
+
+**PROPOSED, NOT RATIFIED (synthesis 2026-08-26, awaiting Matti):**
+AE-1.19 TSB build rails ([−30,−10] productive, <−20 max 1-in-10 d);
+AE-1.20 ATL τ policy (default 7 d, categorical deviations 4–12 d only);
+AE-1.21 age-based recovery cycle (3 wk Over40 / 4 wk Under40, from the
+coach's ATP period lookup table — needs harmonizing with AE-1.5's age-50
+line); AE-1.22 B/C-race TSB [−10,0]; AE-1.23 multi-peak limits (≤3/season,
+≤13% cumulative CTL bleed). See docs/evidence/2026-08-26-pmc-planning-
+synthesis.md.
+
 ## 2. Intensity budget & distribution (`block_compliance`)
 
 **AE-2.1 — Hard-minutes floor + hard-days cap (ruling Q2).** [Matti-authored]
