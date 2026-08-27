@@ -2737,6 +2737,11 @@ def _questionnaire_to_markdown(intake_data: dict, name: str = '', email: str = '
     race_format = (a_race.get('race_format') or a_race.get('event_format')
                    or intake_data.get('race_format')
                    or intake_data.get('event_format', ''))
+    race_demands = (a_race.get('race_demands')
+                    or intake_data.get('race_demands'))
+    race_demands_text = (json.dumps(race_demands, sort_keys=True,
+                                    separators=(',', ':'))
+                         if race_demands is not None else '')
     road_category = (intake_data.get('road_category')
                      or intake_data.get('license_category', ''))
 
@@ -2768,6 +2773,7 @@ Submitted: {datetime.now().strftime('%Y-%m-%d')}
 - Course Facts Mode: {intake_data.get('course_facts_mode', '')}
 - Discipline: {_discipline_hint}
 - Race Format: {race_format}
+- Race Demands: {race_demands_text}
 - Road Category: {road_category}
 - Races:
 {chr(10).join(race_lines)}

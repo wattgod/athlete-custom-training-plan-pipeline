@@ -1775,6 +1775,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         from plan_ir import training_age_class
         from workout_mapper import render_workout as _bb_render
         from workout_selector import coached_focus_category_weights
+        from race_category_scorer import category_weights_for_profile
 
         _bb_archetype = determine_archetype(cycling_hours_target)
         _bb_discipline = derive_discipline(profile or {})
@@ -1834,6 +1835,21 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             _builder_hours = cycling_hours_target
 
         _bb_training_age = training_age_class(profile or {})
+        # road/v1 owns the first full-season demand-vector rollout. Keep the
+        # established gravel/MTB paid-plan path byte-stable until their own
+        # profile migrations can be reviewed and versioned independently.
+        if ((profile or {}).get('target_race') and _bb_discipline == 'road'):
+            (_bb_category_weights, _bb_race_demands,
+             _bb_demand_source) = category_weights_for_profile(profile or {})
+            (profile or {}).setdefault('target_race', {})[
+                'training_demands_applied'] = _bb_race_demands
+            (profile or {}).setdefault('target_race', {})[
+                'training_demands_applied_source'] = _bb_demand_source
+        elif not (profile or {}).get('target_race'):
+            _bb_category_weights = coached_focus_category_weights(
+                ((profile or {}).get('coached_block') or {}).get('focus'))
+        else:
+            _bb_category_weights = None
         _bb_plan = build_plan_from_calendar(
             week_descriptors=_bb_descriptors,
             archetype=_bb_archetype,
@@ -1846,9 +1862,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
             discipline=_bb_discipline,
             day_caps=_bb_day_caps or None,
             methodology=methodology_id,
-            category_weights=coached_focus_category_weights(
-                ((profile or {}).get('coached_block') or {}).get('focus')
-            ),
+            category_weights=_bb_category_weights,
             fixed_minutes=_fixed_minutes if '_fixed_minutes' in locals() else 0,
             event_format=_bb_event_format,
             training_age=_bb_training_age,

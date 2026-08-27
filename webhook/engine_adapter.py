@@ -69,7 +69,10 @@ from block_compliance import (  # noqa: E402
     validate_plan,
     INTENSITY_TYPES,
 )
-from race_category_scorer import calculate_category_scores  # noqa: E402
+from race_category_scorer import (  # noqa: E402
+    calculate_category_scores,
+    derive_race_demands,
+)
 from workout_selector import (  # noqa: E402
     get_workout_duration,
     get_workout_tss,
@@ -226,83 +229,6 @@ _NO_FUEL_KEYWORDS = ('recovery', 'easy', 'shakeout', 'rest', 'openers', 'off')
 # only re-orders EXISTING slot pools — it never widens a pool, never touches
 # week structure, and the R01-R11 compliance gate still runs unchanged.
 # ---------------------------------------------------------------------------
-
-_DEMAND_NEUTRAL = 5
-
-
-def _clamp10(v: float) -> int:
-    return max(0, min(10, int(round(v))))
-
-
-def derive_race_demands(distance_mi: Optional[float],
-                        elevation_ft: Optional[float],
-                        discipline: str) -> Dict[str, int]:
-    """Conservative 8-dim demand vector from race metadata (table above)."""
-    demands: Dict[str, int] = {
-        'vo2_power': _DEMAND_NEUTRAL,
-        'heat_resilience': _DEMAND_NEUTRAL,
-        'altitude': _DEMAND_NEUTRAL,
-        'race_specificity': _DEMAND_NEUTRAL,
-    }
-
-    # durability — race_demand_analyzer distance bands
-    if distance_mi is None:
-        demands['durability'] = _DEMAND_NEUTRAL
-    elif distance_mi >= 200:
-        demands['durability'] = 10
-    elif distance_mi >= 150:
-        demands['durability'] = 8
-    elif distance_mi >= 100:
-        demands['durability'] = 6
-    elif distance_mi >= 75:
-        demands['durability'] = 4
-    elif distance_mi >= 50:
-        demands['durability'] = 2
-    else:
-        demands['durability'] = 1
-
-    # climbing — elevation/distance ratio (ft per mile)
-    if elevation_ft is None:
-        demands['climbing'] = _DEMAND_NEUTRAL
-    elif distance_mi:
-        ratio = elevation_ft / distance_mi
-        if ratio >= 175:
-            demands['climbing'] = 9
-        elif ratio >= 125:
-            demands['climbing'] = 8
-        elif ratio >= 90:
-            demands['climbing'] = 6
-        elif ratio >= 60:
-            demands['climbing'] = 5
-        elif ratio >= 35:
-            demands['climbing'] = 3
-        else:
-            demands['climbing'] = 2
-    else:
-        demands['climbing'] = max(1, min(8, _clamp10(elevation_ft / 2500)))
-
-    # threshold — analyzer distance bands + climbing boost
-    if distance_mi is None:
-        demands['threshold'] = _DEMAND_NEUTRAL
-    else:
-        if 75 <= distance_mi <= 150:
-            thr = 7
-        elif 50 <= distance_mi < 75:
-            thr = 5
-        elif distance_mi > 150:
-            thr = 4
-        else:
-            thr = 3
-        if demands['climbing'] >= 6:
-            thr += 1
-        demands['threshold'] = _clamp10(thr)
-
-    # technical — discipline heuristic
-    demands['technical'] = {'mtb': 8, 'gravel': 5, 'road': 2}.get(
-        discipline, _DEMAND_NEUTRAL)
-
-    return demands
-
 
 def _race_category_weights(race: Optional[Dict[str, Any]],
                            discipline: str) -> Optional[Dict[str, int]]:
