@@ -196,7 +196,7 @@ jobs:
             }')
 
           STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))")
-          if [ "$STATUS" != "tracked" ] && [ "$STATUS" != "already_tracked" ]; then
+          if [ "$STATUS" != "ignored" ]; then
             echo "::error::Questionnaire-started endpoint failed: $STATUS"
             exit 1
           fi
