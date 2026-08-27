@@ -745,6 +745,96 @@ class TestCreateCheckout:
             assert call_kwargs['metadata']['tier'] == 'custom'
             assert call_kwargs['metadata']['product_type'] == 'training_plan'
 
+    def test_checkout_preserves_valid_ga4_attribution(self, client, temp_athletes_dir):
+        """Consented GA ids survive Stripe redirect for webhook attribution."""
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_live_attribution'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={
+                    'name': 'Attributed Rider',
+                    'email': 'attributed@example.com',
+                    'races': [{
+                        'name': 'Unbound 200',
+                        'date': self._future_date(),
+                        'priority': 'A',
+                    }],
+                    'ga4_client_id': '1391278887.1471780587',
+                    'ga4_session_id': '1787846400',
+                    'analytics_consent': 'granted',
+                },
+                environ_base={'REMOTE_ADDR': '198.51.100.101'},
+            )
+
+            assert response.status_code == 200
+            metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+            assert metadata['ga4_client_id'] == '1391278887.1471780587'
+            assert metadata['ga4_session_id'] == '1787846400'
+            assert metadata['analytics_consent'] == 'granted'
+            stored = __import__('app').load_intake(response.get_json()['intake_id'])
+            assert stored['ga4_client_id'] == '1391278887.1471780587'
+            assert stored['ga4_session_id'] == '1787846400'
+            assert stored['analytics_consent'] == 'granted'
+
+    def test_checkout_discards_invalid_ga4_attribution(self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_live_bad_attribution'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={
+                    'name': 'Unattributed Rider',
+                    'email': 'unattributed@example.com',
+                    'races': [{
+                        'name': 'Unbound 200',
+                        'date': self._future_date(),
+                        'priority': 'A',
+                    }],
+                    'ga4_client_id': '<script>alert(1)</script>',
+                    'ga4_session_id': 'not-a-session',
+                    'analytics_consent': 'granted',
+                },
+                environ_base={'REMOTE_ADDR': '198.51.100.102'},
+            )
+
+            assert response.status_code == 200
+            metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+            assert 'ga4_client_id' not in metadata
+            assert 'ga4_session_id' not in metadata
+            stored = __import__('app').load_intake(response.get_json()['intake_id'])
+            assert 'ga4_client_id' not in stored
+            assert 'ga4_session_id' not in stored
+
+    def test_checkout_discards_ga4_ids_when_consent_is_denied(
+            self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe:
+            mock_stripe.checkout.Session.create.return_value = MagicMock(
+                id='cs_live_denied', url='https://checkout.stripe.com/test')
+            response = client.post('/api/create-checkout', json={
+                'name': 'Private Rider',
+                'email': 'private@example.com',
+                'races': [{
+                    'name': 'Unbound 200', 'date': self._future_date(),
+                    'priority': 'A',
+                }],
+                'analytics_consent': 'denied',
+                'ga4_client_id': '1391278887.1471780587',
+                'ga4_session_id': '1787846400',
+            }, environ_base={'REMOTE_ADDR': '198.51.100.103'})
+
+        assert response.status_code == 200
+        metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+        assert metadata['analytics_consent'] == 'denied'
+        assert 'ga4_client_id' not in metadata
+        assert 'ga4_session_id' not in metadata
+
     def test_gravel_checkout_records_gravel_grit_without_charging_extra(
             self, client, temp_athletes_dir):
         """Gravel Grit is an included entitlement, never an extra line item."""
@@ -910,6 +1000,8 @@ class TestStripeWebhookWithIntake:
                         'athlete_name': 'Sarah Connor',
                         'weeks': '12',
                         'price_cents': '18000',
+                        'ga4_client_id': '1391278887.1471780587',
+                        'ga4_session_id': '1787846400',
                     }
                 }
             }
@@ -921,7 +1013,8 @@ class TestStripeWebhookWithIntake:
         }}
         with patch('app.run_pipeline') as mock_pipeline, \
              patch('app.persist_deliverables', return_value=persisted), \
-             patch('app._generate_download_token', return_value='token'):
+             patch('app._generate_download_token', return_value='token'), \
+             patch('app._send_ga4_purchase') as mock_ga4_purchase:
             mock_pipeline.return_value = {'success': True, 'stdout': '', 'stderr': ''}
 
             response = client.post(
@@ -934,6 +1027,10 @@ class TestStripeWebhookWithIntake:
             data = response.get_json()
             assert data['status'] == 'success'
             assert data['athlete_id'] == 'sarah_connor'
+            mock_ga4_purchase.assert_called_once()
+            ga4_kwargs = mock_ga4_purchase.call_args.kwargs
+            assert ga4_kwargs['client_id'] == '1391278887.1471780587'
+            assert ga4_kwargs['session_id'] == '1787846400'
 
         # Verify profile was created with intake data
         import yaml
@@ -1442,6 +1539,9 @@ class TestCoachingIntakeHandoff:
             'tier': 'mid',
             'name': 'Case Rider',
             'email': 'case@test.com',
+            'analytics_consent': 'granted',
+            'ga4_client_id': '1391278887.1471780587',
+            'ga4_session_id': '1787846400',
             'questionnaire': {'primary_goal': 'specific_race', 'age': '52'},
         }
 
@@ -1463,6 +1563,10 @@ class TestCoachingIntakeHandoff:
         assert case['schema'] == 'coaching_onboarding_case/v1'
         assert case['tier'] == 'mid'
         assert case['state'] == 'FIT_REVIEW'
+        assert case['source']['analytics_consent'] == 'granted'
+        assert case['source']['ga4_client_id'] == '1391278887.1471780587'
+        assert case['source']['ga4_session_id'] == '1787846400'
+        assert 'ga4_client_id' not in case['questionnaire']
         assert case['intake_audit']['schema'] == 'coaching_intake_audit/v1'
         assert 'target race list' in case['intake_audit']['missing']
         assert 'home timezone' in case['intake_audit']['missing_followup']
@@ -1502,6 +1606,23 @@ class TestCoachingIntakeHandoff:
         assert audit['gates']['intake_completeness'] == 'ready_for_fit_review'
         assert audit['gates']['health_clearance'] == 'review_disclosure'
         assert audit['gates']['payment'] == 'not_started'
+
+    def test_intake_discards_ga4_ids_without_granted_consent(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'COACHING_INTAKE_SECRET', 'edge-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        payload = self._payload('45b79a9a-5f51-4d4f-9024-2e52c673bfb6')
+        payload['analytics_consent'] = 'denied'
+        with patch.object(app_module, '_send_email', return_value=True):
+            response = client.post('/api/coaching-intakes', json=payload,
+                                   headers={'X-Coaching-Intake-Secret': 'edge-secret'})
+
+        assert response.status_code == 201
+        case = app_module._read_coaching_intake(payload['submission_id'])
+        assert case['source']['analytics_consent'] == 'denied'
+        assert 'ga4_client_id' not in case['source']
+        assert 'ga4_session_id' not in case['source']
 
     def test_xc_intake_audit_uses_ski_fields(self):
         from app import _coaching_intake_audit, _COACHING_INTAKE_REQUIRED_XC
@@ -1727,6 +1848,12 @@ class TestCoachingIntakeHandoff:
         assert second.status_code == 200
         assert mock_stripe.checkout.Session.create.call_count == 1
         assert handoff.call_count == 1
+        checkout_call = mock_stripe.checkout.Session.create.call_args.kwargs
+        assert checkout_call['metadata']['ga4_client_id'] == '1391278887.1471780587'
+        assert checkout_call['metadata']['ga4_session_id'] == '1787846400'
+        assert checkout_call['metadata']['analytics_consent'] == 'granted'
+        assert checkout_call['subscription_data']['metadata'][
+            'ga4_client_id'] == '1391278887.1471780587'
         case = app_module._read_coaching_intake(case_id)
         assert case['state'] == 'PAYMENT_PENDING'
         assert case['checkout']['session_id'] == 'cs_case'
@@ -2493,7 +2620,12 @@ class TestConsultingCheckout:
 
             response = client.post(
                 '/api/create-consulting-checkout',
-                json={'name': 'Consult Me', 'email': 'consult@test.com', 'hours': 3},
+                json={
+                    'name': 'Consult Me', 'email': 'consult@test.com',
+                    'hours': 3, 'analytics_consent': 'granted',
+                    'ga4_client_id': '1391278887.1471780587',
+                    'ga4_session_id': '1787846400',
+                },
                 content_type='application/json'
             )
 
@@ -2506,6 +2638,27 @@ class TestConsultingCheckout:
             assert call_kwargs['line_items'][0]['quantity'] == 3
             assert call_kwargs['metadata']['product_type'] == 'consulting'
             assert call_kwargs['metadata']['hours'] == '3'
+            assert call_kwargs['metadata']['analytics_consent'] == 'granted'
+            assert call_kwargs['metadata']['ga4_client_id'] == '1391278887.1471780587'
+            assert call_kwargs['metadata']['ga4_session_id'] == '1787846400'
+
+    def test_consulting_checkout_discards_ids_when_consent_denied(
+            self, client, temp_athletes_dir):
+        with patch('app.stripe') as mock_stripe:
+            mock_stripe.checkout.Session.create.return_value = MagicMock(
+                id='cs_consult_denied', url='https://checkout.stripe.com/consult')
+            response = client.post('/api/create-consulting-checkout', json={
+                'name': 'Private Consult', 'email': 'private@test.com',
+                'hours': 1, 'analytics_consent': 'denied',
+                'ga4_client_id': '1391278887.1471780587',
+                'ga4_session_id': '1787846400',
+            })
+
+        assert response.status_code == 200
+        metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+        assert metadata['analytics_consent'] == 'denied'
+        assert 'ga4_client_id' not in metadata
+        assert 'ga4_session_id' not in metadata
 
     def test_consulting_checkout_options_preflight(self, client):
         """CORS preflight returns 204."""
@@ -2532,22 +2685,30 @@ class TestCoachingWebhook:
                         'product_type': 'coaching',
                         'tier': 'mid',
                         'athlete_name': 'New Coach Client',
+                        'analytics_consent': 'granted',
+                        'ga4_client_id': '1391278887.1471780587',
+                        'ga4_session_id': '1787846400',
                     }
                 }
             }
         }
 
-        response = client.post(
-            '/webhook/stripe',
-            json=stripe_event,
-            content_type='application/json'
-        )
+        with patch('app._send_ga4_purchase') as ga4_purchase:
+            response = client.post(
+                '/webhook/stripe',
+                json=stripe_event,
+                content_type='application/json'
+            )
 
         assert response.status_code == 200
         data = response.get_json()
         assert data['status'] == 'success'
         assert data['product_type'] == 'coaching'
         assert data['tier'] == 'mid'
+        kwargs = ga4_purchase.call_args.kwargs
+        assert kwargs['client_id'] == '1391278887.1471780587'
+        assert kwargs['session_id'] == '1787846400'
+        assert kwargs['analytics_consent'] == 'granted'
 
     def test_coaching_webhook_logs_event(self, client, temp_athletes_dir):
         """Coaching webhook writes to order log."""
@@ -2636,22 +2797,30 @@ class TestConsultingWebhook:
                         'product_type': 'consulting',
                         'athlete_name': 'Consult Client',
                         'hours': '2',
+                        'analytics_consent': 'granted',
+                        'ga4_client_id': '1391278887.1471780587',
+                        'ga4_session_id': '1787846400',
                     }
                 }
             }
         }
 
-        response = client.post(
-            '/webhook/stripe',
-            json=stripe_event,
-            content_type='application/json'
-        )
+        with patch('app._send_ga4_purchase') as ga4_purchase:
+            response = client.post(
+                '/webhook/stripe',
+                json=stripe_event,
+                content_type='application/json'
+            )
 
         assert response.status_code == 200
         data = response.get_json()
         assert data['status'] == 'success'
         assert data['product_type'] == 'consulting'
         assert data['hours'] == '2'
+        kwargs = ga4_purchase.call_args.kwargs
+        assert kwargs['client_id'] == '1391278887.1471780587'
+        assert kwargs['session_id'] == '1787846400'
+        assert kwargs['analytics_consent'] == 'granted'
 
     def test_consulting_webhook_logs_event(self, client, temp_athletes_dir):
         """Consulting webhook writes to order log."""
@@ -3802,6 +3971,23 @@ class TestGa4ServerSidePurchase:
             app_module._send_ga4_purchase('test_20260609', 24900, 'training_plan', 'Plan')
         mock_post.assert_not_called()
 
+    def test_skips_stripe_test_mode_orders(self):
+        import app as app_module
+        with patch.object(app_module, 'BRANDS', _ga4_brands()), \
+             patch.object(app_module.http_requests, 'post') as mock_post:
+            app_module._send_ga4_purchase('cs_test_abc123', 24900,
+                                          'training_plan', 'Plan')
+        mock_post.assert_not_called()
+
+    def test_skips_when_analytics_consent_is_denied(self):
+        import app as app_module
+        with patch.object(app_module, 'BRANDS', _ga4_brands()), \
+             patch.object(app_module.http_requests, 'post') as mock_post:
+            app_module._send_ga4_purchase(
+                'cs_live_private', 24900, 'training_plan', 'Plan',
+                analytics_consent='denied')
+        mock_post.assert_not_called()
+
     def test_sends_purchase_payload(self):
         import app as app_module
         with patch.object(app_module, 'BRANDS', _ga4_brands()), \
@@ -3821,6 +4007,35 @@ class TestGa4ServerSidePurchase:
         assert event['params']['value'] == 249.0
         assert event['params']['currency'] == 'USD'
         assert kwargs['timeout'] == 5
+
+    def test_joins_purchase_to_original_browser_session(self):
+        import app as app_module
+        with patch.object(app_module, 'BRANDS', _ga4_brands()), \
+             patch.object(app_module.http_requests, 'post') as mock_post:
+            mock_post.return_value = MagicMock(status_code=204)
+            app_module._send_ga4_purchase(
+                'cs_live_attributed', 24900, 'training_plan', 'Plan',
+                client_id='1391278887.1471780587',
+                session_id='1787846400')
+
+        payload = mock_post.call_args.kwargs['json']
+        assert payload['client_id'] == '1391278887.1471780587'
+        params = payload['events'][0]['params']
+        assert params['session_id'] == 1787846400
+        assert params['engagement_time_msec'] == 1
+
+    def test_invalid_attribution_uses_order_scoped_fallback(self):
+        import app as app_module
+        with patch.object(app_module, 'BRANDS', _ga4_brands()), \
+             patch.object(app_module.http_requests, 'post') as mock_post:
+            mock_post.return_value = MagicMock(status_code=204)
+            app_module._send_ga4_purchase(
+                'cs_live_fallback', 24900, 'training_plan', 'Plan',
+                client_id='bad', session_id='also-bad')
+
+        payload = mock_post.call_args.kwargs['json']
+        assert payload['client_id'].startswith('srv.')
+        assert 'session_id' not in payload['events'][0]['params']
 
     def test_routes_to_brand_property(self):
         import app as app_module
