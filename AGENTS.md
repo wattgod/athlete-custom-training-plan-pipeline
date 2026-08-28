@@ -5,6 +5,8 @@
 Before drafting, rewriting, or approving copy presented as Matti Rowe or one of
 his brands, read `docs/AI_WRITING_POLICY.md`. Its source-retrieval,
 provenance, privacy, and anti-slop requirements are binding.
+This includes the complete pinned `petergyang/no-ai-slop` skill and eval;
+passing a phrase linter alone is not approval.
 
 Binding instructions live in `CLAUDE.md` — read it first; it is written for
 all agents, not just Claude. This repo is a production order pipeline:
