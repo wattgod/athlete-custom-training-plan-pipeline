@@ -29,6 +29,28 @@ Matti outranks both.
    a quota.
 7. Run the target repo's slop/voice gate. If none exists, run the writing graph's
    `scripts/check_ai_writing.py --strict` against the draft.
+8. Apply the complete pinned `petergyang/no-ai-slop` edit workflow and every
+   check in its `eval.md`. The deterministic gate is not a substitute for this
+   editorial pass.
+
+## Required no-ai-slop pass
+
+The canonical copy is vendored in `wattgod/writing-graph/vendor/no-ai-slop/`
+from https://github.com/petergyang/no-ai-slop at commit
+`d30eddb9e04562234f2070b5ee63ca4649d9a05e`. Read both `SKILL.md` and
+`eval.md`. Preserve the point, facts, vocabulary, useful edge, and natural
+cadence while removing portable filler, fake drama, inflated claims, structural
+tics, and formatting decoration.
+
+Use detect mode for raw Matti-authored sources and derived analytical notes.
+Name findings without scoring authorship or silently rewriting the evidence.
+Historical use of a flagged pattern does not authorize an AI to imitate it.
+
+Use edit mode for AI-assisted copy presented as Matti or one of his brands.
+Make the minimum effective edit, run the strict mechanical gate, complete the
+full human eval, and fix every failed check before approval. Portability,
+meaning preservation, synonym cycling, robotic rhythm, and voice flattening
+always require editorial judgment.
 
 ## Valid voice evidence
 
@@ -80,4 +102,3 @@ Before approval, identify:
 
 Voice is the consequence of judgment, evidence, and relationship. It is not a
 bag of tricks.
-
