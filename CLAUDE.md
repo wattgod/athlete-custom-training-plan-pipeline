@@ -1,5 +1,11 @@
 # Athlete Custom Training Plan Pipeline
 
+## AI writing as Matti
+
+Before drafting, rewriting, or approving copy presented as Matti Rowe or one of
+his brands, read `docs/AI_WRITING_POLICY.md`. Its source-retrieval,
+provenance, privacy, and anti-slop requirements are binding.
+
 ## Northstar
 This repo is the **fulfillment engine** of the ecosystem master plan: rated race
 databases (gravel/road/ski) drive buyers → this pipeline turns a questionnaire
