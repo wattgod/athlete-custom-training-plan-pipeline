@@ -116,6 +116,18 @@ def _record_key(secret: str, kind: str, provider_id: Any) -> str:
     return f"srk_{digest}"
 
 
+def _balance_source_kind(transaction: Mapping[str, Any]) -> str:
+    """Use the source object's namespace so sanitized ledger joins survive."""
+    reporting_category = str(
+        transaction.get("reporting_category") or ""
+    ).strip().lower()
+    transaction_type = str(transaction.get("type") or "").strip().lower()
+    for candidate in (reporting_category, transaction_type):
+        if candidate in {"charge", "refund", "payout"}:
+            return candidate
+    return "balance_source"
+
+
 def _created_at(value: Any) -> str:
     try:
         return datetime.fromtimestamp(int(value), tz=timezone.utc).isoformat()
@@ -469,7 +481,8 @@ def build_stripe_revenue_receipt(
             "record_key": _record_key(
                 record_key_secret, "balance_transaction", transaction.get("id")),
             "source_record_key": _record_key(
-                record_key_secret, "balance_source", transaction.get("source")),
+                record_key_secret, _balance_source_kind(transaction),
+                transaction.get("source")),
             "created_at": _created_at(transaction.get("created")),
             "available_at": _created_at(transaction.get("available_on")),
             "currency": _currency(transaction.get("currency")),

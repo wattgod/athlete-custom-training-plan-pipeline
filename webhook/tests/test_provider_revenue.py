@@ -103,6 +103,13 @@ def _provider():
             "reporting_category": "adjustment", "status": "available",
             "amount": 25, "fee": 0, "net": 25,
         },
+        {
+            "id": "txn_payout_private", "source": "po_private",
+            "created": 1777507205, "available_on": 1777593600,
+            "currency": "usd", "type": "payout",
+            "reporting_category": "payout", "status": "available",
+            "amount": -13560, "fee": 0, "net": -13560,
+        },
     ]
     payout = {
         "id": "po_private", "balance_transaction": "txn_payout_private",
@@ -165,6 +172,18 @@ def test_receipt_controls_and_privacy_projection():
     assert charge["offer_family"] == "consulting"
     assert charge["gross_less_refunds_cents"] == 14000
     assert charge["record_key"].startswith("srk_")
+    balances = {
+        row["record_key"]: row
+        for row in receipt["rows"]["balance_transactions"]
+    }
+    assert balances[charge["balance_transaction_record_key"]][
+        "source_record_key"] == charge["record_key"]
+    refund = receipt["rows"]["refunds"][0]
+    assert balances[refund["balance_transaction_record_key"]][
+        "source_record_key"] == refund["record_key"]
+    payout = receipt["rows"]["payouts"][0]
+    assert balances[payout["balance_transaction_record_key"]][
+        "source_record_key"] == payout["record_key"]
     assert receipt["rows"]["invoices"][0]["line_items"] == [{
         "price_record_key": receipt["rows"]["prices"][0]["record_key"],
         "product_record_key": receipt["rows"]["products"][0]["record_key"],
@@ -191,7 +210,7 @@ def test_pagination_advances_without_mutation_methods():
     provider = _provider()
     receipt = build_stripe_revenue_receipt(
         provider, date(2026, 4, 30), date(2026, 5, 1), SECRET)
-    assert len(receipt["rows"]["balance_transactions"]) == 3
+    assert len(receipt["rows"]["balance_transactions"]) == 4
     calls = provider.BalanceTransaction.calls
     assert len(calls) == 2
     assert "starting_after" not in calls[0]
