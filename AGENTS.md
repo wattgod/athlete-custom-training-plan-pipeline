@@ -1,5 +1,11 @@
 # AGENTS.md — entry point for any coding agent
 
+## AI writing as Matti
+
+Before drafting, rewriting, or approving copy presented as Matti Rowe or one of
+his brands, read `docs/AI_WRITING_POLICY.md`. Its source-retrieval,
+provenance, privacy, and anti-slop requirements are binding.
+
 Binding instructions live in `CLAUDE.md` — read it first; it is written for
 all agents, not just Claude. This repo is a production order pipeline:
 customer money flows through it, so failure paths matter as much as
