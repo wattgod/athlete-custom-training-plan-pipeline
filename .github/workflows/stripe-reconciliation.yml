@@ -76,3 +76,28 @@ jobs:
           path: ${{ runner.temp }}/stripe-reconciliation.json
           if-no-files-found: error
           retention-days: 30
+
+      - name: "Dispatch canonical Mission Control ingestion"
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::GH_PAT is required for the canonical ingestion handoff"
+            exit 1
+          fi
+          python3 - <<'PY' | gh api \
+            --method POST \
+            repos/wattgod/gravel-race-automation/dispatches \
+            --input -
+          import json, os
+          print(json.dumps({
+              "event_type": "stripe_provider_receipt_ready",
+              "client_payload": {
+                  "source_repository": os.environ["GITHUB_REPOSITORY"],
+                  "source_run_id": os.environ["GITHUB_RUN_ID"],
+                  "source_sha": os.environ["GITHUB_SHA"],
+                  "artifact_name": f"stripe-reconciliation-{os.environ['GITHUB_RUN_ID']}",
+                  "confirm": "APPLY_STRIPE_PROVIDER_TRUTH",
+              },
+          }))
+          PY
