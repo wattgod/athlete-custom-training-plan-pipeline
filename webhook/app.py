@@ -28,7 +28,9 @@ import shutil
 import zipfile
 import base64
 import binascii
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from html import escape as html_escape
+from urllib.parse import quote
 import requests as http_requests
 from pathlib import Path
 from datetime import datetime, timedelta, date, timezone
@@ -1597,6 +1599,7 @@ def _write_coaching_intake(case: dict, *, create_only: bool = False) -> bool:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+        _sync_coaching_activation_file(case)
         return True
 
     tmp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
@@ -1606,12 +1609,67 @@ def _write_coaching_intake(case: dict, *, create_only: bool = False) -> bool:
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(tmp, path)
+    _sync_coaching_activation_file(case)
+    return True
+
+
+def _sync_coaching_activation_file(case: dict) -> bool:
+    """Mirror the private, safe activation projection into the athlete folder."""
+    context_receipt = (
+        case.get('verifications', {}).get('athlete_context') or {})
+    if context_receipt.get('status') != 'sealed':
+        return False
+    athlete_id = str(context_receipt.get('athlete_id') or '').strip()
+    if not athlete_id or sanitize_athlete_id(athlete_id) != athlete_id:
+        logger.error(
+            f"Could not sync activation file for case {case.get('case_id')}: "
+            'invalid athlete_id binding')
+        return False
+    athlete_dir = Path(ATHLETES_DIR) / athlete_id
+    if not athlete_dir.is_dir():
+        return False
+    verifications = case.get('verifications') or {}
+    projection = {
+        'schema': 'coaching_activation_record/v1',
+        'case_id': case.get('case_id'),
+        'athlete_key': case.get('athlete_key'),
+        'brand': normalize_brand(case.get('brand')),
+        'tier': str(case.get('tier') or ''),
+        'updated_at': datetime.now(timezone.utc).isoformat(),
+        'readiness': _coaching_activation_projection(case),
+        'athlete_inputs': copy.deepcopy(case.get('activation_inputs') or {}),
+        'verification_statuses': {
+            gate: str(receipt.get('status') or '')
+            for gate, receipt in sorted(verifications.items())
+            if isinstance(receipt, dict) and receipt.get('status')
+        },
+    }
+    processed = projection['athlete_inputs'].get('processed_event_ids')
+    if processed is not None:
+        projection['athlete_inputs']['processed_event_ids'] = list(processed)[-20:]
+    path = athlete_dir / 'coaching_activation.yaml'
+    tmp = path.with_name(f'.{path.name}.{os.getpid()}.tmp')
+    payload = yaml.safe_dump(
+        projection, sort_keys=False, allow_unicode=True).encode('utf-8')
+    try:
+        with open(tmp, 'wb') as handle:
+            os.chmod(tmp, 0o600)
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    except OSError:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        logger.exception(
+            f"Could not sync activation file for athlete {athlete_id}")
+        return False
     return True
 
 
 _COACHING_EVENT_DETAIL_KEYS = {
     'from_state', 'to_state', 'gate', 'status', 'email_sent',
-    'recovered_from', 'recovery_disposition',
+    'recovered_from', 'recovery_disposition', 'task', 'submission_status',
 }
 
 
@@ -1838,8 +1896,21 @@ _COACHING_VERIFICATION_RULES = {
     'athlete_context': {'sealed'},
     'plan_draft': {'ready'},
     'coach_plan_approval': {'approved'},
+    'schedule_baseline': {'verified'},
+    'device_data': {'verified'},
+    'kickoff_call': {'scheduled'},
+    'day_0_check': {'complete'},
+    'day_2_check': {'complete'},
+    'day_7_check': {'complete'},
+    'day_14_check': {'complete'},
+    'day_28_check': {'complete'},
     'onboarding_ramp': {'complete'},
 }
+
+_COACHING_RAMP_GATES = (
+    'day_0_check', 'day_2_check', 'day_7_check',
+    'day_14_check', 'day_28_check',
+)
 
 _COACHING_PAYMENT_PREREQUISITES = (
     ('coach_fit', 'approved', 'coach fit approval'),
@@ -1873,7 +1944,166 @@ def _coaching_gate_status(case: dict, gate: str) -> str:
     if gate == 'onboarding_materials':
         return ('ready' if case.get('onboarding_materials', {}).get('delivered_at')
                 else 'pending')
+    if gate == 'onboarding_ramp':
+        raw = str(
+            case.get('verifications', {}).get(gate, {}).get('status') or 'pending')
+        checkpoints_complete = all(
+            str(case.get('verifications', {}).get(item, {}).get('status')) == 'complete'
+            for item in _COACHING_RAMP_GATES
+        )
+        return 'complete' if raw == 'complete' and checkpoints_complete else 'pending'
     return str(case.get('verifications', {}).get(gate, {}).get('status') or 'pending')
+
+
+def _coaching_activation_task(task_id: str, label: str, state: str,
+                              owner: str, *, detail: str = '',
+                              action_url: str = '') -> dict:
+    task = {
+        'id': task_id,
+        'label': label,
+        'state': state,
+        'owner': owner,
+    }
+    if detail:
+        task['detail'] = detail
+    if action_url.startswith('https://'):
+        task['action_url'] = action_url
+    return task
+
+
+def _coaching_activation_projection(case: dict) -> dict:
+    """Return the athlete-safe activation truth derived from case receipts."""
+    inputs = case.get('activation_inputs') or {}
+    minor = _coaching_is_minor(case)
+
+    agreements_complete = (
+        _coaching_gate_status(case, 'coaching_agreement') == 'signed' and
+        _coaching_gate_status(case, 'data_consent') == 'signed' and
+        (not minor or _coaching_gate_status(case, 'guardian_consent') == 'signed')
+    )
+    esign_status = str((case.get('esign_packet') or {}).get('status') or '')
+    agreement_state = (
+        'verified' if agreements_complete else
+        ('action_required' if esign_status in ('sent', 'pending') else
+         'waiting_on_matti')
+    )
+    payment_status = _coaching_gate_status(case, 'payment')
+    payment_state = (
+        'verified' if payment_status == 'confirmed' else
+        ('action_required' if (case.get('checkout') or {}).get('url') else
+         'waiting_on_matti')
+    )
+    schedule_verified = _coaching_gate_status(case, 'schedule_baseline') == 'verified'
+    schedule_submitted = bool((inputs.get('schedule') or {}).get('submitted_at'))
+    schedule_state = (
+        'verified' if schedule_verified else
+        ('waiting_on_matti' if schedule_submitted else 'action_required')
+    )
+    tp_complete = (
+        _coaching_gate_status(case, 'trainingpeaks_connection') == 'verified' and
+        _coaching_gate_status(case, 'trainingpeaks_premium') == 'active'
+    )
+    device_verified = _coaching_gate_status(case, 'device_data') == 'verified'
+    device_submitted = bool((inputs.get('device_setup') or {}).get('submitted_at'))
+    device_state = (
+        'verified' if device_verified else
+        ('waiting_on_matti' if device_submitted else 'action_required')
+    )
+    kickoff_complete = _coaching_gate_status(case, 'kickoff_call') == 'scheduled'
+    kickoff_state = (
+        'verified' if kickoff_complete else
+        ('action_required' if COACHING_BOOKING_URL.startswith('https://') else
+         'blocked')
+    )
+    communication_complete = bool(
+        (inputs.get('communication') or {}).get('submitted_at'))
+    plan_complete = (
+        _coaching_gate_status(case, 'coach_plan_approval') == 'approved' and
+        _coaching_gate_status(case, 'onboarding_materials') == 'ready'
+    )
+    first_week_complete = bool(
+        (inputs.get('first_week_acknowledgement') or {}).get('acknowledged_at'))
+    first_week_state = (
+        'verified' if first_week_complete and plan_complete else
+        ('action_required' if plan_complete else 'blocked')
+    )
+
+    tp_url = str(
+        (_brand_config(case.get('brand')).get('coaching') or {}).get(
+            'trainingpeaks_attach_url') or
+        _brand_config(case.get('brand')).get('trainingpeaks_attach_url') or
+        'https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU'
+    )
+    tasks = [
+        _coaching_activation_task(
+            'agreements', 'Sign the coaching documents', agreement_state,
+            'athlete' if agreement_state == 'action_required' else 'matti'),
+        _coaching_activation_task(
+            'payment', 'Start the coaching subscription', payment_state,
+            'athlete' if payment_state == 'action_required' else 'matti'),
+        _coaching_activation_task(
+            'schedule', 'Set the weekly schedule', schedule_state,
+            'athlete' if schedule_state == 'action_required' else 'matti',
+            detail=('Submitted; Matti still needs to check it.'
+                    if schedule_state == 'waiting_on_matti' else '')),
+        _coaching_activation_task(
+            'trainingpeaks', 'Connect TrainingPeaks and activate Premium',
+            'verified' if tp_complete else 'action_required', 'athlete',
+            action_url=tp_url),
+        _coaching_activation_task(
+            'device_data', 'Confirm device data is syncing', device_state,
+            'athlete' if device_state == 'action_required' else 'matti',
+            detail=('Submitted; Matti still needs to see a successful sync.'
+                    if device_state == 'waiting_on_matti' else '')),
+        _coaching_activation_task(
+            'kickoff_call', 'Book the kickoff call', kickoff_state,
+            'athlete' if kickoff_state == 'action_required' else 'matti',
+            action_url=COACHING_BOOKING_URL),
+        _coaching_activation_task(
+            'communication', 'Choose how we communicate',
+            'verified' if communication_complete else 'action_required', 'athlete'),
+        _coaching_activation_task(
+            'first_plan', 'Receive the first plan and guide',
+            'verified' if plan_complete else 'waiting_on_matti', 'matti'),
+        _coaching_activation_task(
+            'first_week', 'Confirm the first-week instructions',
+            first_week_state, 'athlete' if first_week_state == 'action_required' else 'matti'),
+    ]
+    for day_gate in _COACHING_RAMP_GATES:
+        day_label = day_gate.removesuffix('_check').replace('_', ' ').title()
+        complete = _coaching_gate_status(case, day_gate) == 'complete'
+        tasks.append(_coaching_activation_task(
+            day_gate, f'{day_label} check-in',
+            'verified' if complete else 'waiting_on_matti', 'matti'))
+
+    setup_ids = {
+        'agreements', 'payment', 'schedule', 'trainingpeaks', 'device_data',
+        'kickoff_call', 'communication', 'first_plan', 'first_week',
+    }
+    setup_ready = all(
+        task['state'] == 'verified' for task in tasks if task['id'] in setup_ids)
+    ramp_ready = all(
+        task['state'] == 'verified' for task in tasks
+        if task['id'] in _COACHING_RAMP_GATES)
+    athlete = case.get('athlete') or {}
+    preferred_name = str(
+        athlete.get('preferred_name') or athlete.get('name') or '').strip()
+    goal_label = str(
+        (case.get('questionnaire') or {}).get('target_race') or
+        (case.get('questionnaire') or {}).get('race_list') or '').strip()[:160]
+    return {
+        'schema': 'coaching_activation_projection/v1',
+        'case_id': case.get('case_id'),
+        'athlete_key': case.get('athlete_key'),
+        'brand': normalize_brand(case.get('brand')),
+        'tier': str(case.get('tier') or ''),
+        'preferred_name': preferred_name[:80],
+        'goal_label': goal_label,
+        'setup_ready': setup_ready,
+        'active_ready': bool(setup_ready and ramp_ready and
+                             _coaching_gate_status(case, 'onboarding_ramp') == 'complete'),
+        'tasks': tasks,
+    }
 
 
 def _coaching_payment_prerequisites(case: dict) -> tuple:
@@ -1919,6 +2149,7 @@ def _coaching_case_readiness(case: dict) -> dict:
                      'athlete_context', 'plan_draft', 'coach_plan_approval',
                      'onboarding_materials', 'onboarding_ramp')
     }
+    activation = _coaching_activation_projection(case)
 
     if statuses['coach_fit'] != 'approved':
         state, next_action = 'FIT_REVIEW', 'Coach reviews fit and scope'
@@ -1958,6 +2189,10 @@ def _coaching_case_readiness(case: dict) -> dict:
     elif statuses['onboarding_materials'] != 'ready':
         state, next_action = (
             'ONBOARDING_MATERIALS', 'Generate athlete onboarding materials')
+    elif not activation['setup_ready']:
+        state, next_action = (
+            'ACTIVATION_SETUP',
+            'Resolve the remaining athlete or coach activation tasks')
     elif statuses['onboarding_ramp'] != 'complete':
         state, next_action = 'ONBOARDING_RAMP', 'Complete first-30-day ramp'
     else:
@@ -1972,6 +2207,8 @@ def _coaching_case_readiness(case: dict) -> dict:
         'payment_blockers': payment_blockers,
         'plan_release_allowed': not release_blockers,
         'plan_release_blockers': release_blockers,
+        'setup_ready': activation['setup_ready'],
+        'active_ready': activation['active_ready'],
     }
 
 
@@ -2259,6 +2496,7 @@ def _record_signwell_completion(case: dict, document: dict,
 
 def _refresh_coaching_case(case: dict, *, actor: str, reason: str,
                            source_id: str) -> dict:
+    old_readiness = case.get('readiness') or {}
     readiness = _coaching_case_readiness(case)
     old_state = case.get('state')
     new_state = readiness['state']
@@ -2283,6 +2521,14 @@ def _refresh_coaching_case(case: dict, *, actor: str, reason: str,
             _record_coaching_event(
                 case, 'coaching_active', source_id,
                 occurred_at=transition_at)
+    if readiness.get('setup_ready') and not old_readiness.get('setup_ready'):
+        _record_coaching_event(
+            case, 'coaching_setup_ready', source_id,
+            occurred_at=datetime.now(timezone.utc).isoformat())
+    if readiness.get('active_ready') and not old_readiness.get('active_ready'):
+        _record_coaching_event(
+            case, 'coaching_activation_ready', source_id,
+            occurred_at=datetime.now(timezone.utc).isoformat())
     return readiness
 
 
@@ -5890,7 +6136,13 @@ def enroll_coaching_onboarding_course(case_id):
     if not case:
         return jsonify({'error': 'Coaching intake not found'}), 404
     data = request.get_json(silent=True) or {}
-    owner_pilot = bool(data.get('owner_pilot'))
+    existing = case.get('onboarding_course') or {}
+    refresh_access = bool(data.get('refresh_access'))
+    if refresh_access and not existing.get('enrolled_at'):
+        return jsonify({'error': 'No existing course access to refresh'}), 409
+    owner_pilot = bool(
+        data.get('owner_pilot') or
+        (refresh_access and existing.get('owner_pilot_exemption')))
     athlete = case.get('athlete') or {}
     email = str(athlete.get('email') or '').strip().lower()
     if owner_pilot:
@@ -5911,8 +6163,7 @@ def enroll_coaching_onboarding_course(case_id):
                 'blockers': blockers,
             }), 409
 
-    existing = case.get('onboarding_course') or {}
-    if existing.get('enrolled_at'):
+    if existing.get('enrolled_at') and not refresh_access:
         return jsonify({
             'success': True,
             'duplicate': True,
@@ -5954,19 +6205,33 @@ def enroll_coaching_onboarding_course(case_id):
             f'{type(exc).__name__}')
         return jsonify({'error': 'Course enrollment provider failed'}), 502
 
+    access_token = str(provider_result.get('access_token') or '').strip()
+    access_expires_at = str(
+        provider_result.get('access_token_expires_at') or '').strip()
+    if (not re.fullmatch(r'[A-Za-z0-9_-]{43}', access_token) or
+            not access_expires_at):
+        logger.error(
+            f'Course provider returned no case-bound access token for {case_id}')
+        return jsonify({'error': 'Course enrollment provider failed closed'}), 502
+    activation_url = (
+        f"{COACHING_COURSE_PUBLIC_URL}"
+        f"{'&' if '?' in COACHING_COURSE_PUBLIC_URL else '?'}"
+        f"access_token={quote(access_token, safe='')}"
+    )
+
     now = datetime.now(timezone.utc).isoformat()
     preferred_name = str(
         athlete.get('preferred_name') or athlete.get('name') or '').strip()
     first_name = preferred_name.split()[0] if preferred_name else 'there'
-    subject = 'Your coaching course is ready'
+    subject = 'Finish setting up coaching'
     body = (
         f"Hey {first_name},\n\n"
-        "Your coaching operating-system course is ready. It covers how to read "
-        "the plan, use TrainingPeaks, leave useful comments, book calls, and "
-        "handle missed training or health concerns.\n\n"
-        f"Start here: {COACHING_COURSE_PUBLIC_URL}\n\n"
-        "Use this same email address to sign in. Work through the lessons in "
-        "order; your progress is saved to your coaching record.\n\n"
+        "Use this private link to finish the setup I still need from you and "
+        "see what is waiting on me. The handbook stays there when you need to "
+        "check how scheduling, TrainingPeaks, comments, calls, or missed "
+        "training work.\n\n"
+        f"Open your coaching setup: {activation_url}\n\n"
+        "Do not forward the link. It opens your coaching setup record.\n\n"
         "— Matti"
     )
     invite_sent = _send_email(
@@ -5976,19 +6241,28 @@ def enroll_coaching_onboarding_course(case_id):
         'schema': 'coaching_onboarding_course/v1',
         'course_id': course_id,
         'course_url': COACHING_COURSE_PUBLIC_URL,
-        'status': 'invited',
-        'enrolled_at': now,
+        'status': existing.get('status') or 'invited',
+        'enrolled_at': existing.get('enrolled_at') or now,
         'invite_sent': invite_sent,
         'invite_attempted_at': now,
         'owner_pilot_exemption': owner_pilot,
+        'access_refreshed_at': now if refresh_access else None,
         'provider_granted': bool(provider_result.get('granted')),
-        'processed_event_ids': [],
-        'completed_lessons': 0,
+        'access_token_sha256': hashlib.sha256(
+            access_token.encode('utf-8')).hexdigest(),
+        'access_token_expires_at': access_expires_at,
+        'processed_event_ids': existing.get('processed_event_ids') or [],
+        'completed_lessons': int(existing.get('completed_lessons') or 0),
         'total_lessons': 7,
-        'pct_complete': 0,
+        'pct_complete': int(existing.get('pct_complete') or 0),
+        'completed_at': existing.get('completed_at'),
+        'last_lesson_id': existing.get('last_lesson_id'),
+        'last_progress_at': existing.get('last_progress_at'),
     }
     _record_coaching_event(
-        case, 'coaching_onboarding_course_enrolled', course_id,
+        case, ('coaching_onboarding_access_refreshed' if refresh_access
+               else 'coaching_onboarding_course_enrolled'),
+        f'{course_id}:{now}' if refresh_access else course_id,
         details={'status': 'owner_pilot' if owner_pilot else 'included'},
         occurred_at=now)
     _write_coaching_intake(case)
@@ -6006,6 +6280,7 @@ def enroll_coaching_onboarding_course(case_id):
         'course_url': COACHING_COURSE_PUBLIC_URL,
         'invite_sent': True,
         'owner_pilot_exemption': owner_pilot,
+        'access_refreshed': refresh_access,
     }), 201
 
 
@@ -6083,6 +6358,312 @@ def receive_coaching_course_progress():
         'status': course['status'],
         'pct_complete': course['pct_complete'],
     }), 201
+
+
+_ACTIVATION_DAYS = {
+    'monday', 'tuesday', 'wednesday', 'thursday',
+    'friday', 'saturday', 'sunday',
+}
+_ACTIVATION_CHANNELS = {'trainingpeaks', 'email', 'text'}
+_ACTIVATION_DEVICE_PLATFORMS = {
+    'garmin', 'wahoo', 'coros', 'apple', 'strava', 'other', 'none',
+}
+_ACTIVATION_DATA_TYPES = {
+    'power', 'heart_rate', 'cadence', 'speed_gps', 'sleep', 'hrv',
+}
+
+
+def _activation_text(value, field: str, *, max_length: int,
+                     required: bool = True) -> str:
+    normalized = str(value or '').strip()
+    if required and not normalized:
+        raise ValueError(f'{field} is required')
+    if len(normalized) > max_length:
+        raise ValueError(f'{field} is too long')
+    return normalized
+
+
+def _activation_timezone(value) -> str:
+    timezone_name = _activation_text(
+        value, 'home_timezone', max_length=64)
+    try:
+        ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ValueError('home_timezone must be an IANA timezone') from None
+    return timezone_name
+
+
+def _activation_time(value, field: str, *, required: bool = False) -> str:
+    normalized = _activation_text(
+        value, field, max_length=5, required=required)
+    if not normalized:
+        return ''
+    try:
+        datetime.strptime(normalized, '%H:%M')
+    except ValueError:
+        raise ValueError(f'{field} must use HH:MM') from None
+    return normalized
+
+
+def _activation_date(value, field: str) -> str:
+    normalized = _activation_text(value, field, max_length=10)
+    try:
+        date.fromisoformat(normalized)
+    except ValueError:
+        raise ValueError(f'{field} must use YYYY-MM-DD') from None
+    return normalized
+
+
+def _normalize_activation_schedule(payload: dict) -> dict:
+    weekly_windows = payload.get('weekly_windows')
+    if not isinstance(weekly_windows, list) or not weekly_windows:
+        raise ValueError('weekly_windows must contain at least one day')
+    if len(weekly_windows) > 7:
+        raise ValueError('weekly_windows can contain no more than seven days')
+    normalized_windows = []
+    seen_days = set()
+    for item in weekly_windows:
+        if not isinstance(item, dict):
+            raise ValueError('Each weekly window must be an object')
+        day = _activation_text(item.get('day'), 'day', max_length=9).lower()
+        if day not in _ACTIVATION_DAYS or day in seen_days:
+            raise ValueError('Each weekly window needs one unique weekday')
+        seen_days.add(day)
+        availability = _activation_text(
+            item.get('availability'), 'availability', max_length=11).lower()
+        if availability not in {'available', 'unavailable'}:
+            raise ValueError('availability must be available or unavailable')
+        start = _activation_time(item.get('start'), 'start')
+        end = _activation_time(item.get('end'), 'end')
+        if bool(start) != bool(end):
+            raise ValueError('start and end must be supplied together')
+        if start and start >= end:
+            raise ValueError('end must be later than start')
+        try:
+            max_minutes = int(item.get('max_minutes') or 0)
+        except (TypeError, ValueError):
+            raise ValueError('max_minutes must be a whole number') from None
+        if max_minutes < 0 or max_minutes > 1440:
+            raise ValueError('max_minutes must be between 0 and 1440')
+        if availability == 'available' and not start and not max_minutes:
+            raise ValueError('Available days need a time window or duration cap')
+        normalized_windows.append({
+            'day': day,
+            'availability': availability,
+            'start': start,
+            'end': end,
+            'max_minutes': max_minutes,
+        })
+
+    commitments = payload.get('recurring_commitments') or []
+    if not isinstance(commitments, list) or len(commitments) > 16:
+        raise ValueError('recurring_commitments must be a list of at most 16 items')
+    normalized_commitments = []
+    for item in commitments:
+        if not isinstance(item, dict):
+            raise ValueError('Each recurring commitment must be an object')
+        day = _activation_text(item.get('day'), 'commitment day', max_length=9).lower()
+        if day not in _ACTIVATION_DAYS:
+            raise ValueError('commitment day must be a weekday')
+        start = _activation_time(item.get('start'), 'commitment start')
+        end = _activation_time(item.get('end'), 'commitment end')
+        if bool(start) != bool(end) or (start and start >= end):
+            raise ValueError('commitment start and end must form a valid window')
+        normalized_commitments.append({
+            'label': _activation_text(
+                item.get('label'), 'commitment label', max_length=80),
+            'day': day,
+            'start': start,
+            'end': end,
+        })
+
+    exceptions = payload.get('exceptions') or []
+    if not isinstance(exceptions, list) or len(exceptions) > 24:
+        raise ValueError('exceptions must be a list of at most 24 items')
+    normalized_exceptions = []
+    for item in exceptions:
+        if not isinstance(item, dict):
+            raise ValueError('Each exception must be an object')
+        start_date = _activation_date(item.get('start_date'), 'exception start_date')
+        end_date = _activation_date(item.get('end_date'), 'exception end_date')
+        if end_date < start_date:
+            raise ValueError('exception end_date cannot be before start_date')
+        normalized_exceptions.append({
+            'start_date': start_date,
+            'end_date': end_date,
+            'note': _activation_text(
+                item.get('note'), 'exception note', max_length=120),
+        })
+
+    if payload.get('change_protocol_ack') is not True:
+        raise ValueError('change_protocol_ack must be true')
+    return {
+        'schema': 'coaching_schedule_baseline/v1',
+        'home_timezone': _activation_timezone(payload.get('home_timezone')),
+        'weekly_windows': normalized_windows,
+        'recurring_commitments': normalized_commitments,
+        'exceptions': normalized_exceptions,
+        'preferred_long_days': sorted({
+            str(item).strip().lower() for item in
+            (payload.get('preferred_long_days') or [])
+            if str(item).strip().lower() in _ACTIVATION_DAYS
+        }),
+        'preferred_hard_days': sorted({
+            str(item).strip().lower() for item in
+            (payload.get('preferred_hard_days') or [])
+            if str(item).strip().lower() in _ACTIVATION_DAYS
+        }),
+        'change_protocol_ack': True,
+    }
+
+
+def _normalize_activation_communication(payload: dict) -> dict:
+    preferred = _activation_text(
+        payload.get('preferred_channel'), 'preferred_channel',
+        max_length=13).lower()
+    urgent = _activation_text(
+        payload.get('urgent_channel'), 'urgent_channel',
+        max_length=13).lower()
+    if preferred not in _ACTIVATION_CHANNELS or urgent not in _ACTIVATION_CHANNELS:
+        raise ValueError('Communication channels must be TrainingPeaks, email, or text')
+    if payload.get('response_window_ack') is not True:
+        raise ValueError('response_window_ack must be true')
+    quiet_start = _activation_time(payload.get('quiet_start'), 'quiet_start')
+    quiet_end = _activation_time(payload.get('quiet_end'), 'quiet_end')
+    if bool(quiet_start) != bool(quiet_end):
+        raise ValueError('quiet_start and quiet_end must be supplied together')
+    return {
+        'schema': 'coaching_communication_preferences/v1',
+        'preferred_channel': preferred,
+        'urgent_channel': urgent,
+        'home_timezone': _activation_timezone(payload.get('home_timezone')),
+        'quiet_start': quiet_start,
+        'quiet_end': quiet_end,
+        'response_window_ack': True,
+    }
+
+
+def _normalize_activation_device(payload: dict) -> dict:
+    platform = _activation_text(
+        payload.get('platform'), 'platform', max_length=12).lower()
+    if platform not in _ACTIVATION_DEVICE_PLATFORMS:
+        raise ValueError('Unsupported device platform')
+    data_types = payload.get('data_types') or []
+    if not isinstance(data_types, list):
+        raise ValueError('data_types must be a list')
+    normalized_types = sorted({str(item).strip().lower() for item in data_types})
+    if any(item not in _ACTIVATION_DATA_TYPES for item in normalized_types):
+        raise ValueError('Unsupported device data type')
+    if platform != 'none' and payload.get('sync_attempted') is not True:
+        raise ValueError('sync_attempted must be true')
+    return {
+        'schema': 'coaching_device_setup/v1',
+        'platform': platform,
+        'data_types': normalized_types,
+        'sync_attempted': bool(payload.get('sync_attempted')),
+    }
+
+
+@app.route('/api/coaching-activation', methods=['POST'])
+@limiter.limit("120/minute")
+@_serialized_coaching_provider('coaching-activation')
+def coaching_activation():
+    """Read or update athlete-owned activation inputs without forging receipts."""
+    supplied = request.headers.get('X-Coaching-Course-Secret', '')
+    if not COACHING_PROGRESS_SECRET:
+        return jsonify({'error': 'COACHING_PROGRESS_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, COACHING_PROGRESS_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.get_json(silent=True) or {}
+    case_id = str(data.get('case_id') or '').strip()
+    athlete_key = str(data.get('athlete_key') or '').strip()
+    action = str(data.get('action') or '').strip().lower()
+    try:
+        uuid.UUID(case_id)
+    except (ValueError, TypeError, AttributeError):
+        return jsonify({'error': 'Valid case_id is required'}), 400
+    if not athlete_key or len(athlete_key) > 128:
+        return jsonify({'error': 'athlete_key is required'}), 400
+    if action not in {
+            'get', 'submit_schedule', 'submit_communication',
+            'submit_device_setup', 'ack_first_week'}:
+        return jsonify({'error': 'Unknown activation action'}), 400
+
+    case = _read_coaching_intake(case_id)
+    if not case:
+        return jsonify({'error': 'Coaching intake not found'}), 404
+    if not hmac.compare_digest(str(case.get('athlete_key') or ''), athlete_key):
+        return jsonify({'error': 'Athlete binding mismatch'}), 409
+    course = case.get('onboarding_course') or {}
+    if course.get('course_id') != 'coaching-start' or not course.get('enrolled_at'):
+        return jsonify({'error': 'Case has no activation enrollment'}), 409
+    if action == 'get':
+        return jsonify(_coaching_activation_projection(case))
+
+    event_id = str(data.get('event_id') or '').strip()
+    if not event_id or len(event_id) > 256:
+        return jsonify({'error': 'Bounded event_id is required'}), 400
+    activation_inputs = case.setdefault('activation_inputs', {
+        'schema': 'coaching_activation_inputs/v1',
+        'processed_event_ids': [],
+    })
+    processed = activation_inputs.setdefault('processed_event_ids', [])
+    if event_id in processed:
+        response = _coaching_activation_projection(case)
+        response.update({'success': True, 'duplicate': True})
+        return jsonify(response)
+
+    payload = data.get('payload') or {}
+    if not isinstance(payload, dict):
+        return jsonify({'error': 'payload must be an object'}), 400
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        if action == 'submit_schedule':
+            normalized = _normalize_activation_schedule(payload)
+            normalized['submitted_at'] = now
+            activation_inputs['schedule'] = normalized
+            task = 'schedule'
+        elif action == 'submit_communication':
+            normalized = _normalize_activation_communication(payload)
+            normalized['submitted_at'] = now
+            activation_inputs['communication'] = normalized
+            task = 'communication'
+        elif action == 'submit_device_setup':
+            normalized = _normalize_activation_device(payload)
+            normalized['submitted_at'] = now
+            activation_inputs['device_setup'] = normalized
+            task = 'device_data'
+        else:
+            if payload.get('acknowledged') is not True:
+                raise ValueError('acknowledged must be true')
+            if not (
+                    _coaching_gate_status(case, 'coach_plan_approval') == 'approved' and
+                    _coaching_gate_status(case, 'onboarding_materials') == 'ready'):
+                return jsonify({
+                    'error': 'First-week instructions are not ready to acknowledge'
+                }), 409
+            activation_inputs['first_week_acknowledgement'] = {
+                'schema': 'coaching_first_week_acknowledgement/v1',
+                'acknowledged_at': now,
+            }
+            task = 'first_week'
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    processed.append(event_id)
+    activation_inputs['processed_event_ids'] = processed[-200:]
+    case['activation_inputs'] = activation_inputs
+    _record_coaching_event(
+        case, 'coaching_activation_submitted', event_id,
+        details={'task': task, 'submission_status': 'submitted'},
+        occurred_at=now)
+    _refresh_coaching_case(
+        case, actor='athlete', reason=f'Activation input submitted: {task}',
+        source_id=event_id)
+    _write_coaching_intake(case)
+    response = _coaching_activation_projection(case)
+    response.update({'success': True, 'duplicate': False})
+    return jsonify(response), 201
 
 
 @app.route('/api/coaching-intakes/<case_id>/esign-readiness', methods=['GET'])
@@ -6367,6 +6948,24 @@ def verify_coaching_intake_gate(case_id):
         return jsonify({
             'error': 'health_clearance cleared requires a clinician receipt_id'
         }), 400
+    if gate == 'schedule_baseline':
+        submitted = (
+            (case.get('activation_inputs') or {}).get('schedule') or {}
+        ).get('submitted_at')
+        if not submitted:
+            return jsonify({
+                'error': 'schedule_baseline requires an athlete schedule submission'
+            }), 409
+    if gate == 'onboarding_ramp':
+        incomplete = [
+            item for item in _COACHING_RAMP_GATES
+            if _coaching_gate_status(case, item) != 'complete'
+        ]
+        if incomplete:
+            return jsonify({
+                'error': 'onboarding_ramp requires every dated checkpoint receipt',
+                'incomplete_gates': incomplete,
+            }), 409
 
     existing = case.setdefault('verifications', {}).get(gate, {})
     duplicate = (
@@ -6412,6 +7011,14 @@ def verify_coaching_intake_gate(case_id):
             'trainingpeaks_premium': 'coaching_trainingpeaks_premium_active',
             'athlete_context': 'coaching_context_sealed',
             'coach_plan_approval': 'coaching_plan_approved',
+            'schedule_baseline': 'coaching_schedule_verified',
+            'device_data': 'coaching_device_data_verified',
+            'kickoff_call': 'coaching_kickoff_scheduled',
+            'day_0_check': 'coaching_day_0_check_complete',
+            'day_2_check': 'coaching_day_2_check_complete',
+            'day_7_check': 'coaching_day_7_check_complete',
+            'day_14_check': 'coaching_day_14_check_complete',
+            'day_28_check': 'coaching_day_28_check_complete',
             'onboarding_ramp': 'coaching_onboarding_ramp_complete',
         }.get(gate, 'coaching_gate_verified')
         _record_coaching_event(
@@ -9360,6 +9967,8 @@ def _coaching_funnel_projection(case: dict) -> dict:
         (event for event in events
          if event.get('event_name') == 'coaching_active'), None)
     active_at = _parse_utc((active_event or {}).get('occurred_at'))
+    activation = _coaching_activation_projection(case)
+    activation_inputs = case.get('activation_inputs') or {}
 
     def verified(gate, status):
         return (verifications.get(gate) or {}).get('status') == status
@@ -9398,6 +10007,17 @@ def _coaching_funnel_projection(case: dict) -> dict:
             'context_sealed': verified('athlete_context', 'sealed'),
             'plan_approved': verified('coach_plan_approval', 'approved'),
             'onboarding_delivered': bool(onboarding.get('delivered_at')),
+            'schedule_submitted': bool(
+                (activation_inputs.get('schedule') or {}).get('submitted_at')),
+            'schedule_verified': verified('schedule_baseline', 'verified'),
+            'communication_submitted': bool(
+                (activation_inputs.get('communication') or {}).get('submitted_at')),
+            'device_setup_submitted': bool(
+                (activation_inputs.get('device_setup') or {}).get('submitted_at')),
+            'device_data_verified': verified('device_data', 'verified'),
+            'kickoff_scheduled': verified('kickoff_call', 'scheduled'),
+            'setup_ready': activation['setup_ready'],
+            'active_ready': activation['active_ready'],
             'active': case.get('state') == 'ACTIVE',
         },
         'application_to_payment_hours': (
@@ -9415,7 +10035,10 @@ def _aggregate_coaching_funnel(projections: list[dict]) -> dict:
         'checkout_expired', 'recovery_sent', 'payment_confirmed',
         'billing_healthy', 'billing_attention', 'subscription_ended',
         'checkout_recovered', 'trainingpeaks_connected', 'context_sealed',
-        'plan_approved', 'onboarding_delivered', 'active')
+        'plan_approved', 'onboarding_delivered', 'schedule_submitted',
+        'schedule_verified', 'communication_submitted',
+        'device_setup_submitted', 'device_data_verified',
+        'kickoff_scheduled', 'setup_ready', 'active_ready', 'active')
     counts = {
         stage: sum(1 for item in projections if item['stages'][stage])
         for stage in stage_names
@@ -9430,10 +10053,15 @@ def _aggregate_coaching_funnel(projections: list[dict]) -> dict:
         1 for item in projections
         if item['stages']['checkout_expired'] and
         not item['stages']['payment_confirmed'])
+    activation_incomplete = sum(
+        1 for item in projections
+        if item['stages']['payment_confirmed'] and
+        not item['stages']['setup_ready'])
     return {
         'stage_counts': counts,
         'conversion_percent_from_application': conversion,
         'abandoned_checkout_cases': abandoned,
+        'paid_activation_incomplete_cases': activation_incomplete,
         'median_hours': {
             'application_to_payment': _median([
                 item['application_to_payment_hours'] for item in projections
@@ -9469,15 +10097,15 @@ def _aggregate_legacy_repaper(cases: list[dict]) -> dict:
 
 
 _COACHING_ONBOARDING_REMINDER_MILESTONES = (
-    (0, 'welcome_setup_check',
+    (0, 'welcome_setup_check', 'day_0_check',
      'Confirm welcome delivery, TrainingPeaks connection, and kickoff booking'),
-    (2, 'early_friction_check',
+    (2, 'early_friction_check', 'day_2_check',
      'Review setup blockers, comments, schedule access, and unanswered questions'),
-    (7, 'first_week_review',
+    (7, 'first_week_review', 'day_7_check',
      'Review the first week of execution and propose any onboarding adjustment'),
-    (14, 'adaptation_check',
+    (14, 'adaptation_check', 'day_14_check',
      'Review adherence, recovery, communication fit, and emerging constraints'),
-    (28, 'ramp_completion_review',
+    (28, 'ramp_completion_review', 'day_28_check',
      'Complete the first-30-day review before marking the ramp complete'),
 )
 
@@ -9497,20 +10125,28 @@ def _suggest_coaching_onboarding_reminders(case: dict,
         for item in (case.get('onboarding_reminders') or [])
     }
     created = []
-    for day, milestone, action in _COACHING_ONBOARDING_REMINDER_MILESTONES:
+    activation = _coaching_activation_projection(case)
+    outstanding = [
+        item['id'] for item in activation['tasks']
+        if item['state'] != 'verified'
+    ]
+    for day, milestone, checkpoint_gate, action in _COACHING_ONBOARDING_REMINDER_MILESTONES:
         due_at = anchor + timedelta(days=day)
-        if milestone in existing or due_at > now:
+        if (milestone in existing or due_at > now or
+                _coaching_gate_status(case, checkpoint_gate) == 'complete'):
             continue
         reminder = {
             'schema': 'coaching_onboarding_reminder/v1',
             'reminder_id': hashlib.sha256(
                 f"{case.get('case_id')}\0{milestone}".encode()).hexdigest()[:24],
             'milestone': milestone,
+            'checkpoint_gate': checkpoint_gate,
             'day': day,
             'due_at': due_at.isoformat(),
             'suggested_at': now.isoformat(),
             'status': 'suggested',
             'action': action,
+            'outstanding_task_ids': outstanding[:12],
             'channel': 'coach_review_queue',
             'requires_coach_approval': True,
             'automatic_send': False,

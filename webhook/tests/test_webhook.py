@@ -1597,7 +1597,12 @@ class TestCoachingIntakeHandoff:
 
         provider = MagicMock()
         provider.raise_for_status.return_value = None
-        provider.json.return_value = {'granted': True}
+        access_token = 'a' * 43
+        provider.json.return_value = {
+            'granted': True,
+            'access_token': access_token,
+            'access_token_expires_at': '2026-11-27T00:00:00+00:00',
+        }
         with patch.object(app_module.http_requests, 'post', return_value=provider) as post, \
              patch.object(app_module, '_send_email', return_value=True) as send:
             enrolled = client.post(
@@ -1617,6 +1622,13 @@ class TestCoachingIntakeHandoff:
         assert grant['athlete_key'] == 'existing-rider'
         assert grant['course_id'] == 'coaching-start'
         assert send.call_count == 1
+        invite_body = send.call_args.args[2]
+        assert f'access_token={access_token}' in invite_body
+        assert 'Do not forward the link' in invite_body
+        enrolled_case = app_module._read_coaching_intake(case_id)
+        assert access_token not in json.dumps(enrolled_case)
+        assert enrolled_case['onboarding_course']['access_token_sha256'] == (
+            hashlib.sha256(access_token.encode()).hexdigest())
 
         progress_payload = {
             'case_id': case_id,
@@ -1643,6 +1655,30 @@ class TestCoachingIntakeHandoff:
         assert case['onboarding_course']['pct_complete'] == 14
         assert case['onboarding_course']['completed_lessons'] == 1
 
+        refreshed_token = 'b' * 43
+        refreshed_provider = MagicMock()
+        refreshed_provider.raise_for_status.return_value = None
+        refreshed_provider.json.return_value = {
+            'granted': True,
+            'access_token': refreshed_token,
+            'access_token_expires_at': '2027-08-29T00:00:00+00:00',
+        }
+        with patch.object(
+                app_module.http_requests, 'post',
+                return_value=refreshed_provider) as refresh_post, \
+             patch.object(app_module, '_send_email', return_value=True) as refresh_send:
+            refreshed = client.post(
+                f'/api/coaching-intakes/{case_id}/onboarding-course',
+                json={'refresh_access': True}, headers=headers)
+        assert refreshed.status_code == 201
+        assert refreshed.get_json()['access_refreshed'] is True
+        assert refreshed.get_json()['owner_pilot_exemption'] is True
+        assert refresh_post.call_count == 1
+        assert refreshed_token in refresh_send.call_args.args[2]
+        stored = app_module._read_coaching_intake(case_id)['onboarding_course']
+        assert stored['completed_lessons'] == 1
+        assert stored['pct_complete'] == 14
+
     def test_owner_pilot_exemption_cannot_be_used_for_another_email(
             self, client, temp_athletes_dir, monkeypatch):
         import app as app_module
@@ -1663,6 +1699,206 @@ class TestCoachingIntakeHandoff:
             f"/api/coaching-intakes/{created.get_json()['case_id']}/onboarding-course",
             json={'owner_pilot': True}, headers=headers)
         assert response.status_code == 403
+
+    def test_activation_schedule_submission_waits_for_coach_verification(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'COACHING_PROGRESS_SECRET', 'progress-key')
+        created = client.post(
+            '/api/coaching-intakes/legacy-repaper',
+            json=self._legacy_payload(),
+            headers={'X-Cron-Secret': 'coach-secret'})
+        case_id = created.get_json()['case_id']
+        case = app_module._read_coaching_intake(case_id)
+        case['onboarding_course'] = {
+            'course_id': 'coaching-start',
+            'enrolled_at': datetime.now(timezone.utc).isoformat(),
+        }
+        app_module._write_coaching_intake(case)
+        headers = {'X-Coaching-Course-Secret': 'progress-key'}
+        schedule = {
+            'case_id': case_id,
+            'athlete_key': 'existing-rider',
+            'action': 'submit_schedule',
+            'event_id': 'klokka:schedule:v1',
+            'payload': {
+                'home_timezone': 'America/Denver',
+                'weekly_windows': [
+                    {'day': 'monday', 'availability': 'available',
+                     'start': '06:00', 'end': '08:00', 'max_minutes': 90},
+                    {'day': 'tuesday', 'availability': 'unavailable'},
+                ],
+                'recurring_commitments': [
+                    {'label': 'Work', 'day': 'monday',
+                     'start': '09:00', 'end': '17:00'},
+                ],
+                'exceptions': [
+                    {'start_date': '2026-09-10', 'end_date': '2026-09-12',
+                     'note': 'Travel'},
+                ],
+                'preferred_long_days': ['saturday'],
+                'preferred_hard_days': ['tuesday'],
+                'change_protocol_ack': True,
+            },
+        }
+        first = client.post('/api/coaching-activation', json=schedule, headers=headers)
+        duplicate = client.post(
+            '/api/coaching-activation', json=schedule, headers=headers)
+
+        assert first.status_code == 201
+        assert duplicate.status_code == 200
+        assert duplicate.get_json()['duplicate'] is True
+        tasks = {item['id']: item for item in first.get_json()['tasks']}
+        assert tasks['schedule']['state'] == 'waiting_on_matti'
+        assert tasks['schedule']['owner'] == 'matti'
+        stored = app_module._read_coaching_intake(case_id)
+        assert 'schedule_baseline' not in stored['verifications']
+        assert stored['activation_inputs']['schedule']['home_timezone'] == 'America/Denver'
+        names = [event['event_name'] for event in stored['analytics_events']]
+        assert names.count('coaching_activation_submitted') == 1
+
+        verified = client.post(
+            f'/api/coaching-intakes/{case_id}/verify',
+            json={'gate': 'schedule_baseline', 'status': 'verified',
+                  'source_id': 'coach:klokka:schedule:v1'},
+            headers={'X-Cron-Secret': 'coach-secret'})
+        assert verified.status_code == 200
+        projection = client.post('/api/coaching-activation', json={
+            'case_id': case_id, 'athlete_key': 'existing-rider', 'action': 'get',
+        }, headers=headers)
+        tasks = {item['id']: item for item in projection.get_json()['tasks']}
+        assert tasks['schedule']['state'] == 'verified'
+
+    def test_activation_cannot_self_verify_provider_or_coach_owned_steps(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'COACHING_PROGRESS_SECRET', 'progress-key')
+        created = client.post(
+            '/api/coaching-intakes/legacy-repaper',
+            json=self._legacy_payload(),
+            headers={'X-Cron-Secret': 'coach-secret'})
+        case_id = created.get_json()['case_id']
+        case = app_module._read_coaching_intake(case_id)
+        case['onboarding_course'] = {
+            'course_id': 'coaching-start',
+            'enrolled_at': datetime.now(timezone.utc).isoformat(),
+        }
+        app_module._write_coaching_intake(case)
+        headers = {'X-Coaching-Course-Secret': 'progress-key'}
+
+        forged = client.post('/api/coaching-activation', json={
+            'case_id': case_id,
+            'athlete_key': 'existing-rider',
+            'action': 'verify_trainingpeaks',
+            'event_id': 'forged-receipt',
+            'payload': {'verified': True},
+        }, headers=headers)
+        mismatch = client.post('/api/coaching-activation', json={
+            'case_id': case_id,
+            'athlete_key': 'another-rider',
+            'action': 'get',
+        }, headers=headers)
+        early_ack = client.post('/api/coaching-activation', json={
+            'case_id': case_id,
+            'athlete_key': 'existing-rider',
+            'action': 'ack_first_week',
+            'event_id': 'early-first-week',
+            'payload': {'acknowledged': True},
+        }, headers=headers)
+
+        assert forged.status_code == 400
+        assert mismatch.status_code == 409
+        assert early_ack.status_code == 409
+        stored = app_module._read_coaching_intake(case_id)
+        assert 'trainingpeaks_connection' not in stored['verifications']
+        assert 'first_week_acknowledgement' not in stored.get('activation_inputs', {})
+
+    def test_onboarding_ramp_cannot_hide_missing_checkpoint_receipts(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        case_id = 'af94a22f-5379-4320-b33a-32f91de85c64'
+        case = {
+            'schema': 'coaching_onboarding_case/v1',
+            'case_id': case_id,
+            'athlete_key': 'klokka-skaddla',
+            'brand': 'gravelgod',
+            'tier': 'mid',
+            'athlete': {'name': 'Klokka Skaddla', 'email': 'klokka@test.com',
+                        'is_minor': False},
+            'questionnaire': {'age': '40'},
+            'verifications': {'onboarding_ramp': {
+                'status': 'complete', 'source_id': 'legacy-manual-ramp'}},
+            'receipts': {},
+            'analytics_events': [],
+        }
+        app_module._write_coaching_intake(case)
+        assert app_module._coaching_case_readiness(case)['state'] != 'ACTIVE'
+        blocked = client.post(
+            f'/api/coaching-intakes/{case_id}/verify',
+            json={'gate': 'onboarding_ramp', 'status': 'complete',
+                  'source_id': 'matti:ramp'},
+            headers={'X-Cron-Secret': 'coach-secret'})
+        assert blocked.status_code == 409
+        assert blocked.get_json()['incomplete_gates'] == [
+            'day_0_check', 'day_2_check', 'day_7_check',
+            'day_14_check', 'day_28_check']
+
+    def test_completed_legacy_ramp_cannot_create_false_active_state(self):
+        import app as app_module
+        now = datetime.now(timezone.utc).isoformat()
+        case = {
+            'schema': 'coaching_onboarding_case/v1',
+            'case_id': '3e175f25-3faf-4c3e-a961-2b7444bc6ab8',
+            'athlete_key': 'klokka-skaddla',
+            'brand': 'gravelgod',
+            'tier': 'mid',
+            'athlete': {'name': 'Klokka Skaddla', 'email': 'klokka@test.com',
+                        'is_minor': False},
+            'questionnaire': {'age': '40'},
+            'receipts': {'stripe_payment': {'checkout_session_id': 'cs_klokka'}},
+            'onboarding_materials': {'delivered_at': now},
+            'verifications': {
+                'coach_fit': {'status': 'approved'},
+                'identity': {'status': 'verified'},
+                'health_clearance': {'status': 'not_required'},
+                'coaching_agreement': {'status': 'signed'},
+                'data_consent': {'status': 'signed'},
+                'trainingpeaks_connection': {'status': 'verified'},
+                'trainingpeaks_premium': {'status': 'active'},
+                'athlete_context': {'status': 'sealed', 'athlete_id': 'klokka-skaddla'},
+                'plan_draft': {'status': 'ready'},
+                'coach_plan_approval': {'status': 'approved'},
+                'day_0_check': {'status': 'complete'},
+                'day_2_check': {'status': 'complete'},
+                'day_7_check': {'status': 'complete'},
+                'day_14_check': {'status': 'complete'},
+                'day_28_check': {'status': 'complete'},
+                'onboarding_ramp': {'status': 'complete'},
+            },
+        }
+        blocked = app_module._coaching_case_readiness(case)
+        assert blocked['state'] == 'ACTIVATION_SETUP'
+        assert blocked['setup_ready'] is False
+        assert blocked['active_ready'] is False
+
+        case['verifications'].update({
+            'schedule_baseline': {'status': 'verified'},
+            'device_data': {'status': 'verified'},
+            'kickoff_call': {'status': 'scheduled'},
+        })
+        case['activation_inputs'] = {
+            'schedule': {'submitted_at': now},
+            'communication': {'submitted_at': now},
+            'device_setup': {'submitted_at': now},
+            'first_week_acknowledgement': {'acknowledged_at': now},
+        }
+        ready = app_module._coaching_case_readiness(case)
+        assert ready['state'] == 'ACTIVE'
+        assert ready['setup_ready'] is True
+        assert ready['active_ready'] is True
 
     def test_legacy_minor_import_records_guardian_gate_without_guessing_guardian(
             self, client, temp_athletes_dir, monkeypatch):
@@ -2148,6 +2384,10 @@ class TestCoachingIntakeHandoff:
             'onboarding_reminders']
         assert {item['status'] for item in reminders} == {'suggested'}
         assert all(item['automatic_send'] is False for item in reminders)
+        assert {item['checkpoint_gate'] for item in reminders} == {
+            'day_0_check', 'day_2_check', 'day_7_check',
+            'day_14_check', 'day_28_check'}
+        assert all(item['outstanding_task_ids'] for item in reminders)
 
     def test_esign_readiness_fails_closed_then_allows_manual_receipts(
             self, client, monkeypatch):
@@ -2462,6 +2702,7 @@ class TestCoachingIntakeHandoff:
     def test_onboarding_materials_endpoint_generates_privacy_minimized_guide(
             self, client, temp_athletes_dir, monkeypatch):
         import app as app_module
+        import yaml
         monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
         monkeypatch.setattr(
             app_module, 'COACHING_BOOKING_URL',
@@ -2508,6 +2749,12 @@ class TestCoachingIntakeHandoff:
         assert 'How Coaching Works' in welcome
         assert 'private and excluded' not in welcome
         assert 'NOSETUP' not in welcome
+        activation_record = yaml.safe_load(
+            (athlete_dir / 'coaching_activation.yaml').read_text())
+        assert activation_record['schema'] == 'coaching_activation_record/v1'
+        assert activation_record['case_id'] == case_id
+        assert activation_record['readiness']['setup_ready'] is False
+        assert 'case@test.com' not in json.dumps(activation_record)
 
     def test_legal_verification_requires_versioned_receipt(
             self, client, temp_athletes_dir, monkeypatch):

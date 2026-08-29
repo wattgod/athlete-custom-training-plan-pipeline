@@ -257,21 +257,39 @@ until a deliberate cadence and exception/escalation policy is approved.
   any guardian gate pass. The canonical training-guide builder embeds the same
   chapter when `coaching_onboarding.yaml` is present; it never changes the
   training prescription.
-- The included `coaching-start` course is the preferred operational guide. It
-  is invite-only, unlisted from the public course catalog, and has seven
-  ordered lessons covering the coach/athlete loop, TrainingPeaks setup,
-  reading the plan, useful comments, calls and urgent channels, health/recovery
-  boundaries, and the first 30 days. Normal enrollment requires signed terms,
-  data consent, and confirmed payment. The sole owner may exercise an explicit,
-  audited owner-pilot exemption tied to the configured notification email; the
-  exemption never appears in public checkout and cannot be used for an athlete.
-- Course enrollment is bound in Cloudflare D1 to the canonical `case_id` and
-  `athlete_key`. New lesson completions sync a privacy-minimized receipt—course,
-  lesson, counts, percent, event ID—back to Railway. The sync carries no email,
-  health data, questionnaire text, or performance data and is idempotent.
-  Course completion is educational evidence only: it cannot satisfy identity,
-  health, agreement, consent, payment, TrainingPeaks, plan-approval, or release
-  gates.
+- `coaching-start` is the private activation dashboard and searchable operating
+  handbook. It is invite-only, unlisted from the public course catalog, and is
+  not a storefront or gamified course. Its seven handbook sections explain the
+  coach/athlete loop, TrainingPeaks setup, reading the plan, useful comments,
+  calls and urgent channels, health/recovery boundaries, and the first 30 days.
+  Normal access requires signed terms, data consent, and confirmed payment. The
+  sole owner may exercise an explicit, audited owner-pilot exemption tied to
+  the configured notification email; the exemption never appears in public
+  checkout and cannot be used for an athlete.
+- Dashboard access is bound in Cloudflare D1 to the canonical `case_id` and
+  `athlete_key` and uses an expiring, cryptographically random private token.
+  D1 stores only the SHA-256 token hash and expiry; the raw token is returned
+  once to the trusted enrollment caller and sent in the private invitation.
+  Refreshing access rotates the token without resetting handbook progress.
+  The coaching dashboard cannot be entered by typing an email address.
+- The dashboard reads a privacy-minimized activation projection from Railway.
+  The athlete can submit schedule constraints, communication preferences,
+  device-sync setup, and a first-week acknowledgement. These submissions are
+  structured, bounded, idempotent receipts; they do not let the athlete
+  self-verify provider- or coach-owned gates. Handbook completion remains
+  educational evidence only and cannot satisfy identity, health, agreement,
+  consent, payment, TrainingPeaks, plan approval, or release gates.
+- `setup_ready` requires verified agreements and payment, a submitted and
+  coach-verified schedule baseline, verified TrainingPeaks attachment and
+  included Premium activation, verified device data, a scheduled kickoff call,
+  submitted communication preferences, and an approved first-plan/onboarding-
+  materials handoff. `active_ready` additionally requires the athlete's
+  first-week acknowledgement and complete Day 0/2/7/14/28 checkpoint receipts.
+  The case cannot reach `ACTIVE` from a legacy course-completion flag alone.
+- After a sealed `athlete_context` binds the canonical `athlete_id`, Railway
+  atomically mirrors the activation projection to the private athlete file as
+  `coaching_activation.yaml`. It includes readiness and verification state but
+  excludes email addresses, legal URLs, payment URLs, and raw access tokens.
 - Personalized course copy may use first/preferred name, brand, tier,
   discipline, and a short goal label. Private health facts, training metrics,
   free-text intake answers, and plan details remain in the case/athlete record
@@ -297,7 +315,12 @@ Two analytics layers serve different purposes:
 - Consent-aware GA4 events measure page behavior:
   `coaching_page_view`, CTA/scroll/FAQ events, and
   `coaching_apply_started`, `coaching_apply_submitted`, and
-  `coaching_apply_error`.
+  `coaching_apply_error`. The private activation surface adds
+  `coaching_activation_view`, `coaching_activation_action_open`,
+  `coaching_activation_task_submit`, `coaching_activation_task_error`,
+  `coaching_activation_setup_ready`, and
+  `coaching_activation_active_ready`; event payloads contain no names, email,
+  health data, schedule text, or private access token.
 - Each private onboarding case contains idempotent
   `coaching_funnel_event/v1` lifecycle receipts. These contain brand, tier,
   canonical event name, timestamp, and hashed source receipt only—never athlete name,
@@ -312,6 +335,12 @@ application-to-payment/active times by brand and tier. It never returns case
 IDs or athlete PII. Legacy re-papering is reported in a separate aggregate and
 is excluded from acquisition/application conversion. The same aggregate is embedded in authenticated
 `GET /api/intel-stats?hours=24` output for the Morning Intel consumer.
+
+The report also counts schedule/device/communication submissions and
+verifications, kickoff scheduling, `setup_ready`, `active_ready`, and paid
+cases whose activation remains incomplete. Day 0/2/7/14/28 reminder
+suggestions are bound to their corresponding checkpoint gate, list outstanding
+task IDs, and remain coach-approval-only.
 
 Stripe Checkout expires after 60 minutes with native recovery enabled. The
 `checkout.session.expired` webhook records the expiration even when no email
@@ -336,8 +365,10 @@ loudly when any onboarding rail drifts. It:
    cancellation and payment-method update enabled;
 5. verifies brand analytics, email, booking-link, and secret configuration;
 6. performs a disposable write/read/delete on the persistent volume and keeps
-   a privacy-safe canary receipt under `.canary/coaching/`; and
-7. uploads the response as a 30-day GitHub Actions artifact.
+   a privacy-safe canary receipt under `.canary/coaching/`;
+7. calls the authenticated course Worker canary, which verifies the D1 access-
+   token columns, course-progress bridge, and activation bridge; and
+8. uploads the response as a 30-day GitHub Actions artifact.
 
 The canary creates no athlete case, Checkout Session, charge, email, or
 TrainingPeaks write. A failed scheduled run is the alert. Triage the named
