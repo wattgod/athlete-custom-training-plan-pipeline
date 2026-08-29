@@ -777,6 +777,28 @@ rationale) rendered verbatim into the athlete's Week-1 note. Computable
 gate: `ae_lint.lint_voice` (rule tag `AE-9.11`), on by default, no flag —
 see `athletes/scripts/ae_lint.py`.
 
+**AE-9.11a — the voice rule governs narrative copy, not tactical
+instruction.** Numbered and bulleted instruction lines are exempt from the
+impersonal-construction check. A tactical card — a race-day brief, a set of
+numbered race instructions — states facts and gives direction: "Wind decides
+this, not the climbs. Sit in and don't pull for free." There is no coaching
+judgment in a line like that to attribute to anyone, so there is no natural
+place for the coach's "I", and forcing one in produces worse copy. The rule
+exists for the prose that FRAMES a block and says what the coach wants —
+"I've built more work into this week than you're used to." The
+first-person marker still counts wherever it appears in the card; only the
+second-person address that *demands* one is restricted to prose lines.
+
+Source: Matti Rowe, 2026-08-29, verbatim — "The rule is over broad." The
+trigger was Eric Quiat's Mad Gravel race-day brief (TP note 95329009): a
+card of facts plus four numbered race instructions that Matti had just
+hand-edited into exactly the shape he wanted, which AE-9.11 then flagged
+because his edits removed the last first-person marker. Implementation:
+`ae_lint._prose_only` strips list lines before the second-person search.
+Measured effect at ratification — Eric's brief 1 finding → 0; the 524-item
+ZWO library unchanged at 1; Judd Pulley's v2 payloads unchanged at 5 (all
+five are genuine narrative prose lacking voice, correctly still caught).
+
 ## 9b. Hook → module map
 
 The section-heading hook names are conceptual; the concrete modules (all

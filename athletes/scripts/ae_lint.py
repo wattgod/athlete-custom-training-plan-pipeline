@@ -116,6 +116,24 @@ INTERNAL_LEAK_MARKERS: list[tuple[str, re.Pattern]] = [
 SECOND_PERSON_RE = re.compile(r"\byou\b|\byour\b", re.I)
 FIRST_PERSON_RE = re.compile(r"\bi'm\b|\bi've\b|\bi'll\b|\bi\b|\bmy\b|\bme\b", re.I)
 
+# AE-9.11 narrowing (Matti ruling 2026-08-29: "The rule is over broad.").
+# A numbered/bulleted instruction line is tactical race or workout direction
+# -- "Sit in and don't pull for free", "Fuel at your long-ride rate". There is
+# no coaching judgment in it to attribute, so there is no natural place for
+# the coach's "I", and demanding one produces worse copy. The voice rule
+# exists for NARRATIVE copy -- the prose that frames the week and explains
+# what the coach wants ("I've built more work into this week than you're used
+# to"). So the impersonal-construction check now runs on prose lines only.
+# Trigger case: Eric Quiat's Mad Gravel race-day brief, which Matti edited by
+# hand into exactly the shape he wanted and which the rule then flagged.
+LIST_ITEM_RE = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+")
+
+
+def _prose_only(text: str) -> str:
+    """Drop numbered/bulleted instruction lines, keeping narrative prose."""
+    return "\n".join(
+        line for line in text.splitlines() if not LIST_ITEM_RE.match(line))
+
 
 # RPE -> (%FTP low, %FTP high). MIRRORS tp_structure_to_zwo._RPE_TO_PCT_FTP
 # verbatim -- ae_lint stays import-free of the pipeline by design, so the
@@ -282,8 +300,12 @@ def _voice_findings(day: str, title: str, text: str) -> list[dict]:
             findings.append({"day": day, "title": title or "(untitled)",
                              "severity": "FAIL", "rule": "AE-9.11",
                              "msg": f"coach-internal leak ({label}): {m.group(0)!r}"})
+    # The first-person marker may live anywhere in the card, but the
+    # second-person address that DEMANDS one only counts if it appears in
+    # narrative prose -- see _prose_only and the AE-9.11 narrowing note.
+    prose = _prose_only(text)
     if len(text) >= MIN_LEN_FOR_VOICE_CHECK:
-        if SECOND_PERSON_RE.search(text) and not FIRST_PERSON_RE.search(text):
+        if SECOND_PERSON_RE.search(prose) and not FIRST_PERSON_RE.search(text):
             findings.append({"day": day, "title": title or "(untitled)",
                              "severity": "WARN", "rule": "AE-9.11",
                              "msg": "second-person instruction with no first-person coach voice (impersonal construction)"})
@@ -299,15 +321,25 @@ def lint_voice(workouts: list[dict], notes: list[dict] | None = None) -> list[di
           metadata (rule IDs, config field names, engine jargon, FTP
           provenance, quoted coach speech) bleeding into athlete-facing
           copy. FAIL.
-      (b) impersonal construction -- instructional text (>=
+      (b) impersonal construction -- NARRATIVE text (>=
           MIN_LEN_FOR_VOICE_CHECK chars) using second-person address
           ("you"/"your") with no first-person coach marker ("I", "I'm",
-          "I've", "I'll", "my", "me"). WARN. Short mechanical cards
-          (interval lists, rest-day one-liners) fall under the length
-          floor and are silently exempt -- that's the point, not a gap.
+          "I've", "I'll", "my", "me"). WARN. Two exemptions, both
+          deliberate: short mechanical cards fall under the length floor,
+          and numbered/bulleted instruction lines are stripped before the
+          second-person search (see _prose_only). The first-person marker
+          still counts wherever it appears in the card -- only the
+          second-person address that DEMANDS one is restricted to prose.
     Source: Matti ruling 2026-08-29 ("you have to write it in first
     person" / "in the future that needs to be a gate."), Forest Hietpas
-    block review.
+    block review. NARROWED by Matti ruling 2026-08-29 ("The rule is over
+    broad.") after it flagged Eric Quiat's Mad Gravel race-day brief --
+    a tactical card of facts plus numbered race instructions that Matti
+    had just hand-edited into the exact shape he wanted. Tactical
+    direction carries no coaching judgment to attribute, so it has no
+    natural place for "I"; forcing one produces worse copy. The voice
+    rule is for prose that frames the block and says what the coach
+    wants.
     """
     findings: list[dict] = []
     for w in workouts:

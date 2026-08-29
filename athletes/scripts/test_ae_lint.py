@@ -6,11 +6,12 @@ percentOfMaxHr endurance structures, bare Day Off cards, and cadence-critical
 sessions without a programmed cadence target. The plan-level gates
 (AE-1.14, AE-2.10) mirror the two same-day 2026-08-26 build failures: Jesse
 Couch's v1 modeled 72 -> low-40s CTL by his A-race, and Kendall Aubertot's
-load weeks anchored to a stale plan number instead of her demonstrated dose.
+load weeks anchored to a stale plan number instead of his demonstrated dose.
 """
 import json
 from datetime import date, timedelta
 
+import ae_lint
 from ae_lint import (_hard_seconds, lint_demonstrated_dose, lint_ctl_trajectory, lint_race_day_tsb,
                      lint_taper_shape, lint_voice, lint_workout, main)
 
@@ -558,3 +559,67 @@ def test_voice_gate_on_by_default_no_flags(tmp_path, capsys):
     rules = {(f["severity"], f["rule"]) for f in out["findings"]}
     assert ("FAIL", "AE-9.11") in rules
     assert exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# AE-9.11a -- voice rule governs narrative prose, not tactical instruction.
+# Matti ruling 2026-08-29: "The rule is over broad."
+# ---------------------------------------------------------------------------
+
+def test_ae911a_tactical_race_brief_is_exempt():
+    """Eric Quiat's Mad Gravel brief -- the card that triggered the ruling.
+
+    Facts plus numbered race instructions, no coaching judgment to attribute,
+    so no natural place for "I". Must not warn.
+    """
+    body = (
+        "Race day.\n\n"
+        "The Hemi is 80+ miles and 6,400 feet, all gravel, topping out at "
+        "7,300. Rolling and punchy. No real climbs.\n\n"
+        "Small regional field. The podium is there.\n\n"
+        "1. Wind decides this, not the climbs. Open plains, nothing to hide "
+        "behind. Sit in and don't pull for free.\n"
+        "2. The rollers are short. The cost is the eightieth one, not the "
+        "first. Stay seated, stay smooth.\n"
+        "3. Fuel at your long-ride rate and hold it when the pace goes. Two "
+        "or three aid stations, so carry extra.\n"
+        "4. This is a tune-up race. The Rad is 20 days out and that's the "
+        "one that counts."
+    )
+    assert ae_lint._voice_findings("2026-09-06", "Mad Gravel — The Hemi", body) == []
+
+
+def test_ae911a_narrative_prose_without_voice_still_warns():
+    """The rule must still catch what it was created for."""
+    body = ("Taper week. Rest today, one short reload Tuesday so you don't "
+            "arrive flat, then the event Saturday. Your job is to show up "
+            "fresh rather than fit.")
+    found = ae_lint._voice_findings("2026-10-19", "EVENT WEEK", body)
+    assert len(found) == 1
+    assert found[0]["rule"] == "AE-9.11"
+    assert found[0]["severity"] == "WARN"
+
+
+def test_ae911a_first_person_in_a_list_item_still_satisfies_the_rule():
+    """Only the second-person trigger is prose-restricted; "I" counts anywhere."""
+    body = ("This week is about repeatability, and you'll feel it by Friday.\n"
+            "1. I've capped the long ride at three hours on purpose.")
+    assert ae_lint._voice_findings("2026-09-21", "LOAD WEEK", body) == []
+
+
+def test_ae911a_bulleted_and_parenthesised_markers_both_count_as_list_lines():
+    for marker in ("-", "*", "•", "1.", "2)"):
+        body = ("Race day.\n" + f"{marker} Fuel at your long-ride rate and "
+                "hold it when the pace goes, all the way to the line.")
+        assert ae_lint._voice_findings("2026-09-06", "Race", body) == [], marker
+
+
+def test_ae911a_leak_check_still_scans_list_lines():
+    """The narrowing is scoped to the impersonal check ONLY.
+
+    An internal leak hiding inside a numbered instruction must still FAIL.
+    """
+    body = ("Race day.\n"
+            "1. Ride to the plan (see profile.yaml for the coached_block focus).")
+    found = ae_lint._voice_findings("2026-09-06", "Race", body)
+    assert any(f["severity"] == "FAIL" for f in found)
