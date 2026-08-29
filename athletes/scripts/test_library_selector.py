@@ -617,10 +617,14 @@ class TestUsedItemMemory:
         ]
         index = make_index(items)
         used_items: dict = {}
+        # allow_heat: heat items are opt-in since the 2026-08-29 ruling.
+        # This cap governs an athlete who HAS opted in, so the slots must.
         slot_a = base_slot(series_key=None, plan_week=4, day="Mon",
                            athlete_seed="x", week_type="recovery")
         slot_b = base_slot(series_key=None, plan_week=4, day="Sun",
                            athlete_seed="x", week_type="recovery")
+        slot_a["allow_heat"] = True
+        slot_b["allow_heat"] = True
         first = select(slot_a, series_state=None, index=index, used_items=used_items)
         second = select(slot_b, series_state=None, index=index, used_items=used_items)
         assert first is not None and second is not None
@@ -1536,3 +1540,63 @@ class TestTaperSafeThresholdTouchFamily:
                 resolved_any = True
                 break
         assert resolved_any
+
+
+# ---------------------------------------------------------------------------
+# Opt-in concepts: real workouts that must never select themselves.
+# Matti ruling 2026-08-29 (Judd Pulley, October race in northern Wisconsin
+# drew "Heat Acclimation Protocol" twice). Same class of gap as the
+# RETIRED_ARCHETYPES purge: archetype-level filtering does not reach the
+# TP-curated path, so it has to be blocked here too.
+# ---------------------------------------------------------------------------
+
+def test_heat_acclimation_is_not_selectable_from_the_curated_library():
+    from library_selector import _is_internal_only
+    assert _is_internal_only({"name_base": "Heat Acclimation Protocol"})
+    assert _is_internal_only({"name_base": "Base - + Heat Training"})
+
+
+def test_opt_in_block_is_case_insensitive_and_matches_name_raw():
+    from library_selector import _is_internal_only
+    assert _is_internal_only({"name_base": "HEAT ACCLIMATION PROTOCOL"})
+    assert _is_internal_only({"name_raw": "Endurance - heat acclimation - 60min"})
+
+
+def test_ordinary_endurance_items_are_untouched():
+    """The block must be narrow -- it must not swallow the normal pool."""
+    from library_selector import _is_internal_only
+    for name in ("Endurance", "Z2 w/ Surges", "Bread & Butter",
+                 "Endurance — Cadence Focus", "Tempo w/ cadence changes",
+                 "Barn Builder", "Time on Feet"):
+        assert not _is_internal_only({"name_base": name}), name
+
+
+def test_purged_and_internal_names_still_blocked():
+    """The pre-existing exclusions must survive the addition."""
+    from library_selector import _is_internal_only
+    assert _is_internal_only({"name_base": "FatMax Development"})
+    assert _is_internal_only({"name_base": "Structured Fartlek"})
+    assert _is_internal_only({"name_base": "The Happy Ending"})
+
+
+def test_archetype_pool_excludes_opt_in_by_default_and_admits_it_on_request():
+    from nate_workout_generator import get_all_archetypes_for_category
+    from archetype_registry import OPT_IN_ARCHETYPES
+    default = {a["name"] for a in get_all_archetypes_for_category("Endurance")}
+    opted = {a["name"] for a in get_all_archetypes_for_category(
+        "Endurance", opt_in=OPT_IN_ARCHETYPES)}
+    assert "Heat Acclimation Protocol" not in default
+    assert "Heat Acclimation Protocol" in opted
+    # opting in must ADD, never remove
+    assert default < opted
+
+
+def test_opt_in_slot_admits_heat_but_never_purged_or_internal():
+    """allow_heat must be narrow: it unlocks heat, nothing else."""
+    from library_selector import _is_internal_only
+    assert not _is_internal_only({"name_base": "Heat Acclimation Protocol"},
+                                 allow_opt_in=True)
+    # the hard exclusions are not for sale at any price
+    assert _is_internal_only({"name_base": "FatMax Development"}, allow_opt_in=True)
+    assert _is_internal_only({"name_base": "Structured Fartlek"}, allow_opt_in=True)
+    assert _is_internal_only({"name_base": "The Happy Ending"}, allow_opt_in=True)

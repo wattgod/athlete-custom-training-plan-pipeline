@@ -97,6 +97,23 @@ RETIRED_ARCHETYPES = frozenset({
     'FatMax VLamax Suppression',
     'Structured Fartlek',
 })
+
+# Archetypes that are real and correct, but only for an athlete whose race
+# actually demands them. They are never selected by default -- a caller has
+# to ask for them by name. This is not retirement: the workout is good, it
+# just should not turn up on its own.
+#
+# Heat Acclimation Protocol earned this the hard way (Matti ruling
+# 2026-08-29). Judd Pulley's generated block scheduled it twice for an
+# October race in northern Wisconsin, because selection is date-blind and
+# treats it as an ordinary endurance option whenever race data is thin. The
+# tempting fix -- suppress it in cold months -- is wrong: training through
+# winter for a hot spring race is exactly when heat work belongs. So the
+# trigger is the RACE's demand, not the calendar, and until selection can
+# read race climate the honest default is off.
+OPT_IN_ARCHETYPES = frozenset({
+    'Heat Acclimation Protocol',
+})
 EXPECTED_VARIATIONS = EXPECTED_TOTAL * 6  # 600
 
 

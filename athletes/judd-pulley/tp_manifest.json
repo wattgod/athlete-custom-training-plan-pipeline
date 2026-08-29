@@ -1067,10 +1067,10 @@
       "control_basis": "ftp",
       "control_metric": "power",
       "date": "2026-09-27",
-      "description": "Heat Acclimation Protocol \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-50min @ 63%-73% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 70%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.\n\nHEAT PROTOCOL: ~60min at the prescribed easy zone with reduced cooling \u2014 skip the fan, add a layer, or ride the hottest part of the day. Hydrate aggressively before and during; sip past thirst. Stop if dizzy, nauseous, or confused \u2014 cool down and end the session rather than push through.",
-      "display_name": "Heat Acclimation Protocol",
-      "filename_stem": "W01_Sun_Sep27_Heat_Acclimation_Protocol",
-      "library_item_id": 14356302,
+      "description": "Endurance Blocks \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-60min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.",
+      "display_name": "Endurance",
+      "filename_stem": "W01_Sun_Sep27_Endurance",
+      "library_item_id": 14356001,
       "library_rpe_text": "2-3",
       "order_on_day": 0,
       "pre_activity_comment": null,
@@ -1088,27 +1088,27 @@
           ],
           [
             0,
-            0.956
-          ],
-          [
-            0.143,
-            0.956
-          ],
-          [
-            0.143,
             1
           ],
           [
-            0.857,
+            0.125,
             1
           ],
           [
-            0.857,
-            0.735
+            0.125,
+            1
+          ],
+          [
+            0.875,
+            1
+          ],
+          [
+            0.875,
+            0.769
           ],
           [
             1,
-            0.735
+            0.769
           ],
           [
             1,
@@ -1152,7 +1152,7 @@
           },
           {
             "begin": 600,
-            "end": 3600,
+            "end": 4200,
             "length": {
               "unit": "repetition",
               "value": 1
@@ -1162,13 +1162,13 @@
                 "intensityClass": "active",
                 "length": {
                   "unit": "second",
-                  "value": 3000
+                  "value": 3600
                 },
                 "name": "Steady State",
                 "notes": "",
                 "targets": [
                   {
-                    "minValue": 68
+                    "minValue": 65
                   },
                   {
                     "maxValue": 95,
@@ -1181,8 +1181,8 @@
             "type": "step"
           },
           {
-            "begin": 3600,
-            "end": 4200,
+            "begin": 4200,
+            "end": 4800,
             "length": {
               "unit": "repetition",
               "value": 1
@@ -1212,11 +1212,11 @@
           }
         ]
       },
-      "target_summary": "50-65 % of measured FTP; 68 % of measured FTP; 70-50 % of measured FTP",
-      "title": "Heat Acclimation Protocol",
-      "total_time_planned": 1.1667,
+      "target_summary": "50-65 % of measured FTP; 65 % of measured FTP; 65-50 % of measured FTP",
+      "title": "Endurance",
+      "total_time_planned": 1.3333,
       "tp_kind": "bike",
-      "tss_planned": 50.0,
+      "tss_planned": 53.8,
       "workout_type_value_id": 2
     },
     {
@@ -3214,10 +3214,10 @@
       "control_basis": "ftp",
       "control_metric": "power",
       "date": "2026-10-04",
-      "description": "Heat Acclimation Protocol \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-50min @ 63%-73% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 70%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.\n\nHEAT PROTOCOL: ~60min at the prescribed easy zone with reduced cooling \u2014 skip the fan, add a layer, or ride the hottest part of the day. Hydrate aggressively before and during; sip past thirst. Stop if dizzy, nauseous, or confused \u2014 cool down and end the session rather than push through.",
-      "display_name": "Heat Acclimation Protocol",
-      "filename_stem": "W02_Sun_Oct4_Heat_Acclimation_Protocol",
-      "library_item_id": 14356302,
+      "description": "Endurance Blocks \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-60min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.",
+      "display_name": "Endurance",
+      "filename_stem": "W02_Sun_Oct4_Endurance",
+      "library_item_id": 14356001,
       "library_rpe_text": "2-3",
       "order_on_day": 0,
       "pre_activity_comment": null,
@@ -3235,27 +3235,27 @@
           ],
           [
             0,
-            0.956
-          ],
-          [
-            0.143,
-            0.956
-          ],
-          [
-            0.143,
             1
           ],
           [
-            0.857,
+            0.125,
             1
           ],
           [
-            0.857,
-            0.735
+            0.125,
+            1
+          ],
+          [
+            0.875,
+            1
+          ],
+          [
+            0.875,
+            0.769
           ],
           [
             1,
-            0.735
+            0.769
           ],
           [
             1,
@@ -3299,7 +3299,7 @@
           },
           {
             "begin": 600,
-            "end": 3600,
+            "end": 4200,
             "length": {
               "unit": "repetition",
               "value": 1
@@ -3309,13 +3309,13 @@
                 "intensityClass": "active",
                 "length": {
                   "unit": "second",
-                  "value": 3000
+                  "value": 3600
                 },
                 "name": "Steady State",
                 "notes": "",
                 "targets": [
                   {
-                    "minValue": 68
+                    "minValue": 65
                   },
                   {
                     "maxValue": 95,
@@ -3328,8 +3328,8 @@
             "type": "step"
           },
           {
-            "begin": 3600,
-            "end": 4200,
+            "begin": 4200,
+            "end": 4800,
             "length": {
               "unit": "repetition",
               "value": 1
@@ -3359,11 +3359,11 @@
           }
         ]
       },
-      "target_summary": "50-65 % of measured FTP; 68 % of measured FTP; 70-50 % of measured FTP",
-      "title": "Heat Acclimation Protocol",
-      "total_time_planned": 1.1667,
+      "target_summary": "50-65 % of measured FTP; 65 % of measured FTP; 65-50 % of measured FTP",
+      "title": "Endurance",
+      "total_time_planned": 1.3333,
       "tp_kind": "bike",
-      "tss_planned": 50.0,
+      "tss_planned": 53.8,
       "workout_type_value_id": 2
     },
     {

@@ -42,7 +42,7 @@
       "inputs": {
         "source": "constants.DAY_FULL_TO_ABBREV"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "value": {
         "friday": "Fri",
@@ -70,7 +70,7 @@
         "requested_plan_weeks": 5,
         "travel_date_count": 0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "value": "W01_Mon_Sep21_Endurance.zwo"
     },
@@ -83,7 +83,7 @@
       "inputs": {
         "source": "calendar month table"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "value": {
         "1": "Jan",
@@ -116,7 +116,7 @@
         "requested_plan_weeks": 5,
         "travel_date_count": 0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "value": "W{week:02d}_{day}_{month}{day}_{name}.zwo"
     },
@@ -136,7 +136,7 @@
         "requested_plan_weeks": 5,
         "travel_date_count": 0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "2026-10-25"
     },
@@ -156,7 +156,7 @@
         "requested_plan_weeks": 5,
         "travel_date_count": 0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "2026-09-21"
     },
@@ -176,7 +176,7 @@
         "requested_plan_weeks": 5,
         "travel_date_count": 0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "Sep21"
     },
@@ -196,7 +196,7 @@
         "requested_plan_weeks": 5,
         "travel_date_count": 0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": 5
     },
@@ -216,7 +216,7 @@
         "requested_plan_weeks": 5,
         "travel_date_count": 0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "2026-10-24"
     },
@@ -236,7 +236,7 @@
         "requested_plan_weeks": 5,
         "travel_date_count": 0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "Saturday"
     },
@@ -256,7 +256,7 @@
         "requested_plan_weeks": 5,
         "travel_date_count": 0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "2026-10-19"
     },
@@ -276,7 +276,7 @@
         "requested_plan_weeks": 5,
         "travel_date_count": 0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "2026-09-21"
     },
@@ -296,7 +296,7 @@
         "requested_plan_weeks": 5,
         "travel_date_count": 0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": [
         {
@@ -612,7 +612,7 @@
       ]
     },
     {
-      "at": "2026-08-29T20:47:42.867112Z",
+      "at": "2026-08-29T23:06:39.992907Z",
       "basis": "measured-anchor availability and athlete-requested metric",
       "class": "inferred",
       "field": "athlete.control_metric",
@@ -622,12 +622,12 @@
         "power_basis": "measured",
         "requested_metric": "power"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "power"
     },
     {
-      "at": "2026-08-29T20:47:42.867112Z",
+      "at": "2026-08-29T23:06:39.992907Z",
       "basis": "authored relative-intensity segments projected through the ftp target rule",
       "class": "inferred",
       "field": "sessions",
@@ -637,7 +637,7 @@
         "control_metric": "power",
         "session_count": 35
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": [
         {
@@ -2026,11 +2026,11 @@
           "archetype_id": "Endurance",
           "daily_ordinal": 1,
           "date": "2026-09-27",
-          "description": "Heat Acclimation Protocol \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-50min @ 63%-73% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 70%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.\n\nHEAT PROTOCOL: ~60min at the prescribed easy zone with reduced cooling \u2014 skip the fan, add a layer, or ride the hottest part of the day. Hydrate aggressively before and during; sip past thirst. Stop if dizzy, nauseous, or confused \u2014 cool down and end the session rather than push through.",
-          "display_name": "Heat Acclimation Protocol",
-          "duration_s": 4200,
-          "filename_stem": "W01_Sun_Sep27_Heat_Acclimation_Protocol",
-          "library_item_id": 14356302,
+          "description": "Endurance Blocks \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-60min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.",
+          "display_name": "Endurance",
+          "duration_s": 4800,
+          "filename_stem": "W01_Sun_Sep27_Endurance",
+          "library_item_id": 14356001,
           "library_rpe_text": "2-3",
           "order_on_day": 0,
           "origin": "prescribed",
@@ -2067,10 +2067,10 @@
             {
               "kind": "steady_state",
               "name": "Steady State",
-              "seconds": 3000,
+              "seconds": 3600,
               "target": {
                 "type": "power_pct_ftp",
-                "value": 0.68
+                "value": 0.65
               },
               "zwo": {
                 "attribute_order": [
@@ -2094,7 +2094,7 @@
               "seconds": 600,
               "target": {
                 "high": 0.5,
-                "low": 0.7,
+                "low": 0.65,
                 "type": "power_pct_ftp"
               },
               "zwo": {
@@ -2119,15 +2119,15 @@
           "series_index": null,
           "series_total": null,
           "session_type": "workout",
-          "source_file": "W01_Sun_Sep27_Heat_Acclimation_Protocol.zwo",
+          "source_file": "W01_Sun_Sep27_Endurance.zwo",
           "sport": "cycling",
           "strength_template": null,
-          "target_summary": "50-65 % of measured FTP; 68 % of measured FTP; 70-50 % of measured FTP",
-          "title": "Heat Acclimation Protocol",
-          "total_time_planned": 1.1667,
+          "target_summary": "50-65 % of measured FTP; 65 % of measured FTP; 65-50 % of measured FTP",
+          "title": "Endurance",
+          "total_time_planned": 1.3333,
           "tp_kind": "bike",
-          "tss": 50,
-          "tss_planned": 50.0,
+          "tss": 54,
+          "tss_planned": 53.8,
           "week": 1,
           "workout_type_value_id": 2,
           "zwo_projection": {
@@ -3379,11 +3379,11 @@
           "archetype_id": "Endurance",
           "daily_ordinal": 1,
           "date": "2026-10-04",
-          "description": "Heat Acclimation Protocol \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-50min @ 63%-73% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 70%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.\n\nHEAT PROTOCOL: ~60min at the prescribed easy zone with reduced cooling \u2014 skip the fan, add a layer, or ride the hottest part of the day. Hydrate aggressively before and during; sip past thirst. Stop if dizzy, nauseous, or confused \u2014 cool down and end the session rather than push through.",
-          "display_name": "Heat Acclimation Protocol",
-          "duration_s": 4200,
-          "filename_stem": "W02_Sun_Oct4_Heat_Acclimation_Protocol",
-          "library_item_id": 14356302,
+          "description": "Endurance Blocks \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-60min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.",
+          "display_name": "Endurance",
+          "duration_s": 4800,
+          "filename_stem": "W02_Sun_Oct4_Endurance",
+          "library_item_id": 14356001,
           "library_rpe_text": "2-3",
           "order_on_day": 0,
           "origin": "prescribed",
@@ -3420,10 +3420,10 @@
             {
               "kind": "steady_state",
               "name": "Steady State",
-              "seconds": 3000,
+              "seconds": 3600,
               "target": {
                 "type": "power_pct_ftp",
-                "value": 0.68
+                "value": 0.65
               },
               "zwo": {
                 "attribute_order": [
@@ -3447,7 +3447,7 @@
               "seconds": 600,
               "target": {
                 "high": 0.5,
-                "low": 0.7,
+                "low": 0.65,
                 "type": "power_pct_ftp"
               },
               "zwo": {
@@ -3472,15 +3472,15 @@
           "series_index": null,
           "series_total": null,
           "session_type": "workout",
-          "source_file": "W02_Sun_Oct4_Heat_Acclimation_Protocol.zwo",
+          "source_file": "W02_Sun_Oct4_Endurance.zwo",
           "sport": "cycling",
           "strength_template": null,
-          "target_summary": "50-65 % of measured FTP; 68 % of measured FTP; 70-50 % of measured FTP",
-          "title": "Heat Acclimation Protocol",
-          "total_time_planned": 1.1667,
+          "target_summary": "50-65 % of measured FTP; 65 % of measured FTP; 65-50 % of measured FTP",
+          "title": "Endurance",
+          "total_time_planned": 1.3333,
           "tp_kind": "bike",
-          "tss": 50,
-          "tss_planned": 50.0,
+          "tss": 54,
+          "tss_planned": 53.8,
           "week": 2,
           "workout_type_value_id": 2,
           "zwo_projection": {
@@ -6308,7 +6308,7 @@
       "inputs": {
         "equipment": null
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "minimal"
     },
@@ -6321,7 +6321,7 @@
       "inputs": {
         "rule_set": "derive_classifications/exclusions-v1"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": []
     },
@@ -6342,7 +6342,7 @@
           "wednesday"
         ]
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": [
         "tuesday",
@@ -6379,7 +6379,7 @@
         "preferred_start": "2026-09-21",
         "race_date": "2026-10-24"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "2026-10-25"
     },
@@ -6412,7 +6412,7 @@
         "preferred_start": "2026-09-21",
         "race_date": "2026-10-24"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "2026-09-21"
     },
@@ -6445,7 +6445,7 @@
         "preferred_start": "2026-09-21",
         "race_date": "2026-10-24"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": 5
     },
@@ -6478,7 +6478,7 @@
         "preferred_start": "2026-09-21",
         "race_date": "2026-10-24"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "Saturday"
     },
@@ -6491,7 +6491,7 @@
       "inputs": {
         "rule_set": "derive_classifications/risk-v1"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": [
         "new_to_structured_training"
@@ -6506,7 +6506,7 @@
       "inputs": {
         "plan_weeks": 12
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "base_1"
     },
@@ -6524,7 +6524,7 @@
         ],
         "strength_frequency": 0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": []
     },
@@ -6537,7 +6537,7 @@
       "inputs": {
         "tier": "finisher"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": 0
     },
@@ -6552,7 +6552,7 @@
         "goal_type": null,
         "years_structured": null
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "finisher"
     },
@@ -6565,7 +6565,7 @@
       "inputs": {
         "owner": "derive_classifications.py"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "value": "2026-08-29 14:37:11"
     },
@@ -6579,7 +6579,7 @@
         "ftp_present": true,
         "power_basis": null
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": {
         "kind": "measured_power_duration_body_mass",
@@ -6605,7 +6605,7 @@
         "tolerated_g_per_hour": null,
         "weight_kg": 75.0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": [
         52,
@@ -6629,7 +6629,7 @@
         "tolerated_g_per_hour": null,
         "weight_kg": 75.0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": 59
     },
@@ -6650,7 +6650,7 @@
         "tolerated_g_per_hour": null,
         "weight_kg": 75.0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": {
         "assumptions": [
@@ -6714,7 +6714,7 @@
         "hourly_target": 59,
         "total_carbs": 492
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": {
         "example_products": {
@@ -6766,7 +6766,7 @@
         "duration_hours": 8.333333333333334,
         "hourly_target": 59
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": [
         {
@@ -6856,7 +6856,7 @@
           66
         ]
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": [
         433,
@@ -6873,7 +6873,7 @@
         "duration_hours": 8.333333333333334,
         "hourly_target": 59
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": 492
     },
@@ -6897,7 +6897,7 @@
           "weight_kg": 75.0
         }
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": {
         "base": {
@@ -6967,7 +6967,7 @@
           "weight_kg": 75.0
         }
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": [
         {
@@ -7049,7 +7049,7 @@
         "tolerated_g_per_hour": null,
         "weight_kg": 75.0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": {
         "electrolytes": "500-1000mg sodium per hour depending on sweat rate",
@@ -7070,7 +7070,7 @@
         "sex": "male",
         "weight_kg": 75
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": {
         "breakdown": {
@@ -7099,7 +7099,7 @@
         "elevation_feet": 0,
         "goal_type": "finish"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": 8.333333333333334
     },
@@ -7121,7 +7121,7 @@
           "technical_difficulty": "moderate"
         }
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": [
         {
@@ -7150,7 +7150,7 @@
       "inputs": {
         "score": 82.0
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "high"
     },
@@ -7163,7 +7163,7 @@
       "inputs": {
         "confidence": "high"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "Strong match for athlete profile"
     },
@@ -7176,7 +7176,7 @@
       "inputs": {
         "methodology_id": "traditional_pyramidal"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "value": {
         "emphasis": "a big aerobic base first, sharpened with tempo and threshold progressions as the race nears",
@@ -7214,7 +7214,7 @@
           "technical_difficulty": "moderate"
         }
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "value": "traditional_pyramidal"
     },
@@ -7236,7 +7236,7 @@
           "technical_difficulty": "moderate"
         }
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": [
         "Acceptable hours (7.9h within 7-30h range)",
@@ -7263,7 +7263,7 @@
           "technical_difficulty": "moderate"
         }
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": 82.0
     },
@@ -7285,7 +7285,7 @@
           "technical_difficulty": "moderate"
         }
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "Traditional (Pyramidal)"
     },
@@ -7298,7 +7298,7 @@
       "inputs": {
         "owner": "select_methodology.py"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "value": "2026-08-29 14:38:44"
     },
@@ -7320,12 +7320,12 @@
           "technical_difficulty": "moderate"
         }
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": []
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "derived athlete ability classification",
       "class": "inferred",
       "field": "plan.ability_level",
@@ -7333,12 +7333,12 @@
       "inputs": {
         "derived_ability": null
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "Intermediate"
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "canonical training-model control projection",
       "class": "inferred",
       "field": "control.basis",
@@ -7346,12 +7346,12 @@
       "inputs": {
         "source_field": "canonical.athlete.control_basis"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "ftp"
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "canonical training-model control projection",
       "class": "inferred",
       "field": "control.metric",
@@ -7359,12 +7359,12 @@
       "inputs": {
         "source_field": "canonical.athlete.control_metric"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "power"
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "canonical fueling duration projection",
       "class": "inferred",
       "field": "fueling.estimated_duration_hours",
@@ -7372,12 +7372,12 @@
       "inputs": {
         "source_field": "fueling.race.duration_hours"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": 8.333333333333334
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "canonical Week 1 assessment inventory",
       "class": "inferred",
       "field": "control.week_1_field_test",
@@ -7385,25 +7385,25 @@
       "inputs": {
         "canonical_sessions": 35
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": null
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "injected generation clock",
       "class": "inferred",
       "field": "generated_date",
       "id": "SUMMARY_SUMMARY_GENERATED_DATE",
       "inputs": {
-        "generation_at": "2026-08-29T14:47:43.211887"
+        "generation_at": "2026-08-29T17:06:40.227954"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
-      "value": "2026-08-29T14:47:43.211887"
+      "value": "2026-08-29T17:06:40.227954"
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "canonical fueling prescription projection",
       "class": "inferred",
       "field": "fueling.hourly_carb_target",
@@ -7411,12 +7411,12 @@
       "inputs": {
         "source_field": "fueling.carbohydrates.hourly_target"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": 59
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "production methodology selector result",
       "class": "inferred",
       "field": "plan.methodology",
@@ -7424,12 +7424,12 @@
       "inputs": {
         "methodology_id": "traditional_pyramidal"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "Traditional (Pyramidal)"
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "production methodology scoring matrix",
       "class": "inferred",
       "field": "plan.methodology_score",
@@ -7437,12 +7437,12 @@
       "inputs": {
         "methodology_scores": {}
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": 82.0
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "final plan calendar boundary",
       "class": "inferred",
       "field": "plan.end_date",
@@ -7453,12 +7453,12 @@
         "plan_weeks": 5,
         "race_date": "2026-10-24"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "2026-10-25"
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "final plan calendar boundary",
       "class": "inferred",
       "field": "plan.start_date",
@@ -7469,12 +7469,12 @@
         "plan_weeks": 5,
         "race_date": "2026-10-24"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "2026-09-21"
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "final plan calendar week count",
       "class": "inferred",
       "field": "plan.weeks",
@@ -7485,12 +7485,12 @@
         "plan_weeks": 5,
         "race_date": "2026-10-24"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": 5
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "resolved target race and plan calendar",
       "class": "inferred",
       "field": "race.date",
@@ -7501,12 +7501,12 @@
         "plan_weeks": 5,
         "race_date": "2026-10-24"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "2026-10-24"
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "resolved athlete-selected race course",
       "class": "inferred",
       "field": "race.distance_miles",
@@ -7522,12 +7522,12 @@
           "status": "unpicked"
         }
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": 50
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "canonical post-assessment re-anchor instruction",
       "class": "inferred",
       "field": "control.reanchor",
@@ -7535,7 +7535,7 @@
       "inputs": {
         "source_field": "canonical.athlete.reanchor"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": {
         "action": "Update the measured anchor after the Week 1 field test.",
@@ -7545,7 +7545,7 @@
       }
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "derived commercial plan tier",
       "class": "inferred",
       "field": "plan.tier",
@@ -7553,12 +7553,12 @@
       "inputs": {
         "derived_tier": "finisher"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "value": "FINISHER"
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "canonical fueling prescription projection",
       "class": "inferred",
       "field": "fueling.total_carbs",
@@ -7566,12 +7566,12 @@
       "inputs": {
         "source_field": "fueling.carbohydrates.total_grams"
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "value": 492
     },
     {
-      "at": "2026-08-29T14:47:43.211887",
+      "at": "2026-08-29T17:06:40.227954",
       "basis": "count of canonical sessions eligible for ZWO projection",
       "class": "inferred",
       "field": "files.workout_count",
@@ -7579,14 +7579,14 @@
       "inputs": {
         "canonical_session_count": 35
       },
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "value": 22
     }
   ],
   "execution_epoch": 0,
   "execution_fence": 0,
-  "generation_revision": 2,
+  "generation_revision": 4,
   "history": [
     {
       "at": "2026-08-29T20:39:20.916790Z",
@@ -7631,6 +7631,58 @@
       "generation_revision": 2,
       "order_id": "manual_b2da2aff38ef43928e0bdab4ec7a0633",
       "source": "package_consistency"
+    },
+    {
+      "at": "2026-08-29T23:05:48.193496Z",
+      "event": "REGENERATED",
+      "generation_revision": 3,
+      "order_id": "manual_b2da2aff38ef43928e0bdab4ec7a0633",
+      "prior_revision": 2,
+      "prior_status": "BLOCKED_REVIEW"
+    },
+    {
+      "at": "2026-08-29T23:05:48.193502Z",
+      "blocker_ids": [],
+      "event": "GENERATED",
+      "generation_revision": 3,
+      "order_id": "manual_b2da2aff38ef43928e0bdab4ec7a0633",
+      "status": "GENERATED"
+    },
+    {
+      "at": "2026-08-29T23:05:48.274812Z",
+      "blocker_ids": [
+        "PACKAGE_ZWO_W03_SAT_OCT10_RACE_SIMULATION__ACT_1_OF_1__DRESS_REHEARSAL_ZWO_MAIN_SET"
+      ],
+      "event": "BLOCKERS_MERGED",
+      "generation_revision": 3,
+      "order_id": "manual_b2da2aff38ef43928e0bdab4ec7a0633",
+      "source": "package_consistency"
+    },
+    {
+      "at": "2026-08-29T23:06:40.579612Z",
+      "event": "REGENERATED",
+      "generation_revision": 4,
+      "order_id": "manual_b2da2aff38ef43928e0bdab4ec7a0633",
+      "prior_revision": 3,
+      "prior_status": "BLOCKED_REVIEW"
+    },
+    {
+      "at": "2026-08-29T23:06:40.579623Z",
+      "blocker_ids": [],
+      "event": "GENERATED",
+      "generation_revision": 4,
+      "order_id": "manual_b2da2aff38ef43928e0bdab4ec7a0633",
+      "status": "GENERATED"
+    },
+    {
+      "at": "2026-08-29T23:06:40.660744Z",
+      "blocker_ids": [
+        "PACKAGE_ZWO_W03_SAT_OCT10_RACE_SIMULATION__ACT_1_OF_1__DRESS_REHEARSAL_ZWO_MAIN_SET"
+      ],
+      "event": "BLOCKERS_MERGED",
+      "generation_revision": 4,
+      "order_id": "manual_b2da2aff38ef43928e0bdab4ec7a0633",
+      "source": "package_consistency"
     }
   ],
   "identity_resolution": {
@@ -7647,7 +7699,7 @@
   "release_manifest": null,
   "release_manifest_digest": null,
   "required_confirmations": [],
-  "review_catalog_digest": "dd43859add06e70d4a293b5924024cd489f5521f9a39cce4ba1f4114d25058ef",
+  "review_catalog_digest": "c3b604433cc9dba2de7e4d710062c51c61c477b5fc76127024bbd6ea4e70dcfc",
   "review_catalog_version": "review_catalog/v1",
   "review_items": [
     {
@@ -7657,7 +7709,7 @@
       "message": "zwo.W03_Sat_Oct10_Race_Simulation__Act_1_of_1__Dress_Rehearsal.zwo.main_set: expected '4x2:50 @ 83% FTP, 0:10 recovery @ 165% FTP', found '- 15min @ 65% FTP (Z2, RPE 3)\\n- 2 x (4x2:50 @ 83% FTP (Z3, RPE 5-6), 0:10 recovery @ 165% FTP (Z5+, RPE 8-9) + 40min @ 66% FTP (Z2, RPE 3))\\n- 4x2:50 @ 83% FTP (Z3, RPE 5-6), 0:10 recovery @ 165% FTP (Z5+, RPE 8-9)\\n- 15min @ 66% FTP (Z2, RPE 3)\\n- 4x2:50 @ 83% FTP (Z3, RPE 5-6), 0:10 recovery @ 165% FTP (Z5+, RPE 8-9)\\n- 22min @ 66% FTP (Z2, RPE 3)\\n- 10min @ 50% FTP (Z1, RPE 3)\\n\\nRACE SIMULATION \u2014 ACT 1 OF 1'",
       "remediation": "",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "severity": "CRITICAL",
       "source": "package_consistency",
@@ -7677,7 +7729,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_DAY_ABBREVIATIONS",
       "message": "day_abbreviations (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -7698,7 +7750,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_EXAMPLE",
       "message": "workout_example (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -7711,7 +7763,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_MONTH_ABBREVIATIONS",
       "message": "month_abbreviations (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -7737,7 +7789,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_NAMING",
       "message": "workout_naming_convention (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -7750,7 +7802,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_PLAN_END",
       "message": "plan_end (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -7763,7 +7815,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_PLAN_START",
       "message": "plan_start (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -7776,7 +7828,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_PLAN_START_SHORT",
       "message": "plan_start_short (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -7789,7 +7841,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_PLAN_WEEKS",
       "message": "plan_weeks (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -7802,7 +7854,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_RACE_DATE",
       "message": "race_date (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -7815,7 +7867,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_RACE_WEEKDAY",
       "message": "race_weekday (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -7828,7 +7880,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_RACE_WEEK_MONDAY",
       "message": "race_week_monday (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -7841,7 +7893,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_WEEK1_MONDAY",
       "message": "week1_monday (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -7854,7 +7906,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_WEEKS",
       "message": "weeks (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -8178,7 +8230,7 @@
       "item_id": "DERIVED_CANONICAL_CANONICAL_CONTROL",
       "message": "athlete.control_metric (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -8191,7 +8243,7 @@
       "item_id": "DERIVED_CANONICAL_CANONICAL_SESSION_TARGETS",
       "message": "sessions (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -9582,11 +9634,11 @@
           "archetype_id": "Endurance",
           "daily_ordinal": 1,
           "date": "2026-09-27",
-          "description": "Heat Acclimation Protocol \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-50min @ 63%-73% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 70%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.\n\nHEAT PROTOCOL: ~60min at the prescribed easy zone with reduced cooling \u2014 skip the fan, add a layer, or ride the hottest part of the day. Hydrate aggressively before and during; sip past thirst. Stop if dizzy, nauseous, or confused \u2014 cool down and end the session rather than push through.",
-          "display_name": "Heat Acclimation Protocol",
-          "duration_s": 4200,
-          "filename_stem": "W01_Sun_Sep27_Heat_Acclimation_Protocol",
-          "library_item_id": 14356302,
+          "description": "Endurance Blocks \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-60min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.",
+          "display_name": "Endurance",
+          "duration_s": 4800,
+          "filename_stem": "W01_Sun_Sep27_Endurance",
+          "library_item_id": 14356001,
           "library_rpe_text": "2-3",
           "order_on_day": 0,
           "origin": "prescribed",
@@ -9623,10 +9675,10 @@
             {
               "kind": "steady_state",
               "name": "Steady State",
-              "seconds": 3000,
+              "seconds": 3600,
               "target": {
                 "type": "power_pct_ftp",
-                "value": 0.68
+                "value": 0.65
               },
               "zwo": {
                 "attribute_order": [
@@ -9650,7 +9702,7 @@
               "seconds": 600,
               "target": {
                 "high": 0.5,
-                "low": 0.7,
+                "low": 0.65,
                 "type": "power_pct_ftp"
               },
               "zwo": {
@@ -9675,15 +9727,15 @@
           "series_index": null,
           "series_total": null,
           "session_type": "workout",
-          "source_file": "W01_Sun_Sep27_Heat_Acclimation_Protocol.zwo",
+          "source_file": "W01_Sun_Sep27_Endurance.zwo",
           "sport": "cycling",
           "strength_template": null,
-          "target_summary": "50-65 % of measured FTP; 68 % of measured FTP; 70-50 % of measured FTP",
-          "title": "Heat Acclimation Protocol",
-          "total_time_planned": 1.1667,
+          "target_summary": "50-65 % of measured FTP; 65 % of measured FTP; 65-50 % of measured FTP",
+          "title": "Endurance",
+          "total_time_planned": 1.3333,
           "tp_kind": "bike",
-          "tss": 50,
-          "tss_planned": 50.0,
+          "tss": 54,
+          "tss_planned": 53.8,
           "week": 1,
           "workout_type_value_id": 2,
           "zwo_projection": {
@@ -10935,11 +10987,11 @@
           "archetype_id": "Endurance",
           "daily_ordinal": 1,
           "date": "2026-10-04",
-          "description": "Heat Acclimation Protocol \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-50min @ 63%-73% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 70%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.\n\nHEAT PROTOCOL: ~60min at the prescribed easy zone with reduced cooling \u2014 skip the fan, add a layer, or ride the hottest part of the day. Hydrate aggressively before and during; sip past thirst. Stop if dizzy, nauseous, or confused \u2014 cool down and end the session rather than push through.",
-          "display_name": "Heat Acclimation Protocol",
-          "duration_s": 4200,
-          "filename_stem": "W02_Sun_Oct4_Heat_Acclimation_Protocol",
-          "library_item_id": 14356302,
+          "description": "Endurance Blocks \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-60min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.",
+          "display_name": "Endurance",
+          "duration_s": 4800,
+          "filename_stem": "W02_Sun_Oct4_Endurance",
+          "library_item_id": 14356001,
           "library_rpe_text": "2-3",
           "order_on_day": 0,
           "origin": "prescribed",
@@ -10976,10 +11028,10 @@
             {
               "kind": "steady_state",
               "name": "Steady State",
-              "seconds": 3000,
+              "seconds": 3600,
               "target": {
                 "type": "power_pct_ftp",
-                "value": 0.68
+                "value": 0.65
               },
               "zwo": {
                 "attribute_order": [
@@ -11003,7 +11055,7 @@
               "seconds": 600,
               "target": {
                 "high": 0.5,
-                "low": 0.7,
+                "low": 0.65,
                 "type": "power_pct_ftp"
               },
               "zwo": {
@@ -11028,15 +11080,15 @@
           "series_index": null,
           "series_total": null,
           "session_type": "workout",
-          "source_file": "W02_Sun_Oct4_Heat_Acclimation_Protocol.zwo",
+          "source_file": "W02_Sun_Oct4_Endurance.zwo",
           "sport": "cycling",
           "strength_template": null,
-          "target_summary": "50-65 % of measured FTP; 68 % of measured FTP; 70-50 % of measured FTP",
-          "title": "Heat Acclimation Protocol",
-          "total_time_planned": 1.1667,
+          "target_summary": "50-65 % of measured FTP; 65 % of measured FTP; 65-50 % of measured FTP",
+          "title": "Endurance",
+          "total_time_planned": 1.3333,
           "tp_kind": "bike",
-          "tss": 50,
-          "tss_planned": 50.0,
+          "tss": 54,
+          "tss_planned": 53.8,
           "week": 2,
           "workout_type_value_id": 2,
           "zwo_projection": {
@@ -13862,7 +13914,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_EQUIPMENT_TIER",
       "message": "equipment_tier (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -13875,7 +13927,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_EXCLUSIONS",
       "message": "exercise_exclusions (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -13888,7 +13940,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_KEY_DAYS",
       "message": "key_day_candidates (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -13905,7 +13957,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_PLAN_END",
       "message": "plan_end (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -13918,7 +13970,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_PLAN_START",
       "message": "plan_start (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -13931,7 +13983,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_PLAN_WEEKS",
       "message": "plan_weeks (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -13944,7 +13996,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_RACE_WEEKDAY",
       "message": "race_weekday (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -13957,7 +14009,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_RISK_FACTORS",
       "message": "risk_factors (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -13972,7 +14024,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_STARTING_PHASE",
       "message": "starting_phase (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -13985,7 +14037,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_STRENGTH_DAYS",
       "message": "strength_day_candidates (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -13998,7 +14050,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_STRENGTH_FREQUENCY",
       "message": "strength_frequency (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14011,7 +14063,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_TIER",
       "message": "tier (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14024,7 +14076,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_TIMESTAMP",
       "message": "derived_date (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14037,7 +14089,7 @@
       "item_id": "DERIVED_FUELING_FUELING_BASIS",
       "message": "fueling_basis (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14055,7 +14107,7 @@
       "item_id": "DERIVED_FUELING_FUELING_HOURLY_RANGE",
       "message": "carbohydrates.hourly_range (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14071,7 +14123,7 @@
       "item_id": "DERIVED_FUELING_FUELING_HOURLY_TARGET",
       "message": "carbohydrates.hourly_target (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14084,7 +14136,7 @@
       "item_id": "DERIVED_FUELING_FUELING_PRESCRIPTION",
       "message": "prescription (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14146,7 +14198,7 @@
       "item_id": "DERIVED_FUELING_FUELING_RECOMMENDATIONS",
       "message": "recommendations (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14196,7 +14248,7 @@
       "item_id": "DERIVED_FUELING_FUELING_TIMELINE",
       "message": "fueling_timeline (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14282,7 +14334,7 @@
       "item_id": "DERIVED_FUELING_FUELING_TOTAL_RANGE",
       "message": "carbohydrates.total_range (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14298,7 +14350,7 @@
       "item_id": "DERIVED_FUELING_FUELING_TOTAL_TARGET",
       "message": "carbohydrates.total_grams (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14311,7 +14363,7 @@
       "item_id": "DERIVED_FUELING_GUT_PHASES",
       "message": "gut_training.phases (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14370,7 +14422,7 @@
       "item_id": "DERIVED_FUELING_GUT_WEEKLY_PROGRESSION",
       "message": "gut_training.weekly_progression (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14444,7 +14496,7 @@
       "item_id": "DERIVED_FUELING_HYDRATION_TARGET",
       "message": "recommendations.hydration (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14460,7 +14512,7 @@
       "item_id": "DERIVED_FUELING_RACE_CALORIES",
       "message": "calories (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14486,7 +14538,7 @@
       "item_id": "DERIVED_FUELING_RACE_DURATION_HOURS",
       "message": "race.duration_hours (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14499,7 +14551,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_ALTERNATIVES",
       "message": "alternatives (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14528,7 +14580,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_CONFIDENCE",
       "message": "confidence (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14541,7 +14593,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_CONFIDENCE_NOTE",
       "message": "confidence_note (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14554,7 +14606,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_CONFIGURATION",
       "message": "configuration (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14583,7 +14635,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_ID",
       "message": "methodology_id (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14596,7 +14648,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_REASONS",
       "message": "reasons (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14614,7 +14666,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_SCORE",
       "message": "score (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14627,7 +14679,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_SELECTED",
       "message": "selected_methodology (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14640,7 +14692,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_SELECTION_TIME",
       "message": "selection_date (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14653,7 +14705,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_WARNINGS",
       "message": "warnings (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14666,7 +14718,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_ABILITY",
       "message": "plan.ability_level (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14679,7 +14731,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_CONTROL_BASIS",
       "message": "control.basis (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14692,7 +14744,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_CONTROL_METRIC",
       "message": "control.metric (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14705,7 +14757,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_DURATION",
       "message": "fueling.estimated_duration_hours (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14718,7 +14770,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_FIELD_TEST",
       "message": "control.week_1_field_test (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14731,11 +14783,11 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_GENERATED_DATE",
       "message": "generated_date (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
-      "value": "2026-08-29T14:47:43.211887",
+      "value": "2026-08-29T17:06:40.227954",
       "value_type": "string"
     },
     {
@@ -14744,7 +14796,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_HOURLY_CARBS",
       "message": "fueling.hourly_carb_target (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14757,7 +14809,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_METHODOLOGY",
       "message": "plan.methodology (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14770,7 +14822,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_METHODOLOGY_SCORE",
       "message": "plan.methodology_score (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14783,7 +14835,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_PLAN_END",
       "message": "plan.end_date (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14796,7 +14848,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_PLAN_START",
       "message": "plan.start_date (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14809,7 +14861,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_PLAN_WEEKS",
       "message": "plan.weeks (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14822,7 +14874,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_RACE_DATE",
       "message": "race.date (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14835,7 +14887,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_RACE_DISTANCE",
       "message": "race.distance_miles (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14848,7 +14900,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_REANCHOR",
       "message": "control.reanchor (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14866,7 +14918,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_TIER",
       "message": "plan.tier (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14879,7 +14931,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_TOTAL_CARBS",
       "message": "fueling.total_carbs (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14892,7 +14944,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_WORKOUT_COUNT",
       "message": "files.workout_count (inferred).",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -14905,14 +14957,14 @@
       "item_id": "FACT_ORDER_CONTEXT",
       "message": "Order, athlete, platform, and revision identity.",
       "resolution_choices": [],
-      "revision": 2,
+      "revision": 4,
       "sensitivity": "personal",
       "source": "fulfillment_state",
       "type": "verified_fact",
       "value": {
         "athlete_id": "judd-pulley",
         "delivery_platform": "trainingpeaks",
-        "generation_revision": 2,
+        "generation_revision": 4,
         "order_id": "manual_b2da2aff38ef43928e0bdab4ec7a0633"
       },
       "value_type": "object"
@@ -14923,6 +14975,6 @@
   "soft_confirmations": [],
   "status": "BLOCKED_REVIEW",
   "superseded_approvals": [],
-  "updated_at": "2026-08-29T20:47:43.816403Z",
+  "updated_at": "2026-08-29T23:06:40.660755Z",
   "waiver": null
 }

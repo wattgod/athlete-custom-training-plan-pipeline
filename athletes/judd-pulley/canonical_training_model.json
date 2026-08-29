@@ -44,7 +44,7 @@
   },
   "derived_values": [
     {
-      "at": "2026-08-29T20:47:42.867112Z",
+      "at": "2026-08-29T23:06:39.992907Z",
       "basis": "measured-anchor availability and athlete-requested metric",
       "class": "inferred",
       "field": "athlete.control_metric",
@@ -58,7 +58,7 @@
       "sensitivity": "personal"
     },
     {
-      "at": "2026-08-29T20:47:42.867112Z",
+      "at": "2026-08-29T23:06:39.992907Z",
       "basis": "authored relative-intensity segments projected through the ftp target rule",
       "class": "inferred",
       "field": "sessions",
@@ -1533,11 +1533,11 @@
       "archetype_id": "Endurance",
       "daily_ordinal": 1,
       "date": "2026-09-27",
-      "description": "Heat Acclimation Protocol — level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-50min @ 63%-73% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 70%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.\n\nHEAT PROTOCOL: ~60min at the prescribed easy zone with reduced cooling — skip the fan, add a layer, or ride the hottest part of the day. Hydrate aggressively before and during; sip past thirst. Stop if dizzy, nauseous, or confused — cool down and end the session rather than push through.",
-      "display_name": "Heat Acclimation Protocol",
-      "duration_s": 4200,
-      "filename_stem": "W01_Sun_Sep27_Heat_Acclimation_Protocol",
-      "library_item_id": 14356302,
+      "description": "Endurance Blocks — level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-60min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.",
+      "display_name": "Endurance",
+      "duration_s": 4800,
+      "filename_stem": "W01_Sun_Sep27_Endurance",
+      "library_item_id": 14356001,
       "library_rpe_text": "2-3",
       "order_on_day": 0,
       "origin": "prescribed",
@@ -1574,10 +1574,10 @@
         {
           "kind": "steady_state",
           "name": "Steady State",
-          "seconds": 3000,
+          "seconds": 3600,
           "target": {
             "type": "power_pct_ftp",
-            "value": 0.68
+            "value": 0.65
           },
           "zwo": {
             "attribute_order": [
@@ -1601,7 +1601,7 @@
           "seconds": 600,
           "target": {
             "high": 0.5,
-            "low": 0.7,
+            "low": 0.65,
             "type": "power_pct_ftp"
           },
           "zwo": {
@@ -1626,15 +1626,15 @@
       "series_index": null,
       "series_total": null,
       "session_type": "workout",
-      "source_file": "W01_Sun_Sep27_Heat_Acclimation_Protocol.zwo",
+      "source_file": "W01_Sun_Sep27_Endurance.zwo",
       "sport": "cycling",
       "strength_template": null,
-      "target_summary": "50-65 % of measured FTP; 68 % of measured FTP; 70-50 % of measured FTP",
-      "title": "Heat Acclimation Protocol",
-      "total_time_planned": 1.1667,
+      "target_summary": "50-65 % of measured FTP; 65 % of measured FTP; 65-50 % of measured FTP",
+      "title": "Endurance",
+      "total_time_planned": 1.3333,
       "tp_kind": "bike",
-      "tss": 50,
-      "tss_planned": 50.0,
+      "tss": 54,
+      "tss_planned": 53.8,
       "week": 1,
       "workout_type_value_id": 2,
       "zwo_projection": {
@@ -2886,11 +2886,11 @@
       "archetype_id": "Endurance",
       "daily_ordinal": 1,
       "date": "2026-10-04",
-      "description": "Heat Acclimation Protocol — level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-50min @ 63%-73% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 70%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.\n\nHEAT PROTOCOL: ~60min at the prescribed easy zone with reduced cooling — skip the fan, add a layer, or ride the hottest part of the day. Hydrate aggressively before and during; sip past thirst. Stop if dizzy, nauseous, or confused — cool down and end the session rather than push through.",
-      "display_name": "Heat Acclimation Protocol",
-      "duration_s": 4200,
-      "filename_stem": "W02_Sun_Oct4_Heat_Acclimation_Protocol",
-      "library_item_id": 14356302,
+      "description": "Endurance Blocks — level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-60min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.",
+      "display_name": "Endurance",
+      "duration_s": 4800,
+      "filename_stem": "W02_Sun_Oct4_Endurance",
+      "library_item_id": 14356001,
       "library_rpe_text": "2-3",
       "order_on_day": 0,
       "origin": "prescribed",
@@ -2927,10 +2927,10 @@
         {
           "kind": "steady_state",
           "name": "Steady State",
-          "seconds": 3000,
+          "seconds": 3600,
           "target": {
             "type": "power_pct_ftp",
-            "value": 0.68
+            "value": 0.65
           },
           "zwo": {
             "attribute_order": [
@@ -2954,7 +2954,7 @@
           "seconds": 600,
           "target": {
             "high": 0.5,
-            "low": 0.7,
+            "low": 0.65,
             "type": "power_pct_ftp"
           },
           "zwo": {
@@ -2979,15 +2979,15 @@
       "series_index": null,
       "series_total": null,
       "session_type": "workout",
-      "source_file": "W02_Sun_Oct4_Heat_Acclimation_Protocol.zwo",
+      "source_file": "W02_Sun_Oct4_Endurance.zwo",
       "sport": "cycling",
       "strength_template": null,
-      "target_summary": "50-65 % of measured FTP; 68 % of measured FTP; 70-50 % of measured FTP",
-      "title": "Heat Acclimation Protocol",
-      "total_time_planned": 1.1667,
+      "target_summary": "50-65 % of measured FTP; 65 % of measured FTP; 65-50 % of measured FTP",
+      "title": "Endurance",
+      "total_time_planned": 1.3333,
       "tp_kind": "bike",
-      "tss": 50,
-      "tss_planned": 50.0,
+      "tss": 54,
+      "tss_planned": 53.8,
       "week": 2,
       "workout_type_value_id": 2,
       "zwo_projection": {

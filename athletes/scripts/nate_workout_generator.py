@@ -170,7 +170,7 @@ from new_archetypes import NEW_ARCHETYPES
 # them via archetype_registry.get_archetype()) but must never be SELECTED
 # or EMITTED again — enforced at get_archetype_by_category_and_index() /
 # get_all_archetypes_for_category() below.
-from archetype_registry import RETIRED_ARCHETYPES
+from archetype_registry import RETIRED_ARCHETYPES, OPT_IN_ARCHETYPES
 
 # =============================================================================
 # ZWO TEMPLATE
@@ -537,18 +537,24 @@ PROGRESSION_STYLES = {
 # ARCHETYPE SELECTION
 # =============================================================================
 
-def get_archetype_by_category_and_index(category: str, index: int = 0) -> Optional[Dict]:
+def get_archetype_by_category_and_index(category: str, index: int = 0,
+                                        opt_in: frozenset = frozenset()) -> Optional[Dict]:
     """Get a specific archetype from a category by index (wraps via modulo).
 
     AE-3.11/AE-6.3: retired archetypes (RETIRED_ARCHETYPES) are filtered out
     here so they can never be selected for a new plan, even though their
     data remains archived in NEW_ARCHETYPES.
+
+    OPT_IN_ARCHETYPES are filtered out too unless the caller names them in
+    ``opt_in``. Default is an empty set, so the safe behaviour is the
+    default one -- see archetype_registry.OPT_IN_ARCHETYPES.
     """
     if category not in NEW_ARCHETYPES:
         return None
 
     archetypes = [a for a in NEW_ARCHETYPES[category]
-                  if a['name'] not in RETIRED_ARCHETYPES]
+                  if a['name'] not in RETIRED_ARCHETYPES
+                  and (a['name'] not in OPT_IN_ARCHETYPES or a['name'] in opt_in)]
     if not archetypes:
         return None
 
@@ -558,14 +564,17 @@ def get_archetype_by_category_and_index(category: str, index: int = 0) -> Option
     return archetypes[index]
 
 
-def get_all_archetypes_for_category(category: str) -> List[Dict]:
+def get_all_archetypes_for_category(category: str,
+                                    opt_in: frozenset = frozenset()) -> List[Dict]:
     """Get all SELECTABLE archetypes for a category.
 
-    AE-3.11/AE-6.3: excludes RETIRED_ARCHETYPES — see
+    AE-3.11/AE-6.3: excludes RETIRED_ARCHETYPES, and excludes
+    OPT_IN_ARCHETYPES unless named in ``opt_in`` — see
     get_archetype_by_category_and_index() above.
     """
     return [a for a in NEW_ARCHETYPES.get(category, [])
-            if a['name'] not in RETIRED_ARCHETYPES]
+            if a['name'] not in RETIRED_ARCHETYPES
+            and (a['name'] not in OPT_IN_ARCHETYPES or a['name'] in opt_in)]
 
 
 def select_archetype_for_workout(

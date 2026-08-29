@@ -2314,8 +2314,8 @@
     },
     {
       "date": "2026-09-27",
-      "description": "Heat Acclimation Protocol \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-50min @ 63%-73% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 70%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.\n\nHEAT PROTOCOL: ~60min at the prescribed easy zone with reduced cooling \u2014 skip the fan, add a layer, or ride the hottest part of the day. Hydrate aggressively before and during; sip past thirst. Stop if dizzy, nauseous, or confused \u2014 cool down and end the session rather than push through.",
-      "duration_s": 4200,
+      "description": "Endurance Blocks \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-60min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.",
+      "duration_s": 4800,
       "external_id": "judd-pulley:w1:7:2026-09-27",
       "logical_key": "2026-09-27#1",
       "origin": "prescribed",
@@ -2349,12 +2349,12 @@
           "on_seconds": null,
           "power_high": null,
           "power_low": null,
-          "power_target": 0.68,
+          "power_target": 0.65,
           "repeat": null,
-          "seconds": 3000,
+          "seconds": 3600,
           "target": {
             "type": "power_pct_ftp",
-            "value": 0.68
+            "value": 0.65
           }
         },
         {
@@ -2365,19 +2365,19 @@
           "on_power": null,
           "on_seconds": null,
           "power_high": 0.5,
-          "power_low": 0.7,
+          "power_low": 0.65,
           "power_target": null,
           "repeat": null,
           "seconds": 600,
           "target": {
             "high": 0.5,
-            "low": 0.7,
+            "low": 0.65,
             "type": "power_pct_ftp"
           }
         }
       ],
       "session_type": "workout",
-      "source_file": "W01_Sun_Sep27_Heat_Acclimation_Protocol.zwo",
+      "source_file": "W01_Sun_Sep27_Endurance.zwo",
       "sport": "cycling",
       "structure": {
         "importedFromZwo": true,
@@ -2388,27 +2388,27 @@
           ],
           [
             0,
-            0.956
-          ],
-          [
-            0.143,
-            0.956
-          ],
-          [
-            0.143,
             1
           ],
           [
-            0.857,
+            0.125,
             1
           ],
           [
-            0.857,
-            0.735
+            0.125,
+            1
+          ],
+          [
+            0.875,
+            1
+          ],
+          [
+            0.875,
+            0.769
           ],
           [
             1,
-            0.735
+            0.769
           ],
           [
             1,
@@ -2452,7 +2452,7 @@
           },
           {
             "begin": 600,
-            "end": 3600,
+            "end": 4200,
             "length": {
               "unit": "repetition",
               "value": 1
@@ -2462,13 +2462,13 @@
                 "intensityClass": "active",
                 "length": {
                   "unit": "second",
-                  "value": 3000
+                  "value": 3600
                 },
                 "name": "Steady State",
                 "notes": "",
                 "targets": [
                   {
-                    "minValue": 68
+                    "minValue": 65
                   },
                   {
                     "maxValue": 95,
@@ -2481,8 +2481,8 @@
             "type": "step"
           },
           {
-            "begin": 3600,
-            "end": 4200,
+            "begin": 4200,
+            "end": 4800,
             "length": {
               "unit": "repetition",
               "value": 1
@@ -2512,10 +2512,10 @@
           }
         ]
       },
-      "title": "Heat Acclimation Protocol",
-      "total_seconds": 4200,
+      "title": "Endurance",
+      "total_seconds": 4800,
       "tp_workout_type": 2,
-      "tss_planned": 50.0,
+      "tss_planned": 53.8,
       "workout_type": 1
     },
     {
@@ -5362,8 +5362,8 @@
     },
     {
       "date": "2026-10-04",
-      "description": "Heat Acclimation Protocol \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-50min @ 63%-73% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 70%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.\n\nHEAT PROTOCOL: ~60min at the prescribed easy zone with reduced cooling \u2014 skip the fan, add a layer, or ride the hottest part of the day. Hydrate aggressively before and during; sip past thirst. Stop if dizzy, nauseous, or confused \u2014 cool down and end the session rather than push through.",
-      "duration_s": 4200,
+      "description": "Endurance Blocks \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-60min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-40-60g carbs/hr.",
+      "duration_s": 4800,
       "external_id": "judd-pulley:w2:7:2026-10-04",
       "logical_key": "2026-10-04#1",
       "origin": "prescribed",
@@ -5397,12 +5397,12 @@
           "on_seconds": null,
           "power_high": null,
           "power_low": null,
-          "power_target": 0.68,
+          "power_target": 0.65,
           "repeat": null,
-          "seconds": 3000,
+          "seconds": 3600,
           "target": {
             "type": "power_pct_ftp",
-            "value": 0.68
+            "value": 0.65
           }
         },
         {
@@ -5413,19 +5413,19 @@
           "on_power": null,
           "on_seconds": null,
           "power_high": 0.5,
-          "power_low": 0.7,
+          "power_low": 0.65,
           "power_target": null,
           "repeat": null,
           "seconds": 600,
           "target": {
             "high": 0.5,
-            "low": 0.7,
+            "low": 0.65,
             "type": "power_pct_ftp"
           }
         }
       ],
       "session_type": "workout",
-      "source_file": "W02_Sun_Oct4_Heat_Acclimation_Protocol.zwo",
+      "source_file": "W02_Sun_Oct4_Endurance.zwo",
       "sport": "cycling",
       "structure": {
         "importedFromZwo": true,
@@ -5436,27 +5436,27 @@
           ],
           [
             0,
-            0.956
-          ],
-          [
-            0.143,
-            0.956
-          ],
-          [
-            0.143,
             1
           ],
           [
-            0.857,
+            0.125,
             1
           ],
           [
-            0.857,
-            0.735
+            0.125,
+            1
+          ],
+          [
+            0.875,
+            1
+          ],
+          [
+            0.875,
+            0.769
           ],
           [
             1,
-            0.735
+            0.769
           ],
           [
             1,
@@ -5500,7 +5500,7 @@
           },
           {
             "begin": 600,
-            "end": 3600,
+            "end": 4200,
             "length": {
               "unit": "repetition",
               "value": 1
@@ -5510,13 +5510,13 @@
                 "intensityClass": "active",
                 "length": {
                   "unit": "second",
-                  "value": 3000
+                  "value": 3600
                 },
                 "name": "Steady State",
                 "notes": "",
                 "targets": [
                   {
-                    "minValue": 68
+                    "minValue": 65
                   },
                   {
                     "maxValue": 95,
@@ -5529,8 +5529,8 @@
             "type": "step"
           },
           {
-            "begin": 3600,
-            "end": 4200,
+            "begin": 4200,
+            "end": 4800,
             "length": {
               "unit": "repetition",
               "value": 1
@@ -5560,10 +5560,10 @@
           }
         ]
       },
-      "title": "Heat Acclimation Protocol",
-      "total_seconds": 4200,
+      "title": "Endurance",
+      "total_seconds": 4800,
       "tp_workout_type": 2,
-      "tss_planned": 50.0,
+      "tss_planned": 53.8,
       "workout_type": 1
     },
     {

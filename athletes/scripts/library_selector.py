@@ -313,7 +313,10 @@ def _qualifying_pool(
     ]
     pool = _record_lint_exclusions(pool, excluded_ids, lint_exclusions, slot)
     if slot is not None:
-        pool = [item for item in pool if not _is_internal_only(item) and _passes_role_ceiling(item, slot)]
+        _allow_heat = bool(slot.get("allow_heat"))
+        pool = [item for item in pool
+                if not _is_internal_only(item, allow_opt_in=_allow_heat)
+                and _passes_role_ceiling(item, slot)]
         pool = [item for item in pool if not _is_off_discipline(
             item, slot.get("discipline"),
             wants_position_work=bool(slot.get("wants_position_work")))]
@@ -402,10 +405,34 @@ _INTERNAL_ONLY_NAMES = {"the happy ending"}
 # items stay archived in the coach's TP library until retired at the source.
 _PURGED_CONCEPT_NAMES = ("fatmax", "fat max", "fartlek", "fasted")
 
+# Opt-in concepts: real, correct workouts that must never be selected on
+# their own initiative. Same shape as the purge above and added for the same
+# reason -- archetype_registry.OPT_IN_ARCHETYPES does not reach curated
+# selection, exactly as RETIRED_ARCHETYPES did not.
+#
+# Heat: Judd Pulley's generated block drew curated item 14356302 ("Heat
+# Acclimation Protocol") twice for an October race in northern Wisconsin,
+# because selection is date-blind and heat items sit in the ordinary
+# Endurance pool. Suppressing by month would be wrong -- training through
+# winter for a hot spring race is precisely when heat work belongs -- so the
+# trigger has to be the RACE's heat demand. Until selection can read race
+# climate, the honest default is off and the coach turns it on.
+# (Matti ruling 2026-08-29.)
+_OPT_IN_CONCEPT_NAMES = ("heat acclimation", "heat training")
 
-def _is_internal_only(item: Mapping[str, Any]) -> bool:
+
+def _is_internal_only(item: Mapping[str, Any],
+                      allow_opt_in: bool = False) -> bool:
+    """Is this curated item barred from selection?
+
+    ``allow_opt_in`` admits _OPT_IN_CONCEPT_NAMES for a slot that explicitly
+    asked for them (slot key ``allow_heat``). It does NOT relax the internal-
+    only or purged lists -- those are never selectable at any price.
+    """
     name = (item.get("name_base") or item.get("name_raw") or "").lower()
     if any(blocked in name for blocked in _INTERNAL_ONLY_NAMES):
+        return True
+    if not allow_opt_in and any(o in name for o in _OPT_IN_CONCEPT_NAMES):
         return True
     return any(purged in name for purged in _PURGED_CONCEPT_NAMES)
 

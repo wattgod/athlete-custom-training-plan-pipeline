@@ -13,12 +13,12 @@
     "week_num": 1,
     "workout_type_value_id": 2
   },
-  "W01_Sun_Sep27_Heat_Acclimation_Protocol": {
+  "W01_Sun_Sep27_Endurance": {
     "archetype_id": "Endurance",
     "date": "2026-09-27",
-    "display_name": "Heat Acclimation Protocol",
-    "filename_stem": "W01_Sun_Sep27_Heat_Acclimation_Protocol",
-    "library_item_id": 14356302,
+    "display_name": "Endurance",
+    "filename_stem": "W01_Sun_Sep27_Endurance",
+    "library_item_id": 14356001,
     "library_rpe_text": "2-3",
     "order_on_day": 0,
     "phase": "base",
@@ -83,12 +83,12 @@
     "week_num": 2,
     "workout_type_value_id": 2
   },
-  "W02_Sun_Oct4_Heat_Acclimation_Protocol": {
+  "W02_Sun_Oct4_Endurance": {
     "archetype_id": "Endurance",
     "date": "2026-10-04",
-    "display_name": "Heat Acclimation Protocol",
-    "filename_stem": "W02_Sun_Oct4_Heat_Acclimation_Protocol",
-    "library_item_id": 14356302,
+    "display_name": "Endurance",
+    "filename_stem": "W02_Sun_Oct4_Endurance",
+    "library_item_id": 14356001,
     "library_rpe_text": "2-3",
     "order_on_day": 0,
     "phase": "base",
