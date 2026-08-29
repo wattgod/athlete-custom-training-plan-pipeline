@@ -2030,6 +2030,11 @@ def _coaching_activation_projection(case: dict) -> dict:
     identity_complete = _coaching_gate_status(case, 'identity') == 'verified'
     health_complete = _coaching_gate_status(case, 'health_clearance') in (
         'cleared', 'not_required')
+    health_submitted = bool(
+        (inputs.get('health_update') or {}).get('submitted_at'))
+    health_state = (
+        'verified' if health_complete else
+        ('waiting_on_matti' if health_submitted else 'action_required'))
     athlete_file_complete = (
         _coaching_gate_status(case, 'athlete_context') == 'sealed')
 
@@ -2048,10 +2053,13 @@ def _coaching_activation_projection(case: dict) -> dict:
                     'Matti still needs to verify the private identity record.')),
         _coaching_activation_task(
             'health_review', 'Complete the health-readiness review',
-            'verified' if health_complete else 'waiting_on_matti', 'matti',
+            health_state,
+            'athlete' if health_state == 'action_required' else 'matti',
             detail=('The required health disposition is recorded.'
                     if health_complete else
-                    'Matti still needs to record the private health disposition.')),
+                    ('Submitted; Matti still needs to record the private '
+                     'health disposition.' if health_submitted else
+                     'Confirm whether anything needs a private follow-up.'))),
         _coaching_activation_task(
             'agreements', 'Sign the coaching documents', agreement_state,
             'athlete' if agreement_state == 'action_required' else 'matti'),
@@ -6588,6 +6596,30 @@ def _normalize_activation_device(payload: dict) -> dict:
     }
 
 
+def _normalize_activation_health_update(payload: dict) -> dict:
+    """Collect routing-only health status; never accept diagnoses or clearance."""
+    allowed = {
+        'review_status', 'current_information_ack', 'emergency_boundary_ack'}
+    if set(payload) - allowed:
+        raise ValueError('Health update accepts routing fields only; no free text')
+    review_status = _activation_text(
+        payload.get('review_status'), 'review_status', max_length=28).lower()
+    if review_status not in ('no_change', 'private_followup_requested'):
+        raise ValueError(
+            'review_status must be no_change or private_followup_requested')
+    if payload.get('current_information_ack') is not True:
+        raise ValueError('current_information_ack must be true')
+    if payload.get('emergency_boundary_ack') is not True:
+        raise ValueError('emergency_boundary_ack must be true')
+    return {
+        'schema': 'coaching_health_update/v1',
+        'review_status': review_status,
+        'current_information_ack': True,
+        'emergency_boundary_ack': True,
+        'requires_private_followup': review_status == 'private_followup_requested',
+    }
+
+
 @app.route('/api/coaching-activation', methods=['POST'])
 @limiter.limit("120/minute")
 @_serialized_coaching_provider('coaching-activation')
@@ -6609,7 +6641,8 @@ def coaching_activation():
     if not athlete_key or len(athlete_key) > 128:
         return jsonify({'error': 'athlete_key is required'}), 400
     if action not in {
-            'get', 'submit_schedule', 'submit_communication',
+            'get', 'submit_health_update', 'submit_schedule',
+            'submit_communication',
             'submit_device_setup', 'ack_first_week'}:
         return jsonify({'error': 'Unknown activation action'}), 400
 
@@ -6642,7 +6675,12 @@ def coaching_activation():
         return jsonify({'error': 'payload must be an object'}), 400
     now = datetime.now(timezone.utc).isoformat()
     try:
-        if action == 'submit_schedule':
+        if action == 'submit_health_update':
+            normalized = _normalize_activation_health_update(payload)
+            normalized['submitted_at'] = now
+            activation_inputs['health_update'] = normalized
+            task = 'health_review'
+        elif action == 'submit_schedule':
             normalized = _normalize_activation_schedule(payload)
             normalized['submitted_at'] = now
             activation_inputs['schedule'] = normalized
@@ -10031,6 +10069,8 @@ def _coaching_funnel_projection(case: dict) -> dict:
             'context_sealed': verified('athlete_context', 'sealed'),
             'plan_approved': verified('coach_plan_approval', 'approved'),
             'onboarding_delivered': bool(onboarding.get('delivered_at')),
+            'health_update_submitted': bool(
+                (activation_inputs.get('health_update') or {}).get('submitted_at')),
             'schedule_submitted': bool(
                 (activation_inputs.get('schedule') or {}).get('submitted_at')),
             'schedule_verified': verified('schedule_baseline', 'verified'),
@@ -10059,7 +10099,8 @@ def _aggregate_coaching_funnel(projections: list[dict]) -> dict:
         'checkout_expired', 'recovery_sent', 'payment_confirmed',
         'billing_healthy', 'billing_attention', 'subscription_ended',
         'checkout_recovered', 'trainingpeaks_connected', 'context_sealed',
-        'plan_approved', 'onboarding_delivered', 'schedule_submitted',
+        'plan_approved', 'onboarding_delivered', 'health_update_submitted',
+        'schedule_submitted',
         'schedule_verified', 'communication_submitted',
         'device_setup_submitted', 'device_data_verified',
         'kickoff_scheduled', 'setup_ready', 'active_ready', 'active')
@@ -10106,7 +10147,8 @@ def _aggregate_legacy_repaper(cases: list[dict]) -> dict:
     activation_stage_names = (
         'fit_approved', 'terms_signed', 'payment_confirmed',
         'trainingpeaks_connected', 'context_sealed', 'plan_approved',
-        'onboarding_delivered', 'schedule_submitted', 'schedule_verified',
+        'onboarding_delivered', 'health_update_submitted',
+        'schedule_submitted', 'schedule_verified',
         'communication_submitted', 'device_setup_submitted',
         'device_data_verified', 'kickoff_scheduled', 'setup_ready',
         'active_ready', 'active')

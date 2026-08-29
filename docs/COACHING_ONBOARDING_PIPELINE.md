@@ -274,7 +274,11 @@ until a deliberate cadence and exception/escalation policy is approved.
   The coaching dashboard cannot be entered by typing an email address.
 - The dashboard reads a privacy-minimized activation projection from Railway.
   The athlete can submit schedule constraints, communication preferences,
-  device-sync setup, and a first-week acknowledgement. These submissions are
+  a routing-only current-health update, device-sync setup, and a first-week
+  acknowledgement. The health update accepts only “current information still
+  stands” or “private follow-up requested,” two boundary acknowledgements, and
+  no diagnosis or free text. It never self-clears the coach-owned health gate.
+  These submissions are
   structured, bounded, idempotent receipts; they do not let the athlete
   self-verify provider- or coach-owned gates. Handbook completion remains
   educational evidence only and cannot satisfy identity, health, agreement,

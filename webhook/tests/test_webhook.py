@@ -1770,6 +1770,68 @@ class TestCoachingIntakeHandoff:
         tasks = {item['id']: item for item in projection.get_json()['tasks']}
         assert tasks['schedule']['state'] == 'verified'
 
+    def test_activation_health_update_routes_without_self_clearance_or_free_text(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'COACHING_PROGRESS_SECRET', 'progress-key')
+        created = client.post(
+            '/api/coaching-intakes/legacy-repaper',
+            json=self._legacy_payload(),
+            headers={'X-Cron-Secret': 'coach-secret'})
+        case_id = created.get_json()['case_id']
+        case = app_module._read_coaching_intake(case_id)
+        case['onboarding_course'] = {
+            'course_id': 'coaching-start',
+            'enrolled_at': datetime.now(timezone.utc).isoformat(),
+        }
+        app_module._write_coaching_intake(case)
+        headers = {'X-Coaching-Course-Secret': 'progress-key'}
+        submission = {
+            'case_id': case_id,
+            'athlete_key': 'existing-rider',
+            'action': 'submit_health_update',
+            'event_id': 'klokka:health:v1',
+            'payload': {
+                'review_status': 'no_change',
+                'current_information_ack': True,
+                'emergency_boundary_ack': True,
+            },
+        }
+
+        first = client.post(
+            '/api/coaching-activation', json=submission, headers=headers)
+        duplicate = client.post(
+            '/api/coaching-activation', json=submission, headers=headers)
+
+        assert first.status_code == 201
+        assert duplicate.status_code == 200
+        assert duplicate.get_json()['duplicate'] is True
+        task = {
+            item['id']: item for item in first.get_json()['tasks']
+        }['health_review']
+        assert task['state'] == 'waiting_on_matti'
+        assert task['owner'] == 'matti'
+        stored = app_module._read_coaching_intake(case_id)
+        assert 'health_clearance' not in stored['verifications']
+        health = stored['activation_inputs']['health_update']
+        assert health['review_status'] == 'no_change'
+        assert health['requires_private_followup'] is False
+        assert set(health) == {
+            'schema', 'review_status', 'current_information_ack',
+            'emergency_boundary_ack', 'requires_private_followup',
+            'submitted_at'}
+
+        rejected = copy.deepcopy(submission)
+        rejected['event_id'] = 'klokka:health:free-text'
+        rejected['payload']['diagnosis'] = 'must not be collected here'
+        response = client.post(
+            '/api/coaching-activation', json=rejected, headers=headers)
+        assert response.status_code == 400
+        assert 'routing fields only' in response.get_json()['error']
+        assert 'must not be collected' not in json.dumps(
+            app_module._read_coaching_intake(case_id))
+
     def test_activation_cannot_self_verify_provider_or_coach_owned_steps(
             self, client, temp_athletes_dir, monkeypatch):
         import app as app_module
