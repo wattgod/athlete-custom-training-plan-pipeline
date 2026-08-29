@@ -65,6 +65,28 @@ def test_post_simulation_day_is_easy_and_displaced_sharpener_moves_to_interval_d
     assert r01_no_back_to_back_intensity(plan['weeks'])[0]
 
 
+def test_post_simulation_off_day_stays_off():
+    plan = {'weeks': [
+        {'plan_week': 1, 'days': [
+            _day('Sun', 'Act Race Simulation', 'long_ride', 250, 250,
+                 act_simulation={'dress_rehearsal': True}),
+        ]},
+        {'plan_week': 2, 'days': [
+            _day('Mon', 'OFF', 'off', 0, 0),
+            _day('Thu', 'Endurance', 'filler', 70, 55),
+        ]},
+    ]}
+
+    protected = protect_post_simulation_recovery(plan, ['Thu'])
+    monday = plan['weeks'][1]['days'][0]
+
+    assert protected == {(2, 'Mon')}
+    assert monday['post_sim_recovery'] is True
+    assert monday['name'] == 'OFF'
+    assert monday['role'] == 'off'
+    assert monday['duration'] == 0
+
+
 def test_pre_simulation_strength_block_days_flags_the_day_before_dress_rehearsal():
     """Regression: verified live, loaded strength (Power B -- Bulgarians +
     trap-bar triples) landed on the Saturday immediately before a Sunday

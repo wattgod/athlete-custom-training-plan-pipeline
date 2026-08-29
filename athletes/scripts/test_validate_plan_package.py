@@ -123,3 +123,13 @@ def test_superstring_recovery_duration_is_flagged(tmp_path):
     assert validate_plan_package(tmp_path) == []  # clean baseline
     zwo.write_text(zwo.read_text().replace('1:30 recovery', '11:30 recovery'))
     assert any('main_set' in i['message'] for i in validate_plan_package(tmp_path))
+
+
+def test_zone_and_rpe_annotations_do_not_change_interval_semantics(tmp_path):
+    zwo = _interval_package(tmp_path)
+    zwo.write_text(zwo.read_text().replace(
+        '4x1:30 @ 120% FTP, 1:30 recovery @ 50% FTP',
+        '4x1:30 @ 120% FTP (Z5+, RPE 8-9), '
+        '1:30 recovery @ 50% FTP (Z1, RPE 2)',
+    ))
+    assert validate_plan_package(tmp_path) == []

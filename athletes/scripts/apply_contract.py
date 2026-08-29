@@ -19,7 +19,10 @@ import re
 
 from jsonschema import Draft202012Validator
 
-from delivery_notes import render_coached_weekly_notes
+if __package__:
+    from .delivery_notes import render_coached_weekly_notes
+else:  # Direct script execution keeps athletes/scripts on sys.path.
+    from delivery_notes import render_coached_weekly_notes
 
 
 CONTRACT_VERSION = "apply_contract/v1"

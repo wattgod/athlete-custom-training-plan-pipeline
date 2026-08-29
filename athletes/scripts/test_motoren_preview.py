@@ -10,10 +10,12 @@ import pytest
 from motoren_preview import (
     ENGINE_VERSION,
     MotorenPreviewError,
+    _git_short_sha,
     engine_version,
     generate_preview_source,
     voice_version,
 )
+from generate_athlete_package import race_day_tss_from_emitted_minutes
 
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "motoren_preview_fixture.json"
 
@@ -66,6 +68,36 @@ def _normalized(payload):
     }
 
 
+def _request_v2(**overrides):
+    base = _request()
+    base.update({
+        "schema_version": "training-plan-preview-request/v2",
+        "plan_weeks": 21,
+    })
+    base["race"].update({
+        "date": "2027-06-05",
+        "expected_duration_hours": 12,
+    })
+    base["rider"].update({
+        "goal_type": "compete",
+        "control_method": "power",
+        "ftp_watts": 250,
+        "strength_equipment": "full-gym",
+    })
+    for key, value in overrides.items():
+        if key in {"race", "rider"}:
+            base[key].update(value)
+        else:
+            base[key] = value
+    return base
+
+
+def _normalized_v2(payload):
+    sys.path.insert(0, str(Path(__file__).parents[2] / "webhook"))
+    from preview_contract import normalize_request
+    return normalize_request(payload)
+
+
 DAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 
@@ -78,6 +110,13 @@ def _active_sessions(source):
 
 
 class TestDeterminism:
+    def test_engine_version_uses_railway_revision_without_git(self, monkeypatch):
+        monkeypatch.setenv(
+            "RAILWAY_GIT_COMMIT_SHA",
+            "abcdef1234567890abcdef1234567890abcdef12",
+        )
+        assert _git_short_sha() == "abcdef1"
+
     def test_two_calls_are_byte_identical(self):
         request = _normalized(_request())
         first = generate_preview_source(request)
@@ -249,6 +288,83 @@ class TestFixture:
         fixture = json.loads(_FIXTURE_PATH.read_text())
         regenerated = generate_preview_source(_normalized(_request()))
         assert fixture == regenerated
+
+
+class TestFullPlanPreviewV2:
+    def test_one_source_drives_exact_sample_weeks_and_volume(self):
+        source = generate_preview_source(_normalized_v2(_request_v2()))
+        assert len(source["planned_volume"]) == 21
+        by_number = {
+            week["week_number"]: week for week in source["planned_volume"]}
+        for sample in source["sample_weeks"]:
+            summary = by_number[sample["week_number"]]
+            assert sample["phase"] == summary["phase"]
+            assert sample["type"] == summary["type"]
+            assert sample["target_minutes"] == summary["target_minutes"]
+            assert sample["target_tss"] == summary["target_tss"]
+            assert sample["start_date"] == sample["days"][0]["date"]
+            assert sample["end_date"] == sample["days"][-1]["date"]
+
+    def test_race_week_contains_actual_race_workload_without_fake_structure(self):
+        source = generate_preview_source(_normalized_v2(_request_v2()))
+        race_week = next(
+            week for week in source["sample_weeks"] if week["type"] == "race")
+        race = next(
+            session for day in race_week["days"] for session in day["sessions"]
+            if session["kind"] == "race")
+        assert race["duration_minutes"] == 720
+        assert race["tss"] == race_day_tss_from_emitted_minutes(720)
+        assert race["structure"] is None
+        assert race["_engine_overlay"] is True
+
+    def test_training_sessions_are_explicitly_library_backed(self):
+        source = generate_preview_source(_normalized_v2(_request_v2()))
+        sessions = [
+            session for week in source["sample_weeks"] for day in week["days"]
+            for session in day["sessions"]
+            if session["kind"] in {"bike", "ski", "strength"}
+        ]
+        assert sessions
+        assert all(session["_library_backed"] is True for session in sessions)
+
+    def test_self_review_and_comment_protocol_are_verbatim_in_every_sample(self):
+        from story_notes import SELF_REVIEW_BODY, COMMENT_PROTOCOL_BODY
+        source = generate_preview_source(_normalized_v2(_request_v2()))
+        for week in source["sample_weeks"]:
+            assert week["weekly_self_review"] == SELF_REVIEW_BODY
+            assert week["comment_protocol"] == COMMENT_PROTOCOL_BODY
+
+    def test_week_notes_use_full_plan_length_not_sample_week_number(self):
+        source = generate_preview_source(_normalized_v2(_request_v2()))
+        non_race = next(
+            week for week in source["sample_weeks"]
+            if week["week_number"] > 1 and week["type"] != "race")
+        assert f"Week {non_race['week_number']} of 21." in non_race["coach_note"]
+
+    def test_race_prep_sample_uses_peak_voice_not_base_fallback(self):
+        source = generate_preview_source(_normalized_v2(
+            _request_v2(sample_week_number=19)))
+        race_prep = next(
+            week for week in source["sample_weeks"]
+            if week["phase"] == "race_prep")
+        assert "Peak." in race_prep["coach_note"]
+        assert "Base." not in race_prep["coach_note"]
+
+    def test_personalization_changes_the_plan_deterministically(self):
+        power = _normalized_v2(_request_v2())
+        constrained = _normalized_v2(_request_v2(rider={
+            "hours_per_week": 6,
+            "preferred_days": ["tue", "thu", "sat"],
+            "experience_level": "beginner",
+            "goal_type": "finish",
+            "control_method": "rpe",
+            "strength_equipment": "home-basic",
+            "day_caps_minutes": {"tue": 60, "thu": 60, "sat": 180},
+        }))
+        first = generate_preview_source(power)
+        second = generate_preview_source(constrained)
+        assert first != second
+        assert generate_preview_source(constrained) == second
 
 
 class TestIntegrationWithRealContract:

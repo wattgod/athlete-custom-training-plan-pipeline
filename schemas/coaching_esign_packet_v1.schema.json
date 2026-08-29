@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:endure:schemas:coaching_esign_packet:v1",
+  "title": "Coaching e-sign packet handoff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "case_id",
+    "brand",
+    "athlete",
+    "documents",
+    "legal_approval_receipt"
+  ],
+  "properties": {
+    "schema": {"const": "coaching_esign_packet/v1"},
+    "case_id": {"type": "string", "format": "uuid"},
+    "brand": {"enum": ["gravelgod", "roadielabs", "xcskilabs"]},
+    "athlete": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "email", "is_minor"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "email": {"type": "string", "format": "email"},
+        "is_minor": {"type": "boolean"}
+      }
+    },
+    "guardian": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "email", "relationship"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "email": {"type": "string", "format": "email"},
+        "relationship": {"enum": ["parent", "legal_guardian"]}
+      }
+    },
+    "documents": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["gate", "template_id", "document_version", "signer_role"],
+        "properties": {
+          "gate": {
+            "enum": ["coaching_agreement", "data_consent", "guardian_consent"]
+          },
+          "template_id": {"type": "string", "minLength": 1},
+          "document_version": {"type": "string", "minLength": 1},
+          "signer_role": {"enum": ["athlete", "parent", "legal_guardian"]}
+        }
+      }
+    },
+    "legal_approval_receipt": {"type": "string", "minLength": 1},
+    "callback_case_id": {"type": "string", "format": "uuid"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "athlete": {
+            "properties": {"is_minor": {"const": true}},
+            "required": ["is_minor"]
+          }
+        }
+      },
+      "then": {"required": ["guardian"]}
+    }
+  ]
+}

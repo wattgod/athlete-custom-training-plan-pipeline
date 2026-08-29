@@ -658,5 +658,45 @@
   "weighted_problem_load": 10.38,
   "critical_count": 8,
   "distinct_issues": 36
+ },
+ {
+  "date": "2026-08-22",
+  "quality": 0.36,
+  "n": 8,
+  "avg_score": 5.86,
+  "contract_pass_rate": 0.5,
+  "weighted_problem_load": 13.75,
+  "critical_count": 10,
+  "distinct_issues": 41
+ },
+ {
+  "date": "2026-08-23",
+  "quality": -0.37,
+  "n": 8,
+  "avg_score": 5.38,
+  "contract_pass_rate": 0.5,
+  "weighted_problem_load": 14.38,
+  "critical_count": 11,
+  "distinct_issues": 42
+ },
+ {
+  "date": "2026-08-24",
+  "quality": -0.62,
+  "n": 8,
+  "avg_score": 5.88,
+  "contract_pass_rate": 0.5,
+  "weighted_problem_load": 16.25,
+  "critical_count": 13,
+  "distinct_issues": 46
+ },
+ {
+  "date": "2026-08-25",
+  "quality": -0.19,
+  "n": 8,
+  "avg_score": 5.62,
+  "contract_pass_rate": 0.62,
+  "weighted_problem_load": 15.12,
+  "critical_count": 11,
+  "distinct_issues": 43
  }
 ]

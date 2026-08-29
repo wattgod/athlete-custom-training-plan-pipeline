@@ -46,7 +46,9 @@ def _fueling():
 # ============================================================
 
 class TestFuelTagRoutingGaps:
-    @pytest.mark.parametrize('name', ['Thirty-Fifteens', 'Stars In Your Eyes', 'Openers'])
+    @pytest.mark.parametrize('name', [
+        'Thirty-Fifteens', 'Stars In Your Eyes', 'Openers', 'NP/IF Target',
+    ])
     def test_short_race_week_archetypes_classify_as_quality(self, name):
         """These used to fall through to the duration-gated catch-all and
         render no tag at all -- they must always classify as a taggable

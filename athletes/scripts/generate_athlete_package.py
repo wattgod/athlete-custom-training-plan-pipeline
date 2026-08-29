@@ -307,6 +307,7 @@ _QUALITY_FUEL_KEYWORDS = [
     'blood pistons', 'cadence work', 'tempo', 'stomps', 'microbursts', 'buffer',
     'ftp', 'thirty-fifteens', 'thirty fifteens', 'ronnestad', 'stars in your eyes',
     'openers', 'tune-up', 'g-spot', 'g spot', 'sweet spot', 'vo2 bookend',
+    'np/if target',
 ]
 # Names that never carry a fuel tag -- true rest/off/easy-spin days. 'openers'
 # used to live here (blanket-excluding Pre-Race Openers too); it now lives in

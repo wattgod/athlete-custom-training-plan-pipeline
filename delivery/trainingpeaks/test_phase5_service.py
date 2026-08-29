@@ -89,7 +89,7 @@ def _contract(state):
     }
     create_workout = {
         "date": "2026-09-01", "title": "Fixture create",
-        "description": "Fixture only", "tp_workout_type": 1,
+        "description": "Fixture only", "tp_workout_type": 2,
         "total_seconds": 3600, "tss_planned": 50, "structure": None,
     }
     return {
@@ -194,12 +194,12 @@ def _workout_update(state, *, date="2026-08-30"):
     revision = state["generation_revision"]
     prior = {
         "date": date, "title": "Fixture prior", "description": "Before",
-        "tp_workout_type": 1, "total_seconds": 2700, "tss_planned": 35,
+        "tp_workout_type": 2, "total_seconds": 2700, "tss_planned": 35,
         "structure": None,
     }
     payload = {
         "date": date, "title": "Fixture update", "description": "After",
-        "tp_workout_type": 1, "total_seconds": 3300, "tss_planned": 45,
+        "tp_workout_type": 2, "total_seconds": 3300, "tss_planned": 45,
         "structure": None,
     }
     logical_id = f"{order_id}:workout_upsert:{date}#1"
