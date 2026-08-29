@@ -1,0 +1,79 @@
+description: Custom weekly structure for ayahuasca tier
+days:
+  monday:
+    am: easy_ride
+    pm: null
+    is_key_day: false
+    notes: Easy ride or recovery
+    max_duration: 60
+  tuesday:
+    am: intervals
+    pm: null
+    is_key_day: true
+    notes: Key session - intervals or threshold
+    max_duration: 90
+  wednesday:
+    am: easy_ride
+    pm: easy_ride
+    is_key_day: false
+    notes: Easy ride or recovery
+    max_duration: 75
+  thursday:
+    am: intervals
+    pm: null
+    is_key_day: true
+    notes: Key session - intervals or threshold
+    max_duration: 90
+  friday:
+    am: easy_ride
+    pm: easy_ride
+    is_key_day: false
+    notes: Easy ride or recovery
+    max_duration: 110
+  saturday:
+    am: intervals
+    pm: null
+    is_key_day: true
+    notes: Key session (strength on non-key days only)
+    max_duration: 150
+  sunday:
+    am: strength
+    pm: null
+    is_key_day: false
+    notes: Strength session
+    max_duration: 90
+_derived:
+- id: SCHEDULE_DAYS
+  field: days
+  class: inferred
+  basis: availability, duration caps, key-day, long-ride, and strength spacing rules
+  inputs:
+    available_days:
+    - friday
+    - monday
+    - saturday
+    - sunday
+    - thursday
+    - tuesday
+    - wednesday
+    key_days:
+    - tuesday
+    - thursday
+    - saturday
+    strength_days:
+    - sunday
+    - saturday
+    tier: ayahuasca
+    preferred_long_day: saturday
+  sensitivity: personal
+  at: '2026-08-29T17:16:19.074064Z'
+  revision: 1
+- id: SCHEDULE_DESCRIPTION
+  field: description
+  class: inferred
+  basis: human-readable rendering of the selected weekly tier
+  inputs:
+    tier: ayahuasca
+  sensitivity: internal
+  at: '2026-08-29T17:16:19.074064Z'
+  revision: 1
