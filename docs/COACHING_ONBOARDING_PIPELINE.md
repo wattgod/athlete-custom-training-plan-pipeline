@@ -279,6 +279,9 @@ until a deliberate cadence and exception/escalation policy is approved.
   self-verify provider- or coach-owned gates. Handbook completion remains
   educational evidence only and cannot satisfy identity, health, agreement,
   consent, payment, TrainingPeaks, plan approval, or release gates.
+- Identity/case binding, health disposition, and canonical athlete-file binding
+  appear as explicit coach-owned checklist items. They are direct setup gates,
+  not hidden prerequisites inferred from a later plan or payment state.
 - `setup_ready` requires verified agreements and payment, a submitted and
   coach-verified schedule baseline, verified TrainingPeaks attachment and
   included Premium activation, verified device data, a scheduled kickoff call,

@@ -1883,6 +1883,12 @@ class TestCoachingIntakeHandoff:
         assert blocked['state'] == 'ACTIVATION_SETUP'
         assert blocked['setup_ready'] is False
         assert blocked['active_ready'] is False
+        blocked_tasks = {
+            item['id']: item for item in
+            app_module._coaching_activation_projection(case)['tasks']}
+        assert blocked_tasks['identity']['state'] == 'verified'
+        assert blocked_tasks['health_review']['state'] == 'verified'
+        assert blocked_tasks['athlete_file']['state'] == 'verified'
 
         case['verifications'].update({
             'schedule_baseline': {'status': 'verified'},

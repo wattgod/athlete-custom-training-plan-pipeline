@@ -2027,6 +2027,11 @@ def _coaching_activation_projection(case: dict) -> dict:
         'verified' if first_week_complete and plan_complete else
         ('action_required' if plan_complete else 'blocked')
     )
+    identity_complete = _coaching_gate_status(case, 'identity') == 'verified'
+    health_complete = _coaching_gate_status(case, 'health_clearance') in (
+        'cleared', 'not_required')
+    athlete_file_complete = (
+        _coaching_gate_status(case, 'athlete_context') == 'sealed')
 
     tp_url = str(
         (_brand_config(case.get('brand')).get('coaching') or {}).get(
@@ -2035,6 +2040,18 @@ def _coaching_activation_projection(case: dict) -> dict:
         'https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU'
     )
     tasks = [
+        _coaching_activation_task(
+            'identity', 'Verify identity and bind this case',
+            'verified' if identity_complete else 'waiting_on_matti', 'matti',
+            detail=('Your private identity evidence is verified.'
+                    if identity_complete else
+                    'Matti still needs to verify the private identity record.')),
+        _coaching_activation_task(
+            'health_review', 'Complete the health-readiness review',
+            'verified' if health_complete else 'waiting_on_matti', 'matti',
+            detail=('The required health disposition is recorded.'
+                    if health_complete else
+                    'Matti still needs to record the private health disposition.')),
         _coaching_activation_task(
             'agreements', 'Sign the coaching documents', agreement_state,
             'athlete' if agreement_state == 'action_required' else 'matti'),
@@ -2063,6 +2080,12 @@ def _coaching_activation_projection(case: dict) -> dict:
             'communication', 'Choose how we communicate',
             'verified' if communication_complete else 'action_required', 'athlete'),
         _coaching_activation_task(
+            'athlete_file', 'Create the canonical athlete record',
+            'verified' if athlete_file_complete else 'waiting_on_matti', 'matti',
+            detail=('The activation record is bound to the canonical athlete file.'
+                    if athlete_file_complete else
+                    'Matti still needs to seal and bind the athlete record.')),
+        _coaching_activation_task(
             'first_plan', 'Receive the first plan and guide',
             'verified' if plan_complete else 'waiting_on_matti', 'matti'),
         _coaching_activation_task(
@@ -2077,8 +2100,9 @@ def _coaching_activation_projection(case: dict) -> dict:
             'verified' if complete else 'waiting_on_matti', 'matti'))
 
     setup_ids = {
-        'agreements', 'payment', 'schedule', 'trainingpeaks', 'device_data',
-        'kickoff_call', 'communication', 'first_plan', 'first_week',
+        'identity', 'health_review', 'agreements', 'payment', 'schedule',
+        'trainingpeaks', 'device_data', 'kickoff_call', 'communication',
+        'athlete_file', 'first_plan', 'first_week',
     }
     setup_ready = all(
         task['state'] == 'verified' for task in tasks if task['id'] in setup_ids)
