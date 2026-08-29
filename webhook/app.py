@@ -14,6 +14,7 @@ import re
 import json
 import copy
 import contextlib
+from collections import Counter
 import functools
 import hmac
 import fcntl
@@ -257,6 +258,12 @@ COACHING_SETUP_FEE_CENTS = 9900
 COACHING_SETUP_FEE_WAIVER_COUPON_ID = os.environ.get(
     'COACHING_SETUP_FEE_WAIVER_COUPON_ID', 'coaching_setup_waiver_99_v1')
 COACHING_BOOKING_URL = os.environ.get('COACHING_BOOKING_URL', '')
+COACHING_COURSE_ACCESS_URL = os.environ.get('COACHING_COURSE_ACCESS_URL', '')
+COACHING_COURSE_PUBLIC_URL = os.environ.get(
+    'COACHING_COURSE_PUBLIC_URL',
+    'https://gravelgodcycling.com/course/coaching-start/')
+COURSE_ACCESS_ADMIN_KEY = os.environ.get('COURSE_ACCESS_ADMIN_KEY', '')
+COACHING_PROGRESS_SECRET = os.environ.get('COACHING_PROGRESS_SECRET', '')
 COACHING_ESIGN_PROVIDER = os.environ.get(
     'COACHING_ESIGN_PROVIDER', 'signwell').strip().lower()
 SIGNWELL_API_KEY = os.environ.get('SIGNWELL_API_KEY', '')
@@ -858,19 +865,25 @@ def _build_consulting_email(details: dict) -> tuple:
     return subject, text, html
 
 
+def _analytics_consent_state(value) -> str:
+    """Normalize the browser's explicit analytics decision for server use."""
+    return 'granted' if str(value or '').strip().lower() == 'granted' else 'denied'
+
+
 def _send_ga4_purchase(order_id: str, value_cents, product_type: str,
-                       item_name: str, brand: str = DEFAULT_BRAND):
+                       item_name: str, brand: str = DEFAULT_BRAND,
+                       analytics_consent: str = ''):
     """Record a purchase in GA4 via Measurement Protocol (server-side).
 
-    Fires for every real payment regardless of the buyer's cookie-consent
-    state — the client-side purchase event (success page) only records when
-    the visitor accepted the cookie banner (verified Jun 2026, invisible
-    even in Realtime otherwise). Shares transaction_id with the client-side
-    event so GA4 deduplicates the two. Routes to the brand's GA4 property.
-    Never raises — analytics must not affect order processing. No-op until
-    the brand's MP api_secret env var is set; skips test orders.
+    Fires only when the checkout metadata preserves a granted browser
+    analytics decision. Shares transaction_id with the client-side event so
+    GA4 deduplicates the two and routes to the brand's GA4 property. Never
+    raises — analytics must not affect order processing. No-op when consent,
+    measurement configuration, or a real order is absent.
     """
     cfg = _brand_config(brand)
+    if _analytics_consent_state(analytics_consent) != 'granted':
+        return
     if not cfg['ga4_mp_api_secret'] or not cfg['ga4_measurement_id']:
         return
     if order_id.startswith('test_'):
@@ -1100,7 +1113,8 @@ def _send_coaching_onboarding_handoff(case: dict, checkout_url: str) -> bool:
     tier_label = _coaching_tier_config(brand, tier).get('label', tier.title())
     name = case.get('athlete', {}).get('name', '')
     email = case.get('athlete', {}).get('email', '')
-    first_name = name.split()[0] if name else 'there'
+    preferred_name = str(questionnaire.get('preferred_name') or '').strip()
+    first_name = (preferred_name or name).split()[0] if (preferred_name or name) else 'there'
     attach_url = coaching_cfg.get('trainingpeaks_attach_url', '')
     setup_fee_waived = (
         _coaching_gate_status(case, 'setup_fee_waiver') == 'approved')
@@ -1508,6 +1522,15 @@ def _iter_coaching_intakes():
                 case.get('schema') == 'coaching_onboarding_case/v1' and
                 case.get('case_id')):
             yield case
+
+
+def _coaching_cases_for_athlete_key(athlete_key: str) -> list[dict]:
+    """Resolve a canonical athlete key without falling back to name matching."""
+    return [
+        case for case in (_iter_coaching_intakes() or ())
+        if hmac.compare_digest(
+            str(case.get('athlete_key') or ''), str(athlete_key or ''))
+    ]
 
 
 def _stripe_object_id(value) -> str:
@@ -5226,6 +5249,8 @@ def create_checkout():
                 'weeks': str(pricing['weeks']),
                 'price_cents': str(pricing['price_cents']),
                 'brand': brand,
+                'analytics_consent': _analytics_consent_state(
+                    data.get('analytics_consent')),
             },
             success_url=f"{brand_cfg['site']}/training-plans/success/?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{brand_cfg['site']}{brand_cfg['questionnaire_path']}",
@@ -5305,7 +5330,8 @@ def _verify_coaching_checkout_contract(
 
 def _create_coaching_checkout_session(name: str, email: str, tier: str,
                                       brand: str, intake_id: str = '',
-                                      setup_fee_waived: bool = False):
+                                      setup_fee_waived: bool = False,
+                                      analytics_consent: str = ''):
     """Create the Stripe object after the caller has authorized the handoff."""
     brand_cfg = _brand_config(brand)
     coaching_cfg = _coaching_config(brand)
@@ -5323,6 +5349,7 @@ def _create_coaching_checkout_session(name: str, email: str, tier: str,
         'athlete_name': name,
         'brand': brand,
         'setup_fee_waived': str(bool(setup_fee_waived)).lower(),
+        'analytics_consent': _analytics_consent_state(analytics_consent),
     }
     if intake_id:
         metadata['intake_id'] = intake_id
@@ -5331,6 +5358,7 @@ def _create_coaching_checkout_session(name: str, email: str, tier: str,
         'tier': tier,
         'athlete_name': name,
         'brand': brand,
+        'analytics_consent': _analytics_consent_state(analytics_consent),
     }
     if intake_id:
         subscription_metadata['intake_id'] = intake_id
@@ -5428,6 +5456,9 @@ def receive_coaching_intake():
         'state': 'FIT_REVIEW',
         'athlete': {
             'name': name,
+            'legal_name': name,
+            'preferred_name': str(
+                questionnaire.get('preferred_name') or '').strip(),
             'email': email,
             'is_minor': bool(age is not None and age < 18),
         },
@@ -5545,6 +5576,230 @@ def receive_coaching_intake():
     }), 201
 
 
+@app.route('/api/coaching-intakes/legacy-repaper', methods=['POST'])
+@limiter.limit("30/minute")
+@_serialized_coaching_provider('legacy-repaper-import')
+def import_legacy_coaching_athlete():
+    """Create one inert, case-bound record for an existing coaching athlete.
+
+    Import never sends email, issues a signature packet, creates a checkout,
+    or treats roster membership as identity/age/jurisdiction verification.
+    """
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json(silent=True) or {}
+    athlete_key = str(data.get('athlete_key') or '').strip().lower()
+    if (sanitize_athlete_id(athlete_key) != athlete_key or
+            not re.fullmatch(r'[a-z0-9][a-z0-9-]{1,126}[a-z0-9]', athlete_key)):
+        return jsonify({'error': 'Canonical athlete_key slug is required'}), 400
+    name = str(data.get('name') or '').strip()
+    email = str(data.get('email') or '').strip().lower()
+    source_id = str(data.get('source_id') or '').strip()
+    review_workbook = str(data.get('review_workbook') or '').strip()
+    if not name:
+        return jsonify({'error': 'Name is required'}), 400
+    if not email or '@' not in email or '.' not in email:
+        return jsonify({'error': 'Valid email is required'}), 400
+    if not source_id or len(source_id) > 256:
+        return jsonify({'error': 'Bounded source_id is required'}), 400
+    if (not review_workbook.startswith('https://docs.google.com/spreadsheets/d/')
+            or len(review_workbook) > 500):
+        return jsonify({'error': 'Canonical review_workbook URL is required'}), 400
+
+    raw_brand = str(data.get('brand') or '').strip().lower()
+    if raw_brand not in BRANDS or not _coaching_config(raw_brand).get('enabled'):
+        return jsonify({'error': 'Coaching is not available for this brand'}), 400
+    tier = str(data.get('tier') or '').strip().lower()
+    if not _coaching_tier_config(raw_brand, tier):
+        return jsonify({'error': 'Valid coaching tier is required'}), 400
+
+    key_matches = _coaching_cases_for_athlete_key(athlete_key)
+    if len(key_matches) == 1:
+        existing = key_matches[0]
+        return jsonify({
+            'success': True,
+            'duplicate': True,
+            'case_id': existing.get('case_id'),
+            'athlete_key': athlete_key,
+            'state': _coaching_case_readiness(existing)['state'],
+        })
+    if len(key_matches) > 1:
+        return jsonify({'error': 'Ambiguous athlete_key binding'}), 409
+    email_matches = [
+        case for case in (_iter_coaching_intakes() or ())
+        if hmac.compare_digest(
+            str((case.get('athlete') or {}).get('email') or '').lower(), email)
+    ]
+    if email_matches:
+        return jsonify({
+            'error': 'Email is already bound to another coaching case',
+            'existing_case_ids': [case.get('case_id') for case in email_matches],
+        }), 409
+
+    questionnaire = {}
+    submitted_age = data.get('age')
+    if submitted_age not in (None, ''):
+        try:
+            age = int(str(submitted_age).strip())
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Age must be a whole number'}), 400
+        if age < 13 or age >= 130:
+            return jsonify({'error': 'Legacy import supports ages 13 through 129'}), 400
+        questionnaire['age'] = str(age)
+    else:
+        age = None
+
+    guardian = data.get('guardian') or {}
+    if guardian and not isinstance(guardian, dict):
+        return jsonify({'error': 'guardian must be an object'}), 400
+    if age is not None and age < 18 and guardian:
+        guardian_name = str(guardian.get('name') or '').strip()
+        guardian_email = str(guardian.get('email') or '').strip().lower()
+        guardian_relationship = str(guardian.get('relationship') or '').strip()
+        if (not guardian_name or not guardian_email or '@' not in guardian_email or
+                guardian_relationship not in ('parent', 'legal_guardian')):
+            return jsonify({
+                'error': ('Minor guardian requires name, valid email, and '
+                          'relationship parent or legal_guardian')
+            }), 400
+        questionnaire.update({
+            'guardian_name': guardian_name,
+            'guardian_email': guardian_email,
+            'guardian_relationship': guardian_relationship,
+        })
+
+    now = datetime.now(timezone.utc).isoformat()
+    case_id = str(uuid.uuid4())
+    case = {
+        'schema': 'coaching_onboarding_case/v1',
+        'case_id': case_id,
+        'athlete_key': athlete_key,
+        'brand': raw_brand,
+        'tier': tier,
+        'state': 'IDENTITY_REVIEW',
+        'athlete': {
+            'name': name,
+            'legal_name': name,
+            'preferred_name': str(
+                data.get('preferred_name') or '').strip(),
+            'email': email,
+            'is_minor': bool(age is not None and age < 18),
+        },
+        'source': {
+            'type': 'legacy_repaper',
+            'submission_id': case_id,
+            'source_id': source_id,
+            'submitted_at': now,
+            'review_workbook': review_workbook,
+        },
+        'questionnaire': questionnaire,
+        'intake_audit': _coaching_intake_audit(questionnaire, raw_brand),
+        'transitions': [{
+            'from_state': None,
+            'to_state': 'IDENTITY_REVIEW',
+            'actor': 'coach',
+            'timestamp': now,
+            'reason': 'Existing athlete imported for prospective re-papering',
+            'source_id': source_id,
+        }],
+        'receipts': {},
+        'verifications': {
+            'coach_fit': {
+                'status': 'approved',
+                'verified_at': now,
+                'actor': 'coach',
+                'source_id': source_id,
+            },
+        },
+        'legacy_repaper': {
+            'schema': 'coaching_legacy_repaper/v1',
+            'imported_at': now,
+            'source_id': source_id,
+            'review_workbook': review_workbook,
+            'prospective_only': True,
+        },
+    }
+    if age is not None and age < 18 and guardian:
+        case['guardian'] = {
+            'name': questionnaire['guardian_name'],
+            'email': questionnaire['guardian_email'],
+            'relationship': questionnaire['guardian_relationship'],
+        }
+    _record_coaching_event(
+        case, 'coaching_legacy_repaper_imported', source_id, occurred_at=now)
+    case['readiness'] = _coaching_case_readiness(case)
+    if not _write_coaching_intake(case, create_only=True):
+        return jsonify({'error': 'Generated case ID collision'}), 409
+
+    return jsonify({
+        'success': True,
+        'duplicate': False,
+        'case_id': case_id,
+        'athlete_key': athlete_key,
+        'state': case['readiness']['state'],
+        'next_action': case['readiness']['next_action'],
+        'side_effects': {
+            'email_sent': False,
+            'signature_packet_sent': False,
+            'checkout_created': False,
+            'payment_changed': False,
+        },
+    }), 201
+
+
+@app.route('/api/coaching-intakes/<case_id>/legacy-source', methods=['PATCH'])
+@limiter.limit("20/minute")
+@_serialized_coaching_case('legacy-source-update')
+def update_legacy_coaching_source(case_id):
+    """Correct a bound legacy source pointer without changing athlete identity."""
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    case = _read_coaching_intake(case_id)
+    if not case:
+        return jsonify({'error': 'Coaching intake not found'}), 404
+    source = case.get('source') or {}
+    if source.get('type') != 'legacy_repaper':
+        return jsonify({'error': 'Case is not a legacy re-papering case'}), 409
+
+    data = request.get_json(silent=True) or {}
+    expected_source_id = str(data.get('expected_source_id') or '').strip()
+    if (not expected_source_id or not hmac.compare_digest(
+            expected_source_id, str(source.get('source_id') or ''))):
+        return jsonify({'error': 'Legacy source binding mismatch'}), 409
+    review_workbook = str(data.get('review_workbook') or '').strip()
+    if (not review_workbook.startswith('https://docs.google.com/spreadsheets/d/')
+            or len(review_workbook) > 500):
+        return jsonify({'error': 'Canonical review_workbook URL is required'}), 400
+
+    duplicate = hmac.compare_digest(
+        review_workbook, str(source.get('review_workbook') or ''))
+    if not duplicate:
+        now = datetime.now(timezone.utc).isoformat()
+        source['review_workbook'] = review_workbook
+        case['source'] = source
+        case.setdefault('legacy_repaper', {})['review_workbook'] = review_workbook
+        case['legacy_repaper']['source_updated_at'] = now
+        _record_coaching_event(
+            case, 'coaching_legacy_source_corrected', expected_source_id,
+            occurred_at=now)
+        _write_coaching_intake(case)
+    return jsonify({
+        'success': True,
+        'duplicate': duplicate,
+        'case_id': case_id,
+        'athlete_key': case.get('athlete_key'),
+        'review_workbook': review_workbook,
+        'identity_changed': False,
+    })
+
+
 @app.route('/api/coaching-intakes/<case_id>', methods=['GET'])
 @limiter.limit("60/minute")
 def get_coaching_intake(case_id):
@@ -5586,6 +5841,7 @@ def list_coaching_intakes():
         reminders = case.get('onboarding_reminders') or []
         rows.append({
             'case_id': case.get('case_id'),
+            'athlete_key': case.get('athlete_key'),
             'brand': normalize_brand(case.get('brand')),
             'tier': case.get('tier'),
             'athlete': {
@@ -5596,6 +5852,10 @@ def list_coaching_intakes():
             'submitted_at': (case.get('source') or {}).get('submitted_at'),
             'state': readiness['state'],
             'next_action': readiness['next_action'],
+            'source_type': (case.get('source') or {}).get('type'),
+            'esign_status': (case.get('esign_packet') or {}).get('status'),
+            'esign_document_id': (
+                case.get('esign_packet') or {}).get('document_id'),
             'billing_standing': (case.get('billing') or {}).get('standing'),
             'suggested_reminders': sum(
                 1 for item in reminders if item.get('status') == 'suggested'),
@@ -5607,6 +5867,222 @@ def list_coaching_intakes():
         'count': len(rows),
         'cases': rows,
     })
+
+
+@app.route('/api/coaching-intakes/<case_id>/onboarding-course', methods=['POST'])
+@limiter.limit("20/minute")
+@_serialized_coaching_case('onboarding-course-enrollment')
+def enroll_coaching_onboarding_course(case_id):
+    """Grant case-bound access to the private coaching operating-system course."""
+    supplied = request.headers.get('X-Cron-Secret', '')
+    if not CRON_SECRET:
+        return jsonify({'error': 'CRON_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, CRON_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    if (not COACHING_COURSE_ACCESS_URL.startswith('https://') or
+            not COACHING_COURSE_PUBLIC_URL.startswith('https://') or
+            not COURSE_ACCESS_ADMIN_KEY):
+        return jsonify({
+            'error': 'Onboarding course provider is not fully configured'
+        }), 503
+
+    case = _read_coaching_intake(case_id)
+    if not case:
+        return jsonify({'error': 'Coaching intake not found'}), 404
+    data = request.get_json(silent=True) or {}
+    owner_pilot = bool(data.get('owner_pilot'))
+    athlete = case.get('athlete') or {}
+    email = str(athlete.get('email') or '').strip().lower()
+    if owner_pilot:
+        owner_email = str(NOTIFICATION_EMAIL or '').strip().lower()
+        if not owner_email or not hmac.compare_digest(email, owner_email):
+            return jsonify({
+                'error': 'Owner-pilot exemption is restricted to the configured owner email'
+            }), 403
+    else:
+        blockers = _coaching_blockers(case, (
+            ('coaching_agreement', 'signed', 'signed coaching agreement receipt'),
+            ('data_consent', 'signed', 'signed data-use consent receipt'),
+            ('payment', 'confirmed', 'Stripe payment confirmation'),
+        ))
+        if blockers:
+            return jsonify({
+                'error': 'Course enrollment is blocked by onboarding gates',
+                'blockers': blockers,
+            }), 409
+
+    existing = case.get('onboarding_course') or {}
+    if existing.get('enrolled_at'):
+        return jsonify({
+            'success': True,
+            'duplicate': True,
+            'case_id': case_id,
+            'course_id': existing.get('course_id'),
+            'course_url': existing.get('course_url'),
+            'invite_sent': bool(existing.get('invite_sent')),
+        })
+
+    course_id = 'coaching-start'
+    grant = {
+        'email': email,
+        'course_id': course_id,
+        'case_id': case_id,
+        'athlete_key': case.get('athlete_key'),
+        'brand': normalize_brand(case.get('brand')),
+        'tier': str(case.get('tier') or '').strip().lower(),
+        'preferred_name': str(
+            athlete.get('preferred_name') or athlete.get('name') or '').strip()[:80],
+        'goal_label': str(
+            (case.get('questionnaire') or {}).get('target_race') or
+            (case.get('questionnaire') or {}).get('race_list') or '').strip()[:160],
+        'stripe_session_id': 'owner_pilot' if owner_pilot else 'coaching_included',
+        'amount_cents': 0,
+        'currency': 'usd',
+    }
+    try:
+        response = http_requests.post(
+            f"{COACHING_COURSE_ACCESS_URL.rstrip('/')}/admin/grant",
+            json=grant,
+            headers={'Authorization': f'Bearer {COURSE_ACCESS_ADMIN_KEY}'},
+            timeout=15,
+        )
+        response.raise_for_status()
+        provider_result = response.json()
+    except (http_requests.RequestException, ValueError) as exc:
+        logger.error(
+            f'Course enrollment provider failed for case {case_id}: '
+            f'{type(exc).__name__}')
+        return jsonify({'error': 'Course enrollment provider failed'}), 502
+
+    now = datetime.now(timezone.utc).isoformat()
+    preferred_name = str(
+        athlete.get('preferred_name') or athlete.get('name') or '').strip()
+    first_name = preferred_name.split()[0] if preferred_name else 'there'
+    subject = 'Your coaching course is ready'
+    body = (
+        f"Hey {first_name},\n\n"
+        "Your coaching operating-system course is ready. It covers how to read "
+        "the plan, use TrainingPeaks, leave useful comments, book calls, and "
+        "handle missed training or health concerns.\n\n"
+        f"Start here: {COACHING_COURSE_PUBLIC_URL}\n\n"
+        "Use this same email address to sign in. Work through the lessons in "
+        "order; your progress is saved to your coaching record.\n\n"
+        "— Matti"
+    )
+    invite_sent = _send_email(
+        email, subject, body, reply_to=NOTIFICATION_EMAIL or None,
+        brand=case.get('brand'))
+    case['onboarding_course'] = {
+        'schema': 'coaching_onboarding_course/v1',
+        'course_id': course_id,
+        'course_url': COACHING_COURSE_PUBLIC_URL,
+        'status': 'invited',
+        'enrolled_at': now,
+        'invite_sent': invite_sent,
+        'invite_attempted_at': now,
+        'owner_pilot_exemption': owner_pilot,
+        'provider_granted': bool(provider_result.get('granted')),
+        'processed_event_ids': [],
+        'completed_lessons': 0,
+        'total_lessons': 7,
+        'pct_complete': 0,
+    }
+    _record_coaching_event(
+        case, 'coaching_onboarding_course_enrolled', course_id,
+        details={'status': 'owner_pilot' if owner_pilot else 'included'},
+        occurred_at=now)
+    _write_coaching_intake(case)
+    if not invite_sent:
+        return jsonify({
+            'error': 'Course access was granted, but the invite email failed',
+            'case_id': case_id,
+            'course_url': COACHING_COURSE_PUBLIC_URL,
+        }), 502
+    return jsonify({
+        'success': True,
+        'duplicate': False,
+        'case_id': case_id,
+        'course_id': course_id,
+        'course_url': COACHING_COURSE_PUBLIC_URL,
+        'invite_sent': True,
+        'owner_pilot_exemption': owner_pilot,
+    }), 201
+
+
+@app.route('/api/coaching-course-progress', methods=['POST'])
+@limiter.limit("120/minute")
+@_serialized_coaching_provider('onboarding-course-progress')
+def receive_coaching_course_progress():
+    """Persist a privacy-minimized, case-bound lesson completion receipt."""
+    supplied = request.headers.get('X-Coaching-Course-Secret', '')
+    if not COACHING_PROGRESS_SECRET:
+        return jsonify({'error': 'COACHING_PROGRESS_SECRET not configured'}), 503
+    if not supplied or not hmac.compare_digest(supplied, COACHING_PROGRESS_SECRET):
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.get_json(silent=True) or {}
+    case_id = str(data.get('case_id') or '').strip()
+    athlete_key = str(data.get('athlete_key') or '').strip()
+    event_id = str(data.get('event_id') or '').strip()
+    course_id = str(data.get('course_id') or '').strip()
+    lesson_id = str(data.get('lesson_id') or '').strip()
+    try:
+        uuid.UUID(case_id)
+    except (ValueError, TypeError, AttributeError):
+        return jsonify({'error': 'Valid case_id is required'}), 400
+    if (not athlete_key or len(athlete_key) > 128 or
+            course_id != 'coaching-start' or
+            not re.fullmatch(r'[a-z0-9][a-z0-9-]{1,99}', lesson_id) or
+            not event_id or len(event_id) > 256):
+        return jsonify({'error': 'Invalid course progress receipt'}), 400
+    try:
+        completed = int(data.get('completed_lessons'))
+        total = int(data.get('total_lessons'))
+        pct = int(data.get('pct_complete'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Progress counts must be integers'}), 400
+    if total != 7 or completed < 1 or completed > total or pct < 0 or pct > 100:
+        return jsonify({'error': 'Progress counts are out of range'}), 400
+
+    case = _read_coaching_intake(case_id)
+    if not case:
+        return jsonify({'error': 'Coaching intake not found'}), 404
+    if not hmac.compare_digest(str(case.get('athlete_key') or ''), athlete_key):
+        return jsonify({'error': 'Athlete binding mismatch'}), 409
+    course = case.get('onboarding_course') or {}
+    if course.get('course_id') != course_id or not course.get('enrolled_at'):
+        return jsonify({'error': 'Case has no matching course enrollment'}), 409
+    processed = course.setdefault('processed_event_ids', [])
+    if event_id in processed:
+        return jsonify({
+            'success': True, 'duplicate': True, 'case_id': case_id,
+            'status': course.get('status'), 'pct_complete': course.get('pct_complete'),
+        })
+
+    now = datetime.now(timezone.utc).isoformat()
+    processed.append(event_id)
+    course['processed_event_ids'] = processed[-100:]
+    course['completed_lessons'] = max(
+        int(course.get('completed_lessons') or 0), completed)
+    course['total_lessons'] = total
+    course['pct_complete'] = max(int(course.get('pct_complete') or 0), pct)
+    course['last_lesson_id'] = lesson_id
+    course['last_progress_at'] = now
+    course['status'] = 'complete' if course['completed_lessons'] == total else 'in_progress'
+    if course['status'] == 'complete' and not course.get('completed_at'):
+        course['completed_at'] = now
+    case['onboarding_course'] = course
+    _record_coaching_event(
+        case, 'coaching_onboarding_course_progress', event_id,
+        details={'status': course['status'], 'pct_complete': course['pct_complete']},
+        occurred_at=now)
+    _write_coaching_intake(case)
+    return jsonify({
+        'success': True,
+        'duplicate': False,
+        'case_id': case_id,
+        'status': course['status'],
+        'pct_complete': course['pct_complete'],
+    }), 201
 
 
 @app.route('/api/coaching-intakes/<case_id>/esign-readiness', methods=['GET'])
@@ -6085,7 +6561,9 @@ def create_coaching_payment_handoff(case_id):
             session = _create_coaching_checkout_session(
                 athlete['name'], athlete['email'], tier, brand,
                 intake_id=case_id,
-                setup_fee_waived=setup_fee_waived)
+                setup_fee_waived=setup_fee_waived,
+                analytics_consent=(case.get('questionnaire') or {}).get(
+                    'analytics_consent', ''))
         except stripe.error.StripeError as exc:
             logger.error(f"Stripe error creating coaching handoff {case_id}: {exc}")
             return jsonify({'error': 'Payment service error. Please try again.'}), 502
@@ -6185,7 +6663,8 @@ def create_coaching_checkout():
 
     try:
         checkout_session = _create_coaching_checkout_session(
-            name, email, tier, brand, intake_id=intake_id)
+            name, email, tier, brand, intake_id=intake_id,
+            analytics_consent=data.get('analytics_consent', ''))
 
         logger.info(f"Created coaching checkout {checkout_session.id} "
                      f"(brand={brand}, tier={tier}, setup_fee=$99, {_mask_email(email)})")
@@ -6273,6 +6752,8 @@ def create_consulting_checkout():
                 'hours': str(hours),
                 'plan_addon': '1' if plan_addon else '0',
                 'brand': brand,
+                'analytics_consent': _analytics_consent_state(
+                    data.get('analytics_consent')),
             },
             success_url=f"{brand_cfg['site']}{consulting_success_path}?session_id={{CHECKOUT_SESSION_ID}}",
             cancel_url=f"{brand_cfg['site']}{consulting_path}",
@@ -7035,11 +7516,14 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
     # Mark BEFORE pipeline — see WooCommerce handler comment for rationale
     mark_order_processed(order_data['order_id'], athlete_id)
 
-    # Record purchase in GA4 (server-side, consent-independent)
+    # Record purchase in GA4 only when the browser consent state was preserved.
     session_obj = data.get('data', {}).get('object', {})
-    brand = session_obj.get('metadata', {}).get('brand', DEFAULT_BRAND)
+    session_metadata = session_obj.get('metadata', {})
+    brand = session_metadata.get('brand', DEFAULT_BRAND)
     _send_ga4_purchase(order_data['order_id'], session_obj.get('amount_total'),
-                       'training_plan', 'Custom Training Plan', brand=brand)
+                       'training_plan', 'Custom Training Plan', brand=brand,
+                       analytics_consent=session_metadata.get(
+                           'analytics_consent', ''))
 
     # Send instant payment confirmation to customer (before pipeline runs)
     customer_email = order_data['profile'].get('email', '')
@@ -7158,9 +7642,10 @@ def _handle_coaching_webhook(session: dict, metadata: dict, order_id: str):
                 source_id=order_id)
             _write_coaching_intake(case)
     mark_order_processed(order_id, sanitize_athlete_id(name))
+    analytics_consent = metadata.get('analytics_consent', '')
     _send_ga4_purchase(order_id, session.get('amount_total'),
                        'coaching', f'Coaching ({tier})',
-                       brand=brand)
+                       brand=brand, analytics_consent=analytics_consent)
     _log_product_event('coaching', order_id,
                        tier=tier, name=name, email=email,
                        subscription_id=subscription_id, brand=brand,
@@ -7375,7 +7860,9 @@ def _handle_consulting_webhook(session: dict, metadata: dict, order_id: str):
     # Best-effort telemetry — never critical for retry safety.
     try:
         _send_ga4_purchase(order_id, session.get('amount_total'),
-                           'consulting', 'Consulting Session', brand=brand)
+                           'consulting', 'Consulting Session', brand=brand,
+                           analytics_consent=metadata.get(
+                               'analytics_consent', ''))
     except Exception:
         logger.exception("GA4 purchase event failed for consulting")
     try:
@@ -8958,6 +9445,29 @@ def _aggregate_coaching_funnel(projections: list[dict]) -> dict:
     }
 
 
+def _aggregate_legacy_repaper(cases: list[dict]) -> dict:
+    """Aggregate migration progress without mixing it into acquisition."""
+    states = Counter(_coaching_case_readiness(case)['state'] for case in cases)
+    packet_statuses = Counter(
+        str((case.get('esign_packet') or {}).get('status') or 'not_sent').lower()
+        for case in cases)
+    return {
+        'athletes': len(cases),
+        'state_counts': dict(sorted(states.items())),
+        'packet_status_counts': dict(sorted(packet_statuses.items())),
+        'signed_agreement': sum(
+            1 for case in cases
+            if _coaching_gate_status(case, 'coaching_agreement') == 'signed'),
+        'signed_data_consent': sum(
+            1 for case in cases
+            if _coaching_gate_status(case, 'data_consent') == 'signed'),
+        'signed_guardian_consent': sum(
+            1 for case in cases
+            if (_coaching_is_minor(case) and
+                _coaching_gate_status(case, 'guardian_consent') == 'signed')),
+    }
+
+
 _COACHING_ONBOARDING_REMINDER_MILESTONES = (
     (0, 'welcome_setup_check',
      'Confirm welcome delivery, TrainingPeaks connection, and kickoff booking'),
@@ -9032,10 +9542,14 @@ def coaching_funnel_report():
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     root = Path(DATA_DIR) / 'coaching_intakes'
     projections = []
+    legacy_repaper_cases = []
     if root.exists():
         for path in root.glob('*.json'):
             try:
                 case = json.loads(path.read_text())
+                if (case.get('source') or {}).get('type') == 'legacy_repaper':
+                    legacy_repaper_cases.append(case)
+                    continue
                 projected = _coaching_funnel_projection(case)
                 if projected['submitted_at'] and projected['submitted_at'] >= cutoff:
                     projections.append(projected)
@@ -9055,6 +9569,7 @@ def coaching_funnel_report():
             key: _aggregate_coaching_funnel(items)
             for key, items in sorted(groups.items())
         },
+        'legacy_repaper': _aggregate_legacy_repaper(legacy_repaper_cases),
         'privacy': 'aggregate_only_no_athlete_pii_or_case_ids',
     })
 

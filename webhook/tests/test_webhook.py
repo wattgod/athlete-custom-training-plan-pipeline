@@ -1514,6 +1514,215 @@ class TestCoachingIntakeHandoff:
         assert second.get_json()['duplicate'] is True
         assert send.call_count == 2
 
+    @staticmethod
+    def _legacy_payload():
+        return {
+            'athlete_key': 'existing-rider',
+            'name': 'Existing Rider',
+            'email': 'existing@test.com',
+            'brand': 'gravelgod',
+            'tier': 'mid',
+            'source_id': 'endure-master:athlete-index:row-2',
+            'review_workbook': (
+                'https://docs.google.com/spreadsheets/d/'
+                '1ExistingRiderWorkbook/edit'),
+        }
+
+    def test_legacy_repaper_import_is_private_inert_and_idempotent(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        headers = {'X-Cron-Secret': 'coach-secret'}
+
+        with patch.object(app_module, '_send_email') as send, \
+             patch.object(app_module, 'stripe') as stripe_provider, \
+             patch.object(app_module, 'SignWellClient') as signwell:
+            first = client.post(
+                '/api/coaching-intakes/legacy-repaper',
+                json=self._legacy_payload(), headers=headers)
+            second = client.post(
+                '/api/coaching-intakes/legacy-repaper',
+                json=self._legacy_payload(), headers=headers)
+
+        assert first.status_code == 201
+        assert second.status_code == 200
+        assert second.get_json()['duplicate'] is True
+        assert second.get_json()['case_id'] == first.get_json()['case_id']
+        assert first.get_json()['side_effects'] == {
+            'email_sent': False,
+            'signature_packet_sent': False,
+            'checkout_created': False,
+            'payment_changed': False,
+        }
+        send.assert_not_called()
+        stripe_provider.checkout.Session.create.assert_not_called()
+        signwell.assert_not_called()
+        case = app_module._read_coaching_intake(first.get_json()['case_id'])
+        assert case['athlete_key'] == 'existing-rider'
+        assert case['source']['type'] == 'legacy_repaper'
+        assert case['legacy_repaper']['prospective_only'] is True
+        assert case['verifications']['coach_fit']['status'] == 'approved'
+        assert case['readiness']['state'] == 'IDENTITY_REVIEW'
+        assert 'identity' not in case['verifications']
+        assert 'esign_packet' not in case
+        assert 'checkout' not in case
+
+    def test_legacy_repaper_import_requires_operator_authentication(
+            self, client, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        response = client.post(
+            '/api/coaching-intakes/legacy-repaper',
+            json=self._legacy_payload())
+        assert response.status_code == 401
+
+    def test_owner_pilot_course_is_case_bound_and_progress_is_idempotent(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'existing@test.com')
+        monkeypatch.setattr(
+            app_module, 'COACHING_COURSE_ACCESS_URL',
+            'https://course-access.example.workers.dev')
+        monkeypatch.setattr(
+            app_module, 'COACHING_COURSE_PUBLIC_URL',
+            'https://gravelgodcycling.com/course/coaching-start/')
+        monkeypatch.setattr(app_module, 'COURSE_ACCESS_ADMIN_KEY', 'admin-key')
+        monkeypatch.setattr(app_module, 'COACHING_PROGRESS_SECRET', 'progress-key')
+        headers = {'X-Cron-Secret': 'coach-secret'}
+        created = client.post(
+            '/api/coaching-intakes/legacy-repaper',
+            json=self._legacy_payload(), headers=headers)
+        case_id = created.get_json()['case_id']
+
+        provider = MagicMock()
+        provider.raise_for_status.return_value = None
+        provider.json.return_value = {'granted': True}
+        with patch.object(app_module.http_requests, 'post', return_value=provider) as post, \
+             patch.object(app_module, '_send_email', return_value=True) as send:
+            enrolled = client.post(
+                f'/api/coaching-intakes/{case_id}/onboarding-course',
+                json={'owner_pilot': True}, headers=headers)
+            duplicate_enrollment = client.post(
+                f'/api/coaching-intakes/{case_id}/onboarding-course',
+                json={'owner_pilot': True}, headers=headers)
+
+        assert enrolled.status_code == 201
+        assert enrolled.get_json()['owner_pilot_exemption'] is True
+        assert duplicate_enrollment.status_code == 200
+        assert duplicate_enrollment.get_json()['duplicate'] is True
+        assert post.call_count == 1
+        grant = post.call_args.kwargs['json']
+        assert grant['case_id'] == case_id
+        assert grant['athlete_key'] == 'existing-rider'
+        assert grant['course_id'] == 'coaching-start'
+        assert send.call_count == 1
+
+        progress_payload = {
+            'case_id': case_id,
+            'athlete_key': 'existing-rider',
+            'course_id': 'coaching-start',
+            'lesson_id': 'how-coaching-works',
+            'completed_lessons': 1,
+            'total_lessons': 7,
+            'pct_complete': 14,
+            'event_id': f'course:1:coaching-start:how-coaching-works',
+        }
+        progress_headers = {'X-Coaching-Course-Secret': 'progress-key'}
+        first = client.post(
+            '/api/coaching-course-progress', json=progress_payload,
+            headers=progress_headers)
+        second = client.post(
+            '/api/coaching-course-progress', json=progress_payload,
+            headers=progress_headers)
+        assert first.status_code == 201
+        assert first.get_json()['status'] == 'in_progress'
+        assert second.status_code == 200
+        assert second.get_json()['duplicate'] is True
+        case = app_module._read_coaching_intake(case_id)
+        assert case['onboarding_course']['pct_complete'] == 14
+        assert case['onboarding_course']['completed_lessons'] == 1
+
+    def test_owner_pilot_exemption_cannot_be_used_for_another_email(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        monkeypatch.setattr(app_module, 'NOTIFICATION_EMAIL', 'coach@test.com')
+        monkeypatch.setattr(
+            app_module, 'COACHING_COURSE_ACCESS_URL',
+            'https://course-access.example.workers.dev')
+        monkeypatch.setattr(
+            app_module, 'COACHING_COURSE_PUBLIC_URL',
+            'https://gravelgodcycling.com/course/coaching-start/')
+        monkeypatch.setattr(app_module, 'COURSE_ACCESS_ADMIN_KEY', 'admin-key')
+        headers = {'X-Cron-Secret': 'coach-secret'}
+        created = client.post(
+            '/api/coaching-intakes/legacy-repaper',
+            json=self._legacy_payload(), headers=headers)
+        response = client.post(
+            f"/api/coaching-intakes/{created.get_json()['case_id']}/onboarding-course",
+            json={'owner_pilot': True}, headers=headers)
+        assert response.status_code == 403
+
+    def test_legacy_minor_import_records_guardian_gate_without_guessing_guardian(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        payload = self._legacy_payload()
+        payload.update({
+            'athlete_key': 'junior-rider',
+            'name': 'Junior Rider',
+            'email': 'junior@test.com',
+            'age': 15,
+        })
+        response = client.post(
+            '/api/coaching-intakes/legacy-repaper', json=payload,
+            headers={'X-Cron-Secret': 'coach-secret'})
+
+        assert response.status_code == 201
+        case = app_module._read_coaching_intake(response.get_json()['case_id'])
+        assert case['athlete']['is_minor'] is True
+        assert 'guardian' not in case
+        assert 'parent/guardian full name' in case['intake_audit']['missing']
+        assert 'signed parent/guardian consent receipt' in (
+            case['readiness']['payment_blockers'])
+
+    def test_legacy_source_correction_is_bound_and_does_not_change_identity(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        headers = {'X-Cron-Secret': 'coach-secret'}
+        created = client.post(
+            '/api/coaching-intakes/legacy-repaper',
+            json=self._legacy_payload(), headers=headers)
+        case_id = created.get_json()['case_id']
+        corrected_url = (
+            'https://docs.google.com/spreadsheets/d/'
+            '1CorrectExistingRiderWorkbook/edit')
+
+        mismatch = client.patch(
+            f'/api/coaching-intakes/{case_id}/legacy-source',
+            json={'expected_source_id': 'wrong-source',
+                  'review_workbook': corrected_url}, headers=headers)
+        assert mismatch.status_code == 409
+
+        corrected = client.patch(
+            f'/api/coaching-intakes/{case_id}/legacy-source',
+            json={'expected_source_id': self._legacy_payload()['source_id'],
+                  'review_workbook': corrected_url}, headers=headers)
+        duplicate = client.patch(
+            f'/api/coaching-intakes/{case_id}/legacy-source',
+            json={'expected_source_id': self._legacy_payload()['source_id'],
+                  'review_workbook': corrected_url}, headers=headers)
+
+        assert corrected.status_code == 200
+        assert corrected.get_json()['identity_changed'] is False
+        assert duplicate.get_json()['duplicate'] is True
+        case = app_module._read_coaching_intake(case_id)
+        assert case['athlete']['email'] == self._legacy_payload()['email']
+        assert case['source']['review_workbook'] == corrected_url
+        assert case['legacy_repaper']['review_workbook'] == corrected_url
+
     @pytest.mark.parametrize(('brand', 'case_id'), [
         ('roadielabs', '1589cebe-eb81-49d5-9f52-02596ce42d95'),
         ('xcskilabs', 'e3996ac4-c7f1-43ef-a7b5-55d96d4ff4fb'),
@@ -1676,6 +1885,31 @@ class TestCoachingIntakeHandoff:
         assert 'case@test.com' not in body
         assert 'Case Rider' not in body
         assert self._payload()['submission_id'] not in body
+
+    def test_funnel_report_separates_legacy_repaper_from_acquisition(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+        headers = {'X-Cron-Secret': 'coach-secret'}
+        imported = client.post(
+            '/api/coaching-intakes/legacy-repaper',
+            json=self._legacy_payload(), headers=headers)
+        assert imported.status_code == 201
+
+        response = client.get(
+            '/api/coaching-funnel-report?days=30', headers=headers)
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['all_brands']['stage_counts']['applications'] == 0
+        assert data['by_brand_and_tier'] == {}
+        assert data['legacy_repaper'] == {
+            'athletes': 1,
+            'state_counts': {'IDENTITY_REVIEW': 1},
+            'packet_status_counts': {'not_sent': 1},
+            'signed_agreement': 0,
+            'signed_data_consent': 0,
+            'signed_guardian_consent': 0,
+        }
 
     def test_coaching_canary_is_side_effect_free_and_persists_receipt(
             self, client, temp_athletes_dir, monkeypatch):
@@ -3709,14 +3943,27 @@ class TestGa4ServerSidePurchase:
         import app as app_module
         with patch.object(app_module, 'BRANDS', _ga4_brands(gravel_secret='')), \
              patch.object(app_module.http_requests, 'post') as mock_post:
-            app_module._send_ga4_purchase('cs_live_x', 24900, 'training_plan', 'Plan')
+            app_module._send_ga4_purchase(
+                'cs_live_x', 24900, 'training_plan', 'Plan',
+                analytics_consent='granted')
+        mock_post.assert_not_called()
+
+    def test_noop_without_granted_analytics_consent(self):
+        import app as app_module
+        with patch.object(app_module, 'BRANDS', _ga4_brands()), \
+             patch.object(app_module.http_requests, 'post') as mock_post:
+            app_module._send_ga4_purchase(
+                'cs_live_x', 24900, 'training_plan', 'Plan',
+                analytics_consent='denied')
         mock_post.assert_not_called()
 
     def test_skips_test_orders(self):
         import app as app_module
         with patch.object(app_module, 'BRANDS', _ga4_brands()), \
              patch.object(app_module.http_requests, 'post') as mock_post:
-            app_module._send_ga4_purchase('test_20260609', 24900, 'training_plan', 'Plan')
+            app_module._send_ga4_purchase(
+                'test_20260609', 24900, 'training_plan', 'Plan',
+                analytics_consent='granted')
         mock_post.assert_not_called()
 
     def test_sends_purchase_payload(self):
@@ -3725,7 +3972,8 @@ class TestGa4ServerSidePurchase:
              patch.object(app_module.http_requests, 'post') as mock_post:
             mock_post.return_value = MagicMock(status_code=204)
             app_module._send_ga4_purchase('cs_live_abc123', 24900,
-                                          'training_plan', 'Custom Training Plan')
+                                          'training_plan', 'Custom Training Plan',
+                                          analytics_consent='granted')
 
         mock_post.assert_called_once()
         args, kwargs = mock_post.call_args
@@ -3745,7 +3993,8 @@ class TestGa4ServerSidePurchase:
              patch.object(app_module.http_requests, 'post') as mock_post:
             mock_post.return_value = MagicMock(status_code=204)
             app_module._send_ga4_purchase('cs_live_x', 24900, 'training_plan',
-                                          'Plan', brand='roadielabs')
+                                          'Plan', brand='roadielabs',
+                                          analytics_consent='granted')
         params = mock_post.call_args.kwargs['params']
         assert params['measurement_id'] == 'G-TESTROAD'
         assert params['api_secret'] == 'rl-secret'
@@ -3754,8 +4003,9 @@ class TestGa4ServerSidePurchase:
         import app as app_module
         with patch.object(app_module, 'BRANDS', _ga4_brands(rl_secret='')), \
              patch.object(app_module.http_requests, 'post') as mock_post:
-            app_module._send_ga4_purchase('cs_live_x', 24900, 'training_plan',
-                                          'Plan', brand='roadielabs')
+            app_module._send_ga4_purchase(
+                'cs_live_x', 24900, 'training_plan', 'Plan',
+                brand='roadielabs', analytics_consent='granted')
         mock_post.assert_not_called()
 
     def test_never_raises_on_network_error(self):
@@ -3764,14 +4014,18 @@ class TestGa4ServerSidePurchase:
              patch.object(app_module.http_requests, 'post',
                           side_effect=Exception('network down')):
             # Must not raise — analytics never blocks an order
-            app_module._send_ga4_purchase('cs_live_x', 100, 'coaching', 'Coaching')
+            app_module._send_ga4_purchase(
+                'cs_live_x', 100, 'coaching', 'Coaching',
+                analytics_consent='granted')
 
     def test_handles_missing_amount(self):
         import app as app_module
         with patch.object(app_module, 'BRANDS', _ga4_brands()), \
              patch.object(app_module.http_requests, 'post') as mock_post:
             mock_post.return_value = MagicMock(status_code=204)
-            app_module._send_ga4_purchase('cs_live_x', None, 'coaching', 'Coaching')
+            app_module._send_ga4_purchase(
+                'cs_live_x', None, 'coaching', 'Coaching',
+                analytics_consent='granted')
         event = mock_post.call_args.kwargs['json']['events'][0]
         assert event['params']['value'] == 0.0
 

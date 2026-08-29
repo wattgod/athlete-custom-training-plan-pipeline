@@ -79,12 +79,21 @@ state. Public application is not acceptance.
 10. The daily `POST /api/cron/coaching-onboarding-reminders` operation creates
     deduplicated day 0/2/7/14/28 suggestions in the coach review queue. It never
     sends a communication; every suggestion requires coach approval.
+11. Existing athletes enter through the private
+    `POST /api/coaching-intakes/legacy-repaper` operator route. The import is
+    idempotent by canonical `athlete_key`, creates a real UUID case, and records
+    the review-workbook source. It never sends email or a SignWell packet,
+    creates checkout, changes payment, or treats roster membership as verified
+    identity, age, jurisdiction, guardian authority, or health disposition.
+    `PATCH /api/coaching-intakes/{case_id}/legacy-source` can correct only the
+    bound review-workbook pointer; it cannot change athlete identity.
 
 ## Operator and billing controls
 
 - `GET /api/coaching-intakes` is the authenticated cross-brand work queue. It
-  returns identity, current state, next action, billing standing, and reminder
-  count, but not questionnaire answers.
+  returns the canonical athlete key, identity, source type, current state, next
+  action, e-sign document/status, billing standing, and reminder count, but not
+  questionnaire answers.
 - `GET /api/coaching-intakes/{case_id}/esign-readiness` exposes only missing
   configuration and adapter status. It never issues documents. The
   provider-neutral payload contract is
@@ -134,19 +143,16 @@ The legacy public `POST /api/create-coaching-checkout` path is disabled by
 default. `COACHING_DIRECT_CHECKOUT_ENABLED=true` is rollback-only because that
 route bypasses fit, identity, health, agreement, and consent gates.
 
-## Missing legal prerequisite
+## Legal and e-sign activation
 
-No counsel-approved, versioned e-sign coaching agreement and data-consent
-package was found in the Gravel God, Roadie Labs, XC Ski Labs, or shared
-pipeline repositories during the 2026-08-25 audit. Do not invent one and do not
-enable the production payment path until approved documents exist. Once they
-do, store their immutable version and provider receipt ID on the corresponding
-verification gates; do not place the signed document itself in Git.
-
-The source-backed drafting requirements, business-copy conflicts, document
-architecture, and approval checklist are consolidated in
-`docs/legal/COACHING_LEGAL_REVIEW_PACKET.md`. That packet is deliberately
-non-operative and cannot be used for athlete signature.
+The owner reported qualified-counsel approval on 2026-08-26. The immutable
+approval receipt is `coaching_legal_approval_receipt/v1`; any content change
+requires a new artifact hash, version, and approval receipt. Three operative
+SignWell templates are active: the coaching services agreement, privacy/data
+consent, and minor/guardian addendum. Provider document IDs, versions, signer
+receipts, completion timestamps, the signed-PDF hash, and its private storage
+pointer belong on the case. The signed PDF itself must never enter Git or a
+broad Google Sheet.
 
 SignWell is the canonical e-sign adapter. The integration boundary fails
 closed: no packet can be issued without the API key, webhook ID, UUID template
@@ -157,10 +163,9 @@ PDFs and their SHA-256 hashes are stored on the private persistent volume under
 `manual_receipt` remains an operator-only recovery path for already-executed,
 independently verified documents, not the normal onboarding flow.
 
-The current brand privacy generators still name FormSubmit as the coaching-form
-processor. The new path uses Cloudflare and Railway and retains a private case
-containing training and optional health data. That processor/retention
-disclosure requires approved legal copy before any brand form is deployed.
+The live brand privacy disclosures name the active Cloudflare/Railway intake
+path and private handling of training and optional health data. Any processor,
+purpose, or retention change requires a matching disclosure/version review.
 
 ## Required deployment configuration
 
@@ -219,34 +224,22 @@ Until all three steps pass, keep the existing live form unchanged. Never deploy
 the form first: it would point athletes at a Worker/backend contract that is not
 ready.
 
-### Activation audit — 2026-08-25
+### Activation audit — 2026-08-26
 
-The implementation is tested but intentionally not activated. Read-only checks
-found these open production items:
+Production is active. Railway, Stripe lifecycle webhooks/portal, SignWell live
+templates/webhook, brand analytics, booking URL, public forms, exact-origin
+CORS, Cloudflare Worker, persistent volume, and daily cron are configured. The
+GitHub and Worker canary secrets were rotated together on 2026-08-26; manual
+workflow run `33002552283` passed every checkout, public-page, edge/provider,
+storage, and configuration check. The legacy roster now has 21 unique,
+UUID-bound cases in `IDENTITY_REVIEW`; zero signature packets were sent during
+migration.
 
-- Railway does not yet have `COACHING_INTAKE_SECRET` or a dedicated
-  `COACHING_BOOKING_URL`.
-- XC Ski Labs does not yet have `GA4_MEASUREMENT_ID_XC` or
-  `GA4_MP_API_SECRET_XC`; the daily canary will fail until both exist.
-- the pipeline GitHub repository does not yet have
-  `COACHING_CANARY_SECRET` (it currently has `CRON_SECRET` only);
-- no SignWell API key, webhook registration ID, approved template UUIDs, or
-  counsel-approval receipt has been supplied, so e-sign issuance and the new
-  SignWell canary intentionally remain blocked;
-- Wrangler 4.125.0 could not find a deployed Worker named `coaching-intake` in
-  the currently authenticated Cloudflare account, and the public
-  `/__canary` URL currently returns 404;
-- the three live application pages still lack the shared Worker URL, stable
-  coaching submission ID, and new funnel events; and
-- counsel-approved agreement, data-consent, privacy/processor disclosure, and
-  e-sign receipt integration remain release blockers.
-- the Stripe webhook endpoint must be expanded from Checkout-only events to the
-  recurring lifecycle set above, and an active Customer Portal configuration
-  must allow cancellation and payment-method updates.
-
-Do not resolve the infrastructure items by deploying the athlete-facing form
-ahead of the legal gates. Set and verify the secrets/config, deploy backend then
-Worker, run the canary manually, and publish the forms last.
+The remaining operational gates are athlete-specific, not activation gaps:
+verify each legal identity, age/adult status, jurisdiction, health-clearance
+disposition, and exact recipient. Ari additionally requires verified guardian
+identity, authority, and email. SignWell automatic reminders remain disabled
+until a deliberate cadence and exception/escalation policy is approved.
 
 ## Operational notes
 
@@ -264,6 +257,25 @@ Worker, run the canary manually, and publish the forms last.
   any guardian gate pass. The canonical training-guide builder embeds the same
   chapter when `coaching_onboarding.yaml` is present; it never changes the
   training prescription.
+- The included `coaching-start` course is the preferred operational guide. It
+  is invite-only, unlisted from the public course catalog, and has seven
+  ordered lessons covering the coach/athlete loop, TrainingPeaks setup,
+  reading the plan, useful comments, calls and urgent channels, health/recovery
+  boundaries, and the first 30 days. Normal enrollment requires signed terms,
+  data consent, and confirmed payment. The sole owner may exercise an explicit,
+  audited owner-pilot exemption tied to the configured notification email; the
+  exemption never appears in public checkout and cannot be used for an athlete.
+- Course enrollment is bound in Cloudflare D1 to the canonical `case_id` and
+  `athlete_key`. New lesson completions sync a privacy-minimized receipt—course,
+  lesson, counts, percent, event ID—back to Railway. The sync carries no email,
+  health data, questionnaire text, or performance data and is idempotent.
+  Course completion is educational evidence only: it cannot satisfy identity,
+  health, agreement, consent, payment, TrainingPeaks, plan-approval, or release
+  gates.
+- Personalized course copy may use first/preferred name, brand, tier,
+  discipline, and a short goal label. Private health facts, training metrics,
+  free-text intake answers, and plan details remain in the case/athlete record
+  and must never be embedded in static course HTML.
 - The full questionnaire is private health/performance data. Case files are
   written mode `0600` under the Railway persistent volume and must not be
   committed to Git or copied into broad operational surfaces.
@@ -297,7 +309,8 @@ The authenticated `GET /api/coaching-funnel-report?days=30` endpoint returns
 aggregate stage counts, conversion percentages, abandoned/recovered checkout
 counts, billing-healthy/attention/ended counts, and median
 application-to-payment/active times by brand and tier. It never returns case
-IDs or athlete PII. The same aggregate is embedded in authenticated
+IDs or athlete PII. Legacy re-papering is reported in a separate aggregate and
+is excluded from acquisition/application conversion. The same aggregate is embedded in authenticated
 `GET /api/intel-stats?hours=24` output for the Morning Intel consumer.
 
 Stripe Checkout expires after 60 minutes with native recovery enabled. The
@@ -332,3 +345,15 @@ failed check in the artifact, repair the provider/config/page drift, rerun with
 `workflow_dispatch`, and require a green receipt before re-enabling an affected
 handoff. Do not deploy the Worker/form or enable the controlled payment path
 until the legal/privacy/e-sign gates above are complete.
+
+### Owner production pilot — 2026-08-26
+
+`bd724b71-1913-40db-936a-c0443745a4e1` is the production owner-pilot case for
+legal name Matti Rowe, preferred name Klokka Skaddla, athlete key
+`klokka-skaddla-owner-pilot`, Gravel God Mid. It is intentionally held in
+`IDENTITY_REVIEW`: date of birth/adult status, jurisdiction, current health
+attestation, TrainingPeaks state, and legal signatures were not inferred from
+stale or conflicting local profiles. Course access was granted under the
+owner-only exemption and the invite-delivery receipt was verified. The case is
+also indexed in `Athlete Index`, `Legal Status 2025-26`, and
+`Onboarding Queue 2025-26` in the master coaching workbook.
