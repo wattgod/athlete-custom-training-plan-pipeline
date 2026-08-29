@@ -342,6 +342,14 @@ cases whose activation remains incomplete. Day 0/2/7/14/28 reminder
 suggestions are bound to their corresponding checkpoint gate, list outstanding
 task IDs, and remain coach-approval-only.
 
+Legacy re-papering stays excluded from acquisition conversion, but its own
+aggregate includes the same activation-stage counts overall and by brand/tier.
+This keeps current-athlete setup debt visible without relabeling roster imports
+as new applications. The owner-only pilot anchors its reminder cadence to the
+private course enrollment because it deliberately has no payment receipt;
+ordinary athletes remain anchored to confirmed payment or delivered onboarding
+materials.
+
 Stripe Checkout expires after 60 minutes with native recovery enabled. The
 `checkout.session.expired` webhook records the expiration even when no email
 can be sent. It sends a recovery email only with Stripe promotional consent,

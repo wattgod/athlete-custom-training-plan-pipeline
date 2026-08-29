@@ -2138,14 +2138,18 @@ class TestCoachingIntakeHandoff:
         data = response.get_json()
         assert data['all_brands']['stage_counts']['applications'] == 0
         assert data['by_brand_and_tier'] == {}
-        assert data['legacy_repaper'] == {
-            'athletes': 1,
-            'state_counts': {'IDENTITY_REVIEW': 1},
-            'packet_status_counts': {'not_sent': 1},
-            'signed_agreement': 0,
-            'signed_data_consent': 0,
-            'signed_guardian_consent': 0,
-        }
+        legacy = data['legacy_repaper']
+        assert legacy['athletes'] == 1
+        assert legacy['state_counts'] == {'IDENTITY_REVIEW': 1}
+        assert legacy['packet_status_counts'] == {'not_sent': 1}
+        assert legacy['signed_agreement'] == 0
+        assert legacy['signed_data_consent'] == 0
+        assert legacy['signed_guardian_consent'] == 0
+        assert legacy['activation']['all_legacy_cases']['cases'] == 1
+        assert legacy['activation']['all_legacy_cases']['stage_counts'][
+            'setup_ready'] == 0
+        assert legacy['activation']['by_brand_and_tier'][
+            'gravelgod:mid']['cases'] == 1
 
     def test_coaching_canary_is_side_effect_free_and_persists_receipt(
             self, client, temp_athletes_dir, monkeypatch):
@@ -2378,6 +2382,13 @@ class TestCoachingIntakeHandoff:
                 headers={'X-Cron-Secret': 'coach-secret'})
         assert first.status_code == 200
         assert first.get_json()['suggested'] == 5
+        assert all(
+            item['outstanding_task_ids']
+            for item in first.get_json()['reminders'])
+        assert all(
+            item['requires_coach_approval'] is True and
+            item['automatic_send'] is False
+            for item in first.get_json()['reminders'])
         assert second.get_json()['suggested'] == 0
         assert send.call_count == 0
         reminders = app_module._read_coaching_intake(case_id)[
@@ -2388,6 +2399,33 @@ class TestCoachingIntakeHandoff:
             'day_0_check', 'day_2_check', 'day_7_check',
             'day_14_check', 'day_28_check'}
         assert all(item['outstanding_task_ids'] for item in reminders)
+
+    def test_owner_pilot_reminders_anchor_to_course_enrollment(
+            self, client, monkeypatch):
+        import app as app_module
+        case_id = 'c7377cd6-dda0-44b1-9678-d263a71fc521'
+        case = self._paid_case(case_id)
+        case['receipts'].pop('stripe_payment')
+        case['onboarding_course'] = {
+            'course_id': 'coaching-start',
+            'owner_pilot_exemption': True,
+            'enrolled_at': (
+                datetime.now(timezone.utc) - timedelta(days=3)).isoformat(),
+        }
+        app_module._write_coaching_intake(case)
+        monkeypatch.setattr(app_module, 'CRON_SECRET', 'coach-secret')
+
+        response = client.post(
+            '/api/cron/coaching-onboarding-reminders',
+            headers={'X-Cron-Secret': 'coach-secret'})
+
+        assert response.status_code == 200
+        pilot = [
+            item for item in response.get_json()['reminders']
+            if item['case_id'] == case_id]
+        assert {item['milestone'] for item in pilot} == {
+            'welcome_setup_check', 'early_friction_check'}
+        assert all(item['outstanding_task_ids'] for item in pilot)
 
     def test_esign_readiness_fails_closed_then_allows_manual_receipts(
             self, client, monkeypatch):

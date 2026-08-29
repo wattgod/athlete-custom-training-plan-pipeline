@@ -10079,6 +10079,33 @@ def _aggregate_legacy_repaper(cases: list[dict]) -> dict:
     packet_statuses = Counter(
         str((case.get('esign_packet') or {}).get('status') or 'not_sent').lower()
         for case in cases)
+    activation_stage_names = (
+        'fit_approved', 'terms_signed', 'payment_confirmed',
+        'trainingpeaks_connected', 'context_sealed', 'plan_approved',
+        'onboarding_delivered', 'schedule_submitted', 'schedule_verified',
+        'communication_submitted', 'device_setup_submitted',
+        'device_data_verified', 'kickoff_scheduled', 'setup_ready',
+        'active_ready', 'active')
+    activation_projections = [_coaching_funnel_projection(case) for case in cases]
+
+    def activation_summary(items):
+        return {
+            'cases': len(items),
+            'stage_counts': {
+                stage: sum(1 for item in items if item['stages'][stage])
+                for stage in activation_stage_names
+            },
+            'paid_activation_incomplete_cases': sum(
+                1 for item in items
+                if item['stages']['payment_confirmed'] and
+                not item['stages']['setup_ready']),
+        }
+
+    activation_groups = {}
+    for item in activation_projections:
+        key = f"{item['brand']}:{item['tier']}"
+        activation_groups.setdefault(key, []).append(item)
+
     return {
         'athletes': len(cases),
         'state_counts': dict(sorted(states.items())),
@@ -10093,6 +10120,13 @@ def _aggregate_legacy_repaper(cases: list[dict]) -> dict:
             1 for case in cases
             if (_coaching_is_minor(case) and
                 _coaching_gate_status(case, 'guardian_consent') == 'signed')),
+        'activation': {
+            'all_legacy_cases': activation_summary(activation_projections),
+            'by_brand_and_tier': {
+                key: activation_summary(items)
+                for key, items in sorted(activation_groups.items())
+            },
+        },
     }
 
 
@@ -10115,8 +10149,13 @@ def _suggest_coaching_onboarding_reminders(case: dict,
     """Create approval-only reminders; never send athlete communications."""
     payment = (case.get('receipts') or {}).get('stripe_payment') or {}
     onboarding = case.get('onboarding_materials') or {}
+    course = case.get('onboarding_course') or {}
+    owner_pilot_anchor = (
+        course.get('enrolled_at')
+        if course.get('owner_pilot_exemption') else None)
     anchor = _parse_utc(
-        onboarding.get('delivered_at') or payment.get('confirmed_at'))
+        onboarding.get('delivered_at') or payment.get('confirmed_at') or
+        owner_pilot_anchor)
     if not anchor:
         return []
     now = now or datetime.now(timezone.utc)
@@ -10231,6 +10270,12 @@ def cron_coaching_onboarding_reminders():
             'case_id': case.get('case_id'),
             'milestone': item['milestone'],
             'due_at': item['due_at'],
+            'checkpoint_gate': item['checkpoint_gate'],
+            'status': item['status'],
+            'action': item['action'],
+            'outstanding_task_ids': item['outstanding_task_ids'],
+            'requires_coach_approval': item['requires_coach_approval'],
+            'automatic_send': item['automatic_send'],
         } for item in suggestions)
     logger.info(json.dumps({
         'message': 'coaching_onboarding_reminders',
