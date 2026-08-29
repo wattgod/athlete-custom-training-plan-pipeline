@@ -2829,7 +2829,11 @@ document.addEventListener('DOMContentLoaded', function() {{
         ]
         note_blocks = ''
         for key, label in type_labels:
-            text = (block_notes.get(key) or '').strip()
+            # block_notes.yaml entries are now [canonical, variation, ...]
+            # lists (Aug 29 2026 rotation); this retired guide (see repo
+            # CLAUDE.md) always renders the canonical entry [0].
+            variations = block_notes.get(key) or ['']
+            text = (variations[0] or '').strip()
             if not text:
                 continue
             paragraphs = ''.join(
