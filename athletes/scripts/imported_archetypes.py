@@ -1525,7 +1525,7 @@ BLENDED_IMPORTED = [
         'levels': {
             '1': {
                 'structure': '1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding.',
                 'cadence_prescription': 'Z2 self-selected, intervals per archetype',
                 'cadence': 2,
                 'position_prescription': 'Seated, hoods',
@@ -1549,7 +1549,7 @@ BLENDED_IMPORTED = [
             },
             '2': {
                 'structure': '1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 2:  2: Building volume. Same pattern, more work. The fitness is in the accumulation.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 2:  2: Building volume. Same pattern, more work. The fitness is in the accumulation.',
                 'segments': [
                     {'type': 'steady', 'duration': 1800, 'power': 0.7},
                     {'type': 'intervals', 'repeats': 1, 'on_duration': 30, 'on_power': 1.25, 'off_duration': 30, 'off_power': 0.5},
@@ -1571,7 +1571,7 @@ BLENDED_IMPORTED = [
             },
             '3': {
                 'structure': '1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 1x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 3:  3: Cadence and position focus. Same structure—now refine the execution.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 3:  3: Cadence and position focus. Same structure—now refine the execution.',
                 'segments': [
                     {'type': 'steady', 'duration': 1800, 'power': 0.7},
                     {'type': 'intervals', 'repeats': 1, 'on_duration': 30, 'on_power': 1.25, 'off_duration': 30, 'off_power': 0.5},
@@ -1596,7 +1596,7 @@ BLENDED_IMPORTED = [
             },
             '4': {
                 'structure': '2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 4:  4: Consolidation. Let the body absorb the previous weeks\' work. Quality over ambition.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 4:  4: Consolidation. Let the body absorb the previous weeks\' work. Quality over ambition.',
                 'segments': [
                     {'type': 'steady', 'duration': 1800, 'power': 0.7},
                     {'type': 'intervals', 'repeats': 2, 'on_duration': 30, 'on_power': 1.25, 'off_duration': 30, 'off_power': 0.5},
@@ -1621,7 +1621,7 @@ BLENDED_IMPORTED = [
             },
             '5': {
                 'structure': '2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 5:  5: Extended sets. More work per set. This is where real adaptations lock in.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 5:  5: Extended sets. More work per set. This is where real adaptations lock in.',
                 'segments': [
                     {'type': 'steady', 'duration': 1800, 'power': 0.7},
                     {'type': 'intervals', 'repeats': 2, 'on_duration': 30, 'on_power': 1.25, 'off_duration': 30, 'off_power': 0.5},
@@ -1646,7 +1646,7 @@ BLENDED_IMPORTED = [
             },
             '6': {
                 'structure': '2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); 2x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 6:  6: Peak volume. Maximum training load. You\'re building the capacity race day demands.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 6:  6: Peak volume. Maximum training load. You\'re building the capacity race day demands.',
                 'segments': [
                     {'type': 'steady', 'duration': 1800, 'power': 0.7},
                     {'type': 'intervals', 'repeats': 2, 'on_duration': 30, 'on_power': 1.25, 'off_duration': 30, 'off_power': 0.5},
@@ -2913,7 +2913,7 @@ DURABILITY_IMPORTED = [
         'levels': {
             '1': {
                 'structure': 'First 1 hour Z2 (RPE 3-4); → 1x4min @ 106-120% FTP, RPE 9 (3min recovery, RPE 1-2); → 1x4min @ 106-120% FTP, RPE 9 (3min recovery, RPE 1-2); → Final Z2 to complete ride (RPE 3-4); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding.',
                 'cadence_prescription': 'Z2 self-selected, intervals per archetype',
                 'cadence': 2,
                 'position_prescription': 'Seated, hoods',
@@ -2929,7 +2929,7 @@ DURABILITY_IMPORTED = [
             },
             '2': {
                 'structure': 'First 1 hour Z2 (RPE 3-4); → 1x4min @ 106-120% FTP, RPE 9 (3min recovery, RPE 1-2); → 1x4min @ 106-120% FTP, RPE 9 (3min recovery, RPE 1-2); → Final Z2 to complete ride (RPE 3-4); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 2:  2: Building volume. Same pattern, more work. The fitness is in the accumulation.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 2:  2: Building volume. Same pattern, more work. The fitness is in the accumulation.',
                 'segments': [
                     {'type': 'intervals', 'repeats': 1, 'on_duration': 240, 'on_power': 1.1, 'off_duration': 180, 'off_power': 0.55},
                     {'type': 'steady', 'duration': 300, 'power': 0.55},
@@ -2940,7 +2940,7 @@ DURABILITY_IMPORTED = [
             },
             '3': {
                 'structure': 'First 1 hour Z2 (RPE 3-4); → 2x4min @ 106-120% FTP, RPE 9 (3min recovery, RPE 1-2); → 2x4min @ 106-120% FTP, RPE 9 (3min recovery, RPE 1-2); → Final Z2 to complete ride (RPE 3-4); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 3:  3: Cadence and position focus. Same structure—now refine the execution.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 3:  3: Cadence and position focus. Same structure—now refine the execution.',
                 'segments': [
                     {'type': 'intervals', 'repeats': 2, 'on_duration': 240, 'on_power': 1.1, 'off_duration': 180, 'off_power': 0.55},
                     {'type': 'steady', 'duration': 300, 'power': 0.55},
@@ -2951,7 +2951,7 @@ DURABILITY_IMPORTED = [
             },
             '4': {
                 'structure': 'First 1 hour Z2 (RPE 3-4); → 2x5min @ 106-120% FTP, RPE 9 (3min recovery, RPE 1-2); → 2x5min @ 106-120% FTP, RPE 9 (3min recovery, RPE 1-2); → Final Z2 to complete ride (RPE 3-4); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 4:  4: Consolidation. Let the body absorb the previous weeks\' work. Quality over ambition.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 4:  4: Consolidation. Let the body absorb the previous weeks\' work. Quality over ambition.',
                 'segments': [
                     {'type': 'intervals', 'repeats': 2, 'on_duration': 300, 'on_power': 1.1, 'off_duration': 180, 'off_power': 0.55},
                     {'type': 'steady', 'duration': 300, 'power': 0.55},
@@ -2962,7 +2962,7 @@ DURABILITY_IMPORTED = [
             },
             '5': {
                 'structure': 'First 2 hours Z2 (RPE 3-4); → 2x5min @ 106-120% FTP, RPE 9 (3min recovery, RPE 1-2); → 2x5min @ 106-120% FTP, RPE 9 (3min recovery, RPE 1-2); → Final Z2 to complete ride (RPE 3-4); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 5:  5: Extended sets. More work per set. This is where real adaptations lock in.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 5:  5: Extended sets. More work per set. This is where real adaptations lock in.',
                 'segments': [
                     {'type': 'intervals', 'repeats': 2, 'on_duration': 300, 'on_power': 1.1, 'off_duration': 180, 'off_power': 0.55},
                     {'type': 'steady', 'duration': 300, 'power': 0.55},
@@ -2973,7 +2973,7 @@ DURABILITY_IMPORTED = [
             },
             '6': {
                 'structure': 'First 2 hours Z2 (RPE 3-4); → 3x4min @ 106-120% FTP, RPE 9 (3min recovery, RPE 1-2); → 3x4min @ 106-120% FTP, RPE 9 (3min recovery, RPE 1-2); → Final Z2 to complete ride (RPE 3-4); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 6:  6: Peak volume. Maximum training load. You\'re building the capacity race day demands.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 6:  6: Peak volume. Maximum training load. You\'re building the capacity race day demands.',
                 'segments': [
                     {'type': 'intervals', 'repeats': 3, 'on_duration': 240, 'on_power': 1.1, 'off_duration': 180, 'off_power': 0.55},
                     {'type': 'steady', 'duration': 300, 'power': 0.55},
@@ -2989,7 +2989,7 @@ DURABILITY_IMPORTED = [
         'levels': {
             '1': {
                 'structure': 'First 2 hours Z2 (RPE 3-4); → 3x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); → 3x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); → Final Z2 to complete ride (RPE 3-4); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding.',
                 'cadence_prescription': 'Z2 self-selected, intervals per archetype',
                 'cadence': 2,
                 'position_prescription': 'Seated, hoods',
@@ -3010,7 +3010,7 @@ DURABILITY_IMPORTED = [
             },
             '2': {
                 'structure': 'First 2 hours Z2 (RPE 3-4); → 4x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); → 4x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); → Final Z2 to complete ride (RPE 3-4); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 2:  2: Building volume. Same pattern, more work. The fitness is in the accumulation.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 2:  2: Building volume. Same pattern, more work. The fitness is in the accumulation.',
                 'segments': [
                     {'type': 'steady', 'duration': 1800, 'power': 0.7},
                     {'type': 'intervals', 'repeats': 4, 'on_duration': 30, 'on_power': 1.25, 'off_duration': 30, 'off_power': 0.5},
@@ -3026,7 +3026,7 @@ DURABILITY_IMPORTED = [
             },
             '3': {
                 'structure': 'First 2 hours Z2 (RPE 3-4); → 5x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); → 5x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); → Final Z2 to complete ride (RPE 3-4); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 3:  3: Cadence and position focus. Same structure—now refine the execution.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 3:  3: Cadence and position focus. Same structure—now refine the execution.',
                 'segments': [
                     {'type': 'steady', 'duration': 1800, 'power': 0.7},
                     {'type': 'intervals', 'repeats': 5, 'on_duration': 30, 'on_power': 1.25, 'off_duration': 30, 'off_power': 0.5},
@@ -3042,7 +3042,7 @@ DURABILITY_IMPORTED = [
             },
             '4': {
                 'structure': 'First 2 hours Z2 (RPE 3-4); → 5x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); → 5x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); → Final Z2 to complete ride (RPE 3-4); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 4:  4: Consolidation. Let the body absorb the previous weeks\' work. Quality over ambition.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 4:  4: Consolidation. Let the body absorb the previous weeks\' work. Quality over ambition.',
                 'segments': [
                     {'type': 'steady', 'duration': 2100, 'power': 0.7},
                     {'type': 'intervals', 'repeats': 5, 'on_duration': 30, 'on_power': 1.25, 'off_duration': 30, 'off_power': 0.5},
@@ -3058,7 +3058,7 @@ DURABILITY_IMPORTED = [
             },
             '5': {
                 'structure': 'First 2 hours Z2 (RPE 3-4); → 6x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); → 6x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); → 6x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); → Final Z2 to complete ride (RPE 3-4); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 5:  5: Extended sets. More work per set. This is where real adaptations lock in.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 5:  5: Extended sets. More work per set. This is where real adaptations lock in.',
                 'segments': [
                     {'type': 'steady', 'duration': 1575, 'power': 0.7},
                     {'type': 'intervals', 'repeats': 6, 'on_duration': 30, 'on_power': 1.25, 'off_duration': 30, 'off_power': 0.5},
@@ -3079,7 +3079,7 @@ DURABILITY_IMPORTED = [
             },
             '6': {
                 'structure': 'First 3 hours Z2 (RPE 3-4); → 6x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); → 6x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); → 6x0min @ 121-150% FTP, RPE 10 (0min recovery, RPE 1-2); → Final Z2 to complete ride (RPE 3-4); Z2 sections: Position alternation every 30 min (drops ↔ hoods); Intervals: Position as specified for interval type; Cadence: Z2 self-selected, intervals per archetype',
-                'execution': 'Durability development. Building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 6:  6: Peak volume. Maximum training load. You\'re building the capacity race day demands.',
+                'execution': 'Durability development. I\'m building your ability to perform intervals when already fatigued—this is race simulation. The long Z2 ride first builds fatigue, then the intervals teach your body to sustain power when tired. This is exactly what you\'ll face in a 12-16 hour gravel race: needing to push hard after hours of riding. Level 6:  6: Peak volume. Maximum training load. You\'re building the capacity race day demands.',
                 'segments': [
                     {'type': 'steady', 'duration': 1800, 'power': 0.7},
                     {'type': 'intervals', 'repeats': 6, 'on_duration': 30, 'on_power': 1.25, 'off_duration': 30, 'off_power': 0.5},

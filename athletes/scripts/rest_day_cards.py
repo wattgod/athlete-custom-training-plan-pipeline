@@ -22,29 +22,29 @@ STANDARD = [
     (
         "Rest Day",
         "Off the bike, not off the plan.\n\n"
-        "Ten minutes of hip and lower-back mobility, the stuff that gets skipped on ride days. "
+        "I want ten minutes of hip and lower-back mobility, the stuff that gets skipped on ride days. "
         "A 20-30 minute walk if the legs feel like wood. Lights out thirty minutes earlier than usual.\n\n"
-        "No riding. Tomorrow needs you.",
+        "No riding. I need you fresh tomorrow.",
     ),
     (
         "Rest Day",
-        "Off the bike. This week's work gets absorbed today, not added to.\n\n"
+        "Off the bike. I want this week's work absorbed today, not added to.\n\n"
         "Foam roll quads and glutes, eight to ten minutes. One long walk. "
         "Eat like you trained; a rest day is not a diet day.\n\n"
         "If you feel great and want to ride, that is the point. Don't.",
     ),
     (
         "Rest Day",
-        "Sleep is the assignment.\n\n"
+        "Sleep is the assignment I'm giving you today.\n\n"
         "Mobility: couch stretch 2 x 60 seconds per side, ten thoracic rotations each way, "
         "a 60-second dead hang if you have a bar. Then leave it alone.\n\n"
-        "Normal life counts as recovery. Errands, kids, the lawn. No 'easy spin.'",
+        "Normal life counts as recovery. Errands, kids, the lawn. I don't want an 'easy spin.'",
     ),
     (
         "Rest Day",
         "Nothing on the bike.\n\n"
         "Fifteen minutes on calves, hip flexors and lower back. An evening walk. An early night.\n\n"
-        "Rest days are where the fitness shows up. Protect them like key sessions.",
+        "Rest days are where the fitness shows up. I want these protected like key sessions.",
     ),
 ]
 
@@ -58,7 +58,7 @@ RECOVERY_WEEK = [
     ),
     (
         "Rest Day",
-        "Reset day. The block lands now.\n\n"
+        "Reset day. I want the block to land now.\n\n"
         "A walk, a stretch, food on the plate. Nothing with a heart-rate strap.\n\n"
         "If you are itching to ride, good. Hold it. That itch is the fitness arriving.",
     ),
@@ -76,7 +76,7 @@ DAY_BEFORE_RACE = (
     "Day Off — Race Prep",
     "Travel, number pickup, bike check, feet up.\n\n"
     "Five minutes of mobility after the drive. Familiar food, carbs on the plate, nothing new. "
-    "Early night even if you won't sleep well; lying down counts.\n\n"
+    "I want an early night even if you won't sleep well; lying down counts.\n\n"
     "Everything about today should be boring.",
 )
 
@@ -91,7 +91,7 @@ PRE_PLAN = (
     "Pre-Plan Rest",
     "Plan starts tomorrow.\n\n"
     "Off the bike. Light stretching if you want it. Sleep, water, real food.\n\n"
-    "Charge the head unit, check the tyres, know where the shoes are.",
+    "Charge the head unit, check the tyres — I'll see you Monday.",
 )
 
 
@@ -102,7 +102,7 @@ def pre_plan_body(days_to_start: int) -> str:
     return (
         f"Plan starts in {int(days_to_start)} days. Today is off.\n\n"
         "Ride if you normally would, easy. Otherwise a walk, some stretching, an early night.\n\n"
-        "Nothing to bank this week. Arrive rested."
+        "Nothing to bank this week yet — I just want you arriving rested."
     )
 
 

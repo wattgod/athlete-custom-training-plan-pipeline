@@ -2881,10 +2881,10 @@ def get_execution_tips(archetype: Dict, level_data: Dict) -> str:
         return "Ride the emitted work/recovery structure exactly; do not turn a micro-interval session into full-recovery repeats."
 
     if "threshold" in archetype_name or "sustained" in archetype_name:
-        return "Find your rhythm early. Break long efforts into mental thirds."
+        return "Find your rhythm early -- I want long efforts broken into mental thirds."
 
     if "norwegian" in archetype_name:
-        return "Stay just below threshold - you should be able to talk in short sentences."
+        return "Stay just below threshold -- I want you able to talk in short sentences, not full ones."
 
     if "sprint" in archetype_name or "attack" in archetype_name:
         return "Maximum effort from the start. Full recovery between efforts is critical."
@@ -2899,7 +2899,7 @@ def get_execution_tips(archetype: Dict, level_data: Dict) -> str:
         return "Truly easy. If in doubt, go easier. Recovery is where adaptation happens."
 
     if "endurance" in archetype_name or "hvli" in archetype_name:
-        return "Conversational pace. Nose breathing = right intensity. This builds your foundation."
+        return "Conversational pace. Nose breathing = right intensity. I'm building your foundation here."
 
     # Openers must outrank the race branch: "Race Openers" is a leg-opener,
     # and race-sim execution copy contradicts its no-fatigue purpose.

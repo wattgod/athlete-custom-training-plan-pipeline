@@ -543,8 +543,8 @@ def _race_day_ceiling_paragraph(longest_name: str, longest_minutes: int,
     return (
         '\n\nRACE-DAY CEILING:\n'
         f'Your longest rehearsal ride is {longest_name} ({longest_minutes / 60:.1f} hours); '
-        f'race day is expected to take {expected_hours:.1f} hours. First third conservative, '
-        'fuel on the timer, and remember: the final rehearsal is proof the distance is '
+        f'race day is expected to take {expected_hours:.1f} hours. I want the first third '
+        'conservative, fuel on the timer -- the final rehearsal is proof the distance is '
         'coverable in pieces.\n'
     )
 
@@ -559,14 +559,14 @@ def _race_day_pacing_strategy(goal_type: str, expected_duration_hours: float) ->
     conservative = (str(goal_type or '').strip().lower() in {'finish', 'finisher'}
                     or expected_duration_hours >= 6)
     if conservative:
-        return """- Ceiling rule: on every climb, choose the effort you can repeat all day. If breathing stops being controlled, back off before the crest.
+        return """- Ceiling rule: I want the effort you can repeat all day on every climb. If breathing stops being controlled, back off before the crest.
 - First third: deliberately conservative (RPE 4-5). Let the day come to you; fuel on the timer and do not answer early surges.
 - Middle third: settle into sustainable RPE 5-6, protect smooth cadence, and keep eating before hunger appears.
 - Final third: hold form, keep eating, and make only measured decisions that preserve a strong finish.
 - Technical sections: Smooth > Fast. Avoid mechanicals."""
-    return """- First 30 min: EASY. Let others burn matches. You're playing the long game.
+    return """- First 30 min: EASY. Let others burn matches -- I want you playing the long game.
 - Mile 10-40: Find your rhythm. Target G SPOT zone (88-94% FTP) on climbs.
-- Final third: This is where you pass people. Increase effort as others fade.
+- Final third: this is where you pass people. Increase effort as others fade.
 - Technical sections: Smooth > Fast. Avoid mechanicals."""
 
 
@@ -782,7 +782,7 @@ METHODOLOGY_MAP = {
 WORKOUT_DESCRIPTIONS = {
     'Recovery': {
         'structure': '{duration} min easy spin @ Z1 (50-55% FTP)',
-        'purpose': 'Active recovery. Blood flow without stress. Let your body adapt to previous training.',
+        'purpose': 'Active recovery. Blood flow without stress. I want your body adapting to what you just did.',
         'execution': 'Keep it easy. If in doubt, go easier. No heroics.',
         'rpe': 'RPE 2-3 (very easy, conversational)',
     },
@@ -794,13 +794,13 @@ WORKOUT_DESCRIPTIONS = {
     },
     'Endurance': {
         'structure': '{duration} min @ Z2 (65-75% FTP)',
-        'purpose': 'Aerobic base building. This is where 80% of your training volume lives.',
+        'purpose': "Aerobic base building. This is where I want 80% of your training volume to live.",
         'execution': 'Steady effort, smooth cadence 85-95 rpm. Nose-breathe if possible.',
         'rpe': 'RPE 3-4 (moderate, sustainable for hours)',
     },
     'Tempo': {
         'structure': '{duration} min with tempo blocks @ Z3 (76-87% FTP)',
-        'purpose': 'Muscular endurance. Building your ability to sustain moderate-hard efforts.',
+        'purpose': "Muscular endurance. I'm building your ability to sustain moderate-hard efforts.",
         'execution': 'Controlled effort. Breathing harder but rhythmic. Stay seated.',
         'rpe': 'RPE 5-6 (comfortably hard)',
     },
@@ -818,25 +818,25 @@ WORKOUT_DESCRIPTIONS = {
     },
     'Over_Under': {
         'structure': '{duration} min with over-under intervals alternating 88-92% FTP (under) and 105-108% FTP (over)',
-        'purpose': 'Race simulation. Teaches your body to clear lactate while maintaining power. Essential for gravel where pace constantly changes.',
+        'purpose': "Race simulation. I'm teaching your body to clear lactate while maintaining power. Essential for gravel where pace constantly changes.",
         'execution': 'Unders are controlled, overs are hard surges. Focus on quick transitions. Cadence drops may occur on overs - thats normal.',
         'rpe': 'RPE 7-8 (unders) to 8-9 (overs)',
     },
     'Blended': {
         'structure': '{duration} min multi-zone workout combining G SPOT base with VO2max bursts and varied cadence',
-        'purpose': 'Race simulation. Real gravel demands varied efforts - this workout trains your body to handle constant zone changes.',
+        'purpose': "Race simulation. Real gravel demands varied efforts - I'm training your body to handle constant zone changes.",
         'execution': 'Mix of zones, cadences, and positions. Simulate terrain by varying effort. Stand for power bursts, seated for steady blocks.',
         'rpe': 'RPE 5-8 (varies throughout workout)',
     },
     'Threshold': {
         'structure': '{duration} min with threshold intervals @ 95-100% FTP',
-        'purpose': 'FTP development. Training your body to sustain race-winning power.',
+        'purpose': "FTP development. I'm training your body to sustain race-winning power.",
         'execution': 'Right at your limit. Controlled suffering. Cadence 90-95 rpm.',
         'rpe': 'RPE 7-8 (hard, requires focus)',
     },
     'VO2max': {
         'structure': '{duration} min with VO2max intervals @ 110-120% FTP',
-        'purpose': 'Maximum aerobic power. Raising your ceiling so everything below feels easier.',
+        'purpose': "Maximum aerobic power. I want your ceiling raised so everything below feels easier.",
         'execution': 'These hurt. Start at 110%, adjust based on feel. High cadence 95-105 rpm.',
         'rpe': 'RPE 8-9 (very hard, labored breathing)',
     },
@@ -857,7 +857,7 @@ WORKOUT_DESCRIPTIONS = {
         # Keep this template free of duration figures: availability caps and
         # renderer changes must never make prose disagree with the assessment.
         'structure': '{duration} min FTP test protocol; see the emitted warm-up, main set, and cool-down below.',
-        'purpose': 'Establish your training zones. The 20-minute effort sets everything.',
+        'purpose': 'I use this to establish your training zones. The 20-minute effort sets everything.',
         'execution': 'Best sustainable effort -- start ~5% below what you believe and lift. Start controlled, settle in, suffer through the middle, finish strong.',
         'rpe': 'RPE 9/10 for the 20-minute test (very hard, barely sustainable)',
     },
@@ -872,7 +872,7 @@ WORKOUT_DESCRIPTIONS = {
         # activation sequence is rendered from the final blocks below.
         'structure': '{duration} min leg activation; see the emitted warm-up, main set, and cool-down below.',
         'purpose': 'Pre-race activation. Wake up the legs without creating fatigue.',
-        'execution': 'Short, sharp efforts. Full recovery between. Done when you feel snappy.',
+        'execution': "Short, sharp efforts. Full recovery between. I want snappy, not tired -- stop there.",
         'rpe': 'RPE 7-8 for efforts (short and controlled)',
     },
 }
@@ -3571,7 +3571,7 @@ Date: {day_info['date']}
 Priority: B (training race - NOT the goal event)
 
 THIS IS A TRAINING RACE:
-- Race hard, but don't blow up your training block
+- I want you racing hard, but not blowing up your training block
 - Use this as a fitness check and race-craft practice
 - Target effort: 90-95% of A-race effort
 - Practice fueling, pacing, and gear choices
@@ -5073,9 +5073,9 @@ GO GET IT, {athlete_name.upper()}!
             full_description = f"FOCUS: {strength_workout['focus']}\n\nEXERCISES:\n{exercises_text}\n\nEXECUTION:\nComplete all sets with good form. {rest_line}"
             # T18: never leave a bike+lift day without an order.
             if str(date_full) in _hard_bike_dates:
-                full_description += ("\n\nSEQUENCING:\nToday also carries your hard ride. "
-                                     "Ride first; lift at least 4 hours later — or move this "
-                                     "lift to tomorrow if the day is tight.")
+                full_description += ("\n\nSEQUENCING:\nToday also carries your hard ride, so I want "
+                                     "it sequenced right. Ride first; lift at least 4 hours later — "
+                                     "or move this lift to tomorrow if the day is tight.")
 
             zwo_content = ZWO_TEMPLATE.format(
                 author=_workout_author,

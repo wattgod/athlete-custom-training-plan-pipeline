@@ -1,6 +1,6 @@
 {
   "week": {
-    "coach_note": "Week 6 of 6. Build. The intensity is specific now and the long rides have a purpose I have chosen. This is where the race gets made.\n\nVO2 Bookend Tuesday. The short recoveries are the trick: you never fully recover, so the oxygen system stays pinned without the legs blowing up.\n\nWatch the easy days. If they creep up in pace, the hard days will start falling short.",
+    "coach_note": "Week 6 of 6. Build. The intensity is specific now and the long rides have a purpose I have chosen. This is where the race gets made.\n\nVO2 Bookend Tuesday. The short recoveries are the trick: I don't let you fully recover, so the oxygen system stays pinned without the legs blowing up.\n\nWatch the easy days. If they creep up in pace, the hard days will start falling short.",
     "comment_protocol": "As a reminder, do your workout comments going forward like this:\n\n1. Workout Readiness - (e.g. 6/10; couldn't fall asleep bc of stress)\n2. Workout Execution - (e.g. 5/10; skipped last set after going too hard in the first set)\n3. Nutrition - (e.g. 5/10; didn't eat during my hard 2 hour interval ride, but did eat before and after)\n4. Misc - (e.g. lower back acting up again)\n\n1-3: Rate out of 10 (10 is the best); add details if possible; e.g., \"I ate two 50g carbohydrate bars\" or \"Felt sluggish to start\" etc.\nMisc: Have at it, or don't.",
     "days": [
       {
@@ -11,13 +11,13 @@
         "day": "tue",
         "sessions": [
           {
-            "coach_note": "VO2 Bookend Tuesday. The short recoveries are the trick: you never fully recover, so the oxygen system stays pinned without the legs blowing up.",
+            "coach_note": "VO2 Bookend Tuesday. The short recoveries are the trick: I don't let you fully recover, so the oxygen system stays pinned without the legs blowing up.",
             "duration_minutes": 87,
             "fuel_tag": "moderate",
             "fueling_guidance": "FUEL: Normal meal ~2h before. One bottle, 40-50g carbs. Done.",
             "intensity_label": "VO2max",
             "kind": "bike",
-            "purpose": "Maximum aerobic power. Raising your ceiling so everything below feels easier. Dialed in for Unbound Gravel 200.",
+            "purpose": "Maximum aerobic power. I want your ceiling raised so everything below feels easier. Dialed in for Unbound Gravel 200.",
             "structure": {
               "polyline": [
                 [
@@ -179,13 +179,13 @@
         "day": "thu",
         "sessions": [
           {
-            "coach_note": "Blended VO2max and G Spot Thursday. The short recoveries are the trick: you never fully recover, so the oxygen system stays pinned without the legs blowing up.",
+            "coach_note": "Blended VO2max and G Spot Thursday. The short recoveries are the trick: I don't let you fully recover, so the oxygen system stays pinned without the legs blowing up.",
             "duration_minutes": 85,
             "fuel_tag": "moderate",
             "fueling_guidance": "FUEL: Normal meal ~2h before. One bottle, 40-50g carbs. Done.",
             "intensity_label": "VO2max",
             "kind": "bike",
-            "purpose": "Maximum aerobic power. Raising your ceiling so everything below feels easier. Dialed in for Unbound Gravel 200.",
+            "purpose": "Maximum aerobic power. I want your ceiling raised so everything below feels easier. Dialed in for Unbound Gravel 200.",
             "structure": {
               "polyline": [
                 [
@@ -769,7 +769,7 @@
         "day": "sat",
         "sessions": [
           {
-            "coach_note": "Endurance Saturday is the long one. Boring on purpose. Fuel from the first twenty minutes, not when you get hungry.",
+            "coach_note": "Endurance Saturday is the long one. Boring on purpose. I want fuel from the first twenty minutes, not when you get hungry.",
             "duration_minutes": 160,
             "fuel_tag": "practice",
             "fueling_guidance": "LONG-RIDE FUEL: Target 55g carbs/hr. Practice this prescription.",
@@ -844,13 +844,13 @@
         "day": "sun",
         "sessions": [
           {
-            "coach_note": "Endurance \u2014 Sunday Sunday is the long one. Boring on purpose. Fuel from the first twenty minutes, not when you get hungry.",
+            "coach_note": "Endurance \u2014 Sunday Sunday is the long one. Boring on purpose. I want fuel from the first twenty minutes, not when you get hungry.",
             "duration_minutes": 70,
             "fuel_tag": "none",
             "fueling_guidance": "Water and normal fueling; no in-ride carbohydrate target needed.",
             "intensity_label": "Endurance",
             "kind": "bike",
-            "purpose": "Aerobic base building. This is where 80% of your training volume lives. Dialed in for Unbound Gravel 200.",
+            "purpose": "Aerobic base building. This is where I want 80% of your training volume to live. Dialed in for Unbound Gravel 200.",
             "structure": {
               "polyline": [
                 [
