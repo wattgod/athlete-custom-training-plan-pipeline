@@ -11,7 +11,7 @@ load weeks anchored to a stale plan number instead of her demonstrated dose.
 import json
 from datetime import date, timedelta
 
-from ae_lint import (lint_demonstrated_dose, lint_ctl_trajectory, lint_race_day_tsb,
+from ae_lint import (_hard_seconds, lint_demonstrated_dose, lint_ctl_trajectory, lint_race_day_tsb,
                      lint_taper_shape, lint_workout, main)
 
 
@@ -444,3 +444,43 @@ def test_taper_shape_silent_without_race_date():
     workouts = [_taper_workout(date(2026, 9, 10), tss=300, hard_seconds=10)]
     assert lint_taper_shape(workouts, None) == []
     assert lint_taper_shape(workouts, None, current_ctl=100.0) == []
+
+
+# --- RPE decode (live defect 2026-08-29): ae_lint read RPE-metric structures
+# as ZERO hard seconds, silently disabling AE-1.12 caps + AE-1.17 taper
+# intensity retention for every RPE-authored plan (Judd/Andy/Edward/Brian).
+def _rpe_struct(value, metric="rpe"):
+    return {"primaryIntensityMetric": metric, "structure": [
+        {"type": "repetition", "length": {"unit": "repetition", "value": 4},
+         "steps": [
+             {"length": {"unit": "second", "value": 300},
+              "targets": [{"minValue": value, "maxValue": value}],
+              "intensityClass": "active"},
+             {"length": {"unit": "second", "value": 180},
+              "targets": [{"minValue": 2}], "intensityClass": "rest"}]}]}
+
+
+def test_rpe_structure_hard_seconds_are_decoded():
+    total, longest = _hard_seconds(_rpe_struct(9))
+    assert total == 1200.0 and longest == 300.0
+
+
+def test_rpe_easy_structure_counts_no_hard_seconds():
+    assert _hard_seconds(_rpe_struct(5)) == (0.0, 0.0)
+
+
+def test_rpe_alias_metric_names_decode_too():
+    total, _ = _hard_seconds(_rpe_struct(10, metric="perceivedExertion"))
+    assert total == 1200.0
+
+
+def test_percent_ftp_structures_unchanged_by_rpe_decode():
+    ftp = {"primaryIntensityMetric": "percentOfFtp", "structure": [
+        {"type": "repetition", "length": {"unit": "repetition", "value": 4},
+         "steps": [
+             {"length": {"unit": "second", "value": 300},
+              "targets": [{"minValue": 107, "maxValue": 107}],
+              "intensityClass": "active"},
+             {"length": {"unit": "second", "value": 180},
+              "targets": [{"minValue": 50}], "intensityClass": "rest"}]}]}
+    assert _hard_seconds(ftp) == (1200.0, 300.0)

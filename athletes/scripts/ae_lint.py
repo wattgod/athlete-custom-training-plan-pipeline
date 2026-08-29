@@ -74,6 +74,20 @@ BIKE_TYPE_IDS = {2}           # TP workoutTypeValueId: 2 = bike
 DAY_OFF_TYPE_IDS = {7}        # 7 = Day Off / rest
 
 
+# RPE -> (%FTP low, %FTP high). MIRRORS tp_structure_to_zwo._RPE_TO_PCT_FTP
+# verbatim -- ae_lint stays import-free of the pipeline by design, so the
+# table is duplicated rather than imported; keep the two in sync. Without
+# this decode every RPE-metric structure reads as ZERO hard seconds, which
+# silently disabled the AE-1.12 caps and the AE-1.17 taper-intensity gate
+# for every RPE-authored plan (live defect found 2026-08-29).
+RPE_TO_PCT_FTP = {
+    1: (40.0, 50.0), 2: (50.0, 60.0), 3: (50.0, 60.0), 4: (60.0, 70.0),
+    5: (60.0, 70.0), 6: (76.0, 90.0), 7: (76.0, 90.0), 8: (95.0, 110.0),
+    9: (95.0, 110.0), 10: (115.0, 130.0),
+}
+RPE_METRICS = ("rpe", "perceivedexertion", "percentofmaxhr_rpe")
+
+
 # ---------------------------------------------------------------- structure
 def _steps(structure: Mapping[str, Any] | None) -> Iterator[dict]:
     """Yield flattened executable steps {seconds, lo, hi, cadence} from a TP
@@ -82,6 +96,8 @@ def _steps(structure: Mapping[str, Any] | None) -> Iterator[dict]:
     for the hard edge — mirrors library_selector's excursion counting."""
     if not structure:
         return
+    metric = str(structure.get("primaryIntensityMetric") or "").lower()
+    is_rpe = metric in RPE_METRICS
     for element in structure.get("structure") or []:
         reps = 1
         if (element.get("type") or "").lower() == "repetition":
@@ -102,6 +118,12 @@ def _steps(structure: Mapping[str, Any] | None) -> Iterator[dict]:
                         continue
                     mn = float(target.get("minValue") or 0)
                     mx = float(target.get("maxValue") or 0)
+                    if is_rpe:
+                        # decode RPE points -> %FTP band before any comparison
+                        lo_pct = RPE_TO_PCT_FTP.get(int(round(mn)), (0.0, 0.0))[0]
+                        hi_pct = RPE_TO_PCT_FTP.get(int(round(max(mn, mx))),
+                                                    (0.0, 0.0))[1]
+                        mn, mx = lo_pct, hi_pct
                     lo, hi = mn, max(mn, mx)
                 yield {"seconds": seconds, "lo": lo, "hi": hi, "cadence": cadence}
 

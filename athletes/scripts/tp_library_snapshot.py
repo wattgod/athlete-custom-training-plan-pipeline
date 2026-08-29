@@ -838,6 +838,172 @@ def _apply_manual_review(index: dict) -> dict:
     return index
 
 
+# ---------------------------------------------------------------------------
+# AE-1.17 Fix 2 (race-week library audit, 2026-08-26, coach ruling "Yes
+# threshold touch variant"): the taper matrix's own `intensity_2` slot names
+# itself after "Threshold Touch" (workout_selection.yaml racing phase:
+# "Maybe Threshold Touch L1-2 if >2 weeks out"), but all 6 curated
+# "Threshold Touch" items (14357136-14357141) blow the AE-1.12 taper/race
+# caps (worst rep up to 300s, well over the 120s ceiling) -- the slot's own
+# namesake can never place itself; _qualifying_pool silently substitutes an
+# unrelated cousin from the same threshold_intervals/threshold_sustained/
+# threshold_floats_ou pool instead.
+#
+# Home chosen: merged in at load_index() time -- the C3 selector's own
+# documented entrypoint ("Downstream code (C3, the selector) should use
+# this rather than reading the gzip file directly", see load_index's
+# docstring) -- for the real production index only (never for read_index()
+# directly, and never for a fixture/tmp index at a non-default path: the
+# CLI's reconcile/lint-report paths and the round-trip tests must see an
+# exact mirror of what they built, untouched). NOT baked into the gzip'd
+# index and NOT written into athletes/config/workout_library.yaml or the
+# archetype modules (new_archetypes.py/imported_archetypes.py). Those two
+# other candidate homes both feed a DIFFERENT, older selection system
+# (nate_workout_generator/workout_selector.py) that the taper intensity_2
+# slot never queries -- per the audit's own Method section, taper
+# intensity_2 -> "Threshold Touch" resolves exclusively through
+# library_selector.ROUTING_TABLE against THIS index. Only an addition to
+# what load_index()/select() actually see is reachable by that slot; a
+# hand-edit inside the gzip'd file itself would violate the "index mirrors
+# the coach's library verbatim" rule directly above and would silently
+# revert on the next raw-dump rebuild. Merging it in at load_index() time
+# (like _MANUAL_REVIEW does at read_index() time) survives every future
+# re-sync and never touches the raw TP dump the reconcile() diff is built
+# from -- these items were never authored in the coach's real
+# TrainingPeaks account (no TP write happened here); item_ids are negative
+# so they can never collide with a real TP exerciseLibraryItemId (TP's ids
+# are positive integers) and so a future
+# real "Threshold Touch - Taper" family authored at the TP source can
+# replace this block outright without an id collision.
+#
+# Design: AE-1.17(b) -- reps <=120s at >=92% FTP, <=900s total >=92% work,
+# PLUS dimension work (cadence/position/terrain) rather than flat Z2 filler
+# -- mirrors Matti's blessed exemplar shape ("Stars in your eyes - 20/30/40":
+# worst rep 40s, total 420s). 6 levels, house naming convention identical to
+# the existing family ("Threshold - Threshold Touch - Taper - N - NNmin -
+# RPEx-y" parses to name_base "Threshold Touch - Taper", explicit_level N --
+# a DISTINCT family from "Threshold Touch", never modifying/deleting the
+# existing 6 items). library_key threshold_intervals (same pool the existing
+# family lives in and the same pool ROUTING_TABLE["Threshold Touch"]
+# queries) so it is reachable exactly where the taper slot looks.
+_AUTHORED_TOUCH_LEVELS: tuple[tuple[int, int, int, int, int, int, int, int, int, int, int, str, float], ...] = (
+    # level, reps, on_sec, on_lo, on_hi, off_sec, off_lo, off_hi, dim_reps,
+    # warmup_sec, cooldown_sec, rpe_text, if_planned
+    (1, 5, 30, 92, 95, 90, 55, 60, 3, 480, 480, "6-7", 0.720),
+    (2, 6, 30, 93, 96, 90, 55, 60, 3, 540, 480, "6-7", 0.735),
+    (3, 7, 30, 94, 97, 90, 55, 60, 4, 540, 540, "7-8", 0.750),
+    (4, 8, 30, 95, 98, 75, 55, 60, 4, 600, 540, "7-8", 0.765),
+    (5, 9, 30, 96, 99, 75, 55, 60, 5, 600, 600, "7-8", 0.780),
+    (6, 10, 30, 97, 100, 75, 55, 60, 5, 660, 600, "7-8", 0.795),
+)
+
+_AUTHORED_TOUCH_DESCRIPTION = (
+    "Taper-legal Threshold Touch: {reps} x {on_sec}s @ {on_lo}-{on_hi}% FTP "
+    "touches with a full {off_sec}s float between them -- never a sustained "
+    "block. Between touches, {dim_reps} standing/seated cadence changes keep "
+    "position and pedaling dynamics sharp on rolling terrain without adding "
+    "real fatigue -- the touch is the point, not the volume."
+)
+
+
+def _build_authored_touch_item(level_row: tuple) -> dict[str, Any]:
+    (level, reps, on_sec, on_lo, on_hi, off_sec, off_lo, off_hi, dim_reps,
+     warmup_sec, cooldown_sec, rpe_text, if_planned) = level_row
+    structure = {
+        "primaryIntensityMetric": "percentOfFtp",
+        "structure": [
+            {
+                "type": "rampUp",
+                "length": {"unit": "repetition", "value": 1},
+                "steps": [{
+                    "name": "Warm Up", "intensityClass": "warmUp",
+                    "length": {"unit": "second", "value": warmup_sec},
+                    "targets": [{"minValue": 55, "maxValue": 72}],
+                }],
+            },
+            {
+                "type": "repetition",
+                "length": {"unit": "repetition", "value": reps},
+                "steps": [
+                    {"name": "Touch", "intensityClass": "active",
+                     "length": {"unit": "second", "value": on_sec},
+                     "targets": [{"minValue": on_lo, "maxValue": on_hi}]},
+                    {"name": "Float", "intensityClass": "rest",
+                     "length": {"unit": "second", "value": off_sec},
+                     "targets": [{"minValue": off_lo, "maxValue": off_hi}]},
+                ],
+            },
+            {
+                "type": "repetition",
+                "length": {"unit": "repetition", "value": dim_reps},
+                "steps": [
+                    {"name": "Standing - High Torque", "intensityClass": "active",
+                     "length": {"unit": "second", "value": 45},
+                     "targets": [{"minValue": 68, "maxValue": 72},
+                                 {"minValue": 60, "maxValue": 65, "unit": "roundOrStridePerMinute"}]},
+                    {"name": "Seated - Spin", "intensityClass": "active",
+                     "length": {"unit": "second", "value": 45},
+                     "targets": [{"minValue": 68, "maxValue": 72},
+                                 {"minValue": 95, "maxValue": 100, "unit": "roundOrStridePerMinute"}]},
+                ],
+            },
+            {
+                "type": "rampDown",
+                "length": {"unit": "repetition", "value": 1},
+                "steps": [{
+                    "name": "Cool Down", "intensityClass": "coolDown",
+                    "length": {"unit": "second", "value": cooldown_sec},
+                    "targets": [{"minValue": 50, "maxValue": 60}],
+                }],
+            },
+        ],
+    }
+    total_sec = warmup_sec + reps * (on_sec + off_sec) + dim_reps * 90 + cooldown_sec
+    hours = total_sec / 3600
+    duration_min = round(hours * 60)
+    name_raw = f"Threshold - Threshold Touch - Taper - {level} - {duration_min}min - RPE{rpe_text}"
+    parsed = parse_item_name(name_raw)
+    description = _AUTHORED_TOUCH_DESCRIPTION.format(
+        reps=reps, on_sec=on_sec, on_lo=on_lo, on_hi=on_hi, off_sec=off_sec, dim_reps=dim_reps)
+    tss = round(100 * hours * if_planned**2, 1)
+    return {
+        "item_id": -100000 - level,
+        "library_key": "threshold_intervals",
+        "name_raw": name_raw,
+        "name_base": parsed["name_base"],
+        "explicit_level": parsed["explicit_level"],
+        "duration_min": duration_min,
+        "tss": tss,
+        "if_planned": compute_if_planned(tss, hours, None),
+        "rpe_text": parsed["rpe_text"],
+        "dimension_score": compute_dimension_score(description, structure),
+        "has_cadence_targets": has_cadence_targets(structure),
+        "structure": structure,
+        "description": description,
+        "workout_type_id": BIKE_WORKOUT_TYPE_ID,
+        "lint_duration_claim": compute_duration_claim_flag(description, duration_min),
+        "lint_rpe_conflict": compute_rpe_conflict_flag(parsed["rpe_text"], description),
+        "lint_bookend_intensity": compute_bookend_intensity_flag(structure, name_raw),
+    }
+
+
+def _authored_additions() -> list[dict[str, Any]]:
+    return [_build_authored_touch_item(row) for row in _AUTHORED_TOUCH_LEVELS]
+
+
+def _apply_authored_additions(index: dict) -> dict:
+    additions = _authored_additions()
+    if not additions:
+        return index
+    existing_ids = {item.get("item_id") for item in index.get("items", [])}
+    new_items = [item for item in additions if item["item_id"] not in existing_ids]
+    if not new_items:
+        return index
+    index["items"] = list(index.get("items", [])) + new_items
+    index["families"] = build_family_index(index["items"])
+    return index
+
+
 def read_index(path: Path) -> dict[str, Any]:
     with gzip.open(path, "rb") as handle:
         return _apply_manual_review(json.loads(handle.read().decode("utf-8")))
@@ -901,6 +1067,9 @@ def _load_index_cached(path_str: str) -> dict[str, Any]:
     return read_index(Path(path_str))
 
 
+_DEFAULT_INDEX_PATH_RESOLVED = str(DEFAULT_INDEX_PATH.resolve())
+
+
 def load_index(path: Path = DEFAULT_INDEX_PATH) -> dict[str, Any]:
     """Return the built index (items + families), cached per resolved path.
 
@@ -908,8 +1077,22 @@ def load_index(path: Path = DEFAULT_INDEX_PATH) -> dict[str, Any]:
     the gzip file directly. Returns the same dict shape written by
     ``build_index``/``write_index``: ``items`` (list) and ``families`` (dict
     keyed "library_key||name_base").
+
+    AE-1.17 Fix 2: the pipeline's own authored (non-curated) additions (see
+    ``_apply_authored_additions`` above) are merged in ONLY for the real
+    production index at ``DEFAULT_INDEX_PATH`` -- never for an arbitrary
+    path (a fixture/tmp index built from a synthetic raw dump, as the
+    reconcile/CLI/round-trip tests do, must stay an exact mirror of what it
+    was built from). This is the C3 selector's entrypoint, so the taper
+    intensity_2 slot (which calls ``select()``/``resolve_library_keys()``
+    against ``load_index()``'s default) sees the authored family; the CLI's
+    reconcile/lint-report paths (``read_index`` directly) never do.
     """
-    return _load_index_cached(str(Path(path).resolve()))
+    resolved = str(Path(path).resolve())
+    index = _load_index_cached(resolved)
+    if resolved == _DEFAULT_INDEX_PATH_RESOLVED:
+        index = _apply_authored_additions(index)
+    return index
 
 
 # ---------------------------------------------------------------------------

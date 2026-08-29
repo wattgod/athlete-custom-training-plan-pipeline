@@ -27,6 +27,7 @@ import re
 from typing import Any, Mapping, Optional, Sequence
 
 from tp_library_snapshot import load_index
+from tp_structure_to_zwo import _target_bounds_pct
 
 
 # ---------------------------------------------------------------------------
@@ -587,10 +588,44 @@ _BASE_LONG_RIDE_IF_CEILING = 0.68  # ratified Q-B: .76 -> .68
 _BASE_LONG_RIDE_MAX_HARD_REP_SECONDS = 120
 
 
+# DEFECT FIX (race-week library audit, 2026-08-26,
+# docs/evidence/2026-08-26-race-week-library-audit.md): both ceiling
+# functions below used to compare a leaf target's raw minValue/maxValue
+# straight against the 92.0 floor. For a percentOfFtp-metric structure
+# that's correct (targets are already %FTP points); for an RPE-metric
+# structure the raw target is a 1-10 RPE integer, which can never reach 92
+# -- these two functions silently read 0s of hard work / 0s worst-rep for
+# ANY RPE-metric item, no matter how hard it actually is. Two curated
+# "Power Test" items (14416937/14416939, both single ALL-OUT RPE9-10 reps)
+# exploited exactly this gap to slip past the taper/race ceiling. Fixed by
+# decoding through tp_structure_to_zwo's _target_bounds_pct -- the SAME
+# _RPE_TO_PCT_FTP table the renderer and _has_ae_3_14_violation already use
+# (AE 9c) -- rather than authoring a second RPE->%FTP mapping here.
+def _target_hard_pct(target: Mapping[str, Any], *, rpe: bool) -> float:
+    """%FTP-equivalent value to compare against _HARD_WORK_PCT_FLOOR.
+
+    Mirrors the pre-existing raw-%FTP behavior of preferring the target's
+    upper bound (maxValue, falling back to minValue) -- for an RPE-metric
+    target that upper bound is the decoded high %FTP for the target's own
+    maxValue RPE point (_target_bounds_pct's high side), never the raw RPE
+    integer."""
+    if not rpe:
+        return float(target.get("maxValue") or target.get("minValue") or 0)
+    if target.get("minValue") is None:
+        return 0.0
+    _, high_pct = _target_bounds_pct(target, rpe=True)
+    return high_pct
+
+
+def _structure_is_rpe(structure: Mapping[str, Any]) -> bool:
+    return str(structure.get("primaryIntensityMetric") or "percentOfFtp").lower() == "rpe"
+
+
 def _hard_work_seconds(structure: Any) -> float:
     total = 0.0
     if not isinstance(structure, Mapping):
         return total
+    is_rpe = _structure_is_rpe(structure)
     for step in structure.get("structure") or []:
         reps = ((step.get("length") or {}).get("value") or 1)
         for sub in step.get("steps") or []:
@@ -598,7 +633,7 @@ def _hard_work_seconds(structure: Any) -> float:
                            if t.get("unit") != "roundOrStridePerMinute"), None)
             if not target:
                 continue
-            pct = target.get("maxValue") or target.get("minValue") or 0
+            pct = _target_hard_pct(target, rpe=is_rpe)
             if pct >= _HARD_WORK_PCT_FLOOR:
                 total += reps * ((sub.get("length") or {}).get("value") or 0)
     return total
@@ -609,13 +644,14 @@ def _max_hard_rep_seconds(structure: Any) -> float:
     longest = 0.0
     if not isinstance(structure, Mapping):
         return longest
+    is_rpe = _structure_is_rpe(structure)
     for step in structure.get("structure") or []:
         for sub in step.get("steps") or []:
             target = next((t for t in sub.get("targets") or []
                            if t.get("unit") != "roundOrStridePerMinute"), None)
             if not target:
                 continue
-            pct = target.get("maxValue") or target.get("minValue") or 0
+            pct = _target_hard_pct(target, rpe=is_rpe)
             if pct >= _HARD_WORK_PCT_FLOOR:
                 longest = max(longest, float((sub.get("length") or {}).get("value") or 0))
     return longest
