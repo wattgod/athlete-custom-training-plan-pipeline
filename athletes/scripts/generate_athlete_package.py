@@ -1611,6 +1611,32 @@ def _rebalance_recovery_weeks_post_resolution(bb_plan, *, day_caps, athlete_seed
             _recompute_library_week_totals(bw)
 
 
+# Filesystem-reserved characters. A race name is authored copy, not a
+# slug, so it can legitimately contain any of these -- `Gran Fondo Pekan /
+# Pekan Classic` is a real entry in the race database. Before this, the race
+# ZWO filename was built as `race_name.replace(' ', '_')` and nothing else,
+# so a name containing "/" became a path separator and generation died with
+# FileNotFoundError partway through -- AFTER the compliance gate had already
+# passed, which made it read like a disk problem rather than a naming one.
+# Only the FILENAME is sanitized; the athlete-facing display name keeps the
+# race name verbatim.
+_FILENAME_RESERVED_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+
+
+def safe_filename_component(value: str) -> str:
+    """Make ``value`` safe to embed in a filename.
+
+    Spaces become underscores (the pre-existing convention, preserved so
+    every name without a reserved character produces a byte-identical
+    filename). Filesystem-reserved characters collapse to a single '-'.
+    Leading/trailing dots, dashes and spaces are stripped so the result can
+    never be '.', '..' or a hidden file.
+    """
+    collapsed = _FILENAME_RESERVED_RE.sub('-', str(value)).replace(' ', '_')
+    collapsed = re.sub(r'-{2,}', '-', collapsed).strip('. -_')
+    return collapsed or 'Race'
+
+
 def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, derived: dict, profile: dict = None, fueling: dict = None,
                        athlete_seed: str = None) -> list:
     """
@@ -1689,8 +1715,23 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
 
     # Use centralized day mappings from constants.py
     strength_only_abbrevs = [DAY_FULL_TO_ABBREV.get(d.lower(), d) for d in strength_only_days]
-    _requested_strength_sessions = int(
-        (profile.get('strength', {}) or {}).get('sessions_per_week', 2) or 0)
+    # Strength frequency has TWO sources and they can disagree:
+    # derive_classifications writes `strength_frequency` into derived.yaml
+    # (registered as CLASSIFICATION_STRENGTH_FREQUENCY, derived from the
+    # athlete's equipment inventory and available days), and the profile
+    # carries a raw `strength.sessions_per_week`. This used to read only the
+    # profile field and default to 2 -- so an athlete whose derivation had
+    # already concluded `strength_frequency: 0` with `strength_day_candidates:
+    # []` still got two strength sessions a week generated, because the
+    # derived zero was never consulted. The derived value is the classifier's
+    # considered answer, so it wins when present; the profile field is the
+    # fallback for athletes generated before the classifier existed.
+    _derived_strength = (derived or {}).get('strength_frequency')
+    if _derived_strength is not None:
+        _requested_strength_sessions = int(_derived_strength or 0)
+    else:
+        _requested_strength_sessions = int(
+            (profile.get('strength', {}) or {}).get('sessions_per_week', 2) or 0)
     long_day_abbrev = DAY_FULL_TO_ABBREV.get(preferred_long_day.lower(), 'Sat')
     declared_long_days = {
         DAY_FULL_TO_ABBREV.get(str(day).lower(), str(day))
@@ -3562,7 +3603,7 @@ Stay loose, {athlete_name}!"""
             if is_b_race_day:
                 b_race_info = week.get('b_race', {})
                 b_race_name = b_race_info.get('name', 'B-Race')
-                b_race_plan_name = f"{workout_prefix}_RACE_DAY_{b_race_name.replace(' ', '_')}"
+                b_race_plan_name = f"{workout_prefix}_RACE_DAY_{safe_filename_component(b_race_name)}"
                 b_race_filename = f"{b_race_plan_name}.zwo"
                 b_race_display_name = f"B-Race Day — {b_race_name}"
 
@@ -4432,7 +4473,7 @@ TIPS:
             if is_race_day:
                 # Create RACE DAY PLAN - not a workout, but a race execution guide
                 # Pull from fueling.yaml, race data, and training guide
-                race_plan_name = f"{workout_prefix}_RACE_DAY_{race_name.replace(' ', '_')}"
+                race_plan_name = f"{workout_prefix}_RACE_DAY_{safe_filename_component(race_name)}"
                 race_filename = f"{race_plan_name}.zwo"
                 race_display_name = f"Race Day — {race_name}"
 
