@@ -1,0 +1,176 @@
+selected_methodology: Traditional (Pyramidal)
+methodology_id: traditional_pyramidal
+score: 82.0
+reasons:
+- Acceptable hours (7.9h within 7-30h range)
+- Beginner-friendly methodology
+- Appropriate for finish-focused goal
+- Base-heavy build suits a first-timer finish goal
+warnings: []
+configuration:
+  methodology: Traditional (Pyramidal)
+  intensity_distribution:
+    z1_z2: 0.75
+    z3: 0.15
+    z4_z5: 0.1
+  emphasis: a big aerobic base first, sharpened with tempo and threshold progressions
+    as the race nears
+  strength_approach: heavy_base_maintenance_build
+  key_workouts:
+  - long_z2
+  - tempo_progression
+  - threshold_intervals
+  progression_style: volume_then_intensity
+  testing_frequency: phase_end
+alternatives:
+- name: G Spot (Read the Room)
+  score: 80.0
+  key_reason: Ideal hours match (7.9h in 6-10h sweet spot)
+- name: Time-Crunched
+  score: 70.0
+  key_reason: Acceptable hours (7.9h within 3-9h range)
+- name: Polarized (80/20)
+  score: 44.5
+  key_reason: Appropriate for finish-focused goal
+selection_date: '2026-08-29 14:38:44'
+confidence: high
+confidence_note: Strong match for athlete profile
+_derived:
+- id: METHODOLOGY_ALTERNATIVES
+  field: alternatives
+  class: inferred
+  basis: next three candidates in descending score order
+  inputs:
+    methodology_count: 4
+    race_demands:
+      distance_miles: 100
+      duration_hours: 8
+      technical_difficulty: moderate
+      repeated_surges: false
+      altitude_feet: 0
+    derived_tier: finisher
+    plan_weeks: 5
+  sensitivity: personal
+  at: '2026-08-29 14:38:44'
+  revision: 1
+- id: METHODOLOGY_CONFIDENCE
+  field: confidence
+  class: inferred
+  basis: confidence band derived from the winning score
+  inputs:
+    score: 82.0
+  sensitivity: personal
+  at: '2026-08-29 14:38:44'
+  revision: 1
+- id: METHODOLOGY_CONFIDENCE_NOTE
+  field: confidence_note
+  class: inferred
+  basis: human-readable rendering of the confidence band
+  inputs:
+    confidence: high
+  sensitivity: personal
+  at: '2026-08-29 14:38:44'
+  revision: 1
+- id: METHODOLOGY_CONFIGURATION
+  field: configuration
+  class: inferred
+  basis: selected methodology's authored training configuration
+  inputs:
+    methodology_id: traditional_pyramidal
+  sensitivity: internal
+  at: '2026-08-29 14:38:44'
+  revision: 1
+- id: METHODOLOGY_ID
+  field: methodology_id
+  class: inferred
+  basis: stable configuration id for the selected methodology
+  inputs:
+    methodology_count: 4
+    race_demands:
+      distance_miles: 100
+      duration_hours: 8
+      technical_difficulty: moderate
+      repeated_surges: false
+      altitude_feet: 0
+    derived_tier: finisher
+    plan_weeks: 5
+  sensitivity: internal
+  at: '2026-08-29 14:38:44'
+  revision: 1
+- id: METHODOLOGY_REASONS
+  field: reasons
+  class: inferred
+  basis: positive scoring explanations from the selected candidate
+  inputs:
+    methodology_count: 4
+    race_demands:
+      distance_miles: 100
+      duration_hours: 8
+      technical_difficulty: moderate
+      repeated_surges: false
+      altitude_feet: 0
+    derived_tier: finisher
+    plan_weeks: 5
+  sensitivity: personal
+  at: '2026-08-29 14:38:44'
+  revision: 1
+- id: METHODOLOGY_SCORE
+  field: score
+  class: inferred
+  basis: objective seven-criterion methodology score
+  inputs:
+    methodology_count: 4
+    race_demands:
+      distance_miles: 100
+      duration_hours: 8
+      technical_difficulty: moderate
+      repeated_surges: false
+      altitude_feet: 0
+    derived_tier: finisher
+    plan_weeks: 5
+  sensitivity: personal
+  at: '2026-08-29 14:38:44'
+  revision: 1
+- id: METHODOLOGY_SELECTED
+  field: selected_methodology
+  class: inferred
+  basis: highest score from the production methodology matrix
+  inputs:
+    methodology_count: 4
+    race_demands:
+      distance_miles: 100
+      duration_hours: 8
+      technical_difficulty: moderate
+      repeated_surges: false
+      altitude_feet: 0
+    derived_tier: finisher
+    plan_weeks: 5
+  sensitivity: personal
+  at: '2026-08-29 14:38:44'
+  revision: 1
+- id: METHODOLOGY_SELECTION_TIME
+  field: selection_date
+  class: inferred
+  basis: methodology owner execution time
+  inputs:
+    owner: select_methodology.py
+  sensitivity: internal
+  at: '2026-08-29 14:38:44'
+  revision: 1
+- id: METHODOLOGY_WARNINGS
+  field: warnings
+  class: inferred
+  basis: safety and fit warnings from the selected candidate
+  inputs:
+    methodology_count: 4
+    race_demands:
+      distance_miles: 100
+      duration_hours: 8
+      technical_difficulty: moderate
+      repeated_surges: false
+      altitude_feet: 0
+    derived_tier: finisher
+    plan_weeks: 5
+  sensitivity: sensitive
+  at: '2026-08-29 14:38:44'
+  revision: 1

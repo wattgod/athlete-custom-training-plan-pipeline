@@ -370,11 +370,27 @@ plan_start:
 discipline: gravel
 intensity_policy:
   all_intensity_optional_until: '2027-01-01'
-  rule: 'Coach ruling 2026-08-29: ALL intensity is OPTIONAL through January 1st. Intensity sessions may
-    be PRESCRIBED but every one must be titled OPTIONAL and carry the zero-penalty line. He does not return
-    to the line until January; nothing before then is mandatory.'
+  rule: 'Coach ruling 2026-08-29: ALL intensity AND ALL specificity are OPTIONAL through January 1st.
+    Sessions may be PRESCRIBED but every one must be titled OPTIONAL and carry the no-pressure line.
+    He does not return to the line until January; nothing before then is mandatory.'
   label_prefix: OPTIONAL
-  zero_penalty_text: OPTIONAL. Skip with zero penalty, nothing to make up.
+  zero_penalty_text: "OPTIONAL — NO PRESSURE. Nothing before January 1st is required. Skip it, nothing
+    to make up. I'd rather you skip it than do it because it's on the calendar."
+  covers: >-
+    Intensity AND specificity, not intensity alone. Matti restated this on
+    2026-08-29 after reviewing the applied calendar: "he does not want any
+    pressure to do intensity or specificity until January 1st. He's fine with
+    me programming the option, but ABSOLUTELY NO PRESSURE TO DO SO. This
+    should be emphasized."
+  applies_to: >-
+    Any card whose body carries RPE >= 5, >= 90% FTP, strides/sprints/VO2/
+    threshold work, power-hiking, or race-like/race-pace specificity. This is
+    NOT satisfied by labelling only the obvious interval sessions: five cards
+    shipped unmarked in the first applied block (Quick Feet L1 x2, Barn
+    Builder L1, Tune-Up, Time on Feet L1), and the Tune-Up ran 2x18s at 140%
+    FTP with no OPTIONAL marker at all. The only exemptions are rest days,
+    the 4am self-selected trainer rides, strength time-blocks, and the
+    B-race card.
   vo2_allowed: true
   notes: Supersedes the earlier no-VO2 stance -- keep the sessions, make them optional.
 nutrition_policy:

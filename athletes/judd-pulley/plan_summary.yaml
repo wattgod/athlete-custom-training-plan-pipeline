@@ -1,0 +1,214 @@
+athlete_id: judd-pulley
+athlete_name: Judd Pulley
+generated_date: '2026-08-29T14:47:43.211887'
+race:
+  name: "TBD \u2014 Oct 24 event slot"
+  date: '2026-10-24'
+  distance_miles: 50
+plan:
+  weeks: 5
+  start_date: '2026-09-21'
+  end_date: '2026-10-25'
+  methodology: Traditional (Pyramidal)
+  methodology_score: 82.0
+  tier: FINISHER
+  ability_level: Intermediate
+fueling:
+  hourly_carb_target: 59
+  total_carbs: 492
+  estimated_duration_hours: 8.333333333333334
+control:
+  metric: power
+  basis: ftp
+  week_1_field_test: null
+  reanchor:
+    required: false
+    week: 1
+    test: field_test
+    action: Update the measured anchor after the Week 1 field test.
+files:
+  guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/.worktrees/tp-cadence-emission/athletes/judd-pulley/training_guide.html
+  workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/.worktrees/tp-cadence-emission/athletes/judd-pulley/workouts
+  workout_count: 22
+_derived:
+- id: SUMMARY_ABILITY
+  field: plan.ability_level
+  class: inferred
+  basis: derived athlete ability classification
+  inputs:
+    derived_ability: null
+  sensitivity: personal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_CONTROL_BASIS
+  field: control.basis
+  class: inferred
+  basis: canonical training-model control projection
+  inputs:
+    source_field: canonical.athlete.control_basis
+  sensitivity: personal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_CONTROL_METRIC
+  field: control.metric
+  class: inferred
+  basis: canonical training-model control projection
+  inputs:
+    source_field: canonical.athlete.control_metric
+  sensitivity: personal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_DURATION
+  field: fueling.estimated_duration_hours
+  class: inferred
+  basis: canonical fueling duration projection
+  inputs:
+    source_field: fueling.race.duration_hours
+  sensitivity: personal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_FIELD_TEST
+  field: control.week_1_field_test
+  class: inferred
+  basis: canonical Week 1 assessment inventory
+  inputs:
+    canonical_sessions: 35
+  sensitivity: personal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_GENERATED_DATE
+  field: generated_date
+  class: inferred
+  basis: injected generation clock
+  inputs:
+    generation_at: '2026-08-29T14:47:43.211887'
+  sensitivity: internal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_HOURLY_CARBS
+  field: fueling.hourly_carb_target
+  class: inferred
+  basis: canonical fueling prescription projection
+  inputs:
+    source_field: fueling.carbohydrates.hourly_target
+  sensitivity: sensitive
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_METHODOLOGY
+  field: plan.methodology
+  class: inferred
+  basis: production methodology selector result
+  inputs:
+    methodology_id: traditional_pyramidal
+  sensitivity: personal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_METHODOLOGY_SCORE
+  field: plan.methodology_score
+  class: inferred
+  basis: production methodology scoring matrix
+  inputs:
+    methodology_scores: {}
+  sensitivity: personal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_PLAN_END
+  field: plan.end_date
+  class: inferred
+  basis: final plan calendar boundary
+  inputs:
+    race_date: '2026-10-24'
+    plan_start: '2026-09-21'
+    plan_end: '2026-10-25'
+    plan_weeks: 5
+  sensitivity: personal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_PLAN_START
+  field: plan.start_date
+  class: inferred
+  basis: final plan calendar boundary
+  inputs:
+    race_date: '2026-10-24'
+    plan_start: '2026-09-21'
+    plan_end: '2026-10-25'
+    plan_weeks: 5
+  sensitivity: personal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_PLAN_WEEKS
+  field: plan.weeks
+  class: inferred
+  basis: final plan calendar week count
+  inputs:
+    race_date: '2026-10-24'
+    plan_start: '2026-09-21'
+    plan_end: '2026-10-25'
+    plan_weeks: 5
+  sensitivity: personal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_RACE_DATE
+  field: race.date
+  class: inferred
+  basis: resolved target race and plan calendar
+  inputs:
+    race_date: '2026-10-24'
+    plan_start: '2026-09-21'
+    plan_end: '2026-10-25'
+    plan_weeks: 5
+  sensitivity: personal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_RACE_DISTANCE
+  field: race.distance_miles
+  class: inferred
+  basis: resolved athlete-selected race course
+  inputs:
+    target_race:
+      name: "TBD \u2014 Oct 24 event slot"
+      date: '2026-10-24'
+      priority: B
+      discipline: gravel
+      status: unpicked
+      distance_miles: 50
+      elevation_gain_ft: 3000
+  sensitivity: personal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_REANCHOR
+  field: control.reanchor
+  class: inferred
+  basis: canonical post-assessment re-anchor instruction
+  inputs:
+    source_field: canonical.athlete.reanchor
+  sensitivity: personal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_TIER
+  field: plan.tier
+  class: inferred
+  basis: derived commercial plan tier
+  inputs:
+    derived_tier: finisher
+  sensitivity: personal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_TOTAL_CARBS
+  field: fueling.total_carbs
+  class: inferred
+  basis: canonical fueling prescription projection
+  inputs:
+    source_field: fueling.carbohydrates.total_grams
+  sensitivity: sensitive
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1
+- id: SUMMARY_WORKOUT_COUNT
+  field: files.workout_count
+  class: inferred
+  basis: count of canonical sessions eligible for ZWO projection
+  inputs:
+    canonical_session_count: 35
+  sensitivity: internal
+  at: '2026-08-29T14:47:43.211887'
+  revision: 1

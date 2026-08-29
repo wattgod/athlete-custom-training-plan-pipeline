@@ -1,0 +1,33 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>FTP Test</name>
+  <description>FUEL:
+Normal meal ~2h before. One bottle, 40-50g carbs. Done.
+
+12m progressive warmup
+-
+5m RPE 6/10
+-
+5m RPE 2
+-
+5m RPE 8-10. Go as hard as you can for 5 minutes. Note here, start out firm but hard for the first 2 minutes and then adjust your effort up or down.
+-
+5m RPE 2
+-
+20m ALL OUT. Start the effort conservatively at about an 8/10 RPE - 20 minutes is a LONG time.
+-
+You'll want the terrain to be unbroken flat or slightly uphill - you don't want to get caught at a stop light or intersection in the middle of your effort.
+-
+10m easy spin to cool down.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <FreeRide Duration="600"/>
+    <FreeRide Duration="300"/>
+    <FreeRide Duration="300"/>
+    <FreeRide Duration="300"/>
+    <FreeRide Duration="300"/>
+    <FreeRide Duration="1200"/>
+    <FreeRide Duration="600"/>
+  </workout>
+</workout_file>

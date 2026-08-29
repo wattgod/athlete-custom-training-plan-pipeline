@@ -1,0 +1,232 @@
+tier: finisher
+plan_weeks: 5
+starting_phase: base_1
+strength_frequency: 0
+equipment_tier: minimal
+risk_factors:
+- new_to_structured_training
+exercise_exclusions: []
+key_day_candidates:
+- tuesday
+- thursday
+- saturday
+strength_day_candidates: []
+derived_date: '2026-08-29 14:37:11'
+_derived:
+- id: CLASSIFICATION_EQUIPMENT_TIER
+  field: equipment_tier
+  class: inferred
+  basis: athlete-reported strength equipment inventory
+  inputs:
+    equipment: null
+  sensitivity: personal
+  at: '2026-08-29 14:37:11'
+  revision: 1
+- id: CLASSIFICATION_EXCLUSIONS
+  field: exercise_exclusions
+  class: inferred
+  basis: health limitations and available equipment
+  inputs:
+    rule_set: derive_classifications/exclusions-v1
+  sensitivity: sensitive
+  at: '2026-08-29 14:37:11'
+  revision: 1
+- id: CLASSIFICATION_KEY_DAYS
+  field: key_day_candidates
+  class: inferred
+  basis: day availability and key-session suitability
+  inputs:
+    preferred_days:
+    - friday
+    - monday
+    - saturday
+    - sunday
+    - thursday
+    - tuesday
+    - wednesday
+  sensitivity: personal
+  at: '2026-08-29 14:37:11'
+  revision: 1
+- id: CLASSIFICATION_PLAN_END
+  field: plan_end
+  class: inferred
+  basis: final calendar end boundary
+  inputs:
+    race_date: '2026-10-24'
+    preferred_start: '2026-09-21'
+    calendar_plan_weeks: 5
+    coached_block:
+      week_types:
+      - load
+      - load
+      - load
+      - load
+      - race
+      phase: season_closer
+      window_start: '2026-09-21'
+      window_end: '2026-11-08'
+      weeks: 7
+      event_slot: '2026-10-24'
+      event_status: unpicked
+      break_start: '2026-10-26'
+      break_end: '2026-11-08'
+      coach_notes: "Existing programming through 2026-09-20 is untouched; this block\
+        \ picks up the day after. Break is two weeks, programmed, AE-1.13 exempt from\
+        \ load gates. Event on 10/24 is a slot, not a booked race \u2014 he still\
+        \ has to pick one."
+  sensitivity: personal
+  at: '2026-08-29T14:38:27.230830'
+  revision: 1
+- id: CLASSIFICATION_PLAN_START
+  field: plan_start
+  class: inferred
+  basis: final calendar start boundary
+  inputs:
+    race_date: '2026-10-24'
+    preferred_start: '2026-09-21'
+    calendar_plan_weeks: 5
+    coached_block:
+      week_types:
+      - load
+      - load
+      - load
+      - load
+      - race
+      phase: season_closer
+      window_start: '2026-09-21'
+      window_end: '2026-11-08'
+      weeks: 7
+      event_slot: '2026-10-24'
+      event_status: unpicked
+      break_start: '2026-10-26'
+      break_end: '2026-11-08'
+      coach_notes: "Existing programming through 2026-09-20 is untouched; this block\
+        \ picks up the day after. Break is two weeks, programmed, AE-1.13 exempt from\
+        \ load gates. Event on 10/24 is a slot, not a booked race \u2014 he still\
+        \ has to pick one."
+  sensitivity: personal
+  at: '2026-08-29T14:38:27.230812'
+  revision: 1
+- id: CLASSIFICATION_PLAN_WEEKS
+  field: plan_weeks
+  class: inferred
+  basis: final calendar week count after start-date constraints
+  inputs:
+    race_date: '2026-10-24'
+    preferred_start: '2026-09-21'
+    calendar_plan_weeks: 5
+    coached_block:
+      week_types:
+      - load
+      - load
+      - load
+      - load
+      - race
+      phase: season_closer
+      window_start: '2026-09-21'
+      window_end: '2026-11-08'
+      weeks: 7
+      event_slot: '2026-10-24'
+      event_status: unpicked
+      break_start: '2026-10-26'
+      break_end: '2026-11-08'
+      coach_notes: "Existing programming through 2026-09-20 is untouched; this block\
+        \ picks up the day after. Break is two weeks, programmed, AE-1.13 exempt from\
+        \ load gates. Event on 10/24 is a slot, not a booked race \u2014 he still\
+        \ has to pick one."
+  sensitivity: personal
+  at: '2026-08-29T14:38:27.230761'
+  revision: 1
+- id: CLASSIFICATION_RACE_WEEKDAY
+  field: race_weekday
+  class: inferred
+  basis: weekday derived from the target race date
+  inputs:
+    race_date: '2026-10-24'
+    preferred_start: '2026-09-21'
+    calendar_plan_weeks: 5
+    coached_block:
+      week_types:
+      - load
+      - load
+      - load
+      - load
+      - race
+      phase: season_closer
+      window_start: '2026-09-21'
+      window_end: '2026-11-08'
+      weeks: 7
+      event_slot: '2026-10-24'
+      event_status: unpicked
+      break_start: '2026-10-26'
+      break_end: '2026-11-08'
+      coach_notes: "Existing programming through 2026-09-20 is untouched; this block\
+        \ picks up the day after. Break is two weeks, programmed, AE-1.13 exempt from\
+        \ load gates. Event on 10/24 is a slot, not a booked race \u2014 he still\
+        \ has to pick one."
+  sensitivity: personal
+  at: '2026-08-29T14:38:27.230845'
+  revision: 1
+- id: CLASSIFICATION_RISK_FACTORS
+  field: risk_factors
+  class: inferred
+  basis: sleep, stress, injury, and training-history safety rules
+  inputs:
+    rule_set: derive_classifications/risk-v1
+  sensitivity: sensitive
+  at: '2026-08-29 14:37:11'
+  revision: 1
+- id: CLASSIFICATION_STARTING_PHASE
+  field: starting_phase
+  class: inferred
+  basis: plan length and recent training state
+  inputs:
+    plan_weeks: 12
+  sensitivity: personal
+  at: '2026-08-29 14:37:11'
+  revision: 1
+- id: CLASSIFICATION_STRENGTH_DAYS
+  field: strength_day_candidates
+  class: inferred
+  basis: strength frequency with key-day spacing constraints
+  inputs:
+    strength_frequency: 0
+    key_days:
+    - tuesday
+    - thursday
+    - saturday
+  sensitivity: personal
+  at: '2026-08-29 14:37:11'
+  revision: 1
+- id: CLASSIFICATION_STRENGTH_FREQUENCY
+  field: strength_frequency
+  class: inferred
+  basis: tier, experience, recovery, and equipment policy
+  inputs:
+    tier: finisher
+  sensitivity: personal
+  at: '2026-08-29 14:37:11'
+  revision: 1
+- id: CLASSIFICATION_TIER
+  field: tier
+  class: inferred
+  basis: weekly cycling hours constrained by goal and training history
+  inputs:
+    cycling_hours_target: 7.9
+    goal_type: null
+    years_structured: null
+  sensitivity: personal
+  at: '2026-08-29 14:37:11'
+  revision: 1
+- id: CLASSIFICATION_TIMESTAMP
+  field: derived_date
+  class: inferred
+  basis: classification owner execution time
+  inputs:
+    owner: derive_classifications.py
+  sensitivity: internal
+  at: '2026-08-29 14:37:11'
+  revision: 1
+plan_start: '2026-09-21'
+plan_end: '2026-10-25'
+race_weekday: Saturday

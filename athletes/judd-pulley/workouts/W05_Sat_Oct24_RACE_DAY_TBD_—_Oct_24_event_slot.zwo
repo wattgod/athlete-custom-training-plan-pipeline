@@ -1,0 +1,27 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Race Day — TBD — Oct 24 event slot</name>
+  <description>RACE DAY: TBD — Oct 24 event slot
+Date: 2026-10-24
+
+FUELING PLAN:
+- Carbs/hour: 59g (range: [52, 66])
+- Total carbs: 492g over race
+- Start fueling at 20 min, every 20-30 min thereafter
+- Pre-race: 100-150g carbs 3-4 hours before start
+
+PACING STRATEGY:
+- Ceiling rule: I want the effort you can repeat all day on every climb. If breathing stops being controlled, back off before the crest.
+- First third: deliberately conservative (RPE 4-5). Let the day come to you; fuel on the timer and do not answer early surges.
+- Middle third: settle into sustainable RPE 5-6, protect smooth cadence, and keep eating before hunger appears.
+- Final third: hold form, keep eating, and make only measured decisions that preserve a strong finish.
+- Technical sections: Smooth > Fast. Avoid mechanicals.
+
+HYDRATION:
+- Drink to thirst — 500-750 ml/hr is a starting estimate to adjust for heat and sweat rate, not a quota. 500-1000 mg sodium per hour. Do not force fluid beyond thirst; you should finish a shade lighter than you started, never heavier.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <FreeRide Duration="30000"/>
+  </workout>
+</workout_file>

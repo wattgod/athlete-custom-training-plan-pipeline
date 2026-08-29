@@ -1,0 +1,237 @@
+# Judd Pulley — Motoren profile
+#
+# PROVENANCE. Every value below is either (a) read from TrainingPeaks on
+# 2026-08-29 (athleteId 4032686, live API read), or (b) a Matti ruling
+# already recorded in the Aug 26 build (plan-builds/judd-pulley/proposal.md).
+# Fields we do NOT have an answer for are left null with `unknown: true`
+# rather than guessed — Judd has never filled out an intake form, so most
+# of the lifestyle/motivation schema is genuinely blank. Do not populate
+# them by inference; ask him.
+
+name: Judd Pulley
+email: jpulle1@gmail.com
+athlete_id: judd-pulley
+tp_athlete_id: 4032686
+brand: gravelgod
+delivery_platform: trainingpeaks
+
+# The engine builds the 5 TRAINING weeks (2026-09-21 -> 2026-10-25). The two
+# AE-1.13 break weeks (2026-10-26 -> 2026-11-08) are day-off cards appended
+# afterwards -- block_builder has no 'break' week_type and must not be asked
+# to dose a programmed unplug.
+fulfillment:
+  order_id: ''
+  delivery_platform: manual
+  order_created_at: ''
+  generation_at: ''
+  weeks_purchased: 5
+  athlete_timezone: ''
+  generation_revision: 1
+  effective_date: '2026-09-21'
+  planning_horizon_end: '2026-10-25'
+  publication_horizon_weeks: 0
+
+# The 10/24 slot is a real anchor for the block even though Judd has not
+# picked the event yet (Matti: "Call it 10/24 slot"). Without it the block is
+# "targetless" and calculate_plan_dates caps it at 2-4 weeks, which cannot
+# express a 5-week season closer. AE-1.13 requires a start line before the
+# break, so the date is the commitment; the name is pending his choice.
+target_race:
+  # No "/" in this name: generate_athlete_package builds the race ZWO filename
+  # straight from it, so a slash becomes a path separator and generation dies.
+  name: 'TBD — Oct 24 event slot'
+  date: '2026-10-24'
+  priority: 'B'
+  discipline: gravel
+  status: unpicked
+  # PLACEHOLDER — Judd has not picked the event. 50 mi is the honest default
+  # for a first-ever race and is what the race-week sharpener and fueling
+  # projections are built against. If he picks something longer or hillier,
+  # W05 must be regenerated. Do not treat these two numbers as facts.
+  distance_miles: 50
+  elevation_gain_ft: 3000
+
+discipline: gravel
+discipline_default: gravel
+secondary_discipline: mtb   # "MTB Skills" / "Mountain Biking" cards run throughout
+
+# ---------------------------------------------------------------------------
+# Fitness — live TP read 2026-08-29 (all-sport PMC, ctl 42 / atl 7)
+# ---------------------------------------------------------------------------
+fitness_markers:
+  ftp_watts: 260            # TP-configured power threshold, live read 2026-08-29
+  ftp_estimated: true
+  ftp_test_date: null
+  ftp_note: >-
+    260W is the threshold set on his TP account (powerZones, 6 zones) and the
+    anchor his structured work through 2026-08-27 ran against. There is no
+    recent test behind it. HR threshold is 163.
+  hr_threshold: 163
+
+pmc:
+  as_of: '2026-08-29'
+  ctl: 57.2
+  atl: 54.6
+  tsb: -2.4
+  source: 'POST fitness/v1/athletes/4032686/reporting/performancedata (workoutTypes: [], ctl 42, atl 7)'
+  note: >-
+    The Aug 26 v2 build dosed against CTL 53.7. He has since built to 57.2.
+    Any rebuild must re-dose against 57.2 or it under-prescribes by
+    construction (AE-2.10 / AE-1.14).
+
+recent_training:
+  weekly_tss_actual:        # Mon-start weeks, live TP read 2026-08-29
+    '2026-06-15': 292
+    '2026-06-22': 348
+    '2026-06-29': 54
+    '2026-07-06': 846
+    '2026-07-13': 244
+    '2026-07-20': 374
+    '2026-07-27': 667
+    '2026-08-03': 242
+    '2026-08-10': 438
+    '2026-08-17': 344
+    '2026-08-24': 314
+  demonstrated_load_week_tss: 450
+  demonstrated_load_basis: >-
+    His three real load weeks are 846 / 667 / 438. The 846 is an outlier
+    bracketed by a 54 and a 244. 450 is the honest AE-2.10 dose: above the
+    384 the Aug 26 build used, below the spike he has not repeated.
+  compliance_rate: 0.689
+  compliance_note: >-
+    51 of 74 real sessions logged. Misses cluster hard: 10 of 13 sessions
+    between 2026-06-14 and 2026-07-03 have no data, then it tightens from
+    2026-07-06 on. Median duration-completion is 96.7% — when he shows up he
+    does the work. No note explains the June gap. Ask, do not assume.
+
+# ---------------------------------------------------------------------------
+# Conventions — binding on any rebuild
+# ---------------------------------------------------------------------------
+structure_convention:
+  mode: percent_ftp
+  ruled_by: 'Matti, 2026-08-29'
+  ruling: >-
+    Motoren-generated structured %FTP off the 260W anchor. Matti was shown the
+    tradeoff explicitly (RPE-targeted vs %FTP vs keep-prose) and chose %FTP.
+  supersedes: >-
+    From 2026-09-02 through 2026-08-29 every card was unstructured RPE prose
+    (structure = null, no %FTP). That convention is now retired by the ruling
+    above. Judd WILL notice this change — he has not seen a % number in seven
+    weeks. Worth a line in the next email.
+
+voice:
+  first_person: true
+  rule: 'AE-9.11 — athlete-facing copy is written as me talking to him.'
+  register: 'AE-9.10 — terse. Short, numbered, no metaphors.'
+
+# ---------------------------------------------------------------------------
+# Availability — derived from the approved Aug 26 skeleton
+# ---------------------------------------------------------------------------
+weekly_availability:
+  cycling_hours_target: 7.9
+  total_hours_available: 9
+  strength_sessions_max: 0
+  notes: >-
+    7.9 h/wk is the shape of the Aug 26 skeleton Matti approved (5 training
+    days, Mon/Fri off, Saturday long). He has never given a stated hours
+    number -- this is inferred from what he has actually been prescribed and
+    completing, not from him. Confirm it.
+  volume_warning: null
+
+availability_roles:
+  long_ride_days: ['saturday']
+  interval_days: ['tuesday', 'thursday']
+  off_days: ['monday', 'friday']
+
+# Derived from the Aug 26 skeleton Matti approved: Mon/Fri off, 5 training
+# days, Saturday long. Durations are ceilings, not targets.
+preferred_days:
+  monday:
+    availability: unavailable
+    time_slots: ['am', 'pm']
+    max_duration_min: 0
+    is_key_day_ok: false
+  tuesday:
+    availability: available
+    time_slots: ['am', 'pm']
+    max_duration_min: 90
+    is_key_day_ok: true
+  wednesday:
+    availability: available
+    time_slots: ['am', 'pm']
+    max_duration_min: 75
+    is_key_day_ok: false
+  thursday:
+    availability: available
+    time_slots: ['am', 'pm']
+    max_duration_min: 90
+    is_key_day_ok: true
+  friday:
+    availability: unavailable
+    time_slots: ['am', 'pm']
+    max_duration_min: 0
+    is_key_day_ok: false
+  saturday:
+    availability: available
+    time_slots: ['am']
+    max_duration_min: 240
+    is_key_day_ok: true
+  sunday:
+    availability: available
+    time_slots: ['am']
+    max_duration_min: 120
+    is_key_day_ok: false
+
+# ---------------------------------------------------------------------------
+# Season shape — AE-1.13 close-out (Matti ruling 2026-08-26)
+# ---------------------------------------------------------------------------
+racing:
+  has_goals: true
+  race_list: []
+  races_ever: 0
+  note: >-
+    Zero races and zero race-sim cards anywhere in the 105-workout pull. He is
+    the pure AE-1.13 case: nothing books a start line before the break.
+
+coached_block:
+  week_types: ['load', 'load', 'load', 'load', 'race']
+  phase: season_closer
+  window_start: '2026-09-21'
+  window_end: '2026-11-08'
+  weeks: 7
+  event_slot: '2026-10-24'      # Matti: "Call it 10/24 slot"
+  event_status: unpicked
+  break_start: '2026-10-26'
+  break_end: '2026-11-08'
+  coach_notes: >-
+    Existing programming through 2026-09-20 is untouched; this block picks up
+    the day after. Break is two weeks, programmed, AE-1.13 exempt from load
+    gates. Event on 10/24 is a slot, not a booked race — he still has to pick
+    one.
+
+plan_start:
+  preferred_start: '2026-09-21'
+  current_commitments: >-
+    His existing programming runs through Sun 2026-09-20 and is NOT to be
+    touched. This block starts the Monday after it ends.
+  notes: >-
+    Without this, calculate_plan_dates back-solves 8 weeks from the 10/24 race
+    date and starts the plan on 2026-08-31, overwriting three weeks of live
+    calendar.
+
+tp_targets:
+  dynamic_plan_id: 672730
+  plan_title: 'DRAFT — Judd Pulley — Season Closer + Break 7wk'
+  apply_to_calendar: false      # dynamic plan first, Matti reviews
+
+# ---------------------------------------------------------------------------
+# Genuinely unknown — Judd has never completed an intake. Do not infer.
+# ---------------------------------------------------------------------------
+unknowns:
+  - age / health factors / sleep / stress
+  - equipment (trainer, power meter, indoor setup)
+  - strength background and access
+  - nutrition and fueling practice
+  - motivation, coaching-style preference, communication cadence
+  - the cause of the 2026-06-14 → 2026-07-03 miss cluster
+  - which event he wants in the 10/24 slot
