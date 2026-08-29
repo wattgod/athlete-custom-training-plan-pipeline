@@ -1,0 +1,212 @@
+tier: ayahuasca
+plan_weeks: 4
+starting_phase: base_1
+strength_frequency: 2
+equipment_tier: minimal
+risk_factors:
+- new_to_structured_training
+exercise_exclusions: []
+key_day_candidates:
+- thursday
+- friday
+strength_day_candidates:
+- sunday
+- monday
+derived_date: '2026-08-29 12:27:49'
+_derived:
+- id: CLASSIFICATION_EQUIPMENT_TIER
+  field: equipment_tier
+  class: inferred
+  basis: athlete-reported strength equipment inventory
+  inputs:
+    equipment: null
+  sensitivity: personal
+  at: '2026-08-29 12:27:49'
+  revision: 1
+- id: CLASSIFICATION_EXCLUSIONS
+  field: exercise_exclusions
+  class: inferred
+  basis: health limitations and available equipment
+  inputs:
+    rule_set: derive_classifications/exclusions-v1
+  sensitivity: sensitive
+  at: '2026-08-29 12:27:49'
+  revision: 1
+- id: CLASSIFICATION_KEY_DAYS
+  field: key_day_candidates
+  class: inferred
+  basis: day availability and key-session suitability
+  inputs:
+    preferred_days:
+    - friday
+    - monday
+    - saturday
+    - sunday
+    - thursday
+    - tuesday
+    - wednesday
+  sensitivity: personal
+  at: '2026-08-29 12:27:49'
+  revision: 1
+- id: CLASSIFICATION_PLAN_END
+  field: plan_end
+  class: inferred
+  basis: final calendar end boundary
+  inputs:
+    race_date: null
+    preferred_start: '2026-08-31'
+    calendar_plan_weeks: 4
+    coached_block:
+      phase: base
+      focus: Getting the calendar back to something you can actually hit. I care about
+        frequency and rhythm first, duration second, and nothing else until January.
+      week_types:
+      - load
+      - load
+      - load
+      - recovery
+      coach_notes: Re-entry after a lapsed season. Rebuild visible, unmissable calendar
+        structure and training frequency across bike/run/MTB/strength before adding
+        duration or intensity. FTP re-anchored at 300W (coach-confirmed 2026-08-23,
+        "300 is about right") -- bike structure may run %FTP. No A-race; consistency
+        is the trained adaptation.
+  sensitivity: personal
+  at: '2026-08-29T12:27:49.295373'
+  revision: 1
+- id: CLASSIFICATION_PLAN_START
+  field: plan_start
+  class: inferred
+  basis: final calendar start boundary
+  inputs:
+    race_date: null
+    preferred_start: '2026-08-31'
+    calendar_plan_weeks: 4
+    coached_block:
+      phase: base
+      focus: Getting the calendar back to something you can actually hit. I care about
+        frequency and rhythm first, duration second, and nothing else until January.
+      week_types:
+      - load
+      - load
+      - load
+      - recovery
+      coach_notes: Re-entry after a lapsed season. Rebuild visible, unmissable calendar
+        structure and training frequency across bike/run/MTB/strength before adding
+        duration or intensity. FTP re-anchored at 300W (coach-confirmed 2026-08-23,
+        "300 is about right") -- bike structure may run %FTP. No A-race; consistency
+        is the trained adaptation.
+  sensitivity: personal
+  at: '2026-08-29T12:27:49.295359'
+  revision: 1
+- id: CLASSIFICATION_PLAN_WEEKS
+  field: plan_weeks
+  class: inferred
+  basis: final calendar week count after start-date constraints
+  inputs:
+    race_date: null
+    preferred_start: '2026-08-31'
+    calendar_plan_weeks: 4
+    coached_block:
+      phase: base
+      focus: Getting the calendar back to something you can actually hit. I care about
+        frequency and rhythm first, duration second, and nothing else until January.
+      week_types:
+      - load
+      - load
+      - load
+      - recovery
+      coach_notes: Re-entry after a lapsed season. Rebuild visible, unmissable calendar
+        structure and training frequency across bike/run/MTB/strength before adding
+        duration or intensity. FTP re-anchored at 300W (coach-confirmed 2026-08-23,
+        "300 is about right") -- bike structure may run %FTP. No A-race; consistency
+        is the trained adaptation.
+  sensitivity: personal
+  at: '2026-08-29T12:27:49.295326'
+  revision: 1
+- id: CLASSIFICATION_RACE_WEEKDAY
+  field: race_weekday
+  class: inferred
+  basis: no race weekday for targetless coached block
+  inputs:
+    race_date: null
+    preferred_start: '2026-08-31'
+    calendar_plan_weeks: 4
+    coached_block:
+      phase: base
+      focus: Getting the calendar back to something you can actually hit. I care about
+        frequency and rhythm first, duration second, and nothing else until January.
+      week_types:
+      - load
+      - load
+      - load
+      - recovery
+      coach_notes: Re-entry after a lapsed season. Rebuild visible, unmissable calendar
+        structure and training frequency across bike/run/MTB/strength before adding
+        duration or intensity. FTP re-anchored at 300W (coach-confirmed 2026-08-23,
+        "300 is about right") -- bike structure may run %FTP. No A-race; consistency
+        is the trained adaptation.
+  sensitivity: personal
+  at: '2026-08-29T12:27:49.295385'
+  revision: 1
+- id: CLASSIFICATION_RISK_FACTORS
+  field: risk_factors
+  class: inferred
+  basis: sleep, stress, injury, and training-history safety rules
+  inputs:
+    rule_set: derive_classifications/risk-v1
+  sensitivity: sensitive
+  at: '2026-08-29 12:27:49'
+  revision: 1
+- id: CLASSIFICATION_STARTING_PHASE
+  field: starting_phase
+  class: inferred
+  basis: plan length and recent training state
+  inputs:
+    plan_weeks: 4
+  sensitivity: personal
+  at: '2026-08-29 12:27:49'
+  revision: 1
+- id: CLASSIFICATION_STRENGTH_DAYS
+  field: strength_day_candidates
+  class: inferred
+  basis: strength frequency with key-day spacing constraints
+  inputs:
+    strength_frequency: 2
+    key_days:
+    - thursday
+    - friday
+  sensitivity: personal
+  at: '2026-08-29 12:27:49'
+  revision: 1
+- id: CLASSIFICATION_STRENGTH_FREQUENCY
+  field: strength_frequency
+  class: inferred
+  basis: tier, experience, recovery, and equipment policy
+  inputs:
+    tier: ayahuasca
+  sensitivity: personal
+  at: '2026-08-29 12:27:49'
+  revision: 1
+- id: CLASSIFICATION_TIER
+  field: tier
+  class: inferred
+  basis: weekly cycling hours constrained by goal and training history
+  inputs:
+    cycling_hours_target: 2.0
+    goal_type: null
+    years_structured: 0
+  sensitivity: personal
+  at: '2026-08-29 12:27:49'
+  revision: 1
+- id: CLASSIFICATION_TIMESTAMP
+  field: derived_date
+  class: inferred
+  basis: classification owner execution time
+  inputs:
+    owner: derive_classifications.py
+  sensitivity: internal
+  at: '2026-08-29 12:27:49'
+  revision: 1
+plan_start: '2026-08-31'
+plan_end: '2026-09-27'
+race_weekday: null

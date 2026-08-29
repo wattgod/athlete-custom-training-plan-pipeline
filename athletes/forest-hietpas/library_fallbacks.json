@@ -1,0 +1,30 @@
+[
+  {
+    "plan_week": 1,
+    "day": "Sat",
+    "canonical_name": "Endurance",
+    "role": "long_ride",
+    "phase": "base"
+  },
+  {
+    "plan_week": 2,
+    "day": "Sat",
+    "canonical_name": "Endurance",
+    "role": "long_ride",
+    "phase": "base"
+  },
+  {
+    "plan_week": 3,
+    "day": "Sat",
+    "canonical_name": "Endurance",
+    "role": "long_ride",
+    "phase": "base"
+  },
+  {
+    "plan_week": 4,
+    "day": "Sat",
+    "canonical_name": "Endurance",
+    "role": "long_ride",
+    "phase": "base"
+  }
+]

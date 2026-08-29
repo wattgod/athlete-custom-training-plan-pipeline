@@ -12,7 +12,7 @@ import json
 from datetime import date, timedelta
 
 from ae_lint import (_hard_seconds, lint_demonstrated_dose, lint_ctl_trajectory, lint_race_day_tsb,
-                     lint_taper_shape, lint_workout, main)
+                     lint_taper_shape, lint_voice, lint_workout, main)
 
 
 def _structure(steps, metric="percentOfFtp"):
@@ -484,3 +484,77 @@ def test_percent_ftp_structures_unchanged_by_rpe_decode():
              {"length": {"unit": "second", "value": 180},
               "targets": [{"minValue": 50}], "intensityClass": "rest"}]}]}
     assert _hard_seconds(ftp) == (1200.0, 300.0)
+
+
+# --------------------------------------------------- AE-9.11 voice gate
+# Real strings from the 2026-08-29 Forest Hietpas block review: coach ruling
+# "you have to write it in first person" / "in the future that needs to be
+# a gate." FOREST_LEAK_NOTE is the pre-fix Week-1 note that leaked
+# coach-internal coached_block.focus metadata verbatim; FOREST_FIXED_NOTE is
+# the real shipped replacement (notes_payload.json, forest-hietpas build).
+FOREST_LEAK_NOTE = (
+    'Re-entry after a lapsed season… FTP re-anchored at 300W (coach-confirmed '
+    '2026-08-23, "300 is about right") -- bike structure may run %FTP. '
+    'No A-race; consistency is the trained adaptation.'
+)
+FOREST_FIXED_NOTE = (
+    "Week 1 of 4. Base. Nothing flashy; I want steady work and the point is "
+    "accumulation.\n\nThis block: Getting the calendar back to something you "
+    "can actually hit. I care about frequency and rhythm first, duration "
+    "second, and nothing else until January."
+)
+
+
+def test_voice_leak_forest_prefix_note_fails():
+    notes = [{"title": "Week 1: Base", "noteDate": "2026-08-31", "description": FOREST_LEAK_NOTE}]
+    assert ("FAIL", "AE-9.11") in _rules(lint_voice([], notes))
+
+
+def test_voice_leak_fixed_note_passes():
+    notes = [{"title": "Week 1: Base", "noteDate": "2026-08-31", "description": FOREST_FIXED_NOTE}]
+    assert not any(f["severity"] == "FAIL" for f in lint_voice([], notes))
+
+
+def test_voice_leak_ae_citation_fails():
+    w = {"title": "Endurance Ride", "workoutDay": "2026-09-01",
+         "description": "Steady effort per AE-1.17 pacing; keep it controlled throughout the ride today."}
+    assert ("FAIL", "AE-9.11") in _rules(lint_voice([w]))
+
+
+def test_voice_first_person_note_passes():
+    # Real Motoren story_notes.py voice -- must not trip the impersonal-
+    # construction check.
+    notes = [{"title": "Midweek", "noteDate": "2026-09-03",
+              "description": "Nothing flashy; I want steady work and the point is accumulation."}]
+    assert lint_voice([], notes) == []
+
+
+def test_voice_impersonal_second_person_warns():
+    # Real Forest pre-fix midweek note: second-person, no first-person
+    # coach marker -- the exact impersonal-construction defect from the
+    # 2026-08-29 review.
+    notes = [{"title": "Day Off", "noteDate": "2026-09-02",
+              "description": "From your calendar, all day. Nothing assigned "
+                              "today but the 20 minutes if you want it."}]
+    assert ("WARN", "AE-9.11") in _rules(lint_voice([], notes))
+
+
+def test_voice_short_structured_description_passes_silently():
+    # Mechanical interval card -- neither pronoun, must not false-positive.
+    w = {"title": "VO2max Intervals", "workoutDay": "2026-09-04",
+         "description": "3x12min @80% FTP (Z3, RPE 6-7), 4min easy recovery between reps."}
+    assert lint_voice([w]) == []
+
+
+def test_voice_gate_on_by_default_no_flags(tmp_path, capsys):
+    # AE-9.11 is always-on: no flag turns it on or off.
+    notes = [{"title": "Week 1: Base", "noteDate": "2026-08-31", "description": FOREST_LEAK_NOTE}]
+    payload = {"workouts": [], "notes": notes}
+    path = tmp_path / "notes.json"
+    path.write_text(json.dumps(payload))
+
+    exit_code = main(["--json", str(path)])
+    out = json.loads(capsys.readouterr().out)
+    rules = {(f["severity"], f["rule"]) for f in out["findings"]}
+    assert ("FAIL", "AE-9.11") in rules
+    assert exit_code == 1

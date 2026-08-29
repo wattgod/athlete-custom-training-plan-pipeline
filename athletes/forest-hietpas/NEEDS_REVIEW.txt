@@ -1,0 +1,20 @@
+AUTO-CHECK FLAGGED — REVIEW BEFORE SENDING
+=================================================
+
+The plan was built and delivered, but the automatic coach checks flagged 10/11 critical rule(s). Review the flagged weeks and adjust before sending to the athlete.
+
+============================================================
+COMPLIANCE SCORE: 91%
+CRITICAL: 10/11 FAIL
+============================================================
+  [PASS] R01 [CRITICAL]: No back-to-back intensity
+  [PASS] R02 [CRITICAL]: VO2max every 1 weeks (max gap)
+  [PASS] R03 [CRITICAL]: Recovery TSS within 50-65% of load avg
+  [PASS] R04 [CRITICAL]: Recovery weeks clean
+  [PASS] R05 [CRITICAL]: 2-3 intensity per load week
+  [PASS] R06 [CRITICAL]: Long ride in every load week
+  [PASS] R08 [CRITICAL]: Fuel tags present on every intensity/long-ride workout
+  [PASS] R11 [CRITICAL]: Strength checked during output
+  [PASS] R14 [CRITICAL]: Series coherent
+  [PASS] R19 [CRITICAL]: Hours within range of 2.0h
+  [FAIL] R20 [CRITICAL]: Off days violated: W1 Sat: Endurance; W2 Sat: Endurance; W3 Sat: Endurance

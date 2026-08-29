@@ -748,6 +748,35 @@ specificity and speed, not prose. Source: Matti's words verbatim,
 like that, less verbose, more to the point" — with the approved Jesse
 email (~160 words, numbered facts) standing as the reference exemplar.
 
+### 9c addendum — round 4 rulings (Matti, 2026-08-29)
+
+**AE-9.11 — First-person coach voice on every athlete-facing surface.**
+Every athlete-facing surface — calendar notes, workout descriptions,
+pre-activity comments, day-off cards, race cards — is written by the coach
+in FIRST PERSON to the athlete: "I want", "I've left", "I'm not moving
+it", "tell me." Impersonal/third-person construction and passive
+coach-absent phrasing (e.g. "From your calendar, all day. Nothing assigned
+today…") are defects. Compose with AE-9.10 — terse AND first person, not
+either/or.
+
+Coach-internal metadata must NEVER appear in athlete-facing copy: rule IDs
+and AE citations, config field names (`week_type`, `coached_block`,
+`library_key`), file paths (`profile.yaml`), engine/phase jargon
+(`archetype`, `RUN-LIB`, `Motoren`), dates-of-ruling and FTP provenance
+notes (e.g. "FTP re-anchored at 300W (coach-confirmed 2026-08-23)"), and
+quoted coach speech about the athlete (e.g. `"300 is about right"`).
+Internal decision context belongs in a coach-only field
+(`coached_block.coach_notes`), never rendered to the athlete.
+
+Source: Matti Rowe, 2026-08-29, verbatim — "you have to write it in first
+person" and "in the future that needs to be a gate." Two real defects in
+Forest Hietpas's generated block prompted the ruling: impersonal
+third-person notes standing in for Motoren's own first-person voice, and
+`coached_block.focus` internal metadata (FTP provenance, week-typing
+rationale) rendered verbatim into the athlete's Week-1 note. Computable
+gate: `ae_lint.lint_voice` (rule tag `AE-9.11`), on by default, no flag —
+see `athletes/scripts/ae_lint.py`.
+
 ## 9b. Hook → module map
 
 The section-heading hook names are conceptual; the concrete modules (all
