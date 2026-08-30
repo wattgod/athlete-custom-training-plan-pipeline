@@ -153,11 +153,12 @@ def _resp(status_code=200, body=None):
 
 
 DELIVERED_BODY = {
-    'order_id': 'cs_test_1',
+    'order_id': 'cs_1',
     'athlete_id': 'ath_endure_1',
     'plan_id': 'plan_endure_1',
     'block_id': 'block_endure_1',
     'invitation_id': 'inv_endure_1',
+    'invite_url': 'https://endurelabs.app/invite/invite-token-1',
     'status': 'delivered',
 }
 
@@ -279,7 +280,8 @@ class TestBuildDeliveryPayload:
         assert athlete['experience_years'] == 6     # training_history.years_cycling
         assert athlete['off_days'] == ['monday']    # preferred_off_days
         assert athlete['long_ride_day'] == 'saturday'
-        assert athlete['limiters'] == 'Fading in the final hour of long races'
+        assert athlete['limiters'] == [
+            'Fading in the final hour of long races']
         # empty constraints omitted, not sent as ''/null
         assert 'constraints' not in athlete
 
@@ -325,9 +327,11 @@ class TestBuildDeliveryPayload:
             'Target volume (12h/wk) exceeds schedule capacity (9h/wk).')
         athlete = endure_delivery.build_delivery_payload(
             profile, 'cs_1')['athlete']
-        assert 'IT band pain' in athlete['constraints']
-        assert 'asthma' in athlete['constraints']
-        assert 'exceeds schedule capacity' in athlete['constraints']
+        assert any('IT band pain' in item for item in athlete['constraints'])
+        assert any('asthma' in item for item in athlete['constraints'])
+        assert any(
+            'exceeds schedule capacity' in item
+            for item in athlete['constraints'])
 
     def test_missing_email_raises_mapping_error(self):
         profile = make_profile(email='')
@@ -377,6 +381,8 @@ class TestDeliverPurchasedPlan:
         assert record['plan_id'] == 'plan_endure_1'
         assert record['block_id'] == 'block_endure_1'
         assert record['invitation_id'] == 'inv_endure_1'
+        assert record['invite_url'] == (
+            'https://endurelabs.app/invite/invite-token-1')
         assert record['athlete_id'] == 'ath_endure_1'
         assert record['review_url'] == (
             'https://endurelabs.app/coach/athletes/ath_endure_1/plan')
@@ -396,6 +402,38 @@ class TestDeliverPurchasedPlan:
         assert record['ok'] is True
         assert record['status'] == 'already_delivered'
         assert record['plan_id'] == 'plan_endure_1'
+
+    @pytest.mark.parametrize('body,error', [
+        ({}, 'status is invalid'),
+        ({**DELIVERED_BODY, 'order_id': 'another-order'},
+         'order_id does not match'),
+        ({**DELIVERED_BODY, 'block_id': None}, 'block_id is missing'),
+        ({**DELIVERED_BODY, 'invite_url': None},
+         'invite_url is missing'),
+        ({**DELIVERED_BODY,
+          'invite_url': 'https://attacker.example/invite/invite-token-1'},
+         'invite_url is outside'),
+    ])
+    def test_200_response_must_satisfy_the_delivery_contract(
+            self, endure_env, body, error):
+        with patch.object(endure_delivery.requests, 'post',
+                          return_value=_resp(200, body)):
+            record = endure_delivery.deliver_purchased_plan(
+                {'order_id': 'cs_1'})
+        assert record['ok'] is False
+        assert record['status'] == 'failed'
+        assert error in record['error']
+
+    def test_existing_linked_account_has_no_invitation_capability(
+            self, endure_env):
+        body = {**DELIVERED_BODY, 'invitation_id': None, 'invite_url': None}
+        with patch.object(endure_delivery.requests, 'post',
+                          return_value=_resp(200, body)):
+            record = endure_delivery.deliver_purchased_plan(
+                {'order_id': 'cs_1'})
+        assert record['ok'] is True
+        assert 'invitation_id' not in record
+        assert 'invite_url' not in record
 
     def test_retries_once_on_5xx(self, endure_env):
         with patch.object(endure_delivery.requests, 'post',
