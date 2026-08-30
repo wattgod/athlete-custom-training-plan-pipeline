@@ -15,6 +15,7 @@ from workout_selector import (
     get_workout_tss,
     get_workout_duration,
     estimate_week_tss,
+    _road_ae31_level,
 )
 from series_tracker import SeriesTracker
 
@@ -504,11 +505,18 @@ def _build_week(
             # Track series coherence
             slot = w.get('slot', f'intensity_{intensity_idx + 1}')
             tracked = series_tracker.assign(slot, w['name'], w['level'])
-            tss = get_workout_tss(tracked['name'], tracked['level'])
-            dur = get_workout_duration(tracked['name'], tracked['level'])
+            tracked_level = tracked['level']
+            if discipline == 'road':
+                # Series coherence can advance a family beyond the level the
+                # selector requested. Re-apply the AE-3.1 library bound at the
+                # final emitted assignment seam (AE-3.1).
+                tracked_level = _road_ae31_level(
+                    tracked['name'], tracked_level)
+            tss = get_workout_tss(tracked['name'], tracked_level)
+            dur = get_workout_duration(tracked['name'], tracked_level)
             workout = {
                 'name': tracked['name'],
-                'level': tracked['level'],
+                'level': tracked_level,
                 'tss': tss,
                 'duration': dur,
                 'role': 'intensity',
@@ -712,7 +720,12 @@ def _build_race_week(
     """
     race_day = race_day if race_day in DAY_ORDER else 'Sat'
     race_index = DAY_ORDER.index(race_day)
-    opener_day = DAY_ORDER[(race_index - 1) % len(DAY_ORDER)]
+    # Openers go the day BEFORE the race. A Monday race has no such day
+    # inside its own Mon-Sun week, and the modulo that used to compute this
+    # wrapped to Sunday — putting the opener AFTER the race and leaving the
+    # rest of the week dead. Same rule the renderer already follows
+    # (engine_adapter._apply_race_overlays adds no opener at dow == 0).
+    opener_day = DAY_ORDER[race_index - 1] if race_index >= 1 else None
 
     def _session(name, level, role, duration=None, tss=None):
         duration = get_workout_duration(name, level) if duration is None else duration
@@ -732,7 +745,8 @@ def _build_race_week(
         (day for day in ('Tue', 'Thu', 'Mon', 'Wed', 'Fri', 'Sat', 'Sun')
          if day not in off_days and day not in (race_day, opener_day)
          and DAY_ORDER.index(day) < race_index
-         and abs(DAY_ORDER.index(day) - DAY_ORDER.index(opener_day)) > 1),
+         and (opener_day is None
+              or abs(DAY_ORDER.index(day) - DAY_ORDER.index(opener_day)) > 1)),
         None,
     )
     easy_day = next(

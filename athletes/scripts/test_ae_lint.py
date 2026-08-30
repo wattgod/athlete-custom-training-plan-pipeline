@@ -6,7 +6,7 @@ percentOfMaxHr endurance structures, bare Day Off cards, and cadence-critical
 sessions without a programmed cadence target. The plan-level gates
 (AE-1.14, AE-2.10) mirror the two same-day 2026-08-26 build failures: Jesse
 Couch's v1 modeled 72 -> low-40s CTL by his A-race, and Kendall Aubertot's
-load weeks anchored to a stale plan number instead of his demonstrated dose.
+load weeks anchored to a stale plan number instead of the demonstrated dose.
 """
 import json
 from datetime import date, timedelta

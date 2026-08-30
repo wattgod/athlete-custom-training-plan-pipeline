@@ -14,9 +14,12 @@ event_formats:
       - Fuel while the race is calm and finish each technical section already positioned for the next acceleration.
     rehearsals: [position before effort, attack-cover-counter sequences, sprint after race simulation]
     format_workouts:
-      base: {secondary: Tempo with Accelerations, long_ride: Endurance with Surges}
-      build: {secondary: Race Simulation, long_ride: Endurance with Surges}
-      race_prep: {secondary: "Blended Endurance, Threshold, and Sprints", long_ride: NP/IF Target}
+      base:
+        {secondary: Tempo with Accelerations, secondary_options: [Tempo with Accelerations, Threshold Accumulation, Microbursts], long_ride: Endurance with Surges, long_ride_options: [Endurance with Surges, Endurance Blocks, NP/IF Target]}
+      build:
+        {secondary: Race Simulation, secondary_options: [Race Simulation, Microbursts, Threshold Accumulation], long_ride: Endurance with Surges, long_ride_options: [Endurance with Surges, Endurance Blocks, NP/IF Target]}
+      race_prep:
+        {secondary: "Blended Endurance, Threshold, and Sprints", secondary_options: ["Blended Endurance, Threshold, and Sprints", Race Simulation, Microbursts], long_ride: NP/IF Target, long_ride_options: [NP/IF Target, Endurance with Surges, Endurance Blocks]}
 
   criterium:
     label: Criterium
@@ -31,9 +34,12 @@ event_formats:
       - A break must earn separation quickly and contain enough horsepower; otherwise preserve matches for positioning and the finish.
     rehearsals: [corner-exit microbursts, repeated 6-10 second sprints, one-hour variable ride plus final sprint, final-two-lap simulation]
     format_workouts:
-      base: {secondary: Tempo with Sprints, long_ride: Endurance with Surges}
-      build: {secondary: Microbursts, long_ride: Endurance with Surges}
-      race_prep: {secondary: Race Simulation, long_ride: NP/IF Target}
+      base:
+        {secondary: Tempo with Sprints, secondary_options: [Tempo with Sprints, Microbursts, Race Simulation], long_ride: Endurance with Surges, long_ride_options: [Endurance with Surges, NP/IF Target]}
+      build:
+        {secondary: Microbursts, secondary_options: [Microbursts, Tempo with Sprints, Race Simulation], long_ride: Endurance with Surges, long_ride_options: [Endurance with Surges, NP/IF Target]}
+      race_prep:
+        {secondary: Race Simulation, secondary_options: [Race Simulation, Microbursts, Tempo with Sprints], long_ride: NP/IF Target, long_ride_options: [NP/IF Target, Endurance with Surges]}
 
   hill_climb:
     label: Hill climb
@@ -47,9 +53,12 @@ event_formats:
       - Stay seated for economy where practical, stand deliberately to change muscle recruitment, and avoid early spikes above target.
     rehearsals: [sustained climbing threshold, gradient-change over-unders, course-duration uphill effort]
     format_workouts:
-      base: {secondary: SFR, long_ride: Endurance Blocks}
-      build: {secondary: Mixed Climbing Variations, long_ride: Endurance Blocks}
-      race_prep: {secondary: Threshold Steady, long_ride: NP/IF Target}
+      base:
+        {secondary: SFR, secondary_options: [SFR, Mixed Climbing Variations, Threshold Steady], long_ride: Endurance Blocks, long_ride_options: [Endurance Blocks, Endurance with Surges, NP/IF Target]}
+      build:
+        {secondary: Mixed Climbing Variations, secondary_options: [Mixed Climbing Variations, SFR, Threshold Steady], long_ride: Endurance Blocks, long_ride_options: [Endurance Blocks, Endurance with Surges, NP/IF Target]}
+      race_prep:
+        {secondary: Threshold Steady, secondary_options: [Threshold Steady, Mixed Climbing Variations, SFR], long_ride: NP/IF Target, long_ride_options: [NP/IF Target, Endurance Blocks, Endurance with Surges]}
 
   time_trial:
     label: Time trial
@@ -63,9 +72,12 @@ event_formats:
       - Rehearse the exact warmup, start procedure, turnarounds, equipment, and pacing display.
     rehearsals: [aero-position tempo, sustained threshold, negative-split time trial, start and turnaround practice]
     format_workouts:
-      base: {secondary: Tempo, long_ride: NP/IF Target}
-      build: {secondary: Threshold Steady, long_ride: NP/IF Target}
-      race_prep: {secondary: Threshold Accumulation, long_ride: NP/IF Target}
+      base:
+        {secondary: Tempo, secondary_options: [Tempo, Threshold Steady, NP/IF Target], long_ride: NP/IF Target, long_ride_options: [NP/IF Target, Endurance Blocks]}
+      build:
+        {secondary: Threshold Steady, secondary_options: [Threshold Steady, Threshold Accumulation, NP/IF Target], long_ride: NP/IF Target, long_ride_options: [NP/IF Target, Endurance Blocks]}
+      race_prep:
+        {secondary: Threshold Accumulation, secondary_options: [Threshold Accumulation, Threshold Steady, NP/IF Target], long_ride: NP/IF Target, long_ride_options: [NP/IF Target, Endurance Blocks]}
 
   stage_race:
     label: Stage race
@@ -79,9 +91,12 @@ event_formats:
       - Begin carbohydrate, fluid, cooling, and recovery immediately after finishing, then prepare equipment and sleep for the next stage.
     rehearsals: [back-to-back quality days, long ride followed by stage simulation, post-stage recovery routine]
     format_workouts:
-      base: {secondary: Tempo with Accelerations, long_ride: Endurance Blocks}
-      build: {secondary: "Blended Endurance, Threshold, and Sprints", long_ride: Endurance with Surges}
-      race_prep: {secondary: Race Simulation, long_ride: Endurance Blocks}
+      base:
+        {secondary: Tempo with Accelerations, secondary_options: [Tempo with Accelerations, Race Simulation, Threshold Accumulation], long_ride: Endurance Blocks, long_ride_options: [Endurance Blocks, Endurance with Surges, NP/IF Target]}
+      build:
+        {secondary: "Blended Endurance, Threshold, and Sprints", secondary_options: ["Blended Endurance, Threshold, and Sprints", Race Simulation, Threshold Accumulation], long_ride: Endurance with Surges, long_ride_options: [Endurance with Surges, Endurance Blocks, NP/IF Target]}
+      race_prep:
+        {secondary: Race Simulation, secondary_options: [Race Simulation, "Blended Endurance, Threshold, and Sprints", Threshold Accumulation], long_ride: Endurance Blocks, long_ride_options: [Endurance Blocks, Endurance with Surges, NP/IF Target]}
 
   fondo:
     label: Gran fondo / sportive
@@ -95,9 +110,12 @@ event_formats:
       - Use compatible groups, contribute measured pulls, and avoid repeated surges that buy no meaningful time.
     rehearsals: [long ride fueling, sustained tempo climbing, late-ride pace lift, equipment and aid-station routine]
     format_workouts:
-      base: {secondary: Tempo, long_ride: Endurance Blocks}
-      build: {secondary: Tempo with Accelerations, long_ride: Endurance with Surges}
-      race_prep: {secondary: NP/IF Target, long_ride: Endurance Blocks}
+      base:
+        {secondary: Tempo, secondary_options: [Tempo, Mixed Climbing Variations], long_ride: Endurance Blocks, long_ride_options: [Endurance Blocks, Endurance with Surges, NP/IF Target]}
+      build:
+        {secondary: Tempo with Accelerations, secondary_options: [Tempo with Accelerations, Mixed Climbing Variations], long_ride: Endurance with Surges, long_ride_options: [Endurance with Surges, Endurance Blocks, NP/IF Target]}
+      race_prep:
+        {secondary: NP/IF Target, secondary_options: [NP/IF Target, Mixed Climbing Variations], long_ride: Endurance Blocks, long_ride_options: [Endurance Blocks, Endurance with Surges, NP/IF Target]}
 
 category_progression:
   disclaimer: License upgrades are earned through eligible finishes, results, points, and governing-body approval. Training supports performance but does not guarantee an upgrade. Verify the current policy before planning a race calendar.

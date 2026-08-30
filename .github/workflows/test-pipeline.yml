@@ -91,6 +91,7 @@ jobs:
             tools/test_audit_fulfillment_states.py \
             tools/test_daily_order_drill.py \
             webhook/tests/test_state_audit_endpoint.py \
+            webhook/tests/test_provider_revenue.py \
             scripts/test_check_fixture_freshness.py -q
 
       - name: Run focused Phase 5 publisher tests

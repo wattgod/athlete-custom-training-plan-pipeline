@@ -915,3 +915,51 @@ Verification debts (round 2): Moore's W′bal critique NOT found (expected
 but unlocated — needs podcast transcripts); hard-start VO2 claims
 UNVERIFIED (blocked fetches); ramp-test critique rationale is community
 paraphrase only. None of these may be cited as Moore's position.
+
+---
+
+## 12. OPEN CONTRADICTIONS — surfaced, not resolved
+
+Live disagreements between a ratified rule and shipping behavior. Recorded
+here rather than settled unilaterally, per the house rule that
+contradictions go to Matti and are never silently resolved.
+
+### C1 — AE-9.11 vs. the third-person PURPOSE line (opened 2026-08-29)
+
+**The conflict.** AE-9.11 names "workout descriptions" as an athlete-facing
+surface that must be written in the coach's first person, and calls
+third-person construction a defect. But the `PURPOSE:` line inside those
+descriptions is third-person explanatory prose, and it ships that way today:
+
+- "Maximum aerobic power—the engine that drives race-winning attacks."
+- "Easy riding builds mitochondrial density and fat oxidation — the
+  foundation everything else rests on."
+
+Both are current engine output, reachable by athletes and now also by the
+public plan preview (`webhook/preview_contract.py`, which binds preview copy
+to the engine's real authored PURPOSE text rather than composing its own —
+better provenance, and the reason this surfaced).
+
+**Why the gate is silent.** `ae_lint.lint_voice` only warns on
+*second-person* prose lacking a first-person marker
+(`athletes/scripts/ae_lint.py`). A purely third-person sentence with no
+"you" trips nothing. The rule as written is broader than the gate that
+enforces it, so "ae-lint is green" does not mean "AE-9.11 is satisfied."
+
+**Recommendation (mine, not ratified).** Carve the explanatory case out the
+same way AE-9.11a already carved out tactical instruction. AE-9.11a's
+reasoning was that a line carrying no coaching judgment has no natural place
+for the coach's "I", and forcing one produces worse copy. A statement of
+physiology — what easy riding does to mitochondria — is the same class: it
+is true regardless of who is coaching. The rule's real target is the prose
+that FRAMES the work and says what the coach wants, which is exactly where
+first person belongs and where the gate already fires.
+
+The alternative — rewriting every PURPOSE line in the library into first
+person — is a large content migration, and it would produce sentences like
+"I want your mitochondrial density raised," which reads worse than the copy
+it replaces.
+
+**Blocked on:** Matti. Until he rules, the third-person PURPOSE copy stays
+as-is (status quo, not endorsement) and this entry is the record that it was
+seen rather than missed.

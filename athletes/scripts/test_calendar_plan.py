@@ -143,6 +143,13 @@ class TestTaperWeekSelection:
         )
         assert any(w['role'] == 'long_ride' for w in menu)
 
+    def test_road_taper_preserves_three_short_peak_week_touches(self):
+        menu = _select_taper_week(hours_per_week=12, discipline='road')
+        assert [w['name'] for w in menu if w['role'] == 'intensity'] == [
+            'Thirty-Fifteens', 'Stars In Your Eyes']
+        assert next(w['name'] for w in menu if w['role'] == 'long_ride') == \
+            'Endurance with Surges'
+
 
 class TestRaceAndTaperHouseTemplates:
     """Coach-built Monika race/taper shapes, using calendar race-day truth."""

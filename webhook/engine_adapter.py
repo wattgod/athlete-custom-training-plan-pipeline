@@ -42,7 +42,7 @@ import time
 import functools
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # Core module imports — the block-builder core lives in athletes/scripts.
@@ -64,12 +64,16 @@ from archetype import (  # noqa: E402
     MASTERS_AGE,
     MASTERS_MAX_INTENSITY,
 )
+from block_builder import DAY_ORDER  # noqa: E402
 from block_chain import build_plan_from_calendar  # noqa: E402
 from block_compliance import (  # noqa: E402
     validate_plan,
     INTENSITY_TYPES,
 )
-from race_category_scorer import calculate_category_scores  # noqa: E402
+from race_category_scorer import (  # noqa: E402
+    calculate_category_scores,
+    derive_race_demands,
+)
 from workout_selector import (  # noqa: E402
     get_workout_duration,
     get_workout_tss,
@@ -161,6 +165,12 @@ RACE_PRIORITIES = {'A', 'B', 'C'}
 RACE_DAY_DURATION_MIN = 180
 RACE_DAY_TSS = 190  # ~3h at race intensity (IF ~0.80)
 OPENERS_CAP_MIN = 40
+# block_builder._build_race_week's own race slot, before a dated race is
+# overlaid onto it. A dated race REPLACES it (_apply_race_overlays); an
+# undated race week still carries it, and _map_week renames it on the way
+# out so the raw token never reaches an athlete.
+RACE_DAY_PLACEHOLDER = 'RACE_DAY'
+RACE_DAY_FALLBACK_NAME = 'Race Day'
 PRE_RACE_EASY_CAP_MIN = 45
 
 # ---------------------------------------------------------------------------
@@ -226,83 +236,6 @@ _NO_FUEL_KEYWORDS = ('recovery', 'easy', 'shakeout', 'rest', 'openers', 'off')
 # only re-orders EXISTING slot pools — it never widens a pool, never touches
 # week structure, and the R01-R11 compliance gate still runs unchanged.
 # ---------------------------------------------------------------------------
-
-_DEMAND_NEUTRAL = 5
-
-
-def _clamp10(v: float) -> int:
-    return max(0, min(10, int(round(v))))
-
-
-def derive_race_demands(distance_mi: Optional[float],
-                        elevation_ft: Optional[float],
-                        discipline: str) -> Dict[str, int]:
-    """Conservative 8-dim demand vector from race metadata (table above)."""
-    demands: Dict[str, int] = {
-        'vo2_power': _DEMAND_NEUTRAL,
-        'heat_resilience': _DEMAND_NEUTRAL,
-        'altitude': _DEMAND_NEUTRAL,
-        'race_specificity': _DEMAND_NEUTRAL,
-    }
-
-    # durability — race_demand_analyzer distance bands
-    if distance_mi is None:
-        demands['durability'] = _DEMAND_NEUTRAL
-    elif distance_mi >= 200:
-        demands['durability'] = 10
-    elif distance_mi >= 150:
-        demands['durability'] = 8
-    elif distance_mi >= 100:
-        demands['durability'] = 6
-    elif distance_mi >= 75:
-        demands['durability'] = 4
-    elif distance_mi >= 50:
-        demands['durability'] = 2
-    else:
-        demands['durability'] = 1
-
-    # climbing — elevation/distance ratio (ft per mile)
-    if elevation_ft is None:
-        demands['climbing'] = _DEMAND_NEUTRAL
-    elif distance_mi:
-        ratio = elevation_ft / distance_mi
-        if ratio >= 175:
-            demands['climbing'] = 9
-        elif ratio >= 125:
-            demands['climbing'] = 8
-        elif ratio >= 90:
-            demands['climbing'] = 6
-        elif ratio >= 60:
-            demands['climbing'] = 5
-        elif ratio >= 35:
-            demands['climbing'] = 3
-        else:
-            demands['climbing'] = 2
-    else:
-        demands['climbing'] = max(1, min(8, _clamp10(elevation_ft / 2500)))
-
-    # threshold — analyzer distance bands + climbing boost
-    if distance_mi is None:
-        demands['threshold'] = _DEMAND_NEUTRAL
-    else:
-        if 75 <= distance_mi <= 150:
-            thr = 7
-        elif 50 <= distance_mi < 75:
-            thr = 5
-        elif distance_mi > 150:
-            thr = 4
-        else:
-            thr = 3
-        if demands['climbing'] >= 6:
-            thr += 1
-        demands['threshold'] = _clamp10(thr)
-
-    # technical — discipline heuristic
-    demands['technical'] = {'mtb': 8, 'gravel': 5, 'road': 2}.get(
-        discipline, _DEMAND_NEUTRAL)
-
-    return demands
-
 
 def _race_category_weights(race: Optional[Dict[str, Any]],
                            discipline: str) -> Optional[Dict[str, int]]:
@@ -917,7 +850,8 @@ def _validate_week_descriptors(
 
 def descriptors_from_request(
         phase: str,
-        week_descriptors: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        week_descriptors: List[Dict[str, Any]],
+        start_date: Optional[str] = None) -> List[Dict[str, Any]]:
     """Request week_descriptors → the derive_week_descriptors() SHAPE that
     build_plan_from_calendar consumes.
 
@@ -928,8 +862,17 @@ def descriptors_from_request(
     (race → 'race', taper → 'taper', load/recovery ride the block phase).
     An A-race week typed 'race' therefore behaves exactly like the final
     week of the engine's existing phase='race' block.
+
+    `race_day` (weekday abbrev) is carried through whenever `start_date`
+    lets us place a race on the calendar, exactly as derive_week_descriptors
+    reads it off the plan_dates day markers. Without it _build_race_week
+    falls back to its Saturday default and strands its own RACE_DAY
+    placeholder on the wrong day while _apply_race_overlays writes the real
+    race card on the true one. The key is OMITTED when no race lands in the
+    week, so race-free requests stay byte-identical to the pre-race shape.
     """
     cal_phase = _PHASE_TO_CALENDAR[phase]
+    race_days = _race_days_by_week(week_descriptors, start_date)
     out = []
     for i, wd in enumerate(week_descriptors):
         wtype = wd['type']
@@ -939,8 +882,52 @@ def descriptors_from_request(
             p = 'taper'
         else:
             p = cal_phase
-        out.append({'plan_week': i + 1, 'phase': p, 'week_type': wtype})
+        desc = {'plan_week': i + 1, 'phase': p, 'week_type': wtype}
+        if i in race_days:
+            desc['race_day'] = race_days[i]
+        out.append(desc)
     return out
+
+
+def _race_rank(race: Mapping[str, Any]) -> tuple:
+    """Deterministic ordering key for races competing for the same day or
+    week: A-races first, then the earlier date, then name. Shared by
+    _race_days_by_week (which race shapes the week's template) and
+    _apply_race_overlays (which race owns the calendar day) so the two can
+    never pick differently."""
+    return (0 if race.get('priority') == 'A' else 1,
+            race.get('date') or '', race.get('name') or '')
+
+
+def _race_days_by_week(week_descriptors: List[Dict[str, Any]],
+                       start_date: Optional[str]) -> Dict[int, str]:
+    """{week index → weekday abbrev} for the race that shapes each week.
+
+    Week assignment is by DATE against the block's Monday-aligned window —
+    the same arithmetic _apply_race_overlays uses, so the template slot and
+    the overlay card cannot disagree. Races out of the block's window are
+    ignored here exactly as the overlay ignores them.
+    """
+    if not start_date:
+        return {}
+    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    block_monday = start_dt - timedelta(days=start_dt.weekday())
+    best: Dict[int, tuple] = {}
+    for wd in week_descriptors:
+        for race in wd.get('races') or []:
+            try:
+                race_dt = datetime.strptime(race['date'], '%Y-%m-%d')
+            except (KeyError, TypeError, ValueError):  # pragma: no cover
+                continue
+            # divmod floors, so a pre-block race lands on a negative week
+            # index; dow is always 0..6 and needs no guard.
+            widx, dow = divmod((race_dt - block_monday).days, 7)
+            if widx < 0:
+                continue
+            rank = _race_rank(race)
+            if widx not in best or rank < best[widx][0]:
+                best[widx] = (rank, DAY_ORDER[dow])
+    return {widx: day for widx, (_rank, day) in best.items()}
 
 
 def _apply_race_overlays(plan: Dict[str, Any],
@@ -974,7 +961,12 @@ def _apply_race_overlays(plan: Dict[str, Any],
 
     races = [r for wd in params['week_descriptors']
              for r in wd.get('races', [])]
-    races.sort(key=lambda r: (r['date'], r['name']))
+    # Priority first, then date, then name — the SAME key _race_days_by_week
+    # uses to pick the race a week's template is shaped around. Sorting on
+    # date alone let an alphabetically-earlier B-race take a day from an
+    # A-race on the same date, so the template shaped for one race and the
+    # calendar showed the other.
+    races.sort(key=_race_rank)
 
     weeks = plan.get('weeks', [])
     touched = set()
@@ -985,8 +977,14 @@ def _apply_race_overlays(plan: Dict[str, Any],
         if not (0 <= widx < len(weeks)):  # pragma: no cover — 400 upstream
             continue
         days = weeks[widx]['days']  # always Mon..Sun, one entry per day
-        if days[dow].get('role') == 'race':
+        if (days[dow].get('role') == 'race'
+                and days[dow].get('name') != RACE_DAY_PLACEHOLDER):
             continue  # first race on a date wins (deterministic sort)
+        # A race-week template writes its own unnamed RACE_DAY placeholder
+        # (block_builder._build_race_week). That is a slot, not a race: the
+        # real dated card replaces it. Skipping it here is what shipped the
+        # literal string 'RACE_DAY' to athletes as a 0-minute card and left
+        # the named race off the calendar entirely.
         days[dow] = {
             'day': days[dow]['day'],
             'name': f"Race Day — {race['name']}",
@@ -1078,6 +1076,13 @@ def _map_week(week: dict, number: int, total_weeks: int,
         if role == 'off':
             continue  # Off days carry no workout — availability is respected.
         name = day.get('name', 'Endurance')
+        if name == RACE_DAY_PLACEHOLDER:
+            # A race week with no dated race still carries the template's own
+            # slot (phase='race' with no descriptors, or a race-typed
+            # descriptor with an empty races list). The slot is internal
+            # bookkeeping; the raw token is not a name any athlete should
+            # read, and AE-9.11 bars engine jargon from athlete-facing copy.
+            name = RACE_DAY_FALLBACK_NAME
         level = day.get('level', 1)
         entry = {
             'day': _ABBREV_DAY[day['day']],
@@ -1136,7 +1141,8 @@ def _build_and_gate(params: Dict[str, Any],
     """
     if params.get('week_descriptors'):
         descriptors = descriptors_from_request(
-            params['phase'], params['week_descriptors'])
+            params['phase'], params['week_descriptors'],
+            params.get('start_date'))
     else:
         descriptors = build_week_descriptors(params['phase'], params['weeks'])
 

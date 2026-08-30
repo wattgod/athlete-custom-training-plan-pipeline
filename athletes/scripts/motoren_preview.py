@@ -29,9 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
-import subprocess
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -50,6 +48,9 @@ from block_builder import build_calendar_week, DAY_ORDER
 from block_chain import build_plan_from_calendar, derive_week_descriptors
 from calculate_plan_dates import calculate_plan_dates
 from race_category_scorer import calculate_category_scores
+from road_racing import (
+    ROAD_PROFILE_VERSION, normalize_event_format, resolve_event_format,
+)
 from workout_mapper import render_workout
 from zwo_parser import parse_zwo_structure_text
 from canonical_training_model import determine_control, _canonical_segment, project_tp_structure
@@ -58,7 +59,12 @@ from generate_athlete_package import classify_fuel_tier, _get_fuel_tag_for_type,
 from generate_athlete_package import race_day_tss_from_emitted_minutes
 from workout_library import WorkoutLibrary
 from story_notes import (
-    render_story_notes, _family, SELF_REVIEW_BODY, COMMENT_PROTOCOL_BODY,
+    render_story_notes, render_preview_workout_copy,
+    render_preview_strength_copy, render_preview_race_copy,
+    SELF_REVIEW_BODY, COMMENT_PROTOCOL_BODY,
+)
+from motoren_versions import (
+    ENGINE_VERSION, VOICE_VERSION, _git_short_sha, engine_version, voice_version,
 )
 
 
@@ -70,59 +76,6 @@ class MotorenPreviewError(Exception):
     names). The original exception is chained via ``from`` for local
     debugging; callers must not surface it to the browser.
     """
-
-
-# ---------------------------------------------------------------------------
-# Versioning
-# ---------------------------------------------------------------------------
-
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_VOICE_RULES_PATH = _REPO_ROOT / "athletes" / "config" / "voice_rules.yaml"
-
-
-def _git_short_sha() -> str:
-    # Railway's production image intentionally has no .git directory. Its
-    # deployment metadata is the authoritative revision in that environment.
-    configured = (
-        os.environ.get("RAILWAY_GIT_COMMIT_SHA")
-        or os.environ.get("GIT_SHA")
-        or ""
-    ).strip().lower()
-    if re.fullmatch(r"[0-9a-f]{7,40}", configured):
-        return configured[:7]
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=str(_REPO_ROOT), capture_output=True, text=True,
-            check=True, timeout=10,
-        )
-        sha = result.stdout.strip()
-        if sha and re.fullmatch(r"[0-9a-f]{4,40}", sha):
-            return sha
-    except Exception:
-        pass
-    return "unknown"
-
-
-def _voice_digest() -> str:
-    try:
-        data = _VOICE_RULES_PATH.read_bytes()
-    except OSError:
-        return "unknown"
-    return hashlib.sha256(data).hexdigest()[:8]
-
-
-# Computed once, at import time, per spec.
-ENGINE_VERSION = f"motoren/{_git_short_sha()}+ae-2026-08-23"
-VOICE_VERSION = f"voice/{_voice_digest()}"
-
-
-def engine_version() -> str:
-    return ENGINE_VERSION
-
-
-def voice_version() -> str:
-    return VOICE_VERSION
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +149,28 @@ def _resolve_discipline(request: Mapping[str, Any]) -> str:
     return derive_discipline(profile)
 
 
+def _resolve_road_event_format(
+    request: Mapping[str, Any], discipline: str,
+) -> Optional[str]:
+    """Resolve the canonical road profile without guessing across sports."""
+    race = request["race"]
+    explicit = race.get("event_format")
+    if discipline != "road":
+        if explicit is not None:
+            raise MotorenPreviewError(
+                "road event format cannot be applied to this discipline")
+        return None
+    if explicit is not None and normalize_event_format(explicit) is None:
+        raise MotorenPreviewError("road event format is not supported")
+    resolution = resolve_event_format({
+        "target_race": {
+            "name": race["name"],
+            **({"event_format": explicit} if explicit is not None else {}),
+        },
+    })
+    return str(resolution["event_format"])
+
+
 # ---------------------------------------------------------------------------
 # Day-budget allocation (keeps the emitted week's total minutes inside the
 # public quality gate's tolerance -- the real engine's load-week budget
@@ -267,14 +242,6 @@ def _purpose_key(name: str) -> str:
     if "cadence" in low:
         return "Tempo"
     return "Endurance"
-
-
-def _purpose_text(name: str, role: str, race_name: str) -> str:
-    from generate_athlete_package import WORKOUT_DESCRIPTIONS
-    key = "Long_Ride" if role == "long_ride" and _purpose_key(name) == "Endurance" else _purpose_key(name)
-    template = WORKOUT_DESCRIPTIONS.get(key) or WORKOUT_DESCRIPTIONS["Endurance"]
-    text = f"{template['purpose']} Dialed in for {race_name}."
-    return text[:260]
 
 
 _INTENSITY_LABELS = {
@@ -401,28 +368,29 @@ def _build_bike_session(
     if not fuel_text:
         fuel_text = "Water and normal fueling; no in-ride carbohydrate target needed."
 
-    family = _family({
+    session_voice_input = {
         "archetype_id": name, "title": title, "duration_s": duration_min * 60,
         "is_field_test": False, "is_simulation": False, "is_dress_rehearsal": False,
-    })
-    if family:
-        key, phrasings = family
-        coach_note = phrasings[0].format(
-            name=title, day=weekday.strftime("%A"), race=race_name)
-    else:
-        coach_note = f"{title} on {weekday.strftime('%A')}: this session builds toward {race_name}."
-    coach_note = coach_note[:420]
+    }
+    try:
+        copy = render_preview_workout_copy(
+            session_voice_input, description=str(parsed.get("description") or ""),
+            day=weekday.strftime("%A"), race_name=race_name,
+        )
+    except ValueError as exc:
+        raise MotorenPreviewError(
+            "engine workout copy failed the coaching voice contract") from exc
 
     return {
         "kind": "bike",
         "title": title[:120],
-        "purpose": _purpose_text(name, role, race_name),
+        "purpose": copy["purpose"],
         "duration_minutes": int(duration_min),
         "tss": int(round(tss)),
         "intensity_label": _intensity_label(name, role),
         "fuel_tag": fuel_tag,
         "fueling_guidance": fuel_text[:240],
-        "coach_note": coach_note,
+        "coach_note": copy["coach_note"],
         "structure": _sanitize_structure(tp_structure),
     }
 
@@ -468,23 +436,25 @@ def _build_strength_session(
     duration_min = int(program.get("duration_min") or 45)
     focus = str(program.get("focus") or "Cycling-specific strength")
 
-    coach_note = (
-        f"{title} on {weekday.strftime('%A')}: {focus.rstrip('.').lower()}. "
-        f"Leave reps in reserve -- this supports {race_name}, it does not compete with it."
-    )[:420]
+    try:
+        copy = render_preview_strength_copy(
+            title=title, focus=focus, day=weekday.strftime("%A"),
+            race_name=race_name,
+        )
+    except ValueError as exc:
+        raise MotorenPreviewError(
+            "engine strength copy failed the coaching voice contract") from exc
 
     return {
         "kind": "strength",
         "title": title[:120],
-        "purpose": f"{focus}. Keeps force production intact for {race_name}."[:260],
+        "purpose": copy["purpose"],
         "duration_minutes": duration_min,
         "tss": max(1, round(duration_min * 0.7)),
         "intensity_label": "Strength",
         "fuel_tag": "moderate",
-        "fueling_guidance": (
-            "Eat normally beforehand; pair protein with carbohydrate within the hour after."
-        ),
-        "coach_note": coach_note,
+        "fueling_guidance": copy["fueling_guidance"],
+        "coach_note": copy["coach_note"],
         "strength": {"focus": focus[:120], "exercises": exercises},
     }
 
@@ -820,22 +790,21 @@ def _build_race_session(
         if isinstance(race_target, (int, float))
         else "Begin in the first 20 minutes and execute the fueling plan rehearsed in training."
     )
+    try:
+        copy = render_preview_race_copy(race_name)
+    except ValueError as exc:
+        raise MotorenPreviewError(
+            "engine race copy failed the coaching voice contract") from exc
     return {
         "kind": "race",
         "title": f"Race Day — {race_name}"[:120],
-        "purpose": (
-            "Execute the pacing, fueling, equipment, and decision plan built "
-            f"for {race_name}."
-        )[:260],
+        "purpose": copy["purpose"],
         "duration_minutes": duration_minutes,
         "tss": race_day_tss_from_emitted_minutes(duration_minutes),
         "intensity_label": "Race",
         "fuel_tag": "high",
         "fueling_guidance": fueling[:240],
-        "coach_note": (
-            "First third patient. Middle third useful work only. Final third: "
-            "race what is left. Solve the next problem without borrowing from the finish."
-        ),
+        "coach_note": copy["coach_note"],
         # AE-8.4d: race-day FreeRide cards intentionally have no fake power graph.
         "structure": None,
         "_engine_overlay": True,
@@ -1057,6 +1026,9 @@ def _generate_preview_source_v2(request: Mapping[str, Any]) -> Dict[str, Any]:
     seed = _request_digest(request)
     athlete = _v2_athlete(request, seed)
     discipline = _resolve_discipline(request)
+    event_format = _resolve_road_event_format(request, discipline)
+    if event_format:
+        athlete["target_race"]["event_format"] = event_format
     training_age = get_training_age_constraints(
         athlete["training_history"]["years_structured"])
     max_level = training_age["max_level"]
@@ -1096,6 +1068,7 @@ def _generate_preview_source_v2(request: Mapping[str, Any]) -> Dict[str, Any]:
         methodology="polarized_80_20",
         category_weights=calculate_category_scores(dict(race["demands"])),
         training_age=training_age["label"],
+        event_format=event_format,
     )
     if len(plan["weeks"]) != len(plan_dates["weeks"]):
         raise MotorenPreviewError("engine plan calendar did not align")
@@ -1134,6 +1107,8 @@ def _generate_preview_source_v2(request: Mapping[str, Any]) -> Dict[str, Any]:
             "total_weeks": len(volume),
             "race_date": race["date"],
             "sample_week_numbers": sample_numbers,
+            **({"profile_version": ROAD_PROFILE_VERSION}
+               if event_format else {}),
         },
         "planned_volume": volume,
         "sample_weeks": sample_weeks,

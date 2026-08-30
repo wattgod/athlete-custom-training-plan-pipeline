@@ -760,6 +760,23 @@ def main(argv: list[str] | None = None) -> int:
         finding["file"] = plan_file
         all_findings.append(finding)
 
+    # Plan-level gates (span the whole payload, not a single workout) —
+    # both silent unless their inputs are supplied.
+    plan_file = str(args.files[0]) if len(args.files) == 1 else "(plan)"
+    for finding in lint_ctl_trajectory(all_workouts, race, args.current_ctl):
+        finding["file"] = plan_file
+        all_findings.append(finding)
+    for finding in lint_race_day_tsb(all_workouts, race, args.current_ctl,
+                                      args.current_atl, args.coach_override):
+        finding["file"] = plan_file
+        all_findings.append(finding)
+    for finding in lint_taper_shape(all_workouts, race, args.current_ctl):
+        finding["file"] = plan_file
+        all_findings.append(finding)
+    for finding in lint_demonstrated_dose(all_workouts, args.demonstrated_load):
+        finding["file"] = plan_file
+        all_findings.append(finding)
+
     all_findings.sort(key=lambda f: (f["day"], f["severity"] != "FAIL"))
     fails = sum(1 for f in all_findings if f["severity"] == "FAIL")
     warns = len(all_findings) - fails

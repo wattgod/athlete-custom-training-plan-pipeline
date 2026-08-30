@@ -13,7 +13,8 @@ import story_notes
 from story_notes import (
     COMMENT_PROTOCOL_BODY, COMMENT_PROTOCOL_TITLE,
     SELF_REVIEW_BODY, SELF_REVIEW_TITLE,
-    render_story_notes, _word_count,
+    render_preview_race_copy, render_preview_strength_copy,
+    render_preview_workout_copy, render_story_notes, _word_count,
 )
 from ae_lint import lint_voice
 from voice_lint import lint_notes, lint_rest_cards, load_rules
@@ -300,3 +301,60 @@ def test_act_race_sim_shape_line_passes_ae_9_11():
     text = act_sim_description(1, 1, facts, duration_min=180, dress_rehearsal=True,
                                 race_rate_g_per_hour=60, ftp=250)
     _assert_no_voice_findings("Race Simulation", [text])
+def test_preview_uses_real_rendered_purpose_and_canonical_family_voice():
+    description = """WARM-UP:
+- 10min easy
+
+PURPOSE:
+Maximum aerobic power—the engine that drives race-winning attacks.
+
+EXECUTION:
+- Start at the number and let the set get hard on its own.
+"""
+    copy = render_preview_workout_copy(
+        {"title": "VO2 Bookend", "archetype_id": "VO2 Bookend",
+         "duration_s": 5400},
+        description=description, day="Tuesday", race_name="Mount Fuji Hill Climb",
+    )
+    assert copy["purpose"] == (
+        "Maximum aerobic power—the engine that drives race-winning attacks.")
+    assert "short recoveries are the trick" in copy["coach_note"]
+    assert "builds toward" not in copy["coach_note"]
+
+
+def test_preview_unknown_family_uses_real_execution_instead_of_inventing_copy():
+    description = """PURPOSE:
+Practice holding the aero position at race power.
+
+EXECUTION:
+- Hold the position unless control starts to go; position comes second then.
+"""
+    copy = render_preview_workout_copy(
+        {"title": "Aero Rehearsal", "archetype_id": "Aero Rehearsal",
+         "duration_s": 3600},
+        description=description, day="Thursday", race_name="State TT",
+    )
+    assert copy["purpose"] == "Practice holding the aero position at race power."
+    assert copy["coach_note"] == (
+        "Aero Rehearsal Thursday. Hold the position unless control starts to go; "
+        "position comes second then.")
+
+
+def test_preview_copy_fails_closed_without_engine_authored_sections():
+    import pytest
+
+    with pytest.raises(ValueError, match="no PURPOSE"):
+        render_preview_workout_copy(
+            {"title": "Mystery", "archetype_id": "Mystery"},
+            description="", day="Monday", race_name="A Race",
+        )
+
+
+def test_preview_strength_and_race_copy_pass_git_voice_contract():
+    strength = render_preview_strength_copy(
+        title="Max Strength A", focus="Build force with clean compound lifts",
+        day="Wednesday", race_name="Tour of the Gila",
+    )
+    race = render_preview_race_copy("Tour of the Gila")
+    assert "if it starts competing with it, stop" in strength["coach_note"]
+    assert "First third patient" in race["coach_note"]

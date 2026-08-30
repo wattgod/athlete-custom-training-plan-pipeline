@@ -18,6 +18,9 @@ from motoren_preview import (
 from generate_athlete_package import race_day_tss_from_emitted_minutes
 
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "motoren_preview_fixture.json"
+_ROAD_ACCEPTANCE_PATH = (
+    Path(__file__).parent / "fixtures" / "motoren_road_v1_acceptance.json")
+_ROAD_ACCEPTANCE = json.loads(_ROAD_ACCEPTANCE_PATH.read_text())
 
 
 def _request(**overrides):
@@ -266,7 +269,14 @@ class TestVersions:
 
     def test_voice_version_shape(self):
         assert voice_version().startswith("voice/")
-        assert len(voice_version()) == len("voice/") + 8
+        assert len(voice_version()) == len("voice/") + 12
+
+    def test_provider_and_public_contract_fingerprint_same_git_voice(self):
+        sys.path.insert(0, str(Path(__file__).parents[2] / "webhook"))
+        from preview_contract import resolve_voice_version
+
+        assert voice_version() == resolve_voice_version().replace(
+            "github-voice-", "voice/", 1)
 
 
 class TestErrorHandling:
@@ -291,6 +301,27 @@ class TestFixture:
 
 
 class TestFullPlanPreviewV2:
+    @pytest.mark.parametrize(
+        "brand,discipline", [("gravel_god", "gravel"), ("roadie_labs", "road")],
+    )
+    def test_all_sample_card_copy_avoids_generic_engine_fallbacks(
+            self, brand, discipline):
+        source = generate_preview_source(_normalized_v2(_request_v2(
+            brand=brand, race={"discipline": discipline})))
+        copy = " ".join(
+            str(session.get(field) or "")
+            for week in source["sample_weeks"]
+            for day in week["days"]
+            for session in day["sessions"]
+            for field in ("purpose", "coach_note")
+        ).lower()
+        for forbidden in (
+            "structured training", "progressive overload",
+            "focus on consistent effort", "dialed in for",
+            "this session builds toward",
+        ):
+            assert forbidden not in copy
+
     def test_one_source_drives_exact_sample_weeks_and_volume(self):
         source = generate_preview_source(_normalized_v2(_request_v2()))
         assert len(source["planned_volume"]) == 21
@@ -365,6 +396,92 @@ class TestFullPlanPreviewV2:
         second = generate_preview_source(constrained)
         assert first != second
         assert generate_preview_source(constrained) == second
+
+    @pytest.mark.parametrize(
+        "event_format,secondary_pool",
+        [(item["event_format"], item["secondary_pool"])
+         for item in _ROAD_ACCEPTANCE["formats"]],
+    )
+    def test_road_preview_uses_format_specific_library_workout(
+            self, event_format, secondary_pool):
+        request = _normalized_v2(_request_v2(
+            brand="roadie_labs",
+            sample_week_number=_ROAD_ACCEPTANCE["sample_week_number"],
+            race={
+                "slug": "test-road-event",
+                "name": "Test Road Event",
+                "discipline": "road",
+                "event_format": event_format,
+                "demands": {
+                    "durability": 8, "climbing": 7, "vo2_power": 8,
+                    "threshold": 8, "technical": 5,
+                    "race_specificity": 9,
+                },
+                "date": "2027-06-05",
+                "expected_duration_hours": 6,
+            },
+            rider={
+                "hours_per_week": 10,
+                "preferred_days": ["tue", "wed", "thu", "sat", "sun"],
+                "experience_level": "advanced",
+                "goal_type": "compete",
+                "control_method": "power",
+                "ftp_watts": 280,
+                "strength_equipment": "full-gym",
+            },
+        ))
+        source = generate_preview_source(request)
+        assert source["plan"]["profile_version"] == "road/v1"
+        build_week = next(
+            week for week in source["sample_weeks"]
+            if week["week_number"] == _ROAD_ACCEPTANCE["sample_week_number"])
+        assert build_week["phase"] == _ROAD_ACCEPTANCE["phase"]
+        bike_sessions = [
+            session for day in build_week["days"]
+            for session in day["sessions"] if session["kind"] == "bike"
+        ]
+        assert any(session["title"] in secondary_pool
+                   for session in bike_sessions)
+        assert any(session["intensity_label"] == "VO2max"
+                   for session in bike_sessions)
+        assert all(session["_library_backed"] is True
+                   for session in bike_sessions)
+        athlete_copy = " ".join(
+            str(session.get(field) or "")
+            for sample in source["sample_weeks"]
+            for day in sample["days"]
+            for session in day["sessions"]
+            for field in ("purpose", "coach_note")
+        ).lower()
+        assert "gravel god" not in athlete_copy
+        assert "dialed in for" not in athlete_copy
+        assert "this session builds toward" not in athlete_copy
+        assert "structured training" not in athlete_copy
+        assert "progressive overload" not in athlete_copy
+        assert "focus on consistent effort" not in athlete_copy
+        for session in bike_sessions:
+            if session["intensity_label"] != "VO2max":
+                continue
+            vo2_seconds = sum(
+                step["length_seconds"]
+                for step in session["structure"]["steps"]
+                if step.get("intensity_target_max",
+                            step.get("intensity_target_min", 0)) >= 1.06
+            )
+            assert 5 * 60 <= vo2_seconds <= 18 * 60
+        for sample in source["sample_weeks"]:
+            for day in sample["days"]:
+                for session in day["sessions"]:
+                    if (session["kind"] != "bike"
+                            or session["intensity_label"] != "VO2max"):
+                        continue
+                    vo2_seconds = sum(
+                        step["length_seconds"]
+                        for step in session["structure"]["steps"]
+                        if step.get("intensity_target_max",
+                                    step.get("intensity_target_min", 0)) >= 1.06
+                    )
+                    assert 5 * 60 <= vo2_seconds <= 18 * 60
 
 
 class TestIntegrationWithRealContract:

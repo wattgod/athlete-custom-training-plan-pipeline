@@ -1,0 +1,31 @@
+{
+  "profile_version": "road/v1",
+  "sample_week_number": 13,
+  "phase": "build",
+  "formats": [
+    {
+      "event_format": "generic_road",
+      "secondary_pool": ["Race Simulation", "Microbursts", "Threshold Accumulation"]
+    },
+    {
+      "event_format": "criterium",
+      "secondary_pool": ["Microbursts", "Tempo with Sprints", "Race Simulation"]
+    },
+    {
+      "event_format": "hill_climb",
+      "secondary_pool": ["Mixed Climbing Variations", "SFR", "Threshold Steady"]
+    },
+    {
+      "event_format": "time_trial",
+      "secondary_pool": ["Threshold Steady", "Threshold Accumulation", "NP/IF Target"]
+    },
+    {
+      "event_format": "stage_race",
+      "secondary_pool": ["Blended Endurance, Threshold, and Sprints", "Race Simulation", "Threshold Accumulation"]
+    },
+    {
+      "event_format": "fondo",
+      "secondary_pool": ["Tempo with Accelerations", "Mixed Climbing Variations"]
+    }
+  ]
+}
