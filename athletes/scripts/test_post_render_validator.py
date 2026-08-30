@@ -500,6 +500,34 @@ def test_hard_minutes_below_floor_warns_on_a_load_week():
     assert item['review_value']['hard_minutes'] == 30.0
 
 
+def test_hard_minutes_expands_repetition_blocks():
+    """A TP `repetition` block lists its steps ONCE and states the rep count
+    in length.value. Counting those steps a single time read a 6x3min set as
+    one 3-minute rep -- a 6x undercount on any repetition-shaped structure.
+
+    Motoren's own projector emits fully-unrolled `step` blocks, so no
+    generated plan's numbers moved when this was fixed; the exposure is the
+    TP-curated library path, where readback structures DO carry repetition
+    blocks (ae_lint._steps expands them for exactly this reason).
+    """
+    document = _document()
+    document['plan_ir']['weeks'][1]['week_type'] = 'load'
+    session = _session('2026-08-11', 'Ronnestad 30-15')
+    session['structure'] = {'structure': [{
+        'type': 'repetition',
+        'length': {'value': 6, 'unit': 'repetition'},
+        'steps': [_step(180, 108, 112), _step(180, 50, 55, 'rest')],
+    }]}
+    document['plan_ir']['weeks'][1]['sessions'] = [session]
+    _mirror_to_manifest(document)
+    issues, _ = validate_transitional_input(document)
+    item = next(issue for issue in issues
+                if issue['id'].startswith('HARD_MINUTES_BELOW_FLOOR')
+                and issue['review_value']['week'] == 1)
+    # 6 reps x 180s = 18.0 min, not the 3.0 min a single pass would report.
+    assert item['review_value']['hard_minutes'] == 18.0
+
+
 def test_hard_minutes_at_or_above_floor_does_not_warn():
     document = _document()
     document['plan_ir']['weeks'][1]['week_type'] = 'load'

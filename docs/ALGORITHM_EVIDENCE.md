@@ -963,3 +963,41 @@ it replaces.
 **Blocked on:** Matti. Until he rules, the third-person PURPOSE copy stays
 as-is (status quo, not endorsement) and this entry is the record that it was
 seen rather than missed.
+
+### C2 — AE-2.1's hard-minutes floor cannot see an open-effort test (opened 2026-08-29)
+
+**The conflict.** AE-2.1's scoping addendum (sol programming review,
+2026-08-24) says testing weeks count their test efforts toward the
+90-structured-hard-minute load-week floor, and
+`post_render_validator._step_hard_seconds` has a branch for exactly that: a
+zero-target step in a field-test session counts as hard time.
+
+That branch never fires on real plans. Field tests reach `plan_ir` with no
+structure at all — Judd Pulley's and Steve Wagner's `FTP Test` and
+`Anaerobic Test` sessions carry `structure: {}`. `_field_test_metric`
+identifies them correctly; there is simply nothing to measure. A testing
+week therefore reports near-zero hard minutes and trips the floor.
+
+**Observed.** Every load week in every current plan sits far under the
+floor: Judd W1 0.0 / W2 5.0 / W3 10.3; Forest W1 0.0 / W2 18.5 / W3 21.5;
+Steve W1 2.0 / W2 14.0 / W3 24.0 (minutes, against a 90-minute floor). The
+gate is WARNING-severity, so these ship — but a gate that fires on
+everything is a gate nobody reads.
+
+**The real question is not a bug fix.** An open-effort test is deliberately
+unstructured (AE-8.4d: no numeric target can be trusted, so none is
+written). Crediting it toward a *structured*-minutes floor needs a rule for
+how many minutes an unstructured maximal effort is worth. Options: credit
+the card's planned duration; credit a fixed nominal (e.g. 20 min for an FTP
+test protocol); or exempt testing weeks from the floor outright the way
+recovery/taper/race weeks already are.
+
+**Recommendation (mine, not ratified).** Exempt testing weeks, matching how
+every other non-load week type is handled, and keep the floor meaningful for
+the weeks it was written for. The separate finding — that genuine load weeks
+are running 10–24 hard minutes against a 90-minute floor — is a real
+programming signal and should not be dissolved by whatever fixes the testing
+week.
+
+**Blocked on:** Matti. Note the second half is the more important half: if
+those load-week numbers are right, the floor is not being met anywhere.
