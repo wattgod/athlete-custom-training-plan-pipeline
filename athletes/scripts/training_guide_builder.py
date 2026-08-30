@@ -281,7 +281,10 @@ def _build_section_titles(profile: Dict, race_data: Dict):
         skills_title,
     ]
     if discipline == "road":
-        titles.extend(["Road Race Strategy", "Category 5 to Category 1 Pathway"])
+        road_sections = _road_section_plan(profile)
+        titles.append(road_sections["strategy_title"])
+        if road_sections["include_category"]:
+            titles.append("Category 5 to Category 1 Pathway")
 
     triggers = _conditional_triggers(profile, race_data)
     if triggers["altitude"]:
@@ -292,6 +295,24 @@ def _build_section_titles(profile: Dict, race_data: Dict):
         titles.append("Masters Training Considerations")
 
     return [(f"section-{i+1}", title) for i, title in enumerate(titles)]
+
+
+def _road_section_plan(profile: Dict) -> Dict[str, Any]:
+    """Return the personalized road chapters shared by TOC and body.
+
+    A fondo finisher without a racing license still needs format strategy,
+    but not an irrelevant Cat 5-to-1 campaign chapter.
+    """
+    from road_racing import (
+        event_format_profile, resolve_event_format, road_category_profile)
+
+    resolution = resolve_event_format(profile or {})
+    fmt = event_format_profile(resolution["event_format"])
+    return {
+        "strategy_title": f"{fmt.get('label', 'Road race')} Strategy",
+        "include_category": bool(
+            road_category_profile((profile or {}).get("road_category"))),
+    }
 
 
 def _course_facts_are_omitted(profile: Dict) -> bool:
@@ -501,13 +522,19 @@ def _build_full_guide(
     sections.append(_section_race_week(race_data, tier, race_name, derived, _discipline))
     sections.append(_section_race_day(race_data, tier, race_distance, race_name, weekly_hours))
     sections.append(_section_skills(race_data, _discipline))
+    next_section = 14
     if _discipline == "road":
-        sections.append(_section_road_format_strategy(profile, section_num=14))
-        sections.append(_section_road_category_progression(profile, section_num=15))
+        road_sections = _road_section_plan(profile)
+        sections.append(_section_road_format_strategy(
+            profile, section_num=next_section))
+        next_section += 1
+        if road_sections["include_category"]:
+            sections.append(_section_road_category_progression(
+                profile, section_num=next_section))
+            next_section += 1
 
     # Conditional sections — uses shared trigger logic (no duplication)
     triggers = _conditional_triggers(profile, race_data)
-    next_section = 16 if _discipline == "road" else 14
     if triggers["altitude"]:
         sections.append(_section_altitude_training(race_data, race_name, elevation, section_num=next_section))
         next_section += 1

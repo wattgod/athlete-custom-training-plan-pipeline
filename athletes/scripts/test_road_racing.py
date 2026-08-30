@@ -197,8 +197,20 @@ def test_road_guide_has_format_strategy_and_full_upgrade_path():
     assert "Mass-Start Upgrade Points Snapshot" in category
     assert "70+" in category
     assert "Stage-race general-classification points" in category
-    assert "Road Race Strategy" in titles
+    assert "Criterium Strategy" in titles
     assert "Category 5 to Category 1 Pathway" in titles
+
+
+def test_unlicensed_fondo_omits_category_campaign_chapter():
+    profile = {
+        "discipline": "road",
+        "event_format": "fondo",
+        "target_race": {"name": "Example Gran Fondo", "event_format": "fondo"},
+    }
+    titles = [title for _, title in _build_section_titles(profile, {})]
+
+    assert "Gran fondo / sportive Strategy" in titles
+    assert "Category 5 to Category 1 Pathway" not in titles
 
 
 def test_criterium_microbursts_render_without_gravel_language():

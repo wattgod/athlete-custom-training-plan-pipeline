@@ -1296,9 +1296,13 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 if not course_facts_omitted and info.get('location'):
                     target_race_info['location'] = info['location']
                 # Discipline from the race DB drives guide branding (road ->
-                # Roadie Labs + road skills). Only set when the DB knows it.
+                # Roadie Labs + road skills). The historical ``gravel`` value
+                # is an overloaded off-road catalog bucket, so refine it from
+                # discriminative race-name evidence before making it explicit.
                 if not course_facts_omitted and info.get('discipline'):
-                    target_race_info['discipline'] = info['discipline']
+                    from archetype import resolve_matched_race_discipline
+                    target_race_info['discipline'] = resolve_matched_race_discipline(
+                        info['discipline'], info.get('name') or event['name'])
         else:
             # UNMATCHED race — build the plan from what the athlete actually
             # told us (never map to a real race by default: a fondo rider

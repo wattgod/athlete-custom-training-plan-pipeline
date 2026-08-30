@@ -4,6 +4,7 @@ ad-hoc), but the sampling, clustering, and forced-persona/race plumbing must
 be deterministic and correct."""
 
 from synthesize_athlete import synthesize, PERSONAS
+from synthesize_athlete import _effective_race_discipline
 import coverage_sweep as cs
 
 
@@ -29,6 +30,14 @@ class TestForcedPersonaAndRace:
         a = synthesize("t", 0, today="2026-06-22",
                        persona_key="weekend_warrior", race=race)
         assert a["_meta"]["discipline"] == "road"
+
+    def test_overloaded_gravel_bucket_is_refined_for_hidden_truth(self):
+        assert _effective_race_discipline({
+            "name": "Iceman Cometh", "discipline": "gravel"}) == "mtb"
+        assert _effective_race_discipline({
+            "name": "Gran Fondo Eilat", "discipline": "gravel"}) == "road"
+        assert _effective_race_discipline({
+            "name": "Unbound Gravel 200", "discipline": "gravel"}) == "gravel"
 
     def test_random_persona_still_works_without_key(self):
         a = synthesize("t", 3, today="2026-06-22")
@@ -86,7 +95,9 @@ class TestGateReason:
 
 
 class TestNormalizeFailure:
-    def test_buckets_drop_race_specific_detail(self):
+    def test_preview_failures_preserve_check_identity(self):
         a = cs._normalize_failure("preview FAIL: Zone Distribution")
         b = cs._normalize_failure("preview FAIL: Off Days")
-        assert a == b  # both bucket to "preview fail"
+        assert a == "preview fail: zone distribution"
+        assert b == "preview fail: off days"
+        assert a != b

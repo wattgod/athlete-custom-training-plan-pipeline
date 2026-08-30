@@ -158,11 +158,12 @@ FUEL_TAG_VALUES = {'high', 'moderate', 'practice', 'none'}
 DESCRIPTOR_WEEK_TYPES = {'load', 'recovery', 'taper', 'race'}
 RACE_PRIORITIES = {'A', 'B', 'C'}
 
-# Race-day overlay emission — mirrors the legacy pipeline's B-race handling
-# (generate_athlete_package: 3h FreeRide race plan; day before → Openers
-# capped at 40min; build/peak only, 2 days before → easy spin capped 45min).
-RACE_DAY_DURATION_MIN = 180
-RACE_DAY_TSS = 190  # ~3h at race intensity (IF ~0.80)
+# Race-day overlay emission. A race is a calendar event, not a fabricated
+# structured prescription: the caller already owns the dated event and may
+# model actual/estimated load separately. The block still shapes the days
+# around it (openers and, in build/peak, an easy spin).
+RACE_DAY_DURATION_MIN = 0
+RACE_DAY_TSS = 0
 OPENERS_CAP_MIN = 40
 PRE_RACE_EASY_CAP_MIN = 45
 
@@ -778,6 +779,7 @@ def _validate_week_descriptors(
         window_end = window_start + timedelta(days=weeks * 7 - 1)
 
     out: List[Dict[str, Any]] = []
+    seen_race_dates: Dict[str, str] = {}
     ok = True
     for i, entry in enumerate(raw):
         if not isinstance(entry, dict):
@@ -829,6 +831,14 @@ def _validate_week_descriptors(
                         f'Race date is outside the block window '
                         f'({window_start:%Y-%m-%d} to {window_end:%Y-%m-%d})')
                     ok = False
+                elif date_raw in seen_race_dates:
+                    errors[f'{rf}.date'] = (
+                        f'Duplicate race date {date_raw}; one-day multi-event '
+                        f'plans are not supported (already used by '
+                        f'{seen_race_dates[date_raw]!r})')
+                    ok = False
+                else:
+                    seen_race_dates[date_raw] = str(name or '')
                 priority = race.get('priority')
                 if priority not in RACE_PRIORITIES:
                     errors[f'{rf}.priority'] = "Must be 'A', 'B', or 'C'"
@@ -843,7 +853,8 @@ def _validate_week_descriptors(
 
 def descriptors_from_request(
         phase: str,
-        week_descriptors: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        week_descriptors: List[Dict[str, Any]],
+        start_date: str = '1970-01-05') -> List[Dict[str, Any]]:
     """Request week_descriptors → the derive_week_descriptors() SHAPE that
     build_plan_from_calendar consumes.
 
@@ -856,6 +867,14 @@ def descriptors_from_request(
     week of the engine's existing phase='race' block.
     """
     cal_phase = _PHASE_TO_CALENDAR[phase]
+    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    block_monday = start_dt - timedelta(days=start_dt.weekday())
+    races_by_week: Dict[int, List[Dict[str, Any]]] = {}
+    for source in week_descriptors:
+        for race in source.get('races', []):
+            race_dt = datetime.strptime(race['date'], '%Y-%m-%d')
+            week_index = (race_dt - block_monday).days // 7
+            races_by_week.setdefault(week_index, []).append(race)
     out = []
     for i, wd in enumerate(week_descriptors):
         wtype = wd['type']
@@ -865,7 +884,23 @@ def descriptors_from_request(
             p = 'taper'
         else:
             p = cal_phase
-        out.append({'plan_week': i + 1, 'phase': p, 'week_type': wtype})
+        descriptor = {'plan_week': i + 1, 'phase': p, 'week_type': wtype}
+        calendar_races = races_by_week.get(i, [])
+        if wtype == 'race' and calendar_races:
+            # The race-week builder needs the real weekday to put Openers on
+            # the preceding day. Shape a multi-race week around the earliest
+            # actual race; the dated overlay still materializes every event.
+            priority_order = {'A': 0, 'B': 1, 'C': 2}
+            primary = min(
+                calendar_races,
+                key=lambda race: (
+                    race.get('date', ''),
+                    priority_order.get(race.get('priority'), 9),
+                    race.get('name', '')),
+            )
+            descriptor['race_day'] = datetime.strptime(
+                primary['date'], '%Y-%m-%d').strftime('%a')
+        out.append(descriptor)
     return out
 
 
@@ -900,7 +935,9 @@ def _apply_race_overlays(plan: Dict[str, Any],
 
     races = [r for wd in params['week_descriptors']
              for r in wd.get('races', [])]
-    races.sort(key=lambda r: (r['date'], r['name']))
+    priority_order = {'A': 0, 'B': 1, 'C': 2}
+    races.sort(key=lambda r: (
+        r['date'], priority_order.get(r.get('priority'), 9), r['name']))
 
     weeks = plan.get('weeks', [])
     touched = set()
@@ -911,8 +948,9 @@ def _apply_race_overlays(plan: Dict[str, Any],
         if not (0 <= widx < len(weeks)):  # pragma: no cover — 400 upstream
             continue
         days = weeks[widx]['days']  # always Mon..Sun, one entry per day
-        if days[dow].get('role') == 'race':
-            continue  # first race on a date wins (deterministic sort)
+        if (days[dow].get('role') == 'race'
+                and days[dow].get('name') != 'RACE_DAY'):
+            continue  # first named race on a date wins (A before B/C)
         days[dow] = {
             'day': days[dow]['day'],
             'name': f"Race Day — {race['name']}",
@@ -1062,7 +1100,7 @@ def _build_and_gate(params: Dict[str, Any],
     """
     if params.get('week_descriptors'):
         descriptors = descriptors_from_request(
-            params['phase'], params['week_descriptors'])
+            params['phase'], params['week_descriptors'], params['start_date'])
     else:
         descriptors = build_week_descriptors(params['phase'], params['weeks'])
 
