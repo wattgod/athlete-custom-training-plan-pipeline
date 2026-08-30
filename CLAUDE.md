@@ -17,7 +17,7 @@ ultimately plans deliver on **Endure Labs**, replacing TrainingPeaks (Phase 6:
 order is a refund and a reputation hit. Read `gravel-god-cycling/NORTHSTAR.md`
 before large or ambiguous work.
 
-**Commercial-grade automated training plan generator. Current as of April 2, 2026.**
+**Commercial-grade automated training plan generator. Current as of 2026-08-30.**
 
 **THE ENGINE IS NAMED MOTOREN (Norwegian: "the engine") — its rules are RATIFIED AND CITED. READ `docs/ALGORITHM_EVIDENCE.md`
 before changing plan structure, workout selection, progression, testing,
@@ -28,7 +28,10 @@ surfaced to Matti, never silently resolved. Ratified 2026-08-23.
 Questionnaire → Block-Builder Engine → ZWO Workouts → HTML Guide → PDF → Delivery
 
 ## Status: Production
-- 641 tests passing, 0 failures
+- 2026-08-30: `athletes/scripts` 2,491 collected / 2,409 passing (82 skipped);
+  `tests` + `webhook` 898 collected / 890 passing (8 skipped). 0 failures.
+  Re-count with `--collect-only` before quoting a number here; the figure
+  this line replaced ("641 tests") had been stale since April.
 - Block-builder coaching engine integrated (April 2026)
 - 100 archetypes × 6 levels = 600 workout variations
 - 31 canonical workout types from TP library
@@ -56,7 +59,7 @@ webhook/
   Dockerfile       <- Docker build (expects repo root as context)
   requirements.txt
   tests/
-    test_webhook.py <- 114 tests
+    test_webhook.py <- 375 tests
 athletes/
   scripts/         <- Pipeline scripts + block-builder engine
   config/          <- Block-builder YAML configs (workout library, selection matrix, TSS)
@@ -518,4 +521,7 @@ python3 -m pytest athletes/scripts/test_intake_to_plan.py -v
 # Just distribution/schedule tests:
 python3 -m pytest athletes/scripts/test_distribution_and_schedule.py -v
 ```
-589 tests: 199 intake parser + methodology + multi-athlete + coaching brief, 28 plan preview (ZWO parsing + TSS + verification checks), 38 distribution/schedule, 7 generation pipeline, 1 custom guide, 13 plan dates, 4 pre-plan workouts, 13 validation, 205 workout generation (incl. imported archetypes, advanced archetypes, advanced edge cases, registry catalog, multi-methodology, variation cycling, segment edge cases, per-type power ranges, duration scaling, handler defense, helper function unit tests, duration integrity, level progression, silent failure detection), 6 workout library, 12 ZWO format, 1 all-files.
+2,491 tests collected in `athletes/scripts` (2,409 pass, 82 skip) as of
+2026-08-30. The old per-file breakdown here drifted badly out of date and
+was removed rather than left wrong; get the live shape with
+`python3 -m pytest athletes/scripts -q --collect-only`.
