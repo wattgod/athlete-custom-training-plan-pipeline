@@ -2,6 +2,7 @@
 
 import json
 import sys
+import zipfile
 from datetime import timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -89,6 +90,26 @@ def test_legacy_email_delivery_refuses_before_loading_athlete():
 
     assert success is False
     assert "seal-bound APPROVED order" in message
+
+
+def test_customer_bundle_excludes_internal_plan_preview(monkeypatch, tmp_path):
+    import app as webhook_app
+
+    source = _persistable_source(
+        tmp_path, order_id='test_preview_boundary')
+    data_dir = tmp_path / 'data'
+    monkeypatch.setattr(webhook_app, 'DATA_DIR', str(data_dir))
+    monkeypatch.setattr(
+        webhook_app, 'DELIVERIES_DIR', str(data_dir / 'deliveries'))
+
+    persisted = webhook_app.persist_deliverables(
+        'test_preview_boundary', 'athlete-m', source_dir=source,
+        delivery_platform='trainingpeaks')
+
+    with zipfile.ZipFile(persisted['review_zip']) as archive:
+        assert 'plan_preview.html' in archive.namelist()
+    with zipfile.ZipFile(persisted['customer_zip']) as archive:
+        assert 'plan_preview.html' not in archive.namelist()
 
 
 def test_webhook_no_intake_path_never_spawns_legacy_pipeline(monkeypatch):

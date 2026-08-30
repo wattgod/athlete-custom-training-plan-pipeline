@@ -43,6 +43,19 @@ This decision keeps the product boundary explicit:
 8. **Configuration integrity:** required YAML must be a non-empty mapping.
    Missing/offloaded configuration now fails with a named configuration error
    instead of cascading into an opaque `NoneType` engine failure.
+9. **Authoritative review state:** preview FAIL results, plus weekly-volume WARN
+   results below the 80% send-worthy floor, now enter the durable
+   `BLOCKED_REVIEW` catalog. PlanIR and the TrainingPeaks projection are rebuilt
+   after that merge; `NEEDS_REVIEW.txt` is compatibility output, not authority.
+10. **Validator failure posture:** a preview crash invalidates any stale HTML,
+    writes the non-waivable `VALIDATOR_CRASH_PLAN_PREVIEW` blocker, and cannot
+    degrade to a clean disposition.
+11. **Audience boundary:** `plan_preview.html` remains in the authenticated
+    coach review bundle but is no longer included in the athlete/customer ZIP.
+12. **Acceptance truth:** the four real-order fixtures now pin their exact
+    clean or `BLOCKED_REVIEW` disposition. Three retain explicit intensity
+    blockers and the 7-hour masters case retains its exact 79% volume debt;
+    missing or additional findings fail the suite.
 
 ## Current no-go evidence
 
@@ -103,6 +116,16 @@ PYTHONPATH="$PWD:$PWD/athletes/scripts" python3 -m pytest -q \
 ```
 
 Expected result: `1 passed`.
+
+The full real-order disposition contract is verified separately:
+
+```bash
+GG_RUN_ACCEPTANCE=1 GG_PDF_DISABLE=1 \
+PYTHONPATH="$PWD:$PWD/athletes/scripts:$PWD/webhook" \
+python3 -m pytest -q athletes/scripts/test_order_acceptance.py
+```
+
+Expected result with PDF deliberately disabled: `41 passed, 8 skipped`.
 
 This is source-level qualification evidence. No deployed Motoren request or
 authenticated Endure delivery is claimed here.

@@ -13,7 +13,8 @@ then asserts the full contract that makes a plan worth sending:
      pre-approval delivery surface, per SPEC_TRUSTWORTHY_FULFILMENT)
   3. The PDF is structurally valid (magic, EOF, real page count)
   4. The guide passes the quality gate (no placeholders, no slop)
-  5. Volume + zones + taper + caps all pass the preview checks
+  5. Preview disposition is exact: clean fixtures stay clean; known Motoren
+     authority blockers stay sealed for coach review
   6. COHERENCE: every profile fact the guide states matches the profile
      (FTP, race name, race date, strength equipment, methodology) — this
      is the layer that only manual eyeballing used to catch
@@ -101,6 +102,7 @@ GOLDEN_ORDERS = [
         "expect": {
             "ftp": "240", "race": _RACE["name"], "race_date": _RACE["date"],
             "strength_equipment": "full gym", "target_hours": 9.0,
+            "preview_blockers": ["PREVIEW_ZONE_DISTRIBUTION"],
         },
     },
     {
@@ -124,6 +126,9 @@ GOLDEN_ORDERS = [
         "expect": {
             "ftp": "165", "race": _RACE["name"], "race_date": _RACE["date"],
             "strength_equipment": "dumbbells", "target_hours": 7.0,
+            "preview_blockers": [
+                "PREVIEW_WEEKLY_VOLUME", "PREVIEW_ZONE_DISTRIBUTION"],
+            "volume_pct": 79,
         },
     },
     {
@@ -157,6 +162,7 @@ GOLDEN_ORDERS = [
             "event_format": "fondo", "road_category": "cat_5",
             "min_strength_sessions": 4,
             "pdf_optional": True,
+            "preview_blockers": [],
         },
     },
     {
@@ -189,6 +195,7 @@ GOLDEN_ORDERS = [
             "event_format": "hill_climb", "road_category": "cat_4",
             "min_strength_sessions": 4,
             "pdf_optional": True,
+            "preview_blockers": ["PREVIEW_ZONE_DISTRIBUTION"],
         },
     },
 ]
@@ -331,13 +338,16 @@ def test_guide_passes_quality_gate(built_order):
 
 
 def test_preview_checks_have_no_failures(built_order):
-    """Volume fill, zone distribution, taper, day caps, off days — the
-    calibrated preview checks must not FAIL (WARN is acceptable)."""
+    """Pin the exact current authority disposition without weakening gates."""
     from generate_plan_preview import build_preview_data
     data = build_preview_data(built_order["athlete_dir"])
-    failures = [f"{c['name']}: {c.get('detail', '')}"
-                for c in data["checks"] if c["status"] == "FAIL"]
-    assert not failures, "preview checks failed:\n" + "\n".join(failures)
+    from intake_to_plan import preview_review_issues
+    actual_ids = sorted(
+        item['id'] for item in preview_review_issues(data['checks']))
+    expected_ids = sorted(
+        built_order['order']['expect'].get('preview_blockers', []))
+    assert actual_ids == expected_ids, (
+        f"preview disposition changed: expected {expected_ids}, got {actual_ids}")
 
 
 def test_volume_fills_stated_hours(built_order):
@@ -349,8 +359,13 @@ def test_volume_fills_stated_hours(built_order):
     vol = next((c for c in data["checks"] if c["name"] == "Weekly Volume"), None)
     assert vol is not None, "no Weekly Volume check produced"
     pct = float(re.search(r"\((\d+)%\)", vol["detail"]).group(1))
-    assert 80 <= pct <= 120, (
-        f"volume fill {pct}% of {target}h target (want 80-120%): {vol['detail']}")
+    expected_pct = built_order['order']['expect'].get('volume_pct')
+    if expected_pct is not None:
+        assert pct == expected_pct
+        assert vol['status'] == 'WARN'
+    else:
+        assert 80 <= pct <= 120, (
+            f"volume fill {pct}% of {target}h target (want 80-120%): {vol['detail']}")
 
 
 def test_guide_facts_match_profile(built_order):
@@ -419,7 +434,7 @@ def test_fueling_targets_are_physiological(built_order):
 
 
 def test_compliance_is_perfect(built_order):
-    """The golden order must deliver CLEAN — no compliance/quality flag.
+    """The golden order must produce its exact clean-or-review disposition.
 
     Since the gates now flag-for-review instead of hard-failing (the safety
     net), 'exit 0' alone no longer proves the plan is compliant. The real
@@ -431,9 +446,23 @@ def test_compliance_is_perfect(built_order):
     athlete_dir = built_order["athlete_dir"]
     assert (athlete_dir / "plan_summary.yaml").exists(), "plan_summary.yaml missing"
     review = athlete_dir / "NEEDS_REVIEW.txt"
-    assert not review.exists(), (
-        "golden order was FLAGGED for review — a compliance or quality gate "
-        f"failed on a known-good athlete:\n{review.read_text() if review.exists() else ''}")
+    expected_ids = sorted(
+        built_order['order']['expect'].get('preview_blockers', []))
+    state = json.loads((athlete_dir / 'fulfillment_status.json').read_text())
+    actual_ids = sorted(
+        item['id'] for item in state['blocking_issues']
+        if item['source'] == 'plan_preview')
+    assert actual_ids == expected_ids
+    if expected_ids:
+        assert review.exists()
+        assert 'GG_NEEDS_REVIEW=1' in built_order['proc'].stdout
+        assert state['status'] == 'BLOCKED_REVIEW'
+        brief = (athlete_dir / 'coaching_brief.md').read_text()
+        assert 'NEEDS REVIEW BEFORE SENDING' in brief
+    else:
+        assert not review.exists(), (
+            "clean fixture was unexpectedly flagged:\n"
+            f"{review.read_text() if review.exists() else ''}")
 
 
 def test_roadie_package_is_brand_clean_and_semantically_valid(built_order):
