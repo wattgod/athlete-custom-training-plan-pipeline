@@ -14,7 +14,7 @@ import math
 import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from brand_config import brand_from_profile, get_brand_config
 from calculate_fueling import estimate_race_duration
