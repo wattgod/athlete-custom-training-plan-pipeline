@@ -136,7 +136,10 @@ class TestHappyPath:
                 assert wo['day'] in VALID_DAYS
                 assert isinstance(wo['coachName'], str) and wo['coachName']
                 assert isinstance(wo['durationMinutes'], int)
-                assert wo['durationMinutes'] > 0
+                if wo['coachName'] in {'Rest Day', 'RACE_DAY'}:
+                    assert wo['durationMinutes'] == 0
+                else:
+                    assert wo['durationMinutes'] > 0
                 assert isinstance(wo['estimatedTss'], int)
                 assert wo['estimatedTss'] >= 0
                 assert wo['fuelTag'] in VALID_FUEL_TAGS
@@ -473,10 +476,9 @@ class TestInvalidRequests:
 # =============================================================================
 
 class TestComplianceGate:
-    def test_marginal_config_returns_422(self, client):
-        """Known marginal config from the domain sweep: 4h/week beginner in a
-        build block with partial day caps trips the R03 recovery-ratio
-        boundary (86% vs 85% ceiling)."""
+    def test_marginal_config_is_rebalanced_inside_recovery_band(self, client):
+        """A 4h/week beginner with partial day caps used to trip R03. The
+        recovery-week rebalancer should now keep the plan compliant."""
         body = _payload()
         body['athlete'].update({'hours_per_week': 4, 'experience_years': 0})
         body['athlete']['availability'] = {
@@ -484,12 +486,15 @@ class TestComplianceGate:
             'sat': {'available': True, 'max_duration_min': 300},
         }
         resp = _post(client, body)
-        assert resp.status_code == 422
+        assert resp.status_code == 200
         data = resp.get_json()
-        assert data['error'] == 'compliance_failed'
-        assert data['compliance']['passed'] is False
-        assert data['compliance']['violations']
-        assert any('R03' in v for v in data['compliance']['violations'])
+        assert data['compliance'] == {'passed': True, 'violations': []}
+        load_tss = [week['targetTss'] for week in data['weeks']
+                    if week['type'] == 'load']
+        recovery = next(week for week in data['weeks']
+                        if week['type'] == 'recovery')
+        ratio = recovery['targetTss'] / (sum(load_tss) / len(load_tss))
+        assert 0.50 <= ratio <= 0.65
 
     def test_422_branch_unit(self, client, monkeypatch):
         """Pin the 422 branch independent of core rule tuning."""
@@ -1500,7 +1505,7 @@ class TestWeekDescriptors:
             {'number': 15, 'type': 'recovery', 'races': []},
             {'number': 16, 'type': 'taper', 'races': []},
             {'number': 17, 'type': 'race', 'races': []},
-        ])
+        ], '2026-07-06')
         assert out == [
             {'plan_week': 1, 'phase': 'build', 'week_type': 'load'},
             {'plan_week': 2, 'phase': 'build', 'week_type': 'recovery'},
@@ -1510,5 +1515,5 @@ class TestWeekDescriptors:
         # stabilize rides the maintenance calendar mapping, exactly like
         # the internal rhythm does.
         out = descriptors_from_request('stabilize', [
-            {'number': 1, 'type': 'load', 'races': []}])
+            {'number': 1, 'type': 'load', 'races': []}], '2026-07-06')
         assert out[0]['phase'] == 'maintenance'

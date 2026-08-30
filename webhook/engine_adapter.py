@@ -843,7 +843,8 @@ def _validate_week_descriptors(
 
 def descriptors_from_request(
         phase: str,
-        week_descriptors: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        week_descriptors: List[Dict[str, Any]],
+        start_date: str) -> List[Dict[str, Any]]:
     """Request week_descriptors → the derive_week_descriptors() SHAPE that
     build_plan_from_calendar consumes.
 
@@ -856,6 +857,17 @@ def descriptors_from_request(
     week of the engine's existing phase='race' block.
     """
     cal_phase = _PHASE_TO_CALENDAR[phase]
+    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    block_monday = start_dt - timedelta(days=start_dt.weekday())
+    race_days: Dict[int, str] = {}
+    races = [race for descriptor in week_descriptors
+             for race in descriptor.get('races', [])]
+    for race in sorted(races, key=lambda item: (item['date'], item['name'])):
+        race_dt = datetime.strptime(race['date'], '%Y-%m-%d')
+        week_index, day_index = divmod((race_dt - block_monday).days, 7)
+        if 0 <= week_index < len(week_descriptors):
+            race_days.setdefault(week_index, _DAY_ABBREV[DAY_KEYS[day_index]])
+
     out = []
     for i, wd in enumerate(week_descriptors):
         wtype = wd['type']
@@ -865,7 +877,13 @@ def descriptors_from_request(
             p = 'taper'
         else:
             p = cal_phase
-        out.append({'plan_week': i + 1, 'phase': p, 'week_type': wtype})
+        descriptor = {'plan_week': i + 1, 'phase': p, 'week_type': wtype}
+        if wtype == 'race' and i in race_days:
+            # The calendar owns the actual race weekday. Without this, the
+            # race-week builder defaults its placeholder to Saturday and can
+            # occupy the opener slot for a Sunday race.
+            descriptor['race_day'] = race_days[i]
+        out.append(descriptor)
     return out
 
 
@@ -911,7 +929,8 @@ def _apply_race_overlays(plan: Dict[str, Any],
         if not (0 <= widx < len(weeks)):  # pragma: no cover — 400 upstream
             continue
         days = weeks[widx]['days']  # always Mon..Sun, one entry per day
-        if days[dow].get('role') == 'race':
+        if (days[dow].get('role') == 'race'
+                and days[dow].get('name') != 'RACE_DAY'):
             continue  # first race on a date wins (deterministic sort)
         days[dow] = {
             'day': days[dow]['day'],
@@ -1062,7 +1081,7 @@ def _build_and_gate(params: Dict[str, Any],
     """
     if params.get('week_descriptors'):
         descriptors = descriptors_from_request(
-            params['phase'], params['week_descriptors'])
+            params['phase'], params['week_descriptors'], params['start_date'])
     else:
         descriptors = build_week_descriptors(params['phase'], params['weeks'])
 
