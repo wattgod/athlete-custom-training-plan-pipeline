@@ -53,6 +53,7 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
                                external_notification_projection,
                                redact_sensitive_review_items,
                                record_seal_mismatch,
+                               review_catalog_digest,
                                transition as transition_fulfillment,
                                verify_release_artifact,
                                verify_release_manifest, write_generation)
@@ -84,6 +85,10 @@ from training_plan_addons import (
     stripe_line_items_for_addons,
 )
 from signwell_client import SignWellClient, SignWellError, verify_event_hash
+from endure_approval_bridge import (
+    EndureApprovalAuthError,
+    verify_endure_request,
+)
 
 # The shared registry lives under athletes/config because that directory is
 # copied into the Railway image. Import its loader from the adjacent scripts
@@ -4698,6 +4703,210 @@ def _tp_manifest_record(manifest: dict | None) -> dict:
     )
 
 
+def _verify_endure_approval_request(body=None):
+    """Authenticate one narrowly scoped server-to-server review request."""
+    try:
+        return verify_endure_request(
+            method=request.method,
+            path=request.path,
+            body=body,
+            headers=request.headers,
+            secret=os.environ.get('ENDURE_APPROVAL_SECRET', ''),
+            expected_key_id=os.environ.get('ENDURE_APPROVAL_KEY_ID', ''),
+        )
+    except EndureApprovalAuthError as exc:
+        raise ReviewAuthError(str(exc)) from exc
+
+
+def _uuid_text(value):
+    try:
+        parsed = uuid.UUID(str(value or ''))
+    except (ValueError, AttributeError, TypeError):
+        return ''
+    return str(parsed)
+
+
+def _validate_endure_approval_command(data):
+    required = {
+        'command_version', 'request_id', 'order_id', 'athlete_id',
+        'generation_revision', 'review_catalog_digest', 'model_seal',
+        'release_manifest_digest', 'approving_actor_id', 'approving_org_id',
+        'approving_membership_role', 'confirmations', 'waiver',
+    }
+    if not isinstance(data, dict) or set(data) != required:
+        raise FulfillmentStateError('Endure approval command shape is invalid')
+    if data.get('command_version') != 'endure_approval_command/v1':
+        raise FulfillmentStateError('Endure approval command version is invalid')
+    if (
+        _uuid_text(data.get('request_id')) != data.get('request_id')
+        or _uuid_text(data.get('athlete_id')) != data.get('athlete_id')
+        or _uuid_text(data.get('approving_actor_id')) != data.get('approving_actor_id')
+        or _uuid_text(data.get('approving_org_id')) != data.get('approving_org_id')
+        or data.get('approving_membership_role') not in {'owner', 'admin', 'coach'}
+        or not isinstance(data.get('generation_revision'), int)
+        or data['generation_revision'] < 1
+        or not re.fullmatch(r'[0-9a-f]{64}', str(data.get('review_catalog_digest') or ''))
+        or not re.fullmatch(r'[0-9a-f]{64}', str(data.get('model_seal') or ''))
+        or not re.fullmatch(r'[0-9a-f]{64}', str(data.get('release_manifest_digest') or ''))
+        or not isinstance(data.get('confirmations'), list)
+        or (data.get('waiver') is not None and not isinstance(data.get('waiver'), dict))
+        or not str(data.get('order_id') or '').strip()
+    ):
+        raise FulfillmentStateError('Endure approval command values are invalid')
+    return data
+
+
+def _endure_approval_receipt(state):
+    approval = state.get('approval') or {}
+    source = approval.get('source') or {}
+    return {
+        'schema_version': 'motoren_approval_receipt/v1',
+        'order_id': state['order_id'],
+        'athlete_id': state['athlete_id'],
+        'status': state['status'],
+        'generation_revision': state['generation_revision'],
+        'review_catalog_digest': state['review_catalog_digest'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'approval_snapshot_version': approval.get('snapshot_version'),
+        'approval_credential': approval.get('credential'),
+        'approved_at': approval.get('at'),
+        'source_request_id': source.get('request_id'),
+        'source_command_digest': source.get('command_digest'),
+        'source_key_id': source.get('key_id'),
+        'release_authorized': approval_matches_release(state),
+        'external_writes_performed': bool(
+            state.get('application') or state.get('confirmation')
+        ),
+    }
+
+
+def _load_verified_endure_review(order_id):
+    state = load_fulfillment_state(_fulfillment_status_path(order_id))
+    if not state.get('model_seal') or not state.get('release_manifest_digest'):
+        raise FulfillmentStateError('Motoren review is not sealed')
+    revision_dir = (
+        _order_dir(order_id) / 'revisions'
+        / f"r{state['generation_revision']}"
+    )
+    try:
+        verify_release_manifest(state, revision_dir)
+    except FulfillmentStateError as exc:
+        record_seal_mismatch(_fulfillment_status_path(order_id), str(exc))
+        raise FulfillmentStateError(
+            f'Motoren review seal verification failed: {exc}'
+        ) from exc
+    expected_catalog_digest = review_catalog_digest(state)
+    if state.get('review_catalog_digest') != expected_catalog_digest:
+        raise FulfillmentStateError('Motoren review catalog is stale')
+    return state
+
+
+@app.route('/api/fulfillment/<order_ref>/endure-review', methods=['GET'])
+@limiter.limit('30/minute')
+def endure_fulfillment_review(order_ref):
+    """Return the sealed, non-executable review catalog to Endure."""
+    try:
+        _verify_endure_approval_request()
+    except ReviewAuthError as exc:
+        return jsonify({'error': str(exc)}), 401
+    order_id = _resolve_order_id(order_ref)
+    if not order_id:
+        return jsonify({'error': 'Motoren review not found'}), 404
+    try:
+        state = _load_verified_endure_review(order_id)
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 409
+    return jsonify({
+        'schema_version': 'motoren_endure_review/v1',
+        'order_id': state['order_id'],
+        'athlete_id': state['athlete_id'],
+        'delivery_platform': state['delivery_platform'],
+        'status': state['status'],
+        'generation_revision': state['generation_revision'],
+        'review_catalog_version': state['review_catalog_version'],
+        'review_catalog_digest': state['review_catalog_digest'],
+        'review_items': state['review_items'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'release_authorized': approval_matches_release(state),
+        'approval_receipt': (
+            _endure_approval_receipt(state)
+            if state.get('status') == APPROVED else None
+        ),
+        'external_writes_performed': bool(
+            state.get('application') or state.get('confirmation')
+        ),
+    }), 200
+
+
+@app.route('/api/fulfillment/<order_ref>/endure-approval', methods=['POST'])
+@limiter.limit('10/minute')
+def approve_fulfillment_from_endure(order_ref):
+    """Apply one authenticated Endure coach decision to the sealed release."""
+    data = request.get_json(silent=True)
+    try:
+        verified = _verify_endure_approval_request(data)
+        command = _validate_endure_approval_command(data)
+    except ReviewAuthError as exc:
+        return jsonify({'error': str(exc)}), 401
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 400
+    order_id = _resolve_order_id(order_ref)
+    if not order_id or order_id != command['order_id']:
+        return jsonify({'error': 'Motoren approval order does not match'}), 409
+    try:
+        state = _load_verified_endure_review(order_id)
+        approval_source = {
+            'system': 'endure',
+            'request_id': command['request_id'],
+            'command_digest': verified.command_digest,
+            'key_id': verified.key_id,
+        }
+        expected_credential = (
+            f"endure:{verified.key_id}:{command['approving_org_id']}:"
+            f"{command['approving_actor_id']}"
+        )
+        if state['status'] == APPROVED:
+            approval = state.get('approval') or {}
+            if (
+                approval_matches_release(state)
+                and approval.get('credential') == expected_credential
+                and approval.get('source') == approval_source
+            ):
+                return jsonify(_endure_approval_receipt(state)), 200
+            raise FulfillmentStateError(
+                'Motoren release already has a different approval'
+            )
+        if (
+            state['athlete_id'] != command['athlete_id']
+            or state['generation_revision'] != command['generation_revision']
+            or state['review_catalog_digest'] != command['review_catalog_digest']
+            or state['model_seal'] != command['model_seal']
+            or state['release_manifest_digest'] != command['release_manifest_digest']
+        ):
+            raise FulfillmentStateError(
+                'Endure approval does not match the current sealed Motoren review'
+            )
+        state = transition_fulfillment(
+            _fulfillment_status_path(order_id), APPROVED,
+            expected_credential,
+            waiver=command['waiver'],
+            expected_revision=command['generation_revision'],
+            expected_catalog_digest=command['review_catalog_digest'],
+            review_decisions=command['confirmations'],
+            credential=expected_credential,
+            metadata={'approval_source': approval_source},
+        )
+        if not approval_matches_release(state):
+            raise FulfillmentStateError(
+                'Motoren approval readback is not release-authoritative'
+            )
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 409
+    return jsonify(_endure_approval_receipt(state)), 200
+
+
 @app.route('/api/fulfillment/<order_ref>/transition', methods=['POST'])
 def transition_fulfillment_state(order_ref):
     """Record the coach's authenticated review/application transition."""
@@ -4711,32 +4920,26 @@ def transition_fulfillment_state(order_ref):
     if not isinstance(data, dict) or _has_client_timestamp(data):
         return jsonify({'error': 'JSON body without client timestamps is required'}), 400
     destination = str(data.get('to', ''))
+    if destination == APPROVED:
+        return jsonify({
+            'error': (
+                'APPROVED requires an authenticated review session or the '
+                'narrow Endure approval bridge'
+            )
+        }), 409
     expected_revision = data.get('generation_revision')
     expected_catalog_digest = data.get('review_catalog_digest')
     review_decisions = data.get('confirmations')
-    if destination == APPROVED:
-        if (not isinstance(expected_revision, int)
-                or not isinstance(expected_catalog_digest, str)
-                or not expected_catalog_digest.strip()
-                or not isinstance(review_decisions, list)):
-            return jsonify({
-                'error': ('APPROVED requires generation_revision and a '
-                          'review_catalog_digest plus confirmations list from '
-                          'the current review catalog')
-            }), 400
     try:
         state = transition_fulfillment(
             _fulfillment_status_path(order_id), destination,
-            ('operator-secret' if destination == APPROVED
-             else str(data.get('coach', ''))),
+            str(data.get('coach', '')),
             waiver=data.get('waiver'),
             platform=str(data.get('platform', '')), evidence=str(data.get('evidence', '')),
-            expected_revision=(expected_revision if destination == APPROVED else None),
-            expected_catalog_digest=(
-                expected_catalog_digest if destination == APPROVED else ''),
-            review_decisions=(review_decisions if destination == APPROVED else None),
-            credential=('operator-secret'
-                        if destination in (APPROVED, CANCELLED) else ''),
+            expected_revision=None,
+            expected_catalog_digest='',
+            review_decisions=None,
+            credential=('operator-secret' if destination == CANCELLED else ''),
             metadata=({'reason': str(data.get('reason') or '').strip()}
                       if destination == CANCELLED else None),
         )

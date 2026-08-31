@@ -1497,6 +1497,27 @@ def transition(
                 "release_manifest_digest": state["release_manifest_digest"],
                 "confirmations": snapshots,
             }
+            approval_source = (metadata or {}).get("approval_source")
+            if approval_source is not None:
+                if (
+                    not isinstance(approval_source, dict)
+                    or approval_source.get("system") != "endure"
+                    or not re.fullmatch(
+                        r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-"
+                        r"[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+                        str(approval_source.get("request_id") or ""),
+                        re.IGNORECASE,
+                    )
+                    or not re.fullmatch(
+                        r"[0-9a-f]{64}",
+                        str(approval_source.get("command_digest") or ""),
+                    )
+                    or not str(approval_source.get("key_id") or "").strip()
+                ):
+                    raise FulfillmentStateError(
+                        "Endure approval source receipt is malformed"
+                    )
+                state["approval"]["source"] = copy.deepcopy(approval_source)
         elif to == APPLIED:
             if current != APPROVED:
                 raise FulfillmentStateError("application requires APPROVED status")
