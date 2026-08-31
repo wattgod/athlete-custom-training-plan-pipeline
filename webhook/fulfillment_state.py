@@ -690,6 +690,89 @@ def _validate_state(state: Any) -> Dict[str, Any]:
     ):
         raise FulfillmentStateError("pending Endure revision request is not ledger-bound")
     state["pending_endure_revision_request"] = copy.deepcopy(pending_revision_request)
+    revision_interpretations = state.get("endure_revision_interpretations", [])
+    if not isinstance(revision_interpretations, list):
+        raise FulfillmentStateError("endure_revision_interpretations must be a list")
+    seen_interpretation_ids = set()
+    interpreted_request_ids = set()
+    allowed_patch_fields = {
+        "long_ride_days", "interval_days", "off_days", "hours_per_week",
+        "programmed_midweek_max_minutes",
+    }
+    allowed_days = {
+        "monday", "tuesday", "wednesday", "thursday", "friday",
+        "saturday", "sunday",
+    }
+    for record in revision_interpretations:
+        patch = record.get("patch") if isinstance(record, dict) else None
+        if (
+            not isinstance(record, dict)
+            or set(record) != {
+                "schema_version", "submission_id", "source_request_id",
+                "source_command_digest", "source_key_id", "command_digest",
+                "interpreter_provider", "interpreter_model", "adapter_version",
+                "patch", "submitted_at",
+            }
+            or record.get("schema_version") != "endure_revision_interpretation/v1"
+            or _uuid_text(record.get("submission_id")) != record.get("submission_id")
+            or _uuid_text(record.get("source_request_id")) != record.get("source_request_id")
+            or not re.fullmatch(r"[0-9a-f]{64}", str(record.get("source_command_digest") or ""))
+            or not re.fullmatch(r"[A-Za-z0-9_-]{8,160}", str(record.get("source_key_id") or ""))
+            or not re.fullmatch(r"[0-9a-f]{64}", str(record.get("command_digest") or ""))
+            or not re.fullmatch(r"[a-z0-9_-]{2,64}", str(record.get("interpreter_provider") or ""))
+            or not str(record.get("interpreter_model") or "").strip()
+            or len(str(record.get("interpreter_model") or "")) > 160
+            or not re.fullmatch(r"[A-Za-z0-9._/-]{1,160}", str(record.get("adapter_version") or ""))
+            or not isinstance(patch, dict)
+            or not patch
+            or not set(patch).issubset(allowed_patch_fields)
+            or not str(record.get("submitted_at") or "").strip()
+        ):
+            raise FulfillmentStateError("invalid Endure revision interpretation record")
+        for field in ("long_ride_days", "interval_days", "off_days"):
+            values = patch.get(field)
+            if values is not None and (
+                not isinstance(values, list)
+                or not values
+                or len(values) != len(set(values))
+                or any(value not in allowed_days for value in values)
+            ):
+                raise FulfillmentStateError("invalid Endure revision schedule patch")
+        if (
+            patch.get("hours_per_week") is not None
+            and (isinstance(patch["hours_per_week"], bool)
+                 or not isinstance(patch["hours_per_week"], int)
+                 or not 1 <= patch["hours_per_week"] <= 40)
+        ):
+            raise FulfillmentStateError("invalid Endure revision volume patch")
+        if (
+            patch.get("programmed_midweek_max_minutes") is not None
+            and (isinstance(patch["programmed_midweek_max_minutes"], bool)
+                 or not isinstance(patch["programmed_midweek_max_minutes"], int)
+                 or not 15 <= patch["programmed_midweek_max_minutes"] <= 480)
+        ):
+            raise FulfillmentStateError("invalid Endure revision duration patch")
+        off_days = set(patch.get("off_days") or [])
+        if off_days.intersection(patch.get("long_ride_days") or []) or off_days.intersection(
+            patch.get("interval_days") or []
+        ):
+            raise FulfillmentStateError("Endure revision schedule patch conflicts")
+        matching_request = next(
+            (item for item in revision_requests
+             if item.get("request_id") == record["source_request_id"]
+             and item.get("source_command_digest") == record["source_command_digest"]),
+            None,
+        )
+        if matching_request is None:
+            raise FulfillmentStateError("Endure revision interpretation is not request-bound")
+        if (
+            record["submission_id"] in seen_interpretation_ids
+            or record["source_request_id"] in interpreted_request_ids
+        ):
+            raise FulfillmentStateError("duplicate Endure revision interpretation record")
+        seen_interpretation_ids.add(record["submission_id"])
+        interpreted_request_ids.add(record["source_request_id"])
+    state["endure_revision_interpretations"] = copy.deepcopy(revision_interpretations)
     if not isinstance(state.get("history"), list) or not state.get("updated_at"):
         raise FulfillmentStateError("fulfillment state missing history or updated_at")
     if "release_manifest" not in state or "model_seal" not in state:
@@ -881,6 +964,9 @@ def write_generation(
             "endure_revision_requests": copy.deepcopy(
                 previous.get("endure_revision_requests", []) if previous else []
             ),
+            "endure_revision_interpretations": copy.deepcopy(
+                previous.get("endure_revision_interpretations", []) if previous else []
+            ),
             "pending_endure_revision_request": None,
             "model_seal": None,
             "release_manifest_digest": None,
@@ -999,6 +1085,57 @@ def request_endure_revision(
             source_command_digest=candidate["source_command_digest"],
             requesting_actor_id=candidate["requesting_actor_id"],
             next_generation_revision=candidate["next_generation_revision"],
+        )
+        _validate_state(state)
+        _atomic_write(state_path, state)
+        return copy.deepcopy(state)
+
+
+def record_endure_revision_interpretation(
+    path: os.PathLike[str] | str,
+    *,
+    interpretation_record: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Bind one signed model-neutral plan patch to the pending coach request."""
+    candidate = copy.deepcopy(interpretation_record)
+    with locked_state(path) as (state_path, state):
+        if state is None:
+            raise FulfillmentStateError("missing or malformed fulfillment state")
+        existing_records = state.get("endure_revision_interpretations", [])
+        for existing in existing_records:
+            if existing.get("command_digest") == candidate.get("command_digest"):
+                replay_candidate = copy.deepcopy(candidate)
+                replay_candidate["submitted_at"] = existing.get("submitted_at")
+                if existing != replay_candidate:
+                    raise FulfillmentStateError(
+                        "Endure revision interpretation digest was reused with different content"
+                    )
+                return copy.deepcopy(state)
+            if existing.get("submission_id") == candidate.get("submission_id"):
+                raise FulfillmentStateError(
+                    "Endure revision interpretation id was reused with different content"
+                )
+            if existing.get("source_request_id") == candidate.get("source_request_id"):
+                raise FulfillmentStateError(
+                    "Endure revision request already has an interpretation"
+                )
+        pending = state.get("pending_endure_revision_request")
+        if not pending:
+            raise FulfillmentStateError("Endure revision interpretation has no pending request")
+        if (
+            candidate.get("source_request_id") != pending.get("request_id")
+            or candidate.get("source_command_digest") != pending.get("source_command_digest")
+        ):
+            raise FulfillmentStateError(
+                "Endure revision interpretation does not match the pending request"
+            )
+        state.setdefault("endure_revision_interpretations", []).append(candidate)
+        _history(
+            state, "ENDURE_REVISION_INTERPRETED",
+            source_request_id=candidate["source_request_id"],
+            submission_id=candidate["submission_id"],
+            interpreter_provider=candidate["interpreter_provider"],
+            adapter_version=candidate["adapter_version"],
         )
         _validate_state(state)
         _atomic_write(state_path, state)

@@ -18,6 +18,7 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
                                load, merge_generation_blockers,
                                migrate_v1_to_quarantine, transition,
                                open_verified_release_artifact,
+                               record_endure_revision_interpretation,
                                request_endure_revision,
                                record_seal_mismatch,
                                verify_release_manifest, write_generation)
@@ -111,10 +112,44 @@ def test_endure_revision_request_blocks_approval_and_is_consumed_by_next_generat
     with pytest.raises(FulfillmentStateError, match='must be regenerated'):
         _approve(path)
 
+    interpretation = {
+        'schema_version': 'endure_revision_interpretation/v1',
+        'submission_id': 'f0e5381c-2ec8-47fd-9ced-acde0661c7ca',
+        'source_request_id': record['request_id'],
+        'source_command_digest': record['source_command_digest'],
+        'source_key_id': 'endure-test-key',
+        'command_digest': 'b' * 64,
+        'interpreter_provider': 'anthropic',
+        'interpreter_model': 'claude-test',
+        'adapter_version': 'endure/david-plan-patch/v1',
+        'patch': {'long_ride_days': ['sunday'], 'off_days': ['monday']},
+        'submitted_at': '2026-08-30T12:01:00Z',
+    }
+    with pytest.raises(FulfillmentStateError, match='schedule patch conflicts'):
+        record_endure_revision_interpretation(
+            path,
+            interpretation_record={
+                **interpretation,
+                'submission_id': 'b5bc83a5-ce80-4cf4-8237-7865e7add558',
+                'command_digest': 'c' * 64,
+                'patch': {'long_ride_days': ['sunday'], 'off_days': ['sunday']},
+            },
+        )
+    interpreted = record_endure_revision_interpretation(
+        path, interpretation_record=interpretation)
+    assert interpreted['endure_revision_interpretations'] == [interpretation]
+    replayed_interpretation = record_endure_revision_interpretation(
+        path,
+        interpretation_record={
+            **interpretation, 'submitted_at': '2026-08-30T12:01:01Z'},
+    )
+    assert replayed_interpretation['endure_revision_interpretations'] == [interpretation]
+
     regenerated = write_generation(path, 'heather_gray')
     assert regenerated['generation_revision'] == state['generation_revision'] + 1
     assert regenerated['pending_endure_revision_request'] is None
     assert regenerated['endure_revision_requests'] == [record]
+    assert regenerated['endure_revision_interpretations'] == [interpretation]
     assert any(
         event['event'] == 'ENDURE_REVISION_REQUEST_CONSUMED'
         and event['source_request_id'] == record['request_id']

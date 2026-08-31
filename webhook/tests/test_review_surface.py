@@ -43,6 +43,7 @@ def review_client(tmp_path, monkeypatch):
     data.mkdir()
     monkeypatch.setattr(webhook_app, 'DATA_DIR', str(data))
     monkeypatch.setattr(webhook_app, 'DELIVERIES_DIR', str(data / 'deliveries'))
+    monkeypatch.setattr(webhook_app, 'JOBS_DIR', str(data / 'jobs'))
     monkeypatch.setenv('DOWNLOAD_TOKEN_SECRET', 'phase2-page-test-secret')
     monkeypatch.delenv('DOWNLOAD_TOKEN_KEYS', raising=False)
     monkeypatch.delenv('REVIEW_TOKEN_KEYS', raising=False)
@@ -994,9 +995,36 @@ def test_endure_bridge_governs_revision_request_and_exact_replay(
     )
     monkeypatch.setenv('ENDURE_APPROVAL_KEY_ID', 'endure-test-key')
     athlete_id = 'd40404bb-8583-4812-bb7d-39cf2e95ea47'
-    state, state_path, _ = _seed_order(
+    state, state_path, revision_dir = _seed_order(
         'test_endure_revision_request', athlete_id=athlete_id,
     )
+    artifacts_dir = revision_dir / 'artifacts'
+    artifacts_dir.mkdir()
+    (artifacts_dir / 'intake_backup.json').write_text(json.dumps({
+        'name': 'Revision Athlete',
+        'email': 'revision@example.test',
+        'hours_per_week': 9,
+        'long_ride_days': ['Saturday'],
+        'interval_days': ['Tuesday'],
+        'off_days': ['Monday'],
+    }))
+    webhook_app._write_job({
+        'athlete_id': athlete_id,
+        'order_id': state['order_id'],
+        'intake_id': '',
+        'status': 'succeeded',
+        'attempts': 1,
+        'max_attempts': 2,
+        'created_at': '2026-08-30T11:00:00',
+        'started_at': '2026-08-30T11:00:01',
+        'finished_at': '2026-08-30T11:01:00',
+        'error': None,
+        'order_data': {
+            'order_id': state['order_id'],
+            'athlete_id': athlete_id,
+            'delivery_platform': 'trainingpeaks',
+        },
+    })
     command = {
         'command_version': 'endure_revision_request/v1',
         'request_id': '49870cb0-b8cf-4101-921b-f17865cdbac9',
@@ -1025,6 +1053,9 @@ def test_endure_bridge_governs_revision_request_and_exact_replay(
     assert receipt['source_request_id'] == command['request_id']
     assert receipt['release_authorized'] is False
     assert receipt['external_writes_performed'] is False
+    queued_job = webhook_app._read_job(state['order_id'])
+    assert queued_job['status'] == 'awaiting_revision_interpretation'
+    assert queued_job['revision_generation']['source_request_id'] == command['request_id']
 
     fresh_replay = review_client.post(
         path,
@@ -1042,7 +1073,68 @@ def test_endure_bridge_governs_revision_request_and_exact_replay(
     )
     assert readback.status_code == 200
     assert readback.get_json()['revision_request_receipt'] == receipt
+    assert readback.get_json()['revision_generation_status']['status'] == 'awaiting_interpretation'
     assert load(state_path)['pending_endure_revision_request']['note'] == command['note']
+
+    spawned = {}
+
+    def _spawn_revision(order_data, intake_id='', intake_data=None, job_metadata=None):
+        spawned.update({
+            'order_data': order_data,
+            'intake_id': intake_id,
+            'intake_data': intake_data,
+            'job_metadata': job_metadata,
+        })
+        job = webhook_app._read_job(order_data['order_id'])
+        job.update(status='queued', error=None, **(job_metadata or {}))
+        webhook_app._write_job(job)
+        return job, None
+
+    monkeypatch.setattr(webhook_app, '_spawn_plan_job', _spawn_revision)
+    interpretation = {
+        'command_version': 'endure_revision_interpretation/v1',
+        'submission_id': '8b5c24e3-6778-4e5b-8497-78fd9e6a8b9b',
+        'order_id': state['order_id'],
+        'athlete_id': athlete_id,
+        'generation_revision': state['generation_revision'],
+        'next_generation_revision': state['generation_revision'] + 1,
+        'source_request_id': command['request_id'],
+        'source_command_digest': receipt['source_command_digest'],
+        'interpreter': {
+            'provider': 'anthropic',
+            'model': 'claude-test',
+            'adapter_version': 'endure/david-plan-patch/v1',
+        },
+        'patch': {
+            'long_ride_days': ['sunday'],
+            'off_days': ['monday'],
+            'programmed_midweek_max_minutes': 90,
+        },
+    }
+    interpretation_path = (
+        f"/api/fulfillment/{state['order_id']}/endure-revision-interpretation")
+    interpreted = review_client.post(
+        interpretation_path,
+        json=interpretation,
+        headers=_endure_headers(
+            'POST', interpretation_path, interpretation, timestamp=int(time.time()) + 2),
+    )
+    assert interpreted.status_code == 200
+    assert interpreted.get_json()['status'] == 'queued'
+    assert interpreted.get_json()['target_generation_revision'] == 2
+    assert spawned['intake_data']['long_ride_days'] == ['Sunday']
+    assert spawned['intake_data']['off_days'] == ['Monday']
+    assert spawned['intake_data']['programmed_midweek_max_minutes'] == 90
+    assert load(state_path)['endure_revision_interpretations'][0]['interpreter_provider'] == 'anthropic'
+
+    replayed_interpretation = review_client.post(
+        interpretation_path,
+        json=interpretation,
+        headers=_endure_headers(
+            'POST', interpretation_path, interpretation, timestamp=int(time.time()) + 3),
+    )
+    assert replayed_interpretation.status_code == 200
+    assert replayed_interpretation.get_json() == interpreted.get_json()
 
     approval_command = {
         'command_version': 'endure_approval_command/v1',
