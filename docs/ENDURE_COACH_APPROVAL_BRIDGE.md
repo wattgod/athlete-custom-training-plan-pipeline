@@ -41,8 +41,19 @@ be retried with a fresh timestamp without creating a second approval.
 
 `GET /api/fulfillment/<order>/endure-review` returns the current sealed
 `review_catalog/v2`, order/athlete/revision identity, model seal, release
-manifest digest, and approval status. It never returns `apply_contract/v1`, TP
-payloads, executable files, or release artifacts.
+manifest digest, approval status, and any exact pending revision-request
+receipt. It never returns `apply_contract/v1`, TP payloads, executable files,
+or release artifacts.
+
+`POST /api/fulfillment/<order>/endure-revision-request` accepts one strict
+`endure_revision_request/v1`. It binds the coach and organization, current
+sealed before-image, selected review items, and plain-language directive.
+Motoren records the request under the fulfillment-state lock and returns
+`motoren_revision_request_receipt/v1`. The old sealed bytes remain readable as
+the before-image, but approval is refused until the canonical producer calls
+`write_generation`, consumes the pending request, and creates revision N+1.
+The command neither edits generated artifacts nor queues an alternative
+generator. Exact retries preserve the provider observation time and receipt.
 
 `POST /api/fulfillment/<order>/endure-approval` accepts one strict
 `endure_approval_command/v1`. The command binds the Endure coach user,
@@ -52,9 +63,9 @@ decisions, and waiver state. Motoren re-runs its existing approval invariants
 under the state lock and returns `motoren_approval_receipt/v1` only when
 `approval_matches_release()` is true and no external write occurred.
 
-Exact command replay is idempotent. A different command against an already
-approved revision fails. The generic `CRON_SECRET` transition endpoint cannot
-enter `APPROVED`; authoritative approval comes only from an authenticated
+Exact command replay is idempotent. A different approval or revision request
+against a claimed revision fails. The generic `CRON_SECRET` transition endpoint
+cannot enter `APPROVED`; authoritative approval comes only from an authenticated
 review session or this narrow bridge.
 
 ## Deployment order

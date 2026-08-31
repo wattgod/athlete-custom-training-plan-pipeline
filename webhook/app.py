@@ -52,6 +52,7 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
                                open_verified_release_artifact,
                                external_notification_projection,
                                redact_sensitive_review_items,
+                               request_endure_revision,
                                record_seal_mismatch,
                                review_catalog_digest,
                                transition as transition_fulfillment,
@@ -4756,6 +4757,56 @@ def _validate_endure_approval_command(data):
     return data
 
 
+def _validate_endure_revision_command(data):
+    required = {
+        'command_version', 'request_id', 'order_id', 'athlete_id',
+        'generation_revision', 'review_catalog_digest', 'model_seal',
+        'release_manifest_digest', 'requesting_actor_id', 'requesting_org_id',
+        'requesting_membership_role', 'decisions', 'note',
+    }
+    if not isinstance(data, dict) or set(data) != required:
+        raise FulfillmentStateError('Endure revision command shape is invalid')
+    if data.get('command_version') != 'endure_revision_request/v1':
+        raise FulfillmentStateError('Endure revision command version is invalid')
+    decisions = data.get('decisions')
+    decision_ids = set()
+    if not isinstance(decisions, list) or len(decisions) > 5000:
+        raise FulfillmentStateError('Endure revision decisions are invalid')
+    for decision in decisions:
+        if (
+            not isinstance(decision, dict)
+            or set(decision) != {'item_id', 'revision', 'disposition'}
+            or not str(decision.get('item_id') or '').strip()
+            or len(str(decision.get('item_id') or '')) > 500
+            or decision.get('revision') != data.get('generation_revision')
+            or not str(decision.get('disposition') or '').strip()
+            or len(str(decision.get('disposition') or '')) > 500
+            or decision.get('item_id') in decision_ids
+        ):
+            raise FulfillmentStateError('Endure revision decisions are invalid')
+        decision_ids.add(decision['item_id'])
+    note = data.get('note')
+    if (
+        _uuid_text(data.get('request_id')) != data.get('request_id')
+        or _uuid_text(data.get('athlete_id')) != data.get('athlete_id')
+        or _uuid_text(data.get('requesting_actor_id')) != data.get('requesting_actor_id')
+        or _uuid_text(data.get('requesting_org_id')) != data.get('requesting_org_id')
+        or data.get('requesting_membership_role') not in {'owner', 'admin', 'coach'}
+        or not isinstance(data.get('generation_revision'), int)
+        or data['generation_revision'] < 1
+        or any(not re.fullmatch(r'[0-9a-f]{64}', str(data.get(field) or ''))
+               for field in ('review_catalog_digest', 'model_seal',
+                             'release_manifest_digest'))
+        or not str(data.get('order_id') or '').strip()
+        or len(str(data.get('order_id') or '')) > 500
+        or not isinstance(note, str)
+        or len(note.strip()) < 3
+        or len(note) > 1000
+    ):
+        raise FulfillmentStateError('Endure revision command values are invalid')
+    return data
+
+
 def _endure_approval_receipt(state):
     approval = state.get('approval') or {}
     source = approval.get('source') or {}
@@ -4775,6 +4826,31 @@ def _endure_approval_receipt(state):
         'source_command_digest': source.get('command_digest'),
         'source_key_id': source.get('key_id'),
         'release_authorized': approval_matches_release(state),
+        'external_writes_performed': bool(
+            state.get('application') or state.get('confirmation')
+        ),
+    }
+
+
+def _endure_revision_request_receipt(state):
+    revision_request = state.get('pending_endure_revision_request') or {}
+    if not revision_request:
+        return None
+    return {
+        'schema_version': 'motoren_revision_request_receipt/v1',
+        'order_id': state['order_id'],
+        'athlete_id': state['athlete_id'],
+        'status': 'REVISION_REQUESTED',
+        'generation_revision': revision_request['generation_revision'],
+        'next_generation_revision': revision_request['next_generation_revision'],
+        'review_catalog_digest': revision_request['review_catalog_digest'],
+        'model_seal': revision_request['model_seal'],
+        'release_manifest_digest': revision_request['release_manifest_digest'],
+        'requested_at': revision_request['requested_at'],
+        'source_request_id': revision_request['request_id'],
+        'source_command_digest': revision_request['source_command_digest'],
+        'source_key_id': revision_request['source_key_id'],
+        'release_authorized': False,
         'external_writes_performed': bool(
             state.get('application') or state.get('confirmation')
         ),
@@ -4834,10 +4910,81 @@ def endure_fulfillment_review(order_ref):
             _endure_approval_receipt(state)
             if state.get('status') == APPROVED else None
         ),
+        'revision_request_receipt': _endure_revision_request_receipt(state),
         'external_writes_performed': bool(
             state.get('application') or state.get('confirmation')
         ),
     }), 200
+
+
+@app.route('/api/fulfillment/<order_ref>/endure-revision-request', methods=['POST'])
+@limiter.limit('10/minute')
+def request_fulfillment_revision_from_endure(order_ref):
+    """Record one authenticated coach request for the next sealed revision."""
+    data = request.get_json(silent=True)
+    try:
+        verified = _verify_endure_approval_request(data)
+        command = _validate_endure_revision_command(data)
+    except ReviewAuthError as exc:
+        return jsonify({'error': str(exc)}), 401
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 400
+    order_id = _resolve_order_id(order_ref)
+    if not order_id or order_id != command['order_id']:
+        return jsonify({'error': 'Motoren revision order does not match'}), 409
+    try:
+        state = _load_verified_endure_review(order_id)
+        catalog_ids = {item['item_id'] for item in state['review_items']}
+        if any(item['item_id'] not in catalog_ids for item in command['decisions']):
+            raise FulfillmentStateError(
+                'Endure revision decision references an unknown review item'
+            )
+        if (
+            state['athlete_id'] != command['athlete_id']
+            or state['generation_revision'] != command['generation_revision']
+            or state['review_catalog_digest'] != command['review_catalog_digest']
+            or state['model_seal'] != command['model_seal']
+            or state['release_manifest_digest'] != command['release_manifest_digest']
+        ):
+            raise FulfillmentStateError(
+                'Endure revision request does not match the current sealed Motoren review'
+            )
+        requested_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        request_record = {
+            'schema_version': command['command_version'],
+            'request_id': command['request_id'],
+            'source_key_id': verified.key_id,
+            'source_command_digest': verified.command_digest,
+            'requesting_actor_id': command['requesting_actor_id'],
+            'requesting_org_id': command['requesting_org_id'],
+            'requesting_membership_role': command['requesting_membership_role'],
+            'generation_revision': command['generation_revision'],
+            'next_generation_revision': command['generation_revision'] + 1,
+            'review_catalog_digest': command['review_catalog_digest'],
+            'model_seal': command['model_seal'],
+            'release_manifest_digest': command['release_manifest_digest'],
+            'decisions': copy.deepcopy(command['decisions']),
+            'note': command['note'],
+            'requested_at': requested_at,
+        }
+        # Preserve provider observation time across exact retries. The state
+        # function compares canonical command identity before mutation.
+        existing = next(
+            (item for item in state.get('endure_revision_requests', [])
+             if item.get('source_command_digest') == verified.command_digest),
+            None,
+        )
+        if existing:
+            request_record['requested_at'] = existing['requested_at']
+        state = request_endure_revision(
+            _fulfillment_status_path(order_id), request_record=request_record,
+        )
+        receipt = _endure_revision_request_receipt(state)
+        if receipt is None:
+            raise FulfillmentStateError('Motoren revision request readback is missing')
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 409
+    return jsonify(receipt), 200
 
 
 @app.route('/api/fulfillment/<order_ref>/endure-approval', methods=['POST'])

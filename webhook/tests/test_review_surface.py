@@ -985,6 +985,98 @@ def test_endure_bridge_reads_and_approves_exact_sealed_catalog(
     assert fresh_replay.get_json() == receipt
 
 
+def test_endure_bridge_governs_revision_request_and_exact_replay(
+    review_client, monkeypatch,
+):
+    monkeypatch.setenv(
+        'ENDURE_APPROVAL_SECRET',
+        'endure-approval-test-secret-that-is-long-enough',
+    )
+    monkeypatch.setenv('ENDURE_APPROVAL_KEY_ID', 'endure-test-key')
+    athlete_id = 'd40404bb-8583-4812-bb7d-39cf2e95ea47'
+    state, state_path, _ = _seed_order(
+        'test_endure_revision_request', athlete_id=athlete_id,
+    )
+    command = {
+        'command_version': 'endure_revision_request/v1',
+        'request_id': '49870cb0-b8cf-4101-921b-f17865cdbac9',
+        'order_id': state['order_id'],
+        'athlete_id': athlete_id,
+        'generation_revision': state['generation_revision'],
+        'review_catalog_digest': state['review_catalog_digest'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'requesting_actor_id': '3dc929e1-0f68-4c39-8625-160242808e22',
+        'requesting_org_id': '971883cb-173a-4cc7-a0e4-da01d9776937',
+        'requesting_membership_role': 'coach',
+        'decisions': [],
+        'note': 'Keep completed work and move the key endurance day to Sunday.',
+    }
+    path = f"/api/fulfillment/{state['order_id']}/endure-revision-request"
+    requested = review_client.post(
+        path, json=command, headers=_endure_headers('POST', path, command),
+    )
+    assert requested.status_code == 200
+    receipt = requested.get_json()
+    assert receipt['schema_version'] == 'motoren_revision_request_receipt/v1'
+    assert receipt['status'] == 'REVISION_REQUESTED'
+    assert receipt['generation_revision'] == state['generation_revision']
+    assert receipt['next_generation_revision'] == state['generation_revision'] + 1
+    assert receipt['source_request_id'] == command['request_id']
+    assert receipt['release_authorized'] is False
+    assert receipt['external_writes_performed'] is False
+
+    fresh_replay = review_client.post(
+        path,
+        json=command,
+        headers=_endure_headers(
+            'POST', path, command, timestamp=int(time.time()) + 1,
+        ),
+    )
+    assert fresh_replay.status_code == 200
+    assert fresh_replay.get_json() == receipt
+
+    review_path = f"/api/fulfillment/{state['order_id']}/endure-review"
+    readback = review_client.get(
+        review_path, headers=_endure_headers('GET', review_path, None),
+    )
+    assert readback.status_code == 200
+    assert readback.get_json()['revision_request_receipt'] == receipt
+    assert load(state_path)['pending_endure_revision_request']['note'] == command['note']
+
+    approval_command = {
+        'command_version': 'endure_approval_command/v1',
+        'request_id': 'e7c8a278-033a-436f-a2ba-10fb94aa2d0c',
+        'order_id': state['order_id'],
+        'athlete_id': athlete_id,
+        'generation_revision': state['generation_revision'],
+        'review_catalog_digest': state['review_catalog_digest'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'approving_actor_id': command['requesting_actor_id'],
+        'approving_org_id': command['requesting_org_id'],
+        'approving_membership_role': 'coach',
+        'confirmations': [
+            {
+                'item_id': item_id,
+                'revision': state['generation_revision'],
+                'disposition': 'confirmed',
+            }
+            for item_id in _confirmed_ids(state)
+        ],
+        'waiver': None,
+    }
+    approval_path = f"/api/fulfillment/{state['order_id']}/endure-approval"
+    refused = review_client.post(
+        approval_path,
+        json=approval_command,
+        headers=_endure_headers('POST', approval_path, approval_command),
+    )
+    assert refused.status_code == 409
+    assert 'must be regenerated' in refused.get_json()['error']
+    assert load(state_path)['approval'] is None
+
+
 def test_endure_bridge_rejects_tampered_body(review_client, monkeypatch):
     monkeypatch.setenv(
         'ENDURE_APPROVAL_SECRET',
