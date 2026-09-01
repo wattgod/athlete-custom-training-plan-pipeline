@@ -1,0 +1,33 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>VO2max 40/20 (2 of 2)</name>
+  <description>FUEL:
+Normal meal ~2h before. One bottle, 40-50g carbs. Done.
+
+WARM-UP:
+-13min building from Z1 to Z2
+
+MAIN SET:
+- 6x0:40 @ 120% FTP (Z5+, RPE 8-9), 0:20 recovery @ 50% FTP (Z1, RPE 3)
+- 17min @ 68% FTP (Z2, RPE 3)
+-Cadence: 90-100rpm (high turnover for repeated efforts)
+-Position: Seated, hoods
+
+COOL-DOWN:
+-9min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 1/6: Introductory - Focus on form and learning the workout pattern
+-Repeated high-intensity efforts. Builds the ability to attack, recover, and attack again—essential for racing dynamics. Level 1: Introduction to the pattern. Focus on execution quality over power targets.
+
+EXECUTION:
+-Ride the emitted 6x40sec with 20sec recovery. Do not add recovery beyond the prescribed structure.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="780" PowerLow="0.50" PowerHigh="0.70" />
+    <IntervalsT Repeat="6" OnDuration="40" OnPower="1.20" CadenceLow="90" CadenceHigh="100" OffDuration="20" OffPower="0.50" />
+    <SteadyState Duration="1020" Power="0.68" />
+    <Cooldown Duration="540" PowerLow="0.70" PowerHigh="0.50" />
+  </workout>
+</workout_file>

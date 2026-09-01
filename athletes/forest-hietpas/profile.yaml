@@ -96,7 +96,7 @@ recent_training:
   days_since_last_ride: null
 weekly_availability:
   total_hours_available: 7
-  cycling_hours_target: 2.0
+  cycling_hours_target: 3.5
   strength_sessions_max: 2
   notes: 'Coach call 2026-08-21. 8h/wk is "a stretch" right now -- build to ~6-7h. Commute: 1h to work
     AM, 2h home PM, 10h workdays, 1800 mi/month. Bed 19:30-20:00, up 04:00. He does NOT return to the
@@ -151,7 +151,7 @@ preferred_days:
     is_key_day_ok: true
 availability_roles:
   long_ride_days:
-  - saturday
+  - friday
   interval_days: []
   off_days: []
 recurring_sessions:
@@ -175,10 +175,26 @@ recurring_sessions:
   duration_min: 20
   tss: 12
   locked: true
-- day: Fri
-  title: 4am trainer ride (self-selected, no structure)
-  duration_min: 20
-  tss: 12
+# RUNS (coaching_history.md: 2-3 runs/wk, 6-9 miles; 2026-08-31 athlete ruling
+# caps Mon-Thu runs at 40 min, so the long run moves to the weekend). Blocked
+# time, not prescriptions -- "he needs to see 30 min, 60 min, 360 minutes."
+- day: Tue
+  title: 40 min run
+  duration_min: 40
+  tss: 32
+  sport: run
+  locked: true
+- day: Thu
+  title: 40 min run
+  duration_min: 40
+  tss: 32
+  sport: run
+  locked: true
+- day: Sun
+  title: 75 min long run
+  duration_min: 75
+  tss: 60
+  sport: run
   locked: true
 calendar_protection:
   requested: false
@@ -194,8 +210,8 @@ schedule_constraints:
   seasonal_changes: ''
   preferred_off_days:
   - tuesday
-  - saturday
-  preferred_long_day: saturday
+  - monday
+  preferred_long_day: friday
   strength_only_days: []
   life_anchors:
   - name: Time with Finn
@@ -219,7 +235,8 @@ schedule_constraints:
     tuesday: 20min AM + optional 1h enduro ride w/ buddies (~2x/month) + aspirational 4mi run
     wednesday: 1h low-Z2 ride AM (the "maple syrup in the coffee" hour, 1-2x/wk)
     thursday: 20min AM + 1h lift block + PM run
-    friday: not specified in the 08-21 call -- treat as open/rest until he says otherwise
+    friday: 'ATHLETE RULING 2026-08-31: does NOT work Fridays. No 20min 4am ride here -- he wants the
+      longer session. This is now the long/big day of the week (Saturday is committed). 110min available.'
     saturday: bike ride -- the weekend structure taste lives here
     sunday: long run
   title_convention: 'TITLES MUST LEAD WITH DURATION. Verbatim: "he does not need to see the description

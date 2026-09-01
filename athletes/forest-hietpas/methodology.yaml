@@ -1,13 +1,13 @@
 selected_methodology: Time-Crunched
 methodology_id: time_crunched
-score: 75.0
+score: 90.0
 reasons:
+- Acceptable hours (3.5h within 3-9h range)
 - Beginner-friendly methodology
 - Flexible enough for variable schedule
 - Designed for time-crunched athletes
 - Appropriate for finish-focused goal
-warnings:
-- Below minimum hours (2.0h < 3h required)
+warnings: []
 configuration:
   methodology: Time-Crunched
   intensity_distribution:
@@ -25,15 +25,15 @@ configuration:
   testing_frequency: 4_6_weeks
 alternatives:
 - name: G Spot (Read the Room)
-  score: 55.0
+  score: 62.5
   key_reason: Beginner-friendly methodology
 - name: Traditional (Pyramidal)
-  score: 47.0
+  score: 54.5
   key_reason: Beginner-friendly methodology
 - name: Polarized (80/20)
-  score: 15.0
+  score: 22.5
   key_reason: Appropriate for finish-focused goal
-selection_date: '2026-08-29 12:27:49'
+selection_date: '2026-09-01 13:23:04'
 confidence: high
 confidence_note: Strong match for athlete profile
 _derived:
@@ -52,16 +52,16 @@ _derived:
     derived_tier: ayahuasca
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-08-29 12:27:49'
+  at: '2026-09-01 13:23:04'
   revision: 1
 - id: METHODOLOGY_CONFIDENCE
   field: confidence
   class: inferred
   basis: confidence band derived from the winning score
   inputs:
-    score: 75.0
+    score: 90.0
   sensitivity: personal
-  at: '2026-08-29 12:27:49'
+  at: '2026-09-01 13:23:04'
   revision: 1
 - id: METHODOLOGY_CONFIDENCE_NOTE
   field: confidence_note
@@ -70,7 +70,7 @@ _derived:
   inputs:
     confidence: high
   sensitivity: personal
-  at: '2026-08-29 12:27:49'
+  at: '2026-09-01 13:23:04'
   revision: 1
 - id: METHODOLOGY_CONFIGURATION
   field: configuration
@@ -79,7 +79,7 @@ _derived:
   inputs:
     methodology_id: time_crunched
   sensitivity: internal
-  at: '2026-08-29 12:27:49'
+  at: '2026-09-01 13:23:04'
   revision: 1
 - id: METHODOLOGY_ID
   field: methodology_id
@@ -96,7 +96,7 @@ _derived:
     derived_tier: ayahuasca
     plan_weeks: 4
   sensitivity: internal
-  at: '2026-08-29 12:27:49'
+  at: '2026-09-01 13:23:04'
   revision: 1
 - id: METHODOLOGY_REASONS
   field: reasons
@@ -113,7 +113,7 @@ _derived:
     derived_tier: ayahuasca
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-08-29 12:27:49'
+  at: '2026-09-01 13:23:04'
   revision: 1
 - id: METHODOLOGY_SCORE
   field: score
@@ -130,7 +130,7 @@ _derived:
     derived_tier: ayahuasca
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-08-29 12:27:49'
+  at: '2026-09-01 13:23:04'
   revision: 1
 - id: METHODOLOGY_SELECTED
   field: selected_methodology
@@ -147,7 +147,7 @@ _derived:
     derived_tier: ayahuasca
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-08-29 12:27:49'
+  at: '2026-09-01 13:23:04'
   revision: 1
 - id: METHODOLOGY_SELECTION_TIME
   field: selection_date
@@ -156,7 +156,7 @@ _derived:
   inputs:
     owner: select_methodology.py
   sensitivity: internal
-  at: '2026-08-29 12:27:49'
+  at: '2026-09-01 13:23:04'
   revision: 1
 - id: METHODOLOGY_WARNINGS
   field: warnings
@@ -173,5 +173,5 @@ _derived:
     derived_tier: ayahuasca
     plan_weeks: 4
   sensitivity: sensitive
-  at: '2026-08-29 12:27:49'
+  at: '2026-09-01 13:23:04'
   revision: 1

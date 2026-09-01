@@ -38,8 +38,8 @@ DISPOSITIONS = {"create", "update", "keep", "delete"}
 INVENTORY_FIELDS = {
     "remote_id", "desired_digest", "payload_snapshot_ref", "kind", "last_op_id",
 }
-SUPPORTED_TP_WORKOUT_TYPES = frozenset({2, 7, 9})
-LEGACY_PRIOR_TP_WORKOUT_TYPES = frozenset({2, 7, 9, 100})
+SUPPORTED_TP_WORKOUT_TYPES = frozenset({2, 3, 7, 9})   # 3 = run (dual-sport)
+LEGACY_PRIOR_TP_WORKOUT_TYPES = frozenset({2, 3, 7, 9, 100})
 SnapshotReader = Callable[[str], Mapping[str, Any]]
 
 

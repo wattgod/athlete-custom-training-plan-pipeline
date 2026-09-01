@@ -218,7 +218,7 @@ _derived:
   inputs:
     source: constants.DAY_FULL_TO_ABBREV
   sensitivity: internal
-  at: '2026-08-29T12:27:49.284872'
+  at: '2026-09-01T13:23:05.176516'
   revision: 1
 - id: CALENDAR_EXAMPLE
   field: workout_example
@@ -234,7 +234,7 @@ _derived:
     - load
     - recovery
   sensitivity: internal
-  at: '2026-08-29T12:27:49.284872'
+  at: '2026-09-01T13:23:05.176516'
   revision: 1
 - id: CALENDAR_MONTH_ABBREVIATIONS
   field: month_abbreviations
@@ -243,7 +243,7 @@ _derived:
   inputs:
     source: calendar month table
   sensitivity: internal
-  at: '2026-08-29T12:27:49.284872'
+  at: '2026-09-01T13:23:05.176516'
   revision: 1
 - id: CALENDAR_NAMING
   field: workout_naming_convention
@@ -259,7 +259,7 @@ _derived:
     - load
     - recovery
   sensitivity: internal
-  at: '2026-08-29T12:27:49.284872'
+  at: '2026-09-01T13:23:05.176516'
   revision: 1
 - id: CALENDAR_PLAN_END
   field: plan_end
@@ -275,7 +275,7 @@ _derived:
     - load
     - recovery
   sensitivity: personal
-  at: '2026-08-29T12:27:49.284872'
+  at: '2026-09-01T13:23:05.176516'
   revision: 1
 - id: CALENDAR_PLAN_START
   field: plan_start
@@ -291,7 +291,7 @@ _derived:
     - load
     - recovery
   sensitivity: personal
-  at: '2026-08-29T12:27:49.284872'
+  at: '2026-09-01T13:23:05.176516'
   revision: 1
 - id: CALENDAR_PLAN_START_SHORT
   field: plan_start_short
@@ -307,7 +307,7 @@ _derived:
     - load
     - recovery
   sensitivity: personal
-  at: '2026-08-29T12:27:49.284872'
+  at: '2026-09-01T13:23:05.176516'
   revision: 1
 - id: CALENDAR_PLAN_WEEKS
   field: plan_weeks
@@ -323,7 +323,7 @@ _derived:
     - load
     - recovery
   sensitivity: personal
-  at: '2026-08-29T12:27:49.284872'
+  at: '2026-09-01T13:23:05.176516'
   revision: 1
 - id: CALENDAR_RACE_DATE
   field: race_date
@@ -339,7 +339,7 @@ _derived:
     - load
     - recovery
   sensitivity: personal
-  at: '2026-08-29T12:27:49.284872'
+  at: '2026-09-01T13:23:05.176516'
   revision: 1
 - id: CALENDAR_RACE_WEEKDAY
   field: race_weekday
@@ -355,7 +355,7 @@ _derived:
     - load
     - recovery
   sensitivity: personal
-  at: '2026-08-29T12:27:49.284872'
+  at: '2026-09-01T13:23:05.176516'
   revision: 1
 - id: CALENDAR_RACE_WEEK_MONDAY
   field: race_week_monday
@@ -371,7 +371,7 @@ _derived:
     - load
     - recovery
   sensitivity: personal
-  at: '2026-08-29T12:27:49.284872'
+  at: '2026-09-01T13:23:05.176516'
   revision: 1
 - id: CALENDAR_WEEK1_MONDAY
   field: week1_monday
@@ -387,7 +387,7 @@ _derived:
     - load
     - recovery
   sensitivity: personal
-  at: '2026-08-29T12:27:49.284872'
+  at: '2026-09-01T13:23:05.176516'
   revision: 1
 - id: CALENDAR_WEEKS
   field: weeks
@@ -403,5 +403,5 @@ _derived:
     - load
     - recovery
   sensitivity: personal
-  at: '2026-08-29T12:27:49.284872'
+  at: '2026-09-01T13:23:05.176516'
   revision: 1

@@ -1129,6 +1129,7 @@
                   "tp_workout_type": {
                     "enum": [
                       2,
+                      3,
                       7,
                       9
                     ],
@@ -1244,6 +1245,7 @@
                   "tp_workout_type": {
                     "enum": [
                       2,
+                      3,
                       7,
                       9
                     ],
@@ -1301,6 +1303,7 @@
                   "tp_workout_type": {
                     "enum": [
                       2,
+                      3,
                       7,
                       9,
                       100
@@ -1480,6 +1483,7 @@
                   "tp_workout_type": {
                     "enum": [
                       2,
+                      3,
                       7,
                       9,
                       100

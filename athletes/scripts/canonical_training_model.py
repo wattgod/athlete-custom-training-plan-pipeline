@@ -411,12 +411,21 @@ def _compile_authored_weeks(
             for day in week_data.get("days") or []:
                 if str(day.get("day_name", day.get("day", "")))[:3].title() != raw.get("day"):
                     continue
+                # Dual-sport athletes declare non-bike fixed blocks with
+                # `sport: run`.  Hardcoding cycling/bike/2 here turned every
+                # declared run into a bike card -- the reason a runner-cyclist
+                # could get a bike-only block.  TP workoutTypeId 3 = run.
+                _raw_sport = str(raw.get("sport") or "cycling").strip().lower()
+                _is_run = _raw_sport in ("run", "running")
                 sessions.append(SimpleNamespace(
                     date=day.get("date"), title=raw.get("title") or "Fixed external session",
-                    sport="cycling", type="external_fixed", origin="athlete_fixed",
+                    sport="running" if _is_run else "cycling",
+                    type="external_fixed", origin="athlete_fixed",
                     duration_s=int(raw.get("duration_min", 0)) * 60,
                     tss=int(raw.get("tss", 0) or 0), segments=[], source_file=None,
-                    description=None, tp_kind="bike", workout_type_value_id=2,
+                    description=None,
+                    tp_kind="run" if _is_run else "bike",
+                    workout_type_value_id=3 if _is_run else 2,
                     tss_planned=float(raw.get("tss", 0) or 0),
                     total_time_planned=float(raw.get("duration_min", 0)) / 60,
                     series_id=None, series_index=None, series_total=None,

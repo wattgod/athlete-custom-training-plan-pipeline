@@ -609,3 +609,22 @@ def test_hard_minutes_below_floor_reports_every_offending_week_distinctly():
     assert set(matches) == {'HARD_MINUTES_BELOW_FLOOR_W01', 'HARD_MINUTES_BELOW_FLOOR_W02'}
     assert matches['HARD_MINUTES_BELOW_FLOOR_W01']['review_value']['hard_minutes'] == 30.0
     assert matches['HARD_MINUTES_BELOW_FLOOR_W02']['review_value']['hard_minutes'] == 10.0
+
+
+def test_locked_run_sessions_project_as_tp_run_not_bike():
+    """A dual-sport athlete declares a fixed run with `sport: run` on a
+    recurring session. Both compilers (canonical_training_model and plan_ir)
+    used to hardcode sport='cycling'/tp_kind='bike'/type=2 for every locked
+    session, so a runner-cyclist's declared runs silently became bike cards
+    and the block came out bike-only. TP workoutTypeId 3 = run.
+    """
+    import plan_ir as P
+    assert P.TP_WORKOUT_TYPE_VALUE_ID['run'] == 3
+    assert P._default_tp_kind('run') == 'run'
+    # A bike recurring session must be untouched by the run branch.
+    assert P._default_tp_kind('endurance') == 'bike'
+
+    import apply_contract as A
+    assert 3 in A.SUPPORTED_TP_WORKOUT_TYPES, (
+        "delivery contract must accept run (3) or dual-sport plans cannot ship")
+    assert 3 in A.LEGACY_PRIOR_TP_WORKOUT_TYPES

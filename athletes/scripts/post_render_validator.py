@@ -31,7 +31,7 @@ INTENSITY_TITLE = re.compile(
     re.I,
 )
 LONG_RIDE_TITLE = re.compile(r"\b(long ride|durability|long endurance)\b", re.I)
-TP_KINDS = ("bike", "strength", "day_off", "race")
+TP_KINDS = ("bike", "run", "strength", "day_off", "race")
 TP_SESSION_FIELDS = (
     "date", "title", "display_name", "filename_stem", "description",
     "tp_kind", "workout_type_value_id", "tss_planned",
@@ -372,7 +372,17 @@ def _validate_manifest_projection(
 
     expected_counts = manifest.get("expected")
     canonical_counts = {**counts, "total": sum(counts.values())}
-    if expected_counts != canonical_counts:
+    # A manifest that predates a tp_kind simply omits that key, so an absent
+    # kind means zero rather than drift. Without this, adding `run` to
+    # TP_KINDS would invalidate every package and fixture built before
+    # dual-sport support existed. Unknown/extra keys are still drift.
+    if not isinstance(expected_counts, dict):
+        raise PostRenderValidationError(
+            "tp_manifest.expected does not match projected session kinds")
+    unknown = set(expected_counts) - set(canonical_counts)
+    normalized = {kind: int(expected_counts.get(kind, 0) or 0)
+                  for kind in canonical_counts}
+    if unknown or normalized != canonical_counts:
         raise PostRenderValidationError(
             "tp_manifest.expected does not match projected session kinds")
 
