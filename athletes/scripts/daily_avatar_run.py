@@ -16,9 +16,11 @@ judge flags critical.
 
 Usage:
     python3 daily_avatar_run.py [--count N] [--seed YYYY-MM-DD] [--out report.md]
+                                [--judge anthropic|sol|none]
 
 Env:
     ANTHROPIC_API_KEY  — enables the LLM judge (else judge is skipped)
+    AI_GATEWAY_API_KEY — enables the synthetic-only Sol shadow judge
     GG_DELIVERY_DIR    — where deliverables land (default ~/Downloads)
 
 Exit code: 0 if every avatar passed the contract and had no critical judge
@@ -92,7 +94,7 @@ def _contract(athlete_dir, delivery_dir):
     return (not failures), failures
 
 
-def run_avatars(count, seed, judge_plans=True):
+def run_avatars(count, seed, judge_plans=True, judge_provider="anthropic"):
     """Synth -> pipeline -> contract -> (judge) for `count` avatars.
     Returns the list of per-avatar result records. Shared by the daily
     report and the improvement loop."""
@@ -132,15 +134,23 @@ def run_avatars(count, seed, judge_plans=True):
         rec["failures"] = failures
 
         if judge_plans:
-            from judge_plan import judge
+            if judge_provider == "sol":
+                from judge_plan_sol import judge
+            else:
+                from judge_plan import judge
             rec["verdict"] = judge(athlete_dir, delivery_dir, meta)
         results.append(rec)
 
     return results
 
 
-def run(count, seed, out_path):
-    results = run_avatars(count, seed)
+def run(count, seed, out_path, judge_provider="anthropic"):
+    results = run_avatars(
+        count,
+        seed,
+        judge_plans=judge_provider != "none",
+        judge_provider=judge_provider,
+    )
     report = _render_report(seed, results)
     if out_path:
         Path(out_path).write_text(report)
@@ -181,6 +191,10 @@ def _render_report(seed, results):
         if v.get("status") == "judged":
             send = "would send" if v.get("would_send") else "WOULD NOT SEND"
             lines.append(f"- Coach: **{score}/10**, {send} — {v.get('summary', '')}")
+            if v.get("judge") == "sol-shadow":
+                actual = v.get("actual_cost_usd")
+                cost = f"${actual:.4f}" if isinstance(actual, (int, float)) else "unavailable"
+                lines.append(f"- Sol shadow: `{v.get('model')}` · request cost {cost}")
             for p in (v.get("problems") or []):
                 lines.append(f"    - _{p.get('severity')}_: {p.get('issue')}")
         elif v.get("status") == "skipped":
@@ -196,8 +210,14 @@ def main():
     ap.add_argument("--count", type=int, default=2)
     ap.add_argument("--seed", default=date.today().isoformat())
     ap.add_argument("--out", default=None)
+    ap.add_argument(
+        "--judge",
+        choices=("anthropic", "sol", "none"),
+        default="anthropic",
+        help="advisory judge; sol is synthetic-only and uses Vercel AI Gateway",
+    )
     args = ap.parse_args()
-    sys.exit(run(args.count, args.seed, args.out))
+    sys.exit(run(args.count, args.seed, args.out, args.judge))
 
 
 if __name__ == "__main__":

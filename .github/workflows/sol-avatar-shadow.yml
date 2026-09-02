@@ -1,0 +1,68 @@
+name: "Sol Avatar Shadow Judge"
+
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "synthetic avatars (pilot maximum 5)"
+        default: "2"
+
+permissions:
+  contents: read
+
+jobs:
+  judge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate pilot size
+        env:
+          COUNT: ${{ github.event.inputs.count }}
+        run: |
+          case "$COUNT" in
+            ''|*[!0-9]*) echo "count must be an integer"; exit 1 ;;
+          esac
+          [ "$COUNT" -ge 1 ] && [ "$COUNT" -le 5 ] || {
+            echo "count must be between 1 and 5"
+            exit 1
+          }
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Chromium and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium
+          python -m pip install --upgrade pip
+          pip install pyyaml python-dateutil pypdf requests -r webhook/requirements.txt
+
+      - name: Run advisory Sol shadow judge
+        working-directory: athletes/scripts
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          GG_DELIVERY_DIR: ${{ runner.temp }}/avatar-delivery
+          COUNT: ${{ github.event.inputs.count }}
+        run: |
+          mkdir -p "$GG_DELIVERY_DIR"
+          python daily_avatar_run.py \
+            --count "$COUNT" \
+            --seed "sol-shadow-${GITHUB_RUN_ID}" \
+            --judge sol \
+            --out "$RUNNER_TEMP/sol-avatar-shadow.md"
+
+      - name: Upload advisory report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sol-avatar-shadow-${{ github.run_id }}
+          path: ${{ runner.temp }}/sol-avatar-shadow.md
+          if-no-files-found: warn
+          retention-days: 14
