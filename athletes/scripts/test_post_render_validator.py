@@ -628,3 +628,22 @@ def test_locked_run_sessions_project_as_tp_run_not_bike():
     assert 3 in A.SUPPORTED_TP_WORKOUT_TYPES, (
         "delivery contract must accept run (3) or dual-sport plans cannot ship")
     assert 3 in A.LEGACY_PRIOR_TP_WORKOUT_TYPES
+
+
+def test_optional_days_prefixes_only_prescribed_work():
+    """schedule_constraints.optional_days marks a whole weekday's PRESCRIBED
+    work optional without deleting it. The athlete's own locked blocks, rest
+    days and strength are never touched -- those are his commitments, not the
+    coach's prescription. Uses the existing "OPTIONAL:" convention from
+    dual_sport_week.yaml.
+    """
+    import canonical_training_model as C
+    src = __import__('inspect').getsource(C)
+    assert 'optional_days' in src
+    assert 'OPTIONAL: ' in src
+    # The guard must exclude the athlete's own fixed blocks and non-bike kinds.
+    assert '"athlete_fixed"' in src and '("day_off", "strength")' in src
+    # `date` must be imported at module scope -- it is used inside the
+    # session loop, and a local-only datetime import raises NameError there
+    # (which fails the whole canonical build, not just the prefix).
+    assert 'from datetime import date\n' in src

@@ -206,7 +206,7 @@ recommendations:
     timing: Within 30-60 minutes
     composition: 1.2g/kg carbs + 0.3g/kg protein
     example: Chocolate milk, recovery shake, or real food meal
-generated_date: '2026-09-01 19:55:41'
+generated_date: '2026-09-01 20:51:05'
 _derived:
 - id: FUELING_BASIS
   field: fueling_basis
@@ -216,7 +216,7 @@ _derived:
     power_basis: measured
     ftp_present: true
   sensitivity: personal
-  at: '2026-09-01T19:55:41.762241-06:00'
+  at: '2026-09-01T20:51:05.204564-06:00'
   revision: 1
 - id: FUELING_HOURLY_RANGE
   field: carbohydrates.hourly_range
@@ -233,7 +233,7 @@ _derived:
     gut_training_phase: build
     tolerated_g_per_hour: null
   sensitivity: sensitive
-  at: '2026-09-01T19:55:41.762241-06:00'
+  at: '2026-09-01T20:51:05.204564-06:00'
   revision: 1
 - id: FUELING_HOURLY_TARGET
   field: carbohydrates.hourly_target
@@ -250,7 +250,7 @@ _derived:
     gut_training_phase: build
     tolerated_g_per_hour: null
   sensitivity: sensitive
-  at: '2026-09-01T19:55:41.762241-06:00'
+  at: '2026-09-01T20:51:05.204564-06:00'
   revision: 1
 - id: FUELING_PRESCRIPTION
   field: prescription
@@ -267,7 +267,7 @@ _derived:
     gut_training_phase: build
     tolerated_g_per_hour: null
   sensitivity: sensitive
-  at: '2026-09-01T19:55:41.762241-06:00'
+  at: '2026-09-01T20:51:05.204564-06:00'
   revision: 1
 - id: FUELING_RECOMMENDATIONS
   field: recommendations
@@ -278,7 +278,7 @@ _derived:
     hourly_target: 61
     total_carbs: 508
   sensitivity: sensitive
-  at: '2026-09-01T19:55:41.762241-06:00'
+  at: '2026-09-01T20:51:05.204564-06:00'
   revision: 1
 - id: FUELING_TIMELINE
   field: fueling_timeline
@@ -289,7 +289,7 @@ _derived:
     hourly_target: 61
     distance_miles: 100
   sensitivity: sensitive
-  at: '2026-09-01T19:55:41.762241-06:00'
+  at: '2026-09-01T20:51:05.204564-06:00'
   revision: 1
 - id: FUELING_TOTAL_RANGE
   field: carbohydrates.total_range
@@ -301,7 +301,7 @@ _derived:
     - 68
     duration_hours: 8.333333333333334
   sensitivity: sensitive
-  at: '2026-09-01T19:55:41.762241-06:00'
+  at: '2026-09-01T20:51:05.204564-06:00'
   revision: 1
 - id: FUELING_TOTAL_TARGET
   field: carbohydrates.total_grams
@@ -311,7 +311,7 @@ _derived:
     hourly_target: 61
     duration_hours: 8.333333333333334
   sensitivity: sensitive
-  at: '2026-09-01T19:55:41.762241-06:00'
+  at: '2026-09-01T20:51:05.204564-06:00'
   revision: 1
 - id: GUT_PHASES
   field: gut_training.phases
@@ -330,7 +330,7 @@ _derived:
       gut_training_phase: build
       tolerated_g_per_hour: null
   sensitivity: sensitive
-  at: '2026-09-01T19:55:41.762241-06:00'
+  at: '2026-09-01T20:51:05.204564-06:00'
   revision: 1
 - id: GUT_WEEKLY_PROGRESSION
   field: gut_training.weekly_progression
@@ -349,7 +349,7 @@ _derived:
       gut_training_phase: build
       tolerated_g_per_hour: null
   sensitivity: sensitive
-  at: '2026-09-01T19:55:41.762241-06:00'
+  at: '2026-09-01T20:51:05.204564-06:00'
   revision: 1
 - id: HYDRATION_TARGET
   field: recommendations.hydration
@@ -366,7 +366,7 @@ _derived:
     gut_training_phase: build
     tolerated_g_per_hour: null
   sensitivity: sensitive
-  at: '2026-09-01T19:55:41.762241-06:00'
+  at: '2026-09-01T20:51:05.204564-06:00'
   revision: 1
 - id: RACE_CALORIES
   field: calories
@@ -380,7 +380,7 @@ _derived:
     weight_kg: 75.0
     sex: male
   sensitivity: sensitive
-  at: '2026-09-01T19:55:41.762241-06:00'
+  at: '2026-09-01T20:51:05.204564-06:00'
   revision: 1
 - id: RACE_DURATION_HOURS
   field: race.duration_hours
@@ -392,5 +392,5 @@ _derived:
     discipline: gravel
     goal_type: finish
   sensitivity: personal
-  at: '2026-09-01T19:55:41.762241-06:00'
+  at: '2026-09-01T20:51:05.204564-06:00'
   revision: 1

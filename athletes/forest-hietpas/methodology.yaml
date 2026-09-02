@@ -33,7 +33,7 @@ alternatives:
 - name: Polarized (80/20)
   score: 27.5
   key_reason: Appropriate for finish-focused goal
-selection_date: '2026-09-01 19:55:41'
+selection_date: '2026-09-01 20:51:05'
 confidence: high
 confidence_note: Strong match for athlete profile
 _derived:
@@ -52,7 +52,7 @@ _derived:
     derived_tier: ayahuasca
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-09-01 19:55:41'
+  at: '2026-09-01 20:51:05'
   revision: 1
 - id: METHODOLOGY_CONFIDENCE
   field: confidence
@@ -61,7 +61,7 @@ _derived:
   inputs:
     score: 100
   sensitivity: personal
-  at: '2026-09-01 19:55:41'
+  at: '2026-09-01 20:51:05'
   revision: 1
 - id: METHODOLOGY_CONFIDENCE_NOTE
   field: confidence_note
@@ -70,7 +70,7 @@ _derived:
   inputs:
     confidence: high
   sensitivity: personal
-  at: '2026-09-01 19:55:41'
+  at: '2026-09-01 20:51:05'
   revision: 1
 - id: METHODOLOGY_CONFIGURATION
   field: configuration
@@ -79,7 +79,7 @@ _derived:
   inputs:
     methodology_id: time_crunched
   sensitivity: internal
-  at: '2026-09-01 19:55:41'
+  at: '2026-09-01 20:51:05'
   revision: 1
 - id: METHODOLOGY_ID
   field: methodology_id
@@ -96,7 +96,7 @@ _derived:
     derived_tier: ayahuasca
     plan_weeks: 4
   sensitivity: internal
-  at: '2026-09-01 19:55:41'
+  at: '2026-09-01 20:51:05'
   revision: 1
 - id: METHODOLOGY_REASONS
   field: reasons
@@ -113,7 +113,7 @@ _derived:
     derived_tier: ayahuasca
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-09-01 19:55:41'
+  at: '2026-09-01 20:51:05'
   revision: 1
 - id: METHODOLOGY_SCORE
   field: score
@@ -130,7 +130,7 @@ _derived:
     derived_tier: ayahuasca
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-09-01 19:55:41'
+  at: '2026-09-01 20:51:05'
   revision: 1
 - id: METHODOLOGY_SELECTED
   field: selected_methodology
@@ -147,7 +147,7 @@ _derived:
     derived_tier: ayahuasca
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-09-01 19:55:41'
+  at: '2026-09-01 20:51:05'
   revision: 1
 - id: METHODOLOGY_SELECTION_TIME
   field: selection_date
@@ -156,7 +156,7 @@ _derived:
   inputs:
     owner: select_methodology.py
   sensitivity: internal
-  at: '2026-09-01 19:55:41'
+  at: '2026-09-01 20:51:05'
   revision: 1
 - id: METHODOLOGY_WARNINGS
   field: warnings
@@ -173,5 +173,5 @@ _derived:
     derived_tier: ayahuasca
     plan_weeks: 4
   sensitivity: sensitive
-  at: '2026-09-01 19:55:41'
+  at: '2026-09-01 20:51:05'
   revision: 1

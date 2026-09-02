@@ -136,7 +136,7 @@
       "date": "2026-09-14",
       "external_id": "note:forest-hietpas:weekly:2026-09-14",
       "logical_key": "weekly-briefing-2026-09-14",
-      "text": "Week 3 of 4. Last load week of this block. I want the key sessions done properly; a reset follows.\n\nVO2max 40/20 Wednesday is the hardest thing this week. Start the first rep at the number, not above it, and let the set get hard on its own.\n\nDescending-Cadence Ladder Thursday is skill work, not fitness work. Smooth circles at every cadence; the rpm targets are in the workout.\n\nMissed work stays missed. Do not stack two hard days to make up a session.",
+      "text": "Week 3 of 4. Last load week of this block. I want the key sessions done properly; a reset follows.\n\nVO2max 40/20 Wednesday is the hardest thing this week. Start the first rep at the number, not above it, and let the set get hard on its own.\n\nOPTIONAL: Descending-Cadence Ladder Thursday is skill work, not fitness work. Smooth circles at every cadence; the rpm targets are in the workout.\n\nMissed work stays missed. Do not stack two hard days to make up a session.",
       "title": "Week 3: Base"
     },
     {
@@ -1611,7 +1611,7 @@
           }
         ]
       },
-      "title": "Endurance \u2014 Cadence Focus",
+      "title": "OPTIONAL: Endurance \u2014 Cadence Focus",
       "total_seconds": 3660,
       "tp_workout_type": 2,
       "tss_planned": 43.0,
@@ -3760,7 +3760,7 @@
       "source_file": "W02_Thu_Sep10_Muscle_Recruitment_Progressions_-_Trainer.zwo",
       "sport": "cycling",
       "structure": null,
-      "title": "Muscle Recruitment Progressions - Trainer",
+      "title": "OPTIONAL: Muscle Recruitment Progressions - Trainer",
       "total_seconds": 3600,
       "tp_workout_type": 2,
       "tss_planned": 35.0,
@@ -5710,7 +5710,7 @@
           }
         ]
       },
-      "title": "Descending-Cadence Ladder",
+      "title": "OPTIONAL: Descending-Cadence Ladder",
       "total_seconds": 3840,
       "tp_workout_type": 2,
       "tss_planned": 54.3,

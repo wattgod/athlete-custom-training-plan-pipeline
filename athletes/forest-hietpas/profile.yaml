@@ -216,6 +216,12 @@ schedule_constraints:
   preferred_off_days:
   - tuesday
   - monday
+  # Coach ruling 2026-09-01: Thursday's prescribed ride is OPTIONAL. Thursday
+  # already carries the 4am anchor, a 40-min run and the lift, on a 10-hour
+  # shift plus a 3-hour commute. Keeps the session on the calendar; he owes
+  # nothing. Does not touch his own locked blocks, rest days or strength.
+  optional_days:
+  - thursday
   preferred_long_day: friday
   strength_only_days: []
   life_anchors:

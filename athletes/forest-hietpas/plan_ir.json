@@ -134,7 +134,7 @@
   ],
   "plan_ir_version": "0.2",
   "provenance": {
-    "engine_version": "motoren/4dd64bdd+ae-2026-08-23",
+    "engine_version": "motoren/3359a7e5+ae-2026-08-23",
     "voice_version": "voice/54848f6483bd"
   },
   "race_snapshot": {
@@ -1409,7 +1409,7 @@
           "control_metric": "power",
           "date": "2026-09-03",
           "description": "WARM-UP:\n- 9min building from Z1 into the Z2 target\n\nMAIN SET:\n- 43min @ 68% FTP (Z2, RPE 3)\n- Drill: 30sec spin-up @ 100-110rpm every 10min \u2014 no extra power, just leg speed\n- Position: Stay relaxed on the hoods; keep shoulders quiet\n- Cadence: Every 10 min, spin 30 sec at 100-110rpm, then settle smoothly\n\nCOOL-DOWN:\n- 9min easy spin Z1-Z2 (RPE 3-4)",
-          "display_name": "Endurance \u2014 Cadence Focus",
+          "display_name": "OPTIONAL: Endurance \u2014 Cadence Focus",
           "duration_s": 3660,
           "filename_stem": "W01_Thu_Sep3_Endurance__Cadence_Focus",
           "is_dress_rehearsal": false,
@@ -1602,7 +1602,7 @@
             ]
           },
           "target_summary": "50-65 % of measured FTP; 68 % of measured FTP; 68-45 % of measured FTP",
-          "title": "Endurance \u2014 Cadence Focus",
+          "title": "OPTIONAL: Endurance \u2014 Cadence Focus",
           "total_time_planned": 1.0167,
           "tp_kind": "bike",
           "tss": 43,
@@ -3415,7 +3415,7 @@
           "control_metric": "power",
           "date": "2026-09-10",
           "description": "Warm up with Z1/Z2 pedaling, then some efforts:\n\n3x3min efforts ~low Z3 RPE with increasing cadence each min as follows:\n\n60-70 < 80-90 < 100-110\n\n2x5min efforts ~low Z3 RPE alternating one min seated / one min standing (in biggish gear, try and feel smooth and rhythmic)\n\n6x30 sec @ 120+ rpm, no power just leg speed focus / 60 sec recovery\n\nCool down",
-          "display_name": "Muscle Recruitment Progressions - Trainer",
+          "display_name": "OPTIONAL: Muscle Recruitment Progressions - Trainer",
           "duration_s": 3600,
           "filename_stem": "W02_Thu_Sep10_Muscle_Recruitment_Progressions_-_Trainer",
           "is_dress_rehearsal": false,
@@ -3982,7 +3982,7 @@
           "strength_template": null,
           "structure": null,
           "target_summary": "Self-paced field effort",
-          "title": "Muscle Recruitment Progressions - Trainer",
+          "title": "OPTIONAL: Muscle Recruitment Progressions - Trainer",
           "total_time_planned": 1.0,
           "tp_kind": "bike",
           "tss": 35,
@@ -5586,7 +5586,7 @@
           "control_metric": "power",
           "date": "2026-09-17",
           "description": "FUEL:\nNormal meal ~2h before. One bottle, 40-50g carbs. Done.\n\nWARM-UP:\n-15-20min progressing Z1->Z2\n-1x10min high-cadence Z3 @100-120rpm (wake up leg speed before the grind)\n\nMAIN SET:\n-4x 5min ALL at 85% FTP, cadence steps DOWN: 70->60->50->45rpm\n-Torque rises every rung because power stays flat as rpm drops\n-3min easy spin between rungs\n\nEXECUTION:\n-Seated, smooth, keep power flat - shift to a bigger gear each rung, don't push harder. Watch knees on the lowest rung.\n\nNUTRITION:\n-40-70g carbs/hr.\n\nHYDRATION:\n-500-750ml/hr.\n\nRPE guide: 85% FTP -> RPE 5-6; 80% FTP -> RPE 5-6; 55% FTP -> RPE 3",
-          "display_name": "Descending-Cadence Ladder",
+          "display_name": "OPTIONAL: Descending-Cadence Ladder",
           "duration_s": 3840,
           "filename_stem": "W03_Thu_Sep17_Descending-Cadence_Ladder",
           "is_dress_rehearsal": false,
@@ -6179,7 +6179,7 @@
             ]
           },
           "target_summary": "50-70 % of measured FTP; 80 % of measured FTP; 85 % of measured FTP; 55 % of measured FTP; 70-50 % of measured FTP",
-          "title": "Descending-Cadence Ladder",
+          "title": "OPTIONAL: Descending-Cadence Ladder",
           "total_time_planned": 1.0667,
           "tp_kind": "bike",
           "tss": 54,

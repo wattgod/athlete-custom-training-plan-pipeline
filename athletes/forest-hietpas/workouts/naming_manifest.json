@@ -27,7 +27,7 @@
   "W01_Thu_Sep3_Endurance__Cadence_Focus": {
     "archetype_id": "Endurance",
     "date": "2026-09-03",
-    "display_name": "Endurance \u2014 Cadence Focus",
+    "display_name": "OPTIONAL: Endurance \u2014 Cadence Focus",
     "filename_stem": "W01_Thu_Sep3_Endurance__Cadence_Focus",
     "order_on_day": 0,
     "phase": "base",
@@ -89,7 +89,7 @@
   "W02_Thu_Sep10_Muscle_Recruitment_Progressions_-_Trainer": {
     "archetype_id": "Endurance",
     "date": "2026-09-10",
-    "display_name": "Muscle Recruitment Progressions - Trainer",
+    "display_name": "OPTIONAL: Muscle Recruitment Progressions - Trainer",
     "filename_stem": "W02_Thu_Sep10_Muscle_Recruitment_Progressions_-_Trainer",
     "library_item_id": 14356256,
     "library_rpe_text": "5-6",
@@ -156,7 +156,7 @@
   "W03_Thu_Sep17_Descending-Cadence_Ladder": {
     "archetype_id": "Cadence Work",
     "date": "2026-09-17",
-    "display_name": "Descending-Cadence Ladder",
+    "display_name": "OPTIONAL: Descending-Cadence Ladder",
     "filename_stem": "W03_Thu_Sep17_Descending-Cadence_Ladder",
     "library_item_id": 14357401,
     "library_rpe_text": "5-6",

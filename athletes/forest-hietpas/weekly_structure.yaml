@@ -65,7 +65,7 @@ _derived:
     tier: ayahuasca
     preferred_long_day: friday
   sensitivity: personal
-  at: '2026-09-02T01:55:41.861497Z'
+  at: '2026-09-02T02:51:05.262917Z'
   revision: 1
 - id: SCHEDULE_DESCRIPTION
   field: description
@@ -74,5 +74,5 @@ _derived:
   inputs:
     tier: ayahuasca
   sensitivity: internal
-  at: '2026-09-02T01:55:41.861497Z'
+  at: '2026-09-02T02:51:05.262917Z'
   revision: 1

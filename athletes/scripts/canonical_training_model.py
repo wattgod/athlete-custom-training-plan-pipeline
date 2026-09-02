@@ -14,6 +14,7 @@ import math
 import os
 import re
 import tempfile
+from datetime import date
 from types import SimpleNamespace
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -570,6 +571,10 @@ def build_canonical_model(
 
     sessions: List[Dict[str, Any]] = []
     field_test_title = _metric_field_test_title(control)
+    _optional_weekdays = {
+        str(day).strip().lower()
+        for day in ((profile.get("schedule_constraints") or {}).get("optional_days") or [])
+    }
     for week in reflected.weeks:
         ordinals_by_date: Dict[str, int] = {}
         for raw_session in week.sessions:
@@ -583,6 +588,22 @@ def build_canonical_model(
                 field_test_title if is_field_test and
                 control["control_metric"] != "power" else
                 metric_neutral_text(raw_session.title, control))
+            # schedule_constraints.optional_days: a coach can mark a whole
+            # weekday's prescribed work optional without deleting it, so the
+            # athlete keeps the session but owes nothing. Uses the existing
+            # "OPTIONAL:" prefix convention (dual_sport_week.yaml). Locked
+            # athlete-fixed blocks, rest days and strength are never touched
+            # -- those are his own commitments, not the coach's prescription.
+            if (_optional_weekdays and raw_session.date
+                    and getattr(raw_session, "origin", None) != "athlete_fixed"
+                    and getattr(raw_session, "tp_kind", None) not in ("day_off", "strength")
+                    and not title.upper().startswith("OPTIONAL")):
+                try:
+                    _dow = date.fromisoformat(str(raw_session.date)).strftime("%A").lower()
+                except ValueError:
+                    _dow = ""
+                if _dow in _optional_weekdays:
+                    title = f"OPTIONAL: {title}"
             description = metric_neutral_description(
                 raw_session.description, control)
             if is_field_test and control["control_metric"] != "power":
