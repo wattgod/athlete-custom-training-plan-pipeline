@@ -18,6 +18,8 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
                                load, merge_generation_blockers,
                                migrate_v1_to_quarantine, transition,
                                open_verified_release_artifact,
+                               record_endure_revision_interpretation,
+                               request_endure_revision,
                                record_seal_mismatch,
                                verify_release_manifest, write_generation)
 from d2_identity import record_identity_result
@@ -75,6 +77,84 @@ def test_r05_failure_writes_blocked_review_with_rule_id(tmp_path):
 
 def test_clean_generation_writes_generated(tmp_path):
     assert write_generation(tmp_path / 'status.json', 'heather_gray')['status'] == GENERATED
+
+
+def test_endure_revision_request_blocks_approval_and_is_consumed_by_next_generation(
+    tmp_path,
+):
+    path = tmp_path / 'status.json'
+    state = write_generation(path, 'heather_gray')
+    state = _seal(path, tmp_path)
+    record = {
+        'schema_version': 'endure_revision_request/v1',
+        'request_id': 'd3af6bcc-c47e-45b6-8d97-4aa5d747302b',
+        'source_key_id': 'endure-test-key',
+        'source_command_digest': 'a' * 64,
+        'requesting_actor_id': '7abb5931-380d-4853-a16b-d2d62b1482a9',
+        'requesting_org_id': '5ba0f69a-a963-4858-a8c5-c4e6b87abfe1',
+        'requesting_membership_role': 'coach',
+        'generation_revision': state['generation_revision'],
+        'next_generation_revision': state['generation_revision'] + 1,
+        'review_catalog_digest': state['review_catalog_digest'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'decisions': [],
+        'note': 'Move the long ride to Sunday and preserve completed work.',
+        'requested_at': '2026-08-30T12:00:00Z',
+    }
+    requested = request_endure_revision(path, request_record=record)
+    assert requested['pending_endure_revision_request'] == record
+    assert requested['endure_revision_requests'] == [record]
+    concurrent_retry = {**record, 'requested_at': '2026-08-30T12:00:01Z'}
+    replayed = request_endure_revision(path, request_record=concurrent_retry)
+    assert replayed['pending_endure_revision_request'] == record
+    assert replayed['endure_revision_requests'] == [record]
+    with pytest.raises(FulfillmentStateError, match='must be regenerated'):
+        _approve(path)
+
+    interpretation = {
+        'schema_version': 'endure_revision_interpretation/v1',
+        'submission_id': 'f0e5381c-2ec8-47fd-9ced-acde0661c7ca',
+        'source_request_id': record['request_id'],
+        'source_command_digest': record['source_command_digest'],
+        'source_key_id': 'endure-test-key',
+        'command_digest': 'b' * 64,
+        'interpreter_provider': 'anthropic',
+        'interpreter_model': 'claude-test',
+        'adapter_version': 'endure/david-plan-patch/v1',
+        'patch': {'long_ride_days': ['sunday'], 'off_days': ['monday']},
+        'submitted_at': '2026-08-30T12:01:00Z',
+    }
+    with pytest.raises(FulfillmentStateError, match='schedule patch conflicts'):
+        record_endure_revision_interpretation(
+            path,
+            interpretation_record={
+                **interpretation,
+                'submission_id': 'b5bc83a5-ce80-4cf4-8237-7865e7add558',
+                'command_digest': 'c' * 64,
+                'patch': {'long_ride_days': ['sunday'], 'off_days': ['sunday']},
+            },
+        )
+    interpreted = record_endure_revision_interpretation(
+        path, interpretation_record=interpretation)
+    assert interpreted['endure_revision_interpretations'] == [interpretation]
+    replayed_interpretation = record_endure_revision_interpretation(
+        path,
+        interpretation_record={
+            **interpretation, 'submitted_at': '2026-08-30T12:01:01Z'},
+    )
+    assert replayed_interpretation['endure_revision_interpretations'] == [interpretation]
+
+    regenerated = write_generation(path, 'heather_gray')
+    assert regenerated['generation_revision'] == state['generation_revision'] + 1
+    assert regenerated['pending_endure_revision_request'] is None
+    assert regenerated['endure_revision_requests'] == [record]
+    assert regenerated['endure_revision_interpretations'] == [interpretation]
+    assert any(
+        event['event'] == 'ENDURE_REVISION_REQUEST_CONSUMED'
+        and event['source_request_id'] == record['request_id']
+        for event in regenerated['history']
+    )
 
 
 def test_blocked_approval_requires_complete_waiver(tmp_path):

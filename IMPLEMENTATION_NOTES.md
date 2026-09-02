@@ -202,3 +202,26 @@ failures; the first observed pre-existing failure was stale-intake cleanup.
   any live endpoint; they execute on socket-enabled CI.
 
 STATUS: COMPLETED: G4, H1, I1, I2 | INCOMPLETE: none
+
+## Endure revision interpretation and generation handoff
+
+- A signed `endure_revision_request/v1` now creates a durable
+  `awaiting_revision_interpretation` job instead of pretending that free-form
+  coach prose has already changed the plan. Exact request retries return the
+  original receipt even after the request is consumed by a successor revision.
+- `endure_revision_interpretation/v1` is provider-neutral. Any David, Claude,
+  Grok, Codex, or later adapter may submit it through the same path, but
+  Motoren accepts only an exact request-bound patch with provider/model/adapter
+  provenance. The v1 vocabulary is deliberately limited to long-ride,
+  interval, and off days; weekly hours; and a programmed midweek duration cap.
+- Empty, unknown, out-of-range, conflicting, unbound, replay-divergent, or
+  second interpretations fail closed. The coach request and old sealed
+  before-image remain durable and non-approvable while unsupported work waits
+  for the full athlete-plan-builder.
+- Once the patch is accepted, Motoren applies it to a copy of the canonical
+  intake, installs the authoritative pending state into the order-private work
+  root, and starts the existing resumable generation job. No TrainingPeaks or
+  other external write is introduced.
+- `endure-review` exposes `motoren_revision_generation_status/v1` so Endure can
+  distinguish awaiting interpretation, queued, running, succeeded, and failed
+  work without inferring progress from elapsed time.

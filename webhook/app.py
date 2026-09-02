@@ -52,7 +52,10 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
                                open_verified_release_artifact,
                                external_notification_projection,
                                redact_sensitive_review_items,
+                               record_endure_revision_interpretation,
+                               request_endure_revision,
                                record_seal_mismatch,
+                               review_catalog_digest,
                                transition as transition_fulfillment,
                                verify_release_artifact,
                                verify_release_manifest, write_generation)
@@ -84,6 +87,10 @@ from training_plan_addons import (
     stripe_line_items_for_addons,
 )
 from signwell_client import SignWellClient, SignWellError, verify_event_hash
+from endure_approval_bridge import (
+    EndureApprovalAuthError,
+    verify_endure_request,
+)
 
 # The shared registry lives under athletes/config because that directory is
 # copied into the Railway image. Import its loader from the adjacent scripts
@@ -3699,7 +3706,7 @@ def _start_job_thread(job: dict, intake_data: dict = None) -> threading.Thread:
 
 
 def _spawn_plan_job(order_data: dict, intake_id: str = '',
-                    intake_data: dict = None) -> tuple:
+                    intake_data: dict = None, job_metadata: dict = None) -> tuple:
     """Write a queued job record and launch generation.
 
     Returns (job, sync_result). sync_result is the pipeline result when
@@ -3735,6 +3742,8 @@ def _spawn_plan_job(order_data: dict, intake_id: str = '',
         # Full order_data so sweep retries are self-contained after restart.
         'order_data': order_data,
     }
+    if job_metadata:
+        job.update(copy.deepcopy(job_metadata))
     _write_job(job)
 
     if _sync_pipeline_mode():
@@ -4698,6 +4707,658 @@ def _tp_manifest_record(manifest: dict | None) -> dict:
     )
 
 
+def _verify_endure_approval_request(body=None):
+    """Authenticate one narrowly scoped server-to-server review request."""
+    try:
+        return verify_endure_request(
+            method=request.method,
+            path=request.path,
+            body=body,
+            headers=request.headers,
+            secret=os.environ.get('ENDURE_APPROVAL_SECRET', ''),
+            expected_key_id=os.environ.get('ENDURE_APPROVAL_KEY_ID', ''),
+        )
+    except EndureApprovalAuthError as exc:
+        raise ReviewAuthError(str(exc)) from exc
+
+
+def _uuid_text(value):
+    try:
+        parsed = uuid.UUID(str(value or ''))
+    except (ValueError, AttributeError, TypeError):
+        return ''
+    return str(parsed)
+
+
+def _validate_endure_approval_command(data):
+    required = {
+        'command_version', 'request_id', 'order_id', 'athlete_id',
+        'generation_revision', 'review_catalog_digest', 'model_seal',
+        'release_manifest_digest', 'approving_actor_id', 'approving_org_id',
+        'approving_membership_role', 'confirmations', 'waiver',
+    }
+    if not isinstance(data, dict) or set(data) != required:
+        raise FulfillmentStateError('Endure approval command shape is invalid')
+    if data.get('command_version') != 'endure_approval_command/v1':
+        raise FulfillmentStateError('Endure approval command version is invalid')
+    if (
+        _uuid_text(data.get('request_id')) != data.get('request_id')
+        or _uuid_text(data.get('athlete_id')) != data.get('athlete_id')
+        or _uuid_text(data.get('approving_actor_id')) != data.get('approving_actor_id')
+        or _uuid_text(data.get('approving_org_id')) != data.get('approving_org_id')
+        or data.get('approving_membership_role') not in {'owner', 'admin', 'coach'}
+        or not isinstance(data.get('generation_revision'), int)
+        or data['generation_revision'] < 1
+        or not re.fullmatch(r'[0-9a-f]{64}', str(data.get('review_catalog_digest') or ''))
+        or not re.fullmatch(r'[0-9a-f]{64}', str(data.get('model_seal') or ''))
+        or not re.fullmatch(r'[0-9a-f]{64}', str(data.get('release_manifest_digest') or ''))
+        or not isinstance(data.get('confirmations'), list)
+        or (data.get('waiver') is not None and not isinstance(data.get('waiver'), dict))
+        or not str(data.get('order_id') or '').strip()
+    ):
+        raise FulfillmentStateError('Endure approval command values are invalid')
+    return data
+
+
+def _validate_endure_revision_command(data):
+    required = {
+        'command_version', 'request_id', 'order_id', 'athlete_id',
+        'generation_revision', 'review_catalog_digest', 'model_seal',
+        'release_manifest_digest', 'requesting_actor_id', 'requesting_org_id',
+        'requesting_membership_role', 'decisions', 'note',
+    }
+    if not isinstance(data, dict) or set(data) != required:
+        raise FulfillmentStateError('Endure revision command shape is invalid')
+    if data.get('command_version') != 'endure_revision_request/v1':
+        raise FulfillmentStateError('Endure revision command version is invalid')
+    decisions = data.get('decisions')
+    decision_ids = set()
+    if not isinstance(decisions, list) or len(decisions) > 5000:
+        raise FulfillmentStateError('Endure revision decisions are invalid')
+    for decision in decisions:
+        if (
+            not isinstance(decision, dict)
+            or set(decision) != {'item_id', 'revision', 'disposition'}
+            or not str(decision.get('item_id') or '').strip()
+            or len(str(decision.get('item_id') or '')) > 500
+            or decision.get('revision') != data.get('generation_revision')
+            or not str(decision.get('disposition') or '').strip()
+            or len(str(decision.get('disposition') or '')) > 500
+            or decision.get('item_id') in decision_ids
+        ):
+            raise FulfillmentStateError('Endure revision decisions are invalid')
+        decision_ids.add(decision['item_id'])
+    note = data.get('note')
+    if (
+        _uuid_text(data.get('request_id')) != data.get('request_id')
+        or _uuid_text(data.get('athlete_id')) != data.get('athlete_id')
+        or _uuid_text(data.get('requesting_actor_id')) != data.get('requesting_actor_id')
+        or _uuid_text(data.get('requesting_org_id')) != data.get('requesting_org_id')
+        or data.get('requesting_membership_role') not in {'owner', 'admin', 'coach'}
+        or not isinstance(data.get('generation_revision'), int)
+        or data['generation_revision'] < 1
+        or any(not re.fullmatch(r'[0-9a-f]{64}', str(data.get(field) or ''))
+               for field in ('review_catalog_digest', 'model_seal',
+                             'release_manifest_digest'))
+        or not str(data.get('order_id') or '').strip()
+        or len(str(data.get('order_id') or '')) > 500
+        or not isinstance(note, str)
+        or len(note.strip()) < 3
+        or len(note) > 1000
+    ):
+        raise FulfillmentStateError('Endure revision command values are invalid')
+    return data
+
+
+def _validate_endure_revision_interpretation(data):
+    required = {
+        'command_version', 'submission_id', 'order_id', 'athlete_id',
+        'generation_revision', 'next_generation_revision',
+        'source_request_id', 'source_command_digest', 'interpreter', 'patch',
+    }
+    if not isinstance(data, dict) or set(data) != required:
+        raise FulfillmentStateError(
+            'Endure revision interpretation command shape is invalid')
+    if data.get('command_version') != 'endure_revision_interpretation/v1':
+        raise FulfillmentStateError(
+            'Endure revision interpretation command version is invalid')
+    interpreter = data.get('interpreter')
+    patch = data.get('patch')
+    allowed_patch_fields = {
+        'long_ride_days', 'interval_days', 'off_days', 'hours_per_week',
+        'programmed_midweek_max_minutes',
+    }
+    allowed_days = {
+        'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
+        'saturday', 'sunday',
+    }
+    if (
+        _uuid_text(data.get('submission_id')) != data.get('submission_id')
+        or _uuid_text(data.get('athlete_id')) != data.get('athlete_id')
+        or _uuid_text(data.get('source_request_id')) != data.get('source_request_id')
+        or not str(data.get('order_id') or '').strip()
+        or len(str(data.get('order_id') or '')) > 500
+        or not isinstance(data.get('generation_revision'), int)
+        or data['generation_revision'] < 1
+        or data.get('next_generation_revision') != data['generation_revision'] + 1
+        or not re.fullmatch(r'[0-9a-f]{64}', str(data.get('source_command_digest') or ''))
+        or not isinstance(interpreter, dict)
+        or set(interpreter) != {'provider', 'model', 'adapter_version'}
+        or not re.fullmatch(r'[a-z0-9_-]{2,64}', str(interpreter.get('provider') or ''))
+        or not str(interpreter.get('model') or '').strip()
+        or len(str(interpreter.get('model') or '')) > 160
+        or not re.fullmatch(
+            r'[A-Za-z0-9._/-]{1,160}', str(interpreter.get('adapter_version') or ''))
+        or not isinstance(patch, dict)
+        or not patch
+        or not set(patch).issubset(allowed_patch_fields)
+    ):
+        raise FulfillmentStateError(
+            'Endure revision interpretation command values are invalid')
+    for field in ('long_ride_days', 'interval_days', 'off_days'):
+        values = patch.get(field)
+        if values is not None and (
+            not isinstance(values, list)
+            or not values
+            or len(values) != len(set(values))
+            or any(value not in allowed_days for value in values)
+        ):
+            raise FulfillmentStateError('Endure revision schedule patch is invalid')
+    hours = patch.get('hours_per_week')
+    if hours is not None and (
+        isinstance(hours, bool) or not isinstance(hours, int) or not 1 <= hours <= 40
+    ):
+        raise FulfillmentStateError('Endure revision volume patch is invalid')
+    midweek = patch.get('programmed_midweek_max_minutes')
+    if midweek is not None and (
+        isinstance(midweek, bool) or not isinstance(midweek, int)
+        or not 15 <= midweek <= 480
+    ):
+        raise FulfillmentStateError('Endure revision duration patch is invalid')
+    off_days = set(patch.get('off_days') or [])
+    if off_days.intersection(patch.get('long_ride_days') or []) or off_days.intersection(
+        patch.get('interval_days') or []
+    ):
+        raise FulfillmentStateError('Endure revision schedule patch conflicts')
+    return data
+
+
+def _endure_approval_receipt(state):
+    approval = state.get('approval') or {}
+    source = approval.get('source') or {}
+    return {
+        'schema_version': 'motoren_approval_receipt/v1',
+        'order_id': state['order_id'],
+        'athlete_id': state['athlete_id'],
+        'status': state['status'],
+        'generation_revision': state['generation_revision'],
+        'review_catalog_digest': state['review_catalog_digest'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'approval_snapshot_version': approval.get('snapshot_version'),
+        'approval_credential': approval.get('credential'),
+        'approved_at': approval.get('at'),
+        'source_request_id': source.get('request_id'),
+        'source_command_digest': source.get('command_digest'),
+        'source_key_id': source.get('key_id'),
+        'release_authorized': approval_matches_release(state),
+        'external_writes_performed': bool(
+            state.get('application') or state.get('confirmation')
+        ),
+    }
+
+
+def _endure_revision_request_receipt(state, revision_request=None):
+    revision_request = (
+        revision_request
+        if revision_request is not None
+        else state.get('pending_endure_revision_request')
+    ) or {}
+    if not revision_request:
+        return None
+    return {
+        'schema_version': 'motoren_revision_request_receipt/v1',
+        'order_id': state['order_id'],
+        'athlete_id': state['athlete_id'],
+        'status': 'REVISION_REQUESTED',
+        'generation_revision': revision_request['generation_revision'],
+        'next_generation_revision': revision_request['next_generation_revision'],
+        'review_catalog_digest': revision_request['review_catalog_digest'],
+        'model_seal': revision_request['model_seal'],
+        'release_manifest_digest': revision_request['release_manifest_digest'],
+        'requested_at': revision_request['requested_at'],
+        'source_request_id': revision_request['request_id'],
+        'source_command_digest': revision_request['source_command_digest'],
+        'source_key_id': revision_request['source_key_id'],
+        'release_authorized': False,
+        'external_writes_performed': bool(
+            state.get('application') or state.get('confirmation')
+        ),
+    }
+
+
+def _endure_revision_generation_status(state):
+    requests = state.get('endure_revision_requests') or []
+    if not requests:
+        return None
+    revision_request = requests[-1]
+    job = _read_job(state['order_id']) or {}
+    metadata = job.get('revision_generation') or {}
+    if (
+        metadata.get('source_request_id') != revision_request.get('request_id')
+        or metadata.get('source_command_digest')
+        != revision_request.get('source_command_digest')
+    ):
+        return None
+    status = str(job.get('status') or '')
+    if status == 'awaiting_revision_interpretation':
+        public_status = 'awaiting_interpretation'
+    elif status in {'queued', 'running', 'succeeded', 'failed'}:
+        public_status = status
+    else:
+        public_status = 'failed'
+    updated_at = str(job.get('updated_at') or '')
+    if updated_at and not updated_at.endswith('Z') and not re.search(
+        r'[+-]\d{2}:\d{2}$', updated_at
+    ):
+        updated_at += 'Z'
+    return {
+        'schema_version': 'motoren_revision_generation_status/v1',
+        'source_request_id': revision_request['request_id'],
+        'source_command_digest': revision_request['source_command_digest'],
+        'target_generation_revision': revision_request['next_generation_revision'],
+        'status': public_status,
+        'updated_at': updated_at,
+        'error': job.get('error') if public_status == 'failed' else None,
+    }
+
+
+def _load_verified_endure_review(order_id):
+    state = load_fulfillment_state(_fulfillment_status_path(order_id))
+    if not state.get('model_seal') or not state.get('release_manifest_digest'):
+        raise FulfillmentStateError('Motoren review is not sealed')
+    revision_dir = (
+        _order_dir(order_id) / 'revisions'
+        / f"r{state['generation_revision']}"
+    )
+    try:
+        verify_release_manifest(state, revision_dir)
+    except FulfillmentStateError as exc:
+        record_seal_mismatch(_fulfillment_status_path(order_id), str(exc))
+        raise FulfillmentStateError(
+            f'Motoren review seal verification failed: {exc}'
+        ) from exc
+    expected_catalog_digest = review_catalog_digest(state)
+    if state.get('review_catalog_digest') != expected_catalog_digest:
+        raise FulfillmentStateError('Motoren review catalog is stale')
+    return state
+
+
+def _canonical_revision_intake(order_id, job, prior_revision):
+    intake_data = load_intake(job.get('intake_id')) if job.get('intake_id') else {}
+    if not intake_data:
+        backup = (_order_dir(order_id) / 'revisions' / f'r{prior_revision}'
+                  / 'artifacts' / 'intake_backup.json')
+        try:
+            loaded = json.loads(backup.read_text(encoding='utf-8'))
+            intake_data = loaded if isinstance(loaded, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            intake_data = {}
+    if not intake_data:
+        raise FulfillmentStateError(
+            'revision is recorded but canonical intake is unavailable')
+    return copy.deepcopy(intake_data)
+
+
+def _install_revision_source_state(order_id, state):
+    work_root = (Path(DATA_DIR) / 'order-work' / _safe_order_id(order_id)
+                 / 'athletes')
+    athlete_id = str(state['athlete_id'])
+    candidates = [work_root / athlete_id, work_root / athlete_id.replace('_', '-')]
+    source_dir = next(
+        (candidate for candidate in candidates if candidate.is_dir()), candidates[-1])
+    source_dir.mkdir(parents=True, exist_ok=True)
+    source_state = source_dir / 'fulfillment_status.json'
+    source_tmp = source_state.with_name(f'.{source_state.name}.revision.tmp')
+    payload = json.dumps(state, indent=2, sort_keys=True) + '\n'
+    try:
+        with open(source_tmp, 'w', encoding='utf-8') as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(source_tmp, source_state)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            source_tmp.unlink()
+
+
+def _queue_endure_revision_interpretation(order_id, state):
+    revision_request = state.get('pending_endure_revision_request') or {}
+    if not revision_request:
+        return _endure_revision_generation_status(state)
+    job = _read_job(order_id)
+    if not job:
+        raise FulfillmentStateError(
+            'Endure revision is recorded but no durable generation job exists')
+    metadata = {
+        'schema_version': 'motoren_revision_generation_job/v1',
+        'source_request_id': revision_request['request_id'],
+        'source_command_digest': revision_request['source_command_digest'],
+        'prior_generation_revision': revision_request['generation_revision'],
+        'target_generation_revision': revision_request['next_generation_revision'],
+    }
+    existing_metadata = job.get('revision_generation') or {}
+    if existing_metadata:
+        if existing_metadata != metadata:
+            raise FulfillmentStateError(
+                'a different revision generation job already exists for this order')
+        if job.get('status') in {
+            'awaiting_revision_interpretation', 'queued', 'running', 'succeeded',
+        }:
+            return _endure_revision_generation_status(state)
+    job = copy.deepcopy(job)
+    job.update({
+        'status': 'awaiting_revision_interpretation',
+        'finished_at': None,
+        'error': None,
+        'revision_generation': metadata,
+    })
+    _write_job(job)
+    return _endure_revision_generation_status(state)
+
+
+def _apply_endure_revision_patch(intake_data, patch):
+    updated = copy.deepcopy(intake_data)
+    for field in (
+        'long_ride_days', 'interval_days', 'off_days', 'hours_per_week',
+        'programmed_midweek_max_minutes',
+    ):
+        if field in patch:
+            value = patch[field]
+            updated[field] = (
+                [day.title() for day in value]
+                if field.endswith('_days') else value
+            )
+    return updated
+
+
+def _start_endure_revision_generation(order_id, state, interpretation):
+    revision_request = state.get('pending_endure_revision_request') or {}
+    if not revision_request:
+        return _endure_revision_generation_status(state)
+    job = _read_job(order_id)
+    if not job:
+        raise FulfillmentStateError(
+            'Endure revision interpretation has no durable generation job')
+    metadata = job.get('revision_generation') or {}
+    if (
+        metadata.get('source_request_id') != revision_request.get('request_id')
+        or metadata.get('source_command_digest')
+        != revision_request.get('source_command_digest')
+    ):
+        raise FulfillmentStateError(
+            'Endure revision interpretation does not match the generation job')
+    if job.get('status') in {'queued', 'running', 'succeeded'}:
+        return _endure_revision_generation_status(state)
+    if job.get('status') != 'awaiting_revision_interpretation':
+        raise FulfillmentStateError('Endure revision generation job is not claimable')
+    intake_data = _canonical_revision_intake(
+        order_id, job, revision_request['generation_revision'])
+    intake_data = _apply_endure_revision_patch(intake_data, interpretation['patch'])
+    _install_revision_source_state(order_id, state)
+    order_data = copy.deepcopy(job.get('order_data') or {})
+    order_data.setdefault('order_id', order_id)
+    order_data.setdefault('athlete_id', state['athlete_id'])
+    _spawn_plan_job(
+        order_data,
+        intake_id=str(job.get('intake_id') or ''),
+        intake_data=intake_data,
+        job_metadata={'revision_generation': metadata},
+    )
+    return _endure_revision_generation_status(state)
+
+
+@app.route('/api/fulfillment/<order_ref>/endure-review', methods=['GET'])
+@limiter.limit('30/minute')
+def endure_fulfillment_review(order_ref):
+    """Return the sealed, non-executable review catalog to Endure."""
+    try:
+        _verify_endure_approval_request()
+    except ReviewAuthError as exc:
+        return jsonify({'error': str(exc)}), 401
+    order_id = _resolve_order_id(order_ref)
+    if not order_id:
+        return jsonify({'error': 'Motoren review not found'}), 404
+    try:
+        state = _load_verified_endure_review(order_id)
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 409
+    return jsonify({
+        'schema_version': 'motoren_endure_review/v1',
+        'order_id': state['order_id'],
+        'athlete_id': state['athlete_id'],
+        'delivery_platform': state['delivery_platform'],
+        'status': state['status'],
+        'generation_revision': state['generation_revision'],
+        'review_catalog_version': state['review_catalog_version'],
+        'review_catalog_digest': state['review_catalog_digest'],
+        'review_items': state['review_items'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'release_authorized': approval_matches_release(state),
+        'approval_receipt': (
+            _endure_approval_receipt(state)
+            if state.get('status') == APPROVED else None
+        ),
+        'revision_request_receipt': _endure_revision_request_receipt(state),
+        'revision_generation_status': _endure_revision_generation_status(state),
+        'external_writes_performed': bool(
+            state.get('application') or state.get('confirmation')
+        ),
+    }), 200
+
+
+@app.route('/api/fulfillment/<order_ref>/endure-revision-request', methods=['POST'])
+@limiter.limit('10/minute')
+def request_fulfillment_revision_from_endure(order_ref):
+    """Record one authenticated coach request for the next sealed revision."""
+    data = request.get_json(silent=True)
+    try:
+        verified = _verify_endure_approval_request(data)
+        command = _validate_endure_revision_command(data)
+    except ReviewAuthError as exc:
+        return jsonify({'error': str(exc)}), 401
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 400
+    order_id = _resolve_order_id(order_ref)
+    if not order_id or order_id != command['order_id']:
+        return jsonify({'error': 'Motoren revision order does not match'}), 409
+    try:
+        state = _load_verified_endure_review(order_id)
+        requested_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        request_record = {
+            'schema_version': command['command_version'],
+            'request_id': command['request_id'],
+            'source_key_id': verified.key_id,
+            'source_command_digest': verified.command_digest,
+            'requesting_actor_id': command['requesting_actor_id'],
+            'requesting_org_id': command['requesting_org_id'],
+            'requesting_membership_role': command['requesting_membership_role'],
+            'generation_revision': command['generation_revision'],
+            'next_generation_revision': command['generation_revision'] + 1,
+            'review_catalog_digest': command['review_catalog_digest'],
+            'model_seal': command['model_seal'],
+            'release_manifest_digest': command['release_manifest_digest'],
+            'decisions': copy.deepcopy(command['decisions']),
+            'note': command['note'],
+            'requested_at': requested_at,
+        }
+        # Preserve provider observation time across exact retries. The state
+        # function compares canonical command identity before mutation.
+        existing = next(
+            (item for item in state.get('endure_revision_requests', [])
+             if item.get('source_command_digest') == verified.command_digest),
+            None,
+        )
+        if existing:
+            request_record['requested_at'] = existing['requested_at']
+        else:
+            catalog_ids = {item['item_id'] for item in state['review_items']}
+            if any(item['item_id'] not in catalog_ids for item in command['decisions']):
+                raise FulfillmentStateError(
+                    'Endure revision decision references an unknown review item'
+                )
+            if (
+                state['athlete_id'] != command['athlete_id']
+                or state['generation_revision'] != command['generation_revision']
+                or state['review_catalog_digest'] != command['review_catalog_digest']
+                or state['model_seal'] != command['model_seal']
+                or state['release_manifest_digest'] != command['release_manifest_digest']
+            ):
+                raise FulfillmentStateError(
+                    'Endure revision request does not match the current sealed Motoren review'
+                )
+        state = request_endure_revision(
+            _fulfillment_status_path(order_id), request_record=request_record,
+        )
+        if state.get('pending_endure_revision_request') == request_record:
+            _queue_endure_revision_interpretation(order_id, state)
+        receipt = _endure_revision_request_receipt(state, request_record)
+        if receipt is None:
+            raise FulfillmentStateError('Motoren revision request readback is missing')
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 409
+    return jsonify(receipt), 200
+
+
+@app.route('/api/fulfillment/<order_ref>/endure-revision-interpretation', methods=['POST'])
+@limiter.limit('10/minute')
+def interpret_fulfillment_revision_from_endure(order_ref):
+    """Validate a provider-neutral plan patch and start canonical generation."""
+    data = request.get_json(silent=True)
+    try:
+        verified = _verify_endure_approval_request(data)
+        command = _validate_endure_revision_interpretation(data)
+    except ReviewAuthError as exc:
+        return jsonify({'error': str(exc)}), 401
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 400
+    order_id = _resolve_order_id(order_ref)
+    if not order_id or order_id != command['order_id']:
+        return jsonify({'error': 'Motoren revision interpretation order does not match'}), 409
+    try:
+        state = _load_verified_endure_review(order_id)
+        pending = state.get('pending_endure_revision_request') or {}
+        existing = next(
+            (item for item in state.get('endure_revision_interpretations', [])
+             if item.get('command_digest') == verified.command_digest),
+            None,
+        )
+        if not existing and (
+            state['athlete_id'] != command['athlete_id']
+            or pending.get('generation_revision') != command['generation_revision']
+            or pending.get('next_generation_revision') != command['next_generation_revision']
+            or pending.get('request_id') != command['source_request_id']
+            or pending.get('source_command_digest') != command['source_command_digest']
+        ):
+            raise FulfillmentStateError(
+                'Endure revision interpretation does not match the pending request')
+        submitted_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        interpretation = {
+            'schema_version': command['command_version'],
+            'submission_id': command['submission_id'],
+            'source_request_id': command['source_request_id'],
+            'source_command_digest': command['source_command_digest'],
+            'source_key_id': verified.key_id,
+            'command_digest': verified.command_digest,
+            'interpreter_provider': command['interpreter']['provider'],
+            'interpreter_model': command['interpreter']['model'],
+            'adapter_version': command['interpreter']['adapter_version'],
+            'patch': copy.deepcopy(command['patch']),
+            'submitted_at': submitted_at,
+        }
+        if existing:
+            interpretation['submitted_at'] = existing['submitted_at']
+        state = record_endure_revision_interpretation(
+            _fulfillment_status_path(order_id),
+            interpretation_record=interpretation,
+        )
+        status = _start_endure_revision_generation(order_id, state, interpretation)
+        if status is None:
+            raise FulfillmentStateError(
+                'Motoren revision generation status readback is missing')
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 409
+    return jsonify(status), 200
+
+
+@app.route('/api/fulfillment/<order_ref>/endure-approval', methods=['POST'])
+@limiter.limit('10/minute')
+def approve_fulfillment_from_endure(order_ref):
+    """Apply one authenticated Endure coach decision to the sealed release."""
+    data = request.get_json(silent=True)
+    try:
+        verified = _verify_endure_approval_request(data)
+        command = _validate_endure_approval_command(data)
+    except ReviewAuthError as exc:
+        return jsonify({'error': str(exc)}), 401
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 400
+    order_id = _resolve_order_id(order_ref)
+    if not order_id or order_id != command['order_id']:
+        return jsonify({'error': 'Motoren approval order does not match'}), 409
+    try:
+        state = _load_verified_endure_review(order_id)
+        approval_source = {
+            'system': 'endure',
+            'request_id': command['request_id'],
+            'command_digest': verified.command_digest,
+            'key_id': verified.key_id,
+        }
+        expected_credential = (
+            f"endure:{verified.key_id}:{command['approving_org_id']}:"
+            f"{command['approving_actor_id']}"
+        )
+        if state['status'] == APPROVED:
+            approval = state.get('approval') or {}
+            if (
+                approval_matches_release(state)
+                and approval.get('credential') == expected_credential
+                and approval.get('source') == approval_source
+            ):
+                return jsonify(_endure_approval_receipt(state)), 200
+            raise FulfillmentStateError(
+                'Motoren release already has a different approval'
+            )
+        if (
+            state['athlete_id'] != command['athlete_id']
+            or state['generation_revision'] != command['generation_revision']
+            or state['review_catalog_digest'] != command['review_catalog_digest']
+            or state['model_seal'] != command['model_seal']
+            or state['release_manifest_digest'] != command['release_manifest_digest']
+        ):
+            raise FulfillmentStateError(
+                'Endure approval does not match the current sealed Motoren review'
+            )
+        state = transition_fulfillment(
+            _fulfillment_status_path(order_id), APPROVED,
+            expected_credential,
+            waiver=command['waiver'],
+            expected_revision=command['generation_revision'],
+            expected_catalog_digest=command['review_catalog_digest'],
+            review_decisions=command['confirmations'],
+            credential=expected_credential,
+            metadata={'approval_source': approval_source},
+        )
+        if not approval_matches_release(state):
+            raise FulfillmentStateError(
+                'Motoren approval readback is not release-authoritative'
+            )
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 409
+    return jsonify(_endure_approval_receipt(state)), 200
+
+
 @app.route('/api/fulfillment/<order_ref>/transition', methods=['POST'])
 def transition_fulfillment_state(order_ref):
     """Record the coach's authenticated review/application transition."""
@@ -4711,32 +5372,26 @@ def transition_fulfillment_state(order_ref):
     if not isinstance(data, dict) or _has_client_timestamp(data):
         return jsonify({'error': 'JSON body without client timestamps is required'}), 400
     destination = str(data.get('to', ''))
+    if destination == APPROVED:
+        return jsonify({
+            'error': (
+                'APPROVED requires an authenticated review session or the '
+                'narrow Endure approval bridge'
+            )
+        }), 409
     expected_revision = data.get('generation_revision')
     expected_catalog_digest = data.get('review_catalog_digest')
     review_decisions = data.get('confirmations')
-    if destination == APPROVED:
-        if (not isinstance(expected_revision, int)
-                or not isinstance(expected_catalog_digest, str)
-                or not expected_catalog_digest.strip()
-                or not isinstance(review_decisions, list)):
-            return jsonify({
-                'error': ('APPROVED requires generation_revision and a '
-                          'review_catalog_digest plus confirmations list from '
-                          'the current review catalog')
-            }), 400
     try:
         state = transition_fulfillment(
             _fulfillment_status_path(order_id), destination,
-            ('operator-secret' if destination == APPROVED
-             else str(data.get('coach', ''))),
+            str(data.get('coach', '')),
             waiver=data.get('waiver'),
             platform=str(data.get('platform', '')), evidence=str(data.get('evidence', '')),
-            expected_revision=(expected_revision if destination == APPROVED else None),
-            expected_catalog_digest=(
-                expected_catalog_digest if destination == APPROVED else ''),
-            review_decisions=(review_decisions if destination == APPROVED else None),
-            credential=('operator-secret'
-                        if destination in (APPROVED, CANCELLED) else ''),
+            expected_revision=None,
+            expected_catalog_digest='',
+            review_decisions=None,
+            credential=('operator-secret' if destination == CANCELLED else ''),
             metadata=({'reason': str(data.get('reason') or '').strip()}
                       if destination == CANCELLED else None),
         )

@@ -1,10 +1,13 @@
 """Production-route regression tests for the Phase 2 coach review page."""
 
 import html
+import hashlib
+import hmac
 import json
 import os
 import re
 import sys
+import time
 import zipfile
 from pathlib import Path
 
@@ -27,6 +30,7 @@ from download_tokens import (DownloadTokenError, MAX_REVIEW_BUNDLE_TTL_SECONDS,
 from review_auth import verify_review_token
 from d2_identity import (THRESHOLD_ITEM_ID, record_account_inspection,
                          record_identity_result, resolve_d2_item)
+from endure_approval_bridge import request_message
 
 
 ATHLETE_M = (Path(__file__).resolve().parents[2] / 'tests' / 'fixtures'
@@ -39,6 +43,7 @@ def review_client(tmp_path, monkeypatch):
     data.mkdir()
     monkeypatch.setattr(webhook_app, 'DATA_DIR', str(data))
     monkeypatch.setattr(webhook_app, 'DELIVERIES_DIR', str(data / 'deliveries'))
+    monkeypatch.setattr(webhook_app, 'JOBS_DIR', str(data / 'jobs'))
     monkeypatch.setenv('DOWNLOAD_TOKEN_SECRET', 'phase2-page-test-secret')
     monkeypatch.delenv('DOWNLOAD_TOKEN_KEYS', raising=False)
     monkeypatch.delenv('REVIEW_TOKEN_KEYS', raising=False)
@@ -856,38 +861,13 @@ def test_unauthenticated_review_get_does_not_migrate_legacy_state(
     assert not orders.exists() or list(orders.iterdir()) == []
 
 
-def test_operator_approval_endpoint_requires_same_revisioned_snapshot_policy(
+def test_generic_operator_endpoint_cannot_approve(
     review_client, monkeypatch,
 ):
     monkeypatch.setenv('CRON_SECRET', 'operator-test-secret')
     state, state_path, _ = _seed_order('test_operator_snapshot')
     endpoint = f"/api/fulfillment/{state['order_id']}/transition"
-    missing = review_client.post(
-        endpoint, json={'to': APPROVED, 'coach': 'untrusted-name'},
-        headers={'X-Cron-Secret': 'operator-test-secret'})
-    assert missing.status_code == 400
-
-    wrong_digest = review_client.post(
-        endpoint,
-        json={
-            'to': APPROVED,
-            'generation_revision': state['generation_revision'],
-            'review_catalog_digest': '0' * 64,
-            'confirmations': [
-                {
-                    'item_id': item_id,
-                    'revision': state['generation_revision'],
-                    'disposition': 'confirmed',
-                }
-                for item_id in _confirmed_ids(state)
-            ],
-        },
-        headers={'X-Cron-Secret': 'operator-test-secret'},
-    )
-    assert wrong_digest.status_code == 409
-    assert 'review catalog changed' in wrong_digest.get_json()['error']
-
-    approved = review_client.post(
+    refused = review_client.post(
         endpoint,
         json={
             'to': APPROVED,
@@ -905,10 +885,321 @@ def test_operator_approval_endpoint_requires_same_revisioned_snapshot_policy(
         },
         headers={'X-Cron-Secret': 'operator-test-secret'},
     )
-    assert approved.status_code == 200
+    assert refused.status_code == 409
+    assert 'narrow Endure approval bridge' in refused.get_json()['error']
     persisted = load(state_path)
-    assert persisted['approval']['credential'] == 'operator-secret'
-    assert persisted['approval']['coach'] == 'operator-secret'
+    assert persisted['approval'] is None
+
+
+def _endure_headers(method, path, body, *, timestamp=None):
+    timestamp = int(time.time()) if timestamp is None else timestamp
+    message, _, _ = request_message(method, path, timestamp, body)
+    signature = hmac.new(
+        b'endure-approval-test-secret-that-is-long-enough',
+        message,
+        hashlib.sha256,
+    ).hexdigest()
+    return {
+        'X-Endure-Key-Id': 'endure-test-key',
+        'X-Endure-Timestamp': str(timestamp),
+        'X-Endure-Signature': signature,
+    }
+
+
+def test_endure_bridge_reads_and_approves_exact_sealed_catalog(
+    review_client, monkeypatch,
+):
+    monkeypatch.setenv(
+        'ENDURE_APPROVAL_SECRET',
+        'endure-approval-test-secret-that-is-long-enough',
+    )
+    monkeypatch.setenv('ENDURE_APPROVAL_KEY_ID', 'endure-test-key')
+    athlete_id = '6dfb5c7f-71e4-43d8-926a-86e13be03416'
+    state, state_path, _ = _seed_order(
+        'test_endure_bridge', athlete_id=athlete_id,
+    )
+    review_path = f"/api/fulfillment/{state['order_id']}/endure-review"
+    review = review_client.get(
+        review_path,
+        headers=_endure_headers('GET', review_path, None),
+    )
+    assert review.status_code == 200
+    review_body = review.get_json()
+    assert review_body['schema_version'] == 'motoren_endure_review/v1'
+    assert review_body['review_catalog_digest'] == state['review_catalog_digest']
+    assert review_body['model_seal'] == state['model_seal']
+    assert review_body['release_authorized'] is False
+    assert 'operations' not in review_body
+
+    command = {
+        'command_version': 'endure_approval_command/v1',
+        'request_id': '31956f0a-c567-4c16-98ef-8c6ba6c5fa47',
+        'order_id': state['order_id'],
+        'athlete_id': athlete_id,
+        'generation_revision': state['generation_revision'],
+        'review_catalog_digest': state['review_catalog_digest'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'approving_actor_id': '52c2787e-70fb-4c7b-bf93-334f47a34e3d',
+        'approving_org_id': '25ab74b2-4b84-4fb5-bc96-104e0085b9c5',
+        'approving_membership_role': 'coach',
+        'confirmations': [
+            {
+                'item_id': item_id,
+                'revision': state['generation_revision'],
+                'disposition': 'confirmed',
+            }
+            for item_id in _confirmed_ids(state)
+        ],
+        'waiver': None,
+    }
+    approval_path = f"/api/fulfillment/{state['order_id']}/endure-approval"
+    headers = _endure_headers('POST', approval_path, command)
+    approved = review_client.post(approval_path, json=command, headers=headers)
+    assert approved.status_code == 200
+    receipt = approved.get_json()
+    assert receipt['schema_version'] == 'motoren_approval_receipt/v1'
+    assert receipt['status'] == APPROVED
+    assert receipt['release_authorized'] is True
+    assert receipt['external_writes_performed'] is False
+    assert receipt['source_request_id'] == command['request_id']
+
+    persisted = load(state_path)
+    assert persisted['approval']['credential'] == (
+        'endure:endure-test-key:25ab74b2-4b84-4fb5-bc96-104e0085b9c5:'
+        '52c2787e-70fb-4c7b-bf93-334f47a34e3d'
+    )
+    assert persisted['approval']['source']['request_id'] == command['request_id']
+    assert approval_matches_release(persisted)
+
+    replay = review_client.post(approval_path, json=command, headers=headers)
+    assert replay.status_code == 200
+    assert replay.get_json() == receipt
+
+    fresh_headers = _endure_headers(
+        'POST', approval_path, command, timestamp=int(time.time()) + 1,
+    )
+    fresh_replay = review_client.post(
+        approval_path, json=command, headers=fresh_headers,
+    )
+    assert fresh_replay.status_code == 200
+    assert fresh_replay.get_json() == receipt
+
+
+def test_endure_bridge_governs_revision_request_and_exact_replay(
+    review_client, monkeypatch,
+):
+    monkeypatch.setenv(
+        'ENDURE_APPROVAL_SECRET',
+        'endure-approval-test-secret-that-is-long-enough',
+    )
+    monkeypatch.setenv('ENDURE_APPROVAL_KEY_ID', 'endure-test-key')
+    athlete_id = 'd40404bb-8583-4812-bb7d-39cf2e95ea47'
+    state, state_path, revision_dir = _seed_order(
+        'test_endure_revision_request', athlete_id=athlete_id,
+    )
+    artifacts_dir = revision_dir / 'artifacts'
+    artifacts_dir.mkdir()
+    (artifacts_dir / 'intake_backup.json').write_text(json.dumps({
+        'name': 'Revision Athlete',
+        'email': 'revision@example.test',
+        'hours_per_week': 9,
+        'long_ride_days': ['Saturday'],
+        'interval_days': ['Tuesday'],
+        'off_days': ['Monday'],
+    }))
+    webhook_app._write_job({
+        'athlete_id': athlete_id,
+        'order_id': state['order_id'],
+        'intake_id': '',
+        'status': 'succeeded',
+        'attempts': 1,
+        'max_attempts': 2,
+        'created_at': '2026-08-30T11:00:00',
+        'started_at': '2026-08-30T11:00:01',
+        'finished_at': '2026-08-30T11:01:00',
+        'error': None,
+        'order_data': {
+            'order_id': state['order_id'],
+            'athlete_id': athlete_id,
+            'delivery_platform': 'trainingpeaks',
+        },
+    })
+    command = {
+        'command_version': 'endure_revision_request/v1',
+        'request_id': '49870cb0-b8cf-4101-921b-f17865cdbac9',
+        'order_id': state['order_id'],
+        'athlete_id': athlete_id,
+        'generation_revision': state['generation_revision'],
+        'review_catalog_digest': state['review_catalog_digest'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'requesting_actor_id': '3dc929e1-0f68-4c39-8625-160242808e22',
+        'requesting_org_id': '971883cb-173a-4cc7-a0e4-da01d9776937',
+        'requesting_membership_role': 'coach',
+        'decisions': [],
+        'note': 'Keep completed work and move the key endurance day to Sunday.',
+    }
+    path = f"/api/fulfillment/{state['order_id']}/endure-revision-request"
+    requested = review_client.post(
+        path, json=command, headers=_endure_headers('POST', path, command),
+    )
+    assert requested.status_code == 200
+    receipt = requested.get_json()
+    assert receipt['schema_version'] == 'motoren_revision_request_receipt/v1'
+    assert receipt['status'] == 'REVISION_REQUESTED'
+    assert receipt['generation_revision'] == state['generation_revision']
+    assert receipt['next_generation_revision'] == state['generation_revision'] + 1
+    assert receipt['source_request_id'] == command['request_id']
+    assert receipt['release_authorized'] is False
+    assert receipt['external_writes_performed'] is False
+    queued_job = webhook_app._read_job(state['order_id'])
+    assert queued_job['status'] == 'awaiting_revision_interpretation'
+    assert queued_job['revision_generation']['source_request_id'] == command['request_id']
+
+    fresh_replay = review_client.post(
+        path,
+        json=command,
+        headers=_endure_headers(
+            'POST', path, command, timestamp=int(time.time()) + 1,
+        ),
+    )
+    assert fresh_replay.status_code == 200
+    assert fresh_replay.get_json() == receipt
+
+    review_path = f"/api/fulfillment/{state['order_id']}/endure-review"
+    readback = review_client.get(
+        review_path, headers=_endure_headers('GET', review_path, None),
+    )
+    assert readback.status_code == 200
+    assert readback.get_json()['revision_request_receipt'] == receipt
+    assert readback.get_json()['revision_generation_status']['status'] == 'awaiting_interpretation'
+    assert load(state_path)['pending_endure_revision_request']['note'] == command['note']
+
+    spawned = {}
+
+    def _spawn_revision(order_data, intake_id='', intake_data=None, job_metadata=None):
+        spawned.update({
+            'order_data': order_data,
+            'intake_id': intake_id,
+            'intake_data': intake_data,
+            'job_metadata': job_metadata,
+        })
+        job = webhook_app._read_job(order_data['order_id'])
+        job.update(status='queued', error=None, **(job_metadata or {}))
+        webhook_app._write_job(job)
+        return job, None
+
+    monkeypatch.setattr(webhook_app, '_spawn_plan_job', _spawn_revision)
+    interpretation = {
+        'command_version': 'endure_revision_interpretation/v1',
+        'submission_id': '8b5c24e3-6778-4e5b-8497-78fd9e6a8b9b',
+        'order_id': state['order_id'],
+        'athlete_id': athlete_id,
+        'generation_revision': state['generation_revision'],
+        'next_generation_revision': state['generation_revision'] + 1,
+        'source_request_id': command['request_id'],
+        'source_command_digest': receipt['source_command_digest'],
+        'interpreter': {
+            'provider': 'anthropic',
+            'model': 'claude-test',
+            'adapter_version': 'endure/david-plan-patch/v1',
+        },
+        'patch': {
+            'long_ride_days': ['sunday'],
+            'off_days': ['monday'],
+            'programmed_midweek_max_minutes': 90,
+        },
+    }
+    interpretation_path = (
+        f"/api/fulfillment/{state['order_id']}/endure-revision-interpretation")
+    interpreted = review_client.post(
+        interpretation_path,
+        json=interpretation,
+        headers=_endure_headers(
+            'POST', interpretation_path, interpretation, timestamp=int(time.time()) + 2),
+    )
+    assert interpreted.status_code == 200
+    assert interpreted.get_json()['status'] == 'queued'
+    assert interpreted.get_json()['target_generation_revision'] == 2
+    assert spawned['intake_data']['long_ride_days'] == ['Sunday']
+    assert spawned['intake_data']['off_days'] == ['Monday']
+    assert spawned['intake_data']['programmed_midweek_max_minutes'] == 90
+    assert load(state_path)['endure_revision_interpretations'][0]['interpreter_provider'] == 'anthropic'
+
+    replayed_interpretation = review_client.post(
+        interpretation_path,
+        json=interpretation,
+        headers=_endure_headers(
+            'POST', interpretation_path, interpretation, timestamp=int(time.time()) + 3),
+    )
+    assert replayed_interpretation.status_code == 200
+    assert replayed_interpretation.get_json() == interpreted.get_json()
+
+    approval_command = {
+        'command_version': 'endure_approval_command/v1',
+        'request_id': 'e7c8a278-033a-436f-a2ba-10fb94aa2d0c',
+        'order_id': state['order_id'],
+        'athlete_id': athlete_id,
+        'generation_revision': state['generation_revision'],
+        'review_catalog_digest': state['review_catalog_digest'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'approving_actor_id': command['requesting_actor_id'],
+        'approving_org_id': command['requesting_org_id'],
+        'approving_membership_role': 'coach',
+        'confirmations': [
+            {
+                'item_id': item_id,
+                'revision': state['generation_revision'],
+                'disposition': 'confirmed',
+            }
+            for item_id in _confirmed_ids(state)
+        ],
+        'waiver': None,
+    }
+    approval_path = f"/api/fulfillment/{state['order_id']}/endure-approval"
+    refused = review_client.post(
+        approval_path,
+        json=approval_command,
+        headers=_endure_headers('POST', approval_path, approval_command),
+    )
+    assert refused.status_code == 409
+    assert 'must be regenerated' in refused.get_json()['error']
+    assert load(state_path)['approval'] is None
+
+
+def test_endure_bridge_rejects_tampered_body(review_client, monkeypatch):
+    monkeypatch.setenv(
+        'ENDURE_APPROVAL_SECRET',
+        'endure-approval-test-secret-that-is-long-enough',
+    )
+    monkeypatch.setenv('ENDURE_APPROVAL_KEY_ID', 'endure-test-key')
+    athlete_id = 'f080d383-7b6a-4f71-b729-1f4013b914d5'
+    state, state_path, _ = _seed_order(
+        'test_endure_tamper', athlete_id=athlete_id,
+    )
+    path = f"/api/fulfillment/{state['order_id']}/endure-approval"
+    command = {
+        'command_version': 'endure_approval_command/v1',
+        'request_id': '50d16c1e-c9a4-49b2-a3ef-afdb0aa8291a',
+        'order_id': state['order_id'],
+        'athlete_id': athlete_id,
+        'generation_revision': 1,
+        'review_catalog_digest': state['review_catalog_digest'],
+        'model_seal': state['model_seal'],
+        'release_manifest_digest': state['release_manifest_digest'],
+        'approving_actor_id': '65ee7c08-c799-4446-a1f0-1bd859446e16',
+        'approving_org_id': '77412e7f-c691-40e8-a08d-a5d7e6807775',
+        'approving_membership_role': 'coach',
+        'confirmations': [],
+        'waiver': None,
+    }
+    headers = _endure_headers('POST', path, command)
+    command['approving_membership_role'] = 'admin'
+    response = review_client.post(path, json=command, headers=headers)
+    assert response.status_code == 401
+    assert load(state_path)['approval'] is None
 
 
 def test_revoking_link_after_login_ends_page_session(review_client, monkeypatch):

@@ -78,6 +78,8 @@ railway.json       <- Railway deploy config (root, NOT webhook/)
 - `CRON_SECRET` -- Secret for `/api/cron/followup-emails` endpoint
 - `COACHING_INTAKE_SECRET` -- Shared only with the Cloudflare coaching-intake
   Worker; authenticates brand form submissions to `/api/coaching-intakes`
+- `ENDURE_APPROVAL_KEY_ID` -- identifier for the narrowly scoped Endure coach-review key
+- `ENDURE_APPROVAL_SECRET` -- 32+ character HMAC key shared only with the Endure server; authorizes sealed review reads and exact coach approval commands, never apply/cancel/delivery
 - Optional: `NOTIFICATION_EMAIL`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` -- for email notifications + follow-up sequence
 - Optional (Endure delivery, Phase 4b — feature entirely OFF when unset):
   - `ENDURE_DELIVERY_URL` -- Endure base URL; pipeline POSTs `{url}/api/delivery/purchased-plan`. Unsetting this is the kill switch (silent revert to TP-only).
