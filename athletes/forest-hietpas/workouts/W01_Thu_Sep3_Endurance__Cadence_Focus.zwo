@@ -1,14 +1,15 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <workout_file>
   <author>Gravel God Training</author>
-  <name>Endurance — Position Focus</name>
+  <name>Endurance — Cadence Focus</name>
   <description>WARM-UP:
 - 9min building from Z1 into the Z2 target
 
 MAIN SET:
 - 43min @ 68% FTP (Z2, RPE 3)
-- Position: Alternate every 30 min: drops (aero) → hoods (power)
-- Cadence: self-selected, comfortable endurance cadence
+- Drill: 30sec spin-up @ 100-110rpm every 10min — no extra power, just leg speed
+- Position: Stay relaxed on the hoods; keep shoulders quiet
+- Cadence: Every 10 min, spin 30 sec at 100-110rpm, then settle smoothly
 
 COOL-DOWN:
 - 9min easy spin Z1-Z2 (RPE 3-4)</description>

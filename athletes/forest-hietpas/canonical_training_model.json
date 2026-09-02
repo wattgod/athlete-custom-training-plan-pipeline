@@ -9,7 +9,7 @@
     "name": "Forest Hietpas",
     "power_basis": "measured",
     "reanchor": {
-      "action": "No testing this block (coach ruling 2026-08-29: \"no tests\"). FTP anchored at 300W by coach confirmation; re-anchor only when the coach calls for it.",
+      "action": "No testing this block (coach ruling 2026-08-29: \"no tests\"). FTP anchored at 300W by coach confirmation. RE-CONFIRMED 2026-09-01 (\"Just leave it at 300 for ftp\") after the athlete said on 08-22 he had \"zero clue\" and picked 300 because it \"felt right\" -- the coach owns this number knowingly. Re-anchor only when the coach calls for it.",
       "required": false,
       "test": null,
       "week": null
@@ -40,7 +40,7 @@
   },
   "derived_values": [
     {
-      "at": "2026-09-01T19:23:05.869712Z",
+      "at": "2026-09-02T01:55:42.747574Z",
       "basis": "measured-anchor availability and athlete-requested metric",
       "class": "inferred",
       "field": "athlete.control_metric",
@@ -54,7 +54,7 @@
       "sensitivity": "personal"
     },
     {
-      "at": "2026-09-01T19:23:05.869712Z",
+      "at": "2026-09-02T01:55:42.747574Z",
       "basis": "authored relative-intensity segments projected through the ftp target rule",
       "class": "inferred",
       "field": "sessions",
@@ -62,7 +62,7 @@
       "inputs": {
         "control_basis": "ftp",
         "control_metric": "power",
-        "session_count": 58
+        "session_count": 59
       },
       "revision": 1,
       "sensitivity": "personal"
@@ -391,8 +391,399 @@
       "zwo_projection": null
     },
     {
-      "archetype_id": null,
+      "archetype_id": "Endurance",
       "daily_ordinal": 1,
+      "date": "2026-09-02",
+      "description": "Easy session predominantly in zone 2 but skirting the Z1 and Z3 borders. Alternating blocks built for Smart Trainer/Strava usage.\n\nRPE guide: 66% FTP -> RPE 3; 60% FTP -> RPE 3",
+      "display_name": "RLP Z2 Cadence Play",
+      "duration_s": 2700,
+      "filename_stem": "W01_Wed_Sep2_RLP_Z2_Cadence_Play",
+      "library_item_id": 14356266,
+      "library_rpe_text": "7-8",
+      "order_on_day": 1,
+      "origin": "prescribed",
+      "phase": "base",
+      "race": null,
+      "role": "filler",
+      "segments": [
+        {
+          "kind": "warmup",
+          "name": "Warmup",
+          "seconds": 300,
+          "target": {
+            "high": 0.5,
+            "low": 0.5,
+            "type": "power_pct_ftp"
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "PowerLow",
+              "PowerHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {},
+            "tag": "Warmup"
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "seconds": 240,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.6
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "Power",
+              "CadenceLow",
+              "CadenceHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "90",
+              "CadenceLow": "80"
+            },
+            "tag": "SteadyState"
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "seconds": 240,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "Power",
+              "CadenceLow",
+              "CadenceHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "85",
+              "CadenceLow": "85"
+            },
+            "tag": "SteadyState"
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "seconds": 60,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "Power",
+              "CadenceLow",
+              "CadenceHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "100",
+              "CadenceLow": "100"
+            },
+            "tag": "SteadyState"
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "seconds": 180,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "Power",
+              "CadenceLow",
+              "CadenceHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "85",
+              "CadenceLow": "85"
+            },
+            "tag": "SteadyState"
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "seconds": 120,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "Power",
+              "CadenceLow",
+              "CadenceHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "100",
+              "CadenceLow": "100"
+            },
+            "tag": "SteadyState"
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "seconds": 120,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "Power",
+              "CadenceLow",
+              "CadenceHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "85",
+              "CadenceLow": "85"
+            },
+            "tag": "SteadyState"
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "seconds": 180,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "Power",
+              "CadenceLow",
+              "CadenceHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "100",
+              "CadenceLow": "100"
+            },
+            "tag": "SteadyState"
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "seconds": 120,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "Power",
+              "CadenceLow",
+              "CadenceHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "85",
+              "CadenceLow": "85"
+            },
+            "tag": "SteadyState"
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "seconds": 120,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "Power",
+              "CadenceLow",
+              "CadenceHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "100",
+              "CadenceLow": "100"
+            },
+            "tag": "SteadyState"
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "seconds": 180,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "Power",
+              "CadenceLow",
+              "CadenceHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "85",
+              "CadenceLow": "85"
+            },
+            "tag": "SteadyState"
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "seconds": 60,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "Power",
+              "CadenceLow",
+              "CadenceHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "100",
+              "CadenceLow": "100"
+            },
+            "tag": "SteadyState"
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "seconds": 240,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "Power",
+              "CadenceLow",
+              "CadenceHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "85",
+              "CadenceLow": "85"
+            },
+            "tag": "SteadyState"
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "seconds": 240,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.6
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "Power",
+              "CadenceLow",
+              "CadenceHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "90",
+              "CadenceLow": "80"
+            },
+            "tag": "SteadyState"
+          }
+        },
+        {
+          "kind": "cooldown",
+          "name": "Cooldown",
+          "seconds": 300,
+          "target": {
+            "high": 0.5,
+            "low": 0.5,
+            "type": "power_pct_ftp"
+          },
+          "zwo": {
+            "attribute_order": [
+              "Duration",
+              "PowerLow",
+              "PowerHigh"
+            ],
+            "children": [],
+            "empty_element_space": false,
+            "extra_attributes": {},
+            "tag": "Cooldown"
+          }
+        }
+      ],
+      "series_id": null,
+      "series_index": null,
+      "series_total": null,
+      "session_type": "workout",
+      "source_file": "W01_Wed_Sep2_RLP_Z2_Cadence_Play.zwo",
+      "sport": "cycling",
+      "strength_template": null,
+      "target_summary": "50-50 % of measured FTP; 60 % of measured FTP; 66 % of measured FTP",
+      "title": "RLP Z2 Cadence Play",
+      "total_time_planned": 0.75,
+      "tp_kind": "bike",
+      "tss": 29,
+      "tss_planned": 28.6,
+      "week": 1,
+      "workout_type_value_id": 2,
+      "zwo_projection": {
+        "author": "Gravel God Training",
+        "sport_type": "bike"
+      }
+    },
+    {
+      "archetype_id": null,
+      "daily_ordinal": 2,
       "date": "2026-09-02",
       "description": "FOCUS: Upper body + core\n\nEXERCISES:\n- Push Ups - 3x12\n  Video: https://vimeo.com/111472875\n- Bent Over Row - 3x12\n  Video: https://vimeo.com/111048714\n- Single Leg Deadlift - 3x8 each\n  Video: https://vimeo.com/111040676\n- Side Plank - 3x30sec each\n  Video: https://vimeo.com/111126850\n- Bird Dog - 3x10 each\n  Video: https://vimeo.com/111048715\n- Hip Flexor Stretch - 2x30sec each\n  Video: https://vimeo.com/111241987\n\nEXECUTION:\nComplete all sets with good form. Rest 60-90 sec between sets.",
       "display_name": "Foundation Strength B",
@@ -587,10 +978,10 @@
       "archetype_id": "Endurance",
       "daily_ordinal": 1,
       "date": "2026-09-03",
-      "description": "WARM-UP:\n- 9min building from Z1 into the Z2 target\n\nMAIN SET:\n- 43min @ 68% FTP (Z2, RPE 3)\n- Position: Alternate every 30 min: drops (aero) → hoods (power)\n- Cadence: self-selected, comfortable endurance cadence\n\nCOOL-DOWN:\n- 9min easy spin Z1-Z2 (RPE 3-4)",
-      "display_name": "Endurance — Position Focus",
+      "description": "WARM-UP:\n- 9min building from Z1 into the Z2 target\n\nMAIN SET:\n- 43min @ 68% FTP (Z2, RPE 3)\n- Drill: 30sec spin-up @ 100-110rpm every 10min — no extra power, just leg speed\n- Position: Stay relaxed on the hoods; keep shoulders quiet\n- Cadence: Every 10 min, spin 30 sec at 100-110rpm, then settle smoothly\n\nCOOL-DOWN:\n- 9min easy spin Z1-Z2 (RPE 3-4)",
+      "display_name": "Endurance — Cadence Focus",
       "duration_s": 3660,
-      "filename_stem": "W01_Thu_Sep3_Endurance__Position_Focus",
+      "filename_stem": "W01_Thu_Sep3_Endurance__Cadence_Focus",
       "library_item_id": null,
       "library_rpe_text": null,
       "order_on_day": 0,
@@ -665,11 +1056,11 @@
       "series_index": null,
       "series_total": null,
       "session_type": "workout",
-      "source_file": "W01_Thu_Sep3_Endurance__Position_Focus.zwo",
+      "source_file": "W01_Thu_Sep3_Endurance__Cadence_Focus.zwo",
       "sport": "cycling",
       "strength_template": null,
       "target_summary": "50-65 % of measured FTP; 68 % of measured FTP; 68-45 % of measured FTP",
-      "title": "Endurance — Position Focus",
+      "title": "Endurance — Cadence Focus",
       "total_time_planned": 1.0167,
       "tp_kind": "bike",
       "tss": 43,
@@ -685,7 +1076,7 @@
       "archetype_id": "Endurance",
       "daily_ordinal": 1,
       "date": "2026-09-04",
-      "description": "FUEL:\nTarget 50g carbs/hr. Practice this prescription.\n\nEndurance Blocks — level 2\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-75min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-50 g/hr.",
+      "description": "FUEL:\nTarget 45g carbs/hr. Practice this prescription.\n\nEndurance Blocks — level 2\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-75min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-45 g/hr.",
       "display_name": "Endurance",
       "duration_s": 5700,
       "filename_stem": "W01_Fri_Sep4_Endurance",
@@ -928,7 +1319,7 @@
     },
     {
       "archetype_id": null,
-      "daily_ordinal": 2,
+      "daily_ordinal": 3,
       "date": "2026-09-02",
       "description": "",
       "display_name": "4am trainer ride (self-selected, no structure)",
@@ -1063,8 +1454,8 @@
       "daily_ordinal": 2,
       "date": "2026-09-06",
       "description": "",
-      "display_name": "75 min long run",
-      "duration_s": 4500,
+      "display_name": "90 min ride — optional structure, your call",
+      "duration_s": 5400,
       "filename_stem": null,
       "library_item_id": null,
       "library_rpe_text": null,
@@ -1079,16 +1470,16 @@
       "series_total": null,
       "session_type": "external_fixed",
       "source_file": null,
-      "sport": "running",
+      "sport": "cycling",
       "strength_template": null,
       "target_summary": "",
-      "title": "75 min long run",
-      "total_time_planned": 1.25,
-      "tp_kind": "run",
-      "tss": 60,
-      "tss_planned": 60.0,
+      "title": "90 min ride — optional structure, your call",
+      "total_time_planned": 1.5,
+      "tp_kind": "bike",
+      "tss": 65,
+      "tss_planned": 65.0,
       "week": 1,
-      "workout_type_value_id": 3,
+      "workout_type_value_id": 2,
       "zwo_projection": null
     },
     {
@@ -2279,12 +2670,12 @@
       "archetype_id": "Endurance",
       "daily_ordinal": 1,
       "date": "2026-09-11",
-      "description": "Endurance with Surges — level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n• 7x (8:08 @57%-67% FTP → 30s @140% FTP)\n\nCOOL-DOWN:\n-10min spin-down 70%->50% FTP (RPE 2-3)\n\nEXECUTION:\n-Easy and conversational the whole way.\n\nNUTRITION:\n-40-60g carbs/hr.",
-      "display_name": "Endurance w/ Surges",
-      "duration_s": 4796,
-      "filename_stem": "W02_Fri_Sep11_Endurance_w_Surges",
-      "library_item_id": 14355995,
-      "library_rpe_text": "9-10",
+      "description": "FUEL:\nTarget 50g carbs/hr. Practice this prescription.\n\nEndurance Blocks — level 2\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-75min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-50 g/hr.",
+      "display_name": "Endurance",
+      "duration_s": 5700,
+      "filename_stem": "W02_Fri_Sep11_Endurance",
+      "library_item_id": 14356000,
+      "library_rpe_text": "2-3",
       "order_on_day": 0,
       "origin": "prescribed",
       "phase": "base",
@@ -2320,10 +2711,10 @@
         {
           "kind": "steady_state",
           "name": "Steady State",
-          "seconds": 488,
+          "seconds": 4500,
           "target": {
             "type": "power_pct_ftp",
-            "value": 0.62
+            "value": 0.65
           },
           "zwo": {
             "attribute_order": [
@@ -2335,296 +2726,8 @@
             "children": [],
             "empty_element_space": false,
             "extra_attributes": {
-              "CadenceHigh": "100",
-              "CadenceLow": "90"
-            },
-            "tag": "SteadyState"
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "seconds": 30,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 1.4
-          },
-          "zwo": {
-            "attribute_order": [
-              "Duration",
-              "Power",
-              "CadenceLow",
-              "CadenceHigh"
-            ],
-            "children": [],
-            "empty_element_space": false,
-            "extra_attributes": {
-              "CadenceHigh": "100",
-              "CadenceLow": "90"
-            },
-            "tag": "SteadyState"
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "seconds": 488,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 0.62
-          },
-          "zwo": {
-            "attribute_order": [
-              "Duration",
-              "Power",
-              "CadenceLow",
-              "CadenceHigh"
-            ],
-            "children": [],
-            "empty_element_space": false,
-            "extra_attributes": {
-              "CadenceHigh": "100",
-              "CadenceLow": "90"
-            },
-            "tag": "SteadyState"
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "seconds": 30,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 1.4
-          },
-          "zwo": {
-            "attribute_order": [
-              "Duration",
-              "Power",
-              "CadenceLow",
-              "CadenceHigh"
-            ],
-            "children": [],
-            "empty_element_space": false,
-            "extra_attributes": {
-              "CadenceHigh": "100",
-              "CadenceLow": "90"
-            },
-            "tag": "SteadyState"
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "seconds": 488,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 0.62
-          },
-          "zwo": {
-            "attribute_order": [
-              "Duration",
-              "Power",
-              "CadenceLow",
-              "CadenceHigh"
-            ],
-            "children": [],
-            "empty_element_space": false,
-            "extra_attributes": {
-              "CadenceHigh": "100",
-              "CadenceLow": "90"
-            },
-            "tag": "SteadyState"
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "seconds": 30,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 1.4
-          },
-          "zwo": {
-            "attribute_order": [
-              "Duration",
-              "Power",
-              "CadenceLow",
-              "CadenceHigh"
-            ],
-            "children": [],
-            "empty_element_space": false,
-            "extra_attributes": {
-              "CadenceHigh": "100",
-              "CadenceLow": "90"
-            },
-            "tag": "SteadyState"
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "seconds": 488,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 0.62
-          },
-          "zwo": {
-            "attribute_order": [
-              "Duration",
-              "Power",
-              "CadenceLow",
-              "CadenceHigh"
-            ],
-            "children": [],
-            "empty_element_space": false,
-            "extra_attributes": {
-              "CadenceHigh": "100",
-              "CadenceLow": "90"
-            },
-            "tag": "SteadyState"
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "seconds": 30,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 1.4
-          },
-          "zwo": {
-            "attribute_order": [
-              "Duration",
-              "Power",
-              "CadenceLow",
-              "CadenceHigh"
-            ],
-            "children": [],
-            "empty_element_space": false,
-            "extra_attributes": {
-              "CadenceHigh": "100",
-              "CadenceLow": "90"
-            },
-            "tag": "SteadyState"
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "seconds": 488,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 0.62
-          },
-          "zwo": {
-            "attribute_order": [
-              "Duration",
-              "Power",
-              "CadenceLow",
-              "CadenceHigh"
-            ],
-            "children": [],
-            "empty_element_space": false,
-            "extra_attributes": {
-              "CadenceHigh": "100",
-              "CadenceLow": "90"
-            },
-            "tag": "SteadyState"
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "seconds": 30,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 1.4
-          },
-          "zwo": {
-            "attribute_order": [
-              "Duration",
-              "Power",
-              "CadenceLow",
-              "CadenceHigh"
-            ],
-            "children": [],
-            "empty_element_space": false,
-            "extra_attributes": {
-              "CadenceHigh": "100",
-              "CadenceLow": "90"
-            },
-            "tag": "SteadyState"
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "seconds": 488,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 0.62
-          },
-          "zwo": {
-            "attribute_order": [
-              "Duration",
-              "Power",
-              "CadenceLow",
-              "CadenceHigh"
-            ],
-            "children": [],
-            "empty_element_space": false,
-            "extra_attributes": {
-              "CadenceHigh": "100",
-              "CadenceLow": "90"
-            },
-            "tag": "SteadyState"
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "seconds": 30,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 1.4
-          },
-          "zwo": {
-            "attribute_order": [
-              "Duration",
-              "Power",
-              "CadenceLow",
-              "CadenceHigh"
-            ],
-            "children": [],
-            "empty_element_space": false,
-            "extra_attributes": {
-              "CadenceHigh": "100",
-              "CadenceLow": "90"
-            },
-            "tag": "SteadyState"
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "seconds": 488,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 0.62
-          },
-          "zwo": {
-            "attribute_order": [
-              "Duration",
-              "Power",
-              "CadenceLow",
-              "CadenceHigh"
-            ],
-            "children": [],
-            "empty_element_space": false,
-            "extra_attributes": {
-              "CadenceHigh": "100",
-              "CadenceLow": "90"
+              "CadenceHigh": "95",
+              "CadenceLow": "85"
             },
             "tag": "SteadyState"
           }
@@ -2635,7 +2738,7 @@
           "seconds": 600,
           "target": {
             "high": 0.5,
-            "low": 0.7,
+            "low": 0.65,
             "type": "power_pct_ftp"
           },
           "zwo": {
@@ -2660,15 +2763,15 @@
       "series_index": null,
       "series_total": null,
       "session_type": "workout",
-      "source_file": "W02_Fri_Sep11_Endurance_w_Surges.zwo",
+      "source_file": "W02_Fri_Sep11_Endurance.zwo",
       "sport": "cycling",
       "strength_template": null,
-      "target_summary": "50-65 % of measured FTP; 62 % of measured FTP; 140 % of measured FTP; 70-50 % of measured FTP",
-      "title": "Endurance w/ Surges",
-      "total_time_planned": 1.3333,
+      "target_summary": "50-65 % of measured FTP; 65 % of measured FTP; 65-50 % of measured FTP",
+      "title": "Endurance",
+      "total_time_planned": 1.5833,
       "tp_kind": "bike",
-      "tss": 58,
-      "tss_planned": 57.8,
+      "tss": 64,
+      "tss_planned": 64.3,
       "week": 2,
       "workout_type_value_id": 2,
       "zwo_projection": {
@@ -2945,8 +3048,8 @@
       "daily_ordinal": 2,
       "date": "2026-09-13",
       "description": "",
-      "display_name": "75 min long run",
-      "duration_s": 4500,
+      "display_name": "90 min ride — optional structure, your call",
+      "duration_s": 5400,
       "filename_stem": null,
       "library_item_id": null,
       "library_rpe_text": null,
@@ -2961,16 +3064,16 @@
       "series_total": null,
       "session_type": "external_fixed",
       "source_file": null,
-      "sport": "running",
+      "sport": "cycling",
       "strength_template": null,
       "target_summary": "",
-      "title": "75 min long run",
-      "total_time_planned": 1.25,
-      "tp_kind": "run",
-      "tss": 60,
-      "tss_planned": 60.0,
+      "title": "90 min ride — optional structure, your call",
+      "total_time_planned": 1.5,
+      "tp_kind": "bike",
+      "tss": 65,
+      "tss_planned": 65.0,
       "week": 2,
-      "workout_type_value_id": 3,
+      "workout_type_value_id": 2,
       "zwo_projection": null
     },
     {
@@ -3806,12 +3909,12 @@
       "archetype_id": "Endurance",
       "daily_ordinal": 1,
       "date": "2026-09-18",
-      "description": "WARM-UP:\n- 10min building from Z1 into the Z2 target\n\nMAIN SET:\n- 50min @ 68% FTP (Z2, RPE 3)\n- Position: Alternate every 30 min: drops (aero) → hoods (power)\n- Cadence: self-selected, comfortable endurance cadence\n\nCOOL-DOWN:\n- 10min easy spin Z1-Z2 (RPE 3-4)",
+      "description": "FUEL:\nTarget 55g carbs/hr. Practice this prescription.\n\nEndurance Blocks — level 3\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-90min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-55 g/hr.",
       "display_name": "Endurance",
-      "duration_s": 4200,
+      "duration_s": 6600,
       "filename_stem": "W03_Fri_Sep18_Endurance",
-      "library_item_id": null,
-      "library_rpe_text": null,
+      "library_item_id": 14355999,
+      "library_rpe_text": "2-3",
       "order_on_day": 0,
       "origin": "prescribed",
       "phase": "base",
@@ -3831,30 +3934,40 @@
             "attribute_order": [
               "Duration",
               "PowerLow",
-              "PowerHigh"
+              "PowerHigh",
+              "CadenceLow",
+              "CadenceHigh"
             ],
             "children": [],
-            "empty_element_space": true,
-            "extra_attributes": {},
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "92",
+              "CadenceLow": "85"
+            },
             "tag": "Warmup"
           }
         },
         {
           "kind": "steady_state",
           "name": "Steady State",
-          "seconds": 3000,
+          "seconds": 5400,
           "target": {
             "type": "power_pct_ftp",
-            "value": 0.68
+            "value": 0.65
           },
           "zwo": {
             "attribute_order": [
               "Duration",
-              "Power"
+              "Power",
+              "CadenceLow",
+              "CadenceHigh"
             ],
             "children": [],
-            "empty_element_space": true,
-            "extra_attributes": {},
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "95",
+              "CadenceLow": "85"
+            },
             "tag": "SteadyState"
           }
         },
@@ -3863,19 +3976,24 @@
           "name": "Cooldown",
           "seconds": 600,
           "target": {
-            "high": 0.45,
-            "low": 0.68,
+            "high": 0.5,
+            "low": 0.65,
             "type": "power_pct_ftp"
           },
           "zwo": {
             "attribute_order": [
               "Duration",
               "PowerLow",
-              "PowerHigh"
+              "PowerHigh",
+              "CadenceLow",
+              "CadenceHigh"
             ],
             "children": [],
-            "empty_element_space": true,
-            "extra_attributes": {},
+            "empty_element_space": false,
+            "extra_attributes": {
+              "CadenceHigh": "95",
+              "CadenceLow": "85"
+            },
             "tag": "Cooldown"
           }
         }
@@ -3887,12 +4005,12 @@
       "source_file": "W03_Fri_Sep18_Endurance.zwo",
       "sport": "cycling",
       "strength_template": null,
-      "target_summary": "50-65 % of measured FTP; 68 % of measured FTP; 68-45 % of measured FTP",
+      "target_summary": "50-65 % of measured FTP; 65 % of measured FTP; 65-50 % of measured FTP",
       "title": "Endurance",
-      "total_time_planned": 1.1667,
+      "total_time_planned": 1.8333,
       "tp_kind": "bike",
-      "tss": 50,
-      "tss_planned": 50.0,
+      "tss": 75,
+      "tss_planned": 74.9,
       "week": 3,
       "workout_type_value_id": 2,
       "zwo_projection": {
@@ -4169,8 +4287,8 @@
       "daily_ordinal": 2,
       "date": "2026-09-20",
       "description": "",
-      "display_name": "75 min long run",
-      "duration_s": 4500,
+      "display_name": "90 min ride — optional structure, your call",
+      "duration_s": 5400,
       "filename_stem": null,
       "library_item_id": null,
       "library_rpe_text": null,
@@ -4185,16 +4303,16 @@
       "series_total": null,
       "session_type": "external_fixed",
       "source_file": null,
-      "sport": "running",
+      "sport": "cycling",
       "strength_template": null,
       "target_summary": "",
-      "title": "75 min long run",
-      "total_time_planned": 1.25,
-      "tp_kind": "run",
-      "tss": 60,
-      "tss_planned": 60.0,
+      "title": "90 min ride — optional structure, your call",
+      "total_time_planned": 1.5,
+      "tp_kind": "bike",
+      "tss": 65,
+      "tss_planned": 65.0,
       "week": 3,
-      "workout_type_value_id": 3,
+      "workout_type_value_id": 2,
       "zwo_projection": null
     },
     {
@@ -5058,8 +5176,8 @@
       "daily_ordinal": 2,
       "date": "2026-09-27",
       "description": "",
-      "display_name": "75 min long run",
-      "duration_s": 4500,
+      "display_name": "90 min ride — optional structure, your call",
+      "duration_s": 5400,
       "filename_stem": null,
       "library_item_id": null,
       "library_rpe_text": null,
@@ -5074,16 +5192,16 @@
       "series_total": null,
       "session_type": "external_fixed",
       "source_file": null,
-      "sport": "running",
+      "sport": "cycling",
       "strength_template": null,
       "target_summary": "",
-      "title": "75 min long run",
-      "total_time_planned": 1.25,
-      "tp_kind": "run",
-      "tss": 60,
-      "tss_planned": 60.0,
+      "title": "90 min ride — optional structure, your call",
+      "total_time_planned": 1.5,
+      "tp_kind": "bike",
+      "tss": 65,
+      "tss_planned": 65.0,
       "week": 4,
-      "workout_type_value_id": 3,
+      "workout_type_value_id": 2,
       "zwo_projection": null
     }
   ]

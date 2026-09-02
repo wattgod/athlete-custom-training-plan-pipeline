@@ -1,6 +1,6 @@
 athlete_id: forest-hietpas
 athlete_name: Forest Hietpas
-generated_date: '2026-09-01T13:23:05.995389'
+generated_date: '2026-09-01T19:55:42.884397'
 race:
   name: Race
   date: null
@@ -10,7 +10,7 @@ plan:
   start_date: '2026-08-31'
   end_date: '2026-09-27'
   methodology: Time-Crunched
-  methodology_score: 90.0
+  methodology_score: 100
   tier: AYAHUASCA
   ability_level: Intermediate
 fueling:
@@ -26,11 +26,14 @@ control:
     week: null
     test: null
     action: 'No testing this block (coach ruling 2026-08-29: "no tests"). FTP anchored
-      at 300W by coach confirmation; re-anchor only when the coach calls for it.'
+      at 300W by coach confirmation. RE-CONFIRMED 2026-09-01 ("Just leave it at 300
+      for ftp") after the athlete said on 08-22 he had "zero clue" and picked 300
+      because it "felt right" -- the coach owns this number knowingly. Re-anchor only
+      when the coach calls for it.'
 files:
   guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/.worktrees/tp-cadence-emission/athletes/forest-hietpas/training_guide.html
   workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/.worktrees/tp-cadence-emission/athletes/forest-hietpas/workouts
-  workout_count: 17
+  workout_count: 18
 _derived:
 - id: SUMMARY_ABILITY
   field: plan.ability_level
@@ -39,7 +42,7 @@ _derived:
   inputs:
     derived_ability: null
   sensitivity: personal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_CONTROL_BASIS
   field: control.basis
@@ -48,7 +51,7 @@ _derived:
   inputs:
     source_field: canonical.athlete.control_basis
   sensitivity: personal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_CONTROL_METRIC
   field: control.metric
@@ -57,7 +60,7 @@ _derived:
   inputs:
     source_field: canonical.athlete.control_metric
   sensitivity: personal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_DURATION
   field: fueling.estimated_duration_hours
@@ -66,25 +69,25 @@ _derived:
   inputs:
     source_field: fueling.race.duration_hours
   sensitivity: personal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_FIELD_TEST
   field: control.week_1_field_test
   class: inferred
   basis: canonical Week 1 assessment inventory
   inputs:
-    canonical_sessions: 58
+    canonical_sessions: 59
   sensitivity: personal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_GENERATED_DATE
   field: generated_date
   class: inferred
   basis: injected generation clock
   inputs:
-    generation_at: '2026-09-01T13:23:05.995389'
+    generation_at: '2026-09-01T19:55:42.884397'
   sensitivity: internal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_HOURLY_CARBS
   field: fueling.hourly_carb_target
@@ -93,7 +96,7 @@ _derived:
   inputs:
     source_field: fueling.carbohydrates.hourly_target
   sensitivity: sensitive
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_METHODOLOGY
   field: plan.methodology
@@ -102,7 +105,7 @@ _derived:
   inputs:
     methodology_id: time_crunched
   sensitivity: personal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_METHODOLOGY_SCORE
   field: plan.methodology_score
@@ -111,7 +114,7 @@ _derived:
   inputs:
     methodology_scores: {}
   sensitivity: personal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_PLAN_END
   field: plan.end_date
@@ -123,7 +126,7 @@ _derived:
     plan_end: '2026-09-27'
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_PLAN_START
   field: plan.start_date
@@ -135,7 +138,7 @@ _derived:
     plan_end: '2026-09-27'
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_PLAN_WEEKS
   field: plan.weeks
@@ -147,7 +150,7 @@ _derived:
     plan_end: '2026-09-27'
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_RACE_DATE
   field: race.date
@@ -159,7 +162,7 @@ _derived:
     plan_end: '2026-09-27'
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_RACE_DISTANCE
   field: race.distance_miles
@@ -168,7 +171,7 @@ _derived:
   inputs:
     target_race: {}
   sensitivity: personal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_REANCHOR
   field: control.reanchor
@@ -177,7 +180,7 @@ _derived:
   inputs:
     source_field: canonical.athlete.reanchor
   sensitivity: personal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_TIER
   field: plan.tier
@@ -186,7 +189,7 @@ _derived:
   inputs:
     derived_tier: ayahuasca
   sensitivity: personal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_TOTAL_CARBS
   field: fueling.total_carbs
@@ -195,14 +198,14 @@ _derived:
   inputs:
     source_field: fueling.carbohydrates.total_grams
   sensitivity: sensitive
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1
 - id: SUMMARY_WORKOUT_COUNT
   field: files.workout_count
   class: inferred
   basis: count of canonical sessions eligible for ZWO projection
   inputs:
-    canonical_session_count: 58
+    canonical_session_count: 59
   sensitivity: internal
-  at: '2026-09-01T13:23:05.995389'
+  at: '2026-09-01T19:55:42.884397'
   revision: 1

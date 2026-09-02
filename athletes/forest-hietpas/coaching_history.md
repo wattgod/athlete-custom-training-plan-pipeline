@@ -143,3 +143,28 @@ Verbatim constraints, and how they resolve against the call above:
   wrote on 2026-08-22: *"I have zero clue as to my FTP… I put 300 as a place
   that 'felt right' and seemed achievable"*, and that he has been riding around
   200 W. Every zone derives from it. Coach ruling 2026-08-29 was "no tests".
+
+---
+
+## 2026-09-01 — coach rulings (Matti)
+
+1. **FTP stays 300.** Verbatim: *"Just leave it at 300 for ftp."* Closed
+   knowingly — the athlete said on 08-22 he had "zero clue" and picked 300
+   because it "felt right," and has been riding ~200 W. The coach owns the
+   number. No test this block (08-29 ruling stands).
+2. **Friday = transition from work.** *"they're a transition from work, so in
+   general I think he should do some pedaling, but mostly fun focused, then
+   friday can be longer with optional structure."* Longer, fun-focused,
+   structure optional. Currently 95/95/110/100 min across W1–W4.
+3. **Sunday = a ride, with optional structure, and it is an AUDIBLE day.**
+   *"for now Sunday should have a ride with optional structure but it's an
+   audible day and depends on where his wind is blowing."* This supersedes the
+   08-21 call's "sunday: long run" — the Sunday long run is OUT, Sunday is a
+   90-min ride titled "90 min ride — optional structure, your call."
+   Declared as a locked block because `limited` availability alone left Sunday
+   empty in 3 of 4 weeks.
+
+**Consequence to watch:** with the Sunday long run removed, he is down to two
+runs a week (Tue/Thu, 40 min each = ~80 min). The 08-21 call wanted 2–3 runs
+and 6–9 miles, and a half marathon at party pace. Two 40-minute runs will not
+build to that. Not raised as a blocker — the coach moved Sunday deliberately.

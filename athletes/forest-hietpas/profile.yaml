@@ -88,7 +88,9 @@ fitness_markers:
     week: null
     test: null
     action: 'No testing this block (coach ruling 2026-08-29: "no tests"). FTP anchored at 300W by coach
-      confirmation; re-anchor only when the coach calls for it.'
+      confirmation. RE-CONFIRMED 2026-09-01 ("Just leave it at 300 for ftp") after the athlete said on
+      08-22 he had "zero clue" and picked 300 because it "felt right" -- the coach owns this number
+      knowingly. Re-anchor only when the coach calls for it.'
 recent_training:
   last_12_weeks: consistent
   current_phase: base
@@ -96,7 +98,7 @@ recent_training:
   days_since_last_ride: null
 weekly_availability:
   total_hours_available: 7
-  cycling_hours_target: 3.5
+  cycling_hours_target: 4.5
   strength_sessions_max: 2
   notes: 'Coach call 2026-08-21. 8h/wk is "a stretch" right now -- build to ~6-7h. Commute: 1h to work
     AM, 2h home PM, 10h workdays, 1800 mi/month. Bed 19:30-20:00, up 04:00. He does NOT return to the
@@ -190,11 +192,14 @@ recurring_sessions:
   tss: 32
   sport: run
   locked: true
+# SUNDAY (coach ruling 2026-09-01): a ride with optional structure, and an
+# AUDIBLE day -- it depends on where his wind is blowing. Declared as a block
+# so it reliably lands; `limited` availability alone left it empty 3 weeks in 4.
+# Title leads with duration per his stated convention.
 - day: Sun
-  title: 75 min long run
-  duration_min: 75
-  tss: 60
-  sport: run
+  title: 90 min ride — optional structure, your call
+  duration_min: 90
+  tss: 65
   locked: true
 calendar_protection:
   requested: false
@@ -234,11 +239,15 @@ schedule_constraints:
     monday: 20min AM trainer (Z1, no structure) + 1h PT/lift block PM
     tuesday: 20min AM + optional 1h enduro ride w/ buddies (~2x/month) + aspirational 4mi run
     wednesday: 1h low-Z2 ride AM (the "maple syrup in the coffee" hour, 1-2x/wk)
-    thursday: 20min AM + 1h lift block + PM run
-    friday: 'ATHLETE RULING 2026-08-31: does NOT work Fridays. No 20min 4am ride here -- he wants the
-      longer session. This is now the long/big day of the week (Saturday is committed). 110min available.'
+    thursday: '20min AM + 1h lift block + PM run. HEAVIEST DAY -- 10h shift + 3h commute on top.
+      NOTE 2026-09-01: max_duration_min does NOT gate block-builder placement here; a ~60min bike still
+      lands on Thursday. If it needs to go, it is a coach decision, not an availability edit.'
+    friday: 'COACH RULING 2026-09-01: Friday is a TRANSITION FROM WORK. He should do some pedaling,
+      mostly FUN-FOCUSED, and it can be LONGER with OPTIONAL structure. Athlete ruling 2026-08-31: does
+      NOT work Fridays, no 20min 4am ride here. Long/big day of the week (Saturday is committed).'
     saturday: bike ride -- the weekend structure taste lives here
-    sunday: long run
+    sunday: 'COACH RULING 2026-09-01: a RIDE with OPTIONAL structure -- but this is an AUDIBLE DAY,
+      it depends on where his wind is blowing. Do not program it as a fixed obligation.'
   title_convention: 'TITLES MUST LEAD WITH DURATION. Verbatim: "he does not need to see the description
     of the workout, he needs to see 30 min, 60 min, 360 minutes -- needs to see how much time it is."'
   communication: Neurospicy with time and space. TrainingPeaks is hard for him to communicate through;

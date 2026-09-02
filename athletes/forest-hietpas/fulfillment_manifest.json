@@ -10,7 +10,7 @@
       "logical_key": "2026-08-31#1:training_guide.html",
       "parent_logical_key": "2026-08-31#1",
       "path": "training_guide.html",
-      "sha256": "851526340e6969174394fd2a74a5182c2b6fb021179c223e449419979807e59c"
+      "sha256": "c4c54e6933bf5d60edaf1ac20ea9e78df46b1037fe9554b71cb3d7bff195d38b"
     }
   ],
   "calendar_dates": [
@@ -94,7 +94,7 @@
       "date": "2026-08-31",
       "external_id": "note:forest-hietpas:weekly:2026-08-31:2",
       "logical_key": "weekly-briefing-2026-08-31-2",
-      "text": "Week 1 of 4. Base. Nothing flashy; I want steady work and the point is accumulation.\n\nThis block: Getting the calendar back to something you can actually hit. I care about frequency and rhythm first, duration second, and nothing else until January.\n\nWatch the easy days. If they creep up in pace, the hard days will start falling short.",
+      "text": "Week 1 of 4. Base. Nothing flashy; I want steady work and the point is accumulation.\n\nThis block: Getting the calendar back to something you can actually hit. I care about frequency and rhythm first, duration second, and nothing else until January.\n\nRLP Z2 Cadence Play Wednesday: power stays flat, the gear changes. Low rungs load the legs, high rungs teach them to spin. Watch the knees on the low stuff.\n\nWatch the easy days. If they creep up in pace, the hard days will start falling short.",
       "title": "Week 1: Base"
     },
     {
@@ -136,7 +136,7 @@
       "date": "2026-09-14",
       "external_id": "note:forest-hietpas:weekly:2026-09-14",
       "logical_key": "weekly-briefing-2026-09-14",
-      "text": "Week 3 of 4. Last load week of this block. I want the key sessions done properly; a reset follows.\n\nVO2max 40/20 Wednesday is the hardest thing this week. Start the first rep at the number, not above it, and let the set get hard on its own.\n\nDescending-Cadence Ladder Thursday: power stays flat, the gear changes. Low rungs load the legs, high rungs teach them to spin. Watch the knees on the low stuff.\n\nMissed work stays missed. Do not stack two hard days to make up a session.",
+      "text": "Week 3 of 4. Last load week of this block. I want the key sessions done properly; a reset follows.\n\nVO2max 40/20 Wednesday is the hardest thing this week. Start the first rep at the number, not above it, and let the set get hard on its own.\n\nDescending-Cadence Ladder Thursday is skill work, not fitness work. Smooth circles at every cadence; the rpm targets are in the workout.\n\nMissed work stays missed. Do not stack two hard days to make up a session.",
       "title": "Week 3: Base"
     },
     {
@@ -184,17 +184,18 @@
       "forest-hietpas:w1:1:2026-08-31",
       "forest-hietpas:w1:2:2026-09-01",
       "forest-hietpas:w1:3:2026-09-02",
-      "forest-hietpas:w1:4:2026-09-03",
-      "forest-hietpas:w1:5:2026-09-04",
-      "forest-hietpas:w1:6:2026-09-05",
-      "forest-hietpas:w1:7:2026-09-06",
-      "forest-hietpas:w1:8:2026-08-31",
-      "forest-hietpas:w1:9:2026-09-01",
-      "forest-hietpas:w1:10:2026-09-02",
-      "forest-hietpas:w1:11:2026-09-03",
-      "forest-hietpas:w1:12:2026-09-01",
-      "forest-hietpas:w1:13:2026-09-03",
-      "forest-hietpas:w1:14:2026-09-06",
+      "forest-hietpas:w1:4:2026-09-02",
+      "forest-hietpas:w1:5:2026-09-03",
+      "forest-hietpas:w1:6:2026-09-04",
+      "forest-hietpas:w1:7:2026-09-05",
+      "forest-hietpas:w1:8:2026-09-06",
+      "forest-hietpas:w1:9:2026-08-31",
+      "forest-hietpas:w1:10:2026-09-01",
+      "forest-hietpas:w1:11:2026-09-02",
+      "forest-hietpas:w1:12:2026-09-03",
+      "forest-hietpas:w1:13:2026-09-01",
+      "forest-hietpas:w1:14:2026-09-03",
+      "forest-hietpas:w1:15:2026-09-06",
       "forest-hietpas:w2:1:2026-09-07",
       "forest-hietpas:w2:2:2026-09-08",
       "forest-hietpas:w2:3:2026-09-09",
@@ -240,7 +241,7 @@
       "forest-hietpas:w4:13:2026-09-24",
       "forest-hietpas:w4:14:2026-09-27"
     ],
-    "workout_count": 58
+    "workout_count": 59
   },
   "workouts": [
     {
@@ -424,10 +425,854 @@
     },
     {
       "date": "2026-09-02",
-      "description": "FOCUS: Upper body + core\n\nEXERCISES:\n- Push Ups - 3x12\n  Video: https://vimeo.com/111472875\n- Bent Over Row - 3x12\n  Video: https://vimeo.com/111048714\n- Single Leg Deadlift - 3x8 each\n  Video: https://vimeo.com/111040676\n- Side Plank - 3x30sec each\n  Video: https://vimeo.com/111126850\n- Bird Dog - 3x10 each\n  Video: https://vimeo.com/111048715\n- Hip Flexor Stretch - 2x30sec each\n  Video: https://vimeo.com/111241987\n\nEXECUTION:\nComplete all sets with good form. Rest 60-90 sec between sets.",
-      "duration_s": 1800,
+      "description": "Easy session predominantly in zone 2 but skirting the Z1 and Z3 borders. Alternating blocks built for Smart Trainer/Strava usage.\n\nRPE guide: 66% FTP -> RPE 3; 60% FTP -> RPE 3",
+      "duration_s": 2700,
       "external_id": "forest-hietpas:w1:3:2026-09-02",
       "logical_key": "2026-09-02#1",
+      "origin": "prescribed",
+      "plan_week": 1,
+      "pre_activity_comment": null,
+      "segments": [
+        {
+          "kind": "warmup",
+          "name": "Warmup",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": 0.5,
+          "power_low": 0.5,
+          "power_target": null,
+          "repeat": null,
+          "seconds": 300,
+          "target": {
+            "high": 0.5,
+            "low": 0.5,
+            "type": "power_pct_ftp"
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": null,
+          "power_low": null,
+          "power_target": 0.6,
+          "repeat": null,
+          "seconds": 240,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.6
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": null,
+          "power_low": null,
+          "power_target": 0.66,
+          "repeat": null,
+          "seconds": 240,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": null,
+          "power_low": null,
+          "power_target": 0.66,
+          "repeat": null,
+          "seconds": 60,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": null,
+          "power_low": null,
+          "power_target": 0.66,
+          "repeat": null,
+          "seconds": 180,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": null,
+          "power_low": null,
+          "power_target": 0.66,
+          "repeat": null,
+          "seconds": 120,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": null,
+          "power_low": null,
+          "power_target": 0.66,
+          "repeat": null,
+          "seconds": 120,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": null,
+          "power_low": null,
+          "power_target": 0.66,
+          "repeat": null,
+          "seconds": 180,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": null,
+          "power_low": null,
+          "power_target": 0.66,
+          "repeat": null,
+          "seconds": 120,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": null,
+          "power_low": null,
+          "power_target": 0.66,
+          "repeat": null,
+          "seconds": 120,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": null,
+          "power_low": null,
+          "power_target": 0.66,
+          "repeat": null,
+          "seconds": 180,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": null,
+          "power_low": null,
+          "power_target": 0.66,
+          "repeat": null,
+          "seconds": 60,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": null,
+          "power_low": null,
+          "power_target": 0.66,
+          "repeat": null,
+          "seconds": 240,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.66
+          }
+        },
+        {
+          "kind": "steady_state",
+          "name": "Steady State",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": null,
+          "power_low": null,
+          "power_target": 0.6,
+          "repeat": null,
+          "seconds": 240,
+          "target": {
+            "type": "power_pct_ftp",
+            "value": 0.6
+          }
+        },
+        {
+          "kind": "cooldown",
+          "name": "Cooldown",
+          "off_power": null,
+          "off_seconds": null,
+          "on_power": null,
+          "on_seconds": null,
+          "power_high": 0.5,
+          "power_low": 0.5,
+          "power_target": null,
+          "repeat": null,
+          "seconds": 300,
+          "target": {
+            "high": 0.5,
+            "low": 0.5,
+            "type": "power_pct_ftp"
+          }
+        }
+      ],
+      "session_type": "workout",
+      "source_file": "W01_Wed_Sep2_RLP_Z2_Cadence_Play.zwo",
+      "sport": "cycling",
+      "structure": {
+        "importedFromZwo": true,
+        "polyline": [
+          [
+            0,
+            0
+          ],
+          [
+            0,
+            0.758
+          ],
+          [
+            0.111,
+            0.758
+          ],
+          [
+            0.111,
+            0.909
+          ],
+          [
+            0.2,
+            0.909
+          ],
+          [
+            0.2,
+            1
+          ],
+          [
+            0.289,
+            1
+          ],
+          [
+            0.289,
+            1
+          ],
+          [
+            0.311,
+            1
+          ],
+          [
+            0.311,
+            1
+          ],
+          [
+            0.378,
+            1
+          ],
+          [
+            0.378,
+            1
+          ],
+          [
+            0.422,
+            1
+          ],
+          [
+            0.422,
+            1
+          ],
+          [
+            0.467,
+            1
+          ],
+          [
+            0.467,
+            1
+          ],
+          [
+            0.533,
+            1
+          ],
+          [
+            0.533,
+            1
+          ],
+          [
+            0.578,
+            1
+          ],
+          [
+            0.578,
+            1
+          ],
+          [
+            0.622,
+            1
+          ],
+          [
+            0.622,
+            1
+          ],
+          [
+            0.689,
+            1
+          ],
+          [
+            0.689,
+            1
+          ],
+          [
+            0.711,
+            1
+          ],
+          [
+            0.711,
+            1
+          ],
+          [
+            0.8,
+            1
+          ],
+          [
+            0.8,
+            0.909
+          ],
+          [
+            0.889,
+            0.909
+          ],
+          [
+            0.889,
+            0.758
+          ],
+          [
+            1,
+            0.758
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "primaryIntensityMetric": "percentOfFtp",
+        "primaryIntensityTargetOrRange": "target",
+        "primaryLengthMetric": "duration",
+        "structure": [
+          {
+            "begin": 0,
+            "end": 300,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "warmUp",
+                "length": {
+                  "unit": "second",
+                  "value": 300
+                },
+                "name": "Warmup",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 50
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          },
+          {
+            "begin": 300,
+            "end": 540,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "active",
+                "length": {
+                  "unit": "second",
+                  "value": 240
+                },
+                "name": "Steady State",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 60
+                  },
+                  {
+                    "maxValue": 90,
+                    "minValue": 80,
+                    "unit": "roundOrStridePerMinute"
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          },
+          {
+            "begin": 540,
+            "end": 780,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "active",
+                "length": {
+                  "unit": "second",
+                  "value": 240
+                },
+                "name": "Steady State",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 66
+                  },
+                  {
+                    "minValue": 85,
+                    "unit": "roundOrStridePerMinute"
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          },
+          {
+            "begin": 780,
+            "end": 840,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "active",
+                "length": {
+                  "unit": "second",
+                  "value": 60
+                },
+                "name": "Steady State",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 66
+                  },
+                  {
+                    "minValue": 100,
+                    "unit": "roundOrStridePerMinute"
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          },
+          {
+            "begin": 840,
+            "end": 1020,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "active",
+                "length": {
+                  "unit": "second",
+                  "value": 180
+                },
+                "name": "Steady State",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 66
+                  },
+                  {
+                    "minValue": 85,
+                    "unit": "roundOrStridePerMinute"
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          },
+          {
+            "begin": 1020,
+            "end": 1140,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "active",
+                "length": {
+                  "unit": "second",
+                  "value": 120
+                },
+                "name": "Steady State",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 66
+                  },
+                  {
+                    "minValue": 100,
+                    "unit": "roundOrStridePerMinute"
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          },
+          {
+            "begin": 1140,
+            "end": 1260,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "active",
+                "length": {
+                  "unit": "second",
+                  "value": 120
+                },
+                "name": "Steady State",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 66
+                  },
+                  {
+                    "minValue": 85,
+                    "unit": "roundOrStridePerMinute"
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          },
+          {
+            "begin": 1260,
+            "end": 1440,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "active",
+                "length": {
+                  "unit": "second",
+                  "value": 180
+                },
+                "name": "Steady State",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 66
+                  },
+                  {
+                    "minValue": 100,
+                    "unit": "roundOrStridePerMinute"
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          },
+          {
+            "begin": 1440,
+            "end": 1560,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "active",
+                "length": {
+                  "unit": "second",
+                  "value": 120
+                },
+                "name": "Steady State",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 66
+                  },
+                  {
+                    "minValue": 85,
+                    "unit": "roundOrStridePerMinute"
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          },
+          {
+            "begin": 1560,
+            "end": 1680,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "active",
+                "length": {
+                  "unit": "second",
+                  "value": 120
+                },
+                "name": "Steady State",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 66
+                  },
+                  {
+                    "minValue": 100,
+                    "unit": "roundOrStridePerMinute"
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          },
+          {
+            "begin": 1680,
+            "end": 1860,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "active",
+                "length": {
+                  "unit": "second",
+                  "value": 180
+                },
+                "name": "Steady State",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 66
+                  },
+                  {
+                    "minValue": 85,
+                    "unit": "roundOrStridePerMinute"
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          },
+          {
+            "begin": 1860,
+            "end": 1920,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "active",
+                "length": {
+                  "unit": "second",
+                  "value": 60
+                },
+                "name": "Steady State",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 66
+                  },
+                  {
+                    "minValue": 100,
+                    "unit": "roundOrStridePerMinute"
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          },
+          {
+            "begin": 1920,
+            "end": 2160,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "active",
+                "length": {
+                  "unit": "second",
+                  "value": 240
+                },
+                "name": "Steady State",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 66
+                  },
+                  {
+                    "minValue": 85,
+                    "unit": "roundOrStridePerMinute"
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          },
+          {
+            "begin": 2160,
+            "end": 2400,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "active",
+                "length": {
+                  "unit": "second",
+                  "value": 240
+                },
+                "name": "Steady State",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 60
+                  },
+                  {
+                    "maxValue": 90,
+                    "minValue": 80,
+                    "unit": "roundOrStridePerMinute"
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          },
+          {
+            "begin": 2400,
+            "end": 2700,
+            "length": {
+              "unit": "repetition",
+              "value": 1
+            },
+            "steps": [
+              {
+                "intensityClass": "coolDown",
+                "length": {
+                  "unit": "second",
+                  "value": 300
+                },
+                "name": "Cooldown",
+                "notes": "",
+                "targets": [
+                  {
+                    "minValue": 50
+                  }
+                ]
+              }
+            ],
+            "type": "step"
+          }
+        ]
+      },
+      "title": "RLP Z2 Cadence Play",
+      "total_seconds": 2700,
+      "tp_workout_type": 2,
+      "tss_planned": 28.6,
+      "workout_type": 1
+    },
+    {
+      "date": "2026-09-02",
+      "description": "FOCUS: Upper body + core\n\nEXERCISES:\n- Push Ups - 3x12\n  Video: https://vimeo.com/111472875\n- Bent Over Row - 3x12\n  Video: https://vimeo.com/111048714\n- Single Leg Deadlift - 3x8 each\n  Video: https://vimeo.com/111040676\n- Side Plank - 3x30sec each\n  Video: https://vimeo.com/111126850\n- Bird Dog - 3x10 each\n  Video: https://vimeo.com/111048715\n- Hip Flexor Stretch - 2x30sec each\n  Video: https://vimeo.com/111241987\n\nEXECUTION:\nComplete all sets with good form. Rest 60-90 sec between sets.",
+      "duration_s": 1800,
+      "external_id": "forest-hietpas:w1:4:2026-09-02",
+      "logical_key": "2026-09-02#2",
       "origin": "prescribed",
       "plan_week": 1,
       "pre_activity_comment": null,
@@ -583,9 +1428,9 @@
     },
     {
       "date": "2026-09-03",
-      "description": "WARM-UP:\n- 9min building from Z1 into the Z2 target\n\nMAIN SET:\n- 43min @ 68% FTP (Z2, RPE 3)\n- Position: Alternate every 30 min: drops (aero) \u2192 hoods (power)\n- Cadence: self-selected, comfortable endurance cadence\n\nCOOL-DOWN:\n- 9min easy spin Z1-Z2 (RPE 3-4)",
+      "description": "WARM-UP:\n- 9min building from Z1 into the Z2 target\n\nMAIN SET:\n- 43min @ 68% FTP (Z2, RPE 3)\n- Drill: 30sec spin-up @ 100-110rpm every 10min \u2014 no extra power, just leg speed\n- Position: Stay relaxed on the hoods; keep shoulders quiet\n- Cadence: Every 10 min, spin 30 sec at 100-110rpm, then settle smoothly\n\nCOOL-DOWN:\n- 9min easy spin Z1-Z2 (RPE 3-4)",
       "duration_s": 3660,
-      "external_id": "forest-hietpas:w1:4:2026-09-03",
+      "external_id": "forest-hietpas:w1:5:2026-09-03",
       "logical_key": "2026-09-03#1",
       "origin": "prescribed",
       "plan_week": 1,
@@ -646,7 +1491,7 @@
         }
       ],
       "session_type": "workout",
-      "source_file": "W01_Thu_Sep3_Endurance__Position_Focus.zwo",
+      "source_file": "W01_Thu_Sep3_Endurance__Cadence_Focus.zwo",
       "sport": "cycling",
       "structure": {
         "importedFromZwo": true,
@@ -766,7 +1611,7 @@
           }
         ]
       },
-      "title": "Endurance \u2014 Position Focus",
+      "title": "Endurance \u2014 Cadence Focus",
       "total_seconds": 3660,
       "tp_workout_type": 2,
       "tss_planned": 43.0,
@@ -774,9 +1619,9 @@
     },
     {
       "date": "2026-09-04",
-      "description": "FUEL:\nTarget 50g carbs/hr. Practice this prescription.\n\nEndurance Blocks \u2014 level 2\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-75min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-50 g/hr.",
+      "description": "FUEL:\nTarget 45g carbs/hr. Practice this prescription.\n\nEndurance Blocks \u2014 level 2\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-75min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-45 g/hr.",
       "duration_s": 5700,
-      "external_id": "forest-hietpas:w1:5:2026-09-04",
+      "external_id": "forest-hietpas:w1:6:2026-09-04",
       "logical_key": "2026-09-04#1",
       "origin": "prescribed",
       "plan_week": 1,
@@ -982,7 +1827,7 @@
       "date": "2026-09-05",
       "description": "Off the bike, not off the plan.\n\nI want ten minutes of hip and lower-back mobility, the stuff that gets skipped on ride days. A 20-30 minute walk if the legs feel like wood. Lights out thirty minutes earlier than usual.\n\nNo riding. I need you fresh tomorrow.",
       "duration_s": 0,
-      "external_id": "forest-hietpas:w1:6:2026-09-05",
+      "external_id": "forest-hietpas:w1:7:2026-09-05",
       "logical_key": "2026-09-05#1",
       "origin": "rest",
       "plan_week": 1,
@@ -1002,7 +1847,7 @@
       "date": "2026-09-06",
       "description": "Off the bike. I want this week's work absorbed today, not added to.\n\nFoam roll quads and glutes, eight to ten minutes. One long walk. Eat like you trained; a rest day is not a diet day.\n\nIf you feel great and want to ride, that is the point. Don't.",
       "duration_s": 0,
-      "external_id": "forest-hietpas:w1:7:2026-09-06",
+      "external_id": "forest-hietpas:w1:8:2026-09-06",
       "logical_key": "2026-09-06#1",
       "origin": "rest",
       "plan_week": 1,
@@ -1022,7 +1867,7 @@
       "date": "2026-08-31",
       "description": "",
       "duration_s": 1200,
-      "external_id": "forest-hietpas:w1:8:2026-08-31",
+      "external_id": "forest-hietpas:w1:9:2026-08-31",
       "logical_key": "2026-08-31#2",
       "origin": "athlete_fixed",
       "plan_week": 1,
@@ -1042,7 +1887,7 @@
       "date": "2026-09-01",
       "description": "",
       "duration_s": 1200,
-      "external_id": "forest-hietpas:w1:9:2026-09-01",
+      "external_id": "forest-hietpas:w1:10:2026-09-01",
       "logical_key": "2026-09-01#2",
       "origin": "athlete_fixed",
       "plan_week": 1,
@@ -1062,8 +1907,8 @@
       "date": "2026-09-02",
       "description": "",
       "duration_s": 1200,
-      "external_id": "forest-hietpas:w1:10:2026-09-02",
-      "logical_key": "2026-09-02#2",
+      "external_id": "forest-hietpas:w1:11:2026-09-02",
+      "logical_key": "2026-09-02#3",
       "origin": "athlete_fixed",
       "plan_week": 1,
       "pre_activity_comment": null,
@@ -1082,7 +1927,7 @@
       "date": "2026-09-03",
       "description": "",
       "duration_s": 1200,
-      "external_id": "forest-hietpas:w1:11:2026-09-03",
+      "external_id": "forest-hietpas:w1:12:2026-09-03",
       "logical_key": "2026-09-03#2",
       "origin": "athlete_fixed",
       "plan_week": 1,
@@ -1102,7 +1947,7 @@
       "date": "2026-09-01",
       "description": "",
       "duration_s": 2400,
-      "external_id": "forest-hietpas:w1:12:2026-09-01",
+      "external_id": "forest-hietpas:w1:13:2026-09-01",
       "logical_key": "2026-09-01#3",
       "origin": "athlete_fixed",
       "plan_week": 1,
@@ -1122,7 +1967,7 @@
       "date": "2026-09-03",
       "description": "",
       "duration_s": 2400,
-      "external_id": "forest-hietpas:w1:13:2026-09-03",
+      "external_id": "forest-hietpas:w1:14:2026-09-03",
       "logical_key": "2026-09-03#3",
       "origin": "athlete_fixed",
       "plan_week": 1,
@@ -1141,8 +1986,8 @@
     {
       "date": "2026-09-06",
       "description": "",
-      "duration_s": 4500,
-      "external_id": "forest-hietpas:w1:14:2026-09-06",
+      "duration_s": 5400,
+      "external_id": "forest-hietpas:w1:15:2026-09-06",
       "logical_key": "2026-09-06#2",
       "origin": "athlete_fixed",
       "plan_week": 1,
@@ -1150,12 +1995,12 @@
       "segments": [],
       "session_type": "external_fixed",
       "source_file": null,
-      "sport": "running",
+      "sport": "cycling",
       "structure": null,
-      "title": "75 min long run",
-      "total_seconds": 4500,
-      "tp_workout_type": 3,
-      "tss_planned": 60.0,
+      "title": "90 min ride \u2014 optional structure, your call",
+      "total_seconds": 5400,
+      "tp_workout_type": 2,
+      "tss_planned": 65.0,
       "workout_type": 1
     },
     {
@@ -3082,13 +3927,13 @@
     },
     {
       "date": "2026-09-11",
-      "description": "Endurance with Surges \u2014 level 1\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n\u2022 7x (8:08 @57%-67% FTP \u2192 30s @140% FTP)\n\nCOOL-DOWN:\n-10min spin-down 70%->50% FTP (RPE 2-3)\n\nEXECUTION:\n-Easy and conversational the whole way.\n\nNUTRITION:\n-40-60g carbs/hr.",
-      "duration_s": 4796,
+      "description": "FUEL:\nTarget 50g carbs/hr. Practice this prescription.\n\nEndurance Blocks \u2014 level 2\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-75min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-50 g/hr.",
+      "duration_s": 5700,
       "external_id": "forest-hietpas:w2:6:2026-09-11",
       "logical_key": "2026-09-11#1",
       "origin": "prescribed",
       "plan_week": 2,
-      "pre_activity_comment": "Feels great? Extend the duration at the same power -- never add power.\nFailed a set? Resume after 5-10min easy only if the early reps weren't already a struggle. Struggling from rep one: spin home easy and tell me.",
+      "pre_activity_comment": null,
       "segments": [
         {
           "kind": "warmup",
@@ -3117,216 +3962,12 @@
           "on_seconds": null,
           "power_high": null,
           "power_low": null,
-          "power_target": 0.62,
+          "power_target": 0.65,
           "repeat": null,
-          "seconds": 488,
+          "seconds": 4500,
           "target": {
             "type": "power_pct_ftp",
-            "value": 0.62
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "off_power": null,
-          "off_seconds": null,
-          "on_power": null,
-          "on_seconds": null,
-          "power_high": null,
-          "power_low": null,
-          "power_target": 1.4,
-          "repeat": null,
-          "seconds": 30,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 1.4
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "off_power": null,
-          "off_seconds": null,
-          "on_power": null,
-          "on_seconds": null,
-          "power_high": null,
-          "power_low": null,
-          "power_target": 0.62,
-          "repeat": null,
-          "seconds": 488,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 0.62
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "off_power": null,
-          "off_seconds": null,
-          "on_power": null,
-          "on_seconds": null,
-          "power_high": null,
-          "power_low": null,
-          "power_target": 1.4,
-          "repeat": null,
-          "seconds": 30,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 1.4
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "off_power": null,
-          "off_seconds": null,
-          "on_power": null,
-          "on_seconds": null,
-          "power_high": null,
-          "power_low": null,
-          "power_target": 0.62,
-          "repeat": null,
-          "seconds": 488,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 0.62
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "off_power": null,
-          "off_seconds": null,
-          "on_power": null,
-          "on_seconds": null,
-          "power_high": null,
-          "power_low": null,
-          "power_target": 1.4,
-          "repeat": null,
-          "seconds": 30,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 1.4
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "off_power": null,
-          "off_seconds": null,
-          "on_power": null,
-          "on_seconds": null,
-          "power_high": null,
-          "power_low": null,
-          "power_target": 0.62,
-          "repeat": null,
-          "seconds": 488,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 0.62
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "off_power": null,
-          "off_seconds": null,
-          "on_power": null,
-          "on_seconds": null,
-          "power_high": null,
-          "power_low": null,
-          "power_target": 1.4,
-          "repeat": null,
-          "seconds": 30,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 1.4
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "off_power": null,
-          "off_seconds": null,
-          "on_power": null,
-          "on_seconds": null,
-          "power_high": null,
-          "power_low": null,
-          "power_target": 0.62,
-          "repeat": null,
-          "seconds": 488,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 0.62
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "off_power": null,
-          "off_seconds": null,
-          "on_power": null,
-          "on_seconds": null,
-          "power_high": null,
-          "power_low": null,
-          "power_target": 1.4,
-          "repeat": null,
-          "seconds": 30,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 1.4
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "off_power": null,
-          "off_seconds": null,
-          "on_power": null,
-          "on_seconds": null,
-          "power_high": null,
-          "power_low": null,
-          "power_target": 0.62,
-          "repeat": null,
-          "seconds": 488,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 0.62
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "off_power": null,
-          "off_seconds": null,
-          "on_power": null,
-          "on_seconds": null,
-          "power_high": null,
-          "power_low": null,
-          "power_target": 1.4,
-          "repeat": null,
-          "seconds": 30,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 1.4
-          }
-        },
-        {
-          "kind": "steady_state",
-          "name": "Steady State",
-          "off_power": null,
-          "off_seconds": null,
-          "on_power": null,
-          "on_seconds": null,
-          "power_high": null,
-          "power_low": null,
-          "power_target": 0.62,
-          "repeat": null,
-          "seconds": 488,
-          "target": {
-            "type": "power_pct_ftp",
-            "value": 0.62
+            "value": 0.65
           }
         },
         {
@@ -3337,19 +3978,19 @@
           "on_power": null,
           "on_seconds": null,
           "power_high": 0.5,
-          "power_low": 0.7,
+          "power_low": 0.65,
           "power_target": null,
           "repeat": null,
           "seconds": 600,
           "target": {
             "high": 0.5,
-            "low": 0.7,
+            "low": 0.65,
             "type": "power_pct_ftp"
           }
         }
       ],
       "session_type": "workout",
-      "source_file": "W02_Fri_Sep11_Endurance_w_Surges.zwo",
+      "source_file": "W02_Fri_Sep11_Endurance.zwo",
       "sport": "cycling",
       "structure": {
         "importedFromZwo": true,
@@ -3360,123 +4001,27 @@
           ],
           [
             0,
-            0.464
-          ],
-          [
-            0.125,
-            0.464
-          ],
-          [
-            0.125,
-            0.443
-          ],
-          [
-            0.227,
-            0.443
-          ],
-          [
-            0.227,
             1
           ],
           [
-            0.233,
+            0.105,
             1
           ],
           [
-            0.233,
-            0.443
-          ],
-          [
-            0.335,
-            0.443
-          ],
-          [
-            0.335,
+            0.105,
             1
           ],
           [
-            0.341,
+            0.895,
             1
           ],
           [
-            0.341,
-            0.443
-          ],
-          [
-            0.443,
-            0.443
-          ],
-          [
-            0.443,
-            1
-          ],
-          [
-            0.449,
-            1
-          ],
-          [
-            0.449,
-            0.443
-          ],
-          [
-            0.551,
-            0.443
-          ],
-          [
-            0.551,
-            1
-          ],
-          [
-            0.557,
-            1
-          ],
-          [
-            0.557,
-            0.443
-          ],
-          [
-            0.659,
-            0.443
-          ],
-          [
-            0.659,
-            1
-          ],
-          [
-            0.665,
-            1
-          ],
-          [
-            0.665,
-            0.443
-          ],
-          [
-            0.767,
-            0.443
-          ],
-          [
-            0.767,
-            1
-          ],
-          [
-            0.773,
-            1
-          ],
-          [
-            0.773,
-            0.443
-          ],
-          [
-            0.875,
-            0.443
-          ],
-          [
-            0.875,
-            0.357
+            0.895,
+            0.769
           ],
           [
             1,
-            0.357
+            0.769
           ],
           [
             1,
@@ -3520,7 +4065,7 @@
           },
           {
             "begin": 600,
-            "end": 1088,
+            "end": 5100,
             "length": {
               "unit": "repetition",
               "value": 1
@@ -3530,17 +4075,17 @@
                 "intensityClass": "active",
                 "length": {
                   "unit": "second",
-                  "value": 488
+                  "value": 4500
                 },
                 "name": "Steady State",
                 "notes": "",
                 "targets": [
                   {
-                    "minValue": 62
+                    "minValue": 65
                   },
                   {
-                    "maxValue": 100,
-                    "minValue": 90,
+                    "maxValue": 95,
+                    "minValue": 85,
                     "unit": "roundOrStridePerMinute"
                   }
                 ]
@@ -3549,368 +4094,8 @@
             "type": "step"
           },
           {
-            "begin": 1088,
-            "end": 1118,
-            "length": {
-              "unit": "repetition",
-              "value": 1
-            },
-            "steps": [
-              {
-                "intensityClass": "active",
-                "length": {
-                  "unit": "second",
-                  "value": 30
-                },
-                "name": "Steady State",
-                "notes": "",
-                "targets": [
-                  {
-                    "minValue": 140
-                  },
-                  {
-                    "maxValue": 100,
-                    "minValue": 90,
-                    "unit": "roundOrStridePerMinute"
-                  }
-                ]
-              }
-            ],
-            "type": "step"
-          },
-          {
-            "begin": 1118,
-            "end": 1606,
-            "length": {
-              "unit": "repetition",
-              "value": 1
-            },
-            "steps": [
-              {
-                "intensityClass": "active",
-                "length": {
-                  "unit": "second",
-                  "value": 488
-                },
-                "name": "Steady State",
-                "notes": "",
-                "targets": [
-                  {
-                    "minValue": 62
-                  },
-                  {
-                    "maxValue": 100,
-                    "minValue": 90,
-                    "unit": "roundOrStridePerMinute"
-                  }
-                ]
-              }
-            ],
-            "type": "step"
-          },
-          {
-            "begin": 1606,
-            "end": 1636,
-            "length": {
-              "unit": "repetition",
-              "value": 1
-            },
-            "steps": [
-              {
-                "intensityClass": "active",
-                "length": {
-                  "unit": "second",
-                  "value": 30
-                },
-                "name": "Steady State",
-                "notes": "",
-                "targets": [
-                  {
-                    "minValue": 140
-                  },
-                  {
-                    "maxValue": 100,
-                    "minValue": 90,
-                    "unit": "roundOrStridePerMinute"
-                  }
-                ]
-              }
-            ],
-            "type": "step"
-          },
-          {
-            "begin": 1636,
-            "end": 2124,
-            "length": {
-              "unit": "repetition",
-              "value": 1
-            },
-            "steps": [
-              {
-                "intensityClass": "active",
-                "length": {
-                  "unit": "second",
-                  "value": 488
-                },
-                "name": "Steady State",
-                "notes": "",
-                "targets": [
-                  {
-                    "minValue": 62
-                  },
-                  {
-                    "maxValue": 100,
-                    "minValue": 90,
-                    "unit": "roundOrStridePerMinute"
-                  }
-                ]
-              }
-            ],
-            "type": "step"
-          },
-          {
-            "begin": 2124,
-            "end": 2154,
-            "length": {
-              "unit": "repetition",
-              "value": 1
-            },
-            "steps": [
-              {
-                "intensityClass": "active",
-                "length": {
-                  "unit": "second",
-                  "value": 30
-                },
-                "name": "Steady State",
-                "notes": "",
-                "targets": [
-                  {
-                    "minValue": 140
-                  },
-                  {
-                    "maxValue": 100,
-                    "minValue": 90,
-                    "unit": "roundOrStridePerMinute"
-                  }
-                ]
-              }
-            ],
-            "type": "step"
-          },
-          {
-            "begin": 2154,
-            "end": 2642,
-            "length": {
-              "unit": "repetition",
-              "value": 1
-            },
-            "steps": [
-              {
-                "intensityClass": "active",
-                "length": {
-                  "unit": "second",
-                  "value": 488
-                },
-                "name": "Steady State",
-                "notes": "",
-                "targets": [
-                  {
-                    "minValue": 62
-                  },
-                  {
-                    "maxValue": 100,
-                    "minValue": 90,
-                    "unit": "roundOrStridePerMinute"
-                  }
-                ]
-              }
-            ],
-            "type": "step"
-          },
-          {
-            "begin": 2642,
-            "end": 2672,
-            "length": {
-              "unit": "repetition",
-              "value": 1
-            },
-            "steps": [
-              {
-                "intensityClass": "active",
-                "length": {
-                  "unit": "second",
-                  "value": 30
-                },
-                "name": "Steady State",
-                "notes": "",
-                "targets": [
-                  {
-                    "minValue": 140
-                  },
-                  {
-                    "maxValue": 100,
-                    "minValue": 90,
-                    "unit": "roundOrStridePerMinute"
-                  }
-                ]
-              }
-            ],
-            "type": "step"
-          },
-          {
-            "begin": 2672,
-            "end": 3160,
-            "length": {
-              "unit": "repetition",
-              "value": 1
-            },
-            "steps": [
-              {
-                "intensityClass": "active",
-                "length": {
-                  "unit": "second",
-                  "value": 488
-                },
-                "name": "Steady State",
-                "notes": "",
-                "targets": [
-                  {
-                    "minValue": 62
-                  },
-                  {
-                    "maxValue": 100,
-                    "minValue": 90,
-                    "unit": "roundOrStridePerMinute"
-                  }
-                ]
-              }
-            ],
-            "type": "step"
-          },
-          {
-            "begin": 3160,
-            "end": 3190,
-            "length": {
-              "unit": "repetition",
-              "value": 1
-            },
-            "steps": [
-              {
-                "intensityClass": "active",
-                "length": {
-                  "unit": "second",
-                  "value": 30
-                },
-                "name": "Steady State",
-                "notes": "",
-                "targets": [
-                  {
-                    "minValue": 140
-                  },
-                  {
-                    "maxValue": 100,
-                    "minValue": 90,
-                    "unit": "roundOrStridePerMinute"
-                  }
-                ]
-              }
-            ],
-            "type": "step"
-          },
-          {
-            "begin": 3190,
-            "end": 3678,
-            "length": {
-              "unit": "repetition",
-              "value": 1
-            },
-            "steps": [
-              {
-                "intensityClass": "active",
-                "length": {
-                  "unit": "second",
-                  "value": 488
-                },
-                "name": "Steady State",
-                "notes": "",
-                "targets": [
-                  {
-                    "minValue": 62
-                  },
-                  {
-                    "maxValue": 100,
-                    "minValue": 90,
-                    "unit": "roundOrStridePerMinute"
-                  }
-                ]
-              }
-            ],
-            "type": "step"
-          },
-          {
-            "begin": 3678,
-            "end": 3708,
-            "length": {
-              "unit": "repetition",
-              "value": 1
-            },
-            "steps": [
-              {
-                "intensityClass": "active",
-                "length": {
-                  "unit": "second",
-                  "value": 30
-                },
-                "name": "Steady State",
-                "notes": "",
-                "targets": [
-                  {
-                    "minValue": 140
-                  },
-                  {
-                    "maxValue": 100,
-                    "minValue": 90,
-                    "unit": "roundOrStridePerMinute"
-                  }
-                ]
-              }
-            ],
-            "type": "step"
-          },
-          {
-            "begin": 3708,
-            "end": 4196,
-            "length": {
-              "unit": "repetition",
-              "value": 1
-            },
-            "steps": [
-              {
-                "intensityClass": "active",
-                "length": {
-                  "unit": "second",
-                  "value": 488
-                },
-                "name": "Steady State",
-                "notes": "",
-                "targets": [
-                  {
-                    "minValue": 62
-                  },
-                  {
-                    "maxValue": 100,
-                    "minValue": 90,
-                    "unit": "roundOrStridePerMinute"
-                  }
-                ]
-              }
-            ],
-            "type": "step"
-          },
-          {
-            "begin": 4196,
-            "end": 4796,
+            "begin": 5100,
+            "end": 5700,
             "length": {
               "unit": "repetition",
               "value": 1
@@ -3940,10 +4125,10 @@
           }
         ]
       },
-      "title": "Endurance w/ Surges",
-      "total_seconds": 4796,
+      "title": "Endurance",
+      "total_seconds": 5700,
       "tp_workout_type": 2,
-      "tss_planned": 57.8,
+      "tss_planned": 64.3,
       "workout_type": 1
     },
     {
@@ -4109,7 +4294,7 @@
     {
       "date": "2026-09-13",
       "description": "",
-      "duration_s": 4500,
+      "duration_s": 5400,
       "external_id": "forest-hietpas:w2:15:2026-09-13",
       "logical_key": "2026-09-13#2",
       "origin": "athlete_fixed",
@@ -4118,12 +4303,12 @@
       "segments": [],
       "session_type": "external_fixed",
       "source_file": null,
-      "sport": "running",
+      "sport": "cycling",
       "structure": null,
-      "title": "75 min long run",
-      "total_seconds": 4500,
-      "tp_workout_type": 3,
-      "tss_planned": 60.0,
+      "title": "90 min ride \u2014 optional structure, your call",
+      "total_seconds": 5400,
+      "tp_workout_type": 2,
+      "tss_planned": 65.0,
       "workout_type": 1
     },
     {
@@ -5692,8 +5877,8 @@
     },
     {
       "date": "2026-09-18",
-      "description": "WARM-UP:\n- 10min building from Z1 into the Z2 target\n\nMAIN SET:\n- 50min @ 68% FTP (Z2, RPE 3)\n- Position: Alternate every 30 min: drops (aero) \u2192 hoods (power)\n- Cadence: self-selected, comfortable endurance cadence\n\nCOOL-DOWN:\n- 10min easy spin Z1-Z2 (RPE 3-4)",
-      "duration_s": 4200,
+      "description": "FUEL:\nTarget 55g carbs/hr. Practice this prescription.\n\nEndurance Blocks \u2014 level 3\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-90min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-55 g/hr.",
+      "duration_s": 6600,
       "external_id": "forest-hietpas:w3:6:2026-09-18",
       "logical_key": "2026-09-18#1",
       "origin": "prescribed",
@@ -5727,12 +5912,12 @@
           "on_seconds": null,
           "power_high": null,
           "power_low": null,
-          "power_target": 0.68,
+          "power_target": 0.65,
           "repeat": null,
-          "seconds": 3000,
+          "seconds": 5400,
           "target": {
             "type": "power_pct_ftp",
-            "value": 0.68
+            "value": 0.65
           }
         },
         {
@@ -5742,14 +5927,14 @@
           "off_seconds": null,
           "on_power": null,
           "on_seconds": null,
-          "power_high": 0.45,
-          "power_low": 0.68,
+          "power_high": 0.5,
+          "power_low": 0.65,
           "power_target": null,
           "repeat": null,
           "seconds": 600,
           "target": {
-            "high": 0.45,
-            "low": 0.68,
+            "high": 0.5,
+            "low": 0.65,
             "type": "power_pct_ftp"
           }
         }
@@ -5766,27 +5951,27 @@
           ],
           [
             0,
-            0.956
-          ],
-          [
-            0.143,
-            0.956
-          ],
-          [
-            0.143,
             1
           ],
           [
-            0.857,
+            0.091,
             1
           ],
           [
-            0.857,
-            0.662
+            0.091,
+            1
+          ],
+          [
+            0.909,
+            1
+          ],
+          [
+            0.909,
+            0.769
           ],
           [
             1,
-            0.662
+            0.769
           ],
           [
             1,
@@ -5817,6 +6002,11 @@
                   {
                     "maxValue": 65,
                     "minValue": 50
+                  },
+                  {
+                    "maxValue": 92,
+                    "minValue": 85,
+                    "unit": "roundOrStridePerMinute"
                   }
                 ]
               }
@@ -5825,7 +6015,7 @@
           },
           {
             "begin": 600,
-            "end": 3600,
+            "end": 6000,
             "length": {
               "unit": "repetition",
               "value": 1
@@ -5835,13 +6025,18 @@
                 "intensityClass": "active",
                 "length": {
                   "unit": "second",
-                  "value": 3000
+                  "value": 5400
                 },
                 "name": "Steady State",
                 "notes": "",
                 "targets": [
                   {
-                    "minValue": 68
+                    "minValue": 65
+                  },
+                  {
+                    "maxValue": 95,
+                    "minValue": 85,
+                    "unit": "roundOrStridePerMinute"
                   }
                 ]
               }
@@ -5849,8 +6044,8 @@
             "type": "step"
           },
           {
-            "begin": 3600,
-            "end": 4200,
+            "begin": 6000,
+            "end": 6600,
             "length": {
               "unit": "repetition",
               "value": 1
@@ -5866,7 +6061,12 @@
                 "notes": "",
                 "targets": [
                   {
-                    "minValue": 45
+                    "minValue": 50
+                  },
+                  {
+                    "maxValue": 95,
+                    "minValue": 85,
+                    "unit": "roundOrStridePerMinute"
                   }
                 ]
               }
@@ -5876,9 +6076,9 @@
         ]
       },
       "title": "Endurance",
-      "total_seconds": 4200,
+      "total_seconds": 6600,
       "tp_workout_type": 2,
-      "tss_planned": 50.0,
+      "tss_planned": 74.9,
       "workout_type": 1
     },
     {
@@ -6044,7 +6244,7 @@
     {
       "date": "2026-09-20",
       "description": "",
-      "duration_s": 4500,
+      "duration_s": 5400,
       "external_id": "forest-hietpas:w3:15:2026-09-20",
       "logical_key": "2026-09-20#2",
       "origin": "athlete_fixed",
@@ -6053,12 +6253,12 @@
       "segments": [],
       "session_type": "external_fixed",
       "source_file": null,
-      "sport": "running",
+      "sport": "cycling",
       "structure": null,
-      "title": "75 min long run",
-      "total_seconds": 4500,
-      "tp_workout_type": 3,
-      "tss_planned": 60.0,
+      "title": "90 min ride \u2014 optional structure, your call",
+      "total_seconds": 5400,
+      "tp_workout_type": 2,
+      "tss_planned": 65.0,
       "workout_type": 1
     },
     {
@@ -7037,7 +7237,7 @@
     {
       "date": "2026-09-27",
       "description": "",
-      "duration_s": 4500,
+      "duration_s": 5400,
       "external_id": "forest-hietpas:w4:14:2026-09-27",
       "logical_key": "2026-09-27#2",
       "origin": "athlete_fixed",
@@ -7046,12 +7246,12 @@
       "segments": [],
       "session_type": "external_fixed",
       "source_file": null,
-      "sport": "running",
+      "sport": "cycling",
       "structure": null,
-      "title": "75 min long run",
-      "total_seconds": 4500,
-      "tp_workout_type": 3,
-      "tss_planned": 60.0,
+      "title": "90 min ride \u2014 optional structure, your call",
+      "total_seconds": 5400,
+      "tp_workout_type": 2,
+      "tss_planned": 65.0,
       "workout_type": 1
     }
   ]

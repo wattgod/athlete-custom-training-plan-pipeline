@@ -12,7 +12,7 @@ key_day_candidates:
 strength_day_candidates:
 - sunday
 - monday
-derived_date: '2026-09-01 13:23:04'
+derived_date: '2026-09-01 19:55:41'
 _derived:
 - id: CLASSIFICATION_EQUIPMENT_TIER
   field: equipment_tier
@@ -21,7 +21,7 @@ _derived:
   inputs:
     equipment: null
   sensitivity: personal
-  at: '2026-09-01 13:23:04'
+  at: '2026-09-01 19:55:41'
   revision: 1
 - id: CLASSIFICATION_EXCLUSIONS
   field: exercise_exclusions
@@ -30,7 +30,7 @@ _derived:
   inputs:
     rule_set: derive_classifications/exclusions-v1
   sensitivity: sensitive
-  at: '2026-09-01 13:23:04'
+  at: '2026-09-01 19:55:41'
   revision: 1
 - id: CLASSIFICATION_KEY_DAYS
   field: key_day_candidates
@@ -46,7 +46,7 @@ _derived:
     - tuesday
     - wednesday
   sensitivity: personal
-  at: '2026-09-01 13:23:04'
+  at: '2026-09-01 19:55:41'
   revision: 1
 - id: CLASSIFICATION_PLAN_END
   field: plan_end
@@ -71,7 +71,7 @@ _derived:
         "300 is about right") -- bike structure may run %FTP. No A-race; consistency
         is the trained adaptation.
   sensitivity: personal
-  at: '2026-09-01T13:23:05.186811'
+  at: '2026-09-01T19:55:41.998320'
   revision: 1
 - id: CLASSIFICATION_PLAN_START
   field: plan_start
@@ -96,7 +96,7 @@ _derived:
         "300 is about right") -- bike structure may run %FTP. No A-race; consistency
         is the trained adaptation.
   sensitivity: personal
-  at: '2026-09-01T13:23:05.186796'
+  at: '2026-09-01T19:55:41.998304'
   revision: 1
 - id: CLASSIFICATION_PLAN_WEEKS
   field: plan_weeks
@@ -121,7 +121,7 @@ _derived:
         "300 is about right") -- bike structure may run %FTP. No A-race; consistency
         is the trained adaptation.
   sensitivity: personal
-  at: '2026-09-01T13:23:05.186763'
+  at: '2026-09-01T19:55:41.998260'
   revision: 1
 - id: CLASSIFICATION_RACE_WEEKDAY
   field: race_weekday
@@ -146,7 +146,7 @@ _derived:
         "300 is about right") -- bike structure may run %FTP. No A-race; consistency
         is the trained adaptation.
   sensitivity: personal
-  at: '2026-09-01T13:23:05.186823'
+  at: '2026-09-01T19:55:41.998333'
   revision: 1
 - id: CLASSIFICATION_RISK_FACTORS
   field: risk_factors
@@ -155,7 +155,7 @@ _derived:
   inputs:
     rule_set: derive_classifications/risk-v1
   sensitivity: sensitive
-  at: '2026-09-01 13:23:04'
+  at: '2026-09-01 19:55:41'
   revision: 1
 - id: CLASSIFICATION_STARTING_PHASE
   field: starting_phase
@@ -164,7 +164,7 @@ _derived:
   inputs:
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-09-01 13:23:04'
+  at: '2026-09-01 19:55:41'
   revision: 1
 - id: CLASSIFICATION_STRENGTH_DAYS
   field: strength_day_candidates
@@ -176,7 +176,7 @@ _derived:
     - thursday
     - friday
   sensitivity: personal
-  at: '2026-09-01 13:23:04'
+  at: '2026-09-01 19:55:41'
   revision: 1
 - id: CLASSIFICATION_STRENGTH_FREQUENCY
   field: strength_frequency
@@ -185,18 +185,18 @@ _derived:
   inputs:
     tier: ayahuasca
   sensitivity: personal
-  at: '2026-09-01 13:23:04'
+  at: '2026-09-01 19:55:41'
   revision: 1
 - id: CLASSIFICATION_TIER
   field: tier
   class: inferred
   basis: weekly cycling hours constrained by goal and training history
   inputs:
-    cycling_hours_target: 3.5
+    cycling_hours_target: 4.5
     goal_type: null
     years_structured: 0
   sensitivity: personal
-  at: '2026-09-01 13:23:04'
+  at: '2026-09-01 19:55:41'
   revision: 1
 - id: CLASSIFICATION_TIMESTAMP
   field: derived_date
@@ -205,7 +205,7 @@ _derived:
   inputs:
     owner: derive_classifications.py
   sensitivity: internal
-  at: '2026-09-01 13:23:04'
+  at: '2026-09-01 19:55:41'
   revision: 1
 plan_start: '2026-08-31'
 plan_end: '2026-09-27'
