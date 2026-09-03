@@ -40,7 +40,7 @@
   },
   "derived_values": [
     {
-      "at": "2026-09-02T02:51:06.200451Z",
+      "at": "2026-09-03T03:09:50.248360Z",
       "basis": "measured-anchor availability and athlete-requested metric",
       "class": "inferred",
       "field": "athlete.control_metric",
@@ -54,7 +54,7 @@
       "sensitivity": "personal"
     },
     {
-      "at": "2026-09-02T02:51:06.200451Z",
+      "at": "2026-09-03T03:09:50.248360Z",
       "basis": "authored relative-intensity segments projected through the ftp target rule",
       "class": "inferred",
       "field": "sessions",

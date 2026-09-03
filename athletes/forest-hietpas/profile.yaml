@@ -112,6 +112,13 @@ preferred_days:
     max_duration_min: 60
     is_key_day_ok: false
   tuesday:
+    # Stays 0: this encodes "place no PRESCRIBED work here" and is what keeps
+    # Friday as the long day. Setting it to 60 to match his locked load
+    # (20min anchor + 40min run) made the generator treat Tuesday as a
+    # placement target and collapsed Friday to 3-15 min. The resulting
+    # AVAILABILITY_CAP_IMPOSSIBLE is a data-hygiene complaint about the
+    # athlete's OWN fixed sessions exceeding a deliberately-zero cap, and is
+    # waived at publish time rather than "fixed" by wrecking the week.
     availability: unavailable
     time_slots:
     - am
