@@ -255,8 +255,17 @@ def _load_config(filename: str) -> dict:
     Callers must NOT mutate the returned dict (all current callers copy
     before modifying).
     """
-    with open(_CONFIG_DIR / filename) as f:
-        return yaml.safe_load(f)
+    config_path = _CONFIG_DIR / filename
+    with open(config_path) as f:
+        raw = f.read()
+    if not raw.strip():
+        raise RuntimeError(
+            f"Required Motoren config is empty or unavailable: {config_path}")
+    loaded = yaml.safe_load(raw)
+    if not isinstance(loaded, dict):
+        raise RuntimeError(
+            f"Required Motoren config must contain a YAML mapping: {config_path}")
+    return loaded
 
 
 def _load_selection_config():

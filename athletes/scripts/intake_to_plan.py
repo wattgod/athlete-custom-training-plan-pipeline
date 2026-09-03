@@ -38,6 +38,7 @@ import math
 import argparse
 import shutil
 import subprocess
+import tempfile
 import uuid
 from pathlib import Path
 from datetime import datetime, date
@@ -1296,9 +1297,13 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
                 if not course_facts_omitted and info.get('location'):
                     target_race_info['location'] = info['location']
                 # Discipline from the race DB drives guide branding (road ->
-                # Roadie Labs + road skills). Only set when the DB knows it.
+                # Roadie Labs + road skills). The historical ``gravel`` value
+                # is an overloaded off-road catalog bucket, so refine it from
+                # discriminative race-name evidence before making it explicit.
                 if not course_facts_omitted and info.get('discipline'):
-                    target_race_info['discipline'] = info['discipline']
+                    from archetype import resolve_matched_race_discipline
+                    target_race_info['discipline'] = resolve_matched_race_discipline(
+                        info['discipline'], info.get('name') or event['name'])
         else:
             # UNMATCHED race — build the plan from what the athlete actually
             # told us (never map to a real race by default: a fondo rider
@@ -2406,6 +2411,86 @@ def materialize_brand_discipline_review(profile: Dict[str, Any], athlete_dir: Pa
                 "the race mapping must be verified before confirmation.\n"
             )
     return True
+
+
+PREVIEW_REVIEW_BEGIN = '--- BEGIN PREVIEW CHECK FAILURES ---'
+PREVIEW_REVIEW_END = '--- END PREVIEW CHECK FAILURES ---'
+
+
+def preview_review_issues(checks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Translate non-send-worthy preview results into sealed review issues."""
+    issues = []
+    for check in checks or []:
+        name = str(check.get('name') or 'Unnamed check').strip()
+        status = str(check.get('status') or '').upper()
+        # A sub-80% volume result is safe enough to draft under R19 but not
+        # clean enough to send. Preserve that distinction as a review blocker.
+        review_required = status == 'FAIL' or (
+            name == 'Weekly Volume' and status == 'WARN')
+        if not review_required:
+            continue
+        issue_id = 'PREVIEW_' + re.sub(
+            r'[^A-Z0-9]+', '_', name.upper()).strip('_')
+        detail = str(check.get('detail') or 'No detail').strip()
+        issues.append({
+            'id': issue_id,
+            'source': 'plan_preview',
+            'severity': 'CRITICAL',
+            'message': f'{name}: {detail}',
+            'review_value': {
+                'check': name, 'status': status, 'detail': detail,
+            },
+            'basis': 'production plan-preview verification result',
+            'sensitivity': 'internal',
+        })
+    return issues
+
+
+def materialize_preview_review(checks: List[Dict[str, Any]], athlete_dir: Path) -> bool:
+    """Persist preview FAIL results on the same coach-review boundary.
+
+    The preview used to print a red line and then let the webhook report a
+    clean delivery. Keep this section replaceable so a deterministic rerun can
+    clear stale preview findings without disturbing compliance or brand flags.
+    """
+    review = Path(athlete_dir) / 'NEEDS_REVIEW.txt'
+    existing = review.read_text() if review.exists() else ''
+    before, marker, remainder = existing.partition(PREVIEW_REVIEW_BEGIN)
+    if marker:
+        _, end_marker, after = remainder.partition(PREVIEW_REVIEW_END)
+        if not end_marker:
+            raise ValueError('Malformed preview review section')
+        existing = (before.rstrip() + '\n' + after.lstrip()).strip()
+
+    issues = preview_review_issues(checks)
+    if issues:
+        lines = [
+            PREVIEW_REVIEW_BEGIN,
+            'PREVIEW CHECKS REQUIRE REVIEW (resolve before approval):',
+        ]
+        for issue in issues:
+            lines.append(f"  - {issue['message']}")
+        lines.append(PREVIEW_REVIEW_END)
+        existing = '\n\n'.join(part for part in (
+            existing.strip(), '\n'.join(lines)) if part)
+
+    if existing:
+        review.write_text(existing.rstrip() + '\n')
+    elif review.exists():
+        review.unlink()
+    return bool(issues)
+
+
+def sync_preview_review_state(
+        state_path: Path, athlete_id: str,
+        issues: List[Dict[str, Any]]) -> None:
+    """Merge preview findings, then refresh every fulfillment projection."""
+    state = load_fulfillment_state(state_path)
+    merge_generation_blockers(
+        state_path, state['generation_revision'], 'plan_preview', issues)
+    from plan_ir import build_plan_ir, build_tp_manifest
+    build_plan_ir(athlete_id)
+    build_tp_manifest(athlete_id)
 
 
 def emit_review_marker(athlete_dir: Path) -> bool:
@@ -4117,21 +4202,75 @@ def main():
 
     # -- Step 4b: Generate plan preview --
     print(f"\n{BOLD}Step 4b: Generating plan preview...{RESET}")
+    preview_path = athlete_dir / 'plan_preview.html'
+    # A failed rerun must never fall back to a prior clean dashboard.
+    preview_path.unlink(missing_ok=True)
     try:
         from generate_plan_preview import build_preview_data, render_preview_html
         preview_data = build_preview_data(athlete_dir)
         preview_html = render_preview_html(preview_data)
-        preview_path = athlete_dir / 'plan_preview.html'
-        with open(preview_path, 'w') as f:
-            f.write(preview_html)
+        fd, temp_path = tempfile.mkstemp(
+            dir=str(athlete_dir), prefix='.plan_preview.', suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+                handle.write(preview_html)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_path, preview_path)
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
+        preview_flagged = materialize_preview_review(
+            preview_data.get('checks') or [], athlete_dir)
+        preview_issues = preview_review_issues(
+            preview_data.get('checks') or [])
+        if fulfillment_state_available:
+            sync_preview_review_state(
+                state_path, athlete_id, preview_issues)
+        # The brief was rendered immediately before the preview. Refresh it so
+        # the coach-facing banner cannot lag the machine-readable review state.
+        coaching_brief = generate_coaching_brief(
+            profile, parsed, athlete_dir=athlete_dir)
+        with open(brief_path, 'w') as f:
+            f.write(coaching_brief)
         checks_pass = sum(1 for c in preview_data['checks'] if c['status'] == 'PASS')
         checks_total = len(preview_data['checks'])
         print(f"  {GREEN}Generated{RESET} plan_preview.html ({checks_pass}/{checks_total} checks pass)")
         for c in preview_data['checks']:
             icon = GREEN + '✓' if c['status'] == 'PASS' else (YELLOW + '⚠' if c['status'] == 'WARN' else RED + '✗')
             print(f"    {icon}{RESET} {c['name']}: {c['detail']}")
+        if preview_flagged:
+            print(f"  {YELLOW}Preview failure persisted as NEEDS_REVIEW{RESET}")
     except Exception as e:
-        print(f"  {YELLOW}Preview generation failed: {e}{RESET}")
+        preview_path.unlink(missing_ok=True)
+        crash_check = {
+            'name': 'Plan Preview Validator', 'status': 'FAIL',
+            'detail': f'failed closed: {type(e).__name__}',
+        }
+        materialize_preview_review([crash_check], athlete_dir)
+        crash_issue = {
+            'id': 'VALIDATOR_CRASH_PLAN_PREVIEW',
+            'source': 'plan_preview', 'severity': 'CRITICAL',
+            'message': f'Plan preview validator failed closed: {type(e).__name__}',
+            'review_value': {
+                'validator': 'plan_preview',
+                'exception_type': type(e).__name__, 'failed_closed': True,
+            },
+            'basis': 'production plan-preview validator execution result',
+            'sensitivity': 'internal',
+        }
+        if fulfillment_state_available:
+            try:
+                sync_preview_review_state(
+                    state_path, athlete_id, [crash_issue])
+            except Exception as state_exc:
+                fulfillment_state_available = False
+                print(f"GG_FULFILLMENT_STATE=unavailable")
+                print(f"  {YELLOW}[WARN]{RESET} Could not persist preview failure: {state_exc}")
+        coaching_brief = generate_coaching_brief(
+            profile, parsed, athlete_dir=athlete_dir)
+        with open(brief_path, 'w') as f:
+            f.write(coaching_brief)
+        print(f"  {YELLOW}Preview generation failed closed: {type(e).__name__}{RESET}")
 
     # -- Step 4c: Generate personal delivery email --
     print(f"\n{BOLD}Step 4c: Generating personal email...{RESET}")

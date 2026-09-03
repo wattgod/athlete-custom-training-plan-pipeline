@@ -32,10 +32,10 @@ from datetime import date, datetime, timedelta
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 _DAY_IDX = {d: i for i, d in enumerate(DAYS)}
 
-# Synthetic athletes race REAL events drawn from the 1,184-race snapshot
-# (real_races). Discipline maps to which database the race comes from; mtb
-# events live in the gravel DB, so mtb athletes draw gravel races.
-RACE_DISCIPLINE = {"gravel": "gravel", "road": "road", "mtb": "gravel"}
+# Synthetic athletes race REAL events drawn from the 1,184-race snapshot.
+# ``gravel`` is a historical catalog bucket that also contains MTB and a few
+# road events, so selection must use the same effective-discipline resolver as
+# production. Hidden judge metadata may never disagree with the real pipeline.
 
 # Personas — each constrains the randomized specifics into a coherent person.
 PERSONAS = [
@@ -95,6 +95,23 @@ def _persona_by_key(key):
     return None
 
 
+def _effective_race_discipline(race: dict) -> str:
+    from archetype import resolve_matched_race_discipline
+    return resolve_matched_race_discipline(
+        (race or {}).get('discipline'), (race or {}).get('name'))
+
+
+def _pick_race(rng, discipline, *, min_weeks, max_weeks, today, min_mi, max_mi):
+    from real_races import buildable_races
+
+    catalog_discipline = 'road' if discipline == 'road' else 'gravel'
+    candidates = buildable_races(
+        catalog_discipline, min_weeks, max_weeks, today, min_mi, max_mi)
+    candidates = [race for race in candidates
+                  if _effective_race_discipline(race) == discipline]
+    return rng.choice(candidates) if candidates else None
+
+
 def synthesize(seed: str, index: int = 0, today: str = None,
                persona_key: str = None, race: dict = None) -> dict:
     """Return a realistic, reproducible webhook intake dict.
@@ -144,13 +161,13 @@ def synthesize(seed: str, index: int = 0, today: str = None,
     # snapshot is missing (e.g. not yet built). A forced `race` (coverage
     # sweep) skips the pick and drives discipline from the race itself.
     if race is not None:
-        discipline = race.get("discipline") or discipline
+        discipline = _effective_race_discipline(race)
     else:
-        from real_races import pick as pick_race
         race_mi_lo, race_mi_hi = persona.get("race_mi", (35, 130))
-        race = pick_race(r, discipline=RACE_DISCIPLINE[discipline],
-                         min_weeks=8, max_weeks=28, today=base_day.isoformat(),
-                         min_mi=race_mi_lo, max_mi=race_mi_hi)
+        race = _pick_race(
+            r, discipline, min_weeks=8, max_weeks=28,
+            today=base_day.isoformat(), min_mi=race_mi_lo,
+            max_mi=race_mi_hi)
     if race:
         race_name = race["name"]
         race_date = race["date"]

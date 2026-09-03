@@ -136,7 +136,11 @@ class TestHappyPath:
                 assert wo['day'] in VALID_DAYS
                 assert isinstance(wo['coachName'], str) and wo['coachName']
                 assert isinstance(wo['durationMinutes'], int)
-                assert wo['durationMinutes'] > 0
+                if (wo['coachName'] == 'Rest Day'
+                        or wo['coachName'].startswith('Race Day —')):
+                    assert wo['durationMinutes'] == 0
+                else:
+                    assert wo['durationMinutes'] > 0
                 assert isinstance(wo['estimatedTss'], int)
                 assert wo['estimatedTss'] >= 0
                 assert wo['fuelTag'] in VALID_FUEL_TAGS
@@ -473,10 +477,8 @@ class TestInvalidRequests:
 # =============================================================================
 
 class TestComplianceGate:
-    def test_marginal_config_returns_422(self, client):
-        """Known marginal config from the domain sweep: 4h/week beginner in a
-        build block with partial day caps trips the R03 recovery-ratio
-        boundary (86% vs 85% ceiling)."""
+    def test_marginal_config_respects_current_recovery_ratio(self, client):
+        """The corrected recovery week is 50-65% of preceding load TSS."""
         body = _payload()
         body['athlete'].update({'hours_per_week': 4, 'experience_years': 0})
         body['athlete']['availability'] = {
@@ -484,12 +486,13 @@ class TestComplianceGate:
             'sat': {'available': True, 'max_duration_min': 300},
         }
         resp = _post(client, body)
-        assert resp.status_code == 422
+        assert resp.status_code == 200
         data = resp.get_json()
-        assert data['error'] == 'compliance_failed'
-        assert data['compliance']['passed'] is False
-        assert data['compliance']['violations']
-        assert any('R03' in v for v in data['compliance']['violations'])
+        assert data['compliance'] == {'passed': True, 'violations': []}
+        load_tss = [week['targetTss'] for week in data['weeks'][:-1]]
+        recovery_tss = data['weeks'][-1]['targetTss']
+        ratio = recovery_tss / (sum(load_tss) / len(load_tss))
+        assert .50 <= ratio <= .65
 
     def test_422_branch_unit(self, client, monkeypatch):
         """Pin the 422 branch independent of core rule tuning."""
@@ -1344,7 +1347,8 @@ class TestWeekDescriptors:
         assert race_day['coachName'] == 'Race Day — Ned Gravel'
         assert race_day['fuelTag'] == 'practice'
         assert race_day['isIntensity'] is True
-        assert race_day['durationMinutes'] >= 120  # a race, not a workout
+        assert race_day['durationMinutes'] == 0  # event, not a workout
+        assert race_day['estimatedTss'] == 0
         assert 'B priority' in race_day.get('notes', '')
 
         # Day before (Saturday): Openers, capped ~40min, easy fueling.
@@ -1424,8 +1428,12 @@ class TestWeekDescriptors:
         assert race_week['type'] == 'race'
         by_day = {wo['day']: wo for wo in race_week['workouts']}
         assert by_day['sun']['coachName'] == 'Race Day — Unbound 200'
+        assert by_day['sun']['durationMinutes'] == 0
+        assert by_day['sun']['estimatedTss'] == 0
         assert by_day['sun']['fuelTag'] == 'practice'
         assert by_day['sat']['coachName'] == 'Openers'
+        assert sum(wo['coachName'].startswith('Race Day')
+                   for wo in race_week['workouts']) == 1
         # Race-week template: mostly rest around the race.
         names = {wo['coachName'] for wo in race_week['workouts']}
         assert 'Rest Day' in names
@@ -1435,6 +1443,61 @@ class TestWeekDescriptors:
         plain = _post(client, self._body(phase='race', weeks=2)).get_json()
         assert [w['type'] for w in plain['weeks']] == [
             w['type'] for w in data['weeks']]
+
+    def test_multi_race_week_shapes_around_earliest_event(self, client):
+        """A Saturday B race followed by a Sunday A race gets Friday Openers;
+        the B race must not overwrite Saturday Openers and leave none."""
+        desc = [
+            {'number': 1, 'type': 'taper'},
+            {'number': 2, 'type': 'race', 'races': [
+                {'name': 'Saturday Tune-Up', 'date': '2026-07-18',
+                 'priority': 'B'},
+                {'name': 'Sunday A Race', 'date': '2026-07-19',
+                 'priority': 'A'},
+            ]},
+        ]
+        resp = _post(client, self._body(
+            phase='race', weeks=2, descriptors=desc))
+        assert resp.status_code == 200, resp.get_json()
+        by_day = {wo['day']: wo for wo in resp.get_json()['weeks'][1]['workouts']}
+        assert by_day['fri']['coachName'] == 'Openers'
+        assert by_day['sat']['coachName'] == 'Race Day — Saturday Tune-Up'
+        assert by_day['sun']['coachName'] == 'Race Day — Sunday A Race'
+        assert sum(wo['coachName'].startswith('Race Day')
+                   for wo in by_day.values()) == 2
+
+    def test_race_date_not_descriptor_slot_drives_race_week_shape(self, client):
+        """A misplaced descriptor entry still shapes its actual calendar week."""
+        desc = [
+            {'number': 1, 'type': 'taper', 'races': [
+                {'name': 'Sunday A Race', 'date': '2026-07-19',
+                 'priority': 'A'},
+            ]},
+            {'number': 2, 'type': 'race'},
+        ]
+        resp = _post(client, self._body(
+            phase='race', weeks=2, descriptors=desc))
+        assert resp.status_code == 200, resp.get_json()
+        by_day = {wo['day']: wo for wo in resp.get_json()['weeks'][1]['workouts']}
+        assert by_day['sat']['coachName'] == 'Openers'
+        assert by_day['sun']['coachName'] == 'Race Day — Sunday A Race'
+
+    def test_duplicate_race_date_fails_closed(self, client):
+        desc = [
+            {'number': 1, 'type': 'taper'},
+            {'number': 2, 'type': 'race', 'races': [
+                {'name': 'Morning TT', 'date': '2026-07-19', 'priority': 'B'},
+                {'name': 'Afternoon Road Race', 'date': '2026-07-19',
+                 'priority': 'A'},
+            ]},
+        ]
+        resp = _post(client, self._body(
+            phase='race', weeks=2, descriptors=desc))
+        assert resp.status_code == 400
+        fields = resp.get_json()['fields']
+        message = fields['block.week_descriptors[1].races[1].date']
+        assert 'Duplicate race date' in message
+        assert 'one-day multi-event plans are not supported' in message
 
     # ---- compliance sweep + determinism ---------------------------------------
 

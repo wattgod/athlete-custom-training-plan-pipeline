@@ -23,7 +23,7 @@ from typing import Dict, List, Any, Optional, Tuple
 
 SCRIPTS_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPTS_DIR))
-from zwo_parser import parse_zwo
+from zwo_parser import parse_zwo, parse_zwo_structure
 from brand_config import workout_author
 from known_races import UNMATCHED_RACE_MPH
 
@@ -48,14 +48,8 @@ def _if_to_zone(if_val: float) -> str:
         return 'Z5+'
 
 
-def _canonical_intensity_factor(segments: list[dict]) -> float:
-    """Calculate session intensity from canonical segment time and targets.
-
-    Power keeps the established ZWO projection exactly. LTHR, HRmax, and RPE
-    are first normalized through their own authored scales, then the same
-    duration-weighted whole-session unit is applied. Raw HR percentages and
-    RPE values are never compared with power-IF cutoffs.
-    """
+def _canonical_effort_samples(segments: list[dict]) -> list[tuple[int, float]]:
+    """Flatten canonical segments into duration/normalized-effort samples."""
     samples = []
 
     def effort(target, key):
@@ -94,11 +88,136 @@ def _canonical_intensity_factor(segments: list[dict]) -> float:
             if seconds and value is not None:
                 samples.append((seconds, value))
 
+    return samples
+
+
+def _split_linear_ramp(
+        seconds: float, low: float, high: float) -> list[tuple[float, float]]:
+    """Split a linear ramp at the Z2 ceiling for literal TIZ accounting."""
+    lower, upper = sorted((low, high))
+    if upper < .75:
+        return [(seconds, (low + high) / 2)]
+    if lower >= .75:
+        return [(seconds, (low + high) / 2)]
+    easy_fraction = (.75 - lower) / (upper - lower)
+    easy_seconds = seconds * easy_fraction
+    return [(easy_seconds, .749), (seconds - easy_seconds, .75)]
+
+
+def _canonical_tiz_samples(
+        segments: list[dict]) -> tuple[list[tuple[float, float]], float]:
+    """Return prescribed TIZ samples plus target-free seconds."""
+    samples: list[tuple[float, float]] = []
+    unknown_seconds = 0.0
+
+    def effort(target, key):
+        value = target.get(key)
+        if value is None:
+            return None
+        from canonical_training_model import normalize_target_effort
+        return normalize_target_effort(str(target.get('type') or ''), value)
+
+    for segment in segments or []:
+        seconds = float(segment.get('seconds') or 0)
+        target = segment.get('target') or {}
+        if segment.get('kind') == 'free_ride' or target.get('type') == 'free':
+            unknown_seconds += seconds
+            continue
+        if segment.get('kind') == 'intervals':
+            repeat = int(segment.get('repeat') or 1)
+            on = effort(target, 'on')
+            off = effort(target, 'off')
+            if on is not None:
+                samples.append((repeat * float(segment.get('on_seconds') or 0), on))
+            if off is not None:
+                samples.append((repeat * float(segment.get('off_seconds') or 0), off))
+            continue
+        low = effort(target, 'low')
+        high = effort(target, 'high')
+        value = effort(target, 'value')
+        if (segment.get('kind') in ('warmup', 'cooldown', 'ramp')
+                and low is not None and high is not None):
+            samples.extend(_split_linear_ramp(seconds, low, high))
+        else:
+            if low is not None and high is not None:
+                value = (low + high) / 2
+            elif value is None:
+                value = high if high is not None else low
+            if seconds and value is not None:
+                samples.append((seconds, value))
+    return samples, unknown_seconds
+
+
+def _legacy_tiz_samples(
+        segments: list[dict]) -> tuple[list[tuple[float, float]], float]:
+    """Project typed legacy ZWO structure into the same TIZ ruler."""
+    canonical = []
+    for segment in segments or []:
+        kind = segment.get('kind')
+        if kind == 'free_ride':
+            canonical.append({
+                'kind': kind, 'seconds': segment.get('seconds', 0),
+                'target': {'type': 'free'},
+            })
+        elif kind == 'intervals':
+            canonical.append({
+                'kind': kind, 'seconds': segment.get('seconds', 0),
+                'repeat': segment.get('repeat', 1),
+                'on_seconds': segment.get('on_seconds', 0),
+                'off_seconds': segment.get('off_seconds', 0),
+                'target': {
+                    'type': 'power_pct_ftp',
+                    'on': segment.get('on_power'),
+                    'off': segment.get('off_power'),
+                },
+            })
+        else:
+            canonical.append({
+                'kind': kind, 'seconds': segment.get('seconds', 0),
+                'target': {
+                    'type': 'power_pct_ftp',
+                    'low': segment.get('power_low'),
+                    'high': segment.get('power_high'),
+                    'value': segment.get('power_target'),
+                },
+            })
+    return _canonical_tiz_samples(canonical)
+
+
+def _canonical_intensity_factor(segments: list[dict]) -> float:
+    """Calculate session intensity from canonical segment time and targets.
+
+    Power keeps the established ZWO projection exactly. LTHR, HRmax, and RPE
+    are first normalized through their own authored scales, then the same
+    duration-weighted whole-session unit is applied. Raw HR percentages and
+    RPE values are never compared with power-IF cutoffs.
+    """
+    samples = _canonical_effort_samples(segments)
+
     total_seconds = sum(seconds for seconds, _ in samples)
     if total_seconds <= 0:
         return .5
     return (sum(seconds * value ** 4 for seconds, value in samples)
             / total_seconds) ** .25
+
+
+def _easy_hard_minutes(samples: list[tuple[float, float]]) -> tuple[float, float]:
+    """Account prescribed time in zone per AE-2.2, never per session count."""
+    easy_seconds = sum(seconds for seconds, effort in samples if effort < .75)
+    hard_seconds = sum(seconds for seconds, effort in samples if effort >= .75)
+    return easy_seconds / 60, hard_seconds / 60
+
+
+def _ae22_easy_share(hours_per_week: float) -> float:
+    """Ratified AE-2.2 low-intensity share, linearly joined at its anchors."""
+    hours = float(hours_per_week or 0)
+    if hours <= 7:
+        return .70
+    if hours <= 10:
+        return .70 + (hours - 7) * (.05 / 3)
+    if hours < 12:
+        return .75 + (hours - 10) * (.05 / 2)
+    return .80
 
 
 # ===========================================================================
@@ -146,7 +265,10 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
             stem = session.get('filename_stem') or (
                 f"W{int(session.get('week') or 0):02d}_{session.get('date') or 'undated'}_"
                 + str(session.get('title') or 'Session').replace(' ', '_'))
-            effort = _canonical_intensity_factor(session.get('segments') or [])
+            segments = session.get('segments') or []
+            tiz_samples, unknown_seconds = _canonical_tiz_samples(segments)
+            effort = _canonical_intensity_factor(segments)
+            easy_min, hard_min = _easy_hard_minutes(tiz_samples)
             parsed = {
                 'name': stem,
                 '_stem': stem,
@@ -159,6 +281,9 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
                 'intensity_factor': (round(effort, 2)
                                      if control_metric == 'power' else None),
                 'zone': _if_to_zone(effort),
+                'easy_duration_min': easy_min,
+                'hard_duration_min': hard_min,
+                'unknown_duration_min': unknown_seconds / 60,
                 'intervals_summary': session.get('target_summary') or '',
                 'target_summary': session.get('target_summary') or '',
             }
@@ -172,6 +297,13 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
             # for ratio-only ZWO metrics and is not serialized.
             parsed = parse_zwo(zwo, ftp if ftp is not None else 1.0)
             parsed['_stem'] = zwo.stem
+            structure = parse_zwo_structure(zwo)
+            tiz_samples, unknown_seconds = _legacy_tiz_samples(
+                structure.get('segments') or [])
+            easy_min, hard_min = _easy_hard_minutes(tiz_samples)
+            parsed['easy_duration_min'] = easy_min
+            parsed['hard_duration_min'] = hard_min
+            parsed['unknown_duration_min'] = unknown_seconds / 60
             workouts_by_prefix[zwo.stem] = parsed
 
     # Build week-by-week data
@@ -237,6 +369,7 @@ def build_preview_data(athlete_dir: Path) -> Dict[str, Any]:
             'sunday_short': week_info.get('sunday_short', ''),
             'b_race': b_race,
             'is_race_week': is_race_week,
+            'is_recovery': bool(week_info.get('is_recovery_week')),
             'days': days_data,
             'total_tss': week_tss,
             'total_hours': round(week_duration_sec / 3600, 1),
@@ -347,47 +480,67 @@ def _run_verification_checks(
     load_phases_present = any(
         w['phase'].startswith(('base', 'build', 'peak')) for w in weeks_data)
     if target_z1z2 and weeks_data and load_phases_present:
-        # Count duration-weighted SESSION intensity, not workout count or
-        # literal segment zones. Methodology targets describe the plan's
-        # hard/easy session emphasis ("hard days"), and were calibrated
-        # against each ZWO's normalized session IF. The canonical projection
-        # preserves that definition: derive one duration-weighted IF from all
-        # typed segments, classify the session, then add its actual duration.
-        # This still gives a 5h easy ride five times the weight of a 1h ride.
-        easy_min = 0.0
-        hard_min = 0.0
+        # AE-2.2 requires TIME-IN-ZONE accounting, never session count. Mixed
+        # workouts therefore contribute their warmup/recovery time to easy and
+        # their work intervals to hard. AE-2.3 compares that actual split with
+        # the phase's declared methodology target.
+        weekly_results = []
         for w in weeks_data:
-            if w['phase'] in ('taper', 'race'):
+            if (w['phase'] in ('taper', 'race') or w.get('is_recovery')
+                    or not w['phase'].startswith(('base', 'build', 'peak'))):
                 continue
+            easy_min = 0.0
+            hard_min = 0.0
+            unknown_min = 0.0
             for d in w['days']:
                 wo = d.get('workout')
                 if wo and wo.get('zone') not in ('REST', None):
-                    dur = wo.get('duration_min', 0) or 0
-                    if wo['zone'] in ('Z1', 'Z2'):
-                        easy_min += dur
-                    else:
-                        hard_min += dur
-        total_min = easy_min + hard_min
-        easy_pct = (easy_min / total_min * 100) if total_min > 0 else 0
-        # Methodology distributions (e.g. g_spot 45/30/25) describe session
-        # emphasis. Real plans of every methodology run >=70% easy session
-        # time — floor the target so threshold-flavored methodologies don't
-        # false-FAIL well-built plans.
-        target_pct = max(target_z1z2 * 100, 70.0)
-        diff = abs(easy_pct - target_pct)
-        # PASS: delta < 10%, WARN: 10-15%, FAIL: > 15%
-        if diff < 10:
-            status = 'PASS'
-        elif diff <= 15:
-            status = 'WARN'
+                    easy_min += wo.get('easy_duration_min', 0) or 0
+                    hard_min += wo.get('hard_duration_min', 0) or 0
+                    unknown_min += wo.get('unknown_duration_min', 0) or 0
+            known_min = easy_min + hard_min
+            easy_pct = (easy_min / known_min * 100) if known_min > 0 else 0
+            # AE-2.2 supersedes the legacy fixed methodology ratio: the house
+            # low-intensity share scales from ~70% at 7h to 75% at 10h and 80%
+            # at 12-15h. Methodology shapes where the hard budget lands.
+            target_pct = _ae22_easy_share(target_hours) * 100
+            diff = abs(easy_pct - target_pct) if known_min > 0 else 100
+            if diff < 10:
+                status = 'PASS'
+            elif diff <= 15:
+                status = 'WARN'
+            else:
+                status = 'FAIL'
+            if unknown_min > 0 and status == 'PASS':
+                status = 'WARN'
+            weekly_results.append({
+                'week': w['week'], 'status': status, 'diff': diff,
+                'easy_pct': easy_pct, 'easy_min': easy_min,
+                'known_min': known_min, 'unknown_min': unknown_min,
+            })
+        rank = {'PASS': 0, 'WARN': 1, 'FAIL': 2}
+        worst = max(
+            weekly_results,
+            key=lambda item: (rank[item['status']], item['diff']),
+            default=None,
+        )
+        status = worst['status'] if worst else 'WARN'
+        target_pct = _ae22_easy_share(target_hours) * 100
+        flagged = [f"W{item['week']:02d} {item['status']}"
+                   for item in weekly_results if item['status'] != 'PASS']
+        if worst:
+            worst_detail = (
+                f"Worst: W{worst['week']:02d} {worst['easy_pct']:.0f}% easy "
+                f"({worst['easy_min']:.0f}/{worst['known_min']:.0f} known min; "
+                f"{worst['unknown_min']:.0f} unknown) | Delta: {worst['diff']:.0f}%")
         else:
-            status = 'FAIL'
+            worst_detail = 'No prescribed load-week TIZ available'
         checks.append({
             'name': 'Zone Distribution',
             'status': status,
-            'detail': (f"Target: {target_pct:.0f}% easy | Actual: {easy_pct:.0f}% easy session time "
-                       f"({easy_min:.0f}/{total_min:.0f} min) | Delta: {diff:.0f}% | "
-                       f"Thresholds: PASS <10%, WARN 10-15%, FAIL >15%"),
+            'detail': (f"Target: {target_pct:.0f}% easy per load week | "
+                       f"{worst_detail} | Flagged: {', '.join(flagged) or 'none'} | "
+                       f"Thresholds: PASS <10%, WARN 10-15% or unknown time, FAIL >15%"),
         })
     elif target_z1z2 and weeks_data:
         checks.append({

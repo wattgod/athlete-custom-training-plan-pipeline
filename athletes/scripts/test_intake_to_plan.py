@@ -17,6 +17,7 @@ Covers:
 
 import sys
 import copy
+from types import SimpleNamespace
 import pytest
 from pathlib import Path
 
@@ -2192,6 +2193,76 @@ class TestCoachingBrief:
         # ... and NO banner on a clean build
         clean = generate_coaching_brief(nicholas_profile, {}, athlete_dir=tmp_path.parent)
         assert 'NEEDS REVIEW BEFORE SENDING' not in clean
+
+    def test_preview_failure_materializes_and_clears_review_state(self, tmp_path):
+        from intake_to_plan import (
+            materialize_preview_review, preview_review_issues)
+
+        review = tmp_path / 'NEEDS_REVIEW.txt'
+        review.write_text('failed R02: VO2max gap\n')
+        assert materialize_preview_review([{
+            'name': 'Zone Distribution',
+            'status': 'FAIL',
+            'detail': 'W01 is outside the ratified TIZ band',
+        }], tmp_path)
+        text = review.read_text()
+        assert 'failed R02' in text
+        assert 'Zone Distribution' in text
+        assert text.count('BEGIN PREVIEW CHECK FAILURES') == 1
+        issue = preview_review_issues([{
+            'name': 'Zone Distribution', 'status': 'FAIL',
+            'detail': 'outside band',
+        }])[0]
+        assert issue['id'] == 'PREVIEW_ZONE_DISTRIBUTION'
+        assert issue['source'] == 'plan_preview'
+
+        assert materialize_preview_review([{
+            'name': 'Zone Distribution',
+            'status': 'PASS',
+            'detail': 'within band',
+        }], tmp_path) is False
+        assert review.read_text() == 'failed R02: VO2max gap\n'
+
+    def test_preview_volume_warning_is_not_send_worthy(self, tmp_path):
+        from intake_to_plan import (
+            materialize_preview_review, preview_review_issues)
+
+        checks = [{
+            'name': 'Weekly Volume', 'status': 'WARN',
+            'detail': '79% of target',
+        }]
+        assert materialize_preview_review(checks, tmp_path)
+        assert '79% of target' in (tmp_path / 'NEEDS_REVIEW.txt').read_text()
+        assert [item['id'] for item in preview_review_issues(checks)] == [
+            'PREVIEW_WEEKLY_VOLUME']
+
+    def test_preview_issues_sync_into_fulfillment_projection(
+            self, monkeypatch, tmp_path):
+        from intake_to_plan import sync_preview_review_state
+
+        calls = []
+        monkeypatch.setattr(
+            intake_to_plan, 'load_fulfillment_state',
+            lambda path: {'generation_revision': 7})
+        monkeypatch.setattr(
+            intake_to_plan, 'merge_generation_blockers',
+            lambda path, revision, source, issues: calls.append(
+                ('merge', path, revision, source, issues)))
+        monkeypatch.setitem(sys.modules, 'plan_ir', SimpleNamespace(
+            build_plan_ir=lambda athlete_id: calls.append(('ir', athlete_id)),
+            build_tp_manifest=lambda athlete_id: calls.append(
+                ('manifest', athlete_id)),
+        ))
+        issue = {'id': 'PREVIEW_ZONE_DISTRIBUTION'}
+        state_path = tmp_path / 'fulfillment_status.json'
+
+        sync_preview_review_state(state_path, 'athlete-1', [issue])
+
+        assert calls == [
+            ('merge', state_path, 7, 'plan_preview', [issue]),
+            ('ir', 'athlete-1'),
+            ('manifest', 'athlete-1'),
+        ]
 
     def test_brief_has_all_sections(self, nicholas_profile, nicholas_athlete_dir):
         """Brief must contain all 10 numbered sections."""

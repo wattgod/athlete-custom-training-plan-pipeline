@@ -5,6 +5,7 @@
     {"id": "HARD_MINUTES_BELOW_FLOOR_W01", "waivable": true},
     {"id": "HARD_MINUTES_BELOW_FLOOR_W02", "waivable": true},
     {"id": "HARD_MINUTES_BELOW_FLOOR_W03", "waivable": true},
+    {"id": "PREVIEW_ZONE_DISTRIBUTION", "waivable": true},
     {"id": "RACE_STALE", "waivable": true},
     {"id": "SESSION_PREDATES_GENERATION", "waivable": true},
     {"id": "SHORT_SESSION_BELOW_FLOOR", "waivable": true}

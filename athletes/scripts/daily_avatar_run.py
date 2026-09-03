@@ -64,6 +64,8 @@ def _run_pipeline(intake, delivery_root):
 def _contract(athlete_dir, delivery_dir):
     """Deterministic send-worthy checks. Returns (ok, failures[])."""
     failures = []
+    if (athlete_dir / "NEEDS_REVIEW.txt").exists():
+        failures.append("needs review: compliance gate flagged generated plan")
     pdf = delivery_dir / "training_guide.pdf"
     if not (delivery_dir / "training_guide.html").exists():
         failures.append("guide HTML missing")

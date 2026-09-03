@@ -33,6 +33,24 @@ from workout_selector import (
 )
 
 
+def test_required_config_loader_rejects_empty_or_non_mapping_yaml(
+        tmp_path, monkeypatch):
+    import workout_selector
+
+    monkeypatch.setattr(workout_selector, '_CONFIG_DIR', tmp_path)
+    workout_selector._load_config.cache_clear()
+    try:
+        (tmp_path / 'empty.yaml').write_text('')
+        with pytest.raises(RuntimeError, match='empty or unavailable'):
+            workout_selector._load_config('empty.yaml')
+
+        (tmp_path / 'list.yaml').write_text('- not\n- a\n- mapping\n')
+        with pytest.raises(RuntimeError, match='must contain a YAML mapping'):
+            workout_selector._load_config('list.yaml')
+    finally:
+        workout_selector._load_config.cache_clear()
+
+
 def test_coached_focus_bias_is_specific_and_pool_safe():
     weights = coached_focus_category_weights(
         'cyclocross starts, repeatability, and handling')

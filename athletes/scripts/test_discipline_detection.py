@@ -158,6 +158,11 @@ class TestRoadDiscipline:
                      "Chequamegon MTB"):
             assert derive_discipline({"target_race": {"name": name}}) == "mtb", name
 
+    def test_mtb_snapshot_race_stays_mtb_through_intake_path(self):
+        profile = _profile_for_race("Iceman Cometh")
+        assert profile["target_race"].get("discipline") == "mtb"
+        assert derive_discipline(profile) == "mtb"
+
     def test_true_grit_gravel_not_misread_as_mtb(self):
         # 'true grit' is deliberately NOT an mtb keyword — it names a GRAVEL
         # race. Guard against a future regression that adds it.

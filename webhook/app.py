@@ -3021,7 +3021,6 @@ CUSTOMER_DELIVERABLES = [
     'training_guide.html',
     'training_guide.pdf',
     'dashboard.html',
-    'plan_preview.html',
     'fueling.yaml',
 ]
 # Review-bundle files are human-readable and non-executable by construction.

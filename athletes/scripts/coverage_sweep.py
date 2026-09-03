@@ -164,7 +164,10 @@ def _build_one(persona_key, race, idx, base_day):
 
 def _normalize_failure(f):
     """Collapse a failure string to a clustering key (drop race-specific
-    detail so 'preview FAIL: Off Days' buckets across races)."""
+    detail while preserving the actual failed preview check)."""
+    if f.lower().startswith("preview fail:"):
+        check_name = f.split(":", 1)[1].strip().lower()
+        return f"preview fail: {check_name}"[:60]
     f = f.split(":")[0].strip().lower() if ":" in f else f.strip().lower()
     return f[:60]
 

@@ -17,6 +17,8 @@ from generate_plan_preview import (
     _canonical_intensity_factor,
     _if_to_zone,
     _run_verification_checks,
+    _canonical_tiz_samples,
+    _easy_hard_minutes,
 )
 from nate_workout_generator import (
     generate_nate_zwo,
@@ -179,6 +181,23 @@ class TestZoneClassification:
         assert _canonical_intensity_factor(short) == pytest.approx(.55)
         assert _canonical_intensity_factor(long) == pytest.approx(.65)
 
+    def test_tiz_splits_linear_ramp_at_z2_ceiling(self):
+        samples, unknown = _canonical_tiz_samples([{
+            'kind': 'ramp', 'seconds': 600,
+            'target': {'type': 'power_pct_ftp', 'low': .5, 'high': 1.0},
+        }])
+        easy, hard = _easy_hard_minutes(samples)
+        assert easy == pytest.approx(5)
+        assert hard == pytest.approx(5)
+        assert unknown == 0
+
+    def test_tiz_excludes_target_free_time(self):
+        samples, unknown = _canonical_tiz_samples([{
+            'kind': 'free_ride', 'seconds': 3600, 'target': {'type': 'free'},
+        }])
+        assert samples == []
+        assert unknown == 3600
+
 
 # ===========================================================================
 # Preview Data Assembly
@@ -269,14 +288,16 @@ class TestVerificationChecks:
         check = next(c for c in nicholas_data['checks'] if c['name'] == 'FTP Tests')
         assert check['status'] == 'PASS'
 
-    def test_no_unexpected_failing_checks(self, nicholas_data):
-        """No checks should FAIL — progressive long rides raised volume to WARN range."""
+    def test_only_weekly_zone_distribution_is_an_expected_failure(
+            self, nicholas_data):
+        """Literal per-week TIZ exposes Nicholas W02 instead of averaging it away."""
         fails = [c for c in nicholas_data['checks'] if c['status'] == 'FAIL']
-        fail_names = [c['name'] for c in fails]
-        assert len(fail_names) == 0, f"Unexpected failing checks: {fail_names}"
+        assert [c['name'] for c in fails] == ['Zone Distribution']
+        assert 'W02 92% easy' in fails[0]['detail']
+        assert 'W02 FAIL' in fails[0]['detail']
 
-    def test_zone_distribution_uses_duration_weighted_session_intensity(self):
-        """Warmups/recoveries do not change a hard session into easy time."""
+    def test_zone_distribution_uses_time_in_zone(self):
+        """AE-2.2 accounts mixed workouts by segment time, not session IF."""
         def day(zone, minutes):
             return {
                 'day': 'Tue', 'date': '', 'is_off': False, 'is_race': False,
@@ -286,8 +307,6 @@ class TestVerificationChecks:
                     'zone': zone, 'duration_min': minutes,
                     'duration_sec': minutes * 60, 'tss': 0,
                     'intensity_factor': .65 if zone == 'Z2' else .85,
-                    # These obsolete fields model the rejected segment-literal
-                    # accounting: it would report 97% easy and FAIL.
                     'easy_duration_min': minutes if zone == 'Z2' else 50,
                     'hard_duration_min': 0 if zone == 'Z2' else 10,
                 },
@@ -313,8 +332,53 @@ class TestVerificationChecks:
             weeks_data=weeks,
         )
         zone = next(c for c in checks if c['name'] == 'Zone Distribution')
-        assert zone['status'] == 'WARN'
-        assert '80% easy session time (240/300 min)' in zone['detail']
+        assert zone['status'] == 'FAIL'
+        assert 'W01 97% easy (290/300 known min; 0 unknown)' in zone['detail']
+
+    def test_zone_distribution_fails_each_bad_week_not_aggregate_average(self):
+        def week(number, easy, hard):
+            return {
+                'week': number, 'phase': 'build', 'is_recovery': False,
+                'days': [{
+                    'day': 'Tue', 'date': '', 'is_off': False,
+                    'is_race': False, 'is_b_race': False, 'is_b_opener': False,
+                    'workout': {
+                        'name': 'fixture', '_stem': 'fixture', 'zone': 'Z2',
+                        'duration_min': easy + hard,
+                        'duration_sec': (easy + hard) * 60, 'tss': 0,
+                        'easy_duration_min': easy, 'hard_duration_min': hard,
+                        'unknown_duration_min': 0,
+                    },
+                }],
+                'total_tss': 0, 'total_hours': (easy + hard) / 60,
+                'zone_counts': {}, 'b_race': {}, 'is_race_week': False,
+            }
+
+        checks = _run_verification_checks(
+            profile={
+                'weekly_availability': {'cycling_hours_target': 7},
+                'schedule_constraints': {
+                    'preferred_off_days': [], 'preferred_long_day': ''},
+                'b_events': [], 'target_race': {},
+            },
+            derived={},
+            methodology={'configuration': {
+                'intensity_distribution': {'z1_z2': .70}}},
+            plan_dates={'weeks': []}, weekly_structure={'days': {}},
+            weeks_data=[week(1, 100, 0), week(2, 40, 60)],
+        )
+        zone = next(c for c in checks if c['name'] == 'Zone Distribution')
+        assert zone['status'] == 'FAIL'
+        assert 'W01 FAIL' in zone['detail']
+        assert 'W02 FAIL' in zone['detail']
+
+    def test_ae22_zone_target_scales_with_weekly_volume(self):
+        from generate_plan_preview import _ae22_easy_share
+
+        assert _ae22_easy_share(7) == .70
+        assert _ae22_easy_share(10) == .75
+        assert _ae22_easy_share(12) == .80
+        assert _ae22_easy_share(15) == .80
 
     def test_volume_passes_with_scaling(self, nicholas_data):
         """Duration scaling brings volume to ~110% of target (PASS range: 80-120%)."""

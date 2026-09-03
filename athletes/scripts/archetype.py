@@ -221,3 +221,21 @@ def derive_discipline(profile: dict) -> str:
     # Roadie Labs order with an unknown race should still be road.
     hint = (profile.get('discipline_default') or '').strip().lower()
     return hint if hint in ('gravel', 'road', 'mtb') else 'gravel'
+
+
+def resolve_matched_race_discipline(snapshot_discipline: str, race_name: str) -> str:
+    """Resolve a matched catalog race to the discipline the plan should use.
+
+    The historical race snapshot uses ``gravel`` as an off-road storage bucket,
+    including MTB races and a small number of road events. Treating that bucket
+    as an explicit athlete discipline prevents the stronger name classifier
+    from ever running. Refine only that overloaded bucket; true road/MTB values
+    remain authoritative.
+    """
+    stored = str(snapshot_discipline or '').strip().lower()
+    if stored in ('road', 'mtb'):
+        return stored
+    inferred = derive_discipline({'target_race': {'name': race_name or ''}})
+    if stored == 'gravel' and inferred in ('road', 'mtb'):
+        return inferred
+    return 'gravel' if stored == 'gravel' else inferred
