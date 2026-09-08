@@ -16,15 +16,17 @@ specs/plan-delivery-on-endure/design.md (§3, ratified Jul 6 2026):
       "intake": {raw questionnaire dict}
     }
     200: {"order_id","athlete_id","plan_id","block_id","invitation_id",
+          "invite_url",
           "status": "delivered"|"already_delivered"} | 401 | 400 | 5xx
 
 Design rules (order-killer-prevention):
 - The feature is entirely OFF unless BOTH ENDURE_DELIVERY_URL and
   ENDURE_DELIVERY_SECRET are set (kill switch: unset the URL on Railway).
 - Delivery NEVER fails the order. Every function here either returns a
-  result dict or raises EndureMappingError, which the caller (app.py)
-  converts to a failed-delivery record + TrainingPeaks fallback. The full
-  ZWO package is always generated regardless of target.
+  result dict or raises EndureMappingError. A failed Endure attempt stays
+  loud to the coach and never silently changes delivery platforms; any
+  TrainingPeaks fallback requires an explicit coach decision. The full ZWO
+  package is always generated regardless of target.
 - Default target stays "trainingpeaks" until Matti manually flips
   DELIVERY_TARGET_DEFAULT=endure (Decision 2: after 5 consecutive
   successful Endure deliveries). The streak counter here just informs.
@@ -38,6 +40,7 @@ import os
 import threading
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
 
@@ -60,7 +63,7 @@ class EndureMappingError(Exception):
     """Profile could not be mapped onto the delivery contract.
 
     Raised for missing REQUIRED contract fields (email, hours_per_week).
-    Callers treat it as a failed delivery → TrainingPeaks fallback.
+    Callers surface it as a failed Endure handoff for coach resolution.
     """
 
 
@@ -180,8 +183,8 @@ def build_delivery_payload(profile: dict, order_id: str,
         athlete['long_ride_day'] = long_ride_day
     limiters = (racing.get('obstacles') or '').strip()
     if limiters:
-        athlete['limiters'] = limiters
-    constraints = _build_constraints_text(profile)
+        athlete['limiters'] = [limiters]
+    constraints = _build_constraints(profile)
     if constraints:
         athlete['constraints'] = constraints
 
@@ -205,8 +208,8 @@ def build_delivery_payload(profile: dict, order_id: str,
     }
 
 
-def _build_constraints_text(profile: dict) -> str:
-    """Coach-visible constraint summary: injuries, medical, volume warning."""
+def _build_constraints(profile: dict) -> list[str]:
+    """Coach-visible constraints in the Endure contract's string-array shape."""
     parts = []
     injuries = (profile.get('injury_history') or {}).get('current_injuries') or []
     for inj in injuries:
@@ -223,7 +226,7 @@ def _build_constraints_text(profile: dict) -> str:
     travel = profile.get('travel_dates') or []
     if travel:
         parts.append(f'Travel dates: {travel}')
-    return '; '.join(parts)
+    return parts
 
 
 def _map_races(profile: dict) -> list:
@@ -269,7 +272,8 @@ def deliver_purchased_plan(payload: dict) -> dict:
 
         {'ok': bool,
          'status': 'delivered' | 'already_delivered' | 'failed',
-         'athlete_id' / 'plan_id' / 'block_id' / 'invitation_id': str (on ok),
+         'athlete_id' / 'plan_id' / 'block_id': str (on ok),
+         'invitation_id' / 'invite_url': str or absent (on ok),
          'review_url': str (on ok),
          'error': str | None,
          'attempts': int,
@@ -304,10 +308,12 @@ def deliver_purchased_plan(payload: dict) -> dict:
             try:
                 body = resp.json()
             except ValueError:
-                body = {}
-            status = body.get('status', 'delivered')
-            if status not in ('delivered', 'already_delivered'):
-                status = 'delivered'
+                body = None
+            contract_error = _delivery_response_error(body, payload)
+            if contract_error:
+                return {'ok': False, 'status': 'failed', 'attempts': attempt,
+                        'error': f'invalid Endure response: {contract_error}'}
+            status = body['status']
             record = {
                 'ok': True,
                 'status': status,
@@ -315,7 +321,8 @@ def deliver_purchased_plan(payload: dict) -> dict:
                 'error': None,
                 'delivered_at': datetime.now().isoformat(),
             }
-            for key in ('athlete_id', 'plan_id', 'block_id', 'invitation_id'):
+            for key in ('athlete_id', 'plan_id', 'block_id', 'invitation_id',
+                        'invite_url'):
                 if body.get(key):
                     record[key] = body[key]
             if record.get('athlete_id'):
@@ -340,6 +347,39 @@ def deliver_purchased_plan(payload: dict) -> dict:
 
     return {'ok': False, 'status': 'failed', 'attempts': 2,
             'error': last_error}
+
+
+def _delivery_response_error(body: object, payload: dict) -> str | None:
+    """Validate the authenticated response before treating a remote write as real."""
+    if not isinstance(body, dict):
+        return 'body is not an object'
+    if body.get('status') not in ('delivered', 'already_delivered'):
+        return 'status is invalid'
+    if body.get('order_id') != payload.get('order_id'):
+        return 'order_id does not match the request'
+    for field in ('athlete_id', 'plan_id', 'block_id'):
+        if not isinstance(body.get(field), str) or not body[field].strip():
+            return f'{field} is missing'
+
+    invitation_id = body.get('invitation_id')
+    invite_url = body.get('invite_url')
+    if invitation_id is None:
+        if invite_url is not None:
+            return 'invite_url exists without invitation_id'
+        return None
+    if not isinstance(invitation_id, str) or not invitation_id.strip():
+        return 'invitation_id is invalid'
+    if not isinstance(invite_url, str) or not invite_url.strip():
+        return 'invite_url is missing for the invitation'
+
+    expected = urlsplit(app_url())
+    actual = urlsplit(invite_url)
+    if (actual.scheme != expected.scheme or actual.netloc != expected.netloc
+            or not actual.path.startswith('/invite/')
+            or actual.path == '/invite/' or actual.query or actual.fragment
+            or actual.username or actual.password):
+        return 'invite_url is outside the configured Endure app'
+    return None
 
 
 def coach_review_url(endure_athlete_id: str) -> str:
