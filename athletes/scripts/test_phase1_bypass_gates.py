@@ -383,7 +383,9 @@ def test_authenticated_endure_apply_and_confirm_attack_is_refused(
             '/api/confirm/test_endure_gate',
             headers={'X-Cron-Secret': 'ops-secret'})
     assert confirmed.status_code == 409
-    assert 'D4/R9 condition 11' in confirmed.get_json()['error']
+    assert confirmed.get_json()['error'] == (
+        'Stage the approved plan in Endure first'
+    )
     send.assert_not_called()
     assert load_fulfillment_state(state_path)['status'] == APPROVED
 
