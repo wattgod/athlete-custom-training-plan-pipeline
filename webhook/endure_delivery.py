@@ -13,11 +13,13 @@ specs/plan-delivery-on-endure/design.md (§3, ratified Jul 6 2026):
       "races": [{"name", "date", "priority",
                  "discipline"?, "distance_mi"?, "elevation_ft"?}],
       "plan": {"name", "start_date"},
+      "release": {"generation_revision", "release_manifest_digest",
+                  "model_seal"},
       "intake": {raw questionnaire dict}
     }
     200: {"order_id","athlete_id","plan_id","block_id","invitation_id",
-          "invite_url",
-          "status": "delivered"|"already_delivered"} | 401 | 400 | 5xx
+          "invite_url", "recipient_email_sha256", "release",
+          "status": "ready_for_review"|"already_ready_for_review"} | 401 | 400 | 5xx
 
 Design rules (order-killer-prevention):
 - The feature is entirely OFF unless BOTH ENDURE_DELIVERY_URL and
@@ -35,12 +37,13 @@ Zero Flask dependencies so tests can import it standalone.
 """
 
 import json
+import hashlib
 import logging
 import os
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import requests
 
@@ -65,6 +68,15 @@ class EndureMappingError(Exception):
     Raised for missing REQUIRED contract fields (email, hours_per_week).
     Callers surface it as a failed Endure handoff for coach resolution.
     """
+
+
+def _monday_on_or_after(value: str) -> str:
+    try:
+        parsed = datetime.strptime(value, '%Y-%m-%d').date()
+    except (TypeError, ValueError) as exc:
+        raise EndureMappingError(
+            'plan_start.preferred_start must be YYYY-MM-DD') from exc
+    return (parsed + timedelta(days=(7 - parsed.weekday()) % 7)).isoformat()
 
 
 # =============================================================================
@@ -131,7 +143,7 @@ def resolve_delivery_target(metadata: dict = None) -> str:
 # =============================================================================
 
 def build_delivery_payload(profile: dict, order_id: str,
-                           intake: dict = None) -> dict:
+                           intake: dict = None, release: dict = None) -> dict:
     """Map a pipeline profile.yaml dict onto the pinned contract body.
 
     Raises EndureMappingError when a REQUIRED contract field is missing
@@ -140,6 +152,18 @@ def build_delivery_payload(profile: dict, order_id: str,
     """
     if not isinstance(profile, dict) or not profile:
         raise EndureMappingError('profile is empty')
+    if not isinstance(release, dict):
+        raise EndureMappingError('approved release binding is missing')
+    generation_revision = release.get('generation_revision')
+    release_manifest_digest = str(
+        release.get('release_manifest_digest') or '').strip()
+    model_seal = str(release.get('model_seal') or '').strip()
+    if (not isinstance(generation_revision, int)
+            or isinstance(generation_revision, bool)
+            or generation_revision < 1
+            or not _is_sha256(release_manifest_digest)
+            or not _is_sha256(model_seal)):
+        raise EndureMappingError('approved release binding is invalid')
 
     fitness = profile.get('fitness_markers') or {}
     availability = profile.get('weekly_availability') or {}
@@ -190,7 +214,8 @@ def build_delivery_payload(profile: dict, order_id: str,
 
     races = _map_races(profile)
     target = profile.get('target_race') or {}
-    plan_start = (profile.get('plan_start') or {}).get('preferred_start', '')
+    plan_start = _monday_on_or_after(
+        (profile.get('plan_start') or {}).get('preferred_start', ''))
 
     race_name = target.get('name', '')
     plan_name = (f'Custom Training Plan — {race_name}' if race_name
@@ -204,8 +229,22 @@ def build_delivery_payload(profile: dict, order_id: str,
             'name': plan_name,
             'start_date': plan_start,
         },
+        'release': {
+            'generation_revision': generation_revision,
+            'release_manifest_digest': release_manifest_digest,
+            'model_seal': model_seal,
+        },
         'intake': intake or {},
     }
+
+
+def _is_sha256(value: str) -> bool:
+    return (len(value) == 64
+            and all(char in '0123456789abcdef' for char in value))
+
+
+def normalized_email_sha256(email: str) -> str:
+    return hashlib.sha256(email.strip().lower().encode('utf-8')).hexdigest()
 
 
 def _build_constraints(profile: dict) -> list[str]:
@@ -271,13 +310,13 @@ def deliver_purchased_plan(payload: dict) -> dict:
     """POST the payload to Endure. Returns a delivery record dict:
 
         {'ok': bool,
-         'status': 'delivered' | 'already_delivered' | 'failed',
+         'status': 'ready_for_review' | 'already_ready_for_review' | 'failed',
          'athlete_id' / 'plan_id' / 'block_id': str (on ok),
          'invitation_id' / 'invite_url': str or absent (on ok),
          'review_url': str (on ok),
          'error': str | None,
          'attempts': int,
-         'delivered_at': iso timestamp (on ok)}
+         'prepared_at': iso timestamp (on ok)}
 
     Retries ONCE on transport errors and 5xx. 4xx (bad payload / bad
     secret) is not retryable — the retry would fail identically.
@@ -316,17 +355,20 @@ def deliver_purchased_plan(payload: dict) -> dict:
             status = body['status']
             record = {
                 'ok': True,
+                'order_id': body['order_id'],
                 'status': status,
                 'attempts': attempt,
                 'error': None,
-                'delivered_at': datetime.now().isoformat(),
+                'prepared_at': datetime.now().isoformat(),
             }
             for key in ('athlete_id', 'plan_id', 'block_id', 'invitation_id',
-                        'invite_url'):
-                if body.get(key):
+                        'invite_url', 'linked_account', 'invitation_accepted',
+                        'recipient_email_sha256', 'release'):
+                if key in body:
                     record[key] = body[key]
             if record.get('athlete_id'):
-                record['review_url'] = coach_review_url(record['athlete_id'])
+                record['review_url'] = coach_review_url(
+                    record['athlete_id'], record['plan_id'], record['block_id'])
             return record
 
         if 500 <= resp.status_code < 600:
@@ -349,11 +391,148 @@ def deliver_purchased_plan(payload: dict) -> dict:
             'error': last_error}
 
 
+def verify_purchased_plan_ready(order_id: str, prepared: dict) -> dict:
+    """Require Endure's exact post-approval calendar readback before email.
+
+    The preparation receipt is the identity envelope. Endure must return the
+    same athlete, plan, block, and invitation capability with
+    ``ready_for_athlete`` plus a verified one-for-one calendar inventory.
+    Transport failures retry once; every identity or contract mismatch fails
+    closed without retrying.
+    """
+    if not is_enabled():
+        return {'ok': False, 'status': 'failed', 'attempts': 0,
+                'error': 'Endure delivery not configured '
+                         '(ENDURE_DELIVERY_URL / ENDURE_DELIVERY_SECRET unset)'}
+    if not isinstance(prepared, dict):
+        return {'ok': False, 'status': 'failed', 'attempts': 0,
+                'error': 'prepared Endure receipt is missing'}
+
+    url = delivery_url() + DELIVERY_PATH
+    headers = {'X-Delivery-Secret': delivery_secret()}
+    timeout = request_timeout()
+    last_error = 'unknown error'
+
+    for attempt in (1, 2):
+        try:
+            params = {
+                'order_id': order_id,
+                'athlete_id': prepared.get('athlete_id'),
+                'plan_id': prepared.get('plan_id'),
+                'block_id': prepared.get('block_id'),
+                'recipient_email_sha256': prepared.get('recipient_email_sha256'),
+                'generation_revision': (prepared.get('release') or {}).get(
+                    'generation_revision'),
+                'release_manifest_digest': (prepared.get('release') or {}).get(
+                    'release_manifest_digest'),
+                'model_seal': (prepared.get('release') or {}).get('model_seal'),
+                'linked_account': ('true' if prepared.get('linked_account') is True
+                                   else 'false'),
+                'invitation_accepted': (
+                    'true' if prepared.get('invitation_accepted') is True
+                    else 'false'),
+            }
+            if prepared.get('invitation_accepted') is not True:
+                params['invitation_id'] = prepared['invitation_id']
+            resp = requests.get(url, params=params,
+                                headers=headers, timeout=timeout)
+        except requests.RequestException as exc:
+            last_error = f'request failed: {type(exc).__name__}'
+            logger.warning(
+                f"Endure readiness attempt {attempt} failed: {last_error}")
+            continue
+
+        if resp.status_code == 200:
+            try:
+                body = resp.json()
+            except ValueError:
+                body = None
+            contract_error = _readiness_response_error(
+                body, order_id, prepared)
+            if contract_error:
+                return {'ok': False, 'status': 'failed', 'attempts': attempt,
+                        'error': f'invalid Endure readiness: {contract_error}'}
+            return {
+                **body,
+                'ok': True,
+                'attempts': attempt,
+                'error': None,
+                'checked_at': datetime.now().isoformat(),
+            }
+
+        if 500 <= resp.status_code < 600:
+            last_error = f'HTTP {resp.status_code}'
+            logger.warning(
+                f"Endure readiness attempt {attempt}: {last_error}")
+            continue
+
+        detail = ''
+        try:
+            error_body = resp.json()
+            detail = str(error_body.get('error', ''))[:200]
+        except ValueError:
+            pass
+        return {'ok': False, 'status': 'failed', 'attempts': attempt,
+                'error': f'HTTP {resp.status_code}'
+                         + (f': {detail}' if detail else '')}
+
+    return {'ok': False, 'status': 'failed', 'attempts': 2,
+            'error': last_error}
+
+
+def _readiness_response_error(body: object, order_id: str,
+                              prepared: dict) -> str | None:
+    if not isinstance(body, dict):
+        return 'body is not an object'
+    if body.get('status') != 'ready_for_athlete':
+        return 'status is not ready_for_athlete'
+    if body.get('order_id') != order_id:
+        return 'order_id does not match the request'
+    for field in ('athlete_id', 'plan_id', 'block_id',
+                  'recipient_email_sha256', 'release'):
+        if body.get(field) != prepared.get(field):
+            return f'{field} does not match the preparation receipt'
+    linked_account = body.get('linked_account')
+    if not isinstance(linked_account, bool):
+        return 'linked_account is missing or invalid'
+    if prepared.get('linked_account') is True and not linked_account:
+        return 'linked account regressed to unlinked'
+    invitation_accepted = body.get('invitation_accepted')
+    if not isinstance(invitation_accepted, bool):
+        return 'invitation_accepted is missing or invalid'
+    if invitation_accepted and not linked_account:
+        return 'accepted invitation is not linked to an Endure account'
+    if prepared.get('invitation_accepted') is True and not invitation_accepted:
+        return 'accepted invitation regressed to pending'
+    if invitation_accepted:
+        if body.get('invitation_id') is not None or body.get('invite_url') is not None:
+            return 'accepted invitation returned an invitation capability'
+    else:
+        for field in ('invitation_id', 'invite_url'):
+            if body.get(field) != prepared.get(field):
+                return f'{field} does not match the preparation receipt'
+    verification = body.get('calendar_verification')
+    if not isinstance(verification, dict):
+        return 'calendar_verification is missing'
+    if verification.get('status') != 'verified':
+        return 'calendar_verification is not verified'
+    expected = verification.get('expectedCount')
+    actual = verification.get('actualCount')
+    if (not isinstance(expected, int) or isinstance(expected, bool)
+            or not isinstance(actual, int) or isinstance(actual, bool)
+            or expected <= 0 or actual != expected):
+        return 'calendar verification counts do not match'
+    if not invitation_accepted:
+        return _delivery_capability_error(body)
+    return None
+
+
 def _delivery_response_error(body: object, payload: dict) -> str | None:
     """Validate the authenticated response before treating a remote write as real."""
     if not isinstance(body, dict):
         return 'body is not an object'
-    if body.get('status') not in ('delivered', 'already_delivered'):
+    if body.get('status') not in ('ready_for_review',
+                                  'already_ready_for_review'):
         return 'status is invalid'
     if body.get('order_id') != payload.get('order_id'):
         return 'order_id does not match the request'
@@ -361,6 +540,30 @@ def _delivery_response_error(body: object, payload: dict) -> str | None:
         if not isinstance(body.get(field), str) or not body[field].strip():
             return f'{field} is missing'
 
+    expected_email_sha = normalized_email_sha256(
+        str((payload.get('athlete') or {}).get('email') or ''))
+    if body.get('recipient_email_sha256') != expected_email_sha:
+        return 'recipient_email_sha256 does not match the request'
+    if body.get('release') != payload.get('release'):
+        return 'release does not match the request'
+    linked_account = body.get('linked_account')
+    if not isinstance(linked_account, bool):
+        return 'linked_account is missing or invalid'
+    invitation_accepted = body.get('invitation_accepted')
+    if not isinstance(invitation_accepted, bool):
+        return 'invitation_accepted is missing or invalid'
+    if invitation_accepted and not linked_account:
+        return 'accepted invitation is not linked to an Endure account'
+    if invitation_accepted:
+        if body.get('invitation_id') is not None or body.get('invite_url') is not None:
+            return 'accepted invitation returned an invitation capability'
+        return None
+    if body.get('invitation_id') is None:
+        return 'unaccepted invitation is missing its capability'
+    return _delivery_capability_error(body)
+
+
+def _delivery_capability_error(body: dict) -> str | None:
     invitation_id = body.get('invitation_id')
     invite_url = body.get('invite_url')
     if invitation_id is None:
@@ -382,13 +585,15 @@ def _delivery_response_error(body: object, payload: dict) -> str | None:
     return None
 
 
-def coach_review_url(endure_athlete_id: str) -> str:
+def coach_review_url(endure_athlete_id: str, plan_id: str, block_id: str) -> str:
     """Deep link to the coach approval UI for a delivered plan.
 
     Endure route: /coach/athletes/[id]/plan (existing approval surface —
     spec §3 step 3: coach reviews block 1 in the existing approval UI).
     """
-    return f'{app_url()}/coach/athletes/{endure_athlete_id}/plan'
+    return (f'{app_url()}/coach/athletes/{quote(endure_athlete_id, safe="")}/plan'
+            f'?planId={quote(plan_id, safe="")}'
+            f'&blockId={quote(block_id, safe="")}')
 
 
 # =============================================================================
@@ -430,7 +635,7 @@ def record_delivery_result(success: bool, order_id: str, data_dir: str) -> dict:
     """Record one delivery outcome; returns the updated streak record.
 
     - Success: consecutive_successes += 1 — unless this order_id was the
-      last one counted (idempotent re-posts / already_delivered retries
+      last one counted (idempotent re-posts / already-ready retries
       must not double-count).
     - Failure: consecutive_successes resets to 0.
 

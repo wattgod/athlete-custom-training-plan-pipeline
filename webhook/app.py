@@ -45,14 +45,16 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
                                CONFIRMED,
                                RELEASE_STATUSES, FulfillmentStateError,
                                approval_matches_release, bind_legacy_order,
-                               confirm_after_send,
+                               confirm_after_send, confirm_endure_after_send,
                                finalize_transitional_release,
                                load as load_fulfillment_state,
                                migrate_v1_to_quarantine,
                                open_verified_release_artifact,
                                external_notification_projection,
                                redact_sensitive_review_items,
+                               reconcile_endure_confirmation,
                                record_seal_mismatch,
+                               stage_endure_under_lock,
                                transition as transition_fulfillment,
                                verify_release_artifact,
                                verify_release_manifest, write_generation)
@@ -441,19 +443,10 @@ def _mask_email(email: str) -> str:
     return f'{masked_local}@{masked_domain}{tld}'
 
 
-def _send_email(to: str, subject: str, body: str, html: str = None, reply_to: str = None,
-                attachments: list = None, brand: str = DEFAULT_BRAND):
-    """Send email via Resend HTTP API. Returns True on success.
-
-    attachments: list of (filename, path-or-sealed-bytes) tuples; files are
-    base64-encoded. Confirmation passes bytes from an already-verified open
-    descriptor so the sender never reopens a mutable release path.
-    Resend caps total message size at 40MB.
-    """
-    if not RESEND_API_KEY:
-        logger.warning("RESEND_API_KEY not configured — cannot send email")
-        return False
-
+def _build_email_payload(to: str, subject: str, body: str, html: str = None,
+                         reply_to: str = None, attachments: list = None,
+                         brand: str = DEFAULT_BRAND) -> dict:
+    """Materialize the exact JSON body sent to Resend."""
     payload = {
         'from': _brand_config(brand).get('email', {}).get('resend_from') or RESEND_FROM,
         'to': [to],
@@ -465,7 +458,6 @@ def _send_email(to: str, subject: str, body: str, html: str = None, reply_to: st
     if reply_to:
         payload['reply_to'] = reply_to
     if attachments:
-        import base64
         encoded = []
         for fname, source in attachments:
             try:
@@ -479,11 +471,41 @@ def _send_email(to: str, subject: str, body: str, html: str = None, reply_to: st
                 logger.warning(f"Skipping attachment {fname}: {e}")
         if encoded:
             payload['attachments'] = encoded
+    return payload
+
+
+def _email_payload_digest(payload: dict) -> str:
+    return hashlib.sha256(json.dumps(
+        payload, sort_keys=True, separators=(',', ':'), ensure_ascii=False,
+    ).encode('utf-8')).hexdigest()
+
+
+def _send_email(to: str, subject: str, body: str, html: str = None, reply_to: str = None,
+                attachments: list = None, brand: str = DEFAULT_BRAND,
+                idempotency_key: str = None, prepared_payload: dict = None):
+    """Send email via Resend HTTP API. Returns True on success.
+
+    attachments: list of (filename, path-or-sealed-bytes) tuples; files are
+    base64-encoded. Confirmation passes a prebuilt payload containing bytes
+    from an already-verified descriptor, so retry identity and transmitted
+    content are exactly the same. Resend caps total message size at 40MB.
+    """
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY not configured — cannot send email")
+        return False
+
+    payload = (copy.deepcopy(prepared_payload) if prepared_payload is not None
+               else _build_email_payload(
+                   to, subject, body, html=html, reply_to=reply_to,
+                   attachments=attachments, brand=brand))
 
     try:
+        headers = {'Authorization': f'Bearer {RESEND_API_KEY}'}
+        if idempotency_key:
+            headers['Idempotency-Key'] = idempotency_key
         resp = http_requests.post(
             'https://api.resend.com/emails',
-            headers={'Authorization': f'Bearer {RESEND_API_KEY}'},
+            headers=headers,
             json=payload,
             timeout=10,
         )
@@ -586,13 +608,14 @@ def _build_training_plan_email(details: dict) -> tuple:
                         or 'blocking_issues' in details):
         return _build_phase1_generation_email(details)
 
-    # Phase 4b delivery branching: endure-target orders that delivered get
+    # Phase 4b delivery branching: prepared Endure orders get
     # the Endure review checklist; a failed Endure push falls back to the
     # unchanged TrainingPeaks checklist with a loud flag.
     delivery_target = details.get('delivery_target', 'trainingpeaks')
     endure = details.get('endure_delivery') or {}
     endure_ok = (delivery_target == 'endure'
-                 and endure.get('status') in ('delivered', 'already_delivered'))
+                 and endure.get('status') in (
+                     'ready_for_review', 'already_ready_for_review'))
     endure_failed = delivery_target == 'endure' and not endure_ok
     endure_review_url = endure.get('review_url', '')
 
@@ -682,11 +705,11 @@ def _build_training_plan_email(details: dict) -> tuple:
         review_link_html = (f'<a href="{endure_review_url}">open the plan in Endure</a>'
                            if endure_review_url else 'open the plan in Endure')
         delivery_steps_html = f"""<li><strong>Review block 1 in Endure</strong> — {review_link_html} and check week 1 against the package above</li>
-      <li><strong>Approve the block in Endure</strong> — approval writes the activities to {name}'s calendar; Endure then sends their invitation email</li>"""
+      <li><strong>Approve the block in Endure</strong> — approval writes the activities to {name}'s calendar</li>"""
         delivery_steps_text = (
             f"5. Review block 1 in Endure: {endure_review_url or 'open the plan in Endure'}\n"
             f"6. Approve the block in Endure — approval writes the activities "
-            f"to {name}'s calendar; Endure sends their invitation email\n")
+            f"to {name}'s calendar\n")
         endure_ids_html = (
             '<p style="font-size: 12px; color: #999; margin: 8px 0 0;">Endure: '
             + ' &middot; '.join(
@@ -1006,7 +1029,8 @@ def _notify_new_order(product_type: str, details: dict):
 
 def _send_payment_confirmation(customer_email: str, customer_name: str,
                                race_name: str = '', plan_weeks: str = '',
-                               brand: str = DEFAULT_BRAND):
+                               brand: str = DEFAULT_BRAND,
+                               delivery_platform: str = 'trainingpeaks'):
     """Send immediate payment confirmation to customer.
 
     Auto-fires on successful Stripe checkout. Tells them what they bought,
@@ -1026,6 +1050,48 @@ def _send_payment_confirmation(customer_email: str, customer_name: str,
     weeks_mention = f'{plan_weeks}-week ' if plan_weeks else ''
 
     subject = f'Payment confirmed — your {weeks_mention}training plan{race_mention}'
+
+    if delivery_platform == 'endure':
+        text = f"""Hey {first_name},
+
+Payment received — thank you.
+
+There is nothing you need to connect yet. I am building and reviewing your custom {weeks_mention}training plan{race_mention} now.
+
+WHAT HAPPENS NEXT:
+1. I review your plan and its first training block.
+2. Within 24 hours, you receive one email with your Endure access link and training guide.
+3. In Endure, your daily check-in, Today view, workouts, and post-workout feedback keep the plan connected to what you actually do.
+
+Questions? Reply to this email.
+
+— Matti, {brand_name}
+{brand_site}
+"""
+        html = f"""
+<div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+  <h1 style="font-size: 22px;">Payment confirmed</h1>
+  <p>Hey {html_escape(first_name)},</p>
+  <p>Payment received — thank you.</p>
+  <p><strong>There is nothing you need to connect yet.</strong> I am building and reviewing your custom {html_escape(weeks_mention)}training plan{html_escape(race_mention)} now.</p>
+  <h2 style="font-size: 16px;">What happens next</h2>
+  <ol>
+    <li>I review your plan and its first training block.</li>
+    <li>Within 24 hours, you receive one email with your Endure access link and training guide.</li>
+    <li>In Endure, your daily check-in, Today view, workouts, and post-workout feedback keep the plan connected to what you actually do.</li>
+  </ol>
+  <p>Questions? Reply to this email.</p>
+  <p>— Matti, {html_escape(brand_name)}<br>{html_escape(brand_site)}</p>
+</div>"""
+        ok = _send_email(customer_email, subject, text, html=html,
+                         reply_to=NOTIFICATION_EMAIL, brand=brand)
+        if ok:
+            logger.info(
+                f"Payment confirmation sent to {_mask_email(customer_email)}")
+        else:
+            logger.error(
+                f"Failed to send payment confirmation to {_mask_email(customer_email)}")
+        return
 
     tp_connect_url = 'https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU'
 
@@ -3428,6 +3494,8 @@ def log_order(order_data: dict, result: dict):
                                  or order_data.get('profile', {}).get('brand')),
         'email': order_data.get('profile', {}).get('email', ''),
         'name': order_data.get('profile', {}).get('name', ''),
+        'delivery_platform': order_data.get(
+            'delivery_platform', order_data.get('delivery_target', 'trainingpeaks')),
         'success': result['success'],
         'error': _pipeline_error_excerpt(result) if not result['success'] else None,
     }
@@ -4141,6 +4209,71 @@ def approve_review_order(order_ref):
     return redirect(f'/review/{order_id}', code=303)
 
 
+def _review_csrf_valid(session: dict) -> bool:
+    supplied = str(request.form.get('csrf_token') or '')
+    return bool(supplied and hmac.compare_digest(
+        supplied, str(session.get('csrf_token') or '')))
+
+
+@app.route('/review/<order_ref>/stage-endure', methods=['POST'])
+@limiter.limit('10/minute')
+def stage_endure_from_review(order_ref):
+    """CSRF/session-protected coach action for the approved Endure handoff."""
+    try:
+        order_id, state, session = _authorized_review(order_ref)
+    except ReviewAuthError:
+        return _review_response(
+            '<!doctype html><title>Review unavailable</title>'
+            '<p>Review session unavailable or superseded.</p>', 409)
+    if not _review_csrf_valid(session):
+        return _render_authorized_review(
+            order_id, state, session, error='Invalid review form token.', status=403)
+    try:
+        _stage_endure_order(
+            order_id,
+            force_refresh=request.form.get('force_refresh') == 'true',
+        )
+    except (FulfillmentStateError, endure_delivery.EndureMappingError,
+            RuntimeError, OSError, UnicodeDecodeError, json.JSONDecodeError,
+            yaml.YAMLError) as exc:
+        try:
+            state = load_fulfillment_state(_fulfillment_status_path(order_id))
+        except FulfillmentStateError:
+            pass
+        return _render_authorized_review(
+            order_id, state, session, error=str(exc), status=409)
+    return redirect(f'/review/{order_id}', code=303)
+
+
+@app.route('/review/<order_ref>/confirm-endure', methods=['POST'])
+@limiter.limit('5/minute')
+def confirm_endure_from_review(order_ref):
+    """Verify the staged calendar and send the athlete access mail once."""
+    try:
+        order_id, state, session = _authorized_review(order_ref)
+    except ReviewAuthError:
+        return _review_response(
+            '<!doctype html><title>Review unavailable</title>'
+            '<p>Review session unavailable or superseded.</p>', 409)
+    if not _review_csrf_valid(session):
+        return _render_authorized_review(
+            order_id, state, session, error='Invalid review form token.', status=403)
+    response, status = _confirm_endure_plan(order_id, state)
+    if status != 200:
+        body = response.get_json(silent=True) or {}
+        try:
+            state = load_fulfillment_state(_fulfillment_status_path(order_id))
+        except FulfillmentStateError:
+            pass
+        return _render_authorized_review(
+            order_id, state, session,
+            error=str(body.get('detail') or body.get('error')
+                      or 'Endure confirmation failed'),
+            status=status,
+        )
+    return redirect(f'/review/{order_id}', code=303)
+
+
 @app.route('/review/<order_ref>/d2/identity', methods=['POST'])
 @limiter.limit('10/minute')
 def select_review_identity(order_ref):
@@ -4806,6 +4939,8 @@ def fulfillment_status(order_ref):
         'approval': state['approval'],
         'waiver': state['waiver'],
         'application': state['application'],
+        'endure_stage': state.get('endure_stage'),
+        'endure_confirmation_attempt': state.get('endure_confirmation_attempt'),
         'confirmation': state['confirmation'],
         'superseded_approvals': state.get('superseded_approvals', []),
     }
@@ -4853,6 +4988,260 @@ def bind_legacy_fulfillment_order(order_ref):
     }), 200
 
 
+@app.route('/api/fulfillment/<order_ref>/stage-endure', methods=['POST'])
+def stage_endure_plan(order_ref):
+    """Coach-triggered staging of the current approved release into Endure."""
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
+        return jsonify({'error': 'Unauthorized'}), 401
+    order_id = _resolve_order_id(order_ref)
+    if not order_id:
+        return jsonify({'error': 'Fulfillment state unavailable'}), 409
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict) or _has_client_timestamp(data):
+        return jsonify({'error': 'JSON body without client timestamps is required'}), 400
+    try:
+        action, recorded = _stage_endure_order(
+            order_id, force_refresh=data.get('force_refresh') is True)
+    except (FulfillmentStateError, endure_delivery.EndureMappingError) as exc:
+        return jsonify({'error': str(exc)}), 409
+    except RuntimeError as exc:
+        return jsonify({
+            'error': 'Endure staging failed',
+            'detail': str(exc),
+        }), 502
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, yaml.YAMLError) as exc:
+        logger.error(f'Endure staging artifact read failed for {order_id}: {exc}')
+        return jsonify({'error': 'Endure staging artifacts are unreadable'}), 409
+    return jsonify({
+        'status': 'staged',
+        'action': action,
+        'order_id': order_id,
+        'generation_revision': recorded['generation_revision'],
+        'endure_stage': recorded['endure_stage'],
+    }), 200
+
+
+@app.route('/api/fulfillment/<order_ref>/reconcile-endure-email', methods=['POST'])
+def reconcile_endure_email(order_ref):
+    """Operator-only recovery for a durable, unknown Resend outcome."""
+    secret = request.headers.get('X-Cron-Secret', '')
+    if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
+        return jsonify({'error': 'Unauthorized'}), 401
+    order_id = _resolve_order_id(order_ref)
+    if not order_id:
+        return jsonify({'error': 'Fulfillment state unavailable'}), 409
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or _has_client_timestamp(data):
+        return jsonify({'error': 'JSON body without client timestamps is required'}), 400
+    try:
+        action, state = reconcile_endure_confirmation(
+            _fulfillment_status_path(order_id),
+            outcome=str(data.get('outcome') or ''),
+            operator=str(data.get('operator') or ''),
+            evidence=str(data.get('evidence') or ''),
+            expected_idempotency_key=str(
+                data.get('expected_idempotency_key') or ''),
+            expected_payload_digest=str(
+                data.get('expected_payload_digest') or ''),
+            provider_message_id=str(data.get('provider_message_id') or ''),
+        )
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 409
+    return jsonify({
+        'status': state['status'],
+        'action': action,
+        'order_id': order_id,
+        'endure_confirmation_attempt': state.get('endure_confirmation_attempt'),
+        'confirmation': state.get('confirmation'),
+    }), 200
+
+
+def _stage_endure_order(order_id: str, *, force_refresh: bool = False):
+    """Stage while the fulfillment lock fences regeneration and supersession."""
+    state_path = _fulfillment_status_path(order_id)
+
+    def push(locked_state: dict) -> dict:
+        revision_dir = (_order_dir(order_id) / 'revisions'
+                        / f"r{locked_state['generation_revision']}")
+        manifest = verify_release_manifest(locked_state, revision_dir)
+        artifact_paths = {
+            str(item.get('path') or '') for item in manifest['artifacts']}
+        for required in ('artifacts/profile.yaml', 'artifacts/intake_backup.json'):
+            if required not in artifact_paths:
+                raise FulfillmentStateError(
+                    f'Endure staging artifact is missing: {required}')
+        profile_handle = open_verified_release_artifact(
+            locked_state, revision_dir, 'artifacts/profile.yaml')
+        try:
+            profile = yaml.safe_load(profile_handle.read().decode('utf-8'))
+        finally:
+            profile_handle.close()
+        intake_handle = open_verified_release_artifact(
+            locked_state, revision_dir, 'artifacts/intake_backup.json')
+        try:
+            intake = json.loads(intake_handle.read().decode('utf-8'))
+        finally:
+            intake_handle.close()
+        release = {
+            'generation_revision': locked_state['generation_revision'],
+            'release_manifest_digest': locked_state['release_manifest_digest'],
+            'model_seal': locked_state['model_seal'],
+        }
+        payload = endure_delivery.build_delivery_payload(
+            profile, order_id, intake, release=release)
+        prepared = endure_delivery.deliver_purchased_plan(payload)
+        if not prepared.get('ok'):
+            raise RuntimeError(str(prepared.get('error') or 'remote Endure failure'))
+        return prepared
+
+    return stage_endure_under_lock(
+        state_path, push, force_refresh=force_refresh)
+
+
+def _confirm_endure_plan(order_id: str, state: dict):
+    """Confirm an approved, activated Endure block with truthful access mail."""
+    norm_id = _normalize_athlete_id(state['athlete_id'])
+    if state.get('status') == CONFIRMED:
+        return jsonify({'status': 'confirmed', 'athlete_id': norm_id}), 200
+    if state.get('status') != APPROVED:
+        return jsonify({'error': 'Plan must be approved before Endure confirmation'}), 409
+    stage = state.get('endure_stage')
+    if not isinstance(stage, dict):
+        return jsonify({'error': 'Stage the approved plan in Endure first'}), 409
+    if not approval_matches_release(state):
+        return jsonify({'error': 'Release approval does not match the current plan'}), 409
+
+    revision_dir = (_order_dir(order_id) / 'revisions'
+                    / f"r{state['generation_revision']}")
+    try:
+        manifest = verify_release_manifest(state, revision_dir)
+        artifact_paths = {
+            str(item.get('path') or '') for item in manifest['artifacts']}
+        guide_attachments = []
+        for guide_name in ('training_guide.pdf', 'training_guide.html'):
+            relative = f'artifacts/{guide_name}'
+            if relative not in artifact_paths:
+                continue
+            handle = open_verified_release_artifact(state, revision_dir, relative)
+            try:
+                guide_attachments.append((guide_name, handle.read()))
+            finally:
+                handle.close()
+            break
+        if not guide_attachments:
+            raise FulfillmentStateError('sealed training guide is missing')
+    except FulfillmentStateError as exc:
+        logger.error(
+            f'Endure confirmation seal verification failed for {order_id}: {exc}')
+        try:
+            record_seal_mismatch(_fulfillment_status_path(order_id), str(exc))
+        except FulfillmentStateError:
+            return jsonify({'error': 'Fulfillment state unavailable'}), 409
+        return jsonify({'error': 'Release seal verification failed'}), 409
+
+    readiness = endure_delivery.verify_purchased_plan_ready(order_id, stage)
+    if not readiness.get('ok'):
+        return jsonify({
+            'error': 'Endure is not ready for the athlete',
+            'detail': readiness.get('error'),
+        }), 409
+
+    customer_email = None
+    customer_name = None
+    brand = DEFAULT_BRAND
+    log_dir = Path(DATA_DIR) / '.logs'
+    for log_file in sorted(log_dir.glob('*.jsonl'), reverse=True):
+        try:
+            with open(log_file) as handle:
+                for line in handle:
+                    entry = json.loads(line.strip())
+                    if entry.get('order_id') == order_id and entry.get('success'):
+                        customer_email = str(entry.get('email') or '').strip().lower()
+                        customer_name = str(entry.get('name') or '').strip()
+                        brand = normalize_brand(entry.get('brand'))
+                        break
+        except (json.JSONDecodeError, IOError):
+            continue
+        if customer_email:
+            break
+    if not customer_email:
+        return jsonify({'error': 'Customer email not found in order logs'}), 404
+    if (endure_delivery.normalized_email_sha256(customer_email)
+            != stage.get('recipient_email_sha256')):
+        return jsonify({'error': 'Customer email does not match the Endure athlete'}), 409
+
+    first_name = customer_name.split()[0] if customer_name else 'there'
+    invite_url = readiness.get('invite_url') or endure_delivery.app_url()
+    action_label = ('Accept your Endure invitation'
+                    if readiness.get('invite_url') else 'Open Endure')
+    subject = 'Your first training block is ready in Endure'
+    text_body = f"""Hi {first_name},
+
+Your custom plan has been reviewed, and your first training block is ready in Endure.
+
+Get started:
+1. {action_label}: {invite_url}
+2. Complete your daily check-in before training.
+3. Open Today to see the session or recovery work that fits the day.
+4. After training, add your post-workout feedback.
+
+Your check-ins and workout feedback give your coach and David the context they need. The plan changes when the evidence calls for it, not after every ordinary day.
+
+If anything looks wrong, reply to this email before starting the plan.
+
+— Matti, Gravel God
+gravelgodcycling.com
+"""
+    html_body = f"""
+<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #172033; line-height: 1.6;">
+  <h1 style="font-size: 24px; margin: 0 0 16px;">Your first training block is ready</h1>
+  <p>Hi {html_escape(first_name)},</p>
+  <p>Your custom plan has been reviewed, and your first training block is ready in Endure.</p>
+  <p><a href="{html_escape(invite_url)}" style="display: inline-block; background: #2156d8; color: #fff; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-weight: 700;">{html_escape(action_label)}</a></p>
+  <ol>
+    <li>Complete your daily check-in before training.</li>
+    <li>Open Today to see the session or recovery work that fits the day.</li>
+    <li>After training, add your post-workout feedback.</li>
+  </ol>
+  <p>Your check-ins and workout feedback give your coach and David the context they need. The plan changes when the evidence calls for it, not after every ordinary day.</p>
+  <p>If anything looks wrong, reply to this email before starting the plan.</p>
+  <p>— Matti, Gravel God<br>gravelgodcycling.com</p>
+</div>"""
+    idempotency_key = (
+        f"endure-plan-ready/{order_id}/r{state['generation_revision']}/"
+        f"{stage['recipient_email_sha256'][:16]}")
+    email_payload = _build_email_payload(
+        customer_email, subject, text_body, html=html_body,
+        reply_to=NOTIFICATION_EMAIL, attachments=guide_attachments,
+        brand=brand)
+    payload_digest = _email_payload_digest(email_payload)
+    try:
+        action, _ = confirm_endure_after_send(
+            _fulfillment_status_path(order_id), readiness,
+            lambda: _send_email(
+                customer_email, subject, text_body, html=html_body,
+                reply_to=NOTIFICATION_EMAIL, attachments=guide_attachments,
+                brand=brand,
+                idempotency_key=idempotency_key,
+                prepared_payload=email_payload),
+            idempotency_key=idempotency_key,
+            payload_digest=payload_digest,
+            metadata={'recipient_email_sha256': stage['recipient_email_sha256']},
+        )
+    except RuntimeError:
+        return jsonify({'error': 'Failed to send Endure access email'}), 502
+    except FulfillmentStateError as exc:
+        return jsonify({'error': str(exc)}), 409
+    return jsonify({
+        'status': 'confirmed',
+        'action': action,
+        'athlete_id': norm_id,
+        'email': _mask_email(customer_email),
+        'source': 'endure',
+    }), 200
+
+
 @app.route('/api/confirm/<order_ref>', methods=['POST'])
 def confirm_plan_ready(order_ref):
     """Send "your plan is live on TrainingPeaks" email to customer.
@@ -4879,9 +5268,7 @@ def confirm_plan_ready(order_ref):
             'error': 'Legacy order is quarantined and must be regenerated before confirmation'
         }), 409
     if state.get('delivery_platform') == 'endure':
-        return jsonify({
-            'error': 'Endure confirmation is disabled in Phase 1 by D4/R9 condition 11'
-        }), 409
+        return _confirm_endure_plan(order_id, state)
     if state.get('delivery_platform') != 'trainingpeaks':
         return jsonify({
             'error': 'This Phase 1 confirmation route is TrainingPeaks-only'
@@ -7207,7 +7594,9 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
     customer_name = order_data['profile'].get('name', '')
     race_name = intake_data.get('race_name', '') if intake_data else ''
     _send_payment_confirmation(customer_email, customer_name, race_name=race_name,
-                               brand=brand)
+                               brand=brand,
+                               delivery_platform=order_data.get(
+                                   'delivery_platform', 'trainingpeaks'))
 
     # Queue generation and return 200 to Stripe immediately — the pipeline
     # takes minutes, Stripe times out at ~20s. The background job handles
@@ -7705,7 +8094,9 @@ def test_webhook():
     customer_email = order_data['profile'].get('email', '')
     customer_name = order_data['profile'].get('name', '')
     race_name = intake_data.get('race_name', '') if intake_data else ''
-    _send_payment_confirmation(customer_email, customer_name, race_name=race_name)
+    _send_payment_confirmation(
+        customer_email, customer_name, race_name=race_name,
+        delivery_platform=order_data.get('delivery_platform', 'trainingpeaks'))
 
     # Run pipeline with deliver=True (same as real flow)
     result = run_pipeline(athlete_id, deliver=True, intake_data=intake_data,
@@ -7842,7 +8233,7 @@ def process_followup_emails():
         return {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0}
 
     sent_followups = _get_sent_followups()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     stats = {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0}
 
     # Read from all YYYY-MM.jsonl files (the format log_order actually writes to)
@@ -7863,6 +8254,15 @@ def process_followup_emails():
             if not order.get('success', True):
                 continue
 
+            # The existing sequence talks about TrainingPeaks. Endure orders
+            # have a separate access email and must never receive TP copy.
+            delivery_platform = str(
+                order.get('delivery_platform')
+                or order.get('delivery_target')
+                or 'trainingpeaks').strip().lower()
+            if delivery_platform == 'endure':
+                continue
+
             stats['checked'] += 1
             order_id = order.get('order_id', '')
             email = order.get('email', '')
@@ -7874,7 +8274,11 @@ def process_followup_emails():
                 continue
 
             try:
-                order_dt = datetime.fromisoformat(order_time.replace('Z', '+00:00').replace('+00:00', ''))
+                order_dt = datetime.fromisoformat(order_time.replace('Z', '+00:00'))
+                if order_dt.tzinfo is None:
+                    order_dt = order_dt.replace(tzinfo=timezone.utc)
+                else:
+                    order_dt = order_dt.astimezone(timezone.utc)
             except (ValueError, AttributeError):
                 continue
 
@@ -8954,6 +9358,10 @@ def process_touchpoint_emails():
             if order.get('product_type') != 'training_plan':
                 continue
             if not order.get('success', True):
+                continue
+            if str(order.get('delivery_platform')
+                   or order.get('delivery_target')
+                   or 'trainingpeaks') == 'endure':
                 continue
 
             athlete_id = order.get('athlete_id', '')

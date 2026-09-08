@@ -306,8 +306,45 @@ order-bound worker inspection.</p>
 
     post_approval = ""
     if authoritative:
-        post_approval = """
-<section class="action"><h2>Application</h2><p>The sealed revision is approved. Automated platform application, readback verification, guide release, and draft/confirm controls remain disabled until their later rollout phases. Use the established operator-controlled manual procedure.</p></section>"""
+        if str(state.get("delivery_platform") or "") == "endure":
+            stage = state.get("endure_stage") or {}
+            email_attempt = state.get("endure_confirmation_attempt") or {}
+            email_attempt_html = ""
+            if email_attempt and status != "CONFIRMED":
+                email_attempt_html = f"""
+<div class="card"><p class="error"><strong>Athlete email needs attention.</strong> Endure saved the send attempt but could not confirm whether Resend accepted it. Do not send it again until the provider record is checked.</p>
+<dl class="meta"><div><dt>State</dt><dd>{_e(email_attempt.get('status'))}</dd></div><div><dt>Started</dt><dd>{_e(email_attempt.get('started_at'))}</dd></div><div><dt>Attempts</dt><dd>{_e(email_attempt.get('attempt_number'))}</dd></div><div><dt>Resend key</dt><dd><code>{_e(email_attempt.get('idempotency_key'))}</code></dd></div><div><dt>Message fingerprint</dt><dd><code>{_e(email_attempt.get('payload_digest'))}</code></dd></div></dl>
+<p>Check the exact key in Resend, then ask an operator to mark this as <strong>Delivered</strong> with the Resend message ID or <strong>Not sent</strong> with the provider evidence.</p></div>"""
+            if status == "CONFIRMED":
+                post_approval = """
+<section class="action"><h2>Endure delivery</h2><p class="success"><strong>Complete.</strong> The approved block passed calendar readback and the athlete access email was sent.</p></section>"""
+            elif stage:
+                post_approval = f"""
+<section class="action"><h2>Endure delivery</h2>
+<p><strong>First block staged.</strong> Review and schedule the exact block in Endure, then return here to verify the calendar and email the athlete.</p>
+<p><a class="button secondary" href="{_e(stage.get('review_url'))}" target="_blank" rel="noopener noreferrer">Open block review in Endure</a></p>
+<dl class="meta"><div><dt>Plan</dt><dd>{_e(stage.get('plan_id'))}</dd></div><div><dt>Block</dt><dd>{_e(stage.get('block_id'))}</dd></div><div><dt>Athlete account</dt><dd>{_e('linked' if stage.get('linked_account') else 'not linked yet')}</dd></div><div><dt>Coaching access</dt><dd>{_e('accepted' if stage.get('invitation_accepted') else 'invitation ready')}</dd></div></dl>
+{email_attempt_html}
+<form method="post" action="/review/{_e(order_id)}/confirm-endure">
+<input type="hidden" name="csrf_token" value="{_e(csrf_token)}">
+<button class="button" type="submit">Verify calendar and email athlete</button>
+</form>
+<form method="post" action="/review/{_e(order_id)}/stage-endure">
+<input type="hidden" name="csrf_token" value="{_e(csrf_token)}">
+<input type="hidden" name="force_refresh" value="true">
+<button class="button secondary" type="submit">Refresh Endure access</button>
+</form></section>"""
+            else:
+                post_approval = f"""
+<section class="action"><h2>Endure delivery</h2>
+<p>The sealed revision is approved. Stage its first block in Endure; this does not email the athlete or change their calendar.</p>
+<form method="post" action="/review/{_e(order_id)}/stage-endure">
+<input type="hidden" name="csrf_token" value="{_e(csrf_token)}">
+<button class="button" type="submit">Stage first block in Endure</button>
+</form></section>"""
+        else:
+            post_approval = """
+<section class="action"><h2>Application</h2><p>The sealed revision is approved. Use the established operator-controlled platform procedure.</p></section>"""
 
     effective_status = (
         "APPROVAL NOT AUTHORITATIVE" if invalid_approval else status

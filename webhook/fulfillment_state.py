@@ -16,7 +16,7 @@ import json
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, BinaryIO, Callable, Dict, Iterator, Optional, Tuple
 
@@ -47,6 +47,8 @@ REVIEW_ITEM_TYPES = {
 }
 REVIEW_SENSITIVITIES = {"public", "internal", "personal", "sensitive"}
 SENSITIVE_REDACTION = "[REDACTED — open authenticated review]"
+ENDURE_CONFIRMATION_IDEMPOTENCY_WINDOW = timedelta(hours=24)
+ENDURE_CONFIRMATION_LEASE = timedelta(minutes=2)
 
 # Server-owned policy.  Structural/quality rules not named here are waivable;
 # the non-waivable set is closed and cannot be weakened by caller input.
@@ -98,6 +100,18 @@ class FulfillmentStateError(ValueError):
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _parse_utc_timestamp(value: Any, label: str) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise FulfillmentStateError(f"{label} is invalid")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise FulfillmentStateError(f"{label} is invalid") from exc
+    if parsed.tzinfo is None:
+        raise FulfillmentStateError(f"{label} must include a timezone")
+    return parsed.astimezone(timezone.utc)
 
 
 def canonical_json(value: Any) -> bytes:
@@ -606,6 +620,134 @@ def _validate_state(state: Any) -> Dict[str, Any]:
     for key in ("approval", "waiver", "application", "confirmation"):
         if key not in state:
             raise FulfillmentStateError(f"fulfillment state missing {key}")
+    state.setdefault("endure_stage", None)
+    stage = state["endure_stage"]
+    if stage is not None:
+        if not isinstance(stage, dict):
+            raise FulfillmentStateError("endure_stage must be an object or null")
+        required_stage = {
+            "order_id", "athlete_id", "plan_id", "block_id", "invitation_id",
+            "invite_url", "linked_account", "invitation_accepted", "review_url",
+            "recipient_email_sha256", "release", "status", "prepared_at",
+        }
+        if set(stage) != required_stage:
+            raise FulfillmentStateError("endure_stage fields are invalid")
+        if any(not str(stage.get(field) or "").strip()
+               for field in ("order_id", "athlete_id", "plan_id", "block_id", "prepared_at")):
+            raise FulfillmentStateError("endure_stage identity is invalid")
+        if stage["status"] not in {"ready_for_review", "already_ready_for_review"}:
+            raise FulfillmentStateError("endure_stage status is invalid")
+        if not re.fullmatch(r"[0-9a-f]{64}", str(stage["recipient_email_sha256"])):
+            raise FulfillmentStateError("endure_stage recipient digest is invalid")
+        if not isinstance(stage["linked_account"], bool):
+            raise FulfillmentStateError("endure_stage linked_account is invalid")
+        if not isinstance(stage["invitation_accepted"], bool):
+            raise FulfillmentStateError("endure_stage invitation_accepted is invalid")
+        if (stage["invitation_accepted"]
+                and (stage["invitation_id"] is not None
+                     or stage["invite_url"] is not None)):
+            raise FulfillmentStateError("accepted endure_stage cannot retain an invitation")
+        if (not stage["invitation_accepted"]
+                and (not str(stage["invitation_id"] or "").strip()
+                     or not str(stage["invite_url"] or "").strip())):
+            raise FulfillmentStateError("endure_stage invitation capability is invalid")
+        if not re.fullmatch(r"https?://[^\s]+", str(stage["review_url"])):
+            raise FulfillmentStateError("endure_stage review_url is invalid")
+        release = stage["release"]
+        if (not isinstance(release, dict)
+                or set(release) != {
+                    "generation_revision", "release_manifest_digest", "model_seal"}
+                or isinstance(release["generation_revision"], bool)
+                or not isinstance(release["generation_revision"], int)
+                or release["generation_revision"] < 1
+                or not re.fullmatch(r"[0-9a-f]{64}", str(release["release_manifest_digest"]))
+                or not re.fullmatch(r"[0-9a-f]{64}", str(release["model_seal"]))):
+            raise FulfillmentStateError("endure_stage release binding is invalid")
+    state.setdefault("endure_confirmation_attempt", None)
+    email_attempt = state["endure_confirmation_attempt"]
+    if email_attempt is not None:
+        required_attempt = {
+            "provider", "idempotency_key", "order_id", "athlete_id", "plan_id",
+            "block_id", "recipient_email_sha256", "release", "started_at",
+            "lease_expires_at", "last_result_at", "status", "attempt_number",
+            "payload_digest", "calendar_verification",
+        }
+        if not isinstance(email_attempt, dict) or set(email_attempt) != required_attempt:
+            raise FulfillmentStateError(
+                "endure_confirmation_attempt fields are invalid")
+        if state["delivery_platform"] != "endure":
+            raise FulfillmentStateError(
+                "endure_confirmation_attempt requires Endure delivery")
+        if email_attempt["provider"] != "resend":
+            raise FulfillmentStateError(
+                "endure_confirmation_attempt provider is invalid")
+        if any(not str(email_attempt.get(field) or "").strip() for field in (
+            "idempotency_key", "order_id", "athlete_id", "plan_id", "block_id",
+        )):
+            raise FulfillmentStateError(
+                "endure_confirmation_attempt identity is invalid")
+        if email_attempt["order_id"] != state["order_id"]:
+            raise FulfillmentStateError(
+                "endure_confirmation_attempt order does not match state")
+        if not re.fullmatch(
+            r"[0-9a-f]{64}", str(email_attempt["recipient_email_sha256"])
+        ):
+            raise FulfillmentStateError(
+                "endure_confirmation_attempt recipient digest is invalid")
+        if not re.fullmatch(r"[0-9a-f]{64}", str(email_attempt["payload_digest"])):
+            raise FulfillmentStateError(
+                "endure_confirmation_attempt payload digest is invalid")
+        attempt_verification = email_attempt["calendar_verification"]
+        if (not isinstance(attempt_verification, dict)
+                or attempt_verification.get("status") != "verified"
+                or isinstance(attempt_verification.get("expectedCount"), bool)
+                or not isinstance(attempt_verification.get("expectedCount"), int)
+                or attempt_verification["expectedCount"] < 1
+                or attempt_verification.get("actualCount")
+                != attempt_verification["expectedCount"]):
+            raise FulfillmentStateError(
+                "endure_confirmation_attempt calendar verification is invalid")
+        if (not isinstance(email_attempt["attempt_number"], int)
+                or isinstance(email_attempt["attempt_number"], bool)
+                or email_attempt["attempt_number"] < 1):
+            raise FulfillmentStateError(
+                "endure_confirmation_attempt number is invalid")
+        if email_attempt["status"] not in {"sending", "unknown", "accepted"}:
+            raise FulfillmentStateError(
+                "endure_confirmation_attempt status is invalid")
+        started_at = _parse_utc_timestamp(
+            email_attempt["started_at"],
+            "endure_confirmation_attempt started_at",
+        )
+        lease_expires_at = _parse_utc_timestamp(
+            email_attempt["lease_expires_at"],
+            "endure_confirmation_attempt lease_expires_at",
+        )
+        if lease_expires_at < started_at:
+            raise FulfillmentStateError(
+                "endure_confirmation_attempt lease precedes start")
+        if email_attempt["last_result_at"] is not None:
+            _parse_utc_timestamp(
+                email_attempt["last_result_at"],
+                "endure_confirmation_attempt last_result_at",
+            )
+        elif email_attempt["status"] in {"unknown", "accepted"}:
+            raise FulfillmentStateError(
+                "endure_confirmation_attempt result time is missing")
+        if not isinstance(stage, dict):
+            raise FulfillmentStateError(
+                "endure_confirmation_attempt requires an Endure stage")
+        for field in (
+            "order_id", "athlete_id", "plan_id", "block_id",
+            "recipient_email_sha256", "release",
+        ):
+            if email_attempt[field] != stage[field]:
+                raise FulfillmentStateError(
+                    f"endure_confirmation_attempt {field} does not match stage")
+        if (email_attempt["status"] == "accepted"
+                and state["status"] != CONFIRMED):
+            raise FulfillmentStateError(
+                "accepted endure_confirmation_attempt requires CONFIRMED status")
     superseded_approvals = state.get("superseded_approvals", [])
     if not isinstance(superseded_approvals, list):
         raise FulfillmentStateError("superseded_approvals must be a list of records")
@@ -806,6 +948,8 @@ def write_generation(
             "compensation_pending": False,
             "cancellation": None,
             "confirmation": None,
+            "endure_confirmation_attempt": None,
+            "endure_stage": None,
             "superseded_approvals": copy.deepcopy(
                 previous.get("superseded_approvals", []) if previous else []
             ),
@@ -1206,6 +1350,7 @@ def _materialize_seal_mismatch(
     state["waiver"] = None
     state["application"] = None
     state["confirmation"] = None
+    state["endure_confirmation_attempt"] = None
     state["model_seal"] = None
     state["release_manifest_digest"] = None
     state["release_manifest"] = None
@@ -1575,6 +1720,472 @@ def confirm_after_send(
         return "confirmed", copy.deepcopy(state)
 
 
+def record_endure_stage_receipt(
+    path: os.PathLike[str] | str,
+    prepared: Dict[str, Any],
+) -> Tuple[str, Dict[str, Any]]:
+    """Bind one Endure staging result to the current coach-approved release."""
+    with locked_state(path) as (state_path, state):
+        if state is None:
+            raise FulfillmentStateError("missing or malformed fulfillment state")
+        if state.get("legacy"):
+            raise FulfillmentStateError("legacy order cannot be staged to Endure")
+        if state.get("delivery_platform") != "endure":
+            raise FulfillmentStateError("Endure staging requires an Endure order")
+        if state.get("status") != APPROVED or not approval_matches_release(state):
+            raise FulfillmentStateError(
+                "Endure staging requires the current sealed release to be approved"
+            )
+        artifact_root = Path(str(state.get("release_manifest") or "")).parent
+        verify_release_manifest(state, artifact_root)
+        candidate = _validated_endure_stage_candidate(state, prepared)
+        existing = state.get("endure_stage")
+        if existing is not None:
+            stable_fields = (
+                "order_id", "athlete_id", "plan_id", "block_id",
+                "recipient_email_sha256", "release",
+            )
+            if any(existing.get(field) != candidate.get(field)
+                   for field in stable_fields):
+                raise FulfillmentStateError(
+                    "Endure staging retry does not match the immutable receipt"
+                )
+            candidate["prepared_at"] = existing.get("prepared_at") or now_iso()
+            if existing == candidate:
+                return "idempotent", copy.deepcopy(state)
+            state["endure_stage"] = candidate
+            _history(
+                state, "ENDURE_ACCESS_REFRESHED",
+                linked_account=candidate["linked_account"],
+            )
+            _atomic_write(state_path, state)
+            return "refreshed", copy.deepcopy(state)
+        state["endure_stage"] = candidate
+        _history(
+            state, "ENDURE_STAGED", plan_id=candidate["plan_id"],
+            block_id=candidate["block_id"],
+        )
+        _atomic_write(state_path, state)
+        return "staged", copy.deepcopy(state)
+
+
+def _validated_endure_stage_candidate(
+    state: Dict[str, Any], prepared: Dict[str, Any],
+) -> Dict[str, Any]:
+    if (not isinstance(prepared, dict) or prepared.get("ok") is not True
+            or prepared.get("status") not in {
+                "ready_for_review", "already_ready_for_review"}):
+        raise FulfillmentStateError("Endure staging result is not review-ready")
+    expected_release = {
+        "generation_revision": state["generation_revision"],
+        "release_manifest_digest": state["release_manifest_digest"],
+        "model_seal": state["model_seal"],
+    }
+    if prepared.get("release") != expected_release:
+        raise FulfillmentStateError(
+            "Endure staging result does not match the approved release")
+    if prepared.get("order_id") != state["order_id"]:
+        raise FulfillmentStateError("Endure staging order identity mismatch")
+    for field in ("athlete_id", "plan_id", "block_id"):
+        if not str(prepared.get(field) or "").strip():
+            raise FulfillmentStateError(f"Endure staging {field} is missing")
+    email_digest = str(prepared.get("recipient_email_sha256") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", email_digest):
+        raise FulfillmentStateError("Endure staging recipient digest is invalid")
+    if not isinstance(prepared.get("linked_account"), bool):
+        raise FulfillmentStateError("Endure staging linked_account is invalid")
+    if not isinstance(prepared.get("invitation_accepted"), bool):
+        raise FulfillmentStateError(
+            "Endure staging invitation_accepted is invalid")
+    linked_account = prepared["linked_account"]
+    invitation_accepted = prepared["invitation_accepted"]
+    if invitation_accepted and not linked_account:
+        raise FulfillmentStateError(
+            "Accepted Endure athlete is not linked to an account")
+    invitation_id = prepared.get("invitation_id")
+    invite_url = prepared.get("invite_url")
+    if invitation_accepted:
+        if invitation_id is not None or invite_url is not None:
+            raise FulfillmentStateError(
+                "Accepted Endure athlete cannot retain an invitation capability")
+    elif (not str(invitation_id or "").strip()
+          or not str(invite_url or "").strip()):
+        raise FulfillmentStateError(
+            "Unaccepted Endure athlete requires a live invitation capability")
+    review_url = str(prepared.get("review_url") or "").strip()
+    if not re.fullmatch(r"https?://[^\s]+", review_url):
+        raise FulfillmentStateError("Endure coach review URL is invalid")
+    return {
+        "order_id": state["order_id"],
+        "athlete_id": str(prepared["athlete_id"]),
+        "plan_id": str(prepared["plan_id"]),
+        "block_id": str(prepared["block_id"]),
+        "invitation_id": invitation_id,
+        "invite_url": invite_url,
+        "linked_account": linked_account,
+        "invitation_accepted": invitation_accepted,
+        "review_url": review_url,
+        "recipient_email_sha256": email_digest,
+        "release": copy.deepcopy(expected_release),
+        "status": "ready_for_review",
+        "prepared_at": (state.get("endure_stage") or {}).get(
+            "prepared_at") or now_iso(),
+    }
+
+
+def stage_endure_under_lock(
+    path: os.PathLike[str] | str,
+    stage: Callable[[Dict[str, Any]], Dict[str, Any]],
+    *,
+    force_refresh: bool = False,
+) -> Tuple[str, Dict[str, Any]]:
+    """Fence generation while remote Endure staging and its receipt commit."""
+    with locked_state(path) as (state_path, state):
+        if state is None:
+            raise FulfillmentStateError("missing or malformed fulfillment state")
+        if state.get("legacy"):
+            raise FulfillmentStateError("legacy order cannot be staged to Endure")
+        if state.get("delivery_platform") != "endure":
+            raise FulfillmentStateError("Endure staging requires an Endure order")
+        if state.get("status") != APPROVED or not approval_matches_release(state):
+            raise FulfillmentStateError(
+                "Endure staging requires the current sealed release to be approved")
+        artifact_root = Path(str(state.get("release_manifest") or "")).parent
+        verify_release_manifest(state, artifact_root)
+        if isinstance(state.get("endure_stage"), dict) and not force_refresh:
+            return "idempotent", copy.deepcopy(state)
+        prepared = stage(copy.deepcopy(state))
+        candidate = _validated_endure_stage_candidate(state, prepared)
+        existing = state.get("endure_stage")
+        if isinstance(existing, dict):
+            stable_fields = (
+                "order_id", "athlete_id", "plan_id", "block_id",
+                "recipient_email_sha256", "release",
+            )
+            if any(existing.get(field) != candidate.get(field)
+                   for field in stable_fields):
+                raise FulfillmentStateError(
+                    "Endure staging refresh changed the immutable delivery")
+            candidate["prepared_at"] = existing.get("prepared_at") or now_iso()
+            action = "idempotent" if existing == candidate else "refreshed"
+        else:
+            action = "staged"
+        state["endure_stage"] = candidate
+        if action != "idempotent":
+            _history(
+                state,
+                "ENDURE_STAGED" if action == "staged" else "ENDURE_ACCESS_REFRESHED",
+                plan_id=candidate["plan_id"], block_id=candidate["block_id"],
+            )
+            _atomic_write(state_path, state)
+        return action, copy.deepcopy(state)
+
+
+def confirm_endure_after_send(
+    path: os.PathLike[str] | str,
+    readiness: Dict[str, Any],
+    send: Callable[[], bool],
+    *,
+    idempotency_key: str,
+    payload_digest: str,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Tuple[str, Dict[str, Any]]:
+    """Journal, send, and confirm Endure access mail from APPROVED.
+
+    The journal is fsync'd before provider I/O. A lost provider response can be
+    retried with the same key only inside Resend's 24-hour idempotency window;
+    after that the order fails closed for manual provider reconciliation.
+    """
+    with locked_state(path) as (state_path, state):
+        if state is None:
+            raise FulfillmentStateError("missing or malformed fulfillment state")
+        if state.get("legacy"):
+            raise FulfillmentStateError("legacy order cannot be confirmed on Endure")
+        if state.get("delivery_platform") != "endure":
+            raise FulfillmentStateError("Endure confirmation requires an Endure order")
+        if state.get("status") == CONFIRMED:
+            return "idempotent", copy.deepcopy(state)
+        if state.get("status") != APPROVED or not approval_matches_release(state):
+            raise FulfillmentStateError(
+                "Endure confirmation requires the current sealed release to be approved"
+            )
+        artifact_root = Path(str(state.get("release_manifest") or "")).parent
+        verify_release_manifest(state, artifact_root)
+        stage = state.get("endure_stage")
+        if not isinstance(stage, dict):
+            raise FulfillmentStateError("Endure confirmation requires a staging receipt")
+        expected_release = {
+            "generation_revision": state["generation_revision"],
+            "release_manifest_digest": state["release_manifest_digest"],
+            "model_seal": state["model_seal"],
+        }
+        if stage.get("release") != expected_release:
+            raise FulfillmentStateError("Endure staging receipt is stale")
+        if not isinstance(readiness, dict) or readiness.get("ok") is not True:
+            raise FulfillmentStateError("Endure readiness is unavailable")
+        if readiness.get("status") != "ready_for_athlete":
+            raise FulfillmentStateError("Endure is not ready for the athlete")
+        for field in (
+            "order_id", "athlete_id", "plan_id", "block_id",
+            "recipient_email_sha256", "release",
+        ):
+            if readiness.get(field) != stage.get(field):
+                raise FulfillmentStateError(
+                    f"Endure readiness {field} does not match the staging receipt"
+                )
+        linked_account = readiness.get("linked_account")
+        if not isinstance(linked_account, bool):
+            raise FulfillmentStateError("Endure readiness linked_account is invalid")
+        if stage.get("linked_account") is True and not linked_account:
+            raise FulfillmentStateError("Endure linked account cannot regress")
+        invitation_accepted = readiness.get("invitation_accepted")
+        if not isinstance(invitation_accepted, bool):
+            raise FulfillmentStateError(
+                "Endure readiness invitation_accepted is invalid")
+        if invitation_accepted and not linked_account:
+            raise FulfillmentStateError(
+                "Accepted Endure readiness is not linked to an account")
+        if stage.get("invitation_accepted") is True and not invitation_accepted:
+            raise FulfillmentStateError("Endure invitation acceptance cannot regress")
+        if invitation_accepted:
+            if (readiness.get("invitation_id") is not None
+                    or readiness.get("invite_url") is not None):
+                raise FulfillmentStateError(
+                    "Accepted Endure readiness retained an invitation")
+            stage = {
+                **stage,
+                "invitation_id": None,
+                "invite_url": None,
+                "linked_account": linked_account,
+                "invitation_accepted": True,
+            }
+            state["endure_stage"] = stage
+        else:
+            for field in ("invitation_id", "invite_url"):
+                if readiness.get(field) != stage.get(field):
+                    raise FulfillmentStateError(
+                        f"Endure readiness {field} does not match the staging receipt"
+                    )
+            stage = {
+                **stage,
+                "linked_account": linked_account,
+                "invitation_accepted": False,
+            }
+            state["endure_stage"] = stage
+        verification = readiness.get("calendar_verification")
+        if (not isinstance(verification, dict)
+                or verification.get("status") != "verified"
+                or isinstance(verification.get("expectedCount"), bool)
+                or not isinstance(verification.get("expectedCount"), int)
+                or verification["expectedCount"] < 1
+                or verification.get("actualCount") != verification["expectedCount"]):
+            raise FulfillmentStateError("Endure calendar verification is incomplete")
+        if not str(idempotency_key).strip():
+            raise FulfillmentStateError("Endure email idempotency key is required")
+        idempotency_key = str(idempotency_key).strip()
+        payload_digest = str(payload_digest or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", payload_digest):
+            raise FulfillmentStateError("Endure email payload digest is required")
+        current_time = datetime.now(timezone.utc)
+        existing_attempt = state.get("endure_confirmation_attempt")
+        if isinstance(existing_attempt, dict):
+            if existing_attempt.get("idempotency_key") != idempotency_key:
+                raise FulfillmentStateError(
+                    "Endure email retry changed the idempotency key")
+            if existing_attempt.get("payload_digest") != payload_digest:
+                raise FulfillmentStateError(
+                    "Endure email retry changed the provider payload")
+            if existing_attempt.get("calendar_verification") != verification:
+                raise FulfillmentStateError(
+                    "Endure email retry changed the calendar verification")
+            started_at = _parse_utc_timestamp(
+                existing_attempt["started_at"],
+                "endure_confirmation_attempt started_at",
+            )
+            if current_time >= started_at + ENDURE_CONFIRMATION_IDEMPOTENCY_WINDOW:
+                raise FulfillmentStateError(
+                    "Endure email outcome is unknown outside the provider "
+                    "idempotency window; reconcile Resend before retrying"
+                )
+            lease_expires_at = _parse_utc_timestamp(
+                existing_attempt["lease_expires_at"],
+                "endure_confirmation_attempt lease_expires_at",
+            )
+            if current_time < lease_expires_at:
+                raise FulfillmentStateError(
+                    "Endure email send is already in progress")
+            attempt = {
+                **existing_attempt,
+                "status": "sending",
+                "lease_expires_at": (
+                    current_time + ENDURE_CONFIRMATION_LEASE
+                ).isoformat().replace("+00:00", "Z"),
+                "attempt_number": existing_attempt["attempt_number"] + 1,
+            }
+            attempt_event = "ENDURE_CONFIRMATION_SEND_RETRIED"
+        else:
+            attempt = {
+                "provider": "resend",
+                "idempotency_key": idempotency_key,
+                "payload_digest": payload_digest,
+                "calendar_verification": copy.deepcopy(verification),
+                "order_id": stage["order_id"],
+                "athlete_id": stage["athlete_id"],
+                "plan_id": stage["plan_id"],
+                "block_id": stage["block_id"],
+                "recipient_email_sha256": stage["recipient_email_sha256"],
+                "release": copy.deepcopy(stage["release"]),
+                "started_at": current_time.isoformat().replace("+00:00", "Z"),
+                "lease_expires_at": (
+                    current_time + ENDURE_CONFIRMATION_LEASE
+                ).isoformat().replace("+00:00", "Z"),
+                "last_result_at": None,
+                "status": "sending",
+                "attempt_number": 1,
+            }
+            attempt_event = "ENDURE_CONFIRMATION_SEND_STARTED"
+        state["endure_confirmation_attempt"] = attempt
+        _history(
+            state,
+            attempt_event,
+            attempt_number=attempt["attempt_number"],
+        )
+        # This write is the crash boundary: no provider request happens until
+        # the immutable release/recipient/key tuple is durable on disk.
+        _atomic_write(state_path, state)
+        if not send():
+            result_time = now_iso()
+            attempt["status"] = "unknown"
+            attempt["last_result_at"] = result_time
+            _history(
+                state,
+                "ENDURE_CONFIRMATION_SEND_OUTCOME_UNKNOWN",
+                attempt_number=attempt["attempt_number"],
+            )
+            _atomic_write(state_path, state)
+            raise RuntimeError("confirmation email failed")
+        prior = state["status"]
+        state["status"] = CONFIRMED
+        result_time = now_iso()
+        attempt["status"] = "accepted"
+        attempt["last_result_at"] = result_time
+        state["confirmation"] = {
+            "at": result_time,
+            "provider": "resend",
+            "provider_idempotency_key": idempotency_key,
+            "endure_stage": copy.deepcopy(stage),
+            "calendar_verification": copy.deepcopy(verification),
+            **(metadata or {}),
+        }
+        _history(state, "TRANSITION", from_status=prior, to_status=CONFIRMED)
+        _atomic_write(state_path, state)
+        return "confirmed", copy.deepcopy(state)
+
+
+def reconcile_endure_confirmation(
+    path: os.PathLike[str] | str,
+    *,
+    outcome: str,
+    operator: str,
+    evidence: str,
+    expected_idempotency_key: str,
+    expected_payload_digest: str,
+    provider_message_id: Optional[str] = None,
+) -> Tuple[str, Dict[str, Any]]:
+    """Resolve an unknown Endure email outcome from verified provider evidence."""
+    outcome = str(outcome or "").strip()
+    operator = str(operator or "").strip()
+    evidence = str(evidence or "").strip()
+    provider_message_id = str(provider_message_id or "").strip()
+    expected_idempotency_key = str(expected_idempotency_key or "").strip()
+    expected_payload_digest = str(expected_payload_digest or "").strip().lower()
+    if outcome not in {"delivered", "not_sent"}:
+        raise FulfillmentStateError(
+            "Endure email reconciliation outcome must be delivered or not_sent")
+    if not operator or len(operator) > 200:
+        raise FulfillmentStateError("Endure email reconciliation operator is required")
+    if not evidence or len(evidence) > 2000:
+        raise FulfillmentStateError("Endure email reconciliation evidence is required")
+    if not expected_idempotency_key:
+        raise FulfillmentStateError(
+            "Endure email reconciliation idempotency key is required")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_payload_digest):
+        raise FulfillmentStateError(
+            "Endure email reconciliation payload digest is required")
+    if outcome == "delivered" and (
+        not provider_message_id or len(provider_message_id) > 500
+    ):
+        raise FulfillmentStateError(
+            "Delivered Endure email reconciliation requires a provider message id")
+
+    with locked_state(path) as (state_path, state):
+        if state is None:
+            raise FulfillmentStateError("missing or malformed fulfillment state")
+        if state.get("legacy") or state.get("delivery_platform") != "endure":
+            raise FulfillmentStateError(
+                "Endure email reconciliation requires an Endure order")
+        attempt = state.get("endure_confirmation_attempt")
+        if not isinstance(attempt, dict):
+            raise FulfillmentStateError(
+                "Endure email reconciliation requires a durable send attempt")
+        if attempt["idempotency_key"] != expected_idempotency_key:
+            raise FulfillmentStateError(
+                "Endure email reconciliation idempotency key is stale")
+        if attempt["payload_digest"] != expected_payload_digest:
+            raise FulfillmentStateError(
+                "Endure email reconciliation payload digest is stale")
+        if state["status"] == CONFIRMED:
+            return "idempotent", copy.deepcopy(state)
+        if state["status"] != APPROVED or not approval_matches_release(state):
+            raise FulfillmentStateError(
+                "Endure email reconciliation requires the approved release")
+        result_time = now_iso()
+        if outcome == "not_sent":
+            _history(
+                state,
+                "ENDURE_CONFIRMATION_RECONCILED_NOT_SENT",
+                operator=operator,
+                evidence=evidence,
+                provider="resend",
+                provider_idempotency_key=attempt["idempotency_key"],
+                payload_digest=attempt["payload_digest"],
+                attempt_number=attempt["attempt_number"],
+            )
+            state["endure_confirmation_attempt"] = None
+            _atomic_write(state_path, state)
+            return "cleared_for_new_attempt", copy.deepcopy(state)
+
+        prior = state["status"]
+        state["status"] = CONFIRMED
+        attempt["status"] = "accepted"
+        attempt["last_result_at"] = result_time
+        state["confirmation"] = {
+            "at": result_time,
+            "provider": "resend",
+            "provider_idempotency_key": attempt["idempotency_key"],
+            "provider_message_id": provider_message_id,
+            "reconciled": True,
+            "reconciled_by": operator,
+            "reconciliation_evidence": evidence,
+            "recipient_email_sha256": attempt["recipient_email_sha256"],
+            "endure_stage": copy.deepcopy(state["endure_stage"]),
+            "calendar_verification": copy.deepcopy(
+                attempt["calendar_verification"]),
+        }
+        _history(
+            state,
+            "ENDURE_CONFIRMATION_RECONCILED_DELIVERED",
+            from_status=prior,
+            to_status=CONFIRMED,
+            operator=operator,
+            provider="resend",
+            provider_message_id=provider_message_id,
+            attempt_number=attempt["attempt_number"],
+        )
+        _atomic_write(state_path, state)
+        return "confirmed_from_provider_evidence", copy.deepcopy(state)
+
+
 def migrate_v1_to_quarantine(
     old_path: os.PathLike[str] | str,
     destination_root: os.PathLike[str] | str,
@@ -1618,6 +2229,7 @@ def migrate_v1_to_quarantine(
         "waiver": original.get("waiver"),
         "application": original.get("application"),
         "confirmation": original.get("confirmation"),
+        "endure_confirmation_attempt": None,
         "superseded_approvals": [],
         "model_seal": None,
         "release_manifest_digest": None,

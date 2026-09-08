@@ -14,13 +14,19 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
                                CONFIRMED, GENERATED, FulfillmentStateError,
                                bind_legacy_order,
                                approval_matches_release,
-                               confirm_after_send, finalize_transitional_release,
+                               confirm_after_send, confirm_endure_after_send,
+                               finalize_transitional_release,
                                load, merge_generation_blockers,
                                migrate_v1_to_quarantine, transition,
                                open_verified_release_artifact,
+                               record_endure_stage_receipt,
+                               reconcile_endure_confirmation,
                                record_seal_mismatch,
                                verify_release_manifest, write_generation)
 from d2_identity import record_identity_result
+
+
+ENDURE_PAYLOAD_DIGEST = 'd' * 64
 
 
 def _issue(rule_id="R05"):
@@ -142,6 +148,320 @@ def test_concurrent_confirm_sends_once(tmp_path):
     for thread in threads: thread.join()
     assert calls == [True]
     assert sorted(results) == ['confirmed', 'idempotent']
+
+
+def _endure_stage(state):
+    return {
+        'ok': True,
+        'order_id': state['order_id'],
+        'athlete_id': 'endure-athlete-1',
+        'plan_id': 'endure-plan-1',
+        'block_id': 'endure-block-1',
+        'invitation_id': 'endure-invite-1',
+        'invite_url': 'https://endurelabs.app/invite/live-token',
+        'linked_account': False,
+        'invitation_accepted': False,
+        'review_url': (
+            'https://endurelabs.app/coach/athletes/endure-athlete-1/plan'
+            '?planId=endure-plan-1&blockId=endure-block-1'),
+        'recipient_email_sha256': 'c' * 64,
+        'release': {
+            'generation_revision': state['generation_revision'],
+            'release_manifest_digest': state['release_manifest_digest'],
+            'model_seal': state['model_seal'],
+        },
+        'status': 'ready_for_review',
+    }
+
+
+def _endure_readiness(stage):
+    return {
+        **stage,
+        'status': 'ready_for_athlete',
+        'calendar_verification': {
+            'status': 'verified', 'expectedCount': 6, 'actualCount': 6,
+        },
+    }
+
+
+def _approved_endure(path, tmp_path):
+    write_generation(
+        path, 'endure-athlete', order_id='cs_endure_1',
+        delivery_platform='endure')
+    state = _seal(path, tmp_path)
+    return _approve(path)
+
+
+def test_endure_stage_binds_exact_approved_release_and_is_idempotent(tmp_path):
+    path = tmp_path / 'status.json'
+    approved = _approved_endure(path, tmp_path)
+    prepared = _endure_stage(approved)
+    action, state = record_endure_stage_receipt(path, prepared)
+    assert action == 'staged'
+    assert state['status'] == APPROVED
+    assert state['endure_stage']['block_id'] == 'endure-block-1'
+    retry = {**prepared, 'status': 'already_ready_for_review'}
+    assert record_endure_stage_receipt(path, retry)[0] == 'idempotent'
+
+
+def test_endure_stage_rejects_stale_release_without_mutating_state(tmp_path):
+    path = tmp_path / 'status.json'
+    approved = _approved_endure(path, tmp_path)
+    prepared = _endure_stage(approved)
+    prepared['release'] = {**prepared['release'], 'generation_revision': 99}
+    with pytest.raises(FulfillmentStateError, match='approved release'):
+        record_endure_stage_receipt(path, prepared)
+    assert load(path)['endure_stage'] is None
+
+
+def test_endure_stage_rejects_accepted_but_unlinked_identity(tmp_path):
+    path = tmp_path / 'status.json'
+    approved = _approved_endure(path, tmp_path)
+    prepared = {
+        **_endure_stage(approved),
+        'invitation_id': None,
+        'invite_url': None,
+        'linked_account': False,
+        'invitation_accepted': True,
+    }
+    with pytest.raises(FulfillmentStateError, match='not linked'):
+        record_endure_stage_receipt(path, prepared)
+    assert load(path)['endure_stage'] is None
+
+
+def test_endure_confirm_sends_once_directly_from_approved(tmp_path):
+    path = tmp_path / 'status.json'
+    approved = _approved_endure(path, tmp_path)
+    _, staged = record_endure_stage_receipt(path, _endure_stage(approved))
+    readiness = _endure_readiness(staged['endure_stage'])
+    readiness['ok'] = True
+    calls, results = [], []
+    threads = [threading.Thread(target=lambda: results.append(
+        confirm_endure_after_send(
+            path, readiness, lambda: calls.append(True) or True,
+            idempotency_key='endure/cs_endure_1/r1',
+            payload_digest=ENDURE_PAYLOAD_DIGEST)[0])) for _ in range(2)]
+    for thread in threads: thread.start()
+    for thread in threads: thread.join()
+    assert calls == [True]
+    assert sorted(results) == ['confirmed', 'idempotent']
+    confirmed = load(path)
+    assert confirmed['status'] == CONFIRMED
+    assert confirmed['confirmation']['endure_stage']['block_id'] == 'endure-block-1'
+    assert confirmed['endure_confirmation_attempt']['status'] == 'accepted'
+    assert confirmed['endure_confirmation_attempt']['attempt_number'] == 1
+
+
+def test_endure_confirm_failure_or_mismatch_never_marks_confirmed(tmp_path):
+    path = tmp_path / 'status.json'
+    approved = _approved_endure(path, tmp_path)
+    _, staged = record_endure_stage_receipt(path, _endure_stage(approved))
+    readiness = _endure_readiness(staged['endure_stage'])
+    readiness['ok'] = True
+    readiness['block_id'] = 'wrong-block'
+    with pytest.raises(FulfillmentStateError, match='block_id'):
+        confirm_endure_after_send(
+            path, readiness, lambda: pytest.fail('must not send'),
+            idempotency_key='endure/cs_endure_1/r1',
+            payload_digest=ENDURE_PAYLOAD_DIGEST)
+    readiness['block_id'] = 'endure-block-1'
+    with pytest.raises(RuntimeError, match='email failed'):
+        confirm_endure_after_send(
+            path, readiness, lambda: False,
+            idempotency_key='endure/cs_endure_1/r1',
+            payload_digest=ENDURE_PAYLOAD_DIGEST)
+    failed = load(path)
+    assert failed['status'] == APPROVED
+    assert failed['endure_confirmation_attempt']['status'] == 'unknown'
+
+
+def test_endure_confirm_retries_same_key_after_lease_inside_provider_window(tmp_path):
+    path = tmp_path / 'status.json'
+    approved = _approved_endure(path, tmp_path)
+    _, staged = record_endure_stage_receipt(path, _endure_stage(approved))
+    readiness = _endure_readiness(staged['endure_stage'])
+    readiness['ok'] = True
+    key = 'endure/cs_endure_1/r1'
+    with pytest.raises(RuntimeError, match='email failed'):
+        confirm_endure_after_send(path, readiness, lambda: False,
+                                  idempotency_key=key,
+                                  payload_digest=ENDURE_PAYLOAD_DIGEST)
+    raw = json.loads(path.read_text())
+    raw['endure_confirmation_attempt']['lease_expires_at'] = (
+        raw['endure_confirmation_attempt']['started_at'])
+    path.write_text(json.dumps(raw))
+    action, confirmed = confirm_endure_after_send(
+        path, readiness, lambda: True, idempotency_key=key,
+        payload_digest=ENDURE_PAYLOAD_DIGEST)
+    assert action == 'confirmed'
+    assert confirmed['endure_confirmation_attempt']['status'] == 'accepted'
+    assert confirmed['endure_confirmation_attempt']['attempt_number'] == 2
+
+
+def test_endure_confirm_refuses_retry_while_prior_attempt_lease_is_live(tmp_path):
+    path = tmp_path / 'status.json'
+    approved = _approved_endure(path, tmp_path)
+    _, staged = record_endure_stage_receipt(path, _endure_stage(approved))
+    readiness = _endure_readiness(staged['endure_stage'])
+    readiness['ok'] = True
+
+    class SimulatedCrash(RuntimeError):
+        pass
+
+    with pytest.raises(SimulatedCrash):
+        confirm_endure_after_send(
+            path, readiness,
+            lambda: (_ for _ in ()).throw(SimulatedCrash('lost worker')),
+            idempotency_key='endure/cs_endure_1/r1',
+            payload_digest=ENDURE_PAYLOAD_DIGEST)
+    with pytest.raises(FulfillmentStateError, match='already in progress'):
+        confirm_endure_after_send(
+            path, readiness, lambda: pytest.fail('must not resend'),
+            idempotency_key='endure/cs_endure_1/r1',
+            payload_digest=ENDURE_PAYLOAD_DIGEST)
+
+
+def test_endure_confirm_fails_closed_after_provider_idempotency_window(tmp_path):
+    path = tmp_path / 'status.json'
+    approved = _approved_endure(path, tmp_path)
+    _, staged = record_endure_stage_receipt(path, _endure_stage(approved))
+    readiness = _endure_readiness(staged['endure_stage'])
+    readiness['ok'] = True
+    key = 'endure/cs_endure_1/r1'
+    with pytest.raises(RuntimeError, match='email failed'):
+        confirm_endure_after_send(path, readiness, lambda: False,
+                                  idempotency_key=key,
+                                  payload_digest=ENDURE_PAYLOAD_DIGEST)
+    raw = json.loads(path.read_text())
+    raw['endure_confirmation_attempt'].update({
+        'started_at': '2000-01-01T00:00:00Z',
+        'lease_expires_at': '2000-01-01T00:02:00Z',
+        'last_result_at': '2000-01-01T00:02:00Z',
+    })
+    path.write_text(json.dumps(raw))
+    with pytest.raises(FulfillmentStateError, match='reconcile Resend'):
+        confirm_endure_after_send(
+            path, readiness, lambda: pytest.fail('must not resend'),
+            idempotency_key=key,
+            payload_digest=ENDURE_PAYLOAD_DIGEST)
+
+
+def test_endure_confirm_rejects_changed_payload_before_retry_io(tmp_path):
+    path = tmp_path / 'status.json'
+    approved = _approved_endure(path, tmp_path)
+    _, staged = record_endure_stage_receipt(path, _endure_stage(approved))
+    readiness = _endure_readiness(staged['endure_stage'])
+    readiness['ok'] = True
+    key = 'endure/cs_endure_1/r1'
+    with pytest.raises(RuntimeError, match='email failed'):
+        confirm_endure_after_send(
+            path, readiness, lambda: False, idempotency_key=key,
+            payload_digest=ENDURE_PAYLOAD_DIGEST)
+    raw = json.loads(path.read_text())
+    raw['endure_confirmation_attempt']['lease_expires_at'] = (
+        raw['endure_confirmation_attempt']['started_at'])
+    path.write_text(json.dumps(raw))
+    with pytest.raises(FulfillmentStateError, match='changed the provider payload'):
+        confirm_endure_after_send(
+            path, readiness, lambda: pytest.fail('must not resend'),
+            idempotency_key=key, payload_digest='e' * 64)
+
+
+def test_endure_email_reconcile_delivered_requires_and_records_provider_id(tmp_path):
+    path = tmp_path / 'status.json'
+    approved = _approved_endure(path, tmp_path)
+    _, staged = record_endure_stage_receipt(path, _endure_stage(approved))
+    readiness = _endure_readiness(staged['endure_stage'])
+    readiness['ok'] = True
+    key = 'endure/cs_endure_1/r1'
+    with pytest.raises(RuntimeError):
+        confirm_endure_after_send(
+            path, readiness, lambda: False, idempotency_key=key,
+            payload_digest=ENDURE_PAYLOAD_DIGEST)
+    with pytest.raises(FulfillmentStateError, match='provider message id'):
+        reconcile_endure_confirmation(
+            path, outcome='delivered', operator='matti', evidence='Resend log',
+            expected_idempotency_key=key,
+            expected_payload_digest=ENDURE_PAYLOAD_DIGEST)
+
+    action, confirmed = reconcile_endure_confirmation(
+        path, outcome='delivered', operator='matti',
+        evidence='Verified in Resend delivery log',
+        expected_idempotency_key=key,
+        expected_payload_digest=ENDURE_PAYLOAD_DIGEST,
+        provider_message_id='resend-message-123')
+    assert action == 'confirmed_from_provider_evidence'
+    assert confirmed['status'] == CONFIRMED
+    assert confirmed['endure_confirmation_attempt']['status'] == 'accepted'
+    assert confirmed['confirmation']['provider_message_id'] == 'resend-message-123'
+    assert confirmed['confirmation']['calendar_verification'] == (
+        readiness['calendar_verification'])
+
+
+def test_endure_email_reconcile_not_sent_clears_exact_attempt_for_new_send(tmp_path):
+    path = tmp_path / 'status.json'
+    approved = _approved_endure(path, tmp_path)
+    _, staged = record_endure_stage_receipt(path, _endure_stage(approved))
+    readiness = _endure_readiness(staged['endure_stage'])
+    readiness['ok'] = True
+    key = 'endure/cs_endure_1/r1'
+    with pytest.raises(RuntimeError):
+        confirm_endure_after_send(
+            path, readiness, lambda: False, idempotency_key=key,
+            payload_digest=ENDURE_PAYLOAD_DIGEST)
+
+    action, cleared = reconcile_endure_confirmation(
+        path, outcome='not_sent', operator='matti',
+        evidence='Resend search returned no message for the exact key',
+        expected_idempotency_key=key,
+        expected_payload_digest=ENDURE_PAYLOAD_DIGEST)
+    assert action == 'cleared_for_new_attempt'
+    assert cleared['status'] == APPROVED
+    assert cleared['endure_confirmation_attempt'] is None
+
+    action, confirmed = confirm_endure_after_send(
+        path, readiness, lambda: True,
+        idempotency_key='endure/cs_endure_1/r1/reconciled-2',
+        payload_digest='e' * 64)
+    assert action == 'confirmed'
+    assert confirmed['endure_confirmation_attempt']['attempt_number'] == 1
+
+
+@pytest.mark.parametrize(
+    ('key', 'digest', 'message'),
+    [
+        ('wrong-key', ENDURE_PAYLOAD_DIGEST, 'idempotency key is stale'),
+        ('endure/cs_endure_1/r1', 'e' * 64, 'payload digest is stale'),
+    ],
+)
+def test_endure_email_reconcile_rejects_stale_attempt_identity_without_mutation(
+        tmp_path, key, digest, message):
+    path = tmp_path / 'status.json'
+    approved = _approved_endure(path, tmp_path)
+    _, staged = record_endure_stage_receipt(path, _endure_stage(approved))
+    readiness = _endure_readiness(staged['endure_stage'])
+    readiness['ok'] = True
+    with pytest.raises(RuntimeError):
+        confirm_endure_after_send(
+            path, readiness, lambda: False,
+            idempotency_key='endure/cs_endure_1/r1',
+            payload_digest=ENDURE_PAYLOAD_DIGEST)
+    before = path.read_text()
+    with pytest.raises(FulfillmentStateError, match=message):
+        reconcile_endure_confirmation(
+            path, outcome='not_sent', operator='matti', evidence='provider log',
+            expected_idempotency_key=key, expected_payload_digest=digest)
+    assert path.read_text() == before
+
+
+def test_endure_email_reconcile_requires_an_existing_attempt(tmp_path):
+    path = tmp_path / 'status.json'
+    _approved_endure(path, tmp_path)
+    with pytest.raises(FulfillmentStateError, match='durable send attempt'):
+        reconcile_endure_confirmation(
+            path, outcome='not_sent', operator='matti', evidence='provider log',
+            expected_idempotency_key='endure/cs_endure_1/r1',
+            expected_payload_digest=ENDURE_PAYLOAD_DIGEST)
 
 
 def test_missing_or_malformed_state_fails_closed(tmp_path):
