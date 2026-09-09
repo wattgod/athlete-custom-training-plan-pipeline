@@ -1094,7 +1094,7 @@ def _send_payment_confirmation(customer_email: str, customer_name: str,
 
 Payment received — thank you.
 
-There is nothing you need to connect yet. I am building and reviewing your custom {weeks_mention}training plan{race_mention} now.
+There is nothing you need to connect yet. I am building your custom {weeks_mention}training plan{race_mention} now. I'll review it before release.
 
 WHAT HAPPENS NEXT:
 1. I review your plan and its first training block.
@@ -1113,7 +1113,7 @@ Questions? Reply to this email.
   <h1 style="font-size: 22px;">Payment confirmed</h1>
   <p>Hey {html_escape(first_name)},</p>
   <p>Payment received — thank you.</p>
-  <p><strong>There is nothing you need to connect yet.</strong> I am building and reviewing your custom {html_escape(weeks_mention)}training plan{html_escape(race_mention)} now.</p>
+  <p><strong>There is nothing you need to connect yet.</strong> I am building your custom {html_escape(weeks_mention)}training plan{html_escape(race_mention)} now. I&rsquo;ll review it before release.</p>
   <h2 style="font-size: 16px;">What happens next</h2>
   <ol>
     <li>I review your plan and its first training block.</li>
