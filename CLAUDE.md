@@ -83,8 +83,17 @@ railway.json       <- Railway deploy config (root, NOT webhook/)
   - `ENDURE_DELIVERY_URL` -- Endure base URL; pipeline POSTs `{url}/api/delivery/purchased-plan`. Unsetting this is the kill switch (silent revert to TP-only).
   - `ENDURE_DELIVERY_SECRET` -- shared secret sent as `X-Delivery-Secret`
   - `DELIVERY_TARGET_DEFAULT` -- `trainingpeaks` (default) or `endure`. Flip is MANUAL, after 5 consecutive successful Endure deliveries (streak visible in `/health`). Per-order override: Stripe metadata `delivery_target`.
+  - `ENDURE_PLAN_PILOT_BUYERS` -- comma-separated `brand:product_type:tier:email` entries for pre-consented pilot purchases (for example `gravelgod:training_plan:custom:rider@example.com`). The exact ordinary checkout receives the server-owned `delivery_target=endure` override and an athlete-visible Endure delivery notice beside Stripe's payment button. Non-Gravel brands and checkouts created while the Endure transport is disabled remain on their existing path.
+  - `/health` exposes `deployment_sha` only when Railway supplies a valid 40-character Git commit SHA, so production canaries can pin evidence to deployed source.
   - `ENDURE_APP_URL` -- Endure web app for coach review links (default `https://endurelabs.app`)
   - `ENDURE_DELIVERY_TIMEOUT` -- POST timeout seconds (default 20; one retry on 5xx/transport errors)
+
+### Endure custom-plan rollout boundary
+
+- `ENDURE_PLAN_PILOT_BUYERS` is a named, pre-consented **Gravel God-only** pilot rail. Keep it empty during ordinary deploys. Never use it to silently contradict a storefront that still promises TrainingPeaks or automatic device sync.
+- Do not flip `DELIVERY_TARGET_DEFAULT` or open the pilot publicly until Gravel God storefront, questionnaire, receipt, and support copy truthfully describe Endure delivery and current device-sync limits.
+- Roadie Labs needs five consecutive repair-free Gravel God deliveries plus three real pilot athletes completing one training week without access failures before it gets its own brand-specific canary and copy review.
+- XC Ski Labs remains ineligible until its ski-specific generator, workout fields, reviewer discipline, sender identity, and storefront promises are independently production-ready. Shared infrastructure is not shared proof.
 
 ## Stripe Products
 - **Training plans**: 14 pre-built prices ($60-$249, keyed by weeks 4-17+)

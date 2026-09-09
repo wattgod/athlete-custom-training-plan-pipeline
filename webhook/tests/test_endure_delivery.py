@@ -335,6 +335,13 @@ class TestBuildDeliveryPayload:
         assert plan['start_date'] == '2026-07-13'   # plan_start.preferred_start
         assert 'Unbound Gravel 200' in plan['name']
 
+    def test_purchased_plan_identity_is_shared_with_customer_handoff(self):
+        assert endure_delivery.purchased_plan_identity(make_profile()) == {
+            'plan_name': 'Custom Training Plan — Unbound Gravel 200',
+            'race_name': 'Unbound Gravel 200',
+            'race_date': '2026-05-30',
+        }
+
     def test_optional_fields_omitted_when_absent(self):
         profile = make_profile()
         profile['fitness_markers'] = {'ftp_watts': None, 'weight_kg': 0}
@@ -898,9 +905,18 @@ def test_endure_confirmation_uses_live_invite_and_never_tp_copy(
 
     with patch.object(app_module, 'approval_matches_release', return_value=True), \
          patch.object(app_module, 'verify_release_manifest', return_value={
-             'artifacts': [{'path': 'artifacts/training_guide.pdf'}]}), \
+             'artifacts': [
+                 {'path': 'artifacts/profile.yaml'},
+                 {'path': 'artifacts/training_guide.pdf'},
+             ]}), \
          patch.object(app_module, 'open_verified_release_artifact',
-                      return_value=io.BytesIO(b'guide')), \
+                      side_effect=[
+                          io.BytesIO(
+                              b'name: Jane Doe\nemail: jane@example.com\n'
+                              b'target_race:\n  name: Unbound Gravel 200\n'
+                              b'  date: 2026-05-30\n'),
+                          io.BytesIO(b'guide'),
+                      ]), \
          patch.object(endure_delivery, 'verify_purchased_plan_ready',
                       return_value=readiness), \
          patch.object(app_module, '_send_email', side_effect=capture_send), \
@@ -910,9 +926,14 @@ def test_endure_confirmation_uses_live_invite_and_never_tp_copy(
     assert status == 200
     assert response.get_json()['source'] == 'endure'
     subject, body = sent['args'][1:3]
-    assert subject == 'Your first training block is ready in Endure'
+    assert subject == 'Custom Training Plan — Unbound Gravel 200 is ready in Endure'
     assert DELIVERED_BODY['invite_url'] in body
     assert 'first training block' in body
+    assert 'Target: Unbound Gravel 200 on 2026-05-30' in body
+    assert 'No mobile app is required' in body
+    assert 'does not include ongoing human monitoring' in body
+    assert 'routine plan revisions' in body
+    assert 'give your coach and David the context' not in body
     assert 'TrainingPeaks' not in body
     assert sent['kwargs']['attachments'] == [('training_guide.pdf', b'guide')]
     assert sent['kwargs']['idempotency_key'].startswith('endure-plan-ready/cs_1/r3/')
@@ -932,9 +953,15 @@ def test_endure_confirmation_sends_nothing_when_readiness_fails(
     }
     with patch.object(app_module, 'approval_matches_release', return_value=True), \
          patch.object(app_module, 'verify_release_manifest', return_value={
-             'artifacts': [{'path': 'artifacts/training_guide.pdf'}]}), \
+             'artifacts': [
+                 {'path': 'artifacts/profile.yaml'},
+                 {'path': 'artifacts/training_guide.pdf'},
+             ]}), \
          patch.object(app_module, 'open_verified_release_artifact',
-                      return_value=io.BytesIO(b'guide')), \
+                      side_effect=[
+                          io.BytesIO(b'name: Jane\ntarget_race: {}\n'),
+                          io.BytesIO(b'guide'),
+                      ]), \
          patch.object(endure_delivery, 'verify_purchased_plan_ready', return_value={
              'ok': False, 'error': 'calendar mismatch'}), \
          patch.object(app_module, '_send_email') as send:
@@ -943,6 +970,58 @@ def test_endure_confirmation_sends_nothing_when_readiness_fails(
     assert status == 409
     assert 'not ready' in response.get_json()['error']
     send.assert_not_called()
+
+
+def test_customer_status_waits_for_confirmed_endure_access_email(
+        isolated_app):
+    app_module = isolated_app
+    approved = {
+        'delivery_platform': 'endure',
+        'status': 'APPROVED',
+        'generation_revision': 3,
+        'confirmation': None,
+        'endure_confirmation_attempt': None,
+    }
+    with patch.object(app_module, '_resolve_order_id', return_value='cs_1'), \
+         patch.object(app_module, 'load_fulfillment_state', return_value=approved), \
+         patch.object(app_module, 'approval_matches_release', return_value=True), \
+         patch.object(app_module, 'verify_release_artifact'), \
+         patch.object(app_module, '_read_job', return_value={'status': 'succeeded'}):
+        with app_module.app.test_client() as client:
+            response = client.get('/api/order-status/endure_rider')
+
+    assert response.status_code == 200
+    assert response.get_json()['status'] == 'processing'
+    assert response.get_json()['download_ready'] is False
+    assert response.get_json()['message'] == (
+        "Payment received. We're preparing your plan and will email your "
+        "Endure access link after it has been reviewed.")
+
+
+def test_customer_status_is_ready_after_endure_access_email_is_accepted(
+        isolated_app):
+    app_module = isolated_app
+    confirmed = {
+        'delivery_platform': 'endure',
+        'status': 'CONFIRMED',
+        'generation_revision': 3,
+        'confirmation': {'provider': 'resend'},
+        'endure_confirmation_attempt': {'status': 'accepted'},
+    }
+    with patch.object(app_module, '_resolve_order_id', return_value='cs_1'), \
+         patch.object(app_module, 'load_fulfillment_state', return_value=confirmed), \
+         patch.object(app_module, 'approval_matches_release', return_value=True), \
+         patch.object(app_module, 'verify_release_artifact'), \
+         patch.object(app_module, '_read_job', return_value={'status': 'succeeded'}):
+        with app_module.app.test_client() as client:
+            response = client.get('/api/order-status/endure_rider')
+
+    assert response.status_code == 200
+    assert response.get_json()['status'] == 'ready'
+    assert response.get_json()['download_ready'] is True
+    assert response.get_json()['message'] == (
+        "Your plan is ready in Endure. We sent your access email; if it has "
+        "not arrived, check spam or contact support.")
 
 
 def test_trainingpeaks_followups_are_suppressed_for_endure_orders(
