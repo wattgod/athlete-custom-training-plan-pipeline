@@ -821,14 +821,16 @@ def test_page_approval_rejects_unknown_item_wrong_csrf_and_escapes_values(review
     assert load(state_path)['approval'] is None
 
 
-def test_generation_email_points_to_fragment_login_not_a_bundle_alias():
+def test_generation_email_points_to_fragment_login_not_a_bundle_alias(monkeypatch):
+    monkeypatch.setattr(webhook_app, 'REVIEW_BASE_URL', 'http://127.0.0.1:5050')
     _, text, rendered = webhook_app._build_phase1_generation_email({
         'name': 'Athlete M', 'order_id': 'test_email_review',
         'fulfillment_status': 'GENERATED', 'blocking_issues': [],
         'download_token': 'download-token', 'review_token': 'review-token',
     })
     content = text + rendered
-    assert '/review/test_email_review#token=review-token' in content
+    assert ('http://127.0.0.1:5050/review/'
+            'test_email_review#token=review-token') in content
     assert '/review/test_email_review?token=' not in content
     assert '/api/download/test_email_review?artifact=review_bundle' not in content
 
