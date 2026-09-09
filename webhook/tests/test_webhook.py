@@ -1726,6 +1726,10 @@ class TestTrainingPlanPaymentConfirmation:
         assert subject == (
             'Payment confirmed — your 16-week training plan '
             'for Unbound Gravel 200')
+        assert "I am building your custom 16-week training plan" in body
+        assert "I'll review it before release" in body
+        assert 'building and reviewing' not in body
+        assert 'I&rsquo;ll review it before release' in html
         assert 'Within 24 hours' in body
         assert 'Endure access link and training guide' in body
         assert 'one-time plan purchase, not ongoing coaching' in body
