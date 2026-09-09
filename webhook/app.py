@@ -257,6 +257,13 @@ RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
 # Compatibility alias used by existing tests/deploy env. Brand-aware sends use
 # the registry's email.resend_from (which resolves RESEND_FROM for gravelgod).
 RESEND_FROM = _brand_config(DEFAULT_BRAND)['email']['resend_from']
+_DEFAULT_REVIEW_BASE_URL = (
+    'https://athlete-custom-training-plan-pipeline-production.up.railway.app'
+)
+REVIEW_BASE_URL = (
+    os.environ.get('REVIEW_BASE_URL', '').strip().rstrip('/')
+    or _DEFAULT_REVIEW_BASE_URL
+)
 
 # Configure Stripe
 if STRIPE_SECRET_KEY:
@@ -574,12 +581,11 @@ def _build_phase1_generation_email(details: dict) -> tuple:
         status = 'BLOCKED_REVIEW'
     blocked = status == 'BLOCKED_REVIEW' or bool(issues) or unavailable
     label = 'BLOCKED REVIEW' if blocked else 'GENERATED — REVIEW REQUIRED'
-    base_url = 'https://athlete-custom-training-plan-pipeline-production.up.railway.app'
     review_token = details.get('review_token') or ''
     # The bearer stays in the URL fragment: browsers do not send fragments in
     # HTTP requests, access logs, or Referer headers. Static bootstrap JS POSTs
     # it once to create the server-side review session.
-    review_url = (f'{base_url}/review/{order_id}#token={review_token}'
+    review_url = (f'{REVIEW_BASE_URL}/review/{order_id}#token={review_token}'
                   if order_id and review_token else '')
     rows = []
     text_rows = []
