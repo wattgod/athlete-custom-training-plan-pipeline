@@ -74,7 +74,9 @@ def app(temp_athletes_dir, monkeypatch):
 
 @pytest.fixture
 def client(app):
-    """Create test client."""
+    """Create an isolated test client with no cross-test rate-limit debt."""
+    import app as app_module
+    app_module.limiter.reset()
     return app.test_client()
 
 
@@ -88,7 +90,28 @@ class TestHealthEndpoint:
         data = response.get_json()
         assert data['status'] == 'ok'
         assert data['service'] == 'gravel-god-webhook'
+        assert data['deployment_sha'] is None
         assert data['runtime_files']['apply_contract_schema'] is True
+
+    def test_health_exposes_exact_railway_source_revision(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        sha = '03859b454901b76495cf0758815d4999cbc7770c'
+        monkeypatch.setenv('RAILWAY_GIT_COMMIT_SHA', sha.upper())
+
+        response = client.get('/health')
+
+        assert response.status_code == 200
+        assert response.get_json()['deployment_sha'] == sha
+
+    def test_health_rejects_unpinned_revision_text(
+            self, client, temp_athletes_dir, monkeypatch):
+        monkeypatch.setenv('RAILWAY_GIT_COMMIT_SHA', 'main')
+
+        response = client.get('/health')
+
+        assert response.status_code == 200
+        assert response.get_json()['deployment_sha'] is None
 
     def test_health_degraded_missing_dirs(self, client):
         """Health check returns 503 when directories missing."""
@@ -745,6 +768,142 @@ class TestCreateCheckout:
             assert call_kwargs['customer_email'] == 'jane@example.com'
             assert call_kwargs['metadata']['tier'] == 'custom'
             assert call_kwargs['metadata']['product_type'] == 'training_plan'
+            assert 'delivery_target' not in call_kwargs['metadata']
+
+    def test_gravel_pilot_buyer_gets_endure_on_the_ordinary_checkout(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setenv(
+            'ENDURE_PLAN_PILOT_BUYERS',
+            'gravelgod:training_plan:custom:pilot@example.com, '
+            'gravelgod:training_plan:custom:second@example.com')
+        with patch.object(app_module.endure_delivery, 'is_enabled', return_value=True), \
+             patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_endure_pilot'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={
+                    'name': 'Pilot Rider',
+                    'email': ' Pilot@Example.com ',
+                    'races': [{
+                        'name': 'Unbound 200',
+                        'date': self._future_date(),
+                        'priority': 'A',
+                    }],
+                },
+                headers={'Origin': 'https://gravelgodcycling.com'},
+                environ_base={'REMOTE_ADDR': '198.51.100.24'},
+            )
+
+        assert response.status_code == 200
+        metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+        assert metadata['brand'] == 'gravelgod'
+        assert metadata['delivery_target'] == 'endure'
+        assert mock_stripe.checkout.Session.create.call_args.kwargs['custom_text'] == {
+            'submit': {
+                'message': (
+                    'Delivery: This custom Gravel God plan will be '
+                    'delivered in Endure—not TrainingPeaks—after a human '
+                    'checks the race, schedule, progression, and workouts. '
+                    'Endure works in your phone or computer browser; no '
+                    'app is required. Automatic Garmin or Wahoo workout '
+                    'sync is not included in this pilot. This purchase '
+                    'does not start ongoing coaching. We’ll email your '
+                    'Endure access link when the plan is ready.'
+                ),
+            },
+        }
+
+    def test_road_buyer_cannot_enter_the_gravel_endure_pilot(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setenv(
+            'ENDURE_PLAN_PILOT_BUYERS',
+            'roadielabs:training_plan:custom:pilot@example.com')
+        with patch.object(app_module.endure_delivery, 'is_enabled', return_value=True), \
+             patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_road_not_pilot'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={
+                    'name': 'Road Pilot',
+                    'email': 'pilot@example.com',
+                    'races': [{
+                        'name': 'Mallorca 312',
+                        'date': self._future_date(),
+                        'priority': 'A',
+                    }],
+                },
+                headers={'Origin': 'https://roadielabs.com'},
+                environ_base={'REMOTE_ADDR': '198.51.100.25'},
+            )
+
+        assert response.status_code == 200
+        metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+        assert metadata['brand'] == 'roadielabs'
+        assert 'delivery_target' not in metadata
+
+    def test_gravel_pilot_allowlist_does_not_override_disabled_transport(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setenv(
+            'ENDURE_PLAN_PILOT_BUYERS',
+            'gravelgod:training_plan:custom:pilot@example.com')
+        with patch.object(app_module.endure_delivery, 'is_enabled', return_value=False), \
+             patch('app.stripe') as mock_stripe:
+            mock_session = MagicMock()
+            mock_session.id = 'cs_test_endure_off'
+            mock_session.url = 'https://checkout.stripe.com/test'
+            mock_stripe.checkout.Session.create.return_value = mock_session
+
+            response = client.post(
+                '/api/create-checkout',
+                json={
+                    'name': 'Pilot Rider',
+                    'email': 'pilot@example.com',
+                    'races': [{
+                        'name': 'Unbound 200',
+                        'date': self._future_date(),
+                        'priority': 'A',
+                    }],
+                },
+                headers={'Origin': 'https://gravelgodcycling.com'},
+                environ_base={'REMOTE_ADDR': '198.51.100.26'},
+            )
+
+        assert response.status_code == 200
+        metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+        assert 'delivery_target' not in metadata
+        assert 'custom_text' not in mock_stripe.checkout.Session.create.call_args.kwargs
+
+    def test_endure_pilot_enrollment_is_scoped_to_the_exact_product(
+            self, monkeypatch):
+        import app as app_module
+        monkeypatch.setenv(
+            'ENDURE_PLAN_PILOT_BUYERS',
+            'gravelgod:training_plan:custom:pilot@example.com')
+        monkeypatch.setattr(app_module.endure_delivery, 'is_enabled', lambda: True)
+
+        assert app_module._is_endure_plan_pilot_checkout(
+            'gravelgod', 'https://gravelgodcycling.com',
+            'training_plan', 'custom', 'pilot@example.com') is True
+        assert app_module._is_endure_plan_pilot_checkout(
+            'gravelgod', 'https://gravelgodcycling.com',
+            'coaching', 'custom', 'pilot@example.com') is False
+        assert app_module._is_endure_plan_pilot_checkout(
+            'gravelgod', 'https://gravelgodcycling.com',
+            'training_plan', 'premium', 'pilot@example.com') is False
+        assert app_module._is_endure_plan_pilot_checkout(
+            'gravelgod', '', 'training_plan', 'custom',
+            'pilot@example.com') is False
 
     def test_checkout_preserves_valid_ga4_attribution(self, client, temp_athletes_dir):
         """Consented GA ids survive Stripe redirect for webhook attribution."""
@@ -1529,6 +1688,49 @@ class TestCoachingConfirmation:
         body = send.call_args.args[2]
         assert 'Book your kickoff call' in body
         assert 'https://calendar.example.com/matti/coaching' in body
+
+
+class TestTrainingPlanPaymentConfirmation:
+    def test_endure_receipt_states_the_exact_pilot_contract(self, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'RESEND_API_KEY', 're_test')
+
+        with patch.object(app_module, '_send_email', return_value=True) as send:
+            app_module._send_payment_confirmation(
+                'rider@test.com', 'Rider Test',
+                race_name='Unbound Gravel 200', plan_weeks='16',
+                brand='gravelgod', delivery_platform='endure')
+
+        subject = send.call_args.args[1]
+        body = send.call_args.args[2]
+        html = send.call_args.kwargs['html']
+        assert subject == (
+            'Payment confirmed — your 16-week training plan '
+            'for Unbound Gravel 200')
+        assert 'Within 24 hours' in body
+        assert 'Endure access link and training guide' in body
+        assert 'one-time plan purchase, not ongoing coaching' in body
+        assert 'phone or computer browser; no app is required' in body
+        assert 'Automatic Garmin or Wahoo workout sync is not included' in body
+        assert 'TrainingPeaks' not in body
+        assert 'one-time plan purchase, not ongoing coaching' in html
+        assert send.call_args.kwargs['brand'] == 'gravelgod'
+
+    def test_endure_receipt_send_failure_is_critical(
+            self, monkeypatch, caplog):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'RESEND_API_KEY', 're_test')
+
+        with patch.object(app_module, '_send_email', return_value=False), \
+             caplog.at_level(logging.CRITICAL):
+            app_module._send_payment_confirmation(
+                'rider@test.com', 'Rider Test',
+                brand='gravelgod', delivery_platform='endure')
+
+        assert any(
+            record.levelno == logging.CRITICAL
+            and 'PAYMENT CONFIRMATION NOT SENT' in record.message
+            for record in caplog.records)
 
 
 class TestCoachingIntakeHandoff:

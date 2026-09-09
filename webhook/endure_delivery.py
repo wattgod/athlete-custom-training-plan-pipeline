@@ -213,20 +213,16 @@ def build_delivery_payload(profile: dict, order_id: str,
         athlete['constraints'] = constraints
 
     races = _map_races(profile)
-    target = profile.get('target_race') or {}
     plan_start = _monday_on_or_after(
         (profile.get('plan_start') or {}).get('preferred_start', ''))
-
-    race_name = target.get('name', '')
-    plan_name = (f'Custom Training Plan — {race_name}' if race_name
-                 else f'Custom Training Plan — {athlete["name"] or email}')
+    plan_identity = purchased_plan_identity(profile)
 
     return {
         'order_id': order_id or '',
         'athlete': athlete,
         'races': races,
         'plan': {
-            'name': plan_name,
+            'name': plan_identity['plan_name'],
             'start_date': plan_start,
         },
         'release': {
@@ -235,6 +231,22 @@ def build_delivery_payload(profile: dict, order_id: str,
             'model_seal': model_seal,
         },
         'intake': intake or {},
+    }
+
+
+def purchased_plan_identity(profile: dict) -> dict:
+    """Derive the exact athlete-visible plan and target-race identity."""
+    target = profile.get('target_race') or {}
+    race_name = str(target.get('name') or '').strip()
+    race_date = str(target.get('date') or '').strip()
+    athlete_name = str(profile.get('name') or profile.get('email') or '').strip()
+    return {
+        'plan_name': (
+            f'Custom Training Plan — {race_name}' if race_name
+            else f'Custom Training Plan — {athlete_name}'
+        ),
+        'race_name': race_name,
+        'race_date': race_date,
     }
 
 
