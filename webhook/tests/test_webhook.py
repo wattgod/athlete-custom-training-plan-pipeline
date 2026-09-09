@@ -92,6 +92,8 @@ class TestHealthEndpoint:
         assert data['service'] == 'gravel-god-webhook'
         assert data['deployment_sha'] is None
         assert data['runtime_files']['apply_contract_schema'] is True
+        if 'endure_delivery' in data:
+            assert data['endure_delivery']['pilot_buyer_count'] == 0
 
     def test_health_exposes_exact_railway_source_revision(
             self, client, temp_athletes_dir, monkeypatch):
@@ -103,6 +105,23 @@ class TestHealthEndpoint:
 
         assert response.status_code == 200
         assert response.get_json()['deployment_sha'] == sha
+
+    def test_health_exposes_only_the_pilot_allowlist_count(
+            self, client, temp_athletes_dir, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module.endure_delivery, 'is_enabled',
+                            lambda: True)
+        monkeypatch.setenv(
+            'ENDURE_PLAN_PILOT_BUYERS',
+            'gravelgod:training_plan:custom:one@example.com,'
+            'gravelgod:training_plan:custom:two@example.com')
+
+        response = client.get('/health')
+
+        assert response.status_code == 200
+        endure = response.get_json()['endure_delivery']
+        assert endure['pilot_buyer_count'] == 2
+        assert 'one@example.com' not in response.get_data(as_text=True)
 
     def test_health_rejects_unpinned_revision_text(
             self, client, temp_athletes_dir, monkeypatch):

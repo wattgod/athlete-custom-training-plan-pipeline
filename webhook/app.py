@@ -230,12 +230,17 @@ def _is_endure_plan_pilot_checkout(
         tier.strip().lower(),
         email.strip().lower(),
     ))
-    configured = {
+    configured = _endure_plan_pilot_buyers()
+    return enrollment in configured
+
+
+def _endure_plan_pilot_buyers() -> set:
+    """Return exact configured pilot tuples without exposing identities."""
+    return {
         value.strip().lower()
         for value in os.environ.get('ENDURE_PLAN_PILOT_BUYERS', '').split(',')
         if value.strip()
     }
-    return enrollment in configured
 
 
 def _coaching_config(brand: str) -> dict:
@@ -4042,6 +4047,7 @@ def health():
         checks['endure_delivery'] = {
             'enabled': True,
             'default_target': endure_delivery.resolve_delivery_target({}),
+            'pilot_buyer_count': len(_endure_plan_pilot_buyers()),
             'consecutive_successes': streak['consecutive_successes'],
             'total_successes': streak['total_successes'],
             'total_failures': streak['total_failures'],
