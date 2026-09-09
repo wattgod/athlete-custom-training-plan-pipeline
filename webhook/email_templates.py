@@ -50,7 +50,7 @@ FOLLOWUP_SEQUENCE = [
             "you'd expect. That's calibration, not a mistake.\n\n"
             "If anything looks wrong — workouts missing from your "
             "calendar, zones that feel off — reply to this email and "
-            "I'll fix it.\n\n"
+            "I'll fix it. Corrections are included with your purchase.\n\n"
             + SIGNATURE
         ),
     },
@@ -65,14 +65,15 @@ FOLLOWUP_SEQUENCE = [
             "I'll fix it today.\n"
             "2. How did the first quality session feel? If your FTP was "
             "estimated, the zones can run hot or cold — week 1 has a "
-            "test built in to correct that. Ride the test honestly and the "
-            "rest of the plan calibrates itself.\n\n"
+            "test built in to correct that. Ride the test honestly, then "
+            "reply with the result and I'll rescale the remaining workouts. "
+            "That rescale is included with your purchase.\n\n"
             "One rule that saves more plans than any workout: if you miss "
             "a day, skip it. Don't stack it onto tomorrow. The plan absorbs "
             "a missed session. It doesn't absorb doubled ones.\n\n"
-            "If something about your week isn't working — schedule, "
-            "zones, a session that made no sense — reply with the "
-            "specifics. I read these.\n\n"
+            "Email support is included with your purchase. If something "
+            "about your week isn't working, reply with the specifics. I "
+            "read these.\n\n"
             + SIGNATURE
         ),
     },
@@ -92,7 +93,7 @@ FOLLOWUP_SEQUENCE = [
             "between sessions.\n\n"
             "One more thing. The plan you have is static — it can't "
             "see a bad night's sleep, a work trip, or a breakthrough ride. "
-            "Coaching can. Weekly adjustments to what actually happened, "
+            "Weekly review and recurring adjustments are part of Coaching, "
             "plus direct access to me for race strategy and the questions "
             "between workouts. Details: "
             "https://gravelgodcycling.com/coaching/ (from $199 every 4 weeks). "
