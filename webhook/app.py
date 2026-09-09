@@ -206,6 +206,43 @@ def _brand_config(brand: str) -> dict:
     return BRANDS.get(normalize_brand(brand), BRANDS[DEFAULT_BRAND])
 
 
+def _is_endure_plan_pilot_checkout(
+        brand: str, origin: str, product_type: str, tier: str,
+        email: str) -> bool:
+    """Select one explicitly enrolled checkout for the Endure pilot.
+
+    Each entry is ``brand:product_type:tier:email``. Scoping the server-owned
+    cohort to the exact product prevents another purchase by the same address
+    from silently changing delivery platforms. Endure must also be configured
+    at checkout time; otherwise the existing TrainingPeaks path is preserved.
+    """
+    normalized_origin = origin.strip().lower().rstrip('/')
+    gravel_site = str(BRANDS.get('gravelgod', {}).get('site') or '').lower().rstrip('/')
+    gravel_origins = {gravel_site, gravel_site.replace('://', '://www.')}
+    if (not gravel_site
+            or normalize_brand(brand) != 'gravelgod'
+            or normalized_origin not in gravel_origins
+            or not endure_delivery.is_enabled()):
+        return False
+    enrollment = ':'.join((
+        normalize_brand(brand),
+        product_type.strip().lower(),
+        tier.strip().lower(),
+        email.strip().lower(),
+    ))
+    configured = _endure_plan_pilot_buyers()
+    return enrollment in configured
+
+
+def _endure_plan_pilot_buyers() -> set:
+    """Return exact configured pilot tuples without exposing identities."""
+    return {
+        value.strip().lower()
+        for value in os.environ.get('ENDURE_PLAN_PILOT_BUYERS', '').split(',')
+        if value.strip()
+    }
+
+
 def _coaching_config(brand: str) -> dict:
     """Return the brand-scoped coaching contract, failing closed by default."""
     return _brand_config(brand).get('coaching') or {'enabled': False, 'tiers': {}}
@@ -1038,7 +1075,8 @@ def _send_payment_confirmation(customer_email: str, customer_name: str,
     site link follow the brand the customer bought from.
     """
     if not RESEND_API_KEY:
-        logger.warning("Cannot send payment confirmation — RESEND_API_KEY not set")
+        logger.critical(
+            "PAYMENT CONFIRMATION NOT SENT — RESEND_API_KEY is not set")
         return
 
     brand_cfg = _brand_config(brand)
@@ -1056,12 +1094,14 @@ def _send_payment_confirmation(customer_email: str, customer_name: str,
 
 Payment received — thank you.
 
-There is nothing you need to connect yet. I am building and reviewing your custom {weeks_mention}training plan{race_mention} now.
+There is nothing you need to connect yet. I am building your custom {weeks_mention}training plan{race_mention} now. I'll review it before release.
 
 WHAT HAPPENS NEXT:
 1. I review your plan and its first training block.
 2. Within 24 hours, you receive one email with your Endure access link and training guide.
 3. In Endure, your daily check-in, Today view, workouts, and post-workout feedback keep the plan connected to what you actually do.
+
+This is a one-time plan purchase, not ongoing coaching. Endure works in your phone or computer browser; no app is required. Automatic Garmin or Wahoo workout sync is not included in this pilot.
 
 Questions? Reply to this email.
 
@@ -1073,13 +1113,14 @@ Questions? Reply to this email.
   <h1 style="font-size: 22px;">Payment confirmed</h1>
   <p>Hey {html_escape(first_name)},</p>
   <p>Payment received — thank you.</p>
-  <p><strong>There is nothing you need to connect yet.</strong> I am building and reviewing your custom {html_escape(weeks_mention)}training plan{html_escape(race_mention)} now.</p>
+  <p><strong>There is nothing you need to connect yet.</strong> I am building your custom {html_escape(weeks_mention)}training plan{html_escape(race_mention)} now. I&rsquo;ll review it before release.</p>
   <h2 style="font-size: 16px;">What happens next</h2>
   <ol>
     <li>I review your plan and its first training block.</li>
     <li>Within 24 hours, you receive one email with your Endure access link and training guide.</li>
     <li>In Endure, your daily check-in, Today view, workouts, and post-workout feedback keep the plan connected to what you actually do.</li>
   </ol>
+  <p>This is a one-time plan purchase, not ongoing coaching. Endure works in your phone or computer browser; no app is required. Automatic Garmin or Wahoo workout sync is not included in this pilot.</p>
   <p>Questions? Reply to this email.</p>
   <p>— Matti, {html_escape(brand_name)}<br>{html_escape(brand_site)}</p>
 </div>"""
@@ -1089,8 +1130,9 @@ Questions? Reply to this email.
             logger.info(
                 f"Payment confirmation sent to {_mask_email(customer_email)}")
         else:
-            logger.error(
-                f"Failed to send payment confirmation to {_mask_email(customer_email)}")
+            logger.critical(
+                "PAYMENT CONFIRMATION NOT SENT to "
+                f"{_mask_email(customer_email)}")
         return
 
     tp_connect_url = 'https://home.trainingpeaks.com/attachtocoach?sharedKey=2OTEPC6BXNVQU'
@@ -3966,6 +4008,12 @@ def _runtime_packaging_ok() -> tuple:
     return ok, checks
 
 
+def _deployment_sha() -> str | None:
+    """Return the immutable Railway source revision when it is trustworthy."""
+    value = os.environ.get('RAILWAY_GIT_COMMIT_SHA', '').strip().lower()
+    return value if re.fullmatch(r'[0-9a-f]{40}', value) else None
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint with dependency checks."""
@@ -3978,6 +4026,7 @@ def health():
     checks = {
         'service': 'gravel-god-webhook',
         'status': 'ok',
+        'deployment_sha': _deployment_sha(),
         'athletes_dir': Path(ATHLETES_DIR).exists(),
         'scripts_dir': Path(SCRIPTS_DIR).exists(),
         'data_dir': Path(DATA_DIR).exists(),
@@ -3998,6 +4047,7 @@ def health():
         checks['endure_delivery'] = {
             'enabled': True,
             'default_target': endure_delivery.resolve_delivery_target({}),
+            'pilot_buyer_count': len(_endure_plan_pilot_buyers()),
             'consecutive_successes': streak['consecutive_successes'],
             'total_successes': streak['total_successes'],
             'total_failures': streak['total_failures'],
@@ -4598,6 +4648,12 @@ _MSG_IN_PROGRESS = ("Your custom plan is being generated right now — "
                     "you'll get an email as soon as it's ready.")
 _MSG_FINISHING = ("We're putting the finishing touches on your plan "
                   "and will email it to you shortly.")
+_MSG_ENDURE_PREPARING = ("Payment received. We're preparing your plan and "
+                         "will email your Endure access link after it has "
+                         "been reviewed.")
+_MSG_ENDURE_READY = ("Your plan is ready in Endure. We sent your access "
+                     "email; if it has not arrived, check spam or contact "
+                     "support.")
 _MSG_READY = "Your plan is ready — check your email for the details."
 
 
@@ -4692,9 +4748,26 @@ def order_status(ref):
             'review_bundle_exists': review_bundle_exists,
         }
 
-    if download_ready:
+    is_endure_order = bool(
+        state is not None and state.get('delivery_platform') == 'endure')
+    endure_access_confirmed = bool(
+        is_endure_order
+        and state.get('status') == CONFIRMED
+        and isinstance(state.get('confirmation'), dict)
+        and state['confirmation'].get('provider') == 'resend'
+        and isinstance(state.get('endure_confirmation_attempt'), dict)
+        and state['endure_confirmation_attempt'].get('status') == 'accepted'
+    )
+    customer_ready = download_ready and (
+        not is_endure_order or endure_access_confirmed)
+
+    if customer_ready:
         return jsonify({'status': 'ready', 'download_ready': download_ready,
-                        'message': _MSG_READY, **operator_fields})
+                        'message': (_MSG_ENDURE_READY if is_endure_order
+                                    else _MSG_READY), **operator_fields})
+    if is_endure_order:
+        return jsonify({'status': 'processing', 'download_ready': False,
+                        'message': _MSG_ENDURE_PREPARING, **operator_fields})
     if job_status in ('queued', 'running', 'succeeded') or state is not None:
         return jsonify({'status': 'processing', 'download_ready': False,
                         'message': _MSG_IN_PROGRESS, **operator_fields})
@@ -5118,6 +5191,17 @@ def _confirm_endure_plan(order_id: str, state: dict):
         manifest = verify_release_manifest(state, revision_dir)
         artifact_paths = {
             str(item.get('path') or '') for item in manifest['artifacts']}
+        if 'artifacts/profile.yaml' not in artifact_paths:
+            raise FulfillmentStateError('sealed profile is missing')
+        profile_handle = open_verified_release_artifact(
+            state, revision_dir, 'artifacts/profile.yaml')
+        try:
+            profile = yaml.safe_load(profile_handle.read().decode('utf-8'))
+        finally:
+            profile_handle.close()
+        if not isinstance(profile, dict):
+            raise FulfillmentStateError('sealed profile is malformed')
+        plan_identity = endure_delivery.purchased_plan_identity(profile)
         guide_attachments = []
         for guide_name in ('training_guide.pdf', 'training_guide.html'):
             relative = f'artifacts/{guide_name}'
@@ -5175,10 +5259,19 @@ def _confirm_endure_plan(order_id: str, state: dict):
     invite_url = readiness.get('invite_url') or endure_delivery.app_url()
     action_label = ('Accept your Endure invitation'
                     if readiness.get('invite_url') else 'Open Endure')
-    subject = 'Your first training block is ready in Endure'
+    plan_name = plan_identity['plan_name']
+    race_name = plan_identity['race_name']
+    race_date = plan_identity['race_date']
+    target_line = (f'Target: {race_name} on {race_date}\n'
+                   if race_name and race_date else '')
+    target_html = (f'<p><strong>Target:</strong> {html_escape(race_name)} on '
+                   f'{html_escape(race_date)}</p>'
+                   if race_name and race_date else '')
+    subject = f'{plan_name} is ready in Endure'
     text_body = f"""Hi {first_name},
 
-Your custom plan has been reviewed, and your first training block is ready in Endure.
+{plan_name} has been reviewed, and its first training block is ready in Endure.
+{target_line}
 
 Get started:
 1. {action_label}: {invite_url}
@@ -5186,9 +5279,11 @@ Get started:
 3. Open Today to see the session or recovery work that fits the day.
 4. After training, add your post-workout feedback.
 
-Your check-ins and workout feedback give your coach and David the context they need. The plan changes when the evidence calls for it, not after every ordinary day.
+Your check-ins and workout feedback help David explain how each day fits the plan. This purchase does not include ongoing human monitoring or routine plan revisions.
 
 If anything looks wrong, reply to this email before starting the plan.
+
+Endure works in your phone or computer browser. No mobile app is required.
 
 — Matti, Gravel God
 gravelgodcycling.com
@@ -5197,15 +5292,17 @@ gravelgodcycling.com
 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #172033; line-height: 1.6;">
   <h1 style="font-size: 24px; margin: 0 0 16px;">Your first training block is ready</h1>
   <p>Hi {html_escape(first_name)},</p>
-  <p>Your custom plan has been reviewed, and your first training block is ready in Endure.</p>
+  <p><strong>{html_escape(plan_name)}</strong> has been reviewed, and its first training block is ready in Endure.</p>
+  {target_html}
   <p><a href="{html_escape(invite_url)}" style="display: inline-block; background: #2156d8; color: #fff; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-weight: 700;">{html_escape(action_label)}</a></p>
   <ol>
     <li>Complete your daily check-in before training.</li>
     <li>Open Today to see the session or recovery work that fits the day.</li>
     <li>After training, add your post-workout feedback.</li>
   </ol>
-  <p>Your check-ins and workout feedback give your coach and David the context they need. The plan changes when the evidence calls for it, not after every ordinary day.</p>
+  <p>Your check-ins and workout feedback help David explain how each day fits the plan. This purchase does not include ongoing human monitoring or routine plan revisions.</p>
   <p>If anything looks wrong, reply to this email before starting the plan.</p>
+  <p>Endure works in your phone or computer browser. No mobile app is required.</p>
   <p>— Matti, Gravel God<br>gravelgodcycling.com</p>
 </div>"""
     idempotency_key = (
@@ -5719,6 +5816,10 @@ def create_checkout():
         if ga4_session_id:
             checkout_metadata['ga4_session_id'] = ga4_session_id
         checkout_metadata['analytics_consent'] = analytics_consent
+        if _is_endure_plan_pilot_checkout(
+                brand, request.headers.get('Origin', ''),
+                'training_plan', 'custom', email):
+            checkout_metadata['delivery_target'] = 'endure'
 
         session_kwargs = dict(
             line_items=line_items,
@@ -5740,6 +5841,21 @@ def create_checkout():
                 'promotions': 'auto',
             },
         )
+        if checkout_metadata.get('delivery_target') == 'endure':
+            session_kwargs['custom_text'] = {
+                'submit': {
+                    'message': (
+                        'Delivery: This custom Gravel God plan will be '
+                        'delivered in Endure—not TrainingPeaks—after a human '
+                        'checks the race, schedule, progression, and workouts. '
+                        'Endure works in your phone or computer browser; no '
+                        'app is required. Automatic Garmin or Wahoo workout '
+                        'sync is not included in this pilot. This purchase '
+                        'does not start ongoing coaching. We’ll email your '
+                        'Endure access link when the plan is ready.'
+                    ),
+                },
+            }
         if ENABLE_AUTOMATIC_TAX:
             session_kwargs['automatic_tax'] = {'enabled': True}
 
