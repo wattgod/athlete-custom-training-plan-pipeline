@@ -45,6 +45,7 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
                                CONFIRMED,
                                RELEASE_STATUSES, FulfillmentStateError,
                                approval_matches_release, bind_legacy_order,
+                               canonical_digest,
                                confirm_after_send, confirm_endure_after_send,
                                finalize_transitional_release,
                                load as load_fulfillment_state,
@@ -8337,20 +8338,110 @@ def _send_followup_email(email: str, subject: str, body: str,
     return _send_email(email, subject, body, reply_to=reply_to, brand=brand)
 
 
-def process_followup_emails():
-    """Check order logs and send due follow-up emails. Returns stats dict.
+def _trainingpeaks_followup_context(order: dict, *, include_calendar: bool = False):
+    """Return delivery-bound follow-up facts for one current TP order.
 
-    Reads from YYYY-MM.jsonl files (written by log_order and _log_product_event).
-    Only processes training_plan orders that succeeded.
+    ``waiting`` means the current order has a valid state but has not reached
+    verified delivery. ``unavailable`` means the durable evidence cannot prove
+    delivery for this order; legacy/manual records deliberately land here.
+    """
+    order_id = str(order.get('order_id') or '').strip()
+    athlete_id = str(order.get('athlete_id') or '').strip()
+    if not order_id or not athlete_id:
+        return 'unavailable', None, 'order identity is incomplete'
+
+    try:
+        state = load_fulfillment_state(_fulfillment_status_path(order_id))
+    except (FulfillmentStateError, OSError, ValueError):
+        return 'unavailable', None, 'fulfillment state is unavailable'
+
+    if state.get('order_id') != order_id:
+        return 'unavailable', None, 'fulfillment order identity does not match'
+    if (_normalize_athlete_id(state.get('athlete_id', ''))
+            != _normalize_athlete_id(athlete_id)):
+        return 'unavailable', None, 'fulfillment athlete identity does not match'
+    if state.get('legacy'):
+        return 'unavailable', None, 'legacy fulfillment has no current delivery proof'
+    if state.get('delivery_platform') != 'trainingpeaks':
+        return 'unavailable', None, 'delivery platform is not TrainingPeaks'
+    if state.get('status') != CONFIRMED:
+        return 'waiting', None, f"fulfillment status is {state.get('status', 'unknown')}"
+
+    confirmation = state.get('confirmation')
+    application = state.get('application')
+    attempt = state.get('application_attempt')
+    if (not isinstance(confirmation, dict)
+            or confirmation.get('provider') != 'resend'):
+        return 'unavailable', None, 'plan-ready delivery confirmation is unproven'
+    try:
+        delivered_at = datetime.fromisoformat(
+            str(confirmation.get('at') or '').replace('Z', '+00:00'))
+        if delivered_at.tzinfo is None:
+            raise ValueError('timezone required')
+        delivered_at = delivered_at.astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return 'unavailable', None, 'delivery confirmation timestamp is invalid'
+
+    landed = attempt.get('landed') if isinstance(attempt, dict) else None
+    operation_count = application.get('operation_count') if isinstance(application, dict) else None
+    if (not isinstance(application, dict)
+            or application.get('platform') != 'trainingpeaks'
+            or application.get('receipt_type') != 'trainingpeaks_apply_receipt/v1'
+            or not isinstance(operation_count, int)
+            or isinstance(operation_count, bool)
+            or operation_count < 1
+            or not isinstance(attempt, dict)
+            or attempt.get('status') != 'succeeded'
+            or not isinstance(landed, list)
+            or len(landed) != operation_count):
+        return 'unavailable', None, 'provider apply receipt is incomplete'
+    try:
+        receipt_digest = canonical_digest(landed)
+    except (TypeError, ValueError):
+        return 'unavailable', None, 'provider apply receipt is malformed'
+    if application.get('receipt_digest') != receipt_digest:
+        return 'unavailable', None, 'provider apply receipt digest does not match'
+    if not approval_matches_release(state):
+        return 'unavailable', None, 'delivery does not match the approved release'
+
+    context = {'state': state, 'delivered_at': delivered_at}
+    if include_calendar:
+        revision_dir = (_order_dir(order_id) / 'revisions'
+                        / f"r{state['generation_revision']}")
+        try:
+            handle = open_verified_release_artifact(
+                state, revision_dir, 'artifacts/plan_dates.yaml')
+            try:
+                payload = handle.read()
+            finally:
+                handle.close()
+            if isinstance(payload, bytes):
+                payload = payload.decode('utf-8')
+            plan_dates = yaml.safe_load(payload) or {}
+        except (FulfillmentStateError, OSError, UnicodeError, yaml.YAMLError):
+            return 'unavailable', None, 'sealed delivery calendar is unavailable'
+        if not isinstance(plan_dates, dict) or not plan_dates:
+            return 'unavailable', None, 'sealed delivery calendar is invalid'
+        context['plan_dates'] = plan_dates
+    return 'eligible', context, ''
+
+
+def process_followup_emails():
+    """Send fixed follow-ups from verified delivery, preserving catch-up.
+
+    Order logs supply the recipient identity. Order-scoped fulfillment state
+    supplies the successful provider apply receipt and delivery timestamp.
     """
     log_dir = Path(DATA_DIR) / '.logs'
 
     if not log_dir.exists():
-        return {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0}
+        return {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0,
+                'waiting_for_delivery': 0, 'eligibility_unavailable': 0}
 
     sent_followups = _get_sent_followups()
     now = datetime.now(timezone.utc)
-    stats = {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0}
+    stats = {'checked': 0, 'sent': 0, 'skipped': 0, 'errors': 0,
+             'waiting_for_delivery': 0, 'eligibility_unavailable': 0}
 
     # Read from all YYYY-MM.jsonl files (the format log_order actually writes to)
     for log_file in sorted(log_dir.glob('20*.jsonl')):
@@ -8366,8 +8457,8 @@ def process_followup_emails():
             if order.get('product_type') != 'training_plan':
                 continue
 
-            # Skip failed orders — no plan was delivered
-            if not order.get('success', True):
+            # Explicitly failed orders never enter follow-up eligibility.
+            if order.get('success') is False:
                 continue
 
             # The existing sequence talks about TrainingPeaks. Endure orders
@@ -8384,21 +8475,25 @@ def process_followup_emails():
             email = order.get('email', '')
             name = order.get('name', order.get('customer_name', ''))
             brand = normalize_brand(order.get('brand'))
-            order_time = order.get('timestamp', order.get('processed_at', ''))
-
-            if not email or not order_time or not order_id:
+            athlete_id = order.get('athlete_id', '')
+            if order.get('success') is not True:
+                stats['eligibility_unavailable'] += 1
+                logger.warning(
+                    f"Follow-up unavailable for order {order_id or 'unknown'}: "
+                    "processing outcome is unproven")
+                continue
+            if not email or not order_id or not athlete_id:
                 continue
 
-            try:
-                order_dt = datetime.fromisoformat(order_time.replace('Z', '+00:00'))
-                if order_dt.tzinfo is None:
-                    order_dt = order_dt.replace(tzinfo=timezone.utc)
-                else:
-                    order_dt = order_dt.astimezone(timezone.utc)
-            except (ValueError, AttributeError):
+            eligibility, context, reason = _trainingpeaks_followup_context(order)
+            if eligibility != 'eligible':
+                key = ('waiting_for_delivery' if eligibility == 'waiting'
+                       else 'eligibility_unavailable')
+                stats[key] += 1
+                logger.warning(
+                    f"Follow-up {eligibility} for order {order_id}: {reason}")
                 continue
-
-            days_since = (now - order_dt).days
+            days_since = (now - context['delivered_at']).days
 
             for followup in FOLLOWUP_SEQUENCE:
                 day = followup['day']
@@ -9274,7 +9369,7 @@ def consult_operator_op(order_id):
 # LIFECYCLE TOUCHPOINTS — plan-aware anti-churn emails
 #
 # Unlike the fixed day-1/3/7 FOLLOWUP_SEQUENCE, these are computed from the
-# athlete's actual plan calendar (plan_dates.yaml): FTP-rescale offer after
+# order revision's sealed, provider-applied calendar: FTP-rescale offer after
 # the testing week, reassurance at the first recovery week, a mid-plan
 # survey, B-race debriefs, race-week checklist, and the post-race
 # survey + coaching offer. All reply-driven: responses land in the coach
@@ -9285,9 +9380,8 @@ def compute_touchpoints(plan_dates: dict, first_name: str, race_name: str) -> li
     """Compute the lifecycle touchpoint schedule for one athlete's plan.
 
     Returns a list of {'date': 'YYYY-MM-DD', 'key': str, 'subject': str,
-    'body': str}, sorted by date. Dates come from plan_dates.yaml — the
-    same calendar that drives workout generation, so touches always match
-    the plan the athlete is actually riding.
+    'body': str}, sorted by date. The caller supplies the sealed plan calendar
+    from the exact order revision whose provider apply receipt was verified.
     """
     from datetime import timedelta as _td
 
@@ -9451,17 +9545,19 @@ def compute_touchpoints(plan_dates: dict, first_name: str, race_name: str) -> li
 def process_touchpoint_emails():
     """Send lifecycle touchpoints due today. Returns stats dict.
 
-    Stateless: recomputes each athlete's schedule from plan_dates.yaml on
-    every run and dedupes via the followup sent-log (key = 'tp:<key>').
+    Recomputes from the plan calendar sealed to this order's verified provider
+    delivery and dedupes via the follow-up sent log (key = 'tp:<key>').
     """
     log_dir = Path(DATA_DIR) / '.logs'
     if not log_dir.exists():
-        return {'checked': 0, 'sent': 0, 'errors': 0}
+        return {'checked': 0, 'sent': 0, 'errors': 0,
+                'waiting_for_delivery': 0, 'eligibility_unavailable': 0}
 
     sent = _get_sent_followups()
     today = datetime.utcnow().strftime('%Y-%m-%d')
     yesterday = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
-    stats = {'checked': 0, 'sent': 0, 'errors': 0}
+    stats = {'checked': 0, 'sent': 0, 'errors': 0,
+             'waiting_for_delivery': 0, 'eligibility_unavailable': 0}
 
     for log_file in sorted(log_dir.glob('20*.jsonl')):
         for line in log_file.read_text().strip().split('\n'):
@@ -9473,7 +9569,7 @@ def process_touchpoint_emails():
                 continue
             if order.get('product_type') != 'training_plan':
                 continue
-            if not order.get('success', True):
+            if order.get('success') is False:
                 continue
             if str(order.get('delivery_platform')
                    or order.get('delivery_target')
@@ -9484,24 +9580,27 @@ def process_touchpoint_emails():
             email = order.get('email', '')
             name = order.get('name', '')
             order_id = order.get('order_id', '')
+            stats['checked'] += 1
+            if order.get('success') is not True:
+                stats['eligibility_unavailable'] += 1
+                logger.warning(
+                    f"Touchpoint unavailable for order {order_id or 'unknown'}: "
+                    "processing outcome is unproven")
+                continue
             if not athlete_id or not email or not order_id:
                 continue
 
-            plan_dates_path = (Path(ATHLETES_DIR)
-                               / athlete_id.replace('_', '-')
-                               / 'plan_dates.yaml')
-            if not plan_dates_path.exists():
-                plan_dates_path = Path(ATHLETES_DIR) / athlete_id / 'plan_dates.yaml'
-            if not plan_dates_path.exists():
+            eligibility, context, reason = _trainingpeaks_followup_context(
+                order, include_calendar=True)
+            if eligibility != 'eligible':
+                key = ('waiting_for_delivery' if eligibility == 'waiting'
+                       else 'eligibility_unavailable')
+                stats[key] += 1
+                logger.warning(
+                    f"Touchpoint {eligibility} for order {order_id}: {reason}")
                 continue
 
-            try:
-                with open(plan_dates_path) as f:
-                    plan_dates = yaml.safe_load(f) or {}
-            except (OSError, yaml.YAMLError):
-                continue
-
-            stats['checked'] += 1
+            plan_dates = context['plan_dates']
             first_name = name.split()[0] if name else 'there'
             race_name = order.get('race_name', 'your race')
 
@@ -9513,12 +9612,15 @@ def process_touchpoint_emails():
                 if dedupe_key in sent:
                     continue
                 try:
-                    _send_email(
+                    sent_ok = _send_email(
                         to=email,
                         subject=touch['subject'],
                         body=touch['body'],
                         reply_to=NOTIFICATION_EMAIL or None,
                     )
+                    if not sent_ok:
+                        stats['errors'] += 1
+                        continue
                     _mark_followup_sent(order_id, f"tp:{touch['key']}", email)
                     sent.add(dedupe_key)
                     stats['sent'] += 1

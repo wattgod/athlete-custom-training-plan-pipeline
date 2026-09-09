@@ -3627,6 +3627,7 @@ class TestFollowupEmails:
         order = json.dumps({
             'product_type': 'training_plan',
             'order_id': 'cs_test_day1',
+            'athlete_id': 'test-athlete',
             'email': 'athlete@test.com',
             'name': 'Test Athlete',
             'timestamp': order_time.isoformat(),
@@ -3636,6 +3637,8 @@ class TestFollowupEmails:
         (log_dir / log_filename).write_text(order + '\n')
 
         with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app._trainingpeaks_followup_context', return_value=(
+                 'eligible', {'delivered_at': order_time.replace(tzinfo=timezone.utc)}, '')), \
              patch('app._send_followup_email') as mock_send:
             mock_send.return_value = True
             from app import process_followup_emails
@@ -3715,6 +3718,7 @@ class TestFollowupEmails:
         order = json.dumps({
             'product_type': 'training_plan',
             'order_id': 'cs_test_day7',
+            'athlete_id': 'week-one-done',
             'email': 'athlete@test.com',
             'name': 'Week One Done',
             'timestamp': order_time.isoformat(),
@@ -3724,6 +3728,8 @@ class TestFollowupEmails:
         (log_dir / log_filename).write_text(order + '\n')
 
         with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app._trainingpeaks_followup_context', return_value=(
+                 'eligible', {'delivered_at': order_time.replace(tzinfo=timezone.utc)}, '')), \
              patch('app._send_followup_email') as mock_send:
             mock_send.return_value = True
             from app import process_followup_emails
@@ -4048,6 +4054,7 @@ class TestFollowupReadsCorrectLogFiles:
         order = json.dumps({
             'product_type': 'training_plan',
             'order_id': 'cs_correct_path',
+            'athlete_id': 'correct-path',
             'email': 'correct@test.com',
             'name': 'Correct Path',
             'timestamp': order_time.isoformat(),
@@ -4062,6 +4069,8 @@ class TestFollowupReadsCorrectLogFiles:
         assert not (log_dir / 'orders.jsonl').exists()
 
         with patch('app.DATA_DIR', str(tmp_path)), \
+             patch('app._trainingpeaks_followup_context', return_value=(
+                 'eligible', {'delivered_at': order_time.replace(tzinfo=timezone.utc)}, '')), \
              patch('app._send_followup_email') as mock_send:
             mock_send.return_value = True
             from app import process_followup_emails
