@@ -1084,6 +1084,9 @@ class TestCoachEmailVariant:
         assert 'Create Jane Doe in TrainingPeaks' in text
         assert 'Import ZWO files into their TP calendar' in text
         assert 'Endure' not in text
+        for rendered in (text, html):
+            assert 'specific blocker update' in rendered
+            assert 'TrainingPeaks connection' in rendered
 
     def test_endure_checklist_replaces_tp_import_steps(self):
         from app import _build_training_plan_email
@@ -1111,6 +1114,10 @@ class TestCoachEmailVariant:
         # text variant too
         assert 'Review block 1 in Endure' in text
         assert 'Import ZWO files' not in text
+        for rendered in (text, html):
+            assert 'expecting the plan within 24 hours' in rendered or (
+                'expect the plan within 24h' in rendered)
+            assert 'TrainingPeaks connection' not in rendered
 
     def test_endure_failure_flags_loudly_keeps_tp_checklist(self):
         from app import _build_training_plan_email

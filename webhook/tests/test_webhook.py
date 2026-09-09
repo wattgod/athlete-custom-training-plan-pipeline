@@ -1710,6 +1710,34 @@ class TestCoachingConfirmation:
 
 
 class TestTrainingPlanPaymentConfirmation:
+    def test_trainingpeaks_receipt_states_accepted_delivery_and_support_contract(
+            self, monkeypatch):
+        import app as app_module
+        monkeypatch.setattr(app_module, 'RESEND_API_KEY', 're_test')
+
+        with patch.object(app_module, '_send_email', return_value=True) as send:
+            app_module._send_payment_confirmation(
+                'rider@test.com', 'Rider Test',
+                race_name='Unbound Gravel 200', plan_weeks='16',
+                brand='gravelgod', delivery_platform='trainingpeaks')
+
+        body = send.call_args.args[2]
+        html = send.call_args.kwargs['html']
+        for rendered in (body, html):
+            assert 'complete questionnaire' in rendered
+            assert 'TrainingPeaks connection' in rendered
+            assert 'specific blocker' in rendered
+            assert 'revised delivery time' in rendered
+            assert 'Email support and two plan adjustments' in rendered
+            assert 'schedule, available training hours, or equipment' in rendered
+            assert 'does not use an adjustment' in rendered
+            assert 'first rescale after the scheduled FTP test' in rendered
+            assert 'Weekly review and recurring changes are part of Coaching' in rendered
+            assert 'Most plans' not in rendered
+            assert 'same-day' not in rendered.lower()
+            assert 'Maximum 24 hours' not in rendered
+            assert 'being built right now' not in rendered
+
     def test_endure_receipt_states_the_exact_pilot_contract(self, monkeypatch):
         import app as app_module
         monkeypatch.setattr(app_module, 'RESEND_API_KEY', 're_test')
@@ -4715,6 +4743,18 @@ class TestComputeTouchpoints:
         touches = compute_touchpoints(self._plan_dates(), 'Jesse', 'Borderlands')
         post = next(t for t in touches if t['key'] == 'postrace')
         assert 'coaching' in post['body'].lower()
+
+    def test_lifecycle_copy_is_supportive_without_repricing_old_entitlements(self):
+        from app import compute_touchpoints
+        touches = {
+            touch['key']: touch
+            for touch in compute_touchpoints(self._plan_dates(), 'Jesse', 'Borderlands')
+        }
+        assert 'Corrections are included with your purchase' in touches['setup_check']['body']
+        assert 'rescale is included with your purchase' in touches['ftp_rescale']['body']
+        assert 'Email support is included with your purchase' in touches['midplan_survey']['body']
+        lifecycle = '\n'.join(touch['body'] for touch in touches.values())
+        assert 'two plan adjustments' not in lifecycle
 
 
 class TestTravelDatesPassthrough:

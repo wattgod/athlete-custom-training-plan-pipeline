@@ -760,6 +760,11 @@ def _build_training_plan_email(details: dict) -> tuple:
                 for k in ('athlete_id', 'plan_id', 'block_id', 'invitation_id')
                 if endure.get(k))
             + '</p>') if endure else ''
+        timeline_html = (
+            "Customer got a payment confirmation email automatically. "
+            "They're expecting the plan within 24 hours. Don't let it sit.")
+        timeline_text = (
+            "Customer got payment confirmation. They expect the plan within 24h.")
     else:
         platform_label = 'TrainingPeaks'
         delivery_steps_html = f"""<li><strong>Create athlete in TrainingPeaks</strong> — add <a href="mailto:{email}">{name}</a> to your coach account</li>
@@ -768,6 +773,15 @@ def _build_training_plan_email(details: dict) -> tuple:
             f"5. Create {name} in TrainingPeaks, add to coach account\n"
             f"6. Import ZWO files into their TP calendar\n")
         endure_ids_html = ''
+        timeline_html = (
+            "Customer got a payment confirmation email automatically. They're "
+            "expecting the plan or a specific blocker update within 24 hours after "
+            "payment, a complete questionnaire, and TrainingPeaks connection. "
+            "Don't let it sit.")
+        timeline_text = (
+            "Customer got payment confirmation. They expect the plan or a specific "
+            "blocker update within 24 hours after payment, a complete questionnaire, "
+            "and TrainingPeaks connection.")
 
     if pipeline_ok:
         html = f"""
@@ -798,7 +812,7 @@ def _build_training_plan_email(details: dict) -> tuple:
 
     <div style="margin: 20px 0; padding: 12px 16px; background: #fff; border-left: 3px solid #B7950B;">
       <p style="margin: 0; font-size: 13px; color: #666;">
-        <strong>Timeline:</strong> Customer got a payment confirmation email automatically. They're expecting the plan within 24 hours. Don't let it sit.
+        <strong>Timeline:</strong> {timeline_html}
       </p>
     </div>
 
@@ -858,7 +872,7 @@ Order: {order_id} | Athlete ID: {athlete_id}
 4. Spot-check training_guide.html (weeks 1, mid, final)
 {delivery_steps_text}7. Send confirmation: curl -X POST {base_url}/api/confirm/{athlete_id} -H "X-Cron-Secret: $CRON_SECRET"
 
-Timeline: Customer got payment confirmation. They expect the plan within 24h.
+Timeline: {timeline_text}
 """
     else:
         text += f"""1. Check Railway logs: railway logs --service stripe-webhook
@@ -1154,10 +1168,14 @@ Connect to my coaching account on TrainingPeaks so I can push your workouts ther
 If you don't have a TrainingPeaks account, create a free one first at trainingpeaks.com, then click the link above.
 
 WHAT HAPPENS NEXT:
-1. Your custom {weeks_mention}training plan{race_mention} is being built right now.
+1. I will build your custom {weeks_mention}training plan{race_mention}.
 2. I'll review it personally and make sure everything is dialed.
-3. Within 24 hours, your workouts will be live on your TrainingPeaks calendar.
-4. You'll get an email when it's ready with your training guide (PDF).
+3. The 24-hour clock starts when payment, your complete questionnaire, and your TrainingPeaks connection are all in place.
+4. Within that window, I will deliver your personally reviewed plan in TrainingPeaks or email you with the specific blocker, what is needed, and a revised delivery time.
+5. You'll get an email when the plan is live with your training guide (PDF).
+
+SUPPORT INCLUDED:
+Email support and two plan adjustments are included during the dates covered by your plan for changes to your schedule, available training hours, or equipment. Correcting a plan that does not match your order does not use an adjustment. The first rescale after the scheduled FTP test is included separately. Weekly review and recurring changes are part of Coaching.
 
 Questions? Reply to this email.
 
@@ -1188,14 +1206,15 @@ Questions? Reply to this email.
 
     <h3 style="margin: 24px 0 12px; font-size: 15px; color: #59473c;">What happens next</h3>
     <ol style="font-size: 14px; padding-left: 20px; line-height: 2.2;">
-      <li>Your custom {weeks_mention}training plan{race_mention} is <strong>being built right now</strong>.</li>
+      <li>I will build your custom {weeks_mention}training plan{race_mention}.</li>
       <li>I'll <strong>review it personally</strong> and make sure everything is dialed.</li>
-      <li>Within <strong>24 hours</strong>, your workouts will be live on your TrainingPeaks calendar.</li>
-      <li>You'll get an email when it's ready with your <strong>training guide</strong> (PDF).</li>
+      <li>The 24-hour clock starts when payment, your complete questionnaire, and your TrainingPeaks connection are all in place.</li>
+      <li>Within that window, I will deliver your personally reviewed plan in TrainingPeaks or email you with the specific blocker, what is needed, and a revised delivery time.</li>
+      <li>You'll get an email when the plan is live with your <strong>training guide</strong> (PDF).</li>
     </ol>
 
     <div style="margin: 24px 0; padding: 12px 16px; background: #f5f5f0; border-left: 3px solid #B7950B;">
-      <p style="margin: 0; font-size: 13px; color: #666;"><strong>Delivery timeline:</strong> Most plans are ready same-day. Maximum 24 hours. I'll email you the moment it's live.</p>
+      <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #666;"><strong>Support included:</strong> Email support and two plan adjustments are included during the dates covered by your plan for changes to your schedule, available training hours, or equipment. Correcting a plan that does not match your order does not use an adjustment. The first rescale after the scheduled FTP test is included separately. Weekly review and recurring changes are part of Coaching.</p>
     </div>
 
     <p style="font-size: 14px; line-height: 1.6;">Questions? Reply to this email.</p>
@@ -9323,7 +9342,8 @@ def compute_touchpoints(plan_dates: dict, first_name: str, race_name: str) -> li
                 "load into TrainingPeaks OK, and did the first session sync "
                 "to your head unit?\n\n"
                 "If anything looks off, just hit reply and I'll sort it out "
-                "today.\n\nMatti\nGravel God Cycling"
+                "today. Corrections are included with your purchase.\n\n"
+                "Matti\nGravel God Cycling"
             ),
         })
 
@@ -9341,9 +9361,8 @@ def compute_touchpoints(plan_dates: dict, first_name: str, race_name: str) -> li
                     "from what you put in the questionnaire, reply with the "
                     "new number and I'll rescale every remaining workout in "
                     "your plan to match. Takes me minutes, keeps every "
-                    "interval honest.\n\n"
-                    "This is the difference between a static plan and one "
-                    "that adapts with you — use it.\n\nMatti"
+                    "interval honest. That rescale is included with your "
+                    "purchase.\n\nMatti"
                 ),
             })
 
@@ -9380,8 +9399,9 @@ def compute_touchpoints(plan_dates: dict, first_name: str, race_name: str) -> li
                 "1. Are you finishing the hard days, or surviving them?\n"
                 "2. Is the plan too hard, too easy, or about right?\n"
                 "3. What's getting in the way, if anything?\n\n"
-                "I read every reply and adjust plans when the answers call "
-                "for it.\n\nMatti"
+                "I read every reply. Email support is included with your "
+                "purchase, so tell me what changed and what you need help "
+                "with.\n\nMatti"
             ),
         })
 
