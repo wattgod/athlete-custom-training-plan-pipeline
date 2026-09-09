@@ -10150,7 +10150,8 @@ def cron_state_audit():
     try:
         from tools.audit_fulfillment_states import build_audit_artifact
         artifact = build_audit_artifact(
-            Path(DELIVERIES_DIR) / 'orders', max_age_days=max_age_days)
+            Path(DELIVERIES_DIR) / 'orders', max_age_days=max_age_days,
+            record_key_secret=CRON_SECRET)
         logger.info(
             'Fulfillment state audit: %s',
             json.dumps(artifact, sort_keys=True, separators=(',', ':')),

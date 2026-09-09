@@ -2,9 +2,11 @@ import json
 from datetime import datetime, timedelta, timezone
 
 from tools import audit_fulfillment_states as audit
+from webhook.provider_revenue import provider_record_key
 
 
 NOW = datetime(2026, 8, 12, 12, 0, tzinfo=timezone.utc)
+RECORD_KEY_SECRET = "audit-ledger-test-secret"
 
 
 def _iso(value):
@@ -13,7 +15,9 @@ def _iso(value):
 
 def _state(**overrides):
     state = {
-        "order_id": "synthetic-order",
+        "schema_version": 2,
+        "order_id": "manual_fixture_order",
+        "legacy": False,
         "status": "GENERATED",
         "generation_revision": 1,
         "updated_at": _iso(NOW),
@@ -140,3 +144,151 @@ def test_cli_writes_projected_artifact_and_exits_on_critical(tmp_path, monkeypat
     artifact_text = out.read_text()
     assert sensitive not in artifact_text
     assert json.loads(artifact_text)["summary"]["critical"] == 1
+
+
+def test_warning_projects_same_checkout_key_as_provider_ledger(tmp_path):
+    order_id = "cs_live_privateMarker123"
+    state = _state(
+        order_id=order_id,
+        status="BLOCKED_REVIEW",
+        updated_at=_iso(NOW - timedelta(days=4)),
+    )
+    _write(tmp_path, "order", state)
+
+    artifact = audit.build_audit_artifact(
+        tmp_path, now=NOW, max_age_days=3,
+        record_key_secret=RECORD_KEY_SECRET,
+    )
+
+    warning = artifact["anomalies"][0]
+    assert warning["state_ref"] == audit._state_ref(
+        state, tmp_path / "order" / "fulfillment_status.json")
+    assert warning["ledger_checkout_session_record_key"] == provider_record_key(
+        RECORD_KEY_SECRET, "checkout_session", order_id)
+    assert warning["ledger_key_status"] == "candidate_provider_match_required"
+    assert warning["legacy"] is False
+    assert order_id not in json.dumps(artifact)
+
+
+def test_distinct_bound_checkouts_have_distinct_keys(tmp_path):
+    for name, order_id in (
+        ("one", "cs_live_privateOne123"),
+        ("two", "cs_test_privateTwo456"),
+    ):
+        _write(tmp_path, name, _state(
+            order_id=order_id,
+            status="BLOCKED_REVIEW",
+            updated_at=_iso(NOW - timedelta(days=4)),
+        ))
+
+    artifact = audit.build_audit_artifact(
+        tmp_path, now=NOW, record_key_secret=RECORD_KEY_SECRET)
+    keys = {
+        item["ledger_checkout_session_record_key"]
+        for item in artifact["anomalies"]
+    }
+    assert len(keys) == 2
+    assert None not in keys
+
+
+def test_missing_secret_leaves_join_key_explicitly_unavailable(tmp_path):
+    _write(tmp_path, "order", _state(
+        order_id="cs_live_privateMarker123",
+        status="BLOCKED_REVIEW",
+        updated_at=_iso(NOW - timedelta(days=4)),
+    ))
+
+    warning = audit.build_audit_artifact(
+        tmp_path, now=NOW, record_key_secret="")["anomalies"][0]
+
+    assert warning["ledger_checkout_session_record_key"] is None
+    assert warning["ledger_key_status"] == "unavailable_missing_secret"
+    assert warning["legacy"] is False
+
+
+def test_manual_v2_state_has_no_checkout_join_key(tmp_path):
+    raw_order_id = "manual_0123456789abcdef"
+    _write(tmp_path, "manual", _state(
+        order_id=raw_order_id,
+        legacy=False,
+        delivery_platform="manual",
+        status="BLOCKED_REVIEW",
+        updated_at=_iso(NOW - timedelta(days=4)),
+    ))
+
+    artifact = audit.build_audit_artifact(
+        tmp_path, now=NOW, record_key_secret=RECORD_KEY_SECRET)
+    warning = artifact["anomalies"][0]
+
+    assert warning["ledger_checkout_session_record_key"] is None
+    assert warning["ledger_key_status"] == "unavailable_non_checkout_binding"
+    assert warning["legacy"] is False
+    assert raw_order_id not in json.dumps(artifact)
+
+
+def test_unbound_legacy_state_does_not_infer_binding_from_identifier(tmp_path):
+    raw_order_id = "cs_live_looksLikeCheckoutButIsLegacy"
+    _write(tmp_path, "legacy", _state(
+        order_id=raw_order_id,
+        legacy=True,
+        legacy_binding=None,
+        delivery_platform="manual",
+        status="BLOCKED_REVIEW",
+        updated_at=_iso(NOW - timedelta(days=4)),
+    ))
+
+    artifact = audit.build_audit_artifact(
+        tmp_path, now=NOW, record_key_secret=RECORD_KEY_SECRET)
+    warning = artifact["anomalies"][0]
+
+    assert warning["ledger_checkout_session_record_key"] is None
+    assert warning["ledger_key_status"] == "unavailable_unbound_legacy"
+    assert warning["legacy"] is True
+    assert not ({"paid", "synthetic", "delivered"} & warning.keys())
+    assert raw_order_id not in json.dumps(artifact)
+
+
+def test_bound_legacy_state_uses_explicit_ledger_binding(tmp_path):
+    raw_order_id = "legacy-private-marker"
+    checkout_id = "cs_live_boundPrivateMarker123"
+    _write(tmp_path, "legacy", _state(
+        order_id=raw_order_id,
+        legacy=True,
+        legacy_binding={
+            "ledger_order_id": checkout_id,
+            "coach": "coach-private-marker",
+            "at": _iso(NOW - timedelta(days=5)),
+        },
+        status="BLOCKED_REVIEW",
+        updated_at=_iso(NOW - timedelta(days=4)),
+    ))
+
+    artifact = audit.build_audit_artifact(
+        tmp_path, now=NOW, record_key_secret=RECORD_KEY_SECRET)
+    warning = artifact["anomalies"][0]
+    encoded = json.dumps(artifact)
+
+    assert warning["ledger_checkout_session_record_key"] == provider_record_key(
+        RECORD_KEY_SECRET, "checkout_session", checkout_id)
+    assert warning["ledger_key_status"] == "candidate_provider_match_required"
+    assert warning["legacy"] is True
+    for forbidden in (raw_order_id, checkout_id, "coach-private-marker"):
+        assert forbidden not in encoded
+
+
+def test_legacy_binding_must_be_a_checkout_session_identifier(tmp_path):
+    _write(tmp_path, "legacy", _state(
+        order_id="legacy-private-marker",
+        legacy=True,
+        legacy_binding={"ledger_order_id": "woocommerce-order-12345"},
+        status="BLOCKED_REVIEW",
+        updated_at=_iso(NOW - timedelta(days=4)),
+    ))
+
+    warning = audit.build_audit_artifact(
+        tmp_path, now=NOW,
+        record_key_secret=RECORD_KEY_SECRET)["anomalies"][0]
+
+    assert warning["ledger_checkout_session_record_key"] is None
+    assert warning["ledger_key_status"] == "unavailable_non_checkout_binding"
+    assert warning["legacy"] is True

@@ -105,7 +105,8 @@ def _iter_pages(list_method: Callable[..., Any], **params: Any) -> Iterable[dict
     raise ProviderRevenueError("provider pagination exceeded the safety limit")
 
 
-def _record_key(secret: str, kind: str, provider_id: Any) -> str:
+def provider_record_key(secret: str, kind: str, provider_id: Any) -> str:
+    """Return the stable pseudonymous key used by provider ledger exports."""
     raw_id = _object_id(provider_id)
     if not raw_id:
         return ""
@@ -114,6 +115,10 @@ def _record_key(secret: str, kind: str, provider_id: Any) -> str:
         hashlib.sha256,
     ).hexdigest()
     return f"srk_{digest}"
+
+
+# Keep the existing internal name for callers within this module.
+_record_key = provider_record_key
 
 
 def _balance_source_kind(transaction: Mapping[str, Any]) -> str:

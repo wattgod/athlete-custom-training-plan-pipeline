@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -18,6 +19,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from webhook.fulfillment_state import external_state_projection  # noqa: E402
+from webhook.provider_revenue import provider_record_key  # noqa: E402
 
 
 CRITICAL = "CRITICAL"
@@ -26,6 +28,7 @@ RESOURCE_KEYS = {
     "grant", "execution_grant", "active_grant", "last_grant",
     "lease", "worker_lease", "active_lease",
 }
+STRIPE_CHECKOUT_SESSION_RE = re.compile(r"^cs_(?:live|test)_[A-Za-z0-9]+$")
 
 
 def _utc_now() -> datetime:
@@ -80,6 +83,48 @@ def _anomaly(
     if age_days is not None:
         result["age_days"] = age_days
     return result
+
+
+def _ledger_join_projection(
+    state: Mapping[str, Any], record_key_secret: str,
+) -> dict[str, Any]:
+    legacy_value = state.get("legacy")
+    legacy = legacy_value if isinstance(legacy_value, bool) else None
+    checkout_id = ""
+    unavailable = "unavailable_missing_order_binding"
+
+    if legacy is True:
+        binding = state.get("legacy_binding")
+        if isinstance(binding, dict):
+            checkout_id = str(binding.get("ledger_order_id") or "").strip()
+        if not checkout_id:
+            unavailable = "unavailable_unbound_legacy"
+    elif legacy is False:
+        # For order-scoped v2 states, order_id is the immutable checkout
+        # binding supplied by the order source. Its namespace identifies only
+        # whether a provider join can be attempted, never payment or synthetic
+        # status; the provider receipt remains authoritative for those facts.
+        checkout_id = str(state.get("order_id") or "").strip()
+
+    if checkout_id and not STRIPE_CHECKOUT_SESSION_RE.fullmatch(checkout_id):
+        checkout_id = ""
+        unavailable = "unavailable_non_checkout_binding"
+
+    record_key = None
+    status = unavailable
+    if checkout_id:
+        if record_key_secret:
+            record_key = provider_record_key(
+                record_key_secret, "checkout_session", checkout_id)
+            status = "candidate_provider_match_required"
+        else:
+            status = "unavailable_missing_secret"
+
+    return {
+        "legacy": legacy,
+        "ledger_checkout_session_record_key": record_key,
+        "ledger_key_status": status,
+    }
 
 
 def _age_days(value: Any, now: datetime) -> int | None:
@@ -138,6 +183,7 @@ def _approval_is_sealed(state: Mapping[str, Any]) -> bool:
 
 def audit_state(
     state: Mapping[str, Any], *, path: Path, now: datetime, max_age_days: int,
+    record_key_secret: str = "",
 ) -> list[dict[str, Any]]:
     anomalies: list[dict[str, Any]] = []
     ref = _state_ref(state, path)
@@ -192,7 +238,8 @@ def audit_state(
                 "one or more pending D2 worker readbacks exceed the age threshold",
                 age_days=max(ages),
             ))
-    return anomalies
+    join = _ledger_join_projection(state, record_key_secret)
+    return [{**item, **join} for item in anomalies]
 
 
 def _state_paths(root: Path) -> list[Path]:
@@ -203,6 +250,7 @@ def _state_paths(root: Path) -> list[Path]:
 
 def audit_states(
     root: Path, *, now: datetime, max_age_days: int,
+    record_key_secret: str = "",
 ) -> tuple[list[dict[str, Any]], int]:
     if not root.exists():
         return [
@@ -228,7 +276,8 @@ def audit_states(
             ))
             continue
         anomalies.extend(audit_state(
-            state, path=path, now=now, max_age_days=max_age_days))
+            state, path=path, now=now, max_age_days=max_age_days,
+            record_key_secret=record_key_secret))
     return anomalies, scanned
 
 
@@ -254,13 +303,15 @@ def _artifact(
 
 def build_audit_artifact(
     root: Path, *, now: datetime | None = None, max_age_days: int = 3,
+    record_key_secret: str = "",
 ) -> dict[str, Any]:
     """Run one audit and return the same redacted artifact used by the CLI."""
     if max_age_days < 1:
         raise ValueError("max_age_days must be at least 1")
     generated_at = now or _utc_now()
     anomalies, scanned = audit_states(
-        Path(root).resolve(), now=generated_at, max_age_days=max_age_days)
+        Path(root).resolve(), now=generated_at, max_age_days=max_age_days,
+        record_key_secret=record_key_secret)
     return external_state_projection(_artifact(
         root=Path(root).resolve(), now=generated_at,
         max_age_days=max_age_days, anomalies=anomalies, scanned=scanned,

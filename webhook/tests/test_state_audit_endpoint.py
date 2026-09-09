@@ -12,6 +12,7 @@ os.environ.setdefault("FLASK_ENV", "test")
 os.environ.setdefault("STRIPE_SECRET_KEY", "")
 
 import app as webhook_app
+from provider_revenue import provider_record_key
 
 
 SECRET = "state-audit-test-secret"
@@ -37,6 +38,7 @@ def _post(client, secret=SECRET):
 
 def _minimal_state(order_id, **overrides):
     state = {
+        "schema_version": 2,
         "order_id": order_id,
         "status": "GENERATED",
         "generation_revision": 1,
@@ -108,3 +110,58 @@ def test_state_audit_handles_cancelled_drill_without_hiding_critical(audit_clien
     assert critical.status_code == 500
     codes = {item["code"] for item in critical.get_json()["anomalies"]}
     assert "UNSEALED_APPROVAL" in codes
+
+
+def test_state_audit_endpoint_exposes_only_ledger_compatible_join(audit_client):
+    client, root = audit_client
+    order_id = "cs_live_privateMarker123"
+    sensitive = {
+        "athlete_id": "athlete-private-marker",
+        "email": "real.person+private@example.com",
+        "customer_id": "customer-private-marker",
+        "token": SECRET,
+    }
+    _write(root, "order", _minimal_state(
+        order_id,
+        legacy=False,
+        status="BLOCKED_REVIEW",
+        updated_at="2026-01-01T00:00:00+00:00",
+        **sensitive,
+    ))
+
+    response = _post(client)
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["summary"] == {"anomalies": 1, "critical": 0, "warning": 1}
+    warning = data["anomalies"][0]
+    assert warning["code"] == "BLOCKED_REVIEW_OLD"
+    assert warning["severity"] == "WARNING"
+    assert warning["ledger_checkout_session_record_key"] == provider_record_key(
+        SECRET, "checkout_session", order_id)
+    assert warning["ledger_key_status"] == "candidate_provider_match_required"
+    assert warning["legacy"] is False
+    body = response.get_data(as_text=True)
+    for forbidden in (order_id, *sensitive.values()):
+        assert forbidden not in body
+
+
+def test_state_audit_endpoint_leaves_manual_v2_order_unjoinable(audit_client):
+    client, root = audit_client
+    order_id = "manual_0123456789abcdef"
+    _write(root, "manual", _minimal_state(
+        order_id,
+        legacy=False,
+        delivery_platform="manual",
+        status="BLOCKED_REVIEW",
+        updated_at="2026-01-01T00:00:00+00:00",
+    ))
+
+    response = _post(client)
+
+    assert response.status_code == 200
+    warning = response.get_json()["anomalies"][0]
+    assert warning["ledger_checkout_session_record_key"] is None
+    assert warning["ledger_key_status"] == "unavailable_non_checkout_binding"
+    assert warning["legacy"] is False
+    assert order_id not in response.get_data(as_text=True)
