@@ -29,7 +29,7 @@ from delivery.trainingpeaks.test_phase5_service import (  # noqa: E402
     NOW, _approved_state, _capability, _contract, _service,
     _successful_executor,
 )
-from fulfillment_state import confirm_after_send  # noqa: E402
+from fulfillment_state import APPLIED, confirm_after_send, transition  # noqa: E402
 
 
 def _digest(value) -> str:
@@ -140,7 +140,8 @@ def test_context_accepts_actual_phase5_readback_and_confirmation(tmp_path, monke
     assert context["delivered_at"].tzinfo == timezone.utc
 
 
-def test_generated_order_waits_without_sending(followup_env, monkeypatch):
+def test_generated_order_waits_for_both_senders_without_sending(
+        followup_env, monkeypatch):
     _root, write_orders = followup_env
     order = _order("order-generated")
     state = _verified_state(order["order_id"], order["athlete_id"], datetime.now(timezone.utc))
@@ -149,12 +150,63 @@ def test_generated_order_waits_without_sending(followup_env, monkeypatch):
     write_orders(order)
     _install_states(monkeypatch, {order["order_id"]: state})
 
-    with patch.object(app_module, "_send_followup_email") as send:
-        stats = app_module.process_followup_emails()
+    with patch.object(app_module, "_send_followup_email") as fixed_send, \
+         patch.object(app_module, "_send_email") as lifecycle_send:
+        fixed = app_module.process_followup_emails()
+        lifecycle = app_module.process_touchpoint_emails()
 
-    send.assert_not_called()
-    assert stats["waiting_for_delivery"] == 1
-    assert stats["eligibility_unavailable"] == 0
+    fixed_send.assert_not_called()
+    lifecycle_send.assert_not_called()
+    assert fixed["waiting_for_delivery"] == 1
+    assert fixed["eligibility_unavailable"] == 0
+    assert lifecycle["waiting_for_delivery"] == 1
+    assert lifecycle["eligibility_unavailable"] == 0
+
+
+def test_actual_phase5_applying_state_waits_without_completed_receipt(
+        tmp_path, monkeypatch):
+    order_id = "order-phase5-applying"
+    order_root = tmp_path / "deliveries" / "orders" / order_id
+    state_path, state = _approved_state(order_root, order_id=order_id)
+    contract = _contract(state)
+    service = _service(tmp_path)
+    service.exchange(
+        _capability(service, state, contract), contract, state_path, now=NOW)
+    monkeypatch.setattr(app_module, "DELIVERIES_DIR", str(tmp_path / "deliveries"))
+
+    status, context, reason = app_module._trainingpeaks_followup_context(
+        _order(order_id))
+
+    assert status == "waiting", reason
+    assert context is None
+    assert reason == "Phase 5 provider application is in progress"
+
+
+def test_phase1_applied_state_is_unavailable_to_both_senders(
+        followup_env, monkeypatch):
+    root, write_orders = followup_env
+    order = _order("order-phase1-applied")
+    order_root = root / "deliveries" / "orders" / order["order_id"]
+    state_path, _state = _approved_state(order_root, order_id=order["order_id"])
+    applied = transition(
+        state_path, APPLIED, "fixture-coach", platform="trainingpeaks",
+        evidence="historical manual evidence",
+    )
+    assert set(applied["application"]) == {"coach", "at", "platform", "evidence"}
+    assert applied["application_attempt"] is None
+    write_orders(order)
+
+    with patch.object(app_module, "_send_followup_email") as fixed_send, \
+         patch.object(app_module, "_send_email") as lifecycle_send:
+        fixed = app_module.process_followup_emails()
+        lifecycle = app_module.process_touchpoint_emails()
+
+    fixed_send.assert_not_called()
+    lifecycle_send.assert_not_called()
+    assert fixed["eligibility_unavailable"] == 1
+    assert fixed["waiting_for_delivery"] == 0
+    assert lifecycle["eligibility_unavailable"] == 1
+    assert lifecycle["waiting_for_delivery"] == 0
 
 
 def test_missing_processing_outcome_is_unavailable(followup_env, monkeypatch):

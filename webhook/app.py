@@ -41,8 +41,8 @@ from provider_revenue import (
 )
 import yaml
 
-from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
-                               CONFIRMED,
+from fulfillment_state import (APPLIED, APPLIED_ATTESTED, APPLYING, APPROVED,
+                               BLOCKED_REVIEW, CANCELLED, CONFIRMED, GENERATED,
                                RELEASE_STATUSES, FulfillmentStateError,
                                approval_matches_release, bind_legacy_order,
                                canonical_digest,
@@ -8364,23 +8364,25 @@ def _trainingpeaks_followup_context(order: dict, *, include_calendar: bool = Fal
         return 'unavailable', None, 'legacy fulfillment has no current delivery proof'
     if state.get('delivery_platform') != 'trainingpeaks':
         return 'unavailable', None, 'delivery platform is not TrainingPeaks'
-    if state.get('status') != CONFIRMED:
-        return 'waiting', None, f"fulfillment status is {state.get('status', 'unknown')}"
 
-    confirmation = state.get('confirmation')
+    status = state.get('status')
     application = state.get('application')
     attempt = state.get('application_attempt')
-    if (not isinstance(confirmation, dict)
-            or confirmation.get('provider') != 'resend'):
-        return 'unavailable', None, 'plan-ready delivery confirmation is unproven'
-    try:
-        delivered_at = datetime.fromisoformat(
-            str(confirmation.get('at') or '').replace('Z', '+00:00'))
-        if delivered_at.tzinfo is None:
-            raise ValueError('timezone required')
-        delivered_at = delivered_at.astimezone(timezone.utc)
-    except (TypeError, ValueError):
-        return 'unavailable', None, 'delivery confirmation timestamp is invalid'
+    if status in {GENERATED, BLOCKED_REVIEW}:
+        return 'waiting', None, f'fulfillment status is {status}'
+    if status == APPROVED:
+        if approval_matches_release(state):
+            return 'waiting', None, f'fulfillment status is {status}'
+        return 'unavailable', None, 'approved release evidence does not match'
+    if status == APPLYING:
+        if (isinstance(attempt, dict)
+                and attempt.get('action') in {'apply', 'verify'}
+                and attempt.get('status') in {'accepted', 'running'}
+                and approval_matches_release(state)):
+            return 'waiting', None, 'Phase 5 provider application is in progress'
+        return 'unavailable', None, 'Phase 5 application evidence is incomplete'
+    if status not in {APPLIED, APPLIED_ATTESTED, CONFIRMED}:
+        return 'unavailable', None, f'fulfillment status is {status or "unknown"}'
 
     landed = attempt.get('landed') if isinstance(attempt, dict) else None
     operation_count = application.get('operation_count') if isinstance(application, dict) else None
@@ -8403,6 +8405,20 @@ def _trainingpeaks_followup_context(order: dict, *, include_calendar: bool = Fal
         return 'unavailable', None, 'provider apply receipt digest does not match'
     if not approval_matches_release(state):
         return 'unavailable', None, 'delivery does not match the approved release'
+    if status != CONFIRMED:
+        return 'waiting', None, f'fulfillment status is {status}'
+    confirmation = state.get('confirmation')
+    if (not isinstance(confirmation, dict)
+            or confirmation.get('provider') != 'resend'):
+        return 'unavailable', None, 'plan-ready delivery confirmation is unproven'
+    try:
+        delivered_at = datetime.fromisoformat(
+            str(confirmation.get('at') or '').replace('Z', '+00:00'))
+        if delivered_at.tzinfo is None:
+            raise ValueError('timezone required')
+        delivered_at = delivered_at.astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return 'unavailable', None, 'delivery confirmation timestamp is invalid'
 
     context = {'state': state, 'delivered_at': delivered_at}
     if include_calendar:
