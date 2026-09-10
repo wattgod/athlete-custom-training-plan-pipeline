@@ -931,6 +931,10 @@ def test_endure_confirmation_uses_live_invite_and_never_tp_copy(
     assert 'first training block' in body
     assert 'Target: Unbound Gravel 200 on 2026-05-30' in body
     assert 'No mobile app is required' in body
+    assert ('upload the completed FIT or TCX file, then add your '
+            'post-workout feedback') in body
+    assert ('upload the completed FIT or TCX file, then add your '
+            'post-workout feedback') in sent['kwargs']['html']
     assert 'does not include ongoing human monitoring' in body
     assert 'routine plan revisions' in body
     assert 'give your coach and David the context' not in body

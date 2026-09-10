@@ -5302,7 +5302,7 @@ Get started:
 1. {action_label}: {invite_url}
 2. Complete your daily check-in before training.
 3. Open Today to see the session or recovery work that fits the day.
-4. After training, add your post-workout feedback.
+4. After training, open Today, upload the completed FIT or TCX file, then add your post-workout feedback.
 
 Your check-ins and workout feedback help David explain how each day fits the plan. This purchase does not include ongoing human monitoring or routine plan revisions.
 
@@ -5323,7 +5323,7 @@ gravelgodcycling.com
   <ol>
     <li>Complete your daily check-in before training.</li>
     <li>Open Today to see the session or recovery work that fits the day.</li>
-    <li>After training, add your post-workout feedback.</li>
+    <li>After training, open Today, upload the completed FIT or TCX file, then add your post-workout feedback.</li>
   </ol>
   <p>Your check-ins and workout feedback help David explain how each day fits the plan. This purchase does not include ongoing human monitoring or routine plan revisions.</p>
   <p>If anything looks wrong, reply to this email before starting the plan.</p>
