@@ -5302,7 +5302,7 @@ Get started:
 1. {action_label}: {invite_url}
 2. Complete your daily check-in before training.
 3. Open Today to see the session or recovery work that fits the day.
-4. After training, add your post-workout feedback.
+4. After training, open Today, upload the completed FIT or TCX file, then add your post-workout feedback.
 
 Your check-ins and workout feedback help David explain how each day fits the plan. This purchase does not include ongoing human monitoring or routine plan revisions.
 
@@ -5323,7 +5323,7 @@ gravelgodcycling.com
   <ol>
     <li>Complete your daily check-in before training.</li>
     <li>Open Today to see the session or recovery work that fits the day.</li>
-    <li>After training, add your post-workout feedback.</li>
+    <li>After training, open Today, upload the completed FIT or TCX file, then add your post-workout feedback.</li>
   </ol>
   <p>Your check-ins and workout feedback help David explain how each day fits the plan. This purchase does not include ongoing human monitoring or routine plan revisions.</p>
   <p>If anything looks wrong, reply to this email before starting the plan.</p>
@@ -5870,17 +5870,22 @@ def create_checkout():
             session_kwargs['custom_text'] = {
                 'submit': {
                     'message': (
-                        'Delivery: This custom Gravel God plan will be '
-                        'delivered in Endure—not TrainingPeaks—after a human '
+                        'Delivery: Your first reviewed training block will be '
+                        'available in Endure—not TrainingPeaks—after a human '
                         'checks the race, schedule, progression, and workouts. '
+                        'Your emailed guide contains the full custom plan. '
                         'Endure works in your phone or computer browser; no '
-                        'app is required. Automatic Garmin or Wahoo workout '
-                        'sync is not included in this pilot. This purchase '
+                        'app is required. Automatic device sync is not '
+                        'included in this pilot. This purchase '
                         'does not start ongoing coaching. We’ll email your '
                         'Endure access link when the plan is ready.'
                     ),
                 },
             }
+            session_kwargs['success_url'] = (
+                f"{brand_cfg['site']}/training-plans/success/"
+                '?session_id={CHECKOUT_SESSION_ID}&delivery=endure'
+            )
         if ENABLE_AUTOMATIC_TAX:
             session_kwargs['automatic_tax'] = {'enabled': True}
 

@@ -3,6 +3,24 @@
 This path moves one coach-approved, sealed custom plan into Endure. It does not
 change the default platform and it never falls back to TrainingPeaks silently.
 
+## Pilot boundary before checkout
+
+- The ordinary store checkout remains TrainingPeaks by default.
+- Enroll only a buyer who has agreed to the Endure pilot by adding the exact
+  tuple `gravelgod:training_plan:custom:buyer@example.com` to the
+  comma-separated `ENDURE_PLAN_PILOT_BUYERS` Railway variable. Do not enroll
+  Roadie Labs or XC Ski Labs buyers in this pilot.
+- `ENDURE_DELIVERY_URL` and `ENDURE_DELIVERY_SECRET` must both be configured or
+  the checkout stays on TrainingPeaks even when the buyer tuple is present.
+- Checkout must return to
+  `/training-plans/success/?session_id=...&delivery=endure`, where the buyer is
+  told that Endure opens the reviewed first block, the guide carries the full
+  plan, manual workout upload is the dependable data path, and the purchase
+  does not start ongoing coaching.
+- A plan-only buyer does not receive later blocks generated from live athlete
+  data. Ongoing coaching uses a separate coached plan after explicit consent;
+  otherwise continuation requires a future immutable prescription import.
+
 ## Normal path
 
 1. Confirm the order is `APPROVED` and `delivery_platform` is `endure`:

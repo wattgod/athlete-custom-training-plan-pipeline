@@ -820,17 +820,23 @@ class TestCreateCheckout:
 
         assert response.status_code == 200
         metadata = mock_stripe.checkout.Session.create.call_args.kwargs['metadata']
+        success_url = mock_stripe.checkout.Session.create.call_args.kwargs['success_url']
         assert metadata['brand'] == 'gravelgod'
         assert metadata['delivery_target'] == 'endure'
+        assert success_url == (
+            'https://gravelgodcycling.com/training-plans/success/'
+            '?session_id={CHECKOUT_SESSION_ID}&delivery=endure'
+        )
         assert mock_stripe.checkout.Session.create.call_args.kwargs['custom_text'] == {
             'submit': {
                 'message': (
-                    'Delivery: This custom Gravel God plan will be '
-                    'delivered in Endure—not TrainingPeaks—after a human '
+                    'Delivery: Your first reviewed training block will be '
+                    'available in Endure—not TrainingPeaks—after a human '
                     'checks the race, schedule, progression, and workouts. '
+                    'Your emailed guide contains the full custom plan. '
                     'Endure works in your phone or computer browser; no '
-                    'app is required. Automatic Garmin or Wahoo workout '
-                    'sync is not included in this pilot. This purchase '
+                    'app is required. Automatic device sync is not '
+                    'included in this pilot. This purchase '
                     'does not start ongoing coaching. We’ll email your '
                     'Endure access link when the plan is ready.'
                 ),
