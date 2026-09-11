@@ -52,6 +52,35 @@ change the default platform and it never falls back to TrainingPeaks silently.
 5. Read status again. `CONFIRMED` is valid only with the exact Endure receipt,
    calendar verification, recipient digest, and Resend evidence.
 
+6. Immediately after confirmation, bind the live Stripe payment to both
+   production systems with the diagnostic verifier. It accepts one
+   already-enrolled `cs_live_*` buyer and emits only hashed identifiers. Run it
+   before a pending invitation is accepted; an account whose coaching
+   relationship was already accepted at staging is also supported:
+
+   ```sh
+   ENDURE_PILOT_ORDER_ID="$ORDER_ID" \
+   EXPECTED_PIPELINE_SHA="$EXPECTED_PIPELINE_SHA" \
+   EXPECTED_ENDURE_SHA="$EXPECTED_ENDURE_SHA" \
+   ENDURE_PILOT_RECEIPT_PATH="/private/tmp/endure-live-purchase-receipt.json" \
+   python3 tools/verify_endure_live_purchase.py
+   ```
+
+   The process also requires live `STRIPE_SECRET_KEY`, `CRON_SECRET`, and
+   `ENDURE_DELIVERY_SECRET` environment variables. The pipeline status GET may
+   revoke release authority if its seal no longer matches, and Endure's
+   readiness GET may backfill a missing email on the already-linked athlete;
+   those are existing fail-closed integrity reconciliations, not new delivery
+   actions. A pass proves pinned
+   deployments, payment, routed and sealed pipeline confirmation, accepted
+   Resend attempt, recipient identity binding, and Endure's exact calendar
+   readback. It does not enroll a buyer, stage or activate a plan, send email,
+   create an account, accept an invitation, clean anything up, authorize a
+   change to `ENDURE_PLAN_PILOT_BUYERS` or `DELIVERY_TARGET_DEFAULT`, or prove
+   the first-week training loop. Verify the athlete and coach loop separately.
+   Never paste raw status JSON into tickets or logs; it contains the live
+   invitation capability.
+
 ## Unknown Resend outcome
 
 The pipeline saves the Resend key, exact message fingerprint, release, athlete,
