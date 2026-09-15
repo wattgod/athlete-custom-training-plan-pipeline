@@ -8271,7 +8271,8 @@ def test_webhook():
         identity = re.fullmatch(
             r'codex-pilot-(\d{14})-([0-9a-f]{8})', requested_order_id)
         expected_email = (
-            f'endure-pilot-{identity.group(1)}-{identity.group(2)}@example.com'
+            f'delivered+endure-pilot-{identity.group(1)}-'
+            f'{identity.group(2)}@resend.dev'
             if identity else ''
         )
         try:
