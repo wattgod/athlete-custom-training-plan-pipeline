@@ -848,6 +848,44 @@ class TestVeryShortPlans:
         freq_check = next((c for c in checks if c['name'] == 'FTP Test Frequency'), None)
         assert freq_check is None, "FTP Frequency check should not fire for plans < 8 weeks"
 
+    @pytest.mark.parametrize('reanchor_required, expected_test, expected_frequency', [
+        (False, 'PASS', 'PASS'),
+        (True, 'WARN', 'FAIL'),
+    ])
+    def test_9_week_ftp_frequency_honors_explicit_reanchor_decision(
+            self, reanchor_required, expected_test, expected_frequency):
+        profile = {
+            'fitness_markers': {
+                'ftp_watts': 255,
+                'reanchor': {'required': reanchor_required},
+            },
+            'weekly_availability': {'cycling_hours_target': 8},
+            'schedule_constraints': {
+                'preferred_off_days': ['sunday'],
+                'preferred_long_day': 'saturday',
+            },
+            'b_events': [],
+            'target_race': {'distance_miles': 100},
+        }
+        weeks = self._make_short_plan_weeks(9)
+        for week in weeks:
+            for day in week['days']:
+                workout = day.get('workout')
+                if workout:
+                    workout['_stem'] = workout['name'] = 'Endurance'
+
+        checks = _run_verification_checks(
+            profile=profile, derived={}, methodology={'configuration': {}},
+            plan_dates={'weeks': []}, weekly_structure={'days': {}},
+            weeks_data=weeks,
+        )
+
+        ftp_check = next(c for c in checks if c['name'] == 'FTP Tests')
+        frequency = next(
+            c for c in checks if c['name'] == 'FTP Test Frequency')
+        assert ftp_check['status'] == expected_test
+        assert frequency['status'] == expected_frequency
+
     def test_4_week_plan_has_ftp_test(self):
         """4-week plan should have at least 1 FTP test (not 2)."""
         profile = {
