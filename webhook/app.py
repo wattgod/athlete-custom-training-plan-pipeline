@@ -94,7 +94,9 @@ _ATHLETE_SCRIPTS = Path(__file__).resolve().parent.parent / 'athletes' / 'script
 if str(_ATHLETE_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_ATHLETE_SCRIPTS))
 from brand_config import default_brand, load_brands, normalize_brand
-from apply_contract import schema_path as apply_contract_schema_path
+from apply_contract import (compute_model_seal, emit_contract,
+                            guide_source_digests,
+                            schema_path as apply_contract_schema_path)
 
 app = Flask(__name__)
 
@@ -3205,6 +3207,58 @@ PRIVATE_DELIVERABLES = [
 ]
 
 
+def _write_endure_first_block_artifact(
+        artifact_dir: Path, state: dict) -> Path:
+    """Create the Endure handoff before release sealing and coach approval."""
+    try:
+        profile = yaml.safe_load(
+            (artifact_dir / 'profile.yaml').read_text(encoding='utf-8'))
+        plan_ir = json.loads(
+            (artifact_dir / 'plan_ir.json').read_text(encoding='utf-8'))
+        apply_contract = json.loads(
+            (artifact_dir / 'apply_contract.json').read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, yaml.YAMLError) as exc:
+        raise FulfillmentStateError(
+            'Endure release inputs are unavailable') from exc
+    if not isinstance(profile, dict):
+        raise FulfillmentStateError('Endure release profile is malformed')
+    plan_start = endure_delivery._monday_on_or_after(
+        (profile.get('plan_start') or {}).get('preferred_start', ''))
+    try:
+        first_block = endure_delivery.build_endure_first_block(
+            plan_ir, apply_contract, plan_start)
+        encoded = endure_delivery.canonical_first_block_bytes(first_block)
+    except endure_delivery.EndureMappingError as exc:
+        raise FulfillmentStateError(str(exc)) from exc
+    path = artifact_dir / 'endure_first_block.json'
+    temp = path.with_name('.endure_first_block.json.tmp')
+    try:
+        with open(temp, 'wb') as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, path)
+    except OSError as exc:
+        temp.unlink(missing_ok=True)
+        raise FulfillmentStateError(
+            'Endure first-block artifact could not be written') from exc
+
+    canonical_model = json.loads(
+        (artifact_dir / 'canonical_training_model.json').read_text(
+            encoding='utf-8'))
+    digest = hashlib.sha256(encoded).hexdigest()
+    apply_contract['model_seal'] = compute_model_seal(
+        canonical_model,
+        [item for item in state.get('review_items', [])
+         if item.get('item_id') != 'FACT_RELEASE_SEAL'],
+        guide_source_digests(artifact_dir),
+        apply_contract['operations'],
+        {'endure_first_block.json': digest},
+    )
+    emit_contract(artifact_dir / 'apply_contract.json', apply_contract)
+    return path
+
+
 def _safe_order_id(order_id: str) -> str:
     value = str(order_id or '').strip()
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', value):
@@ -3463,6 +3517,10 @@ def persist_deliverables(order_id: str, athlete_id: str = '', source_dir: Path |
             pass  # PDF is optional (no Chrome on Railway)
         else:
             missing.append(fname)
+
+    if delivery_platform == 'endure':
+        _write_endure_first_block_artifact(artifact_dir, state)
+        copied.append('endure_first_block.json')
 
     review_zip = revision_dir / f'{order_id}-review-bundle.zip'
     with zipfile.ZipFile(review_zip, 'w', zipfile.ZIP_DEFLATED) as archive:
@@ -5186,7 +5244,9 @@ def _stage_endure_order(order_id: str, *, force_refresh: bool = False):
         manifest = verify_release_manifest(locked_state, revision_dir)
         artifact_paths = {
             str(item.get('path') or '') for item in manifest['artifacts']}
-        for required in ('artifacts/profile.yaml', 'artifacts/intake_backup.json'):
+        for required in (
+                'artifacts/profile.yaml', 'artifacts/intake_backup.json',
+                'artifacts/endure_first_block.json'):
             if required not in artifact_paths:
                 raise FulfillmentStateError(
                     f'Endure staging artifact is missing: {required}')
@@ -5202,13 +5262,21 @@ def _stage_endure_order(order_id: str, *, force_refresh: bool = False):
             intake = json.loads(intake_handle.read().decode('utf-8'))
         finally:
             intake_handle.close()
+        first_block_handle = open_verified_release_artifact(
+            locked_state, revision_dir, 'artifacts/endure_first_block.json')
+        try:
+            first_block = json.loads(
+                first_block_handle.read().decode('utf-8'))
+        finally:
+            first_block_handle.close()
         release = {
             'generation_revision': locked_state['generation_revision'],
             'release_manifest_digest': locked_state['release_manifest_digest'],
             'model_seal': locked_state['model_seal'],
         }
         payload = endure_delivery.build_delivery_payload(
-            profile, order_id, intake, release=release)
+            profile, order_id, intake, release=release,
+            first_block=first_block)
         prepared = endure_delivery.deliver_purchased_plan(payload)
         if not prepared.get('ok'):
             raise RuntimeError(str(prepared.get('error') or 'remote Endure failure'))

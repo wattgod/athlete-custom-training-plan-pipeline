@@ -49,6 +49,7 @@ REVIEW_SENSITIVITIES = {"public", "internal", "personal", "sensitive"}
 SENSITIVE_REDACTION = "[REDACTED — open authenticated review]"
 ENDURE_CONFIRMATION_IDEMPOTENCY_WINDOW = timedelta(hours=24)
 ENDURE_CONFIRMATION_LEASE = timedelta(minutes=2)
+ENDURE_FIRST_BLOCK_ARTIFACT = "artifacts/endure_first_block.json"
 
 # Server-owned policy.  Structural/quality rules not named here are waivable;
 # the non-waivable set is closed and cannot be weakened by caller input.
@@ -656,12 +657,14 @@ def _validate_state(state: Any) -> Dict[str, Any]:
         release = stage["release"]
         if (not isinstance(release, dict)
                 or set(release) != {
-                    "generation_revision", "release_manifest_digest", "model_seal"}
+                    "generation_revision", "release_manifest_digest", "model_seal",
+                    "first_block_digest"}
                 or isinstance(release["generation_revision"], bool)
                 or not isinstance(release["generation_revision"], int)
                 or release["generation_revision"] < 1
                 or not re.fullmatch(r"[0-9a-f]{64}", str(release["release_manifest_digest"]))
-                or not re.fullmatch(r"[0-9a-f]{64}", str(release["model_seal"]))):
+                or not re.fullmatch(r"[0-9a-f]{64}", str(release["model_seal"]))
+                or not re.fullmatch(r"[0-9a-f]{64}", str(release["first_block_digest"]))):
             raise FulfillmentStateError("endure_stage release binding is invalid")
     state.setdefault("endure_confirmation_attempt", None)
     email_attempt = state["endure_confirmation_attempt"]
@@ -1148,12 +1151,19 @@ def _canonical_model_seal_from_release(
         "logical_id": op["logical_id"], "kind": op["kind"],
         "disposition": op["disposition"], "payload": op["payload"],
     } for op in contract.get("operations", [])]
-    return canonical_digest({
+    seal_inputs = {
         "canonical_model": canonical_model,
         "review_items": review_items,
         "guide_sources": guide_sources,
         "operation_payloads": operation_payloads,
-    })
+    }
+    endure_first_block = artifact_dir / "endure_first_block.json"
+    if endure_first_block.is_file():
+        seal_inputs["derived_artifact_digests"] = {
+            "endure_first_block.json": hashlib.sha256(
+                endure_first_block.read_bytes()).hexdigest(),
+        }
+    return canonical_digest(seal_inputs)
 
 
 def finalize_transitional_release(
@@ -1736,8 +1746,6 @@ def record_endure_stage_receipt(
             raise FulfillmentStateError(
                 "Endure staging requires the current sealed release to be approved"
             )
-        artifact_root = Path(str(state.get("release_manifest") or "")).parent
-        verify_release_manifest(state, artifact_root)
         candidate = _validated_endure_stage_candidate(state, prepared)
         existing = state.get("endure_stage")
         if existing is not None:
@@ -1769,6 +1777,31 @@ def record_endure_stage_receipt(
         return "staged", copy.deepcopy(state)
 
 
+def _approved_endure_release(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Read the exact Endure artifact identity from the sealed manifest."""
+    artifact_root = Path(str(state.get("release_manifest") or "")).parent
+    manifest = verify_release_manifest(state, artifact_root)
+    matches = [
+        record for record in manifest["artifacts"]
+        if record.get("path") in {
+            ENDURE_FIRST_BLOCK_ARTIFACT,
+            "endure_first_block.json",  # transitional test/legacy artifact root
+        }
+    ]
+    if len(matches) != 1 or not re.fullmatch(
+        r"[0-9a-f]{64}", str(matches[0].get("sha256") if matches else "")
+    ):
+        raise FulfillmentStateError(
+            "sealed Endure first-block artifact identity is unavailable"
+        )
+    return {
+        "generation_revision": state["generation_revision"],
+        "release_manifest_digest": state["release_manifest_digest"],
+        "model_seal": state["model_seal"],
+        "first_block_digest": matches[0]["sha256"],
+    }
+
+
 def _validated_endure_stage_candidate(
     state: Dict[str, Any], prepared: Dict[str, Any],
 ) -> Dict[str, Any]:
@@ -1776,11 +1809,7 @@ def _validated_endure_stage_candidate(
             or prepared.get("status") not in {
                 "ready_for_review", "already_ready_for_review"}):
         raise FulfillmentStateError("Endure staging result is not review-ready")
-    expected_release = {
-        "generation_revision": state["generation_revision"],
-        "release_manifest_digest": state["release_manifest_digest"],
-        "model_seal": state["model_seal"],
-    }
+    expected_release = _approved_endure_release(state)
     if prepared.get("release") != expected_release:
         raise FulfillmentStateError(
             "Endure staging result does not match the approved release")
@@ -1850,8 +1879,6 @@ def stage_endure_under_lock(
         if state.get("status") != APPROVED or not approval_matches_release(state):
             raise FulfillmentStateError(
                 "Endure staging requires the current sealed release to be approved")
-        artifact_root = Path(str(state.get("release_manifest") or "")).parent
-        verify_release_manifest(state, artifact_root)
         if isinstance(state.get("endure_stage"), dict) and not force_refresh:
             return "idempotent", copy.deepcopy(state)
         prepared = stage(copy.deepcopy(state))
@@ -1909,16 +1936,10 @@ def confirm_endure_after_send(
             raise FulfillmentStateError(
                 "Endure confirmation requires the current sealed release to be approved"
             )
-        artifact_root = Path(str(state.get("release_manifest") or "")).parent
-        verify_release_manifest(state, artifact_root)
         stage = state.get("endure_stage")
         if not isinstance(stage, dict):
             raise FulfillmentStateError("Endure confirmation requires a staging receipt")
-        expected_release = {
-            "generation_revision": state["generation_revision"],
-            "release_manifest_digest": state["release_manifest_digest"],
-            "model_seal": state["model_seal"],
-        }
+        expected_release = _approved_endure_release(state)
         if stage.get("release") != expected_release:
             raise FulfillmentStateError("Endure staging receipt is stale")
         if not isinstance(readiness, dict) or readiness.get("ok") is not True:

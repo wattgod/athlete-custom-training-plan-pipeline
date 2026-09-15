@@ -22,7 +22,9 @@ from fulfillment_state import (APPLIED, APPROVED, BLOCKED_REVIEW, CANCELLED,
                                record_endure_stage_receipt,
                                reconcile_endure_confirmation,
                                record_seal_mismatch,
+                               stage_endure_under_lock,
                                verify_release_manifest, write_generation)
+import endure_delivery
 from d2_identity import record_identity_result
 
 
@@ -39,6 +41,8 @@ def _seal(path, tmp_path):
     root.mkdir(exist_ok=True)
     (root / 'guide.html').write_text('sealed guide')
     state = load(path)
+    if state['delivery_platform'] == 'endure':
+        (root / 'endure_first_block.json').write_text('{}')
     if (state['delivery_platform'] in {'trainingpeaks', 'endure'}
             and not state.get('platform_identity')):
         state = record_identity_result(
@@ -151,6 +155,10 @@ def test_concurrent_confirm_sends_once(tmp_path):
 
 
 def _endure_stage(state):
+    manifest = json.loads(Path(state['release_manifest']).read_text())
+    first_block = next(
+        item for item in manifest['artifacts']
+        if item['path'] == 'endure_first_block.json')
     return {
         'ok': True,
         'order_id': state['order_id'],
@@ -169,6 +177,7 @@ def _endure_stage(state):
             'generation_revision': state['generation_revision'],
             'release_manifest_digest': state['release_manifest_digest'],
             'model_seal': state['model_seal'],
+            'first_block_digest': first_block['sha256'],
         },
         'status': 'ready_for_review',
     }
@@ -202,6 +211,32 @@ def test_endure_stage_binds_exact_approved_release_and_is_idempotent(tmp_path):
     assert state['endure_stage']['block_id'] == 'endure-block-1'
     retry = {**prepared, 'status': 'already_ready_for_review'}
     assert record_endure_stage_receipt(path, retry)[0] == 'idempotent'
+
+
+def test_durable_endure_stage_carries_artifact_digest_into_readiness(
+        tmp_path, monkeypatch):
+    path = tmp_path / 'status.json'
+    approved = _approved_endure(path, tmp_path)
+    action, staged = stage_endure_under_lock(path, _endure_stage)
+    assert action == 'staged'
+    receipt = staged['endure_stage']
+    assert receipt['release']['first_block_digest'] == _endure_stage(approved)[
+        'release']['first_block_digest']
+
+    monkeypatch.setenv('ENDURE_DELIVERY_URL', 'https://endure-delivery.test')
+    monkeypatch.setenv('ENDURE_DELIVERY_SECRET', 'secret')
+    response = type('Response', (), {
+        'status_code': 200,
+        'json': lambda self: {**_endure_readiness(receipt)},
+    })()
+    with pytest.MonkeyPatch.context() as patcher:
+        patcher.setattr(endure_delivery.requests, 'get', lambda *args, **kwargs: response)
+        readiness = endure_delivery.verify_purchased_plan_ready(
+            approved['order_id'], receipt)
+
+    assert readiness['ok'] is True
+    assert readiness['release']['first_block_digest'] == receipt[
+        'release']['first_block_digest']
 
 
 def test_endure_stage_rejects_stale_release_without_mutating_state(tmp_path):

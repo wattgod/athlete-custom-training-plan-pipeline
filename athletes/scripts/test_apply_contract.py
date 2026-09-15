@@ -76,6 +76,24 @@ def test_production_dockerfile_copies_apply_contract_schema():
     assert schema_path().is_file()
 
 
+def test_endure_artifact_digest_is_part_of_the_model_seal():
+    args = (
+        {"model_version": "canonical_training_model/v1"},
+        [{"item_id": "FACT", "value": 1}],
+        {"profile.yaml": "abc"},
+        [{"logical_id": "order:workout_upsert:2026-07-13#1",
+          "kind": "workout_upsert", "disposition": "create",
+          "payload": {"date": "2026-07-13"}}],
+    )
+    without_endure = compute_model_seal(*args)
+    with_endure = compute_model_seal(
+        *args, {"endure_first_block.json": "a" * 64})
+
+    assert with_endure != without_endure
+    assert with_endure == compute_model_seal(
+        *args, {"endure_first_block.json": "a" * 64})
+
+
 def test_checked_schema_is_generated_definition_and_every_emission_validates(tmp_path):
     assert_checked_schema_current()
     contract = _contract(tmp_path)

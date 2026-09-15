@@ -962,19 +962,29 @@ def validate_contract(
 def model_seal_sources(
     canonical_model: Dict[str, Any], review_items: Iterable[Dict[str, Any]],
     guide_sources: Dict[str, Any], operations: Iterable[Dict[str, Any]],
+    derived_artifact_digests: Optional[Mapping[str, str]] = None,
 ) -> Dict[str, Any]:
-    return {"canonical_model": canonical_model, "review_items": list(review_items),
-            "guide_sources": guide_sources,
-            "operation_payloads": [{"logical_id": op["logical_id"], "kind": op["kind"],
-                                    "disposition": op["disposition"], "payload": op["payload"]}
-                                   for op in operations]}
+    sources = {
+        "canonical_model": canonical_model, "review_items": list(review_items),
+        "guide_sources": guide_sources,
+        "operation_payloads": [{"logical_id": op["logical_id"], "kind": op["kind"],
+                                "disposition": op["disposition"], "payload": op["payload"]}
+                               for op in operations],
+    }
+    if derived_artifact_digests:
+        sources["derived_artifact_digests"] = dict(
+            sorted(derived_artifact_digests.items()))
+    return sources
 
 
 def compute_model_seal(
     canonical_model: Dict[str, Any], review_items: Iterable[Dict[str, Any]],
     guide_sources: Dict[str, Any], operations: Iterable[Dict[str, Any]],
+    derived_artifact_digests: Optional[Mapping[str, str]] = None,
 ) -> str:
-    return digest_payload(model_seal_sources(canonical_model, review_items, guide_sources, operations))
+    return digest_payload(model_seal_sources(
+        canonical_model, review_items, guide_sources, operations,
+        derived_artifact_digests))
 
 
 def guide_source_digests(athlete_dir: Path | str) -> Dict[str, str]:

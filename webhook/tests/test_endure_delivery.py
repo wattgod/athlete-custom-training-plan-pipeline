@@ -12,6 +12,7 @@ Run with: pytest webhook/tests/test_endure_delivery.py -v
 """
 
 import json
+import hashlib
 import io
 import os
 import sys
@@ -53,10 +54,42 @@ import endure_delivery
 
 ENDURE_URL = 'https://endure-delivery.test'
 ENDURE_SECRET = 'test-delivery-secret'
+FIRST_BLOCK = {
+    'schema_version': 'endure_first_block/v1',
+    'start_date': '2026-07-13',
+    'end_date': '2026-07-26',
+    'weeks': [
+        {'number': 1, 'phase': 'base', 'week_type': 'load', 'workouts': [{
+            'date': '2026-07-13', 'title': 'Rest', 'description': '',
+            'activity_type': 'Rest', 'workout_type': 'recovery',
+            'total_seconds': 0, 'tss_planned': 0, 'planned_steps': [],
+            'is_intensity': False, 'source_operation_digest': 'c' * 64,
+            'source_logical_id': 'cs_1:workout_upsert:2026-07-13#1',
+        }]},
+        {'number': 2, 'phase': 'build', 'week_type': 'load', 'workouts': [{
+            'date': '2026-07-20', 'title': 'Endurance',
+            'description': 'Ride easy.', 'activity_type': 'Ride',
+            'workout_type': 'endurance', 'total_seconds': 3600,
+            'tss_planned': 45, 'planned_steps': [{
+                'id': 'step-1', 'sequence': 1, 'name': 'Steady State',
+                'type': 'work', 'duration_type': 'time',
+                'duration_seconds': 3600, 'target_type': 'power_pct',
+                'target_low': 60, 'target_high': 70,
+            }], 'is_intensity': False,
+            'source_operation_digest': 'd' * 64,
+            'source_logical_id': 'cs_1:workout_upsert:2026-07-20#1',
+        }]},
+    ],
+}
+FIRST_BLOCK_DIGEST = hashlib.sha256(json.dumps(
+    FIRST_BLOCK, ensure_ascii=False, sort_keys=True,
+    separators=(',', ':'), allow_nan=False,
+).encode('utf-8')).hexdigest()
 RELEASE = {
     'generation_revision': 3,
     'release_manifest_digest': 'a' * 64,
     'model_seal': 'b' * 64,
+    'first_block_digest': FIRST_BLOCK_DIGEST,
 }
 RECIPIENT_EMAIL_SHA256 = (
     '8c87b489ce35cf2e2f39f80e282cb2e804932a56a213983eeeb428407d43b52d')
@@ -64,6 +97,7 @@ DELIVERY_REQUEST = {
     'order_id': 'cs_1',
     'athlete': {'email': 'jane@example.com'},
     'release': RELEASE,
+    'first_block': FIRST_BLOCK,
 }
 
 
@@ -292,17 +326,121 @@ class TestBuildDeliveryPayload:
         with pytest.raises(endure_delivery.EndureMappingError, match='release'):
             endure_delivery.build_delivery_payload(make_profile(), 'cs_1')
 
+    def test_sealed_first_block_is_required(self):
+        with pytest.raises(
+                endure_delivery.EndureMappingError, match='first block'):
+            endure_delivery.build_delivery_payload(
+                make_profile(), 'cs_1', release=RELEASE)
+
+    def test_canonical_digest_normalizes_integral_floats_for_javascript(self):
+        first_block = json.loads(json.dumps(FIRST_BLOCK))
+        first_block['weeks'][1]['workouts'][0]['tss_planned'] = 45.0
+        first_block['weeks'][1]['workouts'][0]['planned_steps'][0][
+            'target_low'] = 60.0
+        payload = endure_delivery.build_delivery_payload(
+            make_profile(), 'cs_1', release=RELEASE,
+            first_block=first_block)
+        assert payload['first_block']['weeks'][1]['workouts'][0][
+            'tss_planned'] == 45
+        assert payload['release']['first_block_digest'] == FIRST_BLOCK_DIGEST
+
+    def test_first_block_comes_from_the_sealed_apply_contract(self):
+        plan_ir = {'weeks': [
+            {'number': 1, 'phase': 'base', 'week_type': 'load', 'sessions': [
+                {'date': '2026-07-14', 'display_name': 'Specific Session',
+                 'role': 'intensity', 'workout_type_value_id': 2,
+                 'duration_s': 900},
+            ]},
+            {'number': 2, 'phase': 'build', 'week_type': 'recovery', 'sessions': [
+                {'date': '2026-07-20', 'display_name': 'Rest Day',
+                 'role': None, 'workout_type_value_id': 7,
+                 'duration_s': 0},
+            ]},
+        ]}
+        apply_contract = {'order_id': 'order', 'operations': [
+            {
+                'kind': 'workout_upsert', 'disposition': 'create',
+                'logical_id': 'order:workout_upsert:2026-07-14#1',
+                'expected_digest': 'e' * 64,
+                'payload': {
+                    'date': '2026-07-14', 'title': 'Specific Session',
+                    'description': 'Exact reviewed instructions.',
+                    'tp_workout_type': 2, 'total_seconds': 900,
+                    'tss_planned': 42.0,
+                    'structure': {
+                        'primaryIntensityMetric': 'percentOfFtp',
+                        'structure': [{
+                        'steps': [{
+                            'name': 'Work', 'intensityClass': 'active',
+                            'length': {'unit': 'second', 'value': 900},
+                            'targets': [{'minValue': 88.0, 'maxValue': 92.0}],
+                        }],
+                    }]},
+                },
+            },
+            {
+                'kind': 'workout_upsert', 'disposition': 'create',
+                'logical_id': 'order:workout_upsert:2026-07-20#1',
+                'expected_digest': 'f' * 64,
+                'payload': {
+                    'date': '2026-07-20', 'title': 'Rest Day',
+                    'description': '', 'tp_workout_type': 7,
+                    'total_seconds': 0, 'tss_planned': 0,
+                    'structure': None,
+                },
+            },
+        ]}
+        for operation in apply_contract['operations']:
+            operation['expected_digest'] = hashlib.sha256(
+                endure_delivery._canonical_json(operation['payload'])).hexdigest()
+
+        block = endure_delivery.build_endure_first_block(
+            plan_ir, apply_contract, '2026-07-13')
+
+        assert block['start_date'] == '2026-07-13'
+        assert block['end_date'] == '2026-07-26'
+        assert block['weeks'][0]['workouts'][0] == {
+            'date': '2026-07-14',
+            'title': 'Specific Session',
+            'description': 'Exact reviewed instructions.',
+            'activity_type': 'Ride',
+            'workout_type': 'interval',
+            'total_seconds': 900,
+            'tss_planned': 42.0,
+            'planned_steps': [{
+                'id': 'step-1', 'sequence': 1, 'name': 'Work',
+                'type': 'work', 'duration_type': 'time',
+                'duration_seconds': 900, 'target_type': 'power_pct',
+                'target_low': 88.0, 'target_high': 92.0,
+            }],
+            'is_intensity': True,
+            'source_operation_digest': apply_contract['operations'][0][
+                'expected_digest'],
+            'source_logical_id': 'order:workout_upsert:2026-07-14#1',
+        }
+        missing_operation = json.loads(json.dumps(apply_contract))
+        missing_operation['operations'].pop()
+        with pytest.raises(
+                endure_delivery.EndureMappingError,
+                match='exactly match Plan IR sessions'):
+            endure_delivery.build_endure_first_block(
+                plan_ir, missing_operation, '2026-07-13')
+
     def test_contract_top_level_shape(self):
         payload = endure_delivery.build_delivery_payload(
-            make_profile(), 'cs_test_1', intake={'q': 'a'}, release=RELEASE)
+            make_profile(), 'cs_test_1', intake={'q': 'a'}, release=RELEASE,
+            first_block=FIRST_BLOCK)
         assert set(payload.keys()) == {'order_id', 'athlete', 'races',
-                                       'plan', 'release', 'intake'}
+                                       'plan', 'release', 'first_block', 'intake'}
         assert payload['order_id'] == 'cs_test_1'
         assert payload['intake'] == {'q': 'a'}
+        assert payload['first_block'] == FIRST_BLOCK
+        assert payload['release']['first_block_digest'] == FIRST_BLOCK_DIGEST
 
     def test_athlete_mapping_and_units(self):
         athlete = endure_delivery.build_delivery_payload(
-            make_profile(), 'cs_1', release=RELEASE)['athlete']
+            make_profile(), 'cs_1', release=RELEASE,
+            first_block=FIRST_BLOCK)['athlete']
         assert athlete['email'] == 'jane@example.com'
         assert athlete['name'] == 'Jane Doe'
         assert athlete['ftp'] == 210                # fitness_markers.ftp_watts
@@ -319,7 +457,8 @@ class TestBuildDeliveryPayload:
 
     def test_races_a_plus_b_events(self):
         races = endure_delivery.build_delivery_payload(
-            make_profile(), 'cs_1', release=RELEASE)['races']
+            make_profile(), 'cs_1', release=RELEASE,
+            first_block=FIRST_BLOCK)['races']
         assert len(races) == 2
         a, b = races[0], races[1]
         assert a == {'name': 'Unbound Gravel 200', 'date': '2026-05-30',
@@ -331,7 +470,8 @@ class TestBuildDeliveryPayload:
 
     def test_plan_name_and_start_date(self):
         plan = endure_delivery.build_delivery_payload(
-            make_profile(), 'cs_1', release=RELEASE)['plan']
+            make_profile(), 'cs_1', release=RELEASE,
+            first_block=FIRST_BLOCK)['plan']
         assert plan['start_date'] == '2026-07-13'   # plan_start.preferred_start
         assert 'Unbound Gravel 200' in plan['name']
 
@@ -350,7 +490,8 @@ class TestBuildDeliveryPayload:
         profile['schedule_constraints'] = {}
         profile['racing'] = {}
         athlete = endure_delivery.build_delivery_payload(
-            profile, 'cs_1', release=RELEASE)['athlete']
+            profile, 'cs_1', release=RELEASE,
+            first_block=FIRST_BLOCK)['athlete']
         for key in ('ftp', 'weight_kg', 'age', 'experience_years',
                     'off_days', 'long_ride_day', 'limiters', 'constraints'):
             assert key not in athlete, f'{key} should be omitted'
@@ -365,7 +506,8 @@ class TestBuildDeliveryPayload:
         profile['weekly_availability']['volume_warning'] = (
             'Target volume (12h/wk) exceeds schedule capacity (9h/wk).')
         athlete = endure_delivery.build_delivery_payload(
-            profile, 'cs_1', release=RELEASE)['athlete']
+            profile, 'cs_1', release=RELEASE,
+            first_block=FIRST_BLOCK)['athlete']
         assert any('IT band pain' in item for item in athlete['constraints'])
         assert any('asthma' in item for item in athlete['constraints'])
         assert any(
@@ -375,17 +517,20 @@ class TestBuildDeliveryPayload:
     def test_missing_email_raises_mapping_error(self):
         profile = make_profile(email='')
         with pytest.raises(endure_delivery.EndureMappingError):
-            endure_delivery.build_delivery_payload(profile, 'cs_1', release=RELEASE)
+            endure_delivery.build_delivery_payload(
+                profile, 'cs_1', release=RELEASE, first_block=FIRST_BLOCK)
 
     def test_missing_hours_raises_mapping_error(self):
         profile = make_profile()
         profile['weekly_availability'] = {'cycling_hours_target': 0}
         with pytest.raises(endure_delivery.EndureMappingError):
-            endure_delivery.build_delivery_payload(profile, 'cs_1', release=RELEASE)
+            endure_delivery.build_delivery_payload(
+                profile, 'cs_1', release=RELEASE, first_block=FIRST_BLOCK)
 
     def test_empty_profile_raises_mapping_error(self):
         with pytest.raises(endure_delivery.EndureMappingError):
-            endure_delivery.build_delivery_payload({}, 'cs_1', release=RELEASE)
+            endure_delivery.build_delivery_payload(
+                {}, 'cs_1', release=RELEASE, first_block=FIRST_BLOCK)
 
     def test_generic_race_uses_derived_discipline(self):
         """Unmatched races carry generic_discipline instead of DB discipline."""
@@ -400,7 +545,8 @@ class TestBuildDeliveryPayload:
                                 'goal': 'finish', 'priority': 'A'}]
         profile['b_events'] = []
         races = endure_delivery.build_delivery_payload(
-            profile, 'cs_1', release=RELEASE)['races']
+            profile, 'cs_1', release=RELEASE,
+            first_block=FIRST_BLOCK)['races']
         assert races[0]['discipline'] == 'gravel'
         assert 'elevation_ft' not in races[0]  # 0 → omitted
 
@@ -495,6 +641,7 @@ class TestVerifyPurchasedPlanReady:
             'generation_revision': 3,
             'release_manifest_digest': 'a' * 64,
             'model_seal': 'b' * 64,
+            'first_block_digest': FIRST_BLOCK_DIGEST,
             'linked_account': 'false',
             'invitation_accepted': 'false',
         }
@@ -623,6 +770,21 @@ class TestVerifyPurchasedPlanReady:
         assert record['status'] == 'failed'
         assert record['attempts'] == 2
         assert mock_post.call_count == 2  # exactly ONE retry, not more
+
+    def test_retry_lease_error_does_not_hide_first_server_failure(
+            self, endure_env):
+        with patch.object(
+                endure_delivery.requests, 'post',
+                side_effect=[
+                    _resp(500, {'error': 'Exact block insert failed'}),
+                    _resp(500, {
+                        'error': 'Purchased-plan staging is already in progress',
+                    }),
+                ]):
+            record = endure_delivery.deliver_purchased_plan(DELIVERY_REQUEST)
+        assert record['ok'] is False
+        assert record['attempts'] == 2
+        assert record['error'] == 'HTTP 500: Exact block insert failed'
 
     def test_401_is_not_retried(self, endure_env):
         with patch.object(endure_delivery.requests, 'post',
@@ -798,9 +960,16 @@ def test_explicit_stage_endpoint_binds_the_current_approved_release(
              'artifacts': [
                  {'path': 'artifacts/profile.yaml'},
                  {'path': 'artifacts/intake_backup.json'},
+                 {'path': 'artifacts/endure_first_block.json'},
              ]}), \
          patch.object(app_module, 'open_verified_release_artifact',
-                      side_effect=[io.BytesIO(b'name: Jane'), io.BytesIO(b'{"q": "a"}')]), \
+                      side_effect=[
+                          io.BytesIO(
+                              b'name: Jane\nplan_start:\n'
+                              b'  preferred_start: "2026-07-13"\n'),
+                          io.BytesIO(b'{"q": "a"}'),
+                          io.BytesIO(json.dumps(FIRST_BLOCK).encode()),
+                      ]), \
          patch.object(endure_delivery, 'build_delivery_payload',
                       return_value=DELIVERY_REQUEST) as build_payload, \
          patch.object(endure_delivery, 'deliver_purchased_plan',
@@ -814,7 +983,15 @@ def test_explicit_stage_endpoint_binds_the_current_approved_release(
     assert response.status_code == 200
     assert response.get_json()['endure_stage']['block_id'] == 'block_endure_1'
     build_payload.assert_called_once_with(
-        {'name': 'Jane'}, 'cs_1', {'q': 'a'}, release=RELEASE)
+        {
+            'name': 'Jane',
+            'plan_start': {'preferred_start': '2026-07-13'},
+        },
+        'cs_1', {'q': 'a'}, release={
+            'generation_revision': 3,
+            'release_manifest_digest': 'a' * 64,
+            'model_seal': 'b' * 64,
+        }, first_block=FIRST_BLOCK)
     deliver.assert_called_once_with(DELIVERY_REQUEST)
     stage_locked.assert_called_once()
     assert staged_candidates == [prepared]
