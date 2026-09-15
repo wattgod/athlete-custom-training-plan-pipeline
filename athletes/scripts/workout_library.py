@@ -325,6 +325,8 @@ class WorkoutLibrary:
             }
 
         if tier == 'none':
+            if is_recovery_week or phase == 'taper':
+                return cls.STRENGTH_WORKOUTS[4]
             program = cls._BODYWEIGHT_PROGRAMS
             letter = 'A' if session_num == 1 else 'B'
             return {
@@ -337,7 +339,7 @@ class WorkoutLibrary:
         # A recovery week is a deload in every equipment tier. The legacy
         # home-basic rotation used the raw week number here, which could land
         # on jump squats and single-leg hops immediately after an event.
-        if is_recovery_week:
+        if is_recovery_week or phase == 'taper':
             return cls.STRENGTH_WORKOUTS[4]
 
         # Rotate through workouts, alternating A/B pattern

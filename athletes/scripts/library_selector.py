@@ -588,11 +588,11 @@ _HARD_WORK_SECONDS_FILLER = 360
 _TAPER_MAX_HARD_REP_SECONDS = 120
 _TAPER_HARD_WORK_SECONDS = 900
 _TAPER_GATED_WEEK_TYPES = ("taper", "race")
-# AE-3.1 (ratified 2026-08-23): every selected Road v1 VO2 workout must carry
+# AE-3.1 (ratified 2026-08-23): every selected cycling VO2 workout must carry
 # 5-18 minutes at the current >=106%-FTP proxy.  The block selector already
 # clamps synthetic Road v1 VO2 levels, but a curated TP item can replace that
-# synthetic structure downstream.  Gate the actual curated road structure
-# here; legacy gravel remains unchanged pending its own inventory/migration.
+# synthetic structure downstream. The same physiological ceiling applies to
+# gravel: discipline cannot be a loophole around the athlete-safety contract.
 _VO2_WORK_PCT_FLOOR = 106.0
 _VO2_WORK_SECONDS_MIN = 5 * 60
 _VO2_WORK_SECONDS_MAX = 18 * 60
@@ -603,6 +603,8 @@ _VO2_CANONICAL_TYPES = frozenset({
     "VO2max Steady Intervals",
     "Thirty-Fifteens",
 })
+_CYCLING_DISCIPLINES = frozenset({"road", "road_tt", "gravel", "mtb"})
+_SPIN_UP_TITLE_RE = re.compile(r"\bspin[- ]?ups?\b", re.IGNORECASE)
 # Base-phase long rides are aerobic: hard durability long rides are the
 # house signature for BUILD/PEAK only. Without a base ceiling, a curated
 # night-threshold session filed in an endurance library ("Dark is the
@@ -763,11 +765,15 @@ def _has_ae_3_14_violation(structure: Any) -> bool:
 
 
 def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bool:
-    # Road v1 is the first profile whose public contract promises that the
-    # protected VO2 anchor itself is AE-3.1-bounded. Keep this migration
-    # scoped to road until the legacy gravel catalog has its own inventory
-    # and coach-approved replacement wave.
-    if (str(slot.get("discipline") or "").lower() == "road"
+    item_name = str(item.get("name_raw") or item.get("name_base") or "")
+    if (_SPIN_UP_TITLE_RE.search(item_name)
+            and not bool(item.get("has_cadence_targets"))):
+        # A title that promises spin-ups needs an executable cadence target.
+        # Prose alone is lost when the Endure apply contract condenses a
+        # structured workout, so reject the mislabeled curated item instead
+        # of delivering four visually identical endurance segments.
+        return False
+    if (str(slot.get("discipline") or "").lower() in _CYCLING_DISCIPLINES
             and slot.get("canonical_name") in _VO2_CANONICAL_TYPES):
         vo2_seconds = _vo2_work_seconds(item.get("structure"))
         if not (_VO2_WORK_SECONDS_MIN <= vo2_seconds <= _VO2_WORK_SECONDS_MAX):

@@ -94,7 +94,9 @@ _ATHLETE_SCRIPTS = Path(__file__).resolve().parent.parent / 'athletes' / 'script
 if str(_ATHLETE_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_ATHLETE_SCRIPTS))
 from brand_config import default_brand, load_brands, normalize_brand
-from apply_contract import schema_path as apply_contract_schema_path
+from apply_contract import (compute_model_seal, emit_contract,
+                            guide_source_digests,
+                            schema_path as apply_contract_schema_path)
 
 app = Flask(__name__)
 
@@ -3118,6 +3120,28 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
                          if path.name.replace('-', '_') == athlete_id.replace('-', '_')]
                 artifact_dir = str(exact[0]) if len(exact) == 1 else None
 
+        # The checkout handlers historically wrote the questionnaire backup
+        # beside the legacy global profile, while every generated artifact
+        # lived under this order-private root. Persistence therefore sealed a
+        # package that Endure correctly refused to stage. The pipeline owns
+        # the generated root, so it also owns this required source artifact.
+        if success and artifact_dir:
+            backup_path = Path(artifact_dir) / 'intake_backup.json'
+            temp_path = backup_path.with_name('.intake_backup.json.tmp')
+            try:
+                with open(temp_path, 'w', encoding='utf-8') as handle:
+                    json.dump(intake_data, handle, indent=2, sort_keys=True)
+                    handle.write('\n')
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temp_path, backup_path)
+            except (OSError, TypeError, ValueError) as exc:
+                temp_path.unlink(missing_ok=True)
+                success = False
+                result.stderr = (
+                    (result.stderr + '\n') if result.stderr else ''
+                ) + f'Could not persist order-private intake backup: {type(exc).__name__}'
+
         return {
             'success': success,
             'stdout': result.stdout,
@@ -3153,7 +3177,6 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
 CUSTOMER_DELIVERABLES = [
     'training_guide.html',
     'training_guide.pdf',
-    'dashboard.html',
     'plan_preview.html',
     'fueling.yaml',
 ]
@@ -3182,6 +3205,58 @@ PRIVATE_DELIVERABLES = [
     'canonical_training_model.json',
     'apply_contract.json',
 ]
+
+
+def _write_endure_first_block_artifact(
+        artifact_dir: Path, state: dict) -> Path:
+    """Create the Endure handoff before release sealing and coach approval."""
+    try:
+        profile = yaml.safe_load(
+            (artifact_dir / 'profile.yaml').read_text(encoding='utf-8'))
+        plan_ir = json.loads(
+            (artifact_dir / 'plan_ir.json').read_text(encoding='utf-8'))
+        apply_contract = json.loads(
+            (artifact_dir / 'apply_contract.json').read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, yaml.YAMLError) as exc:
+        raise FulfillmentStateError(
+            'Endure release inputs are unavailable') from exc
+    if not isinstance(profile, dict):
+        raise FulfillmentStateError('Endure release profile is malformed')
+    plan_start = endure_delivery._monday_on_or_after(
+        (profile.get('plan_start') or {}).get('preferred_start', ''))
+    try:
+        first_block = endure_delivery.build_endure_first_block(
+            plan_ir, apply_contract, plan_start)
+        encoded = endure_delivery.canonical_first_block_bytes(first_block)
+    except endure_delivery.EndureMappingError as exc:
+        raise FulfillmentStateError(str(exc)) from exc
+    path = artifact_dir / 'endure_first_block.json'
+    temp = path.with_name('.endure_first_block.json.tmp')
+    try:
+        with open(temp, 'wb') as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp, path)
+    except OSError as exc:
+        temp.unlink(missing_ok=True)
+        raise FulfillmentStateError(
+            'Endure first-block artifact could not be written') from exc
+
+    canonical_model = json.loads(
+        (artifact_dir / 'canonical_training_model.json').read_text(
+            encoding='utf-8'))
+    digest = hashlib.sha256(encoded).hexdigest()
+    apply_contract['model_seal'] = compute_model_seal(
+        canonical_model,
+        [item for item in state.get('review_items', [])
+         if item.get('item_id') != 'FACT_RELEASE_SEAL'],
+        guide_source_digests(artifact_dir),
+        apply_contract['operations'],
+        {'endure_first_block.json': digest},
+    )
+    emit_contract(artifact_dir / 'apply_contract.json', apply_contract)
+    return path
 
 
 def _safe_order_id(order_id: str) -> str:
@@ -3442,6 +3517,10 @@ def persist_deliverables(order_id: str, athlete_id: str = '', source_dir: Path |
             pass  # PDF is optional (no Chrome on Railway)
         else:
             missing.append(fname)
+
+    if delivery_platform == 'endure':
+        _write_endure_first_block_artifact(artifact_dir, state)
+        copied.append('endure_first_block.json')
 
     review_zip = revision_dir / f'{order_id}-review-bundle.zip'
     with zipfile.ZipFile(review_zip, 'w', zipfile.ZIP_DEFLATED) as archive:
@@ -5165,7 +5244,9 @@ def _stage_endure_order(order_id: str, *, force_refresh: bool = False):
         manifest = verify_release_manifest(locked_state, revision_dir)
         artifact_paths = {
             str(item.get('path') or '') for item in manifest['artifacts']}
-        for required in ('artifacts/profile.yaml', 'artifacts/intake_backup.json'):
+        for required in (
+                'artifacts/profile.yaml', 'artifacts/intake_backup.json',
+                'artifacts/endure_first_block.json'):
             if required not in artifact_paths:
                 raise FulfillmentStateError(
                     f'Endure staging artifact is missing: {required}')
@@ -5181,13 +5262,21 @@ def _stage_endure_order(order_id: str, *, force_refresh: bool = False):
             intake = json.loads(intake_handle.read().decode('utf-8'))
         finally:
             intake_handle.close()
+        first_block_handle = open_verified_release_artifact(
+            locked_state, revision_dir, 'artifacts/endure_first_block.json')
+        try:
+            first_block = json.loads(
+                first_block_handle.read().decode('utf-8'))
+        finally:
+            first_block_handle.close()
         release = {
             'generation_revision': locked_state['generation_revision'],
             'release_manifest_digest': locked_state['release_manifest_digest'],
             'model_seal': locked_state['model_seal'],
         }
         payload = endure_delivery.build_delivery_payload(
-            profile, order_id, intake, release=release)
+            profile, order_id, intake, release=release,
+            first_block=first_block)
         prepared = endure_delivery.deliver_purchased_plan(payload)
         if not prepared.get('ok'):
             raise RuntimeError(str(prepared.get('error') or 'remote Endure failure'))
@@ -7710,17 +7799,9 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
 
     athlete_id, profile_path = create_athlete_profile(order_data)
 
-    # Load intake data for pipeline and backup
+    # Load intake data for the order-private pipeline.
     intake_id = data.get('data', {}).get('object', {}).get('metadata', {}).get('intake_id', '')
     intake_data = load_intake(intake_id) if intake_id else {}
-    if intake_data:
-        backup_path = Path(ATHLETES_DIR) / athlete_id / 'intake_backup.json'
-        try:
-            with open(backup_path, 'w') as f:
-                json.dump(intake_data, f, indent=2)
-        except Exception as e:
-            logger.warning(f"Failed to backup intake data: {e}")
-
     # Mark BEFORE pipeline — see WooCommerce handler comment for rationale
     mark_order_processed(order_data['order_id'], athlete_id)
 
@@ -8162,7 +8243,8 @@ def _handle_consult_addon_webhook(session: dict, metadata: dict, order_id: str):
 
 # =============================================================================
 # TEST ENDPOINT — runs the EXACT same code path as a real Stripe webhook.
-# Secured by CRON_SECRET header. Requires intake_id with stored questionnaire.
+# Secured by CRON_SECRET. Ordinary tests may use a stored intake; disposable
+# Endure canaries must provide their exact inline questionnaire identity.
 # =============================================================================
 @app.route('/webhook/test', methods=['POST'])
 def test_webhook():
@@ -8172,7 +8254,8 @@ def test_webhook():
     extract → validate → create profile → load intake → mark processed →
     run pipeline → log order → send notification email.
 
-    Required: intake_id (from a stored questionnaire), name, email.
+    Required: a stored intake or inline questionnaire, plus name and email.
+    Endure canaries require the stricter inline disposable identity contract.
     """
     secret = request.headers.get('X-Cron-Secret', '')
     if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
@@ -8180,6 +8263,60 @@ def test_webhook():
 
     data = request.get_json() or {}
     intake_id = data.get('intake_id', '')
+    delivery_target = str(data.get('delivery_target') or '').strip().lower()
+    if delivery_target and delivery_target not in ('trainingpeaks', 'endure'):
+        return jsonify({'error': 'delivery_target must be trainingpeaks or endure'}), 400
+    requested_order_id = str(data.get('order_id') or '').strip()
+    if delivery_target == 'endure' or requested_order_id:
+        identity = re.fullmatch(
+            r'codex-pilot-(\d{14})-([0-9a-f]{8})', requested_order_id)
+        expected_email = (
+            f'endure-pilot-{identity.group(1)}-{identity.group(2)}@example.com'
+            if identity else ''
+        )
+        try:
+            created_at = datetime.strptime(
+                identity.group(1) if identity else '', '%Y%m%d%H%M%S'
+            ).replace(tzinfo=timezone.utc)
+        except ValueError:
+            created_at = None
+        now = datetime.now(timezone.utc)
+        age_seconds = (
+            (now - created_at).total_seconds() if created_at else None)
+        questionnaire = data.get('questionnaire')
+        questionnaire_races = (
+            questionnaire.get('races')
+            if isinstance(questionnaire, dict) else None)
+        first_race = (
+            questionnaire_races[0]
+            if isinstance(questionnaire_races, list) and questionnaire_races
+            and isinstance(questionnaire_races[0], dict) else {})
+        questionnaire_race_name = str(
+            questionnaire.get('race_name')
+            if isinstance(questionnaire, dict) else '').strip()
+        first_race_name = str(first_race.get('name') or '').strip()
+        if (
+            delivery_target != 'endure'
+            or not identity
+            or bool(intake_id)
+            or not isinstance(questionnaire, dict)
+            or str(data.get('email') or '').strip().lower() != expected_email
+            or str(data.get('name') or '').strip() != 'Endure Pilot Rider'
+            or str(questionnaire.get('email') or '').strip().lower()
+            != expected_email
+            or str(questionnaire.get('name') or '').strip()
+            != 'Endure Pilot Rider'
+            or not re.search(r'\bPilot\b', questionnaire_race_name)
+            or not re.search(r'\bPilot\b', first_race_name)
+            or created_at is None
+            or age_seconds is None
+            or not 0 <= age_seconds <= 600
+        ):
+            return jsonify({
+                'error': 'order_id is reserved for a fresh disposable Endure canary'
+            }), 400
+        if check_idempotency(requested_order_id):
+            return jsonify({'error': 'Endure canary order already processed'}), 409
 
     # If questionnaire data is provided inline, store it and generate an intake_id
     if not intake_id and data.get('questionnaire'):
@@ -8191,17 +8328,20 @@ def test_webhook():
         return jsonify({'error': 'intake_id or questionnaire object is required'}), 400
 
     # Build a fake Stripe event that mirrors real checkout.session.completed
-    order_id = 'test_' + datetime.now().strftime('%Y%m%d%H%M%S')
+    order_id = requested_order_id or 'test_' + datetime.now().strftime('%Y%m%d%H%M%S')
+    fake_metadata = {
+        'intake_id': intake_id,
+        'product_type': 'training_plan',
+        'tier': 'custom',
+        'athlete_name': data.get('name', 'Test Athlete'),
+    }
+    if delivery_target:
+        fake_metadata['delivery_target'] = delivery_target
     fake_stripe_data = {
         'data': {
             'object': {
                 'id': order_id,
-                'metadata': {
-                    'intake_id': intake_id,
-                    'product_type': 'training_plan',
-                    'tier': 'custom',
-                    'athlete_name': data.get('name', 'Test Athlete'),
-                },
+                'metadata': fake_metadata,
                 'customer_details': {
                     'email': data.get('email', 'test@example.com'),
                     'name': data.get('name', 'Test Athlete'),
@@ -8224,14 +8364,6 @@ def test_webhook():
     intake_data = load_intake(intake_id)
     if not intake_data:
         return jsonify({'error': f'Intake {intake_id} not found or expired'}), 404
-
-    # Backup intake (same as real flow)
-    backup_path = Path(ATHLETES_DIR) / athlete_id / 'intake_backup.json'
-    try:
-        with open(backup_path, 'w') as f:
-            json.dump(intake_data, f, indent=2)
-    except Exception as e:
-        logger.warning(f"Failed to backup intake data: {e}")
 
     # Idempotency mark (same as real flow)
     mark_order_processed(order_data['order_id'], athlete_id)

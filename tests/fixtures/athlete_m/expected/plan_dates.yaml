@@ -82,6 +82,7 @@ weeks:
     workout_prefix: W01_Sun_Aug16
     is_race_day: false
   is_recovery_week: false
+  week_type: testing
   _recovery_opener_added: false
 - week: 2
   monday: '2026-08-17'

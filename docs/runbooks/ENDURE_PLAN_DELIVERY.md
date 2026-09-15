@@ -30,17 +30,27 @@ change the default platform and it never falls back to TrainingPeaks silently.
      "$PIPELINE_URL/api/fulfillment/$ORDER_ID/status"
    ```
 
-2. Stage the exact approved release. This creates or resumes one order-bound
-   athlete, invitation, plan, season outline, and draft first block:
+2. Stage the exact approved release. Before approval, persistence creates
+   `endure_first_block.json`, seals its bytes in the release manifest and model
+   seal, and presents the same release identity for coach approval. Staging
+   reopens that verified artifact rather than deriving a new representation.
+   Endure verifies its digest before creating or resuming one order-bound
+   athlete, invitation, plan, and draft first block. It does not call another
+   plan engine or fuzzy-map the purchased prescription:
 
    ```sh
    curl -X POST -H "X-Cron-Secret: $CRON_SECRET" \
      "$PIPELINE_URL/api/fulfillment/$ORDER_ID/stage-endure"
    ```
 
-3. Open the returned Endure review URL. Review the first block, choose the
-   current or a later Monday, and schedule it. Endure must report an exact
-   activity-and-strength calendar match.
+3. Open the returned Endure review URL. Review the first block on its sealed
+   Monday start date and schedule it. Moving the block requires an explicit
+   plan revision; approval will not silently shift its dates. Endure must report an exact
+   one-for-one calendar match, including Rest and Strength operations, source
+   operation identities, dates, types, titles, descriptions, durations,
+   nullable planned TSS, and ordered workout steps. A coach edit is allowed,
+   but unchanged workouts retain their source prescription and every actual
+   change is stored as a before/after coach revision.
 
 4. Verify the calendar and send the athlete one access email:
 
@@ -50,7 +60,8 @@ change the default platform and it never falls back to TrainingPeaks silently.
    ```
 
 5. Read status again. `CONFIRMED` is valid only with the exact Endure receipt,
-   calendar verification, recipient digest, and Resend evidence.
+   first-block digest, calendar verification, recipient digest, and Resend
+   evidence.
 
 6. Immediately after confirmation, bind the live Stripe payment to both
    production systems with the diagnostic verifier. It accepts one
@@ -80,6 +91,61 @@ change the default platform and it never falls back to TrainingPeaks silently.
    the first-week training loop. Verify the athlete and coach loop separately.
    Never paste raw status JSON into tickets or logs; it contains the live
    invitation capability.
+
+## Failed staging and safe retry
+
+Endure releases the order's compare-and-swap staging lease immediately when a
+stage fails. The pipeline performs at most one retry for transport errors or a
+5xx response. If the retry encounters only a stale "already in progress"
+response, the pipeline retains the first actionable server error for the
+operator. After a returned stage failure, retry without waiting 15 minutes or
+hand-editing the staging row. A truly concurrent request still owns its lease
+and must be allowed to finish.
+
+Any legacy stage without `first_block_digest` is an integrity failure. Do not
+reclaim or edit it in place. An operator must first quarantine or remove the
+exact stale stage, regenerate a fresh artifact-bound revision, review it, and
+approve that revision before staging again.
+
+## Deployment ordering and rollback
+
+1. Apply and verify the Endure migration before merging application code. It
+   adds nullable, SHA-256-formatted
+   `purchased_plan_delivery_stages.first_block_digest`, widens the two planned
+   load columns to `numeric(7,2)`, and replaces the atomic calendar-activation
+   function. The transaction can briefly lock those live tables, so use the
+   normal production change window and stop on any SQL error.
+2. Deploy Endure's exact-import contract.
+3. Deploy the pipeline serializer and retry correction.
+4. Run a test-mode fake-order stage, approve it in Endure, and verify calendar
+   readback before any email action.
+
+   The operator-only test route accepts an explicit per-order target, so this
+   canary does not require changing `DELIVERY_TARGET_DEFAULT` or enrolling a
+   real buyer:
+
+   ```sh
+   curl -X POST -H "X-Cron-Secret: $CRON_SECRET" \
+     -H "Content-Type: application/json" \
+     "$PIPELINE_URL/webhook/test" \
+     --data @/private/tmp/endure-canary-request.json
+   ```
+
+   The request must include `"delivery_target":"endure"`, a valid inline
+   `questionnaire` (a stored `intake_id` is rejected), and the paired disposable
+   identity expected by the purchased-plan browser canary: `order_id` must be
+   `codex-pilot-YYYYMMDDHHMMSS-8hex`, the email must be
+   `endure-pilot-YYYYMMDDHHMMSS-8hex@example.com`, and the stamp must be less
+   than ten minutes old. Both the outer request and questionnaire must use that
+   email and the exact name `Endure Pilot Rider`; `questionnaire.race_name` and
+   the first `questionnaire.races[].name` must contain `Pilot`. The route rejects
+   mismatched, future, stale, or already-processed identities before storing the
+   intake, and leaves the store default unchanged.
+
+For an emergency rollback, deploy the previous applications and leave the
+compatible schema changes in place. Do not narrow the load columns, drop the
+digest, or restore the older function while four-part release receipts may
+exist; those destructive changes require a separate, data-audited migration.
 
 ## Unknown Resend outcome
 

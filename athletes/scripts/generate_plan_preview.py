@@ -485,7 +485,10 @@ def _run_verification_checks(
             wo = d.get('workout')
             if wo and 'FTP_Test' in wo.get('_stem', wo.get('name', '')):
                 ftp_tests.append(f"W{w['week']:02d} {d['day']}")
-    ftp_not_required = (
+    reanchor = (profile.get('fitness_markers', {}) or {}).get('reanchor')
+    anchor_preserved = (
+        isinstance(reanchor, dict) and reanchor.get('required') is False)
+    ftp_not_required = anchor_preserved or (
         len(weeks_data) < 8
         and all(w['phase'] in ('taper', 'race', 'recovery') for w in weeks_data)
     )
@@ -493,13 +496,23 @@ def _run_verification_checks(
         'name': 'FTP Tests',
         'status': 'PASS' if ftp_tests or ftp_not_required else 'WARN',
         'detail': (f"Tests: {', '.join(ftp_tests)}" if ftp_tests else
+                   "No re-anchor scheduled; current anchor preserved"
+                   if anchor_preserved else
                    "Not required in this short race/recovery revision"
                    if ftp_not_required else "No FTP tests found"),
     })
 
     # 10. FTP Test Frequency — plans 8+ weeks should have at least 2 tests
     total_weeks = len(weeks_data)
-    if total_weeks >= 8:
+    if total_weeks >= 8 and anchor_preserved:
+        checks.append({
+            'name': 'FTP Test Frequency',
+            'status': 'PASS',
+            'detail': (
+                f"0 required FTP tests in {total_weeks}-week plan | "
+                "Current measured anchor preserved by profile decision"),
+        })
+    elif total_weeks >= 8:
         ftp_count = len(ftp_tests)
         if ftp_count >= 2:
             freq_status = 'PASS'

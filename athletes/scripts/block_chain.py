@@ -286,6 +286,8 @@ def derive_week_descriptors(plan_dates: Dict[str, Any]) -> List[Dict[str, Any]]:
             week_type = 'taper'
         elif w.get('is_recovery_week'):
             week_type = 'recovery'
+        elif w.get('week_type') == 'testing':
+            week_type = 'testing'
         else:
             week_type = 'load'
         # The block builder owns the shape around an A-race, but the calendar

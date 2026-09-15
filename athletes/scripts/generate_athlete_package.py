@@ -993,22 +993,80 @@ def select_strength_days(is_available, strength_only_abbrevs=None) -> list:
 
 
 def strength_sessions_for_week(requested_sessions: int, phase: str,
-                               is_recovery_week: bool = False) -> int:
+                               is_recovery_week: bool = False,
+                               late_entry: bool = False) -> int:
     """Apply the documented strength-frequency reduction rule to one week.
 
     The athlete's stated frequency is honored in load weeks (up to the
-    supported two-session maximum). Recovery and taper weeks deliberately
-    reduce to one session; race week has none.
+    supported two-session maximum). Recovery and ordinary taper weeks reduce
+    to one session. Race week has none, and a late-entry plan does not invent
+    strength continuity inside its only taper week.
     """
     try:
         requested = max(0, min(int(requested_sessions), 2))
     except (TypeError, ValueError):
         requested = 0
-    if phase == 'race':
+    if phase == 'race' or (phase == 'taper' and late_entry):
         return 0
     if is_recovery_week or phase == 'taper':
         return min(requested, 1)
     return requested
+
+
+def _initial_field_test_required(profile: Optional[dict]) -> bool:
+    """Whether Week 1 must be an assessment week.
+
+    ``field_testing_allowed`` is permission, not a scheduling instruction.
+    New canonical profiles carry the actual decision in ``reanchor.required``.
+    Profiles created before that field existed retain the historical behavior
+    so regeneration does not silently remove an already-promised assessment.
+    """
+    markers = ((profile or {}).get('fitness_markers') or {})
+    if markers.get('field_testing_allowed', True) is False:
+        return False
+    reanchor = markers.get('reanchor')
+    if isinstance(reanchor, dict) and 'required' in reanchor:
+        return bool(reanchor.get('required'))
+    return True
+
+
+def _mark_initial_testing_week(plan_dates: dict, profile: Optional[dict],
+                               derived: Optional[dict] = None) -> None:
+    """Make a required Week 1 assessment a first-class calendar type."""
+    if not _initial_field_test_required(profile):
+        return
+    risk_factors = (derived or {}).get('risk_factors', [])
+    if 'returning_from_injury' in risk_factors:
+        return
+    for week in plan_dates.get('weeks') or []:
+        if (int(week.get('week') or 0) == 1
+                and not week.get('is_recovery_week')
+                and week.get('phase') not in {'taper', 'race'}):
+            week['week_type'] = 'testing'
+            return
+
+
+def _delivery_role(archetype_id: str, builder_role: str, week_type: str,
+                   *, post_sim_recovery: bool = False) -> str:
+    """Give downstream review rules the session's athlete-facing purpose.
+
+    The block builder's structural roles (``intensity``/``filler``) are used
+    for placement and progression, so they cannot distinguish an intentional
+    20-minute activation from an accidentally truncated hard workout. Keep
+    those planning roles intact and publish a narrower delivery role instead.
+    """
+    if post_sim_recovery:
+        return 'recovery'
+    if archetype_id == 'Openers':
+        return 'opener'
+    if archetype_id == 'Cadence Work':
+        return 'skill'
+    if (week_type in {'taper', 'race'}
+            and archetype_id in {'Stars In Your Eyes', 'Thirty-Fifteens'}):
+        return 'activation'
+    if week_type in {'recovery', 'race'} and builder_role == 'filler':
+        return 'recovery'
+    return builder_role
 
 
 def place_strength_days(is_available, requested_sessions: int,
@@ -1466,6 +1524,15 @@ def resolve_library_selections(bb_plan: dict, *, day_caps: Optional[dict] = None
             day_abbrev = bd.get('day')
             if (plan_week, day_abbrev) in excluded_calendar_slots:
                 continue
+            # Race-week sharpness is owned by the calibrated synthetic
+            # renderer. The generic anaerobic library can satisfy the broad
+            # taper ceiling while still replacing a few seconds of activation
+            # with a much harsher 7x1min glycolytic workout four days before
+            # the race. Keep the named house sharpener intact here; ordinary
+            # load-week anaerobic selection remains available.
+            if (week_type == 'race'
+                    and bd.get('name') == 'Stars In Your Eyes'):
+                continue
             if not _library_selection_in_scope(bd):
                 continue
 
@@ -1680,6 +1747,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     # Heat acclimation benefits ALL athletes regardless of race elevation
     needs_heat_training = True
 
+    _mark_initial_testing_week(plan_dates, profile, derived)
     weeks = plan_dates.get('weeks', [])
 
     # Build athlete-specific weekly structure from profile
@@ -1790,16 +1858,6 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         # Derive week descriptors from plan_dates (calendar truth) — shared
         # function, also exercised by the golden tests.
         _bb_descriptors = derive_week_descriptors(plan_dates)
-
-        # Week 1 is a TESTING week (assessment battery: FTP Tue, anaerobic
-        # Thu, long aerobic test Sat) — unless the athlete is returning
-        # from injury, in which case week 1 stays a gentle load week with
-        # the single Tue FTP test.
-        _risk_factors = (derived or {}).get('risk_factors', []) or []
-        if 'returning_from_injury' not in _risk_factors:
-            for _d in _bb_descriptors:
-                if _d['plan_week'] == 1 and _d['week_type'] == 'load':
-                    _d['week_type'] = 'testing'
 
         # Per-day duration caps from athlete availability — enforced inside
         # the week builder so plan dict, compliance, and rendered ZWOs agree.
@@ -2929,7 +2987,7 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
     # FTP TEST SCHEDULING
     # Determine which weeks should get FTP tests based on plan length.
     # Rules:
-    #   - Always: Week 1 (baseline)
+    #   - Week 1 only when the canonical re-anchor decision requires it
     #   - Plans >= 8 weeks: mid-plan retest at base->build transition
     #   - Plans >= 16 weeks: third test at build->peak transition
     #   - Never schedule on B-race weeks, taper, or race weeks
@@ -2939,7 +2997,8 @@ def generate_zwo_files(athlete_dir: Path, plan_dates: dict, methodology: dict, d
         (profile.get('fitness_markers') or {}).get(
             'field_testing_allowed', True) is not False
     )
-    ftp_test_target_weeks = [1] if field_testing_allowed else []
+    initial_field_test_required = _initial_field_test_required(profile)
+    ftp_test_target_weeks = [1] if initial_field_test_required else []
 
     # Coach ruling (Aug 2026, "why are there 2 FTP tests two weeks apart?"):
     # an 8-week plan's mid-plan retest was landing Week 3 -- two weeks after
@@ -3573,7 +3632,8 @@ Stay loose, {athlete_name}!"""
             if (day_abbrev in strength_only_abbrevs
                     and strength_sessions_for_week(
                         _requested_strength_sessions, phase,
-                        week.get('is_recovery_week', False)) > 0):
+                        week.get('is_recovery_week', False),
+                        late_entry=total_weeks <= 4) > 0):
                 # A coach-designated strength-only day owns the daily budget.
                 # The strength pass below emits the sole calendar session.
                 continue
@@ -4190,7 +4250,13 @@ TIPS:
                         display_name=display_name, archetype_id=bb_name,
                         series_id=('|'.join(str(x) for x in _series_id) if _series_id else None),
                         series_index=_series_rank_hint,
-                        role=bb_role, is_sim=bool(_act_simulation),
+                        role=_delivery_role(
+                            bb_name, bb_role, str(week.get('week_type') or phase),
+                            post_sim_recovery=bool(
+                                bb_day.get('post_sim_recovery')
+                                or bb_day.get('pre_sim_recovery')),
+                        ),
+                        is_sim=bool(_act_simulation),
                         # v24 fix wave: duration_min lets the FTP-TEST
                         # DAY-BEFORE ENFORCEMENT post-pass below check the
                         # day's actual length without re-reading the ZWO.
@@ -5003,7 +5069,8 @@ GO GET IT, {athlete_name.upper()}!
             # Frequency follows the athlete in load weeks, then deliberately
             # reduces with the calendar: recovery/taper = 1, race = 0.
             sessions_this_week = strength_sessions_for_week(
-                strength_sessions, phase, week.get('is_recovery_week', False))
+                strength_sessions, phase, week.get('is_recovery_week', False),
+                late_entry=total_weeks <= 4)
             if not sessions_this_week:
                 continue
 
@@ -5290,6 +5357,10 @@ def generate_athlete_package(athlete_id: str) -> dict:
     from copy import deepcopy
     from canonical_training_model import (build_canonical_model,
                                           publish_zwo_projection)
+    # The calendar type must be fixed before the canonical copy is taken so
+    # the rendered sessions and PlanIR/validator agree about whether Week 1
+    # is a testing week.
+    _mark_initial_testing_week(plan_dates, profile, derived)
     _canonical_dates = deepcopy(plan_dates)
     for _stale_zwo in (athlete_dir / 'workouts').glob('*.zwo'):
         _stale_zwo.unlink()
