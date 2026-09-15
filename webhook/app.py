@@ -8261,6 +8261,9 @@ def test_webhook():
 
     data = request.get_json() or {}
     intake_id = data.get('intake_id', '')
+    delivery_target = str(data.get('delivery_target') or '').strip().lower()
+    if delivery_target and delivery_target not in ('trainingpeaks', 'endure'):
+        return jsonify({'error': 'delivery_target must be trainingpeaks or endure'}), 400
 
     # If questionnaire data is provided inline, store it and generate an intake_id
     if not intake_id and data.get('questionnaire'):
@@ -8273,16 +8276,19 @@ def test_webhook():
 
     # Build a fake Stripe event that mirrors real checkout.session.completed
     order_id = 'test_' + datetime.now().strftime('%Y%m%d%H%M%S')
+    fake_metadata = {
+        'intake_id': intake_id,
+        'product_type': 'training_plan',
+        'tier': 'custom',
+        'athlete_name': data.get('name', 'Test Athlete'),
+    }
+    if delivery_target:
+        fake_metadata['delivery_target'] = delivery_target
     fake_stripe_data = {
         'data': {
             'object': {
                 'id': order_id,
-                'metadata': {
-                    'intake_id': intake_id,
-                    'product_type': 'training_plan',
-                    'tier': 'custom',
-                    'athlete_name': data.get('name', 'Test Athlete'),
-                },
+                'metadata': fake_metadata,
                 'customer_details': {
                     'email': data.get('email', 'test@example.com'),
                     'name': data.get('name', 'Test Athlete'),

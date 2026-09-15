@@ -1436,6 +1436,41 @@ class TestTestEndpoint:
         # parsing attacker-controlled identifiers.
         assert response.status_code == 401
 
+    def test_authenticated_test_endpoint_can_select_endure_for_one_order(
+            self, client, monkeypatch):
+        monkeypatch.setenv('CRON_SECRET', 'operator-secret')
+        with patch('app.store_intake'), \
+                patch('app.extract_stripe_data', return_value={}) as extract, \
+                patch('app.validate_order_data', return_value=(False, 'stop')):
+            response = client.post(
+                '/webhook/test',
+                json={
+                    'questionnaire': {'fixture': True},
+                    'name': 'Endure Canary',
+                    'email': 'canary@example.invalid',
+                    'delivery_target': 'endure',
+                },
+                headers={'X-Cron-Secret': 'operator-secret'},
+            )
+
+        assert response.status_code == 400
+        fake_event = extract.call_args.args[0]
+        assert fake_event['data']['object']['metadata']['delivery_target'] == 'endure'
+
+    def test_authenticated_test_endpoint_rejects_unknown_delivery_target(
+            self, client, monkeypatch):
+        monkeypatch.setenv('CRON_SECRET', 'operator-secret')
+        response = client.post(
+            '/webhook/test',
+            json={'delivery_target': 'silent-fallback'},
+            headers={'X-Cron-Secret': 'operator-secret'},
+        )
+
+        assert response.status_code == 400
+        assert response.get_json() == {
+            'error': 'delivery_target must be trainingpeaks or endure',
+        }
+
 
 class TestCoachingCheckout:
     """Tests for POST /api/create-coaching-checkout endpoint."""

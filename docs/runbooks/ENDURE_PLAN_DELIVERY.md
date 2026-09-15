@@ -120,6 +120,21 @@ approve that revision before staging again.
 4. Run a test-mode fake-order stage, approve it in Endure, and verify calendar
    readback before any email action.
 
+   The operator-only test route accepts an explicit per-order target, so this
+   canary does not require changing `DELIVERY_TARGET_DEFAULT` or enrolling a
+   real buyer:
+
+   ```sh
+   curl -X POST -H "X-Cron-Secret: $CRON_SECRET" \
+     -H "Content-Type: application/json" \
+     "$PIPELINE_URL/webhook/test" \
+     --data @/private/tmp/endure-canary-request.json
+   ```
+
+   The request must include `"delivery_target":"endure"` plus a valid inline
+   `questionnaire`, `name`, and controlled test email. The route rejects any
+   other explicit target and leaves the store default unchanged.
+
 For an emergency rollback, deploy the previous applications and leave the
 compatible schema changes in place. Do not narrow the load columns, drop the
 digest, or restore the older function while four-part release receipts may
