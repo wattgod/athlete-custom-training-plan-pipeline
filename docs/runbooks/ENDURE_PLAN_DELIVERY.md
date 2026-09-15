@@ -135,10 +135,12 @@ approve that revision before staging again.
    `questionnaire` (a stored `intake_id` is rejected), and the paired disposable
    identity expected by the purchased-plan browser canary: `order_id` must be
    `codex-pilot-YYYYMMDDHHMMSS-8hex`, the email must be
-   `endure-pilot-YYYYMMDDHHMMSS-8hex@example.com`, and the stamp must be less
-   than ten minutes old. Both the outer request and questionnaire must use that
-   email and the exact name `Endure Pilot Rider`; `questionnaire.race_name` and
-   the first `questionnaire.races[].name` must contain `Pilot`. The route rejects
+   `delivered+endure-pilot-YYYYMMDDHHMMSS-8hex@resend.dev`, and the stamp must
+   be less than ten minutes old. This is Resend's labeled delivery-test address:
+   it produces a provider delivery receipt without contacting a real person.
+   Both the outer request and questionnaire must use that email and the exact
+   name `Endure Pilot Rider`; `questionnaire.race_name` and the first
+   `questionnaire.races[].name` must contain `Pilot`. The route rejects
    mismatched, future, stale, or already-processed identities before storing the
    intake, and leaves the store default unchanged.
 

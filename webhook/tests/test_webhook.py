@@ -1441,7 +1441,7 @@ class TestTestEndpoint:
         monkeypatch.setenv('CRON_SECRET', 'operator-secret')
         stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
         order_id = f'codex-pilot-{stamp}-a1b2c3d4'
-        email = f'endure-pilot-{stamp}-a1b2c3d4@example.com'
+        email = f'delivered+endure-pilot-{stamp}-a1b2c3d4@resend.dev'
         with patch('app.store_intake'), \
                 patch('app.extract_stripe_data', return_value={}) as extract, \
                 patch('app.validate_order_data', return_value=(False, 'stop')):
@@ -1501,6 +1501,46 @@ class TestTestEndpoint:
             'error': 'order_id is reserved for a fresh disposable Endure canary',
         }
 
+    @pytest.mark.parametrize('email_kind', [
+        'legacy_example_domain',
+        'unpaired_resend_label',
+    ])
+    def test_authenticated_test_endpoint_rejects_non_resend_canary_recipient(
+            self, client, monkeypatch, email_kind):
+        monkeypatch.setenv('CRON_SECRET', 'operator-secret')
+        stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+        email = (
+            f'endure-pilot-{stamp}-a1b2c3d4@example.com'
+            if email_kind == 'legacy_example_domain'
+            else 'delivered+unpaired-pilot@resend.dev'
+        )
+        with patch('app.store_intake') as store, \
+                patch('app.create_athlete_profile') as create_profile, \
+                patch('app.run_pipeline') as run_pipeline, \
+                patch('app._send_payment_confirmation') as send_confirmation:
+            response = client.post(
+                '/webhook/test',
+                json={
+                    'questionnaire': {
+                        'name': 'Endure Pilot Rider',
+                        'email': email,
+                        'race_name': 'Endure Pilot Race',
+                        'races': [{'name': 'Endure Pilot Race'}],
+                    },
+                    'name': 'Endure Pilot Rider',
+                    'email': email,
+                    'order_id': f'codex-pilot-{stamp}-a1b2c3d4',
+                    'delivery_target': 'endure',
+                },
+                headers={'X-Cron-Secret': 'operator-secret'},
+            )
+
+        assert response.status_code == 400
+        store.assert_not_called()
+        create_profile.assert_not_called()
+        run_pipeline.assert_not_called()
+        send_confirmation.assert_not_called()
+
     @pytest.mark.parametrize('override', [
         {'email': 'real-buyer@example.com'},
         {'name': 'Real Buyer'},
@@ -1511,7 +1551,7 @@ class TestTestEndpoint:
             self, client, monkeypatch, override):
         monkeypatch.setenv('CRON_SECRET', 'operator-secret')
         stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
-        email = f'endure-pilot-{stamp}-a1b2c3d4@example.com'
+        email = f'delivered+endure-pilot-{stamp}-a1b2c3d4@resend.dev'
         questionnaire = {
             'name': 'Endure Pilot Rider',
             'email': email,
@@ -1545,7 +1585,7 @@ class TestTestEndpoint:
             self, client, monkeypatch):
         monkeypatch.setenv('CRON_SECRET', 'operator-secret')
         stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
-        email = f'endure-pilot-{stamp}-a1b2c3d4@example.com'
+        email = f'delivered+endure-pilot-{stamp}-a1b2c3d4@resend.dev'
         with patch('app.store_intake') as store, \
                 patch('app.load_intake') as load_intake:
             response = client.post(
@@ -1569,7 +1609,7 @@ class TestTestEndpoint:
             self, client, monkeypatch, delta):
         monkeypatch.setenv('CRON_SECRET', 'operator-secret')
         stamp = (datetime.now(timezone.utc) - delta).strftime('%Y%m%d%H%M%S')
-        email = f'endure-pilot-{stamp}-a1b2c3d4@example.com'
+        email = f'delivered+endure-pilot-{stamp}-a1b2c3d4@resend.dev'
         response = client.post(
             '/webhook/test',
             json={
@@ -1593,7 +1633,7 @@ class TestTestEndpoint:
             self, client, monkeypatch):
         monkeypatch.setenv('CRON_SECRET', 'operator-secret')
         stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
-        email = f'endure-pilot-{stamp}-a1b2c3d4@example.com'
+        email = f'delivered+endure-pilot-{stamp}-a1b2c3d4@resend.dev'
         with patch('app.check_idempotency', return_value=True), \
                 patch('app.store_intake') as store, \
                 patch('app.create_athlete_profile') as create_profile, \
