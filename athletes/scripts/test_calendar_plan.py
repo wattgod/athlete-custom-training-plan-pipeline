@@ -186,6 +186,14 @@ class TestRaceAndTaperHouseTemplates:
         assert by_day['Wed']['duration'] <= 45
         assert by_day['Fri']['duration'] <= 40
 
+    def test_race_week_relocates_openers_before_a_friday_off_day(self):
+        week = _week(self._plan(off_days=['Mon', 'Fri']), 2)
+        by_day = {d['day']: d for d in week['days']}
+        assert by_day['Thu']['name'] == 'Openers'
+        assert by_day['Fri']['role'] == 'off'
+        assert by_day['Tue']['name'] == 'Stars In Your Eyes'
+        assert by_day['Wed']['name'] == 'Endurance'
+
     def test_taper_has_short_short_cadence_and_burst_endurance(self):
         plan = self._plan()
         week = _week(plan, 1)

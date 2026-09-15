@@ -1163,7 +1163,7 @@ def test_taper_slots_reject_sustained_threshold_regardless_of_role():
 
 
 def test_curated_vo2_items_must_pass_ae_3_1_proxy_dose():
-    """A canonical Road v1 VO2 clamp cannot protect the final plan if the
+    """A canonical cycling VO2 clamp cannot protect the final plan if the
     curated-library replacement itself carries >18 minutes at >=106% FTP.
     Gate the selected TP structure, not just the synthetic workout level.
     """
@@ -1193,6 +1193,11 @@ def test_curated_vo2_items_must_pass_ae_3_1_proxy_dose():
     assert _passes_role_ceiling(vo2_item(20), slot)      # 10 minutes
     assert not _passes_role_ceiling(vo2_item(43), slot)  # 21.5 minutes
     assert not _passes_role_ceiling(vo2_item(8), slot)   # 4 minutes
+
+    gravel_slot = {**slot, "discipline": "gravel"}
+    assert _passes_role_ceiling(vo2_item(20), gravel_slot)
+    assert not _passes_role_ceiling(vo2_item(43), gravel_slot)
+    assert not _passes_role_ceiling(vo2_item(8), gravel_slot)
 
 
 def test_vo2_selection_skips_an_overdosed_curated_item():
@@ -1227,6 +1232,54 @@ def test_vo2_selection_skips_an_overdosed_curated_item():
     )
     assert result is not None
     assert result["item_id"] == 2
+
+
+def test_gravel_vo2_selection_skips_an_overdosed_curated_item():
+    def structured_item(item_id, repetitions, dimension_score):
+        return make_item(
+            item_id,
+            library_key="vo2_classic",
+            duration_min=50,
+            dimension_score=dimension_score,
+            structure={
+                "primaryIntensityMetric": "percentOfFtp",
+                "structure": [{
+                    "type": "repetition",
+                    "length": {"value": repetitions, "unit": "repetition"},
+                    "steps": [{
+                        "length": {"value": 30, "unit": "second"},
+                        "targets": [{"minValue": 110}],
+                    }, {
+                        "length": {"value": 15, "unit": "second"},
+                        "targets": [{"minValue": 55}],
+                    }],
+                }],
+            },
+        )
+
+    result = select(
+        base_slot(
+            canonical_name="VO2max 40/20", week_type="load", discipline="gravel"),
+        index=make_index([
+            structured_item(1, 43, 10),
+            structured_item(2, 20, 1),
+        ]),
+    )
+    assert result is not None
+    assert result["item_id"] == 2
+
+
+def test_spin_up_title_requires_an_executable_cadence_target():
+    from library_selector import _passes_role_ceiling
+
+    missing = make_item(1, name_base="Z2 + Spin Ups", if_planned=0.65)
+    missing["has_cadence_targets"] = False
+    programmed = {**missing, "has_cadence_targets": True}
+    slot = base_slot(canonical_name="Endurance", role="filler",
+                     week_type="load", discipline="gravel")
+
+    assert not _passes_role_ceiling(missing, slot)
+    assert _passes_role_ceiling(programmed, slot)
 
 
 def test_race_week_slots_reject_sustained_hard_reps_same_as_taper():

@@ -66,6 +66,7 @@ def test_canonical_rpe_prescription_is_included_inside_athlete_copy_cap(
                 "sport": "cycling",
                 "session_type": "workout",
                 "origin": "prescribed",
+                "role": "activation",
                 "description": "Ride " * 178,
                 "target_summary": "RPE 4; RPE 6; RPE 10; RPE 2",
             }],
@@ -77,6 +78,8 @@ def test_canonical_rpe_prescription_is_included_inside_athlete_copy_cap(
     description = ir.weeks[0].sessions[0].description
     assert len(re.findall(r"\b\w+[\w'-]*\b", description)) <= 180
     assert description.endswith("PRESCRIPTION: RPE 4; RPE 6; RPE 10; RPE 2")
+    assert ir.weeks[0].sessions[0].role == "activation"
+    assert plan_ir.project_tp_manifest(ir)["sessions"][0]["role"] == "activation"
 
 
 def _write_zwo(path: Path, name: str, blocks: str) -> None:

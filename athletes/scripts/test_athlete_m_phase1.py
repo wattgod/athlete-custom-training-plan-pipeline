@@ -530,4 +530,7 @@ def test_pipeline_generation_roots_are_order_isolated(monkeypatch, tmp_path):
         )
         assert result["success"] is True
         assert order_id in result["artifact_dir"]
+        assert json.loads(
+            (Path(result["artifact_dir"]) / "intake_backup.json").read_text()
+        ) == intake
     assert roots[0] != roots[1]

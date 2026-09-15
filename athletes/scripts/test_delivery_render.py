@@ -111,6 +111,16 @@ def test_athlete_visible_description_caps_slash_separated_words_by_policy_count(
     assert len(policy_words) <= 180
 
 
+def test_athlete_visible_description_never_ends_mid_sentence_at_word_cap():
+    rendered = sanitize_athlete_description(
+        "AUDIBLE: " + ("Finish the interval, then recover fully. " * 60)
+        + "The spine of this ride is the point."
+    )
+    assert len(re.findall(r"\b\w+[\w'-]*\b", rendered)) <= 180
+    assert rendered.endswith((".", "!", "?"))
+    assert not rendered.endswith("is")
+
+
 def _bike(date, minutes, *, title="Tempo", segments=None, structure=None,
           week_type="build", simulation=False, dress=False):
     return Week(number=1, week_type=week_type, sessions=[Session(

@@ -720,7 +720,12 @@ def _build_race_week(
     """
     race_day = race_day if race_day in DAY_ORDER else 'Sat'
     race_index = DAY_ORDER.index(race_day)
-    opener_day = DAY_ORDER[(race_index - 1) % len(DAY_ORDER)]
+    # Prefer race eve. If that day is genuinely unavailable, preserve the
+    # athlete's constraint and move the activation to the latest available
+    # earlier day instead of silently dropping it from the week.
+    pre_race_days = list(reversed(DAY_ORDER[:race_index]))
+    opener_day = next(
+        (day for day in pre_race_days if day not in off_days), None)
 
     def _session(name, level, role, duration=None, tss=None):
         duration = get_workout_duration(name, level) if duration is None else duration
@@ -740,7 +745,8 @@ def _build_race_week(
         (day for day in ('Tue', 'Thu', 'Mon', 'Wed', 'Fri', 'Sat', 'Sun')
          if day not in off_days and day not in (race_day, opener_day)
          and DAY_ORDER.index(day) < race_index
-         and abs(DAY_ORDER.index(day) - DAY_ORDER.index(opener_day)) > 1),
+         and (opener_day is None
+              or abs(DAY_ORDER.index(day) - DAY_ORDER.index(opener_day)) > 1)),
         None,
     )
     easy_day = next(

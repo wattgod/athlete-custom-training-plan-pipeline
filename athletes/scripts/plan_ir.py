@@ -133,6 +133,10 @@ class Session:
     # pre_activity_comments.py and populated by _annotate_delivery_context.
     # None for non-key sessions (rest days, strength, easy rides).
     pre_activity_comment: Optional[str] = None
+    # Athlete-facing purpose used by review policy. This is deliberately
+    # distinct from sport/session type: activation and skill sessions may be
+    # short by design while ordinary intensity/endurance sessions may not.
+    role: Optional[str] = None
 
 
 @dataclass
@@ -887,6 +891,7 @@ def _plan_ir_from_canonical(
             level=_level_from_description(description),
             library_item_id=raw.get("library_item_id"),
             library_rpe_text=raw.get("library_rpe_text"),
+            role=raw.get("role"),
         ))
     prescription_data = model.get("fueling") or (
         prescription_from_fueling(fueling_data) if fueling_data else None)
@@ -1037,6 +1042,7 @@ def project_tp_manifest(plan_ir: PlanIR) -> Dict[str, Any]:
                 "library_item_id": session.library_item_id,
                 "library_rpe_text": session.library_rpe_text,
                 "pre_activity_comment": session.pre_activity_comment,
+                "role": session.role,
             })
 
     plan_weeks = max((w.number for w in plan_ir.weeks if w.number and w.number > 0), default=0)

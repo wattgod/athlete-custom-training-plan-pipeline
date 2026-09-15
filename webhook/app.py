@@ -3118,6 +3118,28 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
                          if path.name.replace('-', '_') == athlete_id.replace('-', '_')]
                 artifact_dir = str(exact[0]) if len(exact) == 1 else None
 
+        # The checkout handlers historically wrote the questionnaire backup
+        # beside the legacy global profile, while every generated artifact
+        # lived under this order-private root. Persistence therefore sealed a
+        # package that Endure correctly refused to stage. The pipeline owns
+        # the generated root, so it also owns this required source artifact.
+        if success and artifact_dir:
+            backup_path = Path(artifact_dir) / 'intake_backup.json'
+            temp_path = backup_path.with_name('.intake_backup.json.tmp')
+            try:
+                with open(temp_path, 'w', encoding='utf-8') as handle:
+                    json.dump(intake_data, handle, indent=2, sort_keys=True)
+                    handle.write('\n')
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temp_path, backup_path)
+            except (OSError, TypeError, ValueError) as exc:
+                temp_path.unlink(missing_ok=True)
+                success = False
+                result.stderr = (
+                    (result.stderr + '\n') if result.stderr else ''
+                ) + f'Could not persist order-private intake backup: {type(exc).__name__}'
+
         return {
             'success': success,
             'stdout': result.stdout,
@@ -3153,7 +3175,6 @@ def run_pipeline(athlete_id: str, deliver: bool = True, intake_data: dict = None
 CUSTOMER_DELIVERABLES = [
     'training_guide.html',
     'training_guide.pdf',
-    'dashboard.html',
     'plan_preview.html',
     'fueling.yaml',
 ]
@@ -7710,17 +7731,9 @@ def _handle_training_plan_webhook(data: dict, order_id: str):
 
     athlete_id, profile_path = create_athlete_profile(order_data)
 
-    # Load intake data for pipeline and backup
+    # Load intake data for the order-private pipeline.
     intake_id = data.get('data', {}).get('object', {}).get('metadata', {}).get('intake_id', '')
     intake_data = load_intake(intake_id) if intake_id else {}
-    if intake_data:
-        backup_path = Path(ATHLETES_DIR) / athlete_id / 'intake_backup.json'
-        try:
-            with open(backup_path, 'w') as f:
-                json.dump(intake_data, f, indent=2)
-        except Exception as e:
-            logger.warning(f"Failed to backup intake data: {e}")
-
     # Mark BEFORE pipeline — see WooCommerce handler comment for rationale
     mark_order_processed(order_data['order_id'], athlete_id)
 
@@ -8224,14 +8237,6 @@ def test_webhook():
     intake_data = load_intake(intake_id)
     if not intake_data:
         return jsonify({'error': f'Intake {intake_id} not found or expired'}), 404
-
-    # Backup intake (same as real flow)
-    backup_path = Path(ATHLETES_DIR) / athlete_id / 'intake_backup.json'
-    try:
-        with open(backup_path, 'w') as f:
-            json.dump(intake_data, f, indent=2)
-    except Exception as e:
-        logger.warning(f"Failed to backup intake data: {e}")
 
     # Idempotency mark (same as real flow)
     mark_order_processed(order_data['order_id'], athlete_id)

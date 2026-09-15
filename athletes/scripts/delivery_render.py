@@ -227,7 +227,17 @@ def _take_athlete_words(value: str, limit: int) -> str:
     matches = list(_ATHLETE_WORD.finditer(value))
     if len(matches) <= limit:
         return value.strip()
-    return value[:matches[limit - 1].end()].strip()
+    candidate = value[:matches[limit - 1].end()].strip()
+    # End on the last complete sentence inside the word budget. A mid-sentence
+    # fragment is worse than omitting the unfinished thought, especially after
+    # the apply contract extracts one short instruction for the athlete.
+    sentence_ends = list(re.finditer(r"[.!?](?=\s|$)", candidate))
+    if sentence_ends:
+        return candidate[:sentence_ends[-1].end()].strip()
+    line_break = candidate.rfind("\n")
+    if line_break > 0:
+        return candidate[:line_break].strip()
+    return candidate.rstrip(" ,;:—-") + "."
 
 
 def _truncate_athlete_copy(value: str) -> str:
