@@ -8243,7 +8243,8 @@ def _handle_consult_addon_webhook(session: dict, metadata: dict, order_id: str):
 
 # =============================================================================
 # TEST ENDPOINT — runs the EXACT same code path as a real Stripe webhook.
-# Secured by CRON_SECRET header. Requires intake_id with stored questionnaire.
+# Secured by CRON_SECRET. Ordinary tests may use a stored intake; disposable
+# Endure canaries must provide their exact inline questionnaire identity.
 # =============================================================================
 @app.route('/webhook/test', methods=['POST'])
 def test_webhook():
@@ -8253,7 +8254,8 @@ def test_webhook():
     extract → validate → create profile → load intake → mark processed →
     run pipeline → log order → send notification email.
 
-    Required: intake_id (from a stored questionnaire), name, email.
+    Required: a stored intake or inline questionnaire, plus name and email.
+    Endure canaries require the stricter inline disposable identity contract.
     """
     secret = request.headers.get('X-Cron-Secret', '')
     if not secret or not hmac.compare_digest(secret, os.environ.get('CRON_SECRET', '')):
