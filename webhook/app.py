@@ -8264,6 +8264,57 @@ def test_webhook():
     delivery_target = str(data.get('delivery_target') or '').strip().lower()
     if delivery_target and delivery_target not in ('trainingpeaks', 'endure'):
         return jsonify({'error': 'delivery_target must be trainingpeaks or endure'}), 400
+    requested_order_id = str(data.get('order_id') or '').strip()
+    if delivery_target == 'endure' or requested_order_id:
+        identity = re.fullmatch(
+            r'codex-pilot-(\d{14})-([0-9a-f]{8})', requested_order_id)
+        expected_email = (
+            f'endure-pilot-{identity.group(1)}-{identity.group(2)}@example.com'
+            if identity else ''
+        )
+        try:
+            created_at = datetime.strptime(
+                identity.group(1) if identity else '', '%Y%m%d%H%M%S'
+            ).replace(tzinfo=timezone.utc)
+        except ValueError:
+            created_at = None
+        now = datetime.now(timezone.utc)
+        age_seconds = (
+            (now - created_at).total_seconds() if created_at else None)
+        questionnaire = data.get('questionnaire')
+        questionnaire_races = (
+            questionnaire.get('races')
+            if isinstance(questionnaire, dict) else None)
+        first_race = (
+            questionnaire_races[0]
+            if isinstance(questionnaire_races, list) and questionnaire_races
+            and isinstance(questionnaire_races[0], dict) else {})
+        questionnaire_race_name = str(
+            questionnaire.get('race_name')
+            if isinstance(questionnaire, dict) else '').strip()
+        first_race_name = str(first_race.get('name') or '').strip()
+        if (
+            delivery_target != 'endure'
+            or not identity
+            or bool(intake_id)
+            or not isinstance(questionnaire, dict)
+            or str(data.get('email') or '').strip().lower() != expected_email
+            or str(data.get('name') or '').strip() != 'Endure Pilot Rider'
+            or str(questionnaire.get('email') or '').strip().lower()
+            != expected_email
+            or str(questionnaire.get('name') or '').strip()
+            != 'Endure Pilot Rider'
+            or not re.search(r'\bPilot\b', questionnaire_race_name)
+            or not re.search(r'\bPilot\b', first_race_name)
+            or created_at is None
+            or age_seconds is None
+            or not 0 <= age_seconds <= 600
+        ):
+            return jsonify({
+                'error': 'order_id is reserved for a fresh disposable Endure canary'
+            }), 400
+        if check_idempotency(requested_order_id):
+            return jsonify({'error': 'Endure canary order already processed'}), 409
 
     # If questionnaire data is provided inline, store it and generate an intake_id
     if not intake_id and data.get('questionnaire'):
@@ -8275,7 +8326,7 @@ def test_webhook():
         return jsonify({'error': 'intake_id or questionnaire object is required'}), 400
 
     # Build a fake Stripe event that mirrors real checkout.session.completed
-    order_id = 'test_' + datetime.now().strftime('%Y%m%d%H%M%S')
+    order_id = requested_order_id or 'test_' + datetime.now().strftime('%Y%m%d%H%M%S')
     fake_metadata = {
         'intake_id': intake_id,
         'product_type': 'training_plan',

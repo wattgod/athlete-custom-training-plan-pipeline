@@ -131,9 +131,16 @@ approve that revision before staging again.
      --data @/private/tmp/endure-canary-request.json
    ```
 
-   The request must include `"delivery_target":"endure"` plus a valid inline
-   `questionnaire`, `name`, and controlled test email. The route rejects any
-   other explicit target and leaves the store default unchanged.
+   The request must include `"delivery_target":"endure"`, a valid inline
+   `questionnaire` (a stored `intake_id` is rejected), and the paired disposable
+   identity expected by the purchased-plan browser canary: `order_id` must be
+   `codex-pilot-YYYYMMDDHHMMSS-8hex`, the email must be
+   `endure-pilot-YYYYMMDDHHMMSS-8hex@example.com`, and the stamp must be less
+   than ten minutes old. Both the outer request and questionnaire must use that
+   email and the exact name `Endure Pilot Rider`; `questionnaire.race_name` and
+   the first `questionnaire.races[].name` must contain `Pilot`. The route rejects
+   mismatched, future, stale, or already-processed identities before storing the
+   intake, and leaves the store default unchanged.
 
 For an emergency rollback, deploy the previous applications and leave the
 compatible schema changes in place. Do not narrow the load columns, drop the
