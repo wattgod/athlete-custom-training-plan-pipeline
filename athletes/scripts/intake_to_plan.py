@@ -1114,10 +1114,17 @@ def build_profile(parsed: Dict[str, Any]) -> Dict[str, Any]:
     if requested_metric not in {'power', 'hr', 'rpe'}:
         requested_metric = 'power' if power_basis == 'measured' else (
             'hr' if (lthr or max_hr) else 'rpe')
-    if requested_metric == 'power' and power_basis == 'none':
-        # A missing measured anchor can never silently become watts. Prefer an
-        # available measured HR marker; otherwise RPE is the safe prescription
-        # source until the week-one field test establishes an anchor.
+    if power_basis == 'measured':
+        # Matti ruling 2026-09-17: every Motoren cycling athlete trains on
+        # %FTP. A real FTP anchor always wins over the requested metric (the
+        # request is still recorded in requested_metric). RPE is legal only on
+        # field-test cards.
+        training_metric = 'power'
+    elif requested_metric == 'power' or requested_metric == 'rpe':
+        # A missing measured anchor can never silently become watts, and RPE
+        # is a last resort: prefer an available measured HR marker; otherwise
+        # RPE is the safe prescription source until the week-one field test
+        # establishes an anchor.
         training_metric = 'hr' if (lthr or max_hr) else 'rpe'
     else:
         training_metric = requested_metric

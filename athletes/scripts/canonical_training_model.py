@@ -55,15 +55,20 @@ def determine_control(profile: Dict[str, Any]) -> Dict[str, Any]:
     lthr = _num(fitness.get("lthr"))
     hrmax = _num(fitness.get("max_hr"))
 
-    if requested == "power" and power_basis == "measured" and ftp:
+    # Matti ruling 2026-09-17: EVERY Motoren cycling athlete trains on %FTP.
+    # An FTP anchor always wins, whatever metric the intake requested -- the
+    # requested metric is recorded but never overrides a real anchor. (Edward
+    # Shapiro's Sep block shipped 100% RPE because his profile carried
+    # ftp_watts 270 + requested_metric "rpe" and the request won.) RPE is
+    # legal only on field-test cards and, below, as the last-resort fallback
+    # for an athlete with no power AND no HR anchor at all.
+    if ftp:
         metric, basis = "power", "ftp"
     elif requested == "hr" or (requested not in {"power", "rpe"} and (lthr or hrmax)):
         metric = "hr"
         basis = "lthr" if lthr else ("hrmax" if hrmax else "rpe_pending_lthr")
-    elif requested == "rpe":
+    elif requested == "rpe" and not (lthr or hrmax):
         metric, basis = "rpe", "rpe"
-    elif power_basis == "measured" and ftp:
-        metric, basis = "power", "ftp"
     elif lthr or hrmax:
         metric, basis = "hr", "lthr" if lthr else "hrmax"
     else:
@@ -72,7 +77,7 @@ def determine_control(profile: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "control_metric": metric,
         "control_basis": basis,
-        "power_basis": "measured" if power_basis == "measured" and ftp else "none",
+        "power_basis": "measured" if ftp else "none",
         "ftp_watts": int(round(ftp)) if metric == "power" and ftp else None,
         "lthr_bpm": int(round(lthr)) if lthr else None,
         "hrmax_bpm": int(round(hrmax)) if hrmax else None,
