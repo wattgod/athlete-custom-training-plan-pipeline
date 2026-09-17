@@ -1,9 +1,9 @@
 {
-  "W01_Fri_Sep4_Endurance": {
+  "W01_Fri_Oct2_Endurance": {
     "archetype_id": "Endurance",
-    "date": "2026-09-04",
+    "date": "2026-10-02",
     "display_name": "Endurance",
-    "filename_stem": "W01_Fri_Sep4_Endurance",
+    "filename_stem": "W01_Fri_Oct2_Endurance",
     "library_item_id": 14356000,
     "library_rpe_text": "2-3",
     "order_on_day": 0,
@@ -13,10 +13,10 @@
     "week_num": 1,
     "workout_type_value_id": 2
   },
-  "W01_Mon_Aug31_Strength_Foundation_Strength_A": {
-    "date": "2026-08-31",
+  "W01_Mon_Sep28_Strength_Foundation_Strength_A": {
+    "date": "2026-09-28",
     "display_name": "Foundation Strength A",
-    "filename_stem": "W01_Mon_Aug31_Strength_Foundation_Strength_A",
+    "filename_stem": "W01_Mon_Sep28_Strength_Foundation_Strength_A",
     "order_on_day": 0,
     "phase": "base",
     "strength_template": "foundation_a",
@@ -24,11 +24,11 @@
     "week_num": 1,
     "workout_type_value_id": 9
   },
-  "W01_Thu_Sep3_Endurance__Cadence_Focus": {
+  "W01_Thu_Oct1_Endurance__Cadence_Focus": {
     "archetype_id": "Endurance",
-    "date": "2026-09-03",
+    "date": "2026-10-01",
     "display_name": "OPTIONAL: Endurance \u2014 Cadence Focus",
-    "filename_stem": "W01_Thu_Sep3_Endurance__Cadence_Focus",
+    "filename_stem": "W01_Thu_Oct1_Endurance__Cadence_Focus",
     "order_on_day": 0,
     "phase": "base",
     "role": "filler",
@@ -36,13 +36,13 @@
     "week_num": 1,
     "workout_type_value_id": 2
   },
-  "W01_Wed_Sep2_RLP_Z2_Cadence_Play": {
+  "W01_Wed_Sep30_High_Cadence_Intervals": {
     "archetype_id": "Endurance",
-    "date": "2026-09-02",
-    "display_name": "RLP Z2 Cadence Play",
-    "filename_stem": "W01_Wed_Sep2_RLP_Z2_Cadence_Play",
-    "library_item_id": 14356266,
-    "library_rpe_text": "7-8",
+    "date": "2026-09-30",
+    "display_name": "High Cadence Intervals",
+    "filename_stem": "W01_Wed_Sep30_High_Cadence_Intervals",
+    "library_item_id": 14356296,
+    "library_rpe_text": "3-4",
     "order_on_day": 1,
     "phase": "base",
     "role": "filler",
@@ -50,10 +50,10 @@
     "week_num": 1,
     "workout_type_value_id": 2
   },
-  "W01_Wed_Sep2_Strength_Foundation_Strength_B": {
-    "date": "2026-09-02",
+  "W01_Wed_Sep30_Strength_Foundation_Strength_B": {
+    "date": "2026-09-30",
     "display_name": "Foundation Strength B",
-    "filename_stem": "W01_Wed_Sep2_Strength_Foundation_Strength_B",
+    "filename_stem": "W01_Wed_Sep30_Strength_Foundation_Strength_B",
     "order_on_day": 0,
     "phase": "base",
     "strength_template": "foundation_b",
@@ -61,11 +61,11 @@
     "week_num": 1,
     "workout_type_value_id": 9
   },
-  "W02_Fri_Sep11_Endurance": {
+  "W02_Fri_Oct9_Endurance": {
     "archetype_id": "Endurance",
-    "date": "2026-09-11",
+    "date": "2026-10-09",
     "display_name": "Endurance",
-    "filename_stem": "W02_Fri_Sep11_Endurance",
+    "filename_stem": "W02_Fri_Oct9_Endurance",
     "library_item_id": 14356000,
     "library_rpe_text": "2-3",
     "order_on_day": 0,
@@ -75,10 +75,10 @@
     "week_num": 2,
     "workout_type_value_id": 2
   },
-  "W02_Mon_Sep7_Strength_Power_Development": {
-    "date": "2026-09-07",
+  "W02_Mon_Oct5_Strength_Power_Development": {
+    "date": "2026-10-05",
     "display_name": "Power Development",
-    "filename_stem": "W02_Mon_Sep7_Strength_Power_Development",
+    "filename_stem": "W02_Mon_Oct5_Strength_Power_Development",
     "order_on_day": 0,
     "phase": "base",
     "strength_template": "foundation_a",
@@ -86,11 +86,11 @@
     "week_num": 2,
     "workout_type_value_id": 9
   },
-  "W02_Thu_Sep10_Muscle_Recruitment_Progressions_-_Trainer": {
+  "W02_Thu_Oct8_Muscle_Recruitment_Progressions_-_Trainer": {
     "archetype_id": "Endurance",
-    "date": "2026-09-10",
+    "date": "2026-10-08",
     "display_name": "OPTIONAL: Muscle Recruitment Progressions - Trainer",
-    "filename_stem": "W02_Thu_Sep10_Muscle_Recruitment_Progressions_-_Trainer",
+    "filename_stem": "W02_Thu_Oct8_Muscle_Recruitment_Progressions_-_Trainer",
     "library_item_id": 14356256,
     "library_rpe_text": "5-6",
     "order_on_day": 1,
@@ -100,10 +100,10 @@
     "week_num": 2,
     "workout_type_value_id": 2
   },
-  "W02_Thu_Sep10_Strength_Mobility_and_Stability": {
-    "date": "2026-09-10",
+  "W02_Thu_Oct8_Strength_Mobility_and_Stability": {
+    "date": "2026-10-08",
     "display_name": "Mobility and Stability",
-    "filename_stem": "W02_Thu_Sep10_Strength_Mobility_and_Stability",
+    "filename_stem": "W02_Thu_Oct8_Strength_Mobility_and_Stability",
     "order_on_day": 0,
     "phase": "base",
     "strength_template": "foundation_b",
@@ -111,12 +111,12 @@
     "week_num": 2,
     "workout_type_value_id": 9
   },
-  "W02_Wed_Sep9_Broken_VO2_4020_1": {
+  "W02_Wed_Oct7_VO2max_30-30_Billat_1": {
     "archetype_id": "VO2max 30/30",
-    "date": "2026-09-09",
-    "display_name": "Broken VO2 40/20 (1 of 2)",
-    "filename_stem": "W02_Wed_Sep9_Broken_VO2_4020_1",
-    "library_item_id": 14357593,
+    "date": "2026-10-07",
+    "display_name": "VO2max 30-30 (Billat) (1 of 2)",
+    "filename_stem": "W02_Wed_Oct7_VO2max_30-30_Billat_1",
+    "library_item_id": 14357669,
     "library_rpe_text": "8-9",
     "order_on_day": 0,
     "phase": "base",
@@ -128,11 +128,11 @@
     "week_num": 2,
     "workout_type_value_id": 2
   },
-  "W03_Fri_Sep18_Endurance": {
+  "W03_Fri_Oct16_Endurance": {
     "archetype_id": "Endurance",
-    "date": "2026-09-18",
+    "date": "2026-10-16",
     "display_name": "Endurance",
-    "filename_stem": "W03_Fri_Sep18_Endurance",
+    "filename_stem": "W03_Fri_Oct16_Endurance",
     "library_item_id": 14355999,
     "library_rpe_text": "2-3",
     "order_on_day": 0,
@@ -142,10 +142,10 @@
     "week_num": 3,
     "workout_type_value_id": 2
   },
-  "W03_Mon_Sep14_Strength_Cycling-Specific": {
-    "date": "2026-09-14",
+  "W03_Mon_Oct12_Strength_Cycling-Specific": {
+    "date": "2026-10-12",
     "display_name": "Cycling-Specific",
-    "filename_stem": "W03_Mon_Sep14_Strength_Cycling-Specific",
+    "filename_stem": "W03_Mon_Oct12_Strength_Cycling-Specific",
     "order_on_day": 0,
     "phase": "base",
     "strength_template": "foundation_a",
@@ -153,11 +153,11 @@
     "week_num": 3,
     "workout_type_value_id": 9
   },
-  "W03_Thu_Sep17_Descending-Cadence_Ladder": {
+  "W03_Thu_Oct15_Descending-Cadence_Ladder": {
     "archetype_id": "Cadence Work",
-    "date": "2026-09-17",
+    "date": "2026-10-15",
     "display_name": "OPTIONAL: Descending-Cadence Ladder",
-    "filename_stem": "W03_Thu_Sep17_Descending-Cadence_Ladder",
+    "filename_stem": "W03_Thu_Oct15_Descending-Cadence_Ladder",
     "library_item_id": 14357401,
     "library_rpe_text": "5-6",
     "order_on_day": 1,
@@ -167,10 +167,10 @@
     "week_num": 3,
     "workout_type_value_id": 2
   },
-  "W03_Thu_Sep17_Strength_Foundation_Strength_B": {
-    "date": "2026-09-17",
+  "W03_Thu_Oct15_Strength_Foundation_Strength_B": {
+    "date": "2026-10-15",
     "display_name": "Foundation Strength B",
-    "filename_stem": "W03_Thu_Sep17_Strength_Foundation_Strength_B",
+    "filename_stem": "W03_Thu_Oct15_Strength_Foundation_Strength_B",
     "order_on_day": 0,
     "phase": "base",
     "strength_template": "foundation_b",
@@ -178,11 +178,13 @@
     "week_num": 3,
     "workout_type_value_id": 9
   },
-  "W03_Wed_Sep16_VO2max_4020_2": {
+  "W03_Wed_Oct14_VO2max_30-30_Billat_2": {
     "archetype_id": "VO2max 30/30",
-    "date": "2026-09-16",
-    "display_name": "VO2max 40/20 (2 of 2)",
-    "filename_stem": "W03_Wed_Sep16_VO2max_4020_2",
+    "date": "2026-10-14",
+    "display_name": "VO2max 30-30 (Billat) (2 of 2)",
+    "filename_stem": "W03_Wed_Oct14_VO2max_30-30_Billat_2",
+    "library_item_id": 14357668,
+    "library_rpe_text": "8-9",
     "order_on_day": 0,
     "phase": "base",
     "role": "intensity",
@@ -193,11 +195,13 @@
     "week_num": 3,
     "workout_type_value_id": 2
   },
-  "W04_Fri_Sep25_Endurance": {
+  "W04_Fri_Oct23_Endurance_Tempo": {
     "archetype_id": "Endurance",
-    "date": "2026-09-25",
-    "display_name": "Endurance",
-    "filename_stem": "W04_Fri_Sep25_Endurance",
+    "date": "2026-10-23",
+    "display_name": "Endurance Tempo",
+    "filename_stem": "W04_Fri_Oct23_Endurance_Tempo",
+    "library_item_id": 14355814,
+    "library_rpe_text": "5-6",
     "order_on_day": 0,
     "phase": "base",
     "role": "long_ride",
@@ -205,10 +209,10 @@
     "week_num": 4,
     "workout_type_value_id": 2
   },
-  "W04_Mon_Sep21_Strength_Mobility_and_Stability": {
-    "date": "2026-09-21",
+  "W04_Mon_Oct19_Strength_Mobility_and_Stability": {
+    "date": "2026-10-19",
     "display_name": "Mobility and Stability",
-    "filename_stem": "W04_Mon_Sep21_Strength_Mobility_and_Stability",
+    "filename_stem": "W04_Mon_Oct19_Strength_Mobility_and_Stability",
     "order_on_day": 0,
     "phase": "base",
     "strength_template": "foundation_a",
@@ -216,11 +220,25 @@
     "week_num": 4,
     "workout_type_value_id": 9
   },
-  "W04_Wed_Sep23_Tune-Up": {
+  "W04_Thu_Oct22_Z2__Spin_Ups": {
+    "archetype_id": "Endurance",
+    "date": "2026-10-22",
+    "display_name": "OPTIONAL: Z2 + Spin Ups",
+    "filename_stem": "W04_Thu_Oct22_Z2__Spin_Ups",
+    "library_item_id": 14356263,
+    "library_rpe_text": "3-4",
+    "order_on_day": 0,
+    "phase": "base",
+    "role": "filler",
+    "tp_kind": "bike",
+    "week_num": 4,
+    "workout_type_value_id": 2
+  },
+  "W04_Wed_Oct21_Tune-Up": {
     "archetype_id": "Openers",
-    "date": "2026-09-23",
+    "date": "2026-10-21",
     "display_name": "Tune-Up",
-    "filename_stem": "W04_Wed_Sep23_Tune-Up",
+    "filename_stem": "W04_Wed_Oct21_Tune-Up",
     "order_on_day": 0,
     "phase": "base",
     "role": "intensity",

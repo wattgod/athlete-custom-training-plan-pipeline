@@ -1,0 +1,255 @@
+tier: finisher
+plan_weeks: 7
+starting_phase: base_1
+strength_frequency: 0
+equipment_tier: minimal
+risk_factors: []
+exercise_exclusions: []
+key_day_candidates:
+- saturday
+strength_day_candidates: []
+derived_date: '2026-09-17 09:25:48'
+_derived:
+- id: CLASSIFICATION_EQUIPMENT_TIER
+  field: equipment_tier
+  class: inferred
+  basis: athlete-reported strength equipment inventory
+  inputs:
+    equipment: null
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_EXCLUSIONS
+  field: exercise_exclusions
+  class: inferred
+  basis: health limitations and available equipment
+  inputs:
+    rule_set: derive_classifications/exclusions-v1
+  sensitivity: sensitive
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_KEY_DAYS
+  field: key_day_candidates
+  class: inferred
+  basis: day availability and key-session suitability
+  inputs:
+    preferred_days:
+    - friday
+    - monday
+    - saturday
+    - sunday
+    - thursday
+    - tuesday
+    - wednesday
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_PLAN_END
+  field: plan_end
+  class: inferred
+  basis: final calendar end boundary
+  inputs:
+    race_date: '2026-11-07'
+    preferred_start: '2026-09-21'
+    calendar_plan_weeks: 7
+    coached_block:
+      phase: build
+      week_types:
+      - load
+      - load
+      - recovery
+      - load
+      - load
+      - taper
+      - race
+      focus: 'Seven weeks to Shawangunk Grit (50 mi, 4,000 ft). Rebuild after Gravel
+        Nats (Sep 12, 4h29, 313 TSS) with two short build blocks, climbing repeats
+        and one dress rehearsal, then taper. He is a junior: two hard days a week
+        max, sleep is the third.'
+      coach_notes: 'Junior (14 per Nov 2025 review; birth year not recorded -- age
+        set to 15, VERIFY). Weight ~133 lb / 60 kg (Jul 2026). FTP 220 W (TP threshold,
+        verified 2026-08-21; mFTP 215). Gravel Nats Sep 12 done; calendar Sep 15-20
+        is endurance only. Sunday is his requested off day (Nov 2025, Mar 2026); Saturday
+        long. School weekdays -- sessions after 3:30pm, 60-90 min. Fall MTB/track
+        status for 2026 unconfirmed (Aug 12 he asked about track and field; coach
+        said do both) -- weekday MTB/XC practice may land on Tue/Thu, so keep Tue/Thu
+        prescriptions short and let his own sport days count. Illness Aug 24-30 and
+        still sniffling Sep 6 -- ramp gently in W1. Strength/plyo (Spenst, 6-min abs)
+        are his own cards, not prescribed here. Workouts must be %FTP (Matti ruling
+        2026-09-17). Coach rules on file: no sandbagging, use power+HR to triangulate,
+        back off and sleep when tired.'
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_PLAN_START
+  field: plan_start
+  class: inferred
+  basis: final calendar start boundary
+  inputs:
+    race_date: '2026-11-07'
+    preferred_start: '2026-09-21'
+    calendar_plan_weeks: 7
+    coached_block:
+      phase: build
+      week_types:
+      - load
+      - load
+      - recovery
+      - load
+      - load
+      - taper
+      - race
+      focus: 'Seven weeks to Shawangunk Grit (50 mi, 4,000 ft). Rebuild after Gravel
+        Nats (Sep 12, 4h29, 313 TSS) with two short build blocks, climbing repeats
+        and one dress rehearsal, then taper. He is a junior: two hard days a week
+        max, sleep is the third.'
+      coach_notes: 'Junior (14 per Nov 2025 review; birth year not recorded -- age
+        set to 15, VERIFY). Weight ~133 lb / 60 kg (Jul 2026). FTP 220 W (TP threshold,
+        verified 2026-08-21; mFTP 215). Gravel Nats Sep 12 done; calendar Sep 15-20
+        is endurance only. Sunday is his requested off day (Nov 2025, Mar 2026); Saturday
+        long. School weekdays -- sessions after 3:30pm, 60-90 min. Fall MTB/track
+        status for 2026 unconfirmed (Aug 12 he asked about track and field; coach
+        said do both) -- weekday MTB/XC practice may land on Tue/Thu, so keep Tue/Thu
+        prescriptions short and let his own sport days count. Illness Aug 24-30 and
+        still sniffling Sep 6 -- ramp gently in W1. Strength/plyo (Spenst, 6-min abs)
+        are his own cards, not prescribed here. Workouts must be %FTP (Matti ruling
+        2026-09-17). Coach rules on file: no sandbagging, use power+HR to triangulate,
+        back off and sleep when tired.'
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_PLAN_WEEKS
+  field: plan_weeks
+  class: inferred
+  basis: final calendar week count after start-date constraints
+  inputs:
+    race_date: '2026-11-07'
+    preferred_start: '2026-09-21'
+    calendar_plan_weeks: 7
+    coached_block:
+      phase: build
+      week_types:
+      - load
+      - load
+      - recovery
+      - load
+      - load
+      - taper
+      - race
+      focus: 'Seven weeks to Shawangunk Grit (50 mi, 4,000 ft). Rebuild after Gravel
+        Nats (Sep 12, 4h29, 313 TSS) with two short build blocks, climbing repeats
+        and one dress rehearsal, then taper. He is a junior: two hard days a week
+        max, sleep is the third.'
+      coach_notes: 'Junior (14 per Nov 2025 review; birth year not recorded -- age
+        set to 15, VERIFY). Weight ~133 lb / 60 kg (Jul 2026). FTP 220 W (TP threshold,
+        verified 2026-08-21; mFTP 215). Gravel Nats Sep 12 done; calendar Sep 15-20
+        is endurance only. Sunday is his requested off day (Nov 2025, Mar 2026); Saturday
+        long. School weekdays -- sessions after 3:30pm, 60-90 min. Fall MTB/track
+        status for 2026 unconfirmed (Aug 12 he asked about track and field; coach
+        said do both) -- weekday MTB/XC practice may land on Tue/Thu, so keep Tue/Thu
+        prescriptions short and let his own sport days count. Illness Aug 24-30 and
+        still sniffling Sep 6 -- ramp gently in W1. Strength/plyo (Spenst, 6-min abs)
+        are his own cards, not prescribed here. Workouts must be %FTP (Matti ruling
+        2026-09-17). Coach rules on file: no sandbagging, use power+HR to triangulate,
+        back off and sleep when tired.'
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_RACE_WEEKDAY
+  field: race_weekday
+  class: inferred
+  basis: weekday derived from the target race date
+  inputs:
+    race_date: '2026-11-07'
+    preferred_start: '2026-09-21'
+    calendar_plan_weeks: 7
+    coached_block:
+      phase: build
+      week_types:
+      - load
+      - load
+      - recovery
+      - load
+      - load
+      - taper
+      - race
+      focus: 'Seven weeks to Shawangunk Grit (50 mi, 4,000 ft). Rebuild after Gravel
+        Nats (Sep 12, 4h29, 313 TSS) with two short build blocks, climbing repeats
+        and one dress rehearsal, then taper. He is a junior: two hard days a week
+        max, sleep is the third.'
+      coach_notes: 'Junior (14 per Nov 2025 review; birth year not recorded -- age
+        set to 15, VERIFY). Weight ~133 lb / 60 kg (Jul 2026). FTP 220 W (TP threshold,
+        verified 2026-08-21; mFTP 215). Gravel Nats Sep 12 done; calendar Sep 15-20
+        is endurance only. Sunday is his requested off day (Nov 2025, Mar 2026); Saturday
+        long. School weekdays -- sessions after 3:30pm, 60-90 min. Fall MTB/track
+        status for 2026 unconfirmed (Aug 12 he asked about track and field; coach
+        said do both) -- weekday MTB/XC practice may land on Tue/Thu, so keep Tue/Thu
+        prescriptions short and let his own sport days count. Illness Aug 24-30 and
+        still sniffling Sep 6 -- ramp gently in W1. Strength/plyo (Spenst, 6-min abs)
+        are his own cards, not prescribed here. Workouts must be %FTP (Matti ruling
+        2026-09-17). Coach rules on file: no sandbagging, use power+HR to triangulate,
+        back off and sleep when tired.'
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_RISK_FACTORS
+  field: risk_factors
+  class: inferred
+  basis: sleep, stress, injury, and training-history safety rules
+  inputs:
+    rule_set: derive_classifications/risk-v1
+  sensitivity: sensitive
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_STARTING_PHASE
+  field: starting_phase
+  class: inferred
+  basis: plan length and recent training state
+  inputs:
+    plan_weeks: 7
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_STRENGTH_DAYS
+  field: strength_day_candidates
+  class: inferred
+  basis: strength frequency with key-day spacing constraints
+  inputs:
+    strength_frequency: 0
+    key_days:
+    - saturday
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_STRENGTH_FREQUENCY
+  field: strength_frequency
+  class: inferred
+  basis: tier, experience, recovery, and equipment policy
+  inputs:
+    tier: finisher
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_TIER
+  field: tier
+  class: inferred
+  basis: weekly cycling hours constrained by goal and training history
+  inputs:
+    cycling_hours_target: 6
+    goal_type: podium
+    years_structured: 1
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CLASSIFICATION_TIMESTAMP
+  field: derived_date
+  class: inferred
+  basis: classification owner execution time
+  inputs:
+    owner: derive_classifications.py
+  sensitivity: internal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+plan_start: '2026-09-21'
+plan_end: '2026-11-08'
+race_weekday: Saturday

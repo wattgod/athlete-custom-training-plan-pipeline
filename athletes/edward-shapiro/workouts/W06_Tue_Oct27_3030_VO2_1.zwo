@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>30/30 VO2</name>
+  <description>FUEL:
+Normal meal ~2h before. One bottle, 40-50g carbs. Done.
+
+• STRUCTURE:
+  - 15min warmup Z2, 4x5min blocks of 30sec on (125% FTP) / 30sec off (50% FTP), 3min recovery between blocks
+
+• EXECUTION:
+  - Smooth transitions
+  - Build intensity through each block
+
+RPE guide: 125% FTP -> RPE 8-9; 50% FTP -> RPE 3</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.65" PowerHigh="0.75"/>
+    <IntervalsT Repeat="5" OnDuration="30" OnPower="1.25" OffDuration="30" OffPower="0.50"/>
+    <SteadyState Duration="180" Power="0.50"/>
+    <IntervalsT Repeat="5" OnDuration="30" OnPower="1.25" OffDuration="30" OffPower="0.50"/>
+    <SteadyState Duration="180" Power="0.50"/>
+    <IntervalsT Repeat="5" OnDuration="30" OnPower="1.25" OffDuration="30" OffPower="0.50"/>
+    <SteadyState Duration="180" Power="0.50"/>
+    <IntervalsT Repeat="5" OnDuration="30" OnPower="1.25" OffDuration="30" OffPower="0.50"/>
+    <Cooldown Duration="600" PowerLow="0.65" PowerHigh="0.50"/>
+  </workout>
+</workout_file>

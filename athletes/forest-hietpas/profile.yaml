@@ -10,9 +10,9 @@ fulfillment:
   generation_at: ''
   weeks_purchased: 4
   athlete_timezone: ''
-  generation_revision: 1
-  effective_date: '2026-08-31'
-  planning_horizon_end: '2026-09-27'
+  generation_revision: 2
+  effective_date: '2026-09-28'
+  planning_horizon_end: '2026-10-25'
   publication_horizon_weeks: 0
 sex: male
 height_cm: 0
@@ -21,27 +21,27 @@ primary_goal: base_building
 target_race: {}
 coached_block:
   phase: base
-  focus: Getting the calendar back to something you can actually hit. I care about frequency and rhythm
-    first, duration second, and nothing else until January.
+  focus: 'Block 2. Same rhythm you just built, a little more in it. Frequency first, duration second,
+    nothing else is required until January. Running stays at 6-12 miles a week because you asked for
+    it, weekends stay open for real rides, and Sunday is still your call.'
   week_types:
   - load
   - load
   - load
   - recovery
-  coach_notes: Re-entry after a lapsed season. Rebuild visible, unmissable calendar structure and training
-    frequency across bike/run/MTB/strength before adding duration or intensity. FTP re-anchored at 300W
-    (coach-confirmed 2026-08-23, "300 is about right") -- bike structure may run %FTP. No A-race; consistency
-    is the trained adaptation.
+  coach_notes: 'Block 2 (2026-09-28 to 2026-10-25). September evidence: 4am anchor rides hit ~every
+    workday (12-32 TSS each); Wed evening MTB with buddies (52-81 min); weekend gravel rides 3h+ (Sep 6
+    154 TSS, Sep 13 65 TSS); ran Beat the Blerch half marathon 2026-09-12 "off the couch" (2h11, 248
+    rTSS); most OPTIONAL prescribed runs skipped in favour of his own rides. Weekly actuals 8.7h / 7.7h /
+    ~5h. His 2026-09-16 self-review: keep running 6-12 mi/wk for "fun adventure runs and chill events";
+    new relationship (Kristen) means weekend rides are social; wattbike issues fixed 09-16; still building
+    "rock solid patterns around sleep". Coach call booked Fri 2026-10-02 11:30 MDT. FTP stays 300W
+    (coach ruling 2026-09-01). No A-race; consistency is the trained adaptation.'
 brand: gravelgod
 road_category: null
 discipline_default: gravel
 a_events: []
-b_events:
-- name: Beat the Blerch
-  date: '2026-09-12'
-  priority: C
-  sport: run
-  note: Found on his own calendar. Raced as a fun/social event, not a target. Coach to confirm distance.
+b_events: []
 c_events: []
 secondary_races: []
 racing:
@@ -49,9 +49,9 @@ racing:
   race_list: ''
   success_metrics: See workouts on the calendar and do them. No podium target this block -- long-horizon
     context only (Oregon Cascades Volcanic Arc FKT, world 12-hour TT) is not this block's job.
-  obstacles: Season lapsed; re-subscribing to TrainingPeaks Coaching Premium (2026-08-27) and restarting
-    2026-09-01/02. Zero confidence in FTP before the coach's 2026-08-23 ruling. Life load is real -- time
-    with Finn, Beat the Blerch, Monday Nico calls, Admin DnD all compete for the week.
+  obstacles: Restarted 2026-09-01; block 1 done. Life load is real -- Kristen weekends, Roslyn date
+    weekend Oct 8-11, Admin DnD, therapy, and a 24-hour work commitment Oct 24-25 all compete with the
+    week. Sleep patterns still being rebuilt (his words, 2026-09-16).
   training_goals: Rebuild training frequency and rhythm first, duration second, intensity last and optional
     through 2026-12-31.
   goals_notes: ''
@@ -126,11 +126,13 @@ preferred_days:
     max_duration_min: 0
     is_key_day_ok: false
   wednesday:
+    # 60 per the 08-21 call ("Wed 1 h ride AM"); the old 45 cap level-downed
+    # the block-2 VO2 session to a 4-minute dose (AE-3.1 FAIL).
     availability: available
     time_slots:
     - am
     - pm
-    max_duration_min: 45
+    max_duration_min: 60
     is_key_day_ok: false
   thursday:
     availability: available
@@ -212,7 +214,15 @@ calendar_protection:
   requested: false
   referenced_dates: []
 availability_review_issues: []
-travel_dates: []
+# Block 2 protected dates (not travel, but the engine's travel overlay is the
+# sanctioned "swap the planned session for an optional shakeout" lever):
+# Fri 10-09 + Sat 10-10 = Roslyn date weekend; Sat 10-24 = Salt Creek 24-hour
+# work commitment. Saturdays are already unavailable, so only Friday 10-09
+# actually changes (long ride -> optional shakeout).
+travel_dates:
+- '2026-10-09'
+- '2026-10-10'
+- '2026-10-24'
 schedule_constraints:
   work_schedule: unknown
   work_hours: 0
@@ -400,12 +410,10 @@ communication:
   timezone: ''
   best_time_to_reach: ''
 plan_start:
-  preferred_start: '2026-08-31'
+  preferred_start: '2026-09-28'
   current_commitments: ''
-  notes: 'Coach ruling 2026-08-21/22: start Mon/Tue 2026-09-01. Engine requires a Monday week-1 boundary,
-    so Week 1 Monday is 2026-08-31; Forest''s own confirmed first session lands Tue 2026-09-01 per his
-    reply. Monday 2026-08-31 still needs a card (AE-6.5c, no blank days) -- treat it as a light/off day,
-    not a training day.'
+  notes: 'Block 2 starts Mon 2026-09-28, the day after block 1 ends (2026-09-27). Kristen is visiting
+    Fri 09-25 through Tue 09-29, so Monday/Tuesday of week 1 are light by design.'
 discipline: gravel
 intensity_policy:
   all_intensity_optional_until: '2027-01-01'
@@ -438,30 +446,62 @@ nutrition_policy:
     hunger on top of it "makes things really fucking hard." Eating is a control issue; do not create a
     weight project. Fuel the work. No calorie/deficit language on any card.'
 life_calendar:
-  source: Forest iCloud "Home"/"Work" shared calendars, read 2026-08-29 via local Calendar store (subscription
-    under stormspandies@gmail.com)
+  source: Forest iCloud "Home"/"Work" shared calendars, re-read 2026-09-17 via local Calendar store (subscription
+    under stormspandies@gmail.com), window 2026-09-21 to 2026-10-31
   commitments:
-  - date: '2026-09-04'
-    time: '15:00'
-    title: Airflo
-    impact: afternoon committed
-  - date: '2026-09-05'
-    all_day: true
-    title: Time w Finn
-    impact: PROTECTED — no training assignment. Saturday long run must move or drop.
-  - date: '2026-09-11'
-    time: '17:00'
-    title: Therapy
-    impact: evening committed
-  - date: '2026-09-12'
-    all_day: true
-    title: Beat the Blerch
-    impact: RACE (running event). This IS the Saturday session — do not also assign a long run.
   - date: '2026-09-25'
-    time: '23:00'
+    time: '17:00'
     title: DnD eve
-    impact: late evening — protect Saturday morning after
+    impact: late evening -- outside this block, protect Saturday morning after
+  - date: '2026-09-26'
+    all_day: true
+    title: Admin DnD
+    impact: outside this block (block 1 recovery week)
+  - date: '2026-09-28'
+    all_day: true
+    title: Kristen here (Fri 09-25 through Tue 09-29)
+    impact: social weekend runs into Mon/Tue of week 1 -- keep Monday and Tuesday light, no prescribed ride
+  - date: '2026-09-29'
+    all_day: true
+    title: Kristen here (last day)
+    impact: keep Tuesday light, no prescribed ride
+  - date: '2026-10-02'
+    time: '11:30'
+    title: Matti call (30 min, 11:30 MDT)
+    impact: midday only -- Friday long ride still fits around it
+  - date: '2026-10-08'
+    all_day: true
+    title: Roslyn date weekend (Thu eve 10-08 through Sun 10-11)
+    impact: Thursday evening committed
+  - date: '2026-10-09'
+    all_day: true
+    title: Roslyn date weekend
+    impact: PROTECTED -- no long ride assignment; a short ride if it fits, nothing owed
+  - date: '2026-10-10'
+    all_day: true
+    title: Roslyn date weekend
+    impact: PROTECTED -- no training assignment
   - date: '2026-10-11'
-    time: '19:00'
-    title: Jeff Goldblum in Seattle
-    impact: outside current block
+    all_day: true
+    title: Roslyn date weekend (through Sun) + Jeff Goldblum in Seattle 19:00
+    impact: PROTECTED -- Sunday ride optional only if it fits the weekend; evening committed
+  - date: '2026-10-15'
+    all_day: true
+    title: 'Drae? (tentative, Thu eve 10-15 through Sat 10-17)'
+    impact: tentative -- Thursday evening may be committed
+  - date: '2026-10-16'
+    time: '16:00'
+    title: Therapy (16:00) + tentative Drae visit
+    impact: afternoon committed -- Friday long ride in the morning only
+  - date: '2026-10-17'
+    all_day: true
+    title: 'Drae? (tentative)'
+    impact: tentative -- Saturday may be social
+  - date: '2026-10-24'
+    all_day: true
+    title: Salt Creek 24 (Work calendar, 09:30 Sat through 09:30 Sun)
+    impact: WORK COMMITMENT -- 24 hours, no training assignment Saturday
+  - date: '2026-10-25'
+    all_day: true
+    title: Salt Creek 24 ends 09:30
+    impact: coming off a 24-hour work shift -- Sunday ride optional only, nothing owed

@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Pre-Plan Rest</name>
+  <description>Plan starts tomorrow.
+
+Off the bike. Light stretching if you want it. Sleep, water, real food.
+
+Charge the head unit, check the tyres — I'll see you Monday.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <FreeRide Duration="60"/>
+  </workout>
+</workout_file>

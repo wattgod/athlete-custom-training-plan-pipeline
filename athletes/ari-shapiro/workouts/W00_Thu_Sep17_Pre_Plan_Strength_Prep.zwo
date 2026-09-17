@@ -1,0 +1,19 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Pre-Plan Strength Prep</name>
+  <description>PRE-PLAN WEEK: Strength Prep
+Ari - 4 days until plan starts
+
+NOTES:
+- Keep everything light - no soreness tomorrow
+- This is movement prep, not a hard workout
+
+Good prep work, Ari!</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="300" PowerLow="0.30" PowerHigh="0.40"/>
+    <SteadyState Duration="1800" Power="0.35"/>
+    <Cooldown Duration="300" PowerLow="0.40" PowerHigh="0.30"/>
+  </workout>
+</workout_file>

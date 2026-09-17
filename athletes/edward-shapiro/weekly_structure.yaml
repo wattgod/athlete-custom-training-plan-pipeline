@@ -1,0 +1,76 @@
+description: Custom weekly structure for finisher tier
+days:
+  monday:
+    am: null
+    pm: null
+    is_key_day: false
+    notes: ''
+    max_duration: 0
+  tuesday:
+    am: null
+    pm: easy_ride
+    is_key_day: false
+    notes: ''
+    max_duration: 120
+  wednesday:
+    am: null
+    pm: easy_ride
+    is_key_day: false
+    notes: ''
+    max_duration: 120
+  thursday:
+    am: null
+    pm: easy_ride
+    is_key_day: false
+    notes: ''
+    max_duration: 120
+  friday:
+    am: null
+    pm: easy_ride
+    is_key_day: false
+    notes: ''
+    max_duration: 60
+  saturday:
+    am: long_ride
+    pm: null
+    is_key_day: true
+    notes: Key session - long ride
+    max_duration: 600
+  sunday:
+    am: intervals
+    pm: null
+    is_key_day: true
+    notes: Key session - intervals or threshold
+    max_duration: 240
+_derived:
+- id: SCHEDULE_DAYS
+  field: days
+  class: inferred
+  basis: availability, duration caps, key-day, long-ride, and strength spacing rules
+  inputs:
+    available_days:
+    - friday
+    - monday
+    - saturday
+    - sunday
+    - thursday
+    - tuesday
+    - wednesday
+    key_days:
+    - saturday
+    - sunday
+    strength_days: []
+    tier: finisher
+    preferred_long_day: saturday
+  sensitivity: personal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: SCHEDULE_DESCRIPTION
+  field: description
+  class: inferred
+  basis: human-readable rendering of the selected weekly tier
+  inputs:
+    tier: finisher
+  sensitivity: internal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1

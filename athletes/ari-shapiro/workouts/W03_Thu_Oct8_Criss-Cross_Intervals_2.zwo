@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Criss-Cross Intervals (2 of 2)</name>
+  <description>FUEL:
+Normal meal ~2h before. One bottle, 40-50g carbs. Done.
+
+WARM-UP:
+-12min building from Z1 to Z2
+
+MAIN SET:
+- 8 x (2min @ 83% FTP (Z3, RPE 5-6) + 2min @ 105% FTP (Z5, RPE 8-9))
+- 1min @ 83% FTP (Z3, RPE 5-6)
+-Cadence: 90-100rpm (efficient cadence)
+-Position: Alternate seated/standing every other interval
+
+COOL-DOWN:
+-8min easy spin Z1-Z2
+
+PROGRESSION:
+-Level 3/6: Development - Standard training load, building consistency
+-Faster oscillation with wider power gap. Demanding mentally and physically
+
+EXECUTION:
+-Focus on consistent effort and good form throughout.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="720" PowerLow="0.50" PowerHigh="0.70" />
+    <SteadyState Duration="120" Power="0.83" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="1.05" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="0.83" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="1.05" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="0.83" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="1.05" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="0.83" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="1.05" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="0.83" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="1.05" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="0.83" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="1.05" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="0.83" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="1.05" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="0.83" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="120" Power="1.05" CadenceLow="85" CadenceHigh="95" />
+    <SteadyState Duration="60" Power="0.83" CadenceLow="85" CadenceHigh="95" />
+    <Cooldown Duration="480" PowerLow="0.70" PowerHigh="0.50" />
+  </workout>
+</workout_file>

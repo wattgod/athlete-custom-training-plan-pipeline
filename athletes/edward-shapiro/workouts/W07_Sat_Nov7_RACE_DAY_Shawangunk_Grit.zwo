@@ -1,0 +1,26 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Race Day — Shawangunk Grit</name>
+  <description>RACE DAY: Shawangunk Grit
+Date: 2026-11-07
+
+FUELING PLAN:
+- Carbs/hour: 67g (range: [60, 74])
+- Total carbs: 225g over race
+- Start fueling at 20 min, every 20-30 min thereafter
+- Pre-race: 100-150g carbs 3-4 hours before start
+
+PACING STRATEGY:
+- First 30 min: EASY. Let others burn matches -- I want you playing the long game.
+- Mile 10-40: Find your rhythm. Target G SPOT zone (88-94% FTP) on climbs.
+- Final third: this is where you pass people. Increase effort as others fade.
+- Technical sections: Smooth > Fast. Avoid mechanicals.
+
+HYDRATION:
+- Drink to thirst — 500-750 ml/hr is a starting estimate to adjust for heat and sweat rate, not a quota. 500-1000 mg sodium per hour. Do not force fluid beyond thirst; you should finish a shade lighter than you started, never heavier.</description>
+  <sportType>bike</sportType>
+  <workout>
+    <FreeRide Duration="12000"/>
+  </workout>
+</workout_file>

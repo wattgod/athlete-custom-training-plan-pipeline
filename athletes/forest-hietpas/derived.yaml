@@ -12,7 +12,7 @@ key_day_candidates:
 strength_day_candidates:
 - sunday
 - monday
-derived_date: '2026-09-02 21:09:48'
+derived_date: '2026-09-17 09:44:44'
 _derived:
 - id: CLASSIFICATION_EQUIPMENT_TIER
   field: equipment_tier
@@ -21,8 +21,8 @@ _derived:
   inputs:
     equipment: null
   sensitivity: personal
-  at: '2026-09-02 21:09:48'
-  revision: 1
+  at: '2026-09-17 09:44:44'
+  revision: 2
 - id: CLASSIFICATION_EXCLUSIONS
   field: exercise_exclusions
   class: inferred
@@ -30,8 +30,8 @@ _derived:
   inputs:
     rule_set: derive_classifications/exclusions-v1
   sensitivity: sensitive
-  at: '2026-09-02 21:09:48'
-  revision: 1
+  at: '2026-09-17 09:44:44'
+  revision: 2
 - id: CLASSIFICATION_KEY_DAYS
   field: key_day_candidates
   class: inferred
@@ -46,108 +46,136 @@ _derived:
     - tuesday
     - wednesday
   sensitivity: personal
-  at: '2026-09-02 21:09:48'
-  revision: 1
+  at: '2026-09-17 09:44:44'
+  revision: 2
 - id: CLASSIFICATION_PLAN_END
   field: plan_end
   class: inferred
   basis: final calendar end boundary
   inputs:
     race_date: null
-    preferred_start: '2026-08-31'
+    preferred_start: '2026-09-28'
     calendar_plan_weeks: 4
     coached_block:
       phase: base
-      focus: Getting the calendar back to something you can actually hit. I care about
-        frequency and rhythm first, duration second, and nothing else until January.
+      focus: Block 2. Same rhythm you just built, a little more in it. Frequency first,
+        duration second, nothing else is required until January. Running stays at
+        6-12 miles a week because you asked for it, weekends stay open for real rides,
+        and Sunday is still your call.
       week_types:
       - load
       - load
       - load
       - recovery
-      coach_notes: Re-entry after a lapsed season. Rebuild visible, unmissable calendar
-        structure and training frequency across bike/run/MTB/strength before adding
-        duration or intensity. FTP re-anchored at 300W (coach-confirmed 2026-08-23,
-        "300 is about right") -- bike structure may run %FTP. No A-race; consistency
-        is the trained adaptation.
+      coach_notes: 'Block 2 (2026-09-28 to 2026-10-25). September evidence: 4am anchor
+        rides hit ~every workday (12-32 TSS each); Wed evening MTB with buddies (52-81
+        min); weekend gravel rides 3h+ (Sep 6 154 TSS, Sep 13 65 TSS); ran Beat the
+        Blerch half marathon 2026-09-12 "off the couch" (2h11, 248 rTSS); most OPTIONAL
+        prescribed runs skipped in favour of his own rides. Weekly actuals 8.7h /
+        7.7h / ~5h. His 2026-09-16 self-review: keep running 6-12 mi/wk for "fun adventure
+        runs and chill events"; new relationship (Kristen) means weekend rides are
+        social; wattbike issues fixed 09-16; still building "rock solid patterns around
+        sleep". Coach call booked Fri 2026-10-02 11:30 MDT. FTP stays 300W (coach
+        ruling 2026-09-01). No A-race; consistency is the trained adaptation.'
   sensitivity: personal
-  at: '2026-09-02T21:09:48.917877'
-  revision: 1
+  at: '2026-09-17T09:44:44.723176'
+  revision: 2
 - id: CLASSIFICATION_PLAN_START
   field: plan_start
   class: inferred
   basis: final calendar start boundary
   inputs:
     race_date: null
-    preferred_start: '2026-08-31'
+    preferred_start: '2026-09-28'
     calendar_plan_weeks: 4
     coached_block:
       phase: base
-      focus: Getting the calendar back to something you can actually hit. I care about
-        frequency and rhythm first, duration second, and nothing else until January.
+      focus: Block 2. Same rhythm you just built, a little more in it. Frequency first,
+        duration second, nothing else is required until January. Running stays at
+        6-12 miles a week because you asked for it, weekends stay open for real rides,
+        and Sunday is still your call.
       week_types:
       - load
       - load
       - load
       - recovery
-      coach_notes: Re-entry after a lapsed season. Rebuild visible, unmissable calendar
-        structure and training frequency across bike/run/MTB/strength before adding
-        duration or intensity. FTP re-anchored at 300W (coach-confirmed 2026-08-23,
-        "300 is about right") -- bike structure may run %FTP. No A-race; consistency
-        is the trained adaptation.
+      coach_notes: 'Block 2 (2026-09-28 to 2026-10-25). September evidence: 4am anchor
+        rides hit ~every workday (12-32 TSS each); Wed evening MTB with buddies (52-81
+        min); weekend gravel rides 3h+ (Sep 6 154 TSS, Sep 13 65 TSS); ran Beat the
+        Blerch half marathon 2026-09-12 "off the couch" (2h11, 248 rTSS); most OPTIONAL
+        prescribed runs skipped in favour of his own rides. Weekly actuals 8.7h /
+        7.7h / ~5h. His 2026-09-16 self-review: keep running 6-12 mi/wk for "fun adventure
+        runs and chill events"; new relationship (Kristen) means weekend rides are
+        social; wattbike issues fixed 09-16; still building "rock solid patterns around
+        sleep". Coach call booked Fri 2026-10-02 11:30 MDT. FTP stays 300W (coach
+        ruling 2026-09-01). No A-race; consistency is the trained adaptation.'
   sensitivity: personal
-  at: '2026-09-02T21:09:48.917845'
-  revision: 1
+  at: '2026-09-17T09:44:44.723105'
+  revision: 2
 - id: CLASSIFICATION_PLAN_WEEKS
   field: plan_weeks
   class: inferred
   basis: final calendar week count after start-date constraints
   inputs:
     race_date: null
-    preferred_start: '2026-08-31'
+    preferred_start: '2026-09-28'
     calendar_plan_weeks: 4
     coached_block:
       phase: base
-      focus: Getting the calendar back to something you can actually hit. I care about
-        frequency and rhythm first, duration second, and nothing else until January.
+      focus: Block 2. Same rhythm you just built, a little more in it. Frequency first,
+        duration second, nothing else is required until January. Running stays at
+        6-12 miles a week because you asked for it, weekends stay open for real rides,
+        and Sunday is still your call.
       week_types:
       - load
       - load
       - load
       - recovery
-      coach_notes: Re-entry after a lapsed season. Rebuild visible, unmissable calendar
-        structure and training frequency across bike/run/MTB/strength before adding
-        duration or intensity. FTP re-anchored at 300W (coach-confirmed 2026-08-23,
-        "300 is about right") -- bike structure may run %FTP. No A-race; consistency
-        is the trained adaptation.
+      coach_notes: 'Block 2 (2026-09-28 to 2026-10-25). September evidence: 4am anchor
+        rides hit ~every workday (12-32 TSS each); Wed evening MTB with buddies (52-81
+        min); weekend gravel rides 3h+ (Sep 6 154 TSS, Sep 13 65 TSS); ran Beat the
+        Blerch half marathon 2026-09-12 "off the couch" (2h11, 248 rTSS); most OPTIONAL
+        prescribed runs skipped in favour of his own rides. Weekly actuals 8.7h /
+        7.7h / ~5h. His 2026-09-16 self-review: keep running 6-12 mi/wk for "fun adventure
+        runs and chill events"; new relationship (Kristen) means weekend rides are
+        social; wattbike issues fixed 09-16; still building "rock solid patterns around
+        sleep". Coach call booked Fri 2026-10-02 11:30 MDT. FTP stays 300W (coach
+        ruling 2026-09-01). No A-race; consistency is the trained adaptation.'
   sensitivity: personal
-  at: '2026-09-02T21:09:48.917759'
-  revision: 1
+  at: '2026-09-17T09:44:44.722948'
+  revision: 2
 - id: CLASSIFICATION_RACE_WEEKDAY
   field: race_weekday
   class: inferred
   basis: no race weekday for targetless coached block
   inputs:
     race_date: null
-    preferred_start: '2026-08-31'
+    preferred_start: '2026-09-28'
     calendar_plan_weeks: 4
     coached_block:
       phase: base
-      focus: Getting the calendar back to something you can actually hit. I care about
-        frequency and rhythm first, duration second, and nothing else until January.
+      focus: Block 2. Same rhythm you just built, a little more in it. Frequency first,
+        duration second, nothing else is required until January. Running stays at
+        6-12 miles a week because you asked for it, weekends stay open for real rides,
+        and Sunday is still your call.
       week_types:
       - load
       - load
       - load
       - recovery
-      coach_notes: Re-entry after a lapsed season. Rebuild visible, unmissable calendar
-        structure and training frequency across bike/run/MTB/strength before adding
-        duration or intensity. FTP re-anchored at 300W (coach-confirmed 2026-08-23,
-        "300 is about right") -- bike structure may run %FTP. No A-race; consistency
-        is the trained adaptation.
+      coach_notes: 'Block 2 (2026-09-28 to 2026-10-25). September evidence: 4am anchor
+        rides hit ~every workday (12-32 TSS each); Wed evening MTB with buddies (52-81
+        min); weekend gravel rides 3h+ (Sep 6 154 TSS, Sep 13 65 TSS); ran Beat the
+        Blerch half marathon 2026-09-12 "off the couch" (2h11, 248 rTSS); most OPTIONAL
+        prescribed runs skipped in favour of his own rides. Weekly actuals 8.7h /
+        7.7h / ~5h. His 2026-09-16 self-review: keep running 6-12 mi/wk for "fun adventure
+        runs and chill events"; new relationship (Kristen) means weekend rides are
+        social; wattbike issues fixed 09-16; still building "rock solid patterns around
+        sleep". Coach call booked Fri 2026-10-02 11:30 MDT. FTP stays 300W (coach
+        ruling 2026-09-01). No A-race; consistency is the trained adaptation.'
   sensitivity: personal
-  at: '2026-09-02T21:09:48.917904'
-  revision: 1
+  at: '2026-09-17T09:44:44.723235'
+  revision: 2
 - id: CLASSIFICATION_RISK_FACTORS
   field: risk_factors
   class: inferred
@@ -155,8 +183,8 @@ _derived:
   inputs:
     rule_set: derive_classifications/risk-v1
   sensitivity: sensitive
-  at: '2026-09-02 21:09:48'
-  revision: 1
+  at: '2026-09-17 09:44:44'
+  revision: 2
 - id: CLASSIFICATION_STARTING_PHASE
   field: starting_phase
   class: inferred
@@ -164,8 +192,8 @@ _derived:
   inputs:
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-09-02 21:09:48'
-  revision: 1
+  at: '2026-09-17 09:44:44'
+  revision: 2
 - id: CLASSIFICATION_STRENGTH_DAYS
   field: strength_day_candidates
   class: inferred
@@ -176,8 +204,8 @@ _derived:
     - thursday
     - friday
   sensitivity: personal
-  at: '2026-09-02 21:09:48'
-  revision: 1
+  at: '2026-09-17 09:44:44'
+  revision: 2
 - id: CLASSIFICATION_STRENGTH_FREQUENCY
   field: strength_frequency
   class: inferred
@@ -185,8 +213,8 @@ _derived:
   inputs:
     tier: ayahuasca
   sensitivity: personal
-  at: '2026-09-02 21:09:48'
-  revision: 1
+  at: '2026-09-17 09:44:44'
+  revision: 2
 - id: CLASSIFICATION_TIER
   field: tier
   class: inferred
@@ -196,8 +224,8 @@ _derived:
     goal_type: null
     years_structured: 0
   sensitivity: personal
-  at: '2026-09-02 21:09:48'
-  revision: 1
+  at: '2026-09-17 09:44:44'
+  revision: 2
 - id: CLASSIFICATION_TIMESTAMP
   field: derived_date
   class: inferred
@@ -205,8 +233,8 @@ _derived:
   inputs:
     owner: derive_classifications.py
   sensitivity: internal
-  at: '2026-09-02 21:09:48'
-  revision: 1
-plan_start: '2026-08-31'
-plan_end: '2026-09-27'
+  at: '2026-09-17 09:44:44'
+  revision: 2
+plan_start: '2026-09-28'
+plan_end: '2026-10-25'
 race_weekday: null

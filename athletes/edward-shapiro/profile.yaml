@@ -1,0 +1,424 @@
+name: Edward Shapiro
+email: ed@uberfall.com
+athlete_id: edward-shapiro
+order_id: coach-review-edward-shapiro-2026-late-summer
+delivery_platform: trainingpeaks
+fulfillment:
+  order_id: coach-review-edward-shapiro-2026-late-summer
+  delivery_platform: trainingpeaks
+  order_created_at: '2026-08-22T21:00:00Z'
+  generation_at: '2026-08-23T02:15:00Z'
+  weeks_purchased: 7
+  athlete_timezone: America/Denver
+  generation_revision: 1
+  effective_date: '2026-09-21'
+  planning_horizon_end: '2026-11-08'
+  publication_horizon_weeks: 3
+sex: male
+height_cm: 0
+weight_kg: 79.0
+primary_goal: specific_race
+target_race:
+  name: Shawangunk Grit
+  date: '2026-11-07'
+  priority: A
+  discipline: gravel
+  distance_miles: 50.4
+  elevation_ft: 4030
+  elevation_gain_ft: 4030
+  location: New Paltz, NY (Mohonk Preserve)
+  status: confirmed
+  generic_profile: true
+  generic_discipline: gravel
+  coach_verified: true
+  source: 'TP athlete event on Ari (id 40405116, "Shwangunk Grit", 2026-11-07); mohonkpreserve.org/grit: Sat Nov
+    7 2026, 50.4 mi / 4,030 ft or 23.3 mi'
+  generic_demands:
+    durability: 5
+    climbing: 7
+    vo2_power: 5
+    threshold: 6
+    technical: 6
+    heat_resilience: 1
+    altitude: 0
+    race_specificity: 6
+  goal_type: podium
+  goal: age group
+  goal_description: 'Age-group result at Shawangunk Grit; "keep getting better with age" (review sent 2026-08-21).
+    2025 precedent: this was his season-closing A-race.'
+brand: gravelgod
+road_category: null
+discipline_default: gravel
+a_events:
+- name: Shawangunk Grit
+  date: '2026-11-07'
+  distance_miles: 50.4
+  priority: A
+  goal: age group
+b_events: []
+c_events: []
+secondary_races: []
+racing:
+  has_goals: true
+  race_list: ''
+  success_metrics: Be faster at 60 than 50. Select the next primary event.
+  obstacles: Travel execution is a strength. Mobility and hydration matter when travel is high.
+  training_goals: ''
+  goals_notes: ''
+training_history:
+  summary: 'Coached since 2021. 2026: Unbound 200 (May 30), SBT Grvl 108 mi (Jun 28), Dust Bowl (Jul 25), Tadej
+    HC (Aug 2), Core4 5th of 32 (Aug 15). Supported at Gravel Nats Sep 12, did not race.'
+  years_cycling: 10
+  years_structured: 5
+  strength_background: not used in this block
+  highest_weekly_hours: 13.7
+  current_weekly_hours: 8.5
+  strengths: ''
+  weaknesses: ''
+fitness_markers:
+  ftp_watts: 270
+  ftp_estimated: false
+  power_basis: measured
+  ftp_date: '2026-08-21'
+  weight_kg: 79.0
+  height_cm: 0
+  sex: male
+  w_kg: 3.42
+  resting_hr: null
+  max_hr: null
+  lthr: null
+  training_metric: power
+  control_metric: power
+  control_basis: ftp
+  requested_metric: power
+  field_testing_allowed: false
+  reanchor:
+    required: false
+    week: null
+    test: null
+    action: No field test scheduled; preserve the current training anchor.
+recent_training:
+  last_12_weeks: sporadic
+  current_phase: base
+  coming_off_injury: false
+  days_since_last_ride: null
+weekly_availability:
+  total_hours_available: 10
+  cycling_hours_target: 9.5
+  strength_sessions_max: 0
+  notes: Demonstrated 7-12 h/wk Jun-Sep 2026; September block planned ~8.8 h. Saturday long (data), Sunday medium,
+    Mon/Fri off as executed in September. Friday is limited to 60 min (not a key day) so race-week openers have
+    a home the day before Shawangunk; Monday stays the hard off day. Cycling target raised 8.5 -> 9.5 h after ae-lint
+    showed W2 at 321 TSS (<80% of his ~450 demonstrated) and modeled CTL at race day down 11%.
+  volume_warning: null
+preferred_days:
+  monday:
+    availability: unavailable
+    time_slots: []
+    max_duration_min: 0
+    is_key_day_ok: false
+  tuesday:
+    availability: available
+    time_slots:
+    - pm
+    max_duration_min: 120
+    is_key_day_ok: false
+  wednesday:
+    availability: available
+    time_slots:
+    - pm
+    max_duration_min: 120
+    is_key_day_ok: false
+  thursday:
+    availability: available
+    time_slots:
+    - pm
+    max_duration_min: 120
+    is_key_day_ok: false
+  friday:
+    availability: limited
+    time_slots:
+    - pm
+    max_duration_min: 60
+    is_key_day_ok: false
+  saturday:
+    availability: available
+    time_slots:
+    - am
+    max_duration_min: 600
+    is_key_day_ok: true
+  sunday:
+    availability: available
+    time_slots:
+    - am
+    - pm
+    max_duration_min: 240
+    is_key_day_ok: true
+availability_roles:
+  long_ride_days:
+  - saturday
+  interval_days: []
+  off_days:
+  - monday
+recurring_sessions: []
+calendar_protection:
+  requested: true
+  referenced_dates: []
+availability_review_issues: []
+travel_dates: []
+schedule_constraints:
+  work_schedule: 9-5
+  work_hours: 40
+  travel_frequency: frequent
+  family_commitments: Three kids; Ari (son) is also coached and races the same event.
+  seasonal_changes: ''
+  preferred_off_days:
+  - monday
+  preferred_long_day: saturday
+  strength_only_days: []
+cycling_equipment:
+  smart_trainer: false
+  power_meter_bike: false
+  hr_monitor: false
+  indoor_setup: none
+  bike_computer: ''
+strength_equipment:
+- not used in this block
+training_environment:
+  primary_location: home
+  gym_type: none
+  outdoor_riding_access: good
+  indoor_riding_tolerance: tolerate_it
+injury_history:
+  current_injuries: []
+  past_injuries: []
+movement_limitations:
+  deep_squat: null
+  hip_hinge: null
+  overhead_reach: null
+  single_leg_balance: null
+  push_up_position: null
+  notes: ''
+health_factors:
+  age: 59
+  sleep_quality: good
+  sleep_hours_avg: 7
+  stress_level: moderate
+  recovery_capacity: normal
+  medical_conditions: ''
+  medications: ''
+  health_notes: 'Achilles: low-cadence/torque work was pulled Jul 2025, reintroduced Sep 2025, executing cleanly
+    since. Left hamstring watch item (Aug 2026). TRT since Jan 2026 (context only).'
+strength:
+  currently_training: true
+  routine: ''
+  include_in_plan: false
+  sessions_per_week: 0
+  mobility_rating: 3
+devices:
+  training_log: true
+  platforms:
+  - trainingpeaks
+  devices: []
+  unknown_tokens: []
+work:
+  employed: true
+  hours_per_week: 40
+  stress_level: moderate
+life_balance:
+  relationships: ''
+  time_commitments: ''
+  time_management_challenge: false
+nutrition:
+  diet_styles: []
+  fluid_intake_rating: null
+  restrictions: ''
+  training_fuel: ''
+  race_fueling_range_g_per_hour: null
+  post_workout: ''
+  notes: ''
+bike:
+  last_fit: ''
+  pain: false
+  pain_description: ''
+social:
+  group_rides_per_week: 0
+  group_ride_importance: null
+  training_partners: ''
+coaching:
+  previous_coach: false
+  experience: ''
+personal:
+  important_people: ''
+  anything_else: ''
+  life_affecting_training: ''
+methodology_preferences:
+  time_crunched: 3
+  g_spot: 3
+  polarized: 3
+  pyramidal: 3
+  preferred_approach: ''
+  past_success_with: ''
+  past_failure_with: ''
+workout_preferences:
+  longest_indoor_tolerable: 120
+  preferred_interval_style: mixed
+  music_or_entertainment: preferred
+  group_rides_available: false
+  outdoor_interval_friendly: true
+strength_preferences:
+  experience_level: not used in this block
+  comfort_with_barbell: moderate
+  comfort_with_kettlebells: moderate
+  preferred_session_length: 0
+  time_of_day: null
+coaching_style:
+  communication_frequency: weekly
+  feedback_detail: moderate
+  accountability_need: moderate
+  autonomy_preference: high_autonomy
+  communication_style: direct
+motivation:
+  primary_driver: achievement
+  what_excites_you: Be faster at 60 than 50. Select the next primary event.
+  what_scares_you: ''
+  past_quit_reasons: ''
+  accountability_style: self
+mental_game:
+  race_anxiety: mild
+  training_consistency: good
+  handles_failure: well
+  perfectionist: false
+  missed_workout_response: move_on
+  best_training_block: ''
+lifestyle:
+  occupation: ''
+  active_job: false
+  commute_bikeable: false
+  family_support: neutral
+  weight_goal: maintain
+platforms:
+  primary: trainingpeaks
+  secondary: ''
+  calendar_integration: ''
+communication:
+  preferred_method: email
+  timezone: ''
+  best_time_to_reach: ''
+plan_start:
+  preferred_start: '2026-09-21'
+  current_commitments: ''
+  notes: Existing programming runs through Sun 2026-09-20 and is not touched. Block starts Mon 2026-09-21; 7 weeks
+    to Shawangunk Grit Sat 2026-11-07, plan ends Sun 2026-11-08.
+coached_block:
+  phase: build
+  week_types:
+  - load
+  - load
+  - recovery
+  - load
+  - load
+  - taper
+  - race
+  focus: Seven weeks to Shawangunk Grit (50 mi, 4,000 ft, New Paltz). Durability on the Saturday long ride, controlled
+    threshold and climbing-repeat work midweek, one dress rehearsal, then a real taper.
+  coach_notes: 'Age 59 (born ~1967, workbook), TTer phenotype, FTP 270 W (TP threshold, coach-confirmed NP-270-for-an-hour
+    2026-07-14). Weight ~174 lb / 79 kg (late 2025). Long rides land on Saturday in his data (6 of 8 Saturdays since
+    Jun 15 were 2.5h+; Sunday only SBT). Rest Mon + Fri as executed all September. Aug 27 email: NOT riding Nationals,
+    family came Sep 7-13 (recovery week already done). Demonstrated load: 7-12 h/wk, Sep block planned ~450-520
+    TSS/wk, completed 76-95%. CTL 58 on Sep 6. Health context: achilles flared on low-cadence work Jul 2025 (torque
+    work reintroduced Sep 2025 and executed cleanly since, incl. Torque - Cadence Clown 2026-09-16); left hamstring
+    = watch item (Aug 2026); toe surgery Dec 2025 healed; TRT since Jan 2026 (context only). Travels for work at
+    short notice (Miami, Paris) -- travel-week cards should survive being cut in half. Workouts must be %FTP (Matti
+    ruling 2026-09-17).'
+discipline: gravel
+_derived:
+- id: AGE_INPUT
+  field: health_factors.age
+  class: defaulted
+  basis: forgiving intake default; coach review required
+  inputs:
+    reported_age: '0'
+  sensitivity: personal
+  at: '2026-08-22T20:47:54.584691'
+  revision: 8
+- id: CONTROL_BASIS
+  field: fitness_markers.control_basis
+  class: inferred
+  basis: LTHR preferred, measured HRmax second, RPE used while HR anchor is pending
+  inputs:
+    control_metric: rpe
+    lthr: null
+    max_hr: null
+  sensitivity: sensitive
+  at: '2026-08-22T20:47:54.584691'
+  revision: 8
+- id: CONTROL_METRIC
+  field: fitness_markers.control_metric
+  class: inferred
+  basis: requested metric constrained by measured power and HR anchors
+  inputs:
+    requested_metric: rpe
+    power_basis: measured
+    lthr_available: false
+    hrmax_available: false
+  sensitivity: personal
+  at: '2026-08-22T20:47:54.584691'
+  revision: 8
+- id: DISCIPLINE
+  field: discipline
+  class: inferred
+  basis: race facts, explicit discipline, and brand policy
+  inputs:
+    candidate: gravel
+    brand: gravelgod
+  sensitivity: internal
+  at: '2026-08-22T20:47:54.584691'
+  revision: 8
+- id: FTP_MEASURED
+  field: fitness_markers.ftp_watts
+  class: measured
+  basis: athlete-reported measured FTP
+  inputs:
+    questionnaire_field: current_fitness.ftp
+  sensitivity: sensitive
+  at: '2026-08-22T20:47:54.584691'
+  revision: 8
+- id: POWER_BASIS
+  field: fitness_markers.power_basis
+  class: inferred
+  basis: measured FTP presence; no FTP estimation is permitted
+  inputs:
+    ftp_supplied: true
+  sensitivity: personal
+  at: '2026-08-22T20:47:54.584691'
+  revision: 8
+- id: POWER_TO_WEIGHT
+  field: fitness_markers.w_kg
+  class: inferred
+  basis: measured FTP divided by normalized body mass
+  inputs:
+    ftp_watts: 270
+    weight_kg: 75.0
+  sensitivity: sensitive
+  at: '2026-08-22T20:47:54.584691'
+  revision: 8
+- id: SEX_INPUT
+  field: fitness_markers.sex
+  class: athlete_reported
+  basis: athlete questionnaire
+  inputs:
+    reported_sex: ''
+  sensitivity: personal
+  at: '2026-08-22T20:47:54.584691'
+  revision: 8
+- id: WEIGHT_KG
+  field: fitness_markers.weight_kg
+  class: defaulted
+  basis: sex-keyed forgiving intake default; fueling remains labeled
+  inputs:
+    reported_weight: ''
+    sex: male
+  sensitivity: sensitive
+  at: '2026-08-22T20:47:54.584691'
+  revision: 8

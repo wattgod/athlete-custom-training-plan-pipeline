@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Pre-Plan Endurance</name>
+  <description>PRE-PLAN WEEK: Endurance Ride
+Edward - 2 days until plan starts
+
+WORKOUT:
+- 75-90 min at Z2 (60-70% FTP)
+- Practice fueling: use the personalized target in your guide
+- Stay hydrated
+
+OUTDOOR STRONGLY ENCOURAGED:
+- Build confidence on gravel/mixed terrain
+- Practice reading the road ahead
+- Test your nutrition strategy
+
+Almost there, Edward!</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="480" PowerLow="0.45" PowerHigh="0.58"/>
+    <SteadyState Duration="4020" Power="0.65"/>
+    <Cooldown Duration="300" PowerLow="0.65" PowerHigh="0.45"/>
+  </workout>
+</workout_file>

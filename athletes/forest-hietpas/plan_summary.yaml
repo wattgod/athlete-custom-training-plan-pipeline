@@ -1,14 +1,14 @@
 athlete_id: forest-hietpas
 athlete_name: Forest Hietpas
-generated_date: '2026-09-02T21:09:50.526064'
+generated_date: '2026-09-17T09:44:46.498905'
 race:
   name: Race
   date: null
   distance_miles: null
 plan:
   weeks: 4
-  start_date: '2026-08-31'
-  end_date: '2026-09-27'
+  start_date: '2026-09-28'
+  end_date: '2026-10-25'
   methodology: Time-Crunched
   methodology_score: 100
   tier: AYAHUASCA
@@ -33,7 +33,7 @@ control:
 files:
   guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/.worktrees/tp-cadence-emission/athletes/forest-hietpas/training_guide.html
   workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/.worktrees/tp-cadence-emission/athletes/forest-hietpas/workouts
-  workout_count: 18
+  workout_count: 19
 _derived:
 - id: SUMMARY_ABILITY
   field: plan.ability_level
@@ -42,8 +42,8 @@ _derived:
   inputs:
     derived_ability: null
   sensitivity: personal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_CONTROL_BASIS
   field: control.basis
   class: inferred
@@ -51,8 +51,8 @@ _derived:
   inputs:
     source_field: canonical.athlete.control_basis
   sensitivity: personal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_CONTROL_METRIC
   field: control.metric
   class: inferred
@@ -60,8 +60,8 @@ _derived:
   inputs:
     source_field: canonical.athlete.control_metric
   sensitivity: personal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_DURATION
   field: fueling.estimated_duration_hours
   class: inferred
@@ -69,8 +69,8 @@ _derived:
   inputs:
     source_field: fueling.race.duration_hours
   sensitivity: personal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_FIELD_TEST
   field: control.week_1_field_test
   class: inferred
@@ -78,17 +78,17 @@ _derived:
   inputs:
     canonical_sessions: 59
   sensitivity: personal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_GENERATED_DATE
   field: generated_date
   class: inferred
   basis: injected generation clock
   inputs:
-    generation_at: '2026-09-02T21:09:50.526064'
+    generation_at: '2026-09-17T09:44:46.498905'
   sensitivity: internal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_HOURLY_CARBS
   field: fueling.hourly_carb_target
   class: inferred
@@ -96,8 +96,8 @@ _derived:
   inputs:
     source_field: fueling.carbohydrates.hourly_target
   sensitivity: sensitive
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_METHODOLOGY
   field: plan.methodology
   class: inferred
@@ -105,8 +105,8 @@ _derived:
   inputs:
     methodology_id: time_crunched
   sensitivity: personal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_METHODOLOGY_SCORE
   field: plan.methodology_score
   class: inferred
@@ -114,56 +114,56 @@ _derived:
   inputs:
     methodology_scores: {}
   sensitivity: personal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_PLAN_END
   field: plan.end_date
   class: inferred
   basis: final plan calendar boundary
   inputs:
     race_date: null
-    plan_start: '2026-08-31'
-    plan_end: '2026-09-27'
+    plan_start: '2026-09-28'
+    plan_end: '2026-10-25'
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_PLAN_START
   field: plan.start_date
   class: inferred
   basis: final plan calendar boundary
   inputs:
     race_date: null
-    plan_start: '2026-08-31'
-    plan_end: '2026-09-27'
+    plan_start: '2026-09-28'
+    plan_end: '2026-10-25'
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_PLAN_WEEKS
   field: plan.weeks
   class: inferred
   basis: final plan calendar week count
   inputs:
     race_date: null
-    plan_start: '2026-08-31'
-    plan_end: '2026-09-27'
+    plan_start: '2026-09-28'
+    plan_end: '2026-10-25'
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_RACE_DATE
   field: race.date
   class: inferred
   basis: resolved target race and plan calendar
   inputs:
     race_date: null
-    plan_start: '2026-08-31'
-    plan_end: '2026-09-27'
+    plan_start: '2026-09-28'
+    plan_end: '2026-10-25'
     plan_weeks: 4
   sensitivity: personal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_RACE_DISTANCE
   field: race.distance_miles
   class: inferred
@@ -171,8 +171,8 @@ _derived:
   inputs:
     target_race: {}
   sensitivity: personal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_REANCHOR
   field: control.reanchor
   class: inferred
@@ -180,8 +180,8 @@ _derived:
   inputs:
     source_field: canonical.athlete.reanchor
   sensitivity: personal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_TIER
   field: plan.tier
   class: inferred
@@ -189,8 +189,8 @@ _derived:
   inputs:
     derived_tier: ayahuasca
   sensitivity: personal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_TOTAL_CARBS
   field: fueling.total_carbs
   class: inferred
@@ -198,8 +198,8 @@ _derived:
   inputs:
     source_field: fueling.carbohydrates.total_grams
   sensitivity: sensitive
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2
 - id: SUMMARY_WORKOUT_COUNT
   field: files.workout_count
   class: inferred
@@ -207,5 +207,5 @@ _derived:
   inputs:
     canonical_session_count: 59
   sensitivity: internal
-  at: '2026-09-02T21:09:50.526064'
-  revision: 1
+  at: '2026-09-17T09:44:46.498905'
+  revision: 2

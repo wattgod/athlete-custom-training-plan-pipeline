@@ -7,20 +7,6 @@
     "phase": "base"
   },
   {
-    "plan_week": 3,
-    "day": "Wed",
-    "canonical_name": "VO2max 30/30",
-    "role": "intensity",
-    "phase": "base"
-  },
-  {
-    "plan_week": 4,
-    "day": "Fri",
-    "canonical_name": "Endurance",
-    "role": "long_ride",
-    "phase": "base"
-  },
-  {
     "item_id": 14355843,
     "library_key": "endurance_z2_short",
     "name": "This is Uncomfortable",
@@ -32,8 +18,8 @@
     "lint_bookend_intensity": null,
     "reason": "lint_excluded",
     "canonical_name": "Endurance",
-    "plan_week": 2,
-    "day": "Thu",
+    "plan_week": 1,
+    "day": "Wed",
     "role": "filler",
     "phase": "base"
   },
@@ -47,31 +33,6 @@
     "lint_duration_claim": null,
     "lint_rpe_conflict": null,
     "lint_bookend_intensity": null,
-    "reason": "lint_excluded",
-    "canonical_name": "Endurance",
-    "plan_week": 2,
-    "day": "Thu",
-    "role": "filler",
-    "phase": "base"
-  },
-  {
-    "item_id": 14355859,
-    "library_key": "endurance_z2_short",
-    "name": "End -",
-    "flags": [
-      "lint_bookend_intensity"
-    ],
-    "lint_duration_claim": null,
-    "lint_rpe_conflict": null,
-    "lint_bookend_intensity": {
-      "main_max_pct": 28.0,
-      "offenders": [
-        {
-          "block": "cooldown",
-          "target_pct": 50.0
-        }
-      ]
-    },
     "reason": "lint_excluded",
     "canonical_name": "Endurance",
     "plan_week": 1,
@@ -91,8 +52,8 @@
     "lint_bookend_intensity": null,
     "reason": "lint_excluded",
     "canonical_name": "Endurance",
-    "plan_week": 2,
-    "day": "Thu",
+    "plan_week": 1,
+    "day": "Wed",
     "role": "filler",
     "phase": "base"
   }
