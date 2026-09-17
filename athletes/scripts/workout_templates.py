@@ -413,8 +413,9 @@ def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
 
     target_seconds = target_duration_min * 60
 
-    # If already within 60 seconds of target, no change needed
-    if abs(target_seconds - total_seconds) <= 60:
+    # If already within 60 seconds of target, no change needed -- unless we
+    # are GROWING to a floor (AE-2.7): 59 -> 60 must land exactly.
+    if abs(target_seconds - total_seconds) <= 60 and target_seconds <= total_seconds:
         return zwo_xml
 
     # Shrink if needed: scale non-interval blocks proportionally

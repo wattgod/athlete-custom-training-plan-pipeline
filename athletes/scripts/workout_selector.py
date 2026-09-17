@@ -683,8 +683,15 @@ def _select_recovery_week(config: dict, hours_per_week: float = 10) -> List[Dict
     # to a load weekend isn't recovery.
     long_level = min(2, max(max_level, 2))
 
+    # 2026-09-17 (Matti): a recovery-week "Tune-Up" -- an hour-plus of Z2
+    # with 54 s of sprints -- is "absolutely fucking pointless". The
+    # recovery ruling (2026-08-23) is Z2 + drills + alactic work, so the
+    # midweek slot is a real Z2 hour (the curated Endurance pool carries the
+    # cadence-focus / spin-up variants), not an opener. Openers keep their
+    # real job: the day before a race. (Cadence Work L1 was tried first and
+    # starved R03's recovery-TSS ratio on the 16 h golden athlete.)
     return [
-        {'slot': 'openers', 'name': 'Openers', 'level': 1, 'role': 'intensity'},
+        {'slot': 'openers', 'name': 'Endurance', 'level': 1, 'role': 'filler'},
         {'slot': 'long_ride', 'name': 'Endurance', 'level': long_level, 'role': 'long_ride'},
         {'slot': 'filler', 'name': 'Endurance', 'level': 1, 'role': 'filler'},
     ]

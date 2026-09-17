@@ -257,13 +257,13 @@
     "week_num": 4,
     "workout_type_value_id": 2
   },
-  "W04_Thu_Oct15_Activations": {
+  "W04_Tue_Oct13_Endurance_Base": {
     "archetype_id": "Endurance",
-    "date": "2026-10-15",
-    "display_name": "Activations",
-    "filename_stem": "W04_Thu_Oct15_Activations",
-    "library_item_id": 14356243,
-    "library_rpe_text": "8-9",
+    "date": "2026-10-13",
+    "display_name": "Endurance Base",
+    "filename_stem": "W04_Tue_Oct13_Endurance_Base",
+    "library_item_id": 14355824,
+    "library_rpe_text": "3-4",
     "order_on_day": 0,
     "phase": "build",
     "role": "filler",
@@ -271,14 +271,16 @@
     "week_num": 4,
     "workout_type_value_id": 2
   },
-  "W04_Tue_Oct13_Tune-Up": {
-    "archetype_id": "Openers",
-    "date": "2026-10-13",
-    "display_name": "Tune-Up",
-    "filename_stem": "W04_Tue_Oct13_Tune-Up",
+  "W04_Wed_Oct14_Activations": {
+    "archetype_id": "Endurance",
+    "date": "2026-10-14",
+    "display_name": "Activations",
+    "filename_stem": "W04_Wed_Oct14_Activations",
+    "library_item_id": 14356243,
+    "library_rpe_text": "8-9",
     "order_on_day": 0,
     "phase": "build",
-    "role": "intensity",
+    "role": "filler",
     "tp_kind": "bike",
     "week_num": 4,
     "workout_type_value_id": 2

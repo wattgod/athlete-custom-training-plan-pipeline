@@ -10,7 +10,7 @@ key_day_candidates:
 - saturday
 - sunday
 strength_day_candidates: []
-derived_date: '2026-09-17 12:33:14'
+derived_date: '2026-09-17 12:50:20'
 _derived:
 - id: CLASSIFICATION_BIKE_CONSTRAINTS
   field: bike_constraints

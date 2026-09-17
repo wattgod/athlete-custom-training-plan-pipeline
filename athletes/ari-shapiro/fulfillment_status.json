@@ -26,7 +26,7 @@
       "inputs": {
         "source": "constants.DAY_FULL_TO_ABBREV"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "value": {
         "friday": "Fri",
@@ -54,7 +54,7 @@
         "requested_plan_weeks": 7,
         "travel_date_count": 0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "value": "W01_Mon_Sep21_Endurance.zwo"
     },
@@ -76,7 +76,7 @@
         "requested_plan_weeks": 7,
         "travel_date_count": 0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "3:1"
     },
@@ -89,7 +89,7 @@
       "inputs": {
         "source": "calendar month table"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "value": {
         "1": "Jan",
@@ -122,7 +122,7 @@
         "requested_plan_weeks": 7,
         "travel_date_count": 0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "value": "W{week:02d}_{day}_{month}{day}_{name}.zwo"
     },
@@ -142,7 +142,7 @@
         "requested_plan_weeks": 7,
         "travel_date_count": 0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "2026-11-08"
     },
@@ -162,7 +162,7 @@
         "requested_plan_weeks": 7,
         "travel_date_count": 0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "2026-09-21"
     },
@@ -182,7 +182,7 @@
         "requested_plan_weeks": 7,
         "travel_date_count": 0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "Sep21"
     },
@@ -202,7 +202,7 @@
         "requested_plan_weeks": 7,
         "travel_date_count": 0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": 7
     },
@@ -222,7 +222,7 @@
         "requested_plan_weeks": 7,
         "travel_date_count": 0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "2026-11-07"
     },
@@ -242,7 +242,7 @@
         "requested_plan_weeks": 7,
         "travel_date_count": 0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "Saturday"
     },
@@ -262,7 +262,7 @@
         "requested_plan_weeks": 7,
         "travel_date_count": 0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "2026-11-02"
     },
@@ -282,7 +282,7 @@
         "requested_plan_weeks": 7,
         "travel_date_count": 0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "2026-09-21"
     },
@@ -302,7 +302,7 @@
         "requested_plan_weeks": 7,
         "travel_date_count": 0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": [
         {
@@ -789,7 +789,7 @@
         "power_basis": "measured",
         "requested_metric": "power"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "power"
     },
@@ -804,7 +804,7 @@
         "control_metric": "power",
         "session_count": 53
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": [
         {
@@ -3904,7 +3904,7 @@
           "archetype_id": "Endurance",
           "daily_ordinal": 1,
           "date": "2026-10-10",
-          "description": "FUEL:\nTarget 55g carbs/hr. Practice this prescription.\n\nEndurance Blocks \u2014 level 5\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-120min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-55 g/hr.",
+          "description": "FUEL:\nTarget 50g carbs/hr. Practice this prescription.\n\nEndurance Blocks \u2014 level 5\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-120min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-50 g/hr.",
           "display_name": "Endurance",
           "duration_s": 8400,
           "filename_stem": "W03_Sat_Oct10_Endurance",
@@ -4080,216 +4080,37 @@
           "zwo_projection": null
         },
         {
-          "archetype_id": "Openers",
+          "archetype_id": "Endurance",
           "daily_ordinal": 1,
           "date": "2026-10-13",
-          "description": "FUEL:\nNormal meal ~2h before. One bottle, 40-50g carbs. Done.\n\nMAIN SET:\n- 62min @ 65% FTP (Z2, RPE 3)\n- 2 x (0:18 @ 140% FTP (Z5+, RPE 8-9) + 2:30 @ 55% FTP (Z2, RPE 3))\n- 0:18 @ 140% FTP (Z5+, RPE 8-9)\n- 5min @ 50% FTP (Z1, RPE 3)\n-Cadence: 95-105rpm on efforts\n-Position: Seated, relaxed\n\nPROGRESSION:\n-Level 1/6: Introductory - Focus on form and learning the workout pattern\n-Short alactic openers -- three brief near-max efforts to wake up neuromuscular firing without creating fatigue\n\nEXECUTION:\n-Short sharp efforts to keep the legs remembering speed. Don't dig deep - this should feel like play, not training.",
-          "display_name": "Tune-Up",
-          "duration_s": 4374,
-          "filename_stem": "W04_Tue_Oct13_Tune-Up",
-          "library_item_id": null,
-          "library_rpe_text": null,
+          "description": "FUEL:\nTarget 55g carbs/hr. Practice this prescription.\n\nWarm up, building from Z1 to Z2; keep cadence over 85 rpm\n-\nSteady Z2 by heart rate for ~90min depending on time allowed. Use the entire zone - don't just ride the top of it; keep cadence 85-95 throughout.\n-\nCool down.\n\nRPE guide: 76% FTP -> RPE 5-6",
+          "display_name": "Endurance Base",
+          "duration_s": 5400,
+          "filename_stem": "W04_Tue_Oct13_Endurance_Base",
+          "library_item_id": 14355824,
+          "library_rpe_text": "3-4",
           "order_on_day": 0,
           "origin": "prescribed",
           "phase": "build",
           "race": null,
-          "role": "intensity",
+          "role": "filler",
           "segments": [
             {
               "kind": "steady_state",
               "name": "Steady State",
-              "seconds": 3720,
+              "seconds": 5400,
               "target": {
                 "type": "power_pct_ftp",
-                "value": 0.65
+                "value": 0.76
               },
               "zwo": {
                 "attribute_order": [
                   "Duration",
-                  "Power",
-                  "CadenceLow",
-                  "CadenceHigh"
+                  "Power"
                 ],
-                "children": [
-                  {
-                    "attributes": {
-                      "message": "Easy warmup for openers",
-                      "timeoffset": "0"
-                    },
-                    "empty_element_space": true,
-                    "tag": "textevent",
-                    "text": ""
-                  }
-                ],
+                "children": [],
                 "empty_element_space": false,
-                "extra_attributes": {
-                  "CadenceHigh": "105",
-                  "CadenceLow": "95"
-                },
-                "tag": "SteadyState"
-              }
-            },
-            {
-              "kind": "steady_state",
-              "name": "Steady State",
-              "seconds": 18,
-              "target": {
-                "type": "power_pct_ftp",
-                "value": 1.4
-              },
-              "zwo": {
-                "attribute_order": [
-                  "Duration",
-                  "Power",
-                  "CadenceLow",
-                  "CadenceHigh"
-                ],
-                "children": [
-                  {
-                    "attributes": {
-                      "message": "Opener 1 of 3",
-                      "timeoffset": "0"
-                    },
-                    "empty_element_space": true,
-                    "tag": "textevent",
-                    "text": ""
-                  }
-                ],
-                "empty_element_space": false,
-                "extra_attributes": {
-                  "CadenceHigh": "105",
-                  "CadenceLow": "95"
-                },
-                "tag": "SteadyState"
-              }
-            },
-            {
-              "kind": "steady_state",
-              "name": "Steady State",
-              "seconds": 150,
-              "target": {
-                "type": "power_pct_ftp",
-                "value": 0.55
-              },
-              "zwo": {
-                "attribute_order": [
-                  "Duration",
-                  "Power",
-                  "CadenceLow",
-                  "CadenceHigh"
-                ],
-                "children": [],
-                "empty_element_space": true,
-                "extra_attributes": {
-                  "CadenceHigh": "105",
-                  "CadenceLow": "95"
-                },
-                "tag": "SteadyState"
-              }
-            },
-            {
-              "kind": "steady_state",
-              "name": "Steady State",
-              "seconds": 18,
-              "target": {
-                "type": "power_pct_ftp",
-                "value": 1.4
-              },
-              "zwo": {
-                "attribute_order": [
-                  "Duration",
-                  "Power",
-                  "CadenceLow",
-                  "CadenceHigh"
-                ],
-                "children": [],
-                "empty_element_space": true,
-                "extra_attributes": {
-                  "CadenceHigh": "105",
-                  "CadenceLow": "95"
-                },
-                "tag": "SteadyState"
-              }
-            },
-            {
-              "kind": "steady_state",
-              "name": "Steady State",
-              "seconds": 150,
-              "target": {
-                "type": "power_pct_ftp",
-                "value": 0.55
-              },
-              "zwo": {
-                "attribute_order": [
-                  "Duration",
-                  "Power",
-                  "CadenceLow",
-                  "CadenceHigh"
-                ],
-                "children": [],
-                "empty_element_space": true,
-                "extra_attributes": {
-                  "CadenceHigh": "105",
-                  "CadenceLow": "95"
-                },
-                "tag": "SteadyState"
-              }
-            },
-            {
-              "kind": "steady_state",
-              "name": "Steady State",
-              "seconds": 18,
-              "target": {
-                "type": "power_pct_ftp",
-                "value": 1.4
-              },
-              "zwo": {
-                "attribute_order": [
-                  "Duration",
-                  "Power",
-                  "CadenceLow",
-                  "CadenceHigh"
-                ],
-                "children": [],
-                "empty_element_space": true,
-                "extra_attributes": {
-                  "CadenceHigh": "105",
-                  "CadenceLow": "95"
-                },
-                "tag": "SteadyState"
-              }
-            },
-            {
-              "kind": "steady_state",
-              "name": "Steady State",
-              "seconds": 300,
-              "target": {
-                "type": "power_pct_ftp",
-                "value": 0.5
-              },
-              "zwo": {
-                "attribute_order": [
-                  "Duration",
-                  "Power",
-                  "CadenceLow",
-                  "CadenceHigh"
-                ],
-                "children": [
-                  {
-                    "attributes": {
-                      "message": "Spin out",
-                      "timeoffset": "0"
-                    },
-                    "empty_element_space": true,
-                    "tag": "textevent",
-                    "text": ""
-                  }
-                ],
-                "empty_element_space": false,
-                "extra_attributes": {
-                  "CadenceHigh": "105",
-                  "CadenceLow": "95"
-                },
+                "extra_attributes": {},
                 "tag": "SteadyState"
               }
             }
@@ -4298,15 +4119,15 @@
           "series_index": null,
           "series_total": null,
           "session_type": "workout",
-          "source_file": "W04_Tue_Oct13_Tune-Up.zwo",
+          "source_file": "W04_Tue_Oct13_Endurance_Base.zwo",
           "sport": "cycling",
           "strength_template": null,
-          "target_summary": "65 % of measured FTP; 140 % of measured FTP; 55 % of measured FTP; 50 % of measured FTP",
-          "title": "Tune-Up",
-          "total_time_planned": 1.2167,
+          "target_summary": "76 % of measured FTP",
+          "title": "Endurance Base",
+          "total_time_planned": 1.5,
           "tp_kind": "bike",
-          "tss": 56,
-          "tss_planned": 56.0,
+          "tss": 60,
+          "tss_planned": 60.0,
           "week": 4,
           "workout_type_value_id": 2,
           "zwo_projection": {
@@ -4315,46 +4136,13 @@
           }
         },
         {
-          "archetype_id": null,
-          "daily_ordinal": 1,
-          "date": "2026-10-14",
-          "description": "Recovery-week rest day. Fatigue is supposed to drop this week; help it.\n\nTen minutes of mobility, a nap if you can get one, an honest early bedtime. Eat enough. A recovery week is not a weight-loss week.\n\nFeeling flat today is normal. Still flat on Friday, message me.",
-          "display_name": "Rest Day",
-          "duration_s": 0,
-          "filename_stem": null,
-          "library_item_id": null,
-          "library_rpe_text": null,
-          "order_on_day": null,
-          "origin": "rest",
-          "phase": "build",
-          "race": null,
-          "role": null,
-          "segments": [],
-          "series_id": null,
-          "series_index": null,
-          "series_total": null,
-          "session_type": "rest",
-          "source_file": null,
-          "sport": "cycling",
-          "strength_template": null,
-          "target_summary": "",
-          "title": "Rest Day",
-          "total_time_planned": 0.0,
-          "tp_kind": "day_off",
-          "tss": 0,
-          "tss_planned": 0.0,
-          "week": 4,
-          "workout_type_value_id": 7,
-          "zwo_projection": null
-        },
-        {
           "archetype_id": "Endurance",
           "daily_ordinal": 1,
-          "date": "2026-10-15",
+          "date": "2026-10-14",
           "description": "10 min Z1>Z2 warm up; light gears\n-\n2sets:\n8x30 seconds high cadence (>105 rpm) in Z3; 1 min easy spinning; 8 min Z2 between sets.-\n8 min Z2 for time.\n\nRPE guide: 83% FTP -> RPE 5-6; 66% FTP -> RPE 3",
           "display_name": "Activations",
           "duration_s": 3600,
-          "filename_stem": "W04_Thu_Oct15_Activations",
+          "filename_stem": "W04_Wed_Oct14_Activations",
           "library_item_id": 14356243,
           "library_rpe_text": "8-9",
           "order_on_day": 0,
@@ -4487,7 +4275,7 @@
           "series_index": null,
           "series_total": null,
           "session_type": "workout",
-          "source_file": "W04_Thu_Oct15_Activations.zwo",
+          "source_file": "W04_Wed_Oct14_Activations.zwo",
           "sport": "cycling",
           "strength_template": null,
           "target_summary": "66 % of measured FTP; 83 / 55 % of measured FTP",
@@ -4502,6 +4290,39 @@
             "author": "Gravel God Training",
             "sport_type": "bike"
           }
+        },
+        {
+          "archetype_id": null,
+          "daily_ordinal": 1,
+          "date": "2026-10-15",
+          "description": "Recovery-week rest day. Fatigue is supposed to drop this week; help it.\n\nTen minutes of mobility, a nap if you can get one, an honest early bedtime. Eat enough. A recovery week is not a weight-loss week.\n\nFeeling flat today is normal. Still flat on Friday, message me.",
+          "display_name": "Rest Day",
+          "duration_s": 0,
+          "filename_stem": null,
+          "library_item_id": null,
+          "library_rpe_text": null,
+          "order_on_day": null,
+          "origin": "rest",
+          "phase": "build",
+          "race": null,
+          "role": null,
+          "segments": [],
+          "series_id": null,
+          "series_index": null,
+          "series_total": null,
+          "session_type": "rest",
+          "source_file": null,
+          "sport": "cycling",
+          "strength_template": null,
+          "target_summary": "",
+          "title": "Rest Day",
+          "total_time_planned": 0.0,
+          "tp_kind": "day_off",
+          "tss": 0,
+          "tss_planned": 0.0,
+          "week": 4,
+          "workout_type_value_id": 7,
+          "zwo_projection": null
         },
         {
           "archetype_id": null,
@@ -6903,9 +6724,9 @@
           "archetype_id": "Openers",
           "daily_ordinal": 1,
           "date": "2026-11-06",
-          "description": "FUEL:\nNormal meal ~2h before. One bottle, 40-50g carbs. Done.\n\nWARM-UP:\n-10min building from Z1 to Z2\n\nMAIN SET:\n- 7min @ 65% FTP (Z2, RPE 3)\n- 2min @ 120% FTP (Z5+, RPE 8-9)\n- 3min @ 55% FTP (Z2, RPE 3)\n- 3x0:30 @ 125% FTP (Z5+, RPE 8-9), 2min recovery @ 55% FTP (Z2, RPE 3)\n-Cadence: 100-120rpm on the short stabs; 90-100rpm while riding easy\n\nCOOL-DOWN:\n-10min easy spin Z1-Z2\n\nEXECUTION:\n-The 2-minute effort is controlled, not a test. Finish feeling more ready than tired.",
+          "description": "FUEL:\nNormal meal ~2h before. One bottle, 40-50g carbs. Done.\n\nWARM-UP:\n-18min building from Z1 to Z2\n\nMAIN SET:\n- 7min @ 65% FTP (Z2, RPE 3)\n- 2min @ 120% FTP (Z5+, RPE 8-9)\n- 3min @ 55% FTP (Z2, RPE 3)\n- 3x0:30 @ 125% FTP (Z5+, RPE 8-9), 2min recovery @ 55% FTP (Z2, RPE 3)\n-Cadence: 100-120rpm on the short stabs; 90-100rpm while riding easy\n\nCOOL-DOWN:\n-15min easy spin Z1-Z2\n\nEXECUTION:\n-The 2-minute effort is controlled, not a test. Finish feeling more ready than tired.",
           "display_name": "Pre-Race Openers",
-          "duration_s": 2370,
+          "duration_s": 3150,
           "filename_stem": "W07_Fri_Nov6_Pre-Race_Openers",
           "library_item_id": null,
           "library_rpe_text": null,
@@ -6918,7 +6739,7 @@
             {
               "kind": "warmup",
               "name": "Warmup",
-              "seconds": 600,
+              "seconds": 1080,
               "target": {
                 "high": 0.7,
                 "low": 0.5,
@@ -7047,7 +6868,7 @@
             {
               "kind": "cooldown",
               "name": "Cooldown",
-              "seconds": 600,
+              "seconds": 900,
               "target": {
                 "high": 0.45,
                 "low": 0.65,
@@ -7080,10 +6901,10 @@
           "strength_template": null,
           "target_summary": "50-70 % of measured FTP; 65 % of measured FTP; 120 % of measured FTP; 55 % of measured FTP; 125 / 55 % of measured FTP; 65-45 % of measured FTP",
           "title": "Pre-Race Openers",
-          "total_time_planned": 0.6667,
+          "total_time_planned": 0.8667,
           "tp_kind": "bike",
-          "tss": 36,
-          "tss_planned": 36.0,
+          "tss": 45,
+          "tss_planned": 45.0,
           "week": 7,
           "workout_type_value_id": 2,
           "zwo_projection": {
@@ -7191,7 +7012,7 @@
       "inputs": {
         "rule_set": "derive_classifications/bike-constraints-v1"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": []
     },
@@ -7204,7 +7025,7 @@
       "inputs": {
         "equipment": null
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "minimal"
     },
@@ -7217,7 +7038,7 @@
       "inputs": {
         "rule_set": "derive_classifications/exclusions-v1"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": []
     },
@@ -7238,7 +7059,7 @@
           "wednesday"
         ]
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": [
         "saturday"
@@ -7269,7 +7090,7 @@
         "preferred_start": "2026-09-21",
         "race_date": "2026-11-07"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "2026-11-08"
     },
@@ -7298,7 +7119,7 @@
         "preferred_start": "2026-09-21",
         "race_date": "2026-11-07"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "2026-09-21"
     },
@@ -7327,7 +7148,7 @@
         "preferred_start": "2026-09-21",
         "race_date": "2026-11-07"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": 7
     },
@@ -7356,7 +7177,7 @@
         "preferred_start": "2026-09-21",
         "race_date": "2026-11-07"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "Saturday"
     },
@@ -7369,7 +7190,7 @@
       "inputs": {
         "rule_set": "derive_classifications/risk-v1"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": []
     },
@@ -7382,7 +7203,7 @@
       "inputs": {
         "plan_weeks": 7
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "base_1"
     },
@@ -7398,7 +7219,7 @@
         ],
         "strength_frequency": 0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": []
     },
@@ -7411,7 +7232,7 @@
       "inputs": {
         "tier": "finisher"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": 0
     },
@@ -7426,7 +7247,7 @@
         "goal_type": "podium",
         "years_structured": 1
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "finisher"
     },
@@ -7439,9 +7260,9 @@
       "inputs": {
         "owner": "derive_classifications.py"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
-      "value": "2026-09-17 12:33:17"
+      "value": "2026-09-17 12:50:23"
     },
     {
       "at": "2026-08-23T02:15:00Z",
@@ -7453,7 +7274,7 @@
         "ftp_present": true,
         "power_basis": "measured"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": {
         "kind": "measured_power_duration_body_mass",
@@ -7479,7 +7300,7 @@
         "tolerated_g_per_hour": null,
         "weight_kg": 60.0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": [
         56,
@@ -7503,7 +7324,7 @@
         "tolerated_g_per_hour": null,
         "weight_kg": 60.0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": 63
     },
@@ -7524,7 +7345,7 @@
         "tolerated_g_per_hour": null,
         "weight_kg": 60.0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": {
         "assumptions": [
@@ -7588,7 +7409,7 @@
         "hourly_target": 63,
         "total_carbs": 225
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": {
         "example_products": {
@@ -7640,7 +7461,7 @@
         "duration_hours": 3.566738745822685,
         "hourly_target": 63
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": [
         {
@@ -7690,7 +7511,7 @@
           70
         ]
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": [
         200,
@@ -7707,7 +7528,7 @@
         "duration_hours": 3.566738745822685,
         "hourly_target": 63
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": 225
     },
@@ -7731,7 +7552,7 @@
           "weight_kg": 60.0
         }
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": {
         "base": {
@@ -7814,7 +7635,7 @@
           "weight_kg": 60.0
         }
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": [
         {
@@ -7932,7 +7753,7 @@
         "tolerated_g_per_hour": null,
         "weight_kg": 60.0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": {
         "electrolytes": "500-1000mg sodium per hour depending on sweat rate",
@@ -7953,7 +7774,7 @@
         "sex": "male",
         "weight_kg": 60.0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": {
         "breakdown": {
@@ -7982,7 +7803,7 @@
         "elevation_feet": 4711,
         "goal_type": "podium"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": 3.566738745822685
     },
@@ -8004,7 +7825,7 @@
           "technical_difficulty": "moderate"
         }
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": [
         {
@@ -8033,7 +7854,7 @@
       "inputs": {
         "score": 85.0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "high"
     },
@@ -8046,7 +7867,7 @@
       "inputs": {
         "confidence": "high"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "Strong match for athlete profile"
     },
@@ -8059,7 +7880,7 @@
       "inputs": {
         "methodology_id": "time_crunched"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "value": {
         "emphasis": "a protected long ride plus short, intensity-dense sessions \u2014 every ride earns its place, no junk miles",
@@ -8097,7 +7918,7 @@
           "technical_difficulty": "moderate"
         }
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "value": "time_crunched"
     },
@@ -8119,7 +7940,7 @@
           "technical_difficulty": "moderate"
         }
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": [
         "Ideal hours match (6h in 4-7h sweet spot)",
@@ -8146,7 +7967,7 @@
           "technical_difficulty": "moderate"
         }
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": 85.0
     },
@@ -8168,7 +7989,7 @@
           "technical_difficulty": "moderate"
         }
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "Time-Crunched"
     },
@@ -8181,9 +8002,9 @@
       "inputs": {
         "owner": "select_methodology.py"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
-      "value": "2026-09-17 12:33:17"
+      "value": "2026-09-17 12:50:23"
     },
     {
       "at": "2026-08-23T02:15:00Z",
@@ -8203,7 +8024,7 @@
           "technical_difficulty": "moderate"
         }
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": [
         "Time-crunched approach may limit podium potential"
@@ -8218,7 +8039,7 @@
       "inputs": {
         "reported_age": "0"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": 15
     },
@@ -8233,7 +8054,7 @@
         "lthr": null,
         "max_hr": null
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": "ftp"
     },
@@ -8249,7 +8070,7 @@
         "power_basis": "measured",
         "requested_metric": "rpe"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "power"
     },
@@ -8263,7 +8084,7 @@
         "brand": "gravelgod",
         "candidate": "gravel"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "value": "gravel"
     },
@@ -8276,7 +8097,7 @@
       "inputs": {
         "questionnaire_field": "current_fitness.ftp"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": 220
     },
@@ -8289,7 +8110,7 @@
       "inputs": {
         "ftp_supplied": true
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "measured"
     },
@@ -8303,7 +8124,7 @@
         "ftp_watts": 220,
         "weight_kg": 75.0
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": 3.67
     },
@@ -8316,7 +8137,7 @@
       "inputs": {
         "reported_sex": ""
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "male"
     },
@@ -8330,7 +8151,7 @@
         "reported_weight": "",
         "sex": "male"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": 60.0
     },
@@ -8357,7 +8178,7 @@
         "strength_days": [],
         "tier": "finisher"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": {
         "friday": {
@@ -8420,7 +8241,7 @@
       "inputs": {
         "tier": "finisher"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "value": "Custom weekly structure for finisher tier"
     },
@@ -8433,7 +8254,7 @@
       "inputs": {
         "derived_ability": null
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "Intermediate"
     },
@@ -8446,7 +8267,7 @@
       "inputs": {
         "source_field": "canonical.athlete.control_basis"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "ftp"
     },
@@ -8459,7 +8280,7 @@
       "inputs": {
         "source_field": "canonical.athlete.control_metric"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "power"
     },
@@ -8472,7 +8293,7 @@
       "inputs": {
         "source_field": "fueling.race.duration_hours"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": 3.566738745822685
     },
@@ -8485,7 +8306,7 @@
       "inputs": {
         "canonical_sessions": 53
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": null
     },
@@ -8498,9 +8319,9 @@
       "inputs": {
         "generation_at": "2026-08-23T02:15:00Z"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
-      "value": "2026-09-17T12:33:18.385901"
+      "value": "2026-09-17T12:50:24.186550"
     },
     {
       "at": "2026-08-23T02:15:00Z",
@@ -8511,7 +8332,7 @@
       "inputs": {
         "source_field": "fueling.carbohydrates.hourly_target"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": 63
     },
@@ -8524,7 +8345,7 @@
       "inputs": {
         "methodology_id": "time_crunched"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "Time-Crunched"
     },
@@ -8537,7 +8358,7 @@
       "inputs": {
         "methodology_scores": {}
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": 85.0
     },
@@ -8553,7 +8374,7 @@
         "plan_weeks": 7,
         "race_date": "2026-11-07"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "2026-11-08"
     },
@@ -8569,7 +8390,7 @@
         "plan_weeks": 7,
         "race_date": "2026-11-07"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "2026-09-21"
     },
@@ -8585,7 +8406,7 @@
         "plan_weeks": 7,
         "race_date": "2026-11-07"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": 7
     },
@@ -8601,7 +8422,7 @@
         "plan_weeks": 7,
         "race_date": "2026-11-07"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "2026-11-07"
     },
@@ -8647,7 +8468,7 @@
           "status": "confirmed"
         }
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": 50.4
     },
@@ -8660,7 +8481,7 @@
       "inputs": {
         "source_field": "canonical.athlete.reanchor"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": {
         "action": "No field test scheduled; preserve the current training anchor.",
@@ -8678,7 +8499,7 @@
       "inputs": {
         "derived_tier": "finisher"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "value": "FINISHER"
     },
@@ -8691,7 +8512,7 @@
       "inputs": {
         "source_field": "fueling.carbohydrates.total_grams"
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "value": 225
     },
@@ -8704,14 +8525,14 @@
       "inputs": {
         "canonical_session_count": 53
       },
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "value": 32
     }
   ],
   "execution_epoch": 0,
   "execution_fence": 0,
-  "generation_revision": 13,
+  "generation_revision": 15,
   "history": [
     {
       "at": "2026-09-17T15:25:52.668388Z",
@@ -8914,6 +8735,38 @@
       "generation_revision": 13,
       "order_id": "coach-review-ari-shapiro-2026-late-summer",
       "status": "GENERATED"
+    },
+    {
+      "at": "2026-09-17T18:49:24.349118Z",
+      "event": "REGENERATED",
+      "generation_revision": 14,
+      "order_id": "coach-review-ari-shapiro-2026-late-summer",
+      "prior_revision": 13,
+      "prior_status": "GENERATED"
+    },
+    {
+      "at": "2026-09-17T18:49:24.349126Z",
+      "blocker_ids": [],
+      "event": "GENERATED",
+      "generation_revision": 14,
+      "order_id": "coach-review-ari-shapiro-2026-late-summer",
+      "status": "GENERATED"
+    },
+    {
+      "at": "2026-09-17T18:50:24.378460Z",
+      "event": "REGENERATED",
+      "generation_revision": 15,
+      "order_id": "coach-review-ari-shapiro-2026-late-summer",
+      "prior_revision": 14,
+      "prior_status": "GENERATED"
+    },
+    {
+      "at": "2026-09-17T18:50:24.378472Z",
+      "blocker_ids": [],
+      "event": "GENERATED",
+      "generation_revision": 15,
+      "order_id": "coach-review-ari-shapiro-2026-late-summer",
+      "status": "GENERATED"
     }
   ],
   "identity_resolution": {
@@ -8930,7 +8783,7 @@
   "release_manifest": null,
   "release_manifest_digest": null,
   "required_confirmations": [],
-  "review_catalog_digest": "36ef7852fc9322740adac990c0c92086263479d4a2edfc8e95122ed5209190df",
+  "review_catalog_digest": "7210d9d73fa8777c2300740ad0a5237475982b093c45ad728aba9f9f758f12c7",
   "review_catalog_version": "review_catalog/v1",
   "review_items": [
     {
@@ -8939,7 +8792,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_DAY_ABBREVIATIONS",
       "message": "day_abbreviations (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -8960,7 +8813,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_EXAMPLE",
       "message": "workout_example (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -8973,7 +8826,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_MESO_PATTERN",
       "message": "meso_pattern (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -8986,7 +8839,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_MONTH_ABBREVIATIONS",
       "message": "month_abbreviations (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -9012,7 +8865,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_NAMING",
       "message": "workout_naming_convention (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -9025,7 +8878,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_PLAN_END",
       "message": "plan_end (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -9038,7 +8891,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_PLAN_START",
       "message": "plan_start (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -9051,7 +8904,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_PLAN_START_SHORT",
       "message": "plan_start_short (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -9064,7 +8917,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_PLAN_WEEKS",
       "message": "plan_weeks (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -9077,7 +8930,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_RACE_DATE",
       "message": "race_date (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -9090,7 +8943,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_RACE_WEEKDAY",
       "message": "race_weekday (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -9103,7 +8956,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_RACE_WEEK_MONDAY",
       "message": "race_week_monday (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -9116,7 +8969,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_WEEK1_MONDAY",
       "message": "week1_monday (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -9129,7 +8982,7 @@
       "item_id": "DERIVED_CALENDAR_CALENDAR_WEEKS",
       "message": "weeks (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -9614,7 +9467,7 @@
       "item_id": "DERIVED_CANONICAL_CANONICAL_CONTROL",
       "message": "athlete.control_metric (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -9627,7 +9480,7 @@
       "item_id": "DERIVED_CANONICAL_CANONICAL_SESSION_TARGETS",
       "message": "sessions (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -12729,7 +12582,7 @@
           "archetype_id": "Endurance",
           "daily_ordinal": 1,
           "date": "2026-10-10",
-          "description": "FUEL:\nTarget 55g carbs/hr. Practice this prescription.\n\nEndurance Blocks \u2014 level 5\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-120min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-55 g/hr.",
+          "description": "FUEL:\nTarget 50g carbs/hr. Practice this prescription.\n\nEndurance Blocks \u2014 level 5\n\nWARM-UP:\n-10min ramp 50%->65% FTP (RPE 2-3)\n\nMAIN SET:\n-120min @ 60%-70% FTP (Z2, RPE 2-3, 85-95rpm)\n\nCOOL-DOWN:\n-10min spin-down 65%->50% FTP (RPE 2-3)\n\nHOW TO RIDE IT:\n-Easy and conversational the whole way.\n\nFUEL:\n-50 g/hr.",
           "display_name": "Endurance",
           "duration_s": 8400,
           "filename_stem": "W03_Sat_Oct10_Endurance",
@@ -12905,216 +12758,37 @@
           "zwo_projection": null
         },
         {
-          "archetype_id": "Openers",
+          "archetype_id": "Endurance",
           "daily_ordinal": 1,
           "date": "2026-10-13",
-          "description": "FUEL:\nNormal meal ~2h before. One bottle, 40-50g carbs. Done.\n\nMAIN SET:\n- 62min @ 65% FTP (Z2, RPE 3)\n- 2 x (0:18 @ 140% FTP (Z5+, RPE 8-9) + 2:30 @ 55% FTP (Z2, RPE 3))\n- 0:18 @ 140% FTP (Z5+, RPE 8-9)\n- 5min @ 50% FTP (Z1, RPE 3)\n-Cadence: 95-105rpm on efforts\n-Position: Seated, relaxed\n\nPROGRESSION:\n-Level 1/6: Introductory - Focus on form and learning the workout pattern\n-Short alactic openers -- three brief near-max efforts to wake up neuromuscular firing without creating fatigue\n\nEXECUTION:\n-Short sharp efforts to keep the legs remembering speed. Don't dig deep - this should feel like play, not training.",
-          "display_name": "Tune-Up",
-          "duration_s": 4374,
-          "filename_stem": "W04_Tue_Oct13_Tune-Up",
-          "library_item_id": null,
-          "library_rpe_text": null,
+          "description": "FUEL:\nTarget 55g carbs/hr. Practice this prescription.\n\nWarm up, building from Z1 to Z2; keep cadence over 85 rpm\n-\nSteady Z2 by heart rate for ~90min depending on time allowed. Use the entire zone - don't just ride the top of it; keep cadence 85-95 throughout.\n-\nCool down.\n\nRPE guide: 76% FTP -> RPE 5-6",
+          "display_name": "Endurance Base",
+          "duration_s": 5400,
+          "filename_stem": "W04_Tue_Oct13_Endurance_Base",
+          "library_item_id": 14355824,
+          "library_rpe_text": "3-4",
           "order_on_day": 0,
           "origin": "prescribed",
           "phase": "build",
           "race": null,
-          "role": "intensity",
+          "role": "filler",
           "segments": [
             {
               "kind": "steady_state",
               "name": "Steady State",
-              "seconds": 3720,
+              "seconds": 5400,
               "target": {
                 "type": "power_pct_ftp",
-                "value": 0.65
+                "value": 0.76
               },
               "zwo": {
                 "attribute_order": [
                   "Duration",
-                  "Power",
-                  "CadenceLow",
-                  "CadenceHigh"
+                  "Power"
                 ],
-                "children": [
-                  {
-                    "attributes": {
-                      "message": "Easy warmup for openers",
-                      "timeoffset": "0"
-                    },
-                    "empty_element_space": true,
-                    "tag": "textevent",
-                    "text": ""
-                  }
-                ],
+                "children": [],
                 "empty_element_space": false,
-                "extra_attributes": {
-                  "CadenceHigh": "105",
-                  "CadenceLow": "95"
-                },
-                "tag": "SteadyState"
-              }
-            },
-            {
-              "kind": "steady_state",
-              "name": "Steady State",
-              "seconds": 18,
-              "target": {
-                "type": "power_pct_ftp",
-                "value": 1.4
-              },
-              "zwo": {
-                "attribute_order": [
-                  "Duration",
-                  "Power",
-                  "CadenceLow",
-                  "CadenceHigh"
-                ],
-                "children": [
-                  {
-                    "attributes": {
-                      "message": "Opener 1 of 3",
-                      "timeoffset": "0"
-                    },
-                    "empty_element_space": true,
-                    "tag": "textevent",
-                    "text": ""
-                  }
-                ],
-                "empty_element_space": false,
-                "extra_attributes": {
-                  "CadenceHigh": "105",
-                  "CadenceLow": "95"
-                },
-                "tag": "SteadyState"
-              }
-            },
-            {
-              "kind": "steady_state",
-              "name": "Steady State",
-              "seconds": 150,
-              "target": {
-                "type": "power_pct_ftp",
-                "value": 0.55
-              },
-              "zwo": {
-                "attribute_order": [
-                  "Duration",
-                  "Power",
-                  "CadenceLow",
-                  "CadenceHigh"
-                ],
-                "children": [],
-                "empty_element_space": true,
-                "extra_attributes": {
-                  "CadenceHigh": "105",
-                  "CadenceLow": "95"
-                },
-                "tag": "SteadyState"
-              }
-            },
-            {
-              "kind": "steady_state",
-              "name": "Steady State",
-              "seconds": 18,
-              "target": {
-                "type": "power_pct_ftp",
-                "value": 1.4
-              },
-              "zwo": {
-                "attribute_order": [
-                  "Duration",
-                  "Power",
-                  "CadenceLow",
-                  "CadenceHigh"
-                ],
-                "children": [],
-                "empty_element_space": true,
-                "extra_attributes": {
-                  "CadenceHigh": "105",
-                  "CadenceLow": "95"
-                },
-                "tag": "SteadyState"
-              }
-            },
-            {
-              "kind": "steady_state",
-              "name": "Steady State",
-              "seconds": 150,
-              "target": {
-                "type": "power_pct_ftp",
-                "value": 0.55
-              },
-              "zwo": {
-                "attribute_order": [
-                  "Duration",
-                  "Power",
-                  "CadenceLow",
-                  "CadenceHigh"
-                ],
-                "children": [],
-                "empty_element_space": true,
-                "extra_attributes": {
-                  "CadenceHigh": "105",
-                  "CadenceLow": "95"
-                },
-                "tag": "SteadyState"
-              }
-            },
-            {
-              "kind": "steady_state",
-              "name": "Steady State",
-              "seconds": 18,
-              "target": {
-                "type": "power_pct_ftp",
-                "value": 1.4
-              },
-              "zwo": {
-                "attribute_order": [
-                  "Duration",
-                  "Power",
-                  "CadenceLow",
-                  "CadenceHigh"
-                ],
-                "children": [],
-                "empty_element_space": true,
-                "extra_attributes": {
-                  "CadenceHigh": "105",
-                  "CadenceLow": "95"
-                },
-                "tag": "SteadyState"
-              }
-            },
-            {
-              "kind": "steady_state",
-              "name": "Steady State",
-              "seconds": 300,
-              "target": {
-                "type": "power_pct_ftp",
-                "value": 0.5
-              },
-              "zwo": {
-                "attribute_order": [
-                  "Duration",
-                  "Power",
-                  "CadenceLow",
-                  "CadenceHigh"
-                ],
-                "children": [
-                  {
-                    "attributes": {
-                      "message": "Spin out",
-                      "timeoffset": "0"
-                    },
-                    "empty_element_space": true,
-                    "tag": "textevent",
-                    "text": ""
-                  }
-                ],
-                "empty_element_space": false,
-                "extra_attributes": {
-                  "CadenceHigh": "105",
-                  "CadenceLow": "95"
-                },
+                "extra_attributes": {},
                 "tag": "SteadyState"
               }
             }
@@ -13123,15 +12797,15 @@
           "series_index": null,
           "series_total": null,
           "session_type": "workout",
-          "source_file": "W04_Tue_Oct13_Tune-Up.zwo",
+          "source_file": "W04_Tue_Oct13_Endurance_Base.zwo",
           "sport": "cycling",
           "strength_template": null,
-          "target_summary": "65 % of measured FTP; 140 % of measured FTP; 55 % of measured FTP; 50 % of measured FTP",
-          "title": "Tune-Up",
-          "total_time_planned": 1.2167,
+          "target_summary": "76 % of measured FTP",
+          "title": "Endurance Base",
+          "total_time_planned": 1.5,
           "tp_kind": "bike",
-          "tss": 56,
-          "tss_planned": 56.0,
+          "tss": 60,
+          "tss_planned": 60.0,
           "week": 4,
           "workout_type_value_id": 2,
           "zwo_projection": {
@@ -13140,46 +12814,13 @@
           }
         },
         {
-          "archetype_id": null,
-          "daily_ordinal": 1,
-          "date": "2026-10-14",
-          "description": "Recovery-week rest day. Fatigue is supposed to drop this week; help it.\n\nTen minutes of mobility, a nap if you can get one, an honest early bedtime. Eat enough. A recovery week is not a weight-loss week.\n\nFeeling flat today is normal. Still flat on Friday, message me.",
-          "display_name": "Rest Day",
-          "duration_s": 0,
-          "filename_stem": null,
-          "library_item_id": null,
-          "library_rpe_text": null,
-          "order_on_day": null,
-          "origin": "rest",
-          "phase": "build",
-          "race": null,
-          "role": null,
-          "segments": [],
-          "series_id": null,
-          "series_index": null,
-          "series_total": null,
-          "session_type": "rest",
-          "source_file": null,
-          "sport": "cycling",
-          "strength_template": null,
-          "target_summary": "",
-          "title": "Rest Day",
-          "total_time_planned": 0.0,
-          "tp_kind": "day_off",
-          "tss": 0,
-          "tss_planned": 0.0,
-          "week": 4,
-          "workout_type_value_id": 7,
-          "zwo_projection": null
-        },
-        {
           "archetype_id": "Endurance",
           "daily_ordinal": 1,
-          "date": "2026-10-15",
+          "date": "2026-10-14",
           "description": "10 min Z1>Z2 warm up; light gears\n-\n2sets:\n8x30 seconds high cadence (>105 rpm) in Z3; 1 min easy spinning; 8 min Z2 between sets.-\n8 min Z2 for time.\n\nRPE guide: 83% FTP -> RPE 5-6; 66% FTP -> RPE 3",
           "display_name": "Activations",
           "duration_s": 3600,
-          "filename_stem": "W04_Thu_Oct15_Activations",
+          "filename_stem": "W04_Wed_Oct14_Activations",
           "library_item_id": 14356243,
           "library_rpe_text": "8-9",
           "order_on_day": 0,
@@ -13312,7 +12953,7 @@
           "series_index": null,
           "series_total": null,
           "session_type": "workout",
-          "source_file": "W04_Thu_Oct15_Activations.zwo",
+          "source_file": "W04_Wed_Oct14_Activations.zwo",
           "sport": "cycling",
           "strength_template": null,
           "target_summary": "66 % of measured FTP; 83 / 55 % of measured FTP",
@@ -13327,6 +12968,39 @@
             "author": "Gravel God Training",
             "sport_type": "bike"
           }
+        },
+        {
+          "archetype_id": null,
+          "daily_ordinal": 1,
+          "date": "2026-10-15",
+          "description": "Recovery-week rest day. Fatigue is supposed to drop this week; help it.\n\nTen minutes of mobility, a nap if you can get one, an honest early bedtime. Eat enough. A recovery week is not a weight-loss week.\n\nFeeling flat today is normal. Still flat on Friday, message me.",
+          "display_name": "Rest Day",
+          "duration_s": 0,
+          "filename_stem": null,
+          "library_item_id": null,
+          "library_rpe_text": null,
+          "order_on_day": null,
+          "origin": "rest",
+          "phase": "build",
+          "race": null,
+          "role": null,
+          "segments": [],
+          "series_id": null,
+          "series_index": null,
+          "series_total": null,
+          "session_type": "rest",
+          "source_file": null,
+          "sport": "cycling",
+          "strength_template": null,
+          "target_summary": "",
+          "title": "Rest Day",
+          "total_time_planned": 0.0,
+          "tp_kind": "day_off",
+          "tss": 0,
+          "tss_planned": 0.0,
+          "week": 4,
+          "workout_type_value_id": 7,
+          "zwo_projection": null
         },
         {
           "archetype_id": null,
@@ -15728,9 +15402,9 @@
           "archetype_id": "Openers",
           "daily_ordinal": 1,
           "date": "2026-11-06",
-          "description": "FUEL:\nNormal meal ~2h before. One bottle, 40-50g carbs. Done.\n\nWARM-UP:\n-10min building from Z1 to Z2\n\nMAIN SET:\n- 7min @ 65% FTP (Z2, RPE 3)\n- 2min @ 120% FTP (Z5+, RPE 8-9)\n- 3min @ 55% FTP (Z2, RPE 3)\n- 3x0:30 @ 125% FTP (Z5+, RPE 8-9), 2min recovery @ 55% FTP (Z2, RPE 3)\n-Cadence: 100-120rpm on the short stabs; 90-100rpm while riding easy\n\nCOOL-DOWN:\n-10min easy spin Z1-Z2\n\nEXECUTION:\n-The 2-minute effort is controlled, not a test. Finish feeling more ready than tired.",
+          "description": "FUEL:\nNormal meal ~2h before. One bottle, 40-50g carbs. Done.\n\nWARM-UP:\n-18min building from Z1 to Z2\n\nMAIN SET:\n- 7min @ 65% FTP (Z2, RPE 3)\n- 2min @ 120% FTP (Z5+, RPE 8-9)\n- 3min @ 55% FTP (Z2, RPE 3)\n- 3x0:30 @ 125% FTP (Z5+, RPE 8-9), 2min recovery @ 55% FTP (Z2, RPE 3)\n-Cadence: 100-120rpm on the short stabs; 90-100rpm while riding easy\n\nCOOL-DOWN:\n-15min easy spin Z1-Z2\n\nEXECUTION:\n-The 2-minute effort is controlled, not a test. Finish feeling more ready than tired.",
           "display_name": "Pre-Race Openers",
-          "duration_s": 2370,
+          "duration_s": 3150,
           "filename_stem": "W07_Fri_Nov6_Pre-Race_Openers",
           "library_item_id": null,
           "library_rpe_text": null,
@@ -15743,7 +15417,7 @@
             {
               "kind": "warmup",
               "name": "Warmup",
-              "seconds": 600,
+              "seconds": 1080,
               "target": {
                 "high": 0.7,
                 "low": 0.5,
@@ -15872,7 +15546,7 @@
             {
               "kind": "cooldown",
               "name": "Cooldown",
-              "seconds": 600,
+              "seconds": 900,
               "target": {
                 "high": 0.45,
                 "low": 0.65,
@@ -15905,10 +15579,10 @@
           "strength_template": null,
           "target_summary": "50-70 % of measured FTP; 65 % of measured FTP; 120 % of measured FTP; 55 % of measured FTP; 125 / 55 % of measured FTP; 65-45 % of measured FTP",
           "title": "Pre-Race Openers",
-          "total_time_planned": 0.6667,
+          "total_time_planned": 0.8667,
           "tp_kind": "bike",
-          "tss": 36,
-          "tss_planned": 36.0,
+          "tss": 45,
+          "tss_planned": 45.0,
           "week": 7,
           "workout_type_value_id": 2,
           "zwo_projection": {
@@ -16014,7 +15688,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_BIKE_CONSTRAINTS",
       "message": "bike_constraints (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16027,7 +15701,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_EQUIPMENT_TIER",
       "message": "equipment_tier (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16040,7 +15714,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_EXCLUSIONS",
       "message": "exercise_exclusions (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16053,7 +15727,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_KEY_DAYS",
       "message": "key_day_candidates (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16068,7 +15742,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_PLAN_END",
       "message": "plan_end (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16081,7 +15755,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_PLAN_START",
       "message": "plan_start (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16094,7 +15768,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_PLAN_WEEKS",
       "message": "plan_weeks (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16107,7 +15781,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_RACE_WEEKDAY",
       "message": "race_weekday (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16120,7 +15794,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_RISK_FACTORS",
       "message": "risk_factors (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16133,7 +15807,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_STARTING_PHASE",
       "message": "starting_phase (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16146,7 +15820,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_STRENGTH_DAYS",
       "message": "strength_day_candidates (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16159,7 +15833,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_STRENGTH_FREQUENCY",
       "message": "strength_frequency (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16172,7 +15846,7 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_TIER",
       "message": "tier (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16185,11 +15859,11 @@
       "item_id": "DERIVED_DERIVED_CLASSIFICATION_TIMESTAMP",
       "message": "derived_date (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
-      "value": "2026-09-17 12:33:17",
+      "value": "2026-09-17 12:50:23",
       "value_type": "string"
     },
     {
@@ -16198,7 +15872,7 @@
       "item_id": "DERIVED_FUELING_FUELING_BASIS",
       "message": "fueling_basis (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16216,7 +15890,7 @@
       "item_id": "DERIVED_FUELING_FUELING_HOURLY_RANGE",
       "message": "carbohydrates.hourly_range (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16232,7 +15906,7 @@
       "item_id": "DERIVED_FUELING_FUELING_HOURLY_TARGET",
       "message": "carbohydrates.hourly_target (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16245,7 +15919,7 @@
       "item_id": "DERIVED_FUELING_FUELING_PRESCRIPTION",
       "message": "prescription (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16307,7 +15981,7 @@
       "item_id": "DERIVED_FUELING_FUELING_RECOMMENDATIONS",
       "message": "recommendations (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16357,7 +16031,7 @@
       "item_id": "DERIVED_FUELING_FUELING_TIMELINE",
       "message": "fueling_timeline (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16403,7 +16077,7 @@
       "item_id": "DERIVED_FUELING_FUELING_TOTAL_RANGE",
       "message": "carbohydrates.total_range (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16419,7 +16093,7 @@
       "item_id": "DERIVED_FUELING_FUELING_TOTAL_TARGET",
       "message": "carbohydrates.total_grams (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16432,7 +16106,7 @@
       "item_id": "DERIVED_FUELING_GUT_PHASES",
       "message": "gut_training.phases (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16504,7 +16178,7 @@
       "item_id": "DERIVED_FUELING_GUT_WEEKLY_PROGRESSION",
       "message": "gut_training.weekly_progression (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16614,7 +16288,7 @@
       "item_id": "DERIVED_FUELING_HYDRATION_TARGET",
       "message": "recommendations.hydration (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16630,7 +16304,7 @@
       "item_id": "DERIVED_FUELING_RACE_CALORIES",
       "message": "calories (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16656,7 +16330,7 @@
       "item_id": "DERIVED_FUELING_RACE_DURATION_HOURS",
       "message": "race.duration_hours (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16669,7 +16343,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_ALTERNATIVES",
       "message": "alternatives (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16698,7 +16372,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_CONFIDENCE",
       "message": "confidence (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16711,7 +16385,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_CONFIDENCE_NOTE",
       "message": "confidence_note (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16724,7 +16398,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_CONFIGURATION",
       "message": "configuration (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16753,7 +16427,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_ID",
       "message": "methodology_id (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16766,7 +16440,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_REASONS",
       "message": "reasons (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16784,7 +16458,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_SCORE",
       "message": "score (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16797,7 +16471,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_SELECTED",
       "message": "selected_methodology (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16810,11 +16484,11 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_SELECTION_TIME",
       "message": "selection_date (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
-      "value": "2026-09-17 12:33:17",
+      "value": "2026-09-17 12:50:23",
       "value_type": "string"
     },
     {
@@ -16823,7 +16497,7 @@
       "item_id": "DERIVED_METHODOLOGY_METHODOLOGY_WARNINGS",
       "message": "warnings (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16838,7 +16512,7 @@
       "item_id": "DERIVED_PROFILE_AGE_INPUT",
       "message": "health_factors.age (defaulted).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16851,7 +16525,7 @@
       "item_id": "DERIVED_PROFILE_CONTROL_BASIS",
       "message": "fitness_markers.control_basis (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16864,7 +16538,7 @@
       "item_id": "DERIVED_PROFILE_CONTROL_METRIC",
       "message": "fitness_markers.control_metric (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16877,7 +16551,7 @@
       "item_id": "DERIVED_PROFILE_DISCIPLINE",
       "message": "discipline (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16890,7 +16564,7 @@
       "item_id": "DERIVED_PROFILE_FTP_MEASURED",
       "message": "fitness_markers.ftp_watts (measured).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16903,7 +16577,7 @@
       "item_id": "DERIVED_PROFILE_POWER_BASIS",
       "message": "fitness_markers.power_basis (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16916,7 +16590,7 @@
       "item_id": "DERIVED_PROFILE_POWER_TO_WEIGHT",
       "message": "fitness_markers.w_kg (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16929,7 +16603,7 @@
       "item_id": "DERIVED_PROFILE_SEX_INPUT",
       "message": "fitness_markers.sex (athlete_reported).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16942,7 +16616,7 @@
       "item_id": "DERIVED_PROFILE_WEIGHT_KG",
       "message": "fitness_markers.weight_kg (defaulted).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -16955,7 +16629,7 @@
       "item_id": "DERIVED_SCHEDULE_SCHEDULE_DAYS",
       "message": "days (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17018,7 +16692,7 @@
       "item_id": "DERIVED_SCHEDULE_SCHEDULE_DESCRIPTION",
       "message": "description (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17031,7 +16705,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_ABILITY",
       "message": "plan.ability_level (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17044,7 +16718,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_CONTROL_BASIS",
       "message": "control.basis (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17057,7 +16731,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_CONTROL_METRIC",
       "message": "control.metric (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17070,7 +16744,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_DURATION",
       "message": "fueling.estimated_duration_hours (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17083,7 +16757,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_FIELD_TEST",
       "message": "control.week_1_field_test (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17096,11 +16770,11 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_GENERATED_DATE",
       "message": "generated_date (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
-      "value": "2026-09-17T12:33:18.385901",
+      "value": "2026-09-17T12:50:24.186550",
       "value_type": "string"
     },
     {
@@ -17109,7 +16783,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_HOURLY_CARBS",
       "message": "fueling.hourly_carb_target (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17122,7 +16796,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_METHODOLOGY",
       "message": "plan.methodology (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17135,7 +16809,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_METHODOLOGY_SCORE",
       "message": "plan.methodology_score (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17148,7 +16822,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_PLAN_END",
       "message": "plan.end_date (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17161,7 +16835,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_PLAN_START",
       "message": "plan.start_date (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17174,7 +16848,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_PLAN_WEEKS",
       "message": "plan.weeks (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17187,7 +16861,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_RACE_DATE",
       "message": "race.date (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17200,7 +16874,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_RACE_DISTANCE",
       "message": "race.distance_miles (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17213,7 +16887,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_REANCHOR",
       "message": "control.reanchor (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17231,7 +16905,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_TIER",
       "message": "plan.tier (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17244,7 +16918,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_TOTAL_CARBS",
       "message": "fueling.total_carbs (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "sensitive",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17257,7 +16931,7 @@
       "item_id": "DERIVED_SUMMARY_SUMMARY_WORKOUT_COUNT",
       "message": "files.workout_count (inferred).",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "internal",
       "source": "derived_registry",
       "type": "verified_fact",
@@ -17270,14 +16944,14 @@
       "item_id": "FACT_ORDER_CONTEXT",
       "message": "Order, athlete, platform, and revision identity.",
       "resolution_choices": [],
-      "revision": 13,
+      "revision": 15,
       "sensitivity": "personal",
       "source": "fulfillment_state",
       "type": "verified_fact",
       "value": {
         "athlete_id": "ari-shapiro",
         "delivery_platform": "trainingpeaks",
-        "generation_revision": 13,
+        "generation_revision": 15,
         "order_id": "coach-review-ari-shapiro-2026-late-summer"
       },
       "value_type": "object"
@@ -17288,6 +16962,6 @@
   "soft_confirmations": [],
   "status": "GENERATED",
   "superseded_approvals": [],
-  "updated_at": "2026-09-17T18:33:18.576151Z",
+  "updated_at": "2026-09-17T18:50:24.378473Z",
   "waiver": null
 }

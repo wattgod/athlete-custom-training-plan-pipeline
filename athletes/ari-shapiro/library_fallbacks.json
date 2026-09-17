@@ -68,11 +68,11 @@
     "lint_rpe_conflict": null,
     "lint_bookend_intensity": null,
     "reason": "lint_excluded",
-    "canonical_name": "Endurance",
-    "plan_week": 4,
+    "canonical_name": "Taper Burst Endurance",
+    "plan_week": 6,
     "day": "Sat",
     "role": "long_ride",
-    "phase": "build"
+    "phase": "taper"
   },
   {
     "item_id": 14356254,

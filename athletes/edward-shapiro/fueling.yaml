@@ -236,7 +236,7 @@ recommendations:
     timing: Within 30-60 minutes
     composition: 1.2g/kg carbs + 0.3g/kg protein
     example: Chocolate milk, recovery shake, or real food meal
-generated_date: '2026-09-17 12:33:15'
+generated_date: '2026-09-17 12:50:21'
 _derived:
 - id: FUELING_BASIS
   field: fueling_basis

@@ -6,7 +6,7 @@
 Normal meal ~2h before. One bottle, 40-50g carbs. Done.
 
 WARM-UP:
--10min building from Z1 to Z2
+-18min building from Z1 to Z2
 
 MAIN SET:
 - 7min @ 65% FTP (Z2, RPE 3)
@@ -16,17 +16,17 @@ MAIN SET:
 -Cadence: 100-120rpm on the short stabs; 90-100rpm while riding easy
 
 COOL-DOWN:
--10min easy spin Z1-Z2
+-15min easy spin Z1-Z2
 
 EXECUTION:
 -The 2-minute effort is controlled, not a test. Finish feeling more ready than tired.</description>
   <sportType>bike</sportType>
   <workout>
-    <Warmup Duration="600" PowerLow="0.50" PowerHigh="0.70" CadenceLow="90" CadenceHigh="100" />
+    <Warmup Duration="1080" PowerLow="0.50" PowerHigh="0.70" CadenceLow="90" CadenceHigh="100" />
     <SteadyState Duration="420" Power="0.65" CadenceLow="90" CadenceHigh="100" />
     <SteadyState Duration="120" Power="1.20" CadenceLow="100" CadenceHigh="120" />
     <SteadyState Duration="180" Power="0.55" CadenceLow="90" CadenceHigh="100" />
     <IntervalsT Repeat="3" OnDuration="30" OnPower="1.25" CadenceLow="100" CadenceHigh="120" OffDuration="120" OffPower="0.55" />
-    <Cooldown Duration="600" PowerLow="0.65" PowerHigh="0.45" CadenceLow="90" CadenceHigh="100" />
+    <Cooldown Duration="900" PowerLow="0.65" PowerHigh="0.45" CadenceLow="90" CadenceHigh="100" />
   </workout>
 </workout_file>

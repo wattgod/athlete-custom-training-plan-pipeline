@@ -1,6 +1,6 @@
 athlete_id: edward-shapiro
 athlete_name: Edward Shapiro
-generated_date: '2026-09-17T12:33:16.158151'
+generated_date: '2026-09-17T12:50:22.079467'
 race:
   name: Shawangunk Grit
   date: '2026-11-07'
@@ -29,7 +29,7 @@ control:
 files:
   guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/.worktrees/tp-cadence-emission/athletes/edward-shapiro/training_guide.html
   workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/.worktrees/tp-cadence-emission/athletes/edward-shapiro/workouts
-  workout_count: 40
+  workout_count: 41
 _derived:
 - id: SUMMARY_ABILITY
   field: plan.ability_level
