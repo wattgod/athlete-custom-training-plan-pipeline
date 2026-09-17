@@ -327,6 +327,8 @@ def build_plan_from_calendar(
     training_age: Optional[str] = None,
     athlete_age: Optional[int] = None,
     stress_level: Optional[str] = None,
+    session_floor_min: int = 60,
+    grow_to_weekday_target: bool = True,
 ) -> Dict[str, Any]:
     """Build a full plan from calendar week descriptors (plan_dates truth).
 
@@ -457,6 +459,8 @@ def build_plan_from_calendar(
             race_day=desc.get('race_day'),
             athlete_age=athlete_age,
             stress_level=stress_level,
+            session_floor_min=session_floor_min,
+            grow_to_weekday_target=grow_to_weekday_target,
         )
         week['plan_week'] = plan_week
         week['block_number'] = block_number
@@ -471,8 +475,19 @@ def build_plan_from_calendar(
             if level != day.get('level', 1):
                 from workout_selector import get_workout_duration, get_workout_tss
                 day['level'] = level
-                day['duration'] = get_workout_duration('Cadence Work', level)
-                day['tss'] = get_workout_tss('Cadence Work', level)
+                _lib_dur = get_workout_duration('Cadence Work', level)
+                _lib_tss = get_workout_tss('Cadence Work', level)
+                # AE-2.7: a skill-level reset never drops a day under the
+                # session floor the builder already applied.
+                _floor = int(day.get('session_floor_min') or 0)
+                if _lib_dur < _floor:
+                    _lib_tss = round(_lib_tss + (_floor - _lib_dur) * 0.70)
+                    day['floor_extended_min'] = _floor - _lib_dur
+                    _lib_dur = _floor
+                else:
+                    day.pop('floor_extended_min', None)
+                day['duration'] = _lib_dur
+                day['tss'] = _lib_tss
             cadence_skill_level = max(cadence_skill_level, day['level'])
 
         if week_type == 'recovery':
@@ -496,6 +511,9 @@ def build_plan_from_calendar(
         }.get(week_type)
         if weekly_multiplier is not None:
             budget = int(hours_per_week * 60 * weekly_multiplier)
+            # AE-2.7 (amended 2026-09-17): minutes the session floor added are
+            # never "overflow" -- volume is not a reason to ship a stub.
+            budget += sum(int(d.get('floor_extended_min') or 0) for d in week.get('days', []))
             overflow = sum(d.get('duration', 0) for d in week.get('days', [])) - budget
             if overflow > 0:
                 candidates = [d for d in week.get('days', [])

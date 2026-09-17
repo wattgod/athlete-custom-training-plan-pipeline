@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<workout_file>
+  <author>Gravel God Training</author>
+  <name>Sprints 10s and 20s (Trainer)</name>
+  <description>FUEL:
+Normal meal ~2h before. One bottle, 40-50g carbs. Done.
+
+WARM-UP:
+• Easy, then 2x5min progressions building to threshold
+
+MAIN SET:
+• 5min of 10sec hard (Z6-Z7) / 20sec easy
+• 5min of 20sec hard (Z6-Z7) / 10sec easy
+• 5min of 10sec hard (Z6-Z7) / 20sec easy
+
+EXECUTION:
+• Trainer session — full recovery between each 5min block. The middle block flips the work:rest ratio, that's the harder one.
+
+RPE guide: 135% FTP -> RPE 8-9; 66% FTP -> RPE 3; 28% FTP -> RPE 3</description>
+  <sportType>bike</sportType>
+  <workout>
+    <Warmup Duration="900" PowerLow="0.00" PowerHigh="0.75"/>
+    <Warmup Duration="300" PowerLow="0.56" PowerHigh="1.05"/>
+    <Warmup Duration="300" PowerLow="0.56" PowerHigh="1.05"/>
+    <IntervalsT Repeat="10" OnDuration="10" OnPower="1.35" OffDuration="20" OffPower="0.28"/>
+    <SteadyState Duration="300" Power="0.28"/>
+    <IntervalsT Repeat="10" OnDuration="20" OnPower="1.35" OffDuration="10" OffPower="0.28"/>
+    <SteadyState Duration="300" Power="0.28"/>
+    <IntervalsT Repeat="10" OnDuration="10" OnPower="1.35" OffDuration="20" OffPower="0.28"/>
+    <SteadyState Duration="600" Power="0.66"/>
+  </workout>
+</workout_file>

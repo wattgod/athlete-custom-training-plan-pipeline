@@ -7,7 +7,7 @@ Date: 2026-11-07
 
 FUELING PLAN:
 - Carbs/hour: 67g (range: [60, 74])
-- Total carbs: 225g over race
+- Total carbs: 239g over race
 - Start fueling at 20 min, every 20-30 min thereafter
 - Pre-race: 100-150g carbs 3-4 hours before start
 
@@ -17,10 +17,11 @@ PACING STRATEGY:
 - Final third: this is where you pass people. Increase effort as others fade.
 - Technical sections: Smooth > Fast. Avoid mechanicals.
 
-HYDRATION:
-- Drink to thirst — 500-750 ml/hr is a starting estimate to adjust for heat and sweat rate, not a quota. 500-1000 mg sodium per hour. Do not force fluid beyond thirst; you should finish a shade lighter than you started, never heavier.</description>
+COURSE INTEL:
+- Surface: About 98-99% gravel once you enter Mohonk Preserve at mile two: historic carriage roads, rough and steep in spots, loose rock especially on the descents. Two miles of public road behind a pace car at the start.
+- Features: Lenape Climb (Strava-timed segment: 1.47 mi, 433 ft, 5.</description>
   <sportType>bike</sportType>
   <workout>
-    <FreeRide Duration="12000"/>
+    <FreeRide Duration="12600"/>
   </workout>
 </workout_file>

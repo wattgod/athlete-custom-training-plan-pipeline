@@ -6,7 +6,7 @@
 Normal meal ~2h before. One bottle, 40-50g carbs. Done.
 
 MAIN SET:
-- 24min @ 65% FTP (Z2, RPE 3)
+- 62min @ 65% FTP (Z2, RPE 3)
 - 2 x (0:18 @ 140% FTP (Z5+, RPE 8-9) + 2:30 @ 55% FTP (Z2, RPE 3))
 - 0:18 @ 140% FTP (Z5+, RPE 8-9)
 - 5min @ 50% FTP (Z1, RPE 3)
@@ -21,7 +21,7 @@ EXECUTION:
 -Short sharp efforts to keep the legs remembering speed. Don't dig deep - this should feel like play, not training.</description>
   <sportType>bike</sportType>
   <workout>
-    <SteadyState Duration="1440" Power="0.65" CadenceLow="95" CadenceHigh="105">
+    <SteadyState Duration="3720" Power="0.65" CadenceLow="95" CadenceHigh="105">
       <textevent timeoffset="0" message="Easy warmup for openers" />
     </SteadyState>
     <SteadyState Duration="18" Power="1.40" CadenceLow="95" CadenceHigh="105">

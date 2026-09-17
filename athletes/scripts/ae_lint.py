@@ -33,7 +33,7 @@ from typing import Any, Iterator, Mapping
 # restate a number without one.
 ENDURANCE_IF_LO, ENDURANCE_IF_HI = 0.60, 0.70          # ratified band (AE-2.8 pair)
 ENDURANCE_TSS_PER_HR = 50.0                            # AE-2.8
-SESSION_FLOOR_SECONDS = 45 * 60                        # AE-2.7
+SESSION_FLOOR_SECONDS = 60 * 60                        # AE-2.7 (60 min since 2026-09-17; 45 only by explicit athlete request)
 TAPER_MAX_HARD_REP_SECONDS = 120                       # AE-1.12
 TAPER_HARD_WORK_SECONDS = 900                          # AE-1.12
 TAPER_WINDOW_DAYS = 10                                 # AE-1.12: hard caps bind once rest
@@ -256,7 +256,7 @@ def lint_workout(w: Mapping[str, Any], race: date | None) -> list[dict]:
     # open AE-8.4 ruling; non-bike types are out of this floor's scope.
     if (hours and hours * 3600 < SESSION_FLOOR_SECONDS and not floor_exempt
             and type_id in BIKE_TYPE_IDS):
-        add("WARN", "AE-2.7", f"{hours * 60:.0f} min session under the 45-min floor (no exemption matched)")
+        add("WARN", "AE-2.7", f"{hours * 60:.0f} min session under the 60-min floor (no exemption matched)")
 
     # T1 — taper/race-week hard caps (AE-1.12), needs --race-date
     if race and day:

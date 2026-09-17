@@ -271,25 +271,51 @@ def _rotate_index(pool_len: int, *seed_parts: Any) -> int:
 # ---------------------------------------------------------------------------
 
 def _duration_bounds(budget_min: float, day_cap_min: Optional[float],
-                     canonical_name: Optional[str] = None) -> tuple[float, float]:
-    lo = 0.85 * budget_min
-    hi = 1.15 * budget_min
+                     canonical_name: Optional[str] = None,
+                     session_floor_min: float = 0,
+                     floor_extended_min: float = 0,
+                     role: Optional[str] = None) -> tuple[float, float]:
+    # ``budget_min`` may already include the block-builder's AE-2.7 growth
+    # (``floor_extended_min``). The LOWER bound is computed from the
+    # un-extended duration so a curated item that clears the floor still
+    # qualifies (a 62-min rung-2 item against a 35-min slot grown to 105);
+    # the UPPER bound keeps the grown budget so ranking, which prefers the
+    # longest qualified item, can reach the weekday target.
+    base_budget = max(budget_min - (floor_extended_min or 0), 0)
+    lo = 0.85 * base_budget
+    # An INTENSITY slot keeps its dose: the extension is Z2 padding, never
+    # licence to pick a longer, harder curated set (that is how a 19-21 min
+    # T@VO2 item gets ranked ahead of the 12-min one -- AE-3.1). Endurance,
+    # filler and cadence slots may reach up to the grown budget.
+    hi = 1.15 * (base_budget if role == 'intensity' else budget_min)
     # Cadence/skills slots get a wider window: the curated torque pool
     # skews longer than the ~50min weekday cadence budget, and the tight
     # window exhausted the pool into three identical synthetic fallbacks.
     # Drill sessions tolerate duration flex better than interval doses.
     if canonical_name and 'cadence' in canonical_name.lower():
-        lo = 0.70 * budget_min
-        hi = 1.30 * budget_min
+        lo = 0.70 * base_budget
+        hi = 1.30 * (base_budget if role == 'intensity' else budget_min)
     if day_cap_min is not None:
         hi = min(hi, day_cap_min)
+    # AE-2.7 (amended 2026-09-17): a curated item under the session floor is
+    # never a fit, however close it sits to a small budget. The block-builder
+    # has already grown the budget to the floor; this keeps the 0.85 / 0.70
+    # windows from reaching back under it (60 -> 42..51-min items). Applied
+    # last so neither the cadence widening nor a day cap can undo it.
+    if session_floor_min:
+        lo = max(lo, float(session_floor_min))
+        hi = max(hi, lo)
     return lo, hi
+
+
+_TEST_ITEM_NAME_RE = re.compile(r"\b(test|assessment)\b", re.I)
 
 
 def _qualifying_pool(
     items: Sequence[Mapping[str, Any]], library_keys: Sequence[str], budget_min: float, day_cap_min: Optional[float],
     *, slot: Optional[Mapping[str, Any]] = None,
     excluded_ids: frozenset = frozenset(), lint_exclusions: Optional[dict[Any, dict[str, Any]]] = None,
+    extra_excluded_ids: frozenset = frozenset(),
 ) -> list[Mapping[str, Any]]:
     """``slot`` is optional and keyword-only so existing positional callers
     (including the realism sweep and unit tests) are unaffected; passing it
@@ -298,11 +324,19 @@ def _qualifying_pool(
 
     ``excluded_ids``/``lint_exclusions`` (T27) drop items carrying a
     curation-consistency lint flag and, when a collector is passed, record a
-    loud per-item exclusion reason."""
+    loud per-item exclusion reason.
+
+    ``extra_excluded_ids`` (knee-safety fix 2026-09-17) drops additional
+    items a caller excludes for a reason other than curation lint --
+    currently ``seated_only_excluded_ids`` -- and records those under
+    ``reason: "seated_only"`` in the same collector."""
     if not library_keys:
         return []
     lo, hi = _duration_bounds(budget_min, day_cap_min,
-                              (slot or {}).get('canonical_name'))
+                              (slot or {}).get('canonical_name'),
+                              float((slot or {}).get('session_floor_min') or 0),
+                              float((slot or {}).get('floor_extended_min') or 0),
+                              (slot or {}).get('role'))
     key_set = set(library_keys)
     pool = [
         item
@@ -312,8 +346,16 @@ def _qualifying_pool(
         and lo <= item["duration_min"] <= hi
     ]
     pool = _record_lint_exclusions(pool, excluded_ids, lint_exclusions, slot)
+    pool = _record_lint_exclusions(pool, extra_excluded_ids, lint_exclusions, slot, reason="seated_only")
     if slot is not None:
         _allow_heat = bool(slot.get("allow_heat"))
+        # A test / assessment item is never a training session: it only
+        # resolves for the pinned test canonicals (2026-09-17: a 3-min
+        # Power Test landed on a Friday endurance filler the day before a
+        # dress rehearsal).
+        if slot.get("canonical_name") not in PINNED_TEST_ITEM_IDS:
+            pool = [item for item in pool if not _TEST_ITEM_NAME_RE.search(
+                str(item.get("name_base") or item.get("name") or ""))]
         pool = [item for item in pool
                 if not _is_internal_only(item, allow_opt_in=_allow_heat)
                 and _passes_role_ceiling(item, slot)]
@@ -621,6 +663,9 @@ _TAPER_GATED_WEEK_TYPES = ("taper", "race")
 # clamps synthetic Road v1 VO2 levels, but a curated TP item can replace that
 # synthetic structure downstream.  Gate the actual curated road structure
 # here; legacy gravel remains unchanged pending its own inventory/migration.
+# Same pattern ae_lint.VO2_NAME_RE uses to decide which sessions AE-3.1 binds
+# (copied, not imported: ae_lint imports nothing from here and must stay a leaf).
+_LINT_VO2_NAME_RE = re.compile(r"vo2|30/30|30-30|40/20|ronnestad|billat|hard\s*start", re.I)
 _VO2_WORK_PCT_FLOOR = 106.0
 _VO2_WORK_SECONDS_MIN = 5 * 60
 _VO2_WORK_SECONDS_MAX = 18 * 60
@@ -826,14 +871,26 @@ def _has_ae_3_14_violation(structure: Any) -> bool:
 
 
 def _passes_role_ceiling(item: Mapping[str, Any], slot: Mapping[str, Any]) -> bool:
-    # Road v1 is the first profile whose public contract promises that the
-    # protected VO2 anchor itself is AE-3.1-bounded. Keep this migration
-    # scoped to road until the legacy gravel catalog has its own inventory
-    # and coach-approved replacement wave.
-    if (str(slot.get("discipline") or "").lower() == "road"
-            and slot.get("canonical_name") in _VO2_CANONICAL_TYPES):
-        vo2_seconds = _vo2_work_seconds(item.get("structure"))
-        if not (_VO2_WORK_SECONDS_MIN <= vo2_seconds <= _VO2_WORK_SECONDS_MAX):
+    # AE-3.1 at selection time, every discipline (2026-09-17). This was
+    # road-only "until the legacy gravel catalog has its own inventory";
+    # the AE-2.7 60-min floor made the gap visible on gravel: the curated
+    # VO2 items that clear an hour are mostly the 20-24-min doses, so an
+    # ungated gravel VO2 slot now picked an AE-3.1 FAIL every time. A VO2
+    # slot must carry a 5-18 min T@VO2 dose; no slot may carry more than the
+    # 18-min ceiling. A gravel slot with no compliant curated item falls
+    # back to the synthetic renderer (D9), which is bounded.
+    _structure = item.get("structure")
+    if isinstance(_structure, Mapping) and _structure.get("structure"):
+        vo2_seconds = _vo2_work_seconds(_structure)
+        _item_name = str(item.get("name_base") or item.get("name") or "")
+        # Mirror ae_lint exactly: the AE-3.1 window binds a VO2 slot AND any
+        # item whose NAME reads as a VO2 session (ae_lint.VO2_NAME_RE); an
+        # item named for VO2 with a 2.5-min dose is a lint FAIL wherever it
+        # lands. Everything else only has the 18-min ceiling.
+        if slot.get("canonical_name") in _VO2_CANONICAL_TYPES or _LINT_VO2_NAME_RE.search(_item_name):
+            if not (_VO2_WORK_SECONDS_MIN <= vo2_seconds <= _VO2_WORK_SECONDS_MAX):
+                return False
+        elif vo2_seconds > _VO2_WORK_SECONDS_MAX:
             return False
     if (str(slot.get("phase") or "").lower() == "base"
             and _is_long_ride_role(slot.get("role"))):
@@ -1179,6 +1236,14 @@ def select(
     # taper already cuts session duration and AE-1.12 caps every candidate,
     # while a low-IF percentile band can contain only the under-dosed items.
     candidate_pool = _road_taper_intensity_subset(candidate_pool, slot)
+    # AE-2.7 (amended 2026-09-17): never START a family series on a rung
+    # whose next rung is under the session floor -- the continuation would
+    # fail closed against a day cap and leave a "(1 of 2)" orphan.
+    if series_key and slot.get("session_floor_min"):
+        floor_ok = [item for item in candidate_pool
+                    if _family_can_continue_above_floor(item, index, float(slot["session_floor_min"]))]
+        if floor_ok:
+            candidate_pool = floor_ok
     level = int(slot.get("level") or 1)
     leveled_pool = _apply_level(candidate_pool, level)
     if used_items is not None:
@@ -1236,7 +1301,18 @@ def _select_series_continuation(
         # small duration drift. A real athlete cap is hard, however: never
         # advance to an out-of-pool rung just to preserve the series.
         in_pool = [entry for entry in candidates if entry["item_id"] in qualifying_ids]
-        next_entry = (in_pool or candidates) if slot.get("day_cap_min") is None else in_pool
+        if slot.get("day_cap_min") is None:
+            next_entry = in_pool or candidates
+        else:
+            # AE-2.7 (amended 2026-09-17): under a day cap the hard bounds are
+            # the cap and the session floor, not the budget window.
+            _cap = float(slot["day_cap_min"]); _floor = float(slot.get("session_floor_min") or 0)
+            def _fits(entry):
+                it = _find_item(index, entry["item_id"])
+                d = (it or {}).get("duration_min") or 0
+                return (it is not None and d <= _cap and d >= _floor
+                        and _passes_role_ceiling(it, slot))
+            next_entry = in_pool or ([e for e in candidates if _fits(e)] if _floor else [])
         if next_entry:
             chosen_id = next_entry[0]["item_id"]
             chosen_item = _find_item(index, chosen_id)
@@ -1275,13 +1351,21 @@ def _select_singleton_continuation(
         # R2: still honors the role/week-type ceiling -- duration drift is
         # an acceptable coherence trade, a recovery-week sprint item is not.
         # T27: never continue onto a lint-excluded item either.
-        if slot.get("day_cap_min") is not None:
-            return None
+        # AE-2.7 (amended 2026-09-17): with a day cap, the hard constraints
+        # are the cap itself and the session floor -- not the +-15% window
+        # around a budget the floor may just have moved. Continue within
+        # [floor, cap]; fail closed only when nothing in the library fits.
+        cap = slot.get("day_cap_min")
+        floor = float(slot.get("session_floor_min") or 0)
         all_in_library = [
             item for item in index["items"]
             if item["library_key"] == library_key and item["item_id"] not in excluded_ids
             and _passes_role_ceiling(item, slot)
+            and (cap is None or (item.get("duration_min") or 0) <= cap)
+            and (item.get("duration_min") or 0) >= floor
         ]
+        if cap is not None and not floor:
+            return None
         if last_if is not None:
             higher = [
                 item for item in all_in_library if item.get("if_planned") is not None and item["if_planned"] > last_if
@@ -1296,6 +1380,52 @@ def _select_singleton_continuation(
     chosen_item = higher[0]
     _record_series_state(series_state, slot["series_key"], chosen_item, index)
     return _to_resolution(chosen_item)
+
+
+def structureless_item_ids(index: Mapping[str, Any]) -> frozenset:
+    """Curated items with no executable structure. They ship as a blank
+    graph on the athlete's calendar (sol review 2026-09-17: "Muscle
+    Recruitment Progressions - Trainer" twice per athlete), so a real plan
+    build excludes them the same way the knee-safety set is excluded
+    (``extra_excluded_ids``). Pinned tests are exempt (assessments are
+    legitimately RPE/free)."""
+    pinned = set(PINNED_TEST_ITEM_IDS.values())
+    # A missing / null / empty-object structure counts. (Unit fixtures use
+    # ``{"structure": []}`` -- a Mapping with the key present -- and stay
+    # eligible; the live blank-graph items carry no ``structure`` key at all.)
+    def _blank(st):
+        if not isinstance(st, Mapping):
+            return True
+        # a real TP object (has a polyline) with no steps is a blank graph;
+        # a bare fixture {"structure": []} has no polyline and is left alone
+        return not st.get("structure") and "polyline" in st
+    return frozenset(
+        item["item_id"] for item in index["items"]
+        if item["item_id"] not in pinned and _blank(item.get("structure")))
+
+
+def _family_can_continue_above_floor(item: Mapping[str, Any], index: Mapping[str, Any],
+                                     floor_min: float) -> bool:
+    """True when ``item`` belongs to a multi-rung family whose ladder has a
+    higher rung clearing ``floor_min``. A singleton is NOT series-safe: its
+    continuation is a nearest-higher-IF jump to a differently named item,
+    which the floor makes likely once the short rungs are gone (the
+    "(1 of 2)" orphan). Callers fall back to the full pool when no family
+    qualifies, so singleton-only libraries still resolve."""
+    family = index["families"].get(_family_key(item))
+    if not family or len(family["members"]) == 1:
+        return False
+    ladder = sorted(family["ladder"], key=lambda entry: entry["rung"])
+    current = next((entry["rung"] for entry in ladder if entry["item_id"] == item["item_id"]), None)
+    if current is None:
+        return True
+    for entry in ladder:
+        if entry["rung"] <= current:
+            continue
+        nxt = _find_item(index, entry["item_id"])
+        if nxt is not None and (nxt.get("duration_min") or 0) >= floor_min:
+            return True
+    return False
 
 
 def _record_series_state(

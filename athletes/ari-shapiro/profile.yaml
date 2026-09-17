@@ -24,11 +24,11 @@ target_race:
   priority: A
   discipline: gravel
   distance_miles: 50.4
-  elevation_ft: 4030
-  elevation_gain_ft: 4030
+  elevation_ft: 4711
+  elevation_gain_ft: 4711
   location: New Paltz, NY (Mohonk Preserve)
   status: confirmed
-  generic_profile: true
+  generic_profile: false
   generic_discipline: gravel
   coach_verified: true
   source: 'TP athlete event on Ari (id 40405116, "Shwangunk Grit", 2026-11-07); mohonkpreserve.org/grit: Sat Nov
@@ -45,6 +45,11 @@ target_race:
   goal_type: podium
   goal: podium
   goal_description: Junior podium at Shawangunk Grit; season goal is the junior gravel series podium.
+  race_id: shawangunk_grit
+  race_match:
+    method: known_races
+    score: 1.0
+    matched_slug: shawangunk_grit
 brand: gravelgod
 road_category: null
 discipline_default: gravel
@@ -54,6 +59,7 @@ a_events:
   distance_miles: 50.4
   priority: A
   goal: podium
+  elevation_ft: 4711
 b_events: []
 c_events: []
 secondary_races: []
@@ -107,6 +113,9 @@ weekly_availability:
   strength_sessions_max: 0
   notes: Typical planned weeks 4-7.5 h (workbook). School weekdays; rides after 3:30pm.
   volume_warning: null
+  short_sessions_ok: false
+  short_sessions_note: No questionnaire or correspondence asks for sub-hour sessions; Motoren session floor 60 min
+    applies (Matti ruling 2026-09-17).
 preferred_days:
   monday:
     availability: unavailable

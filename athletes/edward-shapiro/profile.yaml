@@ -24,11 +24,11 @@ target_race:
   priority: A
   discipline: gravel
   distance_miles: 50.4
-  elevation_ft: 4030
-  elevation_gain_ft: 4030
+  elevation_ft: 4711
+  elevation_gain_ft: 4711
   location: New Paltz, NY (Mohonk Preserve)
   status: confirmed
-  generic_profile: true
+  generic_profile: false
   generic_discipline: gravel
   coach_verified: true
   source: 'TP athlete event on Ari (id 40405116, "Shwangunk Grit", 2026-11-07); mohonkpreserve.org/grit: Sat Nov
@@ -46,6 +46,11 @@ target_race:
   goal: age group
   goal_description: 'Age-group result at Shawangunk Grit; "keep getting better with age" (review sent 2026-08-21).
     2025 precedent: this was his season-closing A-race.'
+  race_id: shawangunk_grit
+  race_match:
+    method: known_races
+    score: 1.0
+    matched_slug: shawangunk_grit
 brand: gravelgod
 road_category: null
 discipline_default: gravel
@@ -55,6 +60,7 @@ a_events:
   distance_miles: 50.4
   priority: A
   goal: age group
+  elevation_ft: 4711
 b_events: []
 c_events: []
 secondary_races: []
@@ -111,6 +117,9 @@ weekly_availability:
     a home the day before Shawangunk; Monday stays the hard off day. Cycling target raised 8.5 -> 9.5 h after ae-lint
     showed W2 at 321 TSS (<80% of his ~450 demonstrated) and modeled CTL at race day down 11%.
   volume_warning: null
+  short_sessions_ok: false
+  short_sessions_note: No questionnaire or correspondence asks for sub-hour sessions; Motoren session floor 60 min
+    applies (Matti ruling 2026-09-17).
 preferred_days:
   monday:
     availability: unavailable

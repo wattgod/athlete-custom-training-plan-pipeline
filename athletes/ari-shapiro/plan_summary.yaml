@@ -1,6 +1,6 @@
 athlete_id: ari-shapiro
 athlete_name: Ari Shapiro
-generated_date: '2026-09-17T09:25:52.356801'
+generated_date: '2026-09-17T12:33:18.385901'
 race:
   name: Shawangunk Grit
   date: '2026-11-07'
@@ -15,8 +15,8 @@ plan:
   ability_level: Intermediate
 fueling:
   hourly_carb_target: 63
-  total_carbs: 212
-  estimated_duration_hours: 3.36
+  total_carbs: 225
+  estimated_duration_hours: 3.566738745822685
 control:
   metric: power
   basis: ftp
@@ -29,7 +29,7 @@ control:
 files:
   guide: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/.worktrees/tp-cadence-emission/athletes/ari-shapiro/training_guide.html
   workouts_dir: /Users/mattirowe/Documents/GravelGod/athlete-custom-training-plan-pipeline/.worktrees/tp-cadence-emission/athletes/ari-shapiro/workouts
-  workout_count: 34
+  workout_count: 32
 _derived:
 - id: SUMMARY_ABILITY
   field: plan.ability_level
@@ -171,11 +171,11 @@ _derived:
       priority: A
       discipline: gravel
       distance_miles: 50.4
-      elevation_ft: 4030
-      elevation_gain_ft: 4030
+      elevation_ft: 4711
+      elevation_gain_ft: 4711
       location: New Paltz, NY (Mohonk Preserve)
       status: confirmed
-      generic_profile: true
+      generic_profile: false
       generic_discipline: gravel
       coach_verified: true
       source: 'TP athlete event on Ari (id 40405116, "Shwangunk Grit", 2026-11-07);
@@ -193,6 +193,11 @@ _derived:
       goal: podium
       goal_description: Junior podium at Shawangunk Grit; season goal is the junior
         gravel series podium.
+      race_id: shawangunk_grit
+      race_match:
+        method: known_races
+        score: 1.0
+        matched_slug: shawangunk_grit
   sensitivity: personal
   at: '2026-08-23T02:15:00Z'
   revision: 1

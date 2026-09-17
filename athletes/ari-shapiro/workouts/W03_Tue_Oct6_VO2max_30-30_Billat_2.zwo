@@ -5,7 +5,7 @@
   <description>FUEL:
 Normal meal ~2h before. One bottle, 40-50g carbs. Done.
 
-VO2max 30/30 (Billat) — level 3
+VO2max 30/30 (Billat) — level 4
 
 WARM-UP:
 • 5min ramp 50%->70% FTP
@@ -15,7 +15,7 @@ WARM-UP:
 • 2min @45%-55% FTP
 
 MAIN SET:
-• 3 sets of 8x 30s @112%-118% FTP / 30s @45%-55%, 3min @45%-55% FTP recovery
+• 3 sets of 9x 30s @112%-118% FTP / 30s @45%-55%, 3min @45%-55% FTP recovery
 
 COOL-DOWN:
 -10min spin-down 70%->50% FTP (RPE 2-3)
@@ -24,7 +24,7 @@ EXECUTION:
 -Hit target from the start; easy, full recoveries. End the set if the power fades.
 
 NUTRITION:
--Hydrate well; light fuel.</description>
+-40-60g carbs/hr.</description>
   <sportType>bike</sportType>
   <workout>
     <Warmup Duration="300" PowerLow="0.50" PowerHigh="0.70" CadenceLow="90" CadenceHigh="95"/>
@@ -32,11 +32,11 @@ NUTRITION:
     <SteadyState Duration="180" Power="0.50" CadenceLow="95" CadenceHigh="100"/>
     <IntervalsT Repeat="3" OnDuration="20" OnPower="1.25" CadenceLow="105" CadenceHigh="105" OffDuration="40" OffPower="0.50"/>
     <SteadyState Duration="120" Power="0.50" CadenceLow="95" CadenceHigh="100"/>
-    <IntervalsT Repeat="8" OnDuration="30" OnPower="1.15" CadenceLow="100" CadenceHigh="100" OffDuration="30" OffPower="0.50"/>
+    <IntervalsT Repeat="9" OnDuration="30" OnPower="1.15" CadenceLow="100" CadenceHigh="100" OffDuration="30" OffPower="0.50"/>
     <SteadyState Duration="180" Power="0.50" CadenceLow="85" CadenceHigh="95"/>
-    <IntervalsT Repeat="8" OnDuration="30" OnPower="1.15" CadenceLow="100" CadenceHigh="100" OffDuration="30" OffPower="0.50"/>
+    <IntervalsT Repeat="9" OnDuration="30" OnPower="1.15" CadenceLow="100" CadenceHigh="100" OffDuration="30" OffPower="0.50"/>
     <SteadyState Duration="180" Power="0.50" CadenceLow="85" CadenceHigh="95"/>
-    <IntervalsT Repeat="8" OnDuration="30" OnPower="1.15" CadenceLow="100" CadenceHigh="100" OffDuration="30" OffPower="0.50"/>
+    <IntervalsT Repeat="9" OnDuration="30" OnPower="1.15" CadenceLow="100" CadenceHigh="100" OffDuration="30" OffPower="0.50"/>
     <Cooldown Duration="600" PowerLow="0.70" PowerHigh="0.50" CadenceLow="85" CadenceHigh="95"/>
   </workout>
 </workout_file>

@@ -371,6 +371,7 @@ month_abbreviations:
   10: Oct
   11: Nov
   12: Dec
+meso_pattern: '3:1'
 _derived:
 - id: CALENDAR_DAY_ABBREVIATIONS
   field: day_abbreviations
@@ -395,6 +396,24 @@ _derived:
     travel_date_count: 0
     post_event_recovery_weeks: 0
   sensitivity: internal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CALENDAR_MESO_PATTERN
+  field: meso_pattern
+  class: inferred
+  basis: AE-1.21 default recovery cycle (age < 40 or unknown)
+  inputs:
+    race_date: '2026-11-07'
+    requested_plan_weeks: 7
+    preferred_start: '2026-09-21'
+    heavy_training_end: null
+    meso_pattern: '3:1'
+    b_event_count: 0
+    travel_date_count: 0
+    post_event_recovery_weeks: 0
+    age: 15
+    is_ultra_event: false
+  sensitivity: personal
   at: '2026-08-23T02:15:00Z'
   revision: 1
 - id: CALENDAR_MONTH_ABBREVIATIONS

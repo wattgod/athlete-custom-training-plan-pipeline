@@ -5,12 +5,23 @@ strength_frequency: 0
 equipment_tier: minimal
 risk_factors: []
 exercise_exclusions: []
+bike_constraints: []
 key_day_candidates:
 - saturday
 - sunday
 strength_day_candidates: []
-derived_date: '2026-09-17 09:45:17'
+derived_date: '2026-09-17 12:33:14'
 _derived:
+- id: CLASSIFICATION_BIKE_CONSTRAINTS
+  field: bike_constraints
+  class: inferred
+  basis: current knee injury severity/affects_cycling and injury/movement-limitation
+    notes
+  inputs:
+    rule_set: derive_classifications/bike-constraints-v1
+  sensitivity: sensitive
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
 - id: CLASSIFICATION_EQUIPMENT_TIER
   field: equipment_tier
   class: inferred

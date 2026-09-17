@@ -293,7 +293,21 @@ intensive (threshold+) ≤10–15%. Both bands cannot sit at their maxima in
 the same week without violating AE-2.2, which governs. Sweet-spot ≤3
 days/week — fewer, fuller sessions. (R15, R18)
 
-**AE-2.7 — Session floors (ruling Q5).** [ratified] 45-min session floor;
+**AE-2.7 — Session floors (ruling Q5; amended 2026-09-17).** [ratified]
+**60-min session floor** for every riding session; 45 min only when the
+athlete's questionnaire or correspondence explicitly asks for short sessions
+(`weekly_availability.short_sessions_ok`), and a day whose stated cap is
+under the floor is itself that request. Race-week openers, recovery spins,
+and the AE-1.10 novice branch are exempt. A session under the floor is never
+shipped as a stub: the block-builder grows it to the athlete's weekday
+target (weekly hours minus the long ride, spread over the other riding days,
+clamped 60-120 min -- "~1.5 h on a weekday for a 9-5, ~10 h/wk rider"),
+extending the Z2 portions, and may overshoot the weekly budget to do so.
+Matti 2026-09-17: "there should be a gate for 35 minute, 40 minute workouts
+unless the athlete's questionnaire or some correspondence explicitly
+requests that"; "you're being too anal about prescribed duration ... which
+is causing you to make up or pick stupid workouts to fit the overall volume
+or schedule requests". Previous text: 45-min floor;
 recovery rides, openers, and the AE-1.10 novice branch are exempt. Sessions
 tagged aerobic-development carry a 90-min floor (adaptations switch on
 between 45 and 90 min — F7). Time-crunched sessions are complete on their

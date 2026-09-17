@@ -166,7 +166,7 @@ weeks:
     date_short: Oct11
     workout_prefix: W03_Sun_Oct11
     is_race_day: false
-  is_recovery_week: false
+  is_recovery_week: true
   _recovery_opener_added: false
 - week: 4
   monday: '2026-10-12'
@@ -211,7 +211,7 @@ weeks:
     date_short: Oct18
     workout_prefix: W04_Sun_Oct18
     is_race_day: false
-  is_recovery_week: true
+  is_recovery_week: false
   _recovery_opener_added: false
 - week: 5
   monday: '2026-10-19'
@@ -371,6 +371,7 @@ month_abbreviations:
   10: Oct
   11: Nov
   12: Dec
+meso_pattern: '2:1'
 _derived:
 - id: CALENDAR_DAY_ABBREVIATIONS
   field: day_abbreviations
@@ -390,11 +391,29 @@ _derived:
     requested_plan_weeks: 7
     preferred_start: '2026-09-21'
     heavy_training_end: null
-    meso_pattern: '3:1'
+    meso_pattern: '2:1'
     b_event_count: 0
     travel_date_count: 0
     post_event_recovery_weeks: 0
   sensitivity: internal
+  at: '2026-08-23T02:15:00Z'
+  revision: 1
+- id: CALENDAR_MESO_PATTERN
+  field: meso_pattern
+  class: inferred
+  basis: AE-1.21 age-based recovery cycle
+  inputs:
+    race_date: '2026-11-07'
+    requested_plan_weeks: 7
+    preferred_start: '2026-09-21'
+    heavy_training_end: null
+    meso_pattern: '2:1'
+    b_event_count: 0
+    travel_date_count: 0
+    post_event_recovery_weeks: 0
+    age: 59
+    is_ultra_event: false
+  sensitivity: personal
   at: '2026-08-23T02:15:00Z'
   revision: 1
 - id: CALENDAR_MONTH_ABBREVIATIONS
@@ -415,7 +434,7 @@ _derived:
     requested_plan_weeks: 7
     preferred_start: '2026-09-21'
     heavy_training_end: null
-    meso_pattern: '3:1'
+    meso_pattern: '2:1'
     b_event_count: 0
     travel_date_count: 0
     post_event_recovery_weeks: 0
@@ -431,7 +450,7 @@ _derived:
     requested_plan_weeks: 7
     preferred_start: '2026-09-21'
     heavy_training_end: null
-    meso_pattern: '3:1'
+    meso_pattern: '2:1'
     b_event_count: 0
     travel_date_count: 0
     post_event_recovery_weeks: 0
@@ -447,7 +466,7 @@ _derived:
     requested_plan_weeks: 7
     preferred_start: '2026-09-21'
     heavy_training_end: null
-    meso_pattern: '3:1'
+    meso_pattern: '2:1'
     b_event_count: 0
     travel_date_count: 0
     post_event_recovery_weeks: 0
@@ -463,7 +482,7 @@ _derived:
     requested_plan_weeks: 7
     preferred_start: '2026-09-21'
     heavy_training_end: null
-    meso_pattern: '3:1'
+    meso_pattern: '2:1'
     b_event_count: 0
     travel_date_count: 0
     post_event_recovery_weeks: 0
@@ -479,7 +498,7 @@ _derived:
     requested_plan_weeks: 7
     preferred_start: '2026-09-21'
     heavy_training_end: null
-    meso_pattern: '3:1'
+    meso_pattern: '2:1'
     b_event_count: 0
     travel_date_count: 0
     post_event_recovery_weeks: 0
@@ -495,7 +514,7 @@ _derived:
     requested_plan_weeks: 7
     preferred_start: '2026-09-21'
     heavy_training_end: null
-    meso_pattern: '3:1'
+    meso_pattern: '2:1'
     b_event_count: 0
     travel_date_count: 0
     post_event_recovery_weeks: 0
@@ -511,7 +530,7 @@ _derived:
     requested_plan_weeks: 7
     preferred_start: '2026-09-21'
     heavy_training_end: null
-    meso_pattern: '3:1'
+    meso_pattern: '2:1'
     b_event_count: 0
     travel_date_count: 0
     post_event_recovery_weeks: 0
@@ -527,7 +546,7 @@ _derived:
     requested_plan_weeks: 7
     preferred_start: '2026-09-21'
     heavy_training_end: null
-    meso_pattern: '3:1'
+    meso_pattern: '2:1'
     b_event_count: 0
     travel_date_count: 0
     post_event_recovery_weeks: 0
@@ -543,7 +562,7 @@ _derived:
     requested_plan_weeks: 7
     preferred_start: '2026-09-21'
     heavy_training_end: null
-    meso_pattern: '3:1'
+    meso_pattern: '2:1'
     b_event_count: 0
     travel_date_count: 0
     post_event_recovery_weeks: 0
@@ -559,7 +578,7 @@ _derived:
     requested_plan_weeks: 7
     preferred_start: '2026-09-21'
     heavy_training_end: null
-    meso_pattern: '3:1'
+    meso_pattern: '2:1'
     b_event_count: 0
     travel_date_count: 0
     post_event_recovery_weeks: 0

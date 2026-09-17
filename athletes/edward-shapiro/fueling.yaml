@@ -3,31 +3,31 @@ athlete:
   sex: male
 race:
   distance_miles: 50.4
-  elevation_feet: 4030
-  duration_hours: 3.36
+  elevation_feet: 4711
+  duration_hours: 3.566738745822685
   goal_type: podium
 calories:
-  total_calories: 3534
-  calories_per_hour: 1052
-  rate_kcal_kg_km: 0.552
-  duration_hours: 3.36
+  total_calories: 3617
+  calories_per_hour: 1014
+  rate_kcal_kg_km: 0.565
+  duration_hours: 3.566738745822685
   distance_km: 81.1
   weight_kg: 79.0
   breakdown:
     base_rate: 0.5
-    elevation_adjustment: 0.081
+    elevation_adjustment: 0.094
     duration_factor: 0.95
-    final_rate: 0.552
+    final_rate: 0.565
 carbohydrates:
   hourly_target: 67
   hourly_range: &id006
   - 60
   - 74
-  total_grams: 225
+  total_grams: 239
   total_range:
-  - 202
-  - 249
-  duration_hours: 3.36
+  - 214
+  - 264
+  duration_hours: 3.566738745822685
   goal_type: podium
 gut_training:
   phases:
@@ -147,21 +147,21 @@ fueling_timeline:
   cumulative_carbs: 0
   notes: Top off with 30-50g in final 30min before start
 - hour: 1
-  mile: 15
+  mile: 14
   action: FUEL
   carbs_target: 67
   cumulative_carbs: 67
   notes: 'Target: 67g carbs this hour | Early race: establish rhythm, don''t fall
     behind'
 - hour: 2
-  mile: 30
+  mile: 28
   action: FUEL
   carbs_target: 67
   cumulative_carbs: 134
   notes: 'Target: 67g carbs this hour | Early race: establish rhythm, don''t fall
     behind'
 - hour: 3
-  mile: 45
+  mile: 42
   action: FUEL
   carbs_target: 67
   cumulative_carbs: 201
@@ -170,7 +170,7 @@ fueling_timeline:
 prescription:
   race_target_g_per_hour: 67
   race_range_g_per_hour: *id006
-  total_g: 225
+  total_g: 239
   training_tiers:
     quality:
       target_g_per_hour: 57
@@ -194,7 +194,7 @@ prescription:
   - Current carbohydrate tolerance was not captured; conservative ceiling applied.
   inputs:
     basis: measured_power_duration_body_mass
-    duration_hours: 3.4
+    duration_hours: 3.6
     weight_kg: 79.0
     ftp_watts: 270
     intensity_factor: 0.8
@@ -210,10 +210,10 @@ fueling_basis:
   reanchor: null
 recommendations:
   hourly_target: 67g/hr
-  total_target: 225g total
+  total_target: 239g total
   example_products:
     gels_only:
-      quantity: 9
+      quantity: 10
       frequency: 1 gel every 24min
       notes: Simple but can cause palate fatigue
     mixed_approach:
@@ -236,7 +236,7 @@ recommendations:
     timing: Within 30-60 minutes
     composition: 1.2g/kg carbs + 0.3g/kg protein
     example: Chocolate milk, recovery shake, or real food meal
-generated_date: '2026-09-17 09:45:18'
+generated_date: '2026-09-17 12:33:15'
 _derived:
 - id: FUELING_BASIS
   field: fueling_basis
@@ -254,7 +254,7 @@ _derived:
   basis: canonical fueling-policy physiological range
   inputs:
     basis: measured_power_duration_body_mass
-    duration_hours: 3.4
+    duration_hours: 3.6
     weight_kg: 79.0
     ftp_watts: 270
     intensity_factor: 0.8
@@ -271,7 +271,7 @@ _derived:
   basis: measured_power_duration_body_mass
   inputs:
     basis: measured_power_duration_body_mass
-    duration_hours: 3.4
+    duration_hours: 3.6
     weight_kg: 79.0
     ftp_watts: 270
     intensity_factor: 0.8
@@ -288,7 +288,7 @@ _derived:
   basis: measured_power_duration_body_mass
   inputs:
     basis: measured_power_duration_body_mass
-    duration_hours: 3.4
+    duration_hours: 3.6
     weight_kg: 79.0
     ftp_watts: 270
     intensity_factor: 0.8
@@ -304,9 +304,9 @@ _derived:
   class: inferred
   basis: canonical prescription rendered as athlete-facing recommendations
   inputs:
-    duration_hours: 3.36
+    duration_hours: 3.566738745822685
     hourly_target: 67
-    total_carbs: 225
+    total_carbs: 239
   sensitivity: sensitive
   at: '2026-08-23T02:15:00Z'
   revision: 1
@@ -315,7 +315,7 @@ _derived:
   class: inferred
   basis: hourly target distributed across modeled event duration and distance
   inputs:
-    duration_hours: 3.36
+    duration_hours: 3.566738745822685
     hourly_target: 67
     distance_miles: 50.4
   sensitivity: sensitive
@@ -329,7 +329,7 @@ _derived:
     hourly_range:
     - 60
     - 74
-    duration_hours: 3.36
+    duration_hours: 3.566738745822685
   sensitivity: sensitive
   at: '2026-08-23T02:15:00Z'
   revision: 1
@@ -339,7 +339,7 @@ _derived:
   basis: hourly prescription multiplied by modeled event duration
   inputs:
     hourly_target: 67
-    duration_hours: 3.36
+    duration_hours: 3.566738745822685
   sensitivity: sensitive
   at: '2026-08-23T02:15:00Z'
   revision: 1
@@ -351,7 +351,7 @@ _derived:
     plan_weeks: 7
     prescription:
       basis: measured_power_duration_body_mass
-      duration_hours: 3.4
+      duration_hours: 3.6
       weight_kg: 79.0
       ftp_watts: 270
       intensity_factor: 0.8
@@ -370,7 +370,7 @@ _derived:
     plan_weeks: 7
     prescription:
       basis: measured_power_duration_body_mass
-      duration_hours: 3.4
+      duration_hours: 3.6
       weight_kg: 79.0
       ftp_watts: 270
       intensity_factor: 0.8
@@ -387,7 +387,7 @@ _derived:
   basis: canonical fueling-policy hydration prescription
   inputs:
     basis: measured_power_duration_body_mass
-    duration_hours: 3.4
+    duration_hours: 3.6
     weight_kg: 79.0
     ftp_watts: 270
     intensity_factor: 0.8
@@ -404,7 +404,7 @@ _derived:
   basis: body mass, modeled duration, course load, sex, and goal model
   inputs:
     distance_miles: 50.4
-    elevation_feet: 4030
+    elevation_feet: 4711
     discipline: gravel
     goal_type: podium
     weight_kg: 79.0
@@ -418,7 +418,7 @@ _derived:
   basis: race distance, elevation, discipline, and goal pace model
   inputs:
     distance_miles: 50.4
-    elevation_feet: 4030
+    elevation_feet: 4711
     discipline: gravel
     goal_type: podium
   sensitivity: personal

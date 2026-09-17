@@ -452,7 +452,7 @@ def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
         return _sync_description_durations("<?xml version='1.0' encoding='UTF-8'?>\n" + output)
 
     # Strategy depends on workout type
-    if workout_type in _INTERVAL_TYPES and interval_seconds > 0:
+    if interval_seconds > 0:  # any interval session grows via warm-up/cool-down Z2 (AE-2.7, 2026-09-17)
         # Interval workout: keep intervals fixed, scale warmup + cooldown
         non_interval_seconds = total_seconds - interval_seconds
         remaining = target_seconds - interval_seconds
@@ -482,6 +482,16 @@ def scale_zwo_to_target_duration(zwo_xml: str, target_duration_min: int,
             zwo_xml = (zwo_xml[:cooldown_match.start(2)]
                        + str(cooldown_target)
                        + zwo_xml[cooldown_match.end(2):])
+        if not warmup_match and not cooldown_match:
+            # No warm-up/cool-down to grow: append the Z2 remainder as a
+            # cool-down block so the session still reaches its duration.
+            extra = int(target_seconds - total_seconds)
+            if extra > 0:
+                if snap_to:
+                    extra = max(snap_to, _snap_seconds(extra, snap_to))
+                zwo_xml = zwo_xml.replace(
+                    '</workout>',
+                    f'        <Cooldown Duration="{extra}" PowerLow="0.65" PowerHigh="0.55"/>\n    </workout>', 1)
 
     else:
         # Endurance/easy workout: scale the main SteadyState block(s)

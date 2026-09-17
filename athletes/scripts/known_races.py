@@ -77,6 +77,17 @@ def _snapshot_races() -> Dict[str, Dict[str, Any]]:
 # Known races — full metadata
 # ---------------------------------------------------------------------------
 KNOWN_RACES: Dict[str, Dict[str, Any]] = {
+    'shawangunk_grit': {
+        # mohonkpreserve.org/grit (course-description + registration pages,
+        # read 2026-09-17): Sat 2026-11-07, 50.4 mi / 4,711 ft, Ulster County
+        # Fairgrounds, New Paltz NY. "Not a race" fundraiser ride on Mohonk
+        # Preserve carriage roads; Strava-timed Lenape Climb segment.
+        'date': '2026-11-07',
+        'name': 'Shawangunk Grit',
+        'distance_miles': 50.4,
+        'elevation_ft': 4711,
+        'aliases': ['Shwangunk Grit', 'Schwangunk Gravel', 'Shawangunk Gravel', 'Shawangunk Grit 50'],
+    },
     'unbound_gravel_200': {
         'date': '2026-05-30',
         'name': 'Unbound Gravel 200',

@@ -39,13 +39,13 @@
     "week_num": 0,
     "workout_type_value_id": 9
   },
-  "W01_Fri_Sep25_Cadence_HC": {
+  "W01_Fri_Sep25_Descending-Cadence_Ladder": {
     "archetype_id": "Cadence Work",
     "date": "2026-09-25",
-    "display_name": "Cadence HC",
-    "filename_stem": "W01_Fri_Sep25_Cadence_HC",
-    "library_item_id": 14357243,
-    "library_rpe_text": "5-6",
+    "display_name": "Descending-Cadence Ladder",
+    "filename_stem": "W01_Fri_Sep25_Descending-Cadence_Ladder",
+    "library_item_id": 14357402,
+    "library_rpe_text": "3-4",
     "order_on_day": 0,
     "phase": "base",
     "role": "filler",
@@ -91,13 +91,13 @@
     "week_num": 1,
     "workout_type_value_id": 2
   },
-  "W01_Wed_Sep23_Muscle_Recruitment_Progressions_-_Trainer": {
+  "W01_Wed_Sep23_Endurance": {
     "archetype_id": "Endurance",
     "date": "2026-09-23",
-    "display_name": "Muscle Recruitment Progressions - Trainer",
-    "filename_stem": "W01_Wed_Sep23_Muscle_Recruitment_Progressions_-_Trainer",
-    "library_item_id": 14356256,
-    "library_rpe_text": "5-6",
+    "display_name": "Endurance",
+    "filename_stem": "W01_Wed_Sep23_Endurance",
+    "library_item_id": 14356001,
+    "library_rpe_text": "2-3",
     "order_on_day": 0,
     "phase": "base",
     "role": "filler",
@@ -105,13 +105,13 @@
     "week_num": 1,
     "workout_type_value_id": 2
   },
-  "W02_Fri_Oct2_Cadence_HC": {
+  "W02_Fri_Oct2_Descending-Cadence_Ladder": {
     "archetype_id": "Cadence Work",
     "date": "2026-10-02",
-    "display_name": "Cadence HC",
-    "filename_stem": "W02_Fri_Oct2_Cadence_HC",
-    "library_item_id": 14357243,
-    "library_rpe_text": "5-6",
+    "display_name": "Descending-Cadence Ladder",
+    "filename_stem": "W02_Fri_Oct2_Descending-Cadence_Ladder",
+    "library_item_id": 14357402,
+    "library_rpe_text": "3-4",
     "order_on_day": 0,
     "phase": "base",
     "role": "filler",
@@ -133,13 +133,13 @@
     "week_num": 2,
     "workout_type_value_id": 2
   },
-  "W02_Thu_Oct1_Single_Sustained_Threshold_1": {
+  "W02_Thu_Oct1_Week_4_-_Threshold_Steady_215min_1": {
     "archetype_id": "Threshold Touch",
     "date": "2026-10-01",
-    "display_name": "Single Sustained Threshold (1 of 2)",
-    "filename_stem": "W02_Thu_Oct1_Single_Sustained_Threshold_1",
-    "library_item_id": 14357192,
-    "library_rpe_text": "6-7",
+    "display_name": "Week 4 - Threshold Steady (2\u00d715min) (1 of 2)",
+    "filename_stem": "W02_Thu_Oct1_Week_4_-_Threshold_Steady_215min_1",
+    "library_item_id": 14357164,
+    "library_rpe_text": "7-8",
     "order_on_day": 0,
     "phase": "base",
     "role": "intensity",
@@ -150,12 +150,12 @@
     "week_num": 2,
     "workout_type_value_id": 2
   },
-  "W02_Tue_Sep29_VO2max_30-30_Billat_1": {
+  "W02_Tue_Sep29_Follow_the_wheel_repeats_1": {
     "archetype_id": "VO2max 30/30",
     "date": "2026-09-29",
-    "display_name": "VO2max 30-30 (Billat) (1 of 2)",
-    "filename_stem": "W02_Tue_Sep29_VO2max_30-30_Billat_1",
-    "library_item_id": 14357669,
+    "display_name": "Follow the wheel repeats (1 of 2)",
+    "filename_stem": "W02_Tue_Sep29_Follow_the_wheel_repeats_1",
+    "library_item_id": 14357509,
     "library_rpe_text": "8-9",
     "order_on_day": 0,
     "phase": "base",
@@ -167,32 +167,18 @@
     "week_num": 2,
     "workout_type_value_id": 2
   },
-  "W02_Wed_Sep30_Muscle_Recruitment_Progressions_-_Trainer": {
+  "W02_Wed_Sep30_Endurance": {
     "archetype_id": "Endurance",
     "date": "2026-09-30",
-    "display_name": "Muscle Recruitment Progressions - Trainer",
-    "filename_stem": "W02_Wed_Sep30_Muscle_Recruitment_Progressions_-_Trainer",
-    "library_item_id": 14356256,
-    "library_rpe_text": "5-6",
-    "order_on_day": 0,
-    "phase": "base",
-    "role": "filler",
-    "tp_kind": "bike",
-    "week_num": 2,
-    "workout_type_value_id": 2
-  },
-  "W03_Fri_Oct9_Endurance": {
-    "archetype_id": "Endurance",
-    "date": "2026-10-09",
     "display_name": "Endurance",
-    "filename_stem": "W03_Fri_Oct9_Endurance",
+    "filename_stem": "W02_Wed_Sep30_Endurance",
     "library_item_id": 14356001,
     "library_rpe_text": "2-3",
     "order_on_day": 0,
     "phase": "base",
     "role": "filler",
     "tp_kind": "bike",
-    "week_num": 3,
+    "week_num": 2,
     "workout_type_value_id": 2
   },
   "W03_Sat_Oct10_Endurance": {
@@ -209,11 +195,13 @@
     "week_num": 3,
     "workout_type_value_id": 2
   },
-  "W03_Thu_Oct8_Criss-Cross_Intervals_2": {
+  "W03_Thu_Oct8_Kolie_Moore_TTE_2": {
     "archetype_id": "Threshold Touch",
     "date": "2026-10-08",
-    "display_name": "Criss-Cross Intervals (2 of 2)",
-    "filename_stem": "W03_Thu_Oct8_Criss-Cross_Intervals_2",
+    "display_name": "Kolie Moore TTE (2 of 2)",
+    "filename_stem": "W03_Thu_Oct8_Kolie_Moore_TTE_2",
+    "library_item_id": 14357179,
+    "library_rpe_text": "6-7",
     "order_on_day": 0,
     "phase": "base",
     "role": "intensity",
@@ -229,7 +217,7 @@
     "date": "2026-10-06",
     "display_name": "VO2max 30-30 (Billat) (2 of 2)",
     "filename_stem": "W03_Tue_Oct6_VO2max_30-30_Billat_2",
-    "library_item_id": 14357668,
+    "library_item_id": 14357667,
     "library_rpe_text": "8-9",
     "order_on_day": 0,
     "phase": "base",
@@ -269,13 +257,13 @@
     "week_num": 4,
     "workout_type_value_id": 2
   },
-  "W04_Thu_Oct15_Endurance": {
+  "W04_Thu_Oct15_Activations": {
     "archetype_id": "Endurance",
     "date": "2026-10-15",
-    "display_name": "Endurance",
-    "filename_stem": "W04_Thu_Oct15_Endurance",
-    "library_item_id": 14356001,
-    "library_rpe_text": "2-3",
+    "display_name": "Activations",
+    "filename_stem": "W04_Thu_Oct15_Activations",
+    "library_item_id": 14356243,
+    "library_rpe_text": "8-9",
     "order_on_day": 0,
     "phase": "build",
     "role": "filler",
@@ -295,20 +283,6 @@
     "week_num": 4,
     "workout_type_value_id": 2
   },
-  "W05_Fri_Oct23_Descending-Cadence_Ladder": {
-    "archetype_id": "Cadence Work",
-    "date": "2026-10-23",
-    "display_name": "Descending-Cadence Ladder",
-    "filename_stem": "W05_Fri_Oct23_Descending-Cadence_Ladder",
-    "library_item_id": 14357401,
-    "library_rpe_text": "5-6",
-    "order_on_day": 0,
-    "phase": "build",
-    "role": "filler",
-    "tp_kind": "bike",
-    "week_num": 5,
-    "workout_type_value_id": 2
-  },
   "W05_Sat_Oct24_Race_Simulation__Act_1_of_1__Dress_Rehearsal": {
     "archetype_id": "Act Race Simulation",
     "date": "2026-10-24",
@@ -321,11 +295,13 @@
     "week_num": 5,
     "workout_type_value_id": 2
   },
-  "W05_Thu_Oct22_Gravel_Race_Simulation_1": {
+  "W05_Thu_Oct22_Sprints_10s_and_20s_Trainer_1": {
     "archetype_id": "Microbursts",
     "date": "2026-10-22",
-    "display_name": "Gravel Race Simulation",
-    "filename_stem": "W05_Thu_Oct22_Gravel_Race_Simulation_1",
+    "display_name": "Sprints 10s and 20s (Trainer)",
+    "filename_stem": "W05_Thu_Oct22_Sprints_10s_and_20s_Trainer_1",
+    "library_item_id": 14355589,
+    "library_rpe_text": "10",
     "order_on_day": 0,
     "phase": "build",
     "role": "intensity",
@@ -336,13 +312,11 @@
     "week_num": 5,
     "workout_type_value_id": 2
   },
-  "W05_Tue_Oct20_VO2max_Extended_1": {
+  "W05_Tue_Oct20_VO2max_with_Loaded_Recovery_1": {
     "archetype_id": "VO2max Steady Intervals",
     "date": "2026-10-20",
-    "display_name": "VO2max Extended",
-    "filename_stem": "W05_Tue_Oct20_VO2max_Extended_1",
-    "library_item_id": 14357628,
-    "library_rpe_text": "8-9",
+    "display_name": "VO2max with Loaded Recovery",
+    "filename_stem": "W05_Tue_Oct20_VO2max_with_Loaded_Recovery_1",
     "order_on_day": 0,
     "phase": "build",
     "role": "intensity",
@@ -353,12 +327,12 @@
     "week_num": 5,
     "workout_type_value_id": 2
   },
-  "W05_Wed_Oct21_Z2__Spin_Ups": {
+  "W05_Wed_Oct21_High_Cadence_Intervals": {
     "archetype_id": "Endurance",
     "date": "2026-10-21",
-    "display_name": "Z2 + Spin Ups",
-    "filename_stem": "W05_Wed_Oct21_Z2__Spin_Ups",
-    "library_item_id": 14356263,
+    "display_name": "High Cadence Intervals",
+    "filename_stem": "W05_Wed_Oct21_High_Cadence_Intervals",
+    "library_item_id": 14356292,
     "library_rpe_text": "3-4",
     "order_on_day": 0,
     "phase": "build",
@@ -386,8 +360,8 @@
     "date": "2026-10-29",
     "display_name": "Descending-Cadence Ladder",
     "filename_stem": "W06_Thu_Oct29_Descending-Cadence_Ladder_1",
-    "library_item_id": 14357402,
-    "library_rpe_text": "3-4",
+    "library_item_id": 14357401,
+    "library_rpe_text": "5-6",
     "order_on_day": 0,
     "phase": "taper",
     "role": "intensity",
@@ -398,12 +372,12 @@
     "week_num": 6,
     "workout_type_value_id": 2
   },
-  "W06_Tue_Oct27_3030_VO2_1": {
+  "W06_Tue_Oct27_VO2max_3x4min_3030s_v1_1": {
     "archetype_id": "Thirty-Fifteens",
     "date": "2026-10-27",
-    "display_name": "30/30 VO2",
-    "filename_stem": "W06_Tue_Oct27_3030_VO2_1",
-    "library_item_id": 14357596,
+    "display_name": "VO2max 3x4min 30/30s v1",
+    "filename_stem": "W06_Tue_Oct27_VO2max_3x4min_3030s_v1_1",
+    "library_item_id": 14357579,
     "library_rpe_text": "9-10",
     "order_on_day": 0,
     "phase": "taper",
@@ -462,7 +436,7 @@
     "date": "2026-11-04",
     "display_name": "High Cadence Intervals",
     "filename_stem": "W07_Wed_Nov4_High_Cadence_Intervals",
-    "library_item_id": 14356296,
+    "library_item_id": 14356292,
     "library_rpe_text": "3-4",
     "order_on_day": 0,
     "phase": "race",
