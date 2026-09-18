@@ -135,3 +135,81 @@ excluded). ~30 athletes -> ~30 builds/week, minutes of compute.
    in pieces from this week; the join and the citation discipline are the work).
 3. B.2 draft-plan upsert + review page + weekly scheduler: ~1 day.
 Nothing here writes to an athlete calendar.
+
+## B — implementation plan (2026-09-18, lead with what changes)
+
+What exists and is reused, not rebuilt: the `endure-coaching-ops` plugin
+(`~/plugins/endure-coaching-ops`) — `coaching-reviews` builds per-athlete
+evidence packets (`packets/<athlete>.json`: ftp_tp, pmc, workouts, next_week,
+self_review, wellness, events, gmail); `tp-dynamic-plan-builder` holds the
+proven plan-library transport (create → workouts → notes → isDynamic; rebuild-
+in-place); private `plan-builds/<athlete>/apply_plan.js` scripts are working
+instances of it. `coaching_loop/` (ProposalIR, v5.1) is a different, heavier
+design and is NOT touched; Part B is the thin weekly loop Matti ratified.
+
+### Decisions most likely to change
+1. **Master profile stays `athletes/<id>/profile.yaml`.** `profile_refresh.py`
+   writes ONLY a whitelist: `fitness_markers.ftp_watts` (from TP settings),
+   `recent_training.demonstrated_hours_6wk` / `_tss_6wk` / `ctl` (from PMC,
+   never overwriting the athlete's stated target), `a_events`/`b_events`
+   (add TP events that are missing, never delete), `coached_block.window_start`
+   /`window_end` (rolls to next Monday, 4 weeks or race-bound),
+   `life_calendar.commitments` (append). Everything else — self-review text,
+   comments, Drive rows — goes to `coaching_history.md` as a dated section
+   with a source citation per line (packet path, note id, message id).
+   Contradictions (stated hours vs demonstrated, FTP change > 5%, race date
+   mismatch) never write the profile; they land under "Standing
+   contradictions" in the history AND in `refresh_diff.json`.
+2. **Per-athlete rules are data, not code.** `plan-builds/<athlete>/rules.yaml`
+   (private dir, outside the repo) replaces the bespoke `athlete_layer.py`
+   scripts: `title_format: duration_lead|plain`, `optional_intensity:
+   {enabled, text}`, `strip_sentences: [regex]`, `guardrails: [{title_match,
+   text}]`, `commitment_notes: [{date, title, description}]`,
+   `drop_rest_on_locked_days: bool`, `note_prefix: {week_titles_regex, text}`.
+   `tools/athlete_layer.py` applies them; Forest/Ed/Ari rules are ported from
+   their existing scripts and must reproduce today's `*_final.json` byte-for-
+   byte (golden test). Race-card tailoring stays an engine gap.
+3. **One standing DRAFT per athlete**, title `DRAFT · <Name> · <block> · <N>wk`,
+   upserted in place (delete workouts+notes, re-POST, isDynamic re-confirmed)
+   via a generic `plan-builds/_shared/upsert_draft_plan.js` (parameterised by
+   `window.__DRAFT_TITLE__`; finds the plan by exact title or creates it).
+   Live athlete calendars are never written by this loop.
+4. **Skip-if-unchanged.** `weekly_draft_state.json` per athlete stores the
+   SHA-256 of (profile.yaml, rules.yaml, packet fields used, engine commit).
+   Same hash → no rebuild; the review page says so.
+5. **Runner = a Claude session on this Mac**, not a cron script: the TP reads
+   need the logged-in Chrome (playwriter) and the Drive workbook needs the
+   Drive MCP. Skill `weekly-drafts` is the runbook (packets → refresh → build
+   → review page → upsert). A Monday 06:00 Claude cron is added only after
+   the first manual run is clean.
+
+### Pilot roster
+Athletes with a profile AND a coached block today: Forest Hietpas, Edward
+Shapiro, Ari Shapiro, Judd Pulley. Mike Wallace joins when the other session's
+Arrowhead build lands. Everyone else needs a profile first (onboarding skill).
+
+### Code (new, tested; nothing existing is rewritten)
+- `athletes/scripts/profile_refresh.py` — `refresh(athlete_dir, packet,
+  workbook_rows=None, commitments=None, today=...) -> RefreshDiff`; CLI writes
+  profile.yaml (whitelist), coaching_history.md section, refresh_diff.json.
+- `tools/athlete_layer.py` — rules.yaml → plan_payload_final.json /
+  notes_payload_final.json; golden tests against the three shipped builds.
+- `tools/weekly_draft_plan.py` — per-athlete orchestrator: refresh → 
+  generate_full_package → build_tp_plan_payload → athlete_layer → lint summary
+  + library_variety.json → run dir `plan-builds/<athlete>/weekly-<date>/` with
+  `draft_manifest.json` {title, plan_day_one, counts, lint, variety, diff};
+  honours the inputs hash.
+- `tools/weekly_review_page.py` — one HTML for the run: per athlete the
+  profile diff, block shape (weekly hours/TSS vs 6-wk demonstrated + CTL),
+  variety block, lint verdict, "3 lines to the athlete" drafted from block
+  notes and marked DRAFT.
+- `plan-builds/_shared/upsert_draft_plan.js` — from judd/steve apply_plan.js
+  plus find-by-title, delete-all, isDynamic; receipt with content readback.
+- Skill `weekly-drafts` (canonical in gravel-god-cycling/.claude/skills,
+  mirrored in the pipeline repo).
+
+### Order
+1. profile_refresh + athlete_layer (parallel executors, isolated worktrees).
+2. weekly_draft_plan + review page + upsert script.
+3. Adversarial review of the code; first manual run on the pilot four,
+   DRAFT plans upserted, review page published; then the cron.
