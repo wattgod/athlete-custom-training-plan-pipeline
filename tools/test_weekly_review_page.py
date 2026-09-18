@@ -181,7 +181,7 @@ def test_build_page_block_shape_and_demonstrated(builds_root):
     page = wrp.build_page(builds_root, RUN_DATE)
     assert "6.5" in page  # week 1 hours
     assert "310" in page  # week 1 tss
-    assert "55.4" in page  # CTL
+    assert "CTL 55" in page  # CTL
 
 
 def test_build_page_three_lines_only_mondays_and_capped_at_three(builds_root):
